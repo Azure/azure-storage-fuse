@@ -95,7 +95,8 @@ DAT(header_value_storage_version, "2017-04-17")
 #ifdef WIN32
 DAT(header_value_user_agent, "experimental(Windows)")
 #else
-DAT(header_value_user_agent, "experimental(Linux)")
+//DAT(header_value_user_agent, "experimental(Linux)")
+DAT(header_value_user_agent, "Azure-Storage-Fuse/0.1")
 #endif
 
 DAT(date_format_rfc_1123, "%a, %d %b %Y %H:%M:%S GMT")
