@@ -122,11 +122,21 @@ int main(int argc, char *argv[])
 	str_options.tmpPath = tmpPathStr;
 
 	azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20));
+    if(errno != 0)
+    {
+        fprintf(stderr, "Creating blob client failed.");
+        return 1;
+    }
 	fuse_opt_add_arg(&args, "-omax_read=4194304");
 	ensure_files_directory_exists(prepend_mnt_path_string("/placeholder"));
 
 	umask(0);
 
+    if(AZS_PRINT)
+    {
+        FILE* log = fopen("log.txt","w+");
+        stdout = log;
+    }
 	ret =  fuse_main(args.argc, args.argv, &azs_blob_readonly_operations, NULL);
 
 	return ret;

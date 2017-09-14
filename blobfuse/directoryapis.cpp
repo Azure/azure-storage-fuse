@@ -50,7 +50,11 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 	std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
 	if (errno != 0)
 	{
-		return 0 - map_errno(errno);
+	    if (AZS_PRINT)
+	    {
+		    fprintf(stdout, "azs_readdir list blobs failed with error = %d\n", errno);
+        }
+        return 0 - map_errno(errno);
 	}
 
 	filler(buf, ".", NULL, 0);

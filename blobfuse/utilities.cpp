@@ -299,6 +299,10 @@ void azs_destroy(void *private_data)
 
 	fts_close(fts);
     */
+    if(AZS_PRINT)
+    {
+        fclose(stdout);
+    }
 }
 
 
