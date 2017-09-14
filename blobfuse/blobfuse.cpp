@@ -1,10 +1,8 @@
 #include "blobfuse.h"
 
 struct options {
-	const char *accountName;
-	const char *accountKey;
-	const char *containerName;
 	const char *tmpPath;
+	const char *configFile;
 };
 
 struct options options;
@@ -12,10 +10,8 @@ struct str_options str_options;
 
 #define OPTION(t, p) { t, offsetof(struct options, p), 1 }
 const struct fuse_opt option_spec[] = {
-	OPTION("--accountName=%s", accountName),
-	OPTION("--accountKey=%s", accountKey),
-	OPTION("--containerName=%s", containerName),
 	OPTION("--tmpPath=%s", tmpPath),
+	OPTION("--configFile=%s", configFile),
 	FUSE_OPT_END
 };
 
@@ -25,6 +21,44 @@ std::map<int, int> error_mapping = {{404, ENOENT}, {403, EACCES}, {1600, ENOENT}
 const std::string directorySignifier = ".directory";
 
 static struct fuse_operations azs_blob_readonly_operations;
+
+
+
+int read_config(std::string configFile)
+{
+       std::ifstream file(configFile);
+       if(!file)
+       {
+               std::cout<<"No config file found at " << configFile <<std::endl;
+               return -1;
+       }
+
+       std::string line;
+       std::istringstream data;
+
+       while(std::getline(file, line)) {
+
+               data.str(line.substr(line.find(" ")+1));
+
+               if(line.find("accountName") != std::string::npos){
+                       std::string accountNameStr(data.str());
+                       str_options.accountName = accountNameStr;
+               }
+               else if(line.find("accountKey") != std::string::npos){
+                       std::string accountKeyStr(data.str());
+                       str_options.accountKey = accountKeyStr;
+               }
+               else if(line.find("containerName") != std::string::npos){
+                       std::string containerNameStr(data.str());
+                       str_options.containerName = containerNameStr;
+               }
+
+               data.clear();
+       }
+
+       return 0;
+
+}
 
 
 void *azs_init(struct fuse_conn_info * conn)
@@ -78,14 +112,9 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	std::string accountNameStr(options.accountName);
-	std::string accountKeyStr(options.accountKey);
-	std::string containerNameStr(options.containerName);
-	std::string tmpPathStr(options.tmpPath);
+	read_config(options.configFile);
 
-	str_options.accountName = accountNameStr;
-	str_options.accountKey = accountKeyStr;
-	str_options.containerName = containerNameStr;
+	std::string tmpPathStr(options.tmpPath);
 	str_options.tmpPath = tmpPathStr;
 
 	azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20));
