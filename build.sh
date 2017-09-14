@@ -1,8 +1,8 @@
 #!/bin/bash
 BLOBFS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
-##install cmake, libcurl and libfuse first
-## sudo apt-get install libfuse-dev cmake libcurl4-openssl-dev -y
+##install pkg-config, cmake, libcurl and libfuse first
+## For example, on ubuntu - sudo apt-get install pkg-config libfuse-dev cmake libcurl4-openssl-dev -y
 cd $BLOBFS_DIR/azure-storage-cpp-light/src
 mkdir build
 cd build
