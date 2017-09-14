@@ -112,7 +112,11 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	read_config(options.configFile);
+	int ret = read_config(options.configFile);
+	if (ret != 0)
+	{
+		return ret;
+	}
 
 	std::string tmpPathStr(options.tmpPath);
 	str_options.tmpPath = tmpPathStr;
@@ -123,7 +127,7 @@ int main(int argc, char *argv[])
 
 	umask(0);
 
-	int ret =  fuse_main(args.argc, args.argv, &azs_blob_readonly_operations, NULL);
+	ret =  fuse_main(args.argc, args.argv, &azs_blob_readonly_operations, NULL);
 
 	return ret;
 }
