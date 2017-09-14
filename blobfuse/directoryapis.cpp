@@ -47,7 +47,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
 	}
 
 	errno = 0;
-	std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(options.containerName, "/", pathStr.substr(1));
+	std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
 	if (errno != 0)
 	{
 		return 0 - map_errno(errno);
@@ -142,7 +142,7 @@ int azs_rmdir(const char *path)
 	}
 
 	errno = 0;
-	int dirStatus = is_directory_empty(options.containerName, "/", pathStr.substr(1));
+	int dirStatus = is_directory_empty(str_options.containerName, "/", pathStr.substr(1));
 	if (errno != 0)
 	{
 		return 0 - map_errno(errno);
@@ -176,7 +176,7 @@ int azs_rmdir(const char *path)
 
 
 	/*	errno = 0;
-		std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(options.containerName, "/", pathStr.substr(1));
+		std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
 		if (errno != 0)
 		{
 			return 0 - map_errno(errno);

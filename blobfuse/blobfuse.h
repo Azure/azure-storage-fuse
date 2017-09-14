@@ -33,14 +33,7 @@ struct fhwrapper {
 	}
 };
 
-struct options {
-	const char *accountName;
-	const char *accountKey;
-	const char *containerName;
-	const char *tmpPath;
-};
 
-extern struct options options;
 
 struct str_options {
 	std::string accountName;
@@ -51,14 +44,7 @@ struct str_options {
 
 extern struct str_options str_options;
 
-#define OPTION(t, p) { t, offsetof(struct options, p), 1 }
-const struct fuse_opt option_spec[] = {
-	OPTION("--accountName=%s", accountName),
-	OPTION("--accountKey=%s", accountKey),
-	OPTION("--containerName=%s", containerName),
-	OPTION("--tmpPath=%s", tmpPath),
-	FUSE_OPT_END
-};
+
 
 
 extern std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;

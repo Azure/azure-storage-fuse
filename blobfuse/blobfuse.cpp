@@ -1,7 +1,25 @@
 #include "blobfuse.h"
 
+struct options {
+	const char *accountName;
+	const char *accountKey;
+	const char *containerName;
+	const char *tmpPath;
+};
+
 struct options options;
 struct str_options str_options;
+
+#define OPTION(t, p) { t, offsetof(struct options, p), 1 }
+const struct fuse_opt option_spec[] = {
+	OPTION("--accountName=%s", accountName),
+	OPTION("--accountKey=%s", accountKey),
+	OPTION("--containerName=%s", containerName),
+	OPTION("--tmpPath=%s", tmpPath),
+	FUSE_OPT_END
+};
+
+
 std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
 std::map<int, int> error_mapping = {{404, ENOENT}, {403, EACCES}, {1600, ENOENT}};
 const std::string directorySignifier = ".directory";
@@ -70,7 +88,7 @@ int main(int argc, char *argv[])
 	str_options.containerName = containerNameStr;
 	str_options.tmpPath = tmpPathStr;
 
-	azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(options.accountName, options.accountKey, 20));
+	azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20));
 	fuse_opt_add_arg(&args, "-omax_read=4194304");
 	ensure_files_directory_exists(prepend_mnt_path_string("/placeholder"));
 

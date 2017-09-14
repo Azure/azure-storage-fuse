@@ -201,11 +201,10 @@ int azs_getattr(const char *path, struct stat *stbuf)
 		return 0;
 	}
 
-	std::string containerNameStr(options.containerName);
 	std::string blobNameStr(&(path[1]));
 
 	errno = 0;
-	auto blob_property = azure_blob_client_wrapper->get_blob_property(containerNameStr, blobNameStr);
+	auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
 
 	int result = 1;
 	if ((errno == 0) && blob_property.valid())
@@ -225,7 +224,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
 		blobNameStr.push_back('/');
 
 		errno = 0;
-		bool dirExists = list_one_blob_hierarchical(containerNameStr, "/", blobNameStr);
+		bool dirExists = list_one_blob_hierarchical(str_options.containerName, "/", blobNameStr);
 
 		if (errno != 0)
 		{
