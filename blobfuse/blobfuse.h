@@ -20,7 +20,7 @@
 #include <stddef.h>
 #include "blob/blob_client.h"
 
-#define AZS_PRINT 1
+#define AZS_PRINT 0
 
 using namespace microsoft_azure::storage;
 

@@ -132,11 +132,6 @@ int main(int argc, char *argv[])
 
     umask(0);
 
-    if(AZS_PRINT)
-    {
-        FILE* log = fopen("log.txt","w+");
-        stdout = log;
-    }
     ret =  fuse_main(args.argc, args.argv, &azs_blob_readonly_operations, NULL);
 
     return ret;
