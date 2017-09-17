@@ -380,14 +380,27 @@ int azs_rename(const char *src, const char *dst)
         {
             return 0 - map_errno(errno);
         }
-        azure_blob_client_wrapper->delete_blob(str_options.containerName, srcBlobNameStr);
-        if (AZS_PRINT)
+
+        do
         {
-            fprintf(stdout, "Tried to delete blob from %s, but received errno = %d\n", srcBlobNameStr.c_str(), errno);
+            blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, dstBlobNameStr);
+        }while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+
+        if(blob_property.copy_status.compare(0, 7, "success") == 0)
+        {
+            azure_blob_client_wrapper->delete_blob(str_options.containerName, srcBlobNameStr);
+            if (AZS_PRINT)
+            {
+                fprintf(stdout, "Tried to delete blob from %s, but received errno = %d\n", srcBlobNameStr.c_str(), errno);
+            }
+            if(errno != 0)
+            {
+                return 0 - map_errno(errno);
+            }
         }
-        if(errno != 0)
+        else
         {
-            return 0 - map_errno(errno);
+            return EFAULT;
         }
         return 0;
     }
@@ -429,6 +442,31 @@ int azs_rename(const char *src, const char *dst)
                     if (AZS_PRINT)
                     {
                         fprintf(stdout, "Copy blob from %s to %s, received errno = %d\n", blobList[i].name.c_str(), blobName.c_str(), errno);
+                    }
+                    if(errno != 0)
+                    {
+                        return 0 - map_errno(errno);
+                    }
+                    do
+                    {
+                        blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobName);
+                    }while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+
+                    if(blob_property.copy_status.compare(0, 7, "success") == 0)
+                    {
+                        azure_blob_client_wrapper->delete_blob(str_options.containerName, blobList[i].name);
+                        if (AZS_PRINT)
+                        {
+                            fprintf(stdout, "Tried to delete blob from %s, but received errno = %d\n", blobName.c_str(), errno);
+                        }
+                        if(errno != 0)
+                        {
+                            return 0 - map_errno(errno);
+                        }
+                    }
+                    else
+                    {
+                        return EFAULT;
                     }
                 }
                 return 0;
