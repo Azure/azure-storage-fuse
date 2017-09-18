@@ -64,7 +64,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     if (res == -1)
         return -errno;
     fchmod(res, 0777);
-    struct fhwrapper *fhwrap = new fhwrapper(res, ((fi->flags & O_WRONLY == O_WRONLY) || (fi->flags & O_RDWR == O_RDWR)));
+    struct fhwrapper *fhwrap = new fhwrapper(res, (((fi->flags & O_WRONLY) == O_WRONLY) || ((fi->flags & O_RDWR) == O_RDWR)));
     fi->fh = (long unsigned int)fhwrap;
 //    }
     return 0;

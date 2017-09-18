@@ -179,9 +179,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
 
     // Check and see if the file/directory exists locally (because it's being buffered.)  If so, skip the call to Storage.
     std::string pathString(path);
-    const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
-    mntPath = mntPathString.c_str();
 
     int res;
     int acc = access(mntPathString.c_str(), F_OK);
@@ -206,7 +204,6 @@ int azs_getattr(const char *path, struct stat *stbuf)
     errno = 0;
     auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
 
-    int result = 1;
     if ((errno == 0) && blob_property.valid())
     {
         if (AZS_PRINT)
@@ -257,7 +254,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     }
 }
 
-int rm(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf)
+int rm(const char *fpath, const struct stat * /*sb*/, int tflag, struct FTW * /*ftwbuf*/)
 {
     if (tflag == FTW_DP)
     {
@@ -273,7 +270,7 @@ int rm(const char *fpath, const struct stat *sb, int tflag, struct FTW *ftwbuf)
     }
 }
 
-void azs_destroy(void *private_data)
+void azs_destroy(void * /*private_data*/)
 {
     std::string rootPath(str_options.tmpPath + "/root");
     char *cstr = (char *)malloc(rootPath.size() + 1);
@@ -281,7 +278,7 @@ void azs_destroy(void *private_data)
     cstr[rootPath.size()] = 0;
 
     errno = 0;
-    int ret = nftw(cstr, rm, 20, FTW_DEPTH);
+    nftw(cstr, rm, 20, FTW_DEPTH);
 
 /*    char * const arr[] {cstr, NULL};
       FTS *fts = fts_open(arr, FTS_LOGICAL | FTS_NOCHDIR, NULL);
@@ -301,36 +298,32 @@ void azs_destroy(void *private_data)
 
     fts_close(fts);
     */
-    if(AZS_PRINT)
-    {
-        fclose(stdout);
-    }
 }
 
 
 // Not yet implemented section:
-int azs_access(const char *path, int mask)
+int azs_access(const char * /*path*/, int /*mask*/)
 {
     return 0;  // permit all access
 }
 
-int azs_readlink(const char *path, char *buf, size_t size)
+int azs_readlink(const char * /*path*/, char * /*buf*/, size_t /*size*/)
 {
     return 1; // ignore for mow
 }
 
-int azs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi)
+int azs_fsync(const char * /*path*/, int /*isdatasync*/, struct fuse_file_info * /*fi*/)
 {
     return 0; // Skip for now
 }
 
-int azs_chown(const char *path, uid_t uid, gid_t gid)
+int azs_chown(const char * /*path*/, uid_t /*uid*/, gid_t /*gid*/)
 {
     //TODO: Implement
     return 0;
 }
 
-int azs_chmod(const char *path, mode_t mode)
+int azs_chmod(const char * /*path*/, mode_t /*mode*/)
 {
     //TODO: Implement
     return 0;
@@ -338,7 +331,7 @@ int azs_chmod(const char *path, mode_t mode)
 }
 
 //#ifdef HAVE_UTIMENSAT
-int azs_utimens(const char *path, const struct timespec ts[2])
+int azs_utimens(const char * /*path*/, const struct timespec [2] /*ts[2]*/)
 {
     //TODO: Implement
     return 0;
@@ -347,7 +340,7 @@ int azs_utimens(const char *path, const struct timespec ts[2])
 
 
 
-int azs_truncate(const char *path, off_t off)
+int azs_truncate(const char * /*path*/, off_t /*off*/)
 {
     //TODO: Implement
     return 0;
@@ -364,7 +357,6 @@ int azs_rename(const char *src, const char *dst)
     std::string dstBlobNameStr(&(dst[1]));
     auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, srcBlobNameStr);
 
-    int result = 1;
     if ((errno == 0) && blob_property.valid())
     {
         if (AZS_PRINT)
@@ -484,19 +476,19 @@ int azs_rename(const char *src, const char *dst)
 }
 
 
-int azs_setxattr(const char *path, const char *name, const char *value, size_t size, int flags)
+int azs_setxattr(const char * /*path*/, const char * /*name*/, const char * /*value*/, size_t /*size*/, int /*flags*/)
 {
     return 0;
 }
-int azs_getxattr(const char *path, const char *name, char *value, size_t size)
+int azs_getxattr(const char * /*path*/, const char * /*name*/, char * /*value*/, size_t /*size*/)
 {
     return 0;
 }
-int azs_listxattr(const char *path, char *list, size_t size)
+int azs_listxattr(const char * /*path*/, char * /*list*/, size_t /*size*/)
 {
     return 0;
 }
-int azs_removexattr(const char *path, const char *name)
+int azs_removexattr(const char * /*path*/, const char * /*name*/)
 {
     return 0;
 }

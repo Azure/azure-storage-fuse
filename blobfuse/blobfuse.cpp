@@ -26,37 +26,37 @@ static struct fuse_operations azs_blob_readonly_operations;
 
 int read_config(std::string configFile)
 {
-       std::ifstream file(configFile);
-       if(!file)
-       {
-               std::cout<<"No config file found at " << configFile <<std::endl;
-               return -1;
-       }
+    std::ifstream file(configFile);
+    if(!file)
+    {
+        std::cout<<"No config file found at " << configFile <<std::endl;
+        return -1;
+    }
 
-       std::string line;
-       std::istringstream data;
+    std::string line;
+    std::istringstream data;
 
-       while(std::getline(file, line)) {
+    while(std::getline(file, line)) {
 
-               data.str(line.substr(line.find(" ")+1));
+        data.str(line.substr(line.find(" ")+1));
 
-               if(line.find("accountName") != std::string::npos){
-                       std::string accountNameStr(data.str());
-                       str_options.accountName = accountNameStr;
-               }
-               else if(line.find("accountKey") != std::string::npos){
-                       std::string accountKeyStr(data.str());
-                       str_options.accountKey = accountKeyStr;
-               }
-               else if(line.find("containerName") != std::string::npos){
-                       std::string containerNameStr(data.str());
-                       str_options.containerName = containerNameStr;
-               }
+        if(line.find("accountName") != std::string::npos){
+            std::string accountNameStr(data.str());
+            str_options.accountName = accountNameStr;
+        }
+        else if(line.find("accountKey") != std::string::npos){
+            std::string accountKeyStr(data.str());
+            str_options.accountKey = accountKeyStr;
+        }
+        else if(line.find("containerName") != std::string::npos){
+            std::string containerNameStr(data.str());
+            str_options.containerName = containerNameStr;
+        }
 
-               data.clear();
-       }
+        data.clear();
+    }
 
-       return 0;
+    return 0;
 
 }
 
@@ -72,8 +72,13 @@ void *azs_init(struct fuse_conn_info * conn)
     //conn->max_read = 4194304;
     conn->max_readahead = 4194304;
     conn->max_background = 128;
-//  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
+    //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
     return NULL;
+}
+
+void print_usage()
+{
+    fprintf(stdout, "Usage: blobfuse <mount-folder> --configfile=<config-file> --tmpPath=<temp-path>\n");
 }
 
 int main(int argc, char *argv[])
@@ -94,9 +99,9 @@ int main(int argc, char *argv[])
     azs_blob_readonly_operations.rmdir = azs_rmdir;
     azs_blob_readonly_operations.chown = azs_chown;
     azs_blob_readonly_operations.chmod = azs_chmod;
-//#ifdef HAVE_UTIMENSAT
+    //#ifdef HAVE_UTIMENSAT
     azs_blob_readonly_operations.utimens = azs_utimens;
-//#endif
+    //#endif
     azs_blob_readonly_operations.destroy = azs_destroy;
     azs_blob_readonly_operations.truncate = azs_truncate;
     azs_blob_readonly_operations.rename = azs_rename;
@@ -107,15 +112,25 @@ int main(int argc, char *argv[])
     azs_blob_readonly_operations.flush = azs_flush;
 
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
-    if (fuse_opt_parse(&args, &options, option_spec, NULL) == -1)
+    int ret = 0;
+    try
     {
-        return 1;
-    }
 
-    int ret = read_config(options.configFile);
-    if (ret != 0)
+        if (fuse_opt_parse(&args, &options, option_spec, NULL) == -1)
+        {
+            return 1;
+        }
+
+        ret = read_config(options.configFile);
+        if (ret != 0)
+        {
+            return ret;
+        }
+    }
+    catch(std::exception &)
     {
-        return ret;
+        print_usage();
+        return 1;
     }
 
     std::string tmpPathStr(options.tmpPath);

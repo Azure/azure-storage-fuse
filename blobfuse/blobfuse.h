@@ -21,6 +21,7 @@
 #include "blob/blob_client.h"
 
 #define AZS_PRINT 0
+#define UNREFERENCED_PARAMETER(p) (p)
 
 using namespace microsoft_azure::storage;
 

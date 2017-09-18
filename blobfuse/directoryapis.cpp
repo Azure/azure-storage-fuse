@@ -1,6 +1,6 @@
 #include "blobfuse.h"
 
-int azs_mkdir(const char *path, mode_t mode)
+int azs_mkdir(const char *path, mode_t)
 {
     if (AZS_PRINT)
     {
@@ -34,7 +34,7 @@ int azs_mkdir(const char *path, mode_t mode)
  * @param  flags  Not used.  TODO: Consider prefetching on FUSE_READDIR_PLUS.
  * @return        TODO: error codes.
  */
-int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi)
+int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, struct fuse_file_info *)
 {
     if (AZS_PRINT)
     {
@@ -60,7 +60,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offse
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
 
-    int i = 0;
+    size_t i = 0;
     if (AZS_PRINT)
     {
         fprintf(stdout, "result count = %lu\n", listResults.size());
