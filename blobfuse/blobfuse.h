@@ -25,6 +25,8 @@
 
 using namespace microsoft_azure::storage;
 
+class file_lock_map;
+
 struct fhwrapper {
     int fh;
     bool upload;

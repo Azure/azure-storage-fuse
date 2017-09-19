@@ -1,4 +1,58 @@
 #include "blobfuse.h"
+#include <sys/file.h>
+
+class file_lock_map
+{
+    public:
+    static file_lock_map* get_instance()
+    {
+        if(nullptr == _instance.get())
+        {
+            std::lock_guard<std::mutex> lock(s_mutex);
+            if(nullptr == _instance.get())
+            {
+                _instance.reset(new file_lock_map());
+            }
+        }
+        return _instance.get();
+    }
+
+    std::shared_ptr<std::mutex> get_mutex(std::string path)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        auto iter = m_lock_map.find(path);
+        if(iter == m_lock_map.end())
+        {
+            auto file_mutex = std::make_shared<std::mutex>();
+            m_lock_map[path] = file_mutex;
+            return file_mutex;
+        }
+        else
+        {
+            return iter->second;
+        }
+    }
+
+    std::shared_ptr<std::mutex> get_mutex(const char* path)
+    {
+        std::string spath(path);
+        return get_mutex(spath);
+    }
+
+    protected:
+    file_lock_map()
+    {
+    }
+
+    private:
+    static std::shared_ptr<file_lock_map> _instance;
+    static std::mutex s_mutex;
+    std::mutex m_mutex;
+    std::map<std::string, std::shared_ptr<std::mutex>> m_lock_map;
+};
+
+std::shared_ptr<file_lock_map> file_lock_map::_instance;
+std::mutex file_lock_map::s_mutex;
 
 
 int azs_open(const char *path, struct fuse_file_info *fi)
@@ -36,6 +90,8 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     else
     {
     */
+    auto fmutex = file_lock_map::get_instance()->get_mutex(path);
+    std::lock_guard<std::mutex> lock(*fmutex);
     struct stat buf;
     int statret = stat(mntPath, &buf);
     if ((statret != 0) || ((time(NULL) - buf.st_atime) > 12000))
@@ -44,8 +100,15 @@ int azs_open(const char *path, struct fuse_file_info *fi)
 
         ensure_files_directory_exists(mntPathString);
         std::ofstream filestream(mntPathString, std::ofstream::binary | std::ofstream::out);
+        int fd = open(mntPath, O_WRONLY);
+        if (fd == -1)
+        {
+            return -errno;
+        }
+        flock(fd, LOCK_EX);
         errno = 0;
         azure_blob_client_wrapper->download_blob_to_stream(str_options.containerName, pathString.substr(1), 0ULL, 1000000000000ULL, filestream);
+        flock(fd, LOCK_UN);
         if (errno != 0)
         {
             return 0 - map_errno(errno);
@@ -62,7 +125,18 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     }
 
     if (res == -1)
+    {
         return -errno;
+    }
+    if((fi->flags&O_RDONLY) == O_RDONLY)
+    {
+       flock(res, LOCK_SH);
+    }
+    else
+    {
+       flock(res, LOCK_EX);
+    }
+
     fchmod(res, 0777);
     struct fhwrapper *fhwrap = new fhwrapper(res, (((fi->flags & O_WRONLY) == O_WRONLY) || ((fi->flags & O_RDWR) == O_RDWR)));
     fi->fh = (long unsigned int)fhwrap;
@@ -253,6 +327,7 @@ int azs_release(const char *path, struct fuse_file_info * fi)
     }
     if (access(mntPath, F_OK) != -1 )
     {
+        flock(((struct fhwrapper *)fi->fh)->fh, LOCK_UN);
         close(((struct fhwrapper *)fi->fh)->fh);
     }
     else
