@@ -94,7 +94,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     std::lock_guard<std::mutex> lock(*fmutex);
     struct stat buf;
     int statret = stat(mntPath, &buf);
-    if ((statret != 0) || ((time(NULL) - buf.st_atime) > 12000))
+    if ((statret != 0) || ((time(NULL) - buf.st_atime) > 120))
     {
         remove(mntPath);
 
@@ -109,6 +109,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
         errno = 0;
         azure_blob_client_wrapper->download_blob_to_stream(str_options.containerName, pathString.substr(1), 0ULL, 1000000000000ULL, filestream);
         flock(fd, LOCK_UN);
+        close(fd);
         if (errno != 0)
         {
             return 0 - map_errno(errno);
