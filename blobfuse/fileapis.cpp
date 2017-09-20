@@ -131,11 +131,31 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     }
     if((fi->flags&O_RDONLY) == O_RDONLY)
     {
-       flock(res, LOCK_SH);
+        if((fi->flags&O_NONBLOCK) == O_NONBLOCK)
+        {
+            if(0 != flock(res, LOCK_SH|LOCK_NB))
+            {
+                return 0 - errno;
+            }
+        }
+        else
+        {
+            flock(res, LOCK_SH);
+        }
     }
     else
     {
-       flock(res, LOCK_EX);
+        if((fi->flags&O_NONBLOCK) == O_NONBLOCK)
+        {
+            if(0 != flock(res, LOCK_EX|LOCK_NB))
+            {
+                return 0 - errno;
+            }
+        }
+        else
+        {
+            flock(res, LOCK_EX);
+        }
     }
 
     fchmod(res, 0777);
