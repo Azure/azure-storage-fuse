@@ -21,25 +21,28 @@
 #include "blob/blob_client.h"
 
 #define AZS_PRINT 0
+#define UNREFERENCED_PARAMETER(p) (p)
 
 using namespace microsoft_azure::storage;
 
-struct fhwrapper {
-	int fh;
-	bool upload;
-	fhwrapper(int fh, bool upload) : fh(fh), upload(upload)
-	{
+class file_lock_map;
 
-	}
+struct fhwrapper {
+    int fh;
+    bool upload;
+    fhwrapper(int fh, bool upload) : fh(fh), upload(upload)
+    {
+
+    }
 };
 
 
 
 struct str_options {
-	std::string accountName;
-	std::string accountKey;
-	std::string containerName;
-	std::string tmpPath;
+    std::string accountName;
+    std::string accountKey;
+    std::string containerName;
+    std::string tmpPath;
 };
 
 extern struct str_options str_options;

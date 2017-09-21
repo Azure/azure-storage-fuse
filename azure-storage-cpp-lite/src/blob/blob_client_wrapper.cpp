@@ -120,6 +120,7 @@ namespace microsoft_azure {
         std::shared_ptr<storage_credential>  cred = std::make_shared<shared_key_credential>(accountName, accountKey);
         std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, false);
         std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
+        errno = 0;
         return blob_client_wrapper(blobClient);
     }
     catch(std::exception ex)
