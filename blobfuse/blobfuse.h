@@ -63,10 +63,8 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
 bool list_one_blob_hierarchical(std::string container, std::string delimiter, std::string prefix);
 int is_directory_empty(std::string container, std::string delimiter, std::string prefix);
 
-int azs_access(const char *path, int mask);
-
 /**
- * get_attr is the general-purpose "get information about the thing at this path"
+ * get_attr is the general-purpose "get information about the file or directory at this path"
  * function called by FUSE.  Most important is to return whether the item is a file or a directory.
  * Similar to stat().
  *
@@ -77,12 +75,9 @@ int azs_access(const char *path, int mask);
  *
  * @param  path  The path for which information should be evaluated.
  * @param  stbuf The 'stat' struct containing the output information.
- * @param  fi    May be NULL.  If not NULL, information about this item.
  * @return       TODO: Error codes
  */
 int azs_getattr(const char *path, struct stat *stbuf);
-
-int azs_readlink(const char *path, char *buf, size_t size);
 
 /**
  * Create a directory.  In order to support empty directories, this creates a blob representing the directory.
@@ -105,7 +100,6 @@ int azs_mkdir(const char *path, mode_t mode);
  * @param  filler Function to call to add directories and files as they are discovered.
  * @param  offset Not used
  * @param  fi     File info about the directory to be read.
- * @param  flags  Not used.  TODO: Consider prefetching on FUSE_READDIR_PLUS.
  * @return        TODO: error codes.
  */
 int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi);
@@ -161,12 +155,17 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi);
  */
 int azs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi);
 
-int azs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi);
-
+/**
+ * Flush the opened file to the cloud.
+ *
+ * @param  path Path to the file to release.
+ * @param  fi   File info, containing the fh pointer.  Data malloc'd in open/create and stored in fh should probably be free'd here.
+ * @return      TODO: Error codes.
+ */
 int azs_flush(const char *path, struct fuse_file_info *fi);
 
 /**
- * Release / close the file
+ * Release / close the file.
  *
  * For reading, this is mostly a no-op.
  * For writing, this is where we actually upload the file to Azure Storage.
@@ -177,24 +176,58 @@ int azs_flush(const char *path, struct fuse_file_info *fi);
  */
 int azs_release(const char *path, struct fuse_file_info * fi);
 
+/**
+ * Delete the file.
+ *
+ * @param  path Path to the file to release.
+ * @return      TODO: Error codes.
+ */
 int azs_unlink(const char *path);
 
+/**
+ * Delete a directory.
+ *
+ * @param  path Path to the file to release.
+ * @return      TODO: Error codes.
+ */
 int azs_rmdir(const char *path);
 
+/**
+ * Change the name or location of a file or directory.
+ *
+ * @param  path Path to the file to release.
+ * @return      TODO: Error codes.
+ */
+int azs_rename(const char *src, const char *dst);
+
+/**
+ * Initialize the filesystem.
+ *
+ * @param  conn Configuration info of fuse driver.
+ * @return      TODO: Error codes.
+ */
+void* azs_init(struct fuse_conn_info * conn);
+
+/**
+ * Clean up the filesystem.
+ *
+ * @param  private_data A pointer point to the data passed through fuse_main(), which may stored some customized data. 
+ * @return      TODO: Error codes.
+ */
+void azs_destroy(void *private_data);
+
+/* Not implemented functions.
+ */
+int azs_access(const char *path, int mask);
+int azs_readlink(const char *path, char *buf, size_t size);
+int azs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi);
 int azs_chown(const char *path, uid_t uid, gid_t gid);
 int azs_chmod(const char *path, mode_t mode);
 int azs_utimens(const char *path, const struct timespec ts[2]);
-
-void azs_destroy(void *private_data);
-
 int azs_truncate(const char *path, off_t off);
-int azs_rename(const char *src, const char *dst);
 int azs_setxattr(const char *path, const char *name, const char *value, size_t size, int flags);
 int azs_getxattr(const char *path, const char *name, char *value, size_t size);
 int azs_listxattr(const char *path, char *list, size_t size);
 int azs_removexattr(const char *path, const char *name);
-
-void *azs_init(struct fuse_conn_info * conn);
-
 
 #endif

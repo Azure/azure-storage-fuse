@@ -50,6 +50,7 @@ void ensure_files_directory_exists(const std::string file_path)
 
 std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::string container, std::string delimiter, std::string prefix)
 {
+    static const int maxFailCount = 20;
     std::vector<list_blobs_hierarchical_item> results;
 
     std::string continuation;
@@ -81,8 +82,13 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
         {
             failcount++;
             success = false;
+            if (AZS_PRINT)
+            {
+                fprintf(stdout, "list_blobs_hierarchical failed %d time with errno = %d\n", failcount, errno);
+            }
+
         }
-    } while (((continuation.size() > 0) || !success) && (failcount < 20));
+    } while (((continuation.size() > 0) || !success) && (failcount < maxFailCount));
 
     return results;
 }
