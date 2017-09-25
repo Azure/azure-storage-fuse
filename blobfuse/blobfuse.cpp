@@ -25,7 +25,7 @@ static struct fuse_operations azs_blob_readonly_operations;
 
 inline bool is_lowercase_string(const std::string &s)
 {
-    return (s.size() == std::count_if(s.begin(), s.end(),[](unsigned char c){ return std::islower(c); }));
+    return (s.size() == static_cast<size_t>(std::count_if(s.begin(), s.end(),[](unsigned char c){ return std::islower(c); })));
 }
 
 int read_config(std::string configFile)
@@ -33,7 +33,7 @@ int read_config(std::string configFile)
     std::ifstream file(configFile);
     if(!file)
     {
-        fprintf(stderr, "No config file found at %s.\n", configFile);
+        fprintf(stderr, "No config file found at %s.\n", configFile.c_str());
         return -1;
     }
 
@@ -46,7 +46,7 @@ int read_config(std::string configFile)
 
         if(line.find("accountName") != std::string::npos){
             std::string accountNameStr(data.str());
-            if(is_lowercase_string(accountKeyStr))
+            if(is_lowercase_string(accountNameStr))
             {
                 fprintf(stderr, "Account name must be lower cases.");
                 return -1;

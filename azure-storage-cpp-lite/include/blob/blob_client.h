@@ -34,6 +34,10 @@ public:
         return m_account;
     }
 
+    unsigned int concurrency() const {
+        return m_client->size();
+    }
+
     AZURE_STORAGE_API std::future<storage_outcome<void>> download_blob_to_stream(const std::string &container, const std::string &blob, unsigned long long offset, unsigned long long size, std::ostream &os);
 
     AZURE_STORAGE_API std::future<storage_outcome<void>> upload_block_blob_from_stream(const std::string &container, const std::string &blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata);
@@ -88,27 +92,40 @@ private:
 class blob_client_wrapper
 {
     public:
-        blob_client_wrapper(std::shared_ptr<blob_client> blobClient)
+        explicit blob_client_wrapper(std::shared_ptr<blob_client> blobClient)
             : m_blobClient(blobClient),
-            m_invalid(true)
+              m_invalid(true)
         {
             if(blobClient != NULL)
             {
-                m_concurrency = blobClient->client()->size();
+                m_concurrency = blobClient->concurrency();
             }
         }
         
-        blob_client_wrapper(bool invalid)
+        explicit blob_client_wrapper(bool invalid)
             : m_invalid(invalid)
         {
         }
 
-    blob_client_wrapper(blob_client_wrapper &&other)
-    {
-        m_blobClient = other.m_blobClient;
-        m_concurrency = other.m_concurrency;
-        m_invalid = other.m_invalid;
-    }
+        blob_client_wrapper(blob_client_wrapper&& other)
+        {
+            m_blobClient = other.m_blobClient;
+            m_concurrency = other.m_concurrency;
+            m_invalid = other.m_invalid;
+        }
+
+        blob_client_wrapper& operator=(blob_client_wrapper&& other)
+        {
+            m_blobClient = other.m_blobClient;
+            m_concurrency = other.m_concurrency;
+            m_invalid = other.m_invalid;
+            return *this;
+        }
+
+        bool is_valid() const
+        {
+            return m_invalid && (m_blobClient != NULL);
+        }
 
         static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency);
         /* C++ wrappers without exception but error codes instead */
