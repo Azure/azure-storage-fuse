@@ -127,7 +127,7 @@ int is_directory_empty(std::string container, std::string delimiter, std::string
                 if ((!dirBlobFound) &&
                     (!response.blobs[0].is_directory) &&
                     (response.blobs[0].name.size() > directorySignifier.size()) &&
-                    (response.blobs[0].name.compare(response.blobs[0].name.size() - (directorySignifier.size() + 1), directorySignifier.size(), directorySignifier)))
+                    (0 == response.blobs[0].name.compare(response.blobs[0].name.size() - (directorySignifier.size() + 1), directorySignifier.size(), directorySignifier)))
                 {
                     dirBlobFound = true;
                 }
