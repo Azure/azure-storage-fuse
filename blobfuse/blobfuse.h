@@ -7,6 +7,7 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <fts.h>
 #include <ftw.h>
 #include <unistd.h>
 #include <time.h>
@@ -22,6 +23,11 @@
 
 #define AZS_PRINT 0
 #define UNREFERENCED_PARAMETER(p) (p)
+
+/* Define errors and return codes */
+#define D_NOTEXIST -1
+#define D_EMPTY 0
+#define D_NOTEMPTY 1
 
 using namespace microsoft_azure::storage;
 
@@ -58,7 +64,7 @@ extern const std::string directorySignifier;
 
 int map_errno(int error);
 std::string prepend_mnt_path_string(const std::string path);
-void ensure_files_directory_exists(const std::string file_path);
+int ensure_files_directory_exists(const std::string file_path);
 std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::string container, std::string delimiter, std::string prefix);
 bool list_one_blob_hierarchical(std::string container, std::string delimiter, std::string prefix);
 int is_directory_empty(std::string container, std::string delimiter, std::string prefix);
@@ -195,7 +201,8 @@ int azs_rmdir(const char *path);
 /**
  * Change the name or location of a file or directory.
  *
- * @param  path Path to the file to release.
+ * @param  src Path to the source file or directory.
+ * @param  dst Path to the destination file or directory.
  * @return      TODO: Error codes.
  */
 int azs_rename(const char *src, const char *dst);

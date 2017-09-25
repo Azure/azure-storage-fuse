@@ -65,40 +65,22 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
-    /*
-    if (fi->flags & O_WRONLY == O_WRONLY)
-    {
-        int res;
-        ensure_files_directory_exists(mntPathString);
-        res = open(mntPath, fi->flags);
-        if (AZS_PRINT)
-        {
-            printf("res = %d, errno = %d, ENOENT = %d\n", res, errno, ENOENT);
-        }
 
-        if (res == -1)
-            return -errno;
-
-        struct fhwrapper *fhwrap = new fhwrapper(res, true);
-        fi->fh = (long unsigned int)fhwrap;
-
-    }
-    else if (fi->flags & O_RDWR == O_RDWR)
-    {
-        return -1; // Read/Write not currently supported.
-    }
-    else
-    {
-    */
     auto fmutex = file_lock_map::get_instance()->get_mutex(path);
     std::lock_guard<std::mutex> lock(*fmutex);
     struct stat buf;
     int statret = stat(mntPath, &buf);
+
+    /* If target file does not exists in the cache directory or the cached file is expired in the given time duration(by checking last access time), download it from Azure.*/
     if ((statret != 0) || ((time(NULL) - buf.st_atime) > 120))
     {
         remove(mntPath);
 
-        ensure_files_directory_exists(mntPathString);
+        if(0 != ensure_files_directory_exists(mntPathString))
+        {
+            fprintf(stderr, "Failed to create file or direcotry on cache directory: %s, errno = %d.\n", mntPathString.c_str(),  errno);
+            return -1;
+        }
         std::ofstream filestream(mntPathString, std::ofstream::binary | std::ofstream::out);
         int fd = open(mntPath, O_WRONLY);
         if (fd == -1)

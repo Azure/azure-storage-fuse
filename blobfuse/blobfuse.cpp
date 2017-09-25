@@ -190,7 +190,11 @@ int main(int argc, char *argv[])
     }
 
     fuse_opt_add_arg(&args, "-omax_read=4194304");
-    ensure_files_directory_exists(prepend_mnt_path_string("/placeholder"));
+    if(0 != ensure_files_directory_exists(prepend_mnt_path_string("/placeholder")))
+    {
+        fprintf(stderr, "Failed to create direcotry on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
+        return 1;
+    }
 
     umask(0);
 
