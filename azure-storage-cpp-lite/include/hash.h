@@ -7,9 +7,9 @@
 #include <Windows.h>
 #include <bcrypt.h>
 #else
-#include <openssl/hmac.h>
-#include <openssl/md5.h>
-#include <openssl/sha.h>
+#include <gnutls/gnutls.h>
+#include <gnutls/crypto.h>
+#define SHA256_DIGEST_LENGTH    32
 #endif
 
 #include "storage_EXPORTS.h"

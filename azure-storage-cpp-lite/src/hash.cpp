@@ -45,10 +45,10 @@ namespace microsoft_azure {
 #else
         std::string hash(const std::string &to_sign, const std::vector<unsigned char> &key) {
             unsigned int l = SHA256_DIGEST_LENGTH;
-            std::string sig;
-            sig.reserve(l);
-            auto p = HMAC(EVP_sha256(), key.data(), key.size(), (const unsigned char *)to_sign.data(), to_sign.size(), (unsigned char *)sig.data(), &l);
-            return to_base64(std::vector<unsigned char>(p, p + l));
+            unsigned char digest[SHA256_DIGEST_LENGTH];
+            gnutls_hmac_fast(GNUTLS_MAC_SHA256,key.data(), key.size(),(const unsigned char *)to_sign.data(), to_sign.size(), digest);
+            return to_base64(std::vector<unsigned char>(digest, digest + l));
+
         }
 #endif
 
