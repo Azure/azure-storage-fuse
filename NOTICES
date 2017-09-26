@@ -1,4 +1,7 @@
-This repository contains work from TinyXML-2
+Blobfuse incorporates material from the project(s) listed below (“Third Party Code”).  Microsoft is not the original author of the Third Party Code. Microsoft reserves all other rights not expressly granted, whether by implication, estoppel or otherwise.
+Third-party notices are provided solely for your information and include the original copyright and license which Microsoft received with the third-party software. While Microsoft is not the original author of the third-party materials, Microsoft licenses these third-party materials to you under the terms set forth in the agreement governing the Microsoft Offering, except that components licensed under open source licenses requiring that such components remain under their original license, such as the GNU General Public License (GPL) or the GNU Lesser General Public License (LGPL), are being made available to you by Microsoft under their original licensing terms. Microsoft reserves all rights not expressly granted herein, whether by implication, estoppel or otherwise.
+
+TinyXML-2
 
 ===========
 TinyXML-2 is released under the zlib license:
@@ -7,7 +10,9 @@ This software is provided 'as-is', without any express or implied warranty. In n
 
 Permission is granted to anyone to use this software for any purpose, including commercial applications, and to alter it and redistribute it freely, subject to the following restrictions:
 
-The origin of this software must not be misrepresented; you must not claim that you wrote the original software. If you use this software in a product, an acknowledgment in the product documentation would be appreciated but is not required.
+The origin of this software must not be misrepresented; you must not claim that you wrote the original software. If you use this software in a product, an acknowledgment in the product documentation would be appreciated but is not requir
+ed.
 Altered source versions must be plainly marked as such, and must not be misrepresented as being the original software.
 This notice may not be removed or altered from any source distribution.
 ===========
+`
