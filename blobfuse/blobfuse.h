@@ -82,6 +82,15 @@ int azs_access(const char *path, int mask);
  */
 int azs_getattr(const char *path, struct stat *stbuf);
 
+/**
+* statfs gets the file system statistics for the tmpPath/local cache path
+*
+* @param  path  The path for which information should be evaluated.
+* @param  stbuf The 'stat' struct containing the output information.
+* @return       Returns success, or return code from the statvfs call
+*/
+int azs_statfs(const char *path, struct statvfs *stbuf); 
+
 int azs_readlink(const char *path, char *buf, size_t size);
 
 /**
