@@ -230,3 +230,19 @@ int azs_rmdir(const char *path)
     return 0;
 
 }
+
+int azs_statfs(const char *path, struct statvfs *stbuf)
+{
+
+    std::string pathString(path);
+    const char * mntPath;
+    std::string mntPathString = prepend_mnt_path_string(pathString);
+    mntPath = mntPathString.c_str();
+
+
+    int res = statvfs(mntPath, stbuf);
+    if (res == -1)
+        return -errno;
+
+    return 0;
+}

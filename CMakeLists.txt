@@ -117,6 +117,7 @@ set (BLOBFUSE_SOURCE
 )
 
 if(UNIX)
+  project(blobfuse)
   find_package(Threads REQUIRED)
   find_package(CURL REQUIRED)
   find_package(GnuTLS REQUIRED)
@@ -132,4 +133,11 @@ if(UNIX)
   add_executable(blobfuse ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} ${AZURE_STORAGE_HEADER} ${AZURE_STORAGE_SOURCE})
 
   target_link_libraries(blobfuse ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} fuse)
+  install(TARGETS blobfuse
+    PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+    DESTINATION bin)
+
+  set(CPACK_GENERATOR "DEB")
+  set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft - Azure Storage")
+  include(CPack)
 endif(UNIX)

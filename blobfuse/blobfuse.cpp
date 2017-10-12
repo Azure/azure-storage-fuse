@@ -85,6 +85,7 @@ int main(int argc, char *argv[])
 {
     azs_blob_readonly_operations.init = azs_init;
     azs_blob_readonly_operations.getattr = azs_getattr;
+    azs_blob_readonly_operations.statfs = azs_statfs;
     azs_blob_readonly_operations.access = azs_access;
     azs_blob_readonly_operations.readlink = azs_readlink;
     azs_blob_readonly_operations.readdir = azs_readdir;
