@@ -14,22 +14,31 @@
 #include <fstream>
 #include <map>
 #include <memory>
+
+// Declare that we're using version 2.9 of FUSE
+// 3.0 is not built-in to many distros yet.
+// This line must come before #include <fuse.h>.
 #define FUSE_USE_VERSION 29
 
 #include <fuse.h>
 #include <stddef.h>
 #include "blob/blob_client.h"
 
+// Set this to 1 to enable debug output.
+// Prints directly to the console, so this is only useful is you mount in "-f" mode.
 #define AZS_PRINT 0
 #define UNREFERENCED_PARAMETER(p) (p)
 
 using namespace microsoft_azure::storage;
 
+// Internal class used for locking, see fileapis.cpp.
 class file_lock_map;
 
+// FUSE gives you one 64-bit pointer to use for communication between API's.
+// An instance of this struct is pointed to by that pointer.
 struct fhwrapper {
-    int fh;
-    bool upload;
+    int fh; // The handle to the file in the file cache to use for read/write operations.
+    bool upload; // True if the blob should be uploaded when the file is closed.  (False when the file was opened in read-only mode.)
     fhwrapper(int fh, bool upload) : fh(fh), upload(upload)
     {
 
@@ -37,7 +46,7 @@ struct fhwrapper {
 };
 
 
-
+// Global struct storing the Storage connection information and the tmpPath.
 struct str_options {
     std::string accountName;
     std::string accountKey;
@@ -50,19 +59,40 @@ extern struct str_options str_options;
 
 
 
+// This is used to make all the calls to Storage
+// The C++ lite client does not store state, other than connection info, so we can use it between calls without issue.
 extern std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
 
+// Used to map HTTP errors (ex. 404) to Linux errno (ex ENOENT)
 extern std::map<int, int> error_mapping;
 
+// String that signifies that this blob represents a directory.
+// This string should be appended to the name of the directory.  THe resultant string should be the name of a zero-length blob; this represents the directory on the service.
 extern const std::string directorySignifier;
 
+// Helper function to map an HTTP error to an errno.
 int map_errno(int error);
+
+// Helper function to prepend the 'tmpPath' to the input path.
+// Input is the logical file name being input to the FUSE API, output is the file name of the on-disk file in the file cache.
 std::string prepend_mnt_path_string(const std::string path);
+
+// Helper function to create all directories in the path if they don't already exist.
 void ensure_files_directory_exists(const std::string file_path);
+
+// Greedily list all blobs using the input params.
 std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::string container, std::string delimiter, std::string prefix);
+
+// Return 'true' if there is at least one blob listed under the input prefix.
 bool list_one_blob_hierarchical(std::string container, std::string delimiter, std::string prefix);
+
+// Returns:
+// 0 if there's nothing there (the directory does not exist)
+// 1 is there's exactly one blob, and it's the ".directory" blob
+// 2 otherwise (the directory exists and is not empty.)
 int is_directory_empty(std::string container, std::string delimiter, std::string prefix);
 
+/** Not implemented. */
 int azs_access(const char *path, int mask);
 
 /**
@@ -91,6 +121,7 @@ int azs_getattr(const char *path, struct stat *stbuf);
 */
 int azs_statfs(const char *path, struct statvfs *stbuf); 
 
+/** Not implemented. */
 int azs_readlink(const char *path, char *buf, size_t size);
 
 /**
@@ -170,15 +201,23 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi);
  */
 int azs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi);
 
+/** Not implemented. */
 int azs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi);
 
-int azs_flush(const char *path, struct fuse_file_info *fi);
+/**
+ * Upload data to Azure Storage.
+ *
+ * Here, we upload the contents of the file to Storage.
+ * @param  path   Path to the file to flush.
+ * @param  fi     Fuse file info, containing the fh pointer
+ * @return        TODO: Error codes.
+ */
+ int azs_flush(const char *path, struct fuse_file_info *fi);
 
 /**
  * Release / close the file
  *
- * For reading, this is mostly a no-op.
- * For writing, this is where we actually upload the file to Azure Storage.
+ * There should be no need to upload changes to Storage, just release locks and close the file handle.
  *
  * @param  path Path to the file to release.
  * @param  fi   File info, containing the fh pointer.  Data malloc'd in open/create and stored in fh should probably be free'd here.
@@ -186,23 +225,79 @@ int azs_flush(const char *path, struct fuse_file_info *fi);
  */
 int azs_release(const char *path, struct fuse_file_info * fi);
 
+/**
+ * Unlink a file
+ *
+ * Delete the file from the local file cache (if present), and from Azure Storage (if present.)
+ *
+ * @param  path Path to the file to unlink.
+ * @return      TODO: Error codes.
+ */
 int azs_unlink(const char *path);
 
+/**
+ * Remove a directory.
+ *
+ * Delete the directory locally, and the ".directory" blob in Storage.
+ * Fail is the directory is not empty.
+ *
+ * @param  path Path to the directory to remove.
+ * @return      TODO: Error codes.
+ */
 int azs_rmdir(const char *path);
 
+/** Not implemented. */
 int azs_chown(const char *path, uid_t uid, gid_t gid);
+
+/** Not implemented. */
 int azs_chmod(const char *path, mode_t mode);
+
+/** Not implemented. */
 int azs_utimens(const char *path, const struct timespec ts[2]);
 
+/**
+ * Un-mount the file system
+ *
+ * This should delete everything in the tmp directory.
+ *
+ * @param  private_data Not used
+ * @return      TODO: Error codes.
+ */
 void azs_destroy(void *private_data);
 
+/** Not implemented. */
 int azs_truncate(const char *path, off_t off);
+
+/**
+ * Rename a file or directory.
+ * *
+ * @param  src Source file/directory
+ * @param  dst Destination file/directory
+ * @return      TODO: Error codes.
+ */
 int azs_rename(const char *src, const char *dst);
+
+/** Not implemented. */
 int azs_setxattr(const char *path, const char *name, const char *value, size_t size, int flags);
+
+/** Not implemented. */
 int azs_getxattr(const char *path, const char *name, char *value, size_t size);
+
+/** Not implemented. */
 int azs_listxattr(const char *path, char *list, size_t size);
+
+/** Not implemented. */
 int azs_removexattr(const char *path, const char *name);
 
+/**
+ * Initialize the FUSE adapter
+ * 
+ * This is called by FUSE during mount.
+ * Allows the adapter to set values in fuse_conn_info, which is not available previously.
+
+ * @param  conn Connection info, see FUSE docs for details.
+ * @return      TODO: Error codes.
+ */
 void *azs_init(struct fuse_conn_info * conn);
 
 

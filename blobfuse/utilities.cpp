@@ -174,6 +174,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     {
         stbuf->st_mode = S_IFDIR | 0777; // TODO: proper access control.
         stbuf->st_nlink = 2; // Directories should have a hard-link count of 2 + (# child directories).  We don't have that count, though, so we jsut use 2 for now.  TODO: Evaluate if we could keep this accurate or not.
+        stbuf->st_size = 4096;
         return 0;
     }
 
@@ -199,8 +200,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
         return 0;
     }
 
+    // It's not in the local cache.  Check to see if it's a blob on the service:
     std::string blobNameStr(&(path[1]));
-
     errno = 0;
     auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
 
@@ -241,6 +242,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             // If st_nlink = 2, means direcotry is empty.
             // Direcotry size will affect behaviour for mv, rmdir, cp etc.
             stbuf->st_nlink = dirSize + 1;
+            stbuf->st_size = 4096;
             return 0;
         }
         else
@@ -270,6 +272,7 @@ int rm(const char *fpath, const struct stat * /*sb*/, int tflag, struct FTW * /*
     }
 }
 
+// Delete the entire contents of tmpPath.
 void azs_destroy(void * /*private_data*/)
 {
     std::string rootPath(str_options.tmpPath + "/root");
@@ -279,25 +282,6 @@ void azs_destroy(void * /*private_data*/)
 
     errno = 0;
     nftw(cstr, rm, 20, FTW_DEPTH);
-
-/*    char * const arr[] {cstr, NULL};
-      FTS *fts = fts_open(arr, FTS_LOGICAL | FTS_NOCHDIR, NULL);
-
-
-    if (fts != NULL)
-    {
-        FTSENT *item = NULL;
-        while ((item = fts_read(fts)) != NULL)
-        {
-            if ((item->fts_info == FTS_DP) || (item->fts_info == FTS_F))
-            {
-                remove(item->fts_path);
-            }
-        }
-    }
-
-    fts_close(fts);
-    */
 }
 
 
@@ -343,9 +327,16 @@ int azs_utimens(const char * /*path*/, const struct timespec [2] /*ts[2]*/)
 int azs_truncate(const char * /*path*/, off_t /*off*/)
 {
     //TODO: Implement
+    if (AZS_PRINT)
+    {
+        fprintf(stdout, "azs_truncate called.\n");
+    }
     return 0;
 }
 
+// TODO: Fix bug where the files and directories in the source in the file cache are not deleted.
+// TODO: Fix bugs where the a file has been created but not yet uploaded.
+// TODO: Fix the bug where this fails for multi-level dirrectories.
 int azs_rename(const char *src, const char *dst)
 {
     if (AZS_PRINT)
@@ -359,6 +350,7 @@ int azs_rename(const char *src, const char *dst)
 
     if ((errno == 0) && blob_property.valid())
     {
+        // src refers to a blob/file, not a directory.  Perform a server-side copy, and a delete.
         if (AZS_PRINT)
         {
             fprintf(stdout, "Source Blob found!  Name = %s\n", src);
@@ -426,6 +418,7 @@ int azs_rename(const char *src, const char *dst)
             }
             else
             {
+                // src refers to a directory.  List all the blobs in the directory, copy each one, then delete each in the source.
                 auto blobList = list_all_blobs_hierarchical(str_options.containerName, "/", srcBlobNameStr);
                 for(size_t i = 0; i < blobList.size(); ++i)
                 {
@@ -449,7 +442,7 @@ int azs_rename(const char *src, const char *dst)
                         azure_blob_client_wrapper->delete_blob(str_options.containerName, blobList[i].name);
                         if (AZS_PRINT)
                         {
-                            fprintf(stdout, "Tried to delete blob from %s, but received errno = %d\n", blobName.c_str(), errno);
+                            fprintf(stdout, "Tried to delete blob from %s, received errno = %d\n", blobName.c_str(), errno);
                         }
                         if(errno != 0)
                         {

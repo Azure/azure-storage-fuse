@@ -10,6 +10,7 @@ int azs_mkdir(const char *path, mode_t)
     std::string pathstr(path);
     pathstr.insert(pathstr.size(), "/" + directorySignifier);
 
+    // We want to upload a zero-length blob in this case - it's just a marker that there's a directory.
     std::istringstream emptyDataStream("");
 
     std::vector<std::pair<std::string, std::string>> metadata;
@@ -160,72 +161,18 @@ int azs_rmdir(const char *path)
         return -ENOTEMPTY;
     }
 
+    pathStr.append(".directory");
+    azs_unlink(pathStr.c_str());
+
     std::string pathString(path);
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
     if (AZS_PRINT)
     {
-        fprintf(stdout, "deleting file %s\n", mntPath);
+        fprintf(stdout, "deleting local directory %s\n", mntPath);
     }
     remove(mntPath);
-
-    pathStr.append(".directory");
-    int ret = azs_unlink(pathStr.c_str());
-    if (ret < 0)
-    {
-        return ret;
-    }
-
-
-
-    /*    errno = 0;
-        std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
-        if (errno != 0)
-        {
-            return 0 - map_errno(errno);
-        }
-
-        int i = 0;
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "result count = %d\n", listResults.size());
-        }
-        for (; i < listResults.size(); i++)
-        {
-            if (!listResults[i].is_directory)
-            {
-                std::string path_to_blob(listResults[i].name);
-                path_to_blob.insert(0, 1, '/');
-                int res = azs_unlink(path_to_blob.c_str());
-                if (res < 0)
-                {
-                    return res;
-                }
-
-            }
-            else
-            {
-                std::string path_to_blob(listResults[i].name);
-                path_to_blob.insert(0, 1, '/');
-                int res = azs_rmdir(path_to_blob.c_str());
-                if (res < 0)
-                {
-                    return res;
-                }
-            }
-        }
-
-        std::string pathString(path);
-        const char * mntPath;
-        std::string mntPathString = prepend_mnt_path_string(pathString);
-        mntPath = mntPathString.c_str();
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "deleting file %s\n", mntPath);
-        }
-        remove(mntPath);
-        */
 
     return 0;
 

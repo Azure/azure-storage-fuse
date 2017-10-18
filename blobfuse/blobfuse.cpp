@@ -1,5 +1,7 @@
 #include "blobfuse.h"
 
+// FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
+// The only two custom options we take in are the tmpPath (path to temp / file cache directory) and the configFile (connection to Azure Storage info.)
 struct options {
     const char *tmpPath;
     const char *configFile;
@@ -15,7 +17,6 @@ const struct fuse_opt option_spec[] = {
     FUSE_OPT_END
 };
 
-
 std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
 std::map<int, int> error_mapping = {{404, ENOENT}, {403, EACCES}, {1600, ENOENT}};
 const std::string directorySignifier = ".directory";
@@ -23,7 +24,7 @@ const std::string directorySignifier = ".directory";
 static struct fuse_operations azs_blob_readonly_operations;
 
 
-
+// Read Storage connection information from the config file
 int read_config(std::string configFile)
 {
     std::ifstream file(configFile);
@@ -76,6 +77,7 @@ void *azs_init(struct fuse_conn_info * conn)
     return NULL;
 }
 
+// TODO: print FUSE usage as well
 void print_usage()
 {
     fprintf(stdout, "Usage: blobfuse <mount-folder> --configfile=<config-file> --tmpPath=<temp-path>\n");
@@ -83,6 +85,7 @@ void print_usage()
 
 int main(int argc, char *argv[])
 {
+	// Here, we set up all the callbacks that FUSE requires.
     azs_blob_readonly_operations.init = azs_init;
     azs_blob_readonly_operations.getattr = azs_getattr;
     azs_blob_readonly_operations.statfs = azs_statfs;
@@ -112,6 +115,7 @@ int main(int argc, char *argv[])
     azs_blob_readonly_operations.removexattr = azs_removexattr;
     azs_blob_readonly_operations.flush = azs_flush;
 
+    // FUSE has a standard method of argument parsing, here we just follow the pattern.
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     int ret = 0;
     try
@@ -143,7 +147,12 @@ int main(int argc, char *argv[])
         fprintf(stderr, "Creating blob client failed.");
         return 1;
     }
-    fuse_opt_add_arg(&args, "-omax_read=4194304");
+    fuse_opt_add_arg(&args, "-omax_read=4194304");  // Increase the read buffer size as high as possible
+
+
+	// FUSE contains a feature whereit automatically implements 'soft' delete if one process has a file open when another calls unlink().
+	// This feature causes us a bunch of problems, so we use "-ohard_remove" to disable it, and track the needed 'soft delete' functionality on our own.
+	fuse_opt_add_arg(&args, "-ohard_remove"); 
     ensure_files_directory_exists(prepend_mnt_path_string("/placeholder"));
 
     umask(0);
