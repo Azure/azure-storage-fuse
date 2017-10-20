@@ -1,3 +1,4 @@
+
 #include "blobfuse.h"
 
 int map_errno(int error)
@@ -18,7 +19,7 @@ std::string prepend_mnt_path_string(const std::string path)
     return str_options.tmpPath + "/root" + path;
 }
 
-void ensure_files_directory_exists(const std::string file_path)
+int ensure_files_directory_exists(const std::string file_path)
 {
     char *pp;
     char *slash;
@@ -46,10 +47,12 @@ void ensure_files_directory_exists(const std::string file_path)
         pp = slash + 1;
     }
     free(copypath);
+    return status;
 }
 
 std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::string container, std::string delimiter, std::string prefix)
 {
+    static const int maxFailCount = 20;
     std::vector<list_blobs_hierarchical_item> results;
 
     std::string continuation;
@@ -91,46 +94,25 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
         {
             failcount++;
             success = false;
+            if (AZS_PRINT)
+            {
+                fprintf(stdout, "list_blobs_hierarchical failed %d time with errno = %d\n", failcount, errno);
+            }
+
         }
-    } while (((continuation.size() > 0) || !success) && (failcount < 20));
+    } while (((continuation.size() > 0) || !success) && (failcount < maxFailCount));
 
     return results;
 }
 
-bool list_one_blob_hierarchical(std::string container, std::string delimiter, std::string prefix)
-{
-    std::string continuation;
-    bool success = false;
-    int failcount = 0;
-
-    do
-    {
-        errno = 0;
-        list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix);
-        if (errno == 0)
-        {
-            success = true;
-            failcount = 0;
-            continuation = response.next_marker;
-            if (response.blobs.size() > 0)
-            {
-                return true;
-            }
-        }
-        else
-        {
-            success = false;
-            failcount++; //TODO: use to set errno.
-        }
-    } while ((continuation.size() > 0) && !success && (failcount < 20));
-
-    return false;
-}
-
-// Returns:
-// 0 if there's nothing there (the directory does not exist)
-// 1 is there's exactly one blob, and it's the ".directory" blob
-// 2 otherwise (the directory exists and is not empty.)
+/*
+ * Check if the direcotry is empty or not by checking if there is any blob with prefix exists in the specified container.
+ *
+ * return
+ *   - D_NOTEXIST if there's nothing there (the directory does not exist)
+ *   - D_EMPTY is there's exactly one blob, and it's the ".directory" blob
+ *   - D_NOTEMPTY otherwise (the directory exists and is not empty.)
+ */
 int is_directory_empty(std::string container, std::string delimiter, std::string prefix)
 {
     std::string continuation;
@@ -148,17 +130,20 @@ int is_directory_empty(std::string container, std::string delimiter, std::string
             continuation = response.next_marker;
             if (response.blobs.size() > 1)
             {
-                return 2;
+                return D_NOTEMPTY;
             }
             if (response.blobs.size() == 1)
             {
-                if ((!dirBlobFound) && (!response.blobs[0].is_directory) && (response.blobs[0].name.size() > directorySignifier.size()) && (response.blobs[0].name.compare(response.blobs[0].name.size() - (directorySignifier.size() + 1), directorySignifier.size(), directorySignifier)))
+                if ((!dirBlobFound) &&
+                    (!response.blobs[0].is_directory) &&
+                    (response.blobs[0].name.size() > directorySignifier.size()) &&
+                    (0 == response.blobs[0].name.compare(response.blobs[0].name.size() - (directorySignifier.size() + 1), directorySignifier.size(), directorySignifier)))
                 {
                     dirBlobFound = true;
                 }
                 else
                 {
-                    return 2;
+                    return D_NOTEMPTY;
                 }
             }
         }
@@ -169,7 +154,7 @@ int is_directory_empty(std::string container, std::string delimiter, std::string
         }
     } while ((continuation.size() > 0) && !success && (failcount < 20));
 
-    return dirBlobFound ? 1 : 0;
+    return dirBlobFound ? D_EMPTY : D_NOTEXIST;
 }
 
 
@@ -291,7 +276,8 @@ void azs_destroy(void * /*private_data*/)
     cstr[rootPath.size()] = 0;
 
     errno = 0;
-    nftw(cstr, rm, 20, FTW_DEPTH);
+    nftw(rootPath.c_str(), rm, 20, FTW_DEPTH);
+    free(cstr);
 }
 
 
@@ -366,12 +352,12 @@ int azs_rename(const char *src, const char *dst)
             fprintf(stdout, "Source Blob found!  Name = %s\n", src);
         }
         azure_blob_client_wrapper->start_copy(str_options.containerName, srcBlobNameStr, str_options.containerName, dstBlobNameStr);
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "Tried to copy blob from %s to %s, but received errno = %d\n", srcBlobNameStr.c_str(), dstBlobNameStr.c_str(), errno);
-        }
         if(errno != 0)
         {
+            if (AZS_PRINT)
+            {
+                fprintf(stdout, "Tried to copy blob from %s to %s, but received errno = %d\n", srcBlobNameStr.c_str(), dstBlobNameStr.c_str(), errno);
+            }
             return 0 - map_errno(errno);
         }
 
@@ -383,12 +369,12 @@ int azs_rename(const char *src, const char *dst)
         if(blob_property.copy_status.compare(0, 7, "success") == 0)
         {
             azure_blob_client_wrapper->delete_blob(str_options.containerName, srcBlobNameStr);
-            if (AZS_PRINT)
-            {
-                fprintf(stdout, "Tried to delete blob from %s, but received errno = %d\n", srcBlobNameStr.c_str(), errno);
-            }
             if(errno != 0)
             {
+                if (AZS_PRINT)
+                {
+                    fprintf(stdout, "Tried to delete blob from %s, but received errno = %d\n", srcBlobNameStr.c_str(), errno);
+                }
                 return 0 - map_errno(errno);
             }
         }
@@ -405,7 +391,8 @@ int azs_rename(const char *src, const char *dst)
         dstBlobNameStr.push_back('/');
 
         errno = 0;
-        bool dirExists = list_one_blob_hierarchical(str_options.containerName, "/", srcBlobNameStr);
+        // bool dirExists = list_one_blob_hierarchical(str_options.containerName, "/", srcBlobNameStr);
+        int srcExists = is_directory_empty(str_options.containerName, "/", srcBlobNameStr);
 
         if (errno != 0)
         {
@@ -415,7 +402,15 @@ int azs_rename(const char *src, const char *dst)
             }
             return 0 - map_errno(errno);
         }
-        if (dirExists)
+        if (srcExists == D_NOTEXIST)
+        {
+            if (AZS_PRINT)
+            {
+                fprintf(stdout, "Tried to find dir %s, but not exists\n", src);
+            }
+            return -(ENOENT); // -2 = Entity does not exist.
+        }
+        else
         {
             if (AZS_PRINT)
             {
@@ -466,10 +461,6 @@ int azs_rename(const char *src, const char *dst)
                 }
                 return 0;
             }
-        }
-        else
-        {
-            return -(ENOENT); // -2 = Entity does not exist.
         }
     }
     else

@@ -21,8 +21,12 @@ std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
 std::map<int, int> error_mapping = {{404, ENOENT}, {403, EACCES}, {1600, ENOENT}};
 const std::string directorySignifier = ".directory";
 
-static struct fuse_operations azs_blob_readonly_operations;
+static struct fuse_operations azs_blob_operations;
 
+inline bool is_lowercase_string(const std::string &s)
+{
+    return (s.size() == static_cast<size_t>(std::count_if(s.begin(), s.end(),[](unsigned char c){ return std::islower(c); })));
+}
 
 // Read Storage connection information from the config file
 int read_config(std::string configFile)
@@ -30,7 +34,7 @@ int read_config(std::string configFile)
     std::ifstream file(configFile);
     if(!file)
     {
-        std::cout<<"No config file found at " << configFile <<std::endl;
+        fprintf(stderr, "No config file found at %s.\n", configFile.c_str());
         return -1;
     }
 
@@ -43,7 +47,15 @@ int read_config(std::string configFile)
 
         if(line.find("accountName") != std::string::npos){
             std::string accountNameStr(data.str());
-            str_options.accountName = accountNameStr;
+            if(is_lowercase_string(accountNameStr))
+            {
+                fprintf(stderr, "Account name must be lower cases.");
+                return -1;
+            }
+            else
+            {
+                str_options.accountName = accountNameStr;
+            }
         }
         else if(line.find("accountKey") != std::string::npos){
             std::string accountKeyStr(data.str());
@@ -51,14 +63,39 @@ int read_config(std::string configFile)
         }
         else if(line.find("containerName") != std::string::npos){
             std::string containerNameStr(data.str());
-            str_options.containerName = containerNameStr;
+            if(is_lowercase_string(containerNameStr))
+            {
+                fprintf(stderr, "Container name must be lower cases.");
+                return -1;
+            }
+            else
+            {
+                str_options.containerName = containerNameStr;
+            }
         }
 
         data.clear();
     }
 
-    return 0;
-
+    if(str_options.accountName.size() == 0)
+    {
+        fprintf(stderr, "Account name is missing in the configure file.");
+        return -1;
+    }
+    else if(str_options.accountKey.size() == 0)
+    {
+        fprintf(stderr, "Account key is missing in the configure file.");
+        return -1;
+    }
+    else if(str_options.containerName.size() == 0)
+    {
+        fprintf(stderr, "Container name is missing in the configure file.");
+        return -1;
+    }
+    else
+    {
+        return 0;
+    }
 }
 
 
@@ -86,34 +123,34 @@ void print_usage()
 int main(int argc, char *argv[])
 {
 	// Here, we set up all the callbacks that FUSE requires.
-    azs_blob_readonly_operations.init = azs_init;
-    azs_blob_readonly_operations.getattr = azs_getattr;
-    azs_blob_readonly_operations.statfs = azs_statfs;
-    azs_blob_readonly_operations.access = azs_access;
-    azs_blob_readonly_operations.readlink = azs_readlink;
-    azs_blob_readonly_operations.readdir = azs_readdir;
-    azs_blob_readonly_operations.open = azs_open;
-    azs_blob_readonly_operations.read = azs_read;
-    azs_blob_readonly_operations.release = azs_release;
-    azs_blob_readonly_operations.fsync = azs_fsync;
-    azs_blob_readonly_operations.create = azs_create;
-    azs_blob_readonly_operations.write = azs_write;
-    azs_blob_readonly_operations.mkdir = azs_mkdir;
-    azs_blob_readonly_operations.unlink = azs_unlink;
-    azs_blob_readonly_operations.rmdir = azs_rmdir;
-    azs_blob_readonly_operations.chown = azs_chown;
-    azs_blob_readonly_operations.chmod = azs_chmod;
+    azs_blob_operations.init = azs_init;
+    azs_blob_operations.getattr = azs_getattr;
+    azs_blob_operations.statfs = azs_statfs;
+    azs_blob_operations.access = azs_access;
+    azs_blob_operations.readlink = azs_readlink;
+    azs_blob_operations.readdir = azs_readdir;
+    azs_blob_operations.open = azs_open;
+    azs_blob_operations.read = azs_read;
+    azs_blob_operations.release = azs_release;
+    azs_blob_operations.fsync = azs_fsync;
+    azs_blob_operations.create = azs_create;
+    azs_blob_operations.write = azs_write;
+    azs_blob_operations.mkdir = azs_mkdir;
+    azs_blob_operations.unlink = azs_unlink;
+    azs_blob_operations.rmdir = azs_rmdir;
+    azs_blob_operations.chown = azs_chown;
+    azs_blob_operations.chmod = azs_chmod;
     //#ifdef HAVE_UTIMENSAT
-    azs_blob_readonly_operations.utimens = azs_utimens;
+    azs_blob_operations.utimens = azs_utimens;
     //#endif
-    azs_blob_readonly_operations.destroy = azs_destroy;
-    azs_blob_readonly_operations.truncate = azs_truncate;
-    azs_blob_readonly_operations.rename = azs_rename;
-    azs_blob_readonly_operations.setxattr = azs_setxattr;
-    azs_blob_readonly_operations.getxattr = azs_getxattr;
-    azs_blob_readonly_operations.listxattr = azs_listxattr;
-    azs_blob_readonly_operations.removexattr = azs_removexattr;
-    azs_blob_readonly_operations.flush = azs_flush;
+    azs_blob_operations.destroy = azs_destroy;
+    azs_blob_operations.truncate = azs_truncate;
+    azs_blob_operations.rename = azs_rename;
+    azs_blob_operations.setxattr = azs_setxattr;
+    azs_blob_operations.getxattr = azs_getxattr;
+    azs_blob_operations.listxattr = azs_listxattr;
+    azs_blob_operations.removexattr = azs_removexattr;
+    azs_blob_operations.flush = azs_flush;
 
     // FUSE has a standard method of argument parsing, here we just follow the pattern.
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
@@ -140,24 +177,37 @@ int main(int argc, char *argv[])
 
     std::string tmpPathStr(options.tmpPath);
     str_options.tmpPath = tmpPathStr;
+    const int defaultMaxConcurrency = 20;
 
-    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20));
+    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency));
     if(errno != 0)
     {
-        fprintf(stderr, "Creating blob client failed.");
+        fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
         return 1;
     }
-    fuse_opt_add_arg(&args, "-omax_read=4194304");  // Increase the read buffer size as high as possible
 
+    // Check if the account name/key and container is correct.
+    if(azure_blob_client_wrapper->container_exists(str_options.containerName) == false
+      || errno != 0)
+    {
+        fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
+        return 1;
+    }
+
+    fuse_opt_add_arg(&args, "-omax_read=4194304");
+    if(0 != ensure_files_directory_exists(prepend_mnt_path_string("/placeholder")))
+    {
+        fprintf(stderr, "Failed to create direcotry on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
+        return 1;
+    }
 
 	// FUSE contains a feature whereit automatically implements 'soft' delete if one process has a file open when another calls unlink().
 	// This feature causes us a bunch of problems, so we use "-ohard_remove" to disable it, and track the needed 'soft delete' functionality on our own.
 	fuse_opt_add_arg(&args, "-ohard_remove"); 
-    ensure_files_directory_exists(prepend_mnt_path_string("/placeholder"));
 
     umask(0);
 
-    ret =  fuse_main(args.argc, args.argv, &azs_blob_readonly_operations, NULL);
+    ret =  fuse_main(args.argc, args.argv, &azs_blob_operations, NULL);
 
     return ret;
 }

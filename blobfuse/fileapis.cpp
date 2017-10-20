@@ -87,11 +87,15 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     // If the file/blob being opened does not exist in the cache, or the version in the cache is too old, we need to download / refresh the data from the service.
     struct stat buf;
     int statret = stat(mntPath, &buf);
-    if ((statret != 0) || ((time(NULL) - buf.st_atime) > 120))  // TODO: Consider using "modified time" here, rather than "creation time".
+    if ((statret != 0) || ((time(NULL) - buf.st_atime) > 120))  // TODO: Consider using "modified time" here, rather than "access time".
     {
         remove(mntPath);
 
-        ensure_files_directory_exists(mntPathString);
+        if(0 != ensure_files_directory_exists(mntPathString))
+        {
+            fprintf(stderr, "Failed to create file or direcotry on cache directory: %s, errno = %d.\n", mntPathString.c_str(),  errno);
+            return -1;
+        }
         std::ofstream filestream(mntPathString, std::ofstream::binary | std::ofstream::out);
         errno = 0;
         int fd = open(mntPath, O_WRONLY);
