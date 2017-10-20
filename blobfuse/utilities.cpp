@@ -54,6 +54,7 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
 
     std::string continuation;
 
+    std::string prior;
     bool success = false;
     int failcount = 0;
     do
@@ -75,7 +76,16 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
                 fprintf(stdout, "next_marker = %s\n", response.next_marker.c_str());
             }
             continuation = response.next_marker;
-            results.insert(results.end(), response.blobs.begin(), response.blobs.end());
+            if(response.blobs.size() > 0)
+            {
+                auto begin = response.blobs.begin();
+                if(response.blobs[0].name == prior)
+                {
+                    std::advance(begin, 1);
+                }
+                results.insert(results.end(), begin, response.blobs.end());
+                prior = response.blobs.back().name;
+            }
         }
         else
         {
