@@ -47,15 +47,15 @@ int read_config(std::string configFile)
 
         if(line.find("accountName") != std::string::npos){
             std::string accountNameStr(data.str());
-            if(is_lowercase_string(accountNameStr))
+/*            if(!is_lowercase_string(accountNameStr))
             {
                 fprintf(stderr, "Account name must be lower cases.");
                 return -1;
             }
             else
-            {
+            {*/
                 str_options.accountName = accountNameStr;
-            }
+//            }
         }
         else if(line.find("accountKey") != std::string::npos){
             std::string accountKeyStr(data.str());
@@ -63,15 +63,15 @@ int read_config(std::string configFile)
         }
         else if(line.find("containerName") != std::string::npos){
             std::string containerNameStr(data.str());
-            if(is_lowercase_string(containerNameStr))
+/*            if(!is_lowercase_string(containerNameStr))
             {
                 fprintf(stderr, "Container name must be lower cases.");
                 return -1;
             }
             else
-            {
+            {*/
                 str_options.containerName = containerNameStr;
-            }
+//            }
         }
 
         data.clear();

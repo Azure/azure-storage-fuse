@@ -13,7 +13,7 @@ int map_errno(int error)
         return mapping->second;
     }
 }
-
+    
 std::string prepend_mnt_path_string(const std::string path)
 {
     return str_options.tmpPath + "/root" + path;
@@ -137,7 +137,7 @@ int is_directory_empty(std::string container, std::string delimiter, std::string
                 if ((!dirBlobFound) &&
                     (!response.blobs[0].is_directory) &&
                     (response.blobs[0].name.size() > directorySignifier.size()) &&
-                    (0 == response.blobs[0].name.compare(response.blobs[0].name.size() - (directorySignifier.size() + 1), directorySignifier.size(), directorySignifier)))
+                    (0 == response.blobs[0].name.compare(response.blobs[0].name.size() - directorySignifier.size(), directorySignifier.size(), directorySignifier)))
                 {
                     dirBlobFound = true;
                 }
@@ -227,7 +227,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             }
             return 0 - map_errno(errno);
         }
-        if (dirSize > 0)
+        if (dirSize != D_NOTEXIST)
         {
             if (AZS_PRINT)
             {
@@ -236,7 +236,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             stbuf->st_mode = S_IFDIR | 0777;
             // If st_nlink = 2, means direcotry is empty.
             // Direcotry size will affect behaviour for mv, rmdir, cp etc.
-            stbuf->st_nlink = dirSize + 1;
+            stbuf->st_nlink = dirSize == D_EMPTY ? 2 : 3;
             stbuf->st_size = 4096;
             return 0;
         }

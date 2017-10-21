@@ -7,7 +7,6 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fts.h>
 #include <ftw.h>
 #include <unistd.h>
 #include <time.h>
@@ -27,7 +26,7 @@
 
 // Set this to 1 to enable debug output.
 // Prints directly to the console, so this is only useful is you mount in "-f" mode.
-#define AZS_PRINT 0
+#define AZS_PRINT 1
 #define UNREFERENCED_PARAMETER(p) (p)
 
 /* Define errors and return codes */

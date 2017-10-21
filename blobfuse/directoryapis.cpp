@@ -1,4 +1,5 @@
 #include "blobfuse.h"
+#include <dirent.h>
 
 int azs_mkdir(const char *path, mode_t)
 {
@@ -47,6 +48,53 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
         pathStr.push_back('/');
     }
 
+	std::vector<std::string> local_list_results;
+
+    std::string mntPathString = prepend_mnt_path_string(pathStr);
+    DIR *dir_stream = opendir(mntPathString.c_str());
+    if (dir_stream != NULL)
+    {
+	    struct dirent* dir_ent = readdir(dir_stream);
+	    while (dir_ent != NULL)
+	    {
+	    	if (dir_ent->d_name[0] != '.')
+	    	{
+
+		    	if (dir_ent->d_type == DT_DIR)
+		    	{
+		            struct stat stbuf;
+		            stbuf.st_mode = S_IFDIR | 0777;
+		            stbuf.st_nlink = 2;
+	 				stbuf.st_size = 4096;
+	 	            filler(buf, dir_ent->d_name, &stbuf, 0);
+		        }
+		    	else
+		    	{
+		    		struct stat buffer;
+		    		stat((mntPathString + dir_ent->d_name).c_str(), &buffer);
+
+		            struct stat stbuf;
+		            stbuf.st_mode = S_IFREG | 0777; // Regular file (not a directory)
+		            stbuf.st_nlink = 1;
+		            stbuf.st_size = buffer.st_size;
+		            filler(buf, dir_ent->d_name, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+		    	}
+
+		    	std::string dir_str(dir_ent->d_name);
+				local_list_results.push_back(dir_str);
+
+				if (AZS_PRINT)
+				{
+					fprintf(stdout, "Local file/blob found.  Name = %s\n", dir_ent->d_name); 
+				}
+			}
+
+	    	dir_ent = readdir(dir_stream);
+	    }
+	}
+
+
+
     errno = 0;
     std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
     if (errno != 0)
@@ -88,37 +136,43 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                 token = strtok_r(NULL, "/", &lasts);
             }
 
-            if (!listResults[i].is_directory)
-            {
-                if (prevtoken && (strcmp(prevtoken, directorySignifier.c_str()) != 0))
-                {
-                    struct stat stbuf;
-                    stbuf.st_mode = S_IFREG | 0777; // Regular file (not a directory)
-                    stbuf.st_nlink = 1;
-                    stbuf.st_size = listResults[i].content_length;
-                    fillerResult = filler(buf, prevtoken, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
-                    if (AZS_PRINT)
-                    {
-                        fprintf(stdout, "blob result = %s, fillerResult = %d\n", prevtoken, fillerResult);
-                    }
-                }
+            std::string prev_token_str(prevtoken);
 
-            }
-            else
+            // TODO: order or hash the list to improve perf
+            if (std::find(local_list_results.begin(), local_list_results.end(), prev_token_str) == local_list_results.end())
             {
-                if (prevtoken)
-                {
-                    struct stat stbuf;
-                    stbuf.st_mode = S_IFDIR | 0777;
-                    stbuf.st_nlink = 2;
-                    fillerResult = filler(buf, prevtoken, &stbuf, 0);
-                    if (AZS_PRINT)
-                    {
-                        fprintf(stdout, "dir result = %s, fillerResult = %d\n", prevtoken, fillerResult);
-                    }
-                }
+	            if (!listResults[i].is_directory)
+	            {
+	                if (prevtoken && (strcmp(prevtoken, directorySignifier.c_str()) != 0))
+	                {
+	                    struct stat stbuf;
+	                    stbuf.st_mode = S_IFREG | 0777; // Regular file (not a directory)
+	                    stbuf.st_nlink = 1;
+	                    stbuf.st_size = listResults[i].content_length;
+	                    fillerResult = filler(buf, prevtoken, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+	                    if (AZS_PRINT)
+	                    {
+	                        fprintf(stdout, "blob result = %s, fillerResult = %d\n", prevtoken, fillerResult);
+	                    }
+	                }
 
-            }
+	            }
+	            else
+	            {
+	                if (prevtoken)
+	                {
+	                    struct stat stbuf;
+	                    stbuf.st_mode = S_IFDIR | 0777;
+	                    stbuf.st_nlink = 2;
+	                    fillerResult = filler(buf, prevtoken, &stbuf, 0);
+	                    if (AZS_PRINT)
+	                    {
+	                        fprintf(stdout, "dir result = %s, fillerResult = %d\n", prevtoken, fillerResult);
+	                    }
+	                }
+
+	            }
+	        }
 
 
             free(nameCopy);
@@ -152,11 +206,11 @@ int azs_rmdir(const char *path)
     {
         return 0 - map_errno(errno);
     }
-    if (dirStatus == 0)
+    if (dirStatus == D_NOTEXIST)
     {
         return -ENOENT;
     }
-    if (dirStatus == 2)
+    if (dirStatus == D_NOTEMPTY)
     {
         return -ENOTEMPTY;
     }

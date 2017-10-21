@@ -549,8 +549,6 @@ class TestFuse(unittest.TestCase):
         entries = os.listdir(parentDir)
         self.assertTrue(fileName in entries)
 
-    # TODO: Add back in once we fix listing to include not-yet-uploaded files.
-    '''
     def test_create_file_new_file(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -563,7 +561,6 @@ class TestFuse(unittest.TestCase):
         os.close(fd)
         os.remove(testFilePath)
 
-    '''
 
     def test_create_file_name_conflict_file(self):
         testFileName = "TestFile"
