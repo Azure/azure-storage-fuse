@@ -40,7 +40,7 @@ int ensure_files_directory_exists(const std::string file_path)
             struct stat st;
             if (stat(copypath, &st) != 0)
             {
-                status = mkdir(copypath, 0777);
+                status = mkdir(copypath, 0700);
             }
             *slash = '/';
         }
@@ -167,7 +167,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     // If we're at the root, we know it's a directory
     if (strlen(path) == 1)
     {
-        stbuf->st_mode = S_IFDIR | 0777; // TODO: proper access control.
+        stbuf->st_mode = S_IFDIR | 0700; // TODO: proper access control.
         stbuf->st_nlink = 2; // Directories should have a hard-link count of 2 + (# child directories).  We don't have that count, though, so we jsut use 2 for now.  TODO: Evaluate if we could keep this accurate or not.
         stbuf->st_size = 4096;
         return 0;
@@ -206,7 +206,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
         {
             fprintf(stdout, "Blob found!  Name = %s\n", path);
         }
-        stbuf->st_mode = S_IFREG | 0777; // Regular file (not a directory)
+        stbuf->st_mode = S_IFREG | 0700; // Regular file (not a directory)
         stbuf->st_nlink = 1;
         stbuf->st_size = blob_property.size;
         return 0;
@@ -233,7 +233,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             {
                 fprintf(stdout, "Directory %s found with return value: %d!\n", blobNameStr.c_str(), dirSize);
             }
-            stbuf->st_mode = S_IFDIR | 0777;
+            stbuf->st_mode = S_IFDIR | 0700;
             // If st_nlink = 2, means direcotry is empty.
             // Direcotry size will affect behaviour for mv, rmdir, cp etc.
             stbuf->st_nlink = dirSize == D_EMPTY ? 2 : 3;

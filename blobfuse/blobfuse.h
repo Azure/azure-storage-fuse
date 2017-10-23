@@ -61,7 +61,7 @@ struct str_options {
 
 extern struct str_options str_options;
 
-
+extern int file_cache_timeout_in_seconds;
 
 
 // This is used to make all the calls to Storage

@@ -87,7 +87,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     // If the file/blob being opened does not exist in the cache, or the version in the cache is too old, we need to download / refresh the data from the service.
     struct stat buf;
     int statret = stat(mntPath, &buf);
-    if ((statret != 0) || ((time(NULL) - buf.st_atime) > 120))  // TODO: Consider using "modified time" here, rather than "access time".
+    if ((statret != 0) || ((time(NULL) - buf.st_atime) > file_cache_timeout_in_seconds))  // TODO: Consider using "modified time" here, rather than "access time".
     {
         remove(mntPath);
 
@@ -188,7 +188,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     }
 
     // TODO: Actual access control
-    fchmod(res, 0777);
+    fchmod(res, 0700);
 
     // Stora the open file handle, and whether or not the file should be uploaded on close().
     // TODO: Optimize the scenario where the file is open for read/write, but no actual writing occurs, to not upload the blob.
@@ -266,7 +266,7 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
         }
         if (access(mntPathCopy, F_OK) != 0)
         {
-            mkdir(mntPathCopy, 0777);
+            mkdir(mntPathCopy, 0700);
         }
         *cur = '/';
         cur = cur + 1;

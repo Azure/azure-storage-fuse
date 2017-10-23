@@ -128,6 +128,7 @@ class blob_client_wrapper
         }
 
         static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency);
+        static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency, bool use_https);
         /* C++ wrappers without exception but error codes instead */
         /* container level*/
         void create_container(const std::string &container);

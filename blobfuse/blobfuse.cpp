@@ -3,17 +3,22 @@
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
 // The only two custom options we take in are the tmpPath (path to temp / file cache directory) and the configFile (connection to Azure Storage info.)
 struct options {
-    const char *tmpPath;
-    const char *configFile;
+    const char *tmp_path; // Path to the temp / file cache directory
+    const char *config_file; // Connection to Azure Storage information (account name, account key, etc)
+    const char *use_https; // True if https should be used (defaults to false)
+    const char *file_cache_timeout_in_seconds; // Timeout for the file cache (defaults to 120 seconds)
 };
 
 struct options options;
 struct str_options str_options;
+int file_cache_timeout_in_seconds;
 
 #define OPTION(t, p) { t, offsetof(struct options, p), 1 }
 const struct fuse_opt option_spec[] = {
-    OPTION("--tmpPath=%s", tmpPath),
-    OPTION("--configFile=%s", configFile),
+    OPTION("--tmp-path=%s", tmp_path),
+    OPTION("--config-file=%s", config_file),
+    OPTION("--use-https=%s", use_https),
+    OPTION("--file-cache-timeout-in-seconds=%s", file_cache_timeout_in_seconds),
     FUSE_OPT_END
 };
 
@@ -117,7 +122,7 @@ void *azs_init(struct fuse_conn_info * conn)
 // TODO: print FUSE usage as well
 void print_usage()
 {
-    fprintf(stdout, "Usage: blobfuse <mount-folder> --configfile=<config-file> --tmpPath=<temp-path>\n");
+    fprintf(stdout, "Usage: blobfuse <mount-folder> --config-file=<config-file> --tmp-path=<temp-path> [--use-https=false] [-file-cache-timeout-in-seconds=120]\n");
 }
 
 int main(int argc, char *argv[])
@@ -163,7 +168,7 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        ret = read_config(options.configFile);
+        ret = read_config(options.config_file);
         if (ret != 0)
         {
             return ret;
@@ -175,11 +180,21 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    std::string tmpPathStr(options.tmpPath);
+    std::string tmpPathStr(options.tmp_path);
     str_options.tmpPath = tmpPathStr;
     const int defaultMaxConcurrency = 20;
+    bool use_https = false;
+    if (options.use_https != NULL)
+    {
+        std::string https(options.use_https);
+        if (https == "true")
+        {
+            use_https = true;
+        }
+    }
 
-    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency));
+
+    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, use_https));
     if(errno != 0)
     {
         fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
@@ -189,7 +204,7 @@ int main(int argc, char *argv[])
     // Check if the account name/key and container is correct.
     if(azure_blob_client_wrapper->container_exists(str_options.containerName) == false
       || errno != 0)
-    {
+    {   
         fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
         return 1;
     }
@@ -199,6 +214,16 @@ int main(int argc, char *argv[])
     {
         fprintf(stderr, "Failed to create direcotry on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         return 1;
+    }
+
+    if (options.file_cache_timeout_in_seconds != NULL)
+    {
+        std::string timeout(options.file_cache_timeout_in_seconds);
+        file_cache_timeout_in_seconds = stoi(timeout);
+    }
+    else
+    {
+        file_cache_timeout_in_seconds = 120;
     }
 
 	// FUSE contains a feature whereit automatically implements 'soft' delete if one process has a file open when another calls unlink().

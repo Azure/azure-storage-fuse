@@ -63,7 +63,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 		    	if (dir_ent->d_type == DT_DIR)
 		    	{
 		            struct stat stbuf;
-		            stbuf.st_mode = S_IFDIR | 0777;
+		            stbuf.st_mode = S_IFDIR | 0700;
 		            stbuf.st_nlink = 2;
 	 				stbuf.st_size = 4096;
 	 	            filler(buf, dir_ent->d_name, &stbuf, 0);
@@ -74,7 +74,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 		    		stat((mntPathString + dir_ent->d_name).c_str(), &buffer);
 
 		            struct stat stbuf;
-		            stbuf.st_mode = S_IFREG | 0777; // Regular file (not a directory)
+		            stbuf.st_mode = S_IFREG | 0700; // Regular file (not a directory)
 		            stbuf.st_nlink = 1;
 		            stbuf.st_size = buffer.st_size;
 		            filler(buf, dir_ent->d_name, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
@@ -146,7 +146,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 	                if (prevtoken && (strcmp(prevtoken, directorySignifier.c_str()) != 0))
 	                {
 	                    struct stat stbuf;
-	                    stbuf.st_mode = S_IFREG | 0777; // Regular file (not a directory)
+	                    stbuf.st_mode = S_IFREG | 0700; // Regular file (not a directory)
 	                    stbuf.st_nlink = 1;
 	                    stbuf.st_size = listResults[i].content_length;
 	                    fillerResult = filler(buf, prevtoken, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
@@ -162,7 +162,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 	                if (prevtoken)
 	                {
 	                    struct stat stbuf;
-	                    stbuf.st_mode = S_IFDIR | 0777;
+	                    stbuf.st_mode = S_IFDIR | 0700;
 	                    stbuf.st_nlink = 2;
 	                    fillerResult = filler(buf, prevtoken, &stbuf, 0);
 	                    if (AZS_PRINT)
