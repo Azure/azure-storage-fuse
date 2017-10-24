@@ -319,20 +319,15 @@ int azs_utimens(const char * /*path*/, const struct timespec [2] /*ts[2]*/)
 //  #endif
 
 
-
-int azs_truncate(const char * /*path*/, off_t /*off*/)
+int azs_rename_single_file(const char *src, const char *dst)
 {
-    //TODO: Implement
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "azs_truncate called.\n");
-    }
-    return 0;
+    
 }
 
 // TODO: Fix bug where the files and directories in the source in the file cache are not deleted.
 // TODO: Fix bugs where the a file has been created but not yet uploaded.
 // TODO: Fix the bug where this fails for multi-level dirrectories.
+// TODO: If/when we upgrade to FUSE 3.0, we will need to worry about the additional possible flags (RENAME_EXCHANGE and RENAME_NOREPLACE)
 int azs_rename(const char *src, const char *dst)
 {
     if (AZS_PRINT)

@@ -41,7 +41,6 @@ class TestFuse(unittest.TestCase):
             shutil.rmtree(self.localdir);
 
     def test_WriteReadSingleFile(self):
-        print("WriteReadSingleFile")
         file1txt = "Some file1 text here."
         filepath = os.path.join(self.blobstage, "file1");
         with open(filepath, 'w') as file1blob:
@@ -158,8 +157,6 @@ class TestFuse(unittest.TestCase):
             contents = testFile.read()
             self.assertEqual(data1000 + data500, contents)
 
-        # TODO: add back in once we implement 'truncate'
-        '''
         with open(testFilePath, 'wb') as testFile:
             testFile.write(data500)
 
@@ -168,7 +165,6 @@ class TestFuse(unittest.TestCase):
         with open(testFilePath, 'rb') as testFile:
             contents = testFile.read()
             self.assertEqual(data500, contents)
-        '''
 
     def validate_dir_creation(self, dirpath, dirName, parentDir):
         os.stat(dirpath) # As long as this does not raise a FileNotFoundError, we are satisfied
