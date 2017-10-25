@@ -516,7 +516,8 @@ namespace microsoft_azure {
                             //std::cout << "parallel: " << parallel << std::endl;
                         }
 
-                        std::istringstream in(std::move(std::string(buffer,length)));
+                        std::istringstream in;
+                        in.rdbuf()->pubsetbuf(buffer, length);
                         auto blockResult = m_blobClient->upload_block_from_stream(container, blob, block_id, in).get();
                         delete[] buffer;
                         if(!blockResult.success())
@@ -662,7 +663,8 @@ namespace microsoft_azure {
                             });
                         }
                         char* buffer = new char[range];
-                        std::ostringstream os(std::move(std::string(buffer,range)));
+                        std::ostringstream os;
+                        os.rdbuf()->pubsetbuf(buffer, range);
 
                         download_blob_to_stream(container, blob, offset, range, os);
 
