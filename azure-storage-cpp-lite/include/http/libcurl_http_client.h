@@ -200,6 +200,10 @@ namespace microsoft_azure {
                 if (code != CURLE_OK) {
                     //std::cout << s << ":" << curl_easy_strerror(code) << std::endl;
                 }
+                else
+                {
+                    errno = 0; // CURL sometimes sets errno internally, if everything was ok we should reset it to zero.
+                }
             }
         };
 
