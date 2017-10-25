@@ -758,8 +758,6 @@ class TestFuse(unittest.TestCase):
 
         self.validate_file_removal(testFilePath, testFileName, self.blobstage)
 
-    # TODO: Add back in once truncate() is implemented.
-    '''
     def test_truncate_file(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -772,7 +770,6 @@ class TestFuse(unittest.TestCase):
         self.assertEqual(os.stat(testFilePath).st_size, 0)
 
         os.remove(testFilePath)
-    '''
 
     def test_stat_file(self):
         testFileName = "TestFile"
@@ -798,8 +795,6 @@ class TestFuse(unittest.TestCase):
 
         os.rmdir(testDirPath)
 
-    # TODO: Add back in once all the rename bugs are fixed.
-    '''
     def test_rename_file_same_dir(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -826,12 +821,9 @@ class TestFuse(unittest.TestCase):
 
         os.mkdir(testDirPath)
         fd = os.open(testFilePath, os.O_CREAT)
-        # TODO: Remove the close() once the bug around renaming opened files is fixed.
-        os.close(fd)
         os.rename(testFilePath, destFilePath)
 
-        # TODO: Uncomment when the rename-not-deleting-cached-files bug is fixed.
-        # self.validate_file_removal(testFilePath, testFileName, self.blobstage)
+        self.validate_file_removal(testFilePath, testFileName, self.blobstage)
         self.validate_file_creation(destFilePath, testFileName, testDirPath)
 
         os.remove(destFilePath)
@@ -889,11 +881,7 @@ class TestFuse(unittest.TestCase):
         os.rmdir(destParentPath)
         os.rmdir(parentDirPath)
 
-    '''
 
-    # TODO: Add this test back in when the rename() file-cache bug is fixed
-
-    '''
     def test_rename_dir_nonempty(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -904,9 +892,6 @@ class TestFuse(unittest.TestCase):
 
         os.mkdir(testDirPath)
         fd = os.open(testFilePath, os.O_CREAT)
-
-        # TODO: remove this close() to test renaming of a directory with a still-open file, once the listing-opened-files bug is fixed.
-        os.close(fd)
 
         os.rename(testDirPath, destDirPath)
 
@@ -919,7 +904,6 @@ class TestFuse(unittest.TestCase):
         os.close(fd)
         os.remove(os.path.join(destDirPath, testFileName))
         os.rmdir(destDirPath)
-    '''
 
     # TODO: implement flock
     '''

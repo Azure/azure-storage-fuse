@@ -318,11 +318,131 @@ int azs_utimens(const char * /*path*/, const struct timespec [2] /*ts[2]*/)
 }
 //  #endif
 
-
-int azs_rename_single_file(const char *src, const char *dst)
+int azs_rename_directory(const char *src, const char *dst)
 {
-    
+    if (AZS_PRINT)
+    {
+        fprintf(stdout, "Renaming a whole directory.  src = %s, dst = %s.\n", src, dst);
+    }
+    std::string srcPathStr(src);
+    if (srcPathStr.size() > 1)
+    {
+        srcPathStr.push_back('/');
+    }
+    std::string dstPathStr(dst);
+    if (dstPathStr.size() > 1)
+    {
+        dstPathStr.push_back('/');
+    }    
+    std::vector<std::string> local_list_results;
+
+    ensure_files_directory_exists(prepend_mnt_path_string(dstPathStr + "placeholder"));
+    std::string mntPathString = prepend_mnt_path_string(srcPathStr);
+    DIR *dir_stream = opendir(mntPathString.c_str());
+    if (dir_stream != NULL)
+    {
+        struct dirent* dir_ent = readdir(dir_stream);
+        while (dir_ent != NULL)
+        {
+            if (dir_ent->d_name[0] != '.')
+            {
+                int nameLen = strlen(dir_ent->d_name);
+                char *newSrc = (char *)malloc(sizeof(char) * (srcPathStr.size() + nameLen + 1));
+                memcpy(newSrc, srcPathStr.c_str(), srcPathStr.size());
+                memcpy(&(newSrc[srcPathStr.size()]), dir_ent->d_name, nameLen);
+                newSrc[srcPathStr.size() + nameLen] = '\0';
+
+                char *newDst = (char *)malloc(sizeof(char) * (dstPathStr.size() + nameLen + 1));
+                memcpy(newDst, dstPathStr.c_str(), dstPathStr.size());
+                memcpy(&(newDst[dstPathStr.size()]), dir_ent->d_name, nameLen);
+                newDst[dstPathStr.size() + nameLen] = '\0';
+
+                if (dir_ent->d_type == DT_DIR)
+                {
+                    azs_rename_directory(newSrc, newDst);
+                }
+                else
+                {
+                    azs_rename_single_file(newSrc, newDst);
+                }
+
+                free(newSrc);
+                free(newDst);
+
+                std::string dir_str(dir_ent->d_name);
+                local_list_results.push_back(dir_str);
+            }
+
+            dir_ent = readdir(dir_stream);
+        }
+    }
+
+    errno = 0;
+    std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", srcPathStr.substr(1));
+    if (errno != 0)
+    {
+        if (AZS_PRINT)
+        {
+            fprintf(stdout, "azs_readdir list blobs failed with error = %d\n", errno);
+        }
+        return 0 - map_errno(errno);
+    }
+
+    if (AZS_PRINT)
+    {
+        fprintf(stdout, "result count = %lu\n", listResults.size());
+    }
+    for (size_t i = 0; i < listResults.size(); i++)
+    {
+        // We need to parse out just the trailing part of the path name.
+        int len = listResults[i].name.size();
+        if (len > 0)
+        {
+            std::string prev_token_str;
+            if (listResults[i].name.back() == '/')
+            {
+                prev_token_str = listResults[i].name.substr(srcPathStr.size() - 1, listResults[i].name.size() - srcPathStr.size());
+            }
+            else
+            {
+                prev_token_str = listResults[i].name.substr(srcPathStr.size() - 1);
+            }
+
+            // TODO: order or hash the list to improve perf
+            if ((prev_token_str.size() > 0) && (std::find(local_list_results.begin(), local_list_results.end(), prev_token_str) == local_list_results.end()))
+            {
+                int nameLen = prev_token_str.size();
+                char *newSrc = (char *)malloc(sizeof(char) * (srcPathStr.size() + nameLen + 1));
+                memcpy(newSrc, srcPathStr.c_str(), srcPathStr.size());
+                memcpy(&(newSrc[srcPathStr.size()]), prev_token_str.c_str(), nameLen);
+                newSrc[srcPathStr.size() + nameLen] = '\0';
+
+                char *newDst = (char *)malloc(sizeof(char) * (dstPathStr.size() + nameLen + 1));
+                memcpy(newDst, dstPathStr.c_str(), dstPathStr.size());
+                memcpy(&(newDst[dstPathStr.size()]), prev_token_str.c_str(), nameLen);
+                newDst[dstPathStr.size() + nameLen] = '\0';
+
+                if (listResults[i].is_directory)
+                {
+                    azs_rename_directory(newSrc, newDst);
+                }
+                else
+                {
+                    azs_rename_single_file(newSrc, newDst);
+                }
+
+                free(newSrc);
+                free(newDst);
+            }
+        }
+    }
+
+//    remove(mntPathString.c_str());
+    azs_rmdir(src);
+    return 0;
 }
+
+
 
 // TODO: Fix bug where the files and directories in the source in the file cache are not deleted.
 // TODO: Fix bugs where the a file has been created but not yet uploaded.
@@ -335,6 +455,26 @@ int azs_rename(const char *src, const char *dst)
         fprintf(stdout, "Rename file  source = %s, destination = %s\n", src, dst);
     }
 
+    struct stat statbuf;
+    errno = 0;
+    int getattrret = azs_getattr(src, &statbuf);
+    if (getattrret != 0)
+    {
+        return getattrret;
+    }
+    if ((statbuf.st_mode & S_IFDIR) == S_IFDIR)
+    {
+        azs_rename_directory(src, dst);
+    }
+    else
+    {
+        azs_rename_single_file(src, dst);
+    }
+
+    return 0;
+
+
+/*
     std::string srcBlobNameStr(&(src[1]));
     std::string dstBlobNameStr(&(dst[1]));
     auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, srcBlobNameStr);
@@ -462,6 +602,7 @@ int azs_rename(const char *src, const char *dst)
     {
         return 0 - map_errno(errno);
     }
+    */
 }
 
 

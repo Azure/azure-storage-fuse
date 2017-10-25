@@ -1,5 +1,4 @@
 #include "blobfuse.h"
-#include <dirent.h>
 
 int azs_mkdir(const char *path, mode_t)
 {
@@ -59,7 +58,6 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 	    {
 	    	if (dir_ent->d_name[0] != '.')
 	    	{
-
 		    	if (dir_ent->d_type == DT_DIR)
 		    	{
 		            struct stat stbuf;
@@ -119,10 +117,9 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
         int fillerResult;
         // We need to parse out just the trailing part of the path name.
         int len = listResults[i].name.size();
-        // Note - this code scans through the string(s) more often than necessary.
         if (len > 0)
         {
-            char *nameCopy = (char *)malloc(len + 1);
+/*            char *nameCopy = (char *)malloc(len + 1);
             memcpy(nameCopy, listResults[i].name.c_str(), len);
             nameCopy[len] = 0;
 
@@ -136,38 +133,47 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                 token = strtok_r(NULL, "/", &lasts);
             }
 
-            std::string prev_token_str(prevtoken);
+            std::string prev_token_str(prevtoken); */
+            std::string prev_token_str;
+            if (listResults[i].name.back() == '/')
+            {
+                prev_token_str = listResults[i].name.substr(pathStr.size() - 1, listResults[i].name.size() - pathStr.size());
+            }
+            else
+            {
+                prev_token_str = listResults[i].name.substr(pathStr.size() - 1);
+            }
 
             // TODO: order or hash the list to improve perf
             if (std::find(local_list_results.begin(), local_list_results.end(), prev_token_str) == local_list_results.end())
             {
 	            if (!listResults[i].is_directory)
 	            {
-	                if (prevtoken && (strcmp(prevtoken, directorySignifier.c_str()) != 0))
+	                if ((prev_token_str.size() > 0) && (strcmp(prev_token_str.c_str(), directorySignifier.c_str()) != 0))
 	                {
 	                    struct stat stbuf;
 	                    stbuf.st_mode = S_IFREG | 0700; // Regular file (not a directory)
 	                    stbuf.st_nlink = 1;
 	                    stbuf.st_size = listResults[i].content_length;
-	                    fillerResult = filler(buf, prevtoken, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+	                    fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
 	                    if (AZS_PRINT)
 	                    {
-	                        fprintf(stdout, "blob result = %s, fillerResult = %d\n", prevtoken, fillerResult);
+	                        fprintf(stdout, "blob result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
 	                    }
 	                }
 
 	            }
 	            else
 	            {
-	                if (prevtoken)
+	                if (prev_token_str.size() > 0)
 	                {
 	                    struct stat stbuf;
 	                    stbuf.st_mode = S_IFDIR | 0700;
 	                    stbuf.st_nlink = 2;
-	                    fillerResult = filler(buf, prevtoken, &stbuf, 0);
+	                    fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
 	                    if (AZS_PRINT)
 	                    {
-	                        fprintf(stdout, "dir result = %s, fillerResult = %d\n", prevtoken, fillerResult);
+	                        fprintf(stdout, "dir result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
 	                    }
 	                }
 
@@ -175,7 +181,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 	        }
 
 
-            free(nameCopy);
+//            free(nameCopy);
         }
 
     }
@@ -200,6 +206,16 @@ int azs_rmdir(const char *path)
         pathStr.push_back('/');
     }
 
+    std::string pathString(path);
+    const char * mntPath;
+    std::string mntPathString = prepend_mnt_path_string(pathString);
+    mntPath = mntPathString.c_str();
+    if (AZS_PRINT)
+    {
+        fprintf(stdout, "deleting local directory %s\n", mntPath);
+    }
+    remove(mntPath); // This will fail if the cache is not empty, which is fine, as in this case it will also fail later, after the server-side check.
+
     errno = 0;
     int dirStatus = is_directory_empty(str_options.containerName, "/", pathStr.substr(1));
     if (errno != 0)
@@ -218,15 +234,6 @@ int azs_rmdir(const char *path)
     pathStr.append(".directory");
     azs_unlink(pathStr.c_str());
 
-    std::string pathString(path);
-    const char * mntPath;
-    std::string mntPathString = prepend_mnt_path_string(pathString);
-    mntPath = mntPathString.c_str();
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "deleting local directory %s\n", mntPath);
-    }
-    remove(mntPath);
 
     return 0;
 

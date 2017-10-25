@@ -444,6 +444,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
 // Note that there is not much point in doing error-checking in this method, as release() does not offer a way to communicate any errors with the caller (it's called async with the thread that called close())
 int azs_release(const char *path, struct fuse_file_info * fi)
 {
+    // TODO: Make this method resiliant to renames of the file (same way flush() is)
     if (AZS_PRINT)
     {
         fprintf(stdout, "azs_release called with path = %s, fi->flags = %d\n", path, fi->flags);
@@ -507,6 +508,7 @@ int azs_unlink(const char *path)
         fprintf(stdout, "remove_success = %d, errno = %d\n", remove_success, errno);
     }
 
+    int retval = 0;
     errno = 0;
     azure_blob_client_wrapper->delete_blob(str_options.containerName, pathString.substr(1));
     if (errno != 0)
@@ -519,10 +521,20 @@ int azs_unlink(const char *path)
         // If we successfully removed the file locally and the blob does not exist, we should still return success - this accounts for the case where the file hasn't yet been uploaded.
         if (!((remove_success == 0) && (errno = 404)))
         {
-            return 0 - map_errno(errno);
+            retval = 0 - map_errno(errno);
         }
     }
-    return 0;
+
+    // Try removing the directory from the local file cache
+    // This will fail in the case when the directory is not empty, which is intended.
+    // This is needed, because if there are no more files in the directory, and the directory doesn't have a ".directory" blob on the service,
+    // We should remove the local directory, to reflect the state of the service.
+    size_t last_slash_idx = mntPathString.rfind('/');
+    if (std::string::npos != last_slash_idx)
+    {
+        remove(mntPathString.substr(0, last_slash_idx).c_str());
+    }
+    return retval;
 }
 
 int azs_truncate(const char * path, off_t off)
@@ -605,6 +617,151 @@ int azs_truncate(const char * path, off_t off)
         else
         {
             return -ENOENT;
+        }
+    }
+    return 0;
+}
+
+int azs_rename_single_file(const char *src, const char *dst)
+{
+    if (AZS_PRINT)
+    {
+        fprintf(stdout, "Renaming a single file.  src = %s, dst = %s.\n", src, dst);
+    }
+    // TODO: if src == dst, return?
+    // TODO: lock in alphabetical order?
+    auto fsrcmutex = file_lock_map::get_instance()->get_mutex(src);
+    std::lock_guard<std::mutex> locksrc(*fsrcmutex);
+
+    auto fdstmutex = file_lock_map::get_instance()->get_mutex(dst);
+    std::lock_guard<std::mutex> lockdst(*fdstmutex);
+
+    std::string srcPathString(src);
+    const char * srcMntPath;
+    std::string srcMntPathString = prepend_mnt_path_string(srcPathString);
+    srcMntPath = srcMntPathString.c_str();
+
+    std::string dstPathString(dst);
+    const char * dstMntPath;
+    std::string dstMntPathString = prepend_mnt_path_string(dstPathString);
+    dstMntPath = dstMntPathString.c_str();
+
+    struct stat buf;
+    int statret = stat(srcMntPath, &buf);
+    if (statret == 0)
+    {
+        if (AZS_PRINT)
+        {
+            fprintf(stdout, "Src file found in local cache.\n");
+        }
+        // The file exists in the local cache.  Call rename() on it (note this will preserve existing handles.)
+        ensure_files_directory_exists(dstMntPath);
+        errno = 0;
+        int renameret = rename(srcMntPath, dstMntPath);
+        if (AZS_PRINT)
+        {
+            fprintf(stdout, "Src file found in local cache.  Rename ret = %d\n", renameret);
+        }
+        if (renameret < 0)
+        {
+            return -errno;
+        }
+        errno = 0;
+        auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, srcPathString.substr(1));
+        if ((errno == 0) && blob_property.valid())
+        {
+            // Blob also exists on the service.  Perform a server-side copy.
+            errno = 0;
+            azure_blob_client_wrapper->start_copy(str_options.containerName, srcPathString.substr(1), str_options.containerName, dstPathString.substr(1));
+            if (errno != 0)
+            {
+                if (AZS_PRINT)
+                {
+                    fprintf(stdout, "Tried to start blob copy.  src = %s, dst = %s.  Received errno = %d\n", src, dst, errno);
+                }
+                return 0 - map_errno(errno);
+            }
+            errno = 0;
+            do
+            {
+                blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, dstPathString.substr(1));
+            } while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+            if(blob_property.copy_status.compare(0, 7, "success") == 0)
+            {
+//                int retval = azs_unlink(srcPathString); // This will remove the blob from the service, and also take care of removing the directory in the local file cache.
+                azure_blob_client_wrapper->delete_blob(str_options.containerName, srcPathString.substr(1));
+                if(errno != 0)
+                {
+                    if (AZS_PRINT)
+                    {
+                        fprintf(stdout, "Tried to delete blob from %s, but received errno = %d\n", srcPathString.substr(1).c_str(), errno);
+                    }
+                    return 0 - map_errno(errno);
+                }
+            }
+            else
+            {
+                return EFAULT;
+            }
+            return 0;
+        }
+        else if (errno != 0)
+        {
+            if (AZS_PRINT)
+            {
+                fprintf(stdout, "Tried to get blob properties, path = %s, but received errno = %d\n", src, errno);
+            }
+            return 0 - map_errno(errno);            
+        }
+    }
+    else
+    {
+        // File does not exist locally.  Just do the blob copy.
+        errno = 0;
+        auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, srcPathString.substr(1));
+        if ((errno == 0) && blob_property.valid())
+        {
+            // Blob also exists on the service.  Perform a server-side copy.
+            errno = 0;
+            azure_blob_client_wrapper->start_copy(str_options.containerName, srcPathString.substr(1), str_options.containerName, dstPathString.substr(1));
+            if (errno != 0)
+            {
+                if (AZS_PRINT)
+                {
+                    fprintf(stdout, "Tried to start blob copy.  src = %s, dst = %s.  Received errno = %d\n", src, dst, errno);
+                }
+                return 0 - map_errno(errno);
+            }
+            errno = 0;
+            do
+            {
+                blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, dstPathString.substr(1));
+            } while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+            if(blob_property.copy_status.compare(0, 7, "success") == 0)
+            {
+                azure_blob_client_wrapper->delete_blob(str_options.containerName, srcPathString.substr(1));
+                if(errno != 0)
+                {
+                    if (AZS_PRINT)
+                    {
+                        fprintf(stdout, "Tried to delete blob from %s, but received errno = %d\n", srcPathString.substr(1).c_str(), errno);
+                    }
+                    return 0 - map_errno(errno);
+                }
+            }
+            else
+            {
+                return EFAULT;
+            }
+            return 0;
+        }
+        else if (errno != 0)
+        {
+            if (AZS_PRINT)
+            {
+                fprintf(stdout, "Tried to get blob properties, path = %s, but received errno = %d\n", src, errno);
+            }
+            return 0 - map_errno(errno);            
         }
     }
     return 0;

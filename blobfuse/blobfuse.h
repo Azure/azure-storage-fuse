@@ -14,6 +14,7 @@
 #include <fstream>
 #include <map>
 #include <memory>
+#include <dirent.h>
 
 // Declare that we're using version 2.9 of FUSE
 // 3.0 is not built-in to many distros yet.
@@ -290,5 +291,9 @@ int azs_listxattr(const char *path, char *list, size_t size);
 
 /** Not implemented. */
 int azs_removexattr(const char *path, const char *name);
+
+/** Internal method, used to rename a single file in a (hopefully) lock-safe manner. */
+int azs_rename_single_file(const char *src, const char *dst);
+
 
 #endif
