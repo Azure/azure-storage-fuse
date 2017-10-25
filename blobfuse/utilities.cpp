@@ -40,7 +40,7 @@ int ensure_files_directory_exists(const std::string file_path)
             struct stat st;
             if (stat(copypath, &st) != 0)
             {
-                status = mkdir(copypath, 0700);
+                status = mkdir(copypath, 0770);
             }
             *slash = '/';
         }
@@ -167,7 +167,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     // If we're at the root, we know it's a directory
     if (strlen(path) == 1)
     {
-        stbuf->st_mode = S_IFDIR | 0700; // TODO: proper access control.
+        stbuf->st_mode = S_IFDIR | 0770; // TODO: proper access control.
         stbuf->st_nlink = 2; // Directories should have a hard-link count of 2 + (# child directories).  We don't have that count, though, so we jsut use 2 for now.  TODO: Evaluate if we could keep this accurate or not.
         stbuf->st_size = 4096;
         return 0;
@@ -206,7 +206,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
         {
             fprintf(stdout, "Blob found!  Name = %s\n", path);
         }
-        stbuf->st_mode = S_IFREG | 0700; // Regular file (not a directory)
+        stbuf->st_mode = S_IFREG | 0770; // Regular file (not a directory)
         stbuf->st_nlink = 1;
         stbuf->st_size = blob_property.size;
         return 0;
@@ -233,7 +233,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             {
                 fprintf(stdout, "Directory %s found with return value: %d!\n", blobNameStr.c_str(), dirSize);
             }
-            stbuf->st_mode = S_IFDIR | 0700;
+            stbuf->st_mode = S_IFDIR | 0770;
             // If st_nlink = 2, means direcotry is empty.
             // Direcotry size will affect behaviour for mv, rmdir, cp etc.
             stbuf->st_nlink = dirSize == D_EMPTY ? 2 : 3;
@@ -289,7 +289,7 @@ int azs_access(const char * /*path*/, int /*mask*/)
 
 int azs_readlink(const char * /*path*/, char * /*buf*/, size_t /*size*/)
 {
-    return 1; // ignore for mow
+    return -EINVAL; // not a symlink
 }
 
 int azs_fsync(const char * /*path*/, int /*isdatasync*/, struct fuse_file_info * /*fi*/)
@@ -300,12 +300,14 @@ int azs_fsync(const char * /*path*/, int /*isdatasync*/, struct fuse_file_info *
 int azs_chown(const char * /*path*/, uid_t /*uid*/, gid_t /*gid*/)
 {
     //TODO: Implement
+//    return -ENOSYS;
     return 0;
 }
 
 int azs_chmod(const char * /*path*/, mode_t /*mode*/)
 {
     //TODO: Implement
+//    return -ENOSYS;
     return 0;
 
 }
@@ -314,6 +316,7 @@ int azs_chmod(const char * /*path*/, mode_t /*mode*/)
 int azs_utimens(const char * /*path*/, const struct timespec [2] /*ts[2]*/)
 {
     //TODO: Implement
+//    return -ENOSYS;
     return 0;
 }
 //  #endif
@@ -608,17 +611,17 @@ int azs_rename(const char *src, const char *dst)
 
 int azs_setxattr(const char * /*path*/, const char * /*name*/, const char * /*value*/, size_t /*size*/, int /*flags*/)
 {
-    return 0;
+    return -ENOSYS;
 }
 int azs_getxattr(const char * /*path*/, const char * /*name*/, char * /*value*/, size_t /*size*/)
 {
-    return 0;
+    return -ENOSYS;
 }
 int azs_listxattr(const char * /*path*/, char * /*list*/, size_t /*size*/)
 {
-    return 0;
+    return -ENOSYS;
 }
 int azs_removexattr(const char * /*path*/, const char * /*name*/)
 {
-    return 0;
+    return -ENOSYS;
 }

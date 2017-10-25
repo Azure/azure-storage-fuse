@@ -188,7 +188,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     }
 
     // TODO: Actual access control
-    fchmod(res, 0700);
+    fchmod(res, 0770);
 
     // Stora the open file handle, and whether or not the file should be uploaded on close().
     // TODO: Optimize the scenario where the file is open for read/write, but no actual writing occurs, to not upload the blob.
@@ -270,7 +270,7 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
         }
         if (access(mntPathCopy, F_OK) != 0)
         {
-            mkdir(mntPathCopy, 0700);
+            mkdir(mntPathCopy, 0770);
         }
         *cur = '/';
         cur = cur + 1;
