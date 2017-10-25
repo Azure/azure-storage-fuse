@@ -50,6 +50,13 @@ namespace microsoft_azure { namespace storage {
         }
 
         /// <summary>
+        /// Gets the max parallelism used.
+        /// </summary>
+        unsigned int concurrency() const {
+            return m_client->size();
+        }
+
+        /// <summary>
         /// Intitiates an asynchronous operation  to download the contents of a blob to a stream.
         /// </summary>
         /// <param name="container">The container name.</param>
@@ -246,7 +253,7 @@ namespace microsoft_azure { namespace storage {
         /// Constructs a blob client wrapper from a blob client instance.
         /// </summary>
         /// <param name="blobClient">A <see cref="microsoft_azure::storage::blob_client"> object stored in shared_ptr.</param>
-        blob_client_wrapper(std::shared_ptr<blob_client> blobClient)
+        explicit blob_client_wrapper(std::shared_ptr<blob_client> blobClient)
             : m_blobClient(blobClient),
             m_valid(true)
         {
@@ -260,7 +267,7 @@ namespace microsoft_azure { namespace storage {
         /// Constructs an empty blob client wrapper.
         /// </summary>
         /// <param name="valid">A bool value indicates this client wrapper is valid or not.</param>
-        blob_client_wrapper(bool valid)
+        explicit blob_client_wrapper(bool valid)
             : m_valid(valid)
         {
         }
@@ -274,6 +281,19 @@ namespace microsoft_azure { namespace storage {
             m_blobClient = other.m_blobClient;
             m_concurrency = other.m_concurrency;
             m_valid = other.m_valid;
+        }
+
+        blob_client_wrapper& operator=(blob_client_wrapper&& other)
+        {
+            m_blobClient = other.m_blobClient;
+            m_concurrency = other.m_concurrency;
+            m_valid = other.m_valid;
+            return *this;
+        }
+
+        bool is_valid() const
+        {
+            return m_valid && (m_blobClient != NULL);
         }
 
         /// <summary>
