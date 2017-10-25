@@ -592,7 +592,7 @@ int azs_truncate(const char * path, off_t off)
         // The blob/file does not exist locally.  We need to see if it exists on the service (if it doesn't we return ENOENT.)
         if (azure_blob_client_wrapper->blob_exists(str_options.containerName, pathString.substr(1))) // TODO: Once we have support for access conditions, we could remove this call, and replace with a put_block_list with if-match-*
         {
-            int fd = open(mntPath, O_CREAT|O_WRONLY|O_TRUNC);
+            int fd = open(mntPath, O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU | S_IRWXG);
             if (fd != 0)
             {
                 return -errno;
