@@ -42,7 +42,8 @@ class file_lock_map;
 
 // FUSE gives you one 64-bit pointer to use for communication between API's.
 // An instance of this struct is pointed to by that pointer.
-struct fhwrapper {
+struct fhwrapper
+{
     int fh; // The handle to the file in the file cache to use for read/write operations.
     bool upload; // True if the blob should be uploaded when the file is closed.  (False when the file was opened in read-only mode.)
     fhwrapper(int fh, bool upload) : fh(fh), upload(upload)
@@ -53,7 +54,8 @@ struct fhwrapper {
 
 
 // Global struct storing the Storage connection information and the tmpPath.
-struct str_options {
+struct str_options
+{
     std::string accountName;
     std::string accountKey;
     std::string containerName;
@@ -121,7 +123,7 @@ int azs_getattr(const char *path, struct stat *stbuf);
 * @param  stbuf The 'stat' struct containing the output information.
 * @return       Returns success, or return code from the statvfs call
 */
-int azs_statfs(const char *path, struct statvfs *stbuf); 
+int azs_statfs(const char *path, struct statvfs *stbuf);
 
 /**
  * Create a directory.  In order to support empty directories, this creates a blob representing the directory.

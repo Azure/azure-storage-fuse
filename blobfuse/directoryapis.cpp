@@ -47,49 +47,49 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
         pathStr.push_back('/');
     }
 
-	std::vector<std::string> local_list_results;
+    std::vector<std::string> local_list_results;
 
     std::string mntPathString = prepend_mnt_path_string(pathStr);
     DIR *dir_stream = opendir(mntPathString.c_str());
     if (dir_stream != NULL)
     {
-	    struct dirent* dir_ent = readdir(dir_stream);
-	    while (dir_ent != NULL)
-	    {
-	    	if (dir_ent->d_name[0] != '.')
-	    	{
-		    	if (dir_ent->d_type == DT_DIR)
-		    	{
-		            struct stat stbuf;
-		            stbuf.st_mode = S_IFDIR | 0770;
-		            stbuf.st_nlink = 2;
-	 				stbuf.st_size = 4096;
-	 	            filler(buf, dir_ent->d_name, &stbuf, 0);
-		        }
-		    	else
-		    	{
-		    		struct stat buffer;
-		    		stat((mntPathString + dir_ent->d_name).c_str(), &buffer);
+        struct dirent* dir_ent = readdir(dir_stream);
+        while (dir_ent != NULL)
+        {
+            if (dir_ent->d_name[0] != '.')
+            {
+                if (dir_ent->d_type == DT_DIR)
+                {
+                    struct stat stbuf;
+                    stbuf.st_mode = S_IFDIR | 0770;
+                    stbuf.st_nlink = 2;
+                    stbuf.st_size = 4096;
+                    filler(buf, dir_ent->d_name, &stbuf, 0);
+                }
+                else
+                {
+                    struct stat buffer;
+                    stat((mntPathString + dir_ent->d_name).c_str(), &buffer);
 
-		            struct stat stbuf;
-		            stbuf.st_mode = S_IFREG | 0770; // Regular file (not a directory)
-		            stbuf.st_nlink = 1;
-		            stbuf.st_size = buffer.st_size;
-		            filler(buf, dir_ent->d_name, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
-		    	}
+                    struct stat stbuf;
+                    stbuf.st_mode = S_IFREG | 0770; // Regular file (not a directory)
+                    stbuf.st_nlink = 1;
+                    stbuf.st_size = buffer.st_size;
+                    filler(buf, dir_ent->d_name, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+                }
 
-		    	std::string dir_str(dir_ent->d_name);
-				local_list_results.push_back(dir_str);
+                std::string dir_str(dir_ent->d_name);
+                local_list_results.push_back(dir_str);
 
-				if (AZS_PRINT)
-				{
-					fprintf(stdout, "Local file/blob found.  Name = %s\n", dir_ent->d_name); 
-				}
-			}
+                if (AZS_PRINT)
+                {
+                    fprintf(stdout, "Local file/blob found.  Name = %s\n", dir_ent->d_name);
+                }
+            }
 
-	    	dir_ent = readdir(dir_stream);
-	    }
-	}
+            dir_ent = readdir(dir_stream);
+        }
+    }
 
 
 
@@ -119,21 +119,21 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
         int len = listResults[i].name.size();
         if (len > 0)
         {
-/*            char *nameCopy = (char *)malloc(len + 1);
-            memcpy(nameCopy, listResults[i].name.c_str(), len);
-            nameCopy[len] = 0;
+            /*            char *nameCopy = (char *)malloc(len + 1);
+                        memcpy(nameCopy, listResults[i].name.c_str(), len);
+                        nameCopy[len] = 0;
 
-            char *lasts = NULL;
-            char *token = strtok_r(nameCopy, "/", &lasts);
-            char *prevtoken = NULL;
+                        char *lasts = NULL;
+                        char *token = strtok_r(nameCopy, "/", &lasts);
+                        char *prevtoken = NULL;
 
-            while (token)
-            {
-                prevtoken = token;
-                token = strtok_r(NULL, "/", &lasts);
-            }
+                        while (token)
+                        {
+                            prevtoken = token;
+                            token = strtok_r(NULL, "/", &lasts);
+                        }
 
-            std::string prev_token_str(prevtoken); */
+                        std::string prev_token_str(prevtoken); */
             std::string prev_token_str;
             if (listResults[i].name.back() == '/')
             {
@@ -147,38 +147,38 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
             // TODO: order or hash the list to improve perf
             if (std::find(local_list_results.begin(), local_list_results.end(), prev_token_str) == local_list_results.end())
             {
-	            if (!listResults[i].is_directory)
-	            {
-	                if ((prev_token_str.size() > 0) && (strcmp(prev_token_str.c_str(), directorySignifier.c_str()) != 0))
-	                {
-	                    struct stat stbuf;
-	                    stbuf.st_mode = S_IFREG | 0770; // Regular file (not a directory)
-	                    stbuf.st_nlink = 1;
-	                    stbuf.st_size = listResults[i].content_length;
-	                    fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
-	                    if (AZS_PRINT)
-	                    {
-	                        fprintf(stdout, "blob result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
-	                    }
-	                }
+                if (!listResults[i].is_directory)
+                {
+                    if ((prev_token_str.size() > 0) && (strcmp(prev_token_str.c_str(), directorySignifier.c_str()) != 0))
+                    {
+                        struct stat stbuf;
+                        stbuf.st_mode = S_IFREG | 0770; // Regular file (not a directory)
+                        stbuf.st_nlink = 1;
+                        stbuf.st_size = listResults[i].content_length;
+                        fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+                        if (AZS_PRINT)
+                        {
+                            fprintf(stdout, "blob result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
+                        }
+                    }
 
-	            }
-	            else
-	            {
-	                if (prev_token_str.size() > 0)
-	                {
-	                    struct stat stbuf;
-	                    stbuf.st_mode = S_IFDIR | 0770;
-	                    stbuf.st_nlink = 2;
-	                    fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
-	                    if (AZS_PRINT)
-	                    {
-	                        fprintf(stdout, "dir result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
-	                    }
-	                }
+                }
+                else
+                {
+                    if (prev_token_str.size() > 0)
+                    {
+                        struct stat stbuf;
+                        stbuf.st_mode = S_IFDIR | 0770;
+                        stbuf.st_nlink = 2;
+                        fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
+                        if (AZS_PRINT)
+                        {
+                            fprintf(stdout, "dir result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
+                        }
+                    }
 
-	            }
-	        }
+                }
+            }
 
 
 //            free(nameCopy);

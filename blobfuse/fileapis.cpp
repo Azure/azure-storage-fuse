@@ -13,7 +13,7 @@
 // This mutex should never be held when control is not in an open(), flush(), or unlink() method.
 class file_lock_map
 {
-    public:
+public:
     static file_lock_map* get_instance()
     {
         if(nullptr == _instance.get())
@@ -49,12 +49,12 @@ class file_lock_map
         return get_mutex(spath);
     }
 
-    protected:
+protected:
     file_lock_map()
     {
     }
 
-    private:
+private:
     static std::shared_ptr<file_lock_map> _instance;
     static std::mutex s_mutex;
     std::mutex m_mutex;
@@ -160,7 +160,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
         return -errno;
     }
 
-    // At this point, the file exists in the cache and we have an open file handle to it.  We now attempt to acquire the flock lock in shared mode, to be held while reading and writing to the file. 
+    // At this point, the file exists in the cache and we have an open file handle to it.  We now attempt to acquire the flock lock in shared mode, to be held while reading and writing to the file.
     if((fi->flags&O_NONBLOCK) == O_NONBLOCK)
     {
         if(0 != flock(res, LOCK_SH|LOCK_NB))
@@ -184,7 +184,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             }
             int flockerrno = errno;
             close(res);
-            return 0 - flockerrno;            
+            return 0 - flockerrno;
         }
     }
 
@@ -399,7 +399,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
                     // In this case, we do not want to upload a zero-length blob to the service or error out, we want to silently discard any data that has been written and
                     // and with no blob on the service or in the cache.
                     // This mimics the behavior of a real file system.
-                    
+
                     //delete(path_buffer);
                     free(path_buffer);
                     if (AZS_PRINT)
@@ -423,8 +423,8 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             azure_blob_client_wrapper->upload_file_to_blob(mntPath, str_options.containerName, mntPathString.substr(str_options.tmpPath.size() + 6 /* there are six characters in "/root/" */), metadata, 8);
             if (errno != 0)
             {
-                    //delete(path_buffer);
-                    free(path_buffer);
+                //delete(path_buffer);
+                free(path_buffer);
                 return 0 - map_errno(errno);
             }
         }
@@ -517,7 +517,7 @@ int azs_unlink(const char *path)
         if (AZS_PRINT)
         {
             fprintf(stdout, "Storage error occurred, errno =  = %d\n", errno);
-        }        
+        }
 
         // If we successfully removed the file locally and the blob does not exist, we should still return success - this accounts for the case where the file hasn't yet been uploaded.
         if (!((remove_success == 0) && (errno = 404)))
@@ -686,7 +686,8 @@ int azs_rename_single_file(const char *src, const char *dst)
             do
             {
                 blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, dstPathString.substr(1));
-            } while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+            }
+            while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
             if(blob_property.copy_status.compare(0, 7, "success") == 0)
             {
 //                int retval = azs_unlink(srcPathString); // This will remove the blob from the service, and also take care of removing the directory in the local file cache.
@@ -712,7 +713,7 @@ int azs_rename_single_file(const char *src, const char *dst)
             {
                 fprintf(stdout, "Tried to get blob properties, path = %s, but received errno = %d\n", src, errno);
             }
-            return 0 - map_errno(errno);            
+            return 0 - map_errno(errno);
         }
     }
     else
@@ -737,7 +738,8 @@ int azs_rename_single_file(const char *src, const char *dst)
             do
             {
                 blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, dstPathString.substr(1));
-            } while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+            }
+            while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
             if(blob_property.copy_status.compare(0, 7, "success") == 0)
             {
                 azure_blob_client_wrapper->delete_blob(str_options.containerName, srcPathString.substr(1));
@@ -762,7 +764,7 @@ int azs_rename_single_file(const char *src, const char *dst)
             {
                 fprintf(stdout, "Tried to get blob properties, path = %s, but received errno = %d\n", src, errno);
             }
-            return 0 - map_errno(errno);            
+            return 0 - map_errno(errno);
         }
     }
     return 0;

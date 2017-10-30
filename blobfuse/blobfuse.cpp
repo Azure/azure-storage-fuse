@@ -2,7 +2,8 @@
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
 // The only two custom options we take in are the tmpPath (path to temp / file cache directory) and the configFile (connection to Azure Storage info.)
-struct options {
+struct options
+{
     const char *tmp_path; // Path to the temp / file cache directory
     const char *config_file; // Connection to Azure Storage information (account name, account key, etc)
     const char *use_https; // True if https should be used (defaults to false)
@@ -14,7 +15,8 @@ struct str_options str_options;
 int file_cache_timeout_in_seconds;
 
 #define OPTION(t, p) { t, offsetof(struct options, p), 1 }
-const struct fuse_opt option_spec[] = {
+const struct fuse_opt option_spec[] =
+{
     OPTION("--tmp-path=%s", tmp_path),
     OPTION("--config-file=%s", config_file),
     OPTION("--use-https=%s", use_https),
@@ -30,7 +32,10 @@ static struct fuse_operations azs_blob_operations;
 
 inline bool is_lowercase_string(const std::string &s)
 {
-    return (s.size() == static_cast<size_t>(std::count_if(s.begin(), s.end(),[](unsigned char c){ return std::islower(c); })));
+    return (s.size() == static_cast<size_t>(std::count_if(s.begin(), s.end(),[](unsigned char c)
+    {
+        return std::islower(c);
+    })));
 }
 
 // Read Storage connection information from the config file
@@ -46,36 +51,40 @@ int read_config(std::string configFile)
     std::string line;
     std::istringstream data;
 
-    while(std::getline(file, line)) {
+    while(std::getline(file, line))
+    {
 
         data.str(line.substr(line.find(" ")+1));
 
-        if(line.find("accountName") != std::string::npos){
+        if(line.find("accountName") != std::string::npos)
+        {
             std::string accountNameStr(data.str());
-/*            if(!is_lowercase_string(accountNameStr))
-            {
-                fprintf(stderr, "Account name must be lower cases.");
-                return -1;
-            }
-            else
-            {*/
-                str_options.accountName = accountNameStr;
+            /*            if(!is_lowercase_string(accountNameStr))
+                        {
+                            fprintf(stderr, "Account name must be lower cases.");
+                            return -1;
+                        }
+                        else
+                        {*/
+            str_options.accountName = accountNameStr;
 //            }
         }
-        else if(line.find("accountKey") != std::string::npos){
+        else if(line.find("accountKey") != std::string::npos)
+        {
             std::string accountKeyStr(data.str());
             str_options.accountKey = accountKeyStr;
         }
-        else if(line.find("containerName") != std::string::npos){
+        else if(line.find("containerName") != std::string::npos)
+        {
             std::string containerNameStr(data.str());
-/*            if(!is_lowercase_string(containerNameStr))
-            {
-                fprintf(stderr, "Container name must be lower cases.");
-                return -1;
-            }
-            else
-            {*/
-                str_options.containerName = containerNameStr;
+            /*            if(!is_lowercase_string(containerNameStr))
+                        {
+                            fprintf(stderr, "Container name must be lower cases.");
+                            return -1;
+                        }
+                        else
+                        {*/
+            str_options.containerName = containerNameStr;
 //            }
         }
 
@@ -127,7 +136,7 @@ void print_usage()
 
 int main(int argc, char *argv[])
 {
-	// Here, we set up all the callbacks that FUSE requires.
+    // Here, we set up all the callbacks that FUSE requires.
     azs_blob_operations.init = azs_init;
     azs_blob_operations.getattr = azs_getattr;
     azs_blob_operations.statfs = azs_statfs;
@@ -203,8 +212,8 @@ int main(int argc, char *argv[])
 
     // Check if the account name/key and container is correct.
     if(azure_blob_client_wrapper->container_exists(str_options.containerName) == false
-      || errno != 0)
-    {   
+            || errno != 0)
+    {
         fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
         return 1;
     }
@@ -226,9 +235,9 @@ int main(int argc, char *argv[])
         file_cache_timeout_in_seconds = 120;
     }
 
-	// FUSE contains a feature whereit automatically implements 'soft' delete if one process has a file open when another calls unlink().
-	// This feature causes us a bunch of problems, so we use "-ohard_remove" to disable it, and track the needed 'soft delete' functionality on our own.
-	fuse_opt_add_arg(&args, "-ohard_remove"); 
+    // FUSE contains a feature whereit automatically implements 'soft' delete if one process has a file open when another calls unlink().
+    // This feature causes us a bunch of problems, so we use "-ohard_remove" to disable it, and track the needed 'soft delete' functionality on our own.
+    fuse_opt_add_arg(&args, "-ohard_remove");
 
     umask(0);
 

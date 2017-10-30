@@ -13,7 +13,7 @@ int map_errno(int error)
         return mapping->second;
     }
 }
-    
+
 std::string prepend_mnt_path_string(const std::string path)
 {
     return str_options.tmpPath + "/root" + path;
@@ -100,7 +100,8 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
             }
 
         }
-    } while (((continuation.size() > 0) || !success) && (failcount < maxFailCount));
+    }
+    while (((continuation.size() > 0) || !success) && (failcount < maxFailCount));
 
     return results;
 }
@@ -135,9 +136,9 @@ int is_directory_empty(std::string container, std::string delimiter, std::string
             if (response.blobs.size() == 1)
             {
                 if ((!dirBlobFound) &&
-                    (!response.blobs[0].is_directory) &&
-                    (response.blobs[0].name.size() > directorySignifier.size()) &&
-                    (0 == response.blobs[0].name.compare(response.blobs[0].name.size() - directorySignifier.size(), directorySignifier.size(), directorySignifier)))
+                        (!response.blobs[0].is_directory) &&
+                        (response.blobs[0].name.size() > directorySignifier.size()) &&
+                        (0 == response.blobs[0].name.compare(response.blobs[0].name.size() - directorySignifier.size(), directorySignifier.size(), directorySignifier)))
                 {
                     dirBlobFound = true;
                 }
@@ -152,7 +153,8 @@ int is_directory_empty(std::string container, std::string delimiter, std::string
             success = false;
             failcount++; //TODO: use to set errno.
         }
-    } while ((continuation.size() > 0) && !success && (failcount < 20));
+    }
+    while ((continuation.size() > 0) && !success && (failcount < 20));
 
     return dirBlobFound ? D_EMPTY : D_NOTEXIST;
 }
@@ -182,7 +184,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
     if (AZS_PRINT)
     {
         fprintf(stdout, "accessing mntPath = %s returned %d\n", mntPathString.c_str(), acc);
-    }  if (acc != -1 )
+    }
+    if (acc != -1 )
     {
         //(void) fi;
         res = lstat(mntPathString.c_str(), stbuf);
@@ -336,7 +339,7 @@ int azs_rename_directory(const char *src, const char *dst)
     if (dstPathStr.size() > 1)
     {
         dstPathStr.push_back('/');
-    }    
+    }
     std::vector<std::string> local_list_results;
 
     ensure_files_directory_exists(prepend_mnt_path_string(dstPathStr + "placeholder"));
@@ -477,135 +480,135 @@ int azs_rename(const char *src, const char *dst)
     return 0;
 
 
-/*
-    std::string srcBlobNameStr(&(src[1]));
-    std::string dstBlobNameStr(&(dst[1]));
-    auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, srcBlobNameStr);
+    /*
+        std::string srcBlobNameStr(&(src[1]));
+        std::string dstBlobNameStr(&(dst[1]));
+        auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, srcBlobNameStr);
 
-    if ((errno == 0) && blob_property.valid())
-    {
-        // src refers to a blob/file, not a directory.  Perform a server-side copy, and a delete.
-        if (AZS_PRINT)
+        if ((errno == 0) && blob_property.valid())
         {
-            fprintf(stdout, "Source Blob found!  Name = %s\n", src);
-        }
-        azure_blob_client_wrapper->start_copy(str_options.containerName, srcBlobNameStr, str_options.containerName, dstBlobNameStr);
-        if(errno != 0)
-        {
+            // src refers to a blob/file, not a directory.  Perform a server-side copy, and a delete.
             if (AZS_PRINT)
             {
-                fprintf(stdout, "Tried to copy blob from %s to %s, but received errno = %d\n", srcBlobNameStr.c_str(), dstBlobNameStr.c_str(), errno);
+                fprintf(stdout, "Source Blob found!  Name = %s\n", src);
             }
-            return 0 - map_errno(errno);
-        }
-
-        do
-        {
-            blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, dstBlobNameStr);
-        }while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
-
-        if(blob_property.copy_status.compare(0, 7, "success") == 0)
-        {
-            azure_blob_client_wrapper->delete_blob(str_options.containerName, srcBlobNameStr);
+            azure_blob_client_wrapper->start_copy(str_options.containerName, srcBlobNameStr, str_options.containerName, dstBlobNameStr);
             if(errno != 0)
             {
                 if (AZS_PRINT)
                 {
-                    fprintf(stdout, "Tried to delete blob from %s, but received errno = %d\n", srcBlobNameStr.c_str(), errno);
+                    fprintf(stdout, "Tried to copy blob from %s to %s, but received errno = %d\n", srcBlobNameStr.c_str(), dstBlobNameStr.c_str(), errno);
                 }
                 return 0 - map_errno(errno);
             }
-        }
-        else
-        {
-            return EFAULT;
-        }
-        return 0;
-    }
-    else if (errno == 0 && !blob_property.valid())
-    {
-        // Check to see if it's a directory, instead of a file
-        srcBlobNameStr.push_back('/');
-        dstBlobNameStr.push_back('/');
 
-        errno = 0;
-        // bool dirExists = list_one_blob_hierarchical(str_options.containerName, "/", srcBlobNameStr);
-        int srcExists = is_directory_empty(str_options.containerName, "/", srcBlobNameStr);
+            do
+            {
+                blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, dstBlobNameStr);
+            }while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
 
-        if (errno != 0)
-        {
-            if (AZS_PRINT)
+            if(blob_property.copy_status.compare(0, 7, "success") == 0)
             {
-                fprintf(stdout, "Tried to find dir %s, but received errno = %d\n", src, errno);
-            }
-            return 0 - map_errno(errno);
-        }
-        if (srcExists == D_NOTEXIST)
-        {
-            if (AZS_PRINT)
-            {
-                fprintf(stdout, "Tried to find dir %s, but not exists\n", src);
-            }
-            return -(ENOENT); // -2 = Entity does not exist.
-        }
-        else
-        {
-            if (AZS_PRINT)
-            {
-                fprintf(stdout, "Directory %s found!\n", srcBlobNameStr.c_str());
-            }
-            int dstSize = is_directory_empty(str_options.containerName, "/", dstBlobNameStr);
-            if(dstSize == 2) // not empty.
-            {
-                return 0 - (ENOTEMPTY);
+                azure_blob_client_wrapper->delete_blob(str_options.containerName, srcBlobNameStr);
+                if(errno != 0)
+                {
+                    if (AZS_PRINT)
+                    {
+                        fprintf(stdout, "Tried to delete blob from %s, but received errno = %d\n", srcBlobNameStr.c_str(), errno);
+                    }
+                    return 0 - map_errno(errno);
+                }
             }
             else
             {
-                // src refers to a directory.  List all the blobs in the directory, copy each one, then delete each in the source.
-                auto blobList = list_all_blobs_hierarchical(str_options.containerName, "/", srcBlobNameStr);
-                for(size_t i = 0; i < blobList.size(); ++i)
-                {
-                    auto blobName = dstBlobNameStr + blobList[i].name.substr(srcBlobNameStr.size());
-                    azure_blob_client_wrapper->start_copy(str_options.containerName, blobList[i].name, str_options.containerName, blobName);
-                    if (AZS_PRINT)
-                    {
-                        fprintf(stdout, "Copy blob from %s to %s, received errno = %d\n", blobList[i].name.c_str(), blobName.c_str(), errno);
-                    }
-                    if(errno != 0)
-                    {
-                        return 0 - map_errno(errno);
-                    }
-                    do
-                    {
-                        blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobName);
-                    }while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+                return EFAULT;
+            }
+            return 0;
+        }
+        else if (errno == 0 && !blob_property.valid())
+        {
+            // Check to see if it's a directory, instead of a file
+            srcBlobNameStr.push_back('/');
+            dstBlobNameStr.push_back('/');
 
-                    if(blob_property.copy_status.compare(0, 7, "success") == 0)
+            errno = 0;
+            // bool dirExists = list_one_blob_hierarchical(str_options.containerName, "/", srcBlobNameStr);
+            int srcExists = is_directory_empty(str_options.containerName, "/", srcBlobNameStr);
+
+            if (errno != 0)
+            {
+                if (AZS_PRINT)
+                {
+                    fprintf(stdout, "Tried to find dir %s, but received errno = %d\n", src, errno);
+                }
+                return 0 - map_errno(errno);
+            }
+            if (srcExists == D_NOTEXIST)
+            {
+                if (AZS_PRINT)
+                {
+                    fprintf(stdout, "Tried to find dir %s, but not exists\n", src);
+                }
+                return -(ENOENT); // -2 = Entity does not exist.
+            }
+            else
+            {
+                if (AZS_PRINT)
+                {
+                    fprintf(stdout, "Directory %s found!\n", srcBlobNameStr.c_str());
+                }
+                int dstSize = is_directory_empty(str_options.containerName, "/", dstBlobNameStr);
+                if(dstSize == 2) // not empty.
+                {
+                    return 0 - (ENOTEMPTY);
+                }
+                else
+                {
+                    // src refers to a directory.  List all the blobs in the directory, copy each one, then delete each in the source.
+                    auto blobList = list_all_blobs_hierarchical(str_options.containerName, "/", srcBlobNameStr);
+                    for(size_t i = 0; i < blobList.size(); ++i)
                     {
-                        azure_blob_client_wrapper->delete_blob(str_options.containerName, blobList[i].name);
+                        auto blobName = dstBlobNameStr + blobList[i].name.substr(srcBlobNameStr.size());
+                        azure_blob_client_wrapper->start_copy(str_options.containerName, blobList[i].name, str_options.containerName, blobName);
                         if (AZS_PRINT)
                         {
-                            fprintf(stdout, "Tried to delete blob from %s, received errno = %d\n", blobName.c_str(), errno);
+                            fprintf(stdout, "Copy blob from %s to %s, received errno = %d\n", blobList[i].name.c_str(), blobName.c_str(), errno);
                         }
                         if(errno != 0)
                         {
                             return 0 - map_errno(errno);
                         }
+                        do
+                        {
+                            blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobName);
+                        }while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+
+                        if(blob_property.copy_status.compare(0, 7, "success") == 0)
+                        {
+                            azure_blob_client_wrapper->delete_blob(str_options.containerName, blobList[i].name);
+                            if (AZS_PRINT)
+                            {
+                                fprintf(stdout, "Tried to delete blob from %s, received errno = %d\n", blobName.c_str(), errno);
+                            }
+                            if(errno != 0)
+                            {
+                                return 0 - map_errno(errno);
+                            }
+                        }
+                        else
+                        {
+                            return EFAULT;
+                        }
                     }
-                    else
-                    {
-                        return EFAULT;
-                    }
+                    return 0;
                 }
-                return 0;
             }
         }
-    }
-    else
-    {
-        return 0 - map_errno(errno);
-    }
-    */
+        else
+        {
+            return 0 - map_errno(errno);
+        }
+        */
 }
 
 
