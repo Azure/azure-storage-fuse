@@ -15,6 +15,6 @@ if [ $? -ne 0 ]
 then
 	ERRORCODE=$?
 	echo "cmake failed.  Please ensure that cmake version 3.5 or greater is installed and available."
-	exit ERRORCODE
+	exit $ERRORCODE
 fi
 make
