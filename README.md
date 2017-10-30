@@ -9,15 +9,32 @@ Please note that this tool is currently in Preview, and need your feedback for i
 - Mount a Blob storage container on Linux
 - Basic file system operations such as mkdir, opendir, readdir, rmdir, open, read, create, write, close, unlink, truncate, stat, rename
 - Local cache to improve subsequent access times
-- Parallel download and upload features to fast access large blobs
-- Allows multiple nodes to mount the same container (Note however, there is no sync between nodes on writes to blob storage. See limitations.)
+- Parallel download and upload features for fast access to large blobs
+- Allows multiple nodes to mount the same container for read-only scenarios.
+
+## Considerations
+Please take careful note of the following points, before using Blobfuse:
+- In order to achieve reasonable performance, Blobfuse requires a temp directory to use as a local cache. This directory will contain the full contents of any file (blob) read to or written from through Blobfuse, and will continue to grow as long as Blobfuse is running. You must ensure you have enough free space in this directory.
+  - If space is not a concern, putting this directory on a SSD will greatly enhance performance.
+  - In order to delete the cache, un-mount and re-mount Blobfuse.
+  - Do not use the same temp directory for multiple instances of Blobfuse, or for any other purpose while Blobfuse is running.
+  
+### If your workload is read-only:
+- If the temp directory gets too large, it is fine to manually delete it.  Un-mounting and re-mounting Blobfuse will also clear the temo directory.
+- Because blobs get cached locally, if the blob on the service is modified, these changes may or may not be reflected when accessing the blob through Blobfuse.  The cache will periodically refresh, but this is done ona  best-effort basis.
+
+### If your workload is not read-only:
+- Do not edit, modify, or delete the contents of the temp directory while Blobfuse is mounted. Doing so could cause data loss or data corruption.
+- While a container is mounted, the data in the container should not be modified by any process other than Blobfuse.  This includes other instances of Blobfuse, running on this or other machines.  Doing so could cause data loss or data corruption.  Mounting other containers is fine.
+- Modifications to files are not persisted to Azure Blob Storage until the file is closed. If multiple handles are open to a file simultaneously, and data in the file has been modified, the close of each handle will flush the file to blob storage. 
 
 ## Current Limitations
-- Some file system APIs have not been implemented: readlink, symlink, link, chmod, chown, fsync, lock and extended attribute calls
+- Some file system APIs have not been implemented: readlink, symlink, link, chmod, chown, fsync, lock and extended attribute calls.
 - Not optimized for updating an existing file. Blobfuse downloads the entire file to local cache to be able to modify and update the file
 - Does not support SAS yet
 - High latency compared to local filesystems. Further you are from the Azure region, higher the latency is.
 - Currently does not implement data integrity checks. Always have your data backed up before using Blobfuse. Use Https as a data integrity mechanism over the wire.
+- Because Azure Block Blobs do not have file and directory semantics, certain directory operations may not behave entirely as expected. For example, deleting the last file in a directory may also delete the directory.
 
 ## Installation
 
