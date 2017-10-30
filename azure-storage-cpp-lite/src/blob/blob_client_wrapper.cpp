@@ -431,12 +431,12 @@ namespace microsoft_azure {
             }
             else
             {
-                std::cout << "fileSize: " << fileSize << std::endl;
+//                std::cout << "fileSize: " << fileSize << std::endl;
                 const int MaxBlockCount = 50000;
                 long long MaxBlobSize = 4;
                 MaxBlobSize *= MaxBlockCount;
                 MaxBlobSize *= 1024 * 1024;
-                std::cout << "MazBlockSize: " << MaxBlobSize << std::endl;
+//                std::cout << "MazBlockSize: " << MaxBlobSize << std::endl;
                 int block_size = 4*1024*1024;
                 if(MaxBlobSize < fileSize)
                 {
@@ -595,7 +595,18 @@ namespace microsoft_azure {
 
             try
             {
-                m_blobClient->download_blob_to_stream(container, blob, offset, size, os);
+                auto task = m_blobClient->download_blob_to_stream(container, blob, offset, size, os);
+                task.wait();
+                auto result = task.get();
+
+                if(!result.success())
+                {
+                    errno = std::stoi(result.error().code);
+                }
+                else
+                {
+                    errno = 0;
+                }
             }
             catch(std::exception ex)
             {
