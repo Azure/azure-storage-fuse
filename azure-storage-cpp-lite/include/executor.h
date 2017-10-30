@@ -145,15 +145,11 @@ namespace microsoft_azure {
                 std::shared_ptr<http_base> http,
                 std::shared_ptr<executor_context> context)
             {
-                auto future = std::async(std::launch::async, [=](){
-                    auto retry = std::make_shared<retry_context>();
-                    auto outcome = std::make_shared<storage_outcome<RESPONSE_TYPE>>();
-                    auto promise = std::make_shared<std::promise<storage_outcome<RESPONSE_TYPE>>>();
-                    async_executor<RESPONSE_TYPE>::submit_helper(promise, outcome, account, request, http, context, retry);
-                    //return promise->get_future();
-                    return promise->get_future().get();
-                });
-                return future;
+                auto retry = std::make_shared<retry_context>();
+                auto outcome = std::make_shared<storage_outcome<RESPONSE_TYPE>>();
+                auto promise = std::make_shared<std::promise<storage_outcome<RESPONSE_TYPE>>>();
+                async_executor<RESPONSE_TYPE>::submit_helper(promise, outcome, account, request, http, context, retry);
+                return promise->get_future();
             }
         };
 
@@ -227,15 +223,11 @@ namespace microsoft_azure {
                 std::shared_ptr<http_base> http,
                 std::shared_ptr<executor_context> context)
             {
-                auto future = std::async(std::launch::async, [=](){
-                    auto retry = std::make_shared<retry_context>();
-                    auto outcome = std::make_shared<storage_outcome<void>>();
-                    auto promise = std::make_shared<std::promise<storage_outcome<void>>>();
-                    async_executor<void>::submit_helper(promise, outcome, account, request, http, context, retry);
-                    //return promise->get_future();
-                    return promise->get_future().get();
-                });
-                return future;
+                auto retry = std::make_shared<retry_context>();
+                auto outcome = std::make_shared<storage_outcome<void>>();
+                auto promise = std::make_shared<std::promise<storage_outcome<void>>>();
+                async_executor<void>::submit_helper(promise, outcome, account, request, http, context, retry);
+                return promise->get_future();
             }
         };
 

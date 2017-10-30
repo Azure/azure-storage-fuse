@@ -12,7 +12,7 @@ namespace microsoft_azure {
     namespace storage {
         class mempool
         {
-            public:
+        public:
             ~mempool()
             {
                 while(!m_buffers.empty())
@@ -43,10 +43,10 @@ namespace microsoft_azure {
                 std::lock_guard<std::mutex> lg(m_buffers_mutex);
                 m_buffers.push(buffer);
             }
-            private:
-                std::queue<char*> m_buffers;
-                std::mutex m_buffers_mutex;
-                static const size_t s_block_size = 4*1024*1024;
+        private:
+            std::queue<char*> m_buffers;
+            std::mutex m_buffers_mutex;
+            static const size_t s_block_size = 4*1024*1024;
         };
         static mempool mpool;
         off_t get_file_size(const char* path);
@@ -99,6 +99,12 @@ namespace microsoft_azure {
         }
 
         blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency)
+        {
+            return blob_client_wrapper_init(account_name, account_key, concurrency, false);
+        }
+
+
+        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency, const bool use_https)
 {
     if(account_name.length() == 0 || account_key.length() == 0)
     {
@@ -118,7 +124,7 @@ namespace microsoft_azure {
     try
     {
         std::shared_ptr<storage_credential>  cred = std::make_shared<shared_key_credential>(accountName, accountKey);
-        std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, false);
+        std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https);
         std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
         errno = 0;
         return blob_client_wrapper(blobClient);
@@ -133,7 +139,7 @@ namespace microsoft_azure {
 
         void blob_client_wrapper::create_container(const std::string &container)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return;
@@ -171,7 +177,7 @@ namespace microsoft_azure {
 
         void blob_client_wrapper::delete_container(const std::string &container)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return;
@@ -206,7 +212,7 @@ namespace microsoft_azure {
 
         bool blob_client_wrapper::container_exists(const std::string &container)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return false;
@@ -241,7 +247,7 @@ namespace microsoft_azure {
 
         std::vector<list_containers_item> blob_client_wrapper::list_containers(const std::string &prefix, bool include_metadata)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return std::vector<list_containers_item>();
@@ -274,7 +280,7 @@ namespace microsoft_azure {
 
         list_blobs_hierarchical_response blob_client_wrapper::list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return list_blobs_hierarchical_response();
@@ -313,7 +319,7 @@ namespace microsoft_azure {
 
         void blob_client_wrapper::put_blob(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return;
@@ -368,7 +374,7 @@ namespace microsoft_azure {
 
         void blob_client_wrapper::upload_block_blob_from_stream(const std::string &container, const std::string blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return;
@@ -401,7 +407,7 @@ namespace microsoft_azure {
 
         void blob_client_wrapper::upload_file_to_blob(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata, size_t parallel)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return;
@@ -425,12 +431,12 @@ namespace microsoft_azure {
             }
             else
             {
-                std::cout << "fileSize: " << fileSize << std::endl;
+//                std::cout << "fileSize: " << fileSize << std::endl;
                 const int MaxBlockCount = 50000;
                 long long MaxBlobSize = 4;
                 MaxBlobSize *= MaxBlockCount;
                 MaxBlobSize *= 1024 * 1024;
-                std::cout << "MazBlockSize: " << MaxBlobSize << std::endl;
+//                std::cout << "MazBlockSize: " << MaxBlobSize << std::endl;
                 int block_size = 4*1024*1024;
                 if(MaxBlobSize < fileSize)
                 {
@@ -510,7 +516,8 @@ namespace microsoft_azure {
                             //std::cout << "parallel: " << parallel << std::endl;
                         }
 
-                        std::istringstream in(std::move(std::string(buffer,length)));
+                        std::istringstream in;
+                        in.rdbuf()->pubsetbuf(buffer, length);
                         auto blockResult = m_blobClient->upload_block_from_stream(container, blob, block_id, in).get();
                         delete[] buffer;
                         if(!blockResult.success())
@@ -580,7 +587,7 @@ namespace microsoft_azure {
 
         void blob_client_wrapper::download_blob_to_stream(const std::string &container, const std::string &blob, unsigned long long offset, unsigned long long size, std::ostream &os)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return;
@@ -588,7 +595,18 @@ namespace microsoft_azure {
 
             try
             {
-                m_blobClient->download_blob_to_stream(container, blob, offset, size, os);
+                auto task = m_blobClient->download_blob_to_stream(container, blob, offset, size, os);
+                task.wait();
+                auto result = task.get();
+
+                if(!result.success())
+                {
+                    errno = std::stoi(result.error().code);
+                }
+                else
+                {
+                    errno = 0;
+                }
             }
             catch(std::exception ex)
             {
@@ -599,7 +617,7 @@ namespace microsoft_azure {
 
         void blob_client_wrapper::download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, size_t parallel)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return;
@@ -656,7 +674,8 @@ namespace microsoft_azure {
                             });
                         }
                         char* buffer = new char[range];
-                        std::ostringstream os(std::move(std::string(buffer,range)));
+                        std::ostringstream os;
+                        os.rdbuf()->pubsetbuf(buffer, range);
 
                         download_blob_to_stream(container, blob, offset, range, os);
 
@@ -716,7 +735,7 @@ namespace microsoft_azure {
 
         blob_property blob_client_wrapper::get_blob_property(const std::string &container, const std::string &blob)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return blob_property(false);
@@ -745,7 +764,7 @@ namespace microsoft_azure {
 
         bool blob_client_wrapper::blob_exists(const std::string &container, const std::string &blob)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return false;
@@ -770,7 +789,7 @@ namespace microsoft_azure {
 
         void blob_client_wrapper::delete_blob(const std::string &container, const std::string &blob)
         {
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return;
@@ -806,7 +825,7 @@ namespace microsoft_azure {
         void blob_client_wrapper::start_copy(const std::string &sourceContainer, const std::string &sourceBlob, const std::string &destContainer, const std::string &destBlob)
         {
             
-            if(m_blobClient == NULL)
+            if(!is_valid())
             {
                 errno = client_not_init;
                 return;

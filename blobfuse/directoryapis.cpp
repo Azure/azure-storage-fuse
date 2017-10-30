@@ -10,6 +10,7 @@ int azs_mkdir(const char *path, mode_t)
     std::string pathstr(path);
     pathstr.insert(pathstr.size(), "/" + directorySignifier);
 
+    // We want to upload a zero-length blob in this case - it's just a marker that there's a directory.
     std::istringstream emptyDataStream("");
 
     std::vector<std::pair<std::string, std::string>> metadata;
@@ -46,6 +47,52 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
         pathStr.push_back('/');
     }
 
+    std::vector<std::string> local_list_results;
+
+    std::string mntPathString = prepend_mnt_path_string(pathStr);
+    DIR *dir_stream = opendir(mntPathString.c_str());
+    if (dir_stream != NULL)
+    {
+        struct dirent* dir_ent = readdir(dir_stream);
+        while (dir_ent != NULL)
+        {
+            if (dir_ent->d_name[0] != '.')
+            {
+                if (dir_ent->d_type == DT_DIR)
+                {
+                    struct stat stbuf;
+                    stbuf.st_mode = S_IFDIR | 0770;
+                    stbuf.st_nlink = 2;
+                    stbuf.st_size = 4096;
+                    filler(buf, dir_ent->d_name, &stbuf, 0);
+                }
+                else
+                {
+                    struct stat buffer;
+                    stat((mntPathString + dir_ent->d_name).c_str(), &buffer);
+
+                    struct stat stbuf;
+                    stbuf.st_mode = S_IFREG | 0770; // Regular file (not a directory)
+                    stbuf.st_nlink = 1;
+                    stbuf.st_size = buffer.st_size;
+                    filler(buf, dir_ent->d_name, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+                }
+
+                std::string dir_str(dir_ent->d_name);
+                local_list_results.push_back(dir_str);
+
+                if (AZS_PRINT)
+                {
+                    fprintf(stdout, "Local file/blob found.  Name = %s\n", dir_ent->d_name);
+                }
+            }
+
+            dir_ent = readdir(dir_stream);
+        }
+    }
+
+
+
     errno = 0;
     std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
     if (errno != 0)
@@ -70,57 +117,71 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
         int fillerResult;
         // We need to parse out just the trailing part of the path name.
         int len = listResults[i].name.size();
-        // Note - this code scans through the string(s) more often than necessary.
         if (len > 0)
         {
-            char *nameCopy = (char *)malloc(len + 1);
-            memcpy(nameCopy, listResults[i].name.c_str(), len);
-            nameCopy[len] = 0;
+            /*            char *nameCopy = (char *)malloc(len + 1);
+                        memcpy(nameCopy, listResults[i].name.c_str(), len);
+                        nameCopy[len] = 0;
 
-            char *lasts = NULL;
-            char *token = strtok_r(nameCopy, "/", &lasts);
-            char *prevtoken = NULL;
+                        char *lasts = NULL;
+                        char *token = strtok_r(nameCopy, "/", &lasts);
+                        char *prevtoken = NULL;
 
-            while (token)
+                        while (token)
+                        {
+                            prevtoken = token;
+                            token = strtok_r(NULL, "/", &lasts);
+                        }
+
+                        std::string prev_token_str(prevtoken); */
+            std::string prev_token_str;
+            if (listResults[i].name.back() == '/')
             {
-                prevtoken = token;
-                token = strtok_r(NULL, "/", &lasts);
-            }
-
-            if (!listResults[i].is_directory)
-            {
-                if (prevtoken && (strcmp(prevtoken, directorySignifier.c_str()) != 0))
-                {
-                    struct stat stbuf;
-                    stbuf.st_mode = S_IFREG | 0777; // Regular file (not a directory)
-                    stbuf.st_nlink = 1;
-                    stbuf.st_size = listResults[i].content_length;
-                    fillerResult = filler(buf, prevtoken, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
-                    if (AZS_PRINT)
-                    {
-                        fprintf(stdout, "blob result = %s, fillerResult = %d\n", prevtoken, fillerResult);
-                    }
-                }
-
+                prev_token_str = listResults[i].name.substr(pathStr.size() - 1, listResults[i].name.size() - pathStr.size());
             }
             else
             {
-                if (prevtoken)
-                {
-                    struct stat stbuf;
-                    stbuf.st_mode = S_IFDIR | 0777;
-                    stbuf.st_nlink = 2;
-                    fillerResult = filler(buf, prevtoken, &stbuf, 0);
-                    if (AZS_PRINT)
-                    {
-                        fprintf(stdout, "dir result = %s, fillerResult = %d\n", prevtoken, fillerResult);
-                    }
-                }
+                prev_token_str = listResults[i].name.substr(pathStr.size() - 1);
+            }
 
+            // TODO: order or hash the list to improve perf
+            if (std::find(local_list_results.begin(), local_list_results.end(), prev_token_str) == local_list_results.end())
+            {
+                if (!listResults[i].is_directory)
+                {
+                    if ((prev_token_str.size() > 0) && (strcmp(prev_token_str.c_str(), directorySignifier.c_str()) != 0))
+                    {
+                        struct stat stbuf;
+                        stbuf.st_mode = S_IFREG | 0770; // Regular file (not a directory)
+                        stbuf.st_nlink = 1;
+                        stbuf.st_size = listResults[i].content_length;
+                        fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+                        if (AZS_PRINT)
+                        {
+                            fprintf(stdout, "blob result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
+                        }
+                    }
+
+                }
+                else
+                {
+                    if (prev_token_str.size() > 0)
+                    {
+                        struct stat stbuf;
+                        stbuf.st_mode = S_IFDIR | 0770;
+                        stbuf.st_nlink = 2;
+                        fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
+                        if (AZS_PRINT)
+                        {
+                            fprintf(stdout, "dir result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
+                        }
+                    }
+
+                }
             }
 
 
-            free(nameCopy);
+//            free(nameCopy);
         }
 
     }
@@ -145,87 +206,34 @@ int azs_rmdir(const char *path)
         pathStr.push_back('/');
     }
 
-    errno = 0;
-    int dirStatus = is_directory_empty(str_options.containerName, "/", pathStr.substr(1));
-    if (errno != 0)
-    {
-        return 0 - map_errno(errno);
-    }
-    if (dirStatus == 0)
-    {
-        return -ENOENT;
-    }
-    if (dirStatus == 2)
-    {
-        return -ENOTEMPTY;
-    }
-
     std::string pathString(path);
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
     if (AZS_PRINT)
     {
-        fprintf(stdout, "deleting file %s\n", mntPath);
+        fprintf(stdout, "deleting local directory %s\n", mntPath);
     }
-    remove(mntPath);
+    remove(mntPath); // This will fail if the cache is not empty, which is fine, as in this case it will also fail later, after the server-side check.
+
+    errno = 0;
+    int dirStatus = is_directory_empty(str_options.containerName, "/", pathStr.substr(1));
+    if (errno != 0)
+    {
+        return 0 - map_errno(errno);
+    }
+    if (dirStatus == D_NOTEXIST)
+    {
+        return -ENOENT;
+    }
+    if (dirStatus == D_NOTEMPTY)
+    {
+        return -ENOTEMPTY;
+    }
 
     pathStr.append(".directory");
-    int ret = azs_unlink(pathStr.c_str());
-    if (ret < 0)
-    {
-        return ret;
-    }
+    azs_unlink(pathStr.c_str());
 
-
-
-    /*    errno = 0;
-        std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
-        if (errno != 0)
-        {
-            return 0 - map_errno(errno);
-        }
-
-        int i = 0;
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "result count = %d\n", listResults.size());
-        }
-        for (; i < listResults.size(); i++)
-        {
-            if (!listResults[i].is_directory)
-            {
-                std::string path_to_blob(listResults[i].name);
-                path_to_blob.insert(0, 1, '/');
-                int res = azs_unlink(path_to_blob.c_str());
-                if (res < 0)
-                {
-                    return res;
-                }
-
-            }
-            else
-            {
-                std::string path_to_blob(listResults[i].name);
-                path_to_blob.insert(0, 1, '/');
-                int res = azs_rmdir(path_to_blob.c_str());
-                if (res < 0)
-                {
-                    return res;
-                }
-            }
-        }
-
-        std::string pathString(path);
-        const char * mntPath;
-        std::string mntPathString = prepend_mnt_path_string(pathString);
-        mntPath = mntPathString.c_str();
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "deleting file %s\n", mntPath);
-        }
-        remove(mntPath);
-        */
 
     return 0;
 
