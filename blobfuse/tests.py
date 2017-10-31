@@ -14,8 +14,8 @@ import fcntl
 import multiprocessing
 
 class TestFuse(unittest.TestCase):
-    blobdir = "/home/asorrin/code/azure-storage-fuse/build/mountdir"
-    localdir = "/mnt/tmp2"
+    blobdir = "/path/to/mount" # Path to the mounted container
+    localdir = "/mnt/tmp2" # A local temp directory, not the same one used by blobfuse.
     src = ""
     dest = ""
     blobstage = ""
