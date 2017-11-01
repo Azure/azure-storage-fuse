@@ -5,7 +5,7 @@ BLOBFS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ## For example, on ubuntu - sudo apt-get install pkg-config libfuse-dev cmake libcurl4-openssl-dev -y
 mkdir build
 cd build
-## Use cmake3 if it's available.  If not, then fallback to the default "cmake", which will hopefully be of a version > 3.5.  Otherwise, fail.
+## Use cmake3 if it's available.  If not, then fallback to the default "cmake".  Otherwise, fail.
 cmake3 -DCMAKE_BUILD_TYPE=Release ..
 if [ $? -ne 0 ]
 then
@@ -15,6 +15,6 @@ if [ $? -ne 0 ]
 then
 	ERRORCODE=$?
 	echo "cmake failed.  Please ensure that cmake version 3.5 or greater is installed and available."
-	exit ERRORCODE
+	exit $ERRORCODE
 fi
 make
