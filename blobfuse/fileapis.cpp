@@ -134,7 +134,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             close(fd);
             if (storage_errno != 0)
             {
-                // TODO - Delete the file
+                remove(mntPath);
                 return 0 - map_errno(storage_errno);
             }
             if (errno != 0)
