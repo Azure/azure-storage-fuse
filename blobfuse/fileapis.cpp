@@ -447,6 +447,7 @@ int azs_release(const char *path, struct fuse_file_info * fi)
             fprintf(stdout, "Access failed.\n");
         }
     }
+    delete (struct fhwrapper *)fi->fh;
     return 0;
 }
 
