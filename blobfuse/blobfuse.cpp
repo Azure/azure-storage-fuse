@@ -137,6 +137,7 @@ void *azs_init(struct fuse_conn_info * conn)
 void print_usage()
 {
     fprintf(stdout, "Usage: blobfuse <mount-folder> --config-file=<config-file> --tmp-path=<temp-path> [--use-https=false] [--file-cache-timeout-in-seconds=120]\n");
+    fprintf(stdout, "Please see https://github.com/Azure/azure-storage-fuse for installation and configuration instructions.\n");
 }
 
 int main(int argc, char *argv[])
@@ -223,7 +224,8 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    fuse_opt_add_arg(&args, "-omax_read=4194304");
+    fuse_opt_add_arg(&args, "-omax_read=131072");
+    fuse_opt_add_arg(&args, "-omax_write=131072");
     if(0 != ensure_files_directory_exists_in_cache(prepend_mnt_path_string("/placeholder")))
     {
         fprintf(stderr, "Failed to create direcotry on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
@@ -243,7 +245,9 @@ int main(int argc, char *argv[])
     // FUSE contains a feature where it automatically implements 'soft' delete if one process has a file open when another calls unlink().
     // This feature causes us a bunch of problems, so we use "-ohard_remove" to disable it, and track the needed 'soft delete' functionality on our own.
     fuse_opt_add_arg(&args, "-ohard_remove");
-
+    fuse_opt_add_arg(&args, "-obig_writes");
+    fuse_opt_add_arg(&args, "-ofsname=blobfuse");
+    fuse_opt_add_arg(&args, "-okernel_cache");
     umask(0);
 
     ret =  fuse_main(args.argc, args.argv, &azs_blob_operations, NULL);

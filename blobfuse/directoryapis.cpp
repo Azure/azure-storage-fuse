@@ -91,6 +91,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 
             dir_ent = readdir(dir_stream);
         }
+        closedir(dir_stream);
     }
 
     errno = 0;
