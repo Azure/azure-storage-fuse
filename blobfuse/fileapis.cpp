@@ -90,10 +90,10 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     if ((statret != 0) || ((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds))  // TODO: Consider using "modified time" here, rather than "access time".
     {
         remove(mntPath);
-
-        if(0 != ensure_files_directory_exists_in_cache(mntPathString))
+	int status = ensure_files_directory_exists_in_cache(mntPathString);
+        if(status != 0 && errno != EEXIST)
         {
-            fprintf(stderr, "Failed to create file or direcotry on cache directory: %s, errno = %d.\n", mntPathString.c_str(),  errno);
+            fprintf(stderr, "Failed to create file or directory on cache directory: %s, errno = %d.\n", mntPathString.c_str(),  errno);
             return -1;
         }
         std::ofstream filestream(mntPathString, std::ofstream::binary | std::ofstream::out);
