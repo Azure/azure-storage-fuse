@@ -75,7 +75,7 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
             failcount = 0;
             if (AZS_PRINT)
             {
-                fprintf(stdout, "results count = %lu\n", response.blobs.size());
+                fprintf(stdout, "results count = %s\n", to_str(response.blobs.size()).c_str());
                 fprintf(stdout, "next_marker = %s\n", response.next_marker.c_str());
             }
             continuation = response.next_marker;
@@ -402,7 +402,7 @@ int azs_rename_directory(const char *src, const char *dst)
 
     if (AZS_PRINT)
     {
-        fprintf(stdout, "result count = %lu\n", listResults.size());
+        fprintf(stdout, "result count = %s\n", to_str(listResults.size()).c_str());
     }
     for (size_t i = 0; i < listResults.size(); i++)
     {

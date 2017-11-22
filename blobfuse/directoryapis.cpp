@@ -110,7 +110,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 
     if (AZS_PRINT)
     {
-        fprintf(stdout, "result count = %lu\n", listResults.size());
+        fprintf(stdout, "result count = %s\n", to_str(listResults.size()).c_str());
     }
     for (size_t i = 0; i < listResults.size(); i++)
     {
