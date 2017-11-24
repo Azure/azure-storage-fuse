@@ -3,12 +3,6 @@
 
 #include "base64.h"
 
-namespace {
-    bool is_ascii(char c) {
-        return static_cast<signed char>(c) >= 0;
-    }
-}
-
 namespace microsoft_azure {
     namespace storage {
 
@@ -103,7 +97,7 @@ namespace microsoft_azure {
                 for (auto iter = input.begin(); iter != input.end(); ++iter, --size)
                 {
                     const auto ch = *iter;
-                    if (!is_ascii(ch))
+                    if (ch < 0)
                     {
                         throw std::runtime_error("invalid character found in base64 string");
                     }
@@ -123,7 +117,7 @@ namespace microsoft_azure {
                         if (size == 2)
                         {
                             const auto ch2 = *(iter + 1);
-                            if (!is_ascii(ch2))
+                            if (ch2 < 0)
                             {
                                 throw std::runtime_error("invalid padding character found in base64 string");
                             }
