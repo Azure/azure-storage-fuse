@@ -42,6 +42,14 @@ int ensure_files_directory_exists_in_cache(const std::string file_path)
             {
                 status = mkdir(copypath, 0770);
             }
+
+            // Ignore if some other thread was successful creating the path
+	    if(errno == EEXIST)
+            {
+                status = 0;
+                errno = 0;
+            }
+
             *slash = '/';
         }
         pp = slash + 1;

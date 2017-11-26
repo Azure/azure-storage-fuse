@@ -87,11 +87,11 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     // If the file/blob being opened does not exist in the cache, or the version in the cache is too old, we need to download / refresh the data from the service.
     struct stat buf;
     int statret = stat(mntPath, &buf);
-    if ((statret != 0) || ((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds))  // TODO: Consider using "modified time" here, rather than "access time".
+    if ((statret != 0) || ((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds)) 
     {
         remove(mntPath);
-	int status = ensure_files_directory_exists_in_cache(mntPathString);
-        if(status != 0 && errno != EEXIST)
+
+        if(0 != ensure_files_directory_exists_in_cache(mntPathString))
         {
             fprintf(stderr, "Failed to create file or directory on cache directory: %s, errno = %d.\n", mntPathString.c_str(),  errno);
             return -1;
