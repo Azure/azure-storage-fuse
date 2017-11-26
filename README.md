@@ -38,7 +38,7 @@ Please take careful note of the following points, before using blobfuse:
 
 ## Installation
 
-In order to invoke blobfuse, you will need to install the dependencies (libfuse, libcurl, GnuTLS and cmake), clone this repository and build. The process is explained in the [blobfuse installation](https://github.com/Azure/azure-storage-fuse/wiki/Installation) page.
+You can install blobfuse from the Linux Software Repository for Microsoft products. The process is explained in the [blobfuse installation](https://github.com/Azure/azure-storage-fuse/wiki/Installation) page. Alternatively, you can clone this repository, install the dependencies (libfuse, libcurl and GnuTLS) and build from source code.
 
 ## Usage
 
