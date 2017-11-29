@@ -94,19 +94,39 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
         closedir(dir_stream);
     }
 
-    errno = 0;
-    std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
-    if (errno != 0)
-    {
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "azs_readdir list blobs failed with error = %d\n", errno);
-        }
-        return 0 - map_errno(errno);
-    }
-
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
+
+    errno = 0;
+    // List cache: if within cache_timeout; use the local results only
+    // will check whether directorySignifier file was updated within the cache timeout
+    struct stat dir_buf;
+    std::vector<list_blobs_hierarchical_item> listResults;
+    int statret = stat((mntPathString + directorySignifier).c_str(), &dir_buf);
+    if(statret == -1 || ((time(NULL) - dir_buf.st_mtime) > file_cache_timeout_in_seconds ) || list_cache == false)
+    {
+        listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
+        if (errno != 0)
+        {
+            if (AZS_PRINT)
+            {
+                fprintf(stdout, "azs_readdir list blobs failed with error = %d\n", errno);
+            }
+            return 0 - map_errno(errno);
+        }
+
+        // List cache: touch directorySignifier file to note down the last listing time
+	if(list_cache == true)
+        {
+            int fd = open((mntPathString + directorySignifier).c_str(), O_WRONLY|O_CREAT|O_NOCTTY|O_NONBLOCK, 0660);
+            futimens(fd, nullptr);
+            close(fd);
+        }
+    }
+    else
+    {
+        return 0;
+    }
 
     if (AZS_PRINT)
     {
@@ -142,6 +162,19 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         stbuf.st_nlink = 1;
                         stbuf.st_size = listResults[i].content_length;
                         fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+
+                        /// List cache: cache the found file locally without the contents
+                        if(list_cache == true)
+                        {
+                            off_t length = listResults[i].content_length;
+                            int fd = open((mntPathString+prev_token_str).c_str(), O_RDWR | O_CREAT, S_IRWXU | S_IRWXG);
+                            int res = ftruncate(fd, length);
+                            // List cache: delete if the created cache could not be zeroed
+                            if(res == -1)
+                                unlink((mntPathString+prev_token_str).c_str());
+                            close(fd);
+			}
+
                         if (AZS_PRINT)
                         {
                             fprintf(stdout, "blob result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
@@ -156,6 +189,11 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         stbuf.st_mode = S_IFDIR | 0770;
                         stbuf.st_nlink = 2;
                         fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
+
+			/// List cache: cache the found directory locally
+                        if(list_cache == true)
+                            mkdir((mntPathString+prev_token_str).c_str(), 0770);
+
                         if (AZS_PRINT)
                         {
                             fprintf(stdout, "dir result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);

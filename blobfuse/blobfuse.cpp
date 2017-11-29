@@ -8,11 +8,13 @@ struct options
     const char *config_file; // Connection to Azure Storage information (account name, account key, etc)
     const char *use_https; // True if https should be used (defaults to false)
     const char *file_cache_timeout_in_seconds; // Timeout for the file cache (defaults to 120 seconds)
+    const char *list_cache; // caches file and directory attributes in temp location without the contents
 };
 
 struct options options;
 struct str_options str_options;
 int file_cache_timeout_in_seconds;
+bool list_cache;
 
 #define OPTION(t, p) { t, offsetof(struct options, p), 1 }
 const struct fuse_opt option_spec[] =
@@ -21,6 +23,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--config-file=%s", config_file),
     OPTION("--use-https=%s", use_https),
     OPTION("--file-cache-timeout-in-seconds=%s", file_cache_timeout_in_seconds),
+    OPTION("--list-cache=%s", list_cache),
     FUSE_OPT_END
 };
 
@@ -208,6 +211,15 @@ int main(int argc, char *argv[])
         }
     }
 
+    list_cache = false;
+    if (options.list_cache != NULL)
+    {
+	std::string list_cache_string(options.list_cache);
+        if(list_cache_string == "true")
+        {
+            list_cache = true;
+        }
+    }
 
     azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, use_https));
     if(errno != 0)

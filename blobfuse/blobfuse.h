@@ -65,6 +65,7 @@ struct str_options
 extern struct str_options str_options;
 
 extern int file_cache_timeout_in_seconds;
+extern bool list_cache; 
 
 // This is used to make all the calls to Storage
 // The C++ lite client does not store state, other than connection info, so we can use it between calls without issue.
