@@ -14,7 +14,7 @@ import fcntl
 import multiprocessing
 
 class TestFuse(unittest.TestCase):
-    blobdir = "/path/to/mount" # Path to the mounted container
+    blobdir = "/home/seguler/mount" # Path to the mounted container
     localdir = "/mnt/tmp" # A local temp directory, not the same one used by blobfuse.
     src = ""
     dest = ""
@@ -1117,7 +1117,24 @@ class TestFuse(unittest.TestCase):
         
         os.close(fd)
         os.remove(testFilePath)
-        
+       
+    def test_list_cache(self): 
+        smallBlobsSourceDir = os.path.join(self.blobstage, "smallblobs")
+        if not os.path.exists(smallBlobsSourceDir):
+            os.makedirs(smallBlobsSourceDir);
+
+        for i in range(0,10):
+            filename = str(uuid.uuid4())
+            filepath = os.path.join(smallBlobsSourceDir, filename)
+            os.system("head -c 100K < /dev/zero >> " + filepath);
+
+        numberOfFiles = len([name for name in os.listdir(smallBlobsSourceDir) if os.path.isfile(os.path.join(smallBlobsSourceDir, name))])
+        self.assertEqual(10, numberOfFiles)
+        time.sleep(180)
+        newNumberOfFiles = len([name for name in os.listdir(smallBlobsSourceDir) if os.path.isfile(os.path.join(smallBlobsSourceDir, name))])
+        self.assertEqual(numberOfFiles, newNumberOfFiles)
+
+        shutil.rmtree(smallBlobsSourceDir)
         
 if __name__ == '__main__':
     unittest.main()

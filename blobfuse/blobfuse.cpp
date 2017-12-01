@@ -8,13 +8,13 @@ struct options
     const char *config_file; // Connection to Azure Storage information (account name, account key, etc)
     const char *use_https; // True if https should be used (defaults to false)
     const char *file_cache_timeout_in_seconds; // Timeout for the file cache (defaults to 120 seconds)
-    const char *list_cache; // caches file and directory attributes in temp location without the contents
+    const char *list_attribute_cache; // caches file and directory attributes in temp location without the contents
 };
 
 struct options options;
 struct str_options str_options;
 int file_cache_timeout_in_seconds;
-bool list_cache;
+bool list_attribute_cache;
 
 #define OPTION(t, p) { t, offsetof(struct options, p), 1 }
 const struct fuse_opt option_spec[] =
@@ -23,7 +23,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--config-file=%s", config_file),
     OPTION("--use-https=%s", use_https),
     OPTION("--file-cache-timeout-in-seconds=%s", file_cache_timeout_in_seconds),
-    OPTION("--list-cache=%s", list_cache),
+    OPTION("--list-attribute-cache=%s", list_attribute_cache),
     FUSE_OPT_END
 };
 
@@ -211,13 +211,13 @@ int main(int argc, char *argv[])
         }
     }
 
-    list_cache = false;
-    if (options.list_cache != NULL)
+    list_attribute_cache = false;
+    if (options.list_attribute_cache != NULL)
     {
-	std::string list_cache_string(options.list_cache);
-        if(list_cache_string == "true")
+	std::string list_attribute_cache_string(options.list_attribute_cache);
+        if(list_attribute_cache_string == "true")
         {
-            list_cache = true;
+            list_attribute_cache = true;
         }
     }
 

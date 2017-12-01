@@ -84,10 +84,10 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     auto fmutex = file_lock_map::get_instance()->get_mutex(path);
     std::lock_guard<std::mutex> lock(*fmutex);
 
-    // If the file/blob being opened does not exist in the cache, or the version in the cache is too old, or it occupies zero blocks with a size (List cache), we need to download / refresh the data from the service.
+    // If the file/blob being opened does not exist in the cache, or the version in the cache is too old, or it occupies zero blocks with a size (List attribute cache), we need to download / refresh the data from the service.
     struct stat buf;
     int statret = stat(mntPath, &buf);
-    if ((statret != 0) || (buf.st_blocks == 0 && buf.st_size !=0 && list_cache == true ) || ((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds)) 
+    if ((statret != 0) || (buf.st_blocks == 0 && buf.st_size !=0 && list_attribute_cache == true ) || ((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds)) 
     {
         remove(mntPath);
 
