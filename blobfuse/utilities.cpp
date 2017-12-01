@@ -27,6 +27,7 @@ int ensure_files_directory_exists_in_cache(const std::string file_path)
     char *copypath = strdup(file_path.c_str());
 
     status = 0;
+    errno = 0;
     pp = copypath;
     while (status == 0 && (slash = strchr(pp, '/')) != 0)
     {
