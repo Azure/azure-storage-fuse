@@ -44,9 +44,13 @@ namespace microsoft_azure {
         }
 #else
         std::string hash(const std::string &to_sign, const std::vector<unsigned char> &key) {
+            // For proper locking, instructing gcrypt to use pthreads 
+            gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
+            gnutls_global_init(); 
             unsigned int l = SHA256_DIGEST_LENGTH;
             unsigned char digest[SHA256_DIGEST_LENGTH];
             gnutls_hmac_fast(GNUTLS_MAC_SHA256,key.data(), key.size(),(const unsigned char *)to_sign.data(), to_sign.size(), digest);
+            gnutls_global_deinit();
             return to_base64(std::vector<unsigned char>(digest, digest + l));
 
         }
