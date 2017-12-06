@@ -9,6 +9,8 @@
 #else
 #include <gnutls/gnutls.h>
 #include <gnutls/crypto.h>
+#include <gcrypt.h>
+#include <pthread.h>
 #define SHA256_DIGEST_LENGTH    32
 #endif
 
@@ -52,6 +54,7 @@ namespace microsoft_azure {
                 AZURE_STORAGE_API static std::string hash_impl(const std::string &input, const std::vector<unsigned char> &key);
             };
 #else
+            GCRY_THREAD_OPTION_PTHREAD_IMPL;
             std::string hash(const std::string &to_sign, const std::vector<unsigned char> &key);
 #endif
 
