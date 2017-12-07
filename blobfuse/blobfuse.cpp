@@ -1,4 +1,16 @@
 #include "blobfuse.h"
+#include <string>
+
+namespace {
+    std::string trim(const std::string& str) {
+        const size_t start = str.find_first_not_of(' ');
+        if (std::string::npos == start) {
+            return std::string();
+        }
+        const size_t end = str.find_last_not_of(' ');
+        return str.substr(start, end - start + 1);
+    }
+}
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
 // The only two custom options we take in are the tmpPath (path to temp / file cache directory) and the configFile (connection to Azure Storage info.)
@@ -60,10 +72,11 @@ int read_config(std::string configFile)
     {
 
         data.str(line.substr(line.find(" ")+1));
+        const std::string value(trim(data.str()));
 
         if(line.find("accountName") != std::string::npos)
         {
-            std::string accountNameStr(data.str());
+            std::string accountNameStr(value);
             /*            if(!is_lowercase_string(accountNameStr))
                         {
                             fprintf(stderr, "Account name must be lower cases.");
@@ -76,12 +89,12 @@ int read_config(std::string configFile)
         }
         else if(line.find("accountKey") != std::string::npos)
         {
-            std::string accountKeyStr(data.str());
+            std::string accountKeyStr(value);
             str_options.accountKey = accountKeyStr;
         }
         else if(line.find("containerName") != std::string::npos)
         {
-            std::string containerNameStr(data.str());
+            std::string containerNameStr(value);
             /*            if(!is_lowercase_string(containerNameStr))
                         {
                             fprintf(stderr, "Container name must be lower cases.");
