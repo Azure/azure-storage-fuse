@@ -209,6 +209,14 @@ int main(int argc, char *argv[])
     }
 
 
+    // For proper locking, instructing gcrypt to use pthreads 
+    gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
+    if(GNUTLS_E_SUCCESS != gnutls_global_init())
+    {
+        fprintf(stderr, "GnuTLS initialization failed: errno = %d.\n", errno);
+        return 1; 
+    }
+
     azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, use_https));
     if(errno != 0)
     {
@@ -251,6 +259,8 @@ int main(int argc, char *argv[])
     umask(0);
 
     ret =  fuse_main(args.argc, args.argv, &azs_blob_operations, NULL);
+
+    gnutls_global_deinit();
 
     return ret;
 }
