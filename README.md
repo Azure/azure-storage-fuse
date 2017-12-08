@@ -71,7 +71,7 @@ Now you can mount using the provided mount script (mount.sh):
 	* --tmp-path=/path/to/cache : Configures the tmp location for the cache. Always configure the fastest disk (SSD) for best performance. Note that the files in this directory are not purged automatically.
 	* --use-https=true/false : Enables HTTPS communication with Blob storage. False by defaul. Enable it to protect against data corruption over the wire.
 	* --file-cache-timeout-in-seconds=120 : Blobs will be cached in the temp folder for this many seconds. 120 seconds by default. During this time, blobfuse will not check whether the file is up to date or not.
-	* --list-attribute-cache=false : Attributes returned from Blob service when listing a directory will be stored in temp folder for cache purposes. This significantly improves performance for small files. Once enabled, blobfuse will create an empty file in the temp folder for each file listed in a blob directory. Keep in mid this may exhaust inodes in the system if you are working with billions of files.
+	* --list-attribute-cache=false : Attributes returned from Blob service when listing a directory will be stored in temp folder for cache purposes. This significantly improves performance for small files. Once enabled, blobfuse will create an empty file in the temp folder for each file listed in a blob directory. Keep in mind this may exhaust inodes in the system if you are working with billions of files.
 	
 
 ### Notes
