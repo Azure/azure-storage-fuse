@@ -165,9 +165,12 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                             off_t length = listResults[i].content_length;
                             int fd = open((mntPathString+prev_token_str).c_str(), O_RDWR | O_CREAT, S_IRWXU | S_IRWXG);
                             int res = ftruncate(fd, length);
-                            // List attribute cache: delete if the created cache could not be zeroed
+                            // List attribute cache: delete if the created cache could not be zeroed and clean up the directory signifier
                             if(res == -1)
+                            {
                                 unlink((mntPathString+prev_token_str).c_str());
+                                unlink((mntPathString + directorySignifier).c_str());
+                            }
                             close(fd);
                         }
 
