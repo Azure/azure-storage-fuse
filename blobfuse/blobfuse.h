@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <time.h>
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <map>
 #include <memory>
@@ -303,5 +304,14 @@ int azs_removexattr(const char *path, const char *name);
 /** Internal method, used to rename a single file in a (hopefully) lock-safe manner. */
 int azs_rename_single_file(const char *src, const char *dst);
 
+/**
+* Convert a value into a string.
+*/
+template<typename T>
+std::string to_str(const T& value) {
+   std::ostringstream out;
+   out << value;
+   return out.str();
+}
 
 #endif
