@@ -15,6 +15,9 @@
 #include <map>
 #include <memory>
 #include <dirent.h>
+#include <gnutls/gnutls.h>
+#include <gcrypt.h>
+#include <pthread.h>
 
 // Declare that we're using version 2.9 of FUSE
 // 3.0 is not built-in to many distros yet.
@@ -34,6 +37,9 @@
 #define D_NOTEXIST -1
 #define D_EMPTY 0
 #define D_NOTEMPTY 1
+
+// instruct gcrypt to use pthread
+GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
 using namespace microsoft_azure::storage;
 
