@@ -640,6 +640,7 @@ namespace microsoft_azure {
                     close(fd);
                     return;
                 }
+                close(fd);
 
                 unsigned long long range = 4*1024*1024;
                 std::vector<std::future<int>> task_list;
