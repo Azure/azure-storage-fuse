@@ -26,5 +26,18 @@ namespace microsoft_azure {
         };
 
         //AZURE_STORAGE_API void build_request(const storage_account &a, const get_blob_request_base &r, http_base &h);
+
+        class chunk_property
+        {
+        public:
+            chunk_property()
+               :totalSize{0},
+               size{0}
+            {
+            }
+            long long totalSize;
+            unsigned long long size;
+            std::string etag;
+        };
     }
 }

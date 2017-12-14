@@ -12,6 +12,7 @@
 #include "executor.h"
 #include "put_block_list_request_base.h"
 #include "get_blob_property_request_base.h"
+#include "get_blob_request_base.h"
 #include "get_container_property_request_base.h"
 #include "list_blobs_request_base.h"
 
@@ -55,6 +56,17 @@ namespace microsoft_azure { namespace storage {
         unsigned int concurrency() const {
             return m_client->size();
         }
+
+        /// <summary>
+        /// Synchronously download the contents of a blob to a stream.
+        /// </summary>
+        /// <param name="container">The container name.</param>
+        /// <param name="blob">The blob name.</param>
+        /// <param name="offset">The offset at which to begin downloading the blob, in bytes.</param>
+        /// <param name="size">The size of the data to download from the blob, in bytes.</param>
+        /// <param name="os">The target stream.</param>
+        /// <returns>A <see cref="std::future" /> object that represents the current operation.</returns>
+        AZURE_STORAGE_API storage_outcome<chunk_property> get_chunk_to_stream_sync(const std::string &container, const std::string &blob, unsigned long long offset, unsigned long long size, std::ostream &os);
 
         /// <summary>
         /// Intitiates an asynchronous operation  to download the contents of a blob to a stream.
