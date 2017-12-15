@@ -702,7 +702,7 @@ const unsigned long long DOWNLOAD_CHUNK_SIZE = 4 * 1024 * 1024;
                         break;
                     }
 
-                    const auto range = std::min(offset + DOWNLOAD_CHUNK_SIZE, length - offset);
+                    const auto range = std::min(DOWNLOAD_CHUNK_SIZE, length - offset);
                     auto single_download = std::async(std::launch::async, [originalEtag, offset, range, this, &destPath, &container, &blob](){
                         std::vector<char> buffer(range);
                         std::ostringstream os;
