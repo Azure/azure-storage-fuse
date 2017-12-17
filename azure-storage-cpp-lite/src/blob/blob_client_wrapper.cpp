@@ -14,10 +14,9 @@
 namespace microsoft_azure {
     namespace storage {
 
-const unsigned long long DOWNLOAD_CHUNK_SIZE = 4 * 1024 * 1024;
+const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
 
         class mempool
-        {
         public:
             ~mempool()
             {
@@ -681,8 +680,10 @@ const unsigned long long DOWNLOAD_CHUNK_SIZE = 4 * 1024 * 1024;
                 close(fd);
 
                 // Download the rest.
+                const auto left = length - firstChunk.response().size;
+                const auto chunk_size = std::max(DOWNLOAD_CHUNK_SIZE, (left + downloaders - 1)/ downloaders);
                 std::vector<std::future<int>> task_list;
-                for(unsigned long long offset = firstChunk.response().size; offset < length; offset += DOWNLOAD_CHUNK_SIZE)
+                for(unsigned long long offset = firstChunk.response().size; offset < length; offset += chunk_size)
                 {
                     // Limit parallelism.
                     while(task_list.size() > downloaders)
@@ -702,13 +703,13 @@ const unsigned long long DOWNLOAD_CHUNK_SIZE = 4 * 1024 * 1024;
                         break;
                     }
 
-                    const auto range = std::min(DOWNLOAD_CHUNK_SIZE, length - offset);
+                    const auto range = std::min(chunk_size, length - offset);
                     auto single_download = std::async(std::launch::async, [originalEtag, offset, range, this, &destPath, &container, &blob](){
-                        std::vector<char> buffer(range);
-                        std::ostringstream os;
-                        os.rdbuf()->pubsetbuf(&buffer[0], range);
-
-                        auto chunk = m_blobClient->get_chunk_to_stream_sync(container, blob, offset, range, os);
+                        // Note, keep std::ios_base::in to prevent truncating of the file.
+                        auto output = std::ofstream(destPath.c_str(), std::ios_base::out |  std::ios_base::in);
+                        output.seekp(offset);
+                        auto chunk = m_blobClient->get_chunk_to_stream_sync(container, blob, offset, range, output);
+                        output.close();
                         if(!chunk.success())
                         {
                            // Looks like the blob has been replaced by smaller one - ask user to retry.
@@ -721,19 +722,9 @@ const unsigned long long DOWNLOAD_CHUNK_SIZE = 4 * 1024 * 1024;
                         if (originalEtag != chunk.response().etag) {
                            return EAGAIN;
                         }
-
-                        // Persist the chunk.
-                        auto fd = open(destPath.c_str(), O_WRONLY);
-                        if (-1 == fd) {
-                            return errno;
-                        }
-                        auto r = pwrite(fd, os.str().c_str(), range, offset);
-                        while (r != static_cast<ssize_t>(range) && r != -1) {
-                            r = pwrite(fd, os.str().c_str(), range, offset);
-                        }
-                        close(fd);
-                        if (-1 == r) {
-                            return errno;
+                        // Check for any writing errors.
+                        if (!output) {
+                            return unknown_error;
                         }
                         return 0;
                     });
