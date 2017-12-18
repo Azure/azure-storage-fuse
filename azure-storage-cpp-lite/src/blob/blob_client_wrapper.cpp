@@ -648,7 +648,7 @@ const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
                     // blob size, so proceed as there is no error.
                 }
 
-                // Smock check if the total size is known, otherwise - fail.
+                // Smoke check if the total size is known, otherwise - fail.
                 if (firstChunk.response().totalSize < 0) {
                    errno = blob_no_content_range;
                    return;
