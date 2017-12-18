@@ -685,24 +685,6 @@ const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
                 std::vector<std::future<int>> task_list;
                 for(unsigned long long offset = firstChunk.response().size; offset < length; offset += chunk_size)
                 {
-                    // Limit parallelism.
-                    while(task_list.size() > downloaders)
-                    {
-                        for(auto iter = task_list.begin(); iter != task_list.end() && task_list.size() > downloaders;)
-                        {
-                            iter->wait();
-                            auto result = iter->get();
-                            if (0 != result) {
-                                errcode = result;
-                            }
-                            iter = task_list.erase(iter);
-                        }
-                    }
-
-                    if (0 != errcode) {
-                        break;
-                    }
-
                     const auto range = std::min(chunk_size, length - offset);
                     auto single_download = std::async(std::launch::async, [originalEtag, offset, range, this, &destPath, &container, &blob](){
                         // Note, keep std::ios_base::in to prevent truncating of the file.
