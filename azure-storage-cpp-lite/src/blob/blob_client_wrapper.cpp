@@ -17,6 +17,7 @@ namespace microsoft_azure {
 const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
 
         class mempool
+        {
         public:
             ~mempool()
             {
