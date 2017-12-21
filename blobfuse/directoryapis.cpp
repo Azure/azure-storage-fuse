@@ -116,7 +116,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
             return 0 - map_errno(errno);
         }
 
-        // List attriute cache: touch directorySignifier file to note down the last listing time
+        // List attribute cache: touch directorySignifier file to note down the last listing time
         if(list_attribute_cache == true)
         {
             int fd = open((mntPathString + directorySignifier).c_str(), O_WRONLY|O_CREAT|O_NOCTTY|O_NONBLOCK, 0770);
