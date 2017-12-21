@@ -1,4 +1,5 @@
 #include "blobfuse.h"
+#include <sys/file.h>
 
 int azs_mkdir(const char *path, mode_t)
 {
@@ -163,15 +164,39 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         if(list_attribute_cache == true)
                         {
                             off_t length = listResults[i].content_length;
+
+                            // mutex lock the file path
+                            auto fmutex = file_lock_map::get_instance()->get_mutex(("/" + listResults[i].name).c_str());
+                            std::lock_guard<std::mutex> lock(*fmutex);
                             int fd = open((mntPathString+prev_token_str).c_str(), O_RDWR | O_CREAT, S_IRWXU | S_IRWXG);
-                            int res = ftruncate(fd, length);
-                            // List attribute cache: delete if the created cache could not be zeroed and clean up the directory signifier
-                            if(res == -1)
+
+                            // flock the file before ftruncating
+                            int flockres = flock(fd, LOCK_EX|LOCK_NB);
+                            if (flockres == 0)
                             {
-                                unlink((mntPathString+prev_token_str).c_str());
-                                unlink((mntPathString + directorySignifier).c_str());
+                                if (AZS_PRINT)
+                                {
+                                    fprintf(stdout, "Lock acquired, now ftruncating %s\n", ("/" + listResults[i].name).c_str());
+                                }
+
+                                int res = ftruncate(fd, length);
+                                // List attribute cache: delete if the created cache could not be zeroed and clean up the directory signifier
+                                if(res == -1)
+                                {
+                                    unlink((mntPathString+prev_token_str).c_str());
+                                    unlink((mntPathString + directorySignifier).c_str());
+                                }
+                                close(fd);
+
+                                flock(fd, LOCK_UN);
                             }
-                            close(fd);
+                            else
+                            {
+                                if (AZS_PRINT)
+                                {
+                                    fprintf(stdout, "Lock acquisition failed, errno = %d\n", errno);
+                                }
+                            }
                         }
 
                         if (AZS_PRINT)
