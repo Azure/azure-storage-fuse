@@ -120,6 +120,49 @@ int read_config(std::string configFile)
     }
 }
 
+int test_sparse_files()
+{
+
+   // path to testfile in temp location
+   std::string pathStr("testfile");
+   std::string mntPathString = prepend_mnt_path_string(pathStr);
+
+   // create the test file
+   int fd = open((mntPathString).c_str(), O_RDWR | O_CREAT, S_IRWXU | S_IRWXG);
+   if(fd == -1)
+   {
+       return 1;
+   }
+   else
+   {
+       int res = ftruncate(fd, 1000000);
+       if(res == -1)
+       {
+           return 1;
+       }
+
+       // ensure data to be synced to disk
+       syncfs(fd);
+
+       // now test whether the file allocates any blocks on disk
+       struct stat buf;
+       int statret = stat(mntPathString.c_str(), &buf);
+       if(statret == 0 && buf.st_blocks == 0)
+       {
+           unlink(mntPathString.c_str());
+           return 0;
+       }
+       else
+       {
+           unlink(mntPathString.c_str());
+           return 1;
+       }
+   }
+
+   return 1;
+}
+
+
 
 void *azs_init(struct fuse_conn_info * conn)
 {
@@ -215,7 +258,7 @@ int main(int argc, char *argv[])
     if (options.list_attribute_cache != NULL)
     {
         std::string list_attribute_cache_string(options.list_attribute_cache);
-        if(list_attribute_cache_string == "true")
+        if(list_attribute_cache_string == "true" && test_sparse_files() == 0)
         {
             list_attribute_cache = true;
         }
