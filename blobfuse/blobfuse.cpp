@@ -205,9 +205,20 @@ int main(int argc, char *argv[])
         if (https == "true")
         {
             use_https = true;
+            // When mounting a fuse adapter in non-interactive mode, a new process is fork'd so that this process can exit.
+            // This can cause an issue, because "It is an error to try to use a 
+            // PKCS#11 crypto module in a process before it has been initialized in that 
+            // process, even if the module was initialized in the parent process."
+            // (https://developer.mozilla.org/en-US/docs/Mozilla/Projects/NSS/Reference/NSS_environment_variables)
+            // To implement this, NSS does an assertion to check for this case.
+            // There are workarounds in NSS and libcurl to re-initialize in a fork'd process, but certain 
+            // builds of libcurl do not trigger this workaround,
+            // and so HTTPS calls in the child process will fail.
+            // Setting this environment variable fixes the issue by disabling  the assertion.
+            char *snf = (char *)"NSS_STRICT_NOFORK=DISABLED";
+            putenv(snf);
         }
     }
-
 
     // For proper locking, instructing gcrypt to use pthreads 
     gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
