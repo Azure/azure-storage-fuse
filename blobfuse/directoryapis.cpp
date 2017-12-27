@@ -186,9 +186,9 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                                     unlink((mntPathString + prev_token_str).c_str());
                                     unlink((mntPathString + directorySignifier).c_str());
                                 }
-                                close(fd);
 
                                 flock(fd, LOCK_UN);
+                                close(fd);
                             }
                             else
                             {
