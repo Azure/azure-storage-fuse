@@ -183,7 +183,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                                 // List attribute cache: delete if the created cache could not be zeroed and clean up the directory signifier
                                 if(res == -1)
                                 {
-                                    unlink((mntPathString+prev_token_str).c_str());
+                                    unlink((mntPathString + prev_token_str).c_str());
                                     unlink((mntPathString + directorySignifier).c_str());
                                 }
                                 close(fd);
@@ -196,6 +196,10 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                                 {
                                     fprintf(stdout, "Lock acquisition failed, errno = %d\n", errno);
                                 }
+
+                                // invalidate the list attr cache because something went wrong
+                                unlink((mntPathString + prev_token_str).c_str());
+                                unlink((mntPathString + directorySignifier).c_str());
                             }
                         }
 
