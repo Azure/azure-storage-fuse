@@ -8,11 +8,13 @@ struct options
     const char *config_file; // Connection to Azure Storage information (account name, account key, etc)
     const char *use_https; // True if https should be used (defaults to false)
     const char *file_cache_timeout_in_seconds; // Timeout for the file cache (defaults to 120 seconds)
+    const char *list_attribute_cache; // caches file and directory attributes in temp location without the contents
 };
 
 struct options options;
 struct str_options str_options;
 int file_cache_timeout_in_seconds;
+bool list_attribute_cache;
 
 #define OPTION(t, p) { t, offsetof(struct options, p), 1 }
 const struct fuse_opt option_spec[] =
@@ -21,6 +23,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--config-file=%s", config_file),
     OPTION("--use-https=%s", use_https),
     OPTION("--file-cache-timeout-in-seconds=%s", file_cache_timeout_in_seconds),
+    OPTION("--list-attribute-cache=%s", list_attribute_cache),
     FUSE_OPT_END
 };
 
@@ -117,6 +120,49 @@ int read_config(std::string configFile)
     }
 }
 
+int test_sparse_files()
+{
+
+   // path to testfile in temp location
+   std::string pathStr("testfile");
+   std::string mntPathString = prepend_mnt_path_string(pathStr);
+
+   // create the test file
+   int fd = open((mntPathString).c_str(), O_RDWR | O_CREAT, S_IRWXU | S_IRWXG);
+   if(fd == -1)
+   {
+       return 1;
+   }
+   else
+   {
+       int res = ftruncate(fd, 1000000);
+       if(res == -1)
+       {
+           return 1;
+       }
+
+       // ensure data to be synced to disk
+       syncfs(fd);
+
+       // now test whether the file allocates any blocks on disk
+       struct stat buf;
+       int statret = stat(mntPathString.c_str(), &buf);
+       if(statret == 0 && buf.st_blocks == 0)
+       {
+           unlink(mntPathString.c_str());
+           return 0;
+       }
+       else
+       {
+           unlink(mntPathString.c_str());
+           return 1;
+       }
+   }
+
+   return 1;
+}
+
+
 
 void *azs_init(struct fuse_conn_info * conn)
 {
@@ -136,7 +182,7 @@ void *azs_init(struct fuse_conn_info * conn)
 // TODO: print FUSE usage as well
 void print_usage()
 {
-    fprintf(stdout, "Usage: blobfuse <mount-folder> --config-file=<config-file> --tmp-path=<temp-path> [--use-https=false] [--file-cache-timeout-in-seconds=120]\n");
+    fprintf(stdout, "Usage: blobfuse <mount-folder> --config-file=<config-file> --tmp-path=<temp-path> [--use-https=false] [--file-cache-timeout-in-seconds=120] [--list-attribute-cache=false]\n");
     fprintf(stdout, "Please see https://github.com/Azure/azure-storage-fuse for installation and configuration instructions.\n");
 }
 
@@ -208,6 +254,15 @@ int main(int argc, char *argv[])
         }
     }
 
+    list_attribute_cache = false;
+    if (options.list_attribute_cache != NULL)
+    {
+        std::string list_attribute_cache_string(options.list_attribute_cache);
+        if(list_attribute_cache_string == "true" && test_sparse_files() == 0)
+        {
+            list_attribute_cache = true;
+        }
+    }
 
     // For proper locking, instructing gcrypt to use pthreads 
     gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);

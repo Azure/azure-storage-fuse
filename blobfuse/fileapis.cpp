@@ -1,65 +1,40 @@
 #include "blobfuse.h"
 #include <sys/file.h>
 
-// We use two different locking schemes to protect files / blobs against data corruption and data loss scenarios.
-// The first is an in-memory std::mutex, the second is flock (Linux).  Each file path gets its own mutex and flock lock.
-// The in-memory mutex should only be held while control is in a method that is directly communicating with Azure Storage.
-// The flock lock should be held continuously, from the time that the file is opened until the time that the file is closed.  It should also be held during blob download and upload.
-// Blob download should hold the flock lock in exclusive mode.  Read/write operations should hold it in shared mode.
-// Explanations for why we lock in various places are in-line.
-
-// This class contains mutexes that we use to lock file paths during blob upload / download / delete.
-// Each blob / file path gets its own mutex.
-// This mutex should never be held when control is not in an open(), flush(), or unlink() method.
-class file_lock_map
+file_lock_map* file_lock_map::get_instance()
 {
-public:
-    static file_lock_map* get_instance()
+    if(nullptr == _instance.get())
     {
+        std::lock_guard<std::mutex> lock(s_mutex);
         if(nullptr == _instance.get())
         {
-            std::lock_guard<std::mutex> lock(s_mutex);
-            if(nullptr == _instance.get())
-            {
-                _instance.reset(new file_lock_map());
-            }
-        }
-        return _instance.get();
-    }
-
-    std::shared_ptr<std::mutex> get_mutex(std::string path)
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        auto iter = m_lock_map.find(path);
-        if(iter == m_lock_map.end())
-        {
-            auto file_mutex = std::make_shared<std::mutex>();
-            m_lock_map[path] = file_mutex;
-            return file_mutex;
-        }
-        else
-        {
-            return iter->second;
+            _instance.reset(new file_lock_map());
         }
     }
+    return _instance.get();
+}
 
-    std::shared_ptr<std::mutex> get_mutex(const char* path)
+std::shared_ptr<std::mutex> file_lock_map::get_mutex(std::string path)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto iter = m_lock_map.find(path);
+    if(iter == m_lock_map.end())
     {
-        std::string spath(path);
-        return get_mutex(spath);
+        auto file_mutex = std::make_shared<std::mutex>();
+        m_lock_map[path] = file_mutex;
+        return file_mutex;
     }
-
-protected:
-    file_lock_map()
+    else
     {
+        return iter->second;
     }
+}
 
-private:
-    static std::shared_ptr<file_lock_map> _instance;
-    static std::mutex s_mutex;
-    std::mutex m_mutex;
-    std::map<std::string, std::shared_ptr<std::mutex>> m_lock_map;
-};
+std::shared_ptr<std::mutex> file_lock_map::get_mutex(const char* path)
+{
+    std::string spath(path);
+    return get_mutex(spath);
+}
 
 std::shared_ptr<file_lock_map> file_lock_map::_instance;
 std::mutex file_lock_map::s_mutex;
@@ -84,10 +59,10 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     auto fmutex = file_lock_map::get_instance()->get_mutex(path);
     std::lock_guard<std::mutex> lock(*fmutex);
 
-    // If the file/blob being opened does not exist in the cache, or the version in the cache is too old, we need to download / refresh the data from the service.
+    // If the file/blob being opened does not exist in the cache, or the version in the cache is too old, or it occupies zero blocks with a size (List attribute cache), we need to download / refresh the data from the service.
     struct stat buf;
     int statret = stat(mntPath, &buf);
-    if ((statret != 0) || ((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds)) 
+    if ((statret != 0) || (buf.st_blocks == 0 && buf.st_size !=0 && list_attribute_cache == true ) || ((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds)) 
     {
         remove(mntPath);
 

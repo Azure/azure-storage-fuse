@@ -44,8 +44,34 @@ GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
 using namespace microsoft_azure::storage;
 
-// Internal class used for locking, see fileapis.cpp.
-class file_lock_map;
+// We use two different locking schemes to protect files / blobs against data corruption and data loss scenarios.
+// The first is an in-memory std::mutex, the second is flock (Linux).  Each file path gets its own mutex and flock lock.
+// The in-memory mutex should only be held while control is in a method that is directly communicating with Azure Storage.
+// The flock lock should be held continuously, from the time that the file is opened until the time that the file is closed.  It should also be held during blob download and upload.
+// Blob download should hold the flock lock in exclusive mode.  Read/write operations should hold it in shared mode.
+// Explanations for why we lock in various places are in-line.
+
+// This class contains mutexes that we use to lock file paths during blob upload / download / delete.
+// Each blob / file path gets its own mutex.
+// This mutex should never be held when control is not in an open(), flush(), or unlink() method.
+class file_lock_map
+{
+public:
+    static file_lock_map* get_instance();
+    std::shared_ptr<std::mutex> get_mutex(std::string path);
+    std::shared_ptr<std::mutex> get_mutex(const char* path);
+
+protected:
+    file_lock_map()
+    {
+    }
+
+private:
+    static std::shared_ptr<file_lock_map> _instance;
+    static std::mutex s_mutex;
+    std::mutex m_mutex;
+    std::map<std::string, std::shared_ptr<std::mutex>> m_lock_map;
+};
 
 // FUSE gives you one 64-bit pointer to use for communication between API's.
 // An instance of this struct is pointed to by that pointer.
@@ -72,6 +98,7 @@ struct str_options
 extern struct str_options str_options;
 
 extern int file_cache_timeout_in_seconds;
+extern bool list_attribute_cache;
 
 // This is used to make all the calls to Storage
 // The C++ lite client does not store state, other than connection info, so we can use it between calls without issue.

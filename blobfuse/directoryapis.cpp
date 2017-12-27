@@ -1,4 +1,5 @@
 #include "blobfuse.h"
+#include <sys/file.h>
 
 int azs_mkdir(const char *path, mode_t)
 {
@@ -94,19 +95,35 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
         closedir(dir_stream);
     }
 
-    errno = 0;
-    std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
-    if (errno != 0)
-    {
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "azs_readdir list blobs failed with error = %d\n", errno);
-        }
-        return 0 - map_errno(errno);
-    }
-
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
+
+    errno = 0;
+    // List attribute cache: .directory file timestamp tells us last time we ran a list operation on this directory
+    // if within file_cache_timeout_in_seconds we will use local results only
+    struct stat dir_buf;
+    std::vector<list_blobs_hierarchical_item> listResults;
+    int statret = stat((mntPathString + directorySignifier).c_str(), &dir_buf);
+    if(statret == -1 || ((time(NULL) - dir_buf.st_mtime) > file_cache_timeout_in_seconds ) || list_attribute_cache == false)
+    {
+        listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
+        if (errno != 0)
+        {
+            if (AZS_PRINT)
+            {
+                fprintf(stdout, "azs_readdir list blobs failed with error = %d\n", errno);
+            }
+            return 0 - map_errno(errno);
+        }
+
+        // List attribute cache: touch directorySignifier file to note down the last listing time
+        if(list_attribute_cache == true)
+        {
+            int fd = open((mntPathString + directorySignifier).c_str(), O_WRONLY|O_CREAT|O_NOCTTY|O_NONBLOCK, 0770);
+            futimens(fd, nullptr);
+            close(fd);
+        }
+    }
 
     if (AZS_PRINT)
     {
@@ -142,6 +159,50 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         stbuf.st_nlink = 1;
                         stbuf.st_size = listResults[i].content_length;
                         fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+
+                        /// List attribute cache: cache the found file locally without the contents
+                        if(list_attribute_cache == true)
+                        {
+                            off_t length = listResults[i].content_length;
+
+                            // mutex lock the file path
+                            auto fmutex = file_lock_map::get_instance()->get_mutex(("/" + listResults[i].name).c_str());
+                            std::lock_guard<std::mutex> lock(*fmutex);
+                            int fd = open((mntPathString+prev_token_str).c_str(), O_RDWR | O_CREAT, S_IRWXU | S_IRWXG);
+
+                            // flock the file before ftruncating
+                            int flockres = flock(fd, LOCK_EX|LOCK_NB);
+                            if (flockres == 0)
+                            {
+                                if (AZS_PRINT)
+                                {
+                                    fprintf(stdout, "Lock acquired, now ftruncating %s\n", ("/" + listResults[i].name).c_str());
+                                }
+
+                                int res = ftruncate(fd, length);
+                                // List attribute cache: delete if the created cache could not be zeroed and clean up the directory signifier
+                                if(res == -1)
+                                {
+                                    unlink((mntPathString + prev_token_str).c_str());
+                                    unlink((mntPathString + directorySignifier).c_str());
+                                }
+
+                                flock(fd, LOCK_UN);
+                                close(fd);
+                            }
+                            else
+                            {
+                                if (AZS_PRINT)
+                                {
+                                    fprintf(stdout, "Lock acquisition failed, errno = %d\n", errno);
+                                }
+
+                                // invalidate the list attr cache because something went wrong
+                                unlink((mntPathString + prev_token_str).c_str());
+                                unlink((mntPathString + directorySignifier).c_str());
+                            }
+                        }
+
                         if (AZS_PRINT)
                         {
                             fprintf(stdout, "blob result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
@@ -156,6 +217,13 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         stbuf.st_mode = S_IFDIR | 0770;
                         stbuf.st_nlink = 2;
                         fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
+
+                        /// List attribute cache: cache the found directory locally
+                        if(list_attribute_cache == true)
+                        {
+                            mkdir((mntPathString+prev_token_str).c_str(), 0770);
+                        }
+
                         if (AZS_PRINT)
                         {
                             fprintf(stdout, "dir result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
