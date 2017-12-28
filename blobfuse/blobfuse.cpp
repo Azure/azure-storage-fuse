@@ -130,6 +130,11 @@ void *azs_init(struct fuse_conn_info * conn)
     conn->max_readahead = 4194304;
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
+
+    // start a thread to gc the temp location/cached files
+    std::thread t1(gc_cache);
+    t1.detach();
+
     return NULL;
 }
 

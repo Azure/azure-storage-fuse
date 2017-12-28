@@ -1,5 +1,5 @@
-
 #include "blobfuse.h"
+#include <sys/file.h>
 
 int map_errno(int error)
 {
@@ -17,6 +17,87 @@ int map_errno(int error)
 std::string prepend_mnt_path_string(const std::string path)
 {
     return str_options.tmpPath + "/root" + path;
+}
+
+// cleanup function to clean cached files that are too old
+void gc_cache()
+{
+
+    while(true){
+
+        //if deque is empty, skip
+        if(cleanup.empty())
+        {
+       	    //run it every 1 second
+            usleep(1000);
+            continue;
+        }
+
+        //check if the closed time is old enough to delete
+        if((time(NULL) - cleanup.front().closed_time) > file_cache_timeout_in_seconds)
+        {
+            if (AZS_PRINT)
+            {
+                fprintf(stdout, "File %s timed out at %ld\n", cleanup.front().path, time(NULL));
+            }
+
+            // path in the temp location
+            std::string pathString(cleanup.front().path);
+            const char * mntPath;
+            std::string mntPathString = prepend_mnt_path_string(pathString);
+            mntPath = mntPathString.c_str();
+
+            //check if the file on disk is still too old
+            //mutex lock
+            auto fmutex = file_lock_map::get_instance()->get_mutex(cleanup.front().path);
+            std::lock_guard<std::mutex> lock(*fmutex);            
+
+            struct stat buf;
+            stat(mntPath, &buf);
+            if((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds)
+            {
+                if (AZS_PRINT)
+                {
+                    fprintf(stdout, "File %s clean up at %ld \n", mntPath, time(NULL));
+                }
+
+                //clean up the file from cache
+                int fd = open(mntPath, O_WRONLY);
+                int flockres = flock(fd, LOCK_EX|LOCK_NB);
+                if (flockres != 0)
+                {
+                    if (errno == EWOULDBLOCK)
+                    {
+                        // Someone else holds the lock.  In this case, we will postpone updating the cache until the next time open() is called.
+                        // TODO: examine the possibility that we can never acquire the lock and refresh the cache.
+                        if (AZS_PRINT)
+                        {
+                            fprintf(stdout, "Failed to lock file %s for clean up\n", cleanup.front().path);
+                        }
+                    }
+                    else
+                    {
+                        // Failed to acquire the lock for some other reason.  We close the open fd, and continue.
+                        if (AZS_PRINT)
+                        {
+                            fprintf(stdout, "Failed to lock file %s for clean up\n", cleanup.front().path);
+                        }
+                    }
+                }
+                else
+                {
+                    unlink(mntPath);
+                }
+
+                flock(fd, LOCK_UN);
+                close(fd);
+            }
+
+            cleanup.pop_front();
+
+        }
+    }
+
 }
 
 int ensure_files_directory_exists_in_cache(const std::string file_path)
