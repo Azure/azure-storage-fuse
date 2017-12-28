@@ -25,31 +25,43 @@ void gc_cache()
 
     while(true){
 
-        //if deque is empty, skip
-        if(cleanup.empty())
+        // lock the deque
+        file_to_delete file;
+        bool is_empty;
         {
-       	    //run it every 1 second
+            std::lock_guard<std::mutex> lock(deque_lock);
+            is_empty = cleanup.empty();
+            if(!is_empty)
+            {
+                file = cleanup.front();
+            }
+        }
+
+        //if deque is empty, skip
+        if(is_empty)
+        {
+            //run it every 1 second
             usleep(1000);
             continue;
         }
 
+
         //check if the closed time is old enough to delete
-        if((time(NULL) - cleanup.front().closed_time) > file_cache_timeout_in_seconds)
+        if((time(NULL) - file.closed_time) > file_cache_timeout_in_seconds)
         {
             if (AZS_PRINT)
             {
-                fprintf(stdout, "File %s timed out at %ld\n", cleanup.front().path, time(NULL));
+                fprintf(stdout, "File %s timed out at %ld\n", file.path.c_str(), time(NULL));
             }
 
             // path in the temp location
-            std::string pathString(cleanup.front().path);
             const char * mntPath;
-            std::string mntPathString = prepend_mnt_path_string(pathString);
+            std::string mntPathString = prepend_mnt_path_string(file.path);
             mntPath = mntPathString.c_str();
 
             //check if the file on disk is still too old
             //mutex lock
-            auto fmutex = file_lock_map::get_instance()->get_mutex(cleanup.front().path);
+            auto fmutex = file_lock_map::get_instance()->get_mutex(file.path.c_str());
             std::lock_guard<std::mutex> lock(*fmutex);            
 
             struct stat buf;
@@ -72,7 +84,7 @@ void gc_cache()
                         // TODO: examine the possibility that we can never acquire the lock and refresh the cache.
                         if (AZS_PRINT)
                         {
-                            fprintf(stdout, "Failed to lock file %s for clean up\n", cleanup.front().path);
+                            fprintf(stdout, "Failed to lock file %s for clean up. errno = %d\n", file.path.c_str(), errno);
                         }
                     }
                     else
@@ -80,21 +92,30 @@ void gc_cache()
                         // Failed to acquire the lock for some other reason.  We close the open fd, and continue.
                         if (AZS_PRINT)
                         {
-                            fprintf(stdout, "Failed to lock file %s for clean up\n", cleanup.front().path);
+                            fprintf(stdout, "Failed to lock file %s for clean up. errno = %d\n", file.path.c_str(), errno);
                         }
                     }
                 }
                 else
                 {
                     unlink(mntPath);
+                    flock(fd, LOCK_UN);
                 }
 
-                flock(fd, LOCK_UN);
                 close(fd);
             }
 
-            cleanup.pop_front();
+            // lock to remove from front
+            {
+                std::lock_guard<std::mutex> lock(deque_lock);
+                cleanup.pop_front();
+            }
 
+        }
+        else
+        {
+            // no file was timed out - let's wait a second
+            usleep(1000);
         }
     }
 

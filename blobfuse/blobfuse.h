@@ -70,10 +70,11 @@ private:
 // deque to age cached files based on timeout
 struct file_to_delete
 {
-    const char *path;
+    std::string path;
     time_t closed_time;    
 };
 extern std::deque<file_to_delete> cleanup;
+extern std::mutex deque_lock;
 void gc_cache();
 
 

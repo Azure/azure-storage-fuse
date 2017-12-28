@@ -39,6 +39,7 @@ std::shared_ptr<std::mutex> file_lock_map::get_mutex(const char* path)
 std::shared_ptr<file_lock_map> file_lock_map::_instance;
 std::mutex file_lock_map::s_mutex;
 std::deque<file_to_delete> cleanup;
+std::mutex deque_lock;
 
 // Opens a file for reading or writing
 // Behavior is defined by a normal, open() system call.
@@ -418,9 +419,13 @@ int azs_release(const char *path, struct fuse_file_info * fi)
 
         // store the file in the cleanup list
         file_to_delete file;
-        file.path = strdup(path);
+        file.path = path;
         file.closed_time = time(NULL); 
-        cleanup.push_back(file);
+        // lock before updating deque
+        {
+            std::lock_guard<std::mutex> lock(deque_lock);
+            cleanup.push_back(file);
+        }
 
     }
     else
