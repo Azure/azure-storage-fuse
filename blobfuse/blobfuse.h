@@ -27,7 +27,7 @@
 
 // Set this to 1 to enable debug output.
 // Prints directly to the console, so this is only useful is you mount in "-f" mode.
-#define AZS_PRINT 0
+#define AZS_PRINT 1
 #define UNREFERENCED_PARAMETER(p) (p)
 
 /* Define errors and return codes */

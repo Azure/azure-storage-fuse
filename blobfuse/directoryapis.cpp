@@ -48,59 +48,11 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
         pathStr.push_back('/');
     }
 
-    std::vector<std::string> local_list_results;
-
-    // Scan for any files that exist in the local cache.
-    // It is possible that there are files in the cache that aren't on the service - if a file has been opened but not yet uplaoded, for example.
     std::string mntPathString = prepend_mnt_path_string(pathStr);
-    DIR *dir_stream = opendir(mntPathString.c_str());
-    if (dir_stream != NULL)
-    {
-        struct dirent* dir_ent = readdir(dir_stream);
-        while (dir_ent != NULL)
-        {
-            if (dir_ent->d_name[0] != '.')
-            {
-                if (dir_ent->d_type == DT_DIR)
-                {
-                    struct stat stbuf;
-                    stbuf.st_mode = S_IFDIR | 0770;
-                    stbuf.st_nlink = 2;
-                    stbuf.st_size = 4096;
-                    filler(buf, dir_ent->d_name, &stbuf, 0);
-                }
-                else
-                {
-                    struct stat buffer;
-                    stat((mntPathString + dir_ent->d_name).c_str(), &buffer);
 
-                    struct stat stbuf;
-                    stbuf.st_mode = S_IFREG | 0770; // Regular file (not a directory)
-                    stbuf.st_nlink = 1;
-                    stbuf.st_size = buffer.st_size;
-                    filler(buf, dir_ent->d_name, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
-                }
-
-                std::string dir_str(dir_ent->d_name);
-                local_list_results.push_back(dir_str);
-
-                if (AZS_PRINT)
-                {
-                    fprintf(stdout, "Local file/blob found.  Name = %s\n", dir_ent->d_name);
-                }
-            }
-
-            dir_ent = readdir(dir_stream);
-        }
-        closedir(dir_stream);
-    }
-
-    filler(buf, ".", NULL, 0);
-    filler(buf, "..", NULL, 0);
-
-    errno = 0;
     // List attribute cache: .directory file timestamp tells us last time we ran a list operation on this directory
     // if within file_cache_timeout_in_seconds we will use local results only
+    bool local_results_only = false;
     struct stat dir_buf;
     std::vector<list_blobs_hierarchical_item> listResults;
     int statret = stat((mntPathString + directorySignifier).c_str(), &dir_buf);
@@ -124,11 +76,75 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
             close(fd);
         }
     }
+    else 
+    {
+        local_results_only = true;
+    }
 
     if (AZS_PRINT)
     {
-        fprintf(stdout, "result count = %lu\n", listResults.size());
+        fprintf(stdout, "Blob listing result count = %lu\n", listResults.size());
     }
+
+    std::vector<std::string> local_list_results;
+
+    // Scan for any files that exist in the local cache.
+    // It is possible that there are files in the cache that aren't on the service - if a file has been opened but not yet uplaoded, for example.
+    DIR *dir_stream = opendir(mntPathString.c_str());
+    if (dir_stream != NULL)
+    {
+        struct dirent* dir_ent = readdir(dir_stream);
+        while (dir_ent != NULL)
+        {
+            if (dir_ent->d_name[0] != '.')
+            {
+                if (dir_ent->d_type == DT_DIR && local_results_only == true)
+                {
+                    struct stat stbuf;
+                    stbuf.st_mode = S_IFDIR | 0770;
+                    stbuf.st_nlink = 2;
+                    stbuf.st_size = 4096;
+                    filler(buf, dir_ent->d_name, &stbuf, 0);
+
+                    std::string dir_str(dir_ent->d_name);
+                    local_list_results.push_back(dir_str);
+                }
+                else
+                {
+                    struct stat buffer;
+                    stat((mntPathString + dir_ent->d_name).c_str(), &buffer);
+                    fprintf(stdout, "checking %s: blocks: %ld size: %ld\n", (mntPathString + dir_ent->d_name).c_str(), buffer.st_blocks, buffer.st_size);
+
+                    // list files that are created locally but not yet committed, or list the files from local if within cache timeout
+                    if( local_results_only == true || (buffer.st_blocks != 0) || (buffer.st_blocks == 0 && buffer.st_size == 0))
+                    {
+                        struct stat stbuf;
+                        stbuf.st_mode = S_IFREG | 0770; // Regular file (not a directory)
+                        stbuf.st_nlink = 1;
+                        stbuf.st_size = buffer.st_size;
+                        filler(buf, dir_ent->d_name, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+
+                        std::string dir_str(dir_ent->d_name);
+                        local_list_results.push_back(dir_str);
+                        fprintf(stdout, "listing %s from local listing\n", dir_ent->d_name);
+                    }
+                }
+
+                if (AZS_PRINT)
+                {
+                    fprintf(stdout, "Local file/blob found.  Name = %s\n", dir_ent->d_name);
+                }
+            }
+
+            dir_ent = readdir(dir_stream);
+        }
+        closedir(dir_stream);
+    }
+
+    filler(buf, ".", NULL, 0);
+    filler(buf, "..", NULL, 0);
+
+    errno = 0;
     for (size_t i = 0; i < listResults.size(); i++)
     {
         int fillerResult;
