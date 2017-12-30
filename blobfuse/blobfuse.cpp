@@ -225,22 +225,27 @@ int main(int argc, char *argv[])
         return 1; 
     }
 
-{
-    blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https);
-    if(errno != 0)
+    // THe current implementation of blob_client_wrapper calls curl_global_init() in the constructor, and curl_global_cleanup in the destructor.
+    // Unfortunately, curl_global_init() has to be called in the same process as any HTTPS calls that are made, otherwise NSS is not configured properly.
+    // When running in daemon mode, the current process forks() and exits, while the child process lives on as a daemon.
+    // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
     {
-        fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
-        return 1;
+        blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https);
+        if(errno != 0)
+        {
+            fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
+            return 1;
+        }
+
+        // Check if the account name/key and container is correct.
+        if(temp_azure_blob_client_wrapper.container_exists(str_options.containerName) == false
+                || errno != 0)
+        {
+            fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
+            return 1;
+        }
     }
 
-    // Check if the account name/key and container is correct.
-    if(temp_azure_blob_client_wrapper.container_exists(str_options.containerName) == false
-            || errno != 0)
-    {
-        fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
-        return 1;
-    }
-}
     fuse_opt_add_arg(&args, "-omax_read=131072");
     fuse_opt_add_arg(&args, "-omax_write=131072");
     if(0 != ensure_files_directory_exists_in_cache(prepend_mnt_path_string("/placeholder")))
