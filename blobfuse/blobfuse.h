@@ -73,10 +73,20 @@ struct file_to_delete
     std::string path;
     time_t closed_time;    
 };
-extern std::deque<file_to_delete> cleanup;
-extern std::mutex deque_lock;
-void gc_cache();
 
+class gc_cache
+{
+    public:
+        void run();
+        void add_file(std::string path);
+
+    private:
+    	void run_gc_cache();
+        std::deque<file_to_delete> m_cleanup;
+        std::mutex m_deque_lock;
+};
+
+extern gc_cache gc_cache;
 
 // FUSE gives you one 64-bit pointer to use for communication between API's.
 // An instance of this struct is pointed to by that pointer.

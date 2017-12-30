@@ -418,14 +418,7 @@ int azs_release(const char *path, struct fuse_file_info * fi)
         close(((struct fhwrapper *)fi->fh)->fh);
 
         // store the file in the cleanup list
-        file_to_delete file;
-        file.path = path;
-        file.closed_time = time(NULL); 
-        // lock before updating deque
-        {
-            std::lock_guard<std::mutex> lock(deque_lock);
-            cleanup.push_back(file);
-        }
+        gc_cache.add_file(pathString);
 
     }
     else

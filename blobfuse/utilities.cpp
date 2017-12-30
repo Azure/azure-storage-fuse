@@ -19,8 +19,25 @@ std::string prepend_mnt_path_string(const std::string path)
     return str_options.tmpPath + "/root" + path;
 }
 
+void gc_cache::add_file(std::string path)
+{
+    file_to_delete file;
+    file.path = path;
+    file.closed_time = time(NULL); 
+    
+    // lock before updating deque
+    std::lock_guard<std::mutex> lock(m_deque_lock);
+    m_cleanup.push_back(file);
+}
+
+void gc_cache::run()
+{
+    std::thread t1(std::bind(&gc_cache::run_gc_cache,this));
+    t1.detach();
+}
+
 // cleanup function to clean cached files that are too old
-void gc_cache()
+void gc_cache::run_gc_cache()
 {
 
     while(true){
@@ -29,11 +46,11 @@ void gc_cache()
         file_to_delete file;
         bool is_empty;
         {
-            std::lock_guard<std::mutex> lock(deque_lock);
-            is_empty = cleanup.empty();
+            std::lock_guard<std::mutex> lock(m_deque_lock);
+            is_empty = m_cleanup.empty();
             if(!is_empty)
             {
-                file = cleanup.front();
+                file = m_cleanup.front();
             }
         }
 
@@ -107,8 +124,8 @@ void gc_cache()
 
             // lock to remove from front
             {
-                std::lock_guard<std::mutex> lock(deque_lock);
-                cleanup.pop_front();
+                std::lock_guard<std::mutex> lock(m_deque_lock);
+                m_cleanup.pop_front();
             }
 
         }
