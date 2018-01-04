@@ -67,6 +67,7 @@ struct str_options
     std::string accountKey;
     std::string containerName;
     std::string tmpPath;
+    bool use_https;
 };
 
 extern struct str_options str_options;
