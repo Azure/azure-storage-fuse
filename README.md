@@ -14,14 +14,14 @@ Please note that this tool is currently in Preview, and need your feedback for i
 
 ## Considerations
 Please take careful note of the following points, before using blobfuse:
-- In order to achieve reasonable performance, blobfuse requires a temp directory to use as a local cache. This directory will contain the full contents of any file (blob) read to or written from through blobfuse, and will continue to grow as long as blobfuse is running. You must ensure you have enough free space in this directory.
-  - If space is not a concern, putting this directory on a SSD will greatly enhance performance.
+- In order to achieve reasonable performance, blobfuse requires a temp directory to use as a local cache. This directory will contain the full contents of any file (blob) read to or written from through blobfuse, and will be purged as they age (--file-cache-timeout-in-seconds).
+  - Putting this directory on an SSD (ephemeral disk on Azure) will greatly enhance performance.
   - In order to delete the cache, un-mount and re-mount blobfuse.
   - Do not use the same temp directory for multiple instances of blobfuse, or for any other purpose while blobfuse is running.
   
 ### If your workload is read-only:
-- If the temp directory gets too large, it is fine to manually delete it.  Un-mounting and re-mounting blobfuse will also clear the temp directory.
-- Because blobs get cached locally, if the blob on the service is modified, these changes may or may not be reflected when accessing the blob through blobfuse.  The cache will periodically refresh, but this is done on a best-effort basis.
+- Because blobs get cached locally and reused for a number of seconds (--file-cache-timeout-in-seconds), if the blob on the service is modified, these changes will only be retrieved after the local cache times out, and the file is closed and re-opened. 
+- By setting --file-cache-timeout-in-seconds to 0, you may achieve close-to-open cache consistency like in NFS v3. This means once a file is closed, subsequent opens will see the latest changes from the Blob storage service ignoring the local cache.
 
 ### If your workload is not read-only:
 - Do not edit, modify, or delete the contents of the temp directory while blobfuse is mounted. Doing so could cause data loss or data corruption.
@@ -68,7 +68,7 @@ Now you can mount using the provided mount script (mount.sh):
 - You can modify the default FUSE options in mount.sh file. All options for FUSE is described in the [FUSE man page](http://manpages.ubuntu.com/manpages/xenial/man8/mount.fuse.8.html)
 - In addition to the FUSE kernel module options; blobfuse offers following options:
 	* --config-path=/path/to/connection.cfg : Configures the path for the file where the account credentials are provided
-	* --tmp-path=/path/to/cache : Configures the tmp location for the cache. Always configure the fastest disk (SSD) for best performance. Note that the files in this directory are not purged automatically.
+	* --tmp-path=/path/to/cache : Configures the tmp location for the cache. Always configure the fastest disk (SSD) for best performance. 
 	* --use-https=true/false : Enables HTTPS communication with Blob storage. False by defaul. Enable it to protect against data corruption over the wire.
 	* --file-cache-timeout-in-seconds=120 : Blobs will be cached in the temp folder for this many seconds. 120 seconds by default. During this time, blobfuse will not check whether the file is up to date or not.
 	

@@ -1,68 +1,45 @@
 #include "blobfuse.h"
 #include <sys/file.h>
 
-// We use two different locking schemes to protect files / blobs against data corruption and data loss scenarios.
-// The first is an in-memory std::mutex, the second is flock (Linux).  Each file path gets its own mutex and flock lock.
-// The in-memory mutex should only be held while control is in a method that is directly communicating with Azure Storage.
-// The flock lock should be held continuously, from the time that the file is opened until the time that the file is closed.  It should also be held during blob download and upload.
-// Blob download should hold the flock lock in exclusive mode.  Read/write operations should hold it in shared mode.
-// Explanations for why we lock in various places are in-line.
-
-// This class contains mutexes that we use to lock file paths during blob upload / download / delete.
-// Each blob / file path gets its own mutex.
-// This mutex should never be held when control is not in an open(), flush(), or unlink() method.
-class file_lock_map
+file_lock_map* file_lock_map::get_instance()
 {
-public:
-    static file_lock_map* get_instance()
+    if(nullptr == _instance.get())
     {
+        std::lock_guard<std::mutex> lock(s_mutex);
         if(nullptr == _instance.get())
         {
-            std::lock_guard<std::mutex> lock(s_mutex);
-            if(nullptr == _instance.get())
-            {
-                _instance.reset(new file_lock_map());
-            }
-        }
-        return _instance.get();
-    }
-
-    std::shared_ptr<std::mutex> get_mutex(std::string path)
-    {
-        std::lock_guard<std::mutex> lock(m_mutex);
-        auto iter = m_lock_map.find(path);
-        if(iter == m_lock_map.end())
-        {
-            auto file_mutex = std::make_shared<std::mutex>();
-            m_lock_map[path] = file_mutex;
-            return file_mutex;
-        }
-        else
-        {
-            return iter->second;
+            _instance.reset(new file_lock_map());
         }
     }
+    return _instance.get();
+}
 
-    std::shared_ptr<std::mutex> get_mutex(const char* path)
+std::shared_ptr<std::mutex> file_lock_map::get_mutex(std::string path)
+{
+    std::lock_guard<std::mutex> lock(m_mutex);
+    auto iter = m_lock_map.find(path);
+    if(iter == m_lock_map.end())
     {
-        std::string spath(path);
-        return get_mutex(spath);
+        auto file_mutex = std::make_shared<std::mutex>();
+        m_lock_map[path] = file_mutex;
+        return file_mutex;
     }
-
-protected:
-    file_lock_map()
+    else
     {
+        return iter->second;
     }
+}
 
-private:
-    static std::shared_ptr<file_lock_map> _instance;
-    static std::mutex s_mutex;
-    std::mutex m_mutex;
-    std::map<std::string, std::shared_ptr<std::mutex>> m_lock_map;
-};
+std::shared_ptr<std::mutex> file_lock_map::get_mutex(const char* path)
+{
+    std::string spath(path);
+    return get_mutex(spath);
+}
 
 std::shared_ptr<file_lock_map> file_lock_map::_instance;
 std::mutex file_lock_map::s_mutex;
+std::deque<file_to_delete> cleanup;
+std::mutex deque_lock;
 
 // Opens a file for reading or writing
 // Behavior is defined by a normal, open() system call.
@@ -89,48 +66,63 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     int statret = stat(mntPath, &buf);
     if ((statret != 0) || ((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds)) 
     {
-        remove(mntPath);
+        bool skipCacheUpdate = false;
+        if (statret == 0) // File exists
+        {
+            // Here, we take an exclusive flock lock on the file in the cache.  
+            // This ensures that there are no existing open handles to the cached file.
+            // We don't want to update the cached file while someone else is reading to / writing from it.
+            // This operation cannot deadlock with the mutex acquired above, because we acquire the lock in non-blocking mode.
 
-        if(0 != ensure_files_directory_exists_in_cache(mntPathString))
-        {
-            fprintf(stderr, "Failed to create file or directory on cache directory: %s, errno = %d.\n", mntPathString.c_str(),  errno);
-            return -1;
-        }
-        std::ofstream filestream(mntPathString, std::ofstream::binary | std::ofstream::out);
-        errno = 0;
-        int fd = open(mntPath, O_WRONLY);
-        if (fd == -1)
-        {
-            return -errno;
-        }
-        errno = 0;
+            errno = 0;
+            int fd = open(mntPath, O_WRONLY);
+            if (fd == -1)
+            {
+                return -errno;
+            }
 
-        // Here, we take an exclusive flock lock on the file in the cache.  This prevents any other process/thread from accessing or modifying the file while it's being downloaded from the service.
-        // Without this, we have the potential for data loss, if one process is writing data to a file while another is downloading the data in Storage to the file.
-        // This operation cannot deadlock with the mutex acquired above, because we acquire the lock in non-blocking mode.
-        int flockres = flock(fd, LOCK_EX|LOCK_NB);
-        if (flockres != 0)
-        {
-            if (errno == EWOULDBLOCK)
+            errno = 0;
+            int flockres = flock(fd, LOCK_EX|LOCK_NB);
+            if (flockres != 0)
             {
-                // Someone else holds the lock.  In this case, we will postpone updating the cache until the next time open() is called.
-                // TODO: examine the possibility that we can never acquire the lock and refresh the cache.
+                if (errno == EWOULDBLOCK)
+                {
+                    // Someone else holds the lock.  In this case, we will postpone updating the cache until the next time open() is called.
+                    // TODO: examine the possibility that we can never acquire the lock and refresh the cache.
+                    skipCacheUpdate = true;
+                }
+                else
+                {
+                    // Failed to acquire the lock for some other reason.  We close the open fd, and fail.
+                    int flockerrno = errno;
+                    close(fd);
+                    return -flockerrno;
+                }
             }
-            else
-            {
-                // Failed to acquire the lock for some other reason.  We close the open fd, and fail.
-                int flockerrno = errno;
-                close(fd);
-                return -flockerrno;
-            }
+            flock(fd, LOCK_UN);
+            // We now know that there are no other open file handles to the file.  We're safe to continue with the cache update.
         }
-        else
+
+        if (!skipCacheUpdate)
         {
-            // We have the exclusive lock on the file, we are safe to download it from the service.
+            remove(mntPath);
+
+            if(0 != ensure_files_directory_exists_in_cache(mntPathString))
+            {
+                fprintf(stderr, "Failed to create file or directory on cache directory: %s, errno = %d.\n", mntPathString.c_str(),  errno);
+                return -1;
+            }
+            std::ofstream filestream(mntPathString, std::ofstream::binary | std::ofstream::out);
+            errno = 0;
+            int fd = open(mntPath, O_WRONLY);
+            if (fd == -1)
+            {
+                return -errno;
+            }
+
             errno = 0;
             azure_blob_client_wrapper->download_blob_to_stream(str_options.containerName, pathString.substr(1), 0ULL, 1000000000000ULL, filestream);
             int storage_errno = errno;
-            flock(fd, LOCK_UN);
             close(fd);
             if (storage_errno != 0)
             {
@@ -363,7 +355,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             // If the blob upload occurred during that window, this could result in the blob being over-written with a zero-length blob, causing data loss.
             // An flock exclusive lock is not good enough here, because it does not hold across unlink and re-creates, and because the flosk is not acquired in open() before remove() is called during cache refresh.
             // We are not concerned with the possibility of writes from another process occurring during blob upload, because when that other process flushes the file, it will re-upload the blob, correcting any potential errors.
-            auto fmutex = file_lock_map::get_instance()->get_mutex(path_buffer);
+            auto fmutex = file_lock_map::get_instance()->get_mutex(mntPathString.substr(str_options.tmpPath.size() + 5));
             std::lock_guard<std::mutex> lock(*fmutex);
 
             // Check to ensure that the file still exists; that unlink() hasn't been called previously.
@@ -439,6 +431,10 @@ int azs_release(const char *path, struct fuse_file_info * fi)
         // It will not release any locks acquired from other calls to open(), in this process or in others.
         flock(((struct fhwrapper *)fi->fh)->fh, LOCK_UN);
         close(((struct fhwrapper *)fi->fh)->fh);
+
+        // store the file in the cleanup list
+        gc_cache.add_file(pathString);
+
     }
     else
     {

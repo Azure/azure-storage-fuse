@@ -37,6 +37,7 @@ const struct fuse_opt option_spec[] =
 };
 
 std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
+class gc_cache gc_cache;
 
 // Currently, the cpp lite lib puts the HTTP status code in errno.
 // This mapping tries to convert the HTTP status code to a standard Linux errno.
@@ -151,6 +152,9 @@ void *azs_init(struct fuse_conn_info * conn)
     conn->max_readahead = 4194304;
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
+
+    gc_cache.run();
+
     return NULL;
 }
 
