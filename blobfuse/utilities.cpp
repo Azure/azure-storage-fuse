@@ -308,6 +308,10 @@ int azs_getattr(const char *path, struct stat *stbuf)
         return 0;
     }
 
+    // Ensure that we don't get attributes while the file is in an intermediate state.
+    auto fmutex = file_lock_map::get_instance()->get_mutex(path);
+    std::lock_guard<std::mutex> lock(*fmutex);
+
     // Check and see if the file/directory exists locally (because it's being buffered.)  If so, skip the call to Storage.
     std::string pathString(path);
     std::string mntPathString = prepend_mnt_path_string(pathString);
