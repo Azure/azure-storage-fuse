@@ -129,8 +129,9 @@ namespace microsoft_azure {
         errno = 0;
         return blob_client_wrapper(blobClient);
     }
-    catch(std::exception ex)
+    catch(const std::exception &ex)
     {
+        std::cerr << ex.what() << std::endl;
         errno = unknown_error;
         return blob_client_wrapper(false);
     }

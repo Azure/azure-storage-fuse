@@ -513,7 +513,7 @@ int azs_truncate(const char * path, off_t off)
 {
     if (AZS_PRINT)
     {
-        fprintf(stdout, "azs_truncate called.  Path = %s, offset = %ld\n", path, off);
+        fprintf(stdout, "azs_truncate called.  Path = %s, offset = %s\n", path, to_str(off).c_str());
     }
 
     if (off != 0)

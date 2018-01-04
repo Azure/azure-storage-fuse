@@ -11,11 +11,15 @@
 #include <unistd.h>
 #include <time.h>
 #include <iostream>
+#include <sstream>
 #include <fstream>
 #include <map>
 #include <memory>
 #include <dirent.h>
 #include <deque>
+#include <gnutls/gnutls.h>
+#include <gcrypt.h>
+#include <pthread.h>
 
 // Declare that we're using version 2.9 of FUSE
 // 3.0 is not built-in to many distros yet.
@@ -35,6 +39,9 @@
 #define D_NOTEXIST -1
 #define D_EMPTY 0
 #define D_NOTEMPTY 1
+
+// instruct gcrypt to use pthread
+GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
 using namespace microsoft_azure::storage;
 
@@ -108,6 +115,7 @@ struct str_options
     std::string accountKey;
     std::string containerName;
     std::string tmpPath;
+    bool use_https;
 };
 
 extern struct str_options str_options;
@@ -345,5 +353,14 @@ int azs_removexattr(const char *path, const char *name);
 /** Internal method, used to rename a single file in a (hopefully) lock-safe manner. */
 int azs_rename_single_file(const char *src, const char *dst);
 
+/**
+* Convert a value into a string.
+*/
+template<typename T>
+std::string to_str(const T& value) {
+   std::ostringstream out;
+   out << value;
+   return out.str();
+}
 
 #endif
