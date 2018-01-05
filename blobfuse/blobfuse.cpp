@@ -161,7 +161,7 @@ void *azs_init(struct fuse_conn_info * conn)
 // TODO: print FUSE usage as well
 void print_usage()
 {
-    fprintf(stdout, "Usage: blobfuse <mount-folder> --config-file=<config-file> --tmp-path=<temp-path> [--use-https=false] [--file-cache-timeout-in-seconds=120]\n");
+    fprintf(stdout, "Usage: blobfuse <mount-folder> --config-file=<config-file> --tmp-path=<temp-path> [--use-https=true] [--file-cache-timeout-in-seconds=120]\n");
     fprintf(stdout, "Please see https://github.com/Azure/azure-storage-fuse for installation and configuration instructions.\n");
 }
 
@@ -223,13 +223,13 @@ int main(int argc, char *argv[])
     std::string tmpPathStr(options.tmp_path);
     str_options.tmpPath = tmpPathStr;
     const int defaultMaxConcurrency = 20;
-    str_options.use_https = false;
+    str_options.use_https = true;
     if (options.use_https != NULL)
     {
         std::string https(options.use_https);
-        if (https == "true")
+        if (https == "false")
         {
-            str_options.use_https = true;
+            str_options.use_https = false;
         }
     }
 
