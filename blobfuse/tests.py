@@ -1140,10 +1140,13 @@ class TestFuse(unittest.TestCase):
 
         for filename in os.listdir(mediumBlobsSourceDir):
             path = os.path.join(mediumBlobsSourceDir, filename)
-            threads.append(threading.Thread(target=self.read_file_func, args=(filepath, 0, 0, "",))) # Note that read_file_func also opens the file, which is the desired behavior
+            threads.append(threading.Thread(target=self.read_file_func, args=(path, 0, 0, "",))) # Note that read_file_func also opens the file, which is the desired behavior
 
         for thread in threads:
             thread.start()
+
+        for thread in threads:
+            thread.join()
 
         shutil.rmtree(mediumBlobsSourceDir)
 
