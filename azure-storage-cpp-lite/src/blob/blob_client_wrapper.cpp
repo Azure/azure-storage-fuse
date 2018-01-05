@@ -635,10 +635,13 @@ namespace microsoft_azure {
             {
                 // Download the first chunk of the blob. The response will contain required blob metadata as well.
                 int errcode = 0;
-                std::vector<char> buffer(DOWNLOAD_CHUNK_SIZE);
-                std::ostringstream os;
-                os.rdbuf()->pubsetbuf(&buffer[0], buffer.size());
-                auto firstChunk = m_blobClient->get_chunk_to_stream_sync(container, blob, 0, buffer.size(), os);
+                std::ofstream os(destPath.c_str(), std::ofstream::binary | std::ofstream::out);
+                auto firstChunk = m_blobClient->get_chunk_to_stream_sync(container, blob, 0, DOWNLOAD_CHUNK_SIZE, os);
+                os.close();
+                if (!os) {
+                    errno = unknown_error;
+                    return;
+                }
                 if (!firstChunk.success())
                 {
                     if (constants::code_request_range_not_satisfiable != firstChunk.error().code) {
@@ -648,7 +651,6 @@ namespace microsoft_azure {
                     // The only reason for constants::code_request_range_not_satisfiable on the first chunk is zero
                     // blob size, so proceed as there is no error.
                 }
-
                 // Smoke check if the total size is known, otherwise - fail.
                 if (firstChunk.response().totalSize < 0) {
                     errno = blob_no_content_range;
@@ -659,22 +661,12 @@ namespace microsoft_azure {
                 const auto originalEtag = firstChunk.response().etag;
                 const auto length = static_cast<unsigned long long>(firstChunk.response().totalSize);
 
-                // Create and truncate the target file.
-                auto fd = open(destPath.c_str(), O_CREAT|O_WRONLY, 0770);
+                // Resize the target file.
+                auto fd = open(destPath.c_str(), O_WRONLY, 0770);
                 if (-1 == fd) {
                     return;
                 }
                 if (-1 == ftruncate(fd, length)) {
-                    close(fd);
-                    return;
-                }
-
-                // Persist the first chunk.
-                auto r = pwrite(fd, os.str().c_str(), firstChunk.response().size, 0);
-                while (r != static_cast<ssize_t>(firstChunk.response().size) && r != -1) {
-                    r = pwrite(fd, os.str().c_str(), firstChunk.response().size, 0);
-                }
-                if (-1 == r) {
                     close(fd);
                     return;
                 }
