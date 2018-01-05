@@ -1,4 +1,16 @@
 #include "blobfuse.h"
+#include <string>
+
+namespace {
+    std::string trim(const std::string& str) {
+        const size_t start = str.find_first_not_of(' ');
+        if (std::string::npos == start) {
+            return std::string();
+        }
+        const size_t end = str.find_last_not_of(' ');
+        return str.substr(start, end - start + 1);
+    }
+}
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
 // The only two custom options we take in are the tmpPath (path to temp / file cache directory) and the configFile (connection to Azure Storage info.)
@@ -25,6 +37,7 @@ const struct fuse_opt option_spec[] =
 };
 
 std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
+class gc_cache gc_cache;
 
 // Currently, the cpp lite lib puts the HTTP status code in errno.
 // This mapping tries to convert the HTTP status code to a standard Linux errno.
@@ -60,10 +73,11 @@ int read_config(std::string configFile)
     {
 
         data.str(line.substr(line.find(" ")+1));
+        const std::string value(trim(data.str()));
 
         if(line.find("accountName") != std::string::npos)
         {
-            std::string accountNameStr(data.str());
+            std::string accountNameStr(value);
             /*            if(!is_lowercase_string(accountNameStr))
                         {
                             fprintf(stderr, "Account name must be lower cases.");
@@ -76,12 +90,12 @@ int read_config(std::string configFile)
         }
         else if(line.find("accountKey") != std::string::npos)
         {
-            std::string accountKeyStr(data.str());
+            std::string accountKeyStr(value);
             str_options.accountKey = accountKeyStr;
         }
         else if(line.find("containerName") != std::string::npos)
         {
-            std::string containerNameStr(data.str());
+            std::string containerNameStr(value);
             /*            if(!is_lowercase_string(containerNameStr))
                         {
                             fprintf(stderr, "Container name must be lower cases.");
@@ -120,8 +134,16 @@ int read_config(std::string configFile)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
-    /*cfg->kernel_cache = 1;
+    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20, str_options.use_https));
+    if(errno != 0)
+    {
+        fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
+        // TODO: Improve this error case
+        return NULL;
+    }
+    /*
     cfg->attr_timeout = 360;
+    cfg->kernel_cache = 1;
     cfg->entry_timeout = 120;
     cfg->negative_timeout = 120;
     */
@@ -130,6 +152,9 @@ void *azs_init(struct fuse_conn_info * conn)
     conn->max_readahead = 4194304;
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
+
+    gc_cache.run();
+
     return NULL;
 }
 
@@ -198,13 +223,13 @@ int main(int argc, char *argv[])
     std::string tmpPathStr(options.tmp_path);
     str_options.tmpPath = tmpPathStr;
     const int defaultMaxConcurrency = 20;
-    bool use_https = false;
+    str_options.use_https = false;
     if (options.use_https != NULL)
     {
         std::string https(options.use_https);
         if (https == "true")
         {
-            use_https = true;
+            str_options.use_https = true;
         }
     }
 
@@ -217,19 +242,25 @@ int main(int argc, char *argv[])
         return 1; 
     }
 
-    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, use_https));
-    if(errno != 0)
+    // THe current implementation of blob_client_wrapper calls curl_global_init() in the constructor, and curl_global_cleanup in the destructor.
+    // Unfortunately, curl_global_init() has to be called in the same process as any HTTPS calls that are made, otherwise NSS is not configured properly.
+    // When running in daemon mode, the current process forks() and exits, while the child process lives on as a daemon.
+    // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
     {
-        fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
-        return 1;
-    }
+        blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https);
+        if(errno != 0)
+        {
+            fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
+            return 1;
+        }
 
-    // Check if the account name/key and container is correct.
-    if(azure_blob_client_wrapper->container_exists(str_options.containerName) == false
-            || errno != 0)
-    {
-        fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
-        return 1;
+        // Check if the account name/key and container is correct.
+        if(temp_azure_blob_client_wrapper.container_exists(str_options.containerName) == false
+                || errno != 0)
+        {
+            fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
+            return 1;
+        }
     }
 
     fuse_opt_add_arg(&args, "-omax_read=131072");
