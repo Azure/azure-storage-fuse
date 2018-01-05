@@ -1,5 +1,5 @@
-
 #include "blobfuse.h"
+#include <sys/file.h>
 
 int map_errno(int error)
 {
@@ -19,6 +19,125 @@ std::string prepend_mnt_path_string(const std::string path)
     return str_options.tmpPath + "/root" + path;
 }
 
+void gc_cache::add_file(std::string path)
+{
+    file_to_delete file;
+    file.path = path;
+    file.closed_time = time(NULL); 
+    
+    // lock before updating deque
+    std::lock_guard<std::mutex> lock(m_deque_lock);
+    m_cleanup.push_back(file);
+}
+
+void gc_cache::run()
+{
+    std::thread t1(std::bind(&gc_cache::run_gc_cache,this));
+    t1.detach();
+}
+
+// cleanup function to clean cached files that are too old
+void gc_cache::run_gc_cache()
+{
+
+    while(true){
+
+        // lock the deque
+        file_to_delete file;
+        bool is_empty;
+        {
+            std::lock_guard<std::mutex> lock(m_deque_lock);
+            is_empty = m_cleanup.empty();
+            if(!is_empty)
+            {
+                file = m_cleanup.front();
+            }
+        }
+
+        //if deque is empty, skip
+        if(is_empty)
+        {
+            //run it every 1 second
+            usleep(1000);
+            continue;
+        }
+
+
+        //check if the closed time is old enough to delete
+        if((time(NULL) - file.closed_time) > file_cache_timeout_in_seconds)
+        {
+            if (AZS_PRINT)
+            {
+                fprintf(stdout, "File %s timed out at %ld\n", file.path.c_str(), time(NULL));
+            }
+
+            // path in the temp location
+            const char * mntPath;
+            std::string mntPathString = prepend_mnt_path_string(file.path);
+            mntPath = mntPathString.c_str();
+
+            //check if the file on disk is still too old
+            //mutex lock
+            auto fmutex = file_lock_map::get_instance()->get_mutex(file.path.c_str());
+            std::lock_guard<std::mutex> lock(*fmutex);            
+
+            struct stat buf;
+            stat(mntPath, &buf);
+            if((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds)
+            {
+                if (AZS_PRINT)
+                {
+                    fprintf(stdout, "File %s clean up at %ld \n", mntPath, time(NULL));
+                }
+
+                //clean up the file from cache
+                int fd = open(mntPath, O_WRONLY);
+                int flockres = flock(fd, LOCK_EX|LOCK_NB);
+                if (flockres != 0)
+                {
+                    if (errno == EWOULDBLOCK)
+                    {
+                        // Someone else holds the lock.  In this case, we will postpone updating the cache until the next time open() is called.
+                        // TODO: examine the possibility that we can never acquire the lock and refresh the cache.
+                        if (AZS_PRINT)
+                        {
+                            fprintf(stdout, "Failed to lock file %s for clean up. errno = %d\n", file.path.c_str(), errno);
+                        }
+                    }
+                    else
+                    {
+                        // Failed to acquire the lock for some other reason.  We close the open fd, and continue.
+                        if (AZS_PRINT)
+                        {
+                            fprintf(stdout, "Failed to lock file %s for clean up. errno = %d\n", file.path.c_str(), errno);
+                        }
+                    }
+                }
+                else
+                {
+                    unlink(mntPath);
+                    flock(fd, LOCK_UN);
+                }
+
+                close(fd);
+            }
+
+            // lock to remove from front
+            {
+                std::lock_guard<std::mutex> lock(m_deque_lock);
+                m_cleanup.pop_front();
+            }
+
+        }
+        else
+        {
+            // no file was timed out - let's wait a second
+            usleep(1000);
+        }
+    }
+
+}
+
 int ensure_files_directory_exists_in_cache(const std::string file_path)
 {
     char *pp;
@@ -27,6 +146,7 @@ int ensure_files_directory_exists_in_cache(const std::string file_path)
     char *copypath = strdup(file_path.c_str());
 
     status = 0;
+    errno = 0;
     pp = copypath;
     while (status == 0 && (slash = strchr(pp, '/')) != 0)
     {
@@ -42,6 +162,14 @@ int ensure_files_directory_exists_in_cache(const std::string file_path)
             {
                 status = mkdir(copypath, 0770);
             }
+
+            // Ignore if some other thread was successful creating the path
+	    if(errno == EEXIST)
+            {
+                status = 0;
+                errno = 0;
+            }
+
             *slash = '/';
         }
         pp = slash + 1;
@@ -75,7 +203,7 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
             failcount = 0;
             if (AZS_PRINT)
             {
-                fprintf(stdout, "results count = %lu\n", response.blobs.size());
+                fprintf(stdout, "results count = %s\n", to_str(response.blobs.size()).c_str());
                 fprintf(stdout, "next_marker = %s\n", response.next_marker.c_str());
             }
             continuation = response.next_marker;
@@ -179,6 +307,10 @@ int azs_getattr(const char *path, struct stat *stbuf)
         stbuf->st_size = 4096;
         return 0;
     }
+
+    // Ensure that we don't get attributes while the file is in an intermediate state.
+    auto fmutex = file_lock_map::get_instance()->get_mutex(path);
+    std::lock_guard<std::mutex> lock(*fmutex);
 
     // Check and see if the file/directory exists locally (because it's being buffered.)  If so, skip the call to Storage.
     std::string pathString(path);
@@ -389,6 +521,8 @@ int azs_rename_directory(const char *src, const char *dst)
         }
     }
 
+    closedir(dir_stream);
+
     errno = 0;
     std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", srcPathStr.substr(1));
     if (errno != 0)
@@ -402,7 +536,7 @@ int azs_rename_directory(const char *src, const char *dst)
 
     if (AZS_PRINT)
     {
-        fprintf(stdout, "result count = %lu\n", listResults.size());
+        fprintf(stdout, "result count = %s\n", to_str(listResults.size()).c_str());
     }
     for (size_t i = 0; i < listResults.size(); i++)
     {

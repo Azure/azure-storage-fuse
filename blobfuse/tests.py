@@ -16,6 +16,7 @@ import multiprocessing
 class TestFuse(unittest.TestCase):
     blobdir = "/path/to/mount" # Path to the mounted container
     localdir = "/mnt/tmp" # A local temp directory, not the same one used by blobfuse.
+    cachedir = "/mnt/blobfusetmp"
     src = ""
     dest = ""
     blobstage = ""
@@ -1118,6 +1119,37 @@ class TestFuse(unittest.TestCase):
         os.close(fd)
         os.remove(testFilePath)
         
+    def test_multiple_threads_create_cache_directory_simultaneous(self):
+        # This is to test the fix to a bug that reported failure if multiple threads simultaneously called ensure_directory_exists_in_cache.
+        # The directory would be successfully created, but many threads would fail because they would try to create it after another thread had already done so.
+        sourceDirName = "mediumblobs-2"
+        mediumBlobsSourceDir = os.path.join(self.blobstage, sourceDirName)
+        if not os.path.exists(mediumBlobsSourceDir):
+            os.makedirs(mediumBlobsSourceDir);
+        # We must use different files for each thread to avoid the synchronization that would occur if all threads access the same file
+        for i in range(0,20):
+            filename = str(uuid.uuid4())
+            filepath = os.path.join(mediumBlobsSourceDir, filename)
+            os.system("head -c 100M < /dev/zero >> " + filepath);
+
+        # This removes the cached entries of the files just created, so they are on the service but not local.
+        # This will force each thread to call ensure_directory_exists_in_cache when trying to access its file.
+        shutil.rmtree(self.cachedir + '/root/testing/' + sourceDirName)
+
+        threads = []
+
+        for filename in os.listdir(mediumBlobsSourceDir):
+            path = os.path.join(mediumBlobsSourceDir, filename)
+            threads.append(threading.Thread(target=self.read_file_func, args=(path, 0, 0, "",))) # Note that read_file_func also opens the file, which is the desired behavior
+
+        for thread in threads:
+            thread.start()
+
+        for thread in threads:
+            thread.join()
+
+        shutil.rmtree(mediumBlobsSourceDir)
+
         
 if __name__ == '__main__':
     unittest.main()

@@ -37,6 +37,7 @@ const struct fuse_opt option_spec[] =
 };
 
 std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
+class gc_cache gc_cache;
 
 // Currently, the cpp lite lib puts the HTTP status code in errno.
 // This mapping tries to convert the HTTP status code to a standard Linux errno.
@@ -133,8 +134,16 @@ int read_config(std::string configFile)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
-    /*cfg->kernel_cache = 1;
+    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20, str_options.use_https));
+    if(errno != 0)
+    {
+        fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
+        // TODO: Improve this error case
+        return NULL;
+    }
+    /*
     cfg->attr_timeout = 360;
+    cfg->kernel_cache = 1;
     cfg->entry_timeout = 120;
     cfg->negative_timeout = 120;
     */
@@ -143,13 +152,16 @@ void *azs_init(struct fuse_conn_info * conn)
     conn->max_readahead = 4194304;
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
+
+    gc_cache.run();
+
     return NULL;
 }
 
 // TODO: print FUSE usage as well
 void print_usage()
 {
-    fprintf(stdout, "Usage: blobfuse <mount-folder> --config-file=<config-file> --tmp-path=<temp-path> [--use-https=false] [--file-cache-timeout-in-seconds=120]\n");
+    fprintf(stdout, "Usage: blobfuse <mount-folder> --config-file=<config-file> --tmp-path=<temp-path> [--use-https=true] [--file-cache-timeout-in-seconds=120]\n");
     fprintf(stdout, "Please see https://github.com/Azure/azure-storage-fuse for installation and configuration instructions.\n");
 }
 
@@ -211,37 +223,51 @@ int main(int argc, char *argv[])
     std::string tmpPathStr(options.tmp_path);
     str_options.tmpPath = tmpPathStr;
     const int defaultMaxConcurrency = 20;
-    bool use_https = false;
+    str_options.use_https = true;
     if (options.use_https != NULL)
     {
         std::string https(options.use_https);
-        if (https == "true")
+        if (https == "false")
         {
-            use_https = true;
+            str_options.use_https = false;
         }
     }
 
 
-    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, use_https));
-    if(errno != 0)
+    // For proper locking, instructing gcrypt to use pthreads 
+    gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
+    if(GNUTLS_E_SUCCESS != gnutls_global_init())
     {
-        fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
-        return 1;
+        fprintf(stderr, "GnuTLS initialization failed: errno = %d.\n", errno);
+        return 1; 
     }
 
-    // Check if the account name/key and container is correct.
-    if(azure_blob_client_wrapper->container_exists(str_options.containerName) == false
-            || errno != 0)
+    // THe current implementation of blob_client_wrapper calls curl_global_init() in the constructor, and curl_global_cleanup in the destructor.
+    // Unfortunately, curl_global_init() has to be called in the same process as any HTTPS calls that are made, otherwise NSS is not configured properly.
+    // When running in daemon mode, the current process forks() and exits, while the child process lives on as a daemon.
+    // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
     {
-        fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
-        return 1;
+        blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https);
+        if(errno != 0)
+        {
+            fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
+            return 1;
+        }
+
+        // Check if the account name/key and container is correct.
+        if(temp_azure_blob_client_wrapper.container_exists(str_options.containerName) == false
+                || errno != 0)
+        {
+            fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
+            return 1;
+        }
     }
 
     fuse_opt_add_arg(&args, "-omax_read=131072");
     fuse_opt_add_arg(&args, "-omax_write=131072");
     if(0 != ensure_files_directory_exists_in_cache(prepend_mnt_path_string("/placeholder")))
     {
-        fprintf(stderr, "Failed to create direcotry on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
+        fprintf(stderr, "Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         return 1;
     }
 
@@ -264,6 +290,8 @@ int main(int argc, char *argv[])
     umask(0);
 
     ret =  fuse_main(args.argc, args.argv, &azs_blob_operations, NULL);
+
+    gnutls_global_deinit();
 
     return ret;
 }

@@ -18,5 +18,6 @@ const int blob_name_invalid = 1502;
 const int blob_delete_fail = 1503;
 const int blob_list_fail = 1504;
 const int blob_copy_fail = 1505;
+const int blob_no_content_range = 1506;
 /* unknown error*/
 const int unknown_error = 1600;

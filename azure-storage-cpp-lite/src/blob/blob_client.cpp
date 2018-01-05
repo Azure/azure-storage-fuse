@@ -1,5 +1,5 @@
 #include <algorithm>
-
+#include <sstream>
 #include "blob/blob_client.h"
 
 #include "blob/download_blob_request.h"
@@ -25,6 +25,49 @@
 
 namespace microsoft_azure {
 namespace storage {
+
+namespace {
+
+// Return content size from content-range header or -1 if cannot be obtained.
+ssize_t get_length_from_content_range(const std::string &header) {
+   const auto pos = header.rfind('/');
+   if (std::string::npos == pos) {
+      return -1;
+   }
+   const auto lengthStr = header.substr(pos + 1);
+   ssize_t result;
+   if (!(std::istringstream(lengthStr) >> result)) {
+      return -1;
+   }
+   return result;
+}
+
+} // noname namespace
+
+storage_outcome<chunk_property> blob_client::get_chunk_to_stream_sync(const std::string &container, const std::string &blob, unsigned long long offset, unsigned long long size, std::ostream &os) {
+    auto http = m_client->get_handle();
+    auto request = std::make_shared<download_blob_request>(container, blob);
+    if (size > 0) {
+        request->set_start_byte(offset);
+        request->set_end_byte(offset + size - 1);
+    }
+    else {
+        request->set_start_byte(offset);
+    }
+
+    http->set_output_stream(storage_ostream(os));
+
+    const auto response = async_executor<void>::submit(m_account, request, http, m_context).get();
+    if (response.success())
+    {
+        chunk_property property{};
+        property.etag = http->get_header(constants::header_etag);
+        property.totalSize = get_length_from_content_range(http->get_header(constants::header_content_range));
+        std::istringstream(http->get_header(constants::header_content_length)) >> property.size;
+        return storage_outcome<chunk_property>(property);
+    }
+    return storage_outcome<chunk_property>(storage_error(response.error()));
+}
 
 std::future<storage_outcome<void>> blob_client::download_blob_to_stream(const std::string &container, const std::string &blob, unsigned long long offset, unsigned long long size, std::ostream &os) {
     auto http = m_client->get_handle();
