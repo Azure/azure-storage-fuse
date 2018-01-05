@@ -689,7 +689,7 @@ namespace microsoft_azure {
                     const auto range = std::min(chunk_size, length - offset);
                     auto single_download = std::async(std::launch::async, [originalEtag, offset, range, this, &destPath, &container, &blob](){
                             // Note, keep std::ios_base::in to prevent truncating of the file.
-                            auto output = std::ofstream(destPath.c_str(), std::ios_base::out |  std::ios_base::in);
+                            std::ofstream output(destPath.c_str(), std::ios_base::out |  std::ios_base::in);
                             output.seekp(offset);
                             auto chunk = m_blobClient->get_chunk_to_stream_sync(container, blob, offset, range, output);
                             output.close();
