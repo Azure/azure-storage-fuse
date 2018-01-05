@@ -59,7 +59,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     // If the file/blob being opened does not exist in the cache, or the version in the cache is too old, we need to download / refresh the data from the service.
     struct stat buf;
     int statret = stat(mntPath, &buf);
-    if ((statret != 0) || ((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds)) 
+    if ((statret != 0) || ((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds))
     {
         bool skipCacheUpdate = false;
         if (statret == 0) // File exists
@@ -107,26 +107,13 @@ int azs_open(const char *path, struct fuse_file_info *fi)
                 fprintf(stderr, "Failed to create file or directory on cache directory: %s, errno = %d.\n", mntPathString.c_str(),  errno);
                 return -1;
             }
-            std::ofstream filestream(mntPathString, std::ofstream::binary | std::ofstream::out);
-            errno = 0;
-            int fd = open(mntPath, O_WRONLY);
-            if (fd == -1)
-            {
-                return -errno;
-            }
 
             errno = 0;
-            azure_blob_client_wrapper->download_blob_to_stream(str_options.containerName, pathString.substr(1), 0ULL, 1000000000000ULL, filestream);
-            int storage_errno = errno;
-            close(fd);
-            if (storage_errno != 0)
-            {
-                remove(mntPath);
-                return 0 - map_errno(storage_errno);
-            }
+            azure_blob_client_wrapper->download_blob_to_file(str_options.containerName, pathString.substr(1), mntPathString);
             if (errno != 0)
             {
-                return -errno;
+                remove(mntPath);
+                return 0 - map_errno(errno);
             }
         }
     }

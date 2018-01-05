@@ -1,7 +1,10 @@
 /* C++ interface wrapper for blob client
-* No exceptions will throw.
-*/
+ * No exceptions will throw.
+ */
 #include <sys/stat.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <fcntl.h>
 #include <iostream>
 #include <fstream>
 
@@ -10,6 +13,9 @@
 
 namespace microsoft_azure {
     namespace storage {
+
+        const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
+
         class mempool
         {
         public:
@@ -105,38 +111,38 @@ namespace microsoft_azure {
 
 
         blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency, const bool use_https)
-{
-    if(account_name.length() == 0 || account_key.length() == 0)
-    {
-        errno = invalid_parameters;
-        return blob_client_wrapper(false);
-    }
+        {
+            if(account_name.length() == 0 || account_key.length() == 0)
+            {
+                errno = invalid_parameters;
+                return blob_client_wrapper(false);
+            }
 
-    /* set a default concurrency value. */
-    unsigned int concurrency_limit = 40;
-    if(concurrency != 0)
-    {
-        concurrency_limit = concurrency;
-    }
-    std::string accountName(account_name);
-    std::string accountKey(account_key);
+            /* set a default concurrency value. */
+            unsigned int concurrency_limit = 40;
+            if(concurrency != 0)
+            {
+                concurrency_limit = concurrency;
+            }
+            std::string accountName(account_name);
+            std::string accountKey(account_key);
 
-    try
-    {
-        std::shared_ptr<storage_credential>  cred = std::make_shared<shared_key_credential>(accountName, accountKey);
-        std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https);
-        std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
-        errno = 0;
-        return blob_client_wrapper(blobClient);
-    }
-    catch(const std::exception &ex)
-    {
-        std::cerr << ex.what() << std::endl;
-        errno = unknown_error;
-        return blob_client_wrapper(false);
-    }
+            try
+            {
+                std::shared_ptr<storage_credential>  cred = std::make_shared<shared_key_credential>(accountName, accountKey);
+                std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https);
+                std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
+                errno = 0;
+                return blob_client_wrapper(blobClient);
+            }
+            catch(const std::exception &ex)
+            {
+                std::cerr << ex.what() << std::endl;
+                errno = unknown_error;
+                return blob_client_wrapper(false);
+            }
 
-}
+        }
 
         void blob_client_wrapper::create_container(const std::string &container)
         {
@@ -160,8 +166,8 @@ namespace microsoft_azure {
                 if(!result.success())
                 {
                     /* container already exists.
-                    *               * Bug, need to compare message as well.
-                    *                             * */
+                     *               * Bug, need to compare message as well.
+                     *                             * */
                     errno = std::stoi(result.error().code);
                 }
                 else
@@ -441,7 +447,7 @@ namespace microsoft_azure {
                 int block_size = 4*1024*1024;
                 if(MaxBlobSize < fileSize)
                 {
-                    block_size = fileSize; 
+                    block_size = fileSize;
                 }
 
                 std::ifstream ifs;
@@ -465,14 +471,14 @@ namespace microsoft_azure {
 
                 for(long long offset = 0, idx = 0; offset < fileSize; offset += block_size, ++idx)
                 {
-                        int length = block_size;
-                        if(offset + length > fileSize)
-                        {
-                            length = fileSize - offset;  
-                        }
+                    int length = block_size;
+                    if(offset + length > fileSize)
+                    {
+                        length = fileSize - offset;
+                    }
 
-                        char* buffer = new char[block_size];
-                        ifs.read(buffer, length);
+                    char* buffer = new char[block_size];
+                    ifs.read(buffer, length);
 
                     std::string block_id = std::to_string(idx);
                     if(block_id.length() < 44)
@@ -502,44 +508,44 @@ namespace microsoft_azure {
                         break;
                     }
                     auto single_put = std::async(std::launch::async, [block_id, block_size, idx, this, buffer, offset, length, &container, &blob, &parallel, &mutex, &cv_mutex, &cv](){
-                        {
-                            std::unique_lock<std::mutex> lk(cv_mutex);
-                            cv.wait(lk, [&parallel, &mutex]() {
+                            {
+                                std::unique_lock<std::mutex> lk(cv_mutex);
+                                cv.wait(lk, [&parallel, &mutex]() {
+                                        std::lock_guard<std::mutex> lock(mutex);
+                                        if(parallel > 0)
+                                        {
+                                            --parallel;
+                                            return true;
+                                        }
+                                        return false;
+                                    });
+                                //std::cout << "idx: " << idx << std::endl;
+                                //std::cout << "parallel: " << parallel << std::endl;
+                            }
+
+                            std::istringstream in;
+                            in.rdbuf()->pubsetbuf(buffer, length);
+                            auto blockResult = m_blobClient->upload_block_from_stream(container, blob, block_id, in).get();
+                            delete[] buffer;
+                            if(!blockResult.success())
+                            {
+                                errno = std::stoi(blockResult.error().code);
+                            }
+
+                            {
                                 std::lock_guard<std::mutex> lock(mutex);
-                                if(parallel > 0)
-                                {
-                                    --parallel;
-                                    return true;
-                                }
-                                return false;
-                            });
-                            //std::cout << "idx: " << idx << std::endl;
-                            //std::cout << "parallel: " << parallel << std::endl;
-                        }
-
-                        std::istringstream in;
-                        in.rdbuf()->pubsetbuf(buffer, length);
-                        auto blockResult = m_blobClient->upload_block_from_stream(container, blob, block_id, in).get();
-                        delete[] buffer;
-                        if(!blockResult.success())
-                        {
-                            errno = std::stoi(blockResult.error().code);
-                        }
-
-                        {
-                            std::lock_guard<std::mutex> lock(mutex);
-                            ++parallel;
-                            //std::cout << "idx done: " << idx << std::endl;
-                            //std::cout << "parallel done: " << parallel << std::endl;
-                            cv.notify_one();
-                        }
-                    });
+                                ++parallel;
+                                //std::cout << "idx done: " << idx << std::endl;
+                                //std::cout << "parallel done: " << parallel << std::endl;
+                                cv.notify_one();
+                            }
+                        });
                     //std::cout << "End: " << idx << std::endl;
                     task_list.push_back(std::move(single_put));
                 }
 
                 for(size_t i = 0; i < task_list.size(); ++i)
-                //while(!task_list.empty())
+                    //while(!task_list.empty())
                 {
                     //task_list.front().wait();
                     //task_list.pop();
@@ -624,108 +630,101 @@ namespace microsoft_azure {
                 return;
             }
 
-
+            const size_t downloaders = std::min(parallel, static_cast<size_t>(m_concurrency));
             try
             {
-                parallel = parallel;
-                //download_blob_to_stream(container, blob, 0, 0, ofs);
-
-                std::mutex ofs_mutex;
-                std::condition_variable cv;
-                std::mutex cv_mutex;
-                std::condition_variable writeCV;
-                
-                auto blobProperty = get_blob_property(container, blob);
-                auto length = blobProperty.size;
-                //std::cout << "Size: " << length << std::endl;
-                unsigned long long range = 4*1024*1024; 
-                std::vector<std::future<int>> task_list;
-                std::mutex mutex;
-                unsigned long long current = 0;
-
-                for(unsigned long long offset = 0; offset < length; offset += range)
+                // Download the first chunk of the blob. The response will contain required blob metadata as well.
+                int errcode = 0;
+                std::vector<char> buffer(DOWNLOAD_CHUNK_SIZE);
+                std::ostringstream os;
+                os.rdbuf()->pubsetbuf(&buffer[0], buffer.size());
+                auto firstChunk = m_blobClient->get_chunk_to_stream_sync(container, blob, 0, buffer.size(), os);
+                if (!firstChunk.success())
                 {
-                    if(offset + range > length)
-                    {
-                        range = length - offset;
+                    if (constants::code_request_range_not_satisfiable != firstChunk.error().code) {
+                        errno = std::stoi(firstChunk.error().code);
+                        return;
                     }
-                    
-                    {
-                        while(task_list.size() > m_concurrency)
-                        {
-                            for(auto iter = task_list.begin(); iter != task_list.end() && task_list.size() > m_concurrency; )
+                    // The only reason for constants::code_request_range_not_satisfiable on the first chunk is zero
+                    // blob size, so proceed as there is no error.
+                }
+
+                // Smoke check if the total size is known, otherwise - fail.
+                if (firstChunk.response().totalSize < 0) {
+                    errno = blob_no_content_range;
+                    return;
+                }
+
+                // Get required metadata - etag to verify all future chunks and the total blob size.
+                const auto originalEtag = firstChunk.response().etag;
+                const auto length = static_cast<unsigned long long>(firstChunk.response().totalSize);
+
+                // Create and truncate the target file.
+                auto fd = open(destPath.c_str(), O_CREAT|O_WRONLY, 0770);
+                if (-1 == fd) {
+                    return;
+                }
+                if (-1 == ftruncate(fd, length)) {
+                    close(fd);
+                    return;
+                }
+
+                // Persist the first chunk.
+                auto r = pwrite(fd, os.str().c_str(), firstChunk.response().size, 0);
+                while (r != static_cast<ssize_t>(firstChunk.response().size) && r != -1) {
+                    r = pwrite(fd, os.str().c_str(), firstChunk.response().size, 0);
+                }
+                if (-1 == r) {
+                    close(fd);
+                    return;
+                }
+                close(fd);
+
+                // Download the rest.
+                const auto left = length - firstChunk.response().size;
+                const auto chunk_size = std::max(DOWNLOAD_CHUNK_SIZE, (left + downloaders - 1)/ downloaders);
+                std::vector<std::future<int>> task_list;
+                for(unsigned long long offset = firstChunk.response().size; offset < length; offset += chunk_size)
+                {
+                    const auto range = std::min(chunk_size, length - offset);
+                    auto single_download = std::async(std::launch::async, [originalEtag, offset, range, this, &destPath, &container, &blob](){
+                            // Note, keep std::ios_base::in to prevent truncating of the file.
+                            std::ofstream output(destPath.c_str(), std::ios_base::out |  std::ios_base::in);
+                            output.seekp(offset);
+                            auto chunk = m_blobClient->get_chunk_to_stream_sync(container, blob, offset, range, output);
+                            output.close();
+                            if(!chunk.success())
                             {
-                                iter->wait();
-                                iter = task_list.erase(iter);
-                            }
-                        }
-                    }
-                    auto single_download = std::async(std::launch::async, [offset, range, this, &destPath, &current, &ofs_mutex, &mutex, &cv_mutex, &cv, &writeCV, &parallel, &container, &blob](){
-                        {
-                            std::unique_lock<std::mutex> lk(cv_mutex);
-                            cv.wait(lk, [&parallel, &mutex]() {
-                                std::lock_guard<std::mutex> lock(mutex);
-                                if(parallel > 0)
-                                {
-                                    --parallel;
-                                    //std::cout << "parallel: " << parallel << std::endl;
-                                    return true;
+                                // Looks like the blob has been replaced by smaller one - ask user to retry.
+                                if (constants::code_request_range_not_satisfiable == chunk.error().code) {
+                                    return EAGAIN;
                                 }
-                                return false;
-                            });
-                        }
-                        char* buffer = new char[range];
-                        std::ostringstream os;
-                        os.rdbuf()->pubsetbuf(buffer, range);
-
-                        download_blob_to_stream(container, blob, offset, range, os);
-
-                        {
-                            std::unique_lock<std::mutex> lk(ofs_mutex);
-                            writeCV.wait(lk, [&current, offset]() { 
-                                //std::cout << "offset: " << offset << std::endl;
-                                return current >= offset; });
-                            //if((unsigned long long)ofs.tellp() != offset)
-                            //{
-                            //    ofs.seekp(offset, std::ios_base::beg);
-                            //}
-                            std::ofstream ofs;
-                            if(offset == 0)
-                            {
-                                ofs.open(destPath, std::ofstream::out);
+                                return std::stoi(chunk.error().code);
                             }
-                            else
-                            {
-                                ofs.open(destPath, std::ofstream::out | std::ofstream::app);
+                            // The etag has been changed - ask user to retry.
+                            if (originalEtag != chunk.response().etag) {
+                                return EAGAIN;
                             }
-                            ofs.write(os.str().c_str(), range);
-                            ofs.close();
-                            delete[] buffer;
-
-                            if(offset + range > current)
-                            {
-                                current = offset + range;
+                            // Check for any writing errors.
+                            if (!output) {
+                                return unknown_error;
                             }
-                            //std::cout << "current: " << current << std::endl;
-                            writeCV.notify_all();
-                        }
-
-                        {
-                            std::lock_guard<std::mutex> lock(mutex);
-                            ++parallel;
-                            //std::cout << "parallel done: " << parallel << std::endl;
-                            cv.notify_one();
-                        }
-                        return errno;
-                    });
+                            return 0;
+                        });
                     task_list.push_back(std::move(single_download));
                 }
 
+                // Wait for workers to complete downloading.
                 for(size_t i = 0; i < task_list.size(); ++i)
                 {
                     task_list[i].wait();
+                    auto result = task_list[i].get();
+                    // let's report the first encountered error for consistency.
+                    if (0 != result && errcode == 0) {
+                        errcode = result;
+                    }
                 }
-                //std::cout << "End" << std::endl;
+                errno = errcode;
             }
             catch(std::exception ex)
             {
@@ -825,14 +824,14 @@ namespace microsoft_azure {
 
         void blob_client_wrapper::start_copy(const std::string &sourceContainer, const std::string &sourceBlob, const std::string &destContainer, const std::string &destBlob)
         {
-            
+
             if(!is_valid())
             {
                 errno = client_not_init;
                 return;
             }
             if(sourceContainer.length() == 0 || sourceBlob.length() == 0 ||
-                destContainer.length() == 0 || destBlob.length() == 0) 
+               destContainer.length() == 0 || destBlob.length() == 0)
             {
                 errno = invalid_parameters;
                 return;
@@ -860,5 +859,5 @@ namespace microsoft_azure {
             }
         }
 
-        }
-        } // microsoft_azure::storage
+    }
+} // microsoft_azure::storage
