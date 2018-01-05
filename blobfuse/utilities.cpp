@@ -521,6 +521,8 @@ int azs_rename_directory(const char *src, const char *dst)
         }
     }
 
+    closedir(dir_stream);
+
     errno = 0;
     std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", srcPathStr.substr(1));
     if (errno != 0)

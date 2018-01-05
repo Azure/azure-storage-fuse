@@ -3,18 +3,18 @@
 
 file_lock_map* file_lock_map::get_instance()
 {
-    if(nullptr == _instance.get())
+    if(nullptr == s_instance.get())
     {
         std::lock_guard<std::mutex> lock(s_mutex);
-        if(nullptr == _instance.get())
+        if(nullptr == s_instance.get())
         {
-            _instance.reset(new file_lock_map());
+            s_instance.reset(new file_lock_map());
         }
     }
-    return _instance.get();
+    return s_instance.get();
 }
 
-std::shared_ptr<std::mutex> file_lock_map::get_mutex(std::string path)
+std::shared_ptr<std::mutex> file_lock_map::get_mutex(const std::string& path)
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     auto iter = m_lock_map.find(path);
@@ -30,14 +30,9 @@ std::shared_ptr<std::mutex> file_lock_map::get_mutex(std::string path)
     }
 }
 
-std::shared_ptr<std::mutex> file_lock_map::get_mutex(const char* path)
-{
-    std::string spath(path);
-    return get_mutex(spath);
-}
-
-std::shared_ptr<file_lock_map> file_lock_map::_instance;
+std::shared_ptr<file_lock_map> file_lock_map::s_instance;
 std::mutex file_lock_map::s_mutex;
+
 std::deque<file_to_delete> cleanup;
 std::mutex deque_lock;
 
@@ -232,31 +227,7 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
     int res;
-
-    int mntPathLength = mntPathString.size();
-    char *mntPathCopy = (char *)malloc(mntPathLength + 1);
-    memcpy(mntPathCopy, mntPath, mntPathLength);
-    mntPathCopy[mntPathLength] = 0;
-
-    // Have to create any directories that don't already exist in the path to the file.
-    // // TODO: Change this to use the 'ensure_directory'exists' method.
-    char *cur = mntPathCopy + 1;
-    cur = strchr(cur, '/');
-    while (cur)
-    {
-        *cur = 0;
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "Now validating and possibly creating %s\n", mntPathCopy);
-        }
-        if (access(mntPathCopy, F_OK) != 0)
-        {
-            mkdir(mntPathCopy, 0770);
-        }
-        *cur = '/';
-        cur = cur + 1;
-        cur = strchr(cur, '/');
-    }
+    ensure_files_directory_exists_in_cache(mntPathString);
 
     // FUSE will set the O_CREAT and O_WRONLY flags, but not O_EXCL, which is generally assumed for 'create' semantics.
     res = open(mntPath, fi->flags | O_EXCL, mode);

@@ -59,16 +59,14 @@ class file_lock_map
 {
 public:
     static file_lock_map* get_instance();
-    std::shared_ptr<std::mutex> get_mutex(std::string path);
-    std::shared_ptr<std::mutex> get_mutex(const char* path);
+    std::shared_ptr<std::mutex> get_mutex(const std::string& path);
 
-protected:
+private:
     file_lock_map()
     {
     }
 
-private:
-    static std::shared_ptr<file_lock_map> _instance;
+    static std::shared_ptr<file_lock_map> s_instance;
     static std::mutex s_mutex;
     std::mutex m_mutex;
     std::map<std::string, std::shared_ptr<std::mutex>> m_lock_map;
