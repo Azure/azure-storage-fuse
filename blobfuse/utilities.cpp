@@ -281,7 +281,7 @@ int is_directory_empty(std::string container, std::string delimiter, std::string
             success = false;
             failcount++; //TODO: use to set errno.
         }
-    } while ((continuation.size() > 0) && !success && (failcount < 20));
+    } while ((continuation.size() > 0 || !success) && failcount < 20);
 
     if (!success)
     {
