@@ -192,8 +192,11 @@ void *azs_init(struct fuse_conn_info * conn)
 // TODO: print FUSE usage as well
 void print_usage()
 {
-    fprintf(stdout, "Usage: blobfuse <mount-folder> --config-file=<config-file> --tmp-path=<temp-path> [--use-https=true] [--file-cache-timeout-in-seconds=120] [--container-name]\n");
-    fprintf(stdout, "Please see https://github.com/Azure/azure-storage-fuse for installation and configuration instructions.\n");
+    fprintf(stdout, "Usage: blobfuse <mount-folder> --tmp-path=</path/to/fusecache> [--config-file=</path/to/config.cfg> | --container-name=<containername>] [--use-https=true] [--file-cache-timeout-in-seconds=120]\n\n");
+    fprintf(stdout, "In addition to setting --tmp-path parameter, you must also do one of the following:\n");
+    fprintf(stdout, "1. Specify a config file (using --config-file]=) with account name, account key, and container name, OR\n");
+    fprintf(stdout, "2. Set the environment variables AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCESS_KEY, and specify the container name with --container-name=\n\n");
+    fprintf(stdout, "See https://github.com/Azure/azure-storage-fuse for detailed installation and configuration instructions.\n");
 }
 
 int main(int argc, char *argv[])
@@ -243,7 +246,7 @@ int main(int argc, char *argv[])
         {
             if(!options.container_name)
             {
-                fprintf(stderr, "--container-name is not set.\n");
+                fprintf(stderr, "Error: --container-name is not set.\n");
                 print_usage();
                 return 1;
             }
