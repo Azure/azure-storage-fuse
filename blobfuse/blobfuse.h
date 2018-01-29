@@ -139,6 +139,9 @@ int map_errno(int error);
 // Input is the logical file name being input to the FUSE API, output is the file name of the on-disk file in the file cache.
 std::string prepend_mnt_path_string(const std::string path);
 
+// Helper function to acquire a shared file lock while the file is open
+int shared_lock_file(int flags, int fd);
+
 // Helper function to create all directories in the path if they don't already exist.
 int ensure_files_directory_exists_in_cache(const std::string file_path);
 
