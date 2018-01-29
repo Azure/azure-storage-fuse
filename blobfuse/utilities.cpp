@@ -138,6 +138,39 @@ void gc_cache::run_gc_cache()
 
 }
 
+// Acquire shared lock utility function
+int shared_lock_file(int flags, int fd)
+{
+    if((flags&O_NONBLOCK) == O_NONBLOCK)
+    {
+        if(0 != flock(fd, LOCK_SH|LOCK_NB))
+        {
+            if (AZS_PRINT)
+            {
+                printf("flock error in NB.  errno = %d, res = %d\n", errno, fd);
+            }
+            int flockerrno = errno;
+            close(fd);
+            return 0 - flockerrno;
+        }
+    }
+    else
+    {
+        if (0 != flock(fd, LOCK_SH))
+        {
+            if (AZS_PRINT)
+            {
+                printf("flock error.  errno = %d, res = %d\n", errno, fd);
+            }
+            int flockerrno = errno;
+            close(fd);
+            return 0 - flockerrno;
+        }
+    }
+
+    return 0;
+}
+
 int ensure_files_directory_exists_in_cache(const std::string file_path)
 {
     char *pp;

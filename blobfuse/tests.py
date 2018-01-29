@@ -1118,6 +1118,33 @@ class TestFuse(unittest.TestCase):
         
         os.close(fd)
         os.remove(testFilePath)
+
+
+    def test_multiple_file_handles_on_single_file(self):
+        # This is to test whether close of a file handle impacts other open file handles on the same file
+        # reported in issue 57
+        testFileName = "testFile_new" + str(random.randint(0, 10000))
+        testFilePath = os.path.join(self.blobstage, testFileName)
+
+        repeat = random.randint(1, 10)
+        fd1 = os.open(testFilePath, os.O_WRONLY | os.O_CREAT)
+        fd2 = os.open(testFilePath, os.O_WRONLY)
+        os.close(fd2)
+       
+        # sleep until cache times out 
+        # TODO: Improve test execution time by reducing cache timeout
+        time.sleep(130)
+
+        testData = "random data"
+           
+        for i in range(0, repeat): 
+            os.write(fd1, testData.encode())
+
+        os.close(fd1)
+
+        self.assertEqual(os.stat(testFilePath).st_size, len(testData.encode()) * repeat)
+
+        
         
     def test_multiple_threads_create_cache_directory_simultaneous(self):
         # This is to test the fix to a bug that reported failure if multiple threads simultaneously called ensure_directory_exists_in_cache.

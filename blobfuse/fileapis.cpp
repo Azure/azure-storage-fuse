@@ -135,31 +135,10 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     }
 
     // At this point, the file exists in the cache and we have an open file handle to it.  We now attempt to acquire the flock lock in shared mode, to be held while reading and writing to the file.
-    if((fi->flags&O_NONBLOCK) == O_NONBLOCK)
+    int lock_result = shared_lock_file(fi->flags, res);
+    if(lock_result != 0)
     {
-        if(0 != flock(res, LOCK_SH|LOCK_NB))
-        {
-            if (AZS_PRINT)
-            {
-                printf("flock error in NB.  errno = %d, res = %d\n", errno, res);
-            }
-            int flockerrno = errno;
-            close(res);
-            return 0 - flockerrno;
-        }
-    }
-    else
-    {
-        if (0 != flock(res, LOCK_SH))
-        {
-            if (AZS_PRINT)
-            {
-                printf("flock error.  errno = %d, res = %d\n", errno, res);
-            }
-            int flockerrno = errno;
-            close(res);
-            return 0 - flockerrno;
-        }
+        return lock_result;
     }
 
     // TODO: Actual access control
@@ -229,6 +208,13 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
             fprintf(stdout, "Error in open, errno = %d\n", errno);
         }
         return -errno;
+    }
+
+    // At this point, the file exists in the cache and we have an open file handle to it.  We now attempt to acquire the flock lock in shared mode, to be held while reading and writing to the file.
+    int lock_result = shared_lock_file(fi->flags, res);
+    if(lock_result != 0)
+    {
+        return lock_result;
     }
 
     struct fhwrapper *fhwrap = new fhwrapper(res, true);
