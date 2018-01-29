@@ -1132,6 +1132,7 @@ class TestFuse(unittest.TestCase):
         os.close(fd2)
        
         # sleep until cache times out 
+        # TODO: Improve test execution time by reducing cache timeout
         time.sleep(130)
 
         testData = "random data"
@@ -1141,7 +1142,7 @@ class TestFuse(unittest.TestCase):
 
         os.close(fd1)
 
-        self.assertEqual(os.stat(testFilePath).st_size, len(testData) * repeat)
+        self.assertEqual(os.stat(testFilePath).st_size, len(testData.encode()) * repeat)
 
         
         
