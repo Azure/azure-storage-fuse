@@ -1126,24 +1126,22 @@ class TestFuse(unittest.TestCase):
         testFileName = "testFile_new" + str(random.randint(0, 10000))
         testFilePath = os.path.join(self.blobstage, testFileName)
 
-        # 1. test with a new file 2. test with an existing file 
-        for i in range(0,2):
-            repeat = random.randint(1, 10)
-            fd1 = os.open(testFilePath, os.O_WRONLY | os.O_CREAT)
-            fd2 = os.open(testFilePath, os.O_WRONLY)
-            os.close(fd2)
+        repeat = random.randint(1, 10)
+        fd1 = os.open(testFilePath, os.O_WRONLY | os.O_CREAT)
+        fd2 = os.open(testFilePath, os.O_WRONLY)
+        os.close(fd2)
        
-            # sleep until cache times out 
-            time.sleep(130)
+        # sleep until cache times out 
+        time.sleep(130)
 
-            testData = "random data"
+        testData = "random data"
            
-            for i in range(0, repeat): 
-                os.write(fd1, testData.encode())
+        for i in range(0, repeat): 
+            os.write(fd1, testData.encode())
 
-            os.close(fd1)
+        os.close(fd1)
 
-            self.assertEqual(os.stat(testFilePath).st_size, len(testData) * repeat)
+        self.assertEqual(os.stat(testFilePath).st_size, len(testData) * repeat)
 
         
         
