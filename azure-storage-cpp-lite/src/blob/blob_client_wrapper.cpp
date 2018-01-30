@@ -446,7 +446,7 @@ namespace microsoft_azure {
                 /*errno already set by get_file_size*/
                 return;
             }
-            std::cout << blob << "file size is: " << fileSize << std::endl;
+            //std::cout << blob << "file size is: " << fileSize << std::endl;
 
             if(fileSize <= 64*1024*1024)
             {
@@ -460,7 +460,7 @@ namespace microsoft_azure {
             std::ifstream ifs(sourcePath);
             if(!ifs)
             {
-                std::cout << "Failed to open " << sourcePath << std::endl;
+                //std::cout << "Failed to open " << sourcePath << std::endl;
                 errno = unknown_error;
                 return;
             }
