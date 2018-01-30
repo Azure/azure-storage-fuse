@@ -13,9 +13,8 @@
 
 namespace microsoft_azure {
     namespace storage {
-
         const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
-
+        const unsigned long long UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024;
         class mempool
         {
         public:
@@ -102,6 +101,19 @@ namespace microsoft_azure {
                 }
             }
             return result;
+        }
+
+        namespace {
+            // Converts block index into block id.
+            std::string index_to_block_id(long long idx)
+            {
+                std::string block_id = std::to_string(idx);
+                if(block_id.length() < 44)
+                {
+                    block_id = (std::string(44 - block_id.length(), 'a')).append(block_id);
+                }
+                return to_base64(block_id.c_str(), block_id.length());
+            }
         }
 
         blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency)
@@ -400,6 +412,9 @@ namespace microsoft_azure {
                 if(!result.success())
                 {
                     errno = std::stoi(result.error().code);
+                    if (errno == 0) {
+                        errno = 503;
+                    }
                 }
                 else
                 {
@@ -428,158 +443,139 @@ namespace microsoft_azure {
             off_t fileSize = get_file_size(sourcePath.c_str());
             if(fileSize < 0)
             {
-                /*errno already set by stat.*/
+                /*errno already set by get_file_size*/
                 return;
             }
+            std::cout << blob << "file size is: " << fileSize << std::endl;
 
             if(fileSize <= 64*1024*1024)
             {
                 put_blob(sourcePath, container, blob, metadata);
+                // put_blob sets errno
+		return;
             }
-            else
+
+            int result = 0;
+            int block_size = 4*1024*1024;
+            std::ifstream ifs(sourcePath);
+            if(!ifs)
             {
-//                std::cout << "fileSize: " << fileSize << std::endl;
-                const int MaxBlockCount = 50000;
-                long long MaxBlobSize = 4;
-                MaxBlobSize *= MaxBlockCount;
-                MaxBlobSize *= 1024 * 1024;
-//                std::cout << "MazBlockSize: " << MaxBlobSize << std::endl;
-                int block_size = 4*1024*1024;
-                if(MaxBlobSize < fileSize)
-                {
-                    block_size = fileSize;
-                }
+                std::cout << "Failed to open " << sourcePath << std::endl;
+                errno = unknown_error;
+                return;
+            }
 
-                std::ifstream ifs;
-                try
-                {
-                    ifs.open(sourcePath, std::ifstream::in);
-                }
-                catch(std::exception ex)
-                {
-                    // TODO open failed
-                    errno = unknown_error;
-                    return;
-                }
+            std::vector<put_block_list_request_base::block_item> block_list;
+            std::deque<std::future<int>> task_list;
+            std::mutex mutex;
+            std::condition_variable cv;
+            std::mutex cv_mutex;
 
-                std::vector<put_block_list_request_base::block_item> block_list;
-                std::vector<std::future<void>> task_list;
-                std::mutex mutex;
-                std::condition_variable cv;
-                std::mutex cv_mutex;
-                //const size_t mParallel = parallel;
-
-                for(long long offset = 0, idx = 0; offset < fileSize; offset += block_size, ++idx)
+            for(long long offset = 0, idx = 0; offset < fileSize; offset += UPLOAD_CHUNK_SIZE, ++idx)
+            {
+                // control the number of submitted jobs.
+                while(task_list.size() > m_concurrency)
                 {
-                    int length = block_size;
-                    if(offset + length > fileSize)
-                    {
-                        length = fileSize - offset;
+                    auto r = task_list.front().get();
+                    task_list.pop_front();
+                    if (0 == result) {
+                        result = r;
                     }
+                }
+                if (0 != result) {
+                    //std::cout << blob <<  " request failed: " << result << std::endl;
+                    break;
+                }
+                int length = UPLOAD_CHUNK_SIZE;
+                if(offset + length > fileSize)
+                {
+                    length = fileSize - offset;
+                }
 
-                    char* buffer = new char[block_size];
-                    ifs.read(buffer, length);
-
-                    std::string block_id = std::to_string(idx);
-                    if(block_id.length() < 44)
-                    {
-                        block_id = (std::string(44 - block_id.length(), 'a')).append(block_id);
-                    }
-                    block_id = to_base64(block_id.c_str(), block_id.length());
-                    put_block_list_request_base::block_item block;
-                    block.id = block_id;
-                    block.type = put_block_list_request_base::block_type::uncommitted;
-                    block_list.push_back(block);
-
-                    {
-                        while(task_list.size() > m_concurrency)
+                char* buffer = (char*)malloc(UPLOAD_CHUNK_SIZE);
+                if (!buffer) {
+                    //std::cout << blob << " failed to allocate buffer" << std::endl;
+                    result = 12;
+                    break;
+                }
+                if(!ifs.read(buffer, length))
+                {
+                    //std::cout << blob << " failed to read " << length << std::endl;
+                    result = unknown_error;
+                    break;
+                }
+                const std::string block_id = index_to_block_id(idx);
+                put_block_list_request_base::block_item block;
+                block.id = block_id;
+                block.type = put_block_list_request_base::block_type::uncommitted;
+                block_list.push_back(block);
+                auto single_put = std::async(std::launch::async, [block_id, block_size, idx, this, buffer, offset, length, &container, &blob, &parallel, &mutex, &cv_mutex, &cv](){
                         {
-                            for(auto iter = task_list.begin(); iter != task_list.end() && task_list.size() > m_concurrency; )
-                            {
-                                iter->wait();
-                                iter = task_list.erase(iter);
+                            std::unique_lock<std::mutex> lk(cv_mutex);
+                            cv.wait(lk, [&parallel, &mutex]() {
+                                    std::lock_guard<std::mutex> lock(mutex);
+                                    if(parallel > 0)
+                                    {
+                                        --parallel;
+                                        return true;
+                                    }
+                                    return false;
+                                });
+                        }
+
+                        std::istringstream in;
+                        in.rdbuf()->pubsetbuf(buffer, length);
+                        const auto blockResult = m_blobClient->upload_block_from_stream(container, blob, block_id, in).get();
+                        free(buffer);
+
+                        {
+                            std::lock_guard<std::mutex> lock(mutex);
+                            ++parallel;
+                            cv.notify_one();
+                        }
+
+                        int result = 0;
+                        if(!blockResult.success())
+                        {
+                            // std::cout << blob << " upload failed " << blockResult.error().code << std::endl;
+                            result = std::stoi(blockResult.error().code);
+                            if (0 == result) {
+                                // It seems that timeouted requests has no code setup
+                                result = 503;
                             }
                         }
-                    }
+                        return result;
+                    });
+                task_list.push_back(std::move(single_put));
+            }
 
-                    if(errno != 0)
-                    {
-                        //std::cout << "errno: "<< errno<<std::endl;
-                        break;
-                    }
-                    auto single_put = std::async(std::launch::async, [block_id, block_size, idx, this, buffer, offset, length, &container, &blob, &parallel, &mutex, &cv_mutex, &cv](){
-                            {
-                                std::unique_lock<std::mutex> lk(cv_mutex);
-                                cv.wait(lk, [&parallel, &mutex]() {
-                                        std::lock_guard<std::mutex> lock(mutex);
-                                        if(parallel > 0)
-                                        {
-                                            --parallel;
-                                            return true;
-                                        }
-                                        return false;
-                                    });
-                                //std::cout << "idx: " << idx << std::endl;
-                                //std::cout << "parallel: " << parallel << std::endl;
-                            }
-
-                            std::istringstream in;
-                            in.rdbuf()->pubsetbuf(buffer, length);
-                            auto blockResult = m_blobClient->upload_block_from_stream(container, blob, block_id, in).get();
-                            delete[] buffer;
-                            if(!blockResult.success())
-                            {
-                                errno = std::stoi(blockResult.error().code);
-                            }
-
-                            {
-                                std::lock_guard<std::mutex> lock(mutex);
-                                ++parallel;
-                                //std::cout << "idx done: " << idx << std::endl;
-                                //std::cout << "parallel done: " << parallel << std::endl;
-                                cv.notify_one();
-                            }
-                        });
-                    //std::cout << "End: " << idx << std::endl;
-                    task_list.push_back(std::move(single_put));
-                }
-
-                for(size_t i = 0; i < task_list.size(); ++i)
-                    //while(!task_list.empty())
+            // wait for the rest of tasks
+            for(auto &task: task_list)
+            {
+                const auto r = task.get();
+                if(0 == result)
                 {
-                    //task_list.front().wait();
-                    //task_list.pop();
-                    task_list[i].wait();
-                    if(errno != 0)
-                    {
-                        break;
-                    }
-                }
-
-                //{
-                //    std::unique_lock<std::mutex> lk(mutex);
-                //    cv.wait(lk, [&parallel]() { return parallel == 8; });
-                //}
-                if(errno == 0)
-                {
-                    auto result = m_blobClient->put_block_list(container, blob, block_list, metadata).get();
-                    if(!result.success())
-                    {
-                        // TODO upload failed
-                        errno = std::stoi(result.error().code);
-                    }
-                }
-
-                try
-                {
-                    ifs.close();
-                }
-                catch(std::exception ex)
-                {
-                    // TODO close failed
-                    errno = unknown_error;
+                    result = r;
                 }
             }
+            if (0 != result) {
+                //std::cout << blob << " request failed " << std::endl;
+            }
+            if(result == 0)
+            {
+                const auto r = m_blobClient->put_block_list(container, blob, block_list, metadata).get();
+                if(!r.success())
+                {
+                    result = std::stoi(r.error().code);
+                    //std::cout << blob << " put_block_list failed" << std::endl;
+                    if (0 == result) {
+                        result = unknown_error;
+                    }
+                }
+            }
+
+            ifs.close();
+            errno = result;
         }
 
         off_t get_file_size(const char* path)
