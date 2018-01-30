@@ -20,6 +20,7 @@ struct options
     const char *config_file; // Connection to Azure Storage information (account name, account key, etc)
     const char *use_https; // True if https should be used (defaults to false)
     const char *file_cache_timeout_in_seconds; // Timeout for the file cache (defaults to 120 seconds)
+    const char *container_name; //container to mount. Used only if config_file is not provided
 };
 
 struct options options;
@@ -33,6 +34,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--config-file=%s", config_file),
     OPTION("--use-https=%s", use_https),
     OPTION("--file-cache-timeout-in-seconds=%s", file_cache_timeout_in_seconds),
+    OPTION("--container-name=%s", container_name),
     FUSE_OPT_END
 };
 
@@ -54,6 +56,35 @@ inline bool is_lowercase_string(const std::string &s)
     {
         return std::islower(c);
     })));
+}
+
+// Read Storage connection information from the environment variables
+int read_config_env()
+{
+    char* env_account = getenv("AZURE_STORAGE_ACCOUNT");
+    char* env_account_key = getenv("AZURE_STORAGE_ACCESS_KEY");
+
+    if(env_account!=NULL)
+    {
+        str_options.accountName = env_account;
+    }
+    else
+    {
+        fprintf(stderr, "AZURE_STORAGE_ACCOUNT environment variable is empty.\n");
+        return -1;
+    }
+
+    if(env_account_key!=NULL)
+    {
+        str_options.accountKey = env_account_key;
+    }
+    else
+    {
+        fprintf(stderr, "AZURE_STORAGE_ACCESS_KEY environment variable is empty.\n");
+        return -1;
+    }
+
+    return 0;
 }
 
 // Read Storage connection information from the config file
@@ -112,17 +143,17 @@ int read_config(std::string configFile)
 
     if(str_options.accountName.size() == 0)
     {
-        fprintf(stderr, "Account name is missing in the configure file.");
+        fprintf(stderr, "Account name is missing in the configure file.\n");
         return -1;
     }
     else if(str_options.accountKey.size() == 0)
     {
-        fprintf(stderr, "Account key is missing in the configure file.");
+        fprintf(stderr, "Account key is missing in the configure file.\n");
         return -1;
     }
     else if(str_options.containerName.size() == 0)
     {
-        fprintf(stderr, "Container name is missing in the configure file.");
+        fprintf(stderr, "Container name is missing in the configure file.\n");
         return -1;
     }
     else
@@ -161,8 +192,11 @@ void *azs_init(struct fuse_conn_info * conn)
 // TODO: print FUSE usage as well
 void print_usage()
 {
-    fprintf(stdout, "Usage: blobfuse <mount-folder> --config-file=<config-file> --tmp-path=<temp-path> [--use-https=true] [--file-cache-timeout-in-seconds=120]\n");
-    fprintf(stdout, "Please see https://github.com/Azure/azure-storage-fuse for installation and configuration instructions.\n");
+    fprintf(stdout, "Usage: blobfuse <mount-folder> --tmp-path=</path/to/fusecache> [--config-file=</path/to/config.cfg> | --container-name=<containername>] [--use-https=true] [--file-cache-timeout-in-seconds=120]\n\n");
+    fprintf(stdout, "In addition to setting --tmp-path parameter, you must also do one of the following:\n");
+    fprintf(stdout, "1. Specify a config file (using --config-file]=) with account name, account key, and container name, OR\n");
+    fprintf(stdout, "2. Set the environment variables AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCESS_KEY, and specify the container name with --container-name=\n\n");
+    fprintf(stdout, "See https://github.com/Azure/azure-storage-fuse for detailed installation and configuration instructions.\n");
 }
 
 int main(int argc, char *argv[])
@@ -208,7 +242,24 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        ret = read_config(options.config_file);
+        if(!options.config_file)
+        {
+            if(!options.container_name)
+            {
+                fprintf(stderr, "Error: --container-name is not set.\n");
+                print_usage();
+                return 1;
+            }
+
+            std::string container(options.container_name);
+            str_options.containerName = container;
+            ret = read_config_env();
+        }
+        else
+        {
+            ret = read_config(options.config_file);
+        }
+
         if (ret != 0)
         {
             return ret;
