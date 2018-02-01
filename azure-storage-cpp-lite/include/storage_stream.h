@@ -34,6 +34,13 @@ namespace microsoft_azure {
                 m_stream = stream;
             }
 
+            void reset() {
+               if (!valid()) {
+                  return;
+               }
+               istream().seekg(0);
+            }
+
             std::istream &istream() {
                 if (m_helper) {
                     return m_helper->istream();

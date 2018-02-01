@@ -128,6 +128,10 @@ namespace microsoft_azure {
                 check_code(curl_easy_setopt(m_curl, CURLOPT_READDATA, this));
             }
 
+            void reset_input_stream() override {
+                m_input_stream.reset();
+            }
+
             storage_ostream get_output_stream() const override {
                 return m_output_stream;
             }

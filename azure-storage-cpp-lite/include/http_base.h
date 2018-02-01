@@ -17,7 +17,7 @@ namespace microsoft_azure {
                 get,
                 head,
                 post,
-                put               
+                put
             };
 
             using http_code = int;
@@ -44,6 +44,8 @@ namespace microsoft_azure {
             virtual http_code status_code() const = 0;
 
             virtual void set_input_stream(storage_istream s) = 0;
+
+	    virtual void reset_input_stream() = 0;
 
             virtual void set_output_stream(storage_ostream s) = 0;
 
