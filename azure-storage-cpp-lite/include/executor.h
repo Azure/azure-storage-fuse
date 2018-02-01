@@ -90,7 +90,7 @@ namespace microsoft_azure {
                         if (unsuccessful(result)) {
                             promise.set_value(storage_outcome<RESPONSE_TYPE>(context.xml_parser()->parse_storage_error(str)));
                             retry.add_result(result);
-                            s.istream().seekg(0);
+                            h.reset_input_stream();
                             async_executor<RESPONSE_TYPE>::submit_request(promise, a, r, h, context, retry);
                         }
                         else {
@@ -125,7 +125,7 @@ namespace microsoft_azure {
                             *outcome = storage_outcome<RESPONSE_TYPE>(error);
                             //*outcome = storage_outcome<RESPONSE_TYPE>(context->xml_parser()->parse_storage_error(str));
                             retry->add_result(result);
-                            s.istream().seekg(0);
+                            http->reset_input_stream();
                             async_executor<RESPONSE_TYPE>::submit_helper(promise, outcome, account, request, http, context, retry);
                         }
                         else
@@ -169,7 +169,7 @@ namespace microsoft_azure {
                         if (unsuccessful(result)) {
                             promise.set_value(storage_outcome<void>(context.xml_parser()->parse_storage_error(str)));
                             retry.add_result(result);
-                            s.istream().seekg(0);
+                            h.reset_input_stream();
                             async_executor<void>::submit_request(promise, a, r, h, context, retry);
                         }
                         else {
@@ -205,7 +205,7 @@ namespace microsoft_azure {
                             *outcome = storage_outcome<void>(error);
                             //*outcome = storage_outcome<void>(context->xml_parser()->parse_storage_error(str));
                             retry->add_result(result);
-                            s.istream().seekg(0);
+                            http->reset_input_stream();
                             async_executor<void>::submit_helper(promise, outcome, account, request, http, context, retry);
                         }
                         else
