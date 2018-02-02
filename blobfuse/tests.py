@@ -53,6 +53,18 @@ class TestFuse(unittest.TestCase):
         os.remove(filepath)
         self.assertEqual(False, os.path.exists(filepath))
 
+    def test_WriteReadSingleFileUnicode(self):
+        file1txt = "你好，世界！"
+        filepath = os.path.join(self.blobstage, "文本 1.txt");
+        with open(filepath, 'w') as file1blob:
+            file1blob.write(file1txt)
+        self.assertEqual(True, os.path.exists(filepath))
+        with open(filepath, 'r') as file1blob:
+            file1txtrt = file1blob.read()
+            self.assertEqual(file1txt, file1txtrt)
+        os.remove(filepath)
+        self.assertEqual(False, os.path.exists(filepath))
+
     def test_medium_files(self):
         mediumBlobsSourceDir = os.path.join(self.blobstage, "mediumblobs")
         if not os.path.exists(mediumBlobsSourceDir):
@@ -98,7 +110,7 @@ class TestFuse(unittest.TestCase):
 
         testSubDir1 = os.path.join(testDir, "subdir1")
         os.makedirs(testSubDir1)
-        testSubDir2 = os.path.join(testDir, "subdir2")
+        testSubDir2 = os.path.join(testDir, "İstanbuldan fotoğraflar")
         os.makedirs(testSubDir2)
 
         children = os.listdir(testDir);
@@ -107,7 +119,7 @@ class TestFuse(unittest.TestCase):
         self.assertTrue("file2" in children)
         self.assertTrue("file3" in children)
         self.assertTrue("subdir1" in children)
-        self.assertTrue("subdir2" in children)
+        self.assertTrue("İstanbuldan fotoğraflar" in children)
 
         # Directory not empty should throw
         with self.assertRaises(OSError):
@@ -121,7 +133,7 @@ class TestFuse(unittest.TestCase):
 
         self.assertTrue("file1" in children)
         self.assertTrue("file3" in children)
-        self.assertTrue("subdir2" in children)
+        self.assertTrue("İstanbuldan fotoğraflar" in children)
 
         os.rmdir(testSubDir2)
         os.remove(os.path.join(testDir, "file1"))
