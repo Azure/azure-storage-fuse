@@ -55,7 +55,7 @@ class TestFuse(unittest.TestCase):
 
     def test_WriteReadSingleFileUnicode(self):
         file1txt = "你好，世界！"
-        filepath = os.path.join(self.blobstage, "文本 1.txt");
+        filepath = os.path.join(self.blobstage, "文本: hello?world&we^are%all~together1 .txt");
         with open(filepath, 'w') as file1blob:
             file1blob.write(file1txt)
         self.assertEqual(True, os.path.exists(filepath))
@@ -91,6 +91,8 @@ class TestFuse(unittest.TestCase):
             
     def test_directory_operations(self):
         testDir = os.path.join(self.blobstage, "testDirectory")
+        subdir1 = "subDir1"
+        subdir2 = "Thİs!is-a%directory&name @1"
         self.assertFalse(os.path.exists(testDir))
         self.assertFalse(os.path.isdir(testDir))
 
@@ -108,9 +110,9 @@ class TestFuse(unittest.TestCase):
         with open(os.path.join(testDir, "file3"), 'w') as fileblob:
             fileblob.write(filetxt)
 
-        testSubDir1 = os.path.join(testDir, "subdir1")
+        testSubDir1 = os.path.join(testDir, subdir1)
         os.makedirs(testSubDir1)
-        testSubDir2 = os.path.join(testDir, "İstanbuldan fotoğraflar")
+        testSubDir2 = os.path.join(testDir, subdir2)
         os.makedirs(testSubDir2)
 
         children = os.listdir(testDir);
@@ -118,8 +120,8 @@ class TestFuse(unittest.TestCase):
         self.assertTrue("file1" in children)
         self.assertTrue("file2" in children)
         self.assertTrue("file3" in children)
-        self.assertTrue("subdir1" in children)
-        self.assertTrue("İstanbuldan fotoğraflar" in children)
+        self.assertTrue(subdir1 in children)
+        self.assertTrue(subdir2 in children)
 
         # Directory not empty should throw
         with self.assertRaises(OSError):
@@ -133,7 +135,7 @@ class TestFuse(unittest.TestCase):
 
         self.assertTrue("file1" in children)
         self.assertTrue("file3" in children)
-        self.assertTrue("İstanbuldan fotoğraflar" in children)
+        self.assertTrue(subdir2 in children)
 
         os.rmdir(testSubDir2)
         os.remove(os.path.join(testDir, "file1"))

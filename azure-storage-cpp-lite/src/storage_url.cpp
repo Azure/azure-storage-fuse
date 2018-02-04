@@ -51,7 +51,8 @@ namespace microsoft_azure {
                 char ch = path[index];
                 if(!is_path_character(ch)
                     || ch == '%'
-                    || ch == '+')
+                    || ch == '+'
+                    || ch == '&')
                 {
                     encoded.push_back('%');
                     encoded.push_back(hex[ (ch >> 4) & 0xF]);
@@ -74,7 +75,8 @@ namespace microsoft_azure {
                 char ch = path[index];
                 if(!is_query_character(ch)
                     || ch == '%'
-                    || ch == '+')
+                    || ch == '+'
+                    || ch == '&')
                 {
                     encoded.push_back('%');
                     encoded.push_back(hex[ (ch >> 4) & 0xF]);
