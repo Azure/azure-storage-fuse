@@ -38,7 +38,7 @@ Please take careful note of the following points, before using blobfuse:
 
 ## Installation
 
-You can install blobfuse from the Linux Software Repository for Microsoft products. The process is explained in the [blobfuse installation](https://github.com/Azure/azure-storage-fuse/wiki/Installation) page. Alternatively, you can clone this repository, install the dependencies (libfuse, libcurl and GnuTLS) and build from source code.
+You can install blobfuse from the Linux Software Repository for Microsoft products. The process is explained in the [blobfuse installation](https://github.com/Azure/azure-storage-fuse/wiki/Installation) page. Alternatively, you can clone this repository, install the dependencies (libfuse, libcurl and GnuTLS) and build from source code. See details in the [wiki](https://github.com/Azure/azure-storage-fuse/wiki/Installation#build-from-source).
 
 ## Usage
 
@@ -51,6 +51,8 @@ accountName <account-name-here>
 accountKey <account-key-here> 
 containerName <container-name-here>
 ```
+
+Alternatively provide the account name and key in the environment variables AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCESS_KEY, and set --container-name while mounting.
 
 By default, blobfuse will use the ephemeral disks in Azure VMs as the local cache (/mnt/blobfusetmp). Please make sure that your user has write access to this location. If not, create and `chown` to your user.
 
@@ -67,10 +69,11 @@ Now you can mount using the provided mount script (mount.sh):
 ### Mount Options
 - You can modify the default FUSE options in mount.sh file. All options for FUSE is described in the [FUSE man page](http://manpages.ubuntu.com/manpages/xenial/man8/mount.fuse.8.html)
 - In addition to the FUSE kernel module options; blobfuse offers following options:
+	* --tmp-path=/path/to/cache : Configures the tmp location for the cache. Always configure the fastest disk (SSD or ramdisk) for best performance. 
 	* --config-path=/path/to/connection.cfg : Configures the path for the file where the account credentials are provided
-	* --tmp-path=/path/to/cache : Configures the tmp location for the cache. Always configure the fastest disk (SSD) for best performance. 
-	* --use-https=true/false : Enables HTTPS communication with Blob storage. False by defaul. Enable it to protect against data corruption over the wire.
-	* --file-cache-timeout-in-seconds=120 : Blobs will be cached in the temp folder for this many seconds. 120 seconds by default. During this time, blobfuse will not check whether the file is up to date or not.
+	* [OPTIONAL] --container-name=container : Required if no configuration file is specified. Also set account name and key via the environment variables AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCESS_KEY
+	* [OPTIONAL] --use-https=true/false : Enables HTTPS communication with Blob storage. True by default. 
+	* [OPTIONAL] --file-cache-timeout-in-seconds=120 : Blobs will be cached in the temp folder for this many seconds. 120 seconds by default. During this time, blobfuse will not check whether the file is up to date or not.
 	
 
 ### Notes
