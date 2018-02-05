@@ -38,7 +38,7 @@ namespace microsoft_azure {
             }
 
             // Canonicalized resource
-            string_to_sign.append("/").append(m_account_name).append(url.get_path());
+            string_to_sign.append("/").append(m_account_name).append(url.get_encoded_path());
             for (const auto &name : url.get_query()) {
                 string_to_sign.append("\n").append(name.first);
                 bool first_value = true;
