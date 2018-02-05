@@ -271,7 +271,13 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // remove last trailing slash in tmo_path
     std::string tmpPathStr(options.tmp_path);
+    if (!tmpPathStr.empty() && tmpPathStr[tmpPathStr.size() - 1] == '/')
+    {
+        tmpPathStr.erase(tmpPathStr.size() - 1);
+    }
+    
     str_options.tmpPath = tmpPathStr;
     const int defaultMaxConcurrency = 20;
     str_options.use_https = true;
