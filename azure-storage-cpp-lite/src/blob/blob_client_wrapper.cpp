@@ -118,11 +118,11 @@ namespace microsoft_azure {
 
         blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency)
         {
-            return blob_client_wrapper_init(account_name, account_key, concurrency, false);
+            return blob_client_wrapper_init(account_name, account_key, concurrency, false, NULL);
         }
 
 
-        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency, const bool use_https)
+        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency, const bool use_https, const std::string &account_uri)
         {
             if(account_name.length() == 0 || account_key.length() == 0)
             {
@@ -142,7 +142,7 @@ namespace microsoft_azure {
             try
             {
                 std::shared_ptr<storage_credential>  cred = std::make_shared<shared_key_credential>(accountName, accountKey);
-                std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https);
+                std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, account_uri);
                 std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
                 errno = 0;
                 return blob_client_wrapper(blobClient);

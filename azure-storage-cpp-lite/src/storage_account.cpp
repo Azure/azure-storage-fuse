@@ -5,7 +5,7 @@
 namespace microsoft_azure {
     namespace storage {
 
-        storage_account::storage_account(const std::string &account_name, std::shared_ptr<storage_credential> credential, bool use_https, const std::string &domain_suffix)
+        storage_account::storage_account(const std::string &account_name, std::shared_ptr<storage_credential> credential, bool use_https, const std::string &account_uri)
             : m_credential(credential) {
             if (use_https) {
                 append_all("https://");
@@ -14,18 +14,20 @@ namespace microsoft_azure {
                 append_all("http://");
             }
 
-            append_all(account_name);
+            if(account_uri.empty())
+            {
+                append_all(account_name);
 
-            m_blob_domain.append(".blob");
-            m_table_domain.append(".table");
-            m_queue_domain.append(".queue");
-            m_file_domain.append(".file");
+                m_blob_domain.append(".blob");
+                m_table_domain.append(".table");
+                m_queue_domain.append(".queue");
+                m_file_domain.append(".file");
 
-            if (!domain_suffix.empty()) {
-                append_all(domain_suffix);
-            }
-            else {
                 append_all(constants::default_endpoint_suffix);
+            }
+            else
+            {
+                append_all(account_uri);
             }
         }
 
