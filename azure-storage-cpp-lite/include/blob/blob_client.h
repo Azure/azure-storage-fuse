@@ -323,7 +323,8 @@ namespace microsoft_azure { namespace storage {
         /// <param name="account_name">The storage account name.</param>
         /// <param name="account_key">The storage account key.</param>
         /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
-        /// <param name="use_https">True if https should be used (instead of HTTP).  Note that this may cause a sizable perf loss, due to issues in libcurl.
+        /// <param name="use_https">True if https should be used (instead of HTTP).  Note that this may cause a sizable perf loss, due to issues in libcurl.</param>
+        /// <param name="account_uri">Storage account URI to allow non-public clouds as well as custom domains.</param>
         /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
         static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency, bool use_https, const std::string &account_uri);
         /* C++ wrappers without exception but error codes instead */
