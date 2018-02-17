@@ -5,7 +5,8 @@
 namespace microsoft_azure {
     namespace storage {
 
-        storage_account::storage_account(const std::string &account_name, std::shared_ptr<storage_credential> credential, bool use_https, const std::string &account_uri)
+        // TODO: Clean up table queue and file services
+        storage_account::storage_account(const std::string &account_name, std::shared_ptr<storage_credential> credential, bool use_https, const std::string &blob_endpoint)
             : m_credential(credential) {
             if (use_https) {
                 append_all("https://");
@@ -14,7 +15,7 @@ namespace microsoft_azure {
                 append_all("http://");
             }
 
-            if(account_uri.empty())
+            if(blob_endpoint.empty())
             {
                 append_all(account_name);
 
@@ -27,7 +28,7 @@ namespace microsoft_azure {
             }
             else
             {
-                append_all(account_uri);
+                append_all(blob_endpoint);
             }
         }
 

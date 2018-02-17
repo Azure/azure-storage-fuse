@@ -20,7 +20,7 @@ namespace microsoft_azure {
                 file
             };
 
-            AZURE_STORAGE_API storage_account(const std::string &account_name, std::shared_ptr<storage_credential> credential, bool use_https = true, const std::string &account_uri = std::string());
+            AZURE_STORAGE_API storage_account(const std::string &account_name, std::shared_ptr<storage_credential> credential, bool use_https = true, const std::string &blob_endpoint = std::string());
 
             std::shared_ptr<storage_credential> credential() const {
                 return m_credential;
