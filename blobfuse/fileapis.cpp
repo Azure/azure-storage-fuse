@@ -162,9 +162,6 @@ int azs_open(const char *path, struct fuse_file_info *fi)
         }
     }
 
-    // TODO: Actual access control
-    fchmod(res, 0770);
-
     // Store the open file handle, and whether or not the file should be uploaded on close().
     // TODO: Optimize the scenario where the file is open for read/write, but no actual writing occurs, to not upload the blob.
     struct fhwrapper *fhwrap = new fhwrapper(res, (((fi->flags & O_WRONLY) == O_WRONLY) || ((fi->flags & O_RDWR) == O_RDWR)));
@@ -217,7 +214,8 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     ensure_files_directory_exists_in_cache(mntPathString);
 
     // FUSE will set the O_CREAT and O_WRONLY flags, but not O_EXCL, which is generally assumed for 'create' semantics.
-    res = open(mntPath, fi->flags | O_EXCL, mode);
+    // overwrite mode_t because user should always 770 permission until we have full ACL support
+    res = open(mntPath, fi->flags | O_EXCL, 0770);
     if (AZS_PRINT)
     {
         fprintf(stdout, "mntPath = %s, result = %d\n", mntPath, res);

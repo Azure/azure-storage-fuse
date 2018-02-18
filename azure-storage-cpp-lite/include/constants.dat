@@ -49,6 +49,7 @@ DAT(header_if_match, "If-Match")
 DAT(header_if_modified_since, "If-Modified-Since")
 DAT(header_if_none_match, "If-None-Match")
 DAT(header_if_unmodified_since, "If-Unmodified-Since")
+DAT(header_last_modified, "Last-Modified")
 DAT(header_origin, "Origin")
 DAT(header_user_agent, "User-Agent")
 

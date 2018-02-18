@@ -64,6 +64,8 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                 {
                     struct stat stbuf;
                     stbuf.st_mode = S_IFDIR | 0770;
+                    stbuf.st_uid = fuse_get_context()->uid;
+                    stbuf.st_gid = fuse_get_context()->uid;
                     stbuf.st_nlink = 2;
                     stbuf.st_size = 4096;
                     filler(buf, dir_ent->d_name, &stbuf, 0);
@@ -75,6 +77,8 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 
                     struct stat stbuf;
                     stbuf.st_mode = S_IFREG | 0770; // Regular file (not a directory)
+                    stbuf.st_uid = fuse_get_context()->uid;
+                    stbuf.st_gid = fuse_get_context()->uid;
                     stbuf.st_nlink = 1;
                     stbuf.st_size = buffer.st_size;
                     filler(buf, dir_ent->d_name, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
@@ -139,6 +143,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                     {
                         struct stat stbuf;
                         stbuf.st_mode = S_IFREG | 0770; // Regular file (not a directory)
+                        stbuf.st_uid = fuse_get_context()->uid;
                         stbuf.st_nlink = 1;
                         stbuf.st_size = listResults[i].content_length;
                         fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
@@ -154,6 +159,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                     {
                         struct stat stbuf;
                         stbuf.st_mode = S_IFDIR | 0770;
+                        stbuf.st_uid = fuse_get_context()->uid;
                         stbuf.st_nlink = 2;
                         fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
                         if (AZS_PRINT)

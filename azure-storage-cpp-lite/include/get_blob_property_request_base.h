@@ -51,7 +51,7 @@ namespace microsoft_azure {
             std::string etag;
             std::vector<std::pair<std::string, std::string>> metadata;
             std::string copy_status;
-            // utility::datetime m_last_modified;
+            time_t last_modified;
             // blob_type m_type;
             // azure::storage::lease_status m_lease_status;
             // azure::storage::lease_state m_lease_state;

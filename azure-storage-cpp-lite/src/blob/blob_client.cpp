@@ -22,6 +22,7 @@
 #include "executor.h"
 #include "utility.h"
 #include "tinyxml2_parser.h"
+#include <curl/curl.h>
 
 namespace microsoft_azure {
 namespace storage {
@@ -232,6 +233,7 @@ storage_outcome<blob_property> blob_client::get_blob_property(const std::string 
         blobProperty.content_type = http->get_header(constants::header_content_type);
         blobProperty.etag = http->get_header(constants::header_etag);
         blobProperty.copy_status = http->get_header(constants::header_ms_copy_status);
+        blobProperty.last_modified = curl_getdate(http->get_header(constants::header_last_modified).c_str(), NULL);
         std::string::size_type sz = 0;
         std::string contentLength = http->get_header(constants::header_content_length);
         if(contentLength.length() > 0)

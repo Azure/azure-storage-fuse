@@ -303,8 +303,11 @@ int azs_getattr(const char *path, struct stat *stbuf)
     if (strlen(path) == 1)
     {
         stbuf->st_mode = S_IFDIR | 0770; // TODO: proper access control.
+        stbuf->st_uid = fuse_get_context()->uid;
+        stbuf->st_gid = fuse_get_context()->uid;
         stbuf->st_nlink = 2; // Directories should have a hard-link count of 2 + (# child directories).  We don't have that count, though, so we jsut use 2 for now.  TODO: Evaluate if we could keep this accurate or not.
         stbuf->st_size = 4096;
+        stbuf->st_mtime = time(NULL);
         return 0;
     }
 
@@ -347,6 +350,9 @@ int azs_getattr(const char *path, struct stat *stbuf)
             fprintf(stdout, "Blob found!  Name = %s\n", path);
         }
         stbuf->st_mode = S_IFREG | 0770; // Regular file (not a directory)
+        stbuf->st_uid = fuse_get_context()->uid;
+        stbuf->st_gid = fuse_get_context()->uid;
+        stbuf->st_mtime = blob_property.last_modified;
         stbuf->st_nlink = 1;
         stbuf->st_size = blob_property.size;
         return 0;
@@ -376,7 +382,10 @@ int azs_getattr(const char *path, struct stat *stbuf)
             stbuf->st_mode = S_IFDIR | 0770;
             // If st_nlink = 2, means direcotry is empty.
             // Directory size will affect behaviour for mv, rmdir, cp etc.
+            stbuf->st_uid = fuse_get_context()->uid;
+            stbuf->st_gid = fuse_get_context()->uid;
             stbuf->st_nlink = dirSize == D_EMPTY ? 2 : 3;
+            stbuf->st_mtime = time(NULL);
             stbuf->st_size = 4096;
             return 0;
         }
