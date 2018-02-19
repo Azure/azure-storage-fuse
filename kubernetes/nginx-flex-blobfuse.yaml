@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-flex-blobfuse
+spec:
+  containers:
+  - name: nginx-flex-blobfuse
+    image: nginx
+    volumeMounts:
+    - name: test
+      mountPath: /data
+  volumes:
+  - name: test
+    flexVolume:
+      driver: "azure/blobfuse"
+      secretRef:
+        name: blobfusecreds
+      options:
+        container: "CONTAINER-NAME"

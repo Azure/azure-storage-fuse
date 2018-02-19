@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# Notes:
+#  - Please install "jq" package before using this driver.
+
+DIR=$(dirname "$(readlink -f "$0")")
+JQ="/usr/bin/jq"
+BLOBFUSE=$DIR/bin/blobfuse
+LOG="/var/log/blobfuse.log"
+
+usage() {
+	err "Invalid usage. Usage: "
+	err "\t$0 init"
+	err "\t$0 mount <mount dir> <json params>"
+	err "\t$0 unmount <mount dir>"
+	exit 1
+}
+
+err() {
+	echo $* 1>&2
+}
+
+log() {
+	echo $* >&1
+}
+
+ismounted() {
+	MOUNT=`findmnt -n ${MNTPATH} 2>/dev/null | cut -d' ' -f1`
+	[ "${MOUNT}" = "${MNTPATH}" ]
+}
+
+mount() {
+	MNTPATH="$1"
+    local ACCOUNTNAME=$(echo "$2"|"$JQ" -r '.["kubernetes.io/secret/username"] // empty'|base64 -d)
+    local ACCOUNTKEY=$(echo "$2"|"$JQ" -r '.["kubernetes.io/secret/password"] // empty'|base64 -d)
+    local CONTAINER_NAME="$(echo "$2" | "$JQ" -r '.container //empty')"
+	
+	if [ -z "${CONTAINER_NAME}" ]; then
+		echo "`date` ERR: container is empty" >> $LOG
+		errorLog=`tail -n 1 "${LOG}"`
+		err "{\"status\": \"Failure\", \"message\": \"validation failed, error log:${errorLog}\"}"
+		exit 1
+	fi
+	
+	if ismounted ; then
+		local devname=`findmnt -n -o SOURCE ${MNTPATH}`
+		log "{\"status\": \"Success\" , \"message\" :  \"log:INF: Mountpoint: ${MNTPATH} has ${devname} already mounted\"}"
+		exit 0
+	fi
+
+	echo "`date` EXEC: mkdir -p ${MNTPATH}" >> $LOG
+	mkdir -p ${MNTPATH} >>$LOG 2>&1
+
+	export AZURE_STORAGE_ACCOUNT=${ACCOUNTNAME} AZURE_STORAGE_ACCESS_KEY=${ACCOUNTKEY}
+	# we don't output ACCOUNTKEY here
+	output_comand="export AZURE_STORAGE_ACCOUNT=${ACCOUNTNAME} AZURE_STORAGE_ACCESS_KEY=..."
+	echo "`date` INF: export storage account - ${output_comand} " >> $LOG
+	
+	#mounting
+	echo "`date` EXEC: ${BLOBFUSE} ${MNTPATH} --container-name=${CONTAINER_NAME} --tmp-path=/tmpblobfuse/" >>$LOG	
+	${BLOBFUSE} ${MNTPATH} --container-name=${CONTAINER_NAME} --tmp-path=/tmpblobfuse/
+	if [ "$?" != "0" ]; then
+		errorLog=`tail -n 1 "${LOG}"`
+		err "{ \"status\": \"Failure\", \"message\": \"Failed to mount device /dev/${diskname} at ${MNTPATH}, accountname:${ACCOUNTNAME}, error log:${errorLog}\"}"
+		exit 1
+	fi
+
+	errorLog=`tail -n 1 "${LOG}"`
+	log "{\"status\": \"Success\" , \"message\" :  \"log:${errorLog}\" }"
+	exit 0
+}
+
+unmount() {
+	MNTPATH="$1"
+
+	if ! ismounted ; then
+		log '{"status": "Success"}'
+		exit 0
+	fi
+
+	#find device name
+	local devname=`findmnt -n -o SOURCE ${MNTPATH}`
+	if [ ${#devname} -lt 1 ]; then
+		echo "`date` INF: mount path:${MNTPATH} has no mounts" >> $LOG
+		log '{"status": "Success"}'
+		exit 0
+	fi
+
+	echo "`date` EXEC: umount $MNTPATH, devname: $devname" >>$LOG
+	/bin/umount $MNTPATH >> $LOG 2>&1
+	if [ "$?" != "0" ]; then
+		errorLog=`tail -n 1 "${LOG}"`
+		err '{ "status": "Failed", "message": "Failed to unmount volume at '${MNTPATH}'"}, error log:'${errorLog}''
+		exit 1
+	fi
+
+	echo "`date` EXEC: rmdir ${MNTPATH}" >> $LOG
+	rmdir "${MNTPATH}" >> $LOG 2>&1
+
+	log '{"status": "Success"}'
+	exit 0
+}
+
+## ---------------
+## main
+## ---------------
+
+op=$1
+
+if [ "$op" = "init" ]; then
+	log '{"status": "Success", "capabilities": {"attach": false}}'
+	exit 0
+fi
+
+if [ $# -lt 2 ]; then
+	usage
+fi
+
+shift
+
+case "$op" in
+	mount)
+		mount $*
+		;;
+	unmount)
+		unmount $*
+		;;
+	*)
+	usage
+esac
+
+exit 1
