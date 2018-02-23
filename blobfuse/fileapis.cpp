@@ -109,12 +109,18 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             }
 
             errno = 0;
-            azure_blob_client_wrapper->download_blob_to_file(str_options.containerName, pathString.substr(1), mntPathString);
+            auto outcome = azure_blob_client_wrapper->download_blob_to_file(str_options.containerName, pathString.substr(1), mntPathString);
             if (errno != 0)
             {
                 remove(mntPath);
                 return 0 - map_errno(errno);
             }
+            
+            // preserve the last modified time
+            struct utimbuf new_time;
+            new_time.modtime = outcome.response().last_modified;
+            utime(mntPathString.c_str(), &new_time);
+
         }
     }
 

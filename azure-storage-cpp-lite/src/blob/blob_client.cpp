@@ -65,6 +65,7 @@ storage_outcome<chunk_property> blob_client::get_chunk_to_stream_sync(const std:
         property.etag = http->get_header(constants::header_etag);
         property.totalSize = get_length_from_content_range(http->get_header(constants::header_content_range));
         std::istringstream(http->get_header(constants::header_content_length)) >> property.size;
+        property.last_modified = curl_getdate(http->get_header(constants::header_last_modified).c_str(), NULL);
         return storage_outcome<chunk_property>(property);
     }
     return storage_outcome<chunk_property>(storage_error(response.error()));
