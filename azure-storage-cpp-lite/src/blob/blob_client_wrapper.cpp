@@ -52,7 +52,7 @@ namespace microsoft_azure {
         private:
             std::queue<char*> m_buffers;
             std::mutex m_buffers_mutex;
-            static const size_t s_block_size = 4*1024*1024;
+            static const size_t s_block_size = 16*1024*1024;
         };
         static mempool mpool;
         off_t get_file_size(const char* path);
@@ -444,7 +444,7 @@ namespace microsoft_azure {
                 MaxBlobSize *= MaxBlockCount;
                 MaxBlobSize *= 1024 * 1024;
 //                std::cout << "MazBlockSize: " << MaxBlobSize << std::endl;
-                int block_size = 4*1024*1024;
+                int block_size = 16*1024*1024;
                 if(MaxBlobSize < fileSize)
                 {
                     block_size = fileSize;
