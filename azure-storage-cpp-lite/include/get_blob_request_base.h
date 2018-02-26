@@ -32,13 +32,14 @@ namespace microsoft_azure {
         public:
             chunk_property()
                :totalSize{0},
-               size{0} 
+               size{0},
+               last_modified{0} //returns 1970
             {
             }
             long long totalSize;
             unsigned long long size;
-            std::string etag;
             time_t last_modified;
+            std::string etag;
         };
     }
 }

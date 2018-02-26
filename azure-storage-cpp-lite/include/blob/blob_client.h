@@ -415,7 +415,7 @@ namespace microsoft_azure { namespace storage {
         /// <param name="destPath">The target file path.</param>
         /// <param name="parallel">A size_t value indicates the maximum parallelism can be used in this request.</param>
         /// <returns>A <see cref="storage_outcome" /> object that represents the properties (etag, last modified time and size) from the first chunk retrieved.</returns>
-        storage_outcome<chunk_property> download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, size_t parallel = 9);
+        void download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, chunk_property &returned_properties, size_t parallel = 9);
 
         /// <summary>
         /// Gets the property of a blob.

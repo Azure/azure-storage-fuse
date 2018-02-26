@@ -27,7 +27,8 @@ namespace microsoft_azure {
         {
         public:
             blob_property(bool valid)
-                :m_valid(valid)
+                :last_modified{time(NULL)},
+                m_valid(valid)
             {
             }
 

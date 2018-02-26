@@ -622,12 +622,12 @@ namespace microsoft_azure {
             }
         }
 
-        storage_outcome<chunk_property> blob_client_wrapper::download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, size_t parallel)
+        void blob_client_wrapper::download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, chunk_property &properties, size_t parallel)
         {
             if(!is_valid())
             {
                 errno = client_not_init;
-                return storage_outcome<chunk_property>();
+                return;
             }
 
             const size_t downloaders = std::min(parallel, static_cast<size_t>(m_concurrency));
@@ -641,13 +641,13 @@ namespace microsoft_azure {
                 os.close();
                 if (!os) {
                     errno = unknown_error;
-                    return storage_outcome<chunk_property>();
+                    return;
                 }
                 if (!firstChunk.success())
                 {
                     if (constants::code_request_range_not_satisfiable != firstChunk.error().code) {
                         errno = std::stoi(firstChunk.error().code);
-                        return storage_outcome<chunk_property>();
+                        return;
                     }
                     // The only reason for constants::code_request_range_not_satisfiable on the first chunk is zero
                     // blob size, so proceed as there is no error.
@@ -655,7 +655,7 @@ namespace microsoft_azure {
                 // Smoke check if the total size is known, otherwise - fail.
                 if (firstChunk.response().totalSize < 0) {
                     errno = blob_no_content_range;
-                    return storage_outcome<chunk_property>();
+                    return;
                 }
 
                 // Get required metadata - etag to verify all future chunks and the total blob size.
@@ -665,12 +665,12 @@ namespace microsoft_azure {
                 // Resize the target file.
                 auto fd = open(destPath.c_str(), O_WRONLY, 0770);
                 if (-1 == fd) {
-                    return storage_outcome<chunk_property>();
+                    return;
                 }
                 if (-1 == ftruncate(fd, length)) {
                     close(fd);
-                    return storage_outcome<chunk_property>();
-                }
+                    return;
+                } 
                 close(fd);
 
                 // Download the rest.
@@ -722,10 +722,11 @@ namespace microsoft_azure {
             catch(std::exception ex)
             {
                 errno = unknown_error;
-                return storage_outcome<chunk_property>();
+                return;
             }
 
-            return firstChunk;
+            properties = firstChunk.response();
+            return;
         }
 
         blob_property blob_client_wrapper::get_blob_property(const std::string &container, const std::string &blob)
