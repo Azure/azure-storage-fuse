@@ -32,7 +32,7 @@
 
 // Set this to 1 to enable debug output.
 // Prints directly to the console, so this is only useful is you mount in "-f" mode.
-#define AZS_PRINT 0
+#define AZS_PRINT 1
 #define UNREFERENCED_PARAMETER(p) (p)
 
 /* Define errors and return codes */
@@ -137,6 +137,9 @@ extern const std::string directorySignifier;
 // Helper function to map an HTTP error to an errno.
 // Should be called on any errno returned from the Azure Storage cpp lite lib.
 int map_errno(int error);
+
+// Read Storage connection information from the config file
+int read_config(std::string configFile);
 
 // Helper function to prepend the 'tmpPath' to the input path.
 // Input is the logical file name being input to the FUSE API, output is the file name of the on-disk file in the file cache.
