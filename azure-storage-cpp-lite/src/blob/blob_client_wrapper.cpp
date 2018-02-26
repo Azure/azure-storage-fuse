@@ -14,7 +14,7 @@
 namespace microsoft_azure {
     namespace storage {
         const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
-        const unsigned long long UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024;
+        const unsigned long long MIN_UPLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
         class mempool
         {
         public:
@@ -456,7 +456,14 @@ namespace microsoft_azure {
             }
 
             int result = 0;
-            int block_size = 4*1024*1024;
+
+            //support blobs up to 4.77TB
+            //need to round to the nearest multiple of 4MB for efficiency
+            unsigned long long min_block = fileSize / 50000; 
+            int remainder = min_block % 4*1024*1024;
+            min_block += 4*1024*1024 - remainder;
+            unsigned long long block_size = min_block < MIN_UPLOAD_CHUNK_SIZE ? MIN_UPLOAD_CHUNK_SIZE : min_block;
+
             std::ifstream ifs(sourcePath);
             if(!ifs)
             {
@@ -471,7 +478,7 @@ namespace microsoft_azure {
             std::condition_variable cv;
             std::mutex cv_mutex;
 
-            for(long long offset = 0, idx = 0; offset < fileSize; offset += UPLOAD_CHUNK_SIZE, ++idx)
+            for(long long offset = 0, idx = 0; offset < fileSize; offset += block_size, ++idx)
             {
                 // control the number of submitted jobs.
                 while(task_list.size() > m_concurrency)
@@ -486,13 +493,13 @@ namespace microsoft_azure {
                     //std::cout << blob <<  " request failed: " << result << std::endl;
                     break;
                 }
-                int length = UPLOAD_CHUNK_SIZE;
+                int length = block_size;
                 if(offset + length > fileSize)
                 {
                     length = fileSize - offset;
                 }
 
-                char* buffer = (char*)malloc(UPLOAD_CHUNK_SIZE);
+                char* buffer = (char*)malloc(block_size);
                 if (!buffer) {
                     //std::cout << blob << " failed to allocate buffer" << std::endl;
                     result = 12;
