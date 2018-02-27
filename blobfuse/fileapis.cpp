@@ -109,8 +109,8 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             }
 
             errno = 0;
-            blob_property properties = {false};
-            azure_blob_client_wrapper->download_blob_to_file(str_options.containerName, pathString.substr(1), mntPathString, properties);
+            time_t last_modified = {};
+            azure_blob_client_wrapper->download_blob_to_file(str_options.containerName, pathString.substr(1), mntPathString, last_modified);
             if (errno != 0)
             {
                 remove(mntPath);
@@ -119,7 +119,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             
             // preserve the last modified time
             struct utimbuf new_time = {};
-            new_time.modtime = properties.last_modified;
+            new_time.modtime = last_modified;
             utime(mntPathString.c_str(), &new_time);
 
         }

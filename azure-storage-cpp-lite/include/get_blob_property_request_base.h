@@ -33,14 +33,6 @@ namespace microsoft_azure {
             {
             }
 
-            blob_property(const chunk_property property)
-                :m_valid(true)
-            {
-                last_modified = property.last_modified;
-                size = property.size;
-                etag = property.etag;
-            }
-
             void set_valid(bool valid)
             {
                 m_valid = valid;
