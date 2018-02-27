@@ -622,7 +622,7 @@ namespace microsoft_azure {
             }
         }
 
-        void blob_client_wrapper::download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, chunk_property &properties, size_t parallel)
+        void blob_client_wrapper::download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, blob_property &returned_properties, size_t parallel)
         {
             if(!is_valid())
             {
@@ -725,7 +725,7 @@ namespace microsoft_azure {
                 return;
             }
 
-            properties = firstChunk.response();
+            returned_properties = (blob_property)firstChunk.response();
             return;
         }
 

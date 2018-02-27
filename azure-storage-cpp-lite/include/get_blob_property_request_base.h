@@ -7,6 +7,7 @@
 #include "http_base.h"
 #include "storage_account.h"
 #include "storage_request_base.h"
+#include "get_blob_request_base.h"
 
 namespace microsoft_azure {
     namespace storage {
@@ -30,6 +31,14 @@ namespace microsoft_azure {
                 :last_modified{time(NULL)},
                 m_valid(valid)
             {
+            }
+
+            blob_property(const chunk_property property)
+                :m_valid(true)
+            {
+                last_modified = property.last_modified;
+                size = property.size;
+                etag = property.etag;
             }
 
             void set_valid(bool valid)
