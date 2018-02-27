@@ -14,7 +14,9 @@
 namespace microsoft_azure {
     namespace storage {
         const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
-        const unsigned long long MIN_UPLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
+        const long long MIN_UPLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
+        const long long MAX_BLOB_SIZE = 5242880000000; // 4.77TB 
+
         class mempool
         {
         public:
@@ -457,12 +459,23 @@ namespace microsoft_azure {
 
             int result = 0;
 
-            //support blobs up to 4.77TB
+            //support blobs up to 4.77TB = if file is larger, return EFBIG error
             //need to round to the nearest multiple of 4MB for efficiency
-            unsigned long long min_block = fileSize / 50000; 
-            int remainder = min_block % 4*1024*1024;
-            min_block += 4*1024*1024 - remainder;
-            unsigned long long block_size = min_block < MIN_UPLOAD_CHUNK_SIZE ? MIN_UPLOAD_CHUNK_SIZE : min_block;
+            if(fileSize > MAX_BLOB_SIZE)
+            {
+                errno = EFBIG;
+                return;
+            }
+
+            long long block_size = MIN_UPLOAD_CHUNK_SIZE;
+
+            if(fileSize > (50000 * MIN_UPLOAD_CHUNK_SIZE))
+            {
+                long long min_block = fileSize / 50000; 
+                int remainder = min_block % 4*1024*1024;
+                min_block += 4*1024*1024 - remainder;
+                block_size = min_block < MIN_UPLOAD_CHUNK_SIZE ? MIN_UPLOAD_CHUNK_SIZE : min_block;
+            }
 
             std::ifstream ifs(sourcePath);
             if(!ifs)
