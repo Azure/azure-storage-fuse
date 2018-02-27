@@ -110,6 +110,7 @@ struct fhwrapper
 struct str_options
 {
     std::string accountName;
+    std::string blobEndpoint;
     std::string accountKey;
     std::string containerName;
     std::string tmpPath;

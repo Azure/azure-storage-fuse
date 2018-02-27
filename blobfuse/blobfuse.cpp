@@ -137,6 +137,11 @@ int read_config(std::string configFile)
             str_options.containerName = containerNameStr;
 //            }
         }
+        else if(line.find("blobEndpoint") != std::string::npos)
+        {
+            std::string blobEndpointStr(value);
+            str_options.blobEndpoint = blobEndpointStr;
+        }
 
         data.clear();
     }
@@ -165,7 +170,7 @@ int read_config(std::string configFile)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
-    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20, str_options.use_https));
+    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20, str_options.use_https, str_options.blobEndpoint));
     if(errno != 0)
     {
         fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
@@ -304,7 +309,7 @@ int main(int argc, char *argv[])
     // When running in daemon mode, the current process forks() and exits, while the child process lives on as a daemon.
     // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
     {
-        blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https);
+        blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https, str_options.blobEndpoint);
         if(errno != 0)
         {
             fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
