@@ -160,7 +160,7 @@ int ensure_files_directory_exists_in_cache(const std::string file_path)
             struct stat st;
             if (stat(copypath, &st) != 0)
             {
-                status = mkdir(copypath, 0770);
+                status = mkdir(copypath, default_permission);
             }
 
             // Ignore if some other thread was successful creating the path
@@ -302,7 +302,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     // If we're at the root, we know it's a directory
     if (strlen(path) == 1)
     {
-        stbuf->st_mode = S_IFDIR | 0770; // TODO: proper access control.
+        stbuf->st_mode = S_IFDIR | default_permission; // TODO: proper access control.
         stbuf->st_uid = fuse_get_context()->uid;
         stbuf->st_gid = fuse_get_context()->gid;
         stbuf->st_nlink = 2; // Directories should have a hard-link count of 2 + (# child directories).  We don't have that count, though, so we jsut use 2 for now.  TODO: Evaluate if we could keep this accurate or not.
@@ -349,7 +349,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
         {
             fprintf(stdout, "Blob found!  Name = %s\n", path);
         }
-        stbuf->st_mode = S_IFREG | 0770; // Regular file (not a directory)
+        stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
         stbuf->st_uid = fuse_get_context()->uid;
         stbuf->st_gid = fuse_get_context()->gid;
         stbuf->st_mtime = blob_property.last_modified;
@@ -379,7 +379,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             {
                 fprintf(stdout, "Directory %s found with return value: %d!\n", blobNameStr.c_str(), dirSize);
             }
-            stbuf->st_mode = S_IFDIR | 0770;
+            stbuf->st_mode = S_IFDIR | default_permission;
             // If st_nlink = 2, means direcotry is empty.
             // Directory size will affect behaviour for mv, rmdir, cp etc.
             stbuf->st_uid = fuse_get_context()->uid;

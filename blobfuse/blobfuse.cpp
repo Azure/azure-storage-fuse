@@ -26,6 +26,7 @@ struct options
 struct options options;
 struct str_options str_options;
 int file_cache_timeout_in_seconds;
+int default_permission;
 
 #define OPTION(t, p) { t, offsetof(struct options, p), 1 }
 const struct fuse_opt option_spec[] =
@@ -233,6 +234,16 @@ int main(int argc, char *argv[])
 
     // FUSE has a standard method of argument parsing, here we just follow the pattern.
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+
+    // Check for existence of allow_other flag and change the default permissions based on that
+    default_permission = 0770;
+    std::vector<std::string> string_args(argv, argv+argc);
+    for (size_t i = 1; i < string_args.size(); ++i) {
+      if (string_args[i].find("allow_other") != std::string::npos) {
+          default_permission = 0777; 
+      }
+    }
+
     int ret = 0;
     try
     {
