@@ -6,7 +6,11 @@ int map_errno(int error)
     auto mapping = error_mapping.find(error);
     if (mapping == error_mapping.end())
     {
-        return error;
+        if (AZS_PRINT)
+        {
+            fprintf(stdout, "errno map failure, no match for error code %i, so returning EIO = 5\n", error);
+        }
+        return EIO;
     }
     else
     {
