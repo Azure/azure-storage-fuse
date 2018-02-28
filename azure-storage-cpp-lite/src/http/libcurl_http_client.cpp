@@ -25,8 +25,10 @@ namespace microsoft_azure {
         }
 
         CURLcode CurlEasyRequest::perform() {
-            check_code(curl_easy_setopt(m_curl, CURLOPT_WRITEFUNCTION, write));
-            check_code(curl_easy_setopt(m_curl, CURLOPT_WRITEDATA, this));
+            if (m_output_stream.valid()) {
+                check_code(curl_easy_setopt(m_curl, CURLOPT_WRITEFUNCTION, write));
+                check_code(curl_easy_setopt(m_curl, CURLOPT_WRITEDATA, this));
+            }
             check_code(curl_easy_setopt(m_curl, CURLOPT_CUSTOMREQUEST, NULL));
             switch (m_method) {
             case http_method::get:
