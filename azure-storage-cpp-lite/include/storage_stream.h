@@ -77,6 +77,7 @@ namespace microsoft_azure {
             storage_ostream() {}
 
             storage_ostream(std::ostream &stream) {
+                m_initial = stream.tellp();
                 m_helper = std::make_shared<storage_ostream_helper>(stream);
             }
 
@@ -84,11 +85,19 @@ namespace microsoft_azure {
                 return m_helper->ostream();
             }
 
+            void reset() {
+                if (!valid()) {
+                    return;
+                }
+                ostream().seekp(m_initial);
+            }
+
             bool valid() const {
                 return m_helper != nullptr;
             }
 
         private:
+            std::ostream::off_type m_initial;
             std::shared_ptr<storage_ostream_helper> m_helper;
         };
 

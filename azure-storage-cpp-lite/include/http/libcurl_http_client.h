@@ -76,12 +76,12 @@ namespace microsoft_azure {
                 return m_headers;
             }
 
-            AZURE_STORAGE_API http_code perform() override;
+            AZURE_STORAGE_API CURLcode perform() override;
 
-            void submit(std::function<void(http_code, storage_istream)> cb, std::chrono::seconds interval) override {
+            void submit(std::function<void(http_code, storage_istream, CURLcode)> cb, std::chrono::seconds interval) override {
                 std::this_thread::sleep_for(interval);
-                perform();
-                cb(m_code, m_error_stream);
+                const auto curlCode = perform();
+                cb(m_code, m_error_stream, curlCode);
             }
 
             void reset() override {
@@ -130,6 +130,10 @@ namespace microsoft_azure {
 
             void reset_input_stream() override {
                 m_input_stream.reset();
+            }
+
+            void reset_output_stream() override {
+                m_output_stream.reset();
             }
 
             storage_ostream get_output_stream() const override {

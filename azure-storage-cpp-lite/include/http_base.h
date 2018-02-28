@@ -4,6 +4,7 @@
 #include <functional>
 #include <string>
 #include <map>
+#include <curl/curl.h>
 
 #include "storage_stream.h"
 
@@ -35,9 +36,9 @@ namespace microsoft_azure {
             virtual std::string get_header(const std::string &name) const = 0;
             virtual const std::map<std::string, std::string>& get_headers() const = 0;
 
-            virtual http_code perform() = 0;
+            virtual CURLcode perform() = 0;
 
-            virtual void submit(std::function<void(http_code, storage_istream)> cb, std::chrono::seconds interval) = 0;
+            virtual void submit(std::function<void(http_code, storage_istream, CURLcode)> cb, std::chrono::seconds interval) = 0;
 
             virtual void reset() = 0;
 
@@ -45,7 +46,9 @@ namespace microsoft_azure {
 
             virtual void set_input_stream(storage_istream s) = 0;
 
-	    virtual void reset_input_stream() = 0;
+	        virtual void reset_input_stream() = 0;
+
+            virtual void reset_output_stream() = 0;
 
             virtual void set_output_stream(storage_ostream s) = 0;
 
