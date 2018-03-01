@@ -55,7 +55,9 @@ namespace microsoft_azure {
             m_slist = curl_slist_append(m_slist, "Expect:");
             check_code(curl_easy_setopt(m_curl, CURLOPT_HTTPHEADER, m_slist));
 
-            return curl_easy_perform(m_curl);
+            const auto result = curl_easy_perform(m_curl);
+            check_code(result); // has nothing to do with checks, just resets errno for succeeded ops.
+            return result;
         }
 
         size_t CurlEasyRequest::header_callback(char *buffer, size_t size, size_t nitems, void *userdata) {
