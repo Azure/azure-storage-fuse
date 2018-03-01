@@ -20,6 +20,7 @@
 #include <gnutls/gnutls.h>
 #include <gcrypt.h>
 #include <pthread.h>
+#include <syslog.h>
 
 // Declare that we're using version 2.9 of FUSE
 // 3.0 is not built-in to many distros yet.

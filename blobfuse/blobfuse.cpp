@@ -13,7 +13,6 @@ namespace {
 }
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
-// The only two custom options we take in are the tmpPath (path to temp / file cache directory) and the configFile (connection to Azure Storage info.)
 struct options
 {
     const char *tmp_path; // Path to the temp / file cache directory
@@ -21,6 +20,7 @@ struct options
     const char *use_https; // True if https should be used (defaults to false)
     const char *file_cache_timeout_in_seconds; // Timeout for the file cache (defaults to 120 seconds)
     const char *container_name; //container to mount. Used only if config_file is not provided
+    const char *log_level; // Sets the level at which the process should log to syslog.
 };
 
 struct options options;
@@ -36,6 +36,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--use-https=%s", use_https),
     OPTION("--file-cache-timeout-in-seconds=%s", file_cache_timeout_in_seconds),
     OPTION("--container-name=%s", container_name),
+    OPTION("--log-level=%s", log_level),
     FUSE_OPT_END
 };
 
@@ -50,6 +51,8 @@ std::map<int, int> error_mapping = {{404, ENOENT}, {403, EACCES}, {1600, ENOENT}
 const std::string directorySignifier = ".directory";
 
 static struct fuse_operations azs_blob_operations;
+
+const std::string log_ident = "blobfuse";
 
 inline bool is_lowercase_string(const std::string &s)
 {
@@ -71,7 +74,8 @@ int read_config_env()
     }
     else
     {
-        fprintf(stderr, "AZURE_STORAGE_ACCOUNT environment variable is empty.\n");
+        syslog (LOG_CRIT, "Unable to start blobfuse.  No config file was specified and AZURE_STORAGE_ACCESS_KEY environment variable is empty.");
+        fprintf(stderr, "No config file was specified and AZURE_STORAGE_ACCOUNT environment variable is empty.\n");
         return -1;
     }
 
@@ -81,7 +85,8 @@ int read_config_env()
     }
     else
     {
-        fprintf(stderr, "AZURE_STORAGE_ACCESS_KEY environment variable is empty.\n");
+        syslog (LOG_CRIT, "Unable to start blobfuse.  No config file was specified and AZURE_STORAGE_ACCESS_KEY environment variable is empty.");
+        fprintf(stderr, "No config file was specified and AZURE_STORAGE_ACCESS_KEY environment variable is empty.\n");
         return -1;
     }
 
@@ -94,6 +99,7 @@ int read_config(std::string configFile)
     std::ifstream file(configFile);
     if(!file)
     {
+        syslog (LOG_CRIT, "Unable to start blobfuse.  No config file found at %s.", configFile.c_str());
         fprintf(stderr, "No config file found at %s.\n", configFile.c_str());
         return -1;
     }
@@ -149,17 +155,20 @@ int read_config(std::string configFile)
 
     if(str_options.accountName.size() == 0)
     {
+        syslog (LOG_CRIT, "Unable to start blobfuse. Account name is missing in the configuration file.");
         fprintf(stderr, "Account name is missing in the configure file.\n");
         return -1;
     }
     else if(str_options.accountKey.size() == 0)
     {
+        syslog (LOG_CRIT, "Unable to start blobfuse. Account key is missing in the configuration file.");
         fprintf(stderr, "Account key is missing in the configure file.\n");
         return -1;
     }
     else if(str_options.containerName.size() == 0)
     {
-        fprintf(stderr, "Container name is missing in the configure file.\n");
+        syslog (LOG_CRIT, "Unable to start blobfuse. Container name is missing in the configuration file.");
+        fprintf(stderr, "Container name is missing in the configuration file.\n");
         return -1;
     }
     else
@@ -174,7 +183,8 @@ void *azs_init(struct fuse_conn_info * conn)
     azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20, str_options.use_https, str_options.blobEndpoint));
     if(errno != 0)
     {
-        fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
+        syslog (LOG_CRIT, "Unable to start blobfuse.  Creating blob client failed: errno = %d.\n", errno);
+
         // TODO: Improve this error case
         return NULL;
     }
@@ -198,15 +208,63 @@ void *azs_init(struct fuse_conn_info * conn)
 // TODO: print FUSE usage as well
 void print_usage()
 {
-    fprintf(stdout, "Usage: blobfuse <mount-folder> --tmp-path=</path/to/fusecache> [--config-file=</path/to/config.cfg> | --container-name=<containername>] [--use-https=true] [--file-cache-timeout-in-seconds=120]\n\n");
+    fprintf(stdout, "Usage: blobfuse <mount-folder> --tmp-path=</path/to/fusecache> [--config-file=</path/to/config.cfg> | --container-name=<containername>]");
+    fprintf(stdout, "    [--use-https=true] [--file-cache-timeout-in-seconds=120] [log-level=LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG]\n\n");
     fprintf(stdout, "In addition to setting --tmp-path parameter, you must also do one of the following:\n");
     fprintf(stdout, "1. Specify a config file (using --config-file]=) with account name, account key, and container name, OR\n");
     fprintf(stdout, "2. Set the environment variables AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCESS_KEY, and specify the container name with --container-name=\n\n");
     fprintf(stdout, "See https://github.com/Azure/azure-storage-fuse for detailed installation and configuration instructions.\n");
 }
 
+int set_log_mask(std::string min_log_level)
+{
+    if (min_log_level.empty())
+    {
+        setlogmask(LOG_UPTO(LOG_WARNING));
+        return 0;
+    }
+    // Options for logging: LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG
+    if (min_log_level == "LOG_OFF")
+    {
+        setlogmask(LOG_UPTO(LOG_EMERG)); // We don't use 'LOG_EMERG', so this won't log anything.
+        return 0;
+    }
+    if (min_log_level == "LOG_CRIT")
+    {
+        setlogmask(LOG_UPTO(LOG_CRIT));
+        return 0;
+    }
+    if (min_log_level == "LOG_ERR")
+    {
+        setlogmask(LOG_UPTO(LOG_ERR));
+        return 0;
+    }
+    if (min_log_level == "LOG_WARNING")
+    {
+        setlogmask(LOG_UPTO(LOG_WARNING));
+        return 0;
+    }
+    if (min_log_level == "LOG_INFO")
+    {
+        setlogmask(LOG_UPTO(LOG_INFO));
+        return 0;
+    }
+    if (min_log_level == "LOG_DEBUG")
+    {
+        setlogmask(LOG_UPTO(LOG_DEBUG));
+        return 0;
+    }
+
+    syslog (LOG_CRIT, "Unable to start blobfuse. Error: Invalid log level \"%s\"", min_log_level.c_str());
+    fprintf(stdout, "Error: Invalid log level \"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
+    fprintf(stdout, "If not specified, logging will default to LOG_WARNING.\n\n");
+    return 1;
+}
+
 int main(int argc, char *argv[])
 {
+    openlog(log_ident.c_str(), LOG_NDELAY | LOG_PID, 0);
+
     // Here, we set up all the callbacks that FUSE requires.
     azs_blob_operations.init = azs_init;
     azs_blob_operations.getattr = azs_getattr;
@@ -262,7 +320,8 @@ int main(int argc, char *argv[])
         {
             if(!options.container_name)
             {
-                fprintf(stderr, "Error: --container-name is not set.\n");
+                syslog (LOG_CRIT, "Unable to start blobfuse, no config file provided and --container-name is not set.");
+                fprintf(stderr, "Error: No config file provided and --container-name is not set.\n");
                 print_usage();
                 return 1;
             }
@@ -282,6 +341,13 @@ int main(int argc, char *argv[])
         }
     }
     catch(std::exception &)
+    {
+        print_usage();
+        return 1;
+    }
+
+    int res = set_log_mask(options.log_level);
+    if (res != 0)
     {
         print_usage();
         return 1;
@@ -313,11 +379,11 @@ int main(int argc, char *argv[])
         }
     }
 
-
     // For proper locking, instructing gcrypt to use pthreads 
     gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
     if(GNUTLS_E_SUCCESS != gnutls_global_init())
     {
+        syslog (LOG_CRIT, "Unable to start blobfuse. GnuTLS initialization failed: errno = %d.\n", errno);
         fprintf(stderr, "GnuTLS initialization failed: errno = %d.\n", errno);
         return 1; 
     }
@@ -330,6 +396,7 @@ int main(int argc, char *argv[])
         blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https, str_options.blobEndpoint);
         if(errno != 0)
         {
+            syslog (LOG_CRIT, "Unable to start blobfuse.  Creating local blob client failed: errno = %d.\n", errno);
             fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
             return 1;
         }
@@ -338,6 +405,7 @@ int main(int argc, char *argv[])
         if(temp_azure_blob_client_wrapper.container_exists(str_options.containerName) == false
                 || errno != 0)
         {
+            syslog (LOG_CRIT, "Unable to start blobfuse.  Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
             fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
             return 1;
         }
@@ -347,6 +415,7 @@ int main(int argc, char *argv[])
     fuse_opt_add_arg(&args, "-omax_write=131072");
     if(0 != ensure_files_directory_exists_in_cache(prepend_mnt_path_string("/placeholder")))
     {
+        syslog (LOG_CRIT, "Unable to start blobfuse.  Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         fprintf(stderr, "Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         return 1;
     }

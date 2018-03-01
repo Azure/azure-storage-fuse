@@ -42,10 +42,7 @@ std::mutex deque_lock;
 // The variables "mntPath" and "mntPathString" refer to on-disk cached location of the corresponding file/blob.
 int azs_open(const char *path, struct fuse_file_info *fi)
 {
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "azs_open called with path = %s, fi->flags = %X, O_TRUNC = %d. \n", path, fi->flags, ((fi->flags & O_TRUNC) == O_TRUNC));
-    }
+    syslog (LOG_DEBUG, "azs_open called with path = %s, fi->flags = %X.\n", path, fi->flags);
     std::string pathString(path);
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
@@ -76,6 +73,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             int fd = open(mntPath, O_WRONLY);
             if (fd == -1)
             {
+                syslog (LOG_ERR, "Failed to open %s; unable to open file %s in cache directory.  Errno = %d", path, mntPath, errno);
                 return -errno;
             }
 
@@ -93,6 +91,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
                 {
                     // Failed to acquire the lock for some other reason.  We close the open fd, and fail.
                     int flockerrno = errno;
+                    syslog(LOG_ERR, "Failed to open %s; unable to acquire flock on file %s in cache directory.  Errno = %d", path, mntPath, flockerrno);
                     close(fd);
                     return -flockerrno;
                 }
@@ -107,7 +106,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
 
             if(0 != ensure_files_directory_exists_in_cache(mntPathString))
             {
-                fprintf(stderr, "Failed to create file or directory on cache directory: %s, errno = %d.\n", mntPathString.c_str(),  errno);
+                syslog(LOG_ERR, "Failed to create file or directory on cache directory: %s, errno = %d.\n", mntPathString.c_str(),  errno);
                 return -1;
             }
 
@@ -135,20 +134,19 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     // Open a file handle to the file in the cache.
     // This will be stored in 'fi', and used for later read/write operations.
     res = open(mntPath, fi->flags);
-    if (AZS_PRINT)
-    {
-        printf("Accessing %s gives res = %d, errno = %d, ENOENT = %d, processID = %d\n", mntPath, res, errno, ENOENT, getpid());
-    }
 
     if (res == -1)
     {
+        syslog(LOG_ERR, "Failed to open file %s in file cache.  errno = %d.", mntPathString.c_str(),  errno);
         return -errno;
     }
+    syslog(LOG_DEBUG, "Opening %s gives fh = %d, errno = %d", mntPath, res, errno);
 
     // At this point, the file exists in the cache and we have an open file handle to it.  We now attempt to acquire the flock lock in shared mode, to be held while reading and writing to the file.
     int lock_result = shared_lock_file(fi->flags, res);
     if(lock_result != 0)
     {
+        syslog(LOG_ERR, "Failed to acquire flock on file %s in file cache.  errno = %d.", mntPathString.c_str(), lock_result);
         return lock_result;
     }
 

@@ -149,9 +149,13 @@ int shared_lock_file(int flags, int fd)
     {
         if(0 != flock(fd, LOCK_SH|LOCK_NB))
         {
-            if (AZS_PRINT)
+            if (errno == EWOULDBLOCK)
             {
-                printf("flock error in NB.  errno = %d, res = %d\n", errno, fd);
+               syslog(LOG_INFO, "Failure to acquire flock due to EWOULDBLOCK.  fd = %d.", fd);
+            }
+            else
+            {
+               syslog(LOG_WARNING, "Failure to acquire flock for fd = %d.  errno = %d", fd, errno);
             }
             int flockerrno = errno;
             close(fd);
@@ -162,10 +166,7 @@ int shared_lock_file(int flags, int fd)
     {
         if (0 != flock(fd, LOCK_SH))
         {
-            if (AZS_PRINT)
-            {
-                printf("flock error.  errno = %d, res = %d\n", errno, fd);
-            }
+            syslog(LOG_WARNING, "Failure to acquire flock for fd = %d.  errno = %d", fd, errno);
             int flockerrno = errno;
             close(fd);
             return 0 - flockerrno;
