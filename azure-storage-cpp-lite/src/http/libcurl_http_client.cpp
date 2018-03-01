@@ -24,7 +24,11 @@ namespace microsoft_azure {
             }
         }
 
-        http_base::http_code CurlEasyRequest::perform() {
+        CURLcode CurlEasyRequest::perform() {
+            if (m_output_stream.valid()) {
+                check_code(curl_easy_setopt(m_curl, CURLOPT_WRITEFUNCTION, write));
+                check_code(curl_easy_setopt(m_curl, CURLOPT_WRITEDATA, this));
+            }
             check_code(curl_easy_setopt(m_curl, CURLOPT_CUSTOMREQUEST, NULL));
             switch (m_method) {
             case http_method::get:
@@ -51,9 +55,9 @@ namespace microsoft_azure {
             m_slist = curl_slist_append(m_slist, "Expect:");
             check_code(curl_easy_setopt(m_curl, CURLOPT_HTTPHEADER, m_slist));
 
-            check_code(curl_easy_perform(m_curl));
-
-            return m_code;
+            const auto result = curl_easy_perform(m_curl);
+            check_code(result); // has nothing to do with checks, just resets errno for succeeded ops.
+            return result;
         }
 
         size_t CurlEasyRequest::header_callback(char *buffer, size_t size, size_t nitems, void *userdata) {
