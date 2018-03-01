@@ -109,12 +109,19 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             }
 
             errno = 0;
-            azure_blob_client_wrapper->download_blob_to_file(str_options.containerName, pathString.substr(1), mntPathString);
+            time_t last_modified = {};
+            azure_blob_client_wrapper->download_blob_to_file(str_options.containerName, pathString.substr(1), mntPathString, last_modified);
             if (errno != 0)
             {
                 remove(mntPath);
                 return 0 - map_errno(errno);
             }
+            
+            // preserve the last modified time
+            struct utimbuf new_time = {};
+            new_time.modtime = last_modified;
+            utime(mntPathString.c_str(), &new_time);
+
         }
     }
 
@@ -142,7 +149,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     }
 
     // TODO: Actual access control
-    fchmod(res, 0770);
+    fchmod(res, default_permission);
 
     // Store the open file handle, and whether or not the file should be uploaded on close().
     // TODO: Optimize the scenario where the file is open for read/write, but no actual writing occurs, to not upload the blob.
@@ -196,7 +203,7 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     ensure_files_directory_exists_in_cache(mntPathString);
 
     // FUSE will set the O_CREAT and O_WRONLY flags, but not O_EXCL, which is generally assumed for 'create' semantics.
-    res = open(mntPath, fi->flags | O_EXCL, mode);
+    res = open(mntPath, fi->flags | O_EXCL, default_permission);
     if (AZS_PRINT)
     {
         fprintf(stdout, "mntPath = %s, result = %d\n", mntPath, res);

@@ -638,7 +638,7 @@ namespace microsoft_azure {
             }
         }
 
-        void blob_client_wrapper::download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, size_t parallel)
+        void blob_client_wrapper::download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, time_t &returned_last_modified, size_t parallel)
         {
             if(!is_valid())
             {
@@ -647,12 +647,13 @@ namespace microsoft_azure {
             }
 
             const size_t downloaders = std::min(parallel, static_cast<size_t>(m_concurrency));
+            storage_outcome<chunk_property> firstChunk;
             try
             {
                 // Download the first chunk of the blob. The response will contain required blob metadata as well.
                 int errcode = 0;
                 std::ofstream os(destPath.c_str(), std::ofstream::binary | std::ofstream::out);
-                auto firstChunk = m_blobClient->get_chunk_to_stream_sync(container, blob, 0, DOWNLOAD_CHUNK_SIZE, os);
+                firstChunk = m_blobClient->get_chunk_to_stream_sync(container, blob, 0, DOWNLOAD_CHUNK_SIZE, os);
                 os.close();
                 if (!os) {
                     errno = unknown_error;
@@ -685,7 +686,7 @@ namespace microsoft_azure {
                 if (-1 == ftruncate(fd, length)) {
                     close(fd);
                     return;
-                }
+                } 
                 close(fd);
 
                 // Download the rest.
@@ -739,6 +740,9 @@ namespace microsoft_azure {
                 errno = unknown_error;
                 return;
             }
+
+            returned_last_modified = firstChunk.response().last_modified;
+            return;
         }
 
         blob_property blob_client_wrapper::get_blob_property(const std::string &container, const std::string &blob)

@@ -1109,6 +1109,52 @@ class TestFuse(unittest.TestCase):
         os.write(fd, data.encode())
         os.close(fd)
 
+    def test_file_owner_timestamp(self):
+        testFileName = "testUserAndTime"
+        testFilePath = os.path.join(self.blobstage, testFileName)
+
+        fd = os.open(testFilePath, os.O_CREAT | os.O_RDONLY)
+        testData = "random data"
+        self.write_file_func(testFilePath, testData)
+        os.close(fd)
+
+        # This verifies the getattr from the local cache
+        fileowner = os.stat(testFilePath).st_uid
+        filegroup = os.stat(testFilePath).st_gid
+        time_of_upload = os.stat(testFilePath).st_mtime
+
+        self.assertEqual(fileowner, os.getuid())
+        self.assertEqual(filegroup, os.getgid()) 
+
+        # This removes the cached entries of the files just created, so they are on the service but not local.
+        shutil.rmtree(self.cachedir + '/root/testing/')
+        time.sleep(1)
+
+        # check whether getattr from the service is working
+        fileowner = os.stat(testFilePath).st_uid
+        filegroup = os.stat(testFilePath).st_gid
+        blob_last_modified = os.stat(testFilePath).st_mtime
+
+        self.assertEqual(fileowner, os.getuid())
+        self.assertEqual(filegroup, os.getgid())
+        self.assertEqual(time_of_upload, blob_last_modified)
+
+        # prime the cache and check the attributes again
+        fd = os.open(testFilePath, os.O_RDONLY)
+
+        # check whether getattr from the cache is working
+        fileowner = os.stat(testFilePath).st_uid
+        filegroup = os.stat(testFilePath).st_gid
+        file_last_modified = os.stat(testFilePath).st_mtime
+
+        self.assertEqual(fileowner, os.getuid())
+        self.assertEqual(filegroup, os.getgid())
+        self.assertEqual(time_of_upload, file_last_modified)
+        
+        os.close(fd)
+        os.remove(testFilePath)
+
+
     def test_file_simultaneous_write(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
