@@ -277,6 +277,13 @@ int main(int argc, char *argv[])
     }
 
     // remove last trailing slash in tmo_path
+    if(!options.tmp_path)
+    {
+        fprintf(stderr, "Error: --tmp-path is not set.\n");
+        print_usage();
+        return 1;
+    }
+    
     std::string tmpPathStr(options.tmp_path);
     if (!tmpPathStr.empty() && tmpPathStr[tmpPathStr.size() - 1] == '/')
     {
