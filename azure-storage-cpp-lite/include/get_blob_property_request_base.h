@@ -7,6 +7,7 @@
 #include "http_base.h"
 #include "storage_account.h"
 #include "storage_request_base.h"
+#include "get_blob_request_base.h"
 
 namespace microsoft_azure {
     namespace storage {
@@ -27,7 +28,8 @@ namespace microsoft_azure {
         {
         public:
             blob_property(bool valid)
-                :m_valid(valid)
+                :last_modified{time(NULL)},
+                m_valid(valid)
             {
             }
 
@@ -51,7 +53,7 @@ namespace microsoft_azure {
             std::string etag;
             std::vector<std::pair<std::string, std::string>> metadata;
             std::string copy_status;
-            // utility::datetime m_last_modified;
+            time_t last_modified;
             // blob_type m_type;
             // azure::storage::lease_status m_lease_status;
             // azure::storage::lease_state m_lease_state;

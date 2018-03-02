@@ -14,7 +14,9 @@
 namespace microsoft_azure {
     namespace storage {
         const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
-        const unsigned long long UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024;
+        const long long MIN_UPLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
+        const long long MAX_BLOB_SIZE = 5242880000000; // 4.77TB 
+
         class mempool
         {
         public:
@@ -118,11 +120,11 @@ namespace microsoft_azure {
 
         blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency)
         {
-            return blob_client_wrapper_init(account_name, account_key, concurrency, false);
+            return blob_client_wrapper_init(account_name, account_key, concurrency, false, NULL);
         }
 
 
-        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency, const bool use_https)
+        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency, const bool use_https, const std::string &blob_endpoint)
         {
             if(account_name.length() == 0 || account_key.length() == 0)
             {
@@ -142,7 +144,7 @@ namespace microsoft_azure {
             try
             {
                 std::shared_ptr<storage_credential>  cred = std::make_shared<shared_key_credential>(accountName, accountKey);
-                std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https);
+                std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
                 std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
                 errno = 0;
                 return blob_client_wrapper(blobClient);
@@ -456,7 +458,25 @@ namespace microsoft_azure {
             }
 
             int result = 0;
-            int block_size = 4*1024*1024;
+
+            //support blobs up to 4.77TB = if file is larger, return EFBIG error
+            //need to round to the nearest multiple of 4MB for efficiency
+            if(fileSize > MAX_BLOB_SIZE)
+            {
+                errno = EFBIG;
+                return;
+            }
+
+            long long block_size = MIN_UPLOAD_CHUNK_SIZE;
+
+            if(fileSize > (50000 * MIN_UPLOAD_CHUNK_SIZE))
+            {
+                long long min_block = fileSize / 50000; 
+                int remainder = min_block % 4*1024*1024;
+                min_block += 4*1024*1024 - remainder;
+                block_size = min_block < MIN_UPLOAD_CHUNK_SIZE ? MIN_UPLOAD_CHUNK_SIZE : min_block;
+            }
+
             std::ifstream ifs(sourcePath);
             if(!ifs)
             {
@@ -471,7 +491,7 @@ namespace microsoft_azure {
             std::condition_variable cv;
             std::mutex cv_mutex;
 
-            for(long long offset = 0, idx = 0; offset < fileSize; offset += UPLOAD_CHUNK_SIZE, ++idx)
+            for(long long offset = 0, idx = 0; offset < fileSize; offset += block_size, ++idx)
             {
                 // control the number of submitted jobs.
                 while(task_list.size() > m_concurrency)
@@ -486,13 +506,13 @@ namespace microsoft_azure {
                     //std::cout << blob <<  " request failed: " << result << std::endl;
                     break;
                 }
-                int length = UPLOAD_CHUNK_SIZE;
+                int length = block_size;
                 if(offset + length > fileSize)
                 {
                     length = fileSize - offset;
                 }
 
-                char* buffer = (char*)malloc(UPLOAD_CHUNK_SIZE);
+                char* buffer = (char*)malloc(block_size);
                 if (!buffer) {
                     //std::cout << blob << " failed to allocate buffer" << std::endl;
                     result = 12;
@@ -618,7 +638,7 @@ namespace microsoft_azure {
             }
         }
 
-        void blob_client_wrapper::download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, size_t parallel)
+        void blob_client_wrapper::download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, time_t &returned_last_modified, size_t parallel)
         {
             if(!is_valid())
             {
@@ -627,12 +647,13 @@ namespace microsoft_azure {
             }
 
             const size_t downloaders = std::min(parallel, static_cast<size_t>(m_concurrency));
+            storage_outcome<chunk_property> firstChunk;
             try
             {
                 // Download the first chunk of the blob. The response will contain required blob metadata as well.
                 int errcode = 0;
                 std::ofstream os(destPath.c_str(), std::ofstream::binary | std::ofstream::out);
-                auto firstChunk = m_blobClient->get_chunk_to_stream_sync(container, blob, 0, DOWNLOAD_CHUNK_SIZE, os);
+                firstChunk = m_blobClient->get_chunk_to_stream_sync(container, blob, 0, DOWNLOAD_CHUNK_SIZE, os);
                 os.close();
                 if (!os) {
                     errno = unknown_error;
@@ -665,7 +686,7 @@ namespace microsoft_azure {
                 if (-1 == ftruncate(fd, length)) {
                     close(fd);
                     return;
-                }
+                } 
                 close(fd);
 
                 // Download the rest.
@@ -719,6 +740,9 @@ namespace microsoft_azure {
                 errno = unknown_error;
                 return;
             }
+
+            returned_last_modified = firstChunk.response().last_modified;
+            return;
         }
 
         blob_property blob_client_wrapper::get_blob_property(const std::string &container, const std::string &blob)

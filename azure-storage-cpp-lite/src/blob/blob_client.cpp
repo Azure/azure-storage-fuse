@@ -22,6 +22,7 @@
 #include "executor.h"
 #include "utility.h"
 #include "tinyxml2_parser.h"
+#include <curl/curl.h>
 
 namespace microsoft_azure {
 namespace storage {
@@ -64,6 +65,7 @@ storage_outcome<chunk_property> blob_client::get_chunk_to_stream_sync(const std:
         property.etag = http->get_header(constants::header_etag);
         property.totalSize = get_length_from_content_range(http->get_header(constants::header_content_range));
         std::istringstream(http->get_header(constants::header_content_length)) >> property.size;
+        property.last_modified = curl_getdate(http->get_header(constants::header_last_modified).c_str(), NULL);
         return storage_outcome<chunk_property>(property);
     }
     return storage_outcome<chunk_property>(storage_error(response.error()));
@@ -232,6 +234,7 @@ storage_outcome<blob_property> blob_client::get_blob_property(const std::string 
         blobProperty.content_type = http->get_header(constants::header_content_type);
         blobProperty.etag = http->get_header(constants::header_etag);
         blobProperty.copy_status = http->get_header(constants::header_ms_copy_status);
+        blobProperty.last_modified = curl_getdate(http->get_header(constants::header_last_modified).c_str(), NULL);
         std::string::size_type sz = 0;
         std::string contentLength = http->get_header(constants::header_content_length);
         if(contentLength.length() > 0)

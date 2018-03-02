@@ -323,9 +323,10 @@ namespace microsoft_azure { namespace storage {
         /// <param name="account_name">The storage account name.</param>
         /// <param name="account_key">The storage account key.</param>
         /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
-        /// <param name="use_https">True if https should be used (instead of HTTP).  Note that this may cause a sizable perf loss, due to issues in libcurl.
+        /// <param name="use_https">True if https should be used (instead of HTTP).  Note that this may cause a sizable perf loss, due to issues in libcurl.</param>
+        /// <param name="blob_endpoint">Blob endpoint URI to allow non-public clouds as well as custom domains.</param>
         /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
-        static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency, bool use_https);
+        static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency, bool use_https, const std::string &blob_endpoint);
         /* C++ wrappers without exception but error codes instead */
 
         /* container level*/
@@ -414,7 +415,8 @@ namespace microsoft_azure { namespace storage {
         /// <param name="size">The size of the data to download from the blob, in bytes.</param>
         /// <param name="destPath">The target file path.</param>
         /// <param name="parallel">A size_t value indicates the maximum parallelism can be used in this request.</param>
-        void download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, size_t parallel = 9);
+        /// <returns>A <see cref="storage_outcome" /> object that represents the properties (etag, last modified time and size) from the first chunk retrieved.</returns>
+        void download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, time_t &returned_last_modified, size_t parallel = 9);
 
         /// <summary>
         /// Gets the property of a blob.

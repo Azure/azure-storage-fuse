@@ -38,44 +38,6 @@ namespace microsoft_azure {
             std::shared_ptr<retry_policy_base> m_retry_policy;
         };
 
-        /*
-        template<typename RESPONSE_TYPE>
-        class executor {
-        public:
-            static storage_outcome<RESPONSE_TYPE> make_request_once(const storage_account &a, const storage_request_base &r, http_base &h, const xml_parser_base &x, retry_context &context) {
-                std::stringstream ss;
-                h.set_output_stream(storage_stream(ss));
-                r.build_request(a, h);
-
-                auto result = h.perform();
-                context.add_result(result);
-
-                if (unsuccessful(result)) {
-                    return storage_outcome<RESPONSE_TYPE>(x.parse_storage_error(ss.str()));
-                }
-                return storage_outcome<RESPONSE_TYPE>(x.parse_response<RESPONSE_TYPE>(ss.str()));
-            }
-
-            static storage_outcome<RESPONSE_TYPE> make_requests(const storage_account &a, const storage_request_base &r, http_base &h, const xml_parser_base &x, const retry_policy &policy) {
-                retry_context context(0, 0);
-
-                auto outcome = executor<RESPONSE_TYPE>::make_request_once(a, r, h, x, context);
-                while (!outcome.success()) {
-                    retry_info info = policy.evaluate(context);
-                    if (!info.should_retry()) {
-                        break;
-                    }
-
-                    std::this_thread::sleep_for(info.interval());
-                    outcome = executor<RESPONSE_TYPE>::make_request_once(a, r, h, x, context);
-                }
-
-                return outcome;
-            }
-
-        };
-        */
-
         template<typename RESPONSE_TYPE>
         class async_executor {
         public:
@@ -85,12 +47,13 @@ namespace microsoft_azure {
 
                 retry_info info = context.retry_policy()->evaluate(retry);
                 if (info.should_retry()) {
-                    h.submit([&promise, &a, &r, &h, &context, &retry](http_base::http_code result, storage_istream s) {
+                    h.submit([&promise, &a, &r, &h, &context, &retry](http_base::http_code result, storage_istream s, CURLcode code) {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
-                        if (unsuccessful(result)) {
+                        if (code != CURLE_OK || unsuccessful(result)) {
                             promise.set_value(storage_outcome<RESPONSE_TYPE>(context.xml_parser()->parse_storage_error(str)));
-                            retry.add_result(result);
+                            retry.add_result(code == CURLE_OK ? result : 503);
                             h.reset_input_stream();
+                            h.reset_output_stream();
                             async_executor<RESPONSE_TYPE>::submit_request(promise, a, r, h, context, retry);
                         }
                         else {
@@ -115,17 +78,18 @@ namespace microsoft_azure {
                 retry_info info = context->retry_policy()->evaluate(*retry);
                 if (info.should_retry())
                 {
-                    http->submit([promise, outcome, account, request, http, context, retry](http_base::http_code result, storage_istream s)
+                    http->submit([promise, outcome, account, request, http, context, retry](http_base::http_code result, storage_istream s, CURLcode code)
                     {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
-                        if (unsuccessful(result))
+                        if (code != CURLE_OK || unsuccessful(result))
                         {
                             auto error = context->xml_parser()->parse_storage_error(str);
                             error.code = std::to_string(result);
                             *outcome = storage_outcome<RESPONSE_TYPE>(error);
                             //*outcome = storage_outcome<RESPONSE_TYPE>(context->xml_parser()->parse_storage_error(str));
-                            retry->add_result(result);
+                            retry->add_result(code == CURLE_OK ? result: 503);
                             http->reset_input_stream();
+                            http->reset_output_stream();
                             async_executor<RESPONSE_TYPE>::submit_helper(promise, outcome, account, request, http, context, retry);
                         }
                         else
@@ -164,12 +128,13 @@ namespace microsoft_azure {
 
                 retry_info info = context.retry_policy()->evaluate(retry);
                 if (info.should_retry()) {
-                    h.submit([&promise, &a, &r, &h, &context, &retry](http_base::http_code result, storage_istream s) {
+                    h.submit([&promise, &a, &r, &h, &context, &retry](http_base::http_code result, storage_istream s, CURLcode code) {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
-                        if (unsuccessful(result)) {
+                        if (code != CURLE_OK || unsuccessful(result)) {
                             promise.set_value(storage_outcome<void>(context.xml_parser()->parse_storage_error(str)));
-                            retry.add_result(result);
+                            retry.add_result(code == CURLE_OK ? result : 503);
                             h.reset_input_stream();
+                            h.reset_output_stream();
                             async_executor<void>::submit_request(promise, a, r, h, context, retry);
                         }
                         else {
@@ -195,17 +160,18 @@ namespace microsoft_azure {
                 retry_info info = context->retry_policy()->evaluate(*retry);
                 if (info.should_retry())
                 {
-                    http->submit([promise, outcome, account, request, http, context, retry](http_base::http_code result, storage_istream s)
+                    http->submit([promise, outcome, account, request, http, context, retry](http_base::http_code result, storage_istream s, CURLcode code)
                     {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
-                        if (unsuccessful(result))
+                        if (code != CURLE_OK || unsuccessful(result))
                         {
                             auto error = context->xml_parser()->parse_storage_error(str);
                             error.code = std::to_string(result);
                             *outcome = storage_outcome<void>(error);
                             //*outcome = storage_outcome<void>(context->xml_parser()->parse_storage_error(str));
-                            retry->add_result(result);
+                            retry->add_result(code == CURLE_OK ? result: 503);
                             http->reset_input_stream();
+                            http->reset_output_stream();
                             async_executor<void>::submit_helper(promise, outcome, account, request, http, context, retry);
                         }
                         else
@@ -234,41 +200,5 @@ namespace microsoft_azure {
                 return promise->get_future();
             }
         };
-
-        /*
-        template<>
-        class executor<void> {
-        public:
-            static storage_outcome<void> make_request_once(const storage_account &a, const storage_request_base &r, http_base &h, const xml_parser_base &x, retry_context &context) {
-                std::stringstream ss;
-                h.set_error_stream(unsuccessful, storage_stream(ss));
-                r.build_request(a, h);
-
-                auto status_code = h.perform();
-                if (unsuccessful(status_code)) {
-                    return storage_outcome<void>(x.parse_storage_error(ss.str()));
-                }
-
-                return storage_outcome<void>();
-            }
-
-            static storage_outcome<void> make_requests(const storage_account &a, const storage_request_base &r, http_base &h, const xml_parser_base &x, const retry_policy &policy) {
-                retry_context context(0, 0);
-
-                auto outcome = executor<void>::make_request_once(a, r, h, x, context);
-                while (!outcome.success()) {
-                    retry_info info = policy.evaluate(context);
-                    if (!info.should_retry()) {
-                        break;
-                    }
-
-                    std::this_thread::sleep_for(info.interval());
-                    outcome = executor<void>::make_request_once(a, r, h, x, context);
-                }
-
-                return outcome;
-            }
-        };*/
-
     }
 }

@@ -110,6 +110,7 @@ struct fhwrapper
 struct str_options
 {
     std::string accountName;
+    std::string blobEndpoint;
     std::string accountKey;
     std::string containerName;
     std::string tmpPath;
@@ -119,6 +120,8 @@ struct str_options
 extern struct str_options str_options;
 
 extern int file_cache_timeout_in_seconds;
+
+extern int default_permission;
 
 // This is used to make all the calls to Storage
 // The C++ lite client does not store state, other than connection info, so we can use it between calls without issue.

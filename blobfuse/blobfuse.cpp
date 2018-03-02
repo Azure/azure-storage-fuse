@@ -26,6 +26,7 @@ struct options
 struct options options;
 struct str_options str_options;
 int file_cache_timeout_in_seconds;
+int default_permission;
 
 #define OPTION(t, p) { t, offsetof(struct options, p), 1 }
 const struct fuse_opt option_spec[] =
@@ -137,6 +138,11 @@ int read_config(std::string configFile)
             str_options.containerName = containerNameStr;
 //            }
         }
+        else if(line.find("blobEndpoint") != std::string::npos)
+        {
+            std::string blobEndpointStr(value);
+            str_options.blobEndpoint = blobEndpointStr;
+        }
 
         data.clear();
     }
@@ -165,7 +171,7 @@ int read_config(std::string configFile)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
-    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20, str_options.use_https));
+    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20, str_options.use_https, str_options.blobEndpoint));
     if(errno != 0)
     {
         fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
@@ -233,6 +239,16 @@ int main(int argc, char *argv[])
 
     // FUSE has a standard method of argument parsing, here we just follow the pattern.
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+
+    // Check for existence of allow_other flag and change the default permissions based on that
+    default_permission = 0770;
+    std::vector<std::string> string_args(argv, argv+argc);
+    for (size_t i = 1; i < string_args.size(); ++i) {
+      if (string_args[i].find("allow_other") != std::string::npos) {
+          default_permission = 0777; 
+      }
+    }
+
     int ret = 0;
     try
     {
@@ -272,6 +288,13 @@ int main(int argc, char *argv[])
     }
 
     // remove last trailing slash in tmo_path
+    if(!options.tmp_path)
+    {
+        fprintf(stderr, "Error: --tmp-path is not set.\n");
+        print_usage();
+        return 1;
+    }
+    
     std::string tmpPathStr(options.tmp_path);
     if (!tmpPathStr.empty() && tmpPathStr[tmpPathStr.size() - 1] == '/')
     {
@@ -304,7 +327,7 @@ int main(int argc, char *argv[])
     // When running in daemon mode, the current process forks() and exits, while the child process lives on as a daemon.
     // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
     {
-        blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https);
+        blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https, str_options.blobEndpoint);
         if(errno != 0)
         {
             fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
