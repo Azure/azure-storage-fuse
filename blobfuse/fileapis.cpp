@@ -118,8 +118,9 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             }
             
             // preserve the last modified time
-            struct utimbuf new_time = {};
+            struct utimbuf new_time;
             new_time.modtime = last_modified;
+            new_time.actime = 0;
             utime(mntPathString.c_str(), &new_time);
 
         }
