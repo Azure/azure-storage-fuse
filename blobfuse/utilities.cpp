@@ -66,9 +66,9 @@ void gc_cache::run_gc_cache()
             continue;
         }
 
-
+        time_t now = time(NULL);
         //check if the closed time is old enough to delete
-        if((time(NULL) - file.closed_time) > file_cache_timeout_in_seconds)
+        if((now - file.closed_time) > file_cache_timeout_in_seconds)
         {
             if (AZS_PRINT)
             {
@@ -87,7 +87,7 @@ void gc_cache::run_gc_cache()
 
             struct stat buf;
             stat(mntPath, &buf);
-            if((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds)
+            if (((now - buf.st_mtime) > file_cache_timeout_in_seconds) && ((now - buf.st_ctime) > file_cache_timeout_in_seconds))
             {
                 if (AZS_PRINT)
                 {
