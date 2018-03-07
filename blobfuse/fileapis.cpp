@@ -470,7 +470,6 @@ int azs_truncate(const char * path, off_t off)
     
     auto fmutex = file_lock_map::get_instance()->get_mutex(path);
     std::lock_guard<std::mutex> lock(*fmutex);
-    
     std::string pathString(path);
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
