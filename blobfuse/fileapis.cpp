@@ -468,15 +468,8 @@ int azs_truncate(const char * path, off_t off)
         fprintf(stdout, "azs_truncate called.  Path = %s, offset = %s\n", path, to_str(off).c_str());
     }
 
-    if (off != 0)
-    {
-        errno = 1; // TODO: set errno and return as appropriate.
-        return -errno;
-    }
-
     auto fmutex = file_lock_map::get_instance()->get_mutex(path);
     std::lock_guard<std::mutex> lock(*fmutex);
-
     std::string pathString(path);
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
@@ -484,54 +477,41 @@ int azs_truncate(const char * path, off_t off)
 
     struct stat buf;
     int statret = stat(mntPath, &buf);
-    if (statret == 0)
+    // If the file exists in cache and the cache has not expired
+    if (statret == 0 && ((time(NULL) - buf.st_mtime) <= file_cache_timeout_in_seconds))
     {
-        // The file exists in the local cache.  So, we call truncate() on the file in the cache, then upload a zero-length blob to the service, overriding any data.
-        int truncret = truncate(mntPath, 0);
-        if (truncret == 0)
+        // The file exists in the local cache.  So, we call truncate() on the file in the cache
+        if( truncate(mntPath, off) != 0)
         {
-            // We want to upload a zero-length blob.
-            std::istringstream emptyDataStream("");
-
-            std::vector<std::pair<std::string, std::string>> metadata;
-            errno = 0;
-            azure_blob_client_wrapper->upload_block_blob_from_stream(str_options.containerName, pathString.substr(1), emptyDataStream, metadata);
-            if (errno != 0)
-            {
-                return 0 - map_errno(errno); // TODO: Investigate what might happen in this case - the blob has been truncated locally, but not on the service.
-            }
-            else
-            {
-                return 0;
-            }
-
+            return -errno;
         }
         else
         {
-            return -errno;
+            return 0;
         }
     }
     else
     {
+        // remove local cached file
+        remove(mntPath);
+
         // The blob/file does not exist locally.  We need to see if it exists on the service (if it doesn't we return ENOENT.)
+        // If it does exist we download it and truncate
         if (azure_blob_client_wrapper->blob_exists(str_options.containerName, pathString.substr(1))) // TODO: Once we have support for access conditions, we could remove this call, and replace with a put_block_list with if-match-*
         {
-            int fd = open(mntPath, O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU | S_IRWXG);
-            if (fd != 0)
-            {
-                return -errno;
-            }
-            close(fd);
-
-            // We want to upload a zero-length blob.
-            std::istringstream emptyDataStream("");
-
-            std::vector<std::pair<std::string, std::string>> metadata;
             errno = 0;
-            azure_blob_client_wrapper->upload_block_blob_from_stream(str_options.containerName, pathString.substr(1), emptyDataStream, metadata);
+            time_t last_modified = {};
+            azure_blob_client_wrapper->download_blob_to_file(str_options.containerName, pathString.substr(1), mntPathString, last_modified);
             if (errno != 0)
             {
-                return 0 - map_errno(errno); // TODO: Investigate what might happen in this case - the blob has been truncated locally, but not on the service.
+                remove(mntPath);
+                return 0 - map_errno(errno);
+            }
+            if( truncate(mntPath, off) != 0 )
+            {
+                int errno_orig = errno;
+                remove(mntPath);
+                return -errno_orig;
             }
             else
             {
