@@ -95,9 +95,9 @@ DAT(header_value_payload_format_fullmetadata, "application/json;odata=fullmetada
 DAT(header_value_storage_version, "2017-04-17")
 
 #ifdef WIN32
-    DAT(header_value_user_agent, "Azure-Storage-Fuse/0.1")
+    DAT(header_value_user_agent, "Azure-Storage-Fuse/0.3")
 #else
-    DAT(header_value_user_agent, "Azure-Storage-Fuse/0.1")
+    DAT(header_value_user_agent, "Azure-Storage-Fuse/0.3")
 #endif
 
 DAT(date_format_rfc_1123, "%a, %d %b %Y %H:%M:%S GMT")
