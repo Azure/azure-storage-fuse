@@ -57,9 +57,12 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     std::lock_guard<std::mutex> lock(*fmutex);
 
     // If the file/blob being opened does not exist in the cache, or the version in the cache is too old, we need to download / refresh the data from the service.
+    // If the file hasn't been modified, st_ctime is the time when the file was originally downloaded or created.  st_mtime is the time when the file was last modified.  
+    // We only want to refresh if enough time has passed that both are more than cache_timeout seconds ago.
     struct stat buf;
     int statret = stat(mntPath, &buf);
-    if ((statret != 0) || ((time(NULL) - buf.st_mtime) > file_cache_timeout_in_seconds))
+    time_t now = time(NULL);
+    if ((statret != 0) || (((now - buf.st_mtime) > file_cache_timeout_in_seconds) && ((now - buf.st_ctime) > file_cache_timeout_in_seconds)))
     {
         bool skipCacheUpdate = false;
         if (statret == 0) // File exists
