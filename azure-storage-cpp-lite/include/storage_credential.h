@@ -43,7 +43,12 @@ namespace microsoft_azure {
         class shared_access_signature_credential : public storage_credential {
         public:
             shared_access_signature_credential(const std::string &sas_token)
-                : m_sas_token(sas_token) {}
+                : m_sas_token(sas_token) {
+		// If there is a question mark at the beginning of the sas token, erase it for easier processing in sign_request.
+		if (m_sas_token[0] == '?') {
+		    m_sas_token.erase(0, 1);
+		}
+	    }
 
             AZURE_STORAGE_API void sign_request(const storage_request_base &r, http_base &h, const storage_url &url, const storage_headers &headers) const override;
 

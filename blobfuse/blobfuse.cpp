@@ -125,6 +125,11 @@ int read_config(std::string configFile)
             std::string accountKeyStr(value);
             str_options.accountKey = accountKeyStr;
         }
+        else if(line.find("sasToken") != std::string::npos)
+        {
+	    std::string sasTokenStr(value);
+	    str_options.sasToken = sasTokenStr;
+        }
         else if(line.find("containerName") != std::string::npos)
         {
             std::string containerNameStr(value);
@@ -152,9 +157,10 @@ int read_config(std::string configFile)
         fprintf(stderr, "Account name is missing in the configure file.\n");
         return -1;
     }
-    else if(str_options.accountKey.size() == 0)
+    else if((str_options.accountKey.size() == 0 && str_options.sasToken.size() == 0) || 
+	    (str_options.accountKey.size() != 0 && str_options.sasToken.size() != 0))
     {
-        fprintf(stderr, "Account key is missing in the configure file.\n");
+        fprintf(stderr, "Exactly one of Account Key and SAS token must be specified in the configure file. The other line should be deleted.\n");
         return -1;
     }
     else if(str_options.containerName.size() == 0)
@@ -171,7 +177,8 @@ int read_config(std::string configFile)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
-    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20, str_options.use_https, str_options.blobEndpoint));
+    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, 20, str_options.use_https, 
+														    str_options.blobEndpoint));
     if(errno != 0)
     {
         fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
@@ -327,7 +334,8 @@ int main(int argc, char *argv[])
     // When running in daemon mode, the current process forks() and exits, while the child process lives on as a daemon.
     // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
     {
-        blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https, str_options.blobEndpoint);
+        blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, defaultMaxConcurrency, str_options.use_https, 
+													   str_options.blobEndpoint);
         if(errno != 0)
         {
             fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
