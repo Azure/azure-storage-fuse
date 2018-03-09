@@ -74,7 +74,6 @@ namespace microsoft_azure {
                 transformed_url.append("?");
             }
             transformed_url.append(m_sas_token);
-	    std::cout << transformed_url << std::endl;
             h.set_url(transformed_url);
         }
 

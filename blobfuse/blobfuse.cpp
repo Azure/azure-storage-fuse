@@ -64,6 +64,7 @@ int read_config_env()
 {
     char* env_account = getenv("AZURE_STORAGE_ACCOUNT");
     char* env_account_key = getenv("AZURE_STORAGE_ACCESS_KEY");
+    char* env_sas_token = getenv("AZURE_STORAGE_SAS_TOKEN");
 
     if(env_account!=NULL)
     {
@@ -79,10 +80,17 @@ int read_config_env()
     {
         str_options.accountKey = env_account_key;
     }
-    else
+    
+    if(env_sas_token!=NULL)
     {
-        fprintf(stderr, "AZURE_STORAGE_ACCESS_KEY environment variable is empty.\n");
-        return -1;
+	str_options.sasToken = env_sas_token;
+    }
+
+    if((env_account_key==NULL && env_sas_token==NULL) ||
+       (env_account_key!=NULL && env_sas_token!=NULL))
+    {
+	fprintf(stderr, "Exactly one of AZURE_STORAGE_ACCESS_KEY and AZURE_STORAGE_SAS_TOKEN environment variables must be specified.\n");
+	return -1;
     }
 
     return 0;
