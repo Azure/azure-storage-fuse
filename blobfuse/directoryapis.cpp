@@ -228,13 +228,26 @@ int azs_rmdir(const char *path)
 int azs_statfs(const char *path, struct statvfs *stbuf)
 {
     std::string pathString(path);
-    const char * mntPath;
-    std::string mntPathString = prepend_mnt_path_string(pathString);
-    mntPath = mntPathString.c_str();
 
-    int res = statvfs(mntPath, stbuf);
-    if (res == -1)
-        return -errno;
+    int dir_result = is_directory_empty(str_options.containerName, "/", pathString.substr(1));
+    bool path_exists = false;
+    if(strlen(path) == 1 || dir_result == D_NOTEMPTY)
+    {
+        path_exists = true;
+    }
+    else if(azure_blob_client_wrapper->get_blob_property(str_options.containerName, std::string(&(path[1]))).valid()) 
+    {
+        path_exists = true;
+    }
 
-    return 0;
+    if(path_exists == true)
+    {
+        // return tmp path stats
+        int res = statvfs(str_options.tmpPath.c_str(), stbuf);
+        if (res == -1)
+            return -errno;
+        return 0;
+    }
+
+    return -ENOENT;
 }
