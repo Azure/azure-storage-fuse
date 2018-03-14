@@ -242,7 +242,7 @@ void set_up_callbacks()
 int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 {
     // FUSE has a standard method of argument parsing, here we just follow the pattern.
-    struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+    *args = FUSE_ARGS_INIT(argc, argv);
 
     // Check for existence of allow_other flag and change the default permissions based on that
     default_permission = 0770;

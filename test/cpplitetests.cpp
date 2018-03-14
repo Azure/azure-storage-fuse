@@ -170,7 +170,8 @@ TEST_F(BlobClientWrapperTest, BlobPutDownload)
 
     std::string dest_path = tmp_dir + "/destfile";
 
-    test_blob_client_wrapper->download_blob_to_file(container_name, blob_1_name, dest_path);
+    time_t lmt;
+    test_blob_client_wrapper->download_blob_to_file(container_name, blob_1_name, dest_path, lmt);
 
     std::string result_text;
     read_from_file(dest_path, result_text);
@@ -235,7 +236,8 @@ void BlobClientWrapperTest::run_upload_download(size_t file_size)
 
     std::string dest_path = tmp_dir + "/destfile";
 
-    test_blob_client_wrapper->download_blob_to_file(container_name, blob_1_name, dest_path);
+    time_t lmt;
+    test_blob_client_wrapper->download_blob_to_file(container_name, blob_1_name, dest_path, lmt);
     // TODO: test that download returns correct blob properties once implemented.
 
     read_file_data_and_validate(dest_path, seed, file_size);
@@ -288,7 +290,8 @@ TEST_F(BlobClientWrapperTest, BlobUploadDownloadFailures)
     // Test that HTTP failures in download blob are correctly reported.
     std::string dest_path = tmp_dir + "/destfile";
     errno = 0;
-    test_blob_client_wrapper->download_blob_to_file(container_name, "notablob", dest_path);
+    time_t lmt;
+    test_blob_client_wrapper->download_blob_to_file(container_name, "notablob", dest_path, lmt);
     ASSERT_EQ(404, errno) << "Download blob to file did not fail as expected - input file doesn't exist.";
 }
 
