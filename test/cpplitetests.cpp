@@ -40,14 +40,19 @@ void destroy_path(std::string path_to_destroy)
 class BlobClientWrapperTest : public ::testing::Test {
 public:
     static std::shared_ptr<blob_client_wrapper> test_blob_client_wrapper;
+
+    // This runs once, before any tests in "BlobClientWrapperTest"
     static void SetUpTestCase() {
         int ret = read_config("../connection.cfg");
         ASSERT_EQ(0, ret) << "Read config failed.";
-        test_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20, str_options.use_https));
+        std::string blob_endpoint;
+        test_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20, str_options.use_https, blob_endpoint));
     }
 
     std::string container_name;
     std::string tmp_dir;
+
+    // This runs before each test.  We create a container with a unique name, and create a test directory to be a sandbox.
     virtual void SetUp()
     {
         uuid_t container_uuid;
@@ -88,6 +93,7 @@ public:
 
 std::shared_ptr<blob_client_wrapper> BlobClientWrapperTest::test_blob_client_wrapper = NULL;
 
+// Helper method to follow continuation tokens and list all blobs.  C&P from blobfuse code, we should probably move it to cpplite, although not until we figure out proper retries.
 std::vector<list_blobs_hierarchical_item> list_all_blobs(std::string container, std::string delimiter, std::string prefix)
 {
     std::vector<list_blobs_hierarchical_item> results;
@@ -128,18 +134,6 @@ void write_to_file(std::string path, std::string text)
 {
     std::ofstream output_stream(path, std::ios::binary);
     output_stream << text;
-/*
-    // TODO: handle case where pread (and pwrite) handle fewer bytes than expected.
-    errno = 0;
-    int fh = creat(path.c_str(), S_IRWXU);
-    ASSERT_EQ(0, errno) << "File creation failed, errno = " << errno << ", path = " << path << ", text = " << text;
-
-    errno = 0;
-    pwrite(fh, text.c_str(), text.size(), 0);
-    ASSERT_EQ(0, errno) << "Write to file failed, errno = " << errno << ", path = " << path << ", text = " << text;
-
-    close(fh);
-    */
 }
 
 void read_from_file(std::string path, std::string &text)
@@ -148,24 +142,9 @@ void read_from_file(std::string path, std::string &text)
     std::stringstream string_stream;
     string_stream << input_stream.rdbuf();
     text =  string_stream.str();
-
-/*
-    errno = 0;
-    int fh2 = open(path.c_str(), O_RDONLY, 0);
-    ASSERT_EQ(0, errno) << "Open of file failed, errno = " << errno << ", path = " << path << ", text = " << text;
-
-    char buf[40];
-    ssize_t bytes = pread(fh2, buf, 40, 0);
-    ASSERT_EQ(0, errno) << "Read of file failed, errno = " << errno << ", path = " << path << ", text = " << text;
-    buf[bytes] = 0;
-
-    std::string result_text(buf);
-    close(fh2);
-
-    text = result_text;
-    */
 }
 
+// Test to ensure that we can round-trip a small blob, and see it in a listing operation.
 TEST_F(BlobClientWrapperTest, BlobPutDownload)
 {
     errno = 0;
@@ -199,9 +178,11 @@ TEST_F(BlobClientWrapperTest, BlobPutDownload)
     ASSERT_EQ(0, file_text.compare(result_text)) << "Strings not equal.  file_text = " << file_text << ", result_text = " << result_text;
 }
 
+// Helper method to create random file.
 void write_random_data_to_file(std::string path, unsigned int seed, size_t count)
 {
     std::ofstream file_stream(path, std::ios::binary);
+    // Using a low-quality RNG here for speed, no need for high-quality randomness
     std::minstd_rand r(seed);
 
     for (size_t i = 0; i < count; i += 4 /* sizeof uint_fast32_t */)
@@ -211,6 +192,7 @@ void write_random_data_to_file(std::string path, unsigned int seed, size_t count
     }
 }
 
+// Helper method to validate the contents of a file match what is expected from the RNG, with a given seed.
 void read_file_data_and_validate(std::string path, unsigned int seed, size_t count)
 {
     std::ifstream file_stream(path, std::ios::ate | std::ios::binary);
@@ -228,6 +210,7 @@ void read_file_data_and_validate(std::string path, unsigned int seed, size_t cou
     }
 }
 
+// Helper method to validate uploading and download a single file of arbitrary size
 void BlobClientWrapperTest::run_upload_download(size_t file_size)
 {
     errno = 0;
@@ -273,6 +256,7 @@ TEST_F(BlobClientWrapperTest, BlobUploadDownloadLarge)
     run_upload_download(1 * 1024 * 1024 * 1024);  // Comment this test out if the test pass is taking too long during rapid iteration.
 }
 
+
 TEST_F(BlobClientWrapperTest, BlobUploadDownloadFailures)
 {
     std::string file_path = tmp_dir + "/tmpfile";
@@ -281,27 +265,31 @@ TEST_F(BlobClientWrapperTest, BlobUploadDownloadFailures)
     write_to_file(file_path, file_text);
     std::string blob_1_name("blob1name");
 
+    // Test that HTTP failures in put blob are correctly reported.
     errno = 0;
     test_blob_client_wrapper->put_blob(file_path, "notacontainer", blob_1_name);
 //    ASSERT_EQ(404, errno) << "Put blob did not fail as expected - container doesn't exist.";//  TODO: Investigate why this doesn't fail as it should.
 
+    // Test that file-system related failures in put blob are correctly reported.
     errno = 0;
     test_blob_client_wrapper->put_blob(file_path + "notafile", container_name, blob_1_name);
 //    ASSERT_EQ(404, errno) << "Put blob did not fail as expected - input file doesn't exist.";//  TODO: Investigate why this doesn't fail as it should.
 
+    // Test that HTTP failures in upload file are correctly reported.
     errno = 0;
     test_blob_client_wrapper->upload_file_to_blob(file_path, "notacontainer", blob_1_name);
 //    ASSERT_EQ(404, errno) << "Upload file to blob did not fail as expected - container doesn't exist.";//  TODO: Investigate why this doesn't fail as it should.
 
+    // Test that file-system related failures in upload file are correctly reported.
     errno = 0;
     test_blob_client_wrapper->upload_file_to_blob(file_path + "notafile", container_name, blob_1_name);
     ASSERT_EQ(ENOENT, errno) << "Upload file to blob did not fail as expected - input file doesn't exist.";
 
+    // Test that HTTP failures in download blob are correctly reported.
     std::string dest_path = tmp_dir + "/destfile";
     errno = 0;
     test_blob_client_wrapper->download_blob_to_file(container_name, "notablob", dest_path);
     ASSERT_EQ(404, errno) << "Download blob to file did not fail as expected - input file doesn't exist.";
-
 }
 
 TEST_F(BlobClientWrapperTest, GetBlobProperties)
@@ -314,6 +302,7 @@ TEST_F(BlobClientWrapperTest, GetBlobProperties)
 
     std::string blob_1_name("blob1name");
 
+    // Test that HTTP failures are correctly reported
     errno = 0;
     blob_property props = test_blob_client_wrapper->get_blob_property(container_name, blob_1_name);
 //    ASSERT_EQ(404, errno) << "Errno incorrect for get_blob_property";  TODO: investigate why this test is failing.
@@ -322,6 +311,7 @@ TEST_F(BlobClientWrapperTest, GetBlobProperties)
     test_blob_client_wrapper->put_blob(file_path, container_name, blob_1_name);
     ASSERT_EQ(0, errno) << "put_blob failed with errno = " << errno;
 
+    // Test that get_blob_property succeeds on a real blob, and reports the correct blob size.
     errno = 0;
     props = test_blob_client_wrapper->get_blob_property(container_name, blob_1_name);
     ASSERT_EQ(0, errno) << "get_blob_property failed";
@@ -339,10 +329,12 @@ TEST_F(BlobClientWrapperTest, BlobExistsDelete)
 
     std::string blob_1_name("blob1name");
 
+    // Test blob_exists - error case
     errno = 0;
     ASSERT_FALSE(test_blob_client_wrapper->blob_exists(container_name, blob_1_name)) << "Blob found when it should not be.";
     ASSERT_EQ(0, errno) << "Blob not existing causes errno to be non-0 for blob_exists.  Errno = " << errno;
 
+    // Test blob_delete - error case (404)
     errno = 0;
     test_blob_client_wrapper->delete_blob(container_name, blob_1_name);
     ASSERT_EQ(404, errno) << "delete_blob errno non-0 for failure case";
@@ -351,10 +343,12 @@ TEST_F(BlobClientWrapperTest, BlobExistsDelete)
     test_blob_client_wrapper->put_blob(file_path, container_name, blob_1_name);
     ASSERT_EQ(0, errno) << "put_blob failed";
 
+    // Test bllb_exists - success case
     errno = 0;
     ASSERT_TRUE(test_blob_client_wrapper->blob_exists(container_name, blob_1_name)) << "Blob not found";
     ASSERT_EQ(0, errno) << "blob_exists failed";
 
+    // Test blob_delete - both tha tit reports success, and that the blob was actually deleted.
     errno = 0;
     test_blob_client_wrapper->delete_blob(container_name, blob_1_name);
     ASSERT_EQ(0, errno) << "delete_blob failed";
@@ -364,9 +358,12 @@ TEST_F(BlobClientWrapperTest, BlobExistsDelete)
     ASSERT_EQ(0, errno) << "Blob not existing causes errno to be non-0 for blob_exists.  Errno = " << errno;
 }
 
+// TODO: reduce duplicated code in this method
 TEST_F(BlobClientWrapperTest, CopyBlob)
 {
-        // Create a file
+    // Setup
+
+    // Create a file
     std::string file_path = tmp_dir + "/tmpfile";
     std::string file_text = "some file text here.";
 
@@ -431,9 +428,9 @@ TEST_F(BlobClientWrapperTest, CopyBlob)
 
 }
 
-
 TEST_F(BlobClientWrapperTest, ListBlobsHierarchial)
 {
+    // Setup a series of blobs in a pretend file structure
     std::string file_path = tmp_dir + "/tmpfile";
     std::string file_text = "some file text here.";
 
@@ -458,6 +455,7 @@ TEST_F(BlobClientWrapperTest, ListBlobsHierarchial)
         ASSERT_EQ(0, errno) << "put_blob failed for blob << " << blob_names[i];
     }
 
+    // Validate that all blobs and blob "directories" are correctly found for given prefixes
     errno = 0;
     std::vector<list_blobs_hierarchical_item> blob_list_results = list_all_blobs(container_name, "/", "");
     ASSERT_EQ(0, errno) << "list_all_blobs failed for empty prefix";
@@ -507,26 +505,3 @@ TEST_F(BlobClientWrapperTest, ListBlobsHierarchial)
     ASSERT_EQ(0, errno) << "Listing failed for zero results";
     ASSERT_EQ(0, blob_list_results.size()) << "Incorrect number of blobs found.";
 }
-
-
-// Tests:
-/* 
-Success & failure for each that's important to blobfuse
-Init
-List blobs hierarchial
-put blob
-upload file to blob
-downlaod blob to file
-got blob properties
-blob exists
-delete blob
-copy blob
-*/
-
-/* Args / setup:
-   read_config
-   str_options
-   file_cache_timeout_in_seconds
-   configure_tls?
-   Set up temp directory
-   */
