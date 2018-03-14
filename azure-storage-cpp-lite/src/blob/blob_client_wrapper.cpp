@@ -146,10 +146,12 @@ namespace microsoft_azure {
             try
             {
                 std::shared_ptr<storage_credential>  cred;
-		if (account_key.length() > 0) {
+		if (account_key.length() > 0) 
+		{
 		    cred = std::make_shared<shared_key_credential>(accountName, accountKey);
 		}
-		else {
+		else 
+		{
 		    // We have already verified that exactly one form of credentials is present, so if shared key is not present, it must be sas.
 		    cred = std::make_shared<shared_access_signature_credential>(sas_token);
 		}

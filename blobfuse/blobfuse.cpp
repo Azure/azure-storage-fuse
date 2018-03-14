@@ -118,15 +118,7 @@ int read_config(std::string configFile)
         if(line.find("accountName") != std::string::npos)
         {
             std::string accountNameStr(value);
-            /*            if(!is_lowercase_string(accountNameStr))
-                        {
-                            fprintf(stderr, "Account name must be lower cases.");
-                            return -1;
-                        }
-                        else
-                        {*/
             str_options.accountName = accountNameStr;
-//            }
         }
         else if(line.find("accountKey") != std::string::npos)
         {
@@ -141,15 +133,7 @@ int read_config(std::string configFile)
         else if(line.find("containerName") != std::string::npos)
         {
             std::string containerNameStr(value);
-            /*            if(!is_lowercase_string(containerNameStr))
-                        {
-                            fprintf(stderr, "Container name must be lower cases.");
-                            return -1;
-                        }
-                        else
-                        {*/
             str_options.containerName = containerNameStr;
-//            }
         }
         else if(line.find("blobEndpoint") != std::string::npos)
         {
@@ -160,18 +144,18 @@ int read_config(std::string configFile)
         data.clear();
     }
 
-    if(str_options.accountName.size() == 0)
+    if(str_options.accountName.empty())
     {
         fprintf(stderr, "Account name is missing in the configure file.\n");
         return -1;
     }
-    else if((str_options.accountKey.size() == 0 && str_options.sasToken.size() == 0) || 
-	    (str_options.accountKey.size() != 0 && str_options.sasToken.size() != 0))
+    else if((str_options.accountKey.empty() && str_options.sasToken.empty()) || 
+	    (!str_options.accountKey.empty() && !str_options.sasToken.empty()))
     {
-        fprintf(stderr, "Exactly one of Account Key and SAS token must be specified in the configure file. The other line should be deleted.\n");
+        fprintf(stderr, "Exactly one of Account Key and SAS token must be specified in the config file. The other line should be deleted.\n");
         return -1;
     }
-    else if(str_options.containerName.size() == 0)
+    else if(str_options.containerName.empty())
     {
         fprintf(stderr, "Container name is missing in the configure file.\n");
         return -1;
@@ -185,7 +169,7 @@ int read_config(std::string configFile)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
-    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, 20, str_options.use_https, 
+    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, 20/*concurrency*/, str_options.use_https, 
 														    str_options.blobEndpoint));
     if(errno != 0)
     {
