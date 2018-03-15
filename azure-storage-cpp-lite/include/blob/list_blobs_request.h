@@ -73,6 +73,11 @@ public:
         return m_maxresults;
     }
 
+    list_blobs_hierarchical_request_base::include includes() const override{ 
+        return m_includes; 
+    }
+
+
     list_blobs_hierarchical_request &set_marker(const std::string &marker) {
         m_marker = marker;
         return *this;
@@ -83,12 +88,18 @@ public:
         return *this;
     }
 
+    list_blobs_hierarchical_request &set_includes(list_blobs_hierarchical_request_base::include includes) {
+        m_includes = includes;
+        return *this;
+    }
+
 private:
     std::string m_container;
     std::string m_prefix;
     std::string m_marker;
     std::string m_delimiter;
     int m_maxresults;
+    list_blobs_hierarchical_request_base::include m_includes;
 };
 }
 }

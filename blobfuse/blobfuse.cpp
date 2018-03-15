@@ -47,7 +47,7 @@ class gc_cache gc_cache;
 // TODO: Ensure that we map any potential HTTP status codes we might receive.
 std::map<int, int> error_mapping = {{404, ENOENT}, {403, EACCES}, {1600, ENOENT}};
 
-const std::string directorySignifier = ".directory";
+const std::string former_directory_signifier = ".directory";
 
 static struct fuse_operations azs_blob_operations;
 
