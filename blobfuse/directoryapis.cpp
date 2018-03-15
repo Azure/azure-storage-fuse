@@ -1,11 +1,9 @@
 #include "blobfuse.h"
 
+// TODO: Bug in azs_mkdir, should fail if the directory already exists.
 int azs_mkdir(const char *path, mode_t)
 {
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "mkdir called with path = %s\n", path);
-    }
+    syslog(LOG_DEBUG, "mkdir called with path = %s\n", path);
 
     std::string pathstr(path);
     pathstr.insert(pathstr.size(), "/" + directorySignifier);
@@ -18,7 +16,13 @@ int azs_mkdir(const char *path, mode_t)
     azure_blob_client_wrapper->upload_block_blob_from_stream(str_options.containerName, pathstr.substr(1), emptyDataStream, metadata);
     if (errno != 0)
     {
+        int storage_errno = errno;
+        syslog(LOG_ERR, "Failed to upload zero-length directory marker for path %s to blob %s.  errno = %d.\n", path, pathstr.substr(1).c_str(), storage_errno);
         return 0 - map_errno(errno);
+    }
+    else
+    {
+        syslog(LOG_INFO, "Successfully uploaded zero-length directory marker for path %s to blob %s. ", path, pathstr.substr(1).c_str());
     }
     return 0;
 }
@@ -37,10 +41,7 @@ int azs_mkdir(const char *path, mode_t)
  */
 int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, struct fuse_file_info *)
 {
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "azs_readdir called with path = %s\n", path);
-    }
+    syslog(LOG_DEBUG, "azs_readdir called with path = %s\n", path);
     std::string pathStr(path);
     if (pathStr.size() > 1)
     {
@@ -55,6 +56,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     DIR *dir_stream = opendir(mntPathString.c_str());
     if (dir_stream != NULL)
     {
+        syslog(LOG_DEBUG, "Reading contents of local cache directory %s.\n", mntPathString.c_str());
         struct dirent* dir_ent = readdir(dir_stream);
         while (dir_ent != NULL)
         {
@@ -69,6 +71,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                     stbuf.st_nlink = 2;
                     stbuf.st_size = 4096;
                     filler(buf, dir_ent->d_name, &stbuf, 0);
+                    syslog(LOG_DEBUG, "Subdirectory %s found in local cache directory %s during readdir operation.\n", dir_ent->d_name, mntPathString.c_str());
                 }
                 else
                 {
@@ -82,40 +85,38 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                     stbuf.st_nlink = 1;
                     stbuf.st_size = buffer.st_size;
                     filler(buf, dir_ent->d_name, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+                    syslog(LOG_DEBUG, "File %s found in local cache directory %s during readdir operation.\n", dir_ent->d_name, mntPathString.c_str());
                 }
 
                 std::string dir_str(dir_ent->d_name);
                 local_list_results.push_back(dir_str);
-
-                if (AZS_PRINT)
-                {
-                    fprintf(stdout, "Local file/blob found.  Name = %s\n", dir_ent->d_name);
-                }
             }
 
             dir_ent = readdir(dir_stream);
         }
         closedir(dir_stream);
     }
+    else
+    {
+        syslog(LOG_DEBUG, "Directory %s not found in file cache during readdir operation for %s.\n", mntPathString.c_str(), path);
+    }
 
     errno = 0;
     std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
     if (errno != 0)
     {
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "azs_readdir list blobs failed with error = %d\n", errno);
-        }
-        return 0 - map_errno(errno);
+        int storage_errno = errno;
+        syslog(LOG_ERR, "Failed to list blobs under directory %s on the service during readdir operation.  errno = %d.\n", mntPathString.c_str(), storage_errno);
+        return 0 - map_errno(storage_errno);
+    }
+    else
+    {
+        syslog(LOG_DEBUG, "Reading blobs of directory %s on the service.  Total blobs found = %s.\n", pathStr.substr(1).c_str(), to_str(listResults.size()).c_str());
     }
 
     filler(buf, ".", NULL, 0);
     filler(buf, "..", NULL, 0);
 
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "result count = %s\n", to_str(listResults.size()).c_str());
-    }
     for (size_t i = 0; i < listResults.size(); i++)
     {
         int fillerResult;
@@ -148,10 +149,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         stbuf.st_nlink = 1;
                         stbuf.st_size = listResults[i].content_length;
                         fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
-                        if (AZS_PRINT)
-                        {
-                            fprintf(stdout, "blob result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
-                        }
+                        syslog(LOG_DEBUG, "Blob %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.substr(1).c_str(), fillerResult);
                     }
                 }
                 else
@@ -164,29 +162,22 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         stbuf.st_gid = fuse_get_context()->gid;
                         stbuf.st_nlink = 2;
                         fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
-                        if (AZS_PRINT)
-                        {
-                            fprintf(stdout, "dir result = %s, fillerResult = %d\n", prev_token_str.c_str(), fillerResult);
-                        }
+                        syslog(LOG_DEBUG, "Blob directory %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.substr(1).c_str(), fillerResult);
                     }
-
                 }
             }
+            else
+            {
+                syslog(LOG_DEBUG, "Skipping adding blob %s to readdir results because it was already added from the local cache.\n", prev_token_str.c_str());
+            }
         }
-    }
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "Done with readdir\n");
     }
     return 0;
 }
 
 int azs_rmdir(const char *path)
 {
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "azs_rmdir called with path = %s\n", path);
-    }
+    syslog(LOG_DEBUG, "azs_rmdir called with path = %s\n", path);
 
     std::string pathStr(path);
     if (pathStr.size() > 1)
@@ -198,35 +189,38 @@ int azs_rmdir(const char *path)
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "deleting local directory %s\n", mntPath);
-    }
+
+    syslog(LOG_DEBUG, "Attempting to delete local cache directory %s.\n", mntPath);
     remove(mntPath); // This will fail if the cache is not empty, which is fine, as in this case it will also fail later, after the server-side check.
 
     errno = 0;
     int dirStatus = is_directory_empty(str_options.containerName, "/", pathStr.substr(1));
     if (errno != 0)
     {
+        int storage_errno = errno;
+        syslog(LOG_ERR, "Failure to query the service to determine if directory %s is empty.  errno = %d.\n", path, storage_errno);
         return 0 - map_errno(errno);
     }
     if (dirStatus == D_NOTEXIST)
     {
+        syslog(LOG_ERR, "Directory %s does not exist; failing directory delete operation.\n", path);
         return -ENOENT;
     }
     if (dirStatus == D_NOTEMPTY)
     {
+        syslog(LOG_ERR, "Directory %s is not empty; failing directory delete operation.\n", path);
         return -ENOTEMPTY;
     }
 
     pathStr.append(".directory");
-    azs_unlink(pathStr.c_str());
+    azs_unlink(pathStr.c_str()); // Attempt to remove the directory signifier blob if it exists.
 
     return 0;
 }
 
 int azs_statfs(const char *path, struct statvfs *stbuf)
 {
+    syslog(LOG_DEBUG, "azs_statfs called with path = %s.\n", path);
     std::string pathString(path);
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);

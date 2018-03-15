@@ -216,8 +216,14 @@ void print_usage()
     fprintf(stdout, "See https://github.com/Azure/azure-storage-fuse for detailed installation and configuration instructions.\n");
 }
 
-int set_log_mask(std::string min_log_level)
+int set_log_mask(const char * min_log_level_char)
 {
+    if (!min_log_level_char)
+    {
+        setlogmask(LOG_UPTO(LOG_WARNING));
+        return 0;
+    }
+    std::string min_log_level(min_log_level_char);
     if (min_log_level.empty())
     {
         setlogmask(LOG_UPTO(LOG_WARNING));
