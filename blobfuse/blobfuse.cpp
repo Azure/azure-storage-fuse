@@ -89,7 +89,7 @@ int read_config_env()
     if((env_account_key==NULL && env_sas_token==NULL) ||
        (env_account_key!=NULL && env_sas_token!=NULL))
     {
-	fprintf(stderr, "Exactly one of AZURE_STORAGE_ACCESS_KEY and AZURE_STORAGE_SAS_TOKEN environment variables must be specified.\n");
+	fprintf(stderr, "If not using the config file, exactly one of AZURE_STORAGE_ACCESS_KEY and AZURE_STORAGE_SAS_TOKEN environment variables must be specified.\n");
 	return -1;
     }
 
@@ -146,7 +146,7 @@ int read_config(std::string configFile)
 
     if(str_options.accountName.empty())
     {
-        fprintf(stderr, "Account name is missing in the configure file.\n");
+        fprintf(stderr, "Account name is missing in the config file.\n");
         return -1;
     }
     else if((str_options.accountKey.empty() && str_options.sasToken.empty()) || 
@@ -157,7 +157,7 @@ int read_config(std::string configFile)
     }
     else if(str_options.containerName.empty())
     {
-        fprintf(stderr, "Container name is missing in the configure file.\n");
+        fprintf(stderr, "Container name is missing in the config file.\n");
         return -1;
     }
     else
