@@ -83,7 +83,7 @@ int read_config_env()
     
     if(env_sas_token!=NULL)
     {
-	str_options.sasToken = env_sas_token;
+        str_options.sasToken = env_sas_token;
     }
 
     if((env_account_key==NULL && env_sas_token==NULL) ||
@@ -169,8 +169,8 @@ int read_config(std::string configFile)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
-    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, 20/*concurrency*/, str_options.use_https, 
-														    str_options.blobEndpoint));
+    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, 20/*concurrency*/, str_options.use_https,
+                                                                                                                    str_options.blobEndpoint));
     if(errno != 0)
     {
         fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
