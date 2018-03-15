@@ -208,7 +208,7 @@ void print_usage()
 
 void set_up_callbacks()
 {
-        // Here, we set up all the callbacks that FUSE requires.
+    // Here, we set up all the callbacks that FUSE requires.
     azs_blob_operations.init = azs_init;
     azs_blob_operations.getattr = azs_getattr;
     azs_blob_operations.statfs = azs_statfs;
@@ -330,7 +330,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 
 int configure_tls()
 {
-        // For proper locking, instructing gcrypt to use pthreads 
+    // For proper locking, instructing gcrypt to use pthreads 
     gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
     if(GNUTLS_E_SUCCESS != gnutls_global_init())
     {

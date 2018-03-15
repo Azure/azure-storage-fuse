@@ -297,7 +297,7 @@ TEST_F(BlobClientWrapperTest, BlobUploadDownloadFailures)
 
 TEST_F(BlobClientWrapperTest, GetBlobProperties)
 {
-        // Create a file
+    // Create a file
     std::string file_path = tmp_dir + "/tmpfile";
     std::string file_text = "some file text here.";
 
@@ -310,21 +310,30 @@ TEST_F(BlobClientWrapperTest, GetBlobProperties)
     blob_property props = test_blob_client_wrapper->get_blob_property(container_name, blob_1_name);
 //    ASSERT_EQ(404, errno) << "Errno incorrect for get_blob_property";  TODO: investigate why this test is failing.
 
+    time_t now = time(NULL);
+    struct tm * gmtmp = gmtime(&now);
+    time_t utcnow = mktime(gmtmp);
     errno = 0;
     test_blob_client_wrapper->put_blob(file_path, container_name, blob_1_name);
     ASSERT_EQ(0, errno) << "put_blob failed with errno = " << errno;
 
-    // Test that get_blob_property succeeds on a real blob, and reports the correct blob size.
+    // Test that get_blob_property succeeds on a real blob, and reports the correct blob size & LMT.
     errno = 0;
     props = test_blob_client_wrapper->get_blob_property(container_name, blob_1_name);
     ASSERT_EQ(0, errno) << "get_blob_property failed";
     ASSERT_EQ(file_text.size(), props.size) << "Incorrect blob size found.";
-    // TODO: test datetime once implemented.
+    ASSERT_TRUE(std::abs(std::difftime(props.last_modified, utcnow)) < 30) << "Time difference between expected and actual LMT from get_properties too large"; // Give some room for potential clock skew between local and service timestamp.
 
+    std::string dest_path = tmp_dir + "/destfile";
+    errno = 0;
+    time_t lmt;
+    test_blob_client_wrapper->download_blob_to_file(container_name, blob_1_name, dest_path, lmt);
+    ASSERT_EQ(0, errno) << "download_blob_to_file failed";
+    ASSERT_TRUE(std::difftime(lmt, props.last_modified) == 0) << "Incorrect timestamp from download_blob_to_file."; // Timestamps should be exactly equal
 }
 TEST_F(BlobClientWrapperTest, BlobExistsDelete)
 {
-        // Create a file
+    // Create a file
     std::string file_path = tmp_dir + "/tmpfile";
     std::string file_text = "some file text here.";
 
@@ -351,7 +360,7 @@ TEST_F(BlobClientWrapperTest, BlobExistsDelete)
     ASSERT_TRUE(test_blob_client_wrapper->blob_exists(container_name, blob_1_name)) << "Blob not found";
     ASSERT_EQ(0, errno) << "blob_exists failed";
 
-    // Test blob_delete - both tha tit reports success, and that the blob was actually deleted.
+    // Test blob_delete - both that it reports success, and that the blob was actually deleted.
     errno = 0;
     test_blob_client_wrapper->delete_blob(container_name, blob_1_name);
     ASSERT_EQ(0, errno) << "delete_blob failed";
