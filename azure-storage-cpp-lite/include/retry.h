@@ -67,8 +67,10 @@ namespace microsoft_azure {
             retry_info evaluate(const retry_context &context) const override {
                 if (context.numbers() == 0) {
                     return retry_info(true, std::chrono::seconds(0));
-                } else if (context.numbers() < 100 && can_retry(context.result())) {
-                    return retry_info(true, std::chrono::seconds(5+rand()%5));
+                } else if (context.numbers() < 300 && can_retry(context.result())) {
+                    double delay = (pow(2, context.numbers()-1)-1) * 4;
+                    delay *= (((double)rand())/RAND_MAX)/2 + 0.8;
+                    return retry_info(true, std::chrono::seconds((int)delay));
                 }
                 return retry_info(false, std::chrono::seconds(0));
             }
