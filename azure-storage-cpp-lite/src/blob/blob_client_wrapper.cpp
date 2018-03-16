@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <iostream>
 #include <fstream>
+#include <uuid/uuid.h>
 
 #include "blob/blob_client.h"
 #include "storage_errno.h"
@@ -524,7 +525,11 @@ namespace microsoft_azure {
                     result = unknown_error;
                     break;
                 }
-                const std::string block_id = index_to_block_id(idx);
+                uuid_t uuid;
+                char uuid_cstr[37]; // 36 byte uuid plus null.
+                uuid_generate(uuid);
+                uuid_unparse(uuid, uuid_cstr);
+                const std::string block_id(uuid_cstr);
                 put_block_list_request_base::block_item block;
                 block.id = block_id;
                 block.type = put_block_list_request_base::block_type::uncommitted;
