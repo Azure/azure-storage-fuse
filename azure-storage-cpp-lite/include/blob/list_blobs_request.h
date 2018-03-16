@@ -73,7 +73,7 @@ public:
         return m_maxresults;
     }
 
-    list_blobs_hierarchical_request_base::include includes() const override{ 
+    list_blobs_request_base::include includes() const override{ 
         return m_includes; 
     }
 
@@ -88,7 +88,7 @@ public:
         return *this;
     }
 
-    list_blobs_hierarchical_request &set_includes(list_blobs_hierarchical_request_base::include includes) {
+    list_blobs_hierarchical_request &set_includes(list_blobs_request_base::include includes) {
         m_includes = includes;
         return *this;
     }
@@ -99,7 +99,7 @@ private:
     std::string m_marker;
     std::string m_delimiter;
     int m_maxresults;
-    list_blobs_hierarchical_request_base::include m_includes;
+    list_blobs_request_base::include m_includes;
 };
 }
 }

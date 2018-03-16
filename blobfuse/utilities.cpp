@@ -321,7 +321,7 @@ int is_directory_empty(std::string container, std::string dir_name)
     do
     {
         errno = 0;
-        list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix_with_slash);
+        list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix_with_slash, 2);
         if (errno == 0)
         {
             success = true;

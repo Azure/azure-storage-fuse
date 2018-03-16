@@ -74,16 +74,16 @@ void list_blobs_hierarchical_request_base::build_request(const storage_account &
         add_optional_query(url, constants::query_maxresults, r.maxresults());
     }
     std::string include("");
-    if (r.includes() & list_blobs_hierarchical_request_base::include::snapshots) {
+    if (r.includes() & list_blobs_request_base::include::snapshots) {
         include.append(",").append(constants::query_include_snapshots);
     }
-    if (r.includes() & list_blobs_hierarchical_request_base::include::metadata) {
+    if (r.includes() & list_blobs_request_base::include::metadata) {
         include.append(",").append(constants::query_include_metadata);
     }
-    if (r.includes() & list_blobs_hierarchical_request_base::include::uncommittedblobs) {
+    if (r.includes() & list_blobs_request_base::include::uncommittedblobs) {
         include.append(",").append(constants::query_include_uncommittedblobs);
     }
-    if (r.includes() & list_blobs_hierarchical_request_base::include::copy) {
+    if (r.includes() & list_blobs_request_base::include::copy) {
         include.append(",").append(constants::query_include_copy);
     }
     add_optional_query(url, constants::query_include, include.substr(1));
