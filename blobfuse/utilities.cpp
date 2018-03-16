@@ -167,6 +167,21 @@ int shared_lock_file(int flags, int fd)
     return 0;
 }
 
+bool is_directory_blob(unsigned long long size, std::vector<std::pair<std::string, std::string>> metadata)
+{
+    if (size == 0)
+    {
+        for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
+        {
+            if ((iter->first.compare("hdi_isfolder") == 0) && (iter->second.compare("true") == 0))
+            {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 int ensure_files_directory_exists_in_cache(const std::string file_path)
 {
     char *pp;
@@ -258,16 +273,34 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
  *   - D_EMPTY is there's exactly one blob, and it's the ".directory" blob
  *   - D_NOTEMPTY otherwise (the directory exists and is not empty.)
  */
-int is_directory_empty(std::string container, std::string delimiter, std::string prefix)
+int is_directory_empty(std::string container, std::string dir_name)
 {
+    std::string delimiter = "/";
+    bool dir_blob_exists = false;
+    errno = 0;
+    blob_property props = azure_blob_client_wrapper->get_blob_property(container, dir_name);
+    if ((errno == 0) && (props.valid()))
+    {
+        dir_blob_exists = is_directory_blob(props.size, props.metadata);
+    }
+    if (errno != 0)
+    {
+        if ((errno != 404) && (errno != ENOENT))
+        {
+            return -1; // Failure in fetching properties - errno set by blob_exists
+        }
+    }
+
+    std::string prefix_with_slash = dir_name;
+    prefix_with_slash.append(delimiter);
     std::string continuation;
     bool success = false;
     int failcount = 0;
-    bool dirBlobFound = false;
+    bool old_dir_blob_found = false;
     do
     {
         errno = 0;
-        list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix);
+        list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix_with_slash, 2);
         if (errno == 0)
         {
             success = true;
@@ -277,14 +310,14 @@ int is_directory_empty(std::string container, std::string delimiter, std::string
             {
                 return D_NOTEMPTY;
             }
-            if (response.blobs.size() == 1)
+            if (response.blobs.size() > 0)
             {
-                if ((!dirBlobFound) &&
+                if ((!old_dir_blob_found) &&
                     (!response.blobs[0].is_directory) &&
-                    (response.blobs[0].name.size() > directorySignifier.size()) &&
-                    (0 == response.blobs[0].name.compare(response.blobs[0].name.size() - directorySignifier.size(), directorySignifier.size(), directorySignifier)))
+                    (response.blobs[0].name.size() > former_directory_signifier.size()) &&
+                    (0 == response.blobs[0].name.compare(response.blobs[0].name.size() - former_directory_signifier.size(), former_directory_signifier.size(), former_directory_signifier)))
                 {
-                    dirBlobFound = true;
+                    old_dir_blob_found = true;
                 }
                 else
                 {
@@ -304,8 +337,8 @@ int is_directory_empty(std::string container, std::string delimiter, std::string
     // errno will be set by list_blobs_hierarchial if the last call failed and we're out of retries.
         return -1;
     }
-    
-    return dirBlobFound ? D_EMPTY : D_NOTEXIST;
+
+    return old_dir_blob_found || dir_blob_exists ? D_EMPTY : D_NOTEXIST;
 }
 
 
@@ -318,7 +351,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
         stbuf->st_mode = S_IFDIR | default_permission; // TODO: proper access control.
         stbuf->st_uid = fuse_get_context()->uid;
         stbuf->st_gid = fuse_get_context()->gid;
-        stbuf->st_nlink = 2; // Directories should have a hard-link count of 2 + (# child directories).  We don't have that count, though, so we jsut use 2 for now.  TODO: Evaluate if we could keep this accurate or not.
+        stbuf->st_nlink = 2; // Directories should have a hard-link count of 2 + (# child directories).  We don't have that count, though, so we just use 2 for now.  TODO: Evaluate if we could keep this accurate or not.
         stbuf->st_size = 4096;
         stbuf->st_mtime = time(NULL);
         return 0;
@@ -363,8 +396,20 @@ int azs_getattr(const char *path, struct stat *stbuf)
 
     if ((errno == 0) && blob_property.valid())
     {
+        if (is_directory_blob(blob_property.size, blob_property.metadata))
+        {
+            AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
+            stbuf->st_mode = S_IFDIR | default_permission;
+            // If st_nlink = 2, means direcotry is empty.
+            // Directory size will affect behaviour for mv, rmdir, cp etc.
+            stbuf->st_uid = fuse_get_context()->uid;
+            stbuf->st_gid = fuse_get_context()->gid;
+            stbuf->st_nlink = is_directory_empty(str_options.containerName, blobNameStr) == D_EMPTY ? 2 : 3;
+            stbuf->st_size = 4096;
+            return 0;
+        }
 
-        AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", blobNameStr.c_str());
+        AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
         stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
         stbuf->st_uid = fuse_get_context()->uid;
         stbuf->st_gid = fuse_get_context()->gid;
@@ -376,10 +421,9 @@ int azs_getattr(const char *path, struct stat *stbuf)
     else if (errno == 0 && !blob_property.valid())
     {
         // Check to see if it's a directory, instead of a file
-        blobNameStr.push_back('/');
 
         errno = 0;
-        int dirSize = is_directory_empty(str_options.containerName, "/", blobNameStr);
+        int dirSize = is_directory_empty(str_options.containerName, blobNameStr);
         if (errno != 0)
         {
             int storage_errno = errno;
@@ -489,11 +533,30 @@ int azs_rename_directory(const char *src, const char *dst)
 {
     AZS_DEBUGLOGV("azs_rename_directory called with src = %s, dst = %s.\n", src, dst);
     std::string srcPathStr(src);
+    std::string dstPathStr(dst);
+
+    // Rename the directory blob, if it exists.
+    errno = 0;
+    blob_property props = azure_blob_client_wrapper->get_blob_property(str_options.containerName, srcPathStr.substr(1));
+    if ((errno == 0) && (props.valid()))
+    {
+        if (is_directory_blob(props.size, props.metadata))
+        {
+            azs_rename_single_file(src, dst);
+        }
+    }
+    if (errno != 0)
+    {
+        if ((errno != 404) && (errno != ENOENT))
+        {
+            return 0 - map_errno(errno); // Failure in fetching properties - errno set by blob_exists
+        }
+    }
+
     if (srcPathStr.size() > 1)
     {
         srcPathStr.push_back('/');
     }
-    std::string dstPathStr(dst);
     if (dstPathStr.size() > 1)
     {
         dstPathStr.push_back('/');

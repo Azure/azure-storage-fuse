@@ -143,7 +143,7 @@ namespace microsoft_azure { namespace storage {
         /// <param name="continuation_token">A continuation token returned by a previous listing operation.</param>
         /// <param name="prefix">The blob name prefix.</param>
         /// <returns>A <see cref="std::future" /> object that represents the current operation.</returns>
-        AZURE_STORAGE_API std::future<storage_outcome<list_blobs_hierarchical_response>> list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix);
+        AZURE_STORAGE_API std::future<storage_outcome<list_blobs_hierarchical_response>> list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int max_results = 10000);
 
         /// <summary>
         /// Intitiates an asynchronous operation  to get the property of a blob.
@@ -366,7 +366,7 @@ namespace microsoft_azure { namespace storage {
         /// <param name="delimiter">The delimiter used to designate the virtual directories.</param>
         /// <param name="continuation_token">A continuation token returned by a previous listing operation.</param>
         /// <param name="prefix">The blob name prefix.</param>
-        list_blobs_hierarchical_response list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix);
+        list_blobs_hierarchical_response list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults = 10000);
 
         /// <summary>
         /// Uploads the contents of a blob from a local file, file size need to be equal or smaller than 64MB.

@@ -6,12 +6,12 @@ int azs_mkdir(const char *path, mode_t)
     AZS_DEBUGLOGV("mkdir called with path = %s\n", path);
 
     std::string pathstr(path);
-    pathstr.insert(pathstr.size(), "/" + directorySignifier);
 
     // We want to upload a zero-length blob in this case - it's just a marker that there's a directory.
     std::istringstream emptyDataStream("");
 
     std::vector<std::pair<std::string, std::string>> metadata;
+    metadata.push_back(std::make_pair("hdi_isfolder", "true"));
     errno = 0;
     azure_blob_client_wrapper->upload_block_blob_from_stream(str_options.containerName, pathstr.substr(1), emptyDataStream, metadata);
     if (errno != 0)
@@ -138,9 +138,9 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
             // TODO: order or hash the list to improve perf
             if (std::find(local_list_results.begin(), local_list_results.end(), prev_token_str) == local_list_results.end())
             {
-                if (!listResults[i].is_directory)
+                if (!listResults[i].is_directory && !is_directory_blob(listResults[i].content_length, listResults[i].metadata))
                 {
-                    if ((prev_token_str.size() > 0) && (strcmp(prev_token_str.c_str(), directorySignifier.c_str()) != 0))
+                    if ((prev_token_str.size() > 0) && (strcmp(prev_token_str.c_str(), former_directory_signifier.c_str()) != 0))
                     {
                         struct stat stbuf;
                         stbuf.st_mode = S_IFREG | default_permission; // Regular file (not a directory)
@@ -165,6 +165,9 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         AZS_DEBUGLOGV("Blob directory %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.substr(1).c_str(), fillerResult);
                     }
                 }
+                // Avoid duplicates
+                local_list_results.push_back(prev_token_str);
+
             }
             else
             {
@@ -179,12 +182,6 @@ int azs_rmdir(const char *path)
 {
     AZS_DEBUGLOGV("azs_rmdir called with path = %s\n", path);
 
-    std::string pathStr(path);
-    if (pathStr.size() > 1)
-    {
-        pathStr.push_back('/');
-    }
-
     std::string pathString(path);
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
@@ -194,7 +191,7 @@ int azs_rmdir(const char *path)
     remove(mntPath); // This will fail if the cache is not empty, which is fine, as in this case it will also fail later, after the server-side check.
 
     errno = 0;
-    int dirStatus = is_directory_empty(str_options.containerName, "/", pathStr.substr(1));
+    int dirStatus = is_directory_empty(str_options.containerName, pathString.substr(1));
     if (errno != 0)
     {
         int storage_errno = errno;
@@ -212,8 +209,10 @@ int azs_rmdir(const char *path)
         return -ENOTEMPTY;
     }
 
-    pathStr.append(".directory");
-    azs_unlink(pathStr.c_str()); // Attempt to remove the directory signifier blob if it exists.
+    // TODO: change this to just delete blobs.
+    azs_unlink(pathString.c_str());
+    pathString.append("/.directory");
+    azs_unlink(pathString.c_str());
 
     return 0;
 }

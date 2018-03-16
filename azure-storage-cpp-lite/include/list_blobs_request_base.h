@@ -61,20 +61,13 @@ public:
 
 class list_blobs_hierarchical_request_base : public blob_request_base {
 public:
-    enum include {
-        unspecifies = 0x0,
-        snapshots = 0x1,
-        metadata = 0x2,
-        uncommittedblobs = 0x4,
-        copy = 0x8
-    };
 
     virtual std::string container() const = 0;
     virtual std::string prefix() const { return std::string(); }
     virtual std::string delimiter() const { return std::string(); }
     virtual std::string marker() const { return std::string(); }
     virtual int maxresults() const { return 0; }
-    virtual include includes() const { return include::unspecifies; }
+    virtual list_blobs_request_base::include includes() const { return list_blobs_request_base::include::unspecifies; }
 
     AZURE_STORAGE_API void build_request(const storage_account &a, http_base &h) const override;
 };
