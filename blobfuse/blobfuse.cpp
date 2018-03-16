@@ -66,7 +66,7 @@ int read_config_env()
     char* env_account_key = getenv("AZURE_STORAGE_ACCESS_KEY");
     char* env_sas_token = getenv("AZURE_STORAGE_SAS_TOKEN");
 
-    if(env_account!=NULL)
+    if(env_account)
     {
         str_options.accountName = env_account;
     }
@@ -76,18 +76,18 @@ int read_config_env()
         return -1;
     }
 
-    if(env_account_key!=NULL)
+    if(env_account_key)
     {
         str_options.accountKey = env_account_key;
     }
     
-    if(env_sas_token!=NULL)
+    if(env_sas_token)
     {
         str_options.sasToken = env_sas_token;
     }
 
-    if((env_account_key==NULL && env_sas_token==NULL) ||
-       (env_account_key!=NULL && env_sas_token!=NULL))
+    if((!env_account_key && !env_sas_token) ||
+       (env_account_key && env_sas_token)) 
     {
 	fprintf(stderr, "If not using the config file, exactly one of AZURE_STORAGE_ACCESS_KEY and AZURE_STORAGE_SAS_TOKEN environment variables must be specified.\n");
 	return -1;

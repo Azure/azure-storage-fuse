@@ -45,7 +45,7 @@ namespace microsoft_azure {
             shared_access_signature_credential(const std::string &sas_token)
                 : m_sas_token(sas_token) {
 		// If there is a question mark at the beginning of the sas token, erase it for easier processing in sign_request.
-		if (m_sas_token[0] == '?') {
+		if (!m_sas_token.empty() && m_sas_token[0] == '?') {
 		    m_sas_token.erase(0, 1);
 		}
 	    }

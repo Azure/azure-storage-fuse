@@ -127,8 +127,7 @@ namespace microsoft_azure {
         blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token,  const unsigned int concurrency, const bool use_https, 
 									  const std::string &blob_endpoint)
         {
-            if(account_name.length() == 0 || 
-	       ((account_key.length() == 0 && sas_token.length() == 0) || (account_key.length() != 0 && sas_token.length() != 0)))
+            if(account_name.empty() || ((account_key.empty() && sas_token.empty()) || (!account_key.empty() && !sas_token.empty())))
             {
                 errno = invalid_parameters;
                 return blob_client_wrapper(false);
@@ -176,7 +175,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(container.length() == 0)
+            if(container.empty())
             {
                 errno = invalid_parameters;
                 return;
@@ -214,7 +213,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(container.length() == 0)
+            if(container.empty())
             {
                 errno = invalid_parameters;
                 return;
@@ -249,7 +248,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return false;
             }
-            if(container.length() == 0)
+            if(container.empty())
             {
                 errno = invalid_parameters;
                 return false;
@@ -317,7 +316,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return list_blobs_hierarchical_response();
             }
-            if(container.length() == 0)
+            if(container.empty())
             {
                 errno = invalid_parameters;
                 return list_blobs_hierarchical_response();
@@ -356,7 +355,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(sourcePath.length() == 0 || container.length() == 0 || blob.length() == 0)
+            if(sourcePath.empty() || container.empty() || blob.empty())
             {
                 errno = invalid_parameters;
                 return;
@@ -411,7 +410,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(container.length() == 0 || blob.length() == 0)
+            if(container.empty() || blob.empty())
             {
                 errno = invalid_parameters;
                 return;
@@ -447,7 +446,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(sourcePath.length() == 0 || container.length() == 0 || blob.length() == 0)
+            if(sourcePath.empty() || container.empty() || blob.empty())
             {
                 errno = invalid_parameters;
                 return;
@@ -817,7 +816,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(container.length() == 0 || blob.length() == 0)
+            if(container.empty() || blob.empty())
             {
                 errno = invalid_parameters;
                 return;
@@ -853,8 +852,8 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(sourceContainer.length() == 0 || sourceBlob.length() == 0 ||
-               destContainer.length() == 0 || destBlob.length() == 0)
+            if(sourceContainer.empty() || sourceBlob.empty() ||
+               destContainer.empty() || destBlob.empty())
             {
                 errno = invalid_parameters;
                 return;
