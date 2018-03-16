@@ -267,7 +267,7 @@ int set_log_mask(const char * min_log_level_char)
     return 1;
 }
 
-int main(int argc, char *argv[])
+void set_up_callbacks()
 {
     openlog(log_ident.c_str(), LOG_NDELAY | LOG_PID, 0);
 
@@ -300,9 +300,12 @@ int main(int argc, char *argv[])
     azs_blob_operations.listxattr = azs_listxattr;
     azs_blob_operations.removexattr = azs_removexattr;
     azs_blob_operations.flush = azs_flush;
+}
 
+int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
+{
     // FUSE has a standard method of argument parsing, here we just follow the pattern.
-    struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
+    *args = FUSE_ARGS_INIT(argc, argv);
 
     // Check for existence of allow_other flag and change the default permissions based on that
     default_permission = 0770;
@@ -317,7 +320,7 @@ int main(int argc, char *argv[])
     try
     {
 
-        if (fuse_opt_parse(&args, &options, option_spec, NULL) == -1)
+        if (fuse_opt_parse(args, &options, option_spec, NULL) == -1)
         {
             return 1;
         }
@@ -374,7 +377,6 @@ int main(int argc, char *argv[])
     }
     
     str_options.tmpPath = tmpPathStr;
-    const int defaultMaxConcurrency = 20;
     str_options.use_https = true;
     if (options.use_https != NULL)
     {
@@ -385,6 +387,20 @@ int main(int argc, char *argv[])
         }
     }
 
+    if (options.file_cache_timeout_in_seconds != NULL)
+    {
+        std::string timeout(options.file_cache_timeout_in_seconds);
+        file_cache_timeout_in_seconds = stoi(timeout);
+    }
+    else
+    {
+        file_cache_timeout_in_seconds = 120;
+    }
+    return 0;
+}
+
+int configure_tls()
+{
     // For proper locking, instructing gcrypt to use pthreads 
     gcry_control(GCRYCTL_SET_THREAD_CBS, &gcry_threads_pthread);
     if(GNUTLS_E_SUCCESS != gnutls_global_init())
@@ -393,12 +409,17 @@ int main(int argc, char *argv[])
         fprintf(stderr, "GnuTLS initialization failed: errno = %d.\n", errno);
         return 1; 
     }
+    return 0;
+}
 
-    // THe current implementation of blob_client_wrapper calls curl_global_init() in the constructor, and curl_global_cleanup in the destructor.
+int validate_storage_connection()
+{
+    // The current implementation of blob_client_wrapper calls curl_global_init() in the constructor, and curl_global_cleanup in the destructor.
     // Unfortunately, curl_global_init() has to be called in the same process as any HTTPS calls that are made, otherwise NSS is not configured properly.
     // When running in daemon mode, the current process forks() and exits, while the child process lives on as a daemon.
     // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
     {
+        const int defaultMaxConcurrency = 20;
         blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https, str_options.blobEndpoint);
         if(errno != 0)
         {
@@ -416,9 +437,13 @@ int main(int argc, char *argv[])
             return 1;
         }
     }
+    return 0;
+}
 
-    fuse_opt_add_arg(&args, "-omax_read=131072");
-    fuse_opt_add_arg(&args, "-omax_write=131072");
+void configure_fuse(struct fuse_args *args)
+{
+    fuse_opt_add_arg(args, "-omax_read=131072");
+    fuse_opt_add_arg(args, "-omax_write=131072");
     if(0 != ensure_files_directory_exists_in_cache(prepend_mnt_path_string("/placeholder")))
     {
         syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
@@ -438,15 +463,19 @@ int main(int argc, char *argv[])
 
     // FUSE contains a feature where it automatically implements 'soft' delete if one process has a file open when another calls unlink().
     // This feature causes us a bunch of problems, so we use "-ohard_remove" to disable it, and track the needed 'soft delete' functionality on our own.
-    fuse_opt_add_arg(&args, "-ohard_remove");
-    fuse_opt_add_arg(&args, "-obig_writes");
-    fuse_opt_add_arg(&args, "-ofsname=blobfuse");
-    fuse_opt_add_arg(&args, "-okernel_cache");
+    fuse_opt_add_arg(args, "-ohard_remove");
+    fuse_opt_add_arg(args, "-obig_writes");
+    fuse_opt_add_arg(args, "-ofsname=blobfuse");
+    fuse_opt_add_arg(args, "-okernel_cache");
     umask(0);
+}
 
-    ret =  fuse_main(args.argc, args.argv, &azs_blob_operations, NULL);
-
-    gnutls_global_deinit();
-
-    return ret;
+int initialize_blobfuse()
+{
+    if(0 != ensure_files_directory_exists_in_cache(prepend_mnt_path_string("/placeholder")))
+    {
+        fprintf(stderr, "Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
+        return 1;
+    }
+    return 0;
 }
