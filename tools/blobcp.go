@@ -21,11 +21,13 @@ var processed int64 = 0
 func main() {
     flag.Parse()
     if *source == "" {
-        log.Printf("-s source path is missing")
+        log.Println("-s source path is missing")
         flag.PrintDefaults()
+        os.Exit(1)
     } else if *dest == "" {
-        log.Printf("-d destination path is missing")
+        log.Println("-d destination path is missing")
         flag.PrintDefaults()
+        os.Exit(1)
     }
 
     pending := sync.WaitGroup{}
@@ -35,8 +37,9 @@ func main() {
         last := processed
         for {
             <-time.After(5 * time.Second)
-            fmt.Printf("Processed %v, %v per second       \r", processed, (processed-last)/5)
-            last = processed
+            _processed := atomic.LoadInt64(&processed)
+            fmt.Printf("Processed %v, %v per second \r", _processed, (_processed-last)/5)
+            last = _processed
         }
     }()
 
@@ -46,7 +49,7 @@ func main() {
     submitFiles(*source, *include, files, &pending)
     pending.Wait()
 
-    fmt.Printf("Processed %v files in %v sec", processed, time.Now().Sub(start))
+    fmt.Printf("Processed %v files in %v sec \n", processed, time.Now().Sub(start))
 }
 
 func startWorkers(files chan string, pending *sync.WaitGroup) {
@@ -70,14 +73,14 @@ func submitFiles(path string, include string, files chan<- string, pending *sync
     } else {
         pathsFound, err = filepath.Glob(path + "/" + include)
         if err != nil {
-            log.Printf("Some error during files discovering: %v, %v", include, err)
+            log.Printf("Some error during files discovering: %v, %v \n", include, err)
         }
     }
 
     for _, path := range pathsFound {
         filepath.Walk(path, func(p string, info os.FileInfo, err error) error {
             if err != nil {
-                log.Printf("Some error during files discovering: %v, %v", p, err)
+                log.Printf("Some error during files discovering: %v, %v \n", p, err)
             }
             if info.Mode().IsRegular() {
                 pending.Add(1)
@@ -94,23 +97,23 @@ func processFile(p string) {
     destination := filepath.Join(*dest, relPath)
     f, err := os.Open(p)
     if err != nil {
-        log.Print("Failed to open %v: %v", p, err)
+        log.Printf("Failed to open %v: %v \n", p, err)
     }
     defer f.Close()
 
     err = os.MkdirAll(filepath.Dir(destination), os.ModePerm)
     if err != nil {
-        log.Print("Failed to create directory %v: %v", destination, err)
+        log.Printf("Failed to create directory %v: %v \n", destination, err)
     }
 
     newf, err := os.Create(destination)
     if err != nil {
-        log.Print("Failed to create %v: %v", p, err)
+        log.Printf("Failed to create %v: %v \n", p, err)
     }
     defer newf.Close()
 
     _, err = io.Copy(newf, f)
     if err != nil {
-        log.Print("Failed to read from %v: %v", p, err)
+        log.Printf("Failed to read from %v: %v \n", p, err)
     }
 }
