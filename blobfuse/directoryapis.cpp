@@ -228,11 +228,17 @@ int azs_rmdir(const char *path)
 int azs_statfs(const char *path, struct statvfs *stbuf)
 {
     std::string pathString(path);
-    const char * mntPath;
-    std::string mntPathString = prepend_mnt_path_string(pathString);
-    mntPath = mntPathString.c_str();
 
-    int res = statvfs(mntPath, stbuf);
+    struct stat statbuf;
+    int getattrret = azs_getattr(path, &statbuf);
+    if (getattrret != 0)
+    {
+        return getattrret;
+    }
+
+    // return tmp path stats
+    errno = 0;
+    int res = statvfs(str_options.tmpPath.c_str(), stbuf);
     if (res == -1)
         return -errno;
 
