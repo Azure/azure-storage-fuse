@@ -38,6 +38,9 @@
 #define D_EMPTY 0
 #define D_NOTEMPTY 1
 
+#define AZS_DEBUGLOGV(fmt,...) do {syslog(LOG_DEBUG,"Function %s, in file %s, line %d: " fmt, __func__, __FILE__, __LINE__, __VA_ARGS__); } while(0)
+#define AZS_DEBUGLOG(fmt) do {syslog(LOG_DEBUG,"Function %s, in file %s, line %d: " fmt, __func__, __FILE__, __LINE__); } while(0)
+
 // instruct gcrypt to use pthread
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 

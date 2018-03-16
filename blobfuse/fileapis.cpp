@@ -147,7 +147,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
         syslog(LOG_ERR, "Failed to open file %s in file cache.  errno = %d.", mntPathString.c_str(),  errno);
         return -errno;
     }
-    syslog(LOG_DEBUG, "Opening %s gives fh = %d, errno = %d", mntPath, res, errno);
+    AZS_DEBUGLOGV("Opening %s gives fh = %d, errno = %d", mntPath, res, errno);
 
     // At this point, the file exists in the cache and we have an open file handle to it.  We now attempt to acquire the flock lock in shared mode, to be held while reading and writing to the file.
     int lock_result = shared_lock_file(fi->flags, res);
@@ -165,7 +165,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     struct fhwrapper *fhwrap = new fhwrapper(res, (((fi->flags & O_WRONLY) == O_WRONLY) || ((fi->flags & O_RDWR) == O_RDWR)));
     fi->fh = (long unsigned int)fhwrap; // Store the file handle for later use.
 
-    syslog(LOG_DEBUG, "Returning success from azs_open, file = %s\n", path);
+    AZS_DEBUGLOGV("Returning success from azs_open, file = %s\n", path);
     return 0;
 }
 
@@ -197,7 +197,7 @@ int azs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
 // See the FUSE docs on these methods for more details.
 int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
-    syslog(LOG_DEBUG, "azs_create called with path = %s, mode = %d, fi->flags = %x\n", path, mode, fi->flags);
+    AZS_DEBUGLOGV("azs_create called with path = %s, mode = %d, fi->flags = %x\n", path, mode, fi->flags);
 
     auto fmutex = file_lock_map::get_instance()->get_mutex(path);
     std::lock_guard<std::mutex> lock(*fmutex);
@@ -227,7 +227,7 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     struct fhwrapper *fhwrap = new fhwrapper(res, true);
     fi->fh = (long unsigned int)fhwrap;
     syslog(LOG_INFO, "Successfully created file %s in file cache.\n", path);
-    syslog(LOG_DEBUG, "Returning success from azs_create with file %s.\n", path);
+    AZS_DEBUGLOGV("Returning success from azs_create with file %s.\n", path);
     return 0;
 }
 
@@ -261,7 +261,7 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
 
 int azs_flush(const char *path, struct fuse_file_info *fi)
 {
-    syslog(LOG_DEBUG, "azs_flush called with path = %s, fi->flags = %d, (((struct fhwrapper *)fi->fh)->fh) = %d.\n", path, fi->flags, (((struct fhwrapper *)fi->fh)->fh));
+    AZS_DEBUGLOGV("azs_flush called with path = %s, fi->flags = %d, (((struct fhwrapper *)fi->fh)->fh) = %d.\n", path, fi->flags, (((struct fhwrapper *)fi->fh)->fh));
 
     // At this point, the shared flock will be held.
 
@@ -274,12 +274,12 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
     char *path_buffer = canonicalize_file_name(path_link_buffer);
     if (path_buffer == NULL)
     {
-        syslog(LOG_DEBUG, "Skipped blob upload in azs_flush with input path %s because file no longer exists.\n", path);
+        AZS_DEBUGLOGV("Skipped blob upload in azs_flush with input path %s because file no longer exists.\n", path);
         return 0;
     }
     else
     {
-        syslog(LOG_DEBUG, "Successfully looked up mntPath.  Input path = %s, path_link_buffer = %s, path_buffer = %s\n", path, path_link_buffer, path_buffer);
+        AZS_DEBUGLOGV("Successfully looked up mntPath.  Input path = %s, path_link_buffer = %s, path_buffer = %s\n", path, path_link_buffer, path_buffer);
     }
 
     // Note that we don't have to prepend the tmpPath, because we already have it, because we're not using the input path but instead are querying for it.
@@ -315,7 +315,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
                     // This mimics the behavior of a real file system.
 
                     free(path_buffer);
-                    syslog(LOG_DEBUG, "Skipped blob upload in azs_flush with input path %s because file no longer exists due to a race condition with azs_unlink.\n", path);
+                    AZS_DEBUGLOGV("Skipped blob upload in azs_flush with input path %s because file no longer exists due to a race condition with azs_unlink.\n", path);
                     return 0;
                 }
                 else
@@ -347,7 +347,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
     }
     else
     {
-        syslog(LOG_DEBUG, "Skipped blob upload in azs_flush with input path %s because file no longer exists.\n", path);
+        AZS_DEBUGLOGV("Skipped blob upload in azs_flush with input path %s because file no longer exists.\n", path);
     }
 
     free(path_buffer);
@@ -357,7 +357,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
 // Note that there is not much point in doing error-checking in this method, as release() does not offer a way to communicate any errors with the caller (it's called async with the thread that called close())
 int azs_release(const char *path, struct fuse_file_info * fi)
 {
-    syslog(LOG_DEBUG, "azs_release called with path = %s, fi->flags = %d\n", path, fi->flags);
+    AZS_DEBUGLOGV("azs_release called with path = %s, fi->flags = %d\n", path, fi->flags);
 
     // TODO: Make this method resiliant to renames of the file (same way flush() is)
     std::string pathString(path);
@@ -366,7 +366,7 @@ int azs_release(const char *path, struct fuse_file_info * fi)
     mntPath = mntPathString.c_str();
     if (access(mntPath, F_OK) != -1 )
     {
-        syslog(LOG_DEBUG, "Closing the file handle and adding file to the GC from azs_release.  File = %s\n.", mntPath);
+        AZS_DEBUGLOGV("Closing the file handle and adding file to the GC from azs_release.  File = %s\n.", mntPath);
 
         // Unlock the file and close the file handle.
         // Note that this will release the shared lock acquired in the corresponding open() call (the one that gave us this file descriptor, in the fuse_file_info).
@@ -388,13 +388,13 @@ int azs_release(const char *path, struct fuse_file_info * fi)
 
 int azs_unlink(const char *path)
 {
-    syslog(LOG_DEBUG, "azs_unlink called with path = %s.\n", path);
+    AZS_DEBUGLOGV("azs_unlink called with path = %s.\n", path);
     std::string pathString(path);
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
 
-    syslog(LOG_DEBUG, "Attempting to delete file %s from local cache.\n", mntPath);
+    AZS_DEBUGLOGV("Attempting to delete file %s from local cache.\n", mntPath);
 
     // We must hold the mutex here, otherwise there is a potential race condition in the following scenario:
     // 1. Process A opens a file for writing and writes to it.
@@ -411,11 +411,11 @@ int azs_unlink(const char *path)
 
     if (remove_success)
     {
-        syslog(LOG_DEBUG, "Successfully removed file %s from local cache in azs_unlink.\n", mntPath);
+        AZS_DEBUGLOGV("Successfully removed file %s from local cache in azs_unlink.\n", mntPath);
     }
     else
     {
-        syslog(LOG_DEBUG, "Failed to remove file %s from local cache in azs_unlink.  errno = %d\n.", mntPath, errno);
+        AZS_DEBUGLOGV("Failed to remove file %s from local cache in azs_unlink.  errno = %d\n.", mntPath, errno);
     }
 
     int retval = 0;
@@ -448,7 +448,7 @@ int azs_unlink(const char *path)
     size_t last_slash_idx = mntPathString.rfind('/');
     if (std::string::npos != last_slash_idx)
     {
-        syslog(LOG_DEBUG, "Attempting to remove directory %s from local file cache, in case all files have been deleted.", mntPathString.substr(0, last_slash_idx).c_str());
+        AZS_DEBUGLOGV("Attempting to remove directory %s from local file cache, in case all files have been deleted.", mntPathString.substr(0, last_slash_idx).c_str());
         remove(mntPathString.substr(0, last_slash_idx).c_str());
     }
     return retval;
@@ -456,7 +456,7 @@ int azs_unlink(const char *path)
 
 int azs_truncate(const char * path, off_t off)
 {
-    syslog(LOG_DEBUG, "azs_truncate called.  Path = %s, offset = %s\n", path, to_str(off).c_str());
+    AZS_DEBUGLOGV("azs_truncate called.  Path = %s, offset = %s\n", path, to_str(off).c_str());
 
     if (off != 0)
     {
@@ -481,7 +481,7 @@ int azs_truncate(const char * path, off_t off)
         int truncret = truncate(mntPath, 0);
         if (truncret == 0)
         {
-            syslog(LOG_DEBUG, "Successfully truncated file %s in the local file cache.", mntPath);
+            AZS_DEBUGLOGV("Successfully truncated file %s in the local file cache.", mntPath);
 
             // We want to upload a zero-length blob.
             std::istringstream emptyDataStream("");
@@ -509,12 +509,12 @@ int azs_truncate(const char * path, off_t off)
     }
     else
     {
-        syslog(LOG_DEBUG, "File to truncate %s does not exist in the local cache.\n", path);
+        AZS_DEBUGLOGV("File to truncate %s does not exist in the local cache.\n", path);
 
         // The blob/file does not exist locally.  We need to see if it exists on the service (if it doesn't we return ENOENT.)
         if (azure_blob_client_wrapper->blob_exists(str_options.containerName, pathString.substr(1))) // TODO: Once we have support for access conditions, we could remove this call, and replace with a put_block_list with if-match-*
         {
-            syslog(LOG_DEBUG, "Blob %s representing file %s exists on the service.\n", pathString.substr(1).c_str(), path);
+            AZS_DEBUGLOGV("Blob %s representing file %s exists on the service.\n", pathString.substr(1).c_str(), path);
 
             int fd = open(mntPath, O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU | S_IRWXG);  //TODO: Consider removing this, I don't think the optimization will really be worth it.
             if (fd != 0)
@@ -552,7 +552,7 @@ int azs_truncate(const char * path, off_t off)
 
 int azs_rename_single_file(const char *src, const char *dst)
 {
-    syslog(LOG_DEBUG, "Renaming a single file.  src = %s, dst = %s.\n", src, dst);
+    AZS_DEBUGLOGV("Renaming a single file.  src = %s, dst = %s.\n", src, dst);
 
     // TODO: if src == dst, return?
     // TODO: lock in alphabetical order?
@@ -576,7 +576,7 @@ int azs_rename_single_file(const char *src, const char *dst)
     int statret = stat(srcMntPath, &buf);
     if (statret == 0)
     {
-        syslog(LOG_DEBUG, "Source file %s in rename operation exists in the local cache.\n", src);
+        AZS_DEBUGLOGV("Source file %s in rename operation exists in the local cache.\n", src);
 
         // The file exists in the local cache.  Call rename() on it (note this will preserve existing handles.)
         ensure_files_directory_exists_in_cache(dstMntPath);
@@ -589,13 +589,13 @@ int azs_rename_single_file(const char *src, const char *dst)
         }
         else
         {
-            syslog(LOG_DEBUG, "Successfully to renamed file %s to %s in the local cache.\n", src, dst);
+            AZS_DEBUGLOGV("Successfully to renamed file %s to %s in the local cache.\n", src, dst);
         }
         errno = 0;
         auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, srcPathString.substr(1));
         if ((errno == 0) && blob_property.valid())
         {
-            syslog(LOG_DEBUG, "Source file %s for rename operation exists as a blob on the service.\n", src);
+            AZS_DEBUGLOGV("Source file %s for rename operation exists as a blob on the service.\n", src);
             // Blob also exists on the service.  Perform a server-side copy.
             errno = 0;
             azure_blob_client_wrapper->start_copy(str_options.containerName, srcPathString.substr(1), str_options.containerName, dstPathString.substr(1));
@@ -649,7 +649,7 @@ int azs_rename_single_file(const char *src, const char *dst)
     }
     else
     {
-        syslog(LOG_DEBUG, "Source file %s in rename operation does not exist in the local cache.\n", src);
+        AZS_DEBUGLOGV("Source file %s in rename operation does not exist in the local cache.\n", src);
 
         // File does not exist locally.  Just do the blob copy.
         // TODO: remove duplicated code.
@@ -657,7 +657,7 @@ int azs_rename_single_file(const char *src, const char *dst)
         auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, srcPathString.substr(1));
         if ((errno == 0) && blob_property.valid())
         {
-            syslog(LOG_DEBUG, "Source file %s for rename operation exists as a blob on the service.\n", src);
+            AZS_DEBUGLOGV("Source file %s for rename operation exists as a blob on the service.\n", src);
 
             // Blob also exists on the service.  Perform a server-side copy.
             errno = 0;

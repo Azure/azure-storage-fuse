@@ -74,7 +74,7 @@ int read_config_env()
     }
     else
     {
-        syslog (LOG_CRIT, "Unable to start blobfuse.  No config file was specified and AZURE_STORAGE_ACCESS_KEY environment variable is empty.");
+        syslog(LOG_CRIT, "Unable to start blobfuse.  No config file was specified and AZURE_STORAGE_ACCESS_KEY environment variable is empty.");
         fprintf(stderr, "No config file was specified and AZURE_STORAGE_ACCOUNT environment variable is empty.\n");
         return -1;
     }
@@ -85,7 +85,7 @@ int read_config_env()
     }
     else
     {
-        syslog (LOG_CRIT, "Unable to start blobfuse.  No config file was specified and AZURE_STORAGE_ACCESS_KEY environment variable is empty.");
+        syslog(LOG_CRIT, "Unable to start blobfuse.  No config file was specified and AZURE_STORAGE_ACCESS_KEY environment variable is empty.");
         fprintf(stderr, "No config file was specified and AZURE_STORAGE_ACCESS_KEY environment variable is empty.\n");
         return -1;
     }
@@ -99,7 +99,7 @@ int read_config(std::string configFile)
     std::ifstream file(configFile);
     if(!file)
     {
-        syslog (LOG_CRIT, "Unable to start blobfuse.  No config file found at %s.", configFile.c_str());
+        syslog(LOG_CRIT, "Unable to start blobfuse.  No config file found at %s.", configFile.c_str());
         fprintf(stderr, "No config file found at %s.\n", configFile.c_str());
         return -1;
     }
@@ -183,7 +183,7 @@ void *azs_init(struct fuse_conn_info * conn)
     azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20, str_options.use_https, str_options.blobEndpoint));
     if(errno != 0)
     {
-        syslog (LOG_CRIT, "Unable to start blobfuse.  Creating blob client failed: errno = %d.\n", errno);
+        syslog(LOG_CRIT, "azs_init - Unable to start blobfuse.  Creating blob client failed: errno = %d.\n", errno);
 
         // TODO: Improve this error case
         return NULL;
@@ -261,7 +261,7 @@ int set_log_mask(const char * min_log_level_char)
         return 0;
     }
 
-    syslog (LOG_CRIT, "Unable to start blobfuse. Error: Invalid log level \"%s\"", min_log_level.c_str());
+    syslog(LOG_CRIT, "Unable to start blobfuse. Error: Invalid log level \"%s\"", min_log_level.c_str());
     fprintf(stdout, "Error: Invalid log level \"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
     fprintf(stdout, "If not specified, logging will default to LOG_WARNING.\n\n");
     return 1;
@@ -326,7 +326,7 @@ int main(int argc, char *argv[])
         {
             if(!options.container_name)
             {
-                syslog (LOG_CRIT, "Unable to start blobfuse, no config file provided and --container-name is not set.");
+                syslog(LOG_CRIT, "Unable to start blobfuse, no config file provided and --container-name is not set.");
                 fprintf(stderr, "Error: No config file provided and --container-name is not set.\n");
                 print_usage();
                 return 1;
@@ -402,7 +402,7 @@ int main(int argc, char *argv[])
         blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https, str_options.blobEndpoint);
         if(errno != 0)
         {
-            syslog (LOG_CRIT, "Unable to start blobfuse.  Creating local blob client failed: errno = %d.\n", errno);
+            syslog(LOG_CRIT, "Unable to start blobfuse.  Creating local blob client failed: errno = %d.\n", errno);
             fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
             return 1;
         }
@@ -411,7 +411,7 @@ int main(int argc, char *argv[])
         if(temp_azure_blob_client_wrapper.container_exists(str_options.containerName) == false
                 || errno != 0)
         {
-            syslog (LOG_CRIT, "Unable to start blobfuse.  Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
+            syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
             fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
             return 1;
         }
@@ -421,7 +421,7 @@ int main(int argc, char *argv[])
     fuse_opt_add_arg(&args, "-omax_write=131072");
     if(0 != ensure_files_directory_exists_in_cache(prepend_mnt_path_string("/placeholder")))
     {
-        syslog (LOG_CRIT, "Unable to start blobfuse.  Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
+        syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         fprintf(stderr, "Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         return 1;
     }
