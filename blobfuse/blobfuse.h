@@ -138,6 +138,9 @@ extern const std::string directorySignifier;
 // Should be called on any errno returned from the Azure Storage cpp lite lib.
 int map_errno(int error);
 
+// Read Storage connection information from the config file
+int read_config(std::string configFile);
+
 // Helper function to prepend the 'tmpPath' to the input path.
 // Input is the logical file name being input to the FUSE API, output is the file name of the on-disk file in the file cache.
 std::string prepend_mnt_path_string(const std::string path);
