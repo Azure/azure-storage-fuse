@@ -6,10 +6,7 @@ int map_errno(int error)
     auto mapping = error_mapping.find(error);
     if (mapping == error_mapping.end())
     {
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "errno map failure, no match for error code %i, so returning EIO = 5\n", error);
-        }
+        syslog(LOG_INFO, "Failed to map storage error code %d to a proper errno.  Returning EIO = %d instead.\n", error, EIO);
         return EIO;
     }
     else
@@ -70,10 +67,7 @@ void gc_cache::run_gc_cache()
         //check if the closed time is old enough to delete
         if((now - file.closed_time) > file_cache_timeout_in_seconds)
         {
-            if (AZS_PRINT)
-            {
-                fprintf(stdout, "File %s timed out at %ld\n", file.path.c_str(), time(NULL));
-            }
+            AZS_DEBUGLOGV("File %s being considered for deletion by file cache GC.\n", file.path.c_str());
 
             // path in the temp location
             const char * mntPath;
@@ -83,47 +77,44 @@ void gc_cache::run_gc_cache()
             //check if the file on disk is still too old
             //mutex lock
             auto fmutex = file_lock_map::get_instance()->get_mutex(file.path.c_str());
-            std::lock_guard<std::mutex> lock(*fmutex);            
+            std::lock_guard<std::mutex> lock(*fmutex);
 
             struct stat buf;
             stat(mntPath, &buf);
             if (((now - buf.st_mtime) > file_cache_timeout_in_seconds) && ((now - buf.st_ctime) > file_cache_timeout_in_seconds))
             {
-                if (AZS_PRINT)
-                {
-                    fprintf(stdout, "File %s clean up at %ld \n", mntPath, time(NULL));
-                }
-
                 //clean up the file from cache
                 int fd = open(mntPath, O_WRONLY);
-                int flockres = flock(fd, LOCK_EX|LOCK_NB);
-                if (flockres != 0)
+                if (fd > 0)
                 {
-                    if (errno == EWOULDBLOCK)
+                    int flockres = flock(fd, LOCK_EX|LOCK_NB);
+                    if (flockres != 0)
                     {
-                        // Someone else holds the lock.  In this case, we will postpone updating the cache until the next time open() is called.
-                        // TODO: examine the possibility that we can never acquire the lock and refresh the cache.
-                        if (AZS_PRINT)
+                        if (errno == EWOULDBLOCK)
                         {
-                            fprintf(stdout, "Failed to lock file %s for clean up. errno = %d\n", file.path.c_str(), errno);
+                            // Someone else holds the lock.  In this case, we will postpone updating the cache until the next time open() is called.
+                            // TODO: examine the possibility that we can never acquire the lock and refresh the cache.
+                            AZS_DEBUGLOGV("Did not clean up file %s from file cache because there's still an open file handle to it.", mntPath);
+                        }
+                        else
+                        {
+                            // Failed to acquire the lock for some other reason.  We close the open fd, and continue.
+                            syslog(LOG_ERR, "Did not clean up file %s from file cache because we failed to acquire the flock for an unknown reason, errno = %d.\n", mntPath, errno);
                         }
                     }
                     else
                     {
-                        // Failed to acquire the lock for some other reason.  We close the open fd, and continue.
-                        if (AZS_PRINT)
-                        {
-                            fprintf(stdout, "Failed to lock file %s for clean up. errno = %d\n", file.path.c_str(), errno);
-                        }
+                        AZS_DEBUGLOGV("GC cleanup of cached file %s.\n", mntPath);
+                        unlink(mntPath);
+                        flock(fd, LOCK_UN);
                     }
+
+                    close(fd);
                 }
                 else
                 {
-                    unlink(mntPath);
-                    flock(fd, LOCK_UN);
+                    AZS_DEBUGLOGV("Failed to open file %s from file cache in GC, skipping cleanup. errno from open = %d.", mntPath, errno);
                 }
-
-                close(fd);
             }
 
             // lock to remove from front
@@ -149,11 +140,15 @@ int shared_lock_file(int flags, int fd)
     {
         if(0 != flock(fd, LOCK_SH|LOCK_NB))
         {
-            if (AZS_PRINT)
-            {
-                printf("flock error in NB.  errno = %d, res = %d\n", errno, fd);
-            }
             int flockerrno = errno;
+            if (flockerrno == EWOULDBLOCK)
+            {
+               AZS_DEBUGLOGV("Failure to acquire flock due to EWOULDBLOCK.  fd = %d.", fd);
+            }
+            else
+            {
+               syslog(LOG_ERR, "Failure to acquire flock for fd = %d.  errno = %d", fd, flockerrno);
+            }
             close(fd);
             return 0 - flockerrno;
         }
@@ -162,11 +157,8 @@ int shared_lock_file(int flags, int fd)
     {
         if (0 != flock(fd, LOCK_SH))
         {
-            if (AZS_PRINT)
-            {
-                printf("flock error.  errno = %d, res = %d\n", errno, fd);
-            }
             int flockerrno = errno;
+            syslog(LOG_ERR, "Failure to acquire flock for fd = %d.  errno = %d", fd, flockerrno);
             close(fd);
             return 0 - flockerrno;
         }
@@ -205,10 +197,7 @@ int ensure_files_directory_exists_in_cache(const std::string file_path)
         if (slash != pp)
         {
             *slash = '\0';
-            if (AZS_PRINT)
-            {
-                fprintf(stdout, "Making directory %s\n", copypath);
-            }
+            AZS_DEBUGLOGV("Making cache directory %s.\n", copypath);
             struct stat st;
             if (stat(copypath, &st) != 0)
             {
@@ -242,10 +231,7 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
     int failcount = 0;
     do
     {
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "About to call list_blobs_hierarchial.  Container = %s, delimiter = %s, continuation = %s, prefix = %s\n", container.c_str(), delimiter.c_str(), continuation.c_str(), prefix.c_str());
-        }
+        AZS_DEBUGLOGV("About to call list_blobs_hierarchial.  Container = %s, delimiter = %s, continuation = %s, prefix = %s\n", container.c_str(), delimiter.c_str(), continuation.c_str(), prefix.c_str());
 
         errno = 0;
         list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix);
@@ -253,11 +239,7 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
         {
             success = true;
             failcount = 0;
-            if (AZS_PRINT)
-            {
-                fprintf(stdout, "results count = %s\n", to_str(response.blobs.size()).c_str());
-                fprintf(stdout, "next_marker = %s\n", response.next_marker.c_str());
-            }
+            AZS_DEBUGLOGV("Successful call to list_blobs_hierarchical.  results count = %s, next_marker = %s.\n", to_str(response.blobs.size()).c_str(), response.next_marker.c_str());
             continuation = response.next_marker;
             if(response.blobs.size() > 0)
             {
@@ -274,10 +256,7 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
         {
             failcount++;
             success = false;
-            if (AZS_PRINT)
-            {
-                fprintf(stdout, "list_blobs_hierarchical failed %d time with errno = %d\n", failcount, errno);
-            }
+            syslog(LOG_WARNING, "list_blobs_hierarchical failed for the %d time with errno = %d.\n", failcount, errno);
 
         }
     } while (((continuation.size() > 0) || !success) && (failcount < maxFailCount));
@@ -365,10 +344,7 @@ int is_directory_empty(std::string container, std::string dir_name)
 
 int azs_getattr(const char *path, struct stat *stbuf)
 {
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "azs_getattr called, Path requested = %s\n", path);
-    }
+    AZS_DEBUGLOGV("azs_getattr called with path = %s\n", path);
     // If we're at the root, we know it's a directory
     if (strlen(path) == 1)
     {
@@ -391,21 +367,26 @@ int azs_getattr(const char *path, struct stat *stbuf)
 
     int res;
     int acc = access(mntPathString.c_str(), F_OK);
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "accessing mntPath = %s returned %d\n", mntPathString.c_str(), acc);
-    }
     if (acc != -1 )
     {
+        AZS_DEBUGLOGV("Accessing mntPath = %s for get_attr succeeded; object is in the local cache.\n", mntPathString.c_str());
         //(void) fi;
         res = lstat(mntPathString.c_str(), stbuf);
-        if (AZS_PRINT)
-        {
-            printf("LSTAT res = %d, errno = %d, ENOENT = %d\n", res, errno, ENOENT);
-        }
         if (res == -1)
-            return -errno;
-        return 0;
+        {
+            int lstaterrno = errno;
+            syslog(LOG_ERR, "lstat on file %s in local cache during get_attr failed with errno = %d.\n", mntPathString.c_str(), lstaterrno);
+            return -lstaterrno;
+        }
+        else
+        {
+            AZS_DEBUGLOGV("lstat on file %s in local cache succeeded.\n", mntPathString.c_str());
+            return 0;
+        }
+    }
+    else
+    {
+        AZS_DEBUGLOGV("Object %s is not in the local cache during get_attr.\n", mntPathString.c_str());
     }
 
     // It's not in the local cache.  Check to see if it's a blob on the service:
@@ -417,10 +398,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     {
         if (is_directory_blob(blob_property.size, blob_property.metadata))
         {
-            if (AZS_PRINT)
-            {
-                fprintf(stdout, "Directory found!  Name = %s\n", path);
-            }
+            AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
             stbuf->st_mode = S_IFDIR | default_permission;
             // If st_nlink = 2, means direcotry is empty.
             // Directory size will affect behaviour for mv, rmdir, cp etc.
@@ -431,10 +409,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             return 0;
         }
 
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "Blob found!  Name = %s\n", path);
-        }
+        AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
         stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
         stbuf->st_uid = fuse_get_context()->uid;
         stbuf->st_gid = fuse_get_context()->gid;
@@ -449,21 +424,15 @@ int azs_getattr(const char *path, struct stat *stbuf)
 
         errno = 0;
         int dirSize = is_directory_empty(str_options.containerName, blobNameStr);
-
         if (errno != 0)
         {
-            if (AZS_PRINT)
-            {
-                fprintf(stdout, "Tried to find dir %s, but received errno = %d\n", path, errno);
-            }
-            return 0 - map_errno(errno);
+            int storage_errno = errno;
+            syslog(LOG_ERR, "Failure when attempting to determine if directory %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
+            return 0 - map_errno(storage_errno);
         }
         if (dirSize != D_NOTEXIST)
         {
-            if (AZS_PRINT)
-            {
-                fprintf(stdout, "Directory %s found with return value: %d!\n", blobNameStr.c_str(), dirSize);
-            }
+            AZS_DEBUGLOGV("Directory %s found on the service.\n", blobNameStr.c_str());
             stbuf->st_mode = S_IFDIR | default_permission;
             // If st_nlink = 2, means direcotry is empty.
             // Directory size will affect behaviour for mv, rmdir, cp etc.
@@ -475,15 +444,19 @@ int azs_getattr(const char *path, struct stat *stbuf)
         }
         else
         {
-            return -(ENOENT); // -2 = Entity does not exist.
+            AZS_DEBUGLOGV("Entity %s does not exist.  Returning ENOENT (%d) from get_attr.\n", path, ENOENT);
+            return -(ENOENT);
         }
     }
     else
     {
-        return 0 - map_errno(errno);
+        int storage_errno = errno;
+        syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
+        return 0 - map_errno(storage_errno);
     }
 }
 
+// Helper method for FTW to remove an entire directory & it's contents.
 int rm(const char *fpath, const struct stat * /*sb*/, int tflag, struct FTW * /*ftwbuf*/)
 {
     if (tflag == FTW_DP)
@@ -503,6 +476,7 @@ int rm(const char *fpath, const struct stat * /*sb*/, int tflag, struct FTW * /*
 // Delete the entire contents of tmpPath.
 void azs_destroy(void * /*private_data*/)
 {
+    AZS_DEBUGLOG("azs_destroy called.\n");
     std::string rootPath(str_options.tmpPath + "/root");
     char *cstr = (char *)malloc(rootPath.size() + 1);
     memcpy(cstr, rootPath.c_str(), rootPath.size());
@@ -557,10 +531,7 @@ int azs_utimens(const char * /*path*/, const struct timespec [2] /*ts[2]*/)
 
 int azs_rename_directory(const char *src, const char *dst)
 {
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "Renaming a whole directory.  src = %s, dst = %s.\n", src, dst);
-    }
+    AZS_DEBUGLOGV("azs_rename_directory called with src = %s, dst = %s.\n", src, dst);
     std::string srcPathStr(src);
     std::string dstPathStr(dst);
 
@@ -592,6 +563,7 @@ int azs_rename_directory(const char *src, const char *dst)
     }
     std::vector<std::string> local_list_results;
 
+    // Rename all files and directories that exist in the local cache.
     ensure_files_directory_exists_in_cache(prepend_mnt_path_string(dstPathStr + "placeholder"));
     std::string mntPathString = prepend_mnt_path_string(srcPathStr);
     DIR *dir_stream = opendir(mntPathString.c_str());
@@ -613,6 +585,7 @@ int azs_rename_directory(const char *src, const char *dst)
                 memcpy(&(newDst[dstPathStr.size()]), dir_ent->d_name, nameLen);
                 newDst[dstPathStr.size() + nameLen] = '\0';
 
+                AZS_DEBUGLOGV("Local object found - about to rename %s to %s.\n", newSrc, newDst);
                 if (dir_ent->d_type == DT_DIR)
                 {
                     azs_rename_directory(newSrc, newDst);
@@ -635,21 +608,17 @@ int azs_rename_directory(const char *src, const char *dst)
 
     closedir(dir_stream);
 
+    // Rename all files & directories that don't exist in the local cache.
     errno = 0;
     std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", srcPathStr.substr(1));
     if (errno != 0)
     {
-        if (AZS_PRINT)
-        {
-            fprintf(stdout, "azs_readdir list blobs failed with error = %d\n", errno);
-        }
-        return 0 - map_errno(errno);
+        int storage_errno = errno;
+        syslog(LOG_ERR, "list blobs operation failed during attempt to rename directory %s to %s.  errno = %d.\n", src, dst, storage_errno);
+        return 0 - map_errno(storage_errno);
     }
 
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "result count = %s\n", to_str(listResults.size()).c_str());
-    }
+    AZS_DEBUGLOGV("Total of %s results found from list_blobs call during rename operation\n.", to_str(listResults.size()).c_str());
     for (size_t i = 0; i < listResults.size(); i++)
     {
         // We need to parse out just the trailing part of the path name.
@@ -680,6 +649,7 @@ int azs_rename_directory(const char *src, const char *dst)
                 memcpy(&(newDst[dstPathStr.size()]), prev_token_str.c_str(), nameLen);
                 newDst[dstPathStr.size() + nameLen] = '\0';
 
+                AZS_DEBUGLOGV("Object found on the service - about to rename %s to %s.\n", newSrc, newDst);
                 if (listResults[i].is_directory)
                 {
                     azs_rename_directory(newSrc, newDst);
@@ -706,10 +676,7 @@ int azs_rename_directory(const char *src, const char *dst)
 // TODO: If/when we upgrade to FUSE 3.0, we will need to worry about the additional possible flags (RENAME_EXCHANGE and RENAME_NOREPLACE)
 int azs_rename(const char *src, const char *dst)
 {
-    if (AZS_PRINT)
-    {
-        fprintf(stdout, "Rename file  source = %s, destination = %s\n", src, dst);
-    }
+    AZS_DEBUGLOGV("azs_rename called with src = %s, dst = %s.\n", src, dst);
 
     struct stat statbuf;
     errno = 0;

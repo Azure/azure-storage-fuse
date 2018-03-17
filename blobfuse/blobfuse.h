@@ -20,6 +20,7 @@
 #include <gnutls/gnutls.h>
 #include <gcrypt.h>
 #include <pthread.h>
+#include <syslog.h>
 
 // Declare that we're using version 2.9 of FUSE
 // 3.0 is not built-in to many distros yet.
@@ -30,15 +31,15 @@
 #include <stddef.h>
 #include "blob/blob_client.h"
 
-// Set this to 1 to enable debug output.
-// Prints directly to the console, so this is only useful is you mount in "-f" mode.
-#define AZS_PRINT 0
 #define UNREFERENCED_PARAMETER(p) (p)
 
 /* Define errors and return codes */
 #define D_NOTEXIST -1
 #define D_EMPTY 0
 #define D_NOTEMPTY 1
+
+#define AZS_DEBUGLOGV(fmt,...) do {syslog(LOG_DEBUG,"Function %s, in file %s, line %d: " fmt, __func__, __FILE__, __LINE__, __VA_ARGS__); } while(0)
+#define AZS_DEBUGLOG(fmt) do {syslog(LOG_DEBUG,"Function %s, in file %s, line %d: " fmt, __func__, __FILE__, __LINE__); } while(0)
 
 // instruct gcrypt to use pthread
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
