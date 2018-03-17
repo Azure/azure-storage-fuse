@@ -131,13 +131,17 @@ extern std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
 // Used to map HTTP errors (ex. 404) to Linux errno (ex ENOENT)
 extern std::map<int, int> error_mapping;
 
+// Needed for compatibility with pre-GA blobfuse:
 // String that signifies that this blob represents a directory.
 // This string should be appended to the name of the directory.  The resultant string should be the name of a zero-length blob; this represents the directory on the service.
-extern const std::string directorySignifier;
+extern const std::string former_directory_signifier;
 
 // Helper function to map an HTTP error to an errno.
 // Should be called on any errno returned from the Azure Storage cpp lite lib.
 int map_errno(int error);
+
+// Read Storage connection information from the config file
+int read_config(std::string configFile);
 
 // Helper function to prepend the 'tmpPath' to the input path.
 // Input is the logical file name being input to the FUSE API, output is the file name of the on-disk file in the file cache.
@@ -157,9 +161,12 @@ bool list_one_blob_hierarchical(std::string container, std::string delimiter, st
 
 // Returns:
 // 0 if there's nothing there (the directory does not exist)
-// 1 is there's exactly one blob, and it's the ".directory" blob
+// 1 If there's either the ".directory" blob, or the hdfs-type directory blob
 // 2 otherwise (the directory exists and is not empty.)
-int is_directory_empty(std::string container, std::string delimiter, std::string prefix);
+int is_directory_empty(std::string container, std::string dir_name);
+
+// Returns true if the input has zero length and the "hdi_isfolder=true" metadata.
+bool is_directory_blob(unsigned long long size, std::vector<std::pair<std::string, std::string>> metadata);
 
 /**
  * get_attr is the general-purpose "get information about the file or directory at this path"

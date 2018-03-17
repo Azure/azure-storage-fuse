@@ -309,7 +309,7 @@ namespace microsoft_azure {
             }
         }
 
-        list_blobs_hierarchical_response blob_client_wrapper::list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix)
+        list_blobs_hierarchical_response blob_client_wrapper::list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int max_results)
         {
             if(!is_valid())
             {
@@ -324,7 +324,7 @@ namespace microsoft_azure {
 
             try
             {
-                auto task = m_blobClient->list_blobs_hierarchical(container, delimiter, continuation_token, prefix);
+                auto task = m_blobClient->list_blobs_hierarchical(container, delimiter, continuation_token, prefix, max_results);
                 task.wait();
                 auto result = task.get();
 
