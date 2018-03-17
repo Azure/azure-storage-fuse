@@ -210,9 +210,34 @@ int azs_rmdir(const char *path)
     }
 
     // TODO: change this to just delete blobs.
-    azs_unlink(pathString.c_str());
-    pathString.append("/.directory");
-    azs_unlink(pathString.c_str());
+    errno = 0;
+    azure_blob_client_wrapper->delete_blob(str_options.containerName, pathString.substr(1));
+    int dir_blob_delete_errno = errno;
+    if (dir_blob_delete_errno == 0)
+    {
+        syslog(LOG_INFO, "Successfully deleted directory marker %s for path %s. ", pathString.substr(1).c_str(), path);
+    }
+    else
+    {
+        AZS_DEBUGLOGV("Failed to delete directory marker %s at path %s, errno = %d.  Checking the .directory version.\n", mntPath, pathString.substr(1).c_str(), dir_blob_delete_errno);
+
+        pathString.append("/.directory");
+
+        errno = 0;
+        azure_blob_client_wrapper->delete_blob(str_options.containerName, pathString.substr(1));
+        int old_dir_blob_delete_errno = errno;
+
+        if (old_dir_blob_delete_errno == 0)
+        {
+            syslog(LOG_INFO, "Successfully deleted .directory-style directory marker for path %s to blob %s. ", path, pathString.substr(1).c_str());
+        }
+        else
+        {
+            // If they both fail, dir_blob_delete_errno will be the important one in 99.99% of cases
+            syslog(LOG_ERR, "Failed I/O operation to delete directory %s.  errno = %d\n", path, dir_blob_delete_errno);
+            return 0 - map_errno(dir_blob_delete_errno);
+        }
+    }
 
     return 0;
 }

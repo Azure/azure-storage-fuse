@@ -443,12 +443,6 @@ void configure_fuse(struct fuse_args *args)
 {
     fuse_opt_add_arg(args, "-omax_read=131072");
     fuse_opt_add_arg(args, "-omax_write=131072");
-    if(0 != ensure_files_directory_exists_in_cache(prepend_mnt_path_string("/placeholder")))
-    {
-        syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
-        fprintf(stderr, "Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
-        return 1;
-    }
 
     if (options.file_cache_timeout_in_seconds != NULL)
     {
@@ -473,6 +467,7 @@ int initialize_blobfuse()
 {
     if(0 != ensure_files_directory_exists_in_cache(prepend_mnt_path_string("/placeholder")))
     {
+        syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         fprintf(stderr, "Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         return 1;
     }
