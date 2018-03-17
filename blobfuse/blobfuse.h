@@ -113,6 +113,7 @@ struct str_options
     std::string accountName;
     std::string blobEndpoint;
     std::string accountKey;
+    std::string sasToken;
     std::string containerName;
     std::string tmpPath;
     bool use_https;
