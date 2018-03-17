@@ -64,8 +64,9 @@ int read_config_env()
 {
     char* env_account = getenv("AZURE_STORAGE_ACCOUNT");
     char* env_account_key = getenv("AZURE_STORAGE_ACCESS_KEY");
+    char* env_sas_token = getenv("AZURE_STORAGE_SAS_TOKEN");
 
-    if(env_account!=NULL)
+    if(env_account)
     {
         str_options.accountName = env_account;
     }
@@ -75,14 +76,21 @@ int read_config_env()
         return -1;
     }
 
-    if(env_account_key!=NULL)
+    if(env_account_key)
     {
         str_options.accountKey = env_account_key;
     }
-    else
+    
+    if(env_sas_token)
     {
-        fprintf(stderr, "AZURE_STORAGE_ACCESS_KEY environment variable is empty.\n");
-        return -1;
+        str_options.sasToken = env_sas_token;
+    }
+
+    if((!env_account_key && !env_sas_token) ||
+       (env_account_key && env_sas_token)) 
+    {
+	fprintf(stderr, "If not using the config file, exactly one of AZURE_STORAGE_ACCESS_KEY and AZURE_STORAGE_SAS_TOKEN environment variables must be specified.\n");
+	return -1;
     }
 
     return 0;
@@ -110,33 +118,22 @@ int read_config(std::string configFile)
         if(line.find("accountName") != std::string::npos)
         {
             std::string accountNameStr(value);
-            /*            if(!is_lowercase_string(accountNameStr))
-                        {
-                            fprintf(stderr, "Account name must be lower cases.");
-                            return -1;
-                        }
-                        else
-                        {*/
             str_options.accountName = accountNameStr;
-//            }
         }
         else if(line.find("accountKey") != std::string::npos)
         {
             std::string accountKeyStr(value);
             str_options.accountKey = accountKeyStr;
         }
+        else if(line.find("sasToken") != std::string::npos)
+        {
+	    std::string sasTokenStr(value);
+	    str_options.sasToken = sasTokenStr;
+        }
         else if(line.find("containerName") != std::string::npos)
         {
             std::string containerNameStr(value);
-            /*            if(!is_lowercase_string(containerNameStr))
-                        {
-                            fprintf(stderr, "Container name must be lower cases.");
-                            return -1;
-                        }
-                        else
-                        {*/
             str_options.containerName = containerNameStr;
-//            }
         }
         else if(line.find("blobEndpoint") != std::string::npos)
         {
@@ -147,19 +144,20 @@ int read_config(std::string configFile)
         data.clear();
     }
 
-    if(str_options.accountName.size() == 0)
+    if(str_options.accountName.empty())
     {
-        fprintf(stderr, "Account name is missing in the configure file.\n");
+        fprintf(stderr, "Account name is missing in the config file.\n");
         return -1;
     }
-    else if(str_options.accountKey.size() == 0)
+    else if((str_options.accountKey.empty() && str_options.sasToken.empty()) || 
+	    (!str_options.accountKey.empty() && !str_options.sasToken.empty()))
     {
-        fprintf(stderr, "Account key is missing in the configure file.\n");
+        fprintf(stderr, "Exactly one of Account Key and SAS token must be specified in the config file. The other line should be deleted.\n");
         return -1;
     }
-    else if(str_options.containerName.size() == 0)
+    else if(str_options.containerName.empty())
     {
-        fprintf(stderr, "Container name is missing in the configure file.\n");
+        fprintf(stderr, "Container name is missing in the config file.\n");
         return -1;
     }
     else
@@ -171,7 +169,8 @@ int read_config(std::string configFile)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
-    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, 20, str_options.use_https, str_options.blobEndpoint));
+    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, 20/*concurrency*/, str_options.use_https,
+                                                                                                                    str_options.blobEndpoint));
     if(errno != 0)
     {
         fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
@@ -348,7 +347,8 @@ int validate_storage_connection()
     // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
     {
         const int defaultMaxConcurrency = 20;
-        blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, defaultMaxConcurrency, str_options.use_https, str_options.blobEndpoint);
+        blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, defaultMaxConcurrency, str_options.use_https, 
+													   str_options.blobEndpoint);
         if(errno != 0)
         {
             fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
