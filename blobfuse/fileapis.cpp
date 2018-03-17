@@ -638,6 +638,10 @@ int azs_rename_single_file(const char *src, const char *dst)
                 syslog(LOG_ERR, "Copy operation from %s to %s failed on the service.  Copy status = %s.\n", srcPathString.substr(1).c_str(), dstPathString.substr(1).c_str(), blob_property.copy_status.c_str());
                 return EFAULT;
             }
+
+            // store the file in the cleanup list
+            gc_cache.add_file(dstPathString);
+
             return 0;
         }
         else if (errno != 0)
@@ -700,6 +704,11 @@ int azs_rename_single_file(const char *src, const char *dst)
                 syslog(LOG_ERR, "Copy operation from %s to %s failed on the service.  Copy status = %s.\n", srcPathString.substr(1).c_str(), dstPathString.substr(1).c_str(), blob_property.copy_status.c_str());
                 return EFAULT;
             }
+
+            // in the case of directory_rename, there may be local cache
+            // store the file in the cleanup list
+            gc_cache.add_file(dstPathString);
+
             return 0;
         }
         else if (errno != 0)
@@ -709,5 +718,6 @@ int azs_rename_single_file(const char *src, const char *dst)
             return 0 - map_errno(storage_errno);
         }
     }
+
     return 0;
 }

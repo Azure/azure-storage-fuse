@@ -21,6 +21,8 @@ struct options
     const char *file_cache_timeout_in_seconds; // Timeout for the file cache (defaults to 120 seconds)
     const char *container_name; //container to mount. Used only if config_file is not provided
     const char *log_level; // Sets the level at which the process should log to syslog.
+    const char *version; // print blobfuse version
+    const char *help; // print blobfuse usage
 };
 
 struct options options;
@@ -37,6 +39,10 @@ const struct fuse_opt option_spec[] =
     OPTION("--file-cache-timeout-in-seconds=%s", file_cache_timeout_in_seconds),
     OPTION("--container-name=%s", container_name),
     OPTION("--log-level=%s", log_level),
+    OPTION("--version", version),
+    OPTION("-v", version),
+    OPTION("--help", help),
+    OPTION("-h", help),
     FUSE_OPT_END
 };
 
@@ -214,6 +220,11 @@ void print_usage()
     fprintf(stdout, "See https://github.com/Azure/azure-storage-fuse for detailed installation and configuration instructions.\n");
 }
 
+void print_version()
+{
+    fprintf(stdout, "blobfuse 0.4\n");
+}
+
 int set_log_mask(const char * min_log_level_char)
 {
     if (!min_log_level_char)
@@ -321,6 +332,18 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         if (fuse_opt_parse(args, &options, option_spec, NULL) == -1)
         {
             return 1;
+        }
+
+        if(options.version)
+        {
+            print_version();
+            exit(0);
+        }
+
+        if(options.help)
+        {
+            print_usage();
+            exit(0);
         }
 
         if(!options.config_file)
