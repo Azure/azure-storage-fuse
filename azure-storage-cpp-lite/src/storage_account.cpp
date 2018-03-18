@@ -48,6 +48,7 @@ namespace microsoft_azure {
                 url.set_domain(m_file_domain);
                 break;
             }
+
             return url;
         }
 

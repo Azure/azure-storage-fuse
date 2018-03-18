@@ -73,8 +73,7 @@ namespace microsoft_azure {
             else {
                 transformed_url.append("?");
             }
-            transformed_url.append(constants::query_api_version).append("=").append(constants::header_value_storage_version);
-            transformed_url.append("&").append(m_sas_token);
+            transformed_url.append(m_sas_token);
             h.set_url(transformed_url);
         }
 

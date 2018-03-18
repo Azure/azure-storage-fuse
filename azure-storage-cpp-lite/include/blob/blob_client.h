@@ -143,7 +143,7 @@ namespace microsoft_azure { namespace storage {
         /// <param name="continuation_token">A continuation token returned by a previous listing operation.</param>
         /// <param name="prefix">The blob name prefix.</param>
         /// <returns>A <see cref="std::future" /> object that represents the current operation.</returns>
-        AZURE_STORAGE_API std::future<storage_outcome<list_blobs_hierarchical_response>> list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix);
+        AZURE_STORAGE_API std::future<storage_outcome<list_blobs_hierarchical_response>> list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int max_results = 10000);
 
         /// <summary>
         /// Intitiates an asynchronous operation  to get the property of a blob.
@@ -313,20 +313,23 @@ namespace microsoft_azure { namespace storage {
         /// </summary>
         /// <param name="account_name">The storage account name.</param>
         /// <param name="account_key">The storage account key.</param>
+	/// <param name="sas_token">A sas token for the container.</param>
         /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
         /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
-        static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency);
+        static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency);
 
         /// <summary>
         /// Constructs a blob client wrapper from storage account credential.
         /// </summary>
         /// <param name="account_name">The storage account name.</param>
         /// <param name="account_key">The storage account key.</param>
+	/// <param name="sas_token">A sas token for the container.</param>
         /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
         /// <param name="use_https">True if https should be used (instead of HTTP).  Note that this may cause a sizable perf loss, due to issues in libcurl.</param>
         /// <param name="blob_endpoint">Blob endpoint URI to allow non-public clouds as well as custom domains.</param>
         /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
-        static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency, bool use_https, const std::string &blob_endpoint);
+        static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency, bool use_https, 
+							    const std::string &blob_endpoint);
         /* C++ wrappers without exception but error codes instead */
 
         /* container level*/
@@ -366,7 +369,7 @@ namespace microsoft_azure { namespace storage {
         /// <param name="delimiter">The delimiter used to designate the virtual directories.</param>
         /// <param name="continuation_token">A continuation token returned by a previous listing operation.</param>
         /// <param name="prefix">The blob name prefix.</param>
-        list_blobs_hierarchical_response list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix);
+        list_blobs_hierarchical_response list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults = 10000);
 
         /// <summary>
         /// Uploads the contents of a blob from a local file, file size need to be equal or smaller than 64MB.
