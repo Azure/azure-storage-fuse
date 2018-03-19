@@ -73,7 +73,7 @@ void list_blobs_hierarchical_request_base::build_request(const storage_account &
     {
         add_optional_query(url, constants::query_maxresults, r.maxresults());
     }
-    std::string include(",");
+    std::string include("");
     if (r.includes() & list_blobs_request_base::include::snapshots) {
         include.append(",").append(constants::query_include_snapshots);
     }

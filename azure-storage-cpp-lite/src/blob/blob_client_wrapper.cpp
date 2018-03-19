@@ -119,15 +119,16 @@ namespace microsoft_azure {
             }
         }
 
-        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency)
+        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency)
         {
-            return blob_client_wrapper_init(account_name, account_key, concurrency, false, NULL);
+            return blob_client_wrapper_init(account_name, account_key, sas_token, concurrency, false, NULL);
         }
 
 
-        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const unsigned int concurrency, const bool use_https, const std::string &blob_endpoint)
+        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token,  const unsigned int concurrency, const bool use_https, 
+									  const std::string &blob_endpoint)
         {
-            if(account_name.length() == 0 || account_key.length() == 0)
+            if(account_name.empty() || ((account_key.empty() && sas_token.empty()) || (!account_key.empty() && !sas_token.empty())))
             {
                 errno = invalid_parameters;
                 return blob_client_wrapper(false);
@@ -144,7 +145,16 @@ namespace microsoft_azure {
 
             try
             {
-                std::shared_ptr<storage_credential>  cred = std::make_shared<shared_key_credential>(accountName, accountKey);
+                std::shared_ptr<storage_credential>  cred;
+		if (account_key.length() > 0) 
+		{
+		    cred = std::make_shared<shared_key_credential>(accountName, accountKey);
+		}
+		else 
+		{
+		    // We have already verified that exactly one form of credentials is present, so if shared key is not present, it must be sas.
+		    cred = std::make_shared<shared_access_signature_credential>(sas_token);
+		}
                 std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
                 std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
                 errno = 0;
@@ -166,7 +176,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(container.length() == 0)
+            if(container.empty())
             {
                 errno = invalid_parameters;
                 return;
@@ -204,7 +214,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(container.length() == 0)
+            if(container.empty())
             {
                 errno = invalid_parameters;
                 return;
@@ -239,7 +249,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return false;
             }
-            if(container.length() == 0)
+            if(container.empty())
             {
                 errno = invalid_parameters;
                 return false;
@@ -300,14 +310,14 @@ namespace microsoft_azure {
             }
         }
 
-        list_blobs_hierarchical_response blob_client_wrapper::list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix)
+        list_blobs_hierarchical_response blob_client_wrapper::list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int max_results)
         {
             if(!is_valid())
             {
                 errno = client_not_init;
                 return list_blobs_hierarchical_response();
             }
-            if(container.length() == 0)
+            if(container.empty())
             {
                 errno = invalid_parameters;
                 return list_blobs_hierarchical_response();
@@ -315,7 +325,7 @@ namespace microsoft_azure {
 
             try
             {
-                auto task = m_blobClient->list_blobs_hierarchical(container, delimiter, continuation_token, prefix);
+                auto task = m_blobClient->list_blobs_hierarchical(container, delimiter, continuation_token, prefix, max_results);
                 task.wait();
                 auto result = task.get();
 
@@ -346,7 +356,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(sourcePath.length() == 0 || container.length() == 0 || blob.length() == 0)
+            if(sourcePath.empty() || container.empty() || blob.empty())
             {
                 errno = invalid_parameters;
                 return;
@@ -401,7 +411,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(container.length() == 0 || blob.length() == 0)
+            if(container.empty() || blob.empty())
             {
                 errno = invalid_parameters;
                 return;
@@ -437,7 +447,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(sourcePath.length() == 0 || container.length() == 0 || blob.length() == 0)
+            if(sourcePath.empty() || container.empty() || blob.empty())
             {
                 errno = invalid_parameters;
                 return;
@@ -811,7 +821,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(container.length() == 0 || blob.length() == 0)
+            if(container.empty() || blob.empty())
             {
                 errno = invalid_parameters;
                 return;
@@ -847,8 +857,8 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(sourceContainer.length() == 0 || sourceBlob.length() == 0 ||
-               destContainer.length() == 0 || destBlob.length() == 0)
+            if(sourceContainer.empty() || sourceBlob.empty() ||
+               destContainer.empty() || destBlob.empty())
             {
                 errno = invalid_parameters;
                 return;
