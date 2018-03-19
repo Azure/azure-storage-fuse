@@ -529,7 +529,7 @@ namespace microsoft_azure {
                 char uuid_cstr[37]; // 36 byte uuid plus null.
                 uuid_generate(uuid);
                 uuid_unparse(uuid, uuid_cstr);
-                const std::string block_id(uuid_cstr);
+                const std::string block_id(to_base64(uuid_cstr, 36));
                 put_block_list_request_base::block_item block;
                 block.id = block_id;
                 block.type = put_block_list_request_base::block_type::uncommitted;
