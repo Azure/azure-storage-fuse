@@ -17,7 +17,9 @@ int map_errno(int error)
 
 std::string prepend_mnt_path_string(const std::string& path)
 {
-    return str_options.tmpPath + "/root" + path;
+    std::string result;
+    result.reserve(str_options.tmpPath.length() + 5 + path.length());
+    return result.append(str_options.tmpPath).append("/root").append(path);
 }
 
 void gc_cache::add_file(std::string path)
@@ -478,14 +480,10 @@ void azs_destroy(void * /*private_data*/)
 {
     AZS_DEBUGLOG("azs_destroy called.\n");
     std::string rootPath(str_options.tmpPath + "/root");
-    char *cstr = (char *)malloc(rootPath.size() + 1);
-    memcpy(cstr, rootPath.c_str(), rootPath.size());
-    cstr[rootPath.size()] = 0;
 
     errno = 0;
     // FTW_DEPTH instructs FTW to do a post-order traversal (children of a directory before the actual directory.)
     nftw(rootPath.c_str(), rm, 20, FTW_DEPTH); 
-    free(cstr);
 }
 
 

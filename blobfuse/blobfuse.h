@@ -142,7 +142,7 @@ extern const std::string former_directory_signifier;
 int map_errno(int error);
 
 // Read Storage connection information from the config file
-int read_config(std::string& configFile);
+int read_config(std::string configFile);
 
 // Helper function to prepend the 'tmpPath' to the input path.
 // Input is the logical file name being input to the FUSE API, output is the file name of the on-disk file in the file cache.
