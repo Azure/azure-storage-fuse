@@ -116,14 +116,14 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             if (errno != 0)
             {
                 int storage_errno = errno;
-                syslog(LOG_ERR, "Failed to download blob into cache.  Blob name: %s, file name = %s, storage errno = %d.\n", pathString.substr(1).c_str(), mntPathString.c_str(),  errno);
+                syslog(LOG_ERR, "Failed to download blob into cache.  Blob name: %s, file name = %s, storage errno = %d.\n", pathString.c_str()+1, mntPathString.c_str(),  errno);
 
                 remove(mntPath);
                 return 0 - map_errno(storage_errno);
             }
             else
             {
-                syslog(LOG_INFO, "Successfully downloaded blob %s into file cache as %s.\n", pathString.substr(1).c_str(), mntPathString.c_str());
+                syslog(LOG_INFO, "Successfully downloaded blob %s into file cache as %s.\n", pathString.c_str()+1, mntPathString.c_str());
             }
             
             // preserve the last modified time
@@ -428,7 +428,7 @@ int azs_unlink(const char *path)
         // If we successfully removed the file locally and the blob does not exist, we should still return success - this accounts for the case where the file hasn't yet been uploaded.
         if (!((remove_success == 0) && (storage_errno = 404)))
         {
-            syslog(LOG_ERR, "Failure to delete blob %s (errno = %d) and local cached file does not exist; returning failure from azs_unlink", pathString.substr(1).c_str(), storage_errno);
+            syslog(LOG_ERR, "Failure to delete blob %s (errno = %d) and local cached file does not exist; returning failure from azs_unlink", pathString.c_str()+1, storage_errno);
             retval = 0 - map_errno(storage_errno);
         }
         else
@@ -438,7 +438,7 @@ int azs_unlink(const char *path)
     }
     else
     {
-        syslog(LOG_INFO, "Successfully deleted blob %s.", pathString.substr(1).c_str());
+        syslog(LOG_INFO, "Successfully deleted blob %s.", pathString.c_str()+1);
     }
 
     // Try removing the directory from the local file cache
@@ -491,19 +491,19 @@ int azs_truncate(const char * path, off_t off)
             azure_blob_client_wrapper->upload_block_blob_from_stream(str_options.containerName, pathString.substr(1), emptyDataStream, metadata);
             if (errno != 0)
             {
-                syslog(LOG_ERR, "Failed to upload zero-length blob to %s from azs_truncate.  errno = %d\n.", pathString.substr(1).c_str(), errno);
+                syslog(LOG_ERR, "Failed to upload zero-length blob to %s from azs_truncate.  errno = %d\n.", pathString.c_str()+1, errno);
                 return 0 - map_errno(errno); // TODO: Investigate what might happen in this case - the blob has been truncated locally, but not on the service.
             }
             else
             {
-                syslog(LOG_INFO, "Successfully uploaded zero-length blob to path %s from azs_truncate.", pathString.substr(1).c_str());
+                syslog(LOG_INFO, "Successfully uploaded zero-length blob to path %s from azs_truncate.", pathString.c_str()+1);
                 return 0;
             }
 
         }
         else
         {
-            syslog(LOG_ERR, "Failed to truncate file %s in local file cache.  errno = %d\n.", pathString.substr(1).c_str(), errno);
+            syslog(LOG_ERR, "Failed to truncate file %s in local file cache.  errno = %d\n.", pathString.c_str()+1, errno);
             return -errno;
         }
     }
@@ -514,7 +514,7 @@ int azs_truncate(const char * path, off_t off)
         // The blob/file does not exist locally.  We need to see if it exists on the service (if it doesn't we return ENOENT.)
         if (azure_blob_client_wrapper->blob_exists(str_options.containerName, pathString.substr(1))) // TODO: Once we have support for access conditions, we could remove this call, and replace with a put_block_list with if-match-*
         {
-            AZS_DEBUGLOGV("Blob %s representing file %s exists on the service.\n", pathString.substr(1).c_str(), path);
+            AZS_DEBUGLOGV("Blob %s representing file %s exists on the service.\n", pathString.c_str()+1, path);
 
             int fd = open(mntPath, O_CREAT|O_WRONLY|O_TRUNC, S_IRWXU | S_IRWXG);  //TODO: Consider removing this, I don't think the optimization will really be worth it.
             if (fd != 0)
@@ -532,12 +532,12 @@ int azs_truncate(const char * path, off_t off)
             if (errno != 0)
             {
                 int storage_errno = errno;
-                syslog(LOG_ERR, "Failed to upload zero-length blob to %s from azs_truncate.  errno = %d\n.", pathString.substr(1).c_str(), storage_errno);
+                syslog(LOG_ERR, "Failed to upload zero-length blob to %s from azs_truncate.  errno = %d\n.", pathString.c_str()+1, storage_errno);
                 return 0 - map_errno(storage_errno); // TODO: Investigate what might happen in this case - the blob has been truncated locally, but not on the service.
             }
             else
             {
-                syslog(LOG_INFO, "Successfully uploaded zero-length blob to path %s from azs_truncate.", pathString.substr(1).c_str());
+                syslog(LOG_INFO, "Successfully uploaded zero-length blob to path %s from azs_truncate.", pathString.c_str()+1);
                 return 0;
             }
         }
@@ -602,12 +602,12 @@ int azs_rename_single_file(const char *src, const char *dst)
             if (errno != 0)
             {
                 int storage_errno = errno;
-                syslog(LOG_ERR, "Attempt to call start_copy from %s to %s failed.  errno = %d\n.", srcPathString.substr(1).c_str(), dstPathString.substr(1).c_str(), storage_errno);
+                syslog(LOG_ERR, "Attempt to call start_copy from %s to %s failed.  errno = %d\n.", srcPathString.c_str()+1, dstPathString.c_str()+1, storage_errno);
                 return 0 - map_errno(errno);
             }
             else
             {
-                syslog(LOG_INFO, "Successfully called start_copy from blob %s to blob %s\n", srcPathString.substr(1).c_str(), dstPathString.substr(1).c_str());
+                syslog(LOG_INFO, "Successfully called start_copy from blob %s to blob %s\n", srcPathString.c_str()+1, dstPathString.c_str()+1);
             }
 
             errno = 0;
@@ -618,24 +618,24 @@ int azs_rename_single_file(const char *src, const char *dst)
             while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
             if(blob_property.copy_status.compare(0, 7, "success") == 0)
             {
-                syslog(LOG_INFO, "Copy operation from %s to %s succeeded.", srcPathString.substr(1).c_str(), dstPathString.substr(1).c_str());
+                syslog(LOG_INFO, "Copy operation from %s to %s succeeded.", srcPathString.c_str()+1, dstPathString.c_str()+1);
 
 //                int retval = azs_unlink(srcPathString); // This will remove the blob from the service, and also take care of removing the directory in the local file cache.
                 azure_blob_client_wrapper->delete_blob(str_options.containerName, srcPathString.substr(1));
                 if(errno != 0)
                 {
                     int storage_errno = errno;
-                    syslog(LOG_ERR, "Failed to delete source blob %s during rename operation.  errno = %d\n.", srcPathString.substr(1).c_str(), storage_errno);
+                    syslog(LOG_ERR, "Failed to delete source blob %s during rename operation.  errno = %d\n.", srcPathString.c_str()+1, storage_errno);
                     return 0 - map_errno(storage_errno);
                 }
                 else
                 {
-                    syslog(LOG_INFO, "Successfully deleted source blob %s during rename operation.\n", srcPathString.substr(1).c_str());
+                    syslog(LOG_INFO, "Successfully deleted source blob %s during rename operation.\n", srcPathString.c_str()+1);
                 }
             }
             else
             {
-                syslog(LOG_ERR, "Copy operation from %s to %s failed on the service.  Copy status = %s.\n", srcPathString.substr(1).c_str(), dstPathString.substr(1).c_str(), blob_property.copy_status.c_str());
+                syslog(LOG_ERR, "Copy operation from %s to %s failed on the service.  Copy status = %s.\n", srcPathString.c_str()+1, dstPathString.c_str()+1, blob_property.copy_status.c_str());
                 return EFAULT;
             }
 
@@ -647,7 +647,7 @@ int azs_rename_single_file(const char *src, const char *dst)
         else if (errno != 0)
         {
             int storage_errno = errno;
-            syslog(LOG_ERR, "Failed to get blob properties for blob %s during rename operation.  errno = %d\n", srcPathString.substr(1).c_str(), storage_errno);
+            syslog(LOG_ERR, "Failed to get blob properties for blob %s during rename operation.  errno = %d\n", srcPathString.c_str()+1, storage_errno);
             return 0 - map_errno(storage_errno);
         }
     }
@@ -669,12 +669,12 @@ int azs_rename_single_file(const char *src, const char *dst)
             if (errno != 0)
             {
                 int storage_errno = errno;
-                syslog(LOG_ERR, "Attempt to call start_copy from %s to %s failed.  errno = %d\n.", srcPathString.substr(1).c_str(), dstPathString.substr(1).c_str(), storage_errno);
+                syslog(LOG_ERR, "Attempt to call start_copy from %s to %s failed.  errno = %d\n.", srcPathString.c_str()+1, dstPathString.c_str()+1, storage_errno);
                 return 0 - map_errno(storage_errno);
             }
             else
             {
-                syslog(LOG_INFO, "Successfully called start_copy from blob %s to blob %s\n", srcPathString.substr(1).c_str(), dstPathString.substr(1).c_str());
+                syslog(LOG_INFO, "Successfully called start_copy from blob %s to blob %s\n", srcPathString.c_str()+1, dstPathString.c_str()+1);
             }
 
             errno = 0;
@@ -685,23 +685,23 @@ int azs_rename_single_file(const char *src, const char *dst)
             while(errno == 0 && blob_property.valid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
             if(blob_property.copy_status.compare(0, 7, "success") == 0)
             {
-                syslog(LOG_INFO, "Copy operation from %s to %s succeeded.", srcPathString.substr(1).c_str(), dstPathString.substr(1).c_str());
+                syslog(LOG_INFO, "Copy operation from %s to %s succeeded.", srcPathString.c_str()+1, dstPathString.c_str()+1);
 
                 azure_blob_client_wrapper->delete_blob(str_options.containerName, srcPathString.substr(1));
                 if(errno != 0)
                 {
                     int storage_errno = errno;
-                    syslog(LOG_ERR, "Failed to delete source blob %s during rename operation.  errno = %d\n.", srcPathString.substr(1).c_str(), storage_errno);
+                    syslog(LOG_ERR, "Failed to delete source blob %s during rename operation.  errno = %d\n.", srcPathString.c_str()+1, storage_errno);
                     return 0 - map_errno(storage_errno);
                 }
                 else
                 {
-                    syslog(LOG_INFO, "Successfully deleted source blob %s during rename operation.\n", srcPathString.substr(1).c_str());
+                    syslog(LOG_INFO, "Successfully deleted source blob %s during rename operation.\n", srcPathString.c_str()+1);
                 }
             }
             else
             {
-                syslog(LOG_ERR, "Copy operation from %s to %s failed on the service.  Copy status = %s.\n", srcPathString.substr(1).c_str(), dstPathString.substr(1).c_str(), blob_property.copy_status.c_str());
+                syslog(LOG_ERR, "Copy operation from %s to %s failed on the service.  Copy status = %s.\n", srcPathString.c_str()+1, dstPathString.c_str()+1, blob_property.copy_status.c_str());
                 return EFAULT;
             }
 
@@ -714,7 +714,7 @@ int azs_rename_single_file(const char *src, const char *dst)
         else if (errno != 0)
         {
             int storage_errno = errno;
-            syslog(LOG_ERR, "Failed to get blob properties for blob %s during rename operation.  errno = %d\n", srcPathString.substr(1).c_str(), storage_errno);
+            syslog(LOG_ERR, "Failed to get blob properties for blob %s during rename operation.  errno = %d\n", srcPathString.c_str()+1, storage_errno);
             return 0 - map_errno(storage_errno);
         }
     }
