@@ -25,7 +25,7 @@ export AZURE_STORAGE_ACCOUNT=myaccountname
 export AZURE_STORAGE_ACCESS_KEY=myaccountkey
 ```
 
-By default, blobfuse will use the ephemeral disks in Azure VMs as the local cache (/mnt/blobfusetmp). Please make sure that your user has write access to this location. If not, create and `chown` to your user. For best performance, consider using a ramdisk.
+Use of a high performance disk, or ramdisk for the local cache is recommended. In Azure VMs, this is the ephemeral disk which is mounted on /mnt in Ubuntu, and /mnt/resource in RHEL. Please make sure that your user has write access to this location. If not, create and `chown` to your user. For best performance, consider using a ramdisk.
 
 ```
 mkdir -p /mnt/blobfusetmp
@@ -43,11 +43,11 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 - You can modify the default FUSE options in mount.sh file. All options for FUSE is described in the [FUSE man page](http://manpages.ubuntu.com/manpages/xenial/man8/mount.fuse.8.html)
 - In addition to the FUSE kernel module options; blobfuse offers following options:
 	* --tmp-path=/path/to/cache : Configures the tmp location for the cache. Always configure the fastest disk (SSD or ramdisk) for best performance. 
-	* --config-file=/path/to/connection.cfg : Configures the path for the file where the account credentials are provided
+	* [OPTIONAL] --config-file=/path/to/connection.cfg : Configures the path for the file where the account credentials are provided
 	* [OPTIONAL] --container-name=container : Required if no configuration file is specified. Also set account name and key/SAS via the environment variables AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCESS_KEY/AZURE_STORAGE_SAS_TOKEN
 	* [OPTIONAL] --use-https=true/false : Enables HTTPS communication with Blob storage. True by default. 
 	* [OPTIONAL] --file-cache-timeout-in-seconds=120 : Blobs will be cached in the temp folder for this many seconds. 120 seconds by default. During this time, blobfuse will not check whether the file is up to date or not.
-	* [OPTIONAL] --log-level=LOG_WARNING : Enables logs written to syslog. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG
+	* [OPTIONAL] --log-level=LOG_WARNING : Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG
 	
 ## Considerations
 
@@ -59,10 +59,10 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 
 ### Performance and caching
 Please take careful note of the following points, before using blobfuse:
-- In order to achieve reasonable performance, blobfuse requires a temp directory to use as a local cache. This directory will contain the full contents of any file (blob) read to or written from through blobfuse, and will be purged as they age (--file-cache-timeout-in-seconds).
-  - Putting this directory on a ramdisk, or on an SSD (ephemeral disk on Azure) will greatly enhance performance.
+- In order to achieve reasonable performance, blobfuse requires a temporary directory to use as a local cache. This directory will contain the full contents of any file (blob) read to or written from through blobfuse. Cached files will be purged as they age (--file-cache-timeout-in-seconds) if there are no longer open file handles.
+  - Putting the cache directory on a ramdisk, or on an SSD (ephemeral disk on Azure) will greatly enhance performance.
   - In order to delete the cache, un-mount and re-mount blobfuse.
-  - Do not use the same temp directory for multiple instances of blobfuse, or for any other purpose while blobfuse is running.
+  - Do not use the same cache directory for multiple instances of blobfuse, or for any other purpose while blobfuse is running.
 
 ### If your workload is read-only:
 - Because blobs get cached locally and reused for a number of seconds (--file-cache-timeout-in-seconds), if the blob on the service is modified, these changes will only be retrieved after the local cache times out, and the file is closed and re-opened.
