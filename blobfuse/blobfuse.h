@@ -20,6 +20,7 @@
 #include <gnutls/gnutls.h>
 #include <gcrypt.h>
 #include <pthread.h>
+#include <syslog.h>
 
 // Declare that we're using version 2.9 of FUSE
 // 3.0 is not built-in to many distros yet.
@@ -30,15 +31,15 @@
 #include <stddef.h>
 #include "blob/blob_client.h"
 
-// Set this to 1 to enable debug output.
-// Prints directly to the console, so this is only useful is you mount in "-f" mode.
-#define AZS_PRINT 0
 #define UNREFERENCED_PARAMETER(p) (p)
 
 /* Define errors and return codes */
 #define D_NOTEXIST -1
 #define D_EMPTY 0
 #define D_NOTEMPTY 1
+
+#define AZS_DEBUGLOGV(fmt,...) do {syslog(LOG_DEBUG,"Function %s, in file %s, line %d: " fmt, __func__, __FILE__, __LINE__, __VA_ARGS__); } while(0)
+#define AZS_DEBUGLOG(fmt) do {syslog(LOG_DEBUG,"Function %s, in file %s, line %d: " fmt, __func__, __FILE__, __LINE__); } while(0)
 
 // instruct gcrypt to use pthread
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
@@ -112,6 +113,7 @@ struct str_options
     std::string accountName;
     std::string blobEndpoint;
     std::string accountKey;
+    std::string sasToken;
     std::string containerName;
     std::string tmpPath;
     bool use_https;
@@ -130,13 +132,17 @@ extern std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
 // Used to map HTTP errors (ex. 404) to Linux errno (ex ENOENT)
 extern std::map<int, int> error_mapping;
 
+// Needed for compatibility with pre-GA blobfuse:
 // String that signifies that this blob represents a directory.
 // This string should be appended to the name of the directory.  The resultant string should be the name of a zero-length blob; this represents the directory on the service.
-extern const std::string directorySignifier;
+extern const std::string former_directory_signifier;
 
 // Helper function to map an HTTP error to an errno.
 // Should be called on any errno returned from the Azure Storage cpp lite lib.
 int map_errno(int error);
+
+// Read Storage connection information from the config file
+int read_config(std::string configFile);
 
 // Helper function to prepend the 'tmpPath' to the input path.
 // Input is the logical file name being input to the FUSE API, output is the file name of the on-disk file in the file cache.
@@ -156,9 +162,12 @@ bool list_one_blob_hierarchical(std::string container, std::string delimiter, st
 
 // Returns:
 // 0 if there's nothing there (the directory does not exist)
-// 1 is there's exactly one blob, and it's the ".directory" blob
+// 1 If there's either the ".directory" blob, or the hdfs-type directory blob
 // 2 otherwise (the directory exists and is not empty.)
-int is_directory_empty(std::string container, std::string delimiter, std::string prefix);
+int is_directory_empty(std::string container, std::string dir_name);
+
+// Returns true if the input has zero length and the "hdi_isfolder=true" metadata.
+bool is_directory_blob(unsigned long long size, std::vector<std::pair<std::string, std::string>> metadata);
 
 /**
  * get_attr is the general-purpose "get information about the file or directory at this path"

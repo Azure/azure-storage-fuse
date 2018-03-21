@@ -28,6 +28,9 @@ Please take careful note of the following points, before using blobfuse:
 - While a container is mounted, the data in the container should not be modified by any process other than blobfuse.  This includes other instances of blobfuse, running on this or other machines.  Doing so could cause data loss or data corruption.  Mounting other containers is fine.
 - Modifications to files are not persisted to Azure Blob storage until the file is closed. If multiple handles are open to a file simultaneously, and data in the file has been modified, the close of each handle will flush the file to blob storage. 
 
+### Syslog security warning
+By default, blobfuse will log to syslog.  The default settings will, in some cases, log relevant file paths to syslog.  If this is sensitive information, turn off logging completely.  See the wiki for more details.
+
 ## Current Limitations
 - Some file system APIs have not been implemented: readlink, symlink, link, chmod, chown, fsync, lock and extended attribute calls.
 - Not optimized for updating an existing file. blobfuse downloads the entire file to local cache to be able to modify and update the file

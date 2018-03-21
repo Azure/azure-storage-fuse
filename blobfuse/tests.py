@@ -88,7 +88,29 @@ class TestFuse(unittest.TestCase):
         files = os.listdir(mediumBlobsDestDir)
         self.assertEqual(10, len(files))
 
-            
+    def test_filesystem_stats(self):
+        testDir = os.path.join(self.blobstage, "testDirectory")
+        testFile = os.path.join(testDir, "file1")
+        testNonexistingFile = os.path.join(testDir, "file2")
+        os.makedirs(testDir)
+        
+        with open(testFile, 'w') as fileblob:
+            fileblob.write("Dummy file")
+
+        dirResult = os.statvfs(testDir)
+        fileResult = os.statvfs(testFile)
+        self.assertNotEqual(dirResult.f_bavail, 0)
+        self.assertNotEqual(fileResult.f_bavail, 0)
+
+        try:
+            noResult = os.statvfs(testNonexistingFile)
+        except IOError as e:
+            self.assertEqual(e.errno, errno.ENOENT) 
+
+        # Directory not empty should throw
+        with self.assertRaises(OSError):
+            os.rmdir(testDir)
+
     def test_directory_operations(self):
         testDir = os.path.join(self.blobstage, "testDirectory")
         subdir1 = "subDir1"

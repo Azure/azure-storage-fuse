@@ -200,11 +200,12 @@ std::future<storage_outcome<list_blobs_response>> blob_client::list_blobs(const 
     return async_executor<list_blobs_response>::submit(m_account, request, http, m_context);
 }
 
-std::future<storage_outcome<list_blobs_hierarchical_response>> blob_client::list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix) {
+std::future<storage_outcome<list_blobs_hierarchical_response>> blob_client::list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int max_results) {
     auto http = m_client->get_handle();
 
     auto request = std::make_shared<list_blobs_hierarchical_request>(container, delimiter, continuation_token, prefix);
-    request->set_maxresults(10000);
+    request->set_maxresults(max_results);
+    request->set_includes(list_blobs_request_base::include::metadata);
 
     return async_executor<list_blobs_hierarchical_response>::submit(m_account, request, http, m_context);
 }
@@ -245,9 +246,10 @@ storage_outcome<blob_property> blob_client::get_blob_property(const std::string 
         auto& headers = http->get_headers();
         for (auto iter = headers.begin(); iter != headers.end(); ++iter)
         {
-            if (iter->first.find("x-ms-metadata-") == 0)
+            if (iter->first.find("x-ms-meta-") == 0)
             {
-                blobProperty.metadata.push_back(std::make_pair(iter->first, iter->second));
+                // We need to strip ten characters from the front of the key to account for "x-ms-meta-", and two characters from the end of the value, to account for the "\r\n".
+                blobProperty.metadata.push_back(std::make_pair(iter->first.substr(10), iter->second.substr(0, iter->second.size() - 2)));
             }
         }
     }
