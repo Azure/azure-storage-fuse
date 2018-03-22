@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <iostream>
 #include <fstream>
+#include <uuid/uuid.h>
 
 #include "blob/blob_client.h"
 #include "storage_errno.h"
@@ -103,19 +104,6 @@ namespace microsoft_azure {
                 }
             }
             return result;
-        }
-
-        namespace {
-            // Converts block index into block id.
-            std::string index_to_block_id(long long idx)
-            {
-                std::string block_id = std::to_string(idx);
-                if(block_id.length() < 44)
-                {
-                    block_id = (std::string(44 - block_id.length(), 'a')).append(block_id);
-                }
-                return to_base64(block_id.c_str(), block_id.length());
-            }
         }
 
         blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency)
@@ -534,7 +522,11 @@ namespace microsoft_azure {
                     result = unknown_error;
                     break;
                 }
-                const std::string block_id = index_to_block_id(idx);
+                uuid_t uuid;
+                char uuid_cstr[37]; // 36 byte uuid plus null.
+                uuid_generate(uuid);
+                uuid_unparse(uuid, uuid_cstr);
+                const std::string block_id(to_base64(uuid_cstr, 36));
                 put_block_list_request_base::block_item block;
                 block.id = block_id;
                 block.type = put_block_list_request_base::block_type::uncommitted;
