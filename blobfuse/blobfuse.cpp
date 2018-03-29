@@ -107,7 +107,7 @@ int read_config_env()
 }
 
 // Read Storage connection information from the config file
-int read_config(std::string configFile)
+int read_config(const std::string configFile)
 {
     std::ifstream file(configFile);
     if(!file)

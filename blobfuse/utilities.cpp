@@ -15,9 +15,11 @@ int map_errno(int error)
     }
 }
 
-std::string prepend_mnt_path_string(const std::string path)
+std::string prepend_mnt_path_string(const std::string& path)
 {
-    return str_options.tmpPath + "/root" + path;
+    std::string result;
+    result.reserve(str_options.tmpPath.length() + 5 + path.length());
+    return result.append(str_options.tmpPath).append("/root").append(path);
 }
 
 void gc_cache::add_file(std::string path)
@@ -182,7 +184,7 @@ bool is_directory_blob(unsigned long long size, std::vector<std::pair<std::strin
     return false;
 }
 
-int ensure_files_directory_exists_in_cache(const std::string file_path)
+int ensure_files_directory_exists_in_cache(const std::string& file_path)
 {
     char *pp;
     char *slash;
@@ -219,7 +221,7 @@ int ensure_files_directory_exists_in_cache(const std::string file_path)
     return status;
 }
 
-std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::string container, std::string delimiter, std::string prefix)
+std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix)
 {
     static const int maxFailCount = 20;
     std::vector<list_blobs_hierarchical_item> results;
@@ -273,7 +275,7 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::strin
  *   - D_EMPTY is there's exactly one blob, and it's the ".directory" blob
  *   - D_NOTEMPTY otherwise (the directory exists and is not empty.)
  */
-int is_directory_empty(std::string container, std::string dir_name)
+int is_directory_empty(const std::string& container, const std::string& dir_name)
 {
     std::string delimiter = "/";
     bool dir_blob_exists = false;
@@ -478,14 +480,10 @@ void azs_destroy(void * /*private_data*/)
 {
     AZS_DEBUGLOG("azs_destroy called.\n");
     std::string rootPath(str_options.tmpPath + "/root");
-    char *cstr = (char *)malloc(rootPath.size() + 1);
-    memcpy(cstr, rootPath.c_str(), rootPath.size());
-    cstr[rootPath.size()] = 0;
 
     errno = 0;
     // FTW_DEPTH instructs FTW to do a post-order traversal (children of a directory before the actual directory.)
     nftw(rootPath.c_str(), rm, 20, FTW_DEPTH); 
-    free(cstr);
 }
 
 
