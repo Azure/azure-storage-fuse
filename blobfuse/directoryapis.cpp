@@ -17,12 +17,12 @@ int azs_mkdir(const char *path, mode_t)
     if (errno != 0)
     {
         int storage_errno = errno;
-        syslog(LOG_ERR, "Failed to upload zero-length directory marker for path %s to blob %s.  errno = %d.\n", path, pathstr.substr(1).c_str(), storage_errno);
+        syslog(LOG_ERR, "Failed to upload zero-length directory marker for path %s to blob %s.  errno = %d.\n", path, pathstr.c_str()+1, storage_errno);
         return 0 - map_errno(errno);
     }
     else
     {
-        syslog(LOG_INFO, "Successfully uploaded zero-length directory marker for path %s to blob %s. ", path, pathstr.substr(1).c_str());
+        syslog(LOG_INFO, "Successfully uploaded zero-length directory marker for path %s to blob %s. ", path, pathstr.c_str()+1);
     }
     return 0;
 }
@@ -111,7 +111,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     }
     else
     {
-        AZS_DEBUGLOGV("Reading blobs of directory %s on the service.  Total blobs found = %s.\n", pathStr.substr(1).c_str(), to_str(listResults.size()).c_str());
+        AZS_DEBUGLOGV("Reading blobs of directory %s on the service.  Total blobs found = %s.\n", pathStr.c_str()+1, to_str(listResults.size()).c_str());
     }
 
     filler(buf, ".", NULL, 0);
@@ -149,7 +149,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         stbuf.st_nlink = 1;
                         stbuf.st_size = listResults[i].content_length;
                         fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
-                        AZS_DEBUGLOGV("Blob %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.substr(1).c_str(), fillerResult);
+                        AZS_DEBUGLOGV("Blob %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
                     }
                 }
                 else
@@ -162,7 +162,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         stbuf.st_gid = fuse_get_context()->gid;
                         stbuf.st_nlink = 2;
                         fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
-                        AZS_DEBUGLOGV("Blob directory %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.substr(1).c_str(), fillerResult);
+                        AZS_DEBUGLOGV("Blob directory %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
                     }
                 }
                 // Avoid duplicates
@@ -215,11 +215,11 @@ int azs_rmdir(const char *path)
     int dir_blob_delete_errno = errno;
     if (dir_blob_delete_errno == 0)
     {
-        syslog(LOG_INFO, "Successfully deleted directory marker %s for path %s. ", pathString.substr(1).c_str(), path);
+        syslog(LOG_INFO, "Successfully deleted directory marker %s for path %s. ", pathString.c_str()+1, path);
     }
     else
     {
-        AZS_DEBUGLOGV("Failed to delete directory marker %s at path %s, errno = %d.  Checking the .directory version.\n", mntPath, pathString.substr(1).c_str(), dir_blob_delete_errno);
+        AZS_DEBUGLOGV("Failed to delete directory marker %s at path %s, errno = %d.  Checking the .directory version.\n", mntPath, pathString.c_str()+1, dir_blob_delete_errno);
 
         pathString.append("/.directory");
 
@@ -229,7 +229,7 @@ int azs_rmdir(const char *path)
 
         if (old_dir_blob_delete_errno == 0)
         {
-            syslog(LOG_INFO, "Successfully deleted .directory-style directory marker for path %s to blob %s. ", path, pathString.substr(1).c_str());
+            syslog(LOG_INFO, "Successfully deleted .directory-style directory marker for path %s to blob %s. ", path, pathString.c_str()+1);
         }
         else
         {

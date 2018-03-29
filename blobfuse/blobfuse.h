@@ -146,25 +146,22 @@ int read_config(std::string configFile);
 
 // Helper function to prepend the 'tmpPath' to the input path.
 // Input is the logical file name being input to the FUSE API, output is the file name of the on-disk file in the file cache.
-std::string prepend_mnt_path_string(const std::string path);
+std::string prepend_mnt_path_string(const std::string& path);
 
 // Helper function to acquire a shared file lock while the file is open
 int shared_lock_file(int flags, int fd);
 
 // Helper function to create all directories in the path if they don't already exist.
-int ensure_files_directory_exists_in_cache(const std::string file_path);
+int ensure_files_directory_exists_in_cache(const std::string& file_path);
 
 // Greedily list all blobs using the input params.
-std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(std::string container, std::string delimiter, std::string prefix);
-
-// Return 'true' if there is at least one blob listed under the input prefix.
-bool list_one_blob_hierarchical(std::string container, std::string delimiter, std::string prefix);
+std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix);
 
 // Returns:
 // 0 if there's nothing there (the directory does not exist)
 // 1 If there's either the ".directory" blob, or the hdfs-type directory blob
 // 2 otherwise (the directory exists and is not empty.)
-int is_directory_empty(std::string container, std::string dir_name);
+int is_directory_empty(const std::string& container, const std::string& dir_name);
 
 // Returns true if the input has zero length and the "hdi_isfolder=true" metadata.
 bool is_directory_blob(unsigned long long size, std::vector<std::pair<std::string, std::string>> metadata);
