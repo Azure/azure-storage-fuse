@@ -9,7 +9,7 @@ namespace storage {
 void list_blobs_request_base::build_request(const storage_account &a, http_base &h) const {
     const auto &r = *this;
 
-    h.set_data_rate_timeout();
+    h.set_absolute_timeout();
 
     h.set_method(http_base::http_method::get);
 
@@ -52,7 +52,7 @@ void list_blobs_request_base::build_request(const storage_account &a, http_base 
 void list_blobs_hierarchical_request_base::build_request(const storage_account &a, http_base &h) const {
     const auto &r = *this;
 
-    h.set_data_rate_timeout();
+    h.set_absolute_timeout();
 
     h.set_method(http_base::http_method::get);
 

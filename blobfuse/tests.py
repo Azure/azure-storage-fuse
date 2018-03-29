@@ -14,8 +14,8 @@ import fcntl
 import multiprocessing
 
 class TestFuse(unittest.TestCase):
-    blobdir = "/path/to/mount" # Path to the mounted container
-    localdir = "/mnt/tmp" # A local temp directory, not the same one used by blobfuse.
+    blobdir = "/home/frley/fusemnt";
+    localdir = "/home/frley/testtmp";
     cachedir = "/mnt/blobfusetmp"
     src = ""
     dest = ""
