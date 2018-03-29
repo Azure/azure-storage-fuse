@@ -822,8 +822,9 @@ class TestFuse(unittest.TestCase):
             contents = testFile.read()
             self.assertEqual("rando".encode(), contents)
 
-        with open(testFilePath, 'wb') as testFile:
-            os.ftruncate(testFile, 30)
+        fd = os.open(testFilePath, os.O_RDWR)
+        os.ftruncate(fd, 30)
+        os.close(fd)
 
         self.assertEqual(os.stat(testFilePath).st_size, 30)
 
