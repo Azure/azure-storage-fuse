@@ -808,6 +808,28 @@ class TestFuse(unittest.TestCase):
 
         os.remove(testFilePath)
 
+    def test_truncate_file_non_zero(self):
+        testFileName = "TestFile"
+        testFilePath = os.path.join(self.blobstage, testFileName)
+
+        fd = os.open(testFilePath, os.O_CREAT | os.O_WRONLY)
+        os.write(fd, "random data".encode())
+        os.ftruncate(fd, 5)
+        os.close(fd)
+
+        self.assertEqual(os.stat(testFilePath).st_size, 5)
+        with open(testFilePath, 'rb') as testFile:
+            contents = testFile.read()
+            self.assertEqual("rando".encode(), contents)
+
+        with open(testFilePath, 'wb') as testFile:
+            os.ftruncate(testFile, 30)
+
+        self.assertEqual(os.stat(testFilePath).st_size, 30)
+
+        os.remove(testFilePath)
+
+
     def test_stat_file(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
