@@ -60,7 +60,7 @@ namespace microsoft_azure {
 
             virtual storage_iostream get_error_stream() const = 0;
 
-            virtual void set_absolute_timeout() = 0;
+            virtual void set_absolute_timeout(long long timeout) = 0;
 
             virtual void set_data_rate_timeout() = 0;
         };

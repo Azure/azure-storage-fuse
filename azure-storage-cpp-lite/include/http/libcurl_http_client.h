@@ -148,8 +148,8 @@ namespace microsoft_azure {
                 return m_input_stream;
             }
 
-            void set_absolute_timeout() override {
-                check_code(curl_easy_setopt(m_curl, CURLOPT_TIMEOUT, 30L)); // Timeout of 30 seconds
+            void set_absolute_timeout(long long timeout) override {
+                check_code(curl_easy_setopt(m_curl, CURLOPT_TIMEOUT, timeout)); // Absolute timeout
             }
 
             void set_data_rate_timeout() override {

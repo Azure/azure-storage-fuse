@@ -9,7 +9,7 @@ namespace microsoft_azure {
         void get_page_ranges_request_base::build_request(const storage_account &a, http_base &h) const {
             const auto &r = *this;
 
-            h.set_absolute_timeout();
+            h.set_absolute_timeout(30L);
 
             h.set_method(http_base::http_method::get);
 

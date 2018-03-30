@@ -9,7 +9,7 @@ namespace microsoft_azure {
         void delete_blob_request_base::build_request(const storage_account &a, http_base &h) const {
             const auto &r = *this;
 
-            h.set_absolute_timeout();
+            h.set_absolute_timeout(5L);
 
             h.set_method(http_base::http_method::del);
 
