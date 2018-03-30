@@ -458,20 +458,48 @@ int azs_truncate(const char * path, off_t off)
 {
     AZS_DEBUGLOGV("azs_truncate called.  Path = %s, offset = %s\n", path, to_str(off).c_str());
 
-    if (off != 0)
-    {
-        syslog(LOG_ERR, "Failing to truncate file; non-zero truncations are not supported.  Path = %s, offset = %s\n", path, to_str(off).c_str());
-        errno = 1; // TODO: not fail here
-        return -errno;
-    }
-
-    auto fmutex = file_lock_map::get_instance()->get_mutex(path);
-    std::lock_guard<std::mutex> lock(*fmutex);
-
     std::string pathString(path);
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
+
+    if (off != 0) // Truncating to zero gets optimized
+    {
+        // TODO: Refactor azs_open, azs_flush, and azs_release so as to not require us calling them directly here
+        struct fuse_file_info fi;
+        fi.flags = O_RDWR;
+        int res = azs_open(path, &fi);
+        if(res != 0)
+        {
+            syslog(LOG_ERR, "Failing azs_truncate operation on file %s due to failure %d from azs_open.\n.", path, res);
+            return res;
+        }
+
+        errno = 0;
+        int truncret = truncate(mntPath, off);
+        if (truncret == 0)
+        {
+            AZS_DEBUGLOGV("Successfully truncated file %s in the local file cache.", mntPath);
+            int flushret = azs_flush(path, &fi);
+            if(flushret != 0)
+            {
+                syslog(LOG_ERR, "Failing azs_truncate operation on file %s due to failure %d from azs_flush.  Note that truncate on cached file succeeded.\n.", path, flushret);
+                return flushret;
+            }
+        }
+        else
+        {
+            int truncate_errno = errno;
+            syslog(LOG_ERR, "Failing azs_truncate operation on file %s due to failure to truncate local file in cache.  Errno = %d.\n.", path, truncate_errno);
+            return -truncate_errno;
+        }
+
+        azs_release(path, &fi);
+        return 0;
+    }
+
+    auto fmutex = file_lock_map::get_instance()->get_mutex(path);
+    std::lock_guard<std::mutex> lock(*fmutex);
 
     struct stat buf;
     int statret = stat(mntPath, &buf);
