@@ -148,6 +148,23 @@ namespace microsoft_azure {
                 return m_input_stream;
             }
 
+            void set_absolute_timeout(long long timeout) override {
+                check_code(curl_easy_setopt(m_curl, CURLOPT_TIMEOUT, timeout)); // Absolute timeout
+
+                // For the moment, we are only using one type of timeout per operation, so we clear the other one, in case it was set for this handle by a prior operation:
+                check_code(curl_easy_setopt(m_curl, CURLOPT_LOW_SPEED_TIME, 0L)); 
+                check_code(curl_easy_setopt(m_curl, CURLOPT_LOW_SPEED_LIMIT, 0L));
+            }
+
+            void set_data_rate_timeout() override {
+                // If the download speed is less than 17KB/sec for more than a minute, timout. This time was selected because it should ensure that downloading each megabyte take no more than a minute.
+                check_code(curl_easy_setopt(m_curl, CURLOPT_LOW_SPEED_TIME, 60L)); 
+                check_code(curl_easy_setopt(m_curl, CURLOPT_LOW_SPEED_LIMIT, 1024L * 17L));
+
+                // For the moment, we are only using one type of timeout per operation, so we clear the other one, in case it was set for this handle by a prior operation:
+                check_code(curl_easy_setopt(m_curl, CURLOPT_TIMEOUT, 0L));
+            }
+
         private:
             std::shared_ptr<CurlEasyClient> m_client;
             CURL *m_curl;
