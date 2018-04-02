@@ -9,6 +9,8 @@ namespace storage {
 void list_blobs_request_base::build_request(const storage_account &a, http_base &h) const {
     const auto &r = *this;
 
+    h.set_absolute_timeout(30L);
+
     h.set_method(http_base::http_method::get);
 
     storage_url url = a.get_url(storage_account::service::blob);
@@ -49,6 +51,8 @@ void list_blobs_request_base::build_request(const storage_account &a, http_base 
 
 void list_blobs_hierarchical_request_base::build_request(const storage_account &a, http_base &h) const {
     const auto &r = *this;
+
+    h.set_absolute_timeout(30L);
 
     h.set_method(http_base::http_method::get);
 
