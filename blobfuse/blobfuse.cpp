@@ -222,7 +222,7 @@ void print_usage()
 
 void print_version()
 {
-    fprintf(stdout, "blobfuse 0.4\n");
+    fprintf(stdout, "blobfuse 1.0.0-RC-preview\n");
 }
 
 int set_log_mask(const char * min_log_level_char)
