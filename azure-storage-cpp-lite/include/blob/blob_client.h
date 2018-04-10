@@ -3,6 +3,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <syslog.h>
 
 #include "storage_EXPORTS.h"
 
