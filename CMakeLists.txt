@@ -138,6 +138,20 @@ if(UNIX)
     PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
     DESTINATION bin)
 
+  ## build blobcp
+  execute_process (
+    COMMAND bash -c "go build blobcp.go"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tools
+    RESULT_VARIABLE exitStatus
+  )
+
+  ## if build worked, install blobcp
+  if(NOT ${exitStatus})
+	install(FILES ${CMAKE_SOURCE_DIR}/tools/blobcp
+          PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+          DESTINATION bin)
+  endif()
+
   set(CPACK_GENERATOR "DEB")
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft - Azure Storage")
   set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 0.3 - FUSE adapter for Azure Blob Storage")
