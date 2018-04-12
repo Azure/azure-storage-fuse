@@ -97,6 +97,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
                 }
             }
             flock(fd, LOCK_UN);
+            close(fd);
             // We now know that there are no other open file handles to the file.  We're safe to continue with the cache update.
         }
 
@@ -488,6 +489,7 @@ int azs_truncate(const char * path, off_t off)
             if(flushret != 0)
             {
                 syslog(LOG_ERR, "Failing azs_truncate operation on file %s due to failure %d from azs_flush.  Note that truncate on cached file succeeded.\n.", path, flushret);
+                azs_release(path, &fi);
                 return flushret;
             }
         }
@@ -495,6 +497,7 @@ int azs_truncate(const char * path, off_t off)
         {
             int truncate_errno = errno;
             syslog(LOG_ERR, "Failing azs_truncate operation on file %s due to failure to truncate local file in cache.  Errno = %d.\n.", path, truncate_errno);
+            azs_release(path, &fi);
             return -truncate_errno;
         }
 
