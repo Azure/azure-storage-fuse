@@ -113,7 +113,7 @@ namespace microsoft_azure {
 
 
         blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token,  const unsigned int concurrency, const bool use_https, 
-									  const std::string &blob_endpoint)
+                                                                          const std::string &blob_endpoint)
         {
             if(account_name.empty() || ((account_key.empty() && sas_token.empty()) || (!account_key.empty() && !sas_token.empty())))
             {
@@ -133,15 +133,15 @@ namespace microsoft_azure {
             try
             {
                 std::shared_ptr<storage_credential>  cred;
-		if (account_key.length() > 0) 
-		{
-		    cred = std::make_shared<shared_key_credential>(accountName, accountKey);
-		}
-		else 
-		{
-		    // We have already verified that exactly one form of credentials is present, so if shared key is not present, it must be sas.
-		    cred = std::make_shared<shared_access_signature_credential>(sas_token);
-		}
+                if (account_key.length() > 0) 
+                {
+                    cred = std::make_shared<shared_key_credential>(accountName, accountKey);
+                }
+                else
+                {
+                    // We have already verified that exactly one form of credentials is present, so if shared key is not present, it must be sas.
+                    cred = std::make_shared<shared_access_signature_credential>(sas_token);
+                }
                 std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
                 std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
                 errno = 0;
@@ -149,11 +149,10 @@ namespace microsoft_azure {
             }
             catch(const std::exception &ex)
             {
-                syslog(LOG_ERR, "Unknown failure in blob_client_wrapper_init.  ex.what() = %s.", ex.what());
+                syslog(LOG_ERR, "Failed to create blob client.  ex.what() = %s.", ex.what());
                 errno = unknown_error;
                 return blob_client_wrapper(false);
             }
-
         }
 
         void blob_client_wrapper::create_container(const std::string &container)
