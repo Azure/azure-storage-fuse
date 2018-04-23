@@ -3,9 +3,9 @@ BLOBFS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 ## Use "export INCLUDE_TESTS=1" to enable building tests
 
-cmake_args='-DCMAKE_BUILD_TYPE=Release ..'
+cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo ..'
 if [ -n "${INCLUDE_TESTS}" ]; then
-    cmake_args='-DCMAKE_BUILD_TYPE=Release -DINCLUDE_TESTS=1 ..'
+    cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_TESTS=1 ..'
 fi
 
 ## install pkg-config, cmake, libcurl and libfuse first

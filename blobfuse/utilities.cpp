@@ -602,9 +602,9 @@ int azs_rename_directory(const char *src, const char *dst)
 
             dir_ent = readdir(dir_stream);
         }
-    }
 
-    closedir(dir_stream);
+        closedir(dir_stream);
+    }
 
     // Rename all files & directories that don't exist in the local cache.
     errno = 0;
