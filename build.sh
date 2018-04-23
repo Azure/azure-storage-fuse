@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 BLOBFS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 ## Use "export INCLUDE_TESTS=1" to enable building tests
