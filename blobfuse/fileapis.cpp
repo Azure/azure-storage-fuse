@@ -97,6 +97,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
                 }
             }
             flock(fd, LOCK_UN);
+            close(fd);
             // We now know that there are no other open file handles to the file.  We're safe to continue with the cache update.
         }
 
@@ -359,20 +360,24 @@ int azs_release(const char *path, struct fuse_file_info * fi)
 {
     AZS_DEBUGLOGV("azs_release called with path = %s, fi->flags = %d\n", path, fi->flags);
 
-    // TODO: Make this method resiliant to renames of the file (same way flush() is)
+    // Unlock the file
+    // Note that this will release the shared lock acquired in the corresponding open() call (the one that gave us this file descriptor, in the fuse_file_info).
+    // It will not release any locks acquired from other calls to open(), in this process or in others.
+    // If the file handle is invalid, this will fail with EBADF, which is not an issue here.
+    flock(((struct fhwrapper *)fi->fh)->fh, LOCK_UN);
+
+    // Close the file handle.
+    // This must be done, even if the file no longer exists, otherwise we're leaking file handles.
+    close(((struct fhwrapper *)fi->fh)->fh);
+
+// TODO: Make this method resiliant to renames of the file (same way flush() is)
     std::string pathString(path);
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
     if (access(mntPath, F_OK) != -1 )
     {
-        AZS_DEBUGLOGV("Closing the file handle and adding file to the GC from azs_release.  File = %s\n.", mntPath);
-
-        // Unlock the file and close the file handle.
-        // Note that this will release the shared lock acquired in the corresponding open() call (the one that gave us this file descriptor, in the fuse_file_info).
-        // It will not release any locks acquired from other calls to open(), in this process or in others.
-        flock(((struct fhwrapper *)fi->fh)->fh, LOCK_UN);
-        close(((struct fhwrapper *)fi->fh)->fh);
+        AZS_DEBUGLOGV("Adding file to the GC from azs_release.  File = %s\n.", mntPath);
 
         // store the file in the cleanup list
         gc_cache.add_file(pathString);
@@ -484,6 +489,7 @@ int azs_truncate(const char * path, off_t off)
             if(flushret != 0)
             {
                 syslog(LOG_ERR, "Failing azs_truncate operation on file %s due to failure %d from azs_flush.  Note that truncate on cached file succeeded.\n.", path, flushret);
+                azs_release(path, &fi);
                 return flushret;
             }
         }
@@ -491,6 +497,7 @@ int azs_truncate(const char * path, off_t off)
         {
             int truncate_errno = errno;
             syslog(LOG_ERR, "Failing azs_truncate operation on file %s due to failure to truncate local file in cache.  Errno = %d.\n.", path, truncate_errno);
+            azs_release(path, &fi);
             return -truncate_errno;
         }
 
