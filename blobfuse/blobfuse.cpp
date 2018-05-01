@@ -450,9 +450,10 @@ int validate_storage_connection()
             return 1;
         }
 
-        // Check if the account name/key and container is correct.
-        if(temp_azure_blob_client_wrapper.container_exists(str_options.containerName) == false
-                || errno != 0)
+        // Check if the account name/key and container is correct by attempting to list a blob.
+        // This will succeed even if there are zero blobs.
+        list_blobs_hierarchical_response response = temp_azure_blob_client_wrapper.list_blobs_hierarchical(str_options.containerName, "/", std::string(), std::string(), 1);
+        if(errno != 0)
         {
             syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
             fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
