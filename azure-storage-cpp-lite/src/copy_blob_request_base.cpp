@@ -34,8 +34,8 @@ namespace microsoft_azure {
             add_ms_header(h, headers, constants::header_ms_date, get_ms_date(date_format::rfc_1123));
             add_ms_header(h, headers, constants::header_ms_version, constants::header_value_storage_version);
 
-            // set copy dest
-            add_ms_header(h, headers, constants::header_ms_copy_source, source_url.get_domain() + source_url.get_path());
+            // set copy src
+            add_ms_header(h, headers, constants::header_ms_copy_source, a.credential()->transform_url(source_url.get_domain() + source_url.get_path()));
 
             a.credential()->sign_request(r, h, url, headers);
         }

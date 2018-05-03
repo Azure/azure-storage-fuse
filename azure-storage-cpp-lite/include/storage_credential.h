@@ -15,6 +15,9 @@ namespace microsoft_azure {
         class storage_credential {
         public:
             virtual void sign_request(const storage_request_base &, http_base &, const storage_url &, const storage_headers &) const {}
+            virtual std::string transform_url(std::string url) const {
+                return url;
+            }
         };
 
         class shared_key_credential : public storage_credential {
@@ -51,6 +54,7 @@ namespace microsoft_azure {
 	    }
 
             AZURE_STORAGE_API void sign_request(const storage_request_base &r, http_base &h, const storage_url &url, const storage_headers &headers) const override;
+            AZURE_STORAGE_API std::string transform_url(std::string url) const override;
 
         private:
             std::string m_sas_token;
