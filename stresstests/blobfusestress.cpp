@@ -31,6 +31,12 @@
 #include <condition_variable>
 #include <thread>
 
+// Config
+std::string perf_source_dir("/mnt/resource/tests/src");  // Source directory for test data.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
+std::string perf_dest_dir_1("/mnt/mountdir/stress");  // blobfuse directory to copy to.  All contents will be wiped.
+std::string perf_dest_dir_2("/mnt/resource/tests/dst");  // Local destination directory.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
+
+
 // There isn't really a built-in C++11 threadpool, and it ended up not being too difficult to code one up, with the specific behavior we need.
 // Basically, we start a bunch (constant number) of std::thread threads, and store them in m_threads.
 // We also store a deque (double-ended queue) of work to do, where a unit of work is some arbitrary std::function<void()>.  Work is performed in roughly FIFO order.
@@ -159,9 +165,13 @@ void destroy_path(std::string path_to_destroy)
 
 // Class used for running a single perf test.
 // At the moment, a single perf test consists of copying the entire (recursive) contents of a directory to the service, and then copying it back.
-// There are other interesting stress & performance alalyses we could run as well (many writers / readers to one file, for example), but we don't have infra for that yet.
-// Parameters for a single test are defined by the "populate" function, input in the constructor.  This function is expected to create some directory structure, to use as a source directory.
+// There are other interesting stress & performance analyses we could run as well (many writers / readers to 
+// one file, for example), but we don't have infra for that yet.
+// 
+// Parameters for a single test are defined by the "populate" function, input in the constructor.  This 
+// function is expected to create some directory structure, to use as a source directory.
 // The populate method is called in the constructor.  This is because it's not really part of the actual test, although we could move it into run().
+// 
 // run() runs the actual test.  That consists of the following steps:
 //    - Run a recursive copy from the source directory to the cloud directory, and time this operation.
 //    - Run a recusrive copy from the cloud directory to the local destination directory, and time this operation.
@@ -577,43 +587,47 @@ std::pair<size_t, size_t> populate_small(std::string source_dir, thread_pool& po
 
 int main(int argc, char *argv[])
 {
-    std::vector<std::function<std::pair<size_t, size_t>(std::string, thread_pool&)>> populate_fns
+    try
     {
-        populate_small,
-        populate_large,
-    };
-
-    std::cout << populate_fns.size() << " tests to run in total." << std::endl << std::endl;
-    for (int i = 0; i < populate_fns.size(); i++)
-    {
-        std::cout << std::endl << "Starting test " << i << "." << std::endl;
-        std::function<std::pair<size_t, size_t>(std::string, thread_pool&)> populate_func = populate_fns[i];
-
-        std::time_t start = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-        std::cout << "Start time = " << std::ctime(&start) << std::endl;
-        std::string source_dir("/mnt/resource/tests/src");  // Source directory for test data.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
-        std::string dest_dir_1("/home/asorrin/code/azure-storage-fuse/build/mountdir/stress");  // blobfuse directory to copy to.  All contents will be wiped.
-        std::string dest_dir_2("/mnt/resource/tests/dst");  // Local destination directory.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
-
-        int mkdirret = mkdir(source_dir.c_str(), 0777);
-        if (mkdirret < 0)
+        std::vector<std::function<std::pair<size_t, size_t>(std::string, thread_pool&)>> populate_fns
         {
-            std::stringstream error;
-            error << "Failed to make directory.  errno = " << errno << ", directory = " << source_dir;
-            throw std::runtime_error(error.str());
+            populate_small,
+            populate_large,
+        };
+
+        std::cout << populate_fns.size() << " tests to run in total." << std::endl << std::endl;
+        for (int i = 0; i < populate_fns.size(); i++)
+        {
+            std::cout << std::endl << "Starting test " << i << "." << std::endl;
+            std::function<std::pair<size_t, size_t>(std::string, thread_pool&)> populate_func = populate_fns[i];
+
+            std::time_t start = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
+            std::cout << "Start time = " << std::ctime(&start) << std::endl;
+
+            int mkdirret = mkdir(perf_source_dir.c_str(), 0777);
+            if (mkdirret < 0)
+            {
+                std::stringstream error;
+                error << "Failed to make directory.  errno = " << errno << ", directory = " << perf_source_dir;
+                throw std::runtime_error(error.str());
+            }
+
+
+            int parallel = 8; // Run 8 threads in parallel.
+            std::cout << "Parallel count = " << parallel << std::endl;
+            std::cout << "Starting generating test files." << std::endl;
+            perf_test test(parallel, populate_func, perf_source_dir, perf_dest_dir_1, perf_dest_dir_2);
+
+            std::cout << "Now running test." << std::endl;
+            test.run();
+
+            std::time_t end = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
+            std::cout << "End time = " << std::ctime(&end) << std::endl;
         }
-
-
-        int parallel = 8; // Run 8 threads in parallel.
-        std::cout << "Parallel count = " << parallel << std::endl;
-        std::cout << "Starting generating test files." << std::endl;
-        perf_test test(parallel, populate_func, source_dir, dest_dir_1, dest_dir_2);
-
-        std::cout << "Now running test." << std::endl;
-        test.run();
-
-        std::time_t end = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
-        std::cout << "End time = " << std::ctime(&end) << std::endl;
+    }
+    catch (const std::exception& e)
+    {
+        std::cout << "Critical error encountered.  e.what() = " << e.what() << std::endl;
     }
     return 0;
 }
