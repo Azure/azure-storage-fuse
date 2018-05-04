@@ -23,7 +23,7 @@ Even though only one REST call is actually needed here (the actual upload, in th
 
 Performance may also vary widely with system configurations.  For example, a 2-core machine will likely see much lower perf than a 16-core machine, for a very large workload.  Communicating with a storage account that's not co-located in the same data center as the source of the data transfers will also add significant latency to every operation.  This is why we record not only perf results, but also setup for running the perf tests
 
-Performance may also very widely with parallelism.  blobfuse is optimized if large jobs are run in parallel, but commands such as 'cp' don't offer this functionality.  (This is, in part, the purpose of the 'blobcp' tool, included with blobfuse.)  Optimizations for code that runs against a local disk may be detrimental to blobfuse, and vice versa.  ('stat', for example, is much cheaper on a local disk than with blobfuse, although there is room for improvement in the implementation via caching.)
+Performance may also vary widely with parallelism.  blobfuse is optimized if large jobs are run in parallel, but commands such as 'cp' don't offer this functionality.  (This is, in part, the purpose of the 'blobcp' tool, included with blobfuse.)  Optimizations for code that runs against a local disk may be detrimental to blobfuse, and vice versa.  ('stat', for example, is much cheaper on a local disk than with blobfuse, although there is room for improvement in the implementation via caching.)
 
 ## Limitations
 There's a lot of room for improvement with these perf tests.  For example:
