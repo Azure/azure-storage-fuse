@@ -65,17 +65,20 @@ namespace microsoft_azure {
 
         void shared_key_credential::sign_request(const table_request_base &, http_base &, const storage_url &, const storage_headers &) const {}
 
-        void shared_access_signature_credential::sign_request(const storage_request_base &, http_base &h, const storage_url &, const storage_headers &) const {
-            std::string transformed_url = h.get_url();
-            if (transformed_url.find('?') != std::string::npos) {
-                transformed_url.append("&");
+        std::string shared_access_signature_credential::transform_url(std::string url) const {
+            if (url.find('?') != std::string::npos) {
+                url.append("&");
             }
             else {
-                transformed_url.append("?");
+                url.append("?");
             }
-            transformed_url.append(m_sas_token);
-            h.set_url(transformed_url);
+            url.append(m_sas_token);
+            return url;
         }
 
+        void shared_access_signature_credential::sign_request(const storage_request_base &, http_base &h, const storage_url &, const storage_headers &) const {
+            std::string transformed_url = transform_url(h.get_url());
+            h.set_url(transformed_url);
+        }
     }
 }
