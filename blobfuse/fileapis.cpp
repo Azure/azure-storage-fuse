@@ -411,10 +411,10 @@ int azs_unlink(const char *path)
     // Acquiring the mutex here guards against that condition.
     auto fmutex = file_lock_map::get_instance()->get_mutex(path);
     std::lock_guard<std::mutex> lock(*fmutex);
-    int remove_success = remove(mntPath);
+    int remove_status = remove(mntPath);
     // We don't fail if the remove() failed, because that's just removing the file in the local file cache, which may or may not be there.
 
-    if (remove_success)
+    if (0 == remove_status)
     {
         AZS_DEBUGLOGV("Successfully removed file %s from local cache in azs_unlink.\n", mntPath);
     }
@@ -431,14 +431,15 @@ int azs_unlink(const char *path)
         int storage_errno = errno;
 
         // If we successfully removed the file locally and the blob does not exist, we should still return success - this accounts for the case where the file hasn't yet been uploaded.
-        if (!((remove_success == 0) && (storage_errno = 404)))
+        if ((0 == remove_status) && (404 == storage_errno))
         {
-            syslog(LOG_ERR, "Failure to delete blob %s (errno = %d) and local cached file does not exist; returning failure from azs_unlink", pathString.c_str()+1, storage_errno);
-            retval = 0 - map_errno(storage_errno);
+            syslog(LOG_INFO, "Blob representing path %s did not exist, but file in local cache was removed successfully.", path);
         }
         else
         {
-            syslog(LOG_INFO, "Blob representing path %s did not exist, but file in local cache was removed successfully.", path);
+            syslog(LOG_ERR, "Failure to delete blob %s (errno = %d), %s; returning failure from azs_unlink",
+                  pathString.c_str() + 1, storage_errno, remove_status ? "cached file deletion failed" : "cached file deleted");
+            retval = 0 - map_errno(storage_errno);
         }
     }
     else
