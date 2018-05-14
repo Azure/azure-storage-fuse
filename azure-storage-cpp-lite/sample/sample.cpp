@@ -69,13 +69,22 @@ int main()
     std::cout <<"Size of BLob: " << blobProperty.size << std::endl;
 
     auto blobs = bc.list_blobs_hierarchical(containerName, "/", "", "");
-    std::cout <<"Size of BLobs: " << blobs.size() << std::endl;
+    std::cout <<"Size of BLobs: " << blobs.blobs.size() << std::endl;
     std::cout <<"Error Size of BLobs: " << errno << std::endl;
     assert(errno == 0);
 
-    bc.download_blob_to_file(containerName, blobName, downloadFileName);
+    time_t last_modified;
+    bc.download_blob_to_file(containerName, blobName, downloadFileName, last_modified);
     std::cout <<"Download Blob done: " << errno << std::endl;
     assert(errno == 0);
+
+    exists = bc.container_exists(destContainerName);
+
+    if(!exists)
+    {
+        bc.create_container(destContainerName);
+        assert(errno == 0);
+    }
 
     // copy blob 
     bc.start_copy(containerName, blobName, destContainerName, destBlobName);
