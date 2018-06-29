@@ -541,7 +541,7 @@ namespace microsoft_azure {
                 block.id = block_id;
                 block.type = put_block_list_request_base::block_type::uncommitted;
                 block_list.push_back(block);
-                auto single_put = std::async(std::launch::async, [block_id, block_size, idx, this, buffer, offset, length, &container, &blob, &parallel, &mutex, &cv_mutex, &cv](){
+                auto single_put = std::async(std::launch::async, [block_id, this, buffer, length, &container, &blob, &parallel, &mutex, &cv_mutex, &cv](){
                         {
                             std::unique_lock<std::mutex> lk(cv_mutex);
                             cv.wait(lk, [&parallel, &mutex]() {

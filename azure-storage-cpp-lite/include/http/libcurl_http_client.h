@@ -72,7 +72,7 @@ namespace microsoft_azure {
                     return "";
                 }
             }
-            const std::map<std::string, std::string>& get_headers() const {
+            const std::map<std::string, std::string>& get_headers() const override {
                 return m_headers;
             }
 

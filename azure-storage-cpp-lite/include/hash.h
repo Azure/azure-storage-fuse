@@ -7,8 +7,12 @@
 #include <Windows.h>
 #include <bcrypt.h>
 #else
+#ifdef USE_OPENSSL
+#include <openssl/hmac.h>
+#else
 #include <gnutls/gnutls.h>
 #include <gnutls/crypto.h>
+#endif
 #define SHA256_DIGEST_LENGTH    32
 #endif
 

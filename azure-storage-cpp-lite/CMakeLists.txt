@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 2.8)
 set(AZURE_STORAGE_HEADER
   include/storage_EXPORTS.h
 
@@ -110,13 +110,25 @@ if(MSVC)
   include_directories(${CMAKE_SOURCE_DIR}/include ${CMAKE_CURRENT_SOURCE_DIR}/../local/include)
   link_directories(${CMAKE_CURRENT_SOURCE_DIR}/../local/lib)
 else(MSVC)
+
+  option(USE_OPENSSL "Use OpenSSL instead of GnuTLS" OFF)
+
   find_package(Threads REQUIRED)
   find_package(CURL REQUIRED)
   find_package(OpenSSL REQUIRED)
+
+  if (NOT ${USE_OPENSSL})
+    find_package(GnuTLS REQUIRED)
+    set(EXTRA_INCLUDE ${GNUTLS_INCLUDE_DIR})
+    set(EXTRA_LIBRARIES ${GNUTLS_LIBRARIES})
+  else()
+    add_definitions(-DUSE_OPENSSL)
+  endif()
+
   add_definitions(-std=c++11)
   set(WARNING "-Wall -Wextra -Werror -pedantic -pedantic-errors")
   set(CMAKE_CXX_FLAGS "${CMAKE_THREAD_LIBS_INIT} ${WARNING} ${CMAKE_CXX_FLAGS}")
-  include_directories(${CMAKE_SOURCE_DIR}/include ${CURL_INCLUDE_DIRS} ${OPENSSL_INCLUDE_DIR})
+  include_directories(${CMAKE_SOURCE_DIR}/include ${CURL_INCLUDE_DIRS} ${OPENSSL_INCLUDE_DIR} ${EXTRA_INCLUDE})
 endif(MSVC)
 
 set(CMAKE_MACOSX_RPATH ON)
@@ -125,5 +137,7 @@ add_library(azure-storage SHARED ${AZURE_STORAGE_HEADER} ${AZURE_STORAGE_SOURCE}
 if(MSVC)
   target_link_libraries(azure-storage bcrypt libcurl)
 else(MSVC)
-  target_link_libraries(azure-storage ${CURL_LIBRARIES} ${OPENSSL_CRYPTO_LIBRARY} ${OPENSSL_SSL_LIBRARY})
+  target_link_libraries(azure-storage ${CURL_LIBRARIES} ${OPENSSL_CRYPTO_LIBRARY} ${OPENSSL_SSL_LIBRARY} ${EXTRA_LIBRARIES})
 endif(MSVC)
+
+add_subdirectory(sample)
