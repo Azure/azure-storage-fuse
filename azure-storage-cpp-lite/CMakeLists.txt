@@ -116,6 +116,7 @@ else(MSVC)
   find_package(Threads REQUIRED)
   find_package(CURL REQUIRED)
   find_package(OpenSSL REQUIRED)
+  pkg_search_module(UUID REQUIRED uuid)
 
   if (NOT ${USE_OPENSSL})
     find_package(GnuTLS REQUIRED)
@@ -137,7 +138,7 @@ add_library(azure-storage SHARED ${AZURE_STORAGE_HEADER} ${AZURE_STORAGE_SOURCE}
 if(MSVC)
   target_link_libraries(azure-storage bcrypt libcurl)
 else(MSVC)
-  target_link_libraries(azure-storage ${CURL_LIBRARIES} ${OPENSSL_CRYPTO_LIBRARY} ${OPENSSL_SSL_LIBRARY} ${EXTRA_LIBRARIES})
+  target_link_libraries(azure-storage ${CURL_LIBRARIES} ${UUID_LIBRARIES} ${OPENSSL_CRYPTO_LIBRARY} ${OPENSSL_SSL_LIBRARY} ${EXTRA_LIBRARIES})
 endif(MSVC)
 
 add_subdirectory(sample)
