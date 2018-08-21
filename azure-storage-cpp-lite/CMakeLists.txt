@@ -129,7 +129,7 @@ else(MSVC)
   add_definitions(-std=c++11)
   set(WARNING "-Wall -Wextra -Werror -pedantic -pedantic-errors")
   set(CMAKE_CXX_FLAGS "${CMAKE_THREAD_LIBS_INIT} ${WARNING} ${CMAKE_CXX_FLAGS}")
-  include_directories(${CMAKE_SOURCE_DIR}/include ${CURL_INCLUDE_DIRS} ${OPENSSL_INCLUDE_DIR} ${EXTRA_INCLUDE})
+  include_directories(${CMAKE_SOURCE_DIR}/include ${CURL_INCLUDE_DIRS} ${OPENSSL_INCLUDE_DIR} ${UUID_INCLUDE_DIR} ${EXTRA_INCLUDE})
 endif(MSVC)
 
 set(CMAKE_MACOSX_RPATH ON)
