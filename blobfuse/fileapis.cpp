@@ -232,6 +232,62 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     return 0;
 }
 
+int azs_symlink(const char *from, const char *to)
+{
+    AZS_DEBUGLOGV("azs_symlink called with from = %s to = %s\n", from, to);
+
+    auto fmutex = file_lock_map::get_instance()->get_mutex(from);
+    std::lock_guard<std::mutex> lock(*fmutex);
+
+    std::vector<std::pair<std::string, std::string>> metadata;
+    metadata.push_back(std::make_pair("is_symlink", "true"));
+    std::istringstream is(from);
+
+    errno = 0;
+    azure_blob_client_wrapper->upload_block_blob_from_stream(str_options.containerName, to+1, is, metadata);
+    if (errno != 0)
+    {
+        int storage_errno = errno;
+        syslog(LOG_ERR, "Failing blob upload in azs_symlink with input path %s because of an error from upload_block_blob_from_stream.  Errno = %d.\n", to, storage_errno);
+        return 0 - map_errno(storage_errno);
+    }
+    else
+    {
+        syslog(LOG_INFO, "Successfully uploaded file %s.\n", to);
+    }
+
+    return 0;
+}
+
+int azs_readlink(const char *path, char *buf, size_t size)
+{
+    AZS_DEBUGLOGV("azs_readlink called with path = %s, buf size = %ld\n", path, size);
+
+    auto fmutex = file_lock_map::get_instance()->get_mutex(path);
+    std::lock_guard<std::mutex> lock(*fmutex);
+
+    blob_property prop = azure_blob_client_wrapper->get_blob_property(str_options.containerName, path+1);
+
+    std::stringstream os;
+
+    errno = 0;
+    azure_blob_client_wrapper->download_blob_to_stream(str_options.containerName, path+1, 0, prop.size, os);
+    if (errno != 0)
+    {
+        int storage_errno = errno;
+        syslog(LOG_ERR, "Failing blob download in azs_readlink with path %s because of an error from download_blob_to_stream.  Errno = %d.\n", path, storage_errno);
+            return 0 - map_errno(storage_errno);
+    }
+    else
+    {
+	os.read(buf, prop.size);
+	buf[prop.size]= '\0';
+        syslog(LOG_INFO, "Successfully downloaded the file %s with buf = %s.\n", path, buf);
+    }
+    
+    return 0;
+}
+
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 /**
  * Write data to the file.

@@ -138,23 +138,35 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
             // TODO: order or hash the list to improve perf
             if (std::find(local_list_results.begin(), local_list_results.end(), prev_token_str) == local_list_results.end())
             {
-                if (!listResults[i].is_directory && !is_directory_blob(listResults[i].content_length, listResults[i].metadata))
-                {
-                    if ((prev_token_str.size() > 0) && (strcmp(prev_token_str.c_str(), former_directory_signifier.c_str()) != 0))
+		if ((prev_token_str.size() > 0))
+		{
+                    if (!listResults[i].is_directory && !is_directory_blob(listResults[i].content_length, listResults[i].metadata))
                     {
+                        if ((strcmp(prev_token_str.c_str(), former_directory_signifier.c_str()) != 0))
+                        {
+                            struct stat stbuf;
+                            stbuf.st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+                            stbuf.st_uid = fuse_get_context()->uid;
+                            stbuf.st_gid = fuse_get_context()->gid;
+                            stbuf.st_nlink = 1;
+                            stbuf.st_size = listResults[i].content_length;
+                            fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+                            AZS_DEBUGLOGV("Blob %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
+                        }
+                    }
+		    else if(is_symlink_blob(listResults[i].metadata))
+		    {
                         struct stat stbuf;
-                        stbuf.st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+                        stbuf.st_mode = S_IFLNK | default_permission; // Regular file (not a directory)
                         stbuf.st_uid = fuse_get_context()->uid;
                         stbuf.st_gid = fuse_get_context()->gid;
                         stbuf.st_nlink = 1;
                         stbuf.st_size = listResults[i].content_length;
                         fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
-                        AZS_DEBUGLOGV("Blob %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
-                    }
-                }
-                else
-                {
-                    if (prev_token_str.size() > 0)
+                        AZS_DEBUGLOGV("Blob symlink %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
+
+		    }
+                    else
                     {
                         struct stat stbuf;
                         stbuf.st_mode = S_IFDIR | default_permission;
@@ -164,7 +176,8 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
                         AZS_DEBUGLOGV("Blob directory %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
                     }
-                }
+		}
+
                 // Avoid duplicates
                 local_list_results.push_back(prev_token_str);
 

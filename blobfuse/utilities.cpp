@@ -184,6 +184,18 @@ bool is_directory_blob(unsigned long long size, std::vector<std::pair<std::strin
     return false;
 }
 
+bool is_symlink_blob(std::vector<std::pair<std::string, std::string>> metadata)
+{
+    for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
+    {
+        if ((iter->first.compare("is_symlink") == 0) && (iter->second.compare("true") == 0))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
 int ensure_files_directory_exists_in_cache(const std::string& file_path)
 {
     char *pp;
@@ -409,7 +421,18 @@ int azs_getattr(const char *path, struct stat *stbuf)
             stbuf->st_nlink = is_directory_empty(str_options.containerName, blobNameStr) == D_EMPTY ? 2 : 3;
             stbuf->st_size = 4096;
             return 0;
-        }
+        } else if(is_symlink_blob(blob_property.metadata))
+	{
+	    AZS_DEBUGLOGV("Blob %s, representing a symlink, found during get_attr.\n", path);
+            stbuf->st_mode = S_IFLNK | default_permission;
+            // If st_nlink = 2, means direcotry is empty.
+            // Directory size will affect behaviour for mv, rmdir, cp etc.
+            stbuf->st_uid = fuse_get_context()->uid;
+            stbuf->st_gid = fuse_get_context()->gid;
+            stbuf->st_nlink = 1;
+            stbuf->st_size = blob_property.size;
+            return 0;
+	}
 
         AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
         stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
@@ -491,11 +514,6 @@ void azs_destroy(void * /*private_data*/)
 int azs_access(const char * /*path*/, int /*mask*/)
 {
     return 0;  // permit all access
-}
-
-int azs_readlink(const char * /*path*/, char * /*buf*/, size_t /*size*/)
-{
-    return -EINVAL; // not a symlink
 }
 
 int azs_fsync(const char * /*path*/, int /*isdatasync*/, struct fuse_file_info * /*fi*/)

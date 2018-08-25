@@ -166,6 +166,9 @@ int is_directory_empty(const std::string& container, const std::string& dir_name
 // Returns true if the input has zero length and the "hdi_isfolder=true" metadata.
 bool is_directory_blob(unsigned long long size, std::vector<std::pair<std::string, std::string>> metadata);
 
+// Returns true if the metadata contains "is_symlink=true"
+bool is_symlink_blob(std::vector<std::pair<std::string, std::string>> metadata);
+
 /**
  * get_attr is the general-purpose "get information about the file or directory at this path"
  * function called by FUSE.  Most important is to return whether the item is a file or a directory.
@@ -340,10 +343,12 @@ void* azs_init(struct fuse_conn_info * conn);
  */
 void azs_destroy(void *private_data);
 
+int azs_readlink(const char *path, char *buf, size_t size);
+int azs_symlink(const char *from, const char *to);
+
 /* Not implemented functions.
  */
 int azs_access(const char *path, int mask);
-int azs_readlink(const char *path, char *buf, size_t size);
 int azs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi);
 int azs_chown(const char *path, uid_t uid, gid_t gid);
 int azs_chmod(const char *path, mode_t mode);
