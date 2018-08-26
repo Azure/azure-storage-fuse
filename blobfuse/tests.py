@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# This Python file uses the following encoding: utf-8
 from subprocess import call
 import os
 import shutil
@@ -169,6 +170,39 @@ class TestFuse(unittest.TestCase):
         os.rmdir(testDir)
         self.assertFalse(os.path.exists(testDir))
         self.assertFalse(os.path.isdir(testDir))
+
+    def test_symlink_operations(self):
+        testSymlinkDir = os.path.join(self.blobstage, "test-symlink-directory")
+        testSymlinkFile = os.path.join(self.blobstage, "test-symlink-file")
+        testDir = os.path.join(self.blobstage, "test-dir")
+
+        self.assertFalse(os.path.exists(testSymlinkDir))
+        self.assertFalse(os.path.islink(testSymlinkDir))
+
+        os.makedirs(testDir)
+        os.symlink(testDir, testSymlinkDir)
+        self.assertTrue(os.path.exists(testDir))
+        self.assertTrue(os.path.islink(testSymlinkDir))
+        
+        filetxt = "Some file text here."
+        testFilePath = os.path.join(testDir, "file1")
+        with open(testFilePath, 'w') as fileblob:
+            fileblob.write(filetxt)
+
+        os.symlink(testFilePath, testSymlinkFile) 
+
+        # test accessing data with the symlink directory path
+        testFilewSymlinkPath = os.path.join(testSymlinkDir, "file1")
+        self.assertTrue(os.path.exists(testFilewSymlinkPath))
+        with open(testFilewSymlinkPath, 'r') as testFile:
+            contents = testFile.read()
+            self.assertEqual(filetxt, contents)
+
+        # test accessing the same data with the symlink file path
+        self.assertTrue(os.path.exists(testSymlinkFile))
+        with open(testSymlinkFile, 'r') as testFile2:
+            contents2 = testFile2.read()
+            self.assertEqual(filetxt, contents2)
 
     def test_file_operations(self):
         testFilePath = os.path.join(self.blobstage, "testfile")
