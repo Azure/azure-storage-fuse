@@ -327,6 +327,18 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
                 }
             }
 
+            // skip upload of unchanged file
+            if (buf.st_mtime > ((struct fhwrapper *)fi->fh)->last_upload_mtime)
+            {
+                ((struct fhwrapper *)fi->fh)->last_upload_mtime = buf.st_mtime;
+            }
+            else
+            {
+                AZS_DEBUGLOGV("Skipped blob upload in azs_flush with input path %s because file was not updated since last upload.\n", path);
+                free(path_buffer);
+                return 0;
+            }
+
             // TODO: This will currently upload the full file on every flush() call.  We may want to keep track of whether
             // or not flush() has been called already, and not re-upload the file each time.
             std::vector<std::pair<std::string, std::string>> metadata;
@@ -359,6 +371,9 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
 int azs_release(const char *path, struct fuse_file_info * fi)
 {
     AZS_DEBUGLOGV("azs_release called with path = %s, fi->flags = %d\n", path, fi->flags);
+
+    // it is not guaranteed that flush is always called (NFS for example), but release is always called, so call flush here.
+    azs_flush(path, fi);
 
     // Unlock the file
     // Note that this will release the shared lock acquired in the corresponding open() call (the one that gave us this file descriptor, in the fuse_file_info).
