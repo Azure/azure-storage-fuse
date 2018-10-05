@@ -65,5 +65,19 @@ namespace microsoft_azure {
             void sign_request(const storage_request_base &, http_base &, const storage_url &, const storage_headers &) const override {}
         };
 
+        class token_credential : public storage_credential {
+        public:
+            AZURE_STORAGE_API token_credential(const std::string &token);
+
+            void sign_request(const storage_request_base &, http_base &, const storage_url &, const storage_headers &) const override;
+
+            const std::string &token() const {
+                return m_token;
+            }
+
+        private:
+            std::string m_token;
+        };
+
     }
 }
