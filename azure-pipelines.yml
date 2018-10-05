@@ -1,0 +1,16 @@
+pool:
+  vmImage: 'Ubuntu 16.04'
+
+steps:
+- script: sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev -y
+  displayName: Install dependencies
+- script: |
+    mkdir -p azure-storage-cpp-lite/build && cd azure-storage-cpp-lite/build
+    cmake ..
+    make -j
+  displayName: Build libazure-storage.so
+- script: |
+    mkdir build && cd build
+    cmake ..
+    make -j
+  displayName: Build blobfuse
