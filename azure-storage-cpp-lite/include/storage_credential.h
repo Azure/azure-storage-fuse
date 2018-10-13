@@ -75,6 +75,8 @@ namespace microsoft_azure {
                 return m_token;
             }
 
+            void set_token(const std::string& token);
+
         private:
             std::string m_token;
         };

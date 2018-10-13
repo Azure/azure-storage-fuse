@@ -84,6 +84,10 @@ namespace microsoft_azure {
         AZURE_STORAGE_API token_credential::token_credential(const std::string &token)
             : m_token(token) {}
 
+        void token_credential::set_token(const std::string& token) {
+            m_token = token;
+        }
+
         void token_credential::sign_request(const storage_request_base &, http_base &h, const storage_url &, const storage_headers &) const {
             h.add_header(constants::header_authorization, "Bearer " + m_token);
         }
