@@ -3,7 +3,7 @@
 
 blobfuse is an open source project developed to provide a virtual filesystem backed by the Azure Blob storage. It uses the [libfuse](https://github.com/libfuse/libfuse) open source library to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage Blob REST APIs.
 
-Please note that this tool is currently in Preview, and need your feedback for improvements. Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/requests/questions.
+Blobfuse is stable, and is supported by Azure Storage given that it is used within its limits documented here. Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/requests/questions.
 
 ## Features
 - Mount a Blob storage container on Linux
@@ -56,12 +56,14 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 - When blobfuse receives an 'open' request for a file, it will block and download the entire content of the blob down to the cache location specified in ```--tmp-path```
 - All read and writes will go to the cache location when the file is open
 - When blobfuse receives a 'close' request for the file, it will block and upload the entire content to Blob storage, and return success/failure to the 'close' call.
-- If blobfuse receives another open request within ```--file-cache-timeout-in-seconds```, it will simply use the existing file in the local cache rather than downloading the file again from Blob storage
+- If blobfuse receives another open request within ```--file-cache-timeout-in-seconds```, it will simply use the existing file in the local cache rather than downloading the file again from Blob storage.
+- Files in the cache (```--tmp-path```) will be deleted after ```--file-cache-timeout-in-seconds```. Make sure to configure your tmp path  with enough space to accomodate this behavior, or set ```--file-cache-timeout-in-seconds``` to 0 to accelerate deletion of cached files.
 
 ### Performance and caching
 Please take careful note of the following points, before using blobfuse:
 - In order to achieve reasonable performance, blobfuse requires a temporary directory to use as a local cache. This directory will contain the full contents of any file (blob) read to or written from through blobfuse. Cached files will be purged as they age (--file-cache-timeout-in-seconds) if there are no longer open file handles to them.
   - Putting the cache directory on a ramdisk, or on an SSD (ephemeral disk on Azure) will greatly enhance performance.
+  - Blobfuse currently does not manage available disk space in the tmp path. Make sure to have enough space, or reduce ```--file-cache-timeout-in-seconds``` value to accelerating purging cached files.
   - In order to delete the cache, un-mount and re-mount blobfuse.
   - Do not use the same cache directory for multiple instances of blobfuse, or for any other purpose while blobfuse is running.
 
