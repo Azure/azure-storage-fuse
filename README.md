@@ -15,6 +15,9 @@ Blobfuse is stable, and is supported by Azure Storage given that it is used with
 ## Installation
 You can install blobfuse from the Linux Software Repository for Microsoft products. The process is explained in the [blobfuse installation](https://github.com/Azure/azure-storage-fuse/wiki/1.-Installation) page. Alternatively, you can clone this repository, install the dependencies (fuse, libcurl, gcrypt and GnuTLS) and build from source code. See details in the [wiki](https://github.com/Azure/azure-storage-fuse/wiki/1.-Installation#build-from-source).
 
+## Submodule
+blobfuse uses azure-storage-cpplite as the SDK to communicate with Azure Storage services, therefore include it as Github submodule. To initialize azure-storage-cpplite, use `git submodule update --init`.
+
 ## Usage
 
 ### Mounting

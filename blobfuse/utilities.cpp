@@ -221,10 +221,10 @@ int ensure_files_directory_exists_in_cache(const std::string& file_path)
     return status;
 }
 
-std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix)
+std::vector<list_blobs_segmented_item> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix)
 {
     static const int maxFailCount = 20;
-    std::vector<list_blobs_hierarchical_item> results;
+    std::vector<list_blobs_segmented_item> results;
 
     std::string continuation;
 
@@ -233,15 +233,15 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(const std:
     int failcount = 0;
     do
     {
-        AZS_DEBUGLOGV("About to call list_blobs_hierarchial.  Container = %s, delimiter = %s, continuation = %s, prefix = %s\n", container.c_str(), delimiter.c_str(), continuation.c_str(), prefix.c_str());
+        AZS_DEBUGLOGV("About to call list_blobs_segmented.  Container = %s, delimiter = %s, continuation = %s, prefix = %s\n", container.c_str(), delimiter.c_str(), continuation.c_str(), prefix.c_str());
 
         errno = 0;
-        list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix);
+        list_blobs_segmented_response response = azure_blob_client_wrapper->list_blobs_segmented(container, delimiter, continuation, prefix);
         if (errno == 0)
         {
             success = true;
             failcount = 0;
-            AZS_DEBUGLOGV("Successful call to list_blobs_hierarchical.  results count = %s, next_marker = %s.\n", to_str(response.blobs.size()).c_str(), response.next_marker.c_str());
+            AZS_DEBUGLOGV("Successful call to list_blobs_segmented.  results count = %s, next_marker = %s.\n", to_str(response.blobs.size()).c_str(), response.next_marker.c_str());
             continuation = response.next_marker;
             if(response.blobs.size() > 0)
             {
@@ -258,7 +258,7 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(const std:
         {
             failcount++;
             success = false;
-            syslog(LOG_WARNING, "list_blobs_hierarchical failed for the %d time with errno = %d.\n", failcount, errno);
+            syslog(LOG_WARNING, "list_blobs_segmented failed for the %d time with errno = %d.\n", failcount, errno);
 
         }
     } while (((continuation.size() > 0) || !success) && (failcount < maxFailCount));
@@ -302,7 +302,7 @@ int is_directory_empty(const std::string& container, const std::string& dir_name
     do
     {
         errno = 0;
-        list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix_with_slash, 2);
+        list_blobs_segmented_response response = azure_blob_client_wrapper->list_blobs_segmented(container, delimiter, continuation, prefix_with_slash, 2);
         if (errno == 0)
         {
             success = true;
@@ -608,7 +608,7 @@ int azs_rename_directory(const char *src, const char *dst)
 
     // Rename all files & directories that don't exist in the local cache.
     errno = 0;
-    std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", srcPathStr.substr(1));
+    std::vector<list_blobs_segmented_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", srcPathStr.substr(1));
     if (errno != 0)
     {
         int storage_errno = errno;

@@ -44,7 +44,7 @@
 // instruct gcrypt to use pthread
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
-using namespace microsoft_azure::storage;
+using namespace azure::storage_lite;
 
 // We use two different locking schemes to protect files / blobs against data corruption and data loss scenarios.
 // The first is an in-memory std::mutex, the second is flock (Linux).  Each file path gets its own mutex and flock lock.
@@ -155,7 +155,7 @@ int shared_lock_file(int flags, int fd);
 int ensure_files_directory_exists_in_cache(const std::string& file_path);
 
 // Greedily list all blobs using the input params.
-std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix);
+std::vector<list_blobs_segmented_item> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix);
 
 // Returns:
 // 0 if there's nothing there (the directory does not exist)

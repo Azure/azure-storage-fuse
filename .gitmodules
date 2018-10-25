@@ -1,0 +1,3 @@
+[submodule "azure-storage-cpplite"]
+	path = azure-storage-cpplite
+	url = https://github.com/Azure/azure-storage-cpplite
