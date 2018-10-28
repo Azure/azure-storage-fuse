@@ -22,6 +22,28 @@ std::string prepend_mnt_path_string(const std::string& path)
     return result.append(str_options.tmpPath).append("/root").append(path);
 }
 
+// return true if disk space is over high_threshold while gc is off, or over low_threshold where gc is on
+bool check_disk_space(int high_threshold, int low_threshold, bool gc_state)
+{
+	struct statvfs buf;
+	if(statvfs(str_options.tmpPath.c_str(), &buf)!= 0) {
+	    return false;
+	}
+
+	// calculate percentage of disk utilization
+	long total = buf.f_frsize * buf.f_blocks;
+        long util = (total - buf.f_bsize * buf.f_bfree);
+	int percent = (int)(util*100/total);
+	AZS_DEBUGLOGV("Disk space utilization: %d %%\n", percent);
+
+	if(percent>=high_threshold && !gc_state)
+		return true;
+	else if(percent>=low_threshold && gc_state)
+		return true;
+	else
+		return false;
+}
+
 void gc_cache::add_file(std::string path)
 {
     file_to_delete file;
@@ -39,10 +61,11 @@ void gc_cache::run()
     t1.detach();
 }
 
-// cleanup function to clean cached files that are too old
+// cleanup function to clean cached files when they are too old or whenever the disk space threshold has been reached
 void gc_cache::run_gc_cache()
 {
 
+    bool disk_threshold_reached = false;
     while(true){
 
         // lock the deque
@@ -61,13 +84,13 @@ void gc_cache::run_gc_cache()
         if(is_empty)
         {
             //run it every 1 second
-            usleep(1000);
+            usleep(1000000);
             continue;
         }
 
         time_t now = time(NULL);
-        //check if the closed time is old enough to delete
-        if((now - file.closed_time) > file_cache_timeout_in_seconds)
+        //check if the closed time is old enough to delete or whether the disk space threshold has been reached
+        if((now - file.closed_time) > file_cache_timeout_in_seconds || disk_threshold_reached)
         {
             AZS_DEBUGLOGV("File %s being considered for deletion by file cache GC.\n", file.path.c_str());
 
@@ -83,7 +106,7 @@ void gc_cache::run_gc_cache()
 
             struct stat buf;
             stat(mntPath, &buf);
-            if (((now - buf.st_mtime) > file_cache_timeout_in_seconds) && ((now - buf.st_ctime) > file_cache_timeout_in_seconds))
+            if ((((now - buf.st_mtime) > file_cache_timeout_in_seconds) && ((now - buf.st_ctime) > file_cache_timeout_in_seconds)) || disk_threshold_reached)
             {
                 //clean up the file from cache
                 int fd = open(mntPath, O_WRONLY);
@@ -109,6 +132,11 @@ void gc_cache::run_gc_cache()
                         AZS_DEBUGLOGV("GC cleanup of cached file %s.\n", mntPath);
                         unlink(mntPath);
                         flock(fd, LOCK_UN);
+
+			// check disk space after the cleanup
+			disk_threshold_reached = check_disk_space(90, 80, disk_threshold_reached);
+                 	AZS_DEBUGLOGV("Disk space threshold after the file cleanup: %d\n", disk_threshold_reached);
+
                     }
 
                     close(fd);
@@ -129,7 +157,9 @@ void gc_cache::run_gc_cache()
         else
         {
             // no file was timed out - let's wait a second
-            usleep(1000);
+            usleep(1000000);
+            disk_threshold_reached = check_disk_space(90, 80, disk_threshold_reached);
+            AZS_DEBUGLOGV("Disk space : %d\n", disk_threshold_reached);
         }
     }
 
