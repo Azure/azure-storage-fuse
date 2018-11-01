@@ -32,7 +32,7 @@ mkdir -p /mnt/blobfusetmp
 chown <myuser> /mnt/blobfusetmp
 ```
 
-Create your mountpoint (```mkdir /path/to/mount```) and mount with blobfuse:
+Create your mountpoint (```mkdir /path/to/mount```) and mount a Blob container (must already exist) with blobfuse:
 ```
 blobfuse /path/to/mount --container-name=mycontainer --tmp-path=/mnt/blobfusetmp
 ```
