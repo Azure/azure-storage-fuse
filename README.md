@@ -37,6 +37,9 @@ Create your mountpoint (```mkdir /path/to/mount```) and mount a Blob container (
 blobfuse /path/to/mount --container-name=mycontainer --tmp-path=/mnt/blobfusetmp
 ```
 
+**NOTE**
+Use absolute paths for directory paths in the command. Relative, and shortcut paths (~/) do not work.
+
 For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse/wiki/2.-Configuring-and-Running)
 
 ### Mount Options
