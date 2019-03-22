@@ -56,6 +56,7 @@ using namespace microsoft_azure::storage;
 // This class contains mutexes that we use to lock file paths during blob upload / download / delete.
 // Each blob / file path gets its own mutex.
 // This mutex should never be held when control is not in an open(), flush(), or unlink() method.
+
 class file_lock_map
 {
 public:
@@ -142,7 +143,7 @@ extern const std::string former_directory_signifier;
 int map_errno(int error);
 
 // Read Storage connection information from the config file
-int read_config(std::string configFile);
+int read_config(const std::string& configFile);
 
 // Helper function to prepend the 'tmpPath' to the input path.
 // Input is the logical file name being input to the FUSE API, output is the file name of the on-disk file in the file cache.
@@ -328,7 +329,7 @@ int azs_rename(const char *src, const char *dst);
  * @param  conn Configuration info of fuse driver.
  * @return      TODO: Error codes.
  */
-void* azs_init(struct fuse_conn_info * conn);
+void* azs_init(struct fuse_conn_info *conn);
 
 /**
  * Un-mount the file system
