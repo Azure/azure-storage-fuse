@@ -181,7 +181,7 @@ int read_config(const std::string configFile)
 }
 
 
-void *azs_init(struct fuse_conn_info * conn)
+void *azs_init(struct fuse_conn_info *conn)
 {
     azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, 20/*concurrency*/, str_options.use_https,
                                                                                                                     str_options.blobEndpoint));
