@@ -122,19 +122,10 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     filler(buf, ".", &strootbuf, 0);
     filler(buf, "..", &stparentbuf, 0);
 
-<<<<<<< HEAD
-    for (size_t i = 0; i < listResults.size(); i++)
-    {
-        int fillerResult;
-        // We need to parse out just the trailing part of the path name.
-        int len = listResults[i].name.size();
-        if (len > 0)
-=======
     for (size_t result_lists_index = 0; result_lists_index < listResults.size(); result_lists_index++)
     {
         int start = listResults[result_lists_index].second ? 1 : 0;
         for (size_t i = start; i < listResults[result_lists_index].first.size(); i++)
->>>>>>> 4f499c2... trial memory fix
         {
             int fillerResult;
             // We need to parse out just the trailing part of the path name.
@@ -183,7 +174,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         }
                     }
                     // Avoid duplicates
-                    local_list_results.push_back(prev_token_str);
+                    //local_list_results.push_back(prev_token_str);
 
                 }
                 else
