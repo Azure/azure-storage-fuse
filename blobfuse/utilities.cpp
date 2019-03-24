@@ -236,6 +236,7 @@ std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all
         AZS_DEBUGLOGV("About to call list_blobs_hierarchial.  Container = %s, delimiter = %s, continuation = %s, prefix = %s\n", container.c_str(), delimiter.c_str(), continuation.c_str(), prefix.c_str());
 
         errno = 0;
+	// TODO: Instead of creating a new vector for the list segment, look into plumbing list_blobs_hierarchical_response through a pointer from list_blobs_hierarchical function
         list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix);
         if (errno == 0)
         {
@@ -246,15 +247,12 @@ std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all
             if(response.blobs.size() > 0)
             {
                 bool skip_first = false;
-//                auto begin = response.blobs.begin();
                 if(response.blobs[0].name == prior)
                 {
-//                    std::advance(begin, 1);
                     skip_first = true;
                 }
                 prior = response.blobs.back().name;
                 results.push_back(std::make_pair(std::move(response.blobs), skip_first));
-//                results.insert(results.end(), begin, response.blobs.end());
             }
         }
         else

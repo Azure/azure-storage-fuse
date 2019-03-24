@@ -122,8 +122,10 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     filler(buf, ".", &strootbuf, 0);
     filler(buf, "..", &stparentbuf, 0);
 
+    // Enumerating segments of list_blobs response
     for (size_t result_lists_index = 0; result_lists_index < listResults.size(); result_lists_index++)
     {
+        // Check to see if the first list_blobs__hierarchical_item can be skipped to avoid duplication
         int start = listResults[result_lists_index].second ? 1 : 0;
         for (size_t i = start; i < listResults[result_lists_index].first.size(); i++)
         {
@@ -164,6 +166,10 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                     {
                         if (prev_token_str.size() > 0)
                         {
+
+                            // Avoid duplicate directories - this avoids duplicate entries of legacy WASB and HNS directories
+                   	    local_list_results.push_back(prev_token_str);
+
                             struct stat stbuf;
                             stbuf.st_mode = S_IFDIR | default_permission;
                             stbuf.st_uid = fuse_get_context()->uid;
@@ -173,8 +179,6 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                             AZS_DEBUGLOGV("Blob directory %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
                         }
                     }
-                    // Avoid duplicates
-                    //local_list_results.push_back(prev_token_str);
 
                 }
                 else
