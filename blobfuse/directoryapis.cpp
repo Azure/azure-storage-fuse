@@ -114,12 +114,12 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
         AZS_DEBUGLOGV("Reading blobs of directory %s on the service.  Total blob lists found = %s.\n", pathStr.c_str()+1, to_str(listResults.size()).c_str());
     }
 
-    // Fill the blobfuse root and parent directories
-    struct stat strootbuf, stparentbuf;
-    strootbuf.st_mode = S_IFDIR | default_permission;
+    // Fill the blobfuse current and parent directories
+    struct stat stcurrentbuf, stparentbuf;
+    stcurrentbuf.st_mode = S_IFDIR | default_permission;
     stparentbuf.st_mode = S_IFDIR;
 
-    filler(buf, ".", &strootbuf, 0);
+    filler(buf, ".", &stcurrentbuf, 0);
     filler(buf, "..", &stparentbuf, 0);
 
     // Enumerating segments of list_blobs response

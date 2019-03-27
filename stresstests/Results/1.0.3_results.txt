@@ -1,0 +1,122 @@
+Summary:
+blobfuse v1.0.3
+Small files test: 212 files / sec upload, 262 files / sec download
+Large files test: 508 Mb / sec upload, 6403 Mb / sec download
+
+
+Perf testing stats
+
+Config:
+VM Specs: Azure Standard D16s v3 (16 vcpus, 64 GB memory)
+VM Location: West Central US
+VM Image:
+                "storageProfile": {
+                    "imageReference": {
+                        "publisher": "Canonical",
+                        "offer": "UbuntuServer",
+                        "sku": "17.10",
+                        "version": "latest"
+                    },
+                    "osDisk": {
+                        "osType": "Linux",
+                        "name": "name",
+                        "createOption": "FromImage",
+                        "caching": "ReadWrite",
+                        "managedDisk": {
+                            "storageAccountType": "Standard_LRS",
+                            "id": "[parameters('id')]"
+                        },
+                        "diskSizeGB": 30
+                    },
+                    "dataDisks": []
+Storage account:  West Central US
+
+"sku": {
+                "name": "Standard_LRS",
+                "tier": "Standard"
+            },
+
+Build:
+blobfuse was built from source using the build.sh build script.
+Commit hash   22a58e3f75aa2516ed18f843e7b2dc8a929791ce
+
+
+Mount command:
+./blobfuse /mnt/mountdir --tmp-path=/mnt/blobfusetmp -o attr_timeout=240 -o entry_timeout=240 -o negative_timeout=120 --config-file=../connection.cfg
+
+/mnt/blobfusetmp is on the temp disk, a 128 GB SSD. File cache timeout was 120 seconds; it does not appear that any of the operations hit the files in the file cache.
+
+
+Stress parameters:
+
+    std::vector<std::function<std::pair<size_t, size_t>(std::string, thread_pool&)>> populate_fns
+    {
+        populate_small,
+        populate_large,
+    };
+
+        std::string source_dir("/mnt/src/src");  // Source directory for test data.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
+        std::string dest_dir_1("/home/asorrin/code/azure-storage-fuse-1/build/mountdir/stress");  // blobfuse directory to copy to.  All contents will be wiped.
+        std::string dest_dir_2("/mnt/dst/dst");  // Local destination directory.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
+
+See output for additional parameters.
+
+
+Output:
+
+2 tests to run in total.
+
+Starting test 0.
+Start time = Tue Mar 26 23:08:52 2019
+
+Parallel count = 8
+Starting generating test files.
+Running small file stress test.
+Total directory count = 16, files per directory = 10000.
+File sizes chosen from roughly random uniform distribution between 1024 and 2048 bytes.
+This adds up to around 245760000 bytes total, across 160000 files.
+Now running test.
+About to call copy_recursive to upload.
+
+Upload finished.
+Now = Tue Mar 26 23:21:27 2019
+
+About to call copy_recursive to download.
+
+Download finished.
+Upload took 754.012 seconds, averaging 2.4867Mb per second.
+Download took 610.475 seconds, averaging 3.07138Mb per second.
+Now = Tue Mar 26 23:31:38 2019
+
+Now validating.
+Contents validated.
+End time = Tue Mar 26 23:42:10 2019
+
+Deleting test files.
+
+Starting test 1.
+Start time = Wed Mar 27 00:04:57 2019
+
+Parallel count = 8
+Starting generating test files.
+Running large file stress test.
+Total directory count = 16, files per directory = 1.
+File sizes chosen from roughly random uniform distribution between 52428800 and 53477376 bytes.
+This adds up to around 847249408 bytes total, across 16 files.
+Now running test.
+About to call copy_recursive to upload.
+Upload finished.
+Now = Wed Mar 27 00:05:11 2019
+
+About to call copy_recursive to download.
+Download finished.
+Upload took 12.7583 seconds, averaging 508.097Mb per second.
+Download took 1.01237 seconds, averaging 6403.23Mb per second.
+Now = Wed Mar 27 00:05:12 2019
+
+Now validating.
+Contents validated.
+End time = Wed Mar 27 00:05:14 2019
+
+Deleting test files.
+
