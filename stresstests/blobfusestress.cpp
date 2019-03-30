@@ -543,8 +543,8 @@ std::pair<size_t, size_t> populate_small(std::string source_dir, thread_pool& po
     long unsigned int additional_size_jitter = 1024;  // Each file will have between 0-1KB added to it, randomly.
     int seed = 4;
     std::minstd_rand r(seed);
-    int total_dir_count = 60;  // 16 directories in total (increase this for actual perf testing), with each directory having...
-    int file_per_dir_count = 10000;  // 100 files in total.  This should be much higher (orders of magnitude) for real perf tests; 100 is just for testing / development.
+    int total_dir_count = 60;  
+    int file_per_dir_count = 10000;  
     size_t total_size = total_dir_count * file_per_dir_count * (file_size_base + (additional_size_jitter/2));  // Here we just estimate the total size, more than close enough.
     std::cout << "Running small file stress test." << std::endl;
     print_test_initial_stats(total_dir_count, file_per_dir_count, file_size_base, additional_size_jitter);
