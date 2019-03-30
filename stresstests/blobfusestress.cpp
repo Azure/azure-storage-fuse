@@ -501,7 +501,7 @@ std::pair<size_t, size_t> populate_large(std::string source_dir, thread_pool& po
     int seed = 4;  // We use a constant seed here to make each run identical; this probably doesn't matter a ton.
     std::minstd_rand r(seed);  // minstd_rand has terrible randomness properties, but it's more than good enough for our purposes here, and is far faster than better options.
     size_t total_size = 0;
-    int total_dir_count = 30;  // 16 directories (and thus 16 files) in total.
+    int total_dir_count = 30;  
     std::cout << "Running large file stress test." << std::endl;
     print_test_initial_stats(total_dir_count, 1, file_size_base, additional_size_jitter);
 
