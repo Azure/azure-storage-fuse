@@ -501,7 +501,7 @@ std::pair<size_t, size_t> populate_large(std::string source_dir, thread_pool& po
     int seed = 4;  // We use a constant seed here to make each run identical; this probably doesn't matter a ton.
     std::minstd_rand r(seed);  // minstd_rand has terrible randomness properties, but it's more than good enough for our purposes here, and is far faster than better options.
     size_t total_size = 0;
-    int total_dir_count = 16;  // 16 directories (and thus 16 files) in total.
+    int total_dir_count = 30;  
     std::cout << "Running large file stress test." << std::endl;
     print_test_initial_stats(total_dir_count, 1, file_size_base, additional_size_jitter);
 
@@ -543,8 +543,8 @@ std::pair<size_t, size_t> populate_small(std::string source_dir, thread_pool& po
     long unsigned int additional_size_jitter = 1024;  // Each file will have between 0-1KB added to it, randomly.
     int seed = 4;
     std::minstd_rand r(seed);
-    int total_dir_count = 16;  // 16 directories in total (increase this for actual perf testing), with each directory having...
-    int file_per_dir_count = 100;  // 100 files in total.  This should be much higher (orders of magnitude) for real perf tests; 100 is just for testing / development.
+    int total_dir_count = 60;  
+    int file_per_dir_count = 10000;  
     size_t total_size = total_dir_count * file_per_dir_count * (file_size_base + (additional_size_jitter/2));  // Here we just estimate the total size, more than close enough.
     std::cout << "Running small file stress test." << std::endl;
     print_test_initial_stats(total_dir_count, file_per_dir_count, file_size_base, additional_size_jitter);
