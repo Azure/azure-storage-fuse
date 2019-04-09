@@ -55,7 +55,13 @@ namespace microsoft_azure {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
                         if (code != CURLE_OK || unsuccessful(result)) {
                             promise.set_value(storage_outcome<RESPONSE_TYPE>(context.xml_parser()->parse_storage_error(str)));
-                            retry.add_result(code == CURLE_OK ? result : 503);
+			    if(result < 0 || result > HTTP_CODE_OVERFLOW)
+			    {
+			    	//This case handles bad account names and if HTTP overflows/not set
+				result = HTTP_CODE_BAD_ACCOUNT;
+				code = CURLE_OK;
+			    }
+                            retry.add_result(code == CURLE_OK ? result : HTTP_CODE_NO_SERVICE);
                             h.reset_input_stream();
                             h.reset_output_stream();
                             async_executor<RESPONSE_TYPE>::submit_request(promise, a, r, h, context, retry);
@@ -98,7 +104,7 @@ namespace microsoft_azure {
 			    error.code = std::to_string(result);
                             *outcome = storage_outcome<RESPONSE_TYPE>(error);
                             //*outcome = storage_outcome<RESPONSE_TYPE>(context->xml_parser()->parse_storage_error(str));
-                            retry->add_result(code == CURLE_OK ? result: 503);
+                            retry->add_result(code == CURLE_OK ? result: HTTP_NO_SERVICE);
                             http->reset_input_stream();
                             http->reset_output_stream();
                             async_executor<RESPONSE_TYPE>::submit_helper(promise, outcome, account, request, http, context, retry);
