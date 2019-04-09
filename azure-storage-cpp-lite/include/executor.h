@@ -16,6 +16,10 @@
 #include "retry.h"
 #include "utility.h"
 
+#define HTTP_CODE_BAD_ACCOUNT 403 //forbidden, wrong storage account, key or container name
+#define HTTP_CODE_NO_SERVICE 503 //Service unavailable
+#define HTTP_CODE_OVERFLOW 600 //No HTTP code is supported passed 600
+
 namespace microsoft_azure {
     namespace storage {
 
@@ -74,7 +78,7 @@ namespace microsoft_azure {
             {
                 http->set_error_stream([](http_base::http_code) { return true; }, storage_iostream::create_storage_stream());
                 request->build_request(*account, *http);
-
+		syslog(1,"submit_helper called");
                 retry_info info = context->retry_policy()->evaluate(*retry);
                 if (info.should_retry())
                 {
@@ -84,7 +88,14 @@ namespace microsoft_azure {
                         if (code != CURLE_OK || unsuccessful(result))
                         {
                             auto error = context->xml_parser()->parse_storage_error(str);
-                            error.code = std::to_string(result);
+			    if(result < 0 || result > HTTP_CODE_OVERFLOW)
+			    {
+			    	//This case handles bad account names and if HTTP overflows/not set
+				result = HTTP_CODE_BAD_ACCOUNT;
+				code = CURLE_OK;
+			    }
+
+			    error.code = std::to_string(result);
                             *outcome = storage_outcome<RESPONSE_TYPE>(error);
                             //*outcome = storage_outcome<RESPONSE_TYPE>(context->xml_parser()->parse_storage_error(str));
                             retry->add_result(code == CURLE_OK ? result: 503);
