@@ -17,7 +17,7 @@
 #include "utility.h"
 
 #define HTTP_CODE_SERVICE_UNAVAILABLE 503 //Service unavailable
-#define SHORT_RETRY 5 //Retries for at least 2 minutes
+#define SHORT_RETRY 5 //Retries for at least 30 seconds
 
 namespace microsoft_azure {
     namespace storage {
@@ -86,9 +86,15 @@ namespace microsoft_azure {
                         if (code != CURLE_OK || unsuccessful(result))
                         {
                             auto error = context->xml_parser()->parse_storage_error(str);
+                            //to ensure the most helpful error code is returned, if the curl code returns ok
+                            //return the http error code
                             error.code = std::to_string(code == CURLE_OK ? result : code);
                             if(code != CURLE_OK)
                             {
+                                //updating retry limit to shorten it for this error 
+                                //we shorten the amount of retries because if this error comes up it is mainly due
+                                //to one of the parameters(namely the incorrect storage account name) being incorrect
+                                //in which retrying the maximum amount of times will not help solve the issue
                                 retry->set_retry_limit(SHORT_RETRY);
                             }
                             *outcome = storage_outcome<RESPONSE_TYPE>(error);
@@ -138,7 +144,7 @@ namespace microsoft_azure {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
                         if (code != CURLE_OK || unsuccessful(result)) {
                             promise.set_value(storage_outcome<void>(context.xml_parser()->parse_storage_error(str)));
-                            retry.add_result(code == CURLE_OK ? result : 503);
+                            retry.add_result(code == CURLE_OK ? result : HTTP_CODE_SERVICE_UNAVAILABLE);
                             h.reset_input_stream();
                             h.reset_output_stream();
                             async_executor<void>::submit_request(promise, a, r, h, context, retry);
@@ -172,10 +178,15 @@ namespace microsoft_azure {
                         if (code != CURLE_OK || unsuccessful(result))
                         {
                             auto error = context->xml_parser()->parse_storage_error(str);
+                            //to ensure the most helpful error code is returned, if the curl code returns ok
+                            //return the http error code
                             error.code = std::to_string(code == CURLE_OK ? result : code);
-                            //is this okay??
                             if(code != CURLE_OK)
                             {
+                                //updating retry limit to shorten it for this error 
+                                //we shorten the amount of retries because if this error comes up it is mainly due
+                                //to one of the parameters(namely the incorrect storage account name) being incorrect
+                                //in which retrying the maximum amount of times will not help solve the issue
                                 retry->set_retry_limit(SHORT_RETRY);
                             }
                             *outcome = storage_outcome<void>(error);
