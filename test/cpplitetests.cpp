@@ -528,7 +528,7 @@ TEST_F(BlobClientWrapperTest, ListBlobsHierarchial)
 The purpose of the IncorrectAccountName test is to ensure that blobfuse
 returns a more useful error code when the account name comes back incorrect.
 It is also to ensure that we don't retry the maximum amount and retries only up
-to 6 times or less than 2 minutes
+to 6 times or less than 30 seconds
 */
 TEST_F(BlobClientWrapperTest, IncorrectAccountName)
 {
@@ -558,6 +558,6 @@ TEST_F(BlobClientWrapperTest, IncorrectAccountName)
     ASSERT_NE(0, errno) << "Expected an error but recieved success after attempting put_blob with an invalid storage account name";
 
     duration = (start_time - clock()) / CLOCKS_PER_SEC;
-    EXPECT_LT(duration, SHORT_RETRY_CHECK);
+    EXPECT_LT(duration, SHORT_RETRY_CHECK)<< "Excessive amount of retries when received an error for attempting to put_blob";
 
 }
