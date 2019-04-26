@@ -1,12 +1,15 @@
+#include <iostream>
 #include <uuid/uuid.h>
 #include <ftw.h>
+#include <random>
+#include <time.h>
 
 #include "gtest/gtest.h"
 //#include "gmock/gmock.h"
 #include "blobfuse.h"
 
 #define CHECK_STRINGS(LEFTSTRING, RIGHTSTRING) ASSERT_EQ(0, LEFTSTRING.compare(RIGHTSTRING)) << "Strings failed equality comparison.  " << #LEFTSTRING << " is " << LEFTSTRING << ", " << #RIGHTSTRING << " is " << RIGHTSTRING << ".  "
-
+#define SHORT_RETRY_CHECK 30 //30 seconds
 TEST(Blobfuse, MapErrno)
 {
     EXPECT_EQ(ENOENT, map_errno(404)) << "HTTP error 404 should map to errno ENOENT (which is " << ENOENT << ").  Actual = " << map_errno(404);
@@ -215,6 +218,7 @@ void read_file_data_and_validate(std::string path, unsigned int seed, size_t cou
 // Helper method to validate uploading and download a single file of arbitrary size
 void BlobClientWrapperTest::run_upload_download(size_t file_size)
 {
+    std::cerr << "[      ] running this run upload download" <<  std::endl;
     errno = 0;
     std::vector<list_blobs_hierarchical_item> blobs = list_all_blobs(container_name, "/", "");
     ASSERT_EQ(0, errno);
@@ -517,4 +521,43 @@ TEST_F(BlobClientWrapperTest, ListBlobsHierarchial)
     blob_list_results = list_all_blobs(container_name, "/", "notaprefix");
     ASSERT_EQ(0, errno) << "Listing failed for zero results";
     ASSERT_EQ(0, blob_list_results.size()) << "Incorrect number of blobs found.";
+}
+
+
+/*
+The purpose of the IncorrectAccountName test is to ensure that blobfuse
+returns a more useful error code when the account name comes back incorrect.
+It is also to ensure that we don't retry the maximum amount and retries only up
+to 6 times or less than 30 seconds
+*/
+TEST_F(BlobClientWrapperTest, IncorrectAccountName)
+{
+    const int defaultMaxConcurrency = 20;
+    std::string badAccountName = "badaccountnameasdf";
+    //test for invalid storage connection
+    clock_t start_time = clock();
+    errno = 0;
+
+    blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(badAccountName, str_options.accountKey, str_options.sasToken, defaultMaxConcurrency, str_options.use_https, str_options.blobEndpoint);
+    ASSERT_EQ(0, errno) << "Failed to initialize blob client";
+    list_blobs_hierarchical_response response = temp_azure_blob_client_wrapper.list_blobs_hierarchical(str_options.containerName, "/", std::string(), std::string(), 1);
+    ASSERT_NE(0,errno) << "Expected an error but received success after trying to connect with an invalid storage account name";
+    int duration = (start_time - clock()) / CLOCKS_PER_SEC;
+    EXPECT_LE(duration, SHORT_RETRY_CHECK) << "Excessive amount of retries when received an error for checking storage connection";
+    
+    //test for invalid account name and put blob
+    start_time = clock();
+    
+    std::string file_path = tmp_dir + "/tmpfile";
+    std::string file_text = "some file text here.";
+
+    write_to_file(file_path, file_text);
+    std::string blob_1_name("blob1name");
+    errno = 0;
+    temp_azure_blob_client_wrapper.put_blob(file_path, container_name, blob_1_name);
+    ASSERT_NE(0, errno) << "Expected an error but recieved success after attempting put_blob with an invalid storage account name";
+
+    duration = (start_time - clock()) / CLOCKS_PER_SEC;
+    EXPECT_LT(duration, SHORT_RETRY_CHECK)<< "Excessive amount of retries when received an error for attempting to put_blob";
+
 }

@@ -16,9 +16,8 @@
 #include "retry.h"
 #include "utility.h"
 
-#define HTTP_CODE_BAD_ACCOUNT 403 //forbidden, wrong storage account, key or container name
-#define HTTP_CODE_NO_SERVICE 503 //Service unavailable
-#define HTTP_CODE_OVERFLOW 600 //No HTTP code is supported passed 600
+#define HTTP_CODE_SERVICE_UNAVAILABLE 503 //Service unavailable
+#define SHORT_RETRY 5 //Retries for at least 30 seconds
 
 namespace microsoft_azure {
     namespace storage {
@@ -55,7 +54,7 @@ namespace microsoft_azure {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
                         if (code != CURLE_OK || unsuccessful(result)) {
                             promise.set_value(storage_outcome<RESPONSE_TYPE>(context.xml_parser()->parse_storage_error(str)));
-                            retry.add_result(code == CURLE_OK ? result : 503);
+                            retry.add_result(code == CURLE_OK ? result : HTTP_CODE_SERVICE_UNAVAILABLE);
                             h.reset_input_stream();
                             h.reset_output_stream();
                             async_executor<RESPONSE_TYPE>::submit_request(promise, a, r, h, context, retry);
@@ -92,7 +91,7 @@ namespace microsoft_azure {
                             error.code = std::to_string(code == CURLE_OK ? result : code);
                             *outcome = storage_outcome<RESPONSE_TYPE>(error);
                             //*outcome = storage_outcome<RESPONSE_TYPE>(context->xml_parser()->parse_storage_error(str));
-                            retry->add_result(code == CURLE_OK ? result: 503);
+                            retry->add_result(code == CURLE_OK ? result: HTTP_CODE_SERVICE_UNAVAILABLE);
                             http->reset_input_stream();
                             http->reset_output_stream();
                             async_executor<RESPONSE_TYPE>::submit_helper(promise, outcome, account, request, http, context, retry);
@@ -137,7 +136,7 @@ namespace microsoft_azure {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
                         if (code != CURLE_OK || unsuccessful(result)) {
                             promise.set_value(storage_outcome<void>(context.xml_parser()->parse_storage_error(str)));
-                            retry.add_result(code == CURLE_OK ? result : 503);
+                            retry.add_result(code == CURLE_OK ? result : HTTP_CODE_SERVICE_UNAVAILABLE);
                             h.reset_input_stream();
                             h.reset_output_stream();
                             async_executor<void>::submit_request(promise, a, r, h, context, retry);
@@ -171,10 +170,12 @@ namespace microsoft_azure {
                         if (code != CURLE_OK || unsuccessful(result))
                         {
                             auto error = context->xml_parser()->parse_storage_error(str);
-                            error.code = std::to_string(result);
+                            //to ensure the most helpful error code is returned, if the curl code returns ok
+                            //return the http error code
+                            error.code = std::to_string(code == CURLE_OK ? result : code);
                             *outcome = storage_outcome<void>(error);
                             //*outcome = storage_outcome<void>(context->xml_parser()->parse_storage_error(str));
-                            retry->add_result(code == CURLE_OK ? result: 503);
+                            retry->add_result(code == CURLE_OK ? result: HTTP_CODE_SERVICE_UNAVAILABLE);
                             http->reset_input_stream();
                             http->reset_output_stream();
                             async_executor<void>::submit_helper(promise, outcome, account, request, http, context, retry);
