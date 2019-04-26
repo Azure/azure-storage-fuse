@@ -88,14 +88,9 @@ namespace microsoft_azure {
                         if (code != CURLE_OK || unsuccessful(result))
                         {
                             auto error = context->xml_parser()->parse_storage_error(str);
-			    if(result < 0 || result > HTTP_CODE_OVERFLOW)
-			    {
-			    	//This case handles bad account names and if HTTP overflows/not set
-				result = HTTP_CODE_BAD_ACCOUNT;
-				code = CURLE_OK;
-			    }
-
-			    error.code = std::to_string(result);
+                            //to ensure the most helpful error code is returned, if the curl code returns ok
+                            //return the http error code
+                            error.code = std::to_string(code == CURLE_OK ? result : code);
                             *outcome = storage_outcome<RESPONSE_TYPE>(error);
                             //*outcome = storage_outcome<RESPONSE_TYPE>(context->xml_parser()->parse_storage_error(str));
                             retry->add_result(code == CURLE_OK ? result: 503);
