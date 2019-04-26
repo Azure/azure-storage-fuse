@@ -17,7 +17,6 @@
 #include "utility.h"
 
 #define HTTP_CODE_SERVICE_UNAVAILABLE 503 //Service unavailable
-#define SHORT_RETRY 5 //Retries for at least 30 seconds
 
 namespace microsoft_azure {
     namespace storage {
