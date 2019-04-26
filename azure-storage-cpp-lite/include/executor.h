@@ -78,7 +78,6 @@ namespace microsoft_azure {
             {
                 http->set_error_stream([](http_base::http_code) { return true; }, storage_iostream::create_storage_stream());
                 request->build_request(*account, *http);
-		syslog(1,"submit_helper called");
                 retry_info info = context->retry_policy()->evaluate(*retry);
                 if (info.should_retry())
                 {
