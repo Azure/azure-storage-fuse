@@ -9,8 +9,6 @@
 #include "http_base.h"
 #include "utility.h"
 
-#define MAX_RETRIES 26 //timeout around 20 minutes
-
 namespace microsoft_azure {
     namespace storage {
 
@@ -36,21 +34,15 @@ namespace microsoft_azure {
         class retry_context {
         public:
             retry_context()
-                : m_retry_limit(MAX_RETRIES),
-                m_retry_count(0),
+                : m_numbers(0),
                 m_result(0) {}
 
-            retry_context(int new_limit, http_base::http_code result)
-                : m_retry_limit(new_limit),
+            retry_context(int numbers, http_base::http_code result)
+                : m_numbers(numbers),
                 m_result(result) {}
 
-            int limit() const {
-                return m_retry_limit;
-            }
-
-            int current_count() const
-            {
-                return m_retry_count;
+            int numbers() const {
+                return m_numbers;
             }
 
             http_base::http_code result() const {
@@ -59,16 +51,11 @@ namespace microsoft_azure {
 
             void add_result(http_base::http_code result) {
                 m_result = result;
-                m_retry_count++;
-            }
-
-            void set_retry_limit(int new_limit){
-                m_retry_limit = new_limit;
+                m_numbers++;
             }
 
         private:
-            int m_retry_limit;
-            int m_retry_count;
+            int m_numbers;
             http_base::http_code m_result;
         };
 
@@ -80,10 +67,10 @@ namespace microsoft_azure {
         class retry_policy : public retry_policy_base {
         public:
             retry_info evaluate(const retry_context &context) const override {
-                if (context.current_count() == 0) {
+                if (context.numbers() == 0) {
                     return retry_info(true, std::chrono::seconds(0));
-                } else if (context.current_count() < context.limit() && can_retry(context.result())) {
-                    double delay = (pow(1.2, context.current_count()-1)-1);
+                } else if (context.numbers() < 26 && can_retry(context.result())) {
+                    double delay = (pow(1.2, context.numbers()-1)-1);
                     delay = std::min(delay, 60.0); // Maximum backoff delay of 1 minute
                     delay *= (((double)rand())/RAND_MAX)/2 + 0.75;
                     return retry_info(true, std::chrono::seconds((int)delay));
