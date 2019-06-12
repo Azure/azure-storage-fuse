@@ -1,6 +1,8 @@
 #include "blobfuse.h"
 #include <sys/file.h>
 
+gc_cache g_gc_cache;
+
 int map_errno(int error)
 {
     auto mapping = error_mapping.find(error);
@@ -20,6 +22,36 @@ std::string prepend_mnt_path_string(const std::string& path)
     std::string result;
     result.reserve(str_options.tmpPath.length() + 5 + path.length());
     return result.append(str_options.tmpPath).append("/root").append(path);
+}
+
+gc_cache::gc_cache()
+{
+    disk_threshold_reached = false;
+}
+
+bool gc_cache::check_disk_space()
+{
+    struct statvfs buf;
+    if(statvfs(str_options.tmpPath.c_str(), &buf) != 0)
+    {
+        return false;
+    }
+
+    double total = buf.f_frsize * buf.f_blocks;
+    double util = (total - (buf.f_bsize * buf.f_bfree));
+    double percent = (int)((util/total)*100);
+
+    AZS_DEBUGLOGV("Disk utilization is at %d %% for cache location \"%s\"\n", (int)percent, str_options.tmpPath.c_str());
+
+    if(percent >= high_threshold && !disk_threshold_reached)
+    {
+        return true;
+    }
+    else if(percent >= low_threshold && disk_threshold_reached)
+    {
+        return true;
+    }
+    return false;
 }
 
 void gc_cache::add_file(std::string path)
@@ -67,7 +99,7 @@ void gc_cache::run_gc_cache()
 
         time_t now = time(NULL);
         //check if the closed time is old enough to delete
-        if((now - file.closed_time) > file_cache_timeout_in_seconds)
+        if(((now - file.closed_time) > file_cache_timeout_in_seconds) || disk_threshold_reached)
         {
             AZS_DEBUGLOGV("File %s being considered for deletion by file cache GC.\n", file.path.c_str());
 
@@ -109,12 +141,17 @@ void gc_cache::run_gc_cache()
                         AZS_DEBUGLOGV("GC cleanup of cached file %s.\n", mntPath);
                         unlink(mntPath);
                         flock(fd, LOCK_UN);
+
+                        //update disk space
+                        disk_threshold_reached = check_disk_space();
                     }
 
                     close(fd);
                 }
                 else
                 {
+                    //TODO:if we can't open the file consistently, should we just try to move onto the next file?
+                    //or somehow timeout on a file we can't open?
                     AZS_DEBUGLOGV("Failed to open file %s from file cache in GC, skipping cleanup. errno from open = %d.", mntPath, errno);
                 }
             }
@@ -130,6 +167,8 @@ void gc_cache::run_gc_cache()
         {
             // no file was timed out - let's wait a second
             usleep(1000);
+            //check disk space
+            disk_threshold_reached = check_disk_space();
         }
     }
 

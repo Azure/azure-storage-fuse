@@ -83,16 +83,21 @@ struct file_to_delete
 class gc_cache
 {
     public:
+        gc_cache();
         void run();
         void add_file(std::string path);
 
     private:
-    	void run_gc_cache();
+        bool disk_threshold_reached;
+        const double high_threshold = 80;
+        const double low_threshold = 70;
         std::deque<file_to_delete> m_cleanup;
         std::mutex m_deque_lock;
+        void run_gc_cache();
+        bool check_disk_space();
 };
 
-extern gc_cache gc_cache;
+extern gc_cache g_gc_cache;
 
 // FUSE gives you one 64-bit pointer to use for communication between API's.
 // An instance of this struct is pointed to by that pointer.

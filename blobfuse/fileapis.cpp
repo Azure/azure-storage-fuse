@@ -380,7 +380,7 @@ int azs_release(const char *path, struct fuse_file_info * fi)
         AZS_DEBUGLOGV("Adding file to the GC from azs_release.  File = %s\n.", mntPath);
 
         // store the file in the cleanup list
-        gc_cache.add_file(pathString);
+        g_gc_cache.add_file(pathString);
 
     }
     else
@@ -675,7 +675,7 @@ int azs_rename_single_file(const char *src, const char *dst)
             }
 
             // store the file in the cleanup list
-            gc_cache.add_file(dstPathString);
+            g_gc_cache.add_file(dstPathString);
 
             return 0;
         }
@@ -742,7 +742,7 @@ int azs_rename_single_file(const char *src, const char *dst)
 
             // in the case of directory_rename, there may be local cache
             // store the file in the cleanup list
-            gc_cache.add_file(dstPathString);
+            g_gc_cache.add_file(dstPathString);
 
             return 0;
         }
