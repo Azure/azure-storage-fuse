@@ -24,11 +24,6 @@ std::string prepend_mnt_path_string(const std::string& path)
     return result.append(str_options.tmpPath).append("/root").append(path);
 }
 
-gc_cache::gc_cache()
-{
-    disk_threshold_reached = false;
-}
-
 bool gc_cache::check_disk_space()
 {
     struct statvfs buf;
