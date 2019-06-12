@@ -33,6 +33,10 @@
 
 #define UNREFERENCED_PARAMETER(p) (p)
 
+/* Define high and low gc_cache threshold values*/
+#define HIGH_THRESHOLD_VALUE 90
+#define LOW_THRESHOLD_VALUE 80
+
 /* Define errors and return codes */
 #define D_NOTEXIST -1
 #define D_EMPTY 0
@@ -83,14 +87,14 @@ struct file_to_delete
 class gc_cache
 {
     public:
-        gc_cache();
+        gc_cache() : disk_threshold_reached(false){}
         void run();
         void add_file(std::string path);
 
     private:
         bool disk_threshold_reached;
-        const double high_threshold = 80;
-        const double low_threshold = 70;
+        const double high_threshold = HIGH_THRESHOLD_VALUE;
+        const double low_threshold = LOW_THRESHOLD_VALUE;
         std::deque<file_to_delete> m_cleanup;
         std::mutex m_deque_lock;
         void run_gc_cache();
