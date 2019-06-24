@@ -162,6 +162,7 @@ list_blobs_hierarchical_item tinyxml2_parser::parse_list_blobs_hierarchical_item
         item.content_language = parse_text(xproperty, "Content-Language");
         item.content_type = parse_text(xproperty, "Content-Type");
         item.content_md5 = parse_text(xproperty, "Content-MD5");
+        item.copy_status = parse_text(xproperty, "CopyStatus");
         item.content_length = parse_long(xproperty, "Content-Length");
         item.status = parse_lease_status(parse_text(xproperty, "LeaseStatus"));
         item.state = parse_lease_state(parse_text(xproperty, "LeaseState"));

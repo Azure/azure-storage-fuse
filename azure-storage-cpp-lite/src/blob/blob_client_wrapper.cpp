@@ -106,6 +106,8 @@ namespace microsoft_azure {
             return result;
         }
 
+        sync_blob_client::~sync_blob_client() {}
+
         blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency)
         {
             return blob_client_wrapper_init(account_name, account_key, sas_token, concurrency, false, NULL);

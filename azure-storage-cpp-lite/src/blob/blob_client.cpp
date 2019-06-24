@@ -205,7 +205,7 @@ std::future<storage_outcome<list_blobs_hierarchical_response>> blob_client::list
 
     auto request = std::make_shared<list_blobs_hierarchical_request>(container, delimiter, continuation_token, prefix);
     request->set_maxresults(max_results);
-    request->set_includes(list_blobs_request_base::include::metadata);
+    request->set_includes(static_cast<list_blobs_request_base::include>(list_blobs_request_base::include::metadata | list_blobs_request_base::include::copy));
 
     return async_executor<list_blobs_hierarchical_response>::submit(m_account, request, http, m_context);
 }

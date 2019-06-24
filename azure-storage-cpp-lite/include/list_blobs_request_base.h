@@ -87,6 +87,7 @@ public:
     lease_status status;
     lease_state state;
     lease_duration duration;
+    std::string copy_status;
     std::vector<std::pair<std::string, std::string>> metadata;
     bool is_directory;
 };

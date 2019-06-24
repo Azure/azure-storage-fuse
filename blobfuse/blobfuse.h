@@ -117,6 +117,7 @@ struct str_options
     std::string containerName;
     std::string tmpPath;
     bool use_https;
+    bool use_attr_cache;
 };
 
 extern struct str_options str_options;
@@ -127,7 +128,7 @@ extern int default_permission;
 
 // This is used to make all the calls to Storage
 // The C++ lite client does not store state, other than connection info, so we can use it between calls without issue.
-extern std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
+extern std::shared_ptr<sync_blob_client> azure_blob_client_wrapper;
 
 // Used to map HTTP errors (ex. 404) to Linux errno (ex ENOENT)
 extern std::map<int, int> error_mapping;
@@ -155,7 +156,7 @@ int shared_lock_file(int flags, int fd);
 int ensure_files_directory_exists_in_cache(const std::string& file_path);
 
 // Greedily list all blobs using the input params.
-std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix);
+std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix);
 
 // Returns:
 // 0 if there's nothing there (the directory does not exist)
