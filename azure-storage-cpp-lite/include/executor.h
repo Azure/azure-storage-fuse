@@ -79,6 +79,8 @@ namespace microsoft_azure {
                 {
                     http->submit([promise, outcome, account, request, http, context, retry](http_base::http_code result, storage_istream s, CURLcode code)
                     {
+                        
+                        bool retry_response = false;
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
                         if (code != CURLE_OK || unsuccessful(result))
                         {
@@ -96,14 +98,11 @@ namespace microsoft_azure {
                             {
                                 syslog(LOG_ERR,"Attempt at parsing XML response failed.");
                             }
+                            retry_response = true;
                             error.code = std::to_string(result);
                             *outcome = storage_outcome<RESPONSE_TYPE>(error);
                             //*outcome = storage_outcome<RESPONSE_TYPE>(context->xml_parser()->parse_storage_error(str));
                             retry->add_result(code == CURLE_OK ? result: 503);
-                            http->reset_input_stream();
-                            http->reset_output_stream();
-                            async_executor<RESPONSE_TYPE>::submit_helper(promise, outcome, account, request, http, context, retry);
-                            
                         }
                         else
                         {
@@ -116,12 +115,24 @@ namespace microsoft_azure {
                             catch(const char* parser_error_msg)
                             {
                                 syslog(LOG_ERR,"Attempt at parsing XML response failed. %s", parser_error_msg);
+                                retry_response = true;
                             }
                             catch(...)
                             {
                                 syslog(LOG_ERR,"Attempt at parsing XML response failed.");
+                                retry_response = true;
                             }
-                            promise->set_value(*outcome);
+                            if(!retry_response)
+                            {
+                                promise->set_value(*outcome);
+                            }
+                        }
+                        //if we receive an error response or a parser error then retry the request for a better response
+                        if(retry_response)
+                        {
+                            http->reset_input_stream();
+                            http->reset_output_stream();
+                            async_executor<RESPONSE_TYPE>::submit_helper(promise, outcome, account, request, http, context, retry);
                         }
                     }, info.interval());
                 }

@@ -42,16 +42,16 @@ class BlobfuseTest(unittest.TestCase):
     blobstage = ""
 
     def setUp(self):
-        self.blobstage = os.path.join(self.blobdir, "testing");
+        self.blobstage = os.path.join(self.blobdir, "testing")
         if not os.path.exists(self.localdir):
-            os.makedirs(self.localdir);
+            os.makedirs(self.localdir)
         if not os.path.exists(self.blobstage):
-            os.makedirs(self.blobstage);
+            os.makedirs(self.blobstage)
     def tearDown(self):
         if os.path.exists(self.blobstage):
-            shutil.rmtree(self.blobstage);
+            shutil.rmtree(self.blobstage)
         if os.path.exists(self.localdir):
-            shutil.rmtree(self.localdir);
+            shutil.rmtree(self.localdir)
 
     # helper functions
     def validate_dir_removal(self, dirPath, dirName, parentDir):
