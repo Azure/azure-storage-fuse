@@ -82,7 +82,20 @@ namespace microsoft_azure {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
                         if (code != CURLE_OK || unsuccessful(result))
                         {
-                            auto error = context->xml_parser()->parse_storage_error(str);
+                            //if we are unable to parse or did not find the values we needed to parse the error response
+                            storage_error error;
+                            try
+                            {
+                                error = context->xml_parser()->parse_storage_error(str);
+                            }
+                            catch(const char* parser_error_msg)
+                            {
+                                syslog(LOG_ERR,"Attempt at parsing XML response failed. %s", parser_error_msg);
+                            }
+                            catch(...)
+                            {
+                                syslog(LOG_ERR,"Attempt at parsing XML response failed.");
+                            }
                             error.code = std::to_string(result);
                             *outcome = storage_outcome<RESPONSE_TYPE>(error);
                             //*outcome = storage_outcome<RESPONSE_TYPE>(context->xml_parser()->parse_storage_error(str));
@@ -90,10 +103,24 @@ namespace microsoft_azure {
                             http->reset_input_stream();
                             http->reset_output_stream();
                             async_executor<RESPONSE_TYPE>::submit_helper(promise, outcome, account, request, http, context, retry);
+                            
                         }
                         else
                         {
-                            *outcome = storage_outcome<RESPONSE_TYPE>(context->xml_parser()->parse_response<RESPONSE_TYPE>(str));
+                            //if we are unable to parse or did not find the values we needed to parse the response
+                            //something is corrupt in the response and we need to retry for a better response
+                            try
+                            {
+                                *outcome = storage_outcome<RESPONSE_TYPE>(context->xml_parser()->parse_response<RESPONSE_TYPE>(str));
+                            }
+                            catch(const char* parser_error_msg)
+                            {
+                                syslog(LOG_ERR,"Attempt at parsing XML response failed. %s", parser_error_msg);
+                            }
+                            catch(...)
+                            {
+                                syslog(LOG_ERR,"Attempt at parsing XML response failed.");
+                            }
                             promise->set_value(*outcome);
                         }
                     }, info.interval());
@@ -130,7 +157,18 @@ namespace microsoft_azure {
                     h.submit([&promise, &a, &r, &h, &context, &retry](http_base::http_code result, storage_istream s, CURLcode code) {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
                         if (code != CURLE_OK || unsuccessful(result)) {
-                            promise.set_value(storage_outcome<void>(context.xml_parser()->parse_storage_error(str)));
+                            try
+                            {
+                                promise.set_value(storage_outcome<void>(context.xml_parser()->parse_storage_error(str)));
+                            }
+                            catch(const char* parser_error_msg)
+                            {
+                                syslog(LOG_ERR,"Attempt at parsing XML response failed. %s", parser_error_msg);
+                            }
+                            catch(...)
+                            {
+                                syslog(LOG_ERR,"Attempt at parsing XML response failed.");
+                            }
                             retry.add_result(code == CURLE_OK ? result : 503);
                             h.reset_input_stream();
                             h.reset_output_stream();
@@ -164,7 +202,19 @@ namespace microsoft_azure {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
                         if (code != CURLE_OK || unsuccessful(result))
                         {
-                            auto error = context->xml_parser()->parse_storage_error(str);
+                            storage_error error;
+                            try
+                            {
+                                error = context->xml_parser()->parse_storage_error(str);
+                            }
+                            catch(const char* parser_error_msg)
+                            {
+                                syslog(LOG_ERR,"Attempt at parsing XML response failed. %s", parser_error_msg);
+                            }
+                            catch(...)
+                            {
+                                syslog(LOG_ERR,"Attempt at parsing XML response failed.");
+                            }
                             error.code = std::to_string(result);
                             *outcome = storage_outcome<void>(error);
                             //*outcome = storage_outcome<void>(context->xml_parser()->parse_storage_error(str));

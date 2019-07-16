@@ -13,18 +13,13 @@ std::string tinyxml2_parser::parse_text(tinyxml2::XMLElement *ele, const std::st
         if (ele && ele->FirstChild()) {
             text = ele->FirstChild()->ToText()->Value();
         }
-        else
-        {
-            //cannot find the element we are looking for, throw an exception here so we can
-            //retry the request to get a better xml response
-            throw "Unable to parse " + name + " from the response"; 
-        }
+        //if we couldn't find the first child, that's okay
+        //xml responses can come back and have empty values in this case
     }
     else
     {
-        //cannot find the element we are looking for, throw an exception here so we can
-        //retry the request to get a better xml response
-        throw "Unable to parse " + name + " from the response"; 
+        //was passed a null pointer to a xml element
+        throw "Unable to parse " + name + " from xml element text"; 
     }
 
     return text;
@@ -55,7 +50,7 @@ storage_error tinyxml2_parser::parse_storage_error(const std::string &xml) const
         }
         else
         {
-            throw "Unable to parse \"Error\" from the response"; 
+            throw "Unable to parse \"Error\" from storage_error"; 
         }
     }
 
@@ -80,13 +75,13 @@ list_containers_item tinyxml2_parser::parse_list_containers_item(tinyxml2::XMLEl
         }
         else
         {
-            throw "Unable to parse \"Properties\" from the response";
+            throw "Unable to parse \"Properties\" from list_containers_item";
         }
         
     }
     else
     {
-        throw "Unable to parse \"Name\" from the response";
+        throw "Unable to parse \"Name\" from list_containers_item";
     }
     //parse_metadata
 
@@ -131,7 +126,7 @@ list_containers_response tinyxml2_parser::parse_list_containers_response(const s
             }
             else
             {
-                throw "Unable to parse \"Containers\" from the response";
+                throw "Unable to parse \"Containers\" from list_containers_response";
             }
             
         }
@@ -164,7 +159,7 @@ list_blobs_item tinyxml2_parser::parse_list_blobs_item(tinyxml2::XMLElement *ele
         }
         else
         {
-            throw "Unable to parse \"Properties\" from the response";
+            throw "Unable to parse \"Properties\" from list_blobs_item";
         }
     }
     //parse_metadata
@@ -192,18 +187,17 @@ list_blobs_response tinyxml2_parser::parse_list_blobs_response(const std::string
             }
             else
             {
-                throw "Unable to parse \"Blobs\" from the response";
+                throw "Unable to parse \"Blobs\" from list_blobs_response";
             }
         }
         else
         {
-            throw "Unable to parse \"NextMarker\" from the response";
+            throw "Unable to parse \"EnumberationResults\" from list_blobs_response";
         }
-        
     }
     else
     {
-        throw "Unable to parse \"EnumberationResults\" from the response";
+        throw "Unable to parse list_blobs_response";
     }
     
 
@@ -262,16 +256,11 @@ list_blobs_hierarchical_item tinyxml2_parser::parse_list_blobs_hierarchical_item
                 {
                     throw "Unable to parse \"Metadata\" from list_blobs_hierarchical_item";
                 }
-                
             }
             else
             {
                 throw "Unable to parse \"Properties\" from the list_blobs_hierarchical_response";
             }
-        }
-        else
-        {
-            throw "Unable to parse list_blobs_hierarchical_response";
         }
     }
     //parse_metadata
@@ -317,7 +306,6 @@ list_blobs_hierarchical_response tinyxml2_parser::parse_list_blobs_hierarchical_
     {
         throw "Unable to parse list_blobs_hierarchical_response";
     }
-
     return response;
 }
 
