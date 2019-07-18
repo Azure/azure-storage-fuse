@@ -34,6 +34,7 @@
 #define UNREFERENCED_PARAMETER(p) (p)
 
 /* Define high and low gc_cache threshold values*/
+/* These threshold values were not calculated and are just an approximation of when we should be clearing the cache */
 #define HIGH_THRESHOLD_VALUE 90
 #define LOW_THRESHOLD_VALUE 80
 
