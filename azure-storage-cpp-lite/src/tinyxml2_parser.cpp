@@ -1,9 +1,13 @@
 #include "tinyxml2_parser.h"
-
 #include "utility.h"
 
 namespace microsoft_azure {
 namespace storage {
+
+//On parsing xml responses, if a value we expect from the xml is not found
+//throw an invalid_argument exception to indicate we were not given a valid response in the
+//format that we expected. invalid_argument exceptions thrown here will get caught in the
+//executor and will retry again for a valid response.
 
 std::string tinyxml2_parser::parse_text(tinyxml2::XMLElement *ele, const std::string &name) const {
     std::string text;
@@ -19,7 +23,8 @@ std::string tinyxml2_parser::parse_text(tinyxml2::XMLElement *ele, const std::st
     else
     {
         //was passed a null pointer to a xml element
-        throw "Unable to parse " + name + " from xml element text"; 
+        std::string exception_sstr = "Unable to parse " + name + " from xml element text";
+        throw std::invalid_argument(exception_sstr.c_str()); 
     }
 
     return text;
@@ -50,7 +55,7 @@ storage_error tinyxml2_parser::parse_storage_error(const std::string &xml) const
         }
         else
         {
-            throw "Unable to parse \"Error\" from storage_error"; 
+            throw std::invalid_argument("Unable to parse \"Error\" from storage_error"); 
         }
     }
 
@@ -75,13 +80,13 @@ list_containers_item tinyxml2_parser::parse_list_containers_item(tinyxml2::XMLEl
         }
         else
         {
-            throw "Unable to parse \"Properties\" from list_containers_item";
+            throw std::invalid_argument("Unable to parse \"Properties\" from list_containers_item");
         }
         
     }
     else
     {
-        throw "Unable to parse \"Name\" from list_containers_item";
+        throw std::invalid_argument("Unable to parse \"Name\" from list_containers_item");
     }
     //parse_metadata
 
@@ -126,7 +131,7 @@ list_containers_response tinyxml2_parser::parse_list_containers_response(const s
             }
             else
             {
-                throw "Unable to parse \"Containers\" from list_containers_response";
+                throw std::invalid_argument("Unable to parse \"Containers\" from list_containers_response");
             }
             
         }
@@ -159,7 +164,7 @@ list_blobs_item tinyxml2_parser::parse_list_blobs_item(tinyxml2::XMLElement *ele
         }
         else
         {
-            throw "Unable to parse \"Properties\" from list_blobs_item";
+            throw std::invalid_argument("Unable to parse \"Properties\" from list_blobs_item");
         }
     }
     //parse_metadata
@@ -187,17 +192,17 @@ list_blobs_response tinyxml2_parser::parse_list_blobs_response(const std::string
             }
             else
             {
-                throw "Unable to parse \"Blobs\" from list_blobs_response";
+                throw std::invalid_argument("Unable to parse \"Blobs\" from list_blobs_response");
             }
         }
         else
         {
-            throw "Unable to parse \"EnumberationResults\" from list_blobs_response";
+            throw std::invalid_argument("Unable to parse \"EnumerationResults\" from list_blobs_response");
         }
     }
     else
     {
-        throw "Unable to parse list_blobs_response";
+        throw std::invalid_argument("Unable to parse list_blobs_response");
     }
     
 
@@ -219,7 +224,7 @@ std::vector<std::pair<std::string, std::string>> tinyxml2_parser::parse_blob_met
     }
     else
     {
-        throw "Unable to parse blob_metadata";
+        throw std::invalid_argument("Unable to parse blob_metadata");
     }
     return metadata;
 }
@@ -254,12 +259,12 @@ list_blobs_hierarchical_item tinyxml2_parser::parse_list_blobs_hierarchical_item
                 }
                 else
                 {
-                    throw "Unable to parse \"Metadata\" from list_blobs_hierarchical_item";
+                    throw std::invalid_argument("Unable to parse \"Metadata\" from list_blobs_hierarchical_item");
                 }
             }
             else
             {
-                throw "Unable to parse \"Properties\" from the list_blobs_hierarchical_response";
+                throw std::invalid_argument("Unable to parse \"Properties\" from the list_blobs_hierarchical_response");
             }
         }
     }
@@ -294,17 +299,17 @@ list_blobs_hierarchical_response tinyxml2_parser::parse_list_blobs_hierarchical_
             }
             else
             {
-                throw "Unable to parse \"NextMarker\" from list_blobs_hierarchical_response";
+                throw std::invalid_argument("Unable to parse \"NextMarker\" from list_blobs_hierarchical_response");
             }
         }
         else
         {
-            throw "Unable to parse \"EnumerationResults\" from the list_blobs_hierarchical_response";
+            throw std::invalid_argument("Unable to parse \"EnumerationResults\" from the list_blobs_hierarchical_response");
         }
     }
     else
     {
-        throw "Unable to parse list_blobs_hierarchical_response";
+        throw std::invalid_argument("Unable to parse list_blobs_hierarchical_response");
     }
     return response;
 }
@@ -345,18 +350,18 @@ get_block_list_response tinyxml2_parser::parse_get_block_list_response(const std
             }
             else
             {
-                throw "Unable to parse \"CommittedBlocks\" from the block_list_response";
+                throw std::invalid_argument("Unable to parse \"CommittedBlocks\" from the block_list_response");
             }
             
         }
         else
         {
-            throw "Unable to parse \"BlockList\" from the block_list_response";
+            throw std::invalid_argument("Unable to parse \"BlockList\" from the block_list_response");
         }
     }
     else
     {
-        throw "Failed to parse XML block_list_response";
+        throw std::invalid_argument("Failed to parse XML block_list_response");
     }
     
 
@@ -388,13 +393,13 @@ get_page_ranges_response tinyxml2_parser::parse_get_page_ranges_response(const s
         }
         else
         {
-            throw "Failed to parse \"PageList\" from page_ranges_response";
+            throw std::invalid_argument("Failed to parse \"PageList\" from page_ranges_response");
         }
         
     }
     else
     {
-        throw "Failed to parse XML page_ranges_response";
+        throw std::invalid_argument("Failed to parse XML page_ranges_response");
     }
 
     return response;
