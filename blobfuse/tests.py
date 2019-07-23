@@ -1524,28 +1524,13 @@ class CacheTests(BlobfuseTest):
     upper_threshold = 90
     #lower/bottom threshold
     lower_threshold = 80
+
     def setUp(self):
-        #create temp/cache directory
+        # create temp/cache directory
         if not os.path.exists(self.ramDiskPath):
             os.mkdir(self.ramDiskPath)
-        #os.chown(self.ramDiskPath, os.geteuid(), os.getgid())
-        if pwd and hasattr(os, "geteuid") and os.geteuid() == 0:
-            try:
-                g = grp.getgrnam(tarinfo.gname)[2]
-            except KeyError:
-                g = tarinfo.gid
+        os.chown(self.ramDiskPath, os.geteuid(), os.getgid())
 
-            try:
-                u = pwd.getpwnam(tarinfo.uname)[2]
-            except KeyError:
-                u = tarinfo.uid
-
-            try:
-                if tarinfo.issym() and hasattr(osm, "lchown"):
-                    os.lchown(targetpath, u, g)
-                else:
-                    if sys.platform != "os2emx"
-                        os.chown(self.ramDiskPath, u, g)
         if not os.path.exists(self.ramDiskTmpPath):
             os.mkdir(self.ramDiskTmpPath)
         os.chown(self.ramDiskTmpPath, os.geteuid(), os.getgid())
@@ -1559,8 +1544,8 @@ class CacheTests(BlobfuseTest):
         os.system("fusermount -u " + self.ramDiskContainerPath)
 
         #unmount ramdisk
-        #os.system("sudo umount " + self.ramDiskPath)
-        os.system("fusermount - u " + self.ramDiskPath)
+        os.system("sudo umount " + self.ramDiskPath)
+        #os.system("fusermount -u " + self.ramDiskPath)
 
         #delete container directory if still exists
         if os.path.exists(self.ramDiskContainerPath):
@@ -1574,10 +1559,11 @@ class CacheTests(BlobfuseTest):
         if os.path.exists(self.ramDiskPath):
             shutil.rmtree(self.ramDiskPath)
 
-    def makeRamDisk(disk_size):
+    def makeRamDisk(self, disk_size):
         #create ramdisk, give current user access to the ramdisk and mount
         os.system("sudo mount -t tmpfs -o size=" + disk_size + " tmpfs " + self.ramDiskPath)
-    def startBlobfuse(cache_timeout):
+
+    def startBlobfuse(self, cache_timeout):
         #call blobfuse using ramdisk as the cache directory
         blobfuseMountCmd = "./blobfuse " + self.ramDiskContainerPath + " --tmp-path=" + self.ramDiskTmpPath + \
                            " -o attr_timeout=240 -o entry_timeout=240 -o negative_timeout=120 " \
@@ -1586,30 +1572,14 @@ class CacheTests(BlobfuseTest):
         os.chdir("../build")
         os.system(blobfuseMountCmd)
 
-    def test_gc_cache_check(self):
-        #do a number of operations to fill up the cache (but not to threshold)
-        #check size of cache after certain amount of time
-        #check after timeout if gc_cache handles certain files being removed
-        testDirName = "TestDir"
-        testDirPath = os.path.join(self.blobstage, testDirName)
-        size = 500
-        os.mkdir(testDirPath)
-
-        filename = str(uuid.uuid4())
-
-        with open('%s'%filename, 'wb') as fout:
-            fout.write(os.urandom(size))
-
-        #cleanup
-        os.rmdir(testDirPath)
-
     def test_cache_large_files(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.ramDiskContainerPath, testDirName)
-        size = 500
+        ramDiskSize = "1024M"
+        cacheTimeout = "120"
 
-        makeRamDisk("1024M")
-        startBlobfuse(5)
+        self.makeRamDisk(ramDiskSize)
+        self.startBlobfuse(cacheTimeout)
 
         # arrange
         if not os.path.exists(testDirPath):
@@ -1622,19 +1592,19 @@ class CacheTests(BlobfuseTest):
         for i in range(0, 5):
             filename = str(uuid.uuid4())
             filepath = os.path.join(testDirPath, filename)
-            os.system("head -c 1M < /dev/urandom > " + filepath);
-            os.system("head -c 200M < /dev/zero >> " + filepath);
-            os.system("head -c 2M < /dev/urandom >> " + filepath);
-        #this makes 1015MB, so it doesn't fill the cache but gets close
+            os.system("head -c 1M < /dev/urandom > " + filepath)
+            os.system("head -c 200M < /dev/zero >> " + filepath)
+            os.system("head -c 2M < /dev/urandom >> " + filepath)
+        #this makes 1015MB, so it fills the cache, so the threshold should be met
 
-        # assert (check cache)
-        # check how close we are to threshold after filling the cache
-        # if we are past 90 percent, fail the test
-        # if we are under then we assured we deleted to not hit the threshold
-        df = subprocess.Popen(["df", "filename"], stdout=subprocess.PIPE)
+        #assert (check cache)
+        #check how close we are to threshold after filling the cache
+        #if we are past low threshold, fail the test
+        #if we are under then we assured we deleted to not hit the threshold
+        df = subprocess.Popen(["df", self.ramDiskTmpPath], stdout=subprocess.PIPE)
         output = df.communicate()[0]
-        device,size,used,available,percent,mountpoint = output.split("\n")[1].split()
-        self.assertLessEqual(percent >= self.upper_threshold)
+        device, size, used, available, percent, mountpoint = output.split("\n")[1].split()
+        self.assertLess(int(percent.strip('%')), self.lower_threshold)
 
         # cleanup
         if os.path.exists(testDirPath):
@@ -1643,10 +1613,11 @@ class CacheTests(BlobfuseTest):
     def test_cache_small_files(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.ramDiskContainerPath, testDirName)
-        size = 500
+        ramDiskSize = "100M"
+        cacheTimeout = "120"
 
-        makeRamDisk("25M")
-        startBlobfuse(5)
+        self.makeRamDisk(ramDiskSize)
+        self.startBlobfuse(cacheTimeout)
 
         #arrange
         if not os.path.exists(testDirPath):
@@ -1656,22 +1627,36 @@ class CacheTests(BlobfuseTest):
         filename = str(uuid.uuid4())
 
         #act (create many files)
-        for i in range(0, 5):
+        for i in range(0, 8):
             filename = str(uuid.uuid4())
             filepath = os.path.join(testDirPath, filename)
-            os.system("head -c 1M < /dev/urandom > " + filepath);
-            os.system("head -c 2M < /dev/zero >> " + filepath);
-            os.system("head -c 2M < /dev/urandom >> " + filepath);
+            os.system("head -c 1M < /dev/urandom > " + filepath)
+            os.system("head -c 7M < /dev/zero >> " + filepath)
+            os.system("head -c 2M < /dev/urandom >> " + filepath)
 
-        #assert (check cache)
-        #check how close we are to threshold after filling the cache
-        #if we are past 90 percent, fail the test
-        #if we are under then we assured we deleted to not hit the threshold
-        df = subprocess.Popen(["df", "filename"], stdout=subprocess.PIPE)
+        # assert (check cache)
+        # check if we reached the low threshold. we expect no cleanup and to stay at the low threshold
+        df = subprocess.Popen(["df", self.ramDiskTmpPath], stdout=subprocess.PIPE)
         output = df.communicate()[0]
         device, size, used, available, percent, mountpoint = output.split("\n")[1].split()
-        self.assertLessEqual(percent >= self.upper_threshold)
+        self.assertEqual(int(percent.strip('%')), self.lower_threshold)
 
+        #if we add another file then it should reduce the cache size to below the lower threshold
+        #because we hit the high threshold
+        filename = str(uuid.uuid4())
+        filepath = os.path.join(testDirPath, filename)
+        os.system("head -c 1M < /dev/urandom > " + filepath)
+        os.system("head -c 7M < /dev/zero >> " + filepath)
+        os.system("head -c 2M < /dev/urandom >> " + filepath)
+
+        # assert (check cache)
+        # check how close we are to threshold after filling the cache
+        # if we are past the low threshold, fail the test
+        # if we are under then we assured we deleted to not hit the threshold
+        df = subprocess.Popen(["df", self.ramDiskTmpPath], stdout=subprocess.PIPE)
+        output = df.communicate()[0]
+        device, size, used, available, percent, mountpoint = output.split("\n")[1].split()
+        self.assertLess(int(percent.strip('%')), self.lower_threshold)
         # cleanup
         if os.path.exists(testDirPath):
             shutil.rmtree(testDirPath)
@@ -1685,6 +1670,5 @@ class CacheTests(BlobfuseTest):
 
         # cleanup
         os.rmdir(testDirPath)
-
 if __name__ == '__main__':
     unittest.main()
