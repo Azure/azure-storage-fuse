@@ -102,7 +102,6 @@ class BlobfuseTest(unittest.TestCase):
     # validates file was created
     def validate_file_creation(self, filePath, fileName, parentDir):
         os.stat(filePath)  # As long as this doesn't fail, we are satisfied
-        # print(os.stat(testFilePath))
 
         entries = os.listdir(parentDir)
         self.assertTrue(fileName in entries)
