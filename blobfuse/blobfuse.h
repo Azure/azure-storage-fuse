@@ -33,6 +33,11 @@
 
 #define UNREFERENCED_PARAMETER(p) (p)
 
+/* Define high and low gc_cache threshold values*/
+/* These threshold values were not calculated and are just an approximation of when we should be clearing the cache */
+#define HIGH_THRESHOLD_VALUE 90
+#define LOW_THRESHOLD_VALUE 80
+
 /* Define errors and return codes */
 #define D_NOTEXIST -1
 #define D_EMPTY 0
@@ -83,16 +88,21 @@ struct file_to_delete
 class gc_cache
 {
     public:
+        gc_cache() : disk_threshold_reached(false){}
         void run();
         void add_file(std::string path);
 
     private:
-    	void run_gc_cache();
+        bool disk_threshold_reached;
+        const double high_threshold = HIGH_THRESHOLD_VALUE;
+        const double low_threshold = LOW_THRESHOLD_VALUE;
         std::deque<file_to_delete> m_cleanup;
         std::mutex m_deque_lock;
+        void run_gc_cache();
+        bool check_disk_space();
 };
 
-extern gc_cache gc_cache;
+extern gc_cache g_gc_cache;
 
 // FUSE gives you one 64-bit pointer to use for communication between API's.
 // An instance of this struct is pointed to by that pointer.

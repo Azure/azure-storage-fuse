@@ -1,6 +1,8 @@
 #include "blobfuse.h"
 #include <sys/file.h>
 
+gc_cache g_gc_cache;
+
 int map_errno(int error)
 {
     auto mapping = error_mapping.find(error);
@@ -20,6 +22,38 @@ std::string prepend_mnt_path_string(const std::string& path)
     std::string result;
     result.reserve(str_options.tmpPath.length() + 5 + path.length());
     return result.append(str_options.tmpPath).append("/root").append(path);
+}
+
+//Helper function to help calculate the disk space we have left for the cache location
+//return: Returns true if we've reached the threshold and should elminate items in the cache, false otherwise
+bool gc_cache::check_disk_space()
+{
+    struct statvfs buf;
+    if(statvfs(str_options.tmpPath.c_str(), &buf) != 0)
+    {
+        return false;
+    }
+
+    //calculating the percentage of the amount of used space on the cached disk
+    //<used space in bytes> = <total size of disk in bytes> - <size of available disk space in bytes>
+    //<used percent of cached disk >= <used space> / <total size>
+    //f_frsize - the fundamental file system block size (in bytes) (used to convert file system blocks to bytes)
+    //f_blocks - total number of blocks on the filesystem/disk in the units of f_frsize
+    //f_bfree - total number of free blocks in units of f_frsize
+    double total = buf.f_blocks * buf.f_frsize;
+    double available = buf.f_bfree * buf.f_frsize;
+    double used = total - available;
+    double used_percent = (double)(used / total) * (double)100;
+
+    if(used_percent >= high_threshold && !disk_threshold_reached)
+    {
+        return true;
+    }
+    else if(used_percent >= low_threshold && disk_threshold_reached)
+    {
+        return true;
+    }
+    return false;
 }
 
 void gc_cache::add_file(std::string path)
@@ -67,7 +101,7 @@ void gc_cache::run_gc_cache()
 
         time_t now = time(NULL);
         //check if the closed time is old enough to delete
-        if((now - file.closed_time) > file_cache_timeout_in_seconds)
+        if(((now - file.closed_time) > file_cache_timeout_in_seconds) || disk_threshold_reached)
         {
             AZS_DEBUGLOGV("File %s being considered for deletion by file cache GC.\n", file.path.c_str());
 
@@ -83,7 +117,8 @@ void gc_cache::run_gc_cache()
 
             struct stat buf;
             stat(mntPath, &buf);
-            if (((now - buf.st_mtime) > file_cache_timeout_in_seconds) && ((now - buf.st_ctime) > file_cache_timeout_in_seconds))
+            if ((((now - buf.st_mtime) > file_cache_timeout_in_seconds) && ((now - buf.st_ctime) > file_cache_timeout_in_seconds))
+                || disk_threshold_reached)
             {
                 //clean up the file from cache
                 int fd = open(mntPath, O_WRONLY);
@@ -106,15 +141,19 @@ void gc_cache::run_gc_cache()
                     }
                     else
                     {
-                        AZS_DEBUGLOGV("GC cleanup of cached file %s.\n", mntPath);
                         unlink(mntPath);
                         flock(fd, LOCK_UN);
+
+                        //update disk space
+                        disk_threshold_reached = check_disk_space();
                     }
 
                     close(fd);
                 }
                 else
                 {
+                    //TODO:if we can't open the file consistently, should we just try to move onto the next file?
+                    //or somehow timeout on a file we can't open?
                     AZS_DEBUGLOGV("Failed to open file %s from file cache in GC, skipping cleanup. errno from open = %d.", mntPath, errno);
                 }
             }
@@ -130,6 +169,8 @@ void gc_cache::run_gc_cache()
         {
             // no file was timed out - let's wait a second
             usleep(1000);
+            //check disk space
+            disk_threshold_reached = check_disk_space();
         }
     }
 

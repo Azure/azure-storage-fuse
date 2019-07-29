@@ -22,7 +22,6 @@ READ ME BEFORE RUNNING TESTS
 4. Change line 31 (variable cachedir) to the designated cache directory used by blobfuse
 Make sure your user has permissions to these folders you've designated and that the folders also
 allow to be accessed by the tests (use chown and/or chmod)
-
 HOW TO RUN TESTS:
 $ python ./tests.py 
 (or replace 'tests.py' with the python test name)
@@ -31,22 +30,27 @@ To run individual tests or type of test add the class or class.methodtest in the
 class: $python ./tests.py OpenFileTest
 method: $python ./test.py OpenFileTest.test_open_file_nonexistent_file_read
 '''
+
+
 class BlobfuseTest(unittest.TestCase):
     # mounted container folder
     blobdir = "/mnt/bftmp"
-    #local temp directory
+    # local temp directory
     localdir = "/mnt/tmp"
     # designated folder for the cache
     cachedir = "/mnt/blobfusetmp"
-    #folder within mounted container
+    # folder within mounted container
     blobstage = ""
 
     def setUp(self):
         self.blobstage = os.path.join(self.blobdir, "testing")
         if not os.path.exists(self.localdir):
             os.makedirs(self.localdir)
+
         if not os.path.exists(self.blobstage):
             os.makedirs(self.blobstage)
+        os.chown(self.blobstage, os.geteuid(), os.getgid())
+
     def tearDown(self):
         if os.path.exists(self.blobstage):
             shutil.rmtree(self.blobstage)
@@ -102,6 +106,7 @@ class BlobfuseTest(unittest.TestCase):
     # validates file was created
     def validate_file_creation(self, filePath, fileName, parentDir):
         os.stat(filePath)  # As long as this doesn't fail, we are satisfied
+        # print(os.stat(testFilePath))
 
         entries = os.listdir(parentDir)
         self.assertTrue(fileName in entries)
@@ -110,7 +115,7 @@ class BlobfuseTest(unittest.TestCase):
     def read_file_func(self, filePath, start, end, testData):
         fd = os.open(filePath, os.O_RDONLY)
         os.lseek(fd, start, os.SEEK_SET)
-        data = os.read(fd, end-start)
+        data = os.read(fd, end - start)
         self.assertEqual(data.decode(), testData[start:end])
         os.close(fd)
 
@@ -123,7 +128,7 @@ class BlobfuseTest(unittest.TestCase):
 
 class RenameTests(BlobfuseTest):
 
-    #renames empty file within the same directory
+    # renames empty file within the same directory
     def test_rename_file_same_dir(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -141,7 +146,7 @@ class RenameTests(BlobfuseTest):
 
         os.remove(testFileNewPath)
 
-    #moves/renames empty file to another directory
+    # moves/renames empty file to another directory
     def test_rename_file_change_dir(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -159,7 +164,7 @@ class RenameTests(BlobfuseTest):
         os.remove(destFilePath)
         os.rmdir(testDirPath)
 
-    #renames nonempty file
+    # renames nonempty file
     def test_rename_file_non_empty(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -177,7 +182,7 @@ class RenameTests(BlobfuseTest):
 
         os.remove(destFilePath)
 
-    #renames subdirectory in the same parent directory
+    # renames subdirectory in the same parent directory
     def test_rename_dir(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -192,7 +197,7 @@ class RenameTests(BlobfuseTest):
 
         os.rmdir(destDirPath)
 
-    #renames/moves empty subdirectory to a different parent directory
+    # renames/moves empty subdirectory to a different parent directory
     def test_rename_dir_change_dir(self):
         testDirParent = "ParentDir"
         parentDirPath = os.path.join(self.blobstage, testDirParent)
@@ -213,14 +218,14 @@ class RenameTests(BlobfuseTest):
         os.rmdir(destDirPath)
         os.rmdir(destParentPath)
         os.rmdir(parentDirPath)
-  
-    #renames nonempty directory within same parent directory
+
+    # renames nonempty directory within same parent directory
     def test_rename_dir_nonempty(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
         testFileName = "testFile"
         testFilePath = os.path.join(testDirPath, testFileName)
-        
+
         destDirName = "newDirName"
         destDirPath = os.path.join(self.blobstage, destDirName)
 
@@ -239,7 +244,7 @@ class RenameTests(BlobfuseTest):
         os.remove(os.path.join(destDirPath, testFileName))
         os.rmdir(destDirPath)
 
-    #Attempts to rename a directory that doesn't exist, expect error
+    # Attempts to rename a directory that doesn't exist, expect error
     def test_rename_no_directory(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -251,7 +256,7 @@ class RenameTests(BlobfuseTest):
             os.rename(testDirPath, destDirPath)
         self.assertEqual(e.exception.errno, errno.ENOENT)
 
-    #Attempts to rename a file that doesn't exist, expect error
+    # Attempts to rename a file that doesn't exist, expect error
     def test_rename_no_file(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -269,7 +274,7 @@ class RenameTests(BlobfuseTest):
 
         os.rmdir(testDirPath)
 
-    #test to rename directory to an existing directory
+    # test to rename directory to an existing directory
     def test_rename_dir_change_dir(self):
         testDirParent = "ParentDir"
         parentDirPath = os.path.join(self.blobstage, testDirParent)
@@ -291,9 +296,10 @@ class RenameTests(BlobfuseTest):
         os.rmdir(destParentPath)
         os.rmdir(parentDirPath)
 
+
 class ReadWriteFileTests(BlobfuseTest):
 
-    #test to write to a blob and read from it (regular ascii)
+    # test to write to a blob and read from it (regular ascii)
     def test_WriteReadSingleFile(self):
         file1txt = "Some file1 text here."
         filepath = os.path.join(self.blobstage, "file1");
@@ -308,8 +314,8 @@ class ReadWriteFileTests(BlobfuseTest):
 
     # test to write to a blob and read from it (unicode)
     def test_WriteReadSingleFileUnicode(self):
-        file1txt = "你好，世界！"
-        filepath = os.path.join(self.blobstage, "文本: hello?world&we^are%all~together1 .txt");
+        file1txt = "`}L"
+        filepath = os.path.join(self.blobstage, "�,: hello?world&we^are%all~together1 .txt");
         with open(filepath, 'w') as file1blob:
             file1blob.write(file1txt)
         self.assertEqual(True, os.path.exists(filepath))
@@ -367,7 +373,7 @@ class ReadWriteFileTests(BlobfuseTest):
         mediumBlobsSourceDir = os.path.join(self.blobstage, "mediumblobs")
         if not os.path.exists(mediumBlobsSourceDir):
             os.makedirs(mediumBlobsSourceDir);
-        for i in range(0,10):
+        for i in range(0, 10):
             filename = str(uuid.uuid4())
             filepath = os.path.join(mediumBlobsSourceDir, filename)
             os.system("head -c 1M < /dev/urandom > " + filepath);
@@ -386,8 +392,9 @@ class ReadWriteFileTests(BlobfuseTest):
         files = os.listdir(mediumBlobsDestDir)
         self.assertEqual(10, len(files))
 
+
 class StatsTests(BlobfuseTest):
-    #test to check the stats of a directory, a file, and a nonexistent file(expect error here)
+    # test to check the stats of a directory, a file, and a nonexistent file(expect error here)
     def test_filesystem_stats(self):
         testDir = os.path.join(self.blobstage, "testDirectory")
         testFile = os.path.join(testDir, "file1")
@@ -411,7 +418,7 @@ class StatsTests(BlobfuseTest):
         with self.assertRaises(OSError):
             os.rmdir(testDir)
 
-    #test to check the stats of a file
+    # test to check the stats of a file
     def test_stat_file(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -427,7 +434,7 @@ class StatsTests(BlobfuseTest):
 
         os.remove(testFilePath)
 
-    #test to check the stats of a directory
+    # test to check the stats of a directory
     def test_stat_dir(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -437,7 +444,7 @@ class StatsTests(BlobfuseTest):
 
         os.rmdir(testDirPath)
 
-    #test if stat updates after each write operation and check contents as well
+    # test if stat updates after each write operation and check contents as well
     def test_write_stat_operations(self):
         testFilePath = os.path.join(self.blobstage, "testfile")
 
@@ -460,7 +467,7 @@ class StatsTests(BlobfuseTest):
 
         with open(testFilePath, 'rb') as testFile:
             contents = testFile.read()
-            self.assertEqual(data1000  + data500, contents)
+            self.assertEqual(data1000 + data500, contents)
 
         with open(testFilePath, 'wb') as testFile:
             testFile.write(data500)
@@ -471,7 +478,7 @@ class StatsTests(BlobfuseTest):
             contents = testFile.read()
             self.assertEqual(data500, contents)
 
-    #check fileowner and timestamp on file
+    # check fileowner and timestamp on file
     def test_file_owner_timestamp(self):
         testFileName = "testUserAndTime"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -517,7 +524,7 @@ class StatsTests(BlobfuseTest):
         os.close(fd)
         os.remove(testFilePath)
 
-    #TODO: fix empty folder creation with incorrect date, test does not pass
+    # TODO: fix empty folder creation with incorrect date, test does not pass
     def test_stat_empty_dir_timestamp(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -531,7 +538,7 @@ class StatsTests(BlobfuseTest):
 
         shutil.rmtree(testDirPath)
 
-    #test to see if directory timestamp gets updated when a file is made, file and directory should have same timestamp
+    # test to see if directory timestamp gets updated when a file is made, file and directory should have same timestamp
     def test_stat_file_dir_timestamp(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -557,8 +564,9 @@ class StatsTests(BlobfuseTest):
         os.remove(testFilePath)
         shutil.rmtree(testDirPath)
 
+
 class OpenFileTests(BlobfuseTest):
-    #attempts to read file that doesn't exist, expect error
+    # attempts to read file that doesn't exist, expect error
     def test_open_file_nonexistent_file_read(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -568,7 +576,7 @@ class OpenFileTests(BlobfuseTest):
 
         self.assertEqual(e.exception.errno, errno.ENOENT)
 
-    #attempts to write to a file that doesn't exist, expect error
+    # attempts to write to a file that doesn't exist, expect error
     def test_open_file_nonexistent_file_write(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -578,8 +586,8 @@ class OpenFileTests(BlobfuseTest):
 
         self.assertEqual(e.exception.errno, errno.ENOENT)
 
-    #test open an empty file in write only, write to it, close it
-    #reopen the file in read only to check if we can read the contents
+    # test open an empty file in write only, write to it, close it
+    # reopen the file in read only to check if we can read the contents
     def test_open_file_exists_read_write_empty(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -596,8 +604,8 @@ class OpenFileTests(BlobfuseTest):
         os.close(fd)
         os.remove(testFilePath)
 
-    #create/open file in write only, then try to read from it and expect an error
-    #then open the file in read only and attempt to write to it and expect an error
+    # create/open file in write only, then try to read from it and expect an error
+    # then open the file in read only and attempt to write to it and expect an error
     def test_open_file_read_only_write_only(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -621,8 +629,8 @@ class OpenFileTests(BlobfuseTest):
 
         os.remove(testFilePath)
 
-    #test if we can open the same file in write only, then in read only then using the
-    #respective file handles, read and write to the file
+    # test if we can open the same file in write only, then in read only then using the
+    # respective file handles, read and write to the file
     def test_open_file_already_open(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -639,9 +647,9 @@ class OpenFileTests(BlobfuseTest):
         os.close(fd2)
         os.remove(testFilePath)
 
-    #expect an error if we try to open a directory path
+    # expect an error if we try to open a directory path
     def test_open_dir_exists(self):
-        #expect failure
+        # expect failure
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
 
@@ -653,12 +661,14 @@ class OpenFileTests(BlobfuseTest):
 
         os.rmdir(testDirPath)
 
+
 class CloseFileTests(BlobfuseTest):
-    #helper function for  closing file through a process/thread
+    # helper function for  closing file through a process/thread
     def close_file_func(self, filePath):
         fd = os.open(filePath, os.O_RDONLY)
         os.close(fd)
-    #opening a file after another process opened it
+
+    # opening a file after another process opened it
     def test_read_file_after_another_process_closes(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -678,7 +688,7 @@ class CloseFileTests(BlobfuseTest):
         os.close(fd)
         os.remove(testFilePath)
 
-    #test file after we opened it, expect error when we try to write to a file that's closed
+    # test file after we opened it, expect error when we try to write to a file that's closed
     def test_close_file(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -692,7 +702,7 @@ class CloseFileTests(BlobfuseTest):
 
         os.remove(testFilePath)
 
-    #test file after we opened it, closed it and expect an error after we try to close it again
+    # test file after we opened it, closed it and expect an error after we try to close it again
     def test_close_file_twice(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -706,9 +716,10 @@ class CloseFileTests(BlobfuseTest):
 
         os.remove(testFilePath)
 
+
 class RemoveFileTests(BlobfuseTest):
 
-    #test if we can remove a file
+    # test if we can remove a file
     def test_remove_file(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -719,7 +730,7 @@ class RemoveFileTests(BlobfuseTest):
 
         self.validate_file_removal(testFilePath, testFileName, self.blobstage)
 
-    #test if we can remove a file that's still open
+    # test if we can remove a file that's still open
     def test_remove_file_still_open(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -729,19 +740,19 @@ class RemoveFileTests(BlobfuseTest):
 
         self.validate_file_removal(testFilePath, testFileName, self.blobstage)
 
-    #expect an error if we try to remove a file that doesn't exist
+    # expect an error if we try to remove a file that doesn't exist
     def test_remove_nonexistent(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
 
-        #throw exception here, expect OSError
+        # throw exception here, expect OSError
         with self.assertRaises(OSError) as e:
             os.remove(testFilePath)
         self.assertEqual(e.exception.errno, errno.ENOENT)
 
         self.validate_file_removal(testFilePath, testFileName, self.blobstage)
 
-    #expect an error if we try to remove a file that has already been removed
+    # expect an error if we try to remove a file that has already been removed
     def test_remove_file_twice(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -752,16 +763,17 @@ class RemoveFileTests(BlobfuseTest):
 
         self.validate_file_removal(testFilePath, testFileName, self.blobstage)
 
-        #throw exception here, expect OSError
+        # throw exception here, expect OSError
         with self.assertRaises(OSError) as e:
             os.remove(testFilePath)
         self.assertEqual(e.exception.errno, errno.ENOENT)
 
         self.validate_file_removal(testFilePath, testFileName, self.blobstage)
 
+
 class TruncateTests(BlobfuseTest):
 
-    #test if we can truncate a file
+    # test if we can truncate a file
     def test_truncate_file(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -775,7 +787,7 @@ class TruncateTests(BlobfuseTest):
 
         os.remove(testFilePath)
 
-    #test if we can truncate a file and if we can read from it and open it and truncate it again
+    # test if we can truncate a file and if we can read from it and open it and truncate it again
     def test_truncate_file_non_zero(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -798,9 +810,9 @@ class TruncateTests(BlobfuseTest):
 
         os.remove(testFilePath)
 
-    #test to truncate an empty file
+    # test to truncate an empty file
     def test_truncate_empty_file(self):
-        #dunno if should expecting error here or not
+        # dunno if should expecting error here or not
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
 
@@ -812,8 +824,9 @@ class TruncateTests(BlobfuseTest):
 
         os.remove(testFilePath)
 
+
 class ThreadTests(BlobfuseTest):
-    #test if we can read from the same file at the same time with multiple processes
+    # test if we can read from the same file at the same time with multiple processes
     def test_file_simultaneous_read(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -836,7 +849,8 @@ class ThreadTests(BlobfuseTest):
         thread3.join()
 
         os.remove(testFilePath)
-    #tests if we can write to the same  file with multiple threads
+
+    # tests if we can write to the same  file with multiple threads
     def test_file_simultaneous_write(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -893,7 +907,7 @@ class ThreadTests(BlobfuseTest):
         if not os.path.exists(mediumBlobsSourceDir):
             os.makedirs(mediumBlobsSourceDir);
         # We must use different files for each thread to avoid the synchronization that would occur if all threads access the same file
-        for i in range(0,20):
+        for i in range(0, 20):
             filename = str(uuid.uuid4())
             filepath = os.path.join(mediumBlobsSourceDir, filename)
             os.system("head -c 100M < /dev/zero >> " + filepath);
@@ -906,7 +920,8 @@ class ThreadTests(BlobfuseTest):
 
         for filename in os.listdir(mediumBlobsSourceDir):
             path = os.path.join(mediumBlobsSourceDir, filename)
-            threads.append(threading.Thread(target=self.read_file_func, args=(path, 0, 0, "",))) # Note that read_file_func also opens the file, which is the desired behavior
+            threads.append(threading.Thread(target=self.read_file_func, args=(
+            path, 0, 0, "",)))  # Note that read_file_func also opens the file, which is the desired behavior
 
         for thread in threads:
             thread.start()
@@ -916,8 +931,9 @@ class ThreadTests(BlobfuseTest):
 
         shutil.rmtree(mediumBlobsSourceDir)
 
+
 class CreateFileTests(BlobfuseTest):
-    #test to create a new file
+    # test to create a new file
     def test_create_file_new_file(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -930,7 +946,7 @@ class CreateFileTests(BlobfuseTest):
         os.close(fd)
         os.remove(testFilePath)
 
-    #expect error trying to create a file of a name that is already taken
+    # expect error trying to create a file of a name that is already taken
     def test_create_file_name_conflict_file(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -944,7 +960,7 @@ class CreateFileTests(BlobfuseTest):
         os.close(fd)
         os.remove(testFilePath)
 
-    #expect error when trying to create a file with a name of the a directory that exists
+    # expect error when trying to create a file with a name of the a directory that exists
     def test_create_file_name_conflict_dir(self):
         testFileName = "TestFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
@@ -956,16 +972,17 @@ class CreateFileTests(BlobfuseTest):
 
         os.rmdir(testFilePath)
 
+
 class MakeDirectoryTests(BlobfuseTest):
-    #test for a lot of directory commands
+    # test for a lot of directory commands
     # Test making a directory, making files in that directory, making subdirectories, and files for the subdirectories
-    #use listdir to check the contents of that directory
-    #test that we cannot remove a nonempty directory
-    #test that we actually removed the direcotry
+    # use listdir to check the contents of that directory
+    # test that we cannot remove a nonempty directory
+    # test that we actually removed the direcotry
     def test_directory_operations(self):
         testDir = os.path.join(self.blobstage, "testDirectory")
         subdir1 = "subDir1"
-        subdir2 = "Thİs!is-a%directory&name @1"
+        subdir2 = "Th0s!is-a%directory&name @1"
         self.assertFalse(os.path.exists(testDir))
         self.assertFalse(os.path.isdir(testDir))
 
@@ -1021,7 +1038,7 @@ class MakeDirectoryTests(BlobfuseTest):
         self.assertFalse(os.path.exists(testDir))
         self.assertFalse(os.path.isdir(testDir))
 
-    #test of validating of making an empty directory
+    # test of validating of making an empty directory
     def test_make_new_directory(self):
         # Note that based on the value of self.blobdir, this also tests the relative path
         testDirName = "testDir"
@@ -1033,7 +1050,7 @@ class MakeDirectoryTests(BlobfuseTest):
 
         os.rmdir(os.path.join(self.blobstage, testDirName))
 
-    #test if we try to make a directory with a name that already exists
+    # test if we try to make a directory with a name that already exists
     def test_make_directory_name_exists(self):
         testDirName = "testDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1045,50 +1062,43 @@ class MakeDirectoryTests(BlobfuseTest):
             self.assertEqual(e.errno, errno.EEXIST)
 
         os.rmdir(os.path.join(self.blobstage, testDirName))
-    #replace scandir eventually
+
+    # replace scandir eventually
     '''
     def test_close_directory(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         os.mkdir(testDirPath)
         f = open(testFilePath, "w")
         f.close()
-
         entries = os.scandir(testDirPath)
         entries.close()
-
         with self.assertRaises(StopIteration):
             next(entries)
-
         os.remove(testFilePath)
         os.rmdir(testDirPath)
     '''''
-    #This test throws a errno 5 (I/O error) instead of Name too long error
-    #apparently in the past this tests has thrown a 400
-    #TODO: Figure out the appropriate error code to be thrown here otherwise this test works for the most part
+    # This test throws a errno 5 (I/O error) instead of Name too long error
+    # apparently in the past this tests has thrown a 400
+    # TODO: Figure out the appropriate error code to be thrown here otherwise this test works for the most part
     '''
     def test_make_directory_long_name(self):
         homeDir = os.getcwd()
         os.chdir(self.blobstage)
-
         # The service currently has a limit of 1024 characters
         testDir = "a"
         while len(testDir) < 1100:
             testDir += os.path.join(testDir, "a" * 200)
-
         with self.assertRaises(OSError) as e:
             os.makedirs(testDir)
-
         self.assertEqual(e.exception.errno, errno.ENAMETOOLONG)
-
         shutil.rmtree("aa")
-
         os.chdir(homeDir)
     '''
-    #test making a directory with an aboslute path
+
+    # test making a directory with an aboslute path
     def test_make_directory_absolute_path(self):
         testDirName = "testDir"
         testDirPath = os.path.join(os.getcwd(), self.blobstage, testDirName)
@@ -1100,7 +1110,7 @@ class MakeDirectoryTests(BlobfuseTest):
 
         os.rmdir(testDirAbsPath)
 
-    #test make directory and creating a file within the directory
+    # test make directory and creating a file within the directory
     def test_make_directory_add_file(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1122,7 +1132,7 @@ class MakeDirectoryTests(BlobfuseTest):
         os.remove(testFilePath)
         os.rmdir(testDirPath)
 
-    #test making a directory and making a subdirectory within it
+    # test making a directory and making a subdirectory within it
     def test_make_directory_add_subdir(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1144,8 +1154,9 @@ class MakeDirectoryTests(BlobfuseTest):
         os.rmdir(testSubdirPath)
         os.rmdir(testDirPath)
 
+
 class OpenListDirectoryTests(BlobfuseTest):
-    #test making an empty directory and checking with list dir
+    # test making an empty directory and checking with list dir
     def test_open_directory_dir_empty(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1156,7 +1167,8 @@ class OpenListDirectoryTests(BlobfuseTest):
         self.assertTrue(len(entries) == 0)
 
         os.rmdir(testDirPath)
-    #testing open / list dir with a nonexistent directory
+
+    # testing open / list dir with a nonexistent directory
     def test_open_directory_dir_never_created(self):
         testDirName = "Test"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1165,7 +1177,8 @@ class OpenListDirectoryTests(BlobfuseTest):
             os.listdir(testDirPath)
 
         self.assertEqual(e.exception.errno, errno.ENOENT)
-    #test open / list dir on a path that's absolute
+
+    # test open / list dir on a path that's absolute
     def test_open_directory_absolute_path(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1177,7 +1190,8 @@ class OpenListDirectoryTests(BlobfuseTest):
         self.assertTrue(len(entries) == 0)
 
         os.rmdir(testDirAbs)
-    #test open / list dir with a directory with empty subdirectories and files
+
+    # test open / list dir with a directory with empty subdirectories and files
     def test_open_directory_with_files_and_subdirs(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1199,7 +1213,8 @@ class OpenListDirectoryTests(BlobfuseTest):
 
         os.remove(testFilePath)
         shutil.rmtree(testDirPath)
-    #test list directory with a directory with nonempty subdirectory
+
+    # test list directory with a directory with nonempty subdirectory
     def test_read_directory_with_non_empty_subdir(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1223,7 +1238,8 @@ class OpenListDirectoryTests(BlobfuseTest):
 
         os.remove(testFilePath)
         shutil.rmtree(testDirPath)
-    #test list dir with empty directory
+
+    # test list dir with empty directory
     def test_read_directory_empty_dir(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1236,9 +1252,10 @@ class OpenListDirectoryTests(BlobfuseTest):
 
         shutil.rmtree(testDirPath)
 
+
 class RemoveDirectoryTests(BlobfuseTest):
 
-    #test remove empty directory
+    # test remove empty directory
     def test_remove_directory_empty(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1249,7 +1266,7 @@ class RemoveDirectoryTests(BlobfuseTest):
 
         self.validate_dir_removal(testDirPath, testDirName, self.blobstage)
 
-    #test remove directory path that's absolute
+    # test remove directory path that's absolute
     def test_remove_directory_absolute_path(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1261,8 +1278,8 @@ class RemoveDirectoryTests(BlobfuseTest):
 
         self.validate_dir_removal(testDirAbs, testDirName, self.blobstage)
 
-    #test remove directory with non empty files, expect error when trying to remove a directory without
-    #removing the files first
+    # test remove directory with non empty files, expect error when trying to remove a directory without
+    # removing the files first
     def test_remove_directory_non_empty_files(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1280,8 +1297,8 @@ class RemoveDirectoryTests(BlobfuseTest):
         os.remove(testFilePath)
         os.rmdir(testDirPath)
 
-    #test removing a directory with a non empty subdirectory, expect an error if trying to remove the
-    #parent directory without first emptying the file and subdirectory or removing it recursively
+    # test removing a directory with a non empty subdirectory, expect an error if trying to remove the
+    # parent directory without first emptying the file and subdirectory or removing it recursively
     def test_remove_directory_non_empty_subdir(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1296,7 +1313,7 @@ class RemoveDirectoryTests(BlobfuseTest):
 
         shutil.rmtree(testDirPath)
 
-    #test removing the directory that doesn't exist
+    # test removing the directory that doesn't exist
     def test_remove_directory_never_created(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1305,7 +1322,7 @@ class RemoveDirectoryTests(BlobfuseTest):
             os.rmdir(testDirPath)
         self.assertEqual(e.exception.errno, errno.ENOENT)
 
-    #test removing a directory and expect an error when attempting to open the directory
+    # test removing a directory and expect an error when attempting to open the directory
     def test_remove_directory_cd_into(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1320,46 +1337,39 @@ class RemoveDirectoryTests(BlobfuseTest):
 
         os.chdir(homeDir)
 
-    #use listdir tests instead unless earlier versions of python are available
+    # use listdir tests instead unless earlier versions of python are available
     '''
     def test_close_directory(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         os.mkdir(testDirPath)
         f = open(testFilePath, "w")
         f.close()
-
         entries = os.scandir(testDirPath)
         entries.close()
-
         with self.assertRaises(StopIteration):
             next(entries)
-
         os.remove(testFilePath)
         os.rmdir(testDirPath)
-
     def test_close_directory_already_closed(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         os.mkdir(testDirPath)
         f = open(testFilePath, "w")
         f.close()
-
         entries = os.scandir(testDirPath) #use scandir with newer versions of python
         entries.close()
         entries.close()
-
         os.remove(testFilePath)
         os.rmdir(testDirPath)
     '''
-    #test fuse handling a crash, when attempting to close a file that has the same name as a blob
-    #but that's not in the mounted container
+
+    # test fuse handling a crash, when attempting to close a file that has the same name as a blob
+    # but that's not in the mounted container
     def test_fuse_crash(self):
         testDirName = "TestDir"
         testDirPath = os.path.join(self.blobstage, testDirName)
@@ -1373,7 +1383,7 @@ class RemoveDirectoryTests(BlobfuseTest):
         os.mkdir(testSubdirPath)
         testFile = open(testFilePath, "w")
         with self.assertRaises(TypeError) as e:
-            testFile.close(testFile) # This line seems to make fuse crash
+            testFile.close(testFile)  # This line seems to make fuse crash
 
         testFile.close()
         entries = os.listdir(testDirPath)
@@ -1384,161 +1394,274 @@ class RemoveDirectoryTests(BlobfuseTest):
         os.remove(testFilePath)
         shutil.rmtree(testDirPath)
 
-
-# TODO: implement flock
+    # TODO: implement flock
     '''
 class FlockTests(BlobfuseTest):
     def test_file_lock_shared(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         fd = os.open(testFilePath, os.O_CREAT)
         fcntl.flock(fd, fcntl.LOCK_SH)
-
         fd2 = os.open(testFilePath, os.O_WRONLY)
         fcntl.flock(fd2, fcntl.LOCK_SH) # Acquiring two shared locks is valid
-
         os.close(fd)
         os.close(fd2)
         os.remove(testFilePath)
-
     def test_file_lock_exclusive(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         fd = os.open(testFilePath, os.O_CREAT)
         fcntl.flock(fd, fcntl.LOCK_EX)
-
         fd2 = os.open(testFilePath, os.O_WRONLY)
         with self.assertRaises(BlockingIOError) as e:
             fcntl.flock(fd2, fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.assertEqual(e.exception.errno, errno.EAGAIN)
-
         os.close(fd)
         os.close(fd2)
         os.remove(testFilePath)
-
     def test_file_lock_shared_then_exclusive(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         fd = os.open(testFilePath, os.O_CREAT)
         fcntl.flock(fd, fcntl.LOCK_SH)
-
         fd2 = os.open(testFilePath, os.O_WRONLY)
         with self.assertRaises(BlockingIOError) as e:
             fcntl.flock(fd2, fcntl.LOCK_EX | fcntl.LOCK_NB)
         self.assertEqual(e.exception.errno, errno.EAGAIN)
-
         os.close(fd)
         os.close(fd2)
         os.remove(testFilePath)
-
     def test_file_lock_exclusive_then_shared(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         fd = os.open(testFilePath, os.O_CREAT)
         fcntl.flock(fd, fcntl.LOCK_EX)
-
         fd2 = os.open(testFilePath, os.O_WRONLY)
         with self.assertRaises(BlockingIOError) as e:
             fcntl.flock(fd2, fcntl.LOCK_SH | fcntl.LOCK_NB)
         self.assertEqual(e.exception.errno, errno.EAGAIN)
-
         os.close(fd)
         os.close(fd2)
         os.remove(testFilePath)
-
     def test_file_lock_change_type(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         fd = os.open(testFilePath, os.O_CREAT)
         fcntl.flock(fd, fcntl.LOCK_EX)
         fcntl.flock(fd, fcntl.LOCK_SH)
-
         fd2 = os.open(testFilePath, os.O_WRONLY)
         fcntl.flock(fd2, fcntl.LOCK_SH)
-
         os.close(fd)
         os.close(fd2)
         os.remove(testFilePath)
-
     def test_file_lock_release(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         fd = os.open(testFilePath, os.O_CREAT)
         fcntl.flock(fd, fcntl.LOCK_EX)
         fcntl.flock(fd, fcntl.LOCK_UN)
-
         fd2 = os.open(testFilePath, os.O_WRONLY)
         fcntl.flock(fd2, fcntl.LOCK_EX)
-
         os.close(fd)
         os.close(fd2)
         os.remove(testFilePath)
-
     def test_file_lock_release_on_close(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         fd = os.open(testFilePath, os.O_CREAT)
         fcntl.flock(fd, fcntl.LOCK_EX)
         os.close(fd)
-
         fd = os.open(testFilePath, os.O_WRONLY)
         fcntl.flock(fd, fcntl.LOCK_EX)
-
         os.close(fd)
         os.remove(testFilePath)
-
     def test_file_lock_close_file(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         fd = os.open(testFilePath, os.O_CREAT)
         os.close(fd)
         with self.assertRaises(OSError) as e:
             fcntl.flock(fd, fcntl.LOCK_SH)
         self.assertEqual(e.exception.errno, errno.EBADF)
-
         os.remove(testFilePath)
-
     def test_file_lock_release_never_acquired(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         fd = os.open(testFilePath, os.O_CREAT)
         fcntl.flock(fd, fcntl.LOCK_UN)
-
         os.close(fd)
         os.remove(testFilePath)
-
     def try_lock_file(self, filePath):
         fd = os.open(filePath, os.O_WRONLY)
         fcntl.flock(fd, fcntl.LOCK_EX)
-
     def test_file_block_on_lock(self):
         testFileName = "testFile"
         testFilePath = os.path.join(self.blobstage, testFileName)
-
         fd = os.open(testFilePath, os.O_CREAT)
         fcntl.flock(fd, fcntl.LOCK_EX)
-
         # We want to assert that the file is locked even between processes, not just threads
         process = multiprocessing.Process(target=self.try_lock_file, args=(testFilePath,))
         process.start()
         process.join(2)
-
         # If the process has exitcode=none, it is still running and therefore blocked as expected 
         self.assertIsNone(process.exitcode)
-
         process.terminate()
         os.close(fd)
         os.remove(testFilePath)
-
 '''
+#note: these tests take a certain amount of time due to the volume of files
+#filling the mounted container, emptying the container and waiting for the cache to clear itself
+#in order to make it more efficient to fill the cache without taking so much time
+#we allocate a small ram disk in order to reach capacity with the disk
+#also make sure this test is in the python_test directory
+#if you have issues running these tests due to access permissions issue. It might help to
+#manually run 'sudo chown <username> <foldername>' before these tests
+class CacheTests(BlobfuseTest):
+    #path to ramdisk
+    ramDiskPath = "/mnt/ramdisk"
+    #path to cache container for blobfuse in ramdisk
+    ramDiskTmpPath = ramDiskPath + "/blobfusetmp"
+    #path to mounted container in ramdisk
+    ramDiskContainerPath = "/mnt/ramdiskMountedContainer"
+    #upper/high threshold
+    upper_threshold = 90
+    #lower/bottom threshold
+    lower_threshold = 80
+
+    def setUp(self):
+        # create temp/cache directory
+        if not os.path.exists(self.ramDiskPath):
+            os.mkdir(self.ramDiskPath)
+        #os.chown(self.ramDiskPath, os.geteuid(), os.getgid())
+
+        if not os.path.exists(self.ramDiskTmpPath):
+            os.mkdir(self.ramDiskTmpPath)
+        os.chown(self.ramDiskTmpPath, os.geteuid(), os.getgid())
+
+        if not os.path.exists(self.ramDiskContainerPath):
+            os.mkdir(self.ramDiskContainerPath)
+        os.chown(self.ramDiskContainerPath, os.geteuid(), os.getgid())
+
+    def tearDown(self):
+        # unmount blobfuse
+        os.system("fusermount -u " + self.ramDiskContainerPath)
+
+        #unmount ramdisk
+        os.system("sudo umount " + self.ramDiskPath)
+
+        #delete container directory if still exists
+        if os.path.exists(self.ramDiskContainerPath):
+            shutil.rmtree(self.ramDiskContainerPath)
+
+        #delete cache/temp directory if still exists
+        if os.path.exists(self.ramDiskTmpPath):
+            shutil.rmtree(self.ramDiskTmpPath)
+
+        #delete cache/temp directory if still exists
+        if os.path.exists(self.ramDiskPath):
+            shutil.rmtree(self.ramDiskPath)
+
+    def makeRamDisk(self, disk_size):
+        #create ramdisk, give current user access to the ramdisk and mount
+        os.system("sudo mount -t tmpfs -o size=" + disk_size + " tmpfs " + self.ramDiskPath)
+
+    def startBlobfuse(self, cache_timeout):
+        #call blobfuse using ramdisk as the cache directory
+        blobfuseMountCmd = "./blobfuse " + self.ramDiskContainerPath + " --tmp-path=" + self.ramDiskTmpPath + \
+                           " -o attr_timeout=240 -o entry_timeout=240 -o negative_timeout=120 " \
+                           "--file-cache-timeout-in-seconds=" + cache_timeout + \
+                           " --config-file=../connection.cfg --log-level=LOG_DEBUG"
+        os.chdir("../build")
+        os.system(blobfuseMountCmd)
+
+    def test_cache_large_files(self):
+        testDirName = "TestDir"
+        testDirPath = os.path.join(self.ramDiskContainerPath, testDirName)
+        ramDiskSize = "1024M"
+        cacheTimeout = "120"
+
+        self.makeRamDisk(ramDiskSize)
+        self.startBlobfuse(cacheTimeout)
+
+        # arrange
+        if not os.path.exists(testDirPath):
+            os.mkdir(testDirPath)
+        os.chown(testDirPath, os.geteuid(), os.getgid())
+
+        filename = str(uuid.uuid4())
+
+        # act (create many files)
+        for i in range(0, 5):
+            filename = str(uuid.uuid4())
+            filepath = os.path.join(testDirPath, filename)
+            os.system("head -c 1M < /dev/urandom > " + filepath)
+            os.system("head -c 200M < /dev/zero >> " + filepath)
+            os.system("head -c 2M < /dev/urandom >> " + filepath)
+        #this makes 1015MB, so it fills the cache, so the threshold should be met
+
+        #assert (check cache)
+        #check how close we are to threshold after filling the cache
+        #if we are past low threshold, fail the test
+        #if we are under then we assured we deleted to not hit the threshold
+        df = subprocess.Popen(["df", self.ramDiskTmpPath], stdout=subprocess.PIPE)
+        output = df.communicate()[0]
+        device, size, used, available, percent, mountpoint = output.split("\n")[1].split()
+        self.assertLess(int(percent.strip('%')), self.lower_threshold)
+
+        # cleanup
+        if os.path.exists(testDirPath):
+            shutil.rmtree(testDirPath)
+
+    def test_cache_small_files(self):
+        testDirName = "TestDir"
+        testDirPath = os.path.join(self.ramDiskContainerPath, testDirName)
+        ramDiskSize = "100M"
+        cacheTimeout = "120"
+
+        self.makeRamDisk(ramDiskSize)
+        self.startBlobfuse(cacheTimeout)
+
+        #arrange
+        if not os.path.exists(testDirPath):
+            os.mkdir(testDirPath)
+        os.chown(testDirPath, os.geteuid(), os.getgid())
+
+        filename = str(uuid.uuid4())
+
+        #act (create many files)
+        for i in range(0, 8):
+            filename = str(uuid.uuid4())
+            filepath = os.path.join(testDirPath, filename)
+            os.system("head -c 1M < /dev/urandom > " + filepath)
+            os.system("head -c 7M < /dev/zero >> " + filepath)
+            os.system("head -c 2M < /dev/urandom >> " + filepath)
+
+        # assert (check cache)
+        # check if we reached the low threshold. we expect no cleanup and to stay at the low threshold
+        df = subprocess.Popen(["df", self.ramDiskTmpPath], stdout=subprocess.PIPE)
+        output = df.communicate()[0]
+        device, size, used, available, percent, mountpoint = output.split("\n")[1].split()
+        self.assertEqual(int(percent.strip('%')), self.lower_threshold)
+
+        #if we add another file then it should reduce the cache size to below the lower threshold
+        #because we hit the high threshold
+        filename = str(uuid.uuid4())
+        filepath = os.path.join(testDirPath, filename)
+        os.system("head -c 1M < /dev/urandom > " + filepath)
+        os.system("head -c 7M < /dev/zero >> " + filepath)
+        os.system("head -c 2M < /dev/urandom >> " + filepath)
+
+        # assert (check cache)
+        # check how close we are to threshold after filling the cache
+        # if we are past the low threshold, fail the test
+        # if we are under then we assured we deleted to not hit the threshold
+        df = subprocess.Popen(["df", self.ramDiskTmpPath], stdout=subprocess.PIPE)
+        output = df.communicate()[0]
+        device, size, used, available, percent, mountpoint = output.split("\n")[1].split()
+        self.assertLess(int(percent.strip('%')), self.lower_threshold)
+        # cleanup
+        if os.path.exists(testDirPath):
+            shutil.rmtree(testDirPath)
+
 if __name__ == '__main__':
     unittest.main()
