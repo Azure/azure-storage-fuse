@@ -188,7 +188,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Unknown failure in create_container.  ex.what() = %s, container = %s.", ex.what(), container.c_str());
                 errno = unknown_error;
@@ -224,7 +224,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Unknown failure in delete_container.  ex.what() = %s, container = %s.", ex.what(), container.c_str());
                 errno = unknown_error;
@@ -261,7 +261,7 @@ namespace microsoft_azure {
                     return false;
                 }
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Unknown failure in container_exists.  ex.what() = %s, container = %s.", ex.what(), container.c_str());
                 errno = unknown_error;
@@ -295,7 +295,7 @@ namespace microsoft_azure {
                 }
                 return result.response().containers;
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Unknown failure in list_containers.  ex.what() = %s, prefix = %s.", ex.what(), prefix.c_str());
                 errno = unknown_error;
@@ -335,7 +335,7 @@ namespace microsoft_azure {
                     return result.response();
                 }
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Unknown failure in list_blobs_hierarchial.  ex.what() = %s, container = %s, prefix = %s.", ex.what(), container.c_str(), prefix.c_str());
                 errno = unknown_error;
@@ -361,7 +361,7 @@ namespace microsoft_azure {
             {
                 ifs.open(sourcePath, std::ifstream::in);
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 // TODO open failed
                 syslog(LOG_ERR, "Failure to open the input stream in put_blob.  ex.what() = %s, sourcePath = %s.", ex.what(), sourcePath.c_str());
@@ -383,7 +383,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Failure to upload the blob in put_blob.  ex.what() = %s, container = %s, blob = %s, sourcePath = %s.", ex.what(), container.c_str(), blob.c_str(), sourcePath.c_str());
                 errno = unknown_error;
@@ -393,7 +393,7 @@ namespace microsoft_azure {
             {
                 ifs.close();
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 // TODO close failed
                 syslog(LOG_ERR, "Failure to close the input stream in put_blob.  ex.what() = %s, container = %s, blob = %s, sourcePath = %s.", ex.what(), container.c_str(), blob.c_str(), sourcePath.c_str());
@@ -431,7 +431,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Unknown failure in upload_block_blob_from_stream.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
                 errno = unknown_error;
@@ -645,7 +645,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Unknown failure in download_blob_to_stream.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
                 errno = unknown_error;
@@ -752,7 +752,7 @@ namespace microsoft_azure {
                 }
                 errno = errcode;
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Unknown failure in download_blob_to_file.  ex.what() = %s, container = %s, blob = %s, destPath = %s.", ex.what(), container.c_str(), blob.c_str(), destPath.c_str());
                 errno = unknown_error;
@@ -785,7 +785,7 @@ namespace microsoft_azure {
                     return result.response();
                 }
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Unknown failure in get_blob_property.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
                 errno = unknown_error;
@@ -811,7 +811,7 @@ namespace microsoft_azure {
                 }
                 return false;
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Unknown failure in blob_exists.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
                 errno = unknown_error;
@@ -847,7 +847,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Unknown failure in delete_blob.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
                 errno = unknown_error;
@@ -885,7 +885,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(std::exception ex)
+            catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Unknown failure in start_copy.  ex.what() = %s, sourceContainer = %s, sourceBlob = %s, destContainer = %s, destBlob = %s.", ex.what(), sourceContainer.c_str(), sourceBlob.c_str(), destContainer.c_str(), destBlob.c_str());
                 errno = unknown_error;

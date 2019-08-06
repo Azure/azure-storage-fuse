@@ -711,8 +711,6 @@ int azs_rename_directory(const char *src, const char *dst)
     return 0;
 }
 
-
-
 // TODO: Fix bug where the files and directories in the source in the file cache are not deleted.
 // TODO: Fix bugs where the a file has been created but not yet uploaded.
 // TODO: Fix the bug where this fails for multi-level dirrectories.
