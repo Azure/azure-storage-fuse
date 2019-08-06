@@ -74,6 +74,7 @@ int read_config_env()
     char* env_account = getenv("AZURE_STORAGE_ACCOUNT");
     char* env_account_key = getenv("AZURE_STORAGE_ACCESS_KEY");
     char* env_sas_token = getenv("AZURE_STORAGE_SAS_TOKEN");
+    char* env_blob_endpoint = getenv("AZURE_BLOB_ENDPOINT");
 
     if(env_account)
     {
@@ -101,6 +102,11 @@ int read_config_env()
     {
         syslog(LOG_CRIT, "Unable to start blobfuse.  If no config file is specified, exactly one of the environment variables AZURE_STORAGE_ACCESS_KEY or AZURE_STORAGE_SAS_TOKEN must be set.");
         fprintf(stderr, "Unable to start blobfuse.  If no config file is specified, exactly one of the environment variables AZURE_STORAGE_ACCESS_KEY or AZURE_STORAGE_SAS_TOKEN must be set.\n");
+    }
+
+    if(env_blob_endpoint)
+    {
+        str_options.blobEndpoint = env_blob_endpoint;
     }
 
     return 0;
