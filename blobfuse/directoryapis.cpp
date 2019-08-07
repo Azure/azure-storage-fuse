@@ -102,7 +102,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     }
 
     errno = 0;
-    std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
+    std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
     if (errno != 0)
     {
         int storage_errno = errno;
@@ -111,67 +111,80 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     }
     else
     {
-        AZS_DEBUGLOGV("Reading blobs of directory %s on the service.  Total blobs found = %s.\n", pathStr.c_str()+1, to_str(listResults.size()).c_str());
+        AZS_DEBUGLOGV("Reading blobs of directory %s on the service.  Total blob lists found = %s.\n", pathStr.c_str()+1, to_str(listResults.size()).c_str());
     }
 
-    filler(buf, ".", NULL, 0);
-    filler(buf, "..", NULL, 0);
+    // Fill the blobfuse current and parent directories
+    struct stat stcurrentbuf, stparentbuf;
+    stcurrentbuf.st_mode = S_IFDIR | default_permission;
+    stparentbuf.st_mode = S_IFDIR;
 
-    for (size_t i = 0; i < listResults.size(); i++)
+    filler(buf, ".", &stcurrentbuf, 0);
+    filler(buf, "..", &stparentbuf, 0);
+
+    // Enumerating segments of list_blobs response
+    for (size_t result_lists_index = 0; result_lists_index < listResults.size(); result_lists_index++)
     {
-        int fillerResult;
-        // We need to parse out just the trailing part of the path name.
-        int len = listResults[i].name.size();
-        if (len > 0)
+        // Check to see if the first list_blobs__hierarchical_item can be skipped to avoid duplication
+        int start = listResults[result_lists_index].second ? 1 : 0;
+        for (size_t i = start; i < listResults[result_lists_index].first.size(); i++)
         {
-            std::string prev_token_str;
-            if (listResults[i].name.back() == '/')
+            int fillerResult;
+            // We need to parse out just the trailing part of the path name.
+            int len = listResults[result_lists_index].first[i].name.size();
+            if (len > 0)
             {
-                prev_token_str = listResults[i].name.substr(pathStr.size() - 1, listResults[i].name.size() - pathStr.size());
-            }
-            else
-            {
-                prev_token_str = listResults[i].name.substr(pathStr.size() - 1);
-            }
-
-            // Any files that exist both on the service and in the local cache will be in both lists, we need to de-dup them.
-            // TODO: order or hash the list to improve perf
-            if (std::find(local_list_results.begin(), local_list_results.end(), prev_token_str) == local_list_results.end())
-            {
-                if (!listResults[i].is_directory && !is_directory_blob(listResults[i].content_length, listResults[i].metadata))
+                std::string prev_token_str;
+                if (listResults[result_lists_index].first[i].name.back() == '/')
                 {
-                    if ((prev_token_str.size() > 0) && (strcmp(prev_token_str.c_str(), former_directory_signifier.c_str()) != 0))
-                    {
-                        struct stat stbuf;
-                        stbuf.st_mode = S_IFREG | default_permission; // Regular file (not a directory)
-                        stbuf.st_uid = fuse_get_context()->uid;
-                        stbuf.st_gid = fuse_get_context()->gid;
-                        stbuf.st_nlink = 1;
-                        stbuf.st_size = listResults[i].content_length;
-                        fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
-                        AZS_DEBUGLOGV("Blob %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
-                    }
+                    prev_token_str = listResults[result_lists_index].first[i].name.substr(pathStr.size() - 1, listResults[result_lists_index].first[i].name.size() - pathStr.size());
                 }
                 else
                 {
-                    if (prev_token_str.size() > 0)
-                    {
-                        struct stat stbuf;
-                        stbuf.st_mode = S_IFDIR | default_permission;
-                        stbuf.st_uid = fuse_get_context()->uid;
-                        stbuf.st_gid = fuse_get_context()->gid;
-                        stbuf.st_nlink = 2;
-                        fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
-                        AZS_DEBUGLOGV("Blob directory %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
-                    }
+                    prev_token_str = listResults[result_lists_index].first[i].name.substr(pathStr.size() - 1);
                 }
-                // Avoid duplicates
-                local_list_results.push_back(prev_token_str);
 
-            }
-            else
-            {
-                AZS_DEBUGLOGV("Skipping adding blob %s to readdir results because it was already added from the local cache.\n", prev_token_str.c_str());
+                // Any files that exist both on the service and in the local cache will be in both lists, we need to de-dup them.
+                // TODO: order or hash the list to improve perf
+                if (std::find(local_list_results.begin(), local_list_results.end(), prev_token_str) == local_list_results.end())
+                {
+                    if (!listResults[result_lists_index].first[i].is_directory && !is_directory_blob(listResults[result_lists_index].first[i].content_length, listResults[result_lists_index].first[i].metadata))
+                    {
+                        if ((prev_token_str.size() > 0) && (strcmp(prev_token_str.c_str(), former_directory_signifier.c_str()) != 0))
+                        {
+                            struct stat stbuf;
+                            stbuf.st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+                            stbuf.st_uid = fuse_get_context()->uid;
+                            stbuf.st_gid = fuse_get_context()->gid;
+                            stbuf.st_nlink = 1;
+                            stbuf.st_size = listResults[result_lists_index].first[i].content_length;
+                            fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+                            AZS_DEBUGLOGV("Blob %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
+                        }
+                    }
+                    else
+                    {
+                        if (prev_token_str.size() > 0)
+                        {
+
+                            // Avoid duplicate directories - this avoids duplicate entries of legacy WASB and HNS directories
+                   	    local_list_results.push_back(prev_token_str);
+
+                            struct stat stbuf;
+                            stbuf.st_mode = S_IFDIR | default_permission;
+                            stbuf.st_uid = fuse_get_context()->uid;
+                            stbuf.st_gid = fuse_get_context()->gid;
+                            stbuf.st_nlink = 2;
+                            fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
+                            AZS_DEBUGLOGV("Blob directory %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
+                        }
+                    }
+
+                }
+                else
+                {
+                    AZS_DEBUGLOGV("Skipping adding blob %s to readdir results because it was already added from the local cache.\n", prev_token_str.c_str());
+                }
             }
         }
     }

@@ -1,6 +1,8 @@
 #include "blobfuse.h"
 #include <sys/file.h>
 
+gc_cache g_gc_cache;
+
 int map_errno(int error)
 {
     auto mapping = error_mapping.find(error);
@@ -20,6 +22,41 @@ std::string prepend_mnt_path_string(const std::string& path)
     std::string result;
     result.reserve(str_options.tmpPath.length() + 5 + path.length());
     return result.append(str_options.tmpPath).append("/root").append(path);
+}
+
+//Helper function to help calculate the disk space we have left for the cache location
+//params: none
+//return: Returns true if we've reached the threshold, false otherwise
+bool gc_cache::check_disk_space()
+{
+    struct statvfs buf;
+    if(statvfs(str_options.tmpPath.c_str(), &buf) != 0)
+    {
+        return false;
+    }
+
+    //calculating the percentage of the amount of used space on the cached disk
+    //<used space in bytes> = <total size of disk in bytes> - <size of available disk space in bytes>
+    //<used percent of cached disk >= <used space> / <total size>
+    //f_frsize - the fundamental file system block size (in bytes) (used to convert file system blocks to bytes)
+    //f_blocks - total number of blocks on the filesystem/disk in the units of f_frsize
+    //f_bfree - total number of free blocks in units of f_frsize
+    double total = buf.f_blocks * buf.f_frsize;
+    double available = buf.f_bfree * buf.f_frsize;
+    double used = total - available;
+    double used_percent = (double)(used / total) * (double)100;
+
+    AZS_DEBUGLOGV("Disk utilization is at %d %% for cache location \"%s\"\n", (int)used_percent, str_options.tmpPath.c_str());
+
+    if(used_percent >= high_threshold && !disk_threshold_reached)
+    {
+        return true;
+    }
+    else if(used_percent >= low_threshold && disk_threshold_reached)
+    {
+        return true;
+    }
+    return false;
 }
 
 void gc_cache::add_file(std::string path)
@@ -67,7 +104,7 @@ void gc_cache::run_gc_cache()
 
         time_t now = time(NULL);
         //check if the closed time is old enough to delete
-        if((now - file.closed_time) > file_cache_timeout_in_seconds)
+        if(((now - file.closed_time) > file_cache_timeout_in_seconds) || disk_threshold_reached)
         {
             AZS_DEBUGLOGV("File %s being considered for deletion by file cache GC.\n", file.path.c_str());
 
@@ -83,7 +120,8 @@ void gc_cache::run_gc_cache()
 
             struct stat buf;
             stat(mntPath, &buf);
-            if (((now - buf.st_mtime) > file_cache_timeout_in_seconds) && ((now - buf.st_ctime) > file_cache_timeout_in_seconds))
+            if ((((now - buf.st_mtime) > file_cache_timeout_in_seconds) && ((now - buf.st_ctime) > file_cache_timeout_in_seconds))
+                || disk_threshold_reached)
             {
                 //clean up the file from cache
                 int fd = open(mntPath, O_WRONLY);
@@ -109,12 +147,17 @@ void gc_cache::run_gc_cache()
                         AZS_DEBUGLOGV("GC cleanup of cached file %s.\n", mntPath);
                         unlink(mntPath);
                         flock(fd, LOCK_UN);
+
+                        //update disk space
+                        disk_threshold_reached = check_disk_space();
                     }
 
                     close(fd);
                 }
                 else
                 {
+                    //TODO:if we can't open the file consistently, should we just try to move onto the next file?
+                    //or somehow timeout on a file we can't open?
                     AZS_DEBUGLOGV("Failed to open file %s from file cache in GC, skipping cleanup. errno from open = %d.", mntPath, errno);
                 }
             }
@@ -130,6 +173,8 @@ void gc_cache::run_gc_cache()
         {
             // no file was timed out - let's wait a second
             usleep(1000);
+            //check disk space
+            disk_threshold_reached = check_disk_space();
         }
     }
 
@@ -221,10 +266,10 @@ int ensure_files_directory_exists_in_cache(const std::string& file_path)
     return status;
 }
 
-std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix)
+std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix)
 {
     static const int maxFailCount = 20;
-    std::vector<list_blobs_hierarchical_item> results;
+    std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>>  results;
 
     std::string continuation;
 
@@ -245,13 +290,13 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(const std:
             continuation = response.next_marker;
             if(response.blobs.size() > 0)
             {
-                auto begin = response.blobs.begin();
+                bool skip_first = false;
                 if(response.blobs[0].name == prior)
                 {
-                    std::advance(begin, 1);
+                    skip_first = true;
                 }
-                results.insert(results.end(), begin, response.blobs.end());
                 prior = response.blobs.back().name;
+                results.push_back(std::make_pair(std::move(response.blobs), skip_first));
             }
         }
         else
@@ -608,7 +653,7 @@ int azs_rename_directory(const char *src, const char *dst)
 
     // Rename all files & directories that don't exist in the local cache.
     errno = 0;
-    std::vector<list_blobs_hierarchical_item> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", srcPathStr.substr(1));
+    std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", srcPathStr.substr(1));
     if (errno != 0)
     {
         int storage_errno = errno;
@@ -616,57 +661,59 @@ int azs_rename_directory(const char *src, const char *dst)
         return 0 - map_errno(storage_errno);
     }
 
-    AZS_DEBUGLOGV("Total of %s results found from list_blobs call during rename operation\n.", to_str(listResults.size()).c_str());
-    for (size_t i = 0; i < listResults.size(); i++)
+    AZS_DEBUGLOGV("Total of %s result lists found from list_blobs call during rename operation\n.", to_str(listResults.size()).c_str());
+    for (size_t result_lists_index = 0; result_lists_index < listResults.size(); result_lists_index++)
     {
-        // We need to parse out just the trailing part of the path name.
-        int len = listResults[i].name.size();
-        if (len > 0)
+        int start = listResults[result_lists_index].second ? 1 : 0;
+        for (size_t i = start; i < listResults[result_lists_index].first.size(); i++)
         {
-            std::string prev_token_str;
-            if (listResults[i].name.back() == '/')
+            // We need to parse out just the trailing part of the path name.
+            int len = listResults[result_lists_index].first[i].name.size();
+            if (len > 0)
             {
-                prev_token_str = listResults[i].name.substr(srcPathStr.size() - 1, listResults[i].name.size() - srcPathStr.size());
-            }
-            else
-            {
-                prev_token_str = listResults[i].name.substr(srcPathStr.size() - 1);
-            }
-
-            // TODO: order or hash the list to improve perf
-            if ((prev_token_str.size() > 0) && (std::find(local_list_results.begin(), local_list_results.end(), prev_token_str) == local_list_results.end()))
-            {
-                int nameLen = prev_token_str.size();
-                char *newSrc = (char *)malloc(sizeof(char) * (srcPathStr.size() + nameLen + 1));
-                memcpy(newSrc, srcPathStr.c_str(), srcPathStr.size());
-                memcpy(&(newSrc[srcPathStr.size()]), prev_token_str.c_str(), nameLen);
-                newSrc[srcPathStr.size() + nameLen] = '\0';
-
-                char *newDst = (char *)malloc(sizeof(char) * (dstPathStr.size() + nameLen + 1));
-                memcpy(newDst, dstPathStr.c_str(), dstPathStr.size());
-                memcpy(&(newDst[dstPathStr.size()]), prev_token_str.c_str(), nameLen);
-                newDst[dstPathStr.size() + nameLen] = '\0';
-
-                AZS_DEBUGLOGV("Object found on the service - about to rename %s to %s.\n", newSrc, newDst);
-                if (listResults[i].is_directory)
+                std::string prev_token_str;
+                if (listResults[result_lists_index].first[i].name.back() == '/')
                 {
-                    azs_rename_directory(newSrc, newDst);
+                    prev_token_str = listResults[result_lists_index].first[i].name.substr(srcPathStr.size() - 1, listResults[result_lists_index].first[i].name.size() - srcPathStr.size());
                 }
                 else
                 {
-                    azs_rename_single_file(newSrc, newDst);
+                    prev_token_str = listResults[result_lists_index].first[i].name.substr(srcPathStr.size() - 1);
                 }
 
-                free(newSrc);
-                free(newDst);
+                // TODO: order or hash the list to improve perf
+                if ((prev_token_str.size() > 0) && (std::find(local_list_results.begin(), local_list_results.end(), prev_token_str) == local_list_results.end()))
+                {
+                    int nameLen = prev_token_str.size();
+                    char *newSrc = (char *)malloc(sizeof(char) * (srcPathStr.size() + nameLen + 1));
+                    memcpy(newSrc, srcPathStr.c_str(), srcPathStr.size());
+                    memcpy(&(newSrc[srcPathStr.size()]), prev_token_str.c_str(), nameLen);
+                    newSrc[srcPathStr.size() + nameLen] = '\0';
+
+                    char *newDst = (char *)malloc(sizeof(char) * (dstPathStr.size() + nameLen + 1));
+                    memcpy(newDst, dstPathStr.c_str(), dstPathStr.size());
+                    memcpy(&(newDst[dstPathStr.size()]), prev_token_str.c_str(), nameLen);
+                    newDst[dstPathStr.size() + nameLen] = '\0';
+
+                    AZS_DEBUGLOGV("Object found on the service - about to rename %s to %s.\n", newSrc, newDst);
+                    if (listResults[result_lists_index].first[i].is_directory)
+                    {
+                        azs_rename_directory(newSrc, newDst);
+                    }
+                    else
+                    {
+                        azs_rename_single_file(newSrc, newDst);
+                    }
+
+                    free(newSrc);
+                    free(newDst);
+                }
             }
         }
     }
     azs_rmdir(src);
     return 0;
 }
-
-
 
 // TODO: Fix bug where the files and directories in the source in the file cache are not deleted.
 // TODO: Fix bugs where the a file has been created but not yet uploaded.

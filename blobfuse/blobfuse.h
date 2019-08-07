@@ -33,6 +33,11 @@
 
 #define UNREFERENCED_PARAMETER(p) (p)
 
+/* Define high and low gc_cache threshold values*/
+/* These threshold values were not calculated and are just an approximation of when we should be clearing the cache */
+#define HIGH_THRESHOLD_VALUE 90
+#define LOW_THRESHOLD_VALUE 80
+
 /* Define errors and return codes */
 #define D_NOTEXIST -1
 #define D_EMPTY 0
@@ -83,16 +88,21 @@ struct file_to_delete
 class gc_cache
 {
     public:
+        gc_cache() : disk_threshold_reached(false){}
         void run();
         void add_file(std::string path);
 
     private:
-    	void run_gc_cache();
+        bool disk_threshold_reached;
+        const double high_threshold = HIGH_THRESHOLD_VALUE;
+        const double low_threshold = LOW_THRESHOLD_VALUE;
         std::deque<file_to_delete> m_cleanup;
         std::mutex m_deque_lock;
+        void run_gc_cache();
+        bool check_disk_space();
 };
 
-extern gc_cache gc_cache;
+extern gc_cache g_gc_cache;
 
 // FUSE gives you one 64-bit pointer to use for communication between API's.
 // An instance of this struct is pointed to by that pointer.
@@ -117,6 +127,7 @@ struct str_options
     std::string containerName;
     std::string tmpPath;
     bool use_https;
+    bool use_attr_cache;
 };
 
 extern struct str_options str_options;
@@ -127,7 +138,7 @@ extern int default_permission;
 
 // This is used to make all the calls to Storage
 // The C++ lite client does not store state, other than connection info, so we can use it between calls without issue.
-extern std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
+extern std::shared_ptr<sync_blob_client> azure_blob_client_wrapper;
 
 // Used to map HTTP errors (ex. 404) to Linux errno (ex ENOENT)
 extern std::map<int, int> error_mapping;
@@ -155,7 +166,7 @@ int shared_lock_file(int flags, int fd);
 int ensure_files_directory_exists_in_cache(const std::string& file_path);
 
 // Greedily list all blobs using the input params.
-std::vector<list_blobs_hierarchical_item> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix);
+std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix);
 
 // Returns:
 // 0 if there's nothing there (the directory does not exist)

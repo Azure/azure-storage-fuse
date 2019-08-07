@@ -21,6 +21,7 @@ struct options
     const char *file_cache_timeout_in_seconds; // Timeout for the file cache (defaults to 120 seconds)
     const char *container_name; //container to mount. Used only if config_file is not provided
     const char *log_level; // Sets the level at which the process should log to syslog.
+    const char *use_attr_cache; // True if the cache for blob attributes should be used.
     const char *version; // print blobfuse version
     const char *help; // print blobfuse usage
 };
@@ -39,6 +40,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--file-cache-timeout-in-seconds=%s", file_cache_timeout_in_seconds),
     OPTION("--container-name=%s", container_name),
     OPTION("--log-level=%s", log_level),
+    OPTION("--use-attr-cache=%s", use_attr_cache),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -46,7 +48,7 @@ const struct fuse_opt option_spec[] =
     FUSE_OPT_END
 };
 
-std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
+std::shared_ptr<sync_blob_client> azure_blob_client_wrapper;
 class gc_cache gc_cache;
 
 // Currently, the cpp lite lib puts the HTTP status code in errno.
@@ -74,6 +76,7 @@ int read_config_env()
     char* env_account = getenv("AZURE_STORAGE_ACCOUNT");
     char* env_account_key = getenv("AZURE_STORAGE_ACCESS_KEY");
     char* env_sas_token = getenv("AZURE_STORAGE_SAS_TOKEN");
+    char* env_blob_endpoint = getenv("AZURE_BLOB_ENDPOINT");
 
     if(env_account)
     {
@@ -101,6 +104,11 @@ int read_config_env()
     {
         syslog(LOG_CRIT, "Unable to start blobfuse.  If no config file is specified, exactly one of the environment variables AZURE_STORAGE_ACCESS_KEY or AZURE_STORAGE_SAS_TOKEN must be set.");
         fprintf(stderr, "Unable to start blobfuse.  If no config file is specified, exactly one of the environment variables AZURE_STORAGE_ACCESS_KEY or AZURE_STORAGE_SAS_TOKEN must be set.\n");
+    }
+
+    if(env_blob_endpoint)
+    {
+        str_options.blobEndpoint = env_blob_endpoint;
     }
 
     return 0;
@@ -183,8 +191,17 @@ int read_config(const std::string configFile)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
-    azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, 20/*concurrency*/, str_options.use_https,
+    if (str_options.use_attr_cache)
+    {
+        azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, 20/*concurrency*/, str_options.use_https,
                                                                                                                     str_options.blobEndpoint));
+    }
+    else
+    {
+        azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, 20/*concurrency*/, str_options.use_https,
+                                                                                                                    str_options.blobEndpoint));
+    }
+
     if(errno != 0)
     {
         syslog(LOG_CRIT, "azs_init - Unable to start blobfuse.  Creating blob client failed: errno = %d.\n", errno);
@@ -204,7 +221,7 @@ void *azs_init(struct fuse_conn_info * conn)
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
 
-    gc_cache.run();
+    g_gc_cache.run();
 
     return NULL;
 }
@@ -213,7 +230,7 @@ void *azs_init(struct fuse_conn_info * conn)
 void print_usage()
 {
     fprintf(stdout, "Usage: blobfuse <mount-folder> --tmp-path=</path/to/fusecache> [--config-file=</path/to/config.cfg> | --container-name=<containername>]");
-    fprintf(stdout, "    [--use-https=true] [--file-cache-timeout-in-seconds=120] [--log-level=LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG]\n\n");
+    fprintf(stdout, "    [--use-https=true] [--file-cache-timeout-in-seconds=120] [--log-level=LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG] [--use-attr-cache=true]\n\n");
     fprintf(stdout, "In addition to setting --tmp-path parameter, you must also do one of the following:\n");
     fprintf(stdout, "1. Specify a config file (using --config-file]=) with account name, account key, and container name, OR\n");
     fprintf(stdout, "2. Set the environment variables AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCESS_KEY, and specify the container name with --container-name=\n\n");
@@ -222,7 +239,7 @@ void print_usage()
 
 void print_version()
 {
-    fprintf(stdout, "blobfuse 1.0.2\n");
+    fprintf(stdout, "blobfuse 1.0.3\n");
 }
 
 int set_log_mask(const char * min_log_level_char)
@@ -405,6 +422,16 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         if (https == "false")
         {
             str_options.use_https = false;
+        }
+    }
+
+    str_options.use_attr_cache = false;
+    if (options.use_attr_cache != NULL)
+    {
+        std::string attr_cache(options.use_attr_cache);
+        if (attr_cache == "true")
+        {
+            str_options.use_attr_cache = true;
         }
     }
 
