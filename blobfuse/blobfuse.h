@@ -117,6 +117,7 @@ struct str_options
     std::string containerName;
     std::string tmpPath;
     bool use_https;
+    bool use_attr_cache;
 };
 
 extern struct str_options str_options;
@@ -127,7 +128,7 @@ extern int default_permission;
 
 // This is used to make all the calls to Storage
 // The C++ lite client does not store state, other than connection info, so we can use it between calls without issue.
-extern std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
+extern std::shared_ptr<sync_blob_client> azure_blob_client_wrapper;
 
 // Used to map HTTP errors (ex. 404) to Linux errno (ex ENOENT)
 extern std::map<int, int> error_mapping;

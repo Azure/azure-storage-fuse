@@ -103,6 +103,7 @@ set(AZURE_STORAGE_SOURCE
 
   azure-storage-cpp-lite/src/blob/blob_client.cpp
   azure-storage-cpp-lite/src/blob/blob_client_wrapper.cpp
+  azure-storage-cpp-lite/src/blob/blob_client_attr_cache_wrapper.cpp
 )
 
 set (BLOBFUSE_HEADER
@@ -123,7 +124,7 @@ if(UNIX)
   find_package(Threads REQUIRED)
   find_package(CURL REQUIRED)
   find_package(GnuTLS REQUIRED)
-  add_definitions(-std=c++11)
+  set(CMAKE_CXX_STANDARD 14)
   add_definitions(-D_FILE_OFFSET_BITS=64)
   set(WARNING "-Wall -Wextra -Werror -pedantic -pedantic-errors")
   set(CMAKE_CXX_FLAGS "${CMAKE_THREAD_LIBS_INIT} ${WARNING} ${CMAKE_CXX_FLAGS}")
@@ -155,7 +156,7 @@ if(UNIX)
 
   set(CPACK_GENERATOR "DEB")
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft - Azure Storage")
-  set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 1.0.3 - FUSE adapter for Azure Blob Storage")
+  set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 1.1.0 - FUSE adapter for Azure Blob Storage")
   include(CPack)
 endif(UNIX)
 
@@ -200,8 +201,9 @@ if(INCLUDE_TESTS)
 
 
   project(blobfusetests)
+  set(CMAKE_CXX_STANDARD 14)
   pkg_search_module(UUID REQUIRED uuid)
-  add_executable(blobfusetests ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} ${AZURE_STORAGE_HEADER} ${AZURE_STORAGE_SOURCE} blobfuse/blobfuse.cpp test/cpplitetests.cpp)
-  target_link_libraries(blobfusetests ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} fuse gcrypt gtest_main)
+  add_executable(blobfusetests ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} ${AZURE_STORAGE_HEADER} ${AZURE_STORAGE_SOURCE} blobfuse/blobfuse.cpp test/cpplitetests.cpp test/attribcachetests.cpp test/attribcachesynchronizationtests.cpp)
+  target_link_libraries(blobfusetests ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} fuse gcrypt gmock_main)
 
 endif()
