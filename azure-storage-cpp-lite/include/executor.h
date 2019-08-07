@@ -85,7 +85,6 @@ namespace microsoft_azure {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
                         if (code != CURLE_OK || unsuccessful(result))
                         {
-<<<<<<< HEAD
                             //if we are unable to parse or did not find the values we needed to parse the error response
                             storage_error error;
                             try
@@ -181,7 +180,6 @@ namespace microsoft_azure {
                     h.submit([&promise, &a, &r, &h, &context, &retry](http_base::http_code result, storage_istream s, CURLcode code) {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
                         if (code != CURLE_OK || unsuccessful(result)) {
-<<<<<<< HEAD
                             try
                             {
                                 promise.set_value(storage_outcome<void>(context.xml_parser()->parse_storage_error(str)));
@@ -199,11 +197,7 @@ namespace microsoft_azure {
                             {
                                 syslog(LOG_ERR,"%s", xml_parser_ex_literal);
                             }
-                            retry.add_result(code == CURLE_OK ? result : 503);
-=======
-                            promise.set_value(storage_outcome<void>(context.xml_parser()->parse_storage_error(str)));
                             retry.add_result(code == CURLE_OK ? result : HTTP_CODE_SERVICE_UNAVAILABLE);
->>>>>>> b690301b6626fe0f583678511ff754511648f943
                             h.reset_input_stream();
                             h.reset_output_stream();
                             async_executor<void>::submit_request(promise, a, r, h, context, retry);
@@ -236,7 +230,6 @@ namespace microsoft_azure {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
                         if (code != CURLE_OK || unsuccessful(result))
                         {
-<<<<<<< HEAD
                             storage_error error;
                             try
                             {
