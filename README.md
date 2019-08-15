@@ -52,6 +52,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 	* [OPTIONAL] **--use-https=true|false** : Enables HTTPS communication with Blob storage. True by default. 
 	* [OPTIONAL] **--file-cache-timeout-in-seconds=120** : Blobs will be cached in the temp folder for this many seconds. 120 seconds by default. During this time, blobfuse will not check whether the file is up to date or not.
 	* [OPTIONAL] **--log-level=LOG_WARNING** : Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG
+	* [OPTIONAL] **--use-attr-cache=true|false** : Enables attributes of a blob being cached. False by default. (Only available in blobfuse 1.1.0 or above)
 	
 ## Considerations
 
@@ -85,6 +86,7 @@ By default, blobfuse will log to syslog.  The default settings will, in some cas
 ### Current Limitations
 - Some file system APIs have not been implemented: readlink, symlink, link, chmod, chown, fsync, lock and extended attribute calls.
 - Not optimized for updating an existing file. blobfuse downloads the entire file to local cache to be able to modify and update the file
+- When using enabling the "--use-attr-cache" feature, there may be an issue with overflow and will not clear the attribute cache until blobfuse is unmounted
 - See the list of differences between POSIX and blobfuse [here](https://github.com/Azure/azure-storage-fuse/wiki/4.-Limitations-%7C-Differences-from-POSIX)
 
 ## License
