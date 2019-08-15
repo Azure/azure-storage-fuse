@@ -17,7 +17,6 @@
 #include "utility.h"
 
 #define HTTP_CODE_SERVICE_UNAVAILABLE 503 //Service unavailable
-
 namespace microsoft_azure {
     namespace storage {
         const char * const xml_parser_ex_literal = "Attempt at parsing XML response failed.";
@@ -285,3 +284,4 @@ namespace microsoft_azure {
         };
     }
 }
+

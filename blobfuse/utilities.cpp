@@ -46,8 +46,6 @@ bool gc_cache::check_disk_space()
     double used = total - available;
     double used_percent = (double)(used / total) * (double)100;
 
-    AZS_DEBUGLOGV("Disk utilization is at %d %% for cache location \"%s\"\n", (int)used_percent, str_options.tmpPath.c_str());
-
     if(used_percent >= high_threshold && !disk_threshold_reached)
     {
         return true;
@@ -144,7 +142,6 @@ void gc_cache::run_gc_cache()
                     }
                     else
                     {
-                        AZS_DEBUGLOGV("GC cleanup of cached file %s.\n", mntPath);
                         unlink(mntPath);
                         flock(fd, LOCK_UN);
 
