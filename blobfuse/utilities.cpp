@@ -25,7 +25,9 @@ std::string prepend_mnt_path_string(const std::string& path)
 }
 
 //Helper function to help calculate the disk space we have left for the cache location
-//return: Returns true if we've reached the threshold and should elminate items in the cache, false otherwise
+//params: none
+//return: Returns true if we've reached the threshold, false otherwise
+>>>>>>> upstream/master
 bool gc_cache::check_disk_space()
 {
     struct statvfs buf;

@@ -156,7 +156,6 @@ if(UNIX)
 
   set(CPACK_GENERATOR "DEB")
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft - Azure Storage")
-  set(CPACK_DEBIAN_PACKAGE_DEPENDS "fuse")
   set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 1.1.0 - FUSE adapter for Azure Blob Storage")
   include(CPack)
 endif(UNIX)
