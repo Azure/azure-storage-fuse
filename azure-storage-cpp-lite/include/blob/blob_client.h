@@ -4,7 +4,7 @@
 #include <memory>
 #include <string>
 #include <mutex>
-#include <shared_mutex>
+#include <boost/thread/shared_mutex.hpp>
 #include <syslog.h>
 
 #include "storage_EXPORTS.h"
@@ -618,7 +618,7 @@ namespace microsoft_azure { namespace storage {
 
             // A mutex that can be locked in shared or unique mode (reader/writer lock)
             // TODO: Consider switching this to be a regular mutex
-            std::shared_timed_mutex m_mutex;
+            boost::shared_mutex m_mutex;
 
             // Name of the blob
             std::string m_name;
@@ -650,13 +650,13 @@ namespace microsoft_azure { namespace storage {
             {
             }
 
-            std::shared_ptr<std::shared_timed_mutex> get_dir_item(const std::string& path);
+            std::shared_ptr<boost::shared_mutex> get_dir_item(const std::string& path);
             std::shared_ptr<blob_cache_item> get_blob_item(const std::string& path);
 
         private:
             std::map<std::string, std::shared_ptr<blob_cache_item>> blob_cache;
             std::mutex blobs_mutex; // Used to protect the blob_cache map itself, not items in the map.
-            std::map<std::string, std::shared_ptr<std::shared_timed_mutex>> dir_cache;
+            std::map<std::string, std::shared_ptr<boost::shared_mutex>> dir_cache;
             std::mutex dirs_mutex;// Used to protect the dir_cache map itself, not items in the map.
         };
 

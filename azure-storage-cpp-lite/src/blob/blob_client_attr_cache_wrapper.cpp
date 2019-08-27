@@ -16,13 +16,13 @@ namespace microsoft_azure {
 
         // Performs a thread-safe map lookup of the input key in the directory map.
         // Will create new entries if necessary before returning.
-        std::shared_ptr<std::shared_timed_mutex> blob_client_attr_cache_wrapper::attribute_cache::get_dir_item(const std::string& path)
+        std::shared_ptr<boost::shared_mutex> blob_client_attr_cache_wrapper::attribute_cache::get_dir_item(const std::string& path)
         {
             std::lock_guard<std::mutex> lock(dirs_mutex);
             auto iter = dir_cache.find(path);
             if(iter == dir_cache.end())
             {
-                auto dir_item = std::make_shared<std::shared_timed_mutex>();
+                auto dir_item = std::make_shared<boost::shared_mutex>();
                 dir_cache[path] = dir_item;
                 return dir_item;
             }
@@ -61,8 +61,8 @@ namespace microsoft_azure {
         /// <returns>A response from list_blobs_hierarchical that contains a list of blobs and their details</returns>
         list_blobs_hierarchical_response blob_client_attr_cache_wrapper::list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults)
         {
-            std::shared_ptr<std::shared_timed_mutex> dir_mutex = attr_cache.get_dir_item(prefix);
-            std::unique_lock<std::shared_timed_mutex> uniquelock(*dir_mutex);
+            std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(prefix);
+            std::unique_lock<boost::shared_mutex> uniquelock(*dir_mutex);
 
             errno = 0;
             list_blobs_hierarchical_response response = m_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation_token, prefix, maxresults);
@@ -91,7 +91,7 @@ namespace microsoft_azure {
                         // taken a lock on the directory string.
                         // It should be fine, there should be no chance of deadlock, as the internal mutex is released before get_blob_item returns, but we should take care when modifying.
                         std::shared_ptr<blob_client_attr_cache_wrapper::blob_cache_item> cache_item = attr_cache.get_blob_item(response.blobs[i].name);
-                        std::unique_lock<std::shared_timed_mutex> uniquelock(cache_item->m_mutex);
+                        std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
                         cache_item->m_props = properties;
                         cache_item->m_confirmed = true;
                     }
@@ -124,10 +124,10 @@ namespace microsoft_azure {
         {
             // Invalidate the cache.
             // TODO: consider updating the cache with the new values.  Will require modifying cpplite to return info from put_blob.
-            std::shared_ptr<std::shared_timed_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blob));
+            std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blob));
             std::shared_ptr<blob_client_attr_cache_wrapper::blob_cache_item> cache_item = attr_cache.get_blob_item(blob);
-            std::shared_lock<std::shared_timed_mutex> dirlock(*dir_mutex);
-            std::unique_lock<std::shared_timed_mutex> uniquelock(cache_item->m_mutex);
+            boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
+            std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
             m_blob_client_wrapper->put_blob(sourcePath, container, blob, metadata);
             cache_item->m_confirmed = false;
         }
@@ -143,10 +143,10 @@ namespace microsoft_azure {
         {
             // Invalidate the cache.
             // TODO: consider updating the cache with the new values.  Will require modifying cpplite to return info from put_blob.
-            std::shared_ptr<std::shared_timed_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blob));
+            std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blob));
             std::shared_ptr<blob_client_attr_cache_wrapper::blob_cache_item> cache_item = attr_cache.get_blob_item(blob);
-            std::shared_lock<std::shared_timed_mutex> dirlock(*dir_mutex);
-            std::unique_lock<std::shared_timed_mutex> uniquelock(cache_item->m_mutex);
+            boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
+            std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
             m_blob_client_wrapper->upload_block_blob_from_stream(container, blob, is, metadata);
             cache_item->m_confirmed = false;
         }
@@ -163,10 +163,10 @@ namespace microsoft_azure {
         {
             // Invalidate the cache.
             // TODO: consider updating the cache with the new values.  Will require modifying cpplite to return info from put_blob.
-            std::shared_ptr<std::shared_timed_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blob));
+            std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blob));
             std::shared_ptr<blob_client_attr_cache_wrapper::blob_cache_item> cache_item = attr_cache.get_blob_item(blob);
-            std::shared_lock<std::shared_timed_mutex> dirlock(*dir_mutex);
-            std::unique_lock<std::shared_timed_mutex> uniquelock(cache_item->m_mutex);
+            boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
+            std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
             m_blob_client_wrapper->upload_file_to_blob(sourcePath, container, blob, metadata, parallel);
             cache_item->m_confirmed = false;
         }
@@ -220,13 +220,13 @@ namespace microsoft_azure {
         /// Useful if there is reason to suspect the properties may have changed behind the scenes (specifically, if there's a pending copy operation.)</param>
         blob_property blob_client_attr_cache_wrapper::get_blob_property(const std::string &container, const std::string &blob, bool assume_cache_invalid)
         {
-            std::shared_ptr<std::shared_timed_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blob));
+            std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blob));
             std::shared_ptr<blob_client_attr_cache_wrapper::blob_cache_item> cache_item = attr_cache.get_blob_item(blob);
-            std::shared_lock<std::shared_timed_mutex> dirlock(*dir_mutex);
+            boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
 
             if (!assume_cache_invalid)
             {
-                std::shared_lock<std::shared_timed_mutex> sharedlock(cache_item->m_mutex);
+                boost::shared_lock<boost::shared_mutex> sharedlock(cache_item->m_mutex);
                 if (cache_item->m_confirmed)
                 {
                     return cache_item->m_props;
@@ -234,7 +234,7 @@ namespace microsoft_azure {
             }
 
             {
-                std::unique_lock<std::shared_timed_mutex> uniquelock(cache_item->m_mutex);
+                std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
                 errno = 0;
                 cache_item->m_props = m_blob_client_wrapper->get_blob_property(container, blob);
                 if (errno != 0)
@@ -271,10 +271,10 @@ namespace microsoft_azure {
         void blob_client_attr_cache_wrapper::delete_blob(const std::string &container, const std::string &blob)
         {
             // These calls cannot be cached because we do not have a negative cache - blobs in the cache are either valid/confirmed, or unknown (which could be deleted, or not checked on the service.)
-            std::shared_ptr<std::shared_timed_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blob));
+            std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blob));
             std::shared_ptr<blob_client_attr_cache_wrapper::blob_cache_item> cache_item = attr_cache.get_blob_item(blob);
-            std::shared_lock<std::shared_timed_mutex> dirlock(*dir_mutex);
-            std::unique_lock<std::shared_timed_mutex> uniquelock(cache_item->m_mutex);
+            boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
+            std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
             m_blob_client_wrapper->delete_blob(container, blob);
             cache_item->m_confirmed = false;
         }
@@ -290,10 +290,10 @@ namespace microsoft_azure {
         {
             // No need to lock on the source, as we're neither modifying nor querying the source blob or its cached content.
             // We do need to lock on the destination, because if the start copy operation succeeds we need to invalidate the cached data.
-            std::shared_ptr<std::shared_timed_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(destBlob));
+            std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(destBlob));
             std::shared_ptr<blob_client_attr_cache_wrapper::blob_cache_item> cache_item = attr_cache.get_blob_item(destBlob);
-            std::shared_lock<std::shared_timed_mutex> dirlock(*dir_mutex);
-            std::unique_lock<std::shared_timed_mutex> uniquelock(cache_item->m_mutex);
+            boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
+            std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
             errno = 0;
             m_blob_client_wrapper->start_copy(sourceContainer, sourceBlob, destContainer, destBlob);
             cache_item->m_confirmed = false;
