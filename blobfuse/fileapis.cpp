@@ -414,7 +414,7 @@ int azs_unlink(const char *path)
     int remove_success = remove(mntPath);
     // We don't fail if the remove() failed, because that's just removing the file in the local file cache, which may or may not be there.
 
-    if (remove_success)
+    if (!remove_success)
     {
         AZS_DEBUGLOGV("Successfully removed file %s from local cache in azs_unlink.\n", mntPath);
     }
