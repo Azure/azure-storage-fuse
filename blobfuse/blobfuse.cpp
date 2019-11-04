@@ -1,4 +1,5 @@
 #include "blobfuse.h"
+#include <boost/filesystem.hpp>
 #include <string>
 
 namespace {
@@ -407,13 +408,39 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         print_usage();
         return 1;
     }
-    
+
     std::string tmpPathStr(options.tmp_path);
-    if (!tmpPathStr.empty() && tmpPathStr[tmpPathStr.size() - 1] == '/')
+    if (!tmpPathStr.empty())
     {
-        tmpPathStr.erase(tmpPathStr.size() - 1);
+        // First let's normalize the path
+        // Don't use canonical because that will check for path existence and permissions
+        tmpPathStr = boost::filesystem::path(tmpPathStr).lexically_normal().string();
+
+        // Double check that we have not just emptied this string
+        if (!tmpPathStr.empty())
+        {
+            // Trim any trailing '/' or '/.'
+            // This will also create a blank string for just '/' which will fail out at the next block
+            // .lexically_normal() returns '/.' for directories
+            if (tmpPathStr[tmpPathStr.size() - 1] == '/')
+            {
+                tmpPathStr.erase(tmpPathStr.size() - 1);
+            }
+            else if (tmpPathStr.size() > 1 && tmpPathStr.compare((tmpPathStr.size() - 2), 2, "/.") == 0)
+            {
+                tmpPathStr.erase(tmpPathStr.size() - 2);
+            }
+        }
+
+        // Error out if we emptied this string
+        if (tmpPathStr.empty())
+        {
+            fprintf(stderr, "Error: --tmp-path resolved to empty path.\n");
+            print_usage();
+            return 1;
+        }
     }
-    
+
     str_options.tmpPath = tmpPathStr;
     str_options.use_https = true;
     if (options.use_https != NULL)
