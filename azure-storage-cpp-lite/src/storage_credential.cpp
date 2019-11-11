@@ -1,8 +1,8 @@
 #include "storage_credential.h"
 
+#include "hash.h"
 #include "base64.h"
 #include "constants.h"
-#include "hash.h"
 #include "utility.h"
 
 namespace microsoft_azure {
@@ -16,7 +16,12 @@ namespace microsoft_azure {
             : m_account_name(account_name),
             m_account_key(account_key) {}
 
-        void shared_key_credential::sign_request(const storage_request_base &, http_base &h, const storage_url &url, const storage_headers &headers) const {
+        void shared_key_credential::sign_request(
+                const storage_request_base &,
+                http_base &h,
+                const storage_url &url,
+                const storage_headers &headers) const
+        {
             std::string string_to_sign(get_http_verb(h.get_method()));
             string_to_sign.append("\n");
 
@@ -32,22 +37,27 @@ namespace microsoft_azure {
             string_to_sign.append(headers.if_unmodified_since).append("\n");
             string_to_sign.append("\n"); // Range
 
-                                         // Canonicalized headers
-            for (const auto &header : headers.ms_headers) {
+            // Canonicalized headers
+            for (const auto &header : headers.ms_headers)
+            {
                 string_to_sign.append(header.first).append(":").append(header.second).append("\n");
             }
 
             // Canonicalized resource
             string_to_sign.append("/").append(m_account_name).append(url.get_encoded_path());
-            for (const auto &name : url.get_query()) {
+            for (const auto &name : url.get_query())
+            {
                 string_to_sign.append("\n").append(name.first);
                 bool first_value = true;
-                for (const auto &value : name.second) {
-                    if (first_value) {
+                for (const auto &value : name.second)
+                {
+                    if (first_value)
+                    {
                         string_to_sign.append(":");
                         first_value = false;
                     }
-                    else {
+                    else
+                        {
                         string_to_sign.append(",");
                     }
                     string_to_sign.append(value);
@@ -55,17 +65,17 @@ namespace microsoft_azure {
             }
 
             std::string authorization("SharedKey ");
-#ifdef WIN32
-            authorization.append(m_account_name).append(":").append(hmac_sha256_hash_provider::hash(string_to_sign, m_account_key));
-#else
-            authorization.append(m_account_name).append(":").append(hash(string_to_sign, m_account_key));
-#endif
+            authorization.append(m_account_name).append(":").append(hash_impl(string_to_sign, m_account_key));
             h.add_header(constants::header_authorization, authorization);
         }
 
-        void shared_key_credential::sign_request(const table_request_base &, http_base &, const storage_url &, const storage_headers &) const {}
+        void shared_key_credential::sign_request(const table_request_base &,
+                http_base &,
+                const storage_url &,
+                const storage_headers &) const {}
 
-        std::string shared_access_signature_credential::transform_url(std::string url) const {
+        std::string shared_access_signature_credential::transform_url(std::string url) const
+        {
             if (url.find('?') != std::string::npos) {
                 url.append("&");
             }
@@ -76,9 +86,33 @@ namespace microsoft_azure {
             return url;
         }
 
-        void shared_access_signature_credential::sign_request(const storage_request_base &, http_base &h, const storage_url &, const storage_headers &) const {
+        void shared_access_signature_credential::sign_request(const storage_request_base &,
+                http_base &h,
+                const storage_url &,
+                const storage_headers &) const
+        {
             std::string transformed_url = transform_url(h.get_url());
             h.set_url(transformed_url);
+        }
+
+        AZURE_STORAGE_API token_credential::token_credential(const std::string &token)
+        : m_token(std::move(token)) {}
+
+        void token_credential::set_token(const std::string &token)
+        {
+            std::lock_guard<std::mutex> lg(m_token_mutex);
+            m_token = token;
+        }
+
+        void token_credential::sign_request(const microsoft_azure::storage::storage_request_base &,
+                                            microsoft_azure::storage::http_base & h,
+                                            const microsoft_azure::storage::storage_url &,
+                                            const microsoft_azure::storage::storage_headers &) const
+        {
+            std::lock_guard<std::mutex> lg(m_token_mutex);
+            std::string authorization("Bearer ");
+            authorization.append(m_token);
+            h.add_header(constants::header_authorization, authorization);
         }
     }
 }

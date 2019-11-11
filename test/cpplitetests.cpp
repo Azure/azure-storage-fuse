@@ -47,7 +47,7 @@ public:
         ASSERT_EQ(0, ret) << "Read config failed.";
         std::string blob_endpoint;
         std::string sas_token;
-        test_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, sas_token, 20, str_options.use_https, blob_endpoint));
+        test_blob_client_wrapper = blob_client_wrapper_init(str_options.accountName, str_options.accountKey, sas_token, 20, str_options.use_https, blob_endpoint);
     }
 
     std::string container_name;

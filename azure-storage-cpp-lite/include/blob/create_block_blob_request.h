@@ -51,7 +51,7 @@ private:
     std::vector<std::pair<std::string, std::string>> m_metadata;
 };
 
-class create_append_blob_request : public create_block_blob_request {
+class create_append_blob_request final : public create_block_blob_request {
 public:
     create_append_blob_request(const std::string &container, const std::string &blob)
         : create_block_blob_request(container, blob) {}
@@ -65,7 +65,7 @@ public:
     }
 };
 
-class create_page_blob_request : public create_block_blob_request {
+class create_page_blob_request final : public create_block_blob_request {
 public:
     create_page_blob_request(const std::string &container, const std::string &blob, unsigned long long size)
         : create_block_blob_request(container, blob),

@@ -30,12 +30,26 @@ namespace microsoft_azure { namespace storage {
         /// <summary>
         /// Initializes a new instance of the <see cref="microsoft_azure::storage::blob_client" /> class.
         /// </summary>
-        /// <param name="account">An existing <see cref="microsoft_azure::storage::storage_account" /> object.</param>
-        /// <param name="size">An int value indicates the maximum concurrency expected during execute requests against the service.</param>
-        blob_client(std::shared_ptr<storage_account> account, int size)
-            : m_account(account) {
+        /// <param name="account">An existing <see crefmicrosoft_azure::storage::storage_account" /> object.</param>
+        /// <param name="max_concurrency">An int value indicates the maximum concurrency expected during execute requests against the service.</param>
+        blob_client(std::shared_ptr<storage_account> account, int max_concurrency)
+            : m_account(account)
+        {
             m_context = std::make_shared<executor_context>(std::make_shared<tinyxml2_parser>(), std::make_shared<retry_policy>());
-            m_client = std::make_shared<CurlEasyClient>(size);
+            m_client = std::make_shared<CurlEasyClient>(max_concurrency);
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the <see cref="azure::storage_lite::blob_client" /> class.
+        /// </summary>
+        /// <param name="account">An existing <see cref="azure::storage_lite::storage_account" /> object.</param>
+        /// <param name="max_concurrency">An int value indicates the maximum concurrency expected during execute requests against the service.</param>
+        /// <param name="ca_path">A string value with absolute path to CA bundle location.</param>
+        blob_client(std::shared_ptr<storage_account> account, int max_concurrency, const std::string& ca_path)
+            : m_account(account)
+        {
+            m_context = std::make_shared<executor_context>(std::make_shared<tinyxml2_parser>(), std::make_shared<retry_policy>());
+            m_client = std::make_shared<CurlEasyClient>(max_concurrency, ca_path);
         }
 
         /// <summary>
@@ -128,7 +142,7 @@ namespace microsoft_azure { namespace storage {
         /// <param name="prefix">The container name prefix.</param>
         /// <param name="include_metadata">A bool value, return metadatas if it is true.</param>
         /// <returns>A <see cref="std::future" /> object that represents the current operation.</returns>
-        AZURE_STORAGE_API std::future<storage_outcome<list_containers_response>> list_containers(const std::string &prefix, bool include_metadata = false);
+        AZURE_STORAGE_API std::future<storage_outcome<list_containers_response>> list_containers(const std::string &prefix, const std::string& continuation_token, const int max_result = 5, bool include_metadata = false);
 
         /// <summary>
         /// Intitiates an asynchronous operation  to list all blobs.
@@ -415,29 +429,6 @@ namespace microsoft_azure { namespace storage {
         {
             return m_valid && (m_blobClient != NULL);
         }
-
-        /// <summary>
-        /// Constructs a blob client wrapper from storage account credential.
-        /// </summary>
-        /// <param name="account_name">The storage account name.</param>
-        /// <param name="account_key">The storage account key.</param>
-	/// <param name="sas_token">A sas token for the container.</param>
-        /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
-        /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
-        static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency);
-
-        /// <summary>
-        /// Constructs a blob client wrapper from storage account credential.
-        /// </summary>
-        /// <param name="account_name">The storage account name.</param>
-        /// <param name="account_key">The storage account key.</param>
-	/// <param name="sas_token">A sas token for the container.</param>
-        /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
-        /// <param name="use_https">True if https should be used (instead of HTTP).  Note that this may cause a sizable perf loss, due to issues in libcurl.</param>
-        /// <param name="blob_endpoint">Blob endpoint URI to allow non-public clouds as well as custom domains.</param>
-        /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
-        static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency, bool use_https, 
-							    const std::string &blob_endpoint);
         /* C++ wrappers without exception but error codes instead */
 
         /* container level*/
@@ -466,7 +457,7 @@ namespace microsoft_azure { namespace storage {
         /// </summary>
         /// <param name="prefix">The container name prefix.</param>
         /// <param name="include_metadata">A bool value, return metadatas if it is true.</param>
-        std::vector<list_containers_item> list_containers(const std::string &prefix, bool include_metadata = false);
+        std::vector<list_containers_item> list_containers(const std::string &prefix, const std::string& continuation_token, const int max_result = 5, bool include_metadata = false);
 
         /* blob level */
 
@@ -568,6 +559,29 @@ namespace microsoft_azure { namespace storage {
         unsigned int m_concurrency;
         bool m_valid;
     };
+
+        /// <summary>
+        /// Constructs a blob client wrapper from storage account credential.
+        /// </summary>
+        /// <param name="account_name">The storage account name.</param>
+        /// <param name="account_key">The storage account key.</param>
+        /// <param name="sas_token">A sas token for the container.</param>
+        /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
+        /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency);
+
+        /// <summary>
+        /// Constructs a blob client wrapper from storage account credential.
+        /// </summary>
+        /// <param name="account_name">The storage account name.</param>
+        /// <param name="account_key">The storage account key.</param>
+        /// <param name="sas_token">A sas token for the container.</param>
+        /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
+        /// <param name="use_https">True if https should be used (instead of HTTP).  Note that this may cause a sizable perf loss, due to issues in libcurl.</param>
+        /// <param name="blob_endpoint">Blob endpoint URI to allow non-public clouds as well as custom domains.</param>
+        /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency, bool use_https,
+                                                            const std::string &blob_endpoint);
 
     // A wrapper around the "blob_client_wrapper" that provides in-memory caching for "get_blob_properties" calls.
     class blob_client_attr_cache_wrapper : public sync_blob_client

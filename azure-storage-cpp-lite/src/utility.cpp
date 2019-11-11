@@ -4,9 +4,63 @@
 
 #include "constants.h"
 
+#ifdef _WIN32
+#include <windows.h>
+#include <filesystem>
+#else
+#include <uuid/uuid.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
+#include <unistd.h>
+#endif
 namespace microsoft_azure {
     namespace storage {
+    std::string get_uuid()
+    {
+        std::string res;
+#ifdef _WIN32
+        UUID uuid;
+        UuidCreate(&uuid);
+        char* uuid_cstr = nullptr;
+        UuidToStringA(&uuid, reinterpret_cast<RPC_CSTR*>(&uuid_cstr));
+        res = std::string(uuid_cstr);
+        RpcStringFreeA(reinterpret_cast<RPC_CSTR*>(&uuid_cstr));
+#else
+        uuid_t uuid;
+        char uuid_cstr[37]; // 36 byte uuid plus null.
+        uuid_generate(uuid);
+        uuid_unparse(uuid, uuid_cstr);
+        res = std::string(uuid_cstr);
+#endif
 
+        return res;
+    }
+    bool create_or_resize_file(const std::string& path, unsigned long long length) noexcept
+    {
+#ifdef _WIN32
+        try
+        {
+            std::experimental::filesystem::resize_file(path, static_cast<uintmax_t>(length));
+        }
+        catch (...)
+        {
+            return false;
+        }
+        return true;
+#else
+        auto fd = open(path.c_str(), O_WRONLY, 0770);
+        if (-1 == fd) {
+            return false;
+        }
+        if (-1 == ftruncate(fd, length)) {
+            close(fd);
+            return false;
+        }
+        close(fd);
+        return true;
+#endif
+    }
         std::string get_ms_date(date_format format) {
             char buf[30];
             std::time_t t = std::time(nullptr);

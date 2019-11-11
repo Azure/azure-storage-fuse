@@ -5,7 +5,7 @@
 namespace microsoft_azure {
 namespace storage {
 
-class list_blobs_request : public list_blobs_request_base {
+class list_blobs_request final : public list_blobs_request_base {
 public:
     list_blobs_request(const std::string &container, const std::string &prefix)
         : m_container(container),

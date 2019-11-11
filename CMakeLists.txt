@@ -4,6 +4,7 @@ set(AZURE_STORAGE_HEADER
 
   azure-storage-cpp-lite/include/base64.h
   azure-storage-cpp-lite/include/common.h
+  azure-storage-cpp-lite/include/compare.h
   azure-storage-cpp-lite/include/constants.h
   azure-storage-cpp-lite/include/constants.dat
   azure-storage-cpp-lite/include/executor.h
@@ -162,11 +163,11 @@ if(UNIX)
   set(CPACK_GENERATOR "DEB")
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft - Azure Storage")
   set(CPACK_DEBIAN_PACKAGE_DEPENDS "fuse")
-  set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 1.1.1 - FUSE adapter for Azure Blob Storage")
-  set(VERSION "1.1.1")
+  set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 1.1.2 - FUSE adapter for Azure Blob Storage")
+  set(VERSION "1.1.2")
   set(CPACK_PACKAGE_VERSION_MAJOR 1)
   set(CPACK_PACKAGE_VERSION_MINOR 1)
-  set(CPACK_PACKAGE_VERSION_RELEASE 1)
+  set(CPACK_PACKAGE_VERSION_RELEASE 2)
   set(CPACK_PACKAGE_NAME "blobfuse")
   set(CPACK_PACKAGE_VENDOR "Microsoft")
   include(CPack)

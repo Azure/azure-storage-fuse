@@ -5,7 +5,7 @@
 namespace microsoft_azure {
     namespace storage {
 
-        class get_blob_property_request : public get_blob_property_request_base {
+        class get_blob_property_request final : public get_blob_property_request_base {
         public:
             get_blob_property_request(const std::string &container, const std::string &blob)
                 : m_container(container),

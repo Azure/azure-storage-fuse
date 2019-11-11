@@ -10,8 +10,10 @@ namespace microsoft_azure {
         CurlEasyRequest::CurlEasyRequest(std::shared_ptr<CurlEasyClient> client, CURL *h)
         : m_client(client),
             m_curl(h),
-            m_slist(NULL) {
-            //check_code(curl_easy_setopt(m_curl, CURLOPT_VERBOSE, 1));
+            m_slist(NULL)
+        {
+            m_input_content_length=0;
+            m_is_input_length_known =false;
             check_code(curl_easy_setopt(m_curl, CURLOPT_HEADERFUNCTION, header_callback));
             check_code(curl_easy_setopt(m_curl, CURLOPT_HEADERDATA, this));
         }
@@ -61,7 +63,7 @@ namespace microsoft_azure {
         }
 
         size_t CurlEasyRequest::header_callback(char *buffer, size_t size, size_t nitems, void *userdata) {
-            CurlEasyRequest::MY_TYPE *p = static_cast<CurlEasyRequest::MY_TYPE *>(userdata);
+            CurlEasyRequest::REQUEST_TYPE *p = static_cast<CurlEasyRequest::REQUEST_TYPE *>(userdata);
             std::string header(buffer, size * nitems);
             auto colon = header.find(':');
             if (colon == std::string::npos) {
