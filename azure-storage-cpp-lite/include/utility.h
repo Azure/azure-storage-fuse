@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <limits>
 
 #include "storage_EXPORTS.h"
 
@@ -88,7 +89,8 @@ inline void add_ms_header(http_base &h, storage_headers &headers, const std::str
 }
 
 inline void add_ms_header(http_base &h, storage_headers &headers, const std::string &name, unsigned long long value, bool optional = false) {
-    if (!optional || !value) {
+    if (!optional || (value != std::numeric_limits<unsigned long long>::max()) )
+    {
         h.add_header(name, std::to_string(value));
         headers.ms_headers[name] = std::to_string(value);
     }
@@ -100,6 +102,8 @@ inline void add_metadata_header(http_base &h, storage_headers &headers, const st
 
 AZURE_STORAGE_API bool retryable(http_base::http_code status_code);
 
+    AZURE_STORAGE_API std::string get_uuid();
+    AZURE_STORAGE_API bool create_or_resize_file(const std::string& path, unsigned long long length) noexcept;
 inline bool unsuccessful(http_base::http_code status_code) {
     return !(status_code >= 200 && status_code < 300);
 }

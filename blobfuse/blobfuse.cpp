@@ -146,8 +146,8 @@ int read_config(const std::string configFile)
         }
         else if(line.find("sasToken") != std::string::npos)
         {
-	    std::string sasTokenStr(value);
-	    str_options.sasToken = sasTokenStr;
+	        std::string sasTokenStr(value);
+	        str_options.sasToken = sasTokenStr;
         }
         else if(line.find("containerName") != std::string::npos)
         {
@@ -193,13 +193,24 @@ void *azs_init(struct fuse_conn_info * conn)
 {
     if (str_options.use_attr_cache)
     {
-        azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, 20/*concurrency*/, str_options.use_https,
-                                                                                                                    str_options.blobEndpoint));
+        azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
+                blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init(
+                        str_options.accountName,
+                        str_options.accountKey,
+                        str_options.sasToken,
+                        20/*concurrency*/,
+                        str_options.use_https,
+                        str_options.blobEndpoint));
     }
     else
     {
-        azure_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, 20/*concurrency*/, str_options.use_https,
-                                                                                                                    str_options.blobEndpoint));
+        azure_blob_client_wrapper = blob_client_wrapper_init(
+                str_options.accountName,
+                str_options.accountKey,
+                str_options.sasToken,
+                20/*concurrency*/,
+                str_options.use_https,
+                str_options.blobEndpoint);
     }
 
     if(errno != 0)
@@ -239,7 +250,7 @@ void print_usage()
 
 void print_version()
 {
-    fprintf(stdout, "blobfuse 1.0.3\n");
+    fprintf(stdout, "blobfuse 1.1.3\n");
 }
 
 int set_log_mask(const char * min_log_level_char)
@@ -468,8 +479,13 @@ int validate_storage_connection()
     // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
     {
         const int defaultMaxConcurrency = 20;
-        blob_client_wrapper temp_azure_blob_client_wrapper = blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, str_options.sasToken, defaultMaxConcurrency, str_options.use_https, 
-													   str_options.blobEndpoint);
+        std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
+                str_options.accountName,
+                str_options.accountKey,
+                str_options.sasToken,
+                defaultMaxConcurrency,
+                str_options.use_https,
+                str_options.blobEndpoint);
         if(errno != 0)
         {
             syslog(LOG_CRIT, "Unable to start blobfuse.  Creating local blob client failed: errno = %d.\n", errno);
@@ -479,7 +495,7 @@ int validate_storage_connection()
 
         // Check if the account name/key and container is correct by attempting to list a blob.
         // This will succeed even if there are zero blobs.
-        list_blobs_hierarchical_response response = temp_azure_blob_client_wrapper.list_blobs_hierarchical(str_options.containerName, "/", std::string(), std::string(), 1);
+        list_blobs_hierarchical_response response = temp_azure_blob_client_wrapper->list_blobs_hierarchical(str_options.containerName, "/", std::string(), std::string(), 1);
         if(errno != 0)
         {
             syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);

@@ -5,7 +5,7 @@
 namespace microsoft_azure {
     namespace storage {
 
-        class delete_container_request : public delete_container_request_base {
+        class delete_container_request final : public delete_container_request_base {
         public:
             delete_container_request(const std::string &container)
                 : m_container(container) {}

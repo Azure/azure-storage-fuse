@@ -5,7 +5,7 @@
 namespace microsoft_azure {
     namespace storage {
 
-        class copy_blob_request : public copy_blob_request_base {
+        class copy_blob_request final: public copy_blob_request_base {
         public:
             copy_blob_request(const std::string &container, const std::string &blob, const std::string &destContainer, const std::string &destBlob)
                 : m_container(container),

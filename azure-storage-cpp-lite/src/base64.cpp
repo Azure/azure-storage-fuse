@@ -35,8 +35,12 @@ namespace microsoft_azure {
 
         std::string to_base64(const std::vector<unsigned char> &input)
         {
-            auto size = input.size();
-            auto ptr = input.data();
+        return to_base64(input.data(), input.size());
+    }
+
+    std::string to_base64(const unsigned char* input, size_t size)
+    {
+        auto ptr = input;
 
             std::string result;
             result.reserve((size / 3 + 1) * 4);

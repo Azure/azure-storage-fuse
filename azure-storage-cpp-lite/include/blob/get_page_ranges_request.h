@@ -5,7 +5,7 @@
 namespace microsoft_azure {
     namespace storage {
 
-        class get_page_ranges_request : public get_page_ranges_request_base {
+        class get_page_ranges_request final : public get_page_ranges_request_base {
         public:
             get_page_ranges_request(const std::string &container, const std::string &blob)
                 : m_container(container),

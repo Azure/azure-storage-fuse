@@ -109,7 +109,7 @@ namespace microsoft_azure {
 
         blob_client_attr_cache_wrapper blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency, bool use_https, const std::string &blob_endpoint)
         {
-            std::shared_ptr<blob_client_wrapper> wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(account_name, account_key, sas_token, concurrency, use_https, blob_endpoint));
+            std::shared_ptr<blob_client_wrapper> wrapper = blob_client_wrapper_init(account_name, account_key, sas_token, concurrency, use_https, blob_endpoint);
             return blob_client_attr_cache_wrapper(wrapper);
         }
 
