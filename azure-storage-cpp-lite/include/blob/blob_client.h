@@ -568,7 +568,12 @@ namespace microsoft_azure { namespace storage {
         /// <param name="sas_token">A sas token for the container.</param>
         /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
         /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
-        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency);
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init(
+            const std::string &account_name,
+            const std::string &account_key,
+            const std::string &sas_token,
+            const std::string &oauth_token,
+            const unsigned int concurrency);
 
         /// <summary>
         /// Constructs a blob client wrapper from storage account credential.
@@ -580,8 +585,14 @@ namespace microsoft_azure { namespace storage {
         /// <param name="use_https">True if https should be used (instead of HTTP).  Note that this may cause a sizable perf loss, due to issues in libcurl.</param>
         /// <param name="blob_endpoint">Blob endpoint URI to allow non-public clouds as well as custom domains.</param>
         /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
-        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency, bool use_https,
-                                                            const std::string &blob_endpoint);
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init(
+            const std::string &account_name,
+            const std::string &account_key,
+            const std::string &sas_token,
+            const std::string &oauth_token,
+            const unsigned int concurrency,
+            bool use_https,
+            const std::string &blob_endpoint);
 
     // A wrapper around the "blob_client_wrapper" that provides in-memory caching for "get_blob_properties" calls.
     class blob_client_attr_cache_wrapper : public sync_blob_client
@@ -682,7 +693,12 @@ namespace microsoft_azure { namespace storage {
         /// <param name="sas_token">A sas token for the container.</param>
         /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
         /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
-        static blob_client_attr_cache_wrapper blob_client_attr_cache_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency);
+        static blob_client_attr_cache_wrapper blob_client_attr_cache_wrapper_init(
+            const std::string &account_name,
+            const std::string &account_key,
+            const std::string &sas_token,
+            const std::string &oauth_token,
+            const unsigned int concurrency);
 
         /// <summary>
         /// Constructs a blob client wrapper from storage account credential.
@@ -694,8 +710,14 @@ namespace microsoft_azure { namespace storage {
         /// <param name="use_https">True if https should be used (instead of HTTP).  Note that this may cause a sizable perf loss, due to issues in libcurl.</param>
         /// <param name="blob_endpoint">Blob endpoint URI to allow non-public clouds as well as custom domains.</param>
         /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
-        static blob_client_attr_cache_wrapper blob_client_attr_cache_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency, bool use_https, 
-                                const std::string &blob_endpoint);  
+        static blob_client_attr_cache_wrapper blob_client_attr_cache_wrapper_init(
+            const std::string &account_name,
+            const std::string &account_key,
+            const std::string &sas_token,
+            const std::string &oauth_token,
+            const unsigned int concurrency,
+            bool use_https,
+            const std::string &blob_endpoint);
 
         /// <summary>
         /// List blobs in segments.

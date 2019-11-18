@@ -77,38 +77,52 @@ int read_config_env()
     char* env_account_key = getenv("AZURE_STORAGE_ACCESS_KEY");
     char* env_sas_token = getenv("AZURE_STORAGE_SAS_TOKEN");
     char* env_blob_endpoint = getenv("AZURE_BLOB_ENDPOINT");
+    char* env_oauth_token = getenv("AZURE_OAUTH_TOKEN");
 
     if(env_account)
     {
         str_options.accountName = env_account;
+
+        if(env_account_key)
+        {
+            str_options.accountKey = env_account_key;
+        }
+
+        if(env_sas_token)
+        {
+            str_options.sasToken = env_sas_token;
+        }
+
+        if(env_oauth_token)
+        {
+            str_options.oauthToken = env_oauth_token;
+        }
+
+        if((!env_account_key && !env_sas_token && !env_oauth_token) ||
+            (env_account_key && env_sas_token) ||
+            (env_account && env_oauth_token) ||
+            (env_sas_token && env_oauth_token))
+        {
+            syslog(LOG_CRIT, "Unable to start blobfuse.  If no config file is specified, exactly one of the "
+                             "environment variables AZURE_STORAGE_ACCESS_KEY, AZURE_STORAGE_SAS_TOKEN"
+                             " AZURE_OAUTH_TOKEN must be set.");
+            fprintf(stderr, "Unable to start blobfuse.  If no config file is specified, exactly one of the "
+                            "environment variables AZURE_STORAGE_ACCESS_KEY, AZURE_STORAGE_SAS_TOKEN"
+                            " AZURE_OAUTH_TOKEN must be set.\n");
+        }
+
+        if(env_blob_endpoint) {
+            // Optional to specify blob endpoint
+            str_options.blobEndpoint = env_blob_endpoint;
+        }
     }
     else
     {
-        syslog(LOG_CRIT, "Unable to start blobfuse.  No config file was specified and AZURE_STORAGE_ACCESS_KEY environment variable is empty.");
-        fprintf(stderr, "No config file was specified and AZURE_STORAGE_ACCOUNT environment variable is empty.\n");
+        syslog(LOG_CRIT, "Unable to start blobfuse.  No config file was specified and the AZURE_STORAGE_ACCCOUNT"
+                         "environment variable was empty");
+        fprintf(stderr, "Unable to start blobfuse.  No config file was specified and the AZURE_STORAGE_ACCCOUNT"
+                        "environment variable was empty\n");
         return -1;
-    }
-
-    if(env_account_key)
-    {
-        str_options.accountKey = env_account_key;
-    }
-    
-    if(env_sas_token)
-    {
-        str_options.sasToken = env_sas_token;
-    }
-
-    if((!env_account_key && !env_sas_token) ||
-       (env_account_key && env_sas_token)) 
-    {
-        syslog(LOG_CRIT, "Unable to start blobfuse.  If no config file is specified, exactly one of the environment variables AZURE_STORAGE_ACCESS_KEY or AZURE_STORAGE_SAS_TOKEN must be set.");
-        fprintf(stderr, "Unable to start blobfuse.  If no config file is specified, exactly one of the environment variables AZURE_STORAGE_ACCESS_KEY or AZURE_STORAGE_SAS_TOKEN must be set.\n");
-    }
-
-    if(env_blob_endpoint)
-    {
-        str_options.blobEndpoint = env_blob_endpoint;
     }
 
     return 0;
@@ -159,21 +173,30 @@ int read_config(const std::string configFile)
             std::string blobEndpointStr(value);
             str_options.blobEndpoint = blobEndpointStr;
         }
+        else if(line.find("oauthToken") != std::string::npos)
+        {
+            std::string oauthTokenStr(value);
+            str_options.oauthToken = oauthTokenStr;
+        }
 
         data.clear();
     }
 
     if(str_options.accountName.empty())
     {
-        syslog (LOG_CRIT, "Unable to start blobfuse. Account name is missing in the config file.");
+        syslog (LOG_CRIT, "Unable to start blobfuse. Account name and OAuth token is missing in the config file.");
         fprintf(stderr, "Account name is missing in the config file.\n");
         return -1;
     }
-    else if((str_options.accountKey.empty() && str_options.sasToken.empty()) || 
-	    (!str_options.accountKey.empty() && !str_options.sasToken.empty()))
+    else if( (!str_options.accountKey.empty() && !str_options.sasToken.empty()) ||
+            (!str_options.accountKey.empty() && !str_options.oauthToken.empty()) ||
+	        (!str_options.sasToken.empty() && !str_options.oauthToken.empty()) ||
+            (str_options.accountKey.empty() && str_options.sasToken.empty() && str_options.oauthToken.empty()) )
     {
-        syslog (LOG_CRIT, "Unable to start blobfuse. Exactly one of Account Key and SAS token must be specified in the config file, and the other line should be deleted.");
-        fprintf(stderr, "Unable to start blobfuse. Exactly one of Account Key and SAS token must be specified in the config file, and the other line should be deleted.\n");
+        syslog (LOG_CRIT, "Unable to start blobfuse. Exactly one of following should be specified in the config file: "
+                          "Account Key, SAS token or the OAuth token. The other lines should be deleted.");
+        fprintf(stderr, "Unable to start blobfuse. Exactly one of following should be specified in the config file: "
+                        "Account Key, SAS token or the OAuth token. The other lines should be deleted.\n");
         return -1;
     }
     else if(str_options.containerName.empty())
@@ -198,6 +221,7 @@ void *azs_init(struct fuse_conn_info * conn)
                         str_options.accountName,
                         str_options.accountKey,
                         str_options.sasToken,
+                        str_options.oauthToken,
                         20/*concurrency*/,
                         str_options.use_https,
                         str_options.blobEndpoint));
@@ -208,6 +232,7 @@ void *azs_init(struct fuse_conn_info * conn)
                 str_options.accountName,
                 str_options.accountKey,
                 str_options.sasToken,
+                str_options.oauthToken,
                 20/*concurrency*/,
                 str_options.use_https,
                 str_options.blobEndpoint);
@@ -411,7 +436,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         return 1;
     }
 
-    // remove last trailing slash in tmo_path
+    // remove last trailing slash in tmp_path
     if(!options.tmp_path)
     {
         fprintf(stderr, "Error: --tmp-path is not set.\n");
@@ -483,6 +508,7 @@ int validate_storage_connection()
                 str_options.accountName,
                 str_options.accountKey,
                 str_options.sasToken,
+                str_options.oauthToken,
                 defaultMaxConcurrency,
                 str_options.use_https,
                 str_options.blobEndpoint);
@@ -498,8 +524,8 @@ int validate_storage_connection()
         list_blobs_hierarchical_response response = temp_azure_blob_client_wrapper->list_blobs_hierarchical(str_options.containerName, "/", std::string(), std::string(), 1);
         if(errno != 0)
         {
-            syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
-            fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key and container name. errno = %d\n", errno);
+            syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key/sas token/OAuth access token and container name. errno = %d\n", errno);
+            fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key/sas token/OAuth access token and container name. errno = %d\n", errno);
             return 1;
         }
     }

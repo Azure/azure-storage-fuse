@@ -62,16 +62,38 @@ namespace microsoft_azure {
 
         sync_blob_client::~sync_blob_client() {}
 
-        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency)
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init(
+                const std::string &account_name,
+                const std::string &account_key,
+                const std::string &sas_token,
+                const std::string &oauth_token,
+                const unsigned int concurrency)
         {
-            return blob_client_wrapper_init(account_name, account_key, sas_token, concurrency, false, NULL);
+            return blob_client_wrapper_init(
+                account_name,
+                account_key,
+                sas_token,
+                oauth_token,
+                concurrency,
+                false,
+                NULL);
         }
 
 
-        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token,  const unsigned int concurrency, const bool use_https,
-                                                                          const std::string &blob_endpoint)
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init(
+                const std::string &account_name,
+                const std::string &account_key,
+                const std::string &sas_token,
+                const std::string &oauth_token,
+                const unsigned int concurrency,
+                const bool use_https,
+                const std::string &blob_endpoint = NULL)
         {
-            if(account_name.empty() || ((account_key.empty() && sas_token.empty()) || (!account_key.empty() && !sas_token.empty())))
+            if( account_name.empty() ||
+                    ( (!account_key.empty() && !sas_token.empty()) ||
+                    (!account_key.empty() && !oauth_token.empty()) ||
+                    (!sas_token.empty() && !oauth_token.empty()) ||
+                    ( !account_key.empty() && !sas_token.empty())))
             {
                 errno = invalid_parameters;
                 return std::make_shared<blob_client_wrapper>(false);
@@ -88,15 +110,21 @@ namespace microsoft_azure {
 
             try
             {
-                std::shared_ptr<storage_credential>  cred;
-                if (account_key.length() > 0) 
+                //before this method was called, we already checked if only one of the following was passed
+                // account_key, sas_token or oauth_token
+                std::shared_ptr<storage_credential> cred;
+                if (account_key.length() > 0)
                 {
                     cred = std::make_shared<shared_key_credential>(accountName, accountKey);
                 }
+                else if(sas_token.length() > 0)
+                {
+                    cred = std::make_shared<shared_access_signature_credential>(sas_token);
+                }
                 else
                 {
-                    // We have already verified that exactly one form of credentials is present, so if shared key is not present, it must be sas.
-                    cred = std::make_shared<shared_access_signature_credential>(sas_token);
+                    // oauth_token
+                    cred = std::make_shared<token_credential>(oauth_token);
                 }
                 std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
                 std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
