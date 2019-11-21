@@ -47,12 +47,9 @@ public:
         ASSERT_EQ(0, ret) << "Read config failed.";
         std::string blob_endpoint;
         std::string sas_token;
-        std::string oauth_token;
-        test_blob_client_wrapper = blob_client_wrapper_init(
+        test_blob_client_wrapper = blob_client_wrapper_init_accountkey(
             str_options.accountName,
             str_options.accountKey,
-            sas_token,
-            oauth_token,
             20,
             str_options.use_https,
             blob_endpoint);

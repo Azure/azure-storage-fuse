@@ -109,6 +109,7 @@ set(AZURE_STORAGE_SOURCE
 
 set (BLOBFUSE_HEADER
   blobfuse/blobfuse.h
+  blobfuse/OauthTokenCredentialManager.h
 )
 
 set (BLOBFUSE_SOURCE
@@ -118,6 +119,7 @@ set (BLOBFUSE_SOURCE
   blobfuse/fileapis.cpp
   blobfuse/directoryapis.cpp
   blobfuse/utilities.cpp
+  blobfuse/OauthTokenCredentialManager.cpp
 )
 
 if(UNIX)

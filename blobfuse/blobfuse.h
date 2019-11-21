@@ -30,6 +30,7 @@
 #include <fuse.h>
 #include <stddef.h>
 #include "blob/blob_client.h"
+#include "OauthTokenCredentialManager.h"
 
 #define UNREFERENCED_PARAMETER(p) (p)
 
@@ -121,10 +122,13 @@ struct fhwrapper
 struct str_options
 {
     std::string accountName;
+    std::string authType;
     std::string blobEndpoint;
     std::string accountKey;
     std::string sasToken;
-    std::string oauthToken;
+    std::string clientId;
+    std::string objectId;
+    std::string resourceId;
     std::string containerName;
     std::string tmpPath;
     bool use_https;

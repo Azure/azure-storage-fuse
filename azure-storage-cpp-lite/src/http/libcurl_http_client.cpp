@@ -7,6 +7,9 @@
 namespace microsoft_azure {
     namespace storage {
 
+
+
+
         CurlEasyRequest::CurlEasyRequest(std::shared_ptr<CurlEasyClient> client, CURL *h)
         : m_client(client),
             m_curl(h),

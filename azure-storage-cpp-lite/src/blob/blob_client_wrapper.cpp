@@ -62,43 +62,13 @@ namespace microsoft_azure {
 
         sync_blob_client::~sync_blob_client() {}
 
-        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init(
-                const std::string &account_name,
-                const std::string &account_key,
-                const std::string &sas_token,
-                const std::string &oauth_token,
-                const unsigned int concurrency)
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_accountkey(
+            const std::string &account_name,
+            const std::string &account_key,
+            const unsigned int concurrency,
+            bool use_https,
+            const std::string &blob_endpoint)
         {
-            return blob_client_wrapper_init(
-                account_name,
-                account_key,
-                sas_token,
-                oauth_token,
-                concurrency,
-                false,
-                NULL);
-        }
-
-
-        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init(
-                const std::string &account_name,
-                const std::string &account_key,
-                const std::string &sas_token,
-                const std::string &oauth_token,
-                const unsigned int concurrency,
-                const bool use_https,
-                const std::string &blob_endpoint = NULL)
-        {
-            if( account_name.empty() ||
-                    ( (!account_key.empty() && !sas_token.empty()) ||
-                    (!account_key.empty() && !oauth_token.empty()) ||
-                    (!sas_token.empty() && !oauth_token.empty()) ||
-                    ( !account_key.empty() && !sas_token.empty())))
-            {
-                errno = invalid_parameters;
-                return std::make_shared<blob_client_wrapper>(false);
-            }
-
             /* set a default concurrency value. */
             unsigned int concurrency_limit = 40;
             if(concurrency != 0)
@@ -107,27 +77,108 @@ namespace microsoft_azure {
             }
             std::string accountName(account_name);
             std::string accountKey(account_key);
-
             try
             {
-                //before this method was called, we already checked if only one of the following was passed
-                // account_key, sas_token or oauth_token
                 std::shared_ptr<storage_credential> cred;
                 if (account_key.length() > 0)
                 {
                     cred = std::make_shared<shared_key_credential>(accountName, accountKey);
                 }
-                else if(sas_token.length() > 0)
+                else
+                {
+                    syslog(LOG_ERR, "Empty account key. Failed to create blob client.");
+                    return std::make_shared<blob_client_wrapper>(false);
+                }
+                std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
+                std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
+                errno = 0;
+                return std::make_shared<blob_client_wrapper>(blobClient);
+            }
+            catch(const std::exception &ex)
+            {
+                syslog(LOG_ERR, "Failed to create blob client.  ex.what() = %s.", ex.what());
+                errno = unknown_error;
+                return std::make_shared<blob_client_wrapper>(false);
+            }
+        }
+
+
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_sastoken(
+            const std::string &account_name,
+            const std::string &sas_token,
+            const unsigned int concurrency,
+            bool use_https,
+            const std::string &blob_endpoint)
+        {
+            /* set a default concurrency value. */
+            unsigned int concurrency_limit = 40;
+            if(concurrency != 0)
+            {
+                concurrency_limit = concurrency;
+            }
+            std::string accountName(account_name);
+            std::string sasToken(sas_token);
+
+            try
+            {
+                std::shared_ptr<storage_credential> cred;
+                if(sas_token.length() > 0)
                 {
                     cred = std::make_shared<shared_access_signature_credential>(sas_token);
                 }
                 else
                 {
-                    // oauth_token
-                    cred = std::make_shared<token_credential>(oauth_token);
+                    syslog(LOG_ERR, "Empty account key. Failed to create blob client.");
+                    return std::make_shared<blob_client_wrapper>(false);
                 }
                 std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
                 std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
+                errno = 0;
+                return std::make_shared<blob_client_wrapper>(blobClient);
+            }
+            catch(const std::exception &ex)
+            {
+                syslog(LOG_ERR, "Failed to create blob client.  ex.what() = %s.", ex.what());
+                errno = unknown_error;
+                return std::make_shared<blob_client_wrapper>(false);
+            }
+        }
+
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_msi(
+            const std::string &account_name,
+            const std::string &oauth_token,
+            const unsigned int concurrency,
+            const std::string &blob_endpoint)
+        {
+            /* set a default concurrency value. */
+            unsigned int concurrency_limit = 40;
+            if(concurrency != 0)
+            {
+                concurrency_limit = concurrency;
+            }
+            std::string accountName(account_name);
+            std::string oauthToken(oauth_token);
+
+            try
+            {
+                std::shared_ptr<storage_credential> cred;
+                if(!oauthToken.empty())
+                {
+                    cred = std::make_shared<token_credential>(oauthToken);
+                }
+                else
+                {
+                    syslog(LOG_ERR, "One or more of the following is empty: Client ID, Object ID, and Resource ID to "
+                                    "authenticate for using MSI. Failed to create blob client.");
+                    return std::make_shared<blob_client_wrapper>(false);
+                }
+                std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
+                    accountName,
+                    cred,
+                    true, //use_https must be true to use oauth
+                    blob_endpoint);
+                std::shared_ptr<blob_client> blobClient =
+                    std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
                 errno = 0;
                 return std::make_shared<blob_client_wrapper>(blobClient);
             }

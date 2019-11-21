@@ -76,8 +76,11 @@ int read_config_env()
     char* env_account = getenv("AZURE_STORAGE_ACCOUNT");
     char* env_account_key = getenv("AZURE_STORAGE_ACCESS_KEY");
     char* env_sas_token = getenv("AZURE_STORAGE_SAS_TOKEN");
-    char* env_blob_endpoint = getenv("AZURE_BLOB_ENDPOINT");
-    char* env_oauth_token = getenv("AZURE_OAUTH_TOKEN");
+    char* env_blob_endpoint = getenv("AZURE_STORAGE_BLOB_ENDPOINT");
+    char* env_identity_client_id = getenv("AZURE_STORAGE_IDENTITY_CLIENT_ID");
+    char* env_identity_object_id = getenv("AZURE_STORAGE_IDENTITY_OBJECT_ID");
+    char* env_identity_resource_id = getenv("AZURE_STORAGE_IDENTITY_RESOURCE_ID");
+    char* env_auth_type = getenv("AZURE_STORAGE_AUTH_TYPE");
 
     if(env_account)
     {
@@ -93,23 +96,38 @@ int read_config_env()
             str_options.sasToken = env_sas_token;
         }
 
-        if(env_oauth_token)
+        if(env_identity_client_id)
         {
-            str_options.oauthToken = env_oauth_token;
+            str_options.clientId = env_identity_client_id;
         }
 
-        if((!env_account_key && !env_sas_token && !env_oauth_token) ||
-            (env_account_key && env_sas_token) ||
-            (env_account && env_oauth_token) ||
-            (env_sas_token && env_oauth_token))
+        if(env_identity_object_id)
         {
-            syslog(LOG_CRIT, "Unable to start blobfuse.  If no config file is specified, exactly one of the "
-                             "environment variables AZURE_STORAGE_ACCESS_KEY, AZURE_STORAGE_SAS_TOKEN"
-                             " AZURE_OAUTH_TOKEN must be set.");
-            fprintf(stderr, "Unable to start blobfuse.  If no config file is specified, exactly one of the "
-                            "environment variables AZURE_STORAGE_ACCESS_KEY, AZURE_STORAGE_SAS_TOKEN"
-                            " AZURE_OAUTH_TOKEN must be set.\n");
+            str_options.objectId = env_identity_object_id;
         }
+
+        if(env_identity_resource_id)
+        {
+            str_options.resourceId = env_identity_resource_id;
+        }
+
+        if(env_auth_type)
+        {
+            str_options.authType = env_auth_type;
+        }
+
+
+        //TODO: make a check for making sure if the auth type is used that the right variables have values
+        /*
+        if((!env_account_key && !env_sas_token && !env_identity_client_id && !env_identity_object_id && !env_identity_resource_id) &&
+        !(!env_account_key && !env_sas_token && env_identity_client_id && env_identity_object_id && env_identity_resource_id) &&
+        !(env_account_key && !env_sas_token && !env_identity_client_id && !env_identity_object_id && !env_identity_resource_id) &&
+        !(!env_account_key && env_sas_token && !env_identity_client_id && !env_identity_object_id && !env_identity_resource_id))
+        {
+            syslog(LOG_CRIT, "Unable to start blobfuse.  If no config file is specified, TODO update this message so only acccountkey, sastoken or clientid&&objectid&&resourceid is filled in");
+            fprintf(stderr, "Unable to start blobfuse.  If no config file is specified, TODO update this message so only acccountkey, sastoken or clientid&&objectid&&resourceid is filled in\n");
+        }
+         */
 
         if(env_blob_endpoint) {
             // Optional to specify blob endpoint
@@ -173,10 +191,25 @@ int read_config(const std::string configFile)
             std::string blobEndpointStr(value);
             str_options.blobEndpoint = blobEndpointStr;
         }
-        else if(line.find("oauthToken") != std::string::npos)
+        else if(line.find("identityClientId") != std::string::npos)
         {
-            std::string oauthTokenStr(value);
-            str_options.oauthToken = oauthTokenStr;
+            std::string clientIdStr(value);
+            str_options.clientId = clientIdStr;
+        }
+        else if(line.find("identityObjectId") != std::string::npos)
+        {
+            std::string objectIdStr(value);
+            str_options.objectId = objectIdStr;
+        }
+        else if(line.find("identityResourceId") != std::string::npos)
+        {
+            std::string resourceIdStr(value);
+            str_options.resourceId = resourceIdStr;
+        }
+        else if(line.find("authType") != std::string::npos)
+        {
+            std::string authTypeStr(value);
+            str_options.authType = authTypeStr;
         }
 
         data.clear();
@@ -184,21 +217,22 @@ int read_config(const std::string configFile)
 
     if(str_options.accountName.empty())
     {
-        syslog (LOG_CRIT, "Unable to start blobfuse. Account name and OAuth token is missing in the config file.");
+        syslog (LOG_CRIT, "Unable to start blobfuse. Account name is missing in the config file.");
         fprintf(stderr, "Account name is missing in the config file.\n");
         return -1;
     }
-    else if( (!str_options.accountKey.empty() && !str_options.sasToken.empty()) ||
-            (!str_options.accountKey.empty() && !str_options.oauthToken.empty()) ||
-	        (!str_options.sasToken.empty() && !str_options.oauthToken.empty()) ||
-            (str_options.accountKey.empty() && str_options.sasToken.empty() && str_options.oauthToken.empty()) )
+    /// TODO: make a check for checking if some parameters are used
+    /*
+    else if((!str_options.accountKey.empty() && !str_options.sasToken.empty() && !str_options.clientId.empty() && !str_options.objectId.empty() && !str_options.resourceId.empty()) &&
+             !(!str_options.accountKey.empty() && !str_options.sasToken.empty() && str_options.clientId.empty() && str_options.objectId.empty() && str_options.resourceId.empty()) &&
+             !(!str_options.accountKey.empty() && str_options.sasToken.empty() && !str_options.clientId.empty() && !str_options.objectId.empty() && !str_options.resourceId.empty())  &&
+             !(str_options.accountKey.empty() && !str_options.sasToken.empty() && !str_options.clientId.empty() && !str_options.objectId.empty() && !str_options.resourceId.empty()) )
     {
-        syslog (LOG_CRIT, "Unable to start blobfuse. Exactly one of following should be specified in the config file: "
-                          "Account Key, SAS token or the OAuth token. The other lines should be deleted.");
-        fprintf(stderr, "Unable to start blobfuse. Exactly one of following should be specified in the config file: "
-                        "Account Key, SAS token or the OAuth token. The other lines should be deleted.\n");
+        syslog (LOG_CRIT, "Unable to start blobfuse. TODO update this message so only acccountkey, sastoken or clientid&&objectid&&resourceid is filled in");
+        fprintf(stderr, "Unable to start blobfuse. TODO update this message so only acccountkey, sastoken or clientid&&objectid&&resourceid is filled in\n");
         return -1;
     }
+     */
     else if(str_options.containerName.empty())
     {
         syslog (LOG_CRIT, "Unable to start blobfuse. Container name is missing in the config file.");
@@ -214,28 +248,78 @@ int read_config(const std::string configFile)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
+    const int defaultMaxConcurrency = 20;
     if (str_options.use_attr_cache)
     {
-        azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
-                blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init(
-                        str_options.accountName,
-                        str_options.accountKey,
-                        str_options.sasToken,
-                        str_options.oauthToken,
-                        20/*concurrency*/,
-                        str_options.use_https,
-                        str_options.blobEndpoint));
+        //TODO: readjust attr_cache to take in oauth_token
+        if(str_options.authType == "MSI")
+        {
+            //1. get oauth token
+            std::shared_ptr<OauthTokenCredentialManager> tokenManager = std::make_shared<OauthTokenCredentialManager>(
+            str_options.clientId,
+            str_options.objectId,
+            str_options.resourceId);
+            //2. try to make blob client wrapper using oauth token
+            //std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
+            //str_options.accountName
+        }
+        else if(!str_options.accountKey.empty()) {
+            azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
+                blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init_accountkey(
+                    str_options.accountName,
+                    str_options.accountKey,
+                    20/*concurrency*/,
+                    str_options.use_https,
+                    str_options.blobEndpoint));
+        }
+        else if(!str_options.sasToken.empty()) {
+            azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
+                blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init_sastoken(
+                    str_options.accountName,
+                    str_options.sasToken,
+                    20/*concurrency*/,
+                     str_options.use_https,
+                    str_options.blobEndpoint));
+        }
+        else
+        {
+            syslog(LOG_ERR, "Unable to start blobfuse, no good credentials were entered //TODO better error note");
+        }
     }
     else
     {
-        azure_blob_client_wrapper = blob_client_wrapper_init(
-                str_options.accountName,
-                str_options.accountKey,
-                str_options.sasToken,
-                str_options.oauthToken,
-                20/*concurrency*/,
-                str_options.use_https,
-                str_options.blobEndpoint);
+        //TODO: Make a for authtype, and then if that's not specified, then a check against what credentials were specified
+        if(!str_options.clientId.empty() || !str_options.resourceId.empty() || !str_options.objectId.empty())
+        {
+            //1. get oauth token
+            std::shared_ptr<OauthTokenCredentialManager> tokenManager = std::make_shared<OauthTokenCredentialManager>(
+            str_options.clientId,
+            str_options.objectId,
+            str_options.resourceId);
+            //2. try to make blob client wrapper using oauth token
+            //std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
+            //str_options.accountName
+        }
+        else if(!str_options.accountKey.empty()) {
+            std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
+            str_options.accountName,
+            str_options.accountKey,
+            defaultMaxConcurrency,
+            str_options.use_https,
+            str_options.blobEndpoint);
+        }
+        else if(!str_options.sasToken.empty()) {
+            std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init_sastoken(
+            str_options.accountName,
+            str_options.sasToken,
+            defaultMaxConcurrency,
+            str_options.use_https,
+            str_options.blobEndpoint);
+        }
+        else
+        {
+            syslog(LOG_ERR, "Unable to start blobfuse, no good credentials were entered //TODO better error note");
+        }
     }
 
     if(errno != 0)
@@ -504,14 +588,39 @@ int validate_storage_connection()
     // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
     {
         const int defaultMaxConcurrency = 20;
-        std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
-                str_options.accountName,
-                str_options.accountKey,
-                str_options.sasToken,
-                str_options.oauthToken,
-                defaultMaxConcurrency,
-                str_options.use_https,
-                str_options.blobEndpoint);
+        std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper;
+        //TODO: Make a for authtype, and then if that's not specified, then a check against what credentials were specified
+        if(str_options.authType == "MSI")
+        {
+            //1. get oauth token
+            std::shared_ptr<OauthTokenCredentialManager> tokenManager = std::make_shared<OauthTokenCredentialManager>(
+            str_options.clientId,
+            str_options.objectId,
+            str_options.resourceId);
+            //2. try to make blob client wrapper using oauth token
+            //std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
+            //str_options.accountName
+        }
+        else if(!str_options.accountKey.empty()) {
+            temp_azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
+            str_options.accountName,
+            str_options.accountKey,
+            defaultMaxConcurrency,
+            str_options.use_https,
+            str_options.blobEndpoint);
+        }
+        else if(!str_options.sasToken.empty()) {
+            temp_azure_blob_client_wrapper = blob_client_wrapper_init_sastoken(
+            str_options.accountName,
+            str_options.sasToken,
+            defaultMaxConcurrency,
+            str_options.use_https,
+            str_options.blobEndpoint);
+        }
+        else
+        {
+            syslog(LOG_ERR, "Unable to start blobfuse, no good credentials were entered //TODO better error note");
+        }
         if(errno != 0)
         {
             syslog(LOG_CRIT, "Unable to start blobfuse.  Creating local blob client failed: errno = %d.\n", errno);
@@ -521,7 +630,12 @@ int validate_storage_connection()
 
         // Check if the account name/key and container is correct by attempting to list a blob.
         // This will succeed even if there are zero blobs.
-        list_blobs_hierarchical_response response = temp_azure_blob_client_wrapper->list_blobs_hierarchical(str_options.containerName, "/", std::string(), std::string(), 1);
+        list_blobs_hierarchical_response response = temp_azure_blob_client_wrapper->list_blobs_hierarchical(
+            str_options.containerName,
+            "/",
+            std::string(),
+            std::string(),
+            1);
         if(errno != 0)
         {
             syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key/sas token/OAuth access token and container name. errno = %d\n", errno);

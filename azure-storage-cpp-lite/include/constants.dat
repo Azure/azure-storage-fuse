@@ -33,6 +33,9 @@ DAT(query_restype, "restype")
 DAT(query_restype_container, "container")
 DAT(query_snapshot, "snapshot")
 DAT(query_timeout, "timeout")
+DAT(param_object_id, "&object_id=")
+DAT(param_client_id, "&client_id=")
+DAT(param_mi_res_id, "&mi_res_id=")
 
 DAT(header_accept, "Accept")
 DAT(header_authorization, "Authorization")
@@ -52,6 +55,7 @@ DAT(header_if_unmodified_since, "If-Unmodified-Since")
 DAT(header_last_modified, "Last-Modified")
 DAT(header_origin, "Origin")
 DAT(header_user_agent, "User-Agent")
+DAT(header_metadata, "Metadata")
 
 DAT(header_ms_blob_cache_control, "x-ms-blob-cache_control")
 DAT(header_ms_blob_condition_appendpos, "x-ms-blob-condition_appendpos")
@@ -93,6 +97,7 @@ DAT(header_value_page_write_clear, "clear")
 DAT(header_value_payload_format_nometadata, "application/json;odata=nometadata")
 DAT(header_value_payload_format_fullmetadata, "application/json;odata=fullmetadata")
 DAT(header_value_storage_version, "2017-11-09")
+DAT(header_value_metadata, "true")
 
 DAT(header_value_user_agent, "Azure-Storage-Fuse/1.1.2")
 
@@ -100,3 +105,5 @@ DAT(date_format_rfc_1123, "%a, %d %b %Y %H:%M:%S GMT")
 DAT(date_format_iso_8601, "%Y-%m-%dT%H:%M:%SZ")
 
 DAT(code_request_range_not_satisfiable, "416")
+
+DAT(msi_request_uri, "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/")
