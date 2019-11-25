@@ -30,6 +30,7 @@
 #include <fuse.h>
 #include <stddef.h>
 #include "blob/blob_client.h"
+#include "OAuthToken.h"
 #include "OauthTokenCredentialManager.h"
 
 #define UNREFERENCED_PARAMETER(p) (p)

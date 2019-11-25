@@ -3,6 +3,7 @@
 //
 
 #include "blob/blob_client.h"
+#include "OAuthToken.h"
 
 #ifndef BLOBFUSE_OAUTHTOKENCREDENTIALMANAGER_H
 #define BLOBFUSE_OAUTHTOKENCREDENTIALMANAGER_H
@@ -24,16 +25,15 @@ public:
     /// </summary>
     bool is_valid_connection();
     /// <summary>
-    /// TODO: call the service to refresh the oauth token
-    /// TODO: set the oauth_token with the new token and set the expirey_time
+    /// TODO: use a callback rather than a distinct function for refreshing
     /// </summary>
-    const std::string refresh_token();
+    std::string refresh_token();
     /// <summary>
     /// Returns current oauth_token
     /// </summary>
-    const std::string get_token();
+    std::string get_token();
     /// <summary>
-    /// TODO: check the expirey time against the current utc time
+    /// TODO: check the expiry time against the current utc time
     /// <summary>
     bool is_token_expired();
 

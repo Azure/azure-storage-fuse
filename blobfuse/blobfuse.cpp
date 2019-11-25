@@ -598,8 +598,15 @@ int validate_storage_connection()
             str_options.objectId,
             str_options.resourceId);
             //2. try to make blob client wrapper using oauth token
-            //std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
-            //str_options.accountName
+            // TODO: Restructure token_credentials to use the token manager
+            // TODO: Restructure blob_client_wrapper_init_msi to use a token_credential
+            // TODO: Rename blob_client_wrapper_init_msi to blob_client_wrapper_init_oauth after the restructure
+            //       Init is currently commented out to ensure a segfault until the above notes are done
+//            temp_azure_blob_client_wrapper = blob_client_wrapper_init_msi(
+//                    str_options.accountName,
+//                    tokenManager->refresh_token(),
+//                    defaultMaxConcurrency,
+//                    str_options.blobEndpoint);
         }
         else if(!str_options.accountKey.empty()) {
             temp_azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
