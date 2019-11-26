@@ -144,7 +144,7 @@ namespace microsoft_azure {
             }
         }
 
-        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_msi(
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_oauth(
             const std::string &account_name,
             const std::string &oauth_token,
             const unsigned int concurrency,
@@ -164,7 +164,7 @@ namespace microsoft_azure {
                 std::shared_ptr<storage_credential> cred;
                 if(!oauthToken.empty())
                 {
-                    cred = std::make_shared<token_credential>(oauthToken);
+                    cred = std::make_shared<token_credential>();
                 }
                 else
                 {

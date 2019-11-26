@@ -95,24 +95,37 @@ namespace microsoft_azure {
             h.set_url(transformed_url);
         }
 
-        AZURE_STORAGE_API token_credential::token_credential(const std::string &token)
-        : m_token(std::move(token)) {}
-
-        void token_credential::set_token(const std::string &token)
-        {
-            std::lock_guard<std::mutex> lg(m_token_mutex);
-            m_token = token;
+        AZURE_STORAGE_API token_credential::token_credential(){
+            m_credmgr_ptr = GetTokenManagerInstance(EmptyCallback);
         }
+
+        AZURE_STORAGE_API token_credential::token_credential(const std::string &token) : m_token(std::move(token)) {}
 
         void token_credential::sign_request(const microsoft_azure::storage::storage_request_base &,
                                             microsoft_azure::storage::http_base & h,
                                             const microsoft_azure::storage::storage_url &,
                                             const microsoft_azure::storage::storage_headers &) const
         {
-            std::lock_guard<std::mutex> lg(m_token_mutex);
+            // a token mutex is no longer needeed as the oauth token manager handles this for us.
             std::string authorization("Bearer ");
-            authorization.append(m_token);
+
+            if (m_token.empty())
+            {
+                OAuthToken token = m_credmgr_ptr->get_token();
+                authorization.append(token.access_token);
+            }
+            else // deprecated fallback case for explicitly set token
+            {
+                std::lock_guard<std::mutex> lg(m_token_mutex);
+                authorization.append(m_token);
+            }
+
             h.add_header(constants::header_authorization, authorization);
+        }
+
+        void token_credential::set_token(const std::string &token) {
+            std::lock_guard<std::mutex> lg(m_token_mutex);
+            m_token = token;
         }
     }
 }

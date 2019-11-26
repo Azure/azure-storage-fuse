@@ -2,7 +2,8 @@
 // Created by amanda on 11/19/19.
 //
 
-#include "blob/blob_client.h"
+#include <boost/thread/shared_mutex.hpp>
+#include "http/libcurl_http_client.h"
 #include "OAuthToken.h"
 
 #ifndef OAUTH_TOKEN_CREDENTIAL_MANAGER_H

@@ -164,11 +164,11 @@ namespace microsoft_azure {
             const unsigned int concurrency,
             const std::string &blob_endpoint)
         {
-            std::shared_ptr<blob_client_wrapper> wrapper = blob_client_wrapper_init_msi(
-                account_name,
-                oauth_token,
-                concurrency,
-                blob_endpoint);
+            std::shared_ptr<blob_client_wrapper> wrapper = blob_client_wrapper_init_oauth(
+                    account_name,
+                    oauth_token,
+                    concurrency,
+                    blob_endpoint);
             return blob_client_attr_cache_wrapper(wrapper);
         }
 

@@ -605,11 +605,9 @@ int validate_storage_connection()
 
             std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback);
             //2. try to make blob client wrapper using oauth token
-            // TODO: Restructure token_credentials to use the token manager
-            // TODO: Restructure blob_client_wrapper_init_msi to use a token_credential
-            // TODO: Rename blob_client_wrapper_init_msi to blob_client_wrapper_init_oauth after the restructure
+            // TODO: Restructure blob_client_wrapper_init_oauth to use a token_credential
             //       Init is currently commented out to ensure a segfault until the above notes are done
-//            temp_azure_blob_client_wrapper = blob_client_wrapper_init_msi(
+//            temp_azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
 //                    str_options.accountName,
 //                    tokenManager->refresh_token(),
 //                    defaultMaxConcurrency,

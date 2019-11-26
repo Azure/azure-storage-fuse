@@ -1,13 +1,14 @@
 //
 // Created by amanda on 11/19/19.
 //
-#include <time.h>
 #include "OAuthTokenCredentialManager.h"
 #include <http_base.h>
 #include <json.hpp>
 #include <iomanip>
-#include <utility>
 #include "OAuthToken.h"
+#include "constants.h"
+#include "utility.h"
+#include <syslog.h>
 
 using nlohmann::json;
 

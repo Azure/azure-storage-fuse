@@ -601,7 +601,7 @@ namespace microsoft_azure { namespace storage {
         /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
         /// <param name="blob_endpoint">Blob endpoint URI to allow non-public clouds as well as custom domains.</param>
         /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
-        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_msi(
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_oauth(
         const std::string &account_name,
         const std::string &token_credential,
         const unsigned int concurrency,

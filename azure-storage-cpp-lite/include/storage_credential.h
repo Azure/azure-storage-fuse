@@ -9,6 +9,7 @@
 #include "http_base.h"
 #include "storage_request_base.h"
 #include "storage_url.h"
+#include "OAuthTokenCredentialManager.h"
 
 namespace microsoft_azure {
     namespace storage {
@@ -69,6 +70,9 @@ namespace microsoft_azure {
 
         class token_credential : public storage_credential {
         public:
+            AZURE_STORAGE_API token_credential();
+            // DEPRECATION NOTICE: This is mostly meant for compatibility with sample.cpp
+            // The new token credential uses the OAuthTokenCredentialManager, and explicitly set tokens disable this functionality!
             AZURE_STORAGE_API token_credential(const std::string &token);
 
             void sign_request(
@@ -78,9 +82,12 @@ namespace microsoft_azure {
                     const storage_headers &
                     ) const override;
 
-            void set_token(const std::string & token);
+            // DEPRECATION NOTICE: This is mostly meant for compatibility with sample.cpp
+            // The new token credential uses the OAuthTokenCredentialManager, and explicitly set tokens disable this functionality!
+            void set_token(const std::string &token);
 
         private:
+            std::shared_ptr<OAuthTokenCredentialManager> m_credmgr_ptr;
             std::string m_token;
             mutable std::mutex m_token_mutex;
         };
