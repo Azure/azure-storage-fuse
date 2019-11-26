@@ -2,7 +2,7 @@
 // Created by amanda on 11/19/19.
 //
 #include <time.h>
-#include "OauthTokenCredentialManager.h"
+#include "OAuthTokenCredentialManager.h"
 #include <http_base.h>
 #include <json.hpp>
 #include <iomanip>
@@ -15,13 +15,13 @@ using nlohmann::json;
 /// GetTokenManagerInstance handles a singleton instance of the OAuthTokenManager.
 /// If it does not exist,
 /// </summary>
-std::shared_ptr<OauthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> defaultCallback) {
+std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> defaultCallback) {
     if(TokenManagerSingleton == nullptr) {
         if (defaultCallback == nullptr) {
             throw std::runtime_error("Tried to initialize the OAuthTokenCredentialManager, but failed because the default callback was empty!");
         }
 
-        TokenManagerSingleton = std::make_shared<OauthTokenCredentialManager>(defaultCallback);
+        TokenManagerSingleton = std::make_shared<OAuthTokenCredentialManager>(defaultCallback);
     }
 
     return TokenManagerSingleton;
@@ -31,7 +31,7 @@ std::shared_ptr<OauthTokenCredentialManager> GetTokenManagerInstance(std::functi
 /// OauthTokenCredentialManager Constructor for MSI
 /// Creates the MSI Request URI and requests an OAuth token and expiry time for that token
 /// </summary>
-OauthTokenCredentialManager::OauthTokenCredentialManager(
+OAuthTokenCredentialManager::OAuthTokenCredentialManager(
     std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback)
 {
     if (refreshCallback == nullptr) {
@@ -54,7 +54,7 @@ OauthTokenCredentialManager::OauthTokenCredentialManager(
 /// <summary>
 /// Check for valid authentication which is set by the constructor
 /// </summary>
-bool OauthTokenCredentialManager::is_valid_connection()
+bool OAuthTokenCredentialManager::is_valid_connection()
 {
     return valid_authentication;
 }
@@ -64,7 +64,7 @@ bool OauthTokenCredentialManager::is_valid_connection()
 /// TODO: make this call a refresh callback instead of having refresh logic in here
 /// <param>
 /// </summary>
-OAuthToken OauthTokenCredentialManager::refresh_token()
+OAuthToken OAuthTokenCredentialManager::refresh_token()
 {
     printf("attempting refresh\n");
     return refreshTokenCallback(httpClient);
@@ -73,7 +73,7 @@ OAuthToken OauthTokenCredentialManager::refresh_token()
 /// <summary>
 /// Returns current oauth_token
 /// </summary>
-OAuthToken OauthTokenCredentialManager::get_token()
+OAuthToken OAuthTokenCredentialManager::get_token()
 {
     if (is_token_expired()) {
         return refresh_token();
@@ -85,7 +85,7 @@ OAuthToken OauthTokenCredentialManager::get_token()
 /// <summary>
 /// TODO: check the expiry time against the current utc time
 /// <summary>
-bool OauthTokenCredentialManager::is_token_expired()
+bool OAuthTokenCredentialManager::is_token_expired()
 {
     time_t current_time;
 

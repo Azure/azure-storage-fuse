@@ -31,7 +31,7 @@
 #include <stddef.h>
 #include "blob/blob_client.h"
 #include "OAuthToken.h"
-#include "OauthTokenCredentialManager.h"
+#include "OAuthTokenCredentialManager.h"
 
 #define UNREFERENCED_PARAMETER(p) (p)
 

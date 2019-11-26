@@ -10,12 +10,12 @@
 
 using namespace microsoft_azure::storage;
 
-class OauthTokenCredentialManager {
+class OAuthTokenCredentialManager {
 public:
     /// <summary>
     /// OauthTokenCredentialManager Constructor
     /// </summary>
-    OauthTokenCredentialManager(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback);
+    OAuthTokenCredentialManager(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback);
     /// <summary>
     /// Check for valid authentication which is set by the constructor
     /// </summary>
@@ -45,9 +45,9 @@ private:
 };
 
 // This is meant to be the singleton instance of OAuthTokenManager, and should not be instantiated more than once.
-static std::shared_ptr<OauthTokenCredentialManager> TokenManagerSingleton;
+static std::shared_ptr<OAuthTokenCredentialManager> TokenManagerSingleton;
 
-std::shared_ptr<OauthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)>);
+std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)>);
 
 // maybe TODO: SetUpSPNCallback, SetUpDeviceOAuthCallback.
 

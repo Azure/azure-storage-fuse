@@ -603,7 +603,7 @@ int validate_storage_connection()
                     str_options.objectId,
                     str_options.resourceId);
 
-            std::shared_ptr<OauthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback);
+            std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback);
             //2. try to make blob client wrapper using oauth token
             // TODO: Restructure token_credentials to use the token manager
             // TODO: Restructure blob_client_wrapper_init_msi to use a token_credential
