@@ -138,7 +138,7 @@ if(UNIX)
   add_definitions(-D_FILE_OFFSET_BITS=64)
   set(WARNING "-Wall -Wextra -Werror -pedantic -pedantic-errors")
   set(CMAKE_CXX_FLAGS "${CMAKE_THREAD_LIBS_INIT} ${WARNING} ${CMAKE_CXX_FLAGS}")
-  include_directories(${CMAKE_SOURCE_DIR}/blobfuse ${CMAKE_SOURCE_DIR}/azure-storage-cpp-lite/include ${CURL_INCLUDE_DIRS} ${GNUTLS_INCLUDE_DIR} ${Boost_INCLUDE_DIR})
+  include_directories(${CMAKE_SOURCE_DIR}/blobfuse ${CMAKE_SOURCE_DIR}/azure-storage-cpp-lite/include ${CURL_INCLUDE_DIRS} ${GNUTLS_INCLUDE_DIR} ${Boost_INCLUDE_DIR} nlohmann-json)
 
   set(CMAKE_MACOSX_RPATH ON)
 

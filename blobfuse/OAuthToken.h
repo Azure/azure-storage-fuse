@@ -2,7 +2,9 @@
 // Created by adreed on 11/21/19.
 //
 #pragma once
-#include "json.hpp"
+#include <cstdint>
+#include <string>
+#include <json.hpp>
 
 using json = nlohmann::json;
 
@@ -20,6 +22,8 @@ using json = nlohmann::json;
 
 class OAuthToken {
 public:
+    bool empty();
+
     std::string access_token; // The access token to be used.
     std::string refresh_token; // The refresh token to be used.
     uint32_t expires_in; // Defines the number of seconds until the token's intended expiry.

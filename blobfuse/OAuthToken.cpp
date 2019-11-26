@@ -5,6 +5,11 @@
 #include "OAuthToken.h"
 #include <iomanip>
 
+bool OAuthToken::empty() {
+    // We consider a totally unusable oauth token as empty because it doesn't make sense to treat it as a usable one.
+    return access_token.empty() && refresh_token.empty();
+}
+
 void to_json(json &j, const OAuthToken &t) {
     j = json{
             {"access_token",  t.access_token},

@@ -255,10 +255,13 @@ void *azs_init(struct fuse_conn_info * conn)
         if(str_options.authType == "MSI")
         {
             //1. get oauth token
-            std::shared_ptr<OauthTokenCredentialManager> tokenManager = std::make_shared<OauthTokenCredentialManager>(
-            str_options.clientId,
-            str_options.objectId,
-            str_options.resourceId);
+            // TODO: Do a single OAuth token manager init, rather than THREE
+            std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
+                    str_options.clientId,
+                    str_options.objectId,
+                    str_options.resourceId);
+
+            std::shared_ptr<OauthTokenCredentialManager> tokenManager = std::make_shared<OauthTokenCredentialManager>(MSICallback);
             //2. try to make blob client wrapper using oauth token
             //std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
             //str_options.accountName
@@ -292,10 +295,12 @@ void *azs_init(struct fuse_conn_info * conn)
         if(!str_options.clientId.empty() || !str_options.resourceId.empty() || !str_options.objectId.empty())
         {
             //1. get oauth token
-            std::shared_ptr<OauthTokenCredentialManager> tokenManager = std::make_shared<OauthTokenCredentialManager>(
-            str_options.clientId,
-            str_options.objectId,
-            str_options.resourceId);
+            std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
+                    str_options.clientId,
+                    str_options.objectId,
+                    str_options.resourceId);
+
+            std::shared_ptr<OauthTokenCredentialManager> tokenManager = std::make_shared<OauthTokenCredentialManager>(MSICallback);
             //2. try to make blob client wrapper using oauth token
             //std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
             //str_options.accountName
@@ -593,10 +598,12 @@ int validate_storage_connection()
         if(str_options.authType == "MSI")
         {
             //1. get oauth token
-            std::shared_ptr<OauthTokenCredentialManager> tokenManager = std::make_shared<OauthTokenCredentialManager>(
-            str_options.clientId,
-            str_options.objectId,
-            str_options.resourceId);
+            std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
+                    str_options.clientId,
+                    str_options.objectId,
+                    str_options.resourceId);
+
+            std::shared_ptr<OauthTokenCredentialManager> tokenManager = std::make_shared<OauthTokenCredentialManager>(MSICallback);
             //2. try to make blob client wrapper using oauth token
             // TODO: Restructure token_credentials to use the token manager
             // TODO: Restructure blob_client_wrapper_init_msi to use a token_credential

@@ -17,35 +17,42 @@ public:
     ///
     /// </summary>
     OauthTokenCredentialManager(
-        std::string client_id_p = "",
-        std::string object_id_p = "",
-        std::string resource_id_p = "");
+        std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback);
     /// <summary>
     /// Check for valid authentication which is set by the constructor
     /// </summary>
     bool is_valid_connection();
     /// <summary>
     /// TODO: use a callback rather than a distinct function for refreshing
+    /// Refreshes the currently existing OAuth token. get_token makes this call implicitly if the current token is expired, so don't worry about calling it yourself, except for init.
     /// </summary>
-    std::string refresh_token();
+    OAuthToken refresh_token();
     /// <summary>
     /// Returns current oauth_token
     /// </summary>
-    std::string get_token();
+    OAuthToken get_token();
     /// <summary>
-    /// TODO: check the expiry time against the current utc time
-    /// <summary>
+    /// Checks if the currently active token is expired. get_token makes this call implicitly, so don't worry about calling it yourself.
+    /// </summary>
     bool is_token_expired();
 
 private:
     std::shared_ptr<CurlEasyClient> httpClient;
     std::shared_ptr<CurlEasyRequest> request_handle;
     std::string uri_token_request;
-    std::string current_oauth_token;
-    double expiry_time;
+    OAuthToken current_oauth_token;
     bool valid_authentication;
     boost::shared_mutex token_mutex;
+    std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshTokenCallback;
 };
 
+// maybe TODO: SetUpSPNCallback, SetUpDeviceOAuthCallback.
+/// <summary>
+/// Sets up the callback for MSI authentication
+/// </summary>
+std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(
+        std::string client_id_p = "",
+        std::string object_id_p = "",
+        std::string resource_id_p = "");
 
 #endif //BLOBFUSE_OAUTHTOKENCREDENTIALMANAGER_H
