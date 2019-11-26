@@ -249,19 +249,19 @@ int read_config(const std::string configFile)
 void *azs_init(struct fuse_conn_info * conn)
 {
     const int defaultMaxConcurrency = 20;
+    // TODO: Make all of this go down roughly the same pipeline, rather than having spaghettified code
     if (str_options.use_attr_cache)
     {
         //TODO: readjust attr_cache to take in oauth_token
         if(str_options.authType == "MSI")
         {
             //1. get oauth token
-            // TODO: Do a single OAuth token manager init, rather than THREE
             std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
                     str_options.clientId,
                     str_options.objectId,
                     str_options.resourceId);
 
-            std::shared_ptr<OauthTokenCredentialManager> tokenManager = std::make_shared<OauthTokenCredentialManager>(MSICallback);
+            GetTokenManagerInstance(MSICallback); // We supply a default callback because we asssume that the oauth token manager has not initialized yet.
             //2. try to make blob client wrapper using oauth token
             //std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
             //str_options.accountName
@@ -292,7 +292,7 @@ void *azs_init(struct fuse_conn_info * conn)
     else
     {
         //TODO: Make a for authtype, and then if that's not specified, then a check against what credentials were specified
-        if(!str_options.clientId.empty() || !str_options.resourceId.empty() || !str_options.objectId.empty())
+        if(!str_options.clientId.empty() || !str_options.resourceId.empty() || !str_options.objectId.empty() || str_options.authType == "MSI")
         {
             //1. get oauth token
             std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
@@ -300,7 +300,7 @@ void *azs_init(struct fuse_conn_info * conn)
                     str_options.objectId,
                     str_options.resourceId);
 
-            std::shared_ptr<OauthTokenCredentialManager> tokenManager = std::make_shared<OauthTokenCredentialManager>(MSICallback);
+            GetTokenManagerInstance(MSICallback);
             //2. try to make blob client wrapper using oauth token
             //std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
             //str_options.accountName
@@ -603,7 +603,7 @@ int validate_storage_connection()
                     str_options.objectId,
                     str_options.resourceId);
 
-            std::shared_ptr<OauthTokenCredentialManager> tokenManager = std::make_shared<OauthTokenCredentialManager>(MSICallback);
+            std::shared_ptr<OauthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback);
             //2. try to make blob client wrapper using oauth token
             // TODO: Restructure token_credentials to use the token manager
             // TODO: Restructure blob_client_wrapper_init_msi to use a token_credential

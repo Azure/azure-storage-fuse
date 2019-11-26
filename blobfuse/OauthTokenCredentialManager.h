@@ -5,8 +5,8 @@
 #include "blob/blob_client.h"
 #include "OAuthToken.h"
 
-#ifndef BLOBFUSE_OAUTHTOKENCREDENTIALMANAGER_H
-#define BLOBFUSE_OAUTHTOKENCREDENTIALMANAGER_H
+#ifndef OAUTH_TOKEN_CREDENTIAL_MANAGER_H
+#define OAUTH_TOKEN_CREDENTIAL_MANAGER_H
 
 using namespace microsoft_azure::storage;
 
@@ -14,10 +14,8 @@ class OauthTokenCredentialManager {
 public:
     /// <summary>
     /// OauthTokenCredentialManager Constructor
-    ///
     /// </summary>
-    OauthTokenCredentialManager(
-        std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback);
+    OauthTokenCredentialManager(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback);
     /// <summary>
     /// Check for valid authentication which is set by the constructor
     /// </summary>
@@ -46,7 +44,18 @@ private:
     std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshTokenCallback;
 };
 
+// This is meant to be the singleton instance of OAuthTokenManager, and should not be instantiated more than once.
+static std::shared_ptr<OauthTokenCredentialManager> TokenManagerSingleton;
+
+std::shared_ptr<OauthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)>);
+
 // maybe TODO: SetUpSPNCallback, SetUpDeviceOAuthCallback.
+
+/// <summary>
+/// This is an empty callback, for when you don't particularly care about initializing the singleton OAuthTokenManager instance.
+/// </summary>
+static std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> EmptyCallback = nullptr;
+
 /// <summary>
 /// Sets up the callback for MSI authentication
 /// </summary>
@@ -55,4 +64,4 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(
         std::string object_id_p = "",
         std::string resource_id_p = "");
 
-#endif //BLOBFUSE_OAUTHTOKENCREDENTIALMANAGER_H
+#endif

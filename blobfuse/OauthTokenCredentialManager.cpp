@@ -12,6 +12,22 @@
 using nlohmann::json;
 
 /// <summary>
+/// GetTokenManagerInstance handles a singleton instance of the OAuthTokenManager.
+/// If it does not exist,
+/// </summary>
+std::shared_ptr<OauthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> defaultCallback) {
+    if(TokenManagerSingleton == nullptr) {
+        if (defaultCallback == nullptr) {
+            throw std::runtime_error("Tried to initialize the OAuthTokenCredentialManager, but failed because the default callback was empty!");
+        }
+
+        TokenManagerSingleton = std::make_shared<OauthTokenCredentialManager>(defaultCallback);
+    }
+
+    return TokenManagerSingleton;
+}
+
+/// <summary>
 /// OauthTokenCredentialManager Constructor for MSI
 /// Creates the MSI Request URI and requests an OAuth token and expiry time for that token
 /// </summary>
