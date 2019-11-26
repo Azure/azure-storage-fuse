@@ -146,7 +146,6 @@ namespace microsoft_azure {
 
         std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_oauth(
             const std::string &account_name,
-            const std::string &oauth_token,
             const unsigned int concurrency,
             const std::string &blob_endpoint)
         {
@@ -157,21 +156,10 @@ namespace microsoft_azure {
                 concurrency_limit = concurrency;
             }
             std::string accountName(account_name);
-            std::string oauthToken(oauth_token);
 
             try
             {
-                std::shared_ptr<storage_credential> cred;
-                if(!oauthToken.empty())
-                {
-                    cred = std::make_shared<token_credential>();
-                }
-                else
-                {
-                    syslog(LOG_ERR, "One or more of the following is empty: Client ID, Object ID, and Resource ID to "
-                                    "authenticate for using MSI. Failed to create blob client.");
-                    return std::make_shared<blob_client_wrapper>(false);
-                }
+                std::shared_ptr<storage_credential> cred = std::make_shared<token_credential>();
                 std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
                     accountName,
                     cred,

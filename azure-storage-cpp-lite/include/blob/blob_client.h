@@ -603,7 +603,6 @@ namespace microsoft_azure { namespace storage {
         /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
         std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_oauth(
         const std::string &account_name,
-        const std::string &token_credential,
         const unsigned int concurrency,
         const std::string &blob_endpoint = "");
 
@@ -738,9 +737,8 @@ namespace microsoft_azure { namespace storage {
         /// <param name="sas_token">A sas token for the container.</param>
         /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
         /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
-        static blob_client_attr_cache_wrapper blob_client_attr_cache_wrapper_msi(
+        static blob_client_attr_cache_wrapper blob_client_attr_cache_wrapper_oauth(
         const std::string &account_name,
-        const std::string &oauth_token,
         const unsigned int concurrency,
         const std::string &blob_endpoint = "");
 
