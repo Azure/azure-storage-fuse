@@ -46,7 +46,7 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
     refreshTokenCallback = refreshCallback;
 
     try {
-        current_oauth_token = refresh_token();
+        refresh_token();
     } catch(std::exception& ex) {
         syslog(LOG_ERR, "Unable to retrieve OAuth token: %s", ex.what());
         printf("Unable to retrieve OAuth token: %s\n", ex.what());
@@ -71,12 +71,14 @@ bool OAuthTokenCredentialManager::is_valid_connection()
 /// <summary>
 /// Refreshes the token. Note this can throw an error, so be prepared to catch.
 /// Unless you absolutely _need_ to force a refresh, just call get_token instead.
+/// Furthermore, note that refresh_token does not manage the token lock itself-- Please lock the token if you plan to explicitly refresh.
 /// <param>
 /// </summary>
 OAuthToken OAuthTokenCredentialManager::refresh_token()
 {
     try {
-        return refreshTokenCallback(httpClient);
+        current_oauth_token = refreshTokenCallback(httpClient);
+        return current_oauth_token;
     } catch(std::exception& ex) {
         valid_authentication = false;
         throw ex;
@@ -90,13 +92,31 @@ OAuthToken OAuthTokenCredentialManager::refresh_token()
 OAuthToken OAuthTokenCredentialManager::get_token()
 {
     if (is_token_expired()) {
-        try {
-            current_oauth_token = refresh_token();
-        } catch(std::exception& ex) {
-            syslog(LOG_ERR, "Unable to retrieve OAuth token: %s", ex.what());
-            valid_authentication = false;
-            throw std::runtime_error(std::string("Failed to refresh OAuth token: ") + std::string(ex.what()));
+        if (token_mutex.try_lock()) {
+            try {
+                refresh_token();
+            } catch (std::exception &ex) {
+                syslog(LOG_ERR, "Unable to retrieve OAuth token: %s", ex.what());
+                valid_authentication = false;
+                throw std::runtime_error(std::string("Failed to refresh OAuth token: ") + std::string(ex.what()));
+            }
+        } else {
+            time_t current_time;
+            time(&current_time);
+
+            // There's a five minute segment where the token hasn't actually expired yet, but we're already trying to refresh it.
+            // We can just use the currently active token instead, rather than waiting for the refresh.
+            // This'll save some downtime on systems under constant use.
+            if (current_time < current_oauth_token.expires_on) {
+                return current_oauth_token;
+            } else {
+                // If it's not still live, let's just wait for the refresh to finish.
+                // This is a sub-optimal method to wait for this event as it can end up blocking other routines after the token has finished refreshing.
+                // If we were working in Go, I (Adele) would suggest using a sync.WaitGroup for this functionality.
+                token_mutex.lock();
+            }
         }
+        token_mutex.unlock();
     }
 
     return current_oauth_token;

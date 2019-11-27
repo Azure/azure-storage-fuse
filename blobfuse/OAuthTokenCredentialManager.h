@@ -37,8 +37,6 @@ public:
 
 private:
     std::shared_ptr<CurlEasyClient> httpClient;
-    std::shared_ptr<CurlEasyRequest> request_handle;
-    std::string uri_token_request;
     OAuthToken current_oauth_token;
     bool valid_authentication;
     boost::shared_mutex token_mutex;
