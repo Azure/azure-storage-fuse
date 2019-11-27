@@ -45,39 +45,58 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
     httpClient = std::make_shared<CurlEasyClient>(20);
     refreshTokenCallback = refreshCallback;
 
-    current_oauth_token = refresh_token();
+    try {
+        current_oauth_token = refresh_token();
+    } catch(std::exception& ex) {
+        syslog(LOG_ERR, "Unable to retrieve OAuth token: %s", ex.what());
+        printf("Unable to retrieve OAuth token: %s\n", ex.what());
+        valid_authentication = false;
+        return;
+    }
+
     if(current_oauth_token.empty()) {
         valid_authentication = false;
-        syslog(LOG_ERR, "Unable to retrieve OAuth Token with given credentials."); // todo: better error message
-        printf("Unable to retrieve OAuth Token with given credentials."); // todo: better error message
+        syslog(LOG_ERR, "Unable to retrieve OAuth Token with given credentials.");
+        printf("Unable to retrieve OAuth Token with given credentials.\n");
     }
 }
 /// <summary>
-/// Check for valid authentication which is set by the constructor
+/// Check for valid authentication which is set by the constructor, and refresh functions.
 /// </summary>
 bool OAuthTokenCredentialManager::is_valid_connection()
 {
     return valid_authentication;
 }
+
 /// <summary>
-/// TODO: call the service to refresh the oauth token
-/// TODO: set the oauth_token with the new token and set the expiry_time
-/// TODO: make this call a refresh callback instead of having refresh logic in here
+/// Refreshes the token. Note this can throw an error, so be prepared to catch.
+/// Unless you absolutely _need_ to force a refresh, just call get_token instead.
 /// <param>
 /// </summary>
 OAuthToken OAuthTokenCredentialManager::refresh_token()
 {
-    printf("attempting refresh\n");
-    return refreshTokenCallback(httpClient);
+    try {
+        return refreshTokenCallback(httpClient);
+    } catch(std::exception& ex) {
+        valid_authentication = false;
+        throw ex;
+    }
 }
 
 /// <summary>
-/// Returns current oauth_token
+/// Returns current oauth_token, implicitly refreshing if the current token is invalid.
+/// Note that this can throw an error if the refresh fails, so be prepared to catch.
 /// </summary>
 OAuthToken OAuthTokenCredentialManager::get_token()
 {
     if (is_token_expired()) {
-        return refresh_token();
+        try {
+            current_oauth_token = refresh_token();
+        } catch(std::exception& ex) {
+            syslog(LOG_ERR, "Unable to retrieve OAuth token: %s", ex.what());
+            valid_authentication = false;
+            throw std::runtime_error(std::string("Failed to refresh OAuth token: ") + std::string(ex.what()));
+        }
     }
 
     return current_oauth_token;
@@ -93,7 +112,7 @@ bool OAuthTokenCredentialManager::is_token_expired()
     time ( &current_time );
 
     // check if about to expire via the buffered expiry time
-    return current_time + (60 * 5) <= current_oauth_token.expires_on;
+    return current_time + (60 * 5) >= current_oauth_token.expires_on;
 }
 
 // ===== CALLBACK SETUP ZONE =====
@@ -123,8 +142,6 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
         request_handle->add_header(constants::header_metadata, "true");
         request_handle->set_method(http_base::http_method::get);
 
-        printf("Token request URL: %s\n", uri_token_request.c_str());
-
         // Set up the output stream for the request
         storage_iostream ios = storage_iostream::create_storage_stream();
         request_handle->set_output_stream(ios.ostream());
@@ -135,9 +152,18 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
         request_handle->submit([&parsed_token, &ios](http_base::http_code http_code_result, const storage_istream&, CURLcode curl_code)
         {
             if (curl_code != CURLE_OK || unsuccessful(http_code_result)) {
-             syslog(LOG_ERR, "Unable to retrieve OAuth Token"); // todo better message
-             printf("curlcode: %d\n", curl_code);
-             printf("httpcode: %d\n", http_code_result);
+             std::string req_result = "";
+
+             try { // to avoid crashing to any potential errors while reading the stream, we back it with a try catch statement.
+                 std::string json_request_result(std::istreambuf_iterator<char>(ios.istream()),
+                                                 std::istreambuf_iterator<char>());
+
+                 req_result = json_request_result;
+             } catch(std::exception&){}
+
+             std::ostringstream errStream;
+             errStream << "Failed to retrieve OAuth Token from IMDS endpoint (CURLCode: " << curl_code << ", HTTP code: " << http_code_result << "): " << req_result;
+             throw std::runtime_error(errStream.str());
             }
             else
             {
@@ -145,9 +171,13 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
                                              std::istreambuf_iterator<char>());
              printf("raw json: %s\n", json_request_result.c_str());
 
-             json j;
-             j = json::parse(json_request_result);
-             parsed_token = j.get<OAuthToken>();
+             try {
+                 json j;
+                 j = json::parse(json_request_result);
+                 parsed_token = j.get<OAuthToken>();
+             } catch(std::exception& ex) {
+                 throw std::runtime_error(std::string("Failed to parse OAuth token: ") + std::string(ex.what()));
+             }
             }
         }, retry_interval);
 

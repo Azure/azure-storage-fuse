@@ -106,4 +106,4 @@ DAT(date_format_iso_8601, "%Y-%m-%dT%H:%M:%SZ")
 
 DAT(code_request_range_not_satisfiable, "416")
 
-DAT(msi_request_uri, "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://management.azure.com/")
+DAT(msi_request_uri, "http://169.254.169.254/metadata/identity/oauth2/token?api-version=2018-02-01&resource=https://storage.azure.com/")

@@ -265,6 +265,11 @@ void *azs_init(struct fuse_conn_info * conn)
             //2. try to make blob client wrapper using oauth token
             //std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
             //str_options.accountName
+            azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
+                    blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_oauth(
+                     str_options.accountName,
+                     20,
+                     str_options.blobEndpoint));
         }
         else if(!str_options.accountKey.empty()) {
             azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
@@ -302,11 +307,13 @@ void *azs_init(struct fuse_conn_info * conn)
 
             GetTokenManagerInstance(MSICallback);
             //2. try to make blob client wrapper using oauth token
-            //std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
-            //str_options.accountName
+            azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
+                    str_options.accountName,
+                    20,
+                    str_options.blobEndpoint);
         }
         else if(!str_options.accountKey.empty()) {
-            std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
+            azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
             str_options.accountName,
             str_options.accountKey,
             defaultMaxConcurrency,
@@ -314,7 +321,7 @@ void *azs_init(struct fuse_conn_info * conn)
             str_options.blobEndpoint);
         }
         else if(!str_options.sasToken.empty()) {
-            std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init_sastoken(
+            azure_blob_client_wrapper = blob_client_wrapper_init_sastoken(
             str_options.accountName,
             str_options.sasToken,
             defaultMaxConcurrency,
@@ -604,14 +611,17 @@ int validate_storage_connection()
                     str_options.resourceId);
 
             std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback);
+
+            if (!tokenManager->is_valid_connection()) {
+                // todo: isolate definitions of errno's for this function so we can output something meaningful.
+                errno = 1;
+            }
+
             //2. try to make blob client wrapper using oauth token
-            // TODO: Restructure blob_client_wrapper_init_oauth to use a token_credential
-            //       Init is currently commented out to ensure a segfault until the above notes are done
-//            temp_azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
-//                    str_options.accountName,
-//                    tokenManager->refresh_token(),
-//                    defaultMaxConcurrency,
-//                    str_options.blobEndpoint);
+            temp_azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
+                    str_options.accountName,
+                    defaultMaxConcurrency,
+                    str_options.blobEndpoint);
         }
         else if(!str_options.accountKey.empty()) {
             temp_azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(

@@ -23,44 +23,36 @@ void to_json(json &j, const OAuthToken &t) {
 }
 
 void from_json(const json &j, OAuthToken &t) {
-    if (j.contains("access_token"))
-    {
-        j.at("access_token").get_to(t.access_token);
+    t.access_token = j.value("access_token","");
+    t.refresh_token = j.value("refresh_token", "");
+
+    if (t.access_token.empty()) {
+        throw std::runtime_error("OAuth token is unusable: Oauth token did not return with an access token.");
     }
 
-    if (j.contains("refresh_token"))
-    {
-        j.at("refresh_token").get_to(t.refresh_token);
-    }
+    t.resource = j.value("resource", "");
+    t.token_type = j.value("token_type", "");
 
-    if (j.contains("expires_in"))
-    {
+    // The below factors need numeric conversion, so we'll attempt that.
+    // try/catch individually so that if something like expires_in fails over, we don't lose the more important detail, expires_on
+    try {
         std::string expires_in;
         j.at("expires_in").get_to(expires_in);
         t.expires_in = std::stoi(expires_in);
-    }
+    } catch(std::exception&){}
 
-    if (j.contains("expires_on"))
-    {
+    try {
         std::string expires_on;
         j.at("expires_on").get_to(expires_on);
         t.expires_on = std::stoi(expires_on);
-    }
+    } catch(std::exception&){}
 
-    if (j.contains("not_before"))
-    {
+    try {
         std::string not_before;
         not_before = j.at("not_before");
         t.not_before = std::stoi(not_before);
-    }
+    } catch(std::exception&){}
 
-    if (j.contains("resource"))
-    {
-        j.at("resource").get_to(t.resource);
-    }
-
-    if (j.contains("token_type"))
-    {
-        j.at("token_type").get_to(t.token_type);
-    }
+    // TODO: Infer expries_on if expires_in is not present, vice versa
+    //  this will __PROBABLY__ never happen. But, just on the off-chance that it does, we should be able to cope.
 }
