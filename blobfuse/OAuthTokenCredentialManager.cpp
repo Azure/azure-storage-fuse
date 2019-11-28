@@ -42,7 +42,7 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
         return;
     }
 
-    httpClient = std::make_shared<CurlEasyClient>(20);
+    httpClient = std::make_shared<CurlEasyClient>(constants::max_concurrency_oauth);
     refreshTokenCallback = refreshCallback;
 
     try {
@@ -140,25 +140,30 @@ bool OAuthTokenCredentialManager::is_token_expired()
 std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std::string client_id_p, std::string object_id_p, std::string resource_id_p)
 {
     // Create the URI token request
-    std::string uri_token_request = constants::msi_request_uri;
+    std::shared_ptr<microsoft_azure::storage::storage_url> uri_token_request_url = std::make_shared<microsoft_azure::storage::storage_url>();
+    uri_token_request_url->set_domain(constants::msi_request_uri);
+    uri_token_request_url->append_path(constants::msi_request_path);
+    uri_token_request_url->add_query(constants::param_mi_api_version, constants::param_mi_api_version_data);
+    uri_token_request_url->add_query(constants::param_oauth_resource, constants::param_oauth_resource_data);
+
     if(!client_id_p.empty())
     {
-        uri_token_request += constants::param_client_id + client_id_p;
+        uri_token_request_url->add_query(constants::param_client_id, client_id_p);
     }
     if(!object_id_p.empty())
     {
-        uri_token_request += constants::param_object_id + object_id_p;
+        uri_token_request_url->add_query(constants::param_object_id, object_id_p);
     }
     if(!resource_id_p.empty())
     {
-        uri_token_request += constants::param_mi_res_id + resource_id_p;
+        uri_token_request_url->add_query(constants::param_mi_res_id, resource_id_p);
     }
 
-    return [uri_token_request](std::shared_ptr<CurlEasyClient> httpClient) {
+    return [uri_token_request_url](std::shared_ptr<CurlEasyClient> httpClient) {
         // prepare the CURL handle
         std::shared_ptr<CurlEasyRequest> request_handle = httpClient->get_handle();
 
-        request_handle->set_url(uri_token_request);
+        request_handle->set_url(uri_token_request_url->to_string());
         request_handle->add_header(constants::header_metadata, "true");
         request_handle->set_method(http_base::http_method::get);
 
@@ -167,7 +172,7 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
         request_handle->set_output_stream(ios.ostream());
 
         // TODO: decide retry interval, also make constant
-        std::chrono::seconds retry_interval(5);
+        std::chrono::seconds retry_interval(constants::max_retry_oauth);
         OAuthToken parsed_token;
         request_handle->submit([&parsed_token, &ios](http_base::http_code http_code_result, const storage_istream&, CURLcode curl_code)
         {
@@ -189,7 +194,6 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
             {
              std::string json_request_result(std::istreambuf_iterator<char>(ios.istream()),
                                              std::istreambuf_iterator<char>());
-             printf("raw json: %s\n", json_request_result.c_str());
 
              try {
                  json j;

@@ -8,6 +8,8 @@ namespace microsoft_azure {
 #include "constants.dat"
 #undef DAT
 
+            const int max_concurrency_oauth = 2;
+            const int max_retry_oauth = 5;
         }
     }
 }
