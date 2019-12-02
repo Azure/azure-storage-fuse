@@ -18,11 +18,10 @@ public:
     /// </summary>
     OAuthTokenCredentialManager(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback);
     /// <summary>
-    /// Check for valid authentication which is set by the constructor
+    /// Check for valid authentication which is set by the constructor, and refresh functions.
     /// </summary>
     bool is_valid_connection();
     /// <summary>
-    /// TODO: use a callback rather than a distinct function for refreshing
     /// Refreshes the currently existing OAuth token. get_token makes this call implicitly if the current token is expired, so don't worry about calling it yourself, except for init.
     /// </summary>
     OAuthToken refresh_token();
@@ -46,6 +45,12 @@ private:
 // This is meant to be the singleton instance of OAuthTokenManager, and should not be instantiated more than once.
 static std::shared_ptr<OAuthTokenCredentialManager> TokenManagerSingleton;
 
+/// <summary>
+/// GetTokenManagerInstance handles a singleton instance of the OAuthTokenManager.
+/// If it does not exist, it creates it using the supplied default callback.
+/// If no callback is supplied and the token manager doesn't exist, this function will throw.
+/// No callback is necessary to get the current instance.
+/// </summary>
 std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)>);
 
 // maybe TODO: SetUpSPNCallback, SetUpDeviceOAuthCallback.
@@ -56,7 +61,7 @@ std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::functi
 static std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> EmptyCallback = nullptr;
 
 /// <summary>
-/// Sets up the callback for MSI authentication
+/// SetUpMSICallback sets up a refresh callback for MSI auth. This should be used to create a OAuthTokenManager instance.
 /// </summary>
 std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(
         std::string client_id_p = "",

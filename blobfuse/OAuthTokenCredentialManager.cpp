@@ -14,7 +14,9 @@ using nlohmann::json;
 
 /// <summary>
 /// GetTokenManagerInstance handles a singleton instance of the OAuthTokenManager.
-/// If it does not exist,
+/// If it does not exist, it creates it using the supplied default callback.
+/// If no callback is supplied and the token manager doesn't exist, this function will throw.
+/// No callback is necessary to get the current instance.
 /// </summary>
 std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> defaultCallback) {
     if(TokenManagerSingleton == nullptr) {
@@ -29,8 +31,7 @@ std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::functi
 }
 
 /// <summary>
-/// OauthTokenCredentialManager Constructor for MSI
-/// Creates the MSI Request URI and requests an OAuth token and expiry time for that token
+/// OauthTokenCredentialManager Constructor
 /// </summary>
 OAuthTokenCredentialManager::OAuthTokenCredentialManager(
     std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback)
@@ -60,6 +61,7 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
         printf("Unable to retrieve OAuth Token with given credentials.\n");
     }
 }
+
 /// <summary>
 /// Check for valid authentication which is set by the constructor, and refresh functions.
 /// </summary>
@@ -137,6 +139,9 @@ bool OAuthTokenCredentialManager::is_token_expired()
 
 // ===== CALLBACK SETUP ZONE =====
 
+/// <summary>
+/// SetUpMSICallback sets up a refresh callback for MSI auth. This should be used to create a OAuthTokenManager instance.
+/// </summary>
 std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std::string client_id_p, std::string object_id_p, std::string resource_id_p)
 {
     // Create the URI token request
