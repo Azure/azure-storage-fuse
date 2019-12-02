@@ -158,6 +158,15 @@ extern const std::string former_directory_signifier;
 // Should be called on any errno returned from the Azure Storage cpp lite lib.
 int map_errno(int error);
 
+enum auth_type {
+    MSI_AUTH,
+    SAS_AUTH,
+    KEY_AUTH,
+    INVALID_AUTH
+};
+
+auth_type get_auth_type();
+
 // Read Storage connection information from the config file
 int read_config(std::string configFile);
 

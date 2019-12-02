@@ -146,6 +146,29 @@ int read_config_env()
     return 0;
 }
 
+// TODO: Stop using magic strings
+auth_type get_auth_type() {
+    if(!str_options.authType.empty()) {
+        // TODO: Recieve authType as a lowercased string so we're type-insensitive
+        if (str_options.authType == "MSI") {
+            return MSI_AUTH;
+        } else if (str_options.authType == "Key") {
+            return KEY_AUTH;
+        } else if (str_options.authType == "SAS") {
+            return SAS_AUTH;
+        }
+    } else {
+        if (!str_options.objectId.empty() || !str_options.clientId.empty() || !str_options.resourceId.empty()) {
+            return MSI_AUTH;
+        } else if (!str_options.accountKey.empty()) {
+            return KEY_AUTH;
+        } else if (!str_options.sasToken.empty()) {
+            return SAS_AUTH;
+        }
+    }
+    return INVALID_AUTH;
+}
+
 // Read Storage connection information from the config file
 int read_config(const std::string configFile)
 {
@@ -250,10 +273,11 @@ void *azs_init(struct fuse_conn_info * conn)
 {
     const int defaultMaxConcurrency = 20;
     // TODO: Make all of this go down roughly the same pipeline, rather than having spaghettified code
+    auth_type AuthType = get_auth_type();
+
     if (str_options.use_attr_cache)
     {
-        //TODO: readjust attr_cache to take in oauth_token
-        if(str_options.authType == "MSI")
+        if(AuthType == MSI_AUTH)
         {
             //1. get oauth token
             std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
@@ -263,7 +287,6 @@ void *azs_init(struct fuse_conn_info * conn)
 
             GetTokenManagerInstance(MSICallback); // We supply a default callback because we asssume that the oauth token manager has not initialized yet.
             //2. try to make blob client wrapper using oauth token
-            //std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper = blob_client_wrapper_init(
             //str_options.accountName
             azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
                     blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_oauth(
@@ -271,7 +294,7 @@ void *azs_init(struct fuse_conn_info * conn)
                      20,
                      str_options.blobEndpoint));
         }
-        else if(!str_options.accountKey.empty()) {
+        else if(AuthType == KEY_AUTH) {
             azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
                 blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init_accountkey(
                     str_options.accountName,
@@ -280,7 +303,7 @@ void *azs_init(struct fuse_conn_info * conn)
                     str_options.use_https,
                     str_options.blobEndpoint));
         }
-        else if(!str_options.sasToken.empty()) {
+        else if(AuthType == SAS_AUTH) {
             azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
                 blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init_sastoken(
                     str_options.accountName,
@@ -297,8 +320,8 @@ void *azs_init(struct fuse_conn_info * conn)
     else
     {
         //TODO: Make a for authtype, and then if that's not specified, then a check against what credentials were specified
-        if(!str_options.clientId.empty() || !str_options.resourceId.empty() || !str_options.objectId.empty() || str_options.authType == "MSI")
-        {
+        if(AuthType == MSI_AUTH)
+        { // If MSI is explicit, or if MSI options are set and auth type is implicit
             //1. get oauth token
             std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
                     str_options.clientId,
@@ -312,7 +335,7 @@ void *azs_init(struct fuse_conn_info * conn)
                     20,
                     str_options.blobEndpoint);
         }
-        else if(!str_options.accountKey.empty()) {
+        else if(AuthType == KEY_AUTH) {
             azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
             str_options.accountName,
             str_options.accountKey,
@@ -320,7 +343,7 @@ void *azs_init(struct fuse_conn_info * conn)
             str_options.use_https,
             str_options.blobEndpoint);
         }
-        else if(!str_options.sasToken.empty()) {
+        else if(AuthType == SAS_AUTH) {
             azure_blob_client_wrapper = blob_client_wrapper_init_sastoken(
             str_options.accountName,
             str_options.sasToken,
@@ -601,8 +624,9 @@ int validate_storage_connection()
     {
         const int defaultMaxConcurrency = 20;
         std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper;
+        auth_type AuthType = get_auth_type();
         //TODO: Make a for authtype, and then if that's not specified, then a check against what credentials were specified
-        if(str_options.authType == "MSI")
+        if(AuthType == MSI_AUTH)
         {
             //1. get oauth token
             std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
@@ -623,7 +647,7 @@ int validate_storage_connection()
                     defaultMaxConcurrency,
                     str_options.blobEndpoint);
         }
-        else if(!str_options.accountKey.empty()) {
+        else if(AuthType == KEY_AUTH) {
             temp_azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
             str_options.accountName,
             str_options.accountKey,
@@ -631,7 +655,7 @@ int validate_storage_connection()
             str_options.use_https,
             str_options.blobEndpoint);
         }
-        else if(!str_options.sasToken.empty()) {
+        else if(AuthType == SAS_AUTH) {
             temp_azure_blob_client_wrapper = blob_client_wrapper_init_sastoken(
             str_options.accountName,
             str_options.sasToken,
