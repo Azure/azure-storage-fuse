@@ -142,34 +142,46 @@ bool OAuthTokenCredentialManager::is_token_expired()
 /// <summary>
 /// SetUpMSICallback sets up a refresh callback for MSI auth. This should be used to create a OAuthTokenManager instance.
 /// </summary>
-std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std::string client_id_p, std::string object_id_p, std::string resource_id_p)
+std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std::string client_id_p, std::string object_id_p, std::string resource_id_p, std::string msi_endpoint_p)
 {
     // Create the URI token request
-    std::shared_ptr<microsoft_azure::storage::storage_url> uri_token_request_url = std::make_shared<microsoft_azure::storage::storage_url>();
-    uri_token_request_url->set_domain(constants::msi_request_uri);
-    uri_token_request_url->append_path(constants::msi_request_path);
+    std::shared_ptr<microsoft_azure::storage::storage_url> uri_token_request_url;
+    bool custom_endpoint = !msi_endpoint_p.empty();
+    if (!custom_endpoint) {
+        uri_token_request_url = parse_url(constants::msi_request_uri);
+
+        if(!client_id_p.empty())
+        {
+            uri_token_request_url->add_query(constants::param_client_id, client_id_p);
+        }
+        if(!object_id_p.empty())
+        {
+            uri_token_request_url->add_query(constants::param_object_id, object_id_p);
+        }
+        if(!resource_id_p.empty())
+        {
+            uri_token_request_url->add_query(constants::param_mi_res_id, resource_id_p);
+        }
+    }
+    else
+    {
+        uri_token_request_url = parse_url(msi_endpoint_p);
+    }
+
     uri_token_request_url->add_query(constants::param_mi_api_version, constants::param_mi_api_version_data);
     uri_token_request_url->add_query(constants::param_oauth_resource, constants::param_oauth_resource_data);
 
-    if(!client_id_p.empty())
-    {
-        uri_token_request_url->add_query(constants::param_client_id, client_id_p);
-    }
-    if(!object_id_p.empty())
-    {
-        uri_token_request_url->add_query(constants::param_object_id, object_id_p);
-    }
-    if(!resource_id_p.empty())
-    {
-        uri_token_request_url->add_query(constants::param_mi_res_id, resource_id_p);
-    }
-
-    return [uri_token_request_url](std::shared_ptr<CurlEasyClient> httpClient) {
+    return [uri_token_request_url, client_id_p, custom_endpoint](std::shared_ptr<CurlEasyClient> httpClient) {
         // prepare the CURL handle
         std::shared_ptr<CurlEasyRequest> request_handle = httpClient->get_handle();
 
+        printf("%s\n", uri_token_request_url->to_string().c_str());
+
         request_handle->set_url(uri_token_request_url->to_string());
         request_handle->add_header(constants::header_metadata, "true");
+        if(custom_endpoint)
+            request_handle->add_header(constants::header_msi_secret, client_id_p);
+
         request_handle->set_method(http_base::http_method::get);
 
         // Set up the output stream for the request

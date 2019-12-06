@@ -53,7 +53,45 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 	* [OPTIONAL] **--file-cache-timeout-in-seconds=120** : Blobs will be cached in the temp folder for this many seconds. 120 seconds by default. During this time, blobfuse will not check whether the file is up to date or not.
 	* [OPTIONAL] **--log-level=LOG_WARNING** : Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG
 	* [OPTIONAL] **--use-attr-cache=true|false** : Enables attributes of a blob being cached. False by default. (Only available in blobfuse 1.1.0 or above)
-	
+
+### Environment variables
+
+- General options
+    * `AZURE_STORAGE_ACCOUNT`: Specifies the storage account blobfuse targets.
+    * `AZURE_STORAGE_BLOB_ENDPOINT`: Specifies the blob endpoint to use. Defaults to *.blob.core.windows.net, but is useful for targeting storage emulators.
+    * `AZURE_STORAGE_AUTH_TYPE`: Overrides the currently specified auth type. Options: Key, SAS, MSI
+
+- Account key auth:
+    * `AZURE_STORAGE_ACCESS_KEY`: Specifies the storage account key to use for authentication.
+
+- SAS token auth:
+    * `AZURE_STORAGE_SAS_TOKEN`: Specifies the SAS token to use for authentication.
+
+- Managed Identity auth:
+    * `AZURE_STORAGE_IDENTITY_CLIENT_ID`: If a MI endpoint is specified, this is the only parameter used, in the form of the `Secret` header. Only one of these three parameters are needed if multiple identities are present on the system.
+    * `AZURE_STORAGE_IDENTITY_OBJECT_ID`: Only one of these three parameters are needed if multiple identities are present on the system.
+    * `AZURE_STORAGE_IDENTITY_RESOURCE_ID`: Only one of these three parameters are needed if multiple identities are present on the system.
+    * `AZURE_STORAGE_MANAGED_IDENTITY_ENDPOINT`: Specifies a custom managed identity endpoint, as IMDS may not be available under some scenarios. Uses the `AZURE_STORAGE_IDENTITY_CLIENT_ID` parameter as the `Secret` header.
+
+### Config file options
+
+- General options
+    * `accountName`: Specifies the storage account blobfuse targets.
+    * `blobEndpoint`: Specifies the blob endpoint to use. Defaults to *.blob.core.windows.net, but is useful for targeting storage emulators.
+    * `authType`: Overrides the currently specified auth type. Options: Key, SAS, MSI
+
+- Account key auth:
+    * `accountKey`: Specifies the storage account key to use for authentication.
+
+- SAS token auth:
+    * `sasToken`: Specifies the SAS token to use for authentication.
+
+- Managed Identity auth:
+    * `identityClientId`: If a MI endpoint is specified, this is the only parameter used, in the form of the `Secret` header. Only one of these three parameters are needed if multiple identities are present on the system.
+    * `identityObjectId`: Only one of these three parameters are needed if multiple identities are present on the system.
+    * `identityResourceId`: Only one of these three parameters are needed if multiple identities are present on the system.
+    * `msiEndpoint`: Specifies a custom managed identity endpoint, as IMDS may not be available under some scenarios. Uses the `identityClientId` parameter as the `Secret` header.
+
 ## Considerations
 
 ### Design

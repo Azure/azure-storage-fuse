@@ -66,6 +66,7 @@ static std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> EmptyCallback 
 std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(
         std::string client_id_p = "",
         std::string object_id_p = "",
-        std::string resource_id_p = "");
+        std::string resource_id_p = "",
+        std::string msi_endpoint_p = "");
 
 #endif

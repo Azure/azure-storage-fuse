@@ -80,6 +80,7 @@ int read_config_env()
     char* env_identity_client_id = getenv("AZURE_STORAGE_IDENTITY_CLIENT_ID");
     char* env_identity_object_id = getenv("AZURE_STORAGE_IDENTITY_OBJECT_ID");
     char* env_identity_resource_id = getenv("AZURE_STORAGE_IDENTITY_RESOURCE_ID");
+    char* env_managed_identity_endpoint = getenv("AZURE_STORAGE_MANAGED_IDENTITY_ENDPOINT");
     char* env_auth_type = getenv("AZURE_STORAGE_AUTH_TYPE");
 
     if(env_account)
@@ -109,6 +110,11 @@ int read_config_env()
         if(env_identity_resource_id)
         {
             str_options.resourceId = env_identity_resource_id;
+        }
+
+        if(env_managed_identity_endpoint)
+        {
+            str_options.msiEndpoint = env_managed_identity_endpoint;
         }
 
         if(env_auth_type)
@@ -234,6 +240,11 @@ int read_config(const std::string configFile)
             std::string authTypeStr(value);
             str_options.authType = authTypeStr;
         }
+        else if(line.find("msiEndpoint") != std::string::npos)
+        {
+            std::string msiEndpointStr(value);
+            str_options.msiEndpoint = msiEndpointStr;
+        }
 
         data.clear();
     }
@@ -283,7 +294,8 @@ void *azs_init(struct fuse_conn_info * conn)
             std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
                     str_options.clientId,
                     str_options.objectId,
-                    str_options.resourceId);
+                    str_options.resourceId,
+                    str_options.msiEndpoint);
 
             GetTokenManagerInstance(MSICallback); // We supply a default callback because we asssume that the oauth token manager has not initialized yet.
             //2. try to make blob client wrapper using oauth token
@@ -326,7 +338,8 @@ void *azs_init(struct fuse_conn_info * conn)
             std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
                     str_options.clientId,
                     str_options.objectId,
-                    str_options.resourceId);
+                    str_options.resourceId,
+                    str_options.msiEndpoint);
 
             GetTokenManagerInstance(MSICallback);
             //2. try to make blob client wrapper using oauth token
@@ -632,7 +645,8 @@ int validate_storage_connection()
             std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
                     str_options.clientId,
                     str_options.objectId,
-                    str_options.resourceId);
+                    str_options.resourceId,
+                    str_options.msiEndpoint);
 
             std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback);
 

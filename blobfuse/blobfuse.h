@@ -130,6 +130,7 @@ struct str_options
     std::string clientId;
     std::string objectId;
     std::string resourceId;
+    std::string msiEndpoint;
     std::string containerName;
     std::string tmpPath;
     bool use_https;

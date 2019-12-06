@@ -3,6 +3,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <memory>
 
 #include "storage_EXPORTS.h"
 
@@ -65,6 +66,8 @@ namespace microsoft_azure {
             std::string if_unmodified_since;
             std::map<std::string, std::string> ms_headers;
         };
+
+        std::shared_ptr<storage_url> parse_url(const std::string& url);
 
     }
 }
