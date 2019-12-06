@@ -175,8 +175,6 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
         // prepare the CURL handle
         std::shared_ptr<CurlEasyRequest> request_handle = httpClient->get_handle();
 
-        printf("%s\n", uri_token_request_url->to_string().c_str());
-
         request_handle->set_url(uri_token_request_url->to_string());
         request_handle->add_header(constants::header_metadata, "true");
         if(custom_endpoint)

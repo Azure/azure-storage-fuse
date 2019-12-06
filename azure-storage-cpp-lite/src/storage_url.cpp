@@ -116,7 +116,6 @@ namespace microsoft_azure {
         // This is _primarily_ to support the custom MSI endpoint scenario requested by AML.
         std::shared_ptr<storage_url> parse_url(const std::string& url) {
             auto output = std::make_shared<storage_url>();
-            printf("%s\n", url.c_str());
 
             std::string runningString;
             std::string qpname; // A secondary buffer for query parameter strings.
