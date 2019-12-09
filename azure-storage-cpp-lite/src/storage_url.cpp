@@ -135,59 +135,48 @@ namespace microsoft_azure {
                         }
                         break;
                     case 1:
-                        if (*charptr == '/')
+                        // Avoid adding the / between the path element and the domain, as storage_url does that for us.
+                        if(*charptr != '/')
+                            runningString += *charptr;
+
+                        if (*charptr == '/' || charptr == url.end() - 1)
                         {
-                        domainfinalchar: // Because these jumps are local, it's arguably still easy to debug.
                             // Only append the new char if it's the end of the string.
                             output->set_domain(std::string(runningString));
                             // empty the buffer, do not append the new char to the string because storage_url handles it for us, rather than checking itself
                             runningString.clear();
                             segment++;
                         }
-                        else
-                        {
-                            runningString += *charptr;
-                            if (charptr == url.end() - 1)
-                                goto domainfinalchar; // Because these jumps are local, it's arguably still easy to debug.
-                        }
                         break;
                     case 2:
-                        if (*charptr == '?')
+                        // Avoid adding the ? to the path.
+                        if(*charptr != '?')
+                            runningString += *charptr;
+
+                        if (*charptr == '?' || charptr == url.end() - 1)
                         {
-                        pathfinalchar: // Because these jumps are local, it's arguably still easy to debug.
                             // We don't need to append by segment here, we can just append the entire thing.
                             output->append_path(std::string(runningString));
                             // Empty the buffer
                             runningString.clear();
                             segment++;
                         }
-                        else
-                        {
-                            runningString += *charptr;
-                            if(charptr == url.end() - 1)
-                                goto pathfinalchar; // Because these jumps are local, it's arguably still easy to debug.
-                        }
                         break;
                     case 3:
-                        switch (*charptr) {
-                            case '=':
-                                qpname = std::string(runningString);
-                                // clear the buffer, don't add the new character.
-                                runningString.clear();
-                                break;
-                            case '&':
-                            queryfinalchar: // Because these jumps are local, it's arguably still easy to debug.
-                                output->add_query(std::string(qpname), std::string(runningString));
-                                // clear the buffer, don't add the new character.
-                                qpname.clear();
-                                runningString.clear();
-                                break;
-                            default:
-                                runningString += *charptr;
-                                // Write the last query if the string ends.
-                                if (charptr == url.end() - 1)
-                                    goto queryfinalchar; // Because these jumps are local, it's arguably still easy to debug.
-                                break;
+                        // Avoid adding any of the separators to the path.
+                        if (*charptr != '=' && *charptr != '&')
+                            runningString += *charptr;
+
+                        if (*charptr == '=')
+                        {
+                            qpname = std::string(runningString);
+                            runningString.clear();
+                        }
+                        else if (*charptr == '&' || charptr == url.end() - 1)
+                        {
+                            output->add_query(std::string(qpname), std::string(runningString));
+                            qpname.clear();
+                            runningString.clear();
                         }
                         break;
                     default:

@@ -70,7 +70,11 @@ namespace microsoft_azure {
 
         class token_credential : public storage_credential {
         public:
+            // NOTE: This is a blobfuse linked function.
+            // It links up with the blobfuse-initialized OAuthTokenManager.
+            // If it was not already initialized, this will throw.
             AZURE_STORAGE_API token_credential();
+
             // DEPRECATION NOTICE: This is mostly meant for compatibility with sample.cpp
             // The new token credential uses the OAuthTokenCredentialManager, and explicitly set tokens disable this functionality!
             AZURE_STORAGE_API token_credential(const std::string &token);

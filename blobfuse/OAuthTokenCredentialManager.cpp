@@ -48,7 +48,7 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
 
     try {
         refresh_token();
-    } catch(std::exception& ex) {
+    } catch(std::runtime_error& ex) {
         syslog(LOG_ERR, "Unable to retrieve OAuth token: %s", ex.what());
         printf("Unable to retrieve OAuth token: %s\n", ex.what());
         valid_authentication = false;
@@ -81,7 +81,7 @@ OAuthToken OAuthTokenCredentialManager::refresh_token()
     try {
         current_oauth_token = refreshTokenCallback(httpClient);
         return current_oauth_token;
-    } catch(std::exception& ex) {
+    } catch(std::runtime_error& ex) {
         valid_authentication = false;
         throw ex;
     }
@@ -97,7 +97,7 @@ OAuthToken OAuthTokenCredentialManager::get_token()
         if (token_mutex.try_lock()) {
             try {
                 refresh_token();
-            } catch (std::exception &ex) {
+            } catch (std::runtime_error &ex) {
                 syslog(LOG_ERR, "Unable to retrieve OAuth token: %s", ex.what());
                 valid_authentication = false;
                 throw std::runtime_error(std::string("Failed to refresh OAuth token: ") + std::string(ex.what()));

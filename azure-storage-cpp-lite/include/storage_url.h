@@ -67,6 +67,8 @@ namespace microsoft_azure {
             std::map<std::string, std::string> ms_headers;
         };
 
+        // NOTE: This is a blobfuse injected function.
+        // It is used primarily for parsing custom endpoints for MSI and other AD auth types.
         std::shared_ptr<storage_url> parse_url(const std::string& url);
 
     }
