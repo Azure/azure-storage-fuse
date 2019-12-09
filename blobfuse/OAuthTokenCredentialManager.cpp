@@ -148,6 +148,9 @@ bool OAuthTokenCredentialManager::is_token_expired()
 
 // ===== CALLBACK SETUP ZONE =====
 
+// Is this duplicating code present in cpplite? _yes_ but no.
+// CPPlite's version of this treats the ENTIRE STRING as the full query... This means stuff like ?, =, and / didn't get encoded.
+// This encodes the actual element, rather than the full query.
 std::string encode_query_element(std::string input) {
     std::stringstream result;
 
@@ -292,8 +295,6 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
     queryString.append("&scope=" + encode_query_element(std::string(constants::param_oauth_resource_data) + ".default")); // &scope=https://storage.azure.com/.default
     queryString.append("&client_secret=" + encode_query_element(client_secret_p)); // &client_secret=...
     queryString.append("&grant_type=client_credentials"); // &grant_type=client_credentials
-
-    printf("%s\n", uri_token_request_url->to_string().c_str());
 
     return [uri_token_request_url, queryString](std::shared_ptr<CurlEasyClient> http_client) {
         std::shared_ptr<CurlEasyRequest> request_handle = http_client->get_handle();
