@@ -135,12 +135,10 @@ namespace microsoft_azure {
                         }
                         break;
                     case 1:
-                        if (*charptr == '/' || charptr == url.end() - 1)
+                        if (*charptr == '/')
                         {
                         domainfinalchar: // Because these jumps are local, it's arguably still easy to debug.
                             // Only append the new char if it's the end of the string.
-                            if (charptr == url.end() - 1)
-                                runningString += *charptr;
                             output->set_domain(std::string(runningString));
                             // empty the buffer, do not append the new char to the string because storage_url handles it for us, rather than checking itself
                             runningString.clear();
