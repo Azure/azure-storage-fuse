@@ -152,15 +152,30 @@ int read_config_env()
     return 0;
 }
 
+std::string to_lower(std::string original) {
+    std::string out;
+
+    for (auto idx = original.begin(); idx < original.end(); idx++) {
+        if(*idx >= 'A' && *idx <= 'Z') {
+            out += char(*idx + 32); // This cast isn't required, but clang-tidy wants to complain without it.
+        } else {
+            out += *idx;
+        }
+    }
+
+    return out;
+}
+
 // TODO: Stop using magic strings
 auth_type get_auth_type() {
+    std::string lcAuthType = to_lower(str_options.authType);
+
     if(!str_options.authType.empty()) {
-        // TODO: Recieve authType as a lowercased string so we're type-insensitive
-        if (str_options.authType == "MSI") {
+        if (lcAuthType == "msi") {
             return MSI_AUTH;
-        } else if (str_options.authType == "Key") {
+        } else if (lcAuthType == "key") {
             return KEY_AUTH;
-        } else if (str_options.authType == "SAS") {
+        } else if (lcAuthType == "sas") {
             return SAS_AUTH;
         }
     } else {
