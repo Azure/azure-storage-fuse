@@ -122,19 +122,6 @@ int read_config_env()
             str_options.authType = env_auth_type;
         }
 
-
-        //TODO: make a check for making sure if the auth type is used that the right variables have values
-        /*
-        if((!env_account_key && !env_sas_token && !env_identity_client_id && !env_identity_object_id && !env_identity_resource_id) &&
-        !(!env_account_key && !env_sas_token && env_identity_client_id && env_identity_object_id && env_identity_resource_id) &&
-        !(env_account_key && !env_sas_token && !env_identity_client_id && !env_identity_object_id && !env_identity_resource_id) &&
-        !(!env_account_key && env_sas_token && !env_identity_client_id && !env_identity_object_id && !env_identity_resource_id))
-        {
-            syslog(LOG_CRIT, "Unable to start blobfuse.  If no config file is specified, TODO update this message so only acccountkey, sastoken or clientid&&objectid&&resourceid is filled in");
-            fprintf(stderr, "Unable to start blobfuse.  If no config file is specified, TODO update this message so only acccountkey, sastoken or clientid&&objectid&&resourceid is filled in\n");
-        }
-         */
-
         if(env_blob_endpoint) {
             // Optional to specify blob endpoint
             str_options.blobEndpoint = env_blob_endpoint;
@@ -166,17 +153,23 @@ std::string to_lower(std::string original) {
     return out;
 }
 
-// TODO: Stop using magic strings
 auth_type get_auth_type() {
     std::string lcAuthType = to_lower(str_options.authType);
 
     if(!str_options.authType.empty()) {
         if (lcAuthType == "msi") {
+            // MSI does not require any parameters to work, asa a lone system assigned identity will work with no parameters.
             return MSI_AUTH;
         } else if (lcAuthType == "key") {
-            return KEY_AUTH;
+            if(!str_options.accountKey.empty()) // An account name is already expected to be specified.
+                return KEY_AUTH;
+            else
+                return INVALID_AUTH;
         } else if (lcAuthType == "sas") {
-            return SAS_AUTH;
+            if (!str_options.sasToken.empty()) // An account name is already expected to be specified.
+                return SAS_AUTH;
+            else
+                return INVALID_AUTH;
         }
     } else {
         if (!str_options.objectId.empty() || !str_options.clientId.empty() || !str_options.resourceId.empty()) {
@@ -270,18 +263,6 @@ int read_config(const std::string configFile)
         fprintf(stderr, "Account name is missing in the config file.\n");
         return -1;
     }
-    /// TODO: make a check for checking if some parameters are used
-    /*
-    else if((!str_options.accountKey.empty() && !str_options.sasToken.empty() && !str_options.clientId.empty() && !str_options.objectId.empty() && !str_options.resourceId.empty()) &&
-             !(!str_options.accountKey.empty() && !str_options.sasToken.empty() && str_options.clientId.empty() && str_options.objectId.empty() && str_options.resourceId.empty()) &&
-             !(!str_options.accountKey.empty() && str_options.sasToken.empty() && !str_options.clientId.empty() && !str_options.objectId.empty() && !str_options.resourceId.empty())  &&
-             !(str_options.accountKey.empty() && !str_options.sasToken.empty() && !str_options.clientId.empty() && !str_options.objectId.empty() && !str_options.resourceId.empty()) )
-    {
-        syslog (LOG_CRIT, "Unable to start blobfuse. TODO update this message so only acccountkey, sastoken or clientid&&objectid&&resourceid is filled in");
-        fprintf(stderr, "Unable to start blobfuse. TODO update this message so only acccountkey, sastoken or clientid&&objectid&&resourceid is filled in\n");
-        return -1;
-    }
-     */
     else if(str_options.containerName.empty())
     {
         syslog (LOG_CRIT, "Unable to start blobfuse. Container name is missing in the config file.");
@@ -341,7 +322,7 @@ void *azs_init(struct fuse_conn_info * conn)
         }
         else
         {
-            syslog(LOG_ERR, "Unable to start blobfuse, no good credentials were entered //TODO better error note");
+            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
         }
     }
     else
@@ -381,7 +362,7 @@ void *azs_init(struct fuse_conn_info * conn)
         }
         else
         {
-            syslog(LOG_ERR, "Unable to start blobfuse, no good credentials were entered //TODO better error note");
+            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
         }
     }
 

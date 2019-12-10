@@ -54,12 +54,27 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 	* [OPTIONAL] **--log-level=LOG_WARNING** : Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG
 	* [OPTIONAL] **--use-attr-cache=true|false** : Enables attributes of a blob being cached. False by default. (Only available in blobfuse 1.1.0 or above)
 
+### Valid authentication setups:
+
+- Account Name & Key (`authType Key`)
+    - Requires the account key specified
+- Account Name & SAS (`authType SAS`)
+    - Requires the account SAS specified
+- Managed Service Identity
+    - Single assigned identity:
+        - No extra parameters needed.
+    - Multiple assigned identities:
+        - At least one of the following for the intended identity:
+            - Client ID (Use this if you are using a custom MSI endpoint)
+            - Object ID
+            - Resource ID
+
 ### Environment variables
 
 - General options
     * `AZURE_STORAGE_ACCOUNT`: Specifies the storage account blobfuse targets.
     * `AZURE_STORAGE_BLOB_ENDPOINT`: Specifies the blob endpoint to use. Defaults to *.blob.core.windows.net, but is useful for targeting storage emulators.
-    * `AZURE_STORAGE_AUTH_TYPE`: Overrides the currently specified auth type. Options: Key, SAS, MSI
+    * `AZURE_STORAGE_AUTH_TYPE`: Overrides the currently specified auth type. Case insensitive. Options: Key, SAS, MSI
 
 - Account key auth:
     * `AZURE_STORAGE_ACCESS_KEY`: Specifies the storage account key to use for authentication.
