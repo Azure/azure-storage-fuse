@@ -89,18 +89,21 @@ OAuthToken OAuthTokenCredentialManager::refresh_token()
 
 /// <summary>
 /// Returns current oauth_token, implicitly refreshing if the current token is invalid.
-/// Note that this can throw an error if the refresh fails, so be prepared to catch.
+/// This will _not_ throw. It will just syslog if a token refresh failed.
 /// </summary>
 OAuthToken OAuthTokenCredentialManager::get_token()
 {
     if (is_token_expired()) {
+        // Lock the mutex.
         if (token_mutex.try_lock()) {
             try {
+                // Attempt to refresh.
                 refresh_token();
             } catch (std::runtime_error &ex) {
+                // If we fail, explain ourselves and unlock.
                 syslog(LOG_ERR, "Unable to retrieve OAuth token: %s", ex.what());
                 valid_authentication = false;
-                throw std::runtime_error(std::string("Failed to refresh OAuth token: ") + std::string(ex.what()));
+                token_mutex.unlock();
             }
         } else {
             time_t current_time;
@@ -118,6 +121,8 @@ OAuthToken OAuthTokenCredentialManager::get_token()
                 token_mutex.lock();
             }
         }
+        // Note that we don't always lock in this function and sometimes return early.
+        // Be sure to ensure you're safely manipulating the lock when modifying this function.
         token_mutex.unlock();
     }
 
@@ -129,6 +134,9 @@ OAuthToken OAuthTokenCredentialManager::get_token()
 /// <summary>
 bool OAuthTokenCredentialManager::is_token_expired()
 {
+    if(!valid_authentication)
+        return true;
+
     time_t current_time;
 
     time ( &current_time );
