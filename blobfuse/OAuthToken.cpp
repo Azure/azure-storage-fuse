@@ -35,23 +35,41 @@ void from_json(const json &j, OAuthToken &t) {
 
     // The below factors need numeric conversion, so we'll attempt that.
     // try/catch individually so that if something like expires_in fails over, we don't lose the more important detail, expires_on
+    bool expin_failed = false;
     try {
         std::string expires_in;
         j.at("expires_in").get_to(expires_in);
         t.expires_in = std::stoi(expires_in);
-    } catch(std::exception&){}
+    } catch(std::exception&){
+        expin_failed = true;
+    }
 
+    bool expon_failed = false;
     try {
         std::string expires_on;
         j.at("expires_on").get_to(expires_on);
         t.expires_on = std::stoi(expires_on);
-    } catch(std::exception&){}
+    } catch(std::exception&){
+        expon_failed = true;
+    }
 
     try {
         std::string not_before;
         not_before = j.at("not_before");
         t.not_before = std::stoi(not_before);
-    } catch(std::exception&){}
+    } catch(std::exception&){} // We don't particularly care about the not_before field in blobfuse.
+
+    if(expon_failed) {
+        // We can failover and set this manually via expires_in. If expires_in failed as well, there isn't much we can do.
+        if(expin_failed) {
+            throw std::runtime_error("OAuth token is unusable: OAuth token did not return with an expiry time of any form.");
+        } else {
+            time_t current_time;
+            time(&current_time);
+
+            t.expires_on = current_time + t.expires_in;
+        }
+    }
 
     // TODO: Infer expries_on if expires_in is not present, vice versa
     //  this will __PROBABLY__ never happen. But, just on the off-chance that it does, we should be able to cope.
