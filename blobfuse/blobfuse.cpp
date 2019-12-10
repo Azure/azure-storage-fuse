@@ -278,7 +278,6 @@ int read_config(const std::string configFile)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
-    const int defaultMaxConcurrency = 20;
     // TODO: Make all of this go down roughly the same pipeline, rather than having spaghettified code
     auth_type AuthType = get_auth_type();
 
@@ -299,7 +298,7 @@ void *azs_init(struct fuse_conn_info * conn)
             azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
                     blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_oauth(
                      str_options.accountName,
-                     20,
+                     constants::max_concurrency_blob_wrapper,
                      str_options.blobEndpoint));
         }
         else if(AuthType == KEY_AUTH) {
@@ -307,7 +306,7 @@ void *azs_init(struct fuse_conn_info * conn)
                 blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init_accountkey(
                     str_options.accountName,
                     str_options.accountKey,
-                    20/*concurrency*/,
+                    constants::max_concurrency_blob_wrapper,
                     str_options.use_https,
                     str_options.blobEndpoint));
         }
@@ -316,7 +315,7 @@ void *azs_init(struct fuse_conn_info * conn)
                 blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init_sastoken(
                     str_options.accountName,
                     str_options.sasToken,
-                    20/*concurrency*/,
+                    constants::max_concurrency_blob_wrapper,
                      str_options.use_https,
                     str_options.blobEndpoint));
         }
@@ -341,14 +340,14 @@ void *azs_init(struct fuse_conn_info * conn)
             //2. try to make blob client wrapper using oauth token
             azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
                     str_options.accountName,
-                    20,
+                    constants::max_concurrency_blob_wrapper,
                     str_options.blobEndpoint);
         }
         else if(AuthType == KEY_AUTH) {
             azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
             str_options.accountName,
             str_options.accountKey,
-            defaultMaxConcurrency,
+            constants::max_concurrency_blob_wrapper,
             str_options.use_https,
             str_options.blobEndpoint);
         }
@@ -356,7 +355,7 @@ void *azs_init(struct fuse_conn_info * conn)
             azure_blob_client_wrapper = blob_client_wrapper_init_sastoken(
             str_options.accountName,
             str_options.sasToken,
-            defaultMaxConcurrency,
+            constants::max_concurrency_blob_wrapper,
             str_options.use_https,
             str_options.blobEndpoint);
         }
@@ -631,7 +630,6 @@ int validate_storage_connection()
     // When running in daemon mode, the current process forks() and exits, while the child process lives on as a daemon.
     // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
     {
-        const int defaultMaxConcurrency = 20;
         std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper;
         auth_type AuthType = get_auth_type();
         //TODO: Make a for authtype, and then if that's not specified, then a check against what credentials were specified
@@ -654,14 +652,14 @@ int validate_storage_connection()
             //2. try to make blob client wrapper using oauth token
             temp_azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
                     str_options.accountName,
-                    defaultMaxConcurrency,
+                    constants::max_concurrency_blob_wrapper,
                     str_options.blobEndpoint);
         }
         else if(AuthType == KEY_AUTH) {
             temp_azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
             str_options.accountName,
             str_options.accountKey,
-            defaultMaxConcurrency,
+            constants::max_concurrency_blob_wrapper,
             str_options.use_https,
             str_options.blobEndpoint);
         }
@@ -669,7 +667,7 @@ int validate_storage_connection()
             temp_azure_blob_client_wrapper = blob_client_wrapper_init_sastoken(
             str_options.accountName,
             str_options.sasToken,
-            defaultMaxConcurrency,
+            constants::max_concurrency_blob_wrapper,
             str_options.use_https,
             str_options.blobEndpoint);
         }

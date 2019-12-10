@@ -10,6 +10,8 @@ namespace microsoft_azure {
 
             const int max_concurrency_oauth = 2;
             const int max_retry_oauth = 5;
+
+            const int max_concurrency_blob_wrapper = 20;
         }
     }
 }
