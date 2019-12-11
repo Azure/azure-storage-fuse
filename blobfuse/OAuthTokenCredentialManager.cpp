@@ -80,6 +80,7 @@ OAuthToken OAuthTokenCredentialManager::refresh_token()
 {
     try {
         current_oauth_token = refreshTokenCallback(httpClient);
+        valid_authentication = true;
         return current_oauth_token;
     } catch(std::runtime_error& ex) {
         valid_authentication = false;
