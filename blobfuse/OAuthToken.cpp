@@ -37,18 +37,46 @@ void from_json(const json &j, OAuthToken &t) {
     // try/catch individually so that if something like expires_in fails over, we don't lose the more important detail, expires_on
     bool expin_failed = false;
     try {
-        std::string expires_in;
-        j.at("expires_in").get_to(expires_in);
-        t.expires_in = std::stoi(expires_in);
+        if (j.contains("expires_in"))
+        {
+            auto val = j.at("expires_in");
+            if(val.is_number())
+            {
+                val.get_to(t.expires_in);
+            }
+            else {
+                std::string expires_in = val.get<std::string>();
+                t.expires_in = std::stoi(expires_in);
+            }
+        }
+        else
+        {
+            printf("no expin");
+            expin_failed = true;
+        }
     } catch(std::exception&){
         expin_failed = true;
     }
 
     bool expon_failed = false;
     try {
-        std::string expires_on;
-        j.at("expires_on").get_to(expires_on);
-        t.expires_on = std::stoi(expires_on);
+        if (j.contains("expires_on"))
+        {
+            auto val = j.at("expires_on");
+            if(val.is_number())
+            {
+                val.get_to(t.expires_on);
+            }
+            else {
+                std::string expires_on = val.get<std::string>();
+                t.expires_on = std::stoi(expires_on);
+            }
+        }
+        else
+        {
+            printf("no expon");
+            expon_failed = true;
+        }
     } catch(std::exception&){
         expon_failed = true;
     }

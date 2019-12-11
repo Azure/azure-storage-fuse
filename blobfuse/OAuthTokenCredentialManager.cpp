@@ -288,7 +288,7 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
         uri_token_request_url = parse_url(aad_endpoint_p);
     }
 
-    uri_token_request_url->append_path(tenant_id_p + "/" + constants::spn_request_path); // /tenant/oauth2/v2.0/token
+    uri_token_request_url->append_path((tenant_id_p.empty() ? "common" : tenant_id_p) + "/" + constants::spn_request_path); // /tenant/oauth2/v2.0/token
 
     // Step 2: Construct the body query
     std::string queryString("client_id=" + client_id_p); // client_id=...

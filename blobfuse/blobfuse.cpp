@@ -194,7 +194,7 @@ auth_type get_auth_type() {
                 return SAS_AUTH;
             else
                 return INVALID_AUTH;
-        } else if (lcAuthType == "SPN") {
+        } else if (lcAuthType == "spn") {
             return SPN_AUTH;
         }
     } else {
@@ -316,22 +316,6 @@ int read_config(const std::string configFile)
         fprintf(stderr, "Account name is missing in the config file.\n");
         return -1;
     }
-<<<<<<<
-
-=======
-    /// TODO: make a check for checking if some parameters are used
-    /*
-    else if((!str_options.accountKey.empty() && !str_options.sasToken.empty() && !str_options.identityClientId.empty() && !str_options.objectId.empty() && !str_options.resourceId.empty()) &&
-             !(!str_options.accountKey.empty() && !str_options.sasToken.empty() && str_options.identityClientId.empty() && str_options.objectId.empty() && str_options.resourceId.empty()) &&
-             !(!str_options.accountKey.empty() && str_options.sasToken.empty() && !str_options.identityClientId.empty() && !str_options.objectId.empty() && !str_options.resourceId.empty())  &&
-             !(str_options.accountKey.empty() && !str_options.sasToken.empty() && !str_options.identityClientId.empty() && !str_options.objectId.empty() && !str_options.resourceId.empty()) )
-    {
-        syslog (LOG_CRIT, "Unable to start blobfuse. TODO update this message so only acccountkey, sastoken or clientid&&objectid&&resourceid is filled in");
-        fprintf(stderr, "Unable to start blobfuse. TODO update this message so only acccountkey, sastoken or clientid&&objectid&&resourceid is filled in\n");
-        return -1;
-    }
-     */
->>>>>>>
     else if(str_options.containerName.empty())
     {
         syslog (LOG_CRIT, "Unable to start blobfuse. Container name is missing in the config file.");
@@ -354,17 +338,8 @@ void *azs_init(struct fuse_conn_info * conn)
     {
         if(AuthType == MSI_AUTH || AuthType == SPN_AUTH)
         {
-<<<<<<<
-            //1. get oauth token
-            std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
-                    str_options.clientId,
-                    str_options.objectId,
-                    str_options.resourceId,
-                    str_options.msiEndpoint);
-=======
             //1. Get OAuth Token
             std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> OTMCallback = EmptyCallback;
->>>>>>>
 
             if (AuthType == MSI_AUTH) {
                 OTMCallback = SetUpMSICallback(
@@ -418,11 +393,7 @@ void *azs_init(struct fuse_conn_info * conn)
         if(AuthType == MSI_AUTH || AuthType == SPN_AUTH)
         { // If MSI is explicit, or if MSI options are set and auth type is implicit
             //1. get oauth token
-            std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
-                    str_options.clientId,
-                    str_options.objectId,
-                    str_options.resourceId,
-                    str_options.msiEndpoint);
+            std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> OTMCallback = EmptyCallback;
 
             if (AuthType == MSI_AUTH) {
                 OTMCallback = SetUpMSICallback(
@@ -738,11 +709,7 @@ int validate_storage_connection()
         if(AuthType == MSI_AUTH || AuthType == SPN_AUTH)
         {
             //1. get oauth token
-            std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
-                    str_options.clientId,
-                    str_options.objectId,
-                    str_options.resourceId,
-                    str_options.msiEndpoint);
+            std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> OTMCallback = EmptyCallback;
 
             if (AuthType == MSI_AUTH) {
                 OTMCallback = SetUpMSICallback(
