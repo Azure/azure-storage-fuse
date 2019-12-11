@@ -127,6 +127,7 @@ namespace microsoft_azure {
                     m_input_stream = s;
                     check_code(curl_easy_setopt(m_curl, CURLOPT_READFUNCTION, read));
                     check_code(curl_easy_setopt(m_curl, CURLOPT_READDATA, this));
+                    check_code(curl_easy_setopt(m_curl, CURLOPT_POSTFIELDS, nullptr)); // CURL won't actually read data on POSTs unless this is explicitly set.
                 }
 
                 void set_input_buffer(char* buff) override
@@ -134,6 +135,7 @@ namespace microsoft_azure {
                     m_input_buffer = buff;
                     check_code(curl_easy_setopt(m_curl, CURLOPT_READFUNCTION, read));
                     check_code(curl_easy_setopt(m_curl, CURLOPT_READDATA, this));
+                    check_code(curl_easy_setopt(m_curl, CURLOPT_POSTFIELDS, nullptr)); // CURL won't actually read data on POSTs unless this is explicitly set.
                 }
 
                 void set_input_content_length(size_t content_length)
@@ -228,6 +230,8 @@ namespace microsoft_azure {
 
                 static size_t read(char *buffer, size_t size, size_t nitems, void *userdata)
                 {
+                    syslog(LOG_INFO, "Attempting to read body");
+
                     REQUEST_TYPE *p = static_cast<REQUEST_TYPE *>(userdata);
                     auto &s = p->m_input_stream.istream();
                     size_t contentlen = p->get_input_content_length();

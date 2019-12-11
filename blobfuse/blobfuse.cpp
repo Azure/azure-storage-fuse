@@ -81,6 +81,9 @@ int read_config_env()
     char* env_identity_object_id = getenv("AZURE_STORAGE_IDENTITY_OBJECT_ID");
     char* env_identity_resource_id = getenv("AZURE_STORAGE_IDENTITY_RESOURCE_ID");
     char* env_managed_identity_endpoint = getenv("AZURE_STORAGE_MANAGED_IDENTITY_ENDPOINT");
+    char* env_spn_client_id = getenv("AZURE_STORAGE_SPN_CLIENT_ID");
+    char* env_spn_tenant_id = getenv("AZURE_STORAGE_SPN_TENANT_ID");
+    char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
     char* env_auth_type = getenv("AZURE_STORAGE_AUTH_TYPE");
 
     if(env_account)
@@ -99,7 +102,22 @@ int read_config_env()
 
         if(env_identity_client_id)
         {
-            str_options.clientId = env_identity_client_id;
+            str_options.identityClientId = env_identity_client_id;
+        }
+
+        if (env_spn_client_secret)
+        {
+            str_options.spnClientSecret = env_spn_client_secret;
+        }
+
+        if (env_spn_tenant_id)
+        {
+            str_options.spnTenantId = env_spn_tenant_id;
+        }
+
+        if (env_spn_client_id)
+        {
+            str_options.spnClientId = env_spn_client_id;
         }
 
         if(env_identity_object_id)
@@ -170,14 +188,18 @@ auth_type get_auth_type() {
                 return SAS_AUTH;
             else
                 return INVALID_AUTH;
+        } else if (lcAuthType == "SPN") {
+            return SPN_AUTH;
         }
     } else {
-        if (!str_options.objectId.empty() || !str_options.clientId.empty() || !str_options.resourceId.empty()) {
+        if (!str_options.objectId.empty() || !str_options.identityClientId.empty() || !str_options.resourceId.empty()) {
             return MSI_AUTH;
         } else if (!str_options.accountKey.empty()) {
             return KEY_AUTH;
         } else if (!str_options.sasToken.empty()) {
             return SAS_AUTH;
+        } else if (!str_options.spnClientSecret.empty() && !str_options.spnClientId.empty() && !str_options.spnTenantId.empty()) {
+            return SPN_AUTH;
         }
     }
     return INVALID_AUTH;
@@ -197,8 +219,18 @@ int read_config(const std::string configFile)
     std::string line;
     std::istringstream data;
 
+    char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
+
+    if (env_spn_client_secret) {
+        str_options.spnClientSecret = env_spn_client_secret;
+    }
+
     while(std::getline(file, line))
     {
+        // skip over comments
+        if(line[0] == '#') {
+            continue;
+        }
 
         data.str(line.substr(line.find(" ")+1));
         const std::string value(trim(data.str()));
@@ -231,7 +263,7 @@ int read_config(const std::string configFile)
         else if(line.find("identityClientId") != std::string::npos)
         {
             std::string clientIdStr(value);
-            str_options.clientId = clientIdStr;
+            str_options.identityClientId = clientIdStr;
         }
         else if(line.find("identityObjectId") != std::string::npos)
         {
@@ -253,6 +285,16 @@ int read_config(const std::string configFile)
             std::string msiEndpointStr(value);
             str_options.msiEndpoint = msiEndpointStr;
         }
+        else if(line.find("servicePrincipalClientId") != std::string::npos)
+        {
+            std::string spClientIdStr(value);
+            str_options.spnClientId = spClientIdStr;
+        }
+        else if(line.find("servicePrincipalTenantId") != std::string::npos)
+        {
+            std::string spTenantIdStr(value);
+            str_options.spnTenantId = spTenantIdStr;
+        }
 
         data.clear();
     }
@@ -263,6 +305,22 @@ int read_config(const std::string configFile)
         fprintf(stderr, "Account name is missing in the config file.\n");
         return -1;
     }
+<<<<<<<
+
+=======
+    /// TODO: make a check for checking if some parameters are used
+    /*
+    else if((!str_options.accountKey.empty() && !str_options.sasToken.empty() && !str_options.identityClientId.empty() && !str_options.objectId.empty() && !str_options.resourceId.empty()) &&
+             !(!str_options.accountKey.empty() && !str_options.sasToken.empty() && str_options.identityClientId.empty() && str_options.objectId.empty() && str_options.resourceId.empty()) &&
+             !(!str_options.accountKey.empty() && str_options.sasToken.empty() && !str_options.identityClientId.empty() && !str_options.objectId.empty() && !str_options.resourceId.empty())  &&
+             !(str_options.accountKey.empty() && !str_options.sasToken.empty() && !str_options.identityClientId.empty() && !str_options.objectId.empty() && !str_options.resourceId.empty()) )
+    {
+        syslog (LOG_CRIT, "Unable to start blobfuse. TODO update this message so only acccountkey, sastoken or clientid&&objectid&&resourceid is filled in");
+        fprintf(stderr, "Unable to start blobfuse. TODO update this message so only acccountkey, sastoken or clientid&&objectid&&resourceid is filled in\n");
+        return -1;
+    }
+     */
+>>>>>>>
     else if(str_options.containerName.empty())
     {
         syslog (LOG_CRIT, "Unable to start blobfuse. Container name is missing in the config file.");
@@ -283,16 +341,33 @@ void *azs_init(struct fuse_conn_info * conn)
 
     if (str_options.use_attr_cache)
     {
-        if(AuthType == MSI_AUTH)
+        if(AuthType == MSI_AUTH || AuthType == SPN_AUTH)
         {
+<<<<<<<
             //1. get oauth token
             std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
                     str_options.clientId,
                     str_options.objectId,
                     str_options.resourceId,
                     str_options.msiEndpoint);
+=======
+            //1. Get OAuth Token
+            std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> OTMCallback = EmptyCallback;
+>>>>>>>
 
-            GetTokenManagerInstance(MSICallback); // We supply a default callback because we asssume that the oauth token manager has not initialized yet.
+            if (AuthType == MSI_AUTH) {
+                OTMCallback = SetUpMSICallback(
+                        str_options.identityClientId,
+                        str_options.objectId,
+                        str_options.resourceId);
+            } else {
+                OTMCallback = SetUpSPNCallback(
+                        str_options.spnTenantId,
+                        str_options.spnClientId,
+                        str_options.spnClientSecret);
+            }
+
+            GetTokenManagerInstance(OTMCallback); // We supply a default callback because we asssume that the oauth token manager has not initialized yet.
             //2. try to make blob client wrapper using oauth token
             //str_options.accountName
             azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
@@ -327,7 +402,7 @@ void *azs_init(struct fuse_conn_info * conn)
     else
     {
         //TODO: Make a for authtype, and then if that's not specified, then a check against what credentials were specified
-        if(AuthType == MSI_AUTH)
+        if(AuthType == MSI_AUTH || AuthType == SPN_AUTH)
         { // If MSI is explicit, or if MSI options are set and auth type is implicit
             //1. get oauth token
             std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
@@ -336,7 +411,19 @@ void *azs_init(struct fuse_conn_info * conn)
                     str_options.resourceId,
                     str_options.msiEndpoint);
 
-            GetTokenManagerInstance(MSICallback);
+            if (AuthType == MSI_AUTH) {
+                OTMCallback = SetUpMSICallback(
+                        str_options.identityClientId,
+                        str_options.objectId,
+                        str_options.resourceId);
+            } else {
+                OTMCallback = SetUpSPNCallback(
+                        str_options.spnTenantId,
+                        str_options.spnClientId,
+                        str_options.spnClientSecret);
+            }
+
+            GetTokenManagerInstance(OTMCallback);
             //2. try to make blob client wrapper using oauth token
             azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
                     str_options.accountName,
@@ -633,7 +720,7 @@ int validate_storage_connection()
         std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper;
         auth_type AuthType = get_auth_type();
         //TODO: Make a for authtype, and then if that's not specified, then a check against what credentials were specified
-        if(AuthType == MSI_AUTH)
+        if(AuthType == MSI_AUTH || AuthType == SPN_AUTH)
         {
             //1. get oauth token
             std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
@@ -642,7 +729,19 @@ int validate_storage_connection()
                     str_options.resourceId,
                     str_options.msiEndpoint);
 
-            std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback);
+            if (AuthType == MSI_AUTH) {
+                OTMCallback = SetUpMSICallback(
+                        str_options.identityClientId,
+                        str_options.objectId,
+                        str_options.resourceId);
+            } else {
+                OTMCallback = SetUpSPNCallback(
+                        str_options.spnTenantId,
+                        str_options.spnClientId,
+                        str_options.spnClientSecret);
+            }
+
+            std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(OTMCallback);
 
             if (!tokenManager->is_valid_connection()) {
                 // todo: isolate definitions of errno's for this function so we can output something meaningful.

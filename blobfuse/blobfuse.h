@@ -127,7 +127,10 @@ struct str_options
     std::string blobEndpoint;
     std::string accountKey;
     std::string sasToken;
-    std::string clientId;
+    std::string identityClientId;
+    std::string spnClientId;
+    std::string spnClientSecret;
+    std::string spnTenantId;
     std::string objectId;
     std::string resourceId;
     std::string msiEndpoint;
@@ -161,6 +164,7 @@ int map_errno(int error);
 
 enum auth_type {
     MSI_AUTH,
+    SPN_AUTH,
     SAS_AUTH,
     KEY_AUTH,
     INVALID_AUTH
