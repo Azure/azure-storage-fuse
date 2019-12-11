@@ -5,7 +5,7 @@
 namespace microsoft_azure {
     namespace storage {
 
-        class put_block_request : public put_block_request_base {
+        class put_block_request final : public put_block_request_base {
         public:
             put_block_request(const std::string &container, const std::string &blob, const std::string &blockid)
                 : m_container(container),

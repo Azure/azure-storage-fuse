@@ -7,7 +7,7 @@
 #include <curl/curl.h>
 
 #include "storage_stream.h"
-
+#include "compare.h"
 namespace microsoft_azure {
     namespace storage {
 
@@ -20,6 +20,8 @@ namespace microsoft_azure {
                 post,
                 put
             };
+
+            virtual ~http_base() {}
 
             using http_code = int;
 
@@ -34,7 +36,7 @@ namespace microsoft_azure {
             virtual void add_header(const std::string &name, const std::string &value) = 0;
 
             virtual std::string get_header(const std::string &name) const = 0;
-            virtual const std::map<std::string, std::string>& get_headers() const = 0;
+            virtual const std::map<std::string, std::string, case_insensitive_compare>& get_headers() const = 0;
 
             virtual CURLcode perform() = 0;
 
@@ -45,6 +47,8 @@ namespace microsoft_azure {
             virtual http_code status_code() const = 0;
 
             virtual void set_input_stream(storage_istream s) = 0;
+
+            virtual void set_input_buffer(char* buff) = 0;
 
             virtual void reset_input_stream() = 0;
 

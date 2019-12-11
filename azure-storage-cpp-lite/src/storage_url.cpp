@@ -110,5 +110,81 @@ namespace microsoft_azure {
             return url;
         }
 
+        // The URLs this is going to need to parse are fairly unadvanced.
+        // They'll all be similar to http://blah.com/path1/path2?query1=xxx&query2=xxx
+        // It's assumed they will be pre-encoded.
+        // This is _primarily_ to support the custom MSI endpoint scenario requested by AML.
+        std::shared_ptr<storage_url> parse_url(const std::string& url) {
+            auto output = std::make_shared<storage_url>();
+
+            std::string runningString;
+            std::string qpname; // A secondary buffer for query parameter strings.
+            // 0 = scheme, 1 = hostname, 2 = path, 3 = query
+            // the scheme ends up attached to the hostname due to the way storage_urls work.
+            int segment = 0;
+            for (auto charptr = url.begin(); charptr < url.end(); charptr++) {
+                switch (segment) {
+                    case 0:
+                        runningString += *charptr;
+
+                        // ends up something like "https://"
+                        if (*(charptr - 2) == ':' && *(charptr - 1) == '/' && *charptr == '/')
+                        {
+                            // We've reached the end of the scheme.
+                            segment++;
+                        }
+                        break;
+                    case 1:
+                        // Avoid adding the / between the path element and the domain, as storage_url does that for us.
+                        if(*charptr != '/')
+                            runningString += *charptr;
+
+                        if (*charptr == '/' || charptr == url.end() - 1)
+                        {
+                            // Only append the new char if it's the end of the string.
+                            output->set_domain(std::string(runningString));
+                            // empty the buffer, do not append the new char to the string because storage_url handles it for us, rather than checking itself
+                            runningString.clear();
+                            segment++;
+                        }
+                        break;
+                    case 2:
+                        // Avoid adding the ? to the path.
+                        if(*charptr != '?')
+                            runningString += *charptr;
+
+                        if (*charptr == '?' || charptr == url.end() - 1)
+                        {
+                            // We don't need to append by segment here, we can just append the entire thing.
+                            output->append_path(std::string(runningString));
+                            // Empty the buffer
+                            runningString.clear();
+                            segment++;
+                        }
+                        break;
+                    case 3:
+                        // Avoid adding any of the separators to the path.
+                        if (*charptr != '=' && *charptr != '&')
+                            runningString += *charptr;
+
+                        if (*charptr == '=')
+                        {
+                            qpname = std::string(runningString);
+                            runningString.clear();
+                        }
+                        else if (*charptr == '&' || charptr == url.end() - 1)
+                        {
+                            output->add_query(std::string(qpname), std::string(runningString));
+                            qpname.clear();
+                            runningString.clear();
+                        }
+                        break;
+                    default:
+                        throw std::runtime_error("Unexpected segment section");
+                }
+            }
+
+            return output;
+        }
     }
 }

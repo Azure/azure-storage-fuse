@@ -10,6 +10,7 @@
 #include <uuid/uuid.h>
 
 #include "blob/blob_client.h"
+#include "base64.h"
 #include "storage_errno.h"
 
 namespace microsoft_azure {
@@ -59,70 +60,15 @@ namespace microsoft_azure {
         static mempool mpool;
         off_t get_file_size(const char* path);
 
-        static const char* _base64_enctbl = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        std::string to_base64(const char* base, size_t length)
-        {
-            std::string result;
-            for(int offset = 0; length - offset > 3; offset += 3)
-            {
-                const char* ptr = base + offset;
-                unsigned char idx0 = ptr[0] >> 2;
-                unsigned char idx1 = ((ptr[0]&0x3)<<4)| ptr[1] >> 4;
-                unsigned char idx2 = ((ptr[1]&0xF)<<2)| ptr[2] >> 6;
-                unsigned char idx3 = ptr[2]&0x3F;
-                result.push_back(_base64_enctbl[idx0]);
-                result.push_back(_base64_enctbl[idx1]);
-                result.push_back(_base64_enctbl[idx2]);
-                result.push_back(_base64_enctbl[idx3]);
-            }
-            switch(length % 3)
-            {
-                case 1:
-                {
-
-                    const char* ptr = base + length - 1;
-                    unsigned char idx0 = ptr[0] >> 2;
-                    unsigned char idx1 = ((ptr[0]&0x3)<<4);
-                    result.push_back(_base64_enctbl[idx0]);
-                    result.push_back(_base64_enctbl[idx1]);
-                    result.push_back('=');
-                    result.push_back('=');
-                    break;
-                }
-                case 2:
-                {
-
-                    const char* ptr = base + length - 2;
-                    unsigned char idx0 = ptr[0] >> 2;
-                    unsigned char idx1 = ((ptr[0]&0x3)<<4)| ptr[1] >> 4;
-                    unsigned char idx2 = ((ptr[1]&0xF)<<2);
-                    result.push_back(_base64_enctbl[idx0]);
-                    result.push_back(_base64_enctbl[idx1]);
-                    result.push_back(_base64_enctbl[idx2]);
-                    result.push_back('=');
-                    break;
-                }
-            }
-            return result;
-        }
-
         sync_blob_client::~sync_blob_client() {}
 
-        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency)
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_accountkey(
+            const std::string &account_name,
+            const std::string &account_key,
+            const unsigned int concurrency,
+            bool use_https,
+            const std::string &blob_endpoint)
         {
-            return blob_client_wrapper_init(account_name, account_key, sas_token, concurrency, false, NULL);
-        }
-
-
-        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token,  const unsigned int concurrency, const bool use_https, 
-                                                                          const std::string &blob_endpoint)
-        {
-            if(account_name.empty() || ((account_key.empty() && sas_token.empty()) || (!account_key.empty() && !sas_token.empty())))
-            {
-                errno = invalid_parameters;
-                return blob_client_wrapper(false);
-            }
-
             /* set a default concurrency value. */
             unsigned int concurrency_limit = 40;
             if(concurrency != 0)
@@ -131,29 +77,104 @@ namespace microsoft_azure {
             }
             std::string accountName(account_name);
             std::string accountKey(account_key);
-
             try
             {
-                std::shared_ptr<storage_credential>  cred;
-                if (account_key.length() > 0) 
+                std::shared_ptr<storage_credential> cred;
+                if (account_key.length() > 0)
                 {
                     cred = std::make_shared<shared_key_credential>(accountName, accountKey);
                 }
                 else
                 {
-                    // We have already verified that exactly one form of credentials is present, so if shared key is not present, it must be sas.
-                    cred = std::make_shared<shared_access_signature_credential>(sas_token);
+                    syslog(LOG_ERR, "Empty account key. Failed to create blob client.");
+                    return std::make_shared<blob_client_wrapper>(false);
                 }
                 std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
                 std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
                 errno = 0;
-                return blob_client_wrapper(blobClient);
+                return std::make_shared<blob_client_wrapper>(blobClient);
             }
             catch(const std::exception &ex)
             {
                 syslog(LOG_ERR, "Failed to create blob client.  ex.what() = %s.", ex.what());
                 errno = unknown_error;
-                return blob_client_wrapper(false);
+                return std::make_shared<blob_client_wrapper>(false);
+            }
+        }
+
+
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_sastoken(
+            const std::string &account_name,
+            const std::string &sas_token,
+            const unsigned int concurrency,
+            bool use_https,
+            const std::string &blob_endpoint)
+        {
+            /* set a default concurrency value. */
+            unsigned int concurrency_limit = 40;
+            if(concurrency != 0)
+            {
+                concurrency_limit = concurrency;
+            }
+            std::string accountName(account_name);
+            std::string sasToken(sas_token);
+
+            try
+            {
+                std::shared_ptr<storage_credential> cred;
+                if(sas_token.length() > 0)
+                {
+                    cred = std::make_shared<shared_access_signature_credential>(sas_token);
+                }
+                else
+                {
+                    syslog(LOG_ERR, "Empty account key. Failed to create blob client.");
+                    return std::make_shared<blob_client_wrapper>(false);
+                }
+                std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
+                std::shared_ptr<blob_client> blobClient= std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
+                errno = 0;
+                return std::make_shared<blob_client_wrapper>(blobClient);
+            }
+            catch(const std::exception &ex)
+            {
+                syslog(LOG_ERR, "Failed to create blob client.  ex.what() = %s.", ex.what());
+                errno = unknown_error;
+                return std::make_shared<blob_client_wrapper>(false);
+            }
+        }
+
+        std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_oauth(
+            const std::string &account_name,
+            const unsigned int concurrency,
+            const std::string &blob_endpoint)
+        {
+            /* set a default concurrency value. */
+            unsigned int concurrency_limit = 40;
+            if(concurrency != 0)
+            {
+                concurrency_limit = concurrency;
+            }
+            std::string accountName(account_name);
+
+            try
+            {
+                std::shared_ptr<storage_credential> cred = std::make_shared<token_credential>();
+                std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
+                    accountName,
+                    cred,
+                    true, //use_https must be true to use oauth
+                    blob_endpoint);
+                std::shared_ptr<blob_client> blobClient =
+                    std::make_shared<microsoft_azure::storage::blob_client>(account, concurrency_limit);
+                errno = 0;
+                return std::make_shared<blob_client_wrapper>(blobClient);
+            }
+            catch(const std::exception &ex)
+            {
+                syslog(LOG_ERR, "Failed to create blob client.  ex.what() = %s.", ex.what());
+                errno = unknown_error;
+                return std::make_shared<blob_client_wrapper>(false);
             }
         }
 
@@ -173,7 +194,6 @@ namespace microsoft_azure {
             try
             {
                 auto task = m_blobClient->create_container(container);
-                task.wait();
                 auto result = task.get();
 
                 if(!result.success())
@@ -188,7 +208,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Unknown failure in create_container.  ex.what() = %s, container = %s.", ex.what(), container.c_str());
                 errno = unknown_error;
@@ -212,7 +232,6 @@ namespace microsoft_azure {
             try
             {
                 auto task = m_blobClient->delete_container(container);
-                task.wait();
                 auto result = task.get();
 
                 if(!result.success())
@@ -224,7 +243,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Unknown failure in delete_container.  ex.what() = %s, container = %s.", ex.what(), container.c_str());
                 errno = unknown_error;
@@ -261,7 +280,7 @@ namespace microsoft_azure {
                     return false;
                 }
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Unknown failure in container_exists.  ex.what() = %s, container = %s.", ex.what(), container.c_str());
                 errno = unknown_error;
@@ -269,7 +288,7 @@ namespace microsoft_azure {
             }
         }
 
-        std::vector<list_containers_item> blob_client_wrapper::list_containers(const std::string &prefix, bool include_metadata)
+        std::vector<list_containers_item> blob_client_wrapper::list_containers(const std::string &prefix, const std::string& continuation_token, const int max_result, bool include_metadata)
         {
             if(!is_valid())
             {
@@ -284,8 +303,7 @@ namespace microsoft_azure {
 
             try
             {
-                auto task = m_blobClient->list_containers(prefix, include_metadata);
-                task.wait();
+                auto task = m_blobClient->list_containers(prefix, continuation_token, max_result, include_metadata);
                 auto result = task.get();
 
                 if(!result.success())
@@ -295,7 +313,7 @@ namespace microsoft_azure {
                 }
                 return result.response().containers;
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Unknown failure in list_containers.  ex.what() = %s, prefix = %s.", ex.what(), prefix.c_str());
                 errno = unknown_error;
@@ -335,7 +353,7 @@ namespace microsoft_azure {
                     return result.response();
                 }
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Unknown failure in list_blobs_hierarchial.  ex.what() = %s, container = %s, prefix = %s.", ex.what(), container.c_str(), prefix.c_str());
                 errno = unknown_error;
@@ -361,7 +379,7 @@ namespace microsoft_azure {
             {
                 ifs.open(sourcePath, std::ifstream::in);
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 // TODO open failed
                 syslog(LOG_ERR, "Failure to open the input stream in put_blob.  ex.what() = %s, sourcePath = %s.", ex.what(), sourcePath.c_str());
@@ -372,7 +390,6 @@ namespace microsoft_azure {
             try
             {
                 auto task = m_blobClient->upload_block_blob_from_stream(container, blob, ifs, metadata);
-                task.wait();
                 auto result = task.get();
                 if(!result.success())
                 {
@@ -383,7 +400,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Failure to upload the blob in put_blob.  ex.what() = %s, container = %s, blob = %s, sourcePath = %s.", ex.what(), container.c_str(), blob.c_str(), sourcePath.c_str());
                 errno = unknown_error;
@@ -393,7 +410,7 @@ namespace microsoft_azure {
             {
                 ifs.close();
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 // TODO close failed
                 syslog(LOG_ERR, "Failure to close the input stream in put_blob.  ex.what() = %s, container = %s, blob = %s, sourcePath = %s.", ex.what(), container.c_str(), blob.c_str(), sourcePath.c_str());
@@ -417,7 +434,6 @@ namespace microsoft_azure {
             try
             {
                 auto task = m_blobClient->upload_block_blob_from_stream(container, blob, is, metadata);
-                task.wait();
                 auto result = task.get();
                 if(!result.success())
                 {
@@ -431,9 +447,9 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
-                syslog(LOG_ERR, "Unknown failure in upload_block_blob_from_stream.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
+                syslog(LOG_ERR, "Unknown failure in upload_block_blob_from_stream.  ex.what() = %s, container = %s, blob = %s", ex.what(), container.c_str(), blob.c_str());
                 errno = unknown_error;
             }
         }
@@ -457,7 +473,6 @@ namespace microsoft_azure {
                 /*errno already set by get_file_size*/
                 return;
             }
-            //std::cout << blob << "file size is: " << fileSize << std::endl;
 
             if(fileSize <= 64*1024*1024)
             {
@@ -486,7 +501,7 @@ namespace microsoft_azure {
                 block_size = min_block < MIN_UPLOAD_CHUNK_SIZE ? MIN_UPLOAD_CHUNK_SIZE : min_block;
             }
 
-            std::ifstream ifs(sourcePath);
+            std::ifstream ifs(sourcePath, std::ios::in | std::ios::binary);
             if(!ifs)
             {
                 syslog(LOG_ERR, "Failed to open the input stream in upload_file_to_blob.  errno = %d, sourcePath = %s.", errno, sourcePath.c_str());
@@ -512,38 +527,35 @@ namespace microsoft_azure {
                     }
                 }
                 if (0 != result) {
-                    //std::cout << blob <<  " request failed: " << result << std::endl;
                     break;
                 }
-                int length = block_size;
+                long long length = block_size;
                 if(offset + length > fileSize)
                 {
                     length = fileSize - offset;
                 }
 
-                char* buffer = (char*)malloc(block_size);
+                char* buffer = (char*)malloc(static_cast<size_t>(block_size)); // This cast is save because block size should always be lower than 4GB
                 if (!buffer) {
-                    //std::cout << blob << " failed to allocate buffer" << std::endl;
                     result = 12;
                     break;
                 }
                 if(!ifs.read(buffer, length))
                 {
-                    //std::cout << blob << " failed to read " << length << std::endl;
-                    syslog(LOG_ERR, "Failed to read from input stream in upload_file_to_blob.  sourcePath = %s, container = %s, blob = %s, offset = %lld, length = %d.", sourcePath.c_str(), container.c_str(), blob.c_str(), offset, length);
+                    syslog(LOG_ERR, "Failed to read from input stream in upload_file_to_blob.  sourcePath = %s, container = %s, blob = %s, offset = %lld, length = %d.", sourcePath.c_str(), container.c_str(), blob.c_str(), offset, (int)length);
                     result = unknown_error;
                     break;
                 }
-                uuid_t uuid;
-                char uuid_cstr[37]; // 36 byte uuid plus null.
-                uuid_generate(uuid);
-                uuid_unparse(uuid, uuid_cstr);
-                const std::string block_id(to_base64(uuid_cstr, 36));
+                std::string raw_block_id = std::to_string(idx);
+                //pad the string to length of 6.
+                raw_block_id.insert(raw_block_id.begin(), 12 - raw_block_id.length(), '0');
+                const std::string block_id_un_base64 = raw_block_id + get_uuid();
+                const std::string block_id(to_base64(reinterpret_cast<const unsigned char*>(block_id_un_base64.c_str()), block_id_un_base64.size()));
                 put_block_list_request_base::block_item block;
                 block.id = block_id;
                 block.type = put_block_list_request_base::block_type::uncommitted;
                 block_list.push_back(block);
-                auto single_put = std::async(std::launch::async, [block_id, block_size, idx, this, buffer, offset, length, &container, &blob, &parallel, &mutex, &cv_mutex, &cv](){
+                auto single_put = std::async(std::launch::async, [block_id, this, buffer, length, &container, &blob, &parallel, &mutex, &cv_mutex, &cv](){
                         {
                             std::unique_lock<std::mutex> lk(cv_mutex);
                             cv.wait(lk, [&parallel, &mutex]() {
@@ -645,7 +657,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Unknown failure in download_blob_to_stream.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
                 errno = unknown_error;
@@ -694,16 +706,8 @@ namespace microsoft_azure {
                 const auto originalEtag = firstChunk.response().etag;
                 const auto length = static_cast<unsigned long long>(firstChunk.response().totalSize);
 
-                // Resize the target file.
-                auto fd = open(destPath.c_str(), O_WRONLY, 0770);
-                if (-1 == fd) {
-                    return;
-                }
-                if (-1 == ftruncate(fd, length)) {
-                    close(fd);
-                    return;
-                } 
-                close(fd);
+                // Create or resize the target file if already exist.
+                create_or_resize_file(destPath, length);
 
                 // Download the rest.
                 const auto left = length - firstChunk.response().size;
@@ -752,7 +756,7 @@ namespace microsoft_azure {
                 }
                 errno = errcode;
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Unknown failure in download_blob_to_file.  ex.what() = %s, container = %s, blob = %s, destPath = %s.", ex.what(), container.c_str(), blob.c_str(), destPath.c_str());
                 errno = unknown_error;
@@ -785,7 +789,7 @@ namespace microsoft_azure {
                     return result.response();
                 }
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Unknown failure in get_blob_property.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
                 errno = unknown_error;
@@ -811,7 +815,7 @@ namespace microsoft_azure {
                 }
                 return false;
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Unknown failure in blob_exists.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
                 errno = unknown_error;
@@ -847,7 +851,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Unknown failure in delete_blob.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
                 errno = unknown_error;
@@ -885,7 +889,7 @@ namespace microsoft_azure {
                     errno = 0;
                 }
             }
-            catch(const std::exception &ex)
+            catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Unknown failure in start_copy.  ex.what() = %s, sourceContainer = %s, sourceBlob = %s, destContainer = %s, destBlob = %s.", ex.what(), sourceContainer.c_str(), sourceBlob.c_str(), destContainer.c_str(), destBlob.c_str());
                 errno = unknown_error;

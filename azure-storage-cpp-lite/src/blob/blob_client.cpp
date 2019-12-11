@@ -182,11 +182,18 @@ storage_outcome<container_property> blob_client::get_container_property(const st
     return results;
 }*/
 
-std::future<storage_outcome<list_containers_response>> blob_client::list_containers(const std::string &prefix, bool include_metadata) {
+std::future<storage_outcome<list_containers_response>> blob_client::list_containers(
+        const std::string &prefix,
+        const std::string& continuation_token,
+        const int max_result,
+        bool include_metadata)
+{
     auto http = m_client->get_handle();
 
     auto request = std::make_shared<list_containers_request>(prefix, include_metadata);
-    request->set_maxresults(2);
+    request->set_maxresults(max_result);
+	
+	request->set_marker(continuation_token);
 
     return async_executor<list_containers_response>::submit(m_account, request, http, m_context);
 }
@@ -205,7 +212,7 @@ std::future<storage_outcome<list_blobs_hierarchical_response>> blob_client::list
 
     auto request = std::make_shared<list_blobs_hierarchical_request>(container, delimiter, continuation_token, prefix);
     request->set_maxresults(max_results);
-    request->set_includes(static_cast<list_blobs_request_base::include>(list_blobs_request_base::include::metadata | list_blobs_request_base::include::copy));
+    request->set_includes(list_blobs_request_base::include::metadata);
 
     return async_executor<list_blobs_hierarchical_response>::submit(m_account, request, http, m_context);
 }

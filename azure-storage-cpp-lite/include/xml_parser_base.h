@@ -14,6 +14,7 @@ namespace storage {
 
 class xml_parser_base {
 public:
+        virtual ~xml_parser_base() {}
     virtual storage_error parse_storage_error(const std::string &) const = 0;
 
     template<typename RESPONSE_TYPE>

@@ -30,6 +30,8 @@
 #include <fuse.h>
 #include <stddef.h>
 #include "blob/blob_client.h"
+#include "OAuthToken.h"
+#include "OAuthTokenCredentialManager.h"
 
 #define UNREFERENCED_PARAMETER(p) (p)
 
@@ -121,9 +123,14 @@ struct fhwrapper
 struct str_options
 {
     std::string accountName;
+    std::string authType;
     std::string blobEndpoint;
     std::string accountKey;
     std::string sasToken;
+    std::string clientId;
+    std::string objectId;
+    std::string resourceId;
+    std::string msiEndpoint;
     std::string containerName;
     std::string tmpPath;
     bool use_https;
@@ -151,6 +158,15 @@ extern const std::string former_directory_signifier;
 // Helper function to map an HTTP error to an errno.
 // Should be called on any errno returned from the Azure Storage cpp lite lib.
 int map_errno(int error);
+
+enum auth_type {
+    MSI_AUTH,
+    SAS_AUTH,
+    KEY_AUTH,
+    INVALID_AUTH
+};
+
+auth_type get_auth_type();
 
 // Read Storage connection information from the config file
 int read_config(std::string configFile);
