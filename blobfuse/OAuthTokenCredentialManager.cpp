@@ -265,7 +265,7 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
     };
 }
 
-std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std::string tenant_id_p, std::string client_id_p, std::string client_secret_p)
+std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std::string tenant_id_p, std::string client_id_p, std::string client_secret_p, std::string aad_endpoint_p)
 {
     // Requesting a service principal token requires we folow the client creds flow.
     // https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-client-creds-grant-flow
@@ -275,7 +275,16 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
 
     // Step 1: Construct the URL
     std::shared_ptr<microsoft_azure::storage::storage_url> uri_token_request_url = std::make_shared<microsoft_azure::storage::storage_url>();
-    uri_token_request_url->set_domain(constants::oauth_request_uri);
+
+    if(aad_endpoint_p.empty())
+    {
+        uri_token_request_url->set_domain(constants::oauth_request_uri);
+    }
+    else
+    {
+        uri_token_request_url = parse_url(aad_endpoint_p);
+    }
+
     uri_token_request_url->append_path(tenant_id_p + "/" + constants::spn_request_path); // /tenant/oauth2/v2.0/token
 
     // Step 2: Construct the body query
@@ -283,6 +292,8 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
     queryString.append("&scope=" + encode_query_element(std::string(constants::param_oauth_resource_data) + ".default")); // &scope=https://storage.azure.com/.default
     queryString.append("&client_secret=" + encode_query_element(client_secret_p)); // &client_secret=...
     queryString.append("&grant_type=client_credentials"); // &grant_type=client_credentials
+
+    printf("%s\n", uri_token_request_url->to_string().c_str());
 
     return [uri_token_request_url, queryString](std::shared_ptr<CurlEasyClient> http_client) {
         std::shared_ptr<CurlEasyRequest> request_handle = http_client->get_handle();

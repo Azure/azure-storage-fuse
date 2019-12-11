@@ -88,6 +88,12 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * `AZURE_STORAGE_IDENTITY_RESOURCE_ID`: Only one of these three parameters are needed if multiple identities are present on the system.
     * `AZURE_STORAGE_MANAGED_IDENTITY_ENDPOINT`: Specifies a custom managed identity endpoint, as IMDS may not be available under some scenarios. Uses the `AZURE_STORAGE_IDENTITY_CLIENT_ID` parameter as the `Secret` header.
 
+- Service Principal Name auth:
+    * `AZURE_STORAGE_SPN_CLIENT_ID`: Specifies the client ID for your application registration
+    * `AZURE_STORAGE_SPN_TENANT_ID`: Specifies the tenant ID for your application registration
+    * `AZURE_STORAGE_AAD_ENDPOINT`: Specifies a custom AAD endpoint to authenticate against
+    * `AZURE_STORAGE_SPN_CLIENT_SECRET`: Specifies the client secret for your application registration.
+
 ### Config file options
 
 - General options
@@ -106,6 +112,12 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * `identityObjectId`: Only one of these three parameters are needed if multiple identities are present on the system.
     * `identityResourceId`: Only one of these three parameters are needed if multiple identities are present on the system.
     * `msiEndpoint`: Specifies a custom managed identity endpoint, as IMDS may not be available under some scenarios. Uses the `identityClientId` parameter as the `Secret` header.
+
+- Service Principal Name auth:
+    * `servicePrincipalClientId`: Specifies the client ID for your application registration
+    * `servicePrincipalTenantId`: Specifies the tenant ID for your application registration
+    * `aadEndpoint`: Specifies a custom AAD endpoint to authenticate against
+    * (environment variable) `AZURE_STORAGE_SPN_CLIENT_SECRET`: Specifies the client secret for your application registration. Please store this in the environment variable, not a config option.
 
 ## Considerations
 

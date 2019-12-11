@@ -85,6 +85,7 @@ int read_config_env()
     char* env_spn_tenant_id = getenv("AZURE_STORAGE_SPN_TENANT_ID");
     char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
     char* env_auth_type = getenv("AZURE_STORAGE_AUTH_TYPE");
+    char* env_aad_endpoint = getenv("AZURE_STORAGE_AAD_ENDPOINT");
 
     if(env_account)
     {
@@ -138,6 +139,11 @@ int read_config_env()
         if(env_auth_type)
         {
             str_options.authType = env_auth_type;
+        }
+
+        if(env_aad_endpoint)
+        {
+            str_options.aadEndpoint = env_auth_type;
         }
 
         if(env_blob_endpoint) {
@@ -295,6 +301,11 @@ int read_config(const std::string configFile)
             std::string spTenantIdStr(value);
             str_options.spnTenantId = spTenantIdStr;
         }
+        else if(line.find("aadEndpoint") != std::string::npos)
+        {
+            std::string altAADEndpointStr(value);
+            str_options.aadEndpoint = altAADEndpointStr;
+        }
 
         data.clear();
     }
@@ -359,12 +370,14 @@ void *azs_init(struct fuse_conn_info * conn)
                 OTMCallback = SetUpMSICallback(
                         str_options.identityClientId,
                         str_options.objectId,
-                        str_options.resourceId);
+                        str_options.resourceId,
+                        str_options.msiEndpoint);
             } else {
                 OTMCallback = SetUpSPNCallback(
                         str_options.spnTenantId,
                         str_options.spnClientId,
-                        str_options.spnClientSecret);
+                        str_options.spnClientSecret,
+                        str_options.aadEndpoint);
             }
 
             GetTokenManagerInstance(OTMCallback); // We supply a default callback because we asssume that the oauth token manager has not initialized yet.
@@ -415,12 +428,14 @@ void *azs_init(struct fuse_conn_info * conn)
                 OTMCallback = SetUpMSICallback(
                         str_options.identityClientId,
                         str_options.objectId,
-                        str_options.resourceId);
+                        str_options.resourceId,
+                        str_options.msiEndpoint);
             } else {
                 OTMCallback = SetUpSPNCallback(
                         str_options.spnTenantId,
                         str_options.spnClientId,
-                        str_options.spnClientSecret);
+                        str_options.spnClientSecret,
+                        str_options.aadEndpoint);
             }
 
             GetTokenManagerInstance(OTMCallback);
@@ -733,12 +748,14 @@ int validate_storage_connection()
                 OTMCallback = SetUpMSICallback(
                         str_options.identityClientId,
                         str_options.objectId,
-                        str_options.resourceId);
+                        str_options.resourceId,
+                        str_options.msiEndpoint);
             } else {
                 OTMCallback = SetUpSPNCallback(
                         str_options.spnTenantId,
                         str_options.spnClientId,
-                        str_options.spnClientSecret);
+                        str_options.spnClientSecret,
+                        str_options.aadEndpoint);
             }
 
             std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(OTMCallback);

@@ -230,8 +230,6 @@ namespace microsoft_azure {
 
                 static size_t read(char *buffer, size_t size, size_t nitems, void *userdata)
                 {
-                    syslog(LOG_INFO, "Attempting to read body");
-
                     REQUEST_TYPE *p = static_cast<REQUEST_TYPE *>(userdata);
                     auto &s = p->m_input_stream.istream();
                     size_t contentlen = p->get_input_content_length();

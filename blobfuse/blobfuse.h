@@ -131,6 +131,7 @@ struct str_options
     std::string spnClientId;
     std::string spnClientSecret;
     std::string spnTenantId;
+    std::string aadEndpoint;
     std::string objectId;
     std::string resourceId;
     std::string msiEndpoint;
