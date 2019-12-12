@@ -403,7 +403,7 @@ void print_usage()
 
 void print_version()
 {
-    fprintf(stdout, "blobfuse 1.1.3\n");
+    fprintf(stdout, "blobfuse 1.2.1\n");
 }
 
 int set_log_mask(const char * min_log_level_char)
@@ -700,12 +700,14 @@ int validate_storage_connection()
         }
         else
         {
-            syslog(LOG_ERR, "Unable to start blobfuse, no good credentials were entered //TODO better error note");
+            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            errno = 1;
         }
         if(errno != 0)
         {
             syslog(LOG_CRIT, "Unable to start blobfuse.  Creating local blob client failed: errno = %d.\n", errno);
-            fprintf(stderr, "Creating blob client failed: errno = %d.\n", errno);
+            fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups."
+                            " Creating blob client failed: errno = %d.\n", errno);
             return 1;
         }
 
