@@ -93,7 +93,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 - General options
     * `accountName`: Specifies the storage account blobfuse targets.
     * `blobEndpoint`: Specifies the blob endpoint to use. Defaults to *.blob.core.windows.net, but is useful for targeting storage emulators.
-    * `authType`: Overrides the currently specified auth type. Options: Key, SAS, MSI
+    * `authType`: Overrides the currently specified auth type. Options: Key, SAS, MSI (Using this option is only available for 1.2.0 or above)
 
 - Account key auth:
     * `accountKey`: Specifies the storage account key to use for authentication.
@@ -101,7 +101,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 - SAS token auth:
     * `sasToken`: Specifies the SAS token to use for authentication.
 
-- Managed Identity auth:
+- Managed Identity auth: (Only available for 1.2.0 or above)
     * `identityClientId`: If a MI endpoint is specified, this is the only parameter used, in the form of the `Secret` header. Only one of these three parameters are needed if multiple identities are present on the system.
     * `identityObjectId`: Only one of these three parameters are needed if multiple identities are present on the system.
     * `identityResourceId`: Only one of these three parameters are needed if multiple identities are present on the system.
