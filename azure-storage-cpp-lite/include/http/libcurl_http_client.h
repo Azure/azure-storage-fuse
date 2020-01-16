@@ -127,6 +127,7 @@ namespace microsoft_azure {
                     m_input_stream = s;
                     check_code(curl_easy_setopt(m_curl, CURLOPT_READFUNCTION, read));
                     check_code(curl_easy_setopt(m_curl, CURLOPT_READDATA, this));
+                    check_code(curl_easy_setopt(m_curl, CURLOPT_POSTFIELDS, nullptr)); // CURL won't actually read data on POSTs unless this is explicitly set.
                 }
 
                 void set_input_buffer(char* buff) override
@@ -134,6 +135,7 @@ namespace microsoft_azure {
                     m_input_buffer = buff;
                     check_code(curl_easy_setopt(m_curl, CURLOPT_READFUNCTION, read));
                     check_code(curl_easy_setopt(m_curl, CURLOPT_READDATA, this));
+                    check_code(curl_easy_setopt(m_curl, CURLOPT_POSTFIELDS, nullptr)); // CURL won't actually read data on POSTs unless this is explicitly set.
                 }
 
                 void set_input_content_length(size_t content_length)

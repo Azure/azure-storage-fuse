@@ -69,4 +69,14 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(
         std::string resource_id_p = "",
         std::string msi_endpoint_p = "");
 
+/// <summary>
+/// SetUpSPNCallback sets up a refresh callback for service principal auth. This should be used to create a OAuthTokenManager instance.
+/// </summary>
+std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(
+        std::string tenant_id_p = "",
+        std::string client_id_p = "",
+        std::string client_secret_p = "",
+        std::string aad_endpoint_p = "");
+// BIG CONCERN: Taking in credentials via a plaintext file is a no-no security wise. For now, they'll only be taken in via the environment variable.
+
 #endif
