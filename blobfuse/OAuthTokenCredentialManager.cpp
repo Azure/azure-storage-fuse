@@ -192,23 +192,28 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
     bool custom_endpoint = !msi_endpoint_p.empty();
     if (!custom_endpoint) {
         uri_token_request_url = parse_url(constants::msi_request_uri);
+
+        if(!client_id_p.empty())
+        {
+            uri_token_request_url->add_query(constants::param_client_id, client_id_p);
+        }
+        if(!object_id_p.empty())
+        {
+            uri_token_request_url->add_query(constants::param_object_id, object_id_p);
+        }
+        if(!resource_id_p.empty())
+        {
+            uri_token_request_url->add_query(constants::param_mi_res_id, resource_id_p);
+        }
     }
     else
     {
         uri_token_request_url = parse_url(msi_endpoint_p);
-    }
 
-    if(!client_id_p.empty())
-    {
-        uri_token_request_url->add_query(constants::param_client_id, client_id_p);
-    }
-    if(!object_id_p.empty())
-    {
-        uri_token_request_url->add_query(constants::param_object_id, object_id_p);
-    }
-    if(!resource_id_p.empty())
-    {
-        uri_token_request_url->add_query(constants::param_mi_res_id, resource_id_p);
+        if(!client_id_p.empty())
+        { // The alternate endpoint in the doc uses clientid as its parameter name, not client_id.
+            uri_token_request_url->add_query("clientid", client_id_p);
+        }
     }
 
     uri_token_request_url->add_query(constants::param_mi_api_version, constants::param_mi_api_version_data);
