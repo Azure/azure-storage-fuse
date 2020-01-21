@@ -81,8 +81,8 @@ int read_config_env()
     char* env_identity_client_id = getenv("AZURE_STORAGE_IDENTITY_CLIENT_ID");
     char* env_identity_object_id = getenv("AZURE_STORAGE_IDENTITY_OBJECT_ID");
     char* env_identity_resource_id = getenv("AZURE_STORAGE_IDENTITY_RESOURCE_ID");
-    char* env_managed_identity_endpoint = getenv("AZURE_STORAGE_MANAGED_IDENTITY_ENDPOINT");
-    char* env_managed_identity_secret = getenv("AZURE_STORAGE_MANAGED_IDENTITY_SECRET");
+    char* env_managed_identity_endpoint = getenv("MSI_ENDPOINT");
+    char* env_managed_identity_secret = getenv("MSI_SECRET");
     char* env_spn_client_id = getenv("AZURE_STORAGE_SPN_CLIENT_ID");
     char* env_spn_tenant_id = getenv("AZURE_STORAGE_SPN_TENANT_ID");
     char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
@@ -233,7 +233,7 @@ int read_config(const std::string configFile)
     std::istringstream data;
 
     char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
-    char* env_msi_secret = getenv("AZURE_STORAGE_MANAGED_IDENTITY_SECRET");
+    char* env_msi_secret = getenv("MSI_SECRET");
 
     if (env_spn_client_secret) {
         str_options.spnClientSecret = env_spn_client_secret;
