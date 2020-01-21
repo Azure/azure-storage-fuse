@@ -67,7 +67,8 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(
         std::string client_id_p = "",
         std::string object_id_p = "",
         std::string resource_id_p = "",
-        std::string msi_endpoint_p = "");
+        std::string msi_endpoint_p = "",
+        std::string msi_secret_p = "");
 
 /// <summary>
 /// SetUpSPNCallback sets up a refresh callback for service principal auth. This should be used to create a OAuthTokenManager instance.

@@ -82,6 +82,7 @@ int read_config_env()
     char* env_identity_object_id = getenv("AZURE_STORAGE_IDENTITY_OBJECT_ID");
     char* env_identity_resource_id = getenv("AZURE_STORAGE_IDENTITY_RESOURCE_ID");
     char* env_managed_identity_endpoint = getenv("AZURE_STORAGE_MANAGED_IDENTITY_ENDPOINT");
+    char* env_managed_identity_secret = getenv("AZURE_STORAGE_MANAGED_IDENTITY_SECRET");
     char* env_spn_client_id = getenv("AZURE_STORAGE_SPN_CLIENT_ID");
     char* env_spn_tenant_id = getenv("AZURE_STORAGE_SPN_TENANT_ID");
     char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
@@ -135,6 +136,11 @@ int read_config_env()
         if(env_managed_identity_endpoint)
         {
             str_options.msiEndpoint = env_managed_identity_endpoint;
+        }
+
+        if(env_managed_identity_secret)
+        {
+            str_options.msiSecret = env_managed_identity_secret;
         }
 
         if(env_auth_type)
@@ -227,9 +233,14 @@ int read_config(const std::string configFile)
     std::istringstream data;
 
     char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
+    char* env_msi_secret = getenv("AZURE_STORAGE_MANAGED_IDENTITY_SECRET");
 
     if (env_spn_client_secret) {
         str_options.spnClientSecret = env_spn_client_secret;
+    }
+
+    if (env_msi_secret) {
+        str_options.msiSecret = env_msi_secret;
     }
 
     while(std::getline(file, line))
@@ -347,7 +358,8 @@ void *azs_init(struct fuse_conn_info * conn)
                         str_options.identityClientId,
                         str_options.objectId,
                         str_options.resourceId,
-                        str_options.msiEndpoint);
+                        str_options.msiEndpoint,
+                        str_options.msiSecret);
             } else {
                 OTMCallback = SetUpSPNCallback(
                         str_options.spnTenantId,
@@ -401,7 +413,8 @@ void *azs_init(struct fuse_conn_info * conn)
                         str_options.identityClientId,
                         str_options.objectId,
                         str_options.resourceId,
-                        str_options.msiEndpoint);
+                        str_options.msiEndpoint,
+                        str_options.msiSecret);
             } else {
                 OTMCallback = SetUpSPNCallback(
                         str_options.spnTenantId,
@@ -743,7 +756,8 @@ int validate_storage_connection()
                         str_options.identityClientId,
                         str_options.objectId,
                         str_options.resourceId,
-                        str_options.msiEndpoint);
+                        str_options.msiEndpoint,
+                        str_options.msiSecret);
             } else {
                 OTMCallback = SetUpSPNCallback(
                         str_options.spnTenantId,

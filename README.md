@@ -83,10 +83,11 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * `AZURE_STORAGE_SAS_TOKEN`: Specifies the SAS token to use for authentication.
 
 - Managed Identity auth:
-    * `AZURE_STORAGE_IDENTITY_CLIENT_ID`: If a MI endpoint is specified, this is the only parameter used, in the form of the `Secret` header. Only one of these three parameters are needed if multiple identities are present on the system.
+    * `AZURE_STORAGE_IDENTITY_CLIENT_ID`: Only one of these three parameters are needed if multiple identities are present on the system.
     * `AZURE_STORAGE_IDENTITY_OBJECT_ID`: Only one of these three parameters are needed if multiple identities are present on the system.
     * `AZURE_STORAGE_IDENTITY_RESOURCE_ID`: Only one of these three parameters are needed if multiple identities are present on the system.
-    * `AZURE_STORAGE_MANAGED_IDENTITY_ENDPOINT`: Specifies a custom managed identity endpoint, as IMDS may not be available under some scenarios. Uses the `AZURE_STORAGE_IDENTITY_CLIENT_ID` parameter as the `Secret` header.
+    * `AZURE_STORAGE_MANAGED_IDENTITY_ENDPOINT`: Specifies a custom managed identity endpoint, as IMDS may not be available under some scenarios. Uses the `AZURE_STORAGE_MANAGED_IDENTITY_SECRET` parameter as the `Secret` header.
+    * `AZURE_STORAGE_MANAGED_IDENTITY_SECRET`: Specifies a custom secret for an alternate managed identity endpoint.
 
 - Service Principal Name auth:
     * `AZURE_STORAGE_SPN_CLIENT_ID`: Specifies the client ID for your application registration
@@ -112,6 +113,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * `identityObjectId`: Only one of these three parameters are needed if multiple identities are present on the system.
     * `identityResourceId`: Only one of these three parameters are needed if multiple identities are present on the system.
     * `msiEndpoint`: Specifies a custom managed identity endpoint, as IMDS may not be available under some scenarios. Uses the `identityClientId` parameter as the `Secret` header.
+    * (environment variable) `AZURE_STORAGE_MANAGED_IDENTITY_SECRET`: Specifies a custom secret for an alternate managed identity endpoint.
 
 - Service Principal Name auth:
     * `servicePrincipalClientId`: Specifies the client ID for your application registration
