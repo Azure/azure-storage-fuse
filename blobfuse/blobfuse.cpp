@@ -205,7 +205,7 @@ auth_type get_auth_type() {
             return SPN_AUTH;
         }
     } else {
-        if (!str_options.objectId.empty() || !str_options.identityClientId.empty() || !str_options.resourceId.empty()) {
+        if (!str_options.objectId.empty() || !str_options.identityClientId.empty() || !str_options.resourceId.empty() || !str_options.msiSecret.empty() || !str_options.msiEndpoint.empty()) {
             return MSI_AUTH;
         } else if (!str_options.accountKey.empty()) {
             return KEY_AUTH;
