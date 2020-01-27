@@ -663,7 +663,11 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     {
         // First let's normalize the path
         // Don't use canonical because that will check for path existence and permissions
+#if BOOST_VERSION > 106000 // lexically_normal was added in boost 1.60.0; ubuntu 16 is only up to 1.58.0
         tmpPathStr = boost::filesystem::path(tmpPathStr).lexically_normal().string();
+#else
+        tmpPathStr = boost::filesystem::path(tmpPathStr).normalize().string();
+#endif
 
         // Double check that we have not just emptied this string
         if (!tmpPathStr.empty())
