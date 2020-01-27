@@ -482,9 +482,14 @@ void print_usage()
     fprintf(stdout, "Usage: blobfuse <mount-folder> --tmp-path=</path/to/fusecache> [--config-file=</path/to/config.cfg> | --container-name=<containername>]");
     fprintf(stdout, "    [--use-https=true] [--file-cache-timeout-in-seconds=120] [--log-level=LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG] [--use-attr-cache=true]\n\n");
     fprintf(stdout, "In addition to setting --tmp-path parameter, you must also do one of the following:\n");
-    fprintf(stdout, "1. Specify a config file (using --config-file]=) with account name, account key, and container name, OR\n");
-    fprintf(stdout, "2. Set the environment variables AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCESS_KEY, and specify the container name with --container-name=\n\n");
-    fprintf(stdout, "See https://github.com/Azure/azure-storage-fuse for detailed installation and configuration instructions.\n");
+    fprintf(stdout, "1. Specify a config file (using --config-file]=) with account name (accountName), container name (containerName), and\n");
+    fprintf(stdout,  "\ta. account key (accountKey),\n");
+    fprintf(stdout,  "\tb. account SAS token (sasToken),\n");
+    fprintf(stdout,  "\tc. valid service principal credentials (servicePrincipalClientId, servicePrincipalTenantId, and environment variable AZURE_STORAGE_SPN_CLIENT_SECRET) with access to the storage account or,\n");
+    fprintf(stdout,  "\td. valid MSI credentials (one or none of identityClientId, identityObjectId, identityResourceId) with access to the storage account. Custom endpoints w/ secrets can be used via msiEndpoint and MSI_SECRET\n");
+    fprintf(stdout, "2. Set the environment variables AZURE_STORAGE_ACCOUNT and (AZURE_STORAGE_ACCESS_KEY or AZURE_STORAGE_SAS_TOKEN), and specify the container name with --container-name=\n\n");
+    fprintf(stdout, "\n");
+    fprintf(stdout, "See https://github.com/Azure/azure-storage-fuse for detailed installation and advanced configuration instructions, including SPN and MSI via environment variables.\n");
 }
 
 void print_version()
