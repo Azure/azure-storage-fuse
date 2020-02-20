@@ -14,6 +14,7 @@
 #include <vector>
 
 #include <curl/curl.h>
+#include <syslog.h>
 
 #include "storage_EXPORTS.h"
 
@@ -82,6 +83,9 @@ namespace microsoft_azure {
                 void submit(std::function<void(http_code, storage_istream, CURLcode)> cb, std::chrono::seconds interval) override {
                     std::this_thread::sleep_for(interval);
                     const auto curlCode = perform();
+
+                    syslog(LOG_INFO, "%s", format_request_response().c_str());
+
                     cb(m_code, m_error_stream, curlCode);
                 }
 
@@ -211,6 +215,46 @@ namespace microsoft_azure {
                 std::function<bool(http_code)> m_switch_error_callback;
                 http_code m_code;
                 std::map<std::string, std::string, case_insensitive_compare> m_headers;
+
+                std::string format_request_response()
+                {
+                    std::string out;
+                    auto currentTime = std::time(nullptr);
+                    auto timestamp = std::asctime(std::localtime(&currentTime));
+
+                    out += timestamp;
+                    out.erase(out.end()-1);
+                    out += " ==> REQUEST/RESPONSE\n";
+                    out += "\t" + http_method_label[m_method] + " " + m_url + "\n";
+
+                    // our headers
+                    for(auto x = m_slist; x->next != nullptr; x = x->next) {
+                        std::string header = std::string(x->data);
+                        auto splitAt = header.find(':');
+
+                        if (splitAt != header.length() - 1) {
+                            std::string name = header.substr(0, splitAt);
+                            std::string value = header.substr(splitAt + 2);
+
+                            out = out.append("\t").append(name).append(": [").append(value).append("]\n");
+                        } else {
+                            out = out.append("\t").append(header.substr(0, splitAt)).append(": []").append("\n");
+                        }
+                    }
+
+                    out += "\t--------------------------------------------------------------------------------\n";
+                    out += "\tRESPONSE Status: " + std::to_string(m_code) + "\n";
+
+                    // their headers
+                    for(const auto& pair : m_headers) {
+                        auto lineReturn = pair.second.find('\n');
+                        // ternary statement also trims the carriage return character, which accidentally clears lines.
+                        auto trimmed_str = pair.second.substr(0, pair.second[lineReturn - 1] == '\r' ? lineReturn - 1 : lineReturn );
+                        out = out.append("\t").append(pair.first).append(": [").append(trimmed_str).append("]\n");
+                    }
+
+                    return out;
+                }
 
                 AZURE_STORAGE_API static size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata);
 

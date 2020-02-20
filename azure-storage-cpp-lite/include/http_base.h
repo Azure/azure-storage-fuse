@@ -20,6 +20,13 @@ namespace microsoft_azure {
                 post,
                 put
             };
+            std::map<http_method, std::string> http_method_label = {
+                    {http_method::del,"DELETE"},
+                    {http_method::get,"GET"},
+                    {http_method::head,"HEAD"},
+                    {http_method::post,"POST"},
+                    {http_method::put,"PUT"},
+            };
 
             virtual ~http_base() {}
 
