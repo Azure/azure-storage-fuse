@@ -170,20 +170,6 @@ int read_config_env()
     return 0;
 }
 
-std::string to_lower(std::string original) {
-    std::string out;
-
-    for (auto idx = original.begin(); idx < original.end(); idx++) {
-        if(*idx >= 'A' && *idx <= 'Z') {
-            out += char(*idx + 32); // This cast isn't required, but clang-tidy wants to complain without it.
-        } else {
-            out += *idx;
-        }
-    }
-
-    return out;
-}
-
 auth_type get_auth_type() {
     std::string lcAuthType = to_lower(str_options.authType);
 

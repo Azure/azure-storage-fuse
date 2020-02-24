@@ -7,8 +7,19 @@
 namespace microsoft_azure {
     namespace storage {
 
+        std::string to_lower(std::string original) {
+            std::string out;
 
+            for (auto idx = original.begin(); idx < original.end(); idx++) {
+                if(*idx >= 'A' && *idx <= 'Z') {
+                    out += char(*idx + 32); // This cast isn't required, but clang-tidy wants to complain without it.
+                } else {
+                    out += *idx;
+                }
+            }
 
+            return out;
+        }
 
         CurlEasyRequest::CurlEasyRequest(std::shared_ptr<CurlEasyClient> client, CURL *h)
         : m_client(client),

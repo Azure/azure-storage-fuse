@@ -74,7 +74,6 @@ void from_json(const json &j, OAuthToken &t) {
         }
         else
         {
-            printf("no expon");
             expon_failed = true;
         }
     } catch(std::exception&){

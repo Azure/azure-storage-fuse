@@ -15,6 +15,7 @@
 
 #include <curl/curl.h>
 #include <syslog.h>
+#include <utility.h>
 
 #include "storage_EXPORTS.h"
 
@@ -22,6 +23,8 @@
 
 namespace microsoft_azure {
     namespace storage {
+
+        std::string to_lower(std::string original);
 
         class CurlEasyClient;
 
@@ -84,7 +87,7 @@ namespace microsoft_azure {
                     std::this_thread::sleep_for(interval);
                     const auto curlCode = perform();
 
-                    syslog(LOG_INFO, "%s", format_request_response().c_str());
+                    syslog(curlCode != CURLE_OK || unsuccessful(m_code) ? LOG_ERR : LOG_DEBUG, "%s", format_request_response().c_str());
 
                     cb(m_code, m_error_stream, curlCode);
                 }
@@ -222,10 +225,26 @@ namespace microsoft_azure {
                     auto currentTime = std::time(nullptr);
                     auto timestamp = std::asctime(std::localtime(&currentTime));
 
+                    auto sigLoc = m_url.find("sig=");
+                    auto tmpURL = m_url;
+
+                    if (sigLoc != std::string::npos) {
+                        // Find the string and replace the segment
+                        for(auto i = sigLoc; i < tmpURL.length(); i++) {
+                            if(tmpURL[i] == '&' || i == tmpURL.length()-1) {
+                                auto count =
+                                        (i - sigLoc) + // The real count, if we landed on &
+                                        (i == tmpURL.length() - 1 ? 1 : 0); // If we're at the end, trim to the end.
+                                tmpURL.replace(sigLoc, count, "sig=REDACTED");
+                                break;
+                            }
+                        }
+                    }
+
                     out += timestamp;
                     out.erase(out.end()-1);
                     out += " ==> REQUEST/RESPONSE\n";
-                    out += "\t" + http_method_label[m_method] + " " + m_url + "\n";
+                    out += "\t" + http_method_label[m_method] + " " + tmpURL + "\n";
 
                     // our headers
                     for(auto x = m_slist; x->next != nullptr; x = x->next) {
@@ -235,6 +254,10 @@ namespace microsoft_azure {
                         if (splitAt != header.length() - 1) {
                             std::string name = header.substr(0, splitAt);
                             std::string value = header.substr(splitAt + 2);
+
+                            if(to_lower(name) == "authorization") {
+                                value = "REDACTED";
+                            }
 
                             out = out.append("\t").append(name).append(": [").append(value).append("]\n");
                         } else {
