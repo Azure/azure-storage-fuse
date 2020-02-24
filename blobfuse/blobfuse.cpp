@@ -81,7 +81,8 @@ int read_config_env()
     char* env_identity_client_id = getenv("AZURE_STORAGE_IDENTITY_CLIENT_ID");
     char* env_identity_object_id = getenv("AZURE_STORAGE_IDENTITY_OBJECT_ID");
     char* env_identity_resource_id = getenv("AZURE_STORAGE_IDENTITY_RESOURCE_ID");
-    char* env_managed_identity_endpoint = getenv("AZURE_STORAGE_MANAGED_IDENTITY_ENDPOINT");
+    char* env_managed_identity_endpoint = getenv("MSI_ENDPOINT");
+    char* env_managed_identity_secret = getenv("MSI_SECRET");
     char* env_spn_client_id = getenv("AZURE_STORAGE_SPN_CLIENT_ID");
     char* env_spn_tenant_id = getenv("AZURE_STORAGE_SPN_TENANT_ID");
     char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
@@ -137,6 +138,11 @@ int read_config_env()
             str_options.msiEndpoint = env_managed_identity_endpoint;
         }
 
+        if(env_managed_identity_secret)
+        {
+            str_options.msiSecret = env_managed_identity_secret;
+        }
+
         if(env_auth_type)
         {
             str_options.authType = env_auth_type;
@@ -164,20 +170,6 @@ int read_config_env()
     return 0;
 }
 
-std::string to_lower(std::string original) {
-    std::string out;
-
-    for (auto idx = original.begin(); idx < original.end(); idx++) {
-        if(*idx >= 'A' && *idx <= 'Z') {
-            out += char(*idx + 32); // This cast isn't required, but clang-tidy wants to complain without it.
-        } else {
-            out += *idx;
-        }
-    }
-
-    return out;
-}
-
 auth_type get_auth_type() {
     std::string lcAuthType = to_lower(str_options.authType);
 
@@ -199,7 +191,7 @@ auth_type get_auth_type() {
             return SPN_AUTH;
         }
     } else {
-        if (!str_options.objectId.empty() || !str_options.identityClientId.empty() || !str_options.resourceId.empty()) {
+        if (!str_options.objectId.empty() || !str_options.identityClientId.empty() || !str_options.resourceId.empty() || !str_options.msiSecret.empty() || !str_options.msiEndpoint.empty()) {
             return MSI_AUTH;
         } else if (!str_options.accountKey.empty()) {
             return KEY_AUTH;
@@ -227,9 +219,14 @@ int read_config(const std::string configFile)
     std::istringstream data;
 
     char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
+    char* env_msi_secret = getenv("MSI_SECRET");
 
     if (env_spn_client_secret) {
         str_options.spnClientSecret = env_spn_client_secret;
+    }
+
+    if (env_msi_secret) {
+        str_options.msiSecret = env_msi_secret;
     }
 
     while(std::getline(file, line))
@@ -347,7 +344,8 @@ void *azs_init(struct fuse_conn_info * conn)
                         str_options.identityClientId,
                         str_options.objectId,
                         str_options.resourceId,
-                        str_options.msiEndpoint);
+                        str_options.msiEndpoint,
+                        str_options.msiSecret);
             } else {
                 OTMCallback = SetUpSPNCallback(
                         str_options.spnTenantId,
@@ -401,7 +399,8 @@ void *azs_init(struct fuse_conn_info * conn)
                         str_options.identityClientId,
                         str_options.objectId,
                         str_options.resourceId,
-                        str_options.msiEndpoint);
+                        str_options.msiEndpoint,
+                        str_options.msiSecret);
             } else {
                 OTMCallback = SetUpSPNCallback(
                         str_options.spnTenantId,
@@ -469,9 +468,13 @@ void print_usage()
     fprintf(stdout, "Usage: blobfuse <mount-folder> --tmp-path=</path/to/fusecache> [--config-file=</path/to/config.cfg> | --container-name=<containername>]");
     fprintf(stdout, "    [--use-https=true] [--file-cache-timeout-in-seconds=120] [--log-level=LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG] [--use-attr-cache=true]\n\n");
     fprintf(stdout, "In addition to setting --tmp-path parameter, you must also do one of the following:\n");
-    fprintf(stdout, "1. Specify a config file (using --config-file]=) with account name, account key, and container name, OR\n");
-    fprintf(stdout, "2. Set the environment variables AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCESS_KEY, and specify the container name with --container-name=\n\n");
-    fprintf(stdout, "See https://github.com/Azure/azure-storage-fuse for detailed installation and configuration instructions.\n");
+    fprintf(stdout, "1. Specify a config file (using --config-file]=) with account name (accountName), container name (containerName), and\n");
+    fprintf(stdout,  "\ta. account key (accountKey),\n");
+    fprintf(stdout,  "\tb. account SAS token (sasToken),\n");
+    fprintf(stdout,  "\tc. valid service principal credentials (servicePrincipalClientId, servicePrincipalTenantId, and environment variable AZURE_STORAGE_SPN_CLIENT_SECRET) with access to the storage account or,\n");
+    fprintf(stdout,  "\td. valid MSI credentials (one or none of identityClientId, identityObjectId, identityResourceId) with access to the storage account. Custom endpoints w/ secrets can be used via msiEndpoint and MSI_SECRET\n");
+    fprintf(stdout, "2. Set the environment variables AZURE_STORAGE_ACCOUNT and (AZURE_STORAGE_ACCESS_KEY or AZURE_STORAGE_SAS_TOKEN), and specify the container name with --container-name=\n\n");
+    fprintf(stdout, "See https://github.com/Azure/azure-storage-fuse for detailed installation and advanced configuration instructions, including SPN and MSI via environment variables.\n");
 }
 
 void print_version()
@@ -650,7 +653,11 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     {
         // First let's normalize the path
         // Don't use canonical because that will check for path existence and permissions
+#if BOOST_VERSION > 106000 // lexically_normal was added in boost 1.60.0; ubuntu 16 is only up to 1.58.0
         tmpPathStr = boost::filesystem::path(tmpPathStr).lexically_normal().string();
+#else
+        tmpPathStr = boost::filesystem::path(tmpPathStr).normalize().string();
+#endif
 
         // Double check that we have not just emptied this string
         if (!tmpPathStr.empty())
@@ -743,7 +750,8 @@ int validate_storage_connection()
                         str_options.identityClientId,
                         str_options.objectId,
                         str_options.resourceId,
-                        str_options.msiEndpoint);
+                        str_options.msiEndpoint,
+                        str_options.msiSecret);
             } else {
                 OTMCallback = SetUpSPNCallback(
                         str_options.spnTenantId,

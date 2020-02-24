@@ -185,7 +185,7 @@ std::string encode_query_element(std::string input) {
 /// <summary>
 /// SetUpMSICallback sets up a refresh callback for MSI auth. This should be used to create a OAuthTokenManager instance.
 /// </summary>
-std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std::string client_id_p, std::string object_id_p, std::string resource_id_p, std::string msi_endpoint_p)
+std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std::string client_id_p, std::string object_id_p, std::string resource_id_p, std::string msi_endpoint_p, std::string msi_secret_p)
 {
     // Create the URI token request
     std::shared_ptr<microsoft_azure::storage::storage_url> uri_token_request_url;
@@ -209,19 +209,24 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
     else
     {
         uri_token_request_url = parse_url(msi_endpoint_p);
+
+        if(!client_id_p.empty())
+        { // The alternate endpoint in the doc uses clientid as its parameter name, not client_id.
+            uri_token_request_url->add_query("clientid", client_id_p);
+        }
     }
 
     uri_token_request_url->add_query(constants::param_mi_api_version, constants::param_mi_api_version_data);
     uri_token_request_url->add_query(constants::param_oauth_resource, constants::param_oauth_resource_data);
 
-    return [uri_token_request_url, client_id_p, custom_endpoint](std::shared_ptr<CurlEasyClient> httpClient) {
+    return [uri_token_request_url, msi_secret_p, custom_endpoint](std::shared_ptr<CurlEasyClient> httpClient) {
         // prepare the CURL handle
         std::shared_ptr<CurlEasyRequest> request_handle = httpClient->get_handle();
 
         request_handle->set_url(uri_token_request_url->to_string());
         request_handle->add_header(constants::header_metadata, "true");
         if(custom_endpoint)
-            request_handle->add_header(constants::header_msi_secret, client_id_p);
+            request_handle->add_header(constants::header_msi_secret, msi_secret_p);
 
         request_handle->set_method(http_base::http_method::get);
 
