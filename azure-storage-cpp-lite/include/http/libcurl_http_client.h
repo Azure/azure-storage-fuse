@@ -255,7 +255,7 @@ namespace microsoft_azure {
                             std::string name = header.substr(0, splitAt);
                             std::string value = header.substr(splitAt + 2);
 
-                            if(to_lower(name) == "authorization") {
+                            if(to_lower(name) == "authorization" || to_lower(name) == "secret") {
                                 value = "REDACTED";
                             }
 
