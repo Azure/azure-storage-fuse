@@ -153,8 +153,13 @@ By default, blobfuse will log to syslog.  The default settings will, in some cas
 ### Current Limitations
 - Some file system APIs have not been implemented: readlink, symlink, link, chmod, chown, fsync, lock and extended attribute calls.
 - Not optimized for updating an existing file. blobfuse downloads the entire file to local cache to be able to modify and update the file
+- If the local cache isn't big enough to fit the file you are reading from or writing to the operation will fail. Make sure the cache is big enough to host the biggest file you plan to read or write.
 - When using enabling the "--use-attr-cache" feature, there may be an issue with overflow and will not clear the attribute cache until blobfuse is unmounted
 - See the list of differences between POSIX and blobfuse [here](https://github.com/Azure/azure-storage-fuse/wiki/4.-Limitations-%7C-Differences-from-POSIX)
+
+### Alternative implementations
+
+[Goofys](https://github.com/kahing/goofys) has implemented support for Azure Blob Storage. The project's focus is on performance rather than on POSIX compliance. Goofys also doesn't require a local cache which makes it a good candidate for reading or writing very large files.
 
 ## License
 This project is licensed under MIT.
