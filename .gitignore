@@ -56,3 +56,6 @@ build/
 build/*
 .idea/
 
+# vscode
+.vscode/
+

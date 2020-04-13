@@ -4,6 +4,8 @@
 
 #include "OAuthToken.h"
 #include <iomanip>
+#include <time.h>
+#include <syslog.h>
 
 bool OAuthToken::empty() {
     // We consider a totally unusable oauth token as empty because it doesn't make sense to treat it as a usable one.
@@ -46,6 +48,8 @@ void from_json(const json &j, OAuthToken &t) {
             }
             else {
                 std::string expires_in = val.get<std::string>();
+				
+				//TODO: On 4/12/2020 by Nara. the below line will give garage because it is clearly not a number. Why do this?? 
                 t.expires_in = std::stoi(expires_in);
             }
         }
@@ -69,7 +73,35 @@ void from_json(const json &j, OAuthToken &t) {
             }
             else {
                 std::string expires_on = val.get<std::string>();
-                t.expires_on = std::stoi(expires_on);
+				
+				// try UTC first then use else to implement in local time in AM or PM
+				int utcIndex = expires_on.find("+0000");
+				if ( utcIndex > 19)
+				{ 
+			    // remove tiemzone
+					expires_on = expires_on.substr(0, utcIndex);
+					// remove the trailing space if any
+					expires_on.erase(std::find_if(expires_on.rbegin(), expires_on.rend(), std::bind1st(std::not_equal_to<char>(), ' ')).base(), expires_on.end());
+					// Now remove the milliseconds because strptime is going crazy with those milliseconds anyway we dont use them so.
+					int millisecondsIndex  =  expires_on.find(".");
+					if (millisecondsIndex > 18)
+					{
+						expires_on = expires_on.substr(0, millisecondsIndex);
+					}
+					struct tm timeStruct;
+				// Ref: for formats: https://www.tutorialcup.com/cplusplus/date-time.htm
+					if ((strptime(expires_on.c_str(), "%Y-%m-%d %H:%M:%S", &timeStruct) != NULL)
+						||
+						(strptime(expires_on.c_str(), "%Y-%b-%d %H:%M:%S", &timeStruct) != NULL))				  
+						{								   
+							t.expires_on = timegm(&timeStruct);
+							if (t.expires_on == -1)
+							{
+								fprintf(stderr, "Incorrect UTC date format %s", val.get<std::string>().c_str());
+								syslog(LOG_ERR, "Incorrect UTC date format %s", val.get<std::string>().c_str());
+							}
+						}
+				}
             }
         }
         else
@@ -80,11 +112,19 @@ void from_json(const json &j, OAuthToken &t) {
         expon_failed = true;
     }
 
-    try {
-        std::string not_before;
-        not_before = j.at("not_before");
-        t.not_before = std::stoi(not_before);
-    } catch(std::exception&){} // We don't particularly care about the not_before field in blobfuse.
+	if (j.contains("not_before"))
+    {
+		
+			std::string not_before;
+		try {
+			not_before = j.at("not_before");
+			t.not_before = std::stoi(not_before);
+		} 
+		catch(std::exception&){
+			fprintf(stdout, "Incorrect Not before date %s", not_before.c_str());
+			syslog(LOG_WARNING, "Incorrect Not before date format %s", not_before.c_str());
+		} // We don't particularly care about the not_before field in blobfuse so only throw a warning.
+	}
 
     if(expon_failed) {
         // We can failover and set this manually via expires_in. If expires_in failed as well, there isn't much we can do.
