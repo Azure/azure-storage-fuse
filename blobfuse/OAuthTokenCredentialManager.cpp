@@ -90,11 +90,11 @@ OAuthToken OAuthTokenCredentialManager::refresh_token()
     try {
         fprintf(stdout, "Inside refresh token method, calling refreshTokenCallback\n");
         current_oauth_token = refreshTokenCallback(httpClient);
-	//    std::string json_req_result;
-	// 	json_req_result = "{\"access_token\": \"eyJ0eXAi…\",\"expires_on\": \"2020-04-21 07:12:32.842 +0000 UTC\",\"resource\": \"https://storage.azure.com\",\"token_type\": \"Bearer\"}";
-	// 	json j;
-    //     j = json::parse(json_req_result);
-    //     current_oauth_token = j.get<OAuthToken>();
+	  //  std::string json_req_result;
+	 	//json_req_result = "{\"access_token\": \"eyJ0eXAi…\",\"expires_on\": \"2020-04-14 17:47:52.72 +0000 UTC\",\"resource\": \"https://storage.azure.com\",\"token_type\": \"Bearer\"}";
+	 	//json j;
+         //j = json::parse(json_req_result);
+        //current_oauth_token = j.get<OAuthToken>();
         valid_authentication = true;
         return current_oauth_token;
     } catch(std::runtime_error& ex) {

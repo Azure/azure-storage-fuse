@@ -25,12 +25,18 @@ void to_json(json &j, const OAuthToken &t) {
 }
 
 void from_json(const json &j, OAuthToken &t) {
+	// JUST PRINT OUT THE STRIGN SO THAT WE KNOW THE CUSTOM ENDPOINT IS SENDING THE RIGHT JSON
+	std::string s = j.dump();   
+	syslog(LOG_WARNING, "Printing Json Token as string %s\n", s.c_str());
+	fprintf(stdout, "printing json token as string %s\n", s.c_str());
+	
     t.access_token = j.value("access_token","");
     t.refresh_token = j.value("refresh_token", "");
 
     if (t.access_token.empty()) {
         throw std::runtime_error("OAuth token is unusable: Oauth token did not return with an access token.");
     }
+
 
     t.resource = j.value("resource", "");
     t.token_type = j.value("token_type", "");
