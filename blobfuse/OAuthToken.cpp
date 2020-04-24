@@ -1,5 +1,6 @@
 //
-// Created by adreed on 11/21/19.
+// OAuthToken.cpp . This class is used to validate a token passed in and extract all the meaningful fields from it. 
+// It is also used to convert a string to a token class. It follows the OAuth2 guidelines for token expiration 
 //
 
 #include "OAuthToken.h"
@@ -7,12 +8,14 @@
 #include <time.h>
 #include <syslog.h>
 
-bool OAuthToken::empty() {
+bool OAuthToken::empty() 
+{
     // We consider a totally unusable oauth token as empty because it doesn't make sense to treat it as a usable one.
     return access_token.empty() && refresh_token.empty();
 }
 
-void to_json(json &j, const OAuthToken &t) {
+void to_json(json &j, const OAuthToken &t) 
+{
     j = json{
             {"access_token",  t.access_token},
             {"refresh_token", t.refresh_token},
@@ -24,26 +27,27 @@ void to_json(json &j, const OAuthToken &t) {
     };
 }
 
-void from_json(const json &j, OAuthToken &t) {
-    // JUST PRINT OUT THE STRIng SO THAT WE KNOW THE CUSTOM ENDPOINT IS SENDING THE RIGHT JSON, useful for debugging OAuthtoken errors
+void from_json(const json &j, OAuthToken &t) 
+{
+    // Just print out the string, leave it as WARNING not INFO because users usually don't turn on INFO logging, this will be useful for debugging OAuthtoken mismatches/varieties
     std::string s = j.dump();   
-    syslog(LOG_WARNING, "Printing Json Token as string %s\n", s.c_str());
+    syslog(LOG_WARNING, "INFO not WARNING: Printing Json Token as string for visibility%s\n", s.c_str());
     
     t.access_token = j.value("access_token","");
     t.refresh_token = j.value("refresh_token", "");
 
-    if (t.access_token.empty()) {
+    if (t.access_token.empty()) 
+    {
         throw std::runtime_error("OAuth token is unusable: Oauth token did not return with an access token.");
     }
-
 
     t.resource = j.value("resource", "");
     t.token_type = j.value("token_type", "");
 
-    // The below factors need numeric conversion, so we'll attempt that.
-    // try/catch individually so that if something like expires_in fails over, we don't lose the more important detail, expires_on
+    // If there is expires_in honor only that, otherwise look for expires_on and parse that   
     bool expin_failed = false;
-    try {
+    try 
+    {
         if (j.contains("expires_in"))
         {
             auto val = j.at("expires_in");
@@ -77,8 +81,9 @@ void from_json(const json &j, OAuthToken &t) {
         syslog(LOG_WARNING, "Token does not have expires_in date");
         expin_failed = true;
     }
-
-    if (!expin_failed) // if there is an expires_in just use it and dont worry parsing expires_on field
+    
+    // if there is an expires_in just use it and dont worry parsing expires_on field
+    if (!expin_failed) 
     {
         time_t current_time;
             
@@ -112,6 +117,7 @@ void from_json(const json &j, OAuthToken &t) {
                 if (is_dt_number(expires_on)) // check with the custom method as the above does not catch everything
                 {
                     t.expires_on = std::stoi(expires_on);
+                    syslog(LOG_WARNING, "After conerting the UTC integer token expiry time in utc %s\n", ctime(&t.expires_on));
                 }    
                 else 
                 { // now the date is a string in either the UTC or localtime format so just parse it
@@ -122,7 +128,7 @@ void from_json(const json &j, OAuthToken &t) {
                     int utcIndex = expires_on.find("+0000");
                     if ( utcIndex > 19)
                     { 
-                    // remove tiemzone
+                       // remove timezone
                         expires_on = expires_on.substr(0, utcIndex);
                         // remove the trailing space if any
                         expires_on.erase(std::find_if(expires_on.rbegin(), expires_on.rend(), std::bind1st(std::not_equal_to<char>(), ' ')).base(), expires_on.end());
@@ -133,7 +139,7 @@ void from_json(const json &j, OAuthToken &t) {
                             expires_on = expires_on.substr(0, millisecondsIndex);
                         }
                         struct tm timeStruct;
-                    // Ref: for formats: https://www.tutorialcup.com/cplusplus/date-time.htm
+                        // Ref: for formats: https://www.tutorialcup.com/cplusplus/date-time.htm
                         if ((strptime(expires_on.c_str(), "%Y-%m-%d %H:%M:%S", &timeStruct) != NULL)
                             ||
                             (strptime(expires_on.c_str(), "%Y-%b-%d %H:%M:%S", &timeStruct) != NULL))                  
@@ -145,11 +151,11 @@ void from_json(const json &j, OAuthToken &t) {
                                 }
                             }
                     }
-                     else
-                     {
-                            syslog(LOG_ERR, "parsing expires_on failed. Blobfuse cannot auth: OAuth token is unusable: OAuth token has an expires_on date in a non-UTC format, only UTC is supported for string format dates.\n Examples of correct UTC format dates are \"2020-04-14 16:49:11.72 +0000 UTC\" and \"2020-Apr-14 16:49:11.72 +0000 UTC\" \n Cannot use expires_in as it is missing too.\n");
-                            throw std::runtime_error("Blobfuse cannot auth: OAuth token is unusable: OAuth token has an expires_on date in a non-UTC format, only UTC is supported for string format dates.\n Examples of correct UTC format dates are \"2020-04-14 16:49:11.72 +0000 UTC\" and \"2020-Apr-14 16:49:11.72 +0000 UTC\" \n Cannot use expires_in as it is missing too.\n");
-                     }
+                    else
+                    {
+                        syslog(LOG_ERR, "parsing expires_on failed. Blobfuse cannot auth: OAuth token is unusable: OAuth token has an expires_on date in a non-UTC format, only UTC is supported for string format dates.\n Examples of correct UTC format dates are \"2020-04-14 16:49:11.72 +0000 UTC\" and \"2020-Apr-14 16:49:11.72 +0000 UTC\" \n Cannot use expires_in as it is missing too.\n");
+                        throw std::runtime_error("Blobfuse cannot auth: OAuth token is unusable: OAuth token has an expires_on date in a non-UTC format, only UTC is supported for string format dates.\n Examples of correct UTC format dates are \"2020-04-14 16:49:11.72 +0000 UTC\" and \"2020-Apr-14 16:49:11.72 +0000 UTC\" \n Cannot use expires_in as it is missing too.\n");
+                    }
                 }
             }
         
@@ -167,21 +173,23 @@ void from_json(const json &j, OAuthToken &t) {
 
     if (j.contains("not_before"))
     {
-        
-            std::string not_before;
-        try {
+        std::string not_before;
+        try 
+        {
             not_before = j.at("not_before");
             t.not_before = std::stoi(not_before);
         } 
-        catch(std::exception&){
+        catch(std::exception&)
+        {
             syslog(LOG_INFO, "Incorrect Not before date format %s", not_before.c_str());
         } // We don't particularly care about the not_before field in blobfuse so only send an info.
     }
-
 }
 
+/// Helper method for parsing a string char by char and evaluating if it has any non-digits
+/// If the string is empty or has non-digits a false is returned otherwise a true value is returned.
+/// This is used in this class for calculating time from dates that come in as strings but are essentially integers that say the minutes elapsed from 1970.
 bool is_dt_number(const std::string &s)
 {
-    return !s.empty() && std::find_if(s.begin(), 
-        s.end(), [](unsigned char c) { return !std::isdigit(c); }) == s.end();
+    return !s.empty() && std::find_if(s.begin(), s.end(), [](unsigned char c) { return !std::isdigit(c); }) == s.end();
 }
