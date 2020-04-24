@@ -6,6 +6,7 @@
 trigger:
 - master
 - add-ci
+- bug_msiexpiresonOnlyAuth
 pr:
   branches:
     include:
