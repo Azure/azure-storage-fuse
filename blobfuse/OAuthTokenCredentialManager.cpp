@@ -1,5 +1,7 @@
 //
-// Created by amanda on 11/19/19.
+// OAuthTokenCredentialManager.cpp
+// This class calls the Aunthentication provider and caches an OAuthToke.
+// It refreshes the token 5 minutes before expiry
 //
 #include "OAuthTokenCredentialManager.h"
 #include <http_base.h>
@@ -11,7 +13,6 @@
 #include <syslog.h>
 
 using nlohmann::json;
-
 
 /// <summary>
 /// GetTokenManagerInstance handles a singleton instance of the OAuthTokenManager.
