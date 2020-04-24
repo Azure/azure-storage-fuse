@@ -35,3 +35,4 @@ public:
 
 void from_json(const json &j, OAuthToken &t);
 void to_json(json &j, const OAuthToken &t);
+bool is_dt_number(const std::string &s);

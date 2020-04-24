@@ -80,4 +80,10 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(
         std::string aad_endpoint_p = "");
 // BIG CONCERN: Taking in credentials via a plaintext file is a no-no security wise. For now, they'll only be taken in via the environment variable.
 
+
+ /// <summary>
+/// Checks if passed in token is expired. 
+/// </summary>
+bool is_token_expired_forcurrentutc(OAuthToken &token);
+
 #endif

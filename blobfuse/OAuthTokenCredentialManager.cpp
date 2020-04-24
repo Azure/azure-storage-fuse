@@ -45,8 +45,7 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
     }
     else 
     {
-        fprintf(stdout, "refreshcallback is set");
-        syslog(LOG_WARNING, "refresh callback set");
+        syslog(LOG_INFO, "refresh callback set");
     }
     
 
@@ -54,12 +53,11 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
     refreshTokenCallback = refreshCallback;
 
     try {
-        fprintf(stdout, "calling refresh token\n");
-        syslog(LOG_WARNING, "calling refresh token\n");
+        syslog(LOG_INFO, "calling refresh token\n");
         refresh_token();
     } catch(std::runtime_error& ex) {
         syslog(LOG_ERR, "Unable to retrieve OAuth token: %s\n", ex.what());
-        printf("Unable to retrieve OAuth token: %s\n", ex.what());
+        fprintf(stderr, "Unable to retrieve OAuth token: %s\n", ex.what());
         valid_authentication = false;
         return;
     }
@@ -67,7 +65,6 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
     if(current_oauth_token.empty()) {
         valid_authentication = false;
         syslog(LOG_ERR, "Unable to retrieve OAuth Token with given credentials.");
-        printf("Unable to retrieve OAuth Token with given credentials.\n");
     }
 }
 
@@ -87,17 +84,14 @@ bool OAuthTokenCredentialManager::is_valid_connection()
 /// </summary>
 OAuthToken OAuthTokenCredentialManager::refresh_token()
 {
-    try {
-        fprintf(stdout, "Inside refresh token method, calling refreshTokenCallback\n");
+    try
+	{
         current_oauth_token = refreshTokenCallback(httpClient);
-	  //  std::string json_req_result;
-	 	//json_req_result = "{\"access_token\": \"eyJ0eXAi…\",\"expires_on\": \"2020-04-14 17:47:52.72 +0000 UTC\",\"resource\": \"https://storage.azure.com\",\"token_type\": \"Bearer\"}";
-	 	//json j;
-         //j = json::parse(json_req_result);
-        //current_oauth_token = j.get<OAuthToken>();
-        valid_authentication = true;
+	    valid_authentication = true;
         return current_oauth_token;
-    } catch(std::runtime_error& ex) {
+    } 
+	catch(std::runtime_error& ex) 
+	{
         valid_authentication = false;
         throw ex;
     }
@@ -147,47 +141,49 @@ OAuthToken OAuthTokenCredentialManager::get_token()
         // Be sure to ensure you're safely manipulating the lock when modifying this function.
         token_mutex.unlock();
     }
-    else
-    {
-        fprintf(stdout, "current_oauth_token is being returned. NOT expired.\n");
-        syslog(LOG_WARNING, "current_oauth_token is being returned. NOT expired.\n");
- 
-    }
 
     return current_oauth_token;
 }
 
 /// <summary>
-/// TODO: check the expiry time against the current utc time
+/// check the expiry time against the current utc time
 /// <summary>
 bool OAuthTokenCredentialManager::is_token_expired()
 {
     if(!valid_authentication)
     {
-        fprintf(stdout, "At is_token_expired: valid_authentication is false so token expired");
-        syslog(LOG_WARNING, "At is_token_expired: valid_authentication is false so token expired");
+        syslog(LOG_INFO, "At is_token_expired: valid_authentication is false so token expired");
     
         return true;
     }
+	return is_token_expired_forcurrentutc(current_oauth_token);
+	
+}
 
+/// <summary>
+/// check the expiry time against the current utc time
+/// <summary>
+bool is_token_expired_forcurrentutc(OAuthToken &token)
+{
     time_t current_time;
 
-    time ( &current_time );
+	struct tm *temptm;
+	
+	// get the current time
+		
+    time(&current_time);
+	//convert it to UTC
+			
+	temptm = gmtime( &current_time );
+
+	current_time = mktime(temptm);
+	
+	// Even if 5 minutes are left to expire we want to request a new token, so make the current clock look 5 minutes ahead.
 
     time_t safety_current_time = current_time + (60 * 5); // time_t adds time seconds, we are adding 5 minutes here
 
-    bool isExpired = safety_current_time >= current_oauth_token.expires_on;
-    fprintf(stdout, "current time %s\n", ctime(&current_time));
-    fprintf(stdout, "current time + 5 minutes %s\n", ctime(&safety_current_time ) );
-    fprintf(stdout, "auth token expiry time: %s", ctime(&current_oauth_token.expires_on));
-    fprintf(stdout, "auth token expires in seconds: %d", current_oauth_token.expires_in);
-    fprintf(stdout, "Token expired boolean:%s\n", isExpired ? "true" : "false");
-    
-    syslog(LOG_WARNING, "current time + 5 minutes %s\n", ctime(&safety_current_time ) );
-    syslog(LOG_WARNING, "auth token expiry time: %s", ctime(&current_oauth_token.expires_on));
-    syslog(LOG_WARNING, "Token expired boolean:%s\n", isExpired ? "true" : "false");
-
-
+    bool isExpired = safety_current_time >= token.expires_on;    
+   
     // check if about to expire via the buffered expiry time
     return isExpired;
 }
@@ -261,7 +257,7 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
             uri_token_request_url->add_query("clientid", client_id_p);
         }
          fprintf(stdout, "SetUP MSI callback with custom token issuing %s\n", msi_endpoint_p.c_str());
-         syslog(LOG_WARNING, "SetUP MSI callback with custom token issuing endpoint ");
+         syslog(LOG_INFO, "SetUP MSI callback with custom token issuing endpoint ");
     }
 
     uri_token_request_url->add_query(constants::param_mi_api_version, constants::param_mi_api_version_data);
@@ -402,5 +398,4 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
         return parsed_token;
     };
 }
-
     
