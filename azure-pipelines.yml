@@ -20,7 +20,8 @@ jobs:
       - script: |
           sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
           echo  "beginning build"
-          sudo ./build.sh
+          chmod 777 ~/build.sh
+          ~/build.sh
           cp build/blobfuse $(Build.ArtifactStagingDirectory)
         displayName: 'Generate blobfuse build'
       - task: PublishBuildArtifacts@1
