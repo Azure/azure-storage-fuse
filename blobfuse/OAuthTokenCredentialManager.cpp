@@ -47,16 +47,18 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
     else 
     {
         syslog(LOG_INFO, "refresh callback set");
-    }
-    
+    }    
 
     httpClient = std::make_shared<CurlEasyClient>(constants::max_concurrency_oauth);
     refreshTokenCallback = refreshCallback;
 
-    try {
+    try 
+    {
         syslog(LOG_INFO, "calling refresh token\n");
         refresh_token();
-    } catch(std::runtime_error& ex) {
+    } 
+    catch(std::runtime_error& ex) 
+    {
         syslog(LOG_ERR, "Unable to retrieve OAuth token: %s\n", ex.what());
         fprintf(stderr, "Unable to retrieve OAuth token: %s\n", ex.what());
         valid_authentication = false;

@@ -115,7 +115,8 @@ void from_json(const json &j, OAuthToken &t)
             {
                 std::string expires_on = val.get<std::string>();
                 
-                if (is_dt_number(expires_on)) // check with the custom method as the above does not catch everything
+                // check with the custom method as the above does not catch everything
+                if (is_dt_number(expires_on)) 
                 {
                     t.expires_on = std::stoi(expires_on);
                     syslog(LOG_WARNING, "INFO: After successfully converting the UTC integer %s, the token expiry time in utc %s\n", expires_on.c_str(), ctime(&t.expires_on));
