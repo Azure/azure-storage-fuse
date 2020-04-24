@@ -478,7 +478,7 @@ namespace microsoft_azure {
             {
                 put_blob(sourcePath, container, blob, metadata);
                 // put_blob sets errno
-        return;
+                return;
             }
 
             int result = 0;
