@@ -59,7 +59,8 @@ void from_json(const json &j, OAuthToken &t)
             {
                 std::string expires_in = val.get<std::string>();
                 
-                if (is_dt_number(expires_in)) // check with the custom method as the above does not catch everything
+                // check with the custom method as the above does not catch everything                
+                if (is_dt_number(expires_in)) 
                 {
                     t.expires_in = std::stoi(expires_in);
                 }    
@@ -97,7 +98,7 @@ void from_json(const json &j, OAuthToken &t)
 
         t.expires_on = current_time + t.expires_in;    
         
-        syslog(LOG_WARNING, "After adding specified expires_in token expiry time in utc %s\n", ctime(&t.expires_on));
+        syslog(LOG_WARNING, "INFO: After adding specified expires_in token expiry time in utc %s\n", ctime(&t.expires_on));
     }
     else if (j.contains("expires_on"))
     {
@@ -117,14 +118,11 @@ void from_json(const json &j, OAuthToken &t)
                 if (is_dt_number(expires_on)) // check with the custom method as the above does not catch everything
                 {
                     t.expires_on = std::stoi(expires_on);
-                    syslog(LOG_WARNING, "After conerting the UTC integer token expiry time in utc %s\n", ctime(&t.expires_on));
+                    syslog(LOG_WARNING, "INFO: After successfully converting the UTC integer %s, the token expiry time in utc %s\n", expires_on.c_str(), ctime(&t.expires_on));
                 }    
                 else 
-                { // now the date is a string in either the UTC or localtime format so just parse it
-                    fprintf(stdout, "expires_on date is string");
-                    
-                    
-                    // try UTC first then use else to implement in local time in AM or PM
+                { 
+                    // now the date is a string only if it is UTC parse it.
                     int utcIndex = expires_on.find("+0000");
                     if ( utcIndex > 19)
                     { 
@@ -148,8 +146,10 @@ void from_json(const json &j, OAuthToken &t)
                                 if (t.expires_on == -1)
                                 {
                                     syslog(LOG_ERR, "Incorrect UTC date format %s", val.get<std::string>().c_str());
-                                }
+                                    throw std::runtime_error("Blobfuse cannot auth: OAuth token is unusable: OAuth token has an expires_on date in a non-UTC format, only UTC is supported for string format dates.\n Examples of correct UTC format dates are \"2020-04-14 16:49:11.72 +0000 UTC\" and \"2020-Apr-14 16:49:11.72 +0000 UTC\" \n Cannot use expires_in as it is missing too.\n");
+                                }       
                             }
+                        syslog(LOG_WARNING, "INFO: After successfully parsing the string UTC date, the token expiry time in utc %s\n", ctime(&t.expires_on));
                     }
                     else
                     {
