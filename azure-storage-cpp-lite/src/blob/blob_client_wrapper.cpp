@@ -478,7 +478,7 @@ namespace microsoft_azure {
             {
                 put_blob(sourcePath, container, blob, metadata);
                 // put_blob sets errno
-		return;
+        return;
             }
 
             int result = 0;
@@ -651,7 +651,7 @@ namespace microsoft_azure {
                 if(!result.success())
                 {
                     errno = std::stoi(result.error().code);
-					syslog(LOG_ERR, "Error while downloading blob container = %s, blob = %s, response status = %s .\n", container.c_str(), blob.c_str(), result.error().message.c_str());
+                    syslog(LOG_ERR, "Error while downloading blob container = %s, blob = %s, response status = %s .\n", container.c_str(), blob.c_str(), result.error().message.c_str());
                 }
                 else
                 {
@@ -751,9 +751,9 @@ namespace microsoft_azure {
                     task_list[i].wait();
                     auto result = task_list[i].get();
                     // let's report the first encountered error for consistency.
-                    if (0 != result && errcode == 0) {
-						
-					    errcode = result;
+                    if (0 != result && errcode == 0) 
+                    {
+                        errcode = result;
                     }
                 }
                 errno = errcode;
@@ -783,7 +783,7 @@ namespace microsoft_azure {
                 if(!result.success())
                 {
                     errno = std::stoi(result.error().code);
-					syslog(LOG_ERR, "Error getting blob property= %s\n", result.error().message.c_str());
+                    syslog(LOG_ERR, "Error getting blob property= %s\n", result.error().message.c_str());
                     return blob_property(false);
                 }
                 else
