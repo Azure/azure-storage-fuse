@@ -6,15 +6,23 @@
 trigger:
 - master
 - add-ci
+pr:
+  branches:
+    include:
+      - dev
+      - master
 
-pool:
-  vmImage: 'ubuntu-latest'
+jobs:
+  - job: Linux_Build    
+    pool:
+      vmImage: 'ubuntu-16.04'
+    steps:
+      - script:
+          sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+          sudo blobfuse/build.sh
+          cp build/blobfuse $(Build.ArtifactStagingDirectory)
+        displayName: 'Generate blobfuse build'
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifacts'
+        condition: succeededOrFailed()
 
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
-
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
