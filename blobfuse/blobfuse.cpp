@@ -170,9 +170,8 @@ int read_config_env()
     return 0;
 }
 
-auth_type get_auth_type() {
-    // TODO: remove
-    return MSI_AUTH;
+auth_type get_auth_type() 
+{   
     std::string lcAuthType = to_lower(str_options.authType);
 
     if(!str_options.authType.empty()) {

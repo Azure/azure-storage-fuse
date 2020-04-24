@@ -85,13 +85,13 @@ bool OAuthTokenCredentialManager::is_valid_connection()
 OAuthToken OAuthTokenCredentialManager::refresh_token()
 {
     try
-	{
+    {
         current_oauth_token = refreshTokenCallback(httpClient);
-	    valid_authentication = true;
+        valid_authentication = true;
         return current_oauth_token;
     } 
-	catch(std::runtime_error& ex) 
-	{
+    catch(std::runtime_error& ex) 
+    {
         valid_authentication = false;
         throw ex;
     }
@@ -156,8 +156,8 @@ bool OAuthTokenCredentialManager::is_token_expired()
     
         return true;
     }
-	return is_token_expired_forcurrentutc(current_oauth_token);
-	
+    return is_token_expired_forcurrentutc(current_oauth_token);
+    
 }
 
 /// <summary>
@@ -167,18 +167,18 @@ bool is_token_expired_forcurrentutc(OAuthToken &token)
 {
     time_t current_time;
 
-	struct tm *temptm;
-	
-	// get the current time
-		
+    struct tm *temptm;
+    
+    // get the current time
+        
     time(&current_time);
-	//convert it to UTC
-			
-	temptm = gmtime( &current_time );
+    //convert it to UTC
+            
+    temptm = gmtime( &current_time );
 
-	current_time = mktime(temptm);
-	
-	// Even if 5 minutes are left to expire we want to request a new token, so make the current clock look 5 minutes ahead.
+    current_time = mktime(temptm);
+    
+    // Even if 5 minutes are left to expire we want to request a new token, so make the current clock look 5 minutes ahead.
 
     time_t safety_current_time = current_time + (60 * 5); // time_t adds time seconds, we are adding 5 minutes here
 
@@ -394,7 +394,7 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
                 }
             }
         }, retry_interval);
-	
+    
         return parsed_token;
     };
 }
