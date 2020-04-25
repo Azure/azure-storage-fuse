@@ -9,7 +9,6 @@
 namespace Tests
 {
     class OAuthTokenTest : public ::testing::Test {
-     public : 
     };
 
     // Test from json with all the parameters.
@@ -18,7 +17,6 @@ namespace Tests
         OAuthToken t;
         OAuthToken et = OAuthToken();
         et.access_token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IllNRUxIVDBndmIwbXhvU0RvWWZvbWpxZmpZVSIsImtpZCI6IllNRUxIVDBndmIwbXhvU0RvWWZvbWpxZmpZVSJ9.eyJhdWQiOiJodHRwczovL3N0b3JhZ2UuYXp1cmUuY29tLyIsImlzcyI6Imh0dHBzOi8vc3RzLndpbmRvd3MubmV0LzcyZjk4OGJmLTg2ZjEtNDFhZi05MWFiLTJkN2NkMDExZGI0Ny8iLCJpYXQiOjE1ODY4MjE0NTEsIm5iZiI6MTU4NjgyMTQ1MSwiZXhwIjoxNTg2OTA4MTUxLCJhaW8iOiI0MmRnWURnWk1zSERvc3JZV1hyQ01uYnRsTm9UQUE9PSIsImFwcGlkIjoiYzg4MjI5Y2UtYzVlNC00OGJmLWI2NDktYzQ5MGM2ZThmMzQzIiwiYXBwaWRhY3IiOiIyIiwiaWRwIjoiaHR0cHM6Ly9zdHMud2luZG93cy5uZXQvNzJmOTg4YmYtODZmMS00MWFmLTkxYWItMmQ3Y2QwMTFkYjQ3LyIsIm9pZCI6IjdmZmIyNTc0LTlmNmUtNDUyMC04MjkyLTYxNGZkZWZkOWZlMCIsInN1YiI6IjdmZmIyNTc0LTlmNmUtNDUyMC04MjkyLTYxNGZkZWZkOWZlMCIsInRpZCI6IjcyZjk4OGJmLTg2ZjEtNDFhZi05MWFiLTJkN2NkMDExZGI0NyIsInV0aSI6IjJORU5mZ2dzVTBxZ0JKMC1pQkZuQUEiLCJ2ZXIiOiIxLjAiLCJ4bXNfbWlyaWQiOiIvc3Vic2NyaXB0aW9ucy9iYTQ1YjIzMy1lMmVmLTQxNjktODgwOC00OWViMGQ4ZWJhMGQvcmVzb3VyY2Vncm91cHMvYmxvYmZ1c2UtcmcvcHJvdmlkZXJzL01pY3Jvc29mdC5Db21wdXRlL3ZpcnR1YWxNYWNoaW5lcy9uYXJhZGV2MTYwNCJ9.kBfu0O7sfiYXyRX-kBboyZ1MVM3bdWwKXGQh9N4BR6-xv7ut7HzaEatErRz_BfRDoQEMSwtaNAtrBG8rqWnQNgkAJxaN4vwtdipreOJVMF_94f4BQnxrsjCwuaiGsrZBWS3au2s2CayWSeHEc2vYE8edQBOY58FujLt6h5A1ePssE1TotveazLVesJ3bWgIfH2gedjiy8MKoPWB5GxstcrvuvzDXlG4lFDkUlI8LZ8s0Su8S7KzGPOdkb_1eAGhJdGtDSWI68FGYQsse8OYw0a-d-B06yW3i2NRlLE3_oCy4m-vBKtF2TtpJ5S1eYVa4SkDsl1sVLbJO7E_T4i4gpg";
-        //et.client_id = "c88229ce-c5e4-48bf-b649-c490c6e8f343";
         et.expires_in = 86399;
         et.not_before = 1586821451;
         et.resource = "https://storage.azure.com/";
@@ -56,7 +54,6 @@ namespace Tests
         OAuthToken t;
         OAuthToken et = OAuthToken();
         et.access_token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJSUzI1NiIsIng1dCI6IllNRUxIVDBndmIwbXhvU0RvWWZvbWpxZmpZVSIsImtpZCI6IllNRUxIVDBndmIwbXhvU0RvWWZvbWpxZmpZVSJ9.eyJhdWQiOiJodHRwczovL3N0b3JhZ2UuYXp1cmUuY29tLyIsImlzcyI6Imh0dHBzOi8vc3RzLndpbmRvd3MubmV0LzcyZjk4OGJmLTg2ZjEtNDFhZi05MWFiLTJkN2NkMDExZGI0Ny8iLCJpYXQiOjE1ODY4MjE0NTEsIm5iZiI6MTU4NjgyMTQ1MSwiZXhwIjoxNTg2OTA4MTUxLCJhaW8iOiI0MmRnWURnWk1zSERvc3JZV1hyQ01uYnRsTm9UQUE9PSIsImFwcGlkIjoiYzg4MjI5Y2UtYzVlNC00OGJmLWI2NDktYzQ5MGM2ZThmMzQzIiwiYXBwaWRhY3IiOiIyIiwiaWRwIjoiaHR0cHM6Ly9zdHMud2luZG93cy5uZXQvNzJmOTg4YmYtODZmMS00MWFmLTkxYWItMmQ3Y2QwMTFkYjQ3LyIsIm9pZCI6IjdmZmIyNTc0LTlmNmUtNDUyMC04MjkyLTYxNGZkZWZkOWZlMCIsInN1YiI6IjdmZmIyNTc0LTlmNmUtNDUyMC04MjkyLTYxNGZkZWZkOWZlMCIsInRpZCI6IjcyZjk4OGJmLTg2ZjEtNDFhZi05MWFiLTJkN2NkMDExZGI0NyIsInV0aSI6IjJORU5mZ2dzVTBxZ0JKMC1pQkZuQUEiLCJ2ZXIiOiIxLjAiLCJ4bXNfbWlyaWQiOiIvc3Vic2NyaXB0aW9ucy9iYTQ1YjIzMy1lMmVmLTQxNjktODgwOC00OWViMGQ4ZWJhMGQvcmVzb3VyY2Vncm91cHMvYmxvYmZ1c2UtcmcvcHJvdmlkZXJzL01pY3Jvc29mdC5Db21wdXRlL3ZpcnR1YWxNYWNoaW5lcy9uYXJhZGV2MTYwNCJ9.kBfu0O7sfiYXyRX-kBboyZ1MVM3bdWwKXGQh9N4BR6-xv7ut7HzaEatErRz_BfRDoQEMSwtaNAtrBG8rqWnQNgkAJxaN4vwtdipreOJVMF_94f4BQnxrsjCwuaiGsrZBWS3au2s2CayWSeHEc2vYE8edQBOY58FujLt6h5A1ePssE1TotveazLVesJ3bWgIfH2gedjiy8MKoPWB5GxstcrvuvzDXlG4lFDkUlI8LZ8s0Su8S7KzGPOdkb_1eAGhJdGtDSWI68FGYQsse8OYw0a-d-B06yW3i2NRlLE3_oCy4m-vBKtF2TtpJ5S1eYVa4SkDsl1sVLbJO7E_T4i4gpg";
-        //et.client_id = "c88229ce-c5e4-48bf-b649-c490c6e8f343";
         et.resource = "https://storage.azure.com/";
         et.token_type = "Bearer";    
         et.expires_on = exp;
@@ -154,7 +151,5 @@ namespace Tests
         ASSERT_EQ(t.expires_on, et.expires_on);
         ASSERT_EQ(t.access_token, et.access_token);    
         ASSERT_EQ(t.resource, et.resource);
-
     }
-
 }

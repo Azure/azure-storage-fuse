@@ -47,7 +47,8 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
     else 
     {
         syslog(LOG_INFO, "refresh callback set");
-    }    
+    }
+    
 
     httpClient = std::make_shared<CurlEasyClient>(constants::max_concurrency_oauth);
     refreshTokenCallback = refreshCallback;
@@ -57,7 +58,7 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
         syslog(LOG_INFO, "calling refresh token\n");
         refresh_token();
     } 
-    catch(std::runtime_error& ex) 
+    catch(std::runtime_error& ex)
     {
         syslog(LOG_ERR, "Unable to retrieve OAuth token: %s\n", ex.what());
         fprintf(stderr, "Unable to retrieve OAuth token: %s\n", ex.what());
@@ -65,7 +66,8 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
         return;
     }
 
-    if(current_oauth_token.empty()) {
+    if(current_oauth_token.empty()) 
+    {
         valid_authentication = false;
         syslog(LOG_ERR, "Unable to retrieve OAuth Token with given credentials.");
     }
@@ -286,32 +288,42 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
         OAuthToken parsed_token;
         request_handle->submit([&parsed_token, &ios](http_base::http_code http_code_result, const storage_istream&, CURLcode curl_code)
         {
-            if (curl_code != CURLE_OK || unsuccessful(http_code_result)) {
-             std::string req_result;
+            if (curl_code != CURLE_OK || unsuccessful(http_code_result)) 
+            {
+                std::string req_result;
 
-             try { // to avoid crashing to any potential errors while reading the stream, we back it with a try catch statement.
-                 std::string json_request_result(std::istreambuf_iterator<char>(ios.istream()),
+                try 
+                { 
+                // to avoid crashing to any potential errors while reading the stream, we back it with a try catch statement.
+                    std::string json_request_result(std::istreambuf_iterator<char>(ios.istream()),
                                                  std::istreambuf_iterator<char>());
 
-                 req_result = json_request_result;
-             } catch(std::exception&){}
+                    req_result = json_request_result;
+                } 
+                catch(std::exception& exp)
+                {
+                    syslog(LOG_WARNING, "Error while reading json token return stream %s\n" ,exp.what()); 
+                }
 
-             std::ostringstream errStream;
-             errStream << "Failed to retrieve OAuth Token from IMDS endpoint (CURLCode: " << curl_code << ", HTTP code: " << http_code_result << "): " << req_result;
-             throw std::runtime_error(errStream.str());
+                std::ostringstream errStream;
+                errStream << "Failed to retrieve OAuth Token from IMDS endpoint (CURLCode: " << curl_code << ", HTTP code: " << http_code_result << "): " << req_result;
+                throw std::runtime_error(errStream.str());
             }
             else
             {
-             std::string json_request_result(std::istreambuf_iterator<char>(ios.istream()),
+                std::string json_request_result(std::istreambuf_iterator<char>(ios.istream()),
                                              std::istreambuf_iterator<char>());
 
-             try {
-                 json j;
-                 j = json::parse(json_request_result);
-                 parsed_token = j.get<OAuthToken>();
-             } catch(std::exception& ex) {
-                 throw std::runtime_error(std::string("Failed to parse OAuth token: ") + std::string(ex.what()));
-             }
+                try 
+                {
+                    json j;
+                    j = json::parse(json_request_result);
+                    parsed_token = j.get<OAuthToken>();
+                } 
+                catch(std::exception& ex) 
+                {
+                    throw std::runtime_error(std::string("Failed to parse OAuth token: ") + std::string(ex.what()));
+                }
             }
         }, retry_interval);
 
