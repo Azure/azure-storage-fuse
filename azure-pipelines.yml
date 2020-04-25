@@ -1,0 +1,29 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+
+trigger:
+- master
+- add-ci
+- bug_msiexpiresonOnlyAuth
+pr:
+  branches:
+    include:
+      - dev
+      - master
+
+jobs:
+  - job: Linux_Build    
+    pool:
+      vmImage: 'ubuntu-16.04'
+    steps:
+      - script: |
+          sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+          . ./build.sh
+          cp ./blobfuse $(Build.ArtifactStagingDirectory)
+        displayName: 'Generate blobfuse build'
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifacts'
+        condition: succeededOrFailed()
+
