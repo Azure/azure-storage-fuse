@@ -1,5 +1,7 @@
 //
-// Created by amanda on 11/19/19.
+// OAuthTokenCredentialManager.cpp
+// This class calls the Aunthentication provider and caches an OAuthToke.
+// It refreshes the token 5 minutes before expiry
 //
 #include "OAuthTokenCredentialManager.h"
 #include <http_base.h>
@@ -38,27 +40,36 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
 {
     if (refreshCallback == nullptr) {
         valid_authentication = false;
-        syslog(LOG_ERR, "OAuthTokenManager was supplied an invalid refresh callback.");
-        printf("OAuthTokenManager was supplied an invalid refresh callback.");
+        syslog(LOG_ERR, "OAuthTokenManager was supplied an invalid refresh callback.\n");
+        printf("OAuthTokenManager was supplied an invalid refresh callback.\n");
         return;
     }
+    else 
+    {
+        syslog(LOG_INFO, "refresh callback set");
+    }
+    
 
     httpClient = std::make_shared<CurlEasyClient>(constants::max_concurrency_oauth);
     refreshTokenCallback = refreshCallback;
 
-    try {
+    try 
+    {
+        syslog(LOG_INFO, "calling refresh token\n");
         refresh_token();
-    } catch(std::runtime_error& ex) {
-        syslog(LOG_ERR, "Unable to retrieve OAuth token: %s", ex.what());
-        printf("Unable to retrieve OAuth token: %s\n", ex.what());
+    } 
+    catch(std::runtime_error& ex)
+    {
+        syslog(LOG_ERR, "Unable to retrieve OAuth token: %s\n", ex.what());
+        fprintf(stderr, "Unable to retrieve OAuth token: %s\n", ex.what());
         valid_authentication = false;
         return;
     }
 
-    if(current_oauth_token.empty()) {
+    if(current_oauth_token.empty()) 
+    {
         valid_authentication = false;
         syslog(LOG_ERR, "Unable to retrieve OAuth Token with given credentials.");
-        printf("Unable to retrieve OAuth Token with given credentials.\n");
     }
 }
 
@@ -78,11 +89,14 @@ bool OAuthTokenCredentialManager::is_valid_connection()
 /// </summary>
 OAuthToken OAuthTokenCredentialManager::refresh_token()
 {
-    try {
+    try
+    {
         current_oauth_token = refreshTokenCallback(httpClient);
         valid_authentication = true;
         return current_oauth_token;
-    } catch(std::runtime_error& ex) {
+    } 
+    catch(std::runtime_error& ex) 
+    {
         valid_authentication = false;
         throw ex;
     }
@@ -99,15 +113,21 @@ OAuthToken OAuthTokenCredentialManager::get_token()
         if (token_mutex.try_lock()) {
             try {
                 // Attempt to refresh.
+                fprintf(stdout, "oauth token has expired so calling refresh_token()\n");
+                syslog(LOG_WARNING, "oauth token has expired so calling refresh_token()\n");
+          
                 refresh_token();
             } catch (std::runtime_error &ex) {
                 // If we fail, explain ourselves and unlock.
-                syslog(LOG_ERR, "Unable to retrieve OAuth token: %s", ex.what());
+                syslog(LOG_ERR, "Unable to retrieve OAuth token: %s\n", ex.what());
                 valid_authentication = false;
                 token_mutex.unlock();
             }
         } else {
+            fprintf(stdout, "Locking mutex failed, so some token is being acquired., so just wait and get that\n");
+            syslog(LOG_WARNING, "Locking mutex failed, so some token is being acquired., so just wait and get that\n");
             time_t current_time;
+
             time(&current_time);
 
             // There's a five minute segment where the token hasn't actually expired yet, but we're already trying to refresh it.
@@ -131,19 +151,46 @@ OAuthToken OAuthTokenCredentialManager::get_token()
 }
 
 /// <summary>
-/// TODO: check the expiry time against the current utc time
+/// check the expiry time against the current utc time
 /// <summary>
 bool OAuthTokenCredentialManager::is_token_expired()
 {
     if(!valid_authentication)
+    {
+        syslog(LOG_INFO, "At is_token_expired: valid_authentication is false so token expired");
+    
         return true;
+    }
+    return is_token_expired_forcurrentutc(current_oauth_token);
+    
+}
 
+/// <summary>
+/// check the expiry time against the current utc time
+/// <summary>
+bool is_token_expired_forcurrentutc(OAuthToken &token)
+{
     time_t current_time;
 
-    time ( &current_time );
+    struct tm *temptm;
+    
+    // get the current time
+        
+    time(&current_time);
+    //convert it to UTC
+            
+    temptm = gmtime( &current_time );
 
+    current_time = mktime(temptm);
+    
+    // Even if 5 minutes are left to expire we want to request a new token, so make the current clock look 5 minutes ahead.
+
+    time_t safety_current_time = current_time + (60 * 5); // time_t adds time seconds, we are adding 5 minutes here
+
+    bool isExpired = safety_current_time >= token.expires_on;    
+   
     // check if about to expire via the buffered expiry time
-    return current_time + (60 * 5) >= current_oauth_token.expires_on;
+    return isExpired;
 }
 
 // ===== CALLBACK SETUP ZONE =====
@@ -214,6 +261,8 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
         { // The alternate endpoint in the doc uses clientid as its parameter name, not client_id.
             uri_token_request_url->add_query("clientid", client_id_p);
         }
+         fprintf(stdout, "SetUP MSI callback with custom token issuing %s\n", msi_endpoint_p.c_str());
+         syslog(LOG_INFO, "SetUP MSI callback with custom token issuing endpoint ");
     }
 
     uri_token_request_url->add_query(constants::param_mi_api_version, constants::param_mi_api_version_data);
@@ -239,32 +288,42 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
         OAuthToken parsed_token;
         request_handle->submit([&parsed_token, &ios](http_base::http_code http_code_result, const storage_istream&, CURLcode curl_code)
         {
-            if (curl_code != CURLE_OK || unsuccessful(http_code_result)) {
-             std::string req_result;
+            if (curl_code != CURLE_OK || unsuccessful(http_code_result)) 
+            {
+                std::string req_result;
 
-             try { // to avoid crashing to any potential errors while reading the stream, we back it with a try catch statement.
-                 std::string json_request_result(std::istreambuf_iterator<char>(ios.istream()),
+                try 
+                { 
+                // to avoid crashing to any potential errors while reading the stream, we back it with a try catch statement.
+                    std::string json_request_result(std::istreambuf_iterator<char>(ios.istream()),
                                                  std::istreambuf_iterator<char>());
 
-                 req_result = json_request_result;
-             } catch(std::exception&){}
+                    req_result = json_request_result;
+                } 
+                catch(std::exception& exp)
+                {
+                    syslog(LOG_WARNING, "Error while reading json token return stream %s\n" ,exp.what()); 
+                }
 
-             std::ostringstream errStream;
-             errStream << "Failed to retrieve OAuth Token from IMDS endpoint (CURLCode: " << curl_code << ", HTTP code: " << http_code_result << "): " << req_result;
-             throw std::runtime_error(errStream.str());
+                std::ostringstream errStream;
+                errStream << "Failed to retrieve OAuth Token from IMDS endpoint (CURLCode: " << curl_code << ", HTTP code: " << http_code_result << "): " << req_result;
+                throw std::runtime_error(errStream.str());
             }
             else
             {
-             std::string json_request_result(std::istreambuf_iterator<char>(ios.istream()),
+                std::string json_request_result(std::istreambuf_iterator<char>(ios.istream()),
                                              std::istreambuf_iterator<char>());
 
-             try {
-                 json j;
-                 j = json::parse(json_request_result);
-                 parsed_token = j.get<OAuthToken>();
-             } catch(std::exception& ex) {
-                 throw std::runtime_error(std::string("Failed to parse OAuth token: ") + std::string(ex.what()));
-             }
+                try 
+                {
+                    json j;
+                    j = json::parse(json_request_result);
+                    parsed_token = j.get<OAuthToken>();
+                } 
+                catch(std::exception& ex) 
+                {
+                    throw std::runtime_error(std::string("Failed to parse OAuth token: ") + std::string(ex.what()));
+                }
             }
         }, retry_interval);
 
@@ -284,7 +343,7 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
     // Step 1: Construct the URL
     std::shared_ptr<microsoft_azure::storage::storage_url> uri_token_request_url = std::make_shared<microsoft_azure::storage::storage_url>();
 
-    if(aad_endpoint_p.empty())
+   if(aad_endpoint_p.empty())
     {
         uri_token_request_url->set_domain(constants::oauth_request_uri);
     }
@@ -305,21 +364,21 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
         std::shared_ptr<CurlEasyRequest> request_handle = http_client->get_handle();
 
         // set up URI and headers
-        request_handle->set_url(uri_token_request_url->to_string());
-        request_handle->add_header("Content-Type", "application/x-www-form-urlencoded");
+       request_handle->set_url(uri_token_request_url->to_string());
+       request_handle->add_header("Content-Type", "application/x-www-form-urlencoded");
 
-        // Set up body query
-        auto body = std::make_shared<std::stringstream>(queryString);
-        request_handle->set_input_stream(storage_istream(body));
-        request_handle->set_input_content_length(queryString.length());
-        request_handle->add_header("Content-Length", std::to_string(queryString.length()));
+       // Set up body query
+       auto body = std::make_shared<std::stringstream>(queryString);
+       request_handle->set_input_stream(storage_istream(body));
+       request_handle->set_input_content_length(queryString.length());
+       request_handle->add_header("Content-Length", std::to_string(queryString.length()));
 
         // Set up output stream
         storage_iostream ios = storage_iostream::create_storage_stream();
-        request_handle->set_output_stream(ios.ostream());
+       request_handle->set_output_stream(ios.ostream());
 
         // Set request method
-        request_handle->set_method(http_base::http_method::post);
+       request_handle->set_method(http_base::http_method::post);
 
         std::chrono::seconds retry_interval(constants::max_retry_oauth);
         OAuthToken parsed_token;
@@ -350,7 +409,8 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
                 }
             }
         }, retry_interval);
-
+    
         return parsed_token;
     };
 }
+    

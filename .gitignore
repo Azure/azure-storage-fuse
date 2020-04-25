@@ -56,3 +56,9 @@ build/
 build/*
 .idea/
 
+# vscode
+.vscode/
+
+launch.json
+tasks.json
+connection*.cfgs
