@@ -86,4 +86,9 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(
 /// </summary>
 bool is_token_expired_forcurrentutc(OAuthToken &token);
 
+/// <summary>
+/// get current time in utc
+/// <summary>
+time_t get_current_time_in_utc();
+
 #endif

@@ -249,7 +249,7 @@ int ensure_files_directory_exists_in_cache(const std::string& file_path)
             }
 
             // Ignore if some other thread was successful creating the path
-	    if(errno == EEXIST)
+        if(errno == EEXIST)
             {
                 status = 0;
                 errno = 0;
@@ -432,11 +432,50 @@ int azs_getattr(const char *path, struct stat *stbuf)
     {
         AZS_DEBUGLOGV("Object %s is not in the local cache during get_attr.\n", mntPathString.c_str());
     }
-
-    // It's not in the local cache.  Check to see if it's a blob on the service:
+    //It's not in the local cache. Check to see if it's a directory using list 
     std::string blobNameStr(&(path[1]));
     errno = 0;
-    auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
+    list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(str_options.containerName, "/", "", blobNameStr, 2) ;
+    if (errno == 0 && response.blobs.size() > 0)
+    {
+        // the first element should be exact match prefix
+        if (response.blobs[0].is_directory)
+        {
+            syslog(LOG_DEBUG, "%s is a directory, blob name is %s\n", mntPathString.c_str(), response.blobs[0].name.c_str() ); 
+            AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
+            stbuf->st_mode = S_IFDIR | default_permission;
+            // If st_nlink = 2, means directory is empty.
+            // Directory size will affect behaviour for mv, rmdir, cp etc.
+            stbuf->st_uid = fuse_get_context()->uid;
+            stbuf->st_gid = fuse_get_context()->gid;
+            stbuf->st_nlink = response.blobs.size() > 1 ? 2 : 3;
+            stbuf->st_size = 4096;
+            return 0;
+        }
+        else
+        {
+            syslog(LOG_DEBUG, "%s is a file, blob name is %s\n", mntPathString.c_str(), response.blobs[0].name.c_str() ); 
+            AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
+            stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+            stbuf->st_uid = fuse_get_context()->uid;
+            stbuf->st_gid = fuse_get_context()->gid;
+            auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
+            stbuf->st_mtime = blob_property.last_modified;
+            AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", response.blobs[0].last_modified.c_str(), blob_property.size);
+            stbuf->st_nlink = 1;
+            stbuf->st_size = blob_property.size;
+            return 0;
+        }
+    }
+    else // both error or zero results means blob does not exist
+    {
+        int storage_errno = errno;
+        syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
+        return 0 - map_errno(storage_errno);
+    }
+    
+   // auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
+    /* 
 
     if ((errno == 0) && blob_property.valid())
     {
@@ -444,7 +483,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
         {
             AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
             stbuf->st_mode = S_IFDIR | default_permission;
-            // If st_nlink = 2, means direcotry is empty.
+            // If st_nlink = 2, means directory is empty.
             // Directory size will affect behaviour for mv, rmdir, cp etc.
             stbuf->st_uid = fuse_get_context()->uid;
             stbuf->st_gid = fuse_get_context()->gid;
@@ -497,7 +536,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
         int storage_errno = errno;
         syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
         return 0 - map_errno(storage_errno);
-    }
+    } */
 }
 
 // Helper method for FTW to remove an entire directory & it's contents.

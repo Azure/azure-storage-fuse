@@ -173,9 +173,11 @@ int read_config_env()
 auth_type get_auth_type() 
 {   
     std::string lcAuthType = to_lower(str_options.authType);
-
-    if(!str_options.authType.empty()) {
-        if (lcAuthType == "msi") {
+    lcAuthType = trim(lcAuthType);
+    int lcAuthTypeSize = (int)lcAuthType.size();
+    if(lcAuthTypeSize > 0) 
+    {
+        if (lcAuthType.find("msi") != std::string::npos) {
             // MSI does not require any parameters to work, asa a lone system assigned identity will work with no parameters.
             return MSI_AUTH;
         } else if (lcAuthType == "key") {
@@ -215,6 +217,10 @@ int read_config(const std::string configFile)
         fprintf(stderr, "No config file found at %s.\n", configFile.c_str());
         return -1;
     }
+    else
+    {
+       fprintf(stderr, "reading config");
+    }
 
     std::string line;
     std::istringstream data;
@@ -252,8 +258,8 @@ int read_config(const std::string configFile)
         }
         else if(line.find("sasToken") != std::string::npos)
         {
-	        std::string sasTokenStr(value);
-	        str_options.sasToken = sasTokenStr;
+            std::string sasTokenStr(value);
+            str_options.sasToken = sasTokenStr;
         }
         else if(line.find("containerName") != std::string::npos)
         {
@@ -302,6 +308,7 @@ int read_config(const std::string configFile)
         }
         else if(line.find("aadEndpoint") != std::string::npos)
         {
+            std::cout << line.find("aadEndpoint");
             std::string altAADEndpointStr(value);
             str_options.aadEndpoint = altAADEndpointStr;
         }
@@ -332,6 +339,7 @@ void *azs_init(struct fuse_conn_info * conn)
 {
     // TODO: Make all of this go down roughly the same pipeline, rather than having spaghettified code
     auth_type AuthType = get_auth_type();
+    fprintf(stdout, "The authtype is %d\n", AuthType);
 
     if (str_options.use_attr_cache)
     {
@@ -409,6 +417,8 @@ void *azs_init(struct fuse_conn_info * conn)
                         str_options.spnClientSecret,
                         str_options.aadEndpoint);
             }
+
+                        fprintf(stdout , "MSI params: identityclientId %s\n", str_options.identityClientId.c_str());
 
             GetTokenManagerInstance(OTMCallback);
             //2. try to make blob client wrapper using oauth token
