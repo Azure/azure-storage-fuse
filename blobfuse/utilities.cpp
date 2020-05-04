@@ -448,7 +448,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             // Directory size will affect behaviour for mv, rmdir, cp etc.
             stbuf->st_uid = fuse_get_context()->uid;
             stbuf->st_gid = fuse_get_context()->gid;
-            stbuf->st_nlink = response.blobs.size() > 1 ? 2 : 3;
+            stbuf->st_nlink = response.blobs.size() > 1 ? 3 : 2;
             stbuf->st_size = 4096;
             return 0;
         }
