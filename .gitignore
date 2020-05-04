@@ -61,4 +61,5 @@ build/*
 
 launch.json
 tasks.json
-connection*.cfgs
+connection*.cfg
+connection.cfg

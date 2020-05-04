@@ -459,9 +459,9 @@ int azs_getattr(const char *path, struct stat *stbuf)
             stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
             stbuf->st_uid = fuse_get_context()->uid;
             stbuf->st_gid = fuse_get_context()->gid;
-            auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
+			auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
             stbuf->st_mtime = blob_property.last_modified;
-            AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", response.blobs[0].last_modified.c_str(), blob_property.size);
+		    AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", response.blobs[0].last_modified.c_str(), blob_property.size);
             stbuf->st_nlink = 1;
             stbuf->st_size = blob_property.size;
             return 0;
@@ -472,71 +472,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
         int storage_errno = errno;
         syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
         return 0 - map_errno(storage_errno);
-    }
-    
-   // auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
-    /* 
-
-    if ((errno == 0) && blob_property.valid())
-    {
-        if (is_directory_blob(blob_property.size, blob_property.metadata))
-        {
-            AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
-            stbuf->st_mode = S_IFDIR | default_permission;
-            // If st_nlink = 2, means directory is empty.
-            // Directory size will affect behaviour for mv, rmdir, cp etc.
-            stbuf->st_uid = fuse_get_context()->uid;
-            stbuf->st_gid = fuse_get_context()->gid;
-            stbuf->st_nlink = is_directory_empty(str_options.containerName, blobNameStr) == D_EMPTY ? 2 : 3;
-            stbuf->st_size = 4096;
-            return 0;
-        }
-
-        AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
-        stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
-        stbuf->st_uid = fuse_get_context()->uid;
-        stbuf->st_gid = fuse_get_context()->gid;
-        stbuf->st_mtime = blob_property.last_modified;
-        stbuf->st_nlink = 1;
-        stbuf->st_size = blob_property.size;
-        return 0;
-    }
-    else if (errno == 0 && !blob_property.valid())
-    {
-        // Check to see if it's a directory, instead of a file
-
-        errno = 0;
-        int dirSize = is_directory_empty(str_options.containerName, blobNameStr);
-        if (errno != 0)
-        {
-            int storage_errno = errno;
-            syslog(LOG_ERR, "Failure when attempting to determine if directory %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
-            return 0 - map_errno(storage_errno);
-        }
-        if (dirSize != D_NOTEXIST)
-        {
-            AZS_DEBUGLOGV("Directory %s found on the service.\n", blobNameStr.c_str());
-            stbuf->st_mode = S_IFDIR | default_permission;
-            // If st_nlink = 2, means direcotry is empty.
-            // Directory size will affect behaviour for mv, rmdir, cp etc.
-            stbuf->st_uid = fuse_get_context()->uid;
-            stbuf->st_gid = fuse_get_context()->gid;
-            stbuf->st_nlink = dirSize == D_EMPTY ? 2 : 3;
-            stbuf->st_size = 4096;
-            return 0;
-        }
-        else
-        {
-            AZS_DEBUGLOGV("Entity %s does not exist.  Returning ENOENT (%d) from get_attr.\n", path, ENOENT);
-            return -(ENOENT);
-        }
-    }
-    else
-    {
-        int storage_errno = errno;
-        syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
-        return 0 - map_errno(storage_errno);
-    } */
+    }   
+   
 }
 
 // Helper method for FTW to remove an entire directory & it's contents.
