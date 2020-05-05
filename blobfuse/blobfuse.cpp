@@ -217,10 +217,6 @@ int read_config(const std::string configFile)
         fprintf(stderr, "No config file found at %s.\n", configFile.c_str());
         return -1;
     }
-    else
-    {
-       fprintf(stderr, "reading config");
-    }
 
     std::string line;
     std::istringstream data;
@@ -339,7 +335,6 @@ void *azs_init(struct fuse_conn_info * conn)
 {
     // TODO: Make all of this go down roughly the same pipeline, rather than having spaghettified code
     auth_type AuthType = get_auth_type();
-    fprintf(stdout, "The authtype is %d\n", AuthType);
 
     if (str_options.use_attr_cache)
     {
@@ -417,9 +412,7 @@ void *azs_init(struct fuse_conn_info * conn)
                         str_options.spnClientSecret,
                         str_options.aadEndpoint);
             }
-
-                        fprintf(stdout , "MSI params: identityclientId %s\n", str_options.identityClientId.c_str());
-
+            
             GetTokenManagerInstance(OTMCallback);
             //2. try to make blob client wrapper using oauth token
             azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
@@ -490,7 +483,7 @@ void print_usage()
 
 void print_version()
 {
-    fprintf(stdout, "blobfuse 1.2.2\n");
+    fprintf(stdout, "blobfuse 1.2.5\n");
 }
 
 int set_log_mask(const char * min_log_level_char)
@@ -539,7 +532,7 @@ int set_log_mask(const char * min_log_level_char)
     }
 
     syslog(LOG_CRIT, "Unable to start blobfuse. Error: Invalid log level \"%s\"", min_log_level.c_str());
-    fprintf(stdout, "Error: Invalid log level \"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
+    fprintf(stderr, "Error: Invalid log level \"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
     fprintf(stdout, "If not specified, logging will default to LOG_WARNING.\n\n");
     return 1;
 }

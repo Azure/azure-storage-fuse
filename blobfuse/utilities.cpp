@@ -249,7 +249,7 @@ int ensure_files_directory_exists_in_cache(const std::string& file_path)
             }
 
             // Ignore if some other thread was successful creating the path
-        if(errno == EEXIST)
+            if(errno == EEXIST)
             {
                 status = 0;
                 errno = 0;
@@ -459,9 +459,9 @@ int azs_getattr(const char *path, struct stat *stbuf)
             stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
             stbuf->st_uid = fuse_get_context()->uid;
             stbuf->st_gid = fuse_get_context()->gid;
-			auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
+            auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
             stbuf->st_mtime = blob_property.last_modified;
-		    AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", response.blobs[0].last_modified.c_str(), blob_property.size);
+            AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", response.blobs[0].last_modified.c_str(), blob_property.size);
             stbuf->st_nlink = 1;
             stbuf->st_size = blob_property.size;
             return 0;
