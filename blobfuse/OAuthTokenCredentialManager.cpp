@@ -126,9 +126,10 @@ OAuthToken OAuthTokenCredentialManager::get_token()
         } else {
             fprintf(stdout, "Locking mutex failed, so some token is being acquired., so just wait and get that\n");
             syslog(LOG_WARNING, "Locking mutex failed, so some token is being acquired., so just wait and get that\n");
+            
             time_t current_time;
 
-            time(&current_time);
+            current_time =  get_current_time_in_utc();
 
             // There's a five minute segment where the token hasn't actually expired yet, but we're already trying to refresh it.
             // We can just use the currently active token instead, rather than waiting for the refresh.
@@ -172,6 +173,25 @@ bool is_token_expired_forcurrentutc(OAuthToken &token)
 {
     time_t current_time;
 
+    current_time =  get_current_time_in_utc();
+    
+    // Even if 5 minutes are left to expire we want to request a new token, so make the current clock look 5 minutes ahead.
+
+    time_t safety_current_time = current_time + (60 * 5); // time_t adds time seconds, we are adding 5 minutes here
+
+    bool isExpired = safety_current_time >= token.expires_on;    
+   
+    // check if about to expire via the buffered expiry time
+    return isExpired;
+}
+
+/// <summary>
+/// get current time in utc
+/// <summary>
+time_t get_current_time_in_utc()
+{
+    time_t current_time;
+
     struct tm *temptm;
     
     // get the current time
@@ -183,14 +203,7 @@ bool is_token_expired_forcurrentutc(OAuthToken &token)
 
     current_time = mktime(temptm);
     
-    // Even if 5 minutes are left to expire we want to request a new token, so make the current clock look 5 minutes ahead.
-
-    time_t safety_current_time = current_time + (60 * 5); // time_t adds time seconds, we are adding 5 minutes here
-
-    bool isExpired = safety_current_time >= token.expires_on;    
-   
-    // check if about to expire via the buffered expiry time
-    return isExpired;
+    return current_time;
 }
 
 // ===== CALLBACK SETUP ZONE =====
@@ -261,12 +274,14 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
         { // The alternate endpoint in the doc uses clientid as its parameter name, not client_id.
             uri_token_request_url->add_query("clientid", client_id_p);
         }
-         fprintf(stdout, "SetUP MSI callback with custom token issuing %s\n", msi_endpoint_p.c_str());
+         fprintf(stdout, "SetUP MSI callback with custom token issuing %s, Identity client %s\n", msi_endpoint_p.c_str(), client_id_p.c_str());
          syslog(LOG_INFO, "SetUP MSI callback with custom token issuing endpoint ");
     }
 
     uri_token_request_url->add_query(constants::param_mi_api_version, constants::param_mi_api_version_data);
     uri_token_request_url->add_query(constants::param_oauth_resource, constants::param_oauth_resource_data);
+    
+    fprintf(stdout, "URI token request URL printed out %s \n", uri_token_request_url->to_string().c_str());
 
     return [uri_token_request_url, msi_secret_p, custom_endpoint](std::shared_ptr<CurlEasyClient> httpClient) {
         // prepare the CURL handle

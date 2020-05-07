@@ -173,9 +173,11 @@ int read_config_env()
 auth_type get_auth_type() 
 {   
     std::string lcAuthType = to_lower(str_options.authType);
-
-    if(!str_options.authType.empty()) {
-        if (lcAuthType == "msi") {
+    lcAuthType = trim(lcAuthType);
+    int lcAuthTypeSize = (int)lcAuthType.size();
+    if(lcAuthTypeSize > 0) 
+    {
+        if (lcAuthType.find("msi") != std::string::npos) {
             // MSI does not require any parameters to work, asa a lone system assigned identity will work with no parameters.
             return MSI_AUTH;
         } else if (lcAuthType == "key") {
@@ -252,8 +254,8 @@ int read_config(const std::string configFile)
         }
         else if(line.find("sasToken") != std::string::npos)
         {
-	        std::string sasTokenStr(value);
-	        str_options.sasToken = sasTokenStr;
+            std::string sasTokenStr(value);
+            str_options.sasToken = sasTokenStr;
         }
         else if(line.find("containerName") != std::string::npos)
         {
@@ -302,6 +304,7 @@ int read_config(const std::string configFile)
         }
         else if(line.find("aadEndpoint") != std::string::npos)
         {
+            std::cout << line.find("aadEndpoint");
             std::string altAADEndpointStr(value);
             str_options.aadEndpoint = altAADEndpointStr;
         }
@@ -409,7 +412,7 @@ void *azs_init(struct fuse_conn_info * conn)
                         str_options.spnClientSecret,
                         str_options.aadEndpoint);
             }
-
+            
             GetTokenManagerInstance(OTMCallback);
             //2. try to make blob client wrapper using oauth token
             azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
@@ -480,7 +483,7 @@ void print_usage()
 
 void print_version()
 {
-    fprintf(stdout, "blobfuse 1.2.2\n");
+    fprintf(stdout, "blobfuse 1.2.5\n");
 }
 
 int set_log_mask(const char * min_log_level_char)
@@ -529,7 +532,7 @@ int set_log_mask(const char * min_log_level_char)
     }
 
     syslog(LOG_CRIT, "Unable to start blobfuse. Error: Invalid log level \"%s\"", min_log_level.c_str());
-    fprintf(stdout, "Error: Invalid log level \"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
+    fprintf(stderr, "Error: Invalid log level \"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
     fprintf(stdout, "If not specified, logging will default to LOG_WARNING.\n\n");
     return 1;
 }
