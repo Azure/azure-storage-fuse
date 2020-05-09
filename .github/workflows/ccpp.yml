@@ -1,4 +1,4 @@
-name: C/C++ CI
+name: BlobFuse CI
 
 on:
   push:
@@ -13,13 +13,16 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
-    - name: configure
-      run: sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
-	  run: sudo apt install golang-go
-    - name: make
-	  run: chmod +x build.sh
+    - name: Install basic packages
+      run: sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+    - name: Install libfuse
+      run: sudo apt-get instlall libfuse-dev -y
+    - name: Install golang
+      run: sudo apt install golang-go
+    - name: Prepare for build
+      run: chmod +x build.sh
+    - name: Bulid blobFuse
       run: ./build.sh
-    - name: make check
+    - name: Check blobFuse binary
       run: ./build/blobfuse --version
-    - name: make distcheck
-      run: ./build/blobfuse --version 
+    
