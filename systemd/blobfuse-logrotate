@@ -2,14 +2,16 @@ su root syslog
 
 /var/log/blobfuse.log 
 /var/log/blobfuse-rest.log {
-	   maxsize 1M
-       hourly
-       rotate 10
-       delaycompress
-       compress
-       notifempty
-       missingok
-	   dateext
-	   create
+    rotate 10
+    maxsize 1M
+	hourly
+	missingok
+	notifempty
+	compress
+	delaycompress
+	sharedscripts
+	postrotate
+		/usr/lib/rsyslog/rsyslog-rotate
+	endscript
 }
 
