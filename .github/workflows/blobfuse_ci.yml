@@ -11,7 +11,7 @@ jobs:
 
     runs-on: ubuntu-latest
     env:
-        MOUNT_DIR: ~/blob_mnt
+        MOUNT_DIR: /home/runner/blob_mnt
         TEMP_DIR: /mnt/blobfusetmp
         CONT_NAME: ${{ secrets.STO_CONT_NAME }}
         AZURE_STORAGE_ACCOUNT: ${{ secrets.STO_ACC_TEST1 }}
@@ -34,6 +34,8 @@ jobs:
       run: ./build.sh
     
     # Validate binary was built successfully
+    - name: Print current directory
+      run: pwd
     - name: Test Version
       run: ./build/blobfuse --version
       
@@ -44,7 +46,21 @@ jobs:
       run: mkdir $MOUNT_DIR
     - name: Create Cache Directory
       run: mkdir $TEMP_DIR
+      
    
+   # Initialize logging for blobfuse
+    - name: Copy the syslog filter file
+      run: cp ./systemd/10-blobfuse.conf /etc/rsyslog.d/
+      continue-on-error: true
+      
+    - name: Copy logrotate config file
+      run: cp ./systemd/blobfuse-logrotate /etc/logrotate.d/blobfuse
+      continue-on-error: true
+      
+    - name: Restart rsyslogd service
+      run: sudo service rsyslog restart
+      continue-on-error: true
+      
    # Mount container using blobFuse
     - name: Mount container
       run: ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=${{ secrets.STO_CONT_NAME }} -o allow_other --log-level=LOG_DEBUG
@@ -56,6 +72,11 @@ jobs:
     # Test complete so now unmount the directory
     - name: Unmount container
       run:  fusermount -u $MOUNT_DIR
+    
+    # Print the log files
+    - name: Print the log file
+      run: cat /var/log/blobfuse.log
+      continue-on-error: true
     
         
     
