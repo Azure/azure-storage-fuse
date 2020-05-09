@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
         MOUNT_DIR: /home/runner/work/blob_mnt
-        TEMP_DIR: /mnt/blobfusetmp
+        TEMP_DIR: /home/blobfusetmp
         CONT_NAME: ${{ secrets.STO_CONT_NAME }}
         AZURE_STORAGE_ACCOUNT: ${{ secrets.STO_ACC_TEST1 }}
         AZURE_STORAGE_ACCESS_KEY: ${{ secrets.STO_KEY_TEST1 }}
@@ -63,7 +63,7 @@ jobs:
       
    # Mount container using blobFuse
     - name: Mount container
-      run: ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=${{ secrets.STO_CONT_NAME }} -o allow_other --log-level=LOG_DEBUG
+      run: sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=${{ secrets.STO_CONT_NAME }} -o allow_other --log-level=LOG_DEBUG
   
    # Check the mount went through or not by listing the mounted directory
     - name: Check directory listing
