@@ -14,9 +14,8 @@ jobs:
         MOUNT_DIR: /home/runner/work/blob_mnt
         TEMP_DIR: /home/blobfusetmp
         CONT_NAME: ${{ secrets.STO_CONT_NAME }}
-        AZURE_STORAGE_ACCOUNT: ${{ secrets.STO_ACC_TEST1 }}
-        AZURE_STORAGE_ACCESS_KEY: ${{ secrets.STO_KEY_TEST1 }}
-      
+        BLOBFUSE_CFG: /home/runner/work/blobfuse.cfg
+        
     steps:
     - uses: actions/checkout@v2
     - name: Install basic packages
@@ -60,18 +59,46 @@ jobs:
     - name: Restart rsyslogd service
       run: sudo service rsyslog restart
       continue-on-error: true
-      
+    
+    # Set the environment variables for the test
+    - name: Set up Environment variables for the test
+      run: |
+        echo ::set-env name=AZURE_STORAGE_ACCOUNT::${{ secrets.STO_ACC_TEST1 }}
+        echo ::set-env name=AZURE_STORAGE_ACCESS_KEY::${{ secrets.STO_KEY_TEST1 }}
+      continue-on-error: true
+    
+   # Validate env variable
+    - name: Validate Env variables
+      run: |
+       echo "Account name : " ${{ env.AZURE_STORAGE_ACCOUNT }}
+       echo "Container name : " $CONT_NAME
+      continue-on-error: true
+        
+    # Create config file for the load
+    - name: Create config file
+      run: |
+        echo "accountName " ${{ env.AZURE_STORAGE_ACCOUNT }} > BLOBFUSE_CFG
+        echo "accountKey " ${{ env.AZURE_STORAGE_ACCESS_KEY }} >> BLOBFUSE_CFG
+        echo "authType Key" >> BLOBFUSE_CFG
+        echo "containerName " ${{ $CONT_NAME }} >> BLOBFUSE_CFG
+        
+   # Validate the config file
+    - name: Validate the config file
+      run : cat BLOBFUSE_CFG
+        
    # Mount container using blobFuse
     - name: Mount container
-      run: sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=${{ secrets.STO_CONT_NAME }} -o allow_other --log-level=LOG_DEBUG
+      run: sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
   
    # Check the mount went through or not by listing the mounted directory
     - name: Check directory listing
       run: ls -l $MOUNT_DIR
+      continue-on-error: true
     
     # Test complete so now unmount the directory
     - name: Unmount container
       run:  fusermount -u $MOUNT_DIR
+      continue-on-error: true
     
     # Print the log files
     - name: Print the log file
