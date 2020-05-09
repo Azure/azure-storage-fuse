@@ -80,7 +80,7 @@ jobs:
         echo "accountName " ${{ env.AZURE_STORAGE_ACCOUNT }} > BLOBFUSE_CFG
         echo "accountKey " ${{ env.AZURE_STORAGE_ACCESS_KEY }} >> BLOBFUSE_CFG
         echo "authType Key" >> BLOBFUSE_CFG
-        echo "containerName " ${{ $CONT_NAME }} >> BLOBFUSE_CFG
+        echo "containerName " $CONT_NAME >> BLOBFUSE_CFG
         
    # Validate the config file
     - name: Validate the config file
