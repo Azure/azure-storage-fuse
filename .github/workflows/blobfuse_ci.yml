@@ -11,7 +11,7 @@ jobs:
 
     runs-on: ubuntu-latest
     env:
-        MOUNT_DIR: /home/runner/blob_mnt
+        MOUNT_DIR: /home/runner/work/blob_mnt
         TEMP_DIR: /mnt/blobfusetmp
         CONT_NAME: ${{ secrets.STO_CONT_NAME }}
         AZURE_STORAGE_ACCOUNT: ${{ secrets.STO_ACC_TEST1 }}
@@ -43,9 +43,9 @@ jobs:
     - name: Prepare for test
       run: echo "Creating Mount dir " $MOUNT_DIR
     - name: Create Mount Directory
-      run: mkdir $MOUNT_DIR
+      run:  mkdir $MOUNT_DIR
     - name: Create Cache Directory
-      run: mkdir $TEMP_DIR
+      run: sudo mkdir $TEMP_DIR
       
    
    # Initialize logging for blobfuse
