@@ -11,8 +11,8 @@ jobs:
 
     runs-on: ubuntu-latest
     env:
-        MOUNT_DIR: "~/blob_mnt"
-        TEMP_DIR: "/mnt/blobfusetmp"
+        MOUNT_DIR: ~/blob_mnt
+        TEMP_DIR: /mnt/blobfusetmp
         CONT_NAME: ${{ secrets.STO_CONT_NAME }}
         AZURE_STORAGE_ACCOUNT: ${{ secrets.STO_ACC_TEST1 }}
         AZURE_STORAGE_ACCESS_KEY: ${{ secrets.STO_KEY_TEST1 }}
@@ -21,24 +21,39 @@ jobs:
     - uses: actions/checkout@v2
     - name: Install basic packages
       run: sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+    
     - name: Install libfuse
       run: sudo apt-get install libfuse-dev -y
-    - name: Install golang
-      run: sudo apt install golang-go
+    #- name: Install golang
+    #  run: sudo apt install golang-go
+    
+    # Start building the blobfuse code
     - name: Prepare for build
       run: chmod +x build.sh
     - name: Bulid blobFuse
       run: ./build.sh
+    
+    # Validate binary was built successfully
     - name: Test Version
       run: ./build/blobfuse --version
+      
+    # Create directory structures for the basic testing
+    - name: Prepare for test
+      run: echo "Creating Mount dir " $MOUNT_DIR
     - name: Create Mount Directory
       run: mkdir $MOUNT_DIR
     - name: Create Cache Directory
       run: mkdir $TEMP_DIR
+   
+   # Mount container using blobFuse
     - name: Mount container
       run: ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=${{ secrets.STO_CONT_NAME }} -o allow_other --log-level=LOG_DEBUG
+  
+   # Check the mount went through or not by listing the mounted directory
     - name: Check directory listing
       run: ls -l $MOUNT_DIR
+    
+    # Test complete so now unmount the directory
     - name: Unmount container
       run:  fusermount -u $MOUNT_DIR
     
