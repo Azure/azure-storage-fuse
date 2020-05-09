@@ -16,7 +16,7 @@ jobs:
     - name: Install basic packages
       run: sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
     - name: Install libfuse
-      run: sudo apt-get instlall libfuse-dev -y
+      run: sudo apt-get install libfuse-dev -y
     - name: Install golang
       run: sudo apt install golang-go
     - name: Prepare for build
