@@ -63,3 +63,6 @@ launch.json
 tasks.json
 connection*.cfg
 connection.cfg
+
+# blobcp binary
+tools/blobcp
