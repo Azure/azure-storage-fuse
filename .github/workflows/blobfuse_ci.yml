@@ -23,6 +23,28 @@ jobs:
       run: chmod +x build.sh
     - name: Bulid blobFuse
       run: ./build.sh
-    - name: Check blobFuse binary
+    - name: Test Version
       run: ./build/blobfuse --version
+    - name: Create Mount Directory
+      run: mkdir blob_mnt
+    - name: Create Cache Directory
+      run: mkdir /mnt/blobfusetmp
+    - name: Mount container
+      env:
+        MOUNT_DIR: `pwd`/blob_mnt
+        TEMP_DIR: /mnt/blobfusetmp
+        CONT_NAME: ${{STO_CONT_NAME}}
+        AZURE_STORAGE_ACCOUNT: ${{ secrets.STO_ACC_TEST1 }}
+        AZURE_STORAGE_ACCESS_KEY: ${{ secrets.STO_KEY_TEST1 }}
+      run: ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=${{ secrets.STO_CONT_NAME }} -o allow_other --log-level=LOG_DEBUG
+    - name: Check directory listing
+      env:
+        MOUNT_DIR: `pwd`/blob_mnt
+      run: ls -l $MOUNT_DIR
+    -name: Unmount container
+     env:
+        MOUNT_DIR: `pwd`/blob_mnt
+     run:  fusermount -u $MOUNT_DIR
+    
+        
     
