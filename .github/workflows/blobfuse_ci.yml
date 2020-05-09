@@ -13,7 +13,7 @@ jobs:
     env:
         MOUNT_DIR: "~/blob_mnt"
         TEMP_DIR: "/mnt/blobfusetmp"
-        CONT_NAME: ${{STO_CONT_NAME}}
+        CONT_NAME: ${{ secrets.STO_CONT_NAME }}
         AZURE_STORAGE_ACCOUNT: ${{ secrets.STO_ACC_TEST1 }}
         AZURE_STORAGE_ACCESS_KEY: ${{ secrets.STO_KEY_TEST1 }}
       
