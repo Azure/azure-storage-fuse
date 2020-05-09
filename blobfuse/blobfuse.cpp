@@ -1,6 +1,7 @@
 #include "blobfuse.h"
 #include <boost/filesystem.hpp>
 #include <string>
+#include <signal.h>
 
 namespace {
     std::string trim(const std::string& str) {
@@ -308,6 +309,11 @@ int read_config(const std::string configFile)
             std::string altAADEndpointStr(value);
             str_options.aadEndpoint = altAADEndpointStr;
         }
+        else if(line.find("logLevel") != std::string::npos)
+        {
+            std::string logLevel(value);
+            str_options.logLevel = logLevel;
+        }   
 
         data.clear();
     }
@@ -483,22 +489,27 @@ void print_usage()
 
 void print_version()
 {
-    fprintf(stdout, "blobfuse 1.2.5\n");
+    fprintf(stdout, "blobfuse 1.2.6\n");
 }
 
-int set_log_mask(const char * min_log_level_char)
+int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
 {
     if (!min_log_level_char)
     {
+        syslog(LOG_CRIT, "Setting logging level to : LOG_WARNING");
         setlogmask(LOG_UPTO(LOG_WARNING));
         return 0;
     }
     std::string min_log_level(min_log_level_char);
     if (min_log_level.empty())
     {
+        syslog(LOG_CRIT, "Setting logging level to : LOG_WARNING");
         setlogmask(LOG_UPTO(LOG_WARNING));
         return 0;
     }
+    
+    syslog(LOG_CRIT, "Setting logging level to : %s", min_log_level.c_str());
+
     // Options for logging: LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG
     if (min_log_level == "LOG_OFF")
     {
@@ -531,10 +542,58 @@ int set_log_mask(const char * min_log_level_char)
         return 0;
     }
 
-    syslog(LOG_CRIT, "Unable to start blobfuse. Error: Invalid log level \"%s\"", min_log_level.c_str());
-    fprintf(stderr, "Error: Invalid log level \"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
-    fprintf(stdout, "If not specified, logging will default to LOG_WARNING.\n\n");
+    if (blobfuseInit) {
+        syslog(LOG_CRIT, "Unable to start blobfuse. Error: Invalid log level \"%s\"", min_log_level.c_str());
+        fprintf(stderr, "Error: Invalid log level \"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
+        fprintf(stdout, "If not specified, logging will default to LOG_WARNING.\n\n");
+    } else {
+        set_log_mask(options.log_level, false);
+    }
     return 1;
+}
+
+int refresh_from_config_file(const std::string configFile)
+{
+    std::ifstream file(configFile);
+    if(!file)
+    {
+        syslog(LOG_CRIT, "Unable to read config file : %s", configFile.c_str());
+        return -1;
+    }
+
+    std::string line;
+    bool logLevelFound = false;
+    while(std::getline(file, line))
+    {
+        // skip over comments
+        if(line[0] == '#') {
+            continue;
+        }
+
+       std::size_t pos = line.find("logLevel");
+        if(pos != std::string::npos)
+        {
+           std::string logLevel = line.substr(line.find(" ")+1);
+           str_options.logLevel = trim(logLevel);
+            logLevelFound = true;
+        }
+    }
+
+    if(!logLevelFound) {
+        str_options.logLevel = (options.log_level) ? : "";
+    }
+
+    return 0;
+}
+
+void sig_usr_handler(int signum)
+{
+    if (signum == SIGUSR1) {
+        syslog(LOG_INFO, "Received signal SIGUSR1");
+        if (0 == refresh_from_config_file(options.config_file)) {
+            set_log_mask(str_options.logLevel.c_str(), false);
+        }
+    }
 }
 
 void set_up_callbacks()
@@ -570,6 +629,8 @@ void set_up_callbacks()
     azs_blob_operations.listxattr = azs_listxattr;
     azs_blob_operations.removexattr = azs_removexattr;
     azs_blob_operations.flush = azs_flush;
+
+    signal(SIGUSR1, sig_usr_handler);
 }
 
 int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
@@ -637,7 +698,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         return 1;
     }
 
-    int res = set_log_mask(options.log_level);
+    int res = set_log_mask(options.log_level, true);
     if (res != 0)
     {
         print_usage();

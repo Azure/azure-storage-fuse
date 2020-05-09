@@ -138,6 +138,7 @@ struct str_options
     std::string msiSecret;
     std::string containerName;
     std::string tmpPath;
+    std::string logLevel;
     bool use_https;
     bool use_attr_cache;
 };
