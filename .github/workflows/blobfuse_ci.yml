@@ -17,6 +17,17 @@ jobs:
         
     steps:
     - uses: actions/checkout@v2
+    
+    # Set the environment variables for the test
+    - name: Set up Environment variables for the test
+      run: |
+        # echo ::set-env name=AZURE_STORAGE_ACCOUNT::${{ secrets.STO_ACC_TEST1 }}
+        # echo ::set-env name=AZURE_STORAGE_ACCESS_KEY::${{ secrets.STO_KEY_TEST1 }}
+        # export AZURE_STORAGE_ACCOUNT=${{ secrets.STO_ACC_TEST1 }}
+        # export AZURE_STORAGE_ACCESS_KEY=${{ secrets.STO_KEY_TEST1 }}
+        set(ENV{AZURE_STORAGE_ACCOUNT} ${{ secrets.STO_ACC_TEST1 }})
+        set(ENV{AZURE_STORAGE_ACCESS_KEY} ${{ secrets.STO_KEY_TEST1 }})
+        
     - name: Install basic packages
       run: sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
     
@@ -43,8 +54,7 @@ jobs:
     - name: Create Mount Directory
       run:  mkdir $MOUNT_DIR
     - name: Create Cache Directory
-      run: sudo mkdir $TEMP_DIR
-      
+      run: sudo mkdir $TEMP_DIR    
    
    # Initialize logging for blobfuse
     - name: Copy the syslog filter file
@@ -58,16 +68,6 @@ jobs:
     - name: Restart rsyslogd service
       run: sudo service rsyslog restart
       continue-on-error: true
-    
-    # Set the environment variables for the test
-    - name: Set up Environment variables for the test
-      run: |
-        # echo ::set-env name=AZURE_STORAGE_ACCOUNT::${{ secrets.STO_ACC_TEST1 }}
-        # echo ::set-env name=AZURE_STORAGE_ACCESS_KEY::${{ secrets.STO_KEY_TEST1 }}
-        # export AZURE_STORAGE_ACCOUNT=${{ secrets.STO_ACC_TEST1 }}
-        # export AZURE_STORAGE_ACCESS_KEY=${{ secrets.STO_KEY_TEST1 }}
-        set(azure_storage_account ${{ secrets.STO_ACC_TEST1 }})
-        set(azure_storage_access_key ${{ secrets.STO_KEY_TEST1 }})
     
    # Validate env variable
     - name: Validate Env variables
