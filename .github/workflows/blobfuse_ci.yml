@@ -76,10 +76,26 @@ jobs:
       run: |
         sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --config-file=$BLOBFUSE_CFG --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
 
+    # Give some time for system to stablise
+    - name: Let the mount come online
+      run: sleep 10s
+      
     # Check the mount went through or not by listing the mounted directory
     - name: TEST - Directory Listing
       run: ls -lRt $MOUNT_DIR
       timeout-minutes: 5
+      continue-on-error: true
+    
+    # Create a directory in mounted directory
+    - name: TEST - Create Directory
+      run: mkdir $MOUNT_DIR/test_dir
+      timeout-minutes: 60
+      continue-on-error: true
+    
+    # GetStat on Directory
+    - name: TEST - GetStat Directory
+      run: stat $MOUNT_DIR/test_dir
+      timeout-minutes: 60
       continue-on-error: true
     
     # Create a file in mounted directory
@@ -89,7 +105,7 @@ jobs:
       continue-on-error: true
      
     # GetStat on File
-    - name: TEST - GetState of file
+    - name: TEST - GetStat File
       run: stat $MOUNT_DIR/test.txt
       timeout-minutes: 60
       continue-on-error: true
@@ -100,6 +116,12 @@ jobs:
       timeout-minutes: 30
       continue-on-error: true
       
+    # Delete newly created Directory
+    - name: TEST - Delete Directory
+      run: rm -rf  $MOUNT_DIR/test_dir
+      timeout-minutes: 30
+      continue-on-error: true
+    
     # Test complete so now unmount the directory
     - name: Unmount container
       run:  sudo fusermount -u $MOUNT_DIR
