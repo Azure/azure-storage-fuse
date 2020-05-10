@@ -75,23 +75,29 @@ jobs:
     - name: Mount container
       run: |
         sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --config-file=$BLOBFUSE_CFG --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
-         
+
     # Check the mount went through or not by listing the mounted directory
-    - name: Directory listing test
-      run: ls -l $MOUNT_DIR
+    - name: TEST - Directory Listing
+      run: ls -lRt $MOUNT_DIR
       timeout-minutes: 5
       continue-on-error: true
     
-    # Delete older data from container
-    - name: Clear directory test
-      run: rm -rf  $MOUNT_DIR/*
-      timeout-minutes: 30
-      continue-on-error: true
-   
     # Create a file in mounted directory
-    - name: Create file test
+    - name: TEST - Create File
       run: fallocate -l 1G $MOUNT_DIR/test.txt
       timeout-minutes: 60
+      continue-on-error: true
+     
+    # GetStat on File
+    - name: TEST - GetState of file
+      run: stat $MOUNT_DIR/test.txt
+      timeout-minutes: 60
+      continue-on-error: true
+    
+    # Delete newly created file
+    - name: TEST - Delete File
+      run: rm -rf  $MOUNT_DIR/test.txt
+      timeout-minutes: 30
       continue-on-error: true
       
     # Test complete so now unmount the directory
