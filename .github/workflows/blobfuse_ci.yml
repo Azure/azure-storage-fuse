@@ -14,19 +14,16 @@ jobs:
         TEMP_DIR: /home/blobfusetmp
         CONT_NAME: ${{ secrets.STO_CONT_NAME }}
         BLOBFUSE_CFG: /home/runner/work/blobfuse.cfg
+        AZURE_STORAGE_ACCOUNT: ${{ secrets.STO_ACC_TEST1 }}
+        AZURE_STORAGE_ACCESS_KEY: ${{ secrets.STO_KEY_TEST1 }}
         
     steps:
     - uses: actions/checkout@v2
     
     # Set the environment variables for the test
-    - name: Set up Environment variables for the test
+    - name: Validate Env Variables
       run: |
-        # echo ::set-env name=AZURE_STORAGE_ACCOUNT::${{ secrets.STO_ACC_TEST1 }}
-        # echo ::set-env name=AZURE_STORAGE_ACCESS_KEY::${{ secrets.STO_KEY_TEST1 }}
-        # export AZURE_STORAGE_ACCOUNT=${{ secrets.STO_ACC_TEST1 }}
-        # export AZURE_STORAGE_ACCESS_KEY=${{ secrets.STO_KEY_TEST1 }}
-        set(ENV{AZURE_STORAGE_ACCOUNT} ${{ secrets.STO_ACC_TEST1 }})
-        set(ENV{AZURE_STORAGE_ACCESS_KEY} ${{ secrets.STO_KEY_TEST1 }})
+        echo ${{ env.AZURE_STORAGE_ACCOUNT }}
         
     - name: Install basic packages
       run: sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
