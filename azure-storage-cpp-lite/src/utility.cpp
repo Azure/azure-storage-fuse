@@ -77,8 +77,12 @@ namespace microsoft_azure {
         }
 
         std::string get_ms_range(unsigned long long start_byte, unsigned long long end_byte) {
-            std::string result("bytes=");
-            result.append(std::to_string(start_byte)).append("-");
+            std::string result;
+            if (start_byte == 0 && end_byte == 0)
+            {
+                return result;
+            }
+            result.append("bytes=" + std::to_string(start_byte) + "-");
             if (end_byte != 0) {
                 result.append(std::to_string(end_byte));
             }

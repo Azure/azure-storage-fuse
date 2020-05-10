@@ -101,10 +101,10 @@ DAT(header_value_page_write_update, "update")
 DAT(header_value_page_write_clear, "clear")
 DAT(header_value_payload_format_nometadata, "application/json;odata=nometadata")
 DAT(header_value_payload_format_fullmetadata, "application/json;odata=fullmetadata")
-DAT(header_value_storage_version, "2017-11-09")
+DAT(header_value_storage_version, "2018-11-09")
 DAT(header_value_metadata, "true")
 
-DAT(header_value_user_agent, "Azure-Storage-Fuse/1.2.1")
+DAT(header_value_user_agent, "Azure-Storage-Fuse/1.2.3")
 
 DAT(date_format_rfc_1123, "%a, %d %b %Y %H:%M:%S GMT")
 DAT(date_format_iso_8601, "%Y-%m-%dT%H:%M:%SZ")
