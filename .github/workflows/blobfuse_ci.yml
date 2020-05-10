@@ -65,6 +65,8 @@ jobs:
       run: |
         echo ::set-env name=AZURE_STORAGE_ACCOUNT::${{ secrets.STO_ACC_TEST1 }}
         echo ::set-env name=AZURE_STORAGE_ACCESS_KEY::${{ secrets.STO_KEY_TEST1 }}
+        export AZURE_STORAGE_ACCOUNT=${{ secrets.STO_ACC_TEST1 }}
+        export AZURE_STORAGE_ACCESS_KEY=${{ secrets.STO_KEY_TEST1 }}
     
    # Validate env variable
     - name: Validate Env variables
@@ -89,20 +91,6 @@ jobs:
     - name: Mount container
       run: |
         sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
-        RES = $?
-        if [ $RES -eq 0]; then
-          echo "BlobFuse mounted sucessfully with ENV variables"
-        else
-          echo "BlobFuse mount with ENV failed, retrying with config file"
-          sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --config-file=$BLOBFUSE_CFG --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
-          RES = $?
-          if [ $RES -eq 0]; then
-            echo "BlobFuse mount succeded with config file"
-          else
-            echo "Failed to mount with config file as well"
-          fi
-        fi
-        
         
    # Check the mount went through or not by listing the mounted directory
     - name: Check directory listing
