@@ -82,20 +82,20 @@ jobs:
       
     # Check the mount went through or not by listing the mounted directory
     - name: TEST - Directory Listing
-      run: ls -lRt $MOUNT_DIR
+      run: ls -l $MOUNT_DIR
       timeout-minutes: 5
       continue-on-error: true
     
     # Create a directory in mounted directory
     - name: TEST - Create Directory
       run: mkdir $MOUNT_DIR/test_dir
-      timeout-minutes: 60
+      timeout-minutes: 5
       continue-on-error: true
     
     # GetStat on Directory
     - name: TEST - GetStat Directory
       run: stat $MOUNT_DIR/test_dir
-      timeout-minutes: 60
+      timeout-minutes: 3
       continue-on-error: true
     
     # Create a file in mounted directory
@@ -107,19 +107,19 @@ jobs:
     # GetStat on File
     - name: TEST - GetStat File
       run: stat $MOUNT_DIR/test.txt
-      timeout-minutes: 60
+      timeout-minutes: 3
       continue-on-error: true
     
     # Delete newly created file
     - name: TEST - Delete File
       run: rm -rf  $MOUNT_DIR/test.txt
-      timeout-minutes: 30
+      timeout-minutes: 20
       continue-on-error: true
       
     # Delete newly created Directory
     - name: TEST - Delete Directory
       run: rm -rf  $MOUNT_DIR/test_dir
-      timeout-minutes: 30
+      timeout-minutes: 5
       continue-on-error: true
     
     # Test complete so now unmount the directory
