@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 180
+    
     env:
         MOUNT_DIR: /home/runner/work/blob_mnt
         TEMP_DIR: /home/blobfusetmp
@@ -77,16 +79,19 @@ jobs:
     # Check the mount went through or not by listing the mounted directory
     - name: Directory listing test
       run: ls -l $MOUNT_DIR
+      timeout-minutes: 5
       continue-on-error: true
     
     # Delete older data from container
     - name: Clear directory test
       run: rm -rf  $MOUNT_DIR/*
+      timeout-minutes: 30
       continue-on-error: true
    
     # Create a file in mounted directory
     - name: Create file test
       run: fallocate -l 1G $MOUNT_DIR/test.txt
+      timeout-minutes: 60
       continue-on-error: true
       
     # Test complete so now unmount the directory
