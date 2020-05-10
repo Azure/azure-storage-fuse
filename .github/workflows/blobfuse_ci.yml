@@ -8,7 +8,6 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
     env:
         MOUNT_DIR: /home/runner/work/blob_mnt
@@ -63,10 +62,12 @@ jobs:
     # Set the environment variables for the test
     - name: Set up Environment variables for the test
       run: |
-        echo ::set-env name=AZURE_STORAGE_ACCOUNT::${{ secrets.STO_ACC_TEST1 }}
-        echo ::set-env name=AZURE_STORAGE_ACCESS_KEY::${{ secrets.STO_KEY_TEST1 }}
-        export AZURE_STORAGE_ACCOUNT=${{ secrets.STO_ACC_TEST1 }}
-        export AZURE_STORAGE_ACCESS_KEY=${{ secrets.STO_KEY_TEST1 }}
+        # echo ::set-env name=AZURE_STORAGE_ACCOUNT::${{ secrets.STO_ACC_TEST1 }}
+        # echo ::set-env name=AZURE_STORAGE_ACCESS_KEY::${{ secrets.STO_KEY_TEST1 }}
+        # export AZURE_STORAGE_ACCOUNT=${{ secrets.STO_ACC_TEST1 }}
+        # export AZURE_STORAGE_ACCESS_KEY=${{ secrets.STO_KEY_TEST1 }}
+        set(AZURE_STORAGE_ACCOUNT ${{ secrets.STO_ACC_TEST1 }})
+        set(AZURE_STORAGE_ACCESS_KEY ${{ secrets.STO_KEY_TEST1 }}
     
    # Validate env variable
     - name: Validate Env variables
@@ -90,7 +91,8 @@ jobs:
    # Mount container using blobFuse
     - name: Mount container
       run: |
-        sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --config-file=$BLOBFUSE_CFG --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
+        # sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --config-file=$BLOBFUSE_CFG --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
+        sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
         
    # Check the mount went through or not by listing the mounted directory
     - name: Check directory listing
