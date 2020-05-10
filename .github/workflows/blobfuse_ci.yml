@@ -66,8 +66,8 @@ jobs:
         # echo ::set-env name=AZURE_STORAGE_ACCESS_KEY::${{ secrets.STO_KEY_TEST1 }}
         # export AZURE_STORAGE_ACCOUNT=${{ secrets.STO_ACC_TEST1 }}
         # export AZURE_STORAGE_ACCESS_KEY=${{ secrets.STO_KEY_TEST1 }}
-        set(AZURE_STORAGE_ACCOUNT ${{ secrets.STO_ACC_TEST1 }})
-        set(AZURE_STORAGE_ACCESS_KEY ${{ secrets.STO_KEY_TEST1 }}
+        set(azure_storage_account ${{ secrets.STO_ACC_TEST1 }})
+        set(azure_storage_access_key ${{ secrets.STO_KEY_TEST1 }})
     
    # Validate env variable
     - name: Validate Env variables
