@@ -82,43 +82,43 @@ jobs:
       
     # Check the mount went through or not by listing the mounted directory
     - name: TEST - Directory Listing
-      run: ls -l $MOUNT_DIR
+      run: sudo ls -l $MOUNT_DIR
       timeout-minutes: 5
       continue-on-error: true
     
     # Create a directory in mounted directory
     - name: TEST - Create Directory
-      run: mkdir $MOUNT_DIR/test_dir
+      run: sudo mkdir $MOUNT_DIR/test_dir
       timeout-minutes: 5
       continue-on-error: true
     
     # GetStat on Directory
     - name: TEST - GetStat Directory
-      run: stat $MOUNT_DIR/test_dir
+      run: sudo stat $MOUNT_DIR/test_dir
       timeout-minutes: 3
       continue-on-error: true
     
     # Create a file in mounted directory
     - name: TEST - Create File
-      run: fallocate -l 1G $MOUNT_DIR/test.txt
+      run: sudo fallocate -l 1G $MOUNT_DIR/test.txt
       timeout-minutes: 60
       continue-on-error: true
      
     # GetStat on File
     - name: TEST - GetStat File
-      run: stat $MOUNT_DIR/test.txt
+      run: sudo stat $MOUNT_DIR/test.txt
       timeout-minutes: 3
       continue-on-error: true
     
     # Delete newly created file
     - name: TEST - Delete File
-      run: rm -rf  $MOUNT_DIR/test.txt
+      run: sudo rm -rf  $MOUNT_DIR/test.txt
       timeout-minutes: 20
       continue-on-error: true
       
     # Delete newly created Directory
     - name: TEST - Delete Directory
-      run: rm -rf  $MOUNT_DIR/test_dir
+      run: sudo rm -rf  $MOUNT_DIR/test_dir
       timeout-minutes: 5
       continue-on-error: true
     
