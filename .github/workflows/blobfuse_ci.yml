@@ -53,7 +53,7 @@ jobs:
       continue-on-error: true
       
     - name: Copy logrotate config file
-      run: cp ./systemd/blobfuse-logrotate /etc/logrotate.d/blobfuse
+      run: sudo cp ./systemd/blobfuse-logrotate /etc/logrotate.d/blobfuse
       continue-on-error: true
       
     - name: Restart rsyslogd service
@@ -65,7 +65,6 @@ jobs:
       run: |
         echo ::set-env name=AZURE_STORAGE_ACCOUNT::${{ secrets.STO_ACC_TEST1 }}
         echo ::set-env name=AZURE_STORAGE_ACCESS_KEY::${{ secrets.STO_KEY_TEST1 }}
-      continue-on-error: true
     
    # Validate env variable
     - name: Validate Env variables
@@ -88,8 +87,14 @@ jobs:
         
    # Mount container using blobFuse
     - name: Mount container
-      run: sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
-  
+      run: |
+        sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
+        
+   # Check mount when fine or not, if not retry with config file
+    - name: Retry with config file if mount failed
+       if ${{ !SUCCESS }}
+         sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --config-file=$BLOBFUSE_CFG --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
+      
    # Check the mount went through or not by listing the mounted directory
     - name: Check directory listing
       run: ls -l $MOUNT_DIR
