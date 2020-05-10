@@ -27,26 +27,7 @@ jobs:
       run: sudo apt-get install libfuse-dev -y
     #- name: Install golang
     #  run: sudo apt install golang-go
-    
-       # Validate env variable
-    - name: Validate Env variables
-      run: |
-       echo "Account name : " ${{ env.AZURE_STORAGE_ACCOUNT }}
-       echo "Container name : " $CONT_NAME
-      continue-on-error: true
         
-    # Create config file for the load
-    - name: Create config file
-      run: |
-        echo "accountName " ${{ env.AZURE_STORAGE_ACCOUNT }} > $BLOBFUSE_CFG
-        echo "accountKey " ${{ env.AZURE_STORAGE_ACCESS_KEY }} >> $BLOBFUSE_CFG
-        echo "authType Key" >> $BLOBFUSE_CFG
-        echo "containerName " $CONT_NAME >> $BLOBFUSE_CFG
-        
-    # Validate the config file
-    - name: Validate the config file
-      run : cat $BLOBFUSE_CFG
-    
     # Start building the blobfuse code
     - name: Prepare for build
       run: chmod +x build.sh
@@ -59,17 +40,9 @@ jobs:
     - name: Test Version
       run: ./build/blobfuse --version
       
-    # Create directory structures for the basic testing
-    - name: Prepare for test
-      run: echo "Creating Mount dir " $MOUNT_DIR
-    - name: Create Mount Directory
-      run:  mkdir $MOUNT_DIR
-    - name: Create Cache Directory
-      run: sudo mkdir $TEMP_DIR    
-   
     # Initialize logging for blobfuse
     - name: Copy the syslog filter file
-      run: cp ./systemd/10-blobfuse.conf /etc/rsyslog.d/
+      run: sudo cp ./systemd/10-blobfuse.conf /etc/rsyslog.d/
       continue-on-error: true
       
     - name: Copy logrotate config file
@@ -79,26 +52,51 @@ jobs:
     - name: Restart rsyslogd service
       run: sudo service rsyslog restart
       continue-on-error: true
- 
+      
+    # Create directory structures for the basic testing
+    - name: Prepare for test
+      run: echo "Creating Mount dir " $MOUNT_DIR
+    - name: Create Mount Directory
+      run:  mkdir $MOUNT_DIR
+    - name: Create Cache Directory
+      run: sudo mkdir $TEMP_DIR    
+       
+    # Create config file for the load
+    - name: Create config file
+      run: |
+        echo "accountName " ${{ env.AZURE_STORAGE_ACCOUNT }} > $BLOBFUSE_CFG
+        echo "accountKey " ${{ env.AZURE_STORAGE_ACCESS_KEY }} >> $BLOBFUSE_CFG
+        echo "authType Key" >> $BLOBFUSE_CFG
+        echo "containerName " $CONT_NAME >> $BLOBFUSE_CFG
+        
     # Mount container using blobFuse
     - name: Mount container
       run: |
         sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --config-file=$BLOBFUSE_CFG --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
-        #sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
-        
+         
     # Check the mount went through or not by listing the mounted directory
-    - name: Check directory listing
+    - name: Directory listing test
       run: ls -l $MOUNT_DIR
       continue-on-error: true
     
+    # Delete older data from container
+    - name: Clear directory test
+      run: rm -rf  $MOUNT_DIR/*
+      continue-on-error: true
+   
+    # Create a file in mounted directory
+    - name: Create file test
+      run: fallocate -l 1G $MOUNT_DIR/test.txt
+      continue-on-error: true
+      
     # Test complete so now unmount the directory
     - name: Unmount container
-      run:  fusermount -u $MOUNT_DIR
+      run:  sudo fusermount -u $MOUNT_DIR
       continue-on-error: true
     
     # Print the log files
     - name: Print the log file
-      run: cat /var/log/blobfuse.log
+      run: sudo cat /var/log/blobfuse.log
       continue-on-error: true
     
         
