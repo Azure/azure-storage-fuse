@@ -19,8 +19,16 @@ jobs:
         
     steps:
     - uses: actions/checkout@v2
+           
+    - name: Install basic packages
+      run: sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
     
-   # Validate env variable
+    - name: Install libfuse
+      run: sudo apt-get install libfuse-dev -y
+    #- name: Install golang
+    #  run: sudo apt install golang-go
+    
+       # Validate env variable
     - name: Validate Env variables
       run: |
        echo "Account name : " ${{ env.AZURE_STORAGE_ACCOUNT }}
@@ -35,17 +43,9 @@ jobs:
         echo "authType Key" >> $BLOBFUSE_CFG
         echo "containerName " $CONT_NAME >> $BLOBFUSE_CFG
         
-   # Validate the config file
+    # Validate the config file
     - name: Validate the config file
       run : cat $BLOBFUSE_CFG
-           
-    - name: Install basic packages
-      run: sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
-    
-    - name: Install libfuse
-      run: sudo apt-get install libfuse-dev -y
-    #- name: Install golang
-    #  run: sudo apt install golang-go
     
     # Start building the blobfuse code
     - name: Prepare for build
@@ -67,7 +67,7 @@ jobs:
     - name: Create Cache Directory
       run: sudo mkdir $TEMP_DIR    
    
-   # Initialize logging for blobfuse
+    # Initialize logging for blobfuse
     - name: Copy the syslog filter file
       run: cp ./systemd/10-blobfuse.conf /etc/rsyslog.d/
       continue-on-error: true
@@ -80,13 +80,13 @@ jobs:
       run: sudo service rsyslog restart
       continue-on-error: true
  
-   # Mount container using blobFuse
+    # Mount container using blobFuse
     - name: Mount container
       run: |
         sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --config-file=$BLOBFUSE_CFG --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
         #sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
         
-   # Check the mount went through or not by listing the mounted directory
+    # Check the mount went through or not by listing the mounted directory
     - name: Check directory listing
       run: ls -l $MOUNT_DIR
       continue-on-error: true
