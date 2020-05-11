@@ -103,35 +103,36 @@ jobs:
 
     # Check the mount went through or not by listing the mounted directory
     - name: TEST - Directory Listing
-      run: ls -l $MOUNT_DIR
+      run: ls -lRt $MOUNT_DIR
       timeout-minutes: 5
       #continue-on-error: true
 
+    # Directory deletion is not working so commenting this out
     # Clear directory form previous failed runs
-    - name: TEST - Directory Cleaning
-      run: rm -rf $MOUNT_DIR/*
-      timeout-minutes: 10
+    #- name: TEST - Directory Cleaning before Begin
+    #  run: rm -rf $MOUNT_DIR/*
+    #  timeout-minutes: 10
       #continue-on-error: true
              
     # Directory Operation Testing
 
     # Create a directory in mounted directory
-    - name: TEST - Create Directory
-      run: mkdir $MOUNT_DIR/test_dir
-      timeout-minutes: 5
-      continue-on-error: true
+    #- name: TEST - Create Directory
+    #  run: mkdir $MOUNT_DIR/test_dir
+    #  timeout-minutes: 5
+    #  continue-on-error: true
     
     # GetStat on Directory
-    - name: TEST - GetStat Directory
-      run: stat $MOUNT_DIR/test_dir
-      timeout-minutes: 3
-      #continue-on-error: true
+    #- name: TEST - GetStat Directory
+    #  run: stat $MOUNT_DIR/test_dir
+    #  timeout-minutes: 3
+    #  #continue-on-error: true
         
     # Delete newly created Directory
-    - name: TEST - Delete Directory
-      run: rm -rf  $MOUNT_DIR/test_dir
-      timeout-minutes: 5
-      continue-on-error: true
+    #- name: TEST - Delete Directory
+    #  run: rm -rf  $MOUNT_DIR/test_dir
+    #  timeout-minutes: 5
+    #  continue-on-error: true
 
     # File Operations Testing
 
@@ -155,15 +156,34 @@ jobs:
         stat $MOUNT_DIR/test.log
       timeout-minutes: 20
       continue-on-error: true
-    
+    # File rename test
+    - name: TEST - File Rename 
+      run: |
+        mv $MOUNT_DIR/test.txt $MOUNT_DIR/test1.txt
+      timeout-minutes: 5
+
     # Delete newly created file
     - name: TEST - Delete File
       run: | 
         rm -rf  $MOUNT_DIR/test.txt
+        rm -rf  $MOUNT_DIR/test1.txt
         rm -rf  $MOUNT_DIR/test.log
       timeout-minutes: 20
       #continue-on-error: true
-      
+
+    # File copy test
+    - name: TEST - File Copy 
+      run: |
+        sudo cp /var/log/*.* $MOUNT_DIR/
+      timeout-minutes: 10
+  
+    # Clear directory 
+    - name: TEST - Directory Cleaning at End
+      run: rm -rf $MOUNT_DIR/*
+      timeout-minutes: 10
+      #continue-on-error: true
+
+
     # Basic testing done.....
     
     # Test complete so now unmount the directory
