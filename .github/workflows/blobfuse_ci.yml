@@ -114,7 +114,7 @@ jobs:
     - name: TEST - Create Directory
       run: mkdir $MOUNT_DIR/test_dir
       timeout-minutes: 5
-      #continue-on-error: true
+      continue-on-error: true
     
     # GetStat on Directory
     - name: TEST - GetStat Directory
@@ -137,7 +137,7 @@ jobs:
     # File Read-Write test
     - name: TEST - Write to file and Read back
       run: |
-        sudo cat /var/log/*.log >> $MOUNT_DIR/test.log
+        sudo cat /var/log/*.log > $MOUNT_DIR/test.log
         cat $MOUNT_DIR/test.log
         stat $MOUNT_DIR/test.log
       timeout-minutes: 20
@@ -147,7 +147,7 @@ jobs:
     - name: TEST - Delete File
       run: | 
         sudo rm -rf  $MOUNT_DIR/test.txt
-        #sudo rm -rf  $MOUNT_DIR/test.log
+        sudo rm -rf  $MOUNT_DIR/test.log
       timeout-minutes: 20
       #continue-on-error: true
       
@@ -155,13 +155,13 @@ jobs:
     - name: TEST - Delete Directory
       run: sudo rm -rf  $MOUNT_DIR/test_dir
       timeout-minutes: 20
-      #continue-on-error: true
+      continue-on-error: true
     
     # Test complete so now unmount the directory
     - name: Unmount container
       run:  sudo fusermount -u $MOUNT_DIR
       timeout-minutes: 20
-      #continue-on-error: true
+      continue-on-error: true
     
     # Print the log files
     - name: Print the log file
