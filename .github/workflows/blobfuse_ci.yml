@@ -75,25 +75,53 @@ jobs:
     - name: Mount container
       run: |
         sudo ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --config-file=$BLOBFUSE_CFG --container-name=$CONT_NAME -o allow_other --log-level=LOG_DEBUG
-         
+
+    # Give some time for system to stablise
+    - name: Let the mount come online
+      run: sleep 10s
+      
     # Check the mount went through or not by listing the mounted directory
-    - name: Directory listing test
-      run: ls -l $MOUNT_DIR
+    - name: TEST - Directory Listing
+      run: sudo ls -l $MOUNT_DIR
       timeout-minutes: 5
       continue-on-error: true
     
-    # Delete older data from container
-    - name: Clear directory test
-      run: rm -rf  $MOUNT_DIR/*
-      timeout-minutes: 30
+    # Create a directory in mounted directory
+    - name: TEST - Create Directory
+      run: sudo mkdir $MOUNT_DIR/test_dir
+      timeout-minutes: 5
       continue-on-error: true
-   
+    
+    # GetStat on Directory
+    - name: TEST - GetStat Directory
+      run: sudo stat $MOUNT_DIR/test_dir
+      timeout-minutes: 3
+      continue-on-error: true
+    
     # Create a file in mounted directory
-    - name: Create file test
-      run: fallocate -l 1G $MOUNT_DIR/test.txt
+    - name: TEST - Create File
+      run: sudo fallocate -l 1G $MOUNT_DIR/test.txt
       timeout-minutes: 60
       continue-on-error: true
+     
+    # GetStat on File
+    - name: TEST - GetStat File
+      run: sudo stat $MOUNT_DIR/test.txt
+      timeout-minutes: 3
+      continue-on-error: true
+    
+    # Delete newly created file
+    - name: TEST - Delete File
+      run: sudo rm -rf  $MOUNT_DIR/test.txt
+      timeout-minutes: 20
+      continue-on-error: true
       
+    # Delete newly created Directory
+    - name: TEST - Delete Directory
+      run: sudo rm -rf  $MOUNT_DIR/test_dir
+      timeout-minutes: 5
+      continue-on-error: true
+    
     # Test complete so now unmount the directory
     - name: Unmount container
       run:  sudo fusermount -u $MOUNT_DIR
