@@ -8,9 +8,12 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 180
-    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, ubuntu-16.04]
+
     env:
         MOUNT_DIR: /home/runner/work/blob_mnt
         TEMP_DIR: /home/blobfusetmp
@@ -80,18 +83,18 @@ jobs:
     - name: Let the mount come online
       run: sleep 10s
       
-    # Clear directory form previous failed runs
-    - name: TEST - Directory Cleaning
-      run: rm -rf $MOUNT_DIR
-      timeout-minutes: 5
-      #continue-on-error: true
-          
     # Check the mount went through or not by listing the mounted directory
     - name: TEST - Directory Listing
       run: ls -l $MOUNT_DIR
       timeout-minutes: 5
       #continue-on-error: true
-    
+
+    # Clear directory form previous failed runs
+    - name: TEST - Directory Cleaning
+      run: rm -rf $MOUNT_DIR
+      timeout-minutes: 5
+      #continue-on-error: true
+             
     # Create a directory in mounted directory
     - name: TEST - Create Directory
       run: mkdir $MOUNT_DIR/test_dir
