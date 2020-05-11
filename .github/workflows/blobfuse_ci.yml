@@ -80,27 +80,33 @@ jobs:
     - name: Let the mount come online
       run: sleep 10s
       
+    # Clear directory form previous failed runs
+    - name: TEST - Directory Cleaning
+      run: rm -rf $MOUNT_DIR
+      timeout-minutes: 5
+      #continue-on-error: true
+          
     # Check the mount went through or not by listing the mounted directory
     - name: TEST - Directory Listing
-      run: sudo ls -l $MOUNT_DIR
+      run: ls -l $MOUNT_DIR
       timeout-minutes: 5
       #continue-on-error: true
     
     # Create a directory in mounted directory
     - name: TEST - Create Directory
-      run: sudo mkdir $MOUNT_DIR/test_dir
+      run: mkdir $MOUNT_DIR/test_dir
       timeout-minutes: 5
       #continue-on-error: true
     
     # GetStat on Directory
     - name: TEST - GetStat Directory
-      run: sudo stat $MOUNT_DIR/test_dir
+      run: stat $MOUNT_DIR/test_dir
       timeout-minutes: 3
       #continue-on-error: true
     
     # Create a file in mounted directory
-    - name: TEST - Create File
-      run: sudo fallocate -l 1G $MOUNT_DIR/test.txt
+    - name: TEST - Create File (1GB in size)
+      run: dd bs=1000 count=1000000 if=/dev/zero of=$MOUNT_DIR/test.txt
       timeout-minutes: 60
       #continue-on-error: true
      
