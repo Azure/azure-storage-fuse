@@ -79,7 +79,7 @@ jobs:
           echo "Setting container for Ubn-18"
           echo "::set-env name=CONT_NAME::${{ secrets.STO_CONT_NAME_UBN_18 }}"
         fi
-        echo "Container name : " $CONT_NAME
+        echo "Container name : " ${{ env.$CONT_NAME }}
 
     # Create config file for the load
     - name: Create config file
@@ -88,6 +88,7 @@ jobs:
         echo "accountKey " ${{ env.AZURE_STORAGE_ACCESS_KEY }} >> $BLOBFUSE_CFG
         echo "authType Key" >> $BLOBFUSE_CFG
         echo "containerName " $CONT_NAME >> $BLOBFUSE_CFG
+        cat $BLOBFUSE_CFG
         
     # Mount container using blobFuse
     - name: Mount container
@@ -129,8 +130,8 @@ jobs:
         
     # Delete newly created Directory
     - name: TEST - Delete Directory
-      run: sudo rm -rf  $MOUNT_DIR/test_dir
-      timeout-minutes: 10
+      run: rm -rf  $MOUNT_DIR/test_dir
+      timeout-minutes: 5
       continue-on-error: true
 
     # File Operations Testing
@@ -143,7 +144,7 @@ jobs:
      
     # GetStat on File
     - name: TEST - GetStat File
-      run: sudo stat $MOUNT_DIR/test.txt
+      run: stat $MOUNT_DIR/test.txt
       timeout-minutes: 3
       #continue-on-error: true
 
@@ -159,8 +160,8 @@ jobs:
     # Delete newly created file
     - name: TEST - Delete File
       run: | 
-        sudo rm -rf  $MOUNT_DIR/test.txt
-        sudo rm -rf  $MOUNT_DIR/test.log
+        rm -rf  $MOUNT_DIR/test.txt
+        rm -rf  $MOUNT_DIR/test.log
       timeout-minutes: 20
       #continue-on-error: true
       
@@ -174,7 +175,7 @@ jobs:
     
     # Print the log files
     - name: Print the log file
-      run: sudo cat /var/log/blobfuse.log
+      run: cat /var/log/blobfuse.log
       continue-on-error: true
     
         
