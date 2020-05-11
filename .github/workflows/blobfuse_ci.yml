@@ -98,6 +98,9 @@ jobs:
     - name: Let the mount come online
       run: sleep 10s
       
+
+    # Initial clean up of containers
+
     # Check the mount went through or not by listing the mounted directory
     - name: TEST - Directory Listing
       run: ls -l $MOUNT_DIR
@@ -107,9 +110,11 @@ jobs:
     # Clear directory form previous failed runs
     - name: TEST - Directory Cleaning
       run: rm -rf $MOUNT_DIR/*
-      timeout-minutes: 5
+      timeout-minutes: 10
       #continue-on-error: true
              
+    # Directory Operation Testing
+
     # Create a directory in mounted directory
     - name: TEST - Create Directory
       run: mkdir $MOUNT_DIR/test_dir
@@ -125,8 +130,10 @@ jobs:
     # Delete newly created Directory
     - name: TEST - Delete Directory
       run: sudo rm -rf  $MOUNT_DIR/test_dir
-      timeout-minutes: 20
+      timeout-minutes: 10
       continue-on-error: true
+
+    # File Operations Testing
 
     # Create a file in mounted directory
     - name: TEST - Create File (1GB in size)
@@ -157,7 +164,7 @@ jobs:
       timeout-minutes: 20
       #continue-on-error: true
       
-
+    # Basic testing done.....
     
     # Test complete so now unmount the directory
     - name: Unmount container
