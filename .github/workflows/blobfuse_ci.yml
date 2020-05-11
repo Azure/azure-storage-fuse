@@ -79,8 +79,7 @@ jobs:
           echo "Setting container for Ubn-18"
           echo "::set-env name=CONT_NAME::${{ secrets.STO_CONT_NAME_UBN_18 }}"
         fi
-        echo "Container name : " ${{ env.$CONT_NAME }}
-
+       
     # Create config file for the load
     - name: Create config file
       run: |
