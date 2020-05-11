@@ -121,7 +121,13 @@ jobs:
       run: stat $MOUNT_DIR/test_dir
       timeout-minutes: 3
       #continue-on-error: true
-    
+        
+    # Delete newly created Directory
+    - name: TEST - Delete Directory
+      run: sudo rm -rf  $MOUNT_DIR/test_dir
+      timeout-minutes: 20
+      continue-on-error: true
+
     # Create a file in mounted directory
     - name: TEST - Create File (1GB in size)
       run: dd bs=1000 count=1000000 if=/dev/zero of=$MOUNT_DIR/test.txt
@@ -151,11 +157,7 @@ jobs:
       timeout-minutes: 20
       #continue-on-error: true
       
-    # Delete newly created Directory
-    - name: TEST - Delete Directory
-      run: sudo rm -rf  $MOUNT_DIR/test_dir
-      timeout-minutes: 20
-      continue-on-error: true
+
     
     # Test complete so now unmount the directory
     - name: Unmount container
