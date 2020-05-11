@@ -8,11 +8,11 @@ on:
 
 jobs:
   build:
-    name: BlobFuse CI on $ {{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 180
 
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-16.04, ubuntu-18.04]
 
@@ -106,7 +106,7 @@ jobs:
 
     # Clear directory form previous failed runs
     - name: TEST - Directory Cleaning
-      run: rm -rf $MOUNT_DIR
+      run: rm -rf $MOUNT_DIR/*
       timeout-minutes: 5
       #continue-on-error: true
              
