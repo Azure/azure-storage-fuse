@@ -21,9 +21,9 @@ jobs:
         - env: 
           INCLUDE_TESTS: 1
         - script: |
-          sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
-          . ./build.sh
-          cp ./blobfuse $(Build.ArtifactStagingDirectory)
+            sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+            . ./build.sh
+            cp ./blobfuse $(Build.ArtifactStagingDirectory)
           displayName: 'Generate blobfuse build'
         - script: ./build/blobfusetests
           workingDirectory: $(Build.BinariesDirectory)
