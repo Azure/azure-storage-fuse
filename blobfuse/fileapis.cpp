@@ -331,6 +331,12 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             // or not flush() has been called already, and not re-upload the file each time.
             std::vector<std::pair<std::string, std::string>> metadata;
             std::string blob_name = mntPathString.substr(str_options.tmpPath.size() + 6 /* there are six characters in "/root/" */);
+            // remove extra slash
+            if(blob_name.at(0) == '/')
+            {
+                blob_name.erase(blob_name.begin() + 0);
+            }
+            
             errno = 0;
             azure_blob_client_wrapper->upload_file_to_blob(mntPath, str_options.containerName, blob_name, metadata, 8);
             if (errno != 0)
