@@ -156,6 +156,7 @@ jobs:
         stat $MOUNT_DIR/test.log
       timeout-minutes: 20
       continue-on-error: true
+
     # File rename test
     - name: TEST - File Rename 
       run: |
@@ -194,7 +195,7 @@ jobs:
     
     # Print the log files
     - name: Print the log file
-      run: cat /var/log/blobfuse.log
+      run: sudo cat /var/log/blobfuse.log
       continue-on-error: true
     
         
