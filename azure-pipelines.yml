@@ -5,7 +5,9 @@
 #ci trigger on every branch so that private branch owners know if they have broken the build
 #ci trigger on PR only for the master branch
 trigger:
-  master
+  branches:
+    include:
+      - master
 pr:
   branches:
     include:
