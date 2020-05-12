@@ -438,8 +438,22 @@ int azs_getattr(const char *path, struct stat *stbuf)
     list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(str_options.containerName, "/", "", blobNameStr, 2) ;
     if (errno == 0 && response.blobs.size() > 0)
     {
+        bool isDir = false;
+        if (response.blobs[0].metadata.size() > 0)
+        {
+            for (unsigned int i = 0; i < response.blobs[0].metadata.size(); i++)
+            {
+                if (response.blobs[0].metadata[i].first == "hdi_isfolder" )
+                {
+                    if (response.blobs[0].metadata[i].second == "true")
+                    {
+                        isDir = true;
+                    }
+                }
+            }
+        }
         // the first element should be exact match prefix
-        if (response.blobs[0].is_directory)
+        if (response.blobs[0].is_directory || isDir)
         {
             syslog(LOG_DEBUG, "%s is a directory, blob name is %s\n", mntPathString.c_str(), response.blobs[0].name.c_str() ); 
             AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
@@ -448,6 +462,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             // Directory size will affect behaviour for mv, rmdir, cp etc.
             stbuf->st_uid = fuse_get_context()->uid;
             stbuf->st_gid = fuse_get_context()->gid;
+            
             stbuf->st_nlink = response.blobs.size() > 1 ? 3 : 2;
             stbuf->st_size = 4096;
             return 0;
@@ -467,12 +482,16 @@ int azs_getattr(const char *path, struct stat *stbuf)
             return 0;
         }
     }
-    else // both error or zero results means blob does not exist
+    else if (errno > 0)
     {
         int storage_errno = errno;
         syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
         return 0 - map_errno(storage_errno);
-    }   
+    }
+    else // it is a new blob
+    { 
+        return -ENOENT;
+    }      
    
 }
 

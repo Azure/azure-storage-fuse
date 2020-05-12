@@ -57,11 +57,12 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 ### Valid authentication setups:
 
 - Account Name & Key (`authType Key`)
-    - Requires the accountName, accountKey and containerName specified in the config file or command line
+    - Requires the accountName, accountKey and containerName specified in the config file or command line.
     - Alternatively accountName and accountKey can be specified by the following environment values instead: AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCESS_KEY. 
 - Account Name & SAS (`authType SAS`)
-    - Requires the account SAS specified
-- Managed Service Identity
+    - Requires the accountName, containerName and sasToken specified in the config file or command line.
+    - Alternatively accountName can be specified by the environment values AZURE_STORAGE_ACCOUNT
+- Managed Service Identity (`authType MSI`)
     - Single assigned identity:
         - No extra parameters needed.
     - Multiple assigned identities:
