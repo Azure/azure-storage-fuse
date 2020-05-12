@@ -19,20 +19,20 @@ jobs:
     pool:
       vmImage: 'ubuntu-16.04'
     steps:
-        - env: 
-          INCLUDE_TESTS: 1
-        - script: |
-            sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
-            . ./build.sh
-            cp ./blobfuse $(Build.ArtifactStagingDirectory)
-          displayName: 'Generate blobfuse build'
-        - script: ./build/blobfusetests
-          workingDirectory: $(Build.BinariesDirectory)
-          displayName: 'Run CPP google Tests'
-          condition: succeededOrFailed()        
-        - task: PublishBuildArtifacts@1
-          displayName: 'Publish Artifacts'
-          condition: succeededOrFailed()
+      env: 
+        INCLUDE_TESTS: 1
+      - script: |
+          sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+          . ./build.sh
+          cp ./blobfuse $(Build.ArtifactStagingDirectory)
+        displayName: 'Generate blobfuse build'
+      - script: ./build/blobfusetests
+        workingDirectory: $(Build.BinariesDirectory)
+        displayName: 'Run CPP google Tests'
+        condition: succeededOrFailed()        
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifacts'
+        condition: succeededOrFailed()
   - job: Linux_Build    
     pool:
       vmImage: 'ubuntu-18.04'
