@@ -5,6 +5,7 @@
 #ci trigger on every branch so that private branch owners know if they have broken the build
 #ci trigger on PR only for the master branch
 trigger:
+
 pr:
   branches:
     include:
@@ -24,12 +25,12 @@ jobs:
           . ./build.sh
           cp ./blobfuse $(Build.ArtifactStagingDirectory)
         displayName: 'Generate blobfuse build'
+      - script: ./build/blobfusetests
+        workingDirectory: $(Build.BinariesDirectory)
+        displayName: 'Run CPP google Tests'
+        condition: succeededOrFailed()        
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifacts'
-        condition: succeededOrFailed()
-    - script: ./build/blobfusetests
-        workingDirectory: $(Build.BinariesDirectory)
-        displayName: Run CPP google Tests
         condition: succeededOrFailed()
   - job: Linux_Build    
     pool:
