@@ -26,10 +26,10 @@ jobs:
       matrix:
         Ubuntu-16:
           imageName: 'ubuntu-16.04'
-          containerName: ${NIGHTLY_STO_CONT_UBN_16}
+          containerName: 'test-cnt-ubn-16'
         Ubuntu-18:
           imageName: 'ubuntu-18.04' 
-          containerName: ${NIGHTLY_STO_CONT_UBN_18}
+          containerName: 'test-cnt-ubn-18'
     pool:
       vmImage: $(imageName)
 
