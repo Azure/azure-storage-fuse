@@ -310,7 +310,7 @@ std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all
 }
 
 /*
- * Check if the direcotry is empty or not by checking if there is any blob with prefix exists in the specified container.
+ * Check if the directory is empty or not by checking if there is any blob with prefix exists in the specified container.
  *
  * return
  *   - D_NOTEXIST if there's nothing there (the directory does not exist)
@@ -439,7 +439,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     if (errno == 0 && response.blobs.size() > 0)
     {
         // the first element should be exact match prefix
-        if (response.blobs[0].is_directory)
+        if (is_directory_blob(0, response.blobs[0].metadata) || response.blobs[0].is_directory)
         {
             syslog(LOG_DEBUG, "%s is a directory, blob name is %s\n", mntPathString.c_str(), response.blobs[0].name.c_str() ); 
             AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
@@ -447,7 +447,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             // If st_nlink = 2, means directory is empty.
             // Directory size will affect behaviour for mv, rmdir, cp etc.
             stbuf->st_uid = fuse_get_context()->uid;
-            stbuf->st_gid = fuse_get_context()->gid;
+            stbuf->st_gid = fuse_get_context()->gid;            
             stbuf->st_nlink = response.blobs.size() > 1 ? 3 : 2;
             stbuf->st_size = 4096;
             return 0;
@@ -467,12 +467,16 @@ int azs_getattr(const char *path, struct stat *stbuf)
             return 0;
         }
     }
-    else // both error or zero results means blob does not exist
+    else if (errno > 0)
     {
         int storage_errno = errno;
         syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
         return 0 - map_errno(storage_errno);
-    }   
+    }
+    else // it is a new blob
+    { 
+        return -(ENOENT);
+    }      
    
 }
 

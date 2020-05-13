@@ -18,7 +18,7 @@ You can install blobfuse from the Linux Software Repository for Microsoft produc
 ## Usage
 
 ### Mounting
-Once you have installed blobfuse, configure your account credentials either in the template provided in blobfuse folder (connection.cfg), or in the environment variables. For brevity, let's use the environment variables:
+Once you have installed blobfuse, configure your account credentials either in the template provided in blobfuse folder (connection.cfg), or in the environment variables. For brevity, let's use the following environment variables for authentication using account name and key: 
 
 ```
 export AZURE_STORAGE_ACCOUNT=myaccountname
@@ -57,10 +57,12 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 ### Valid authentication setups:
 
 - Account Name & Key (`authType Key`)
-    - Requires the account key specified
+    - Requires the accountName, accountKey and containerName specified in the config file or command line.
+    - Alternatively accountName and accountKey can be specified by the following environment values instead: AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCESS_KEY. 
 - Account Name & SAS (`authType SAS`)
-    - Requires the account SAS specified
-- Managed Service Identity
+    - Requires the accountName, containerName and sasToken specified in the config file or command line.
+    - Alternatively accountName can be specified by the environment values AZURE_STORAGE_ACCOUNT
+- Managed Service Identity (`authType MSI`)
     - Single assigned identity:
         - No extra parameters needed.
     - Multiple assigned identities:

@@ -175,10 +175,12 @@ auth_type get_auth_type()
     std::string lcAuthType = to_lower(str_options.authType);
     lcAuthType = trim(lcAuthType);
     int lcAuthTypeSize = (int)lcAuthType.size();
-    if(lcAuthTypeSize > 0) 
+    // sometimes an extra space or tab sticks to authtype thats why this size comparison, it is not always 3 lettered
+    if(lcAuthTypeSize > 0 && lcAuthTypeSize < 5) 
     {
+        // an extra space or tab sticks to msi thats find and not ==, this happens when we also have an MSIEndpoint and MSI_SECRET in the config
         if (lcAuthType.find("msi") != std::string::npos) {
-            // MSI does not require any parameters to work, asa a lone system assigned identity will work with no parameters.
+            // MSI does not require any parameters to work, as a lone system assigned identity will work with no parameters.
             return MSI_AUTH;
         } else if (lcAuthType == "key") {
             if(!str_options.accountKey.empty()) // An account name is already expected to be specified.
@@ -193,7 +195,9 @@ auth_type get_auth_type()
         } else if (lcAuthType == "spn") {
             return SPN_AUTH;
         }
-    } else {
+    } 
+    else 
+    {
         if (!str_options.objectId.empty() || !str_options.identityClientId.empty() || !str_options.resourceId.empty() || !str_options.msiSecret.empty() || !str_options.msiEndpoint.empty()) {
             return MSI_AUTH;
         } else if (!str_options.accountKey.empty()) {
@@ -483,7 +487,7 @@ void print_usage()
 
 void print_version()
 {
-    fprintf(stdout, "blobfuse 1.2.5\n");
+    fprintf(stdout, "blobfuse 1.2.3\n");
 }
 
 int set_log_mask(const char * min_log_level_char)

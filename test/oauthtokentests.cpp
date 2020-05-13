@@ -114,7 +114,7 @@ namespace Tests
         et.access_token = "eyJ0eXAiOikIjoiYzg4";
         et.resource = "https://storage.azure.com/";
         et.token_type = "Bearer";
-        time_t  exp = (time_t) 1586908151;
+        time_t  exp = (time_t) 1586882951;
         et.expires_on = exp;
 
         std::string json_request_result = "{\"access_token\":\"eyJ0eXAiOikIjoiYzg4\",\"expires_on\":\"2020-04-14 16:49:11.72 +0000 UTC\",\"resource\":\"https://storage.azure.com/\",\"token_type\":\"Bearer\"}";
@@ -138,7 +138,7 @@ namespace Tests
         et.access_token = "eyJ0eXAiOikIjoiYzg4";
         et.resource = "https://storage.azure.com/";
         et.token_type = "Bearer";
-        time_t  exp = (time_t) 1586908151;
+        time_t  exp = (time_t) 1586882951;
         et.expires_on = exp;
 
         std::string json_request_result = "{\"access_token\":\"eyJ0eXAiOikIjoiYzg4\",\"expires_on\":\"2020-Apr-14 16:49:11.72 +0000 UTC\",\"resource\":\"https://storage.azure.com/\",\"token_type\":\"Bearer\"}";
