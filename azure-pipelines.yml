@@ -23,12 +23,12 @@ jobs:
             sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
             . ./build.sh
             cp ./blobfuse $(Build.ArtifactStagingDirectory)
+            cp ./blobfusetests $(Build.BinariesDirectory)
         env:
           INCLUDE_TESTS: 1
         displayName: Generate blobfuse build for Ubuntu 16.04
       - script: |
-            ls -al ../
-            . ../1/s/build/blobfusetests --gtest_filter=-BlobClientWrapperTest.*
+            . ./blobfusetests --gtest_filter=-BlobClientWrapperTest.*
         workingDirectory: $(Build.BinariesDirectory)
         condition: succeededOrFailed()        
       - task: PublishBuildArtifacts@1
