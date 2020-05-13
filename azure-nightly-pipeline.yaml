@@ -1,8 +1,21 @@
 # BlobFuse Nightly Build-Sanity Pipeline
 
-# Branch on which you want to run the pipeline
+# Run this Pipeline whenever any change happens in selected branch
 trigger:
 - master
+
+schedules:
+  # Cron string < minute hour day-of-month month day-of-week>
+  #             * means all like '*' in day of month means everyday
+  # Run only on master branch
+  # 'always' controls whether to run only if there is a change or not
+- cron: "0 0 * * *"
+  displayName: Daily midnight BlobFuse build
+  branches:
+    include:
+    - master
+  always: true
+
 
 # List of jobs to run in parallel
 jobs:
@@ -11,9 +24,9 @@ jobs:
     # Define on what all OS we want to run this Pipeline
     strategy:
       matrix:
-        linux-1:
+        Ubuntu-16:
           imageName: 'ubuntu-16.04'
-        linux-2:
+        Ubuntu-18:
           imageName: 'ubuntu-18.04' 
     pool:
       vmImage: $(imageName)
@@ -32,5 +45,9 @@ jobs:
         sudo chmod +x build.sh
         . ./build.sh
       displayName: "Build BlobFuse"
+
+    - script: |
+        ./build/blobfuse --version
+      displayName: "Test the binary"
     
     
