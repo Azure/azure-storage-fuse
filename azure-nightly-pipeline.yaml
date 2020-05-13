@@ -34,12 +34,11 @@ jobs:
       vmImage: $(imageName)
 
     variables:
+    - group: NightlyBlobFuse
       MOUNT_DIR: /home/vsts/work/blob_mnt
       TEMP_DIR: /mnt/blobfusetmp
-        
       BLOBFUSE_CFG: /home/vsts/work/blobfuse.cfg
-      AZURE_STORAGE_ACCOUNT: ${ NIGHTLY_STO_ACC_NAME }
-      AZURE_STORAGE_ACCESS_KEY: ${ NIGHTLY_STO_ACC_KEY }
+
 
     # Each job has set of steps to be done
     steps:
@@ -95,11 +94,12 @@ jobs:
        
     # Create config file for the load
     - script: |
-        echo "accountName " ${ NIGHTLY_STO_ACC_NAME } > $(BLOBFUSE_CFG)
-        echo "accountKey " ${ NIGHTLY_STO_ACC_KEY } >> $(BLOBFUSE_CFG)
+        echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG)
+        echo "accountKey " $(NIGHTLY_STO_ACC_KEY) >> $(BLOBFUSE_CFG)
         echo "authType Key" >> $(BLOBFUSE_CFG)
         echo "containerName " $(containerName) >> $(BLOBFUSE_CFG)
         cat $(BLOBFUSE_CFG)
+        echo "Account : " $(NIGHTLY_STO_ACC_NAME)
       displayName: "Create config file"
         
     # -------------------------------------------------------
