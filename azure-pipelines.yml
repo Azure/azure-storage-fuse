@@ -26,7 +26,9 @@ jobs:
         env:
           INCLUDE_TESTS: 1
         displayName: Generate blobfuse build for Ubuntu 16.04
-      - script: . ./blobfusetests --gtest_filter=-BlobClientWrapperTest.*
+      - script: |
+            ls -al
+            . ./blobfusetests --gtest_filter=-BlobClientWrapperTest.*
         workingDirectory: $(Build.BinariesDirectory)
         condition: succeededOrFailed()        
       - task: PublishBuildArtifacts@1
