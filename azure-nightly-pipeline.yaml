@@ -1,7 +1,4 @@
-# Starter pipeline
-# Start with a minimal pipeline that you can customize to build and deploy your code.
-# Add steps that build, run tests, deploy, and more:
-# https://aka.ms/yaml
+# BlobFuse Nightly Sanity Pipeline
 
 trigger:
 - master
@@ -9,11 +6,18 @@ trigger:
 pool:
   vmImage: 'ubuntu-latest'
 
-steps:
-- script: echo Hello, world!
-  displayName: 'Run a one-line script'
-
-- script: |
-    echo Add other tasks to build, test, and deploy your project.
-    echo See https://aka.ms/yaml
-  displayName: 'Run a multi-line script'
+jobs:
+  - job: Build    
+    steps:
+    - script: |
+        sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+      displayName: "Basic Setup"
+    - script: |
+        sudo sudo apt-get install libfuse-dev -y
+      displayName: "libFuse Setup"
+    - script: |
+        sudo chmod +x build.sh
+        . ./build.sh
+      displayName: "Build BlobFuse"
+    
+    
