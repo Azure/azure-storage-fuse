@@ -26,13 +26,12 @@ jobs:
             cp ./blobfusetests $(Build.BinariesDirectory)
         env:
           INCLUDE_TESTS: 1
-        
-        workingDirectory: $(Build.BinariesDirectory)
         displayName: Generate blobfuse build for Ubuntu 16.04
       - script: |
-            chmod 777 ./blobfusetests
             ls -al
+            chmod 777 ./blobfusetests
             . ./blobfusetests --gtest_filter=-BlobClientWrapperTest.*
+        workingDirectory: $(Build.BinariesDirectory)
         condition: succeededOrFailed()        
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifacts for blobfuse Ubuntu 16.04'
