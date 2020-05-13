@@ -19,7 +19,7 @@ schedules:
 
 # List of jobs to run in parallel
 jobs:
-  - job: "NightlyBuild : "
+  - job: NightlySanity
 
     # Define on what all OS we want to run this Pipeline
     strategy:
