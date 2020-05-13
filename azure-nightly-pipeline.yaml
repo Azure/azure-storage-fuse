@@ -14,20 +14,17 @@ jobs:
       
     # Each job has set of steps to be done
     steps:
-    - displayName: "Basic Setup"
-      script: |
+    - script: |
         sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
-      
+      displayName: "Basic Setup"
 
-    - displayName: "libFuse Setup"
-      script: |
+    - script: |
         sudo sudo apt-get install libfuse-dev -y
-      
+      displayName: "libFuse Setup"
 
-    - displayName: "Build BlobFuse"
-      script: |
+    - script: |
         sudo chmod +x build.sh
         . ./build.sh
-      
+      displayName: "Build BlobFuse"
     
     
