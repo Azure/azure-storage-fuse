@@ -86,6 +86,7 @@ jobs:
 
     - script: |
         sudo mkdir $(TEMP_DIR)
+        sudo chown +R `whoami` $(TEMP_DIR)
         chmod 777 $(TEMP_DIR)
         echo "Creating Cache dir " $(TEMP_DIR)
       displayName: "Create Cache Directory"
