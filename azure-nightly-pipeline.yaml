@@ -194,6 +194,13 @@ jobs:
       displayName: "TEST - Rename File"
       timeoutInMinutes: 5
 
+    # File copy test
+    - script: |
+        cp -r ./blobfuse/*.* $(MOUNT_DIR)/
+      displayName: "TEST - Copy File"
+      timeoutInMinutes: 10
+      continueOnError: true
+
     # Delete newly created file
     - script: | 
         rm -rf  $(MOUNT_DIR)/test.txt
@@ -202,13 +209,6 @@ jobs:
       displayName: "TEST - Delete File"
       timeoutInMinutes: 10
       #continueOnError: true
-
-    # File copy test
-    - script: |
-        sudo cp -r ./blobfuse/*.* $(MOUNT_DIR)/
-      displayName: "TEST - Copy File"
-      timeoutInMinutes: 10
-      continueOnError: true
 
     # Clear directory 
     - script: rm -rf $(MOUNT_DIR)/*
