@@ -53,6 +53,12 @@ jobs:
         sudo sudo apt-get install libfuse-dev -y
       displayName: "libFuse Setup"
 
+    # List commits done 
+    - script: |
+        echo "Below commits were done in last 12 hours : " `date` 
+        git --no-pager log --since="12 hours ago" --stat
+      displayName: "List Commits"
+
     # Build the blobFuse binary
     - script: |
         sudo chmod +x build.sh
@@ -139,16 +145,16 @@ jobs:
     #  continueOnError: true
              
     # Directory Operation Testing
-    - script: mkdir $(MOUNT_DIR)/test_dir
-      displayName: "TEST - Create Directory"
-      timeoutInMinutes: 5
-      continueOnError: true
+    #- script: mkdir $(MOUNT_DIR)/test_dir
+    #  displayName: "TEST - Create Directory"
+    #  timeoutInMinutes: 5
+    #  continueOnError: true
 
     # GetStat on Directory
-    - script: stat $(MOUNT_DIR)/test_dir
-      displayName: "TEST - GetStat Directory"
-      timeoutInMinutes: 3
-      continueOnError: true
+    #- script: stat $(MOUNT_DIR)/test_dir
+    #  displayName: "TEST - GetStat Directory"
+    #  timeoutInMinutes: 3
+    #  continueOnError: true
 
     # Delete newly created Directory
     #- script: rm -rf $(MOUNT_DIR)/test_dir
@@ -199,7 +205,7 @@ jobs:
 
     # File copy test
     - script: |
-        sudo cp /var/log/blobfuse* $(MOUNT_DIR)/
+        sudo cp -r ./blobfuse/*.* $(MOUNT_DIR)/
       displayName: "TEST - Copy File"
       timeoutInMinutes: 10
       continueOnError: true
