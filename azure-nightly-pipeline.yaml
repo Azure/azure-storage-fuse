@@ -113,6 +113,7 @@ jobs:
     - script: |
         ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --log-level=LOG_DEBUG
       displayName: "Mount container"
+      timeoutInMinutes: 3
 
     # -------------------------------------------------------
 
@@ -138,16 +139,16 @@ jobs:
     #  continueOnError: true
              
     # Directory Operation Testing
-    #- script: mkdir $(MOUNT_DIR)/test_dir
-    #  displayName: "TEST - Create Directory"
-    #  timeoutInMinutes: 5
-    #  continueOnError: true
+    - script: mkdir $(MOUNT_DIR)/test_dir
+      displayName: "TEST - Create Directory"
+      timeoutInMinutes: 5
+      continueOnError: true
 
     # GetStat on Directory
-    #- script: stat $(MOUNT_DIR)/test_dir
-    #  displayName: "TEST - GetStat Directory"
-    #  timeoutInMinutes: 3
-    #  continueOnError: true
+    - script: stat $(MOUNT_DIR)/test_dir
+      displayName: "TEST - GetStat Directory"
+      timeoutInMinutes: 3
+      continueOnError: true
 
     # Delete newly created Directory
     #- script: rm -rf $(MOUNT_DIR)/test_dir
@@ -163,7 +164,7 @@ jobs:
     - script: |
         dd bs=1000 count=1000000 if=/dev/zero of=$(MOUNT_DIR)/test.txt
       displayName: "TEST - Create File (1GB in size)"
-      timeoutInMinutes: 60
+      timeoutInMinutes: 10
       #continueOnError: true
      
     # GetStat on File
@@ -178,8 +179,8 @@ jobs:
         cat $(MOUNT_DIR)/test.log
         stat $(MOUNT_DIR)/test.log
       displayName: "TEST - Write to file and Read back"
-      timeoutInMinutes: 20
-      continueOnError: true
+      timeoutInMinutes: 10
+      #continueOnError: true
 
     # File rename test
     - script: |
@@ -193,20 +194,21 @@ jobs:
         rm -rf  $(MOUNT_DIR)/test1.txt
         rm -rf  $(MOUNT_DIR)/test.log
       displayName: "TEST - Delete File"
-      timeoutInMinutes: 20
+      timeoutInMinutes: 10
       #continueOnError: true
 
     # File copy test
     - script: |
-        sudo cp /var/log/*.* $(MOUNT_DIR)/
+        sudo cp /var/log/blobfuse* $(MOUNT_DIR)/
       displayName: "TEST - Copy File"
       timeoutInMinutes: 10
-  
+      continueOnError: true
+
     # Clear directory 
     - script: rm -rf $(MOUNT_DIR)/*
       displayName: "TEST - Directory Cleaning at End"
       timeoutInMinutes: 10
-      #continueOnError: true
+      continueOnError: true
 
     # -------------------------------------------------------
 
@@ -216,7 +218,7 @@ jobs:
     - script:  sudo fusermount -u $(MOUNT_DIR)
       displayName: Unmount container
       timeoutInMinutes: 20
-      continueOnError: true
+      #continueOnError: true
     
     # Print the log files
     - script: sudo cat /var/log/blobfuse.log
