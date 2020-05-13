@@ -19,7 +19,7 @@ schedules:
 
 # List of jobs to run in parallel
 jobs:
-  - job: Ubuntu_Build 
+  - job: "NightlyBuild : "
 
     # Define on what all OS we want to run this Pipeline
     strategy:
@@ -65,8 +65,8 @@ jobs:
 
     # Initialize logging for blobfuse
     - script: |
-        cp ./systemd/10-blobfuse.conf /etc/rsyslog.d/
-        cp ./systemd/blobfuse-logrotate /etc/logrotate.d/blobfuse
+        sudo cp ./systemd/10-blobfuse.conf /etc/rsyslog.d/
+        sudo cp ./systemd/blobfuse-logrotate /etc/logrotate.d/blobfuse
       displayName: "Copy the syslog filter files"
       #continueOnError: true
 
