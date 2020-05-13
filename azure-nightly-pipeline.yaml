@@ -68,13 +68,13 @@ jobs:
         cp ./systemd/10-blobfuse.conf /etc/rsyslog.d/
         cp ./systemd/blobfuse-logrotate /etc/logrotate.d/blobfuse
       displayName: "Copy the syslog filter files"
-      #continue-on-error: true
+      #continueOnError: true
 
     # Restart rsyslog to init the logging
     - script: |
         sudo service rsyslog restart
       displayName: "Restart rsyslogd service"
-      #continue-on-error: true
+      #continueOnError: true
       
     # Create directory structures for the basic testing
     - script: |
@@ -123,32 +123,32 @@ jobs:
     - script: ls -lRt $(MOUNT_DIR)
       timeoutInMinutes: 5
       displayName: "TEST - Directory Listing"
-      #continue-on-error: true
+      #continueOnError: true
 
     # Directory deletion is not working so commenting this out
     # Clear directory form previous failed runs
     #- script: rm -rf $(MOUNT_DIR)/* 
     #  displayName: "TEST - Directory Cleaning before Begin"
     #  timeoutInMinutes: 10
-    #  continue-on-error: true
+    #  continueOnError: true
              
     # Directory Operation Testing
     #- script: mkdir $(MOUNT_DIR)/test_dir
     #  displayName: "TEST - Create Directory"
     #  timeoutInMinutes: 5
-    #  continue-on-error: true
+    #  continueOnError: true
 
     # GetStat on Directory
     #- script: stat $(MOUNT_DIR)/test_dir
     #  displayName: "TEST - GetStat Directory"
     #  timeoutInMinutes: 3
-    #  continue-on-error: true
+    #  continueOnError: true
 
     # Delete newly created Directory
     #- script: rm -rf $(MOUNT_DIR)/test_dir
     #  displayName: "TEST - Delete Directory"
     #  timeoutInMinutes: 5
-    #  continue-on-error: true
+    #  continueOnError: true
 
     # -------------------------------------------------------
 
@@ -158,13 +158,13 @@ jobs:
     - script: dd bs=1000 count=1000000 if=/dev/zero of=$(MOUNT_DIR)/test.txt
       displayName: "TEST - Create File (1GB in size)"
       timeoutInMinutes: 60
-      #continue-on-error: true
+      #continueOnError: true
      
     # GetStat on File
     - script: stat $(MOUNT_DIR)/test.txt
       displayName: "TEST - GetStat File"
       timeoutInMinutes: 3
-      #continue-on-error: true
+      #continueOnError: true
 
     # File Read-Write test
     - script: |
@@ -173,7 +173,7 @@ jobs:
         stat $(MOUNT_DIR)/test.log
       displayName: "TEST - Write to file and Read back"
       timeoutInMinutes: 20
-      continue-on-error: true
+      continueOnError: true
 
     # File rename test
     - script: |
@@ -188,7 +188,7 @@ jobs:
         rm -rf  $(MOUNT_DIR)/test.log
       displayName: "TEST - Delete File"
       timeoutInMinutes: 20
-      #continue-on-error: true
+      #continueOnError: true
 
     # File copy test
     - script: |
@@ -200,7 +200,7 @@ jobs:
     - script: rm -rf $(MOUNT_DIR)/*
       displayName: "TEST - Directory Cleaning at End"
       timeoutInMinutes: 10
-      #continue-on-error: true
+      #continueOnError: true
 
     # -------------------------------------------------------
 
@@ -210,9 +210,9 @@ jobs:
     - script:  sudo fusermount -u $(MOUNT_DIR)
       displayName: Unmount container
       timeoutInMinutes: 20
-      continue-on-error: true
+      continueOnError: true
     
     # Print the log files
     - script: sudo cat /var/log/blobfuse.log
       displayName: Print the log file
-      continue-on-error: true
+      continueOnError: true
