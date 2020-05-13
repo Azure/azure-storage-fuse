@@ -33,7 +33,7 @@ jobs:
     pool:
       vmImage: $(imageName)
 
-    env:
+    variables:
       MOUNT_DIR: /home/vsts/work/blob_mnt
       TEMP_DIR: /mnt/blobfusetmp
         
@@ -78,12 +78,13 @@ jobs:
       
     # Create directory structures for the basic testing
     - script: |
-        mkdir $MOUNT_DIR
-        echo "Creating Mount dir " $MOUNT_DIR
+        mkdir $(MOUNT_DIR)
+        echo "Creating Mount dir " $(MOUNT_DIR)
       displayName: "Create Mount Directory"
 
     - script: |
-        sudo mkdir $TEMP_DIR
+        sudo mkdir $(TEMP_DIR)
+        echo "Creating Cache dir " $(TEMP_DIR)
       displayName: "Create Cache Directory"
       
         
@@ -94,18 +95,18 @@ jobs:
        
     # Create config file for the load
     - script: |
-        echo "accountName " ${ NIGHTLY_STO_ACC_NAME } > $BLOBFUSE_CFG
-        echo "accountKey " ${ NIGHTLY_STO_ACC_KEY } >> $BLOBFUSE_CFG
-        echo "authType Key" >> $BLOBFUSE_CFG
-        echo "containerName " $(containerName) >> $BLOBFUSE_CFG
-        cat $BLOBFUSE_CFG
+        echo "accountName " ${ NIGHTLY_STO_ACC_NAME } > $(BLOBFUSE_CFG)
+        echo "accountKey " ${ NIGHTLY_STO_ACC_KEY } >> $(BLOBFUSE_CFG)
+        echo "authType Key" >> $(BLOBFUSE_CFG)
+        echo "containerName " $(containerName) >> $(BLOBFUSE_CFG)
+        cat $(BLOBFUSE_CFG)
       displayName: "Create config file"
         
     # -------------------------------------------------------
 
     # Mount container using blobFuse
     - script: |
-        ./build/blobfuse $MOUNT_DIR --tmp-path=$TEMP_DIR --config-file=$BLOBFUSE_CFG  -o allow_other --log-level=LOG_DEBUG
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG)  -o allow_other --log-level=LOG_DEBUG
       displayName: "Mount container"
 
     # -------------------------------------------------------
@@ -119,34 +120,34 @@ jobs:
     # Initial clean up of containers
 
     # Check the mount went through or not by listing the mounted directory
-    - script: ls -lRt $MOUNT_DIR
-      timeout-minutes: 5
+    - script: ls -lRt $(MOUNT_DIR)
+      timeoutInMinutes: 5
       displayName: "TEST - Directory Listing"
       #continue-on-error: true
 
     # Directory deletion is not working so commenting this out
     # Clear directory form previous failed runs
-    #- script: rm -rf $MOUNT_DIR/* 
+    #- script: rm -rf $(MOUNT_DIR)/* 
     #  displayName: "TEST - Directory Cleaning before Begin"
-    #  timeout-minutes: 10
+    #  timeoutInMinutes: 10
     #  continue-on-error: true
              
     # Directory Operation Testing
-    #- script: mkdir $MOUNT_DIR/test_dir
+    #- script: mkdir $(MOUNT_DIR)/test_dir
     #  displayName: "TEST - Create Directory"
-    #  timeout-minutes: 5
+    #  timeoutInMinutes: 5
     #  continue-on-error: true
 
     # GetStat on Directory
-    #- script: stat $MOUNT_DIR/test_dir
+    #- script: stat $(MOUNT_DIR)/test_dir
     #  displayName: "TEST - GetStat Directory"
-    #  timeout-minutes: 3
+    #  timeoutInMinutes: 3
     #  continue-on-error: true
 
     # Delete newly created Directory
-    #- script: rm -rf $MOUNT_DIR/test_dir
+    #- script: rm -rf $(MOUNT_DIR)/test_dir
     #  displayName: "TEST - Delete Directory"
-    #  timeout-minutes: 5
+    #  timeoutInMinutes: 5
     #  continue-on-error: true
 
     # -------------------------------------------------------
@@ -154,51 +155,51 @@ jobs:
     # File Operations Testing
 
     # Create a file in mounted directory
-    - script: dd bs=1000 count=1000000 if=/dev/zero of=$MOUNT_DIR/test.txt
+    - script: dd bs=1000 count=1000000 if=/dev/zero of=$(MOUNT_DIR)/test.txt
       displayName: "TEST - Create File (1GB in size)"
-      timeout-minutes: 60
+      timeoutInMinutes: 60
       #continue-on-error: true
      
     # GetStat on File
-    - script: stat $MOUNT_DIR/test.txt
+    - script: stat $(MOUNT_DIR)/test.txt
       displayName: "TEST - GetStat File"
-      timeout-minutes: 3
+      timeoutInMinutes: 3
       #continue-on-error: true
 
     # File Read-Write test
     - script: |
-        sudo cat /var/log/*.log > $MOUNT_DIR/test.log
-        cat $MOUNT_DIR/test.log
-        stat $MOUNT_DIR/test.log
+        sudo cat /var/log/*.log > $(MOUNT_DIR)/test.log
+        cat $(MOUNT_DIR)/test.log
+        stat $(MOUNT_DIR)/test.log
       displayName: "TEST - Write to file and Read back"
-      timeout-minutes: 20
+      timeoutInMinutes: 20
       continue-on-error: true
 
     # File rename test
     - script: |
-        mv $MOUNT_DIR/test.txt $MOUNT_DIR/test1.txt
+        mv $(MOUNT_DIR)/test.txt $(MOUNT_DIR)/test1.txt
       displayName: "TEST - Rename File"
-      timeout-minutes: 5
+      timeoutInMinutes: 5
 
     # Delete newly created file
     - script: | 
-        rm -rf  $MOUNT_DIR/test.txt
-        rm -rf  $MOUNT_DIR/test1.txt
-        rm -rf  $MOUNT_DIR/test.log
+        rm -rf  $(MOUNT_DIR)/test.txt
+        rm -rf  $(MOUNT_DIR)/test1.txt
+        rm -rf  $(MOUNT_DIR)/test.log
       displayName: "TEST - Delete File"
-      timeout-minutes: 20
+      timeoutInMinutes: 20
       #continue-on-error: true
 
     # File copy test
     - script: |
-        sudo cp /var/log/*.* $MOUNT_DIR/
+        sudo cp /var/log/*.* $(MOUNT_DIR)/
       displayName: "TEST - Copy File"
-      timeout-minutes: 10
+      timeoutInMinutes: 10
   
     # Clear directory 
-    - script: rm -rf $MOUNT_DIR/*
+    - script: rm -rf $(MOUNT_DIR)/*
       displayName: "TEST - Directory Cleaning at End"
-      timeout-minutes: 10
+      timeoutInMinutes: 10
       #continue-on-error: true
 
     # -------------------------------------------------------
@@ -206,9 +207,9 @@ jobs:
     # Basic testing done.....
     
     # Test complete so now unmount the directory
-    - script:  sudo fusermount -u $MOUNT_DIR
+    - script:  sudo fusermount -u $(MOUNT_DIR)
       displayName: Unmount container
-      timeout-minutes: 20
+      timeoutInMinutes: 20
       continue-on-error: true
     
     # Print the log files
