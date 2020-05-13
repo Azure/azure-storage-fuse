@@ -15,32 +15,33 @@ pr:
       - master
 
 jobs:
+
   - job: Linux_Build    
     pool:
       vmImage: 'ubuntu-16.04'
-    steps:  
-    - script: |
-        sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
-        . ./build.sh
-        cp ./blobfuse $(Build.ArtifactStagingDirectory)
-    env:
-        INCLUDE_TESTS: 1
-    displayName: Generate blobfuse build for Ubuntu 16.04
-    
-    - script: ./build/blobfusetests
-      workingDirectory: $(Build.BinariesDirectory)
-      condition: succeededOrFailed()        
-    - task: PublishBuildArtifacts@1
-      displayName: 'Publish Artifacts for blobfuse Ubuntu 16.04'
-      condition: succeededOrFailed()
+    steps:
+      - script: : |
+            sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+            . ./build.sh
+            cp ./blobfuse $(Build.ArtifactStagingDirectory)
+        env:
+          INCLUDE_TESTS: 1
+        displayName: Generate blobfuse build for Ubuntu 16.04
+      - script: . ./build/blobfusetests
+        workingDirectory: $(Build.BinariesDirectory)
+        condition: succeededOrFailed()        
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifacts for blobfuse Ubuntu 16.04'
+        condition: succeededOrFailed()
 
-- job: Linux_Build    
+
+  - job: Linux_Build    
     pool:
-      vmImage: 'ubuntu-18.04'
-    steps:        
-    - script: |
-        sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
-        . ./build.sh
-        cp ./blobfuse $(Build.ArtifactStagingDirectory)
-    displayName: Generate blobfuse build for Ubuntu 18.04
+      vmImage:  'ubuntu-18.04'
+    steps:
+      - script: : |
+            sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+            . ./build.sh
+            cp ./blobfuse $(Build.ArtifactStagingDirectory)
+        displayName: Generate blobfuse build for Ubuntu 18.04
 
