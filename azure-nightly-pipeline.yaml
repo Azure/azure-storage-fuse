@@ -109,7 +109,7 @@ jobs:
 
     # Mount container using blobFuse
     - script: |
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG)  -o allow_other --log-level=LOG_DEBUG
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) -log-level=LOG_DEBUG
       displayName: "Mount container"
 
     # -------------------------------------------------------
