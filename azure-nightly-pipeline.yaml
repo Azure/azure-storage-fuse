@@ -1,23 +1,33 @@
 # BlobFuse Nightly Sanity Pipeline
 
+# Branch on which you want to run the pipeline
 trigger:
 - master
 
+# List environments to be used to run this pipeline
 pool:
   vmImage: 'ubuntu-latest'
 
+# List of jobs to run in parallel
 jobs:
-  - job: Build    
+  - job: Build  
+      
+    # Each job has set of steps to be done
     steps:
-    - script: |
+    - displayName: "Basic Setup"
+      script: |
         sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
-      displayName: "Basic Setup"
-    - script: |
+      
+
+    - displayName: "libFuse Setup"
+      script: |
         sudo sudo apt-get install libfuse-dev -y
-      displayName: "libFuse Setup"
-    - script: |
+      
+
+    - displayName: "Build BlobFuse"
+      script: |
         sudo chmod +x build.sh
         . ./build.sh
-      displayName: "Build BlobFuse"
+      
     
     
