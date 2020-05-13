@@ -1,17 +1,23 @@
-# BlobFuse Nightly Sanity Pipeline
+# BlobFuse Nightly Build-Sanity Pipeline
 
 # Branch on which you want to run the pipeline
 trigger:
 - master
 
-# List environments to be used to run this pipeline
-pool:
-  vmImage: 'ubuntu-latest'
-
 # List of jobs to run in parallel
 jobs:
-  - job: Build  
-      
+  - job: Ubuntu_Build 
+
+    # Define on what all OS we want to run this Pipeline
+    strategy:
+      matrix:
+        linux-1:
+          imageName: 'ubuntu-16.04'
+        linux-2:
+          imageName: 'ubuntu-18.04' 
+    pool:
+      vmImage: $(imageName)
+
     # Each job has set of steps to be done
     steps:
     - script: |
