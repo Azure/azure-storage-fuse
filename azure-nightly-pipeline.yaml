@@ -38,7 +38,7 @@ jobs:
     - name: MOUNT_DIR
       value: "/home/vsts/work/blob_mnt"
     - name: TEMP_DIR
-      value: "/home/vsts/work/blobfusetmp"
+      value: "/mnt/blobfusetmp"
     - name: BLOBFUSE_CFG
       value: "/home/vsts/work/blobfuse.cfg"
    
@@ -85,7 +85,8 @@ jobs:
       displayName: "Create Mount Directory"
 
     - script: |
-        mkdir $(TEMP_DIR)
+        sudo mkdir $(TEMP_DIR)
+        chmod 777 $(TEMP_DIR)
         echo "Creating Cache dir " $(TEMP_DIR)
       displayName: "Create Cache Directory"
       
@@ -158,7 +159,8 @@ jobs:
     # File Operations Testing
 
     # Create a file in mounted directory
-    - script: dd bs=1000 count=1000000 if=/dev/zero of=$(MOUNT_DIR)/test.txt
+    - script: |
+        dd bs=1000 count=1000000 if=/dev/zero of=$(MOUNT_DIR)/test.txt
       displayName: "TEST - Create File (1GB in size)"
       timeoutInMinutes: 60
       #continueOnError: true
