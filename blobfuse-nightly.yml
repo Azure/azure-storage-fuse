@@ -53,7 +53,7 @@ jobs:
       displayName: "Basic Tools Setup"
 
     - script: |
-        sudo sudo apt-get install libfuse-dev -y
+        sudo apt-get install libfuse-dev -y
       displayName: "libFuse Setup"
 
     # List commits done 
