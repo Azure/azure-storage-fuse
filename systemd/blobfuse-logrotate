@@ -3,11 +3,12 @@ su root syslog
 /var/log/blobfuse.log 
 /var/log/blobfuse-rest.log {
     rotate 10
-    maxsize 1M
-	hourly
+	maxsize 100M
+	daily
 	missingok
 	notifempty
 	compress
+	dateext
 	delaycompress
 	sharedscripts
 	postrotate
