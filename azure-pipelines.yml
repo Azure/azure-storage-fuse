@@ -22,10 +22,11 @@ jobs:
       - script: |
             sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
             . ./build.sh
-            cp ./blobfuse $(Build.ArtifactStagingDirectory)
+            mkdir $(Build.ArtifactStagingDirectory)/1604
+            cp ./blobfuse $(Build.ArtifactStagingDirectory)/1604
             cp ./blobfusetests $(Build.BinariesDirectory)
             make package
-            cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)
+            cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/1604
         env:
           INCLUDE_TESTS: 1
         displayName: Generate blobfuse build for Ubuntu 16.04
@@ -47,9 +48,10 @@ jobs:
       - script: |
             sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
             . ./build.sh
-            cp ./blobfuse $(Build.ArtifactStagingDirectory)            
+            mkdir $(Build.ArtifactStagingDirectory)/1804
+            cp ./blobfuse $(Build.ArtifactStagingDirectory)/1804            
             make package
-            cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)
+            cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/1804
         displayName: Generate blobfuse build for Ubuntu 18.04
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifacts for blobfuse Ubuntu 18.04'
