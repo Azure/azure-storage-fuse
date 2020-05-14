@@ -30,6 +30,9 @@ jobs:
         Ubuntu-18:
           imageName: 'ubuntu-18.04' 
           containerName: 'test-cnt-ubn-18'
+        Ubuntu-20:
+          imageName: 'ubuntu-20.04' 
+          containerName: 'test-cnt-ubn-20'
     pool:
       vmImage: $(imageName)
 
