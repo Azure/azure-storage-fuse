@@ -178,8 +178,6 @@ if(UNIX)
   include(CPack)
 endif(UNIX)
 
-
-
 if(INCLUDE_TESTS)
   # Download and build googletest at cmake time, as recommended by the googletest docs:
   # https://github.com/google/googletest/blob/master/googletest/README.md
