@@ -171,14 +171,13 @@ if(UNIX)
   set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 1.2.3 - FUSE adapter for Azure Blob Storage")
   set(VERSION "1.2.3")
   set(CPACK_PACKAGE_VERSION_MAJOR 1)
-  set(CPACK_PACKAGE_VERSION_MINOR 2)
+  set(CPACK_PACKAGE_VERSION_MINOR 2)  
+  set(CPACK_PACKAGE_VERSION_PATCH 3)
   set(CPACK_PACKAGE_VERSION_RELEASE 1)
   set(CPACK_PACKAGE_NAME "blobfuse")
   set(CPACK_PACKAGE_VENDOR "Microsoft")
   include(CPack)
 endif(UNIX)
-
-
 
 if(INCLUDE_TESTS)
   # Download and build googletest at cmake time, as recommended by the googletest docs:
