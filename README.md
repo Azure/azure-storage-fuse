@@ -159,7 +159,7 @@ Please take careful note of the following points, before using blobfuse:
 		e.g. logLevel LOG_DEBUG 
 	- save the config file 
 	- send a `SIGUSR1` to running blobfuse instance. 
-			$> kill -SIGUSR1  <pid of blobfuse>
+		- $> kill -SIGUSR1 \`pidof blobfuse\`
 	- to go back to your default logging level (provided in command line options) 
 		- remove the `logLevel` entry from config file 
 		- after saving config file send `SIGUSR1` to running instance of blobfuse.
@@ -168,7 +168,7 @@ Please take careful note of the following points, before using blobfuse:
 	- copy 10-blobfuse.conf to /etc/rsyslog.d/
 	- copy blobfuse-logrotate to /etc/logrotate.d/ 
 	- restart rsyslog service 
-		$> service rsyslog restart
+		- $> service rsyslog restart
 
 	- Required files are provided along blobfuse package
 	- NOTE: some of these steps may need `sudo` rights 
