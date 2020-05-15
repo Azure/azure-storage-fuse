@@ -65,7 +65,11 @@ namespace Tests
         
         fprintf(stdout, "expected auth token expiry time: %s", ctime(&et.expires_on));
         fprintf(stdout, "actual auth token expiry time: %s", ctime(&t.expires_on));
-        ASSERT_EQ(t.expires_on, et.expires_on);
+
+        // Gap upto 2 minutes is fine
+        double diff = difftime(t.expires_on, et.expires_on);
+        ASSERT_LE(diff, (2*60));
+        
         ASSERT_EQ(t.access_token, et.access_token);    
         ASSERT_EQ(t.resource, et.resource);
 
@@ -97,9 +101,13 @@ namespace Tests
         j = json::parse(json_request_result);
         from_json(j, t);
         
-        fprintf(stdout, "expected auth token expiry time: %s", ctime(&et.expires_on));
-        fprintf(stdout, "actual auth token expiry time: %s", ctime(&t.expires_on));
-        ASSERT_EQ(t.expires_on, et.expires_on);
+        fprintf(stdout, "expected auth token expiry time: %s, in %d", ctime(&et.expires_on), et.expires_in);
+        fprintf(stdout, "actual auth token expiry time: %s, in %d", ctime(&t.expires_on), t.expires_in);
+
+        // Gap upto 2 minutes is fine
+        double diff = difftime(t.expires_on, et.expires_on);
+        ASSERT_LE(diff, (2*60));
+
         ASSERT_EQ(t.expires_in, et.expires_in);    
         ASSERT_EQ(t.access_token, et.access_token);    
         ASSERT_EQ(t.resource, et.resource);
@@ -124,7 +132,11 @@ namespace Tests
         
         fprintf(stdout, "expected auth token expiry time: %s", ctime(&et.expires_on));
         fprintf(stdout, "actual auth token expiry time: %s", ctime(&t.expires_on));
-        ASSERT_EQ(t.expires_on, et.expires_on);
+        
+        // Gap upto 2 minutes is fine
+        double diff = difftime(t.expires_on, et.expires_on);
+        ASSERT_LE(diff, (2*60));
+
         ASSERT_EQ(t.access_token, et.access_token);    
         ASSERT_EQ(t.resource, et.resource);
 
@@ -148,7 +160,11 @@ namespace Tests
         
         fprintf(stdout, "expected auth token expiry time: %s", ctime(&et.expires_on));
         fprintf(stdout, "actual auth token expiry time: %s", ctime(&t.expires_on));
-        ASSERT_EQ(t.expires_on, et.expires_on);
+
+        // Gap upto 2 minutes is fine
+        double diff = difftime(t.expires_on, et.expires_on);
+        ASSERT_LE(diff, (2*60));
+
         ASSERT_EQ(t.access_token, et.access_token);    
         ASSERT_EQ(t.resource, et.resource);
     }
