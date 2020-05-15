@@ -167,9 +167,8 @@ Please take careful note of the following points, before using blobfuse:
 - If user wishes to redirect blobfuse logs to a different file, follow the below procedure
 	- copy 10-blobfuse.conf to `/etc/rsyslog.d/`
 	- copy blobfuse-logrotate to `/etc/logrotate.d/`
-	- restart rsyslog service 
-		- ```$> service rsyslog restart```
-
+	- restart rsyslog service
+	- ```$> service rsyslog restart```
 	- Required files are provided along blobfuse package
 	- NOTE: some of these steps may need `sudo` rights 
 
