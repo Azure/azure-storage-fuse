@@ -103,7 +103,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * `accountName`: Specifies the storage account blobfuse targets.
     * `blobEndpoint`: Specifies the blob endpoint to use. Defaults to *.blob.core.windows.net, but is useful for targeting storage emulators.
     * `authType`: Overrides the currently specified auth type. Options: Key, SAS, MSI (Using this option is only available for 1.2.0 or above)
-    * `logLevel`: Specifies the logging level. For allowed values refer to --log-level command line option.
+    * `logLevel`: Specifies the logging level. Helps to change the logging level dynamically. Read 'Logging' section for details. For allowed values refer to --log-level command line option.
 
 - Account key auth:
     * `accountKey`: Specifies the storage account key to use for authentication.
@@ -156,7 +156,7 @@ Please take careful note of the following points, before using blobfuse:
 - Later if user wishes to reset the logging level without remounting the container then follow below steps
 	- edit your config file provide 'logLevel' config 
 	- save the config file 
-	- send a 'SIGUSR1` to running blobfuse instance. 
+	- send a `SIGUSR1` to running blobfuse instance. 
 			$> kill -SIGUSR1 `pidof blobfuse`
 	- to go back to your default logging level remove the 'logLevel' entry from config file and after saving send SIGUSR1 to running instance of blobfuse.
 - By default logs are sent to standard syslog file
@@ -164,10 +164,10 @@ Please take careful note of the following points, before using blobfuse:
 	- copy 10-blobfuse.conf to /etc/rsyslog.d/
 	- copy blobfuse-logrotate to /etc/logrotate.d/ 
 	- restart rsyslog service 
-		$> service rsyslog restart
+		$> `service rsyslog restart`
 
 	- Required files are provided in the blobfuse package
-	- NOTE: some of these steps may need 'sudo' rights 
+	- NOTE: some of these steps may need `sudo` rights 
 
 ### Syslog security warning
 By default, blobfuse will log to syslog.  The default settings will, in some cases, log relevant file paths to syslog.  If this is sensitive information, turn off logging completely.  See the [wiki](https://github.com/Azure/azure-storage-fuse/wiki/5.-Logging) for more details.
