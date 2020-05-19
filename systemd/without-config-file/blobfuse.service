@@ -17,7 +17,7 @@ Environment=BlobFileCacheTimeOutInSeconds=120
 # Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG
 Environment=BlobLogLevel=LOG_WARNING
 # Enables attributes of a blob being cached. False by default. (Only available in blobfuse 1.1.0 or above)
-Environment=BlogUseAttrCache=false
+Environment=BlobUseAttrCache=false
 
 # Specifies the storage account blobfuse targets.
 Environment=AZURE_STORAGE_ACCOUNT=<account.name>
@@ -50,7 +50,7 @@ Environment=attr_timeout=240
 Environment=entry_timeout=240
 Environment=negative_timeout=120
 Type=forking
-ExecStart=/usr/bin/blobfuse ${BlobMountingPoint} --container-name=${ContainerName} --tmp-path=${BlobTmp} --use-https=${BlobUseHttps} --file-cache-timeout-in-seconds=${BlobFileCacheTimeOutInSeconds} --log-level=${BlobLogLevel} --use-attr-cache=${BlogUseAttrCache} -o attr_timeout=${attr_timeout} -o entry_timeout=${entry_timeout} -o negative_timeout=${negative_timeout} -o allow_other
+ExecStart=/usr/bin/blobfuse ${BlobMountingPoint} --container-name=${ContainerName} --tmp-path=${BlobTmp} --use-https=${BlobUseHttps} --file-cache-timeout-in-seconds=${BlobFileCacheTimeOutInSeconds} --log-level=${BlobLogLevel} --use-attr-cache=${BlobUseAttrCache} -o attr_timeout=${attr_timeout} -o entry_timeout=${entry_timeout} -o negative_timeout=${negative_timeout} -o allow_other
 ExecStop=/usr/bin/fusermount -u ${BlobMountingPoint}
 
 [Install]
