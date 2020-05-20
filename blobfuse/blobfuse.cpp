@@ -556,6 +556,13 @@ int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
     return 1;
 }
 
+/*
+ *  This function is called only during SIGUSR1 handling.
+ *  Objective here is to read only the 'logLevel' from the config file
+ *  If logLevel is removed from config file then reset the logging level
+ *  back to what was provided int the command line options, otherwise use
+ *  this config as the new logging level..
+ */
 int refresh_from_config_file(const std::string configFile)
 {
     std::ifstream file(configFile);
