@@ -1,0 +1,231 @@
+# BlobFuse Nightly Build-Sanity Pipeline
+
+schedules:
+  # Cron string < minute hour day-of-month month day-of-week>
+  #             * means all like '*' in day of month means everyday
+  # Run only on master branch
+  # 'always' controls whether to run only if there is a change or not
+- cron: "0 0 * * *"
+  displayName: Daily midnight BlobFuse build
+  branches:
+    include:
+    - master
+  always: true
+
+
+# List of jobs to run in parallel
+jobs:
+  - job: NightlySanity
+
+    # Define on what all OS we want to run this Pipeline
+    strategy:
+      matrix:
+        Ubuntu-16:
+          imageName: 'ubuntu-16.04'
+          containerName: 'test-cnt-ubn-16'
+        Ubuntu-18:
+          imageName: 'ubuntu-18.04' 
+          containerName: 'test-cnt-ubn-18'
+        #Ubuntu-20:
+        #  imageName: 'ubuntu-20.04' 
+        #  containerName: 'test-cnt-ubn-20'
+    pool:
+      vmImage: $(imageName)
+
+    variables:
+    - group: NightlyBlobFuse
+    - name: MOUNT_DIR
+      value: "/home/vsts/work/blob_mnt"
+    - name: TEMP_DIR
+      value: "/mnt/blobfusetmp"
+    - name: BLOBFUSE_CFG
+      value: "/home/vsts/work/blobfuse.cfg"
+   
+
+    # Each job has set of steps to be done
+    steps:
+    - script: |
+        sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+      displayName: "Basic Tools Setup"
+
+    - script: |
+        sudo apt-get install libfuse-dev -y
+      displayName: "libFuse Setup"
+
+    # List commits done 
+    - script: |
+        echo "Below commits were done in last 12 hours : " `date` 
+        git --no-pager log --since="12 hours ago" --stat
+      displayName: "List Commits"
+
+    # Build the blobFuse binary
+    - script: |
+        sudo chmod +x build.sh
+        . ./build.sh
+      displayName: "Build BlobFuse"
+
+    # Test the binary just to make sure it was built fine
+    - script: |
+        ./build/blobfuse --version
+      displayName: "Test the binary"
+    
+
+    # Initialize logging for blobfuse
+    - script: |
+        sudo cp ./systemd/10-blobfuse.conf /etc/rsyslog.d/
+        sudo cp ./systemd/blobfuse-logrotate /etc/logrotate.d/blobfuse
+      displayName: "Copy the syslog filter files"
+      #continueOnError: true
+
+    # Restart rsyslog to init the logging
+    - script: |
+        sudo service rsyslog restart
+      displayName: "Restart rsyslogd service"
+      #continueOnError: true
+      
+    # Create directory structures for the basic testing
+    - script: |
+        mkdir $(MOUNT_DIR)
+        echo "Creating Mount dir " $(MOUNT_DIR)
+      displayName: "Create Mount Directory"
+
+    - script: |
+        sudo mkdir $(TEMP_DIR)
+        sudo chown -R `whoami` $(TEMP_DIR)
+        chmod 777 $(TEMP_DIR)
+        echo "Creating Cache dir " $(TEMP_DIR)
+      displayName: "Create Cache Directory"
+      
+        
+    # Set container name based on OS
+    - script: |
+        echo "::set-env name=CONT_NAME::$(containerName)"
+      displayName: "Prepare contianer name"
+       
+    # Create config file for the load
+    - script: |
+        echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG)
+        echo "accountKey " $(NIGHTLY_STO_ACC_KEY) >> $(BLOBFUSE_CFG)
+        echo "authType Key" >> $(BLOBFUSE_CFG)
+        echo "containerName " $(containerName) >> $(BLOBFUSE_CFG)
+        cat $(BLOBFUSE_CFG)
+        echo "Account : " $(NIGHTLY_STO_ACC_NAME)
+      displayName: "Create config file"
+        
+    # -------------------------------------------------------
+
+    # Mount container using blobFuse
+    - script: |
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --log-level=LOG_DEBUG
+      displayName: "Mount container"
+      timeoutInMinutes: 3
+
+    # -------------------------------------------------------
+
+    # Give some time for system to stablise
+    - script: sleep 10s
+      displayName: "Let the mount come online"
+
+    # -------------------------------------------------------
+
+    # Initial clean up of containers
+
+    # Check the mount went through or not by listing the mounted directory
+    - script: ls -lRt $(MOUNT_DIR)
+      timeoutInMinutes: 5
+      displayName: "TEST - Directory Listing"
+      #continueOnError: true
+
+    # Directory deletion is not working so commenting this out
+    # Clear directory form previous failed runs
+    #- script: rm -rf $(MOUNT_DIR)/* 
+    #  displayName: "TEST - Directory Cleaning before Begin"
+    #  timeoutInMinutes: 10
+    #  continueOnError: true
+             
+    # Directory Operation Testing
+    #- script: mkdir $(MOUNT_DIR)/test_dir
+    #  displayName: "TEST - Create Directory"
+    #  timeoutInMinutes: 5
+    #  continueOnError: true
+
+    # GetStat on Directory
+    #- script: stat $(MOUNT_DIR)/test_dir
+    #  displayName: "TEST - GetStat Directory"
+    #  timeoutInMinutes: 3
+    #  continueOnError: true
+
+    # Delete newly created Directory
+    #- script: rm -rf $(MOUNT_DIR)/test_dir
+    #  displayName: "TEST - Delete Directory"
+    #  timeoutInMinutes: 5
+    #  continueOnError: true
+
+    # -------------------------------------------------------
+
+    # File Operations Testing
+
+    # Create a file in mounted directory
+    - script: |
+        dd bs=1000 count=1000000 if=/dev/zero of=$(MOUNT_DIR)/test.txt
+      displayName: "TEST - Create File (1GB in size)"
+      timeoutInMinutes: 10
+      #continueOnError: true
+     
+    # GetStat on File
+    - script: stat $(MOUNT_DIR)/test.txt
+      displayName: "TEST - GetStat File"
+      timeoutInMinutes: 3
+      #continueOnError: true
+
+    # File Read-Write test
+    - script: |
+        sudo cat /var/log/*.log > $(MOUNT_DIR)/test.log
+        cat $(MOUNT_DIR)/test.log
+        stat $(MOUNT_DIR)/test.log
+      displayName: "TEST - Write to file and Read back"
+      timeoutInMinutes: 10
+      #continueOnError: true
+
+    # File rename test
+    - script: |
+        mv $(MOUNT_DIR)/test.txt $(MOUNT_DIR)/test1.txt
+      displayName: "TEST - Rename File"
+      timeoutInMinutes: 5
+
+    # File copy test
+    - script: |
+        cp -r ./blobfuse/*.* $(MOUNT_DIR)/
+      displayName: "TEST - Copy File"
+      timeoutInMinutes: 10
+      continueOnError: true
+
+    # Delete newly created file
+    - script: | 
+        rm -rf  $(MOUNT_DIR)/test.txt
+        rm -rf  $(MOUNT_DIR)/test1.txt
+        rm -rf  $(MOUNT_DIR)/test.log
+      displayName: "TEST - Delete File"
+      timeoutInMinutes: 10
+      #continueOnError: true
+
+    # Clear directory 
+    - script: rm -rf $(MOUNT_DIR)/*
+      displayName: "TEST - Directory Cleaning at End"
+      timeoutInMinutes: 10
+      continueOnError: true
+
+    # -------------------------------------------------------
+
+    # Basic testing done.....
+    
+    # Test complete so now unmount the directory
+    - script:  sudo fusermount -u $(MOUNT_DIR)
+      displayName: Unmount container
+      timeoutInMinutes: 20
+      #continueOnError: true
+    
+    # Print the log files
+    - script: sudo cat /var/log/blobfuse.log
+      displayName: Print the log file
+      continueOnError: true

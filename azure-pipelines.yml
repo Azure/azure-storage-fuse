@@ -24,6 +24,8 @@ jobs:
             . ./build.sh
             mkdir $(Build.ArtifactStagingDirectory)/1604
             cp ./blobfuse $(Build.ArtifactStagingDirectory)/1604
+            cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/1604
+            cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/1604
             cp ./blobfusetests $(Build.BinariesDirectory)
             make package
             cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/1604
@@ -49,7 +51,9 @@ jobs:
             sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
             . ./build.sh
             mkdir $(Build.ArtifactStagingDirectory)/1804
-            cp ./blobfuse $(Build.ArtifactStagingDirectory)/1804            
+            cp ./blobfuse $(Build.ArtifactStagingDirectory)/1804
+            cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/1804
+            cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/1804
             make package
             cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/1804
         displayName: Generate blobfuse build for Ubuntu 18.04
