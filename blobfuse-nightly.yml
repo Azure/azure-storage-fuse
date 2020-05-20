@@ -1,9 +1,5 @@
 # BlobFuse Nightly Build-Sanity Pipeline
 
-# Run this Pipeline whenever any change happens in selected branch
-#trigger:
-#- master
-
 schedules:
   # Cron string < minute hour day-of-month month day-of-week>
   #             * means all like '*' in day of month means everyday
