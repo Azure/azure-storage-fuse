@@ -730,10 +730,11 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         }
 
         if (args && args->argv && argc > 1 && 
-            is_directory_mounted(argv[1])) {
-                syslog(LOG_CRIT, "Unable to start blobfuse. '%s'is already mounted.", argv[1]);
-                fprintf(stderr, "Error: '%s' is already mounted. Recheck your config\n", argv[1]);
-                return 1;
+            is_directory_mounted(argv[1])) 
+        {
+            syslog(LOG_CRIT, "Unable to start blobfuse. '%s'is already mounted.", argv[1]);
+            fprintf(stderr, "Error: '%s' is already mounted. Recheck your config\n", argv[1]);
+            return 1;
         }
 
         if(!options.config_file)
