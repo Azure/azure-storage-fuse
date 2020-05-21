@@ -1,0 +1,262 @@
+{
+  "environments": [
+    {
+      "curlRootDir": "",
+      "opensslRootDir": "",
+      "buildWithMT": "true", //true or false
+      "buildSharedLibrary": "false", //true or false
+      "buildTests": "true", //true or false
+      "buildSamples": "true", //true or false
+      "opensslLinkType": "static", //static or dll
+      "curlLinkType": "static" //static or dll
+    }
+  ],
+  "configurations": [
+    {
+      "name": "Linux-Release",
+      "generator": "Unix Makefiles",
+      "remoteMachineName": "${defaultRemoteMachineName}",
+      "remoteCopySourcesMethod": "sftp",
+      "configurationType": "Release",
+      "cmakeExecutable": "/usr/local/bin/cmake",
+      "remoteCMakeListsRoot": "/var/tmp/src/${workspaceHash}/${name}",
+      "buildRoot": "${env.LOCALAPPDATA}\\CMakeBuilds\\${workspaceHash}\\build\\${name}",
+      "remoteBuildRoot": "/var/tmp/build/${workspaceHash}/build/${name}",
+      "remoteCopySources": true,
+      "cmakeCommandArgs": "",
+      "buildCommandArgs": "-m",
+      "inheritEnvironments": [ "linux-x64" ],
+      "variables": [
+        {
+          "name": "BUILD_TESTS",
+          "value": "${env.buildTests}"
+        },
+        {
+          "name": "BUILD_SAMPLES",
+          "value": "${env.buildSamples}"
+        }
+      ]
+    },
+    {
+      "name": "Linux-Debug",
+      "generator": "Unix Makefiles",
+      "remoteMachineName": "${defaultRemoteMachineName}",
+      "remoteCopySourcesMethod": "sftp",
+      "configurationType": "Debug",
+      "remoteCMakeListsRoot": "/var/tmp/src/${workspaceHash}/${name}",
+      "cmakeExecutable": "/usr/local/bin/cmake",
+      "buildRoot": "${env.LOCALAPPDATA}\\CMakeBuilds\\${workspaceHash}\\build\\${name}",
+      "remoteBuildRoot": "/var/tmp/build/${workspaceHash}/build/${name}",
+      "remoteCopySources": true,
+      "remoteCopySourcesOutputVerbosity": "Normal",
+      "remoteCopySourcesConcurrentCopies": "10",
+      "cmakeCommandArgs": "",
+      "ctestCommandArgs": "",
+      "buildCommandArgs": "-m",
+      "inheritEnvironments": [ "linux-x64" ],
+      "variables": [
+        {
+          "name": "BUILD_TESTS",
+          "value": "${env.buildTests}"
+        },
+        {
+          "name": "BUILD_SAMPLES",
+          "value": "${env.buildSamples}"
+        }
+      ]
+    },
+    {
+      "name": "Windows-x86-Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "buildRoot": "${env.LOCALAPPDATA}\\CMakeBuilds\\${workspaceHash}\\build\\${name}",
+      "cmakeCommandArgs": "",
+      "ctestCommandArgs": "",
+      "buildCommandArgs": "",
+      "inheritEnvironments": [ "msvc_x86" ],
+      "variables": [
+        {
+          "name": "CURL_ROOT_DIR",
+          "value": "${env.curlRootDir}"
+        },
+        {
+          "name": "OPENSSL_ROOT_DIR",
+          "value": "${env.opensslRootDir}"
+        },
+        {
+          "name": "BUILD_TESTS",
+          "value": "${env.buildTests}"
+        },
+        {
+          "name": "BUILD_SAMPLES",
+          "value": "${env.buildSamples}"
+        },
+        {
+          "name": "OPENSSL_MSVC_STATIC_RT",
+          "value": "${env.buildWithMT}"
+        },
+        {
+          "name": "BUILD_WITH_MT",
+          "value": "${env.buildWithMT}"
+        },
+        {
+          "name": "BUILD_SHARED_LIBS",
+          "value": "${env.buildSharedLibrary}"
+        },
+        {
+          "name": "OPENSSL_LINK_TYPE",
+          "value": "${env.opensslLinkType}"
+        },
+        {
+          "name": "CURL_LINK_TYPE",
+          "value": "${env.curlLinkType}"
+        }
+      ]
+    },
+    {
+      "name": "Windows-x64-Debug",
+      "generator": "Ninja",
+      "configurationType": "Debug",
+      "buildRoot": "${env.LOCALAPPDATA}\\CMakeBuilds\\${workspaceHash}\\build\\${name}",
+      "cmakeCommandArgs": "",
+      "ctestCommandArgs": "",
+      "buildCommandArgs": "",
+      "inheritEnvironments": [ "msvc_x64" ],
+      "variables": [
+        {
+          "name": "CURL_ROOT_DIR",
+          "value": "${env.curlRootDir}"
+        },
+        {
+          "name": "OPENSSL_ROOT_DIR",
+          "value": "${env.opensslRootDir}"
+        },
+        {
+          "name": "BUILD_TESTS",
+          "value": "${env.buildTests}"
+        },
+        {
+          "name": "BUILD_SAMPLES",
+          "value": "${env.buildSamples}"
+        },
+        {
+          "name": "OPENSSL_MSVC_STATIC_RT",
+          "value": "${env.buildWithMT}"
+        },
+        {
+          "name": "BUILD_WITH_MT",
+          "value": "${env.buildWithMT}"
+        },
+        {
+          "name": "BUILD_SHARED_LIBS",
+          "value": "${env.dynamicLinking}"
+        },
+        {
+          "name": "OPENSSL_LINK_TYPE",
+          "value": "${env.opensslLinkType}"
+        },
+        {
+          "name": "CURL_LINK_TYPE",
+          "value": "${env.curlLinkType}"
+        }
+      ]
+    },
+    {
+      "name": "Windows-x86-Release",
+      "generator": "Ninja",
+      "configurationType": "Release",
+      "buildRoot": "${env.LOCALAPPDATA}\\CMakeBuilds\\${workspaceHash}\\build\\${name}",
+      "cmakeCommandArgs": "",
+      "ctestCommandArgs": "",
+      "buildCommandArgs": "",
+      "inheritEnvironments": [ "msvc_x86" ],
+      "variables": [
+        {
+          "name": "CURL_ROOT_DIR",
+          "value": "${env.curlRootDir}"
+        },
+        {
+          "name": "OPENSSL_ROOT_DIR",
+          "value": "${env.opensslRootDir}"
+        },
+        {
+          "name": "BUILD_TESTS",
+          "value": "${env.buildTests}"
+        },
+        {
+          "name": "BUILD_SAMPLES",
+          "value": "${env.buildSamples}"
+        },
+        {
+          "name": "OPENSSL_MSVC_STATIC_RT",
+          "value": "${env.buildWithMT}"
+        },
+        {
+          "name": "BUILD_WITH_MT",
+          "value": "${env.buildWithMT}"
+        },
+        {
+          "name": "BUILD_SHARED_LIBS",
+          "value": "${env.buildSharedLibrary}"
+        },
+        {
+          "name": "OPENSSL_LINK_TYPE",
+          "value": "${env.opensslLinkType}"
+        },
+        {
+          "name": "CURL_LINK_TYPE",
+          "value": "${env.curlLinkType}"
+        }
+      ]
+    },
+    {
+      "name": "Windows-x64-Release",
+      "generator": "Ninja",
+      "configurationType": "Release",
+      "buildRoot": "${env.LOCALAPPDATA}\\CMakeBuilds\\${workspaceHash}\\build\\${name}",
+      "cmakeCommandArgs": "",
+      "ctestCommandArgs": "",
+      "buildCommandArgs": "",
+      "inheritEnvironments": [ "msvc_x64" ],
+      "variables": [
+        {
+          "name": "CURL_ROOT_DIR",
+          "value": "${env.curlRootDir}"
+        },
+        {
+          "name": "OPENSSL_ROOT_DIR",
+          "value": "${env.opensslRootDir}"
+        },
+        {
+          "name": "BUILD_TESTS",
+          "value": "${env.buildTests}"
+        },
+        {
+          "name": "BUILD_SAMPLES",
+          "value": "${env.buildSamples}"
+        },
+        {
+          "name": "OPENSSL_MSVC_STATIC_RT",
+          "value": "${env.buildWithMT}"
+        },
+        {
+          "name": "BUILD_WITH_MT",
+          "value": "${env.buildWithMT}"
+        },
+        {
+          "name": "BUILD_SHARED_LIBS",
+          "value": "${env.buildSharedLibrary}"
+        },
+        {
+          "name": "OPENSSL_LINK_TYPE",
+          "value": "${env.opensslLinkType}"
+        },
+        {
+          "name": "CURL_LINK_TYPE",
+          "value": "${env.curlLinkType}"
+        }
+      ]
+    }
+  ]
+}
+
