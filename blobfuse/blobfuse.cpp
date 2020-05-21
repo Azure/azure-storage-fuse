@@ -2,6 +2,9 @@
 #include <boost/filesystem.hpp>
 #include <string>
 #include <signal.h>
+#include <mntent.h>
+#include <sys/types.h>
+#include <dirent.h>
 
 namespace {
     std::string trim(const std::string& str) {
@@ -244,9 +247,10 @@ int read_config(const std::string configFile)
             continue;
         }
 
+        replace(line.begin(), line.end(), '\t', ' ');
         data.str(line.substr(line.find(" ")+1));
         const std::string value(trim(data.str()));
-
+    
         if(line.find("accountName") != std::string::npos)
         {
             std::string accountNameStr(value);
@@ -644,6 +648,52 @@ void set_up_callbacks()
     signal(SIGUSR1, sig_usr_handler);
 }
 
+/*
+ *  Check if the given directory is already mounted or not
+ *  If mounted then re-mounting again shall fail.
+ */ 
+bool is_directory_mounted(const char* mntDir) {
+     struct mntent *mnt_ent;
+     bool found = false;
+     FILE *mnt_list;
+ 
+     mnt_list = setmntent(_PATH_MOUNTED, "r");
+     while ((mnt_ent = getmntent(mnt_list))) 
+     {
+         if (!strcmp(mnt_ent->mnt_dir, mntDir)) 
+         {
+             found = true;
+             break;
+         }
+     }
+     endmntent(mnt_list);
+     return found;
+
+}
+
+/*
+ *  Check if the given temp directory is empty or not
+ *  If non-empty then return false, as this can create issues in 
+ *  out cache.
+ */ 
+bool is_directory_empty(const char *tmpDir) {
+    int cnt = 0;
+    struct dirent *d_ent;
+
+    DIR *dir = opendir(tmpDir);
+    if (dir == NULL) 
+        return 0;
+
+    // Count number of entries in directory
+    // if its more then 2 (. and ..) then its not empty
+    while (((d_ent = readdir(dir)) != NULL) 
+            && (cnt++ <= 2));
+    
+    closedir(dir);
+
+    return (cnt <= 2);
+}
+
 int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 {
     // FUSE has a standard method of argument parsing, here we just follow the pattern.
@@ -677,6 +727,14 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         {
             print_usage();
             exit(0);
+        }
+
+        if (args && args->argv && argc > 1 && 
+            is_directory_mounted(argv[1])) 
+        {
+            syslog(LOG_CRIT, "Unable to start blobfuse. '%s'is already mounted.", argv[1]);
+            fprintf(stderr, "Error: '%s' is already mounted. Recheck your config\n", argv[1]);
+            return 1;
         }
 
         if(!options.config_file)
@@ -758,6 +816,14 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             print_usage();
             return 1;
         }
+    }
+
+    if ((!tmpPathStr.empty()) &&
+        (!is_directory_empty(tmpPathStr.c_str()))) 
+    {
+        syslog(LOG_CRIT, "Unable to start blobfuse. temp directory '%s'is not empty.", tmpPathStr.c_str());
+        fprintf(stderr, "Error: temp directory '%s' is not empty. blobfuse needs an empty temp directory\n", tmpPathStr.c_str());
+        return 1;
     }
 
     str_options.tmpPath = tmpPathStr;
