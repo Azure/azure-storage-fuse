@@ -12,6 +12,7 @@ fi
 echo "Building the cpplite lib"
 mkdir cpplite/build.release
 cd cpplite/build.release
+cmake .. -DCMAKE_BUILD_TYPE=Release
 cmake --build .
 cd -
 
@@ -21,7 +22,7 @@ mkdir build
 cd build
 
 # Copy the cpplite lib here
-cp ../cpplite/build.release/*.a ./ 
+cp ../cpplite/build.release/libazure-storage-lite.a ./ 
 
 ## Use cmake3 if it's available.  If not, then fallback to the default "cmake".  Otherwise, fail.
 cmake3 $cmake_args
