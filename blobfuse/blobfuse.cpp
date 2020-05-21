@@ -658,8 +658,10 @@ bool is_directory_mounted(const char* mntDir) {
      FILE *mnt_list;
  
      mnt_list = setmntent(_PATH_MOUNTED, "r");
-     while ((mnt_ent = getmntent(mnt_list))) {
-         if (!strcmp(mnt_ent->mnt_dir, mntDir)) {
+     while ((mnt_ent = getmntent(mnt_list))) 
+     {
+         if (!strcmp(mnt_ent->mnt_dir, mntDir)) 
+         {
              found = true;
              break;
          }
@@ -671,7 +673,7 @@ bool is_directory_mounted(const char* mntDir) {
 
 /*
  *  Check if the given temp directory is empty or not
- *  If non-empty then fail, as this can create issues in 
+ *  If non-empty then return false, as this can create issues in 
  *  out cache.
  */ 
 bool is_directory_empty(const char *tmpDir) {
@@ -728,10 +730,11 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         }
 
         if (args && args->argv && argc > 1 && 
-            is_directory_mounted(argv[1])) {
-                syslog(LOG_CRIT, "Unable to start blobfuse. '%s'is already mounted.", argv[1]);
-                fprintf(stderr, "Error: '%s' is already mounted. Recheck your config\n", argv[1]);
-                return 1;
+            is_directory_mounted(argv[1])) 
+        {
+            syslog(LOG_CRIT, "Unable to start blobfuse. '%s'is already mounted.", argv[1]);
+            fprintf(stderr, "Error: '%s' is already mounted. Recheck your config\n", argv[1]);
+            return 1;
         }
 
         if(!options.config_file)
@@ -816,7 +819,8 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     }
 
     if ((!tmpPathStr.empty()) &&
-         (!is_directory_empty(tmpPathStr.c_str()))) {
+        (!is_directory_empty(tmpPathStr.c_str()))) 
+    {
         syslog(LOG_CRIT, "Unable to start blobfuse. temp directory '%s'is not empty.", tmpPathStr.c_str());
         fprintf(stderr, "Error: temp directory '%s' is not empty. blobfuse needs an empty temp directory\n", tmpPathStr.c_str());
         return 1;
