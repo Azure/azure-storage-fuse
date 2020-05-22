@@ -29,7 +29,6 @@
 
 #include <fuse.h>
 #include <stddef.h>
-#include "blobfuse_constants.h"
 #include "blob/blob_client.h"
 #include "OAuthToken.h"
 #include "OAuthTokenCredentialManager.h"

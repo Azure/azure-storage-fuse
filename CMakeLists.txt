@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 2.8)
 set (BLOBFUSE_HEADER
   blobfuse/blobfuse.h
   blobfuse/blob_client_cache.h
-  blobfuse/blobfuse_constants.h
+  #blobfuse/blobfuse_constants.h
   blobfuse/OAuthToken.h
   blobfuse/OAuthTokenCredentialManager.h
 )
@@ -12,6 +12,7 @@ set (BLOBFUSE_SOURCE
 #  blobfuse/blobfuse.cpp    # We don't include blobfuse.cpp because the file contents are directly #included in main.cpp.  This allows us to split main() and everything
 #                             else into different files, without having to define each function in a header for only one consumer.  The only reason to do all this is so
 #                             we can test functionality in blobfuse.cpp without including main() (which would break gtest).
+  blobfuse/blobfuse_constants.cpp
   blobfuse/fileapis.cpp
   blobfuse/directoryapis.cpp
   blobfuse/utilities.cpp

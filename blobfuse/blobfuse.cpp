@@ -5,6 +5,7 @@
 #include <mntent.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include "blobfuse_constants.h"
 
 namespace {
     std::string trim(const std::string& str) {
