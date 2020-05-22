@@ -6,10 +6,10 @@
 using ::testing::_;
 using ::testing::Return;
 
-class MockBlobClient : public sync_blob_client {
+class MockBlobClient : public blob_client_wrapper {
 public:
     MOCK_CONST_METHOD0(is_valid, bool());
-    MOCK_METHOD5(list_blobs_hierarchical, list_blobs_hierarchical_response(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults));
+    MOCK_METHOD5(list_blobs_segmented, list_blobs_segmented_response(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults));
     MOCK_METHOD4(put_blob, void(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata));
     MOCK_METHOD4(upload_block_blob_from_stream, void(const std::string &container, const std::string blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata));
     MOCK_METHOD5(upload_file_to_blob, void(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata, size_t parallel));
@@ -80,11 +80,11 @@ void AttribCacheSynchronizationTest::prep_mock(std::shared_ptr<std::mutex> m, st
         return blob_property(true);
     }));
 
-    ON_CALL(*mockClient, list_blobs_hierarchical(_, _ ,_, _, _))
+    ON_CALL(*mockClient, list_blobs_segmented(_, _ ,_, _, _))
     .WillByDefault(::testing::InvokeWithoutArgs([=] ()
     {
         prep(m, cv, calls, sleep_finished);
-        return list_blobs_hierarchical_response();
+        return list_blobs_segmented_response();
     }));
 
     ON_CALL(*mockClient, put_blob(_, _, _, _))
@@ -187,7 +187,7 @@ std::map<std::string, std::function<void(std::shared_ptr<blob_client_attr_cache_
         }},
     {"List", [](std::shared_ptr<blob_client_attr_cache_wrapper> attrib_cache_wrapper, std::string container_name, std::string prefix, std::promise<void> promise)
         {
-            attrib_cache_wrapper->list_blobs_hierarchical(container_name, "/", "marker", prefix, 10);
+            attrib_cache_wrapper->list_blobs_segmented(container_name, "/", "marker", prefix, 10);
             promise.set_value();
         }},
 };

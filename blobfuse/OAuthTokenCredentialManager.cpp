@@ -11,6 +11,7 @@
 #include "constants.h"
 #include "utility.h"
 #include <syslog.h>
+#include "blobfuse_constants.h"
 
 using nlohmann::json;
 
@@ -48,9 +49,8 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
     {
         syslog(LOG_INFO, "refresh callback set");
     }
-    
 
-    httpClient = std::make_shared<CurlEasyClient>(constants::max_concurrency_oauth);
+    httpClient = std::make_shared<CurlEasyClient>(blobfuse_constants::max_concurrency_oauth);
     refreshTokenCallback = refreshCallback;
 
     try 
@@ -242,28 +242,107 @@ std::string encode_query_element(std::string input) {
     return result.str();
 }
 
+
+// The URLs this is going to need to parse are fairly unadvanced.
+// They'll all be similar to http://blah.com/path1/path2?query1=xxx&query2=xxx
+// It's assumed they will be pre-encoded.
+// This is _primarily_ to support the custom MSI endpoint scenario requested by AML.
+std::shared_ptr<storage_url> parse_url(const std::string& url) {
+    auto output = std::make_shared<storage_url>();
+
+    std::string runningString;
+    std::string qpname; // A secondary buffer for query parameter strings.
+    // 0 = scheme, 1 = hostname, 2 = path, 3 = query
+    // the scheme ends up attached to the hostname due to the way storage_urls work.
+    int segment = 0;
+    for (auto charptr = url.begin(); charptr < url.end(); charptr++) {
+        switch (segment) {
+            case 0:
+                runningString += *charptr;
+
+                // ends up something like "https://"
+                if (*(charptr - 2) == ':' && *(charptr - 1) == '/' && *charptr == '/')
+                {
+                    // We've reached the end of the scheme.
+                    segment++;
+                }
+                break;
+            case 1:
+                // Avoid adding the / between the path element and the domain, as storage_url does that for us.
+                if(*charptr != '/')
+                    runningString += *charptr;
+
+                if (*charptr == '/' || charptr == url.end() - 1)
+                {
+                    // Only append the new char if it's the end of the string.
+                    output->set_domain(std::string(runningString));
+                    // empty the buffer, do not append the new char to the string because storage_url handles it for us, rather than checking itself
+                    runningString.clear();
+                    segment++;
+                }
+                break;
+            case 2:
+                // Avoid adding the ? to the path.
+                if(*charptr != '?')
+                    runningString += *charptr;
+
+                if (*charptr == '?' || charptr == url.end() - 1)
+                {
+                    // We don't need to append by segment here, we can just append the entire thing.
+                    output->append_path(std::string(runningString));
+                    // Empty the buffer
+                    runningString.clear();
+                    segment++;
+                }
+                break;
+            case 3:
+                // Avoid adding any of the separators to the path.
+                if (*charptr != '=' && *charptr != '&')
+                    runningString += *charptr;
+
+                if (*charptr == '=')
+                {
+                    qpname = std::string(runningString);
+                    runningString.clear();
+                }
+                else if (*charptr == '&' || charptr == url.end() - 1)
+                {
+                    output->add_query(std::string(qpname), std::string(runningString));
+                    qpname.clear();
+                    runningString.clear();
+                }
+                break;
+            default:
+                throw std::runtime_error("Unexpected segment section");
+        }
+    }
+
+    return output;
+}
+
+
 /// <summary>
 /// SetUpMSICallback sets up a refresh callback for MSI auth. This should be used to create a OAuthTokenManager instance.
 /// </summary>
 std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std::string client_id_p, std::string object_id_p, std::string resource_id_p, std::string msi_endpoint_p, std::string msi_secret_p)
 {
     // Create the URI token request
-    std::shared_ptr<microsoft_azure::storage::storage_url> uri_token_request_url;
+    std::shared_ptr<azure::storage_lite::storage_url> uri_token_request_url;
     bool custom_endpoint = !msi_endpoint_p.empty();
     if (!custom_endpoint) {
-        uri_token_request_url = parse_url(constants::msi_request_uri);
+        uri_token_request_url = parse_url(blobfuse_constants::msi_request_uri);
 
         if(!client_id_p.empty())
         {
-            uri_token_request_url->add_query(constants::param_client_id, client_id_p);
+            uri_token_request_url->add_query(blobfuse_constants::param_client_id, client_id_p);
         }
         if(!object_id_p.empty())
         {
-            uri_token_request_url->add_query(constants::param_object_id, object_id_p);
+            uri_token_request_url->add_query(blobfuse_constants::param_object_id, object_id_p);
         }
         if(!resource_id_p.empty())
         {
-            uri_token_request_url->add_query(constants::param_mi_res_id, resource_id_p);
+            uri_token_request_url->add_query(blobfuse_constants::param_mi_res_id, resource_id_p);
         }
     }
     else
@@ -278,8 +357,8 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
          syslog(LOG_INFO, "SetUP MSI callback with custom token issuing endpoint ");
     }
 
-    uri_token_request_url->add_query(constants::param_mi_api_version, constants::param_mi_api_version_data);
-    uri_token_request_url->add_query(constants::param_oauth_resource, constants::param_oauth_resource_data);
+    uri_token_request_url->add_query(blobfuse_constants::param_mi_api_version, blobfuse_constants::param_mi_api_version_data);
+    uri_token_request_url->add_query(blobfuse_constants::param_oauth_resource, blobfuse_constants::param_oauth_resource_data);
     
     fprintf(stdout, "URI token request URL printed out %s \n", uri_token_request_url->to_string().c_str());
 
@@ -288,9 +367,9 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
         std::shared_ptr<CurlEasyRequest> request_handle = httpClient->get_handle();
 
         request_handle->set_url(uri_token_request_url->to_string());
-        request_handle->add_header(constants::header_metadata, "true");
+        request_handle->add_header(blobfuse_constants::header_metadata, "true");
         if(custom_endpoint)
-            request_handle->add_header(constants::header_msi_secret, msi_secret_p);
+            request_handle->add_header(blobfuse_constants::header_msi_secret, msi_secret_p);
 
         request_handle->set_method(http_base::http_method::get);
 
@@ -299,7 +378,7 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpMSICallback(std:
         request_handle->set_output_stream(ios.ostream());
 
         // TODO: decide retry interval, also make constant
-        std::chrono::seconds retry_interval(constants::max_retry_oauth);
+        std::chrono::seconds retry_interval(blobfuse_constants::max_retry_oauth);
         OAuthToken parsed_token;
         request_handle->submit([&parsed_token, &ios](http_base::http_code http_code_result, const storage_istream&, CURLcode curl_code)
         {
@@ -353,25 +432,25 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
     // https://docs.microsoft.com/en-us/azure/active-directory/develop/v2-oauth2-client-creds-grant-flow
     // This means that we need to put our query parameters in the body, which seems quite odd.
     // They _also_ need to be URL-encoded. Luckily, storage_url had an unexposed encode_query function.
-    // microsoft_azure::storage::encode_url_query()
+    // azure::storage_lite::encode_url_query()
 
     // Step 1: Construct the URL
-    std::shared_ptr<microsoft_azure::storage::storage_url> uri_token_request_url = std::make_shared<microsoft_azure::storage::storage_url>();
+    std::shared_ptr<azure::storage_lite::storage_url> uri_token_request_url = std::make_shared<azure::storage_lite::storage_url>();
 
    if(aad_endpoint_p.empty())
     {
-        uri_token_request_url->set_domain(constants::oauth_request_uri);
+        uri_token_request_url->set_domain(blobfuse_constants::oauth_request_uri);
     }
     else
     {
         uri_token_request_url = parse_url(aad_endpoint_p);
     }
 
-    uri_token_request_url->append_path((tenant_id_p.empty() ? "common" : tenant_id_p) + "/" + constants::spn_request_path); // /tenant/oauth2/v2.0/token
+    uri_token_request_url->append_path((tenant_id_p.empty() ? "common" : tenant_id_p) + "/" + blobfuse_constants::spn_request_path); // /tenant/oauth2/v2.0/token
 
     // Step 2: Construct the body query
     std::string queryString("client_id=" + client_id_p); // client_id=...
-    queryString.append("&scope=" + encode_query_element(std::string(constants::param_oauth_resource_data) + ".default")); // &scope=https://storage.azure.com/.default
+    queryString.append("&scope=" + encode_query_element(std::string(blobfuse_constants::param_oauth_resource_data) + ".default")); // &scope=https://storage.azure.com/.default
     queryString.append("&client_secret=" + encode_query_element(client_secret_p)); // &client_secret=...
     queryString.append("&grant_type=client_credentials"); // &grant_type=client_credentials
 
@@ -395,7 +474,7 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
         // Set request method
        request_handle->set_method(http_base::http_method::post);
 
-        std::chrono::seconds retry_interval(constants::max_retry_oauth);
+        std::chrono::seconds retry_interval(blobfuse_constants::max_retry_oauth);
         OAuthToken parsed_token;
 
         request_handle->submit([&parsed_token, &ios](http_base::http_code http_code_result, const storage_istream&, CURLcode curl_code){

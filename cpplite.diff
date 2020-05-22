@@ -753,7 +753,8 @@ diff -r azure-storage-cpp-lite-org/include/blob/blob_client.h cpplite/include/bl
 460c456
 <         std::vector<list_containers_item> list_containers(const std::string &prefix, const std::string& continuation_token, const int max_result = 5, bool include_metadata = false);
 ---
->         AZURE_STORAGE_API std::vector<list_containers_item> list_containers_segmented(const std::string &prefix, const std::string& continuation_token, const int max_result = 5, bool include_metadata = false);
+>
+         AZURE_STORAGE_API std::vector<list_containers_item> list_containers_segmented(const std::string &prefix, const std::string& continuation_token, const int max_result = 5, bool include_metadata = false);
 471c467
 <         list_blobs_hierarchical_response list_blobs_hierarchical(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults = 10000);
 ---
@@ -3002,6 +3003,9 @@ diff -r azure-storage-cpp-lite-org/include/delete_container_request_base.h cppli
 ---
 > }}  // azure::storage_lite
 \ No newline at end of file
+
+//   VB :: Till here things are fine
+
 diff -r azure-storage-cpp-lite-org/include/executor.h cpplite/include/executor.h
 15a16
 > #include "json_parser_base.h"

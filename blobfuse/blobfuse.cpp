@@ -53,7 +53,7 @@ const struct fuse_opt option_spec[] =
     FUSE_OPT_END
 };
 
-std::shared_ptr<sync_blob_client> azure_blob_client_wrapper;
+std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
 class gc_cache gc_cache;
 
 // Currently, the cpp lite lib puts the HTTP status code in errno.
@@ -66,6 +66,18 @@ const std::string former_directory_signifier = ".directory";
 static struct fuse_operations azs_blob_operations;
 
 const std::string log_ident = "blobfuse";
+
+inline std::string to_lower(std::string original) {
+    std::string out;
+    for (auto idx = original.begin(); idx < original.end(); idx++) {
+        if(*idx >= 'A' && *idx <= 'Z') {
+            out += char(*idx + 32); // This cast isn't required, but clang-tidy wants to complain without it.
+        } else {
+            out += *idx;
+        }
+    }
+    return out;
+}
 
 inline bool is_lowercase_string(const std::string &s)
 {
@@ -378,7 +390,7 @@ void *azs_init(struct fuse_conn_info * conn)
             azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
                     blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_oauth(
                      str_options.accountName,
-                     constants::max_concurrency_blob_wrapper,
+                     blobfuse_constants::max_concurrency_blob_wrapper,
                      str_options.blobEndpoint));
         }
         else if(AuthType == KEY_AUTH) {
@@ -386,7 +398,7 @@ void *azs_init(struct fuse_conn_info * conn)
                 blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init_accountkey(
                     str_options.accountName,
                     str_options.accountKey,
-                    constants::max_concurrency_blob_wrapper,
+                    blobfuse_constants::max_concurrency_blob_wrapper,
                     str_options.use_https,
                     str_options.blobEndpoint));
         }
@@ -395,7 +407,7 @@ void *azs_init(struct fuse_conn_info * conn)
                 blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init_sastoken(
                     str_options.accountName,
                     str_options.sasToken,
-                    constants::max_concurrency_blob_wrapper,
+                    blobfuse_constants::max_concurrency_blob_wrapper,
                      str_options.use_https,
                     str_options.blobEndpoint));
         }
@@ -431,14 +443,14 @@ void *azs_init(struct fuse_conn_info * conn)
             //2. try to make blob client wrapper using oauth token
             azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
                     str_options.accountName,
-                    constants::max_concurrency_blob_wrapper,
+                    blobfuse_constants::max_concurrency_blob_wrapper,
                     str_options.blobEndpoint);
         }
         else if(AuthType == KEY_AUTH) {
             azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
             str_options.accountName,
             str_options.accountKey,
-            constants::max_concurrency_blob_wrapper,
+            blobfuse_constants::max_concurrency_blob_wrapper,
             str_options.use_https,
             str_options.blobEndpoint);
         }
@@ -446,7 +458,7 @@ void *azs_init(struct fuse_conn_info * conn)
             azure_blob_client_wrapper = blob_client_wrapper_init_sastoken(
             str_options.accountName,
             str_options.sasToken,
-            constants::max_concurrency_blob_wrapper,
+            blobfuse_constants::max_concurrency_blob_wrapper,
             str_options.use_https,
             str_options.blobEndpoint);
         }
@@ -912,14 +924,14 @@ int validate_storage_connection()
             //2. try to make blob client wrapper using oauth token
             temp_azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
                     str_options.accountName,
-                    constants::max_concurrency_blob_wrapper,
+                    blobfuse_constants::max_concurrency_blob_wrapper,
                     str_options.blobEndpoint);
         }
         else if(AuthType == KEY_AUTH) {
             temp_azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
             str_options.accountName,
             str_options.accountKey,
-            constants::max_concurrency_blob_wrapper,
+            blobfuse_constants::max_concurrency_blob_wrapper,
             str_options.use_https,
             str_options.blobEndpoint);
         }
@@ -927,7 +939,7 @@ int validate_storage_connection()
             temp_azure_blob_client_wrapper = blob_client_wrapper_init_sastoken(
             str_options.accountName,
             str_options.sasToken,
-            constants::max_concurrency_blob_wrapper,
+            blobfuse_constants::max_concurrency_blob_wrapper,
             str_options.use_https,
             str_options.blobEndpoint);
         }
@@ -946,7 +958,7 @@ int validate_storage_connection()
 
         // Check if the account name/key and container is correct by attempting to list a blob.
         // This will succeed even if there are zero blobs.
-        list_blobs_hierarchical_response response = temp_azure_blob_client_wrapper->list_blobs_hierarchical(
+        list_blobs_segmented_response response = temp_azure_blob_client_wrapper->list_blobs_segmented(
             str_options.containerName,
             "/",
             std::string(),

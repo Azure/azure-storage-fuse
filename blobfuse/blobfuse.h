@@ -29,9 +29,11 @@
 
 #include <fuse.h>
 #include <stddef.h>
+#include "blobfuse_constants.h"
 #include "blob/blob_client.h"
 #include "OAuthToken.h"
 #include "OAuthTokenCredentialManager.h"
+#include "blob_client_cache.h"
 
 #define UNREFERENCED_PARAMETER(p) (p)
 
@@ -51,7 +53,7 @@
 // instruct gcrypt to use pthread
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
-using namespace microsoft_azure::storage;
+using namespace azure::storage_lite;
 
 // We use two different locking schemes to protect files / blobs against data corruption and data loss scenarios.
 // The first is an in-memory std::mutex, the second is flock (Linux).  Each file path gets its own mutex and flock lock.
@@ -151,7 +153,7 @@ extern int default_permission;
 
 // This is used to make all the calls to Storage
 // The C++ lite client does not store state, other than connection info, so we can use it between calls without issue.
-extern std::shared_ptr<sync_blob_client> azure_blob_client_wrapper;
+extern std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
 
 // Used to map HTTP errors (ex. 404) to Linux errno (ex ENOENT)
 extern std::map<int, int> error_mapping;
@@ -189,7 +191,7 @@ int shared_lock_file(int flags, int fd);
 int ensure_files_directory_exists_in_cache(const std::string& file_path);
 
 // Greedily list all blobs using the input params.
-std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix);
+std::vector<std::pair<std::vector<list_blobs_segmented_item>, bool>> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix);
 
 // Returns:
 // 0 if there's nothing there (the directory does not exist)

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 2.8)
 
 set (BLOBFUSE_HEADER
   blobfuse/blobfuse.h
+  blobfuse/blob_client_cache.h
+  blobfuse/blobfuse_constants.h
   blobfuse/OAuthToken.h
   blobfuse/OAuthTokenCredentialManager.h
 )
@@ -32,16 +34,16 @@ if(UNIX)
  # set(WARNING "-Wall -Wextra -Werror -pedantic -pedantic-errors")
   set(WARNING "-Wall -Wextra -Werror")
   set(CMAKE_CXX_FLAGS "${CMAKE_THREAD_LIBS_INIT} ${WARNING} ${CMAKE_CXX_FLAGS}")
-  #include_directories(${CMAKE_SOURCE_DIR}/blobfuse ${CMAKE_SOURCE_DIR}/azure-storage-cpp-lite/include ${CURL_INCLUDE_DIRS} ${GNUTLS_INCLUDE_DIR} ${Boost_INCLUDE_DIR} nlohmann-json)
   include_directories(${CMAKE_SOURCE_DIR}/blobfuse ${CMAKE_SOURCE_DIR}/cpplite/include ${CURL_INCLUDE_DIRS} ${GNUTLS_INCLUDE_DIR} ${Boost_INCLUDE_DIR} nlohmann-json)
 
   set(CMAKE_MACOSX_RPATH ON)
 
-  #add_executable(blobfuse ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} ${AZURE_STORAGE_HEADER} ${AZURE_STORAGE_SOURCE} blobfuse/main.cpp)
   add_executable(blobfuse ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} blobfuse/main.cpp)
+  add_subdirectory(cpplite)
+  add_dependencies (blobfuse azure-storage-lite)
 
   pkg_search_module(UUID REQUIRED uuid)
-  target_link_libraries(blobfuse ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt)
+  target_link_libraries(blobfuse ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} azure-storage-lite fuse gcrypt)
   install(TARGETS blobfuse
     PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
     DESTINATION bin)
@@ -74,7 +76,7 @@ if(UNIX)
   include(CPack)
 endif(UNIX)
 
-if(INCLUDE_TEST)
+if(INCLUDE_TESTS)
   # Download and build googletest at cmake time, as recommended by the googletest docs:
   # https://github.com/google/googletest/blob/master/googletest/README.md
 
@@ -122,8 +124,8 @@ if(INCLUDE_TEST)
   add_definitions(-std=c++11)
   pkg_search_module(UUID REQUIRED uuid)
   include_directories(${Boost_INCLUDE_DIR})
-  #add_executable(blobfusetests ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} ${AZURE_STORAGE_HEADER} ${AZURE_STORAGE_SOURCE} blobfuse/blobfuse.cpp test/cpplitetests.cpp test/attribcachetests.cpp test/attribcachesynchronizationtests.cpp test/oauthtokentests.cpp test/oauthtokencredentialmanagertests.cpp)
   add_executable(blobfusetests ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} blobfuse/blobfuse.cpp test/cpplitetests.cpp test/attribcachetests.cpp test/attribcachesynchronizationtests.cpp test/oauthtokentests.cpp test/oauthtokencredentialmanagertests.cpp)
-  target_link_libraries(blobfusetests ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt gmock_main)
+  add_dependencies (blobfusetests azure-storage-lite)
+  target_link_libraries(blobfusetests ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} azure-storage-lite fuse gcrypt gmock_main)
 
 endif()

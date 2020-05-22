@@ -9,7 +9,7 @@
 #ifndef OAUTH_TOKEN_CREDENTIAL_MANAGER_H
 #define OAUTH_TOKEN_CREDENTIAL_MANAGER_H
 
-using namespace microsoft_azure::storage;
+using namespace azure::storage_lite;
 
 class OAuthTokenCredentialManager {
 public:

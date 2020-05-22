@@ -92,7 +92,7 @@ bool tests_list_blob_hierarchical()
 
     // Validate that all blobs and blob "directories" are correctly found for given prefixes
     errno = 0;
-    std::vector<list_blobs_hierarchical_item> blob_list_results = list_all_blobs(container_name, "/", "");
+    std::vector<list_blobs_segmented_item> blob_list_results = list_all_blobs(container_name, "/", "");
     ASSERT_EQ(0, errno) << "list_all_blobs failed for empty prefix";
     ASSERT_EQ(6, blob_list_results.size()) << "Incorrect number of blob entries found.";
 

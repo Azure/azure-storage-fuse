@@ -102,7 +102,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     }
 
     errno = 0;
-    std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
+    std::vector<std::pair<std::vector<list_blobs_segmented_item>, bool>> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
     if (errno != 0)
     {
         int storage_errno = errno;

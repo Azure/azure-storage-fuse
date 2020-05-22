@@ -100,9 +100,9 @@ public:
 std::shared_ptr<blob_client_wrapper> BlobClientWrapperTest::test_blob_client_wrapper = NULL;
 
 // Helper method to follow continuation tokens and list all blobs.  C&P from blobfuse code, we should probably move it to cpplite, although not until we figure out proper retries.
-std::vector<list_blobs_hierarchical_item> list_all_blobs(std::string container, std::string delimiter, std::string prefix)
+std::vector<list_blobs_segmented_item> list_all_blobs(std::string container, std::string delimiter, std::string prefix)
 {
-    std::vector<list_blobs_hierarchical_item> results;
+    std::vector<list_blobs_segmented_item> results;
 
     std::string continuation;
 
@@ -110,7 +110,7 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs(std::string container, 
     do
     {
         errno = 0;
-        list_blobs_hierarchical_response response = BlobClientWrapperTest::test_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix);
+        list_blobs_segmented_response response = BlobClientWrapperTest::test_blob_client_wrapper->list_blobs_segmented(container, delimiter, continuation, prefix);
         if (errno == 0)
         {
             continuation = response.next_marker;
@@ -154,7 +154,7 @@ void read_from_file(std::string path, std::string &text)
 TEST_F(BlobClientWrapperTest, BlobPutDownload)
 {
     errno = 0;
-    std::vector<list_blobs_hierarchical_item> blobs = list_all_blobs(container_name, "/", "");
+    std::vector<list_blobs_segmented_item> blobs = list_all_blobs(container_name, "/", "");
     ASSERT_EQ(0, errno);
     ASSERT_EQ(0, blobs.size());
 
@@ -221,7 +221,7 @@ void read_file_data_and_validate(std::string path, unsigned int seed, size_t cou
 void BlobClientWrapperTest::run_upload_download(size_t file_size)
 {
     errno = 0;
-    std::vector<list_blobs_hierarchical_item> blobs = list_all_blobs(container_name, "/", "");
+    std::vector<list_blobs_segmented_item> blobs = list_all_blobs(container_name, "/", "");
     ASSERT_EQ(0, errno);
     ASSERT_EQ(0, blobs.size());
 
@@ -475,7 +475,7 @@ TEST_F(BlobClientWrapperTest, ListBlobsHierarchial)
 
     // Validate that all blobs and blob "directories" are correctly found for given prefixes
     errno = 0;
-    std::vector<list_blobs_hierarchical_item> blob_list_results = list_all_blobs(container_name, "/", "");
+    std::vector<list_blobs_segmented_item> blob_list_results = list_all_blobs(container_name, "/", "");
     ASSERT_EQ(0, errno) << "list_all_blobs failed for empty prefix";
     ASSERT_EQ(6, blob_list_results.size()) << "Incorrect number of blob entries found.";
 

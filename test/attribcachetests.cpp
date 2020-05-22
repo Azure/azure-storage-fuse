@@ -7,10 +7,10 @@ using::testing::_;
 using ::testing::Return;
 
 // Used for GoogleMock
-class MockBlobClient : public sync_blob_client {
+class MockBlobClient : public blob_client_wrapper {
 public:
     MOCK_CONST_METHOD0(is_valid, bool());
-    MOCK_METHOD5(list_blobs_hierarchical, list_blobs_hierarchical_response(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults));
+    MOCK_METHOD5(list_blobs_segmented, list_blobs_segmented_response(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults));
     MOCK_METHOD4(put_blob, void(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata));
     MOCK_METHOD4(upload_block_blob_from_stream, void(const std::string &container, const std::string blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata));
     MOCK_METHOD5(upload_file_to_blob, void(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata, size_t parallel));
@@ -87,7 +87,7 @@ void assert_blob_property_objects_equal(blob_property& left, blob_property& righ
     assert_metadata_equal(left.metadata, right.metadata);
 }
 
-void assert_list_item_equal(list_blobs_hierarchical_item &left, list_blobs_hierarchical_item &right)
+void assert_list_item_equal(list_blobs_segmented_item &left, list_blobs_segmented_item &right)
 {
     EXPECT_EQ(left.name, right.name);
     EXPECT_EQ(left.snapshot, right.snapshot);
@@ -102,12 +102,12 @@ void assert_list_item_equal(list_blobs_hierarchical_item &left, list_blobs_hiera
     EXPECT_EQ(left.status, right.status);
     EXPECT_EQ(left.state, right.state);
     EXPECT_EQ(left.duration, right.duration);
-    EXPECT_EQ(left.copy_status, right.copy_status);
+    //EXPECT_EQ(left.copy_status, right.copy_status);
     EXPECT_EQ(left.is_directory, right.is_directory);
     assert_metadata_equal(left.metadata, right.metadata);
 }
 
-void assert_list_response_objects_equal(list_blobs_hierarchical_response &left, list_blobs_hierarchical_response& right)
+void assert_list_response_objects_equal(list_blobs_segmented_response &left, list_blobs_segmented_response& right)
 {
     EXPECT_EQ(left.next_marker, right.next_marker);
     EXPECT_EQ(left.ms_request_id, right.ms_request_id);
@@ -142,11 +142,11 @@ blob_property create_blob_property(std::string etag, unsigned long long size)
     return props;
 }
 
-// Helper for converting a blob_property object into a list_blobs_hierarchical_item.
+// Helper for converting a blob_property object into a list_blobs_segmented_item.
 // TODO: Remove this once cpplite unifies these two types.
-list_blobs_hierarchical_item blob_property_to_item(std::string name, blob_property prop, bool is_directory)
+list_blobs_segmented_item blob_property_to_item(std::string name, blob_property prop, bool is_directory)
 {
-    list_blobs_hierarchical_item item;
+    list_blobs_segmented_item item;
     item.name = name;
     item.is_directory = is_directory;
     item.cache_control = prop.cache_control;
@@ -157,7 +157,7 @@ list_blobs_hierarchical_item blob_property_to_item(std::string name, blob_proper
     item.content_type = prop.content_type;
     item.etag = prop.etag;
     item.metadata = prop.metadata;
-    item.copy_status = prop.copy_status;
+    //item.copy_status = prop.copy_status;
 
     char buf[30];
     std::time_t t = prop.last_modified;
@@ -245,20 +245,20 @@ TEST_F(AttribCacheTest, GetBlobPropertiesListSimple)
     blob_property prop2 = create_blob_property("etag2", 15);
     blob_property prop3 = create_blob_property("etag3", 239817328401234ull); // larger than will fit in an int
 
-    list_blobs_hierarchical_response list_response;
+    list_blobs_segmented_response list_response;
     list_response.next_marker = "marker";
     list_response.blobs.push_back(blob_property_to_item(blob1, prop1, false));
     list_response.blobs.push_back(blob_property_to_item(blob2, prop2, true)); // Ensure that directories don't get cached
     list_response.blobs.push_back(blob_property_to_item(blob3, prop3, false));
 
-    EXPECT_CALL(*mockClient, list_blobs_hierarchical(container_name, "/", "token", "prefix", 10000))
+    EXPECT_CALL(*mockClient, list_blobs_segmented(container_name, "/", "token", "prefix", 10000))
     .Times(1)
     .WillOnce(Return(list_response));
     EXPECT_CALL(*mockClient, get_blob_property(container_name, blob2))
     .Times(1)
     .WillOnce(Return(prop2));
 
-    list_blobs_hierarchical_response list_response_cache = attrib_cache_wrapper->list_blobs_hierarchical(container_name, "/", "token", "prefix", 10000);
+    list_blobs_segmented_response list_response_cache = attrib_cache_wrapper->list_blobs_segmented(container_name, "/", "token", "prefix", 10000);
     blob_property prop1_1 = attrib_cache_wrapper->get_blob_property(container_name, blob1);
     blob_property prop2_1 = attrib_cache_wrapper->get_blob_property(container_name, blob2);
     blob_property prop3_1 = attrib_cache_wrapper->get_blob_property(container_name, blob3);
@@ -298,7 +298,7 @@ TEST_F(AttribCacheTest, GetBlobPropertiesListRepeated)
     blob_property prop5_v1 = create_blob_property("etag5_1", 2);
     blob_property prop5_v2 = create_blob_property("etag5_2", 3);
 
-    list_blobs_hierarchical_response list_response_1;
+    list_blobs_segmented_response list_response_1;
     list_response_1.next_marker = "marker";
     list_response_1.blobs.push_back(blob_property_to_item(blob1, prop1, false));
     list_response_1.blobs.push_back(blob_property_to_item(blob2, prop2_v1, false));
@@ -306,7 +306,7 @@ TEST_F(AttribCacheTest, GetBlobPropertiesListRepeated)
     list_response_1.blobs.push_back(blob_property_to_item(blob5, prop5_v1, false));
 
 
-    list_blobs_hierarchical_response list_response_2;
+    list_blobs_segmented_response list_response_2;
     list_response_2.next_marker = "marker";
     list_response_2.blobs.push_back(blob_property_to_item(blob1, prop1, false));
     list_response_2.blobs.push_back(blob_property_to_item(blob2, prop2_v2, false));
@@ -320,7 +320,7 @@ TEST_F(AttribCacheTest, GetBlobPropertiesListRepeated)
         EXPECT_CALL(*mockClient, get_blob_property(container_name, blob2))
         .Times(1)
         .WillOnce(Return(prop2_v0));
-        EXPECT_CALL(*mockClient, list_blobs_hierarchical(container_name, "/", "token", "prefix", 10000))
+        EXPECT_CALL(*mockClient, list_blobs_segmented(container_name, "/", "token", "prefix", 10000))
         .Times(1)
         .WillOnce(Return(list_response_1));
         EXPECT_CALL(*mockClient, get_blob_property(container_name, blob3))
@@ -333,13 +333,13 @@ TEST_F(AttribCacheTest, GetBlobPropertiesListRepeated)
         EXPECT_CALL(*mockClient, get_blob_property(container_name, blob5))
         .Times(1)
         .WillOnce(Return(prop5_v2));
-        EXPECT_CALL(*mockClient, list_blobs_hierarchical(container_name, "/", "token", "prefix", 10000))
+        EXPECT_CALL(*mockClient, list_blobs_segmented(container_name, "/", "token", "prefix", 10000))
         .Times(1)
         .WillOnce(Return(list_response_2));
     }
 
     blob_property propcache2_0 = attrib_cache_wrapper->get_blob_property(container_name, blob2);
-    list_blobs_hierarchical_response list_response_cache_1 = attrib_cache_wrapper->list_blobs_hierarchical(container_name, "/", "token", "prefix", 10000);
+    list_blobs_segmented_response list_response_cache_1 = attrib_cache_wrapper->list_blobs_segmented(container_name, "/", "token", "prefix", 10000);
     blob_property propcache1_1 = attrib_cache_wrapper->get_blob_property(container_name, blob1);
     blob_property propcache2_1 = attrib_cache_wrapper->get_blob_property(container_name, blob2);
     blob_property propcache3_1 = attrib_cache_wrapper->get_blob_property(container_name, blob3);
@@ -351,7 +351,7 @@ TEST_F(AttribCacheTest, GetBlobPropertiesListRepeated)
 
     blob_property propcache5_post_invalidate = attrib_cache_wrapper->get_blob_property(container_name, blob5);
 
-    list_blobs_hierarchical_response list_response_cache_2 = attrib_cache_wrapper->list_blobs_hierarchical(container_name, "/", "token", "prefix", 10000);
+    list_blobs_segmented_response list_response_cache_2 = attrib_cache_wrapper->list_blobs_segmented(container_name, "/", "token", "prefix", 10000);
     blob_property propcache1_2 = attrib_cache_wrapper->get_blob_property(container_name, blob1);
     blob_property propcache2_2 = attrib_cache_wrapper->get_blob_property(container_name, blob2);
     blob_property propcache3_2 = attrib_cache_wrapper->get_blob_property(container_name, blob3);
