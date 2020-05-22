@@ -547,9 +547,9 @@ namespace azure { namespace storage_lite {
         /// <param name="destContainer">The destination container name.</param>
         /// <param name="destBlob">The destination blob name.</param>
         AZURE_STORAGE_API void start_copy(const std::string &sourceContainer, const std::string &sourceBlob, const std::string &destContainer, const std::string &destBlob);
-    private:
+    protected:
         blob_client_wrapper() {}
-
+    private:
         std::shared_ptr<blob_client> m_blobClient;
         std::mutex s_mutex;
         unsigned int m_concurrency;
