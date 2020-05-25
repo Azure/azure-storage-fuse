@@ -13,6 +13,8 @@ set (BLOBFUSE_SOURCE
 #                             else into different files, without having to define each function in a header for only one consumer.  The only reason to do all this is so
 #                             we can test functionality in blobfuse.cpp without including main() (which would break gtest).
   blobfuse/blobfuse_constants.cpp
+  blobfuse/blob_client_cache.cpp
+  blobfuse/blob_client_attr_cache_wrapper.cpp
   blobfuse/fileapis.cpp
   blobfuse/directoryapis.cpp
   blobfuse/utilities.cpp

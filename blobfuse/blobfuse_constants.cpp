@@ -19,4 +19,6 @@ namespace blobfuse_constants {
     const char* param_oauth_resource = "resource";
     const char* header_metadata = "Metadata";
     const char* header_msi_secret = "Secret";
+
+    const int unknown_error = 1600;
 }

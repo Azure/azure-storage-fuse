@@ -19,6 +19,7 @@ namespace blobfuse_constants {
     extern const char* param_oauth_resource;
     extern const char* header_metadata;
     extern const char* header_msi_secret;
+    extern const int unknown_error;
 }
 
 #endif
