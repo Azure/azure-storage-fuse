@@ -1,6 +1,7 @@
 #include <uuid/uuid.h>
 #include <ftw.h>
 #include <random>
+#include <sys/types.h>
 #include "gtest/gtest.h"
 //#include "gmock/gmock.h"
 #include "blobfuse.h"
@@ -47,6 +48,8 @@ public:
         ASSERT_EQ(0, ret) << "Read config failed.";
         std::string blob_endpoint;
         std::string sas_token;
+        str_options.accountName.erase(remove(str_options.accountName.begin(), str_options.accountName.end(), '\r'), str_options.accountName.end());
+        str_options.accountKey.erase(remove(str_options.accountKey.begin(), str_options.accountKey.end(), '\r'), str_options.accountKey.end());
         test_blob_client_wrapper = blob_client_wrapper_init_accountkey(
             str_options.accountName,
             str_options.accountKey,
