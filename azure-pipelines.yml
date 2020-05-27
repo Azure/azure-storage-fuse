@@ -42,18 +42,16 @@ jobs:
         displayName: 'Publish Artifacts for blobfuse $(container_image)'
         condition: succeededOrFailed()
 
-
+# Add ubuntu-20.04 and more releases here.
   - job: Linux_Build_18_19
-  
+
     strategy:
       maxParallel: 8
       matrix:
         UBUNTU1804:
           container_image: 'ubuntu-18.04'
           build_type: Release
-        UBUNTU1904:
-          container_image: 'ubuntu-19.04'
-          build_type: Release
+          
     pool:
       vmImage:  $(container_image)
     steps:
