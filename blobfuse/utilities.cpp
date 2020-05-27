@@ -439,8 +439,6 @@ int azs_getattr(const char *path, struct stat *stbuf)
     
     if (errno == 0 && response.blobs.size() > 0  && (!response.blobs[0].name.compare(blobNameStr) || !response.blobs[0].name.compare(blobNameStr + '/')) )
     {
-        AZS_DEBUGLOGV("Blob name %s, during get_attr.\n", blobNameStr.c_str());
-        AZS_DEBUGLOGV("Response.blobs[0].name %s, during get_attr.\n", response.blobs[0].name .c_str());
         // the first element should be exact match prefix
         if (is_directory_blob(0, response.blobs[0].metadata) || response.blobs[0].is_directory)
         {
