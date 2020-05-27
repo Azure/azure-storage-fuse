@@ -22,13 +22,13 @@ jobs:
       - script: |
             sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
             . ./build.sh
-            mkdir $(Build.ArtifactStagingDirectory)/1604
-            cp ./blobfuse $(Build.ArtifactStagingDirectory)/1604
-            cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/1604
-            cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/1604
+            mkdir $(Build.ArtifactStagingDirectory)/$(container_image)
+            cp ./blobfuse $(Build.ArtifactStagingDirectory)/$(container_image)
+            cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(container_image)
+            cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(container_image)
             cp ./blobfusetests $(Build.BinariesDirectory)
             make package
-            cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/1604
+            cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/$(container_image)
         env:
           INCLUDE_TESTS: 1
         displayName: Generate blobfuse build for Ubuntu 16.04
@@ -39,25 +39,34 @@ jobs:
         workingDirectory: $(Build.BinariesDirectory)
         condition: succeededOrFailed()  
       - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifacts for blobfuse Ubuntu 16.04'
+        displayName: 'Publish Artifacts for blobfuse $(container_image)'
         condition: succeededOrFailed()
 
 
-  - job: Linux_Build_1804   
+  - job: Linux_Build_18_19 
+    strategy:
+    maxParallel: 8
+    matrix:
+      UBUNTU1804:
+        container_image: 'ubuntu-18.04'
+        build_type: Release
+      UBUNTU1904:
+        container_image: 'ubuntu-19.04'
+        build_type: Release
     pool:
-      vmImage:  'ubuntu-18.04'
+      vmImage:  $(container_image)
     steps:
       - script: |
             sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
             . ./build.sh
-            mkdir $(Build.ArtifactStagingDirectory)/1804
-            cp ./blobfuse $(Build.ArtifactStagingDirectory)/1804
-            cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/1804
-            cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/1804
+            mkdir $(Build.ArtifactStagingDirectory)/$(container_image)
+            cp ./blobfuse $(Build.ArtifactStagingDirectory)/$(container_image)
+            cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(container_image)
+            cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(container_image)
             make package
-            cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/1804
-        displayName: Generate blobfuse build for Ubuntu 18.04
+            cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/$(container_image)
+        displayName: Generate blobfuse build for $(container_image)
       - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifacts for blobfuse Ubuntu 18.04'
+        displayName: 'Publish Artifacts for blobfuse $(container_image)'
         condition: succeededOrFailed()
 
