@@ -8,10 +8,14 @@ using ::testing::Return;
 
 class MockBlobClient : public blob_client_wrapper {
 public:
+    MockBlobClient() : blob_client_wrapper(true) {}
+    MockBlobClient(std::shared_ptr<blob_client> &wrapper) : 
+        blob_client_wrapper(wrapper) {}
+       
     MOCK_CONST_METHOD0(is_valid, bool());
     MOCK_METHOD5(list_blobs_segmented, list_blobs_segmented_response(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults));
     MOCK_METHOD4(put_blob, void(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata));
-    MOCK_METHOD4(upload_block_blob_from_stream, void(const std::string &container, const std::string blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata));
+    MOCK_METHOD5(upload_block_blob_from_stream, void(const std::string &container, const std::string blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata, size_t streamlen));
     MOCK_METHOD5(upload_file_to_blob, void(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata, size_t parallel));
     MOCK_METHOD5(download_blob_to_stream, void(const std::string &container, const std::string &blob, unsigned long long offset, unsigned long long size, std::ostream &os));
     MOCK_METHOD5(download_blob_to_file, void(const std::string &container, const std::string &blob, const std::string &destPath, time_t &returned_last_modified, size_t parallel));
@@ -42,8 +46,35 @@ public:
     virtual void SetUp()
     {
        container_name = "container";
-       mockClient = std::make_shared<::testing::NiceMock<MockBlobClient>>();
-       attrib_cache_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(mockClient);
+        #if 1
+        mockClient = std::make_shared<::testing::NiceMock<MockBlobClient>>();
+        #else
+        int ret = read_config("../connection.cfg");
+        ASSERT_EQ(0, ret) << "Read config failed.";
+        std::string blob_endpoint;
+        std::string sas_token;
+        str_options.accountName.erase(remove(str_options.accountName.begin(), str_options.accountName.end(), '\r'), str_options.accountName.end());
+        str_options.accountKey.erase(remove(str_options.accountKey.begin(), str_options.accountKey.end(), '\r'), str_options.accountKey.end());
+
+        std::shared_ptr<storage_credential> cred;
+        if (str_options.accountKey.length() > 0)
+        {
+            cred = std::make_shared<shared_key_credential>(str_options.accountName, str_options.accountKey);
+            std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
+                    str_options.accountName, 
+                    cred, 
+                    true, 
+                    blob_endpoint);
+            std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, 20);
+            mockClient = std::make_shared<::testing::StrictMock<MockBlobClient>>(blobClient);
+        }
+        else
+        {
+            syslog(LOG_ERR, "Empty account key. Failed to create blob client.");
+            mockClient = std::make_shared<::testing::StrictMock<MockBlobClient>>();
+        }
+        #endif
+        attrib_cache_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(mockClient);
     }
 
     virtual void TearDown()
@@ -92,7 +123,7 @@ void AttribCacheSynchronizationTest::prep_mock(std::shared_ptr<std::mutex> m, st
     {
         prep(m, cv, calls, sleep_finished);
     }));
-    ON_CALL(*mockClient, upload_block_blob_from_stream(_, _, _, _))
+    ON_CALL(*mockClient, upload_block_blob_from_stream(_, _, _, _, _))
     .WillByDefault(::testing::InvokeWithoutArgs([=] ()
     {
         prep(m, cv, calls, sleep_finished);

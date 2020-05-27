@@ -264,7 +264,11 @@ TEST_F(BlobClientWrapperTest, BlobUploadDownloadMedium)
 
 TEST_F(BlobClientWrapperTest, BlobUploadDownloadLarge)
 {
+    #if 1
     run_upload_download(1 * 1024 * 1024 * 1024);  // Comment this test out if the test pass is taking too long during rapid iteration.
+    #else
+    run_upload_download(1024 * 1024);
+    #endif
 }
 
 

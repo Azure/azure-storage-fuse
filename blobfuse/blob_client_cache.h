@@ -54,6 +54,7 @@ namespace azure { namespace storage_lite {
     class blob_client_attr_cache_wrapper : public blob_client_wrapper
     {
     public:
+        
         /// <summary>
         /// Constructs a blob client wrapper from a blob client instance.
         /// </summary>
@@ -78,7 +79,7 @@ namespace azure { namespace storage_lite {
             return *this;
         }
 
-        virtual bool is_valid() const
+        bool is_valid() const
         {
             return m_blob_client_wrapper != NULL;
         }
@@ -252,7 +253,7 @@ namespace azure { namespace storage_lite {
         /// <param name="container">The container name.</param>
         /// <param name="blob">The blob name.</param>
         /// <returns> A <see cref="blob_property"/> object that represents the proerty of a particular blob
-        virtual blob_property get_blob_property(const std::string &container, const std::string &blob);
+        blob_property get_blob_property(const std::string &container, const std::string &blob);
 
         /// <summary>
         /// Gets the property of a blob.
@@ -260,7 +261,7 @@ namespace azure { namespace storage_lite {
         /// <param name="container">The container name.</param>
         /// <param name="blob">The blob name.</param>
         /// <returns> A <see cref="blob_property"/> object that represents the proerty of a particular blob
-        virtual blob_property get_blob_property(const std::string &container, const std::string &blob, bool assume_cache_invalid);
+        blob_property get_blob_property(const std::string &container, const std::string &blob, bool assume_cache_invalid);
 
         /// <summary>
         /// Examines the existance of a blob.
