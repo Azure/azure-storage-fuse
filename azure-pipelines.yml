@@ -43,16 +43,17 @@ jobs:
         condition: succeededOrFailed()
 
 
-  - job: Linux_Build_18_19 
+  - job: Linux_Build_18_19
+  
     strategy:
-    maxParallel: 8
-    matrix:
-      UBUNTU1804:
-        container_image: 'ubuntu-18.04'
-        build_type: Release
-      UBUNTU1904:
-        container_image: 'ubuntu-19.04'
-        build_type: Release
+      maxParallel: 8
+      matrix:
+        UBUNTU1804:
+          container_image: 'ubuntu-18.04'
+          build_type: Release
+        UBUNTU1904:
+          container_image: 'ubuntu-19.04'
+          build_type: Release
     pool:
       vmImage:  $(container_image)
     steps:
