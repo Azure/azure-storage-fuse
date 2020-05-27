@@ -132,7 +132,7 @@ blob_property create_blob_property(std::string etag, unsigned long long size)
     props.content_language = "content_language";
     props.content_md5 = "content_md5";
     props.content_type = "content_type";
-    props.copy_status = "copy_status";
+    props.copy_status = "";
 
 
     props.last_modified = time(NULL);
@@ -521,8 +521,8 @@ TEST_P(AttribCacheInvalidateCacheTest, Run)
     blob_property prop_cache2 = attrib_cache_wrapper->get_blob_property(container_name, blob_name);
     check.Call("2");
     operationMap[operation_name](attrib_cache_wrapper, container_name, blob_name);
-    check.Call("3");
     blob_property prop_cache3 = attrib_cache_wrapper->get_blob_property(container_name, blob_name);
+    check.Call("3");
 
     assert_blob_property_objects_equal(prop1, prop_cache1);
     assert_blob_property_objects_equal(prop1, prop_cache2);

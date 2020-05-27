@@ -72,13 +72,13 @@ namespace azure { namespace storage_lite {
             m_blob_client_wrapper = other.m_blob_client_wrapper;
         }
 
-        blob_client_attr_cache_wrapper& operator=(blob_client_attr_cache_wrapper&& other)
+        virtual blob_client_attr_cache_wrapper& operator=(blob_client_attr_cache_wrapper&& other)
         {
             m_blob_client_wrapper = other.m_blob_client_wrapper;
             return *this;
         }
 
-        bool is_valid() const
+        virtual bool is_valid() const
         {
             return m_blob_client_wrapper != NULL;
         }
@@ -194,7 +194,7 @@ namespace azure { namespace storage_lite {
         /// <param name="prefix">The blob name prefix.</param>
         /// <param name="maxresults">Maximum amount of results to receive</param>
         /// <returns>A response from list_blobs_segmented that contains a list of blobs and their details</returns>
-        list_blobs_segmented_response list_blobs_segmented(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults = 10000);
+        virtual list_blobs_segmented_response list_blobs_segmented(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults = 10000);
 
         /// <summary>
         /// Uploads the contents of a blob from a local file, file size need to be equal or smaller than 64MB.
@@ -203,7 +203,7 @@ namespace azure { namespace storage_lite {
         /// <param name="container">The container name.</param>
         /// <param name="blob">The blob name.</param>
         /// <param name="metadata">A <see cref="std::vector"> that respresents metadatas.</param>
-        void put_blob(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata = std::vector<std::pair<std::string, std::string>>());
+        virtual void put_blob(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata = std::vector<std::pair<std::string, std::string>>());
 
         /// <summary>
         /// Uploads the contents of a blob from a stream.
@@ -212,7 +212,7 @@ namespace azure { namespace storage_lite {
         /// <param name="blob">The blob name.</param>
         /// <param name="is">The source stream.</param>
         /// <param name="metadata">A <see cref="std::vector"> that respresents metadatas.</param>
-        void upload_block_blob_from_stream(const std::string &container, const std::string blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata = std::vector<std::pair<std::string, std::string>>());
+        virtual void upload_block_blob_from_stream(const std::string &container, const std::string blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata = std::vector<std::pair<std::string, std::string>>());
 
         /// <summary>
         /// Uploads the contents of a blob from a local file.
@@ -222,7 +222,7 @@ namespace azure { namespace storage_lite {
         /// <param name="blob">The blob name.</param>
         /// <param name="metadata">A <see cref="std::vector"> that respresents metadatas.</param>
         /// <param name="parallel">A size_t value indicates the maximum parallelism can be used in this request.</param>
-        void upload_file_to_blob(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata = std::vector<std::pair<std::string, std::string>>(), size_t parallel = 8);
+        virtual void upload_file_to_blob(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata = std::vector<std::pair<std::string, std::string>>(), size_t parallel = 8);
 
         /// <summary>
         /// Downloads the contents of a blob to a stream.
@@ -232,7 +232,7 @@ namespace azure { namespace storage_lite {
         /// <param name="offset">The offset at which to begin downloading the blob, in bytes.</param>
         /// <param name="size">The size of the data to download from the blob, in bytes.</param>
         /// <param name="os">The target stream.</param>
-        void download_blob_to_stream(const std::string &container, const std::string &blob, unsigned long long offset, unsigned long long size, std::ostream &os);
+        virtual void download_blob_to_stream(const std::string &container, const std::string &blob, unsigned long long offset, unsigned long long size, std::ostream &os);
 
         /// <summary>
         /// Downloads the contents of a blob to a local file.
@@ -244,7 +244,7 @@ namespace azure { namespace storage_lite {
         /// <param name="destPath">The target file path.</param>
         /// <param name="parallel">A size_t value indicates the maximum parallelism can be used in this request.</param>
         /// <returns>A <see cref="storage_outcome" /> object that represents the properties (etag, last modified time and size) from the first chunk retrieved.</returns>
-        void download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, time_t &returned_last_modified, size_t parallel = 8);
+        virtual void download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, time_t &returned_last_modified, size_t parallel = 8);
 
         /// <summary>
         /// Gets the property of a blob.
@@ -252,7 +252,7 @@ namespace azure { namespace storage_lite {
         /// <param name="container">The container name.</param>
         /// <param name="blob">The blob name.</param>
         /// <returns> A <see cref="blob_property"/> object that represents the proerty of a particular blob
-        blob_property get_blob_property(const std::string &container, const std::string &blob);
+        virtual blob_property get_blob_property(const std::string &container, const std::string &blob);
 
         /// <summary>
         /// Gets the property of a blob.
@@ -260,7 +260,7 @@ namespace azure { namespace storage_lite {
         /// <param name="container">The container name.</param>
         /// <param name="blob">The blob name.</param>
         /// <returns> A <see cref="blob_property"/> object that represents the proerty of a particular blob
-        blob_property get_blob_property(const std::string &container, const std::string &blob, bool assume_cache_invalid);
+        virtual blob_property get_blob_property(const std::string &container, const std::string &blob, bool assume_cache_invalid);
 
         /// <summary>
         /// Examines the existance of a blob.
@@ -268,14 +268,14 @@ namespace azure { namespace storage_lite {
         /// <param name="container">The container name.</param>
         /// <param name="blob">The blob name.</param>
         /// <returns>Return true if the blob does exist, otherwise, return false.</returns>
-        bool blob_exists(const std::string &container, const std::string &blob);
+        virtual bool blob_exists(const std::string &container, const std::string &blob);
 
         /// <summary>
         /// Deletes a blob.
         /// </summary>
         /// <param name="container">The container name.</param>
         /// <param name="blob">The blob name.</param>
-        void delete_blob(const std::string &container, const std::string &blob);
+        virtual void delete_blob(const std::string &container, const std::string &blob);
 
         /// <summary>
         /// Copy a blob to another.
@@ -284,7 +284,7 @@ namespace azure { namespace storage_lite {
         /// <param name="sourceBlob">The source blob name.</param>
         /// <param name="destContainer">The destination container name.</param>
         /// <param name="destBlob">The destination blob name.</param>
-        void start_copy(const std::string &sourceContainer, const std::string &sourceBlob, const std::string &destContainer, const std::string &destBlob);
+        virtual void start_copy(const std::string &sourceContainer, const std::string &sourceBlob, const std::string &destContainer, const std::string &destBlob);
         
         private:
         std::shared_ptr<blob_client_wrapper> m_blob_client_wrapper;

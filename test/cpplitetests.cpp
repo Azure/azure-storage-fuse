@@ -319,9 +319,7 @@ TEST_F(BlobClientWrapperTest, GetBlobProperties)
     blob_property props = test_blob_client_wrapper->get_blob_property(container_name, blob_1_name);
 //    ASSERT_EQ(404, errno) << "Errno incorrect for get_blob_property";  TODO: investigate why this test is failing.
 
-    time_t now = time(NULL);
-    struct tm * gmtmp = gmtime(&now);
-    time_t utcnow = mktime(gmtmp);
+    time_t utcnow = time(NULL);
     errno = 0;
     test_blob_client_wrapper->put_blob(file_path, container_name, blob_1_name);
     ASSERT_EQ(0, errno) << "put_blob failed with errno = " << errno;
@@ -331,7 +329,7 @@ TEST_F(BlobClientWrapperTest, GetBlobProperties)
     props = test_blob_client_wrapper->get_blob_property(container_name, blob_1_name);
     ASSERT_EQ(0, errno) << "get_blob_property failed";
     ASSERT_EQ(file_text.size(), props.size) << "Incorrect blob size found.";
-    ASSERT_TRUE(std::abs(std::difftime(props.last_modified, utcnow)) < 30) << "Time difference between expected and actual LMT from get_properties too large"; // Give some room for potential clock skew between local and service timestamp.
+    ASSERT_TRUE(std::abs(std::difftime(props.last_modified, utcnow)) < 30) << "Time difference between expected and actual LMT from get_properties too large" << std::abs(std::difftime(props.last_modified, utcnow)); // Give some room for potential clock skew between local and service timestamp.
 
     std::string dest_path = tmp_dir + "/destfile";
     errno = 0;
@@ -353,7 +351,7 @@ TEST_F(BlobClientWrapperTest, BlobExistsDelete)
     // Test blob_exists - error case
     errno = 0;
     ASSERT_FALSE(test_blob_client_wrapper->blob_exists(container_name, blob_1_name)) << "Blob found when it should not be.";
-    ASSERT_EQ(0, errno) << "Blob not existing causes errno to be non-0 for blob_exists.  Errno = " << errno;
+    ASSERT_EQ(404, errno) << "Blob not existing causes errno to be non-0 for blob_exists.  Errno = " << errno;
 
     // Test blob_delete - error case (404)
     errno = 0;
@@ -376,7 +374,7 @@ TEST_F(BlobClientWrapperTest, BlobExistsDelete)
 
     errno = 0;
     ASSERT_FALSE(test_blob_client_wrapper->blob_exists(container_name, blob_1_name)) << "Blob found when it should not be.";
-    ASSERT_EQ(0, errno) << "Blob not existing causes errno to be non-0 for blob_exists.  Errno = " << errno;
+    ASSERT_EQ(404, errno) << "Blob not existing causes errno to be non-0 for blob_exists.  Errno = " << errno;
 }
 
 // TODO: reduce duplicated code in this method
@@ -423,7 +421,7 @@ TEST_F(BlobClientWrapperTest, CopyBlob)
         props = test_blob_client_wrapper->get_blob_property(container_name, blob_2_name);
         ASSERT_EQ(0, errno) << "get_blob_property failed";
         sleep(1);
-    } while (props.copy_status.compare("success\r\n") != 0); // HTTP spec specifies CRLF, and we aren't trimming (but probably should).
+    } while (props.copy_status.compare("success") != 0); // HTTP spec specifies CRLF, and we aren't trimming (but probably should).
     ASSERT_EQ(file_text.size(), props.size);
 
     // Test copy blob to a new blob
@@ -439,7 +437,7 @@ TEST_F(BlobClientWrapperTest, CopyBlob)
         props = test_blob_client_wrapper->get_blob_property(container_name, blob_3_name);
         ASSERT_EQ(0, errno) << "get_blob_property failed";
         sleep(1);
-    } while (props.copy_status.compare("success\r\n") != 0); // HTTP spec specifies CRLF, and we aren't trimming (but probably should).
+    } while (props.copy_status.compare("success") != 0); // HTTP spec specifies CRLF, and we aren't trimming (but probably should).
     ASSERT_EQ(file_text.size(), props.size);
 
     // Failure case
