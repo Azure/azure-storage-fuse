@@ -239,6 +239,11 @@ void BlobClientWrapperTest::run_upload_download(size_t file_size)
 
     errno = 0;
     blobs = list_all_blobs(container_name, "/", "");
+    if (0 == blobs.size()) {
+        // Immediate listing may give error some time so retry once again
+        sleep(2);
+        blobs = list_all_blobs(container_name, "/", "");
+    }
     ASSERT_EQ(0, errno);
     ASSERT_EQ(1, blobs.size());
     ASSERT_EQ(file_size, blobs[0].content_length) << "Blob found, but size incorrect.";
@@ -264,10 +269,10 @@ TEST_F(BlobClientWrapperTest, BlobUploadDownloadMedium)
 
 TEST_F(BlobClientWrapperTest, BlobUploadDownloadLarge)
 {
-    #if 1
+    #if 0
     run_upload_download(1 * 1024 * 1024 * 1024);  // Comment this test out if the test pass is taking too long during rapid iteration.
     #else
-    run_upload_download(1024 * 1024);
+    run_upload_download(200 * 1024 * 1024);
     #endif
 }
 

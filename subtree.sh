@@ -20,6 +20,14 @@ elif [ $1 == "list" ]
 then
   echo "List of sbutree directories : "
   git log | grep git-subtree-dir | awk '{ print $2 }'
+elif [ $1 == "diff" ]
+then
+  echo "Diff between local subtree and remote master : "
+  git diff azure-storage-cpplite/master cpplite-fix:cpplite
+elif [ $1 == "remote-tree" ]
+then  
+  echo "Adding remote git for subtree : "
+  git remote add -f azure-storage-cpplite https://github.com/Azure/azure-storage-cpplite
 fi
 echo
 
