@@ -12,7 +12,8 @@
 #include <string>
 #include <thread>
 #include <vector>
-
+#include <syslog.h>
+#include <utility.h>
 #include <curl/curl.h>
 
 #include "storage_EXPORTS.h"
@@ -95,6 +96,7 @@ namespace azure {  namespace storage_lite {
         {
             std::this_thread::sleep_for(interval);
             const auto curlCode = perform();
+            syslog(LOG_DEBUG, "%s", format_request_response().c_str());
             cb(m_code, m_error_stream, curlCode);
         }
 
@@ -210,7 +212,7 @@ namespace azure {  namespace storage_lite {
         http_code m_code;
         std::map<std::string, std::string, case_insensitive_compare> m_response_headers;
 
-        AZURE_STORAGE_API static size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata);
+        AZURE_STORAGE_API static size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata);          
 
         static size_t write(char *buffer, size_t size, size_t nitems, void *userdata)
         {
@@ -265,6 +267,67 @@ namespace azure {  namespace storage_lite {
                 errno = 0; // CURL sometimes sets errno internally, if everything was ok we should reset it to zero.
             }
         }
+
+
+        std::map<std::string, std::string, case_insensitive_compare> m_headers;
+        std::map<http_method, std::string> http_method_label = {
+            {http_method::del,"DELETE"},
+            {http_method::get,"GET"},
+            {http_method::head,"HEAD"},
+            {http_method::post,"POST"},
+            {http_method::put,"PUT"},
+        };
+
+        AZURE_STORAGE_API std::string format_request_response()
+        {
+            std::string out;
+            //auto currentTime = std::time(nullptr);
+            //auto timestamp = std::asctime(std::localtime(&currentTime));
+            auto sigLoc = m_url.find("sig=");
+            auto tmpURL = m_url;
+            if (sigLoc != std::string::npos) {
+                // Find the string and replace the segment
+                for(auto i = sigLoc; i < tmpURL.length(); i++) {
+                    if(tmpURL[i] == '&' || i == tmpURL.length()-1) {
+                        auto count =
+                                (i - sigLoc) + // The real count, if we landed on &
+                                (i == tmpURL.length() - 1 ? 1 : 0); // If we're at the end, trim to the end.
+                        tmpURL.replace(sigLoc, count, "sig=REDACTED");
+                        break;
+                    }
+                }
+            }
+            //out += timestamp;
+            //out.erase(out.end()-1);
+            out += " ==> REQUEST/RESPONSE :: ";
+            out += http_method_label[m_method] + " " + tmpURL + "?";
+            // our headers
+            for(auto x = m_slist; x->next != nullptr; x = x->next) {
+                std::string header = std::string(x->data);
+                auto splitAt = header.find(':');
+                if (splitAt != header.length() - 1) {
+                    std::string name = header.substr(0, splitAt);
+                    std::string value = header.substr(splitAt + 2);
+                    if(name == "Authorization" || name == "Secret") {
+                        value = "****";
+                    }
+                    out = out.append("&").append(name).append("=").append(value);
+                } else {
+                    out = out.append("&").append(header.substr(0, splitAt)).append("=");
+                }
+            }
+            out += "--------------------------------------------------------------------------------";
+            out += "RESPONSE Status :: " + std::to_string(m_code) + " :: ";
+            // their headers
+            for(const auto& pair : m_headers) {
+                auto lineReturn = pair.second.find('\n');
+                // ternary statement also trims the carriage return character, which accidentally clears lines.
+                auto trimmed_str = pair.second.substr(0, pair.second[lineReturn - 1] == '\r' ? lineReturn - 1 : lineReturn );
+                out = out.append("&").append(pair.first).append("=").append(trimmed_str);
+            }
+
+            return out;
+        }  
     };
 
     class CurlEasyClient : public std::enable_shared_from_this<CurlEasyClient>

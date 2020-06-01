@@ -33,16 +33,32 @@ method: $python ./test.py OpenFileTest.test_open_file_nonexistent_file_read
 
 
 class BlobfuseTest(unittest.TestCase):
+    # Get the running instance of blobfuse
+    cmd_to_find = "ps -eo args | grep blobfuse | grep tmp-path"
+    blob_cmd = ""
+    blob_cmd = str(subprocess.check_output(cmd_to_find, shell=True))
+    print (blob_cmd)
+    blob_cmd_list = blob_cmd.split(" ")
+
+    blob_cmd_tmppath = [opt for opt in blob_cmd_list if opt.startswith("--tmp-path")]
+
     # mounted container folder
-    blobdir = "/mnt/bftmp"
+    blobdir = blob_cmd_list[1]
+    print ("Mount Dir : " + blobdir)
+    
     # local temp directory
     localdir = "/mnt/tmp"
     # designated folder for the cache
-    cachedir = "/mnt/blobfusetmp"
+    if (len(blob_cmd_tmppath) >= 1) :
+        cachedir = blob_cmd_tmppath[0].split("=")[1] 
+        print ("Cache Dir : " + cachedir)
+    else :
+        cachedir = "/mnt/blobfusetmp"
     # folder within mounted container
     blobstage = ""
 
     def setUp(self):
+        print (" >> ", self._testMethodName)
         self.blobstage = os.path.join(self.blobdir, "testing")
         if not os.path.exists(self.localdir):
             os.makedirs(self.localdir)
@@ -373,11 +389,11 @@ class ReadWriteFileTests(BlobfuseTest):
         mediumBlobsSourceDir = os.path.join(self.blobstage, "mediumblobs")
         if not os.path.exists(mediumBlobsSourceDir):
             os.makedirs(mediumBlobsSourceDir);
-        for i in range(0, 10):
+        for i in range(0, 1):
             filename = str(uuid.uuid4())
             filepath = os.path.join(mediumBlobsSourceDir, filename)
             os.system("head -c 1M < /dev/urandom > " + filepath);
-            os.system("head -c 200M < /dev/zero >> " + filepath);
+            os.system("head -c 10M < /dev/zero >> " + filepath);
             os.system("head -c 1M < /dev/urandom >> " + filepath);
         files = os.listdir(mediumBlobsSourceDir)
         self.assertEqual(10, len(files))
@@ -907,10 +923,10 @@ class ThreadTests(BlobfuseTest):
         if not os.path.exists(mediumBlobsSourceDir):
             os.makedirs(mediumBlobsSourceDir);
         # We must use different files for each thread to avoid the synchronization that would occur if all threads access the same file
-        for i in range(0, 20):
+        for i in range(0, 1):
             filename = str(uuid.uuid4())
             filepath = os.path.join(mediumBlobsSourceDir, filename)
-            os.system("head -c 100M < /dev/zero >> " + filepath);
+            os.system("head -c 10M < /dev/zero >> " + filepath);
 
         # This removes the cached entries of the files just created, so they are on the service but not local.
         # This will force each thread to call ensure_directory_exists_in_cache when trying to access its file.
@@ -1591,11 +1607,11 @@ class CacheTests(BlobfuseTest):
         filename = str(uuid.uuid4())
 
         # act (create many files)
-        for i in range(0, 5):
+        for i in range(0, 1):
             filename = str(uuid.uuid4())
             filepath = os.path.join(testDirPath, filename)
             os.system("head -c 1M < /dev/urandom > " + filepath)
-            os.system("head -c 200M < /dev/zero >> " + filepath)
+            os.system("head -c 20M < /dev/zero >> " + filepath)
             os.system("head -c 2M < /dev/urandom >> " + filepath)
         #this makes 1015MB, so it fills the cache, so the threshold should be met
 
@@ -1629,7 +1645,7 @@ class CacheTests(BlobfuseTest):
         filename = str(uuid.uuid4())
 
         #act (create many files)
-        for i in range(0, 8):
+        for i in range(0, 1):
             filename = str(uuid.uuid4())
             filepath = os.path.join(testDirPath, filename)
             os.system("head -c 1M < /dev/urandom > " + filepath)
