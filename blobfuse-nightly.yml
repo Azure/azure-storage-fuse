@@ -40,11 +40,14 @@ jobs:
       value: "/mnt/blobfusetmp"
     - name: BLOBFUSE_CFG
       value: "/home/vsts/work/blobfuse.cfg"
+    - name: BLOBFUSE_CFG_GTEST
+      value: "./connection.cfg"
    
 
     # Each job has set of steps to be done
     steps:
     - script: |
+        sudo apt-get update
         sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
       displayName: "Basic Tools Setup"
 
@@ -111,7 +114,7 @@ jobs:
         cat $(BLOBFUSE_CFG)
         echo "Account : " $(NIGHTLY_STO_ACC_NAME)
       displayName: "Create config file"
-        
+     
     # -------------------------------------------------------
 
     # Mount container using blobFuse
@@ -224,7 +227,30 @@ jobs:
       displayName: Unmount container
       timeoutInMinutes: 20
       #continueOnError: true
+   
+    # -------------------------------------------------------
+
+    # Starting gTest
     
+    # Create config file for gtest
+    - script: |
+        echo "accountName " $(NIGHTLY_STO_BLOB_ACC_NAME) > $(BLOBFUSE_CFG_GTEST)
+        echo "accountKey " $(NIGHTLY_STO_BLOB_ACC_KEY) >> $(BLOBFUSE_CFG_GTEST)
+        echo "authType Key" >> $(BLOBFUSE_CFG_GTEST)
+        echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_GTEST)
+        cat $(BLOBFUSE_CFG_GTEST)
+        echo "Account : " $(NIGHTLY_STO_ACC_NAME)
+      displayName: "Create gTest config file"
+    
+    # Run gTest with the config file created earlier
+    - script:  |
+        cd ./build/
+        sudo chmod 777 ./blobfusetests
+        sudo ./blobfusetests 
+      displayName: Run gTest
+      timeoutInMinutes: 20
+      continueOnError: true
+
     # Print the log files
     - script: sudo cat /var/log/blobfuse.log
       displayName: Print the log file
