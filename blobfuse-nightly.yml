@@ -63,6 +63,7 @@ jobs:
 
     # Build the blobFuse binary
     - script: |
+        export INCLUDE_TESTS=1
         sudo chmod +x build.sh
         . ./build.sh
       displayName: "Build BlobFuse"
