@@ -1670,7 +1670,7 @@ class CacheTests(BlobfuseTest):
         #if we are under then we assured we deleted to not hit the threshold
         df = subprocess.Popen(["df", self.ramDiskTmpPath], stdout=subprocess.PIPE)
         output = df.communicate()[0]
-        //print (output)
+        #print (output)
         device, size, used, available, percent, mountpoint = str(output).split("\n")[1].split()
         self.assertLess(int(percent.strip('%')), self.lower_threshold)
 
@@ -1709,7 +1709,7 @@ class CacheTests(BlobfuseTest):
         # check if we reached the low threshold. we expect no cleanup and to stay at the low threshold
         df = subprocess.Popen(["df", self.ramDiskTmpPath], stdout=subprocess.PIPE)
         output = df.communicate()[0]
-        //print (output)
+        #print (output)
         device, size, used, available, percent, mountpoint = str(output).split("\n")[1].split()
         #self.assertEqual(int(percent.strip('%')), self.lower_threshold)
 
