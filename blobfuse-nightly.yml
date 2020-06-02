@@ -10,6 +10,7 @@ schedules:
   branches:
     include:
     - master
+	- cpplite-fix
   always: true
 
 
