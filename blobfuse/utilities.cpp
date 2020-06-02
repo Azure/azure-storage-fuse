@@ -414,7 +414,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     if (acc != -1 )
     {
         AZS_DEBUGLOGV("Accessing mntPath = %s for get_attr succeeded; object is in the local cache.\n", mntPathString.c_str());
-        //(void) fi;
+        
         res = lstat(mntPathString.c_str(), stbuf);
         if (res == -1)
         {
@@ -435,8 +435,9 @@ int azs_getattr(const char *path, struct stat *stbuf)
     //It's not in the local cache. Check to see if it's a directory using list 
     std::string blobNameStr(&(path[1]));
     errno = 0;
-    list_blobs_segmented_response response = azure_blob_client_wrapper->list_blobs_segmented(str_options.containerName, "/", "", blobNameStr, 2) ;
-    if (errno == 0 && response.blobs.size() > 0)
+    list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(str_options.containerName, "/", "", blobNameStr, 2) ;
+    
+    if (errno == 0 && response.blobs.size() > 0  && (!response.blobs[0].name.compare(blobNameStr) || !response.blobs[0].name.compare(blobNameStr + '/')) )
     {
         // the first element should be exact match prefix
         if (is_directory_blob(0, response.blobs[0].metadata) || response.blobs[0].is_directory)

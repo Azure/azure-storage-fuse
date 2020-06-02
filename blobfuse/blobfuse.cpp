@@ -60,7 +60,7 @@ class gc_cache gc_cache;
 // Currently, the cpp lite lib puts the HTTP status code in errno.
 // This mapping tries to convert the HTTP status code to a standard Linux errno.
 // TODO: Ensure that we map any potential HTTP status codes we might receive.
-std::map<int, int> error_mapping = {{404, ENOENT}, {403, EACCES}, {1600, ENOENT}};
+std::map<int, int> error_mapping = {{404, ENOENT}, {403, EACCES}, {1600, ENOENT}, {400, EFAULT}};
 
 const std::string former_directory_signifier = ".directory";
 
@@ -177,9 +177,9 @@ int read_config_env()
     }
     else
     {
-        syslog(LOG_CRIT, "Unable to start blobfuse.  No config file was specified and the AZURE_STORAGE_ACCCOUNT"
+        syslog(LOG_CRIT, "Unable to start blobfuse.  No config file was specified and the AZURE_STORAGE_ACCOUNT"
                          "environment variable was empty");
-        fprintf(stderr, "Unable to start blobfuse.  No config file was specified and the AZURE_STORAGE_ACCCOUNT"
+        fprintf(stderr, "Unable to start blobfuse.  No config file was specified and the AZURE_STORAGE_ACCOUNT"
                         "environment variable was empty\n");
         return -1;
     }
@@ -342,13 +342,13 @@ int read_config(const std::string configFile)
     if(str_options.accountName.empty())
     {
         syslog (LOG_CRIT, "Unable to start blobfuse. Account name is missing in the config file.");
-        fprintf(stderr, "Account name is missing in the config file.\n");
+        fprintf(stderr, "Unable to start blobfuse. Account name is missing in the config file.\n");
         return -1;
     }
     else if(str_options.containerName.empty())
     {
         syslog (LOG_CRIT, "Unable to start blobfuse. Container name is missing in the config file.");
-        fprintf(stderr, "Container name is missing in the config file.\n");
+        fprintf(stderr, "Unable to start blobfuse. Container name is missing in the config file.\n");
         return -1;
     }
     else
