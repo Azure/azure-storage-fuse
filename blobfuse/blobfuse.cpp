@@ -634,6 +634,7 @@ void set_up_callbacks()
     azs_blob_operations.statfs = azs_statfs;
     azs_blob_operations.access = azs_access;
     azs_blob_operations.readlink = azs_readlink;
+    azs_blob_operations.symlink = azs_symlink;
     azs_blob_operations.readdir = azs_readdir;
     azs_blob_operations.open = azs_open;
     azs_blob_operations.read = azs_read;

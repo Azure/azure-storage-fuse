@@ -378,13 +378,17 @@ void azs_destroy(void *private_data);
 /* Not implemented functions.
  */
 int azs_access(const char *path, int mask);
-int azs_readlink(const char *path, char *buf, size_t size);
 int azs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi);
 int azs_chown(const char *path, uid_t uid, gid_t gid);
 int azs_chmod(const char *path, mode_t mode);
 int azs_utimens(const char *path, const struct timespec ts[2]);
 int azs_truncate(const char *path, off_t off);
 int azs_setxattr(const char *path, const char *name, const char *value, size_t size, int flags);
+
+// symlink related handlers
+bool is_symlink_blob(std::vector<std::pair<std::string, std::string>> metadata);
+int azs_readlink(const char *path, char *buf, size_t size);
+int azs_symlink(const char *from, const char *to);
 
 /** Not implemented. */
 int azs_getxattr(const char *path, const char *name, char *value, size_t size);

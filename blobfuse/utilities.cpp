@@ -457,7 +457,11 @@ int azs_getattr(const char *path, struct stat *stbuf)
         {
             syslog(LOG_DEBUG, "%s is a file, blob name is %s\n", mntPathString.c_str(), response.blobs[0].name.c_str() ); 
             AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
-            stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+            if (is_symlink_blob(response.blobs[0].metadata)) {
+                stbuf->st_mode = S_IFLNK  | default_permission; // symlink
+            } else {
+                stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+            }
             stbuf->st_uid = fuse_get_context()->uid;
             stbuf->st_gid = fuse_get_context()->gid;
             auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
@@ -514,11 +518,6 @@ void azs_destroy(void * /*private_data*/)
 int azs_access(const char * /*path*/, int /*mask*/)
 {
     return 0;  // permit all access
-}
-
-int azs_readlink(const char * /*path*/, char * /*buf*/, size_t /*size*/)
-{
-    return -EINVAL; // not a symlink
 }
 
 int azs_fsync(const char * /*path*/, int /*isdatasync*/, struct fuse_file_info * /*fi*/)
@@ -736,4 +735,16 @@ int azs_listxattr(const char * /*path*/, char * /*list*/, size_t /*size*/)
 int azs_removexattr(const char * /*path*/, const char * /*name*/)
 {
     return -ENOSYS;
+}
+
+bool is_symlink_blob(std::vector<std::pair<std::string, std::string>> metadata)
+{
+    for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
+    {
+        if ((iter->first.compare("is_symlink") == 0) && (iter->second.compare("true") == 0))
+        {
+            return true;
+        }
+    }
+    return false;
 }

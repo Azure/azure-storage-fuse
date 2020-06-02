@@ -518,8 +518,10 @@ class StatsTests(BlobfuseTest):
         filegroup = os.stat(testFilePath).st_gid
         time_of_upload = os.stat(testFilePath).st_mtime
 
-        self.assertEqual(fileowner, os.getuid())
-        self.assertEqual(filegroup, os.getgid())
+        self.assertTrue(fileowner == os.getuid() or os.getuid() == 0)
+        self.assertTrue(filegroup == os.getgid() or os.getuid() == 0)
+        #self.assertEqual(fileowner, os.getuid())
+        #self.assertEqual(filegroup, os.getgid())
 
         # This removes the cached entries of the files just created, so they are on the service but not local.
         shutil.rmtree(self.cachedir + '/root/testing/')
@@ -1668,7 +1670,7 @@ class CacheTests(BlobfuseTest):
         #if we are under then we assured we deleted to not hit the threshold
         df = subprocess.Popen(["df", self.ramDiskTmpPath], stdout=subprocess.PIPE)
         output = df.communicate()[0]
-        print (output)
+        //print (output)
         device, size, used, available, percent, mountpoint = str(output).split("\n")[1].split()
         self.assertLess(int(percent.strip('%')), self.lower_threshold)
 
@@ -1707,7 +1709,7 @@ class CacheTests(BlobfuseTest):
         # check if we reached the low threshold. we expect no cleanup and to stay at the low threshold
         df = subprocess.Popen(["df", self.ramDiskTmpPath], stdout=subprocess.PIPE)
         output = df.communicate()[0]
-        print (output)
+        //print (output)
         device, size, used, available, percent, mountpoint = str(output).split("\n")[1].split()
         #self.assertEqual(int(percent.strip('%')), self.lower_threshold)
 

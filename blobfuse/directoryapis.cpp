@@ -153,7 +153,11 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         if ((prev_token_str.size() > 0) && (strcmp(prev_token_str.c_str(), former_directory_signifier.c_str()) != 0))
                         {
                             struct stat stbuf;
-                            stbuf.st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+                            if (is_symlink_blob(listResults[result_lists_index].first[i].metadata)) {
+                                stbuf.st_mode = S_IFLNK  | default_permission; // symlink
+                            } else {
+                                stbuf.st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+                            }
                             stbuf.st_uid = fuse_get_context()->uid;
                             stbuf.st_gid = fuse_get_context()->gid;
                             stbuf.st_nlink = 1;
