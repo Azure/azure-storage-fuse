@@ -263,7 +263,7 @@ int ensure_files_directory_exists_in_cache(const std::string& file_path)
     return status;
 }
 
-std::vector<std::pair<std::vector<list_blobs_segmented_item>, bool>> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix)
+std::vector<std::pair<std::vector<list_blobs_segmented_item>, bool>> list_all_blobs_segmented(const std::string& container, const std::string& delimiter, const std::string& prefix)
 {
     static const int maxFailCount = 20;
     std::vector<std::pair<std::vector<list_blobs_segmented_item>, bool>>  results;
@@ -435,7 +435,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     //It's not in the local cache. Check to see if it's a directory using list 
     std::string blobNameStr(&(path[1]));
     errno = 0;
-    list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(str_options.containerName, "/", "", blobNameStr, 2) ;
+    list_blobs_segmented_response response = azure_blob_client_wrapper->list_blobs_segmented(str_options.containerName, "/", "", blobNameStr, 2) ;
     
     if (errno == 0 && response.blobs.size() > 0  && (!response.blobs[0].name.compare(blobNameStr) || !response.blobs[0].name.compare(blobNameStr + '/')) )
     {
@@ -631,7 +631,7 @@ int azs_rename_directory(const char *src, const char *dst)
 
     // Rename all files & directories that don't exist in the local cache.
     errno = 0;
-    std::vector<std::pair<std::vector<list_blobs_segmented_item>, bool>> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", srcPathStr.substr(1));
+    std::vector<std::pair<std::vector<list_blobs_segmented_item>, bool>> listResults = list_all_blobs_segmented(str_options.containerName, "/", srcPathStr.substr(1));
     if (errno != 0)
     {
         int storage_errno = errno;
