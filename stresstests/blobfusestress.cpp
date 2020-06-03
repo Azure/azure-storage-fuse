@@ -30,11 +30,12 @@
 #include <mutex>
 #include <condition_variable>
 #include <thread>
+#include <random>
 
 // Config
-std::string perf_source_dir("/mnt/resource/tests/src");  // Source directory for test data.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
-std::string perf_dest_dir_1("/mnt/mountdir/stress");  // blobfuse directory to copy to.  All contents will be wiped.
-std::string perf_dest_dir_2("/mnt/resource/tests/dst");  // Local destination directory.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
+std::string perf_source_dir("/home/vikas/stress_test/src");  // Source directory for test data.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
+std::string perf_dest_dir_1("/home/vikas/blob_mnt/stress");  // blobfuse directory to copy to.  All contents will be wiped.
+std::string perf_dest_dir_2("/home/vikas/stress_test/dst");  // Local destination directory.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
 
 
 // There isn't really a built-in C++11 threadpool, and it ended up not being too difficult to code one up, with the specific behavior we need.

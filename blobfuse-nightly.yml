@@ -260,6 +260,10 @@ jobs:
 
     # Mount a directory for pyTest and run it
     - script:  |
+        sudo chown -R `whoami` $(MOUNT_DIR)
+        sudo chown -R `whoami` $(TEMP_DIR)
+        sudo chmod 777 $(MOUNT_DIR)
+        sudo chmod 777 $(TEMP_DIR)
         ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
         cd ./blobfuse/
         sudo python tests.py
