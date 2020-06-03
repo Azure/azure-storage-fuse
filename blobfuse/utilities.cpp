@@ -439,13 +439,13 @@ int azs_getattr(const char *path, struct stat *stbuf)
     
     if (errno == 0 && response.blobs.size() > 0 )
     {
-        list_blobs_hierarchical_item blobItem;
+        list_blobs_segmented_item blobItem;
 
         unsigned int i =0;
         
         for (i=0; i < response.blobs.size(); i++)
         {
-            syslog(LOG_DEBUG, "In azs_getattr list_blobs_hierarchical_item %d file %s\n", i, response.blobs[i].name.c_str() );
+            syslog(LOG_DEBUG, "In azs_getattr list_blobs_segmented_item %d file %s\n", i, response.blobs[i].name.c_str() );
             // find the element with the exact prefix
             // this could lead to a bug when there is a file with the same name as the directory in the parent directory. In short, that won't work.
             if (response.blobs[i].name == blobNameStr || response.blobs[i].name == (blobNameStr + '/') )
