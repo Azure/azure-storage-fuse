@@ -258,25 +258,18 @@ jobs:
 
     # Starting pyTest
 
-    # Mount a directory for pyTest
+    # Mount a directory for pyTest and run it
     - script:  |
         ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
-      displayName: Mount for pyTest
-
-    # Start the pyTest script
-    - script:  |
         cd ./blobfuse/
         sudo python tests.py
+        sudo fusermount -u $(MOUNT_DIR)
+      condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'cpplite-fix'))
       displayName: Run pyTest
       timeoutInMinutes: 20
       continueOnError: true
-  
-    # Test complete so now unmount the directory
-    - script:  sudo fusermount -u $(MOUNT_DIR)
-      displayName: Unmount for pyTest
-      timeoutInMinutes: 10
-      continueOnError: true
-    # -------------------------------------------------------
+
+   # -------------------------------------------------------
 
     # Print the log files
     - script: sudo cat /var/log/blobfuse.log
