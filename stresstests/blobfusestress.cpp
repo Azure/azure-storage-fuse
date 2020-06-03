@@ -502,7 +502,7 @@ void print_test_initial_stats(int total_dir_count, int file_per_dir_count, size_
 // TODO: remove duplicated logic between populate_* methods.
 std::pair<size_t, size_t> populate_large(std::string source_dir, thread_pool& pool)
 {
-    #if 0
+    #if 1
     int total_dir_count = 30; 
     size_t file_size_base = 50*1024*1024;  // Each file will be roughly 50 MB in size (increase this for actual perf testing)
     long unsigned int additional_size_jitter = 1024 * 1024;  // Each file will have between 0-1MB added to it (on top of the 500 MB))
@@ -555,7 +555,7 @@ std::pair<size_t, size_t> populate_small(std::string source_dir, thread_pool& po
 {
     int seed = 4;
     std::minstd_rand r(seed);
-    #if 0
+    #if 1
     size_t file_size_base = 1024;  // Each file has a base size of 1 KB.
     long unsigned int additional_size_jitter = 1024;  // Each file will have between 0-1KB added to it, randomly.
     int total_dir_count = 60;  
