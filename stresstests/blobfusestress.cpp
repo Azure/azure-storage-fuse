@@ -31,6 +31,11 @@
 #include <condition_variable>
 #include <thread>
 #include <random>
+#include <csignal>
+
+void signalHandler( int signum ) {
+   exit(signum);  
+}
 
 // Config
 std::string perf_source_dir("/home/vikas/stress_test/src");  // Source directory for test data.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
@@ -497,12 +502,20 @@ void print_test_initial_stats(int total_dir_count, int file_per_dir_count, size_
 // TODO: remove duplicated logic between populate_* methods.
 std::pair<size_t, size_t> populate_large(std::string source_dir, thread_pool& pool)
 {
+    #if 0
+    int total_dir_count = 30; 
     size_t file_size_base = 50*1024*1024;  // Each file will be roughly 50 MB in size (increase this for actual perf testing)
     long unsigned int additional_size_jitter = 1024 * 1024;  // Each file will have between 0-1MB added to it (on top of the 500 MB))
+    #else
+    int total_dir_count = 2; 
+    size_t file_size_base = 50; 
+    long unsigned int additional_size_jitter = 1;  // Each file will have between 0-1MB added to it (on top of the 500 MB))
+    #endif
+
     int seed = 4;  // We use a constant seed here to make each run identical; this probably doesn't matter a ton.
     std::minstd_rand r(seed);  // minstd_rand has terrible randomness properties, but it's more than good enough for our purposes here, and is far faster than better options.
     size_t total_size = 0;
-    int total_dir_count = 30;  
+     
     std::cout << "Running large file stress test." << std::endl;
     print_test_initial_stats(total_dir_count, 1, file_size_base, additional_size_jitter);
 
@@ -540,12 +553,19 @@ std::pair<size_t, size_t> populate_large(std::string source_dir, thread_pool& po
 // Directories are copied in parallel to each other, while files in a directory are copied serially.  This must be considered when choosing parameters.
 std::pair<size_t, size_t> populate_small(std::string source_dir, thread_pool& pool)
 {
-    size_t file_size_base = 1024;  // Each file has a base size of 1 KB.
-    long unsigned int additional_size_jitter = 1024;  // Each file will have between 0-1KB added to it, randomly.
     int seed = 4;
     std::minstd_rand r(seed);
+    #if 0
+    size_t file_size_base = 1024;  // Each file has a base size of 1 KB.
+    long unsigned int additional_size_jitter = 1024;  // Each file will have between 0-1KB added to it, randomly.
     int total_dir_count = 60;  
-    int file_per_dir_count = 10000;  
+    int file_per_dir_count = 10000; 
+    #else
+    size_t file_size_base = 10;  // Each file has a base size of 1 KB.
+    long unsigned int additional_size_jitter = 10;  // Each file will have between 0-1KB added to it, randomly.
+    int total_dir_count = 5; 
+    int file_per_dir_count = 10;  
+    #endif
     size_t total_size = total_dir_count * file_per_dir_count * (file_size_base + (additional_size_jitter/2));  // Here we just estimate the total size, more than close enough.
     std::cout << "Running small file stress test." << std::endl;
     print_test_initial_stats(total_dir_count, file_per_dir_count, file_size_base, additional_size_jitter);
@@ -588,6 +608,20 @@ std::pair<size_t, size_t> populate_small(std::string source_dir, thread_pool& po
 
 int main(int argc, char *argv[])
 {
+	signal(SIGINT, signalHandler);
+  
+    if (argc >= 3) {
+        perf_source_dir = std::string(argv[2]) + "/src";  
+        perf_dest_dir_1 = std::string(argv[1]) + "/stresstest";
+        perf_dest_dir_2 = std::string(argv[2]) + "/dst"; 
+        printf("Running with : MNT : %s, SRC : %s, DST : %s\n", \
+                perf_dest_dir_1.c_str(), perf_source_dir.c_str(), perf_dest_dir_2.c_str());
+        //return 0;
+    } else {
+        printf("\nUsage : blobfusestress <mounted-dir> <tmp-download-dir>\n\n");
+        return 0;
+    }
+
     try
     {
         std::vector<std::function<std::pair<size_t, size_t>(std::string, thread_pool&)>> populate_fns
