@@ -396,13 +396,13 @@ class ReadWriteFileTests(BlobfuseTest):
         mediumBlobsSourceDir = os.path.join(self.blobstage, "srcmediumblobs")
         if not os.path.exists(mediumBlobsSourceDir):
             os.makedirs(mediumBlobsSourceDir);
-        N = 1
+        N = 10
         for i in range(0, N):
             filename = str(uuid.uuid4())
             filepath = os.path.join(mediumBlobsSourceDir, filename)
             os.system("head -c 1M < /dev/urandom > " + filepath);
-            os.system("head -c 10M < /dev/zero >> " + filepath);
-            os.system("head -c 1M < /dev/urandom >> " + filepath);
+            os.system("head -c 200M < /dev/zero >> " + filepath);
+            os.system("head -c 10M < /dev/urandom >> " + filepath);
         files = os.listdir(mediumBlobsSourceDir)
         self.assertEqual(N, len(files))
 
@@ -949,10 +949,11 @@ class ThreadTests(BlobfuseTest):
         if not os.path.exists(mediumBlobsSourceDir):
             os.makedirs(mediumBlobsSourceDir);
         # We must use different files for each thread to avoid the synchronization that would occur if all threads access the same file
-        for i in range(0, 1):
+        N = 20
+        for i in range(0, N):
             filename = str(uuid.uuid4())
             filepath = os.path.join(mediumBlobsSourceDir, filename)
-            os.system("head -c 10M < /dev/zero >> " + filepath);
+            os.system("head -c 100M < /dev/zero >> " + filepath);
 
         # This removes the cached entries of the files just created, so they are on the service but not local.
         # This will force each thread to call ensure_directory_exists_in_cache when trying to access its file.
@@ -1691,11 +1692,11 @@ class CacheTests(BlobfuseTest):
         filename = str(uuid.uuid4())
 
         # act (create many files)
-        for i in range(0, 1):
+        for i in range(0, 5):
             filename = str(uuid.uuid4())
             filepath = os.path.join(testDirPath, filename)
             os.system("head -c 1M < /dev/urandom > " + filepath)
-            os.system("head -c 2M < /dev/zero >> " + filepath)
+            os.system("head -c 200M < /dev/zero >> " + filepath)
             os.system("head -c 2M < /dev/urandom >> " + filepath)
         #this makes 1015MB, so it fills the cache, so the threshold should be met
 
@@ -1733,7 +1734,7 @@ class CacheTests(BlobfuseTest):
         filename = str(uuid.uuid4())
 
         #act (create many files)
-        for i in range(0, 1):
+        for i in range(0, 8):
             filename = str(uuid.uuid4())
             filepath = os.path.join(testDirPath, filename)
             os.system("head -c 1M < /dev/urandom > " + filepath)
@@ -1746,7 +1747,7 @@ class CacheTests(BlobfuseTest):
         output = df.communicate()[0]
         #print (output)
         device, size, used, available, percent, mountpoint = str(output).split("\n")[1].split()
-        #self.assertEqual(int(percent.strip('%')), self.lower_threshold)
+        self.assertEqual(int(percent.strip('%')), self.lower_threshold)
 
         #if we add another file then it should reduce the cache size to below the lower threshold
         #because we hit the high threshold
