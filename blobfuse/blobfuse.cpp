@@ -832,12 +832,21 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         }
     }
 
-    if ((!tmpPathStr.empty()) &&
-        (!is_directory_empty(tmpPathStr.c_str()))) 
-    {
-        syslog(LOG_CRIT, "Unable to start blobfuse. temp directory '%s'is not empty.", tmpPathStr.c_str());
-        fprintf(stderr, "Error: temp directory '%s' is not empty. blobfuse needs an empty temp directory\n", tmpPathStr.c_str());
-        return 1;
+    if (!tmpPathStr.empty())
+    {    
+        struct stat sb;
+
+        // if the directory does nto exist no need to valdiate if it is empty
+        // so check if the dir exists first and then validate
+        if (stat(tmpPathStr.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) 
+        {             
+            if  (!is_directory_empty(tmpPathStr.c_str()))
+            {
+                syslog(LOG_CRIT, "Unable to start blobfuse. temp directory '%s'is not empty.", tmpPathStr.c_str());
+                fprintf(stderr, "Error: temp directory '%s' is not empty. blobfuse needs an empty temp directory\n", tmpPathStr.c_str());
+                return 1;
+            }
+        }
     }
 
     str_options.tmpPath = tmpPathStr;
