@@ -211,12 +211,12 @@ void read_file_data_and_validate(std::string path, unsigned int seed, size_t cou
     file_stream.seekg(0);
 
     std::minstd_rand r(seed);
-        for (size_t i = 0; i < count; i += 4 /* sizeof uint_fast32_t */)
+    for (size_t i = 0; i < count; i += 4 /* sizeof uint_fast32_t */)
     {
         uint_fast32_t expect_val = r();
         uint_fast32_t actual_val;
         file_stream.read(reinterpret_cast<char*>(&actual_val), 4);
-        ASSERT_EQ(expect_val, actual_val) << "File data incorrect at position "<< i << ".  Expected = " << expect_val << ", actual = " << actual_val;
+        ASSERT_EQ(expect_val & 0xffffffff, actual_val & 0xffffffff) << "File data incorrect at position "<< i << ".  Expected = " << expect_val << ", actual = " << actual_val;
     }
 }
 

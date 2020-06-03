@@ -534,7 +534,7 @@ class StatsTests(BlobfuseTest):
 
         self.assertEqual(fileowner, os.getuid())
         self.assertEqual(filegroup, os.getgid())
-		diff = int(blob_last_modified) - int(time_of_upload)
+        diff = int(blob_last_modified) - int(time_of_upload)
         self.assertLess(diff, (2 * 60))
         #self.assertEqual(int(time_of_upload), int(blob_last_modified))
 
