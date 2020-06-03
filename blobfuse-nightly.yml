@@ -43,6 +43,8 @@ jobs:
       value: "/home/vsts/work/blobfuse.cfg"
     - name: BLOBFUSE_CFG_GTEST
       value: "./connection.cfg"
+    - name: BLOBFUSE_STRESS_DIR
+      value: "/home/vsts/work/blob_stress"
    
 
     # Each job has set of steps to be done
@@ -251,7 +253,7 @@ jobs:
         sudo ./blobfusetests 
         cd ..
       displayName: Run gTest
-      timeoutInMinutes: 20
+      timeoutInMinutes: 30
       continueOnError: true
    
     # -------------------------------------------------------
@@ -270,10 +272,34 @@ jobs:
         sudo fusermount -u $(MOUNT_DIR)
       condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'cpplite-fix'))
       displayName: Run pyTest
-      timeoutInMinutes: 20
+      timeoutInMinutes: 30
+      continueOnError: true
+
+    # -------------------------------------------------------
+
+    # Starting stressTest
+
+    # Mount a directory for stressTest and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        sudo mkdir $(BLOBFUSE_STRESS_DIR)
+        sudo chmod `whoami` $(BLOBFUSE_STRESS_DIR)
+        sudo chmod 777 ./blobfusestress 
+        sudo chmod 777 $(BLOBFUSE_STRESS_DIR) 
+        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        cd ./stresstests/
+        make
+        sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR) 
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(BLOBFUSE_STRESS_DIR)
+      condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'cpplite-fix'))
+      displayName: Run stressTest
+      timeoutInMinutes: 30
       continueOnError: true
 
    # -------------------------------------------------------
+
 
     # Print the log files
     - script: sudo cat /var/log/blobfuse.log

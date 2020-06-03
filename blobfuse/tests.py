@@ -534,7 +534,9 @@ class StatsTests(BlobfuseTest):
 
         self.assertEqual(fileowner, os.getuid())
         self.assertEqual(filegroup, os.getgid())
-        self.assertEqual(int(time_of_upload), int(blob_last_modified))
+		diff = int(blob_last_modified) - int(time_of_upload)
+        self.assertLess(diff, (2 * 60))
+        #self.assertEqual(int(time_of_upload), int(blob_last_modified))
 
         # prime the cache and check the attributes again
         fd = os.open(testFilePath, os.O_RDONLY)
