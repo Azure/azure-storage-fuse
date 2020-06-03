@@ -265,7 +265,7 @@ jobs:
         sudo chmod 777 $(MOUNT_DIR)
         sudo chmod 777 $(TEMP_DIR)
         sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
-        sudo cd ./blobfuse/
+        cd ./blobfuse/
         sudo python tests.py
         sudo fusermount -u $(MOUNT_DIR)
       condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'cpplite-fix'))
