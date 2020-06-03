@@ -10,7 +10,7 @@ schedules:
   branches:
     include:
     - master
-	- cpplite-fix
+    - cpplite-fix
   always: true
 
 
@@ -48,7 +48,7 @@ jobs:
     # Each job has set of steps to be done
     steps:
     - script: |
-        sudo apt-get update
+        sudo apt-get update --fix-missing
         sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
       displayName: "Basic Tools Setup"
 
