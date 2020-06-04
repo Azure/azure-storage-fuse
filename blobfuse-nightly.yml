@@ -17,6 +17,7 @@ schedules:
 # List of jobs to run in parallel
 jobs:
   - job: NightlySanity
+    timeoutInMinutes: 240
 
     # Define on what all OS we want to run this Pipeline
     strategy:
@@ -136,6 +137,10 @@ jobs:
     # -------------------------------------------------------
 
     # Initial clean up of containers
+    - script: sudo rm -rf $(MOUNT_DIR)/*
+      timeoutInMinutes: 5
+      displayName: "TEST - Initial Cleanup"
+      continueOnError: true
 
     # Check the mount went through or not by listing the mounted directory
     - script: ls -lRt $(MOUNT_DIR)
@@ -244,7 +249,7 @@ jobs:
         echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_GTEST)
         cat $(BLOBFUSE_CFG_GTEST)
         echo "Account : " $(NIGHTLY_STO_ACC_NAME)
-      displayName: "Create gTest config file"
+      displayName: "TEST - gTest Config"
     
     # Run gTest with the config file created earlier
     - script:  |
@@ -252,7 +257,7 @@ jobs:
         sudo chmod 777 ./blobfusetests
         sudo ./blobfusetests 
         cd ..
-      displayName: Run gTest
+      displayName: TEST - gTest
       timeoutInMinutes: 30
       continueOnError: true
    
@@ -269,13 +274,18 @@ jobs:
         sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
         cd ./blobfuse/
         sudo python tests.py
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo fusermount -u $(MOUNT_DIR)
-      condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'cpplite-fix'))
-      displayName: Run pyTest
-      #timeoutInMinutes: 50
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - pyTest
+      #timeoutInMinutes: 60
       continueOnError: true
 
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - pyTest Cleanup
+      #timeoutInMinutes: 60
+      continueOnError: true
     # -------------------------------------------------------
 
     # Starting stressTest
@@ -292,14 +302,19 @@ jobs:
         cd ./stresstests/
         make
         sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR) 
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - stressTest
+      #timeoutInMinutes: 60
+      continueOnError: true
+
+    - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo fusermount -u $(MOUNT_DIR)
         sudo rm -rf $(BLOBFUSE_STRESS_DIR)
-      condition: and(succeeded(), eq(variables['Build.SourceBranchName'], 'cpplite-fix'))
-      displayName: Run stressTest
-      #timeoutInMinutes: 50
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - stressTest Cleanup
+      #timeoutInMinutes: 60
       continueOnError: true
-
    # -------------------------------------------------------
 
 
