@@ -136,24 +136,17 @@ jobs:
 
     # -------------------------------------------------------
 
-    # Initial clean up of containers
-    - script: sudo rm -rf $(MOUNT_DIR)/*
-      timeoutInMinutes: 5
-      displayName: "TEST - Initial Cleanup"
-      continueOnError: true
-
     # Check the mount went through or not by listing the mounted directory
     - script: ls -lRt $(MOUNT_DIR)
       timeoutInMinutes: 5
       displayName: "TEST - Directory Listing"
       #continueOnError: true
 
-    # Directory deletion is not working so commenting this out
     # Clear directory form previous failed runs
-    #- script: rm -rf $(MOUNT_DIR)/* 
-    #  displayName: "TEST - Directory Cleaning before Begin"
-    #  timeoutInMinutes: 10
-    #  continueOnError: true
+    - script: rm -rf $(MOUNT_DIR)/* 
+      displayName: "TEST - Initial cleanup"
+      timeoutInMinutes: 10
+      continueOnError: true
              
     # Directory Operation Testing
     #- script: mkdir $(MOUNT_DIR)/test_dir
