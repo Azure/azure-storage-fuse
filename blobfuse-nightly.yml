@@ -269,7 +269,7 @@ jobs:
         sudo python tests.py
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - pyTest
-      #timeoutInMinutes: 60
+      timeoutInMinutes: 120
       continueOnError: true
 
     - script:  |
@@ -277,7 +277,7 @@ jobs:
         sudo fusermount -u $(MOUNT_DIR)
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - pyTest Cleanup
-      #timeoutInMinutes: 60
+      timeoutInMinutes: 10
       continueOnError: true
     # -------------------------------------------------------
 
@@ -297,7 +297,7 @@ jobs:
         sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR) 
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - stressTest
-      #timeoutInMinutes: 60
+      timeoutInMinutes: 120
       continueOnError: true
 
     - script:  |
@@ -306,7 +306,7 @@ jobs:
         sudo rm -rf $(BLOBFUSE_STRESS_DIR)
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - stressTest Cleanup
-      #timeoutInMinutes: 60
+      timeoutInMinutes: 30
       continueOnError: true
    # -------------------------------------------------------
 

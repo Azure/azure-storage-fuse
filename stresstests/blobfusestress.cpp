@@ -377,12 +377,15 @@ size_t m_total_files;
     // This must be kept in mind when designing file structures to copy.
     void copy_recursive(std::string input_dir, std::string output_dir)
     {
-        int mkdirret = mkdir(output_dir.c_str(), 0777);
-        if (mkdirret < 0)
-        {
-            std::stringstream error;
-            error << "Failed to make directory.  errno = " << errno << ", directory = " << output_dir;
-            throw std::runtime_error(error.str());
+        struct stat st;
+        if (stat(output_dir.c_str(), &st) != 0) {
+            int mkdirret = mkdir(output_dir.c_str(), 0777);
+            if (mkdirret < 0)
+            {
+                std::stringstream error;
+                error << "Failed to make directory.  errno = " << errno << ", directory = " << output_dir;
+                throw std::runtime_error(error.str());
+            }
         }
 
         DIR *dir_stream = opendir(input_dir.c_str());
@@ -639,14 +642,16 @@ int main(int argc, char *argv[])
             std::time_t start = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
             std::cout << "Start time = " << std::ctime(&start) << std::endl;
 
-            int mkdirret = mkdir(perf_source_dir.c_str(), 0777);
-            if (mkdirret < 0)
-            {
-                std::stringstream error;
-                error << "Failed to make directory.  errno = " << errno << ", directory = " << perf_source_dir;
-                throw std::runtime_error(error.str());
+            struct stat st;
+            if (stat(perf_source_dir.c_str(), &st) != 0) {
+                int mkdirret = mkdir(perf_source_dir.c_str(), 0777);
+                if (mkdirret < 0)
+                {
+                    std::stringstream error;
+                    error << "Failed to make directory.  errno = " << errno << ", directory = " << perf_source_dir;
+                    throw std::runtime_error(error.str());
+                }
             }
-
 
             int parallel = 8; // Run 8 threads in parallel.
             std::cout << "Parallel count = " << parallel << std::endl;
