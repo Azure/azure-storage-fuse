@@ -1,5 +1,5 @@
 
-#include "blobfuse_constants.h"
+#include <blobfuse_constants.h>
 
 namespace blobfuse_constants {
     const int max_concurrency_oauth = 2;
@@ -21,4 +21,12 @@ namespace blobfuse_constants {
     const char* header_msi_secret = "Secret";
 
     const int unknown_error = 1600;
+
+    const unsigned int acl_size = 9;
+
+    const int http_request_conflict = 409;
+
+    const std::string former_directory_signifier = ".directory";
+
+    const std::map<int, int> error_mapping = {{404, ENOENT}, {403, EACCES}, {1600, ENOENT}};
 }

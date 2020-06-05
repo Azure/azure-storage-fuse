@@ -2,8 +2,13 @@ cmake_minimum_required(VERSION 2.8)
 
 set (BLOBFUSE_HEADER
   blobfuse/blobfuse.h
+ 
+  blobfuse/include/blobfuse_constants.h
+  blobfuse/include/file_lock_map.h
+  blobfuse/include/gc_cache.h
+  blobfuse/include/permissions.h
+
   blobfuse/blob_client_cache.h
-  #blobfuse/blobfuse_constants.h
   blobfuse/OAuthToken.h
   blobfuse/OAuthTokenCredentialManager.h
 )
@@ -12,7 +17,11 @@ set (BLOBFUSE_SOURCE
 #  blobfuse/blobfuse.cpp    # We don't include blobfuse.cpp because the file contents are directly #included in main.cpp.  This allows us to split main() and everything
 #                             else into different files, without having to define each function in a header for only one consumer.  The only reason to do all this is so
 #                             we can test functionality in blobfuse.cpp without including main() (which would break gtest).
-  blobfuse/blobfuse_constants.cpp
+  blobfuse/src/blobfuse_constants.cpp
+  blobfuse/src/file_lock_map.cpp
+  blobfuse/src/gc_cache.cpp
+  blobfuse/src/permissions.cpp
+
   blobfuse/blob_client_cache.cpp
   blobfuse/blob_client_attr_cache_wrapper.cpp
   blobfuse/fileapis.cpp
@@ -37,7 +46,7 @@ if(UNIX)
  # set(WARNING "-Wall -Wextra -Werror -pedantic -pedantic-errors")
   set(WARNING "-Wall -Wextra -Werror")
   set(CMAKE_CXX_FLAGS "${CMAKE_THREAD_LIBS_INIT} ${WARNING} ${CMAKE_CXX_FLAGS}")
-  include_directories(${CMAKE_SOURCE_DIR}/blobfuse ${CMAKE_SOURCE_DIR}/cpplite/include ${CURL_INCLUDE_DIRS} ${GNUTLS_INCLUDE_DIR} ${Boost_INCLUDE_DIR} nlohmann-json)
+  include_directories(${CMAKE_SOURCE_DIR}/blobfuse ${CMAKE_SOURCE_DIR}/blobfuse/include ${CMAKE_SOURCE_DIR}/cpplite/include ${CMAKE_SOURCE_DIR}/cpplite/adls/include ${CURL_INCLUDE_DIRS} ${GNUTLS_INCLUDE_DIR} ${Boost_INCLUDE_DIR} nlohmann-json)
 
   set(CMAKE_MACOSX_RPATH ON)
 

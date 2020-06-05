@@ -28,6 +28,7 @@ struct options
     const char *container_name; //container to mount. Used only if config_file is not provided
     const char *log_level; // Sets the level at which the process should log to syslog.
     const char *use_attr_cache; // True if the cache for blob attributes should be used.
+    const char *use_adls; // True if the dfs/DataLake endpoint should be used when necessary
     const char *version; // print blobfuse version
     const char *help; // print blobfuse usage
 };
@@ -47,6 +48,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--container-name=%s", container_name),
     OPTION("--log-level=%s", log_level),
     OPTION("--use-attr-cache=%s", use_attr_cache),
+    OPTION("--use-adls=%s", use_adls),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -55,14 +57,6 @@ const struct fuse_opt option_spec[] =
 };
 
 std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
-class gc_cache gc_cache;
-
-// Currently, the cpp lite lib puts the HTTP status code in errno.
-// This mapping tries to convert the HTTP status code to a standard Linux errno.
-// TODO: Ensure that we map any potential HTTP status codes we might receive.
-std::map<int, int> error_mapping = {{404, ENOENT}, {403, EACCES}, {1600, ENOENT}, {400, EFAULT}};
-
-const std::string former_directory_signifier = ".directory";
 
 static struct fuse_operations azs_blob_operations;
 
@@ -187,7 +181,7 @@ int read_config_env()
     return 0;
 }
 
-auth_type get_auth_type() 
+AUTH_TYPE get_auth_type() 
 {   
     std::string lcAuthType = to_lower(str_options.authType);
     lcAuthType = trim(lcAuthType);
@@ -361,7 +355,7 @@ int read_config(const std::string configFile)
 void *azs_init(struct fuse_conn_info * conn)
 {
     // TODO: Make all of this go down roughly the same pipeline, rather than having spaghettified code
-    auth_type AuthType = get_auth_type();
+    AUTH_TYPE AuthType = get_auth_type();
 
     if (str_options.use_attr_cache)
     {
@@ -488,7 +482,8 @@ void *azs_init(struct fuse_conn_info * conn)
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
 
-    g_gc_cache.run();
+    g_gc_cache = std::make_shared<gc_cache>(str_options.tmpPath, file_cache_timeout_in_seconds);
+    g_gc_cache->run();
 
     return NULL;
 }
@@ -510,7 +505,7 @@ void print_usage()
 
 void print_version()
 {
-    fprintf(stdout, "blobfuse 1.2.3\n");
+    fprintf(stdout, "blobfuse 1.2.4\n");
 }
 
 int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
@@ -879,6 +874,17 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     {
         file_cache_timeout_in_seconds = 120;
     }
+
+    str_options.useADLS = false;
+    if(options.use_adls != NULL)
+    {
+        std::string use_adls_value(options.use_adls);
+        if(use_adls_value == "true")
+        {
+            str_options.useADLS = true;
+        }
+    }
+
     return 0;
 }
 
@@ -903,7 +909,7 @@ int validate_storage_connection()
     // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
     {
         std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper;
-        auth_type AuthType = get_auth_type();
+        AUTH_TYPE AuthType = get_auth_type();
         //TODO: Make a for authtype, and then if that's not specified, then a check against what credentials were specified
         if(AuthType == MSI_AUTH || AuthType == SPN_AUTH)
         {

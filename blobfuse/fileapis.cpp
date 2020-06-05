@@ -1,40 +1,14 @@
 #include "blobfuse.h"
 #include <sys/file.h>
-
-file_lock_map* file_lock_map::get_instance()
-{
-    if(nullptr == s_instance.get())
-    {
-        std::lock_guard<std::mutex> lock(s_mutex);
-        if(nullptr == s_instance.get())
-        {
-            s_instance.reset(new file_lock_map());
-        }
-    }
-    return s_instance.get();
-}
-
-std::shared_ptr<std::mutex> file_lock_map::get_mutex(const std::string& path)
-{
-    std::lock_guard<std::mutex> lock(m_mutex);
-    auto iter = m_lock_map.find(path);
-    if(iter == m_lock_map.end())
-    {
-        auto file_mutex = std::make_shared<std::mutex>();
-        m_lock_map[path] = file_mutex;
-        return file_mutex;
-    }
-    else
-    {
-        return iter->second;
-    }
-}
+#include <file_lock_map.h>
 
 std::shared_ptr<file_lock_map> file_lock_map::s_instance;
 std::mutex file_lock_map::s_mutex;
 
 std::deque<file_to_delete> cleanup;
 std::mutex deque_lock;
+
+std::shared_ptr<gc_cache> g_gc_cache;
 
 // Opens a file for reading or writing
 // Behavior is defined by a normal, open() system call.
@@ -386,7 +360,7 @@ int azs_release(const char *path, struct fuse_file_info * fi)
         AZS_DEBUGLOGV("Adding file to the GC from azs_release.  File = %s\n.", mntPath);
 
         // store the file in the cleanup list
-        g_gc_cache.add_file(pathString);
+        g_gc_cache->add_file(pathString);
 
     }
     else
@@ -681,7 +655,7 @@ int azs_rename_single_file(const char *src, const char *dst)
             }
 
             // store the file in the cleanup list
-            g_gc_cache.add_file(dstPathString);
+            g_gc_cache->add_file(dstPathString);
 
             return 0;
         }
@@ -748,7 +722,7 @@ int azs_rename_single_file(const char *src, const char *dst)
 
             // in the case of directory_rename, there may be local cache
             // store the file in the cleanup list
-            g_gc_cache.add_file(dstPathString);
+            g_gc_cache->add_file(dstPathString);
 
             return 0;
         }
