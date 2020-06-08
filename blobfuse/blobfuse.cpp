@@ -5,6 +5,8 @@
 #include <mntent.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <ctype.h>
+#include <sys/utsname.h>
 
 namespace {
     std::string trim(const std::string& str) {
@@ -35,6 +37,30 @@ struct options options;
 struct str_options str_options;
 int file_cache_timeout_in_seconds;
 int default_permission;
+
+
+float kernel_version = 0.0;
+void populate_kernel_version()
+{
+    struct utsname buffer;
+	if (uname (&buffer) == 0) {
+		char *p = buffer.release;
+		int i = 0;
+		float ver[5];
+
+		while (*p) {
+			if (isdigit(*p)) {
+				ver[i] = strtof(p, &p);
+				i++;
+			} else {
+				p++;
+			}
+			if (i >= 5) break;
+		}
+		if (i > 2)
+            kernel_version = ver[0];
+	}
+}
 
 #define OPTION(t, p) { t, offsetof(struct options, p), 1 }
 const struct fuse_opt option_spec[] =
@@ -469,8 +495,12 @@ void *azs_init(struct fuse_conn_info * conn)
     cfg->entry_timeout = 120;
     cfg->negative_timeout = 120;
     */
-    conn->max_write = 4194304;
-    //conn->max_read = 4194304;
+    if (kernel_version < 5.4) {
+        conn->max_write = 4194304;
+        //conn->max_read = 4194304;
+    } else {
+        conn->want |= FUSE_CAP_BIG_WRITES;
+    }
     conn->max_readahead = 4194304;
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
@@ -973,8 +1003,12 @@ int validate_storage_connection()
 
 void configure_fuse(struct fuse_args *args)
 {
-    fuse_opt_add_arg(args, "-omax_read=131072");
-    fuse_opt_add_arg(args, "-omax_write=131072");
+    populate_kernel_version();
+
+    if (kernel_version < 5.4) {
+        fuse_opt_add_arg(args, "-omax_read=131072");
+        fuse_opt_add_arg(args, "-omax_write=131072");
+    }
 
     if (options.file_cache_timeout_in_seconds != NULL)
     {
