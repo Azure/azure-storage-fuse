@@ -567,7 +567,7 @@ std::pair<size_t, size_t> populate_small(std::string source_dir, thread_pool& po
     size_t file_size_base = 1024;  // Each file has a base size of 1 KB.
     long unsigned int additional_size_jitter = 10;  // Each file will have between 0-1KB added to it, randomly.
     int total_dir_count = 30; 
-    int file_per_dir_count = 2000;  
+    int file_per_dir_count = 3000;  
     #endif
     size_t total_size = total_dir_count * file_per_dir_count * (file_size_base + (additional_size_jitter/2));  // Here we just estimate the total size, more than close enough.
     std::cout << "Running small file stress test." << std::endl;

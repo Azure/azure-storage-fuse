@@ -33,7 +33,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     struct stat buf;
     int statret = stat(mntPath, &buf);
     time_t now = time(NULL);
-    if ((statret != 0) || (((now - buf.st_mtime) > file_cache_timeout_in_seconds) && ((now - buf.st_ctime) > file_cache_timeout_in_seconds)))
+    if ((statret != 0) || (((now - buf.st_mtime) > str_options.fileCacheTimeoutInSeconds) && ((now - buf.st_ctime) > str_options.fileCacheTimeoutInSeconds)))
     {
         bool skipCacheUpdate = false;
         if (statret == 0) // File exists
@@ -133,7 +133,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     }
 
     // TODO: Actual access control
-    fchmod(res, default_permission);
+    fchmod(res, str_options.defaultPermission);
 
     // Store the open file handle, and whether or not the file should be uploaded on close().
     // TODO: Optimize the scenario where the file is open for read/write, but no actual writing occurs, to not upload the blob.
@@ -185,7 +185,7 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     ensure_files_directory_exists_in_cache(mntPathString);
 
     // FUSE will set the O_CREAT and O_WRONLY flags, but not O_EXCL, which is generally assumed for 'create' semantics.
-    res = open(mntPath, fi->flags | O_EXCL, default_permission);
+    res = open(mntPath, fi->flags | O_EXCL, str_options.defaultPermission);
     if (res == -1)
     {
         syslog(LOG_ERR, "Failure to open cache file %s in azs_open.  errno = %d\n.", path, errno);

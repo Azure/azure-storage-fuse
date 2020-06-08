@@ -30,6 +30,7 @@
 #include <fuse.h>
 #include <stddef.h>
 #include <blobfuse_constants.h>
+#include <blobfuse_globals.h>
 #include <gc_cache.h>
 #include "blob/blob_client.h"
 #include "OAuthToken.h"
@@ -45,50 +46,7 @@ using namespace azure::storage_lite;
 using namespace blobfuse_constants;
 
 extern std::shared_ptr<gc_cache> g_gc_cache;
-
-// FUSE gives you one 64-bit pointer to use for communication between API's.
-// An instance of this struct is pointed to by that pointer.
-struct fhwrapper
-{
-    int fh; // The handle to the file in the file cache to use for read/write operations.
-    bool upload; // True if the blob should be uploaded when the file is closed.  (False when the file was opened in read-only mode.)
-    fhwrapper(int fh, bool upload) : fh(fh), upload(upload)
-    {
-
-    }
-};
-
-
-// Global struct storing the Storage connection information and the tmpPath.
-struct str_options
-{
-    std::string accountName;
-    std::string authType;
-    std::string blobEndpoint;
-    std::string accountKey;
-    std::string sasToken;
-    std::string identityClientId;
-    std::string spnClientId;
-    std::string spnClientSecret;
-    std::string spnTenantId;
-    std::string aadEndpoint;
-    std::string objectId;
-    std::string resourceId;
-    std::string msiEndpoint;
-    std::string msiSecret;
-    std::string containerName;
-    std::string tmpPath;
-    std::string logLevel;
-    bool use_https;
-    bool use_attr_cache;
-    bool useADLS;
-};
-
-extern struct str_options str_options;
-
-extern int file_cache_timeout_in_seconds;
-
-extern int default_permission;
+extern struct configParams str_options;
 
 // This is used to make all the calls to Storage
 // The C++ lite client does not store state, other than connection info, so we can use it between calls without issue.

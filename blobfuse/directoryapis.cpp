@@ -65,7 +65,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                 if (dir_ent->d_type == DT_DIR)
                 {
                     struct stat stbuf;
-                    stbuf.st_mode = S_IFDIR | default_permission;
+                    stbuf.st_mode = S_IFDIR | str_options.defaultPermission;
                     stbuf.st_uid = fuse_get_context()->uid;
                     stbuf.st_gid = fuse_get_context()->gid;
                     stbuf.st_nlink = 2;
@@ -79,7 +79,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                     stat((mntPathString + dir_ent->d_name).c_str(), &buffer);
 
                     struct stat stbuf;
-                    stbuf.st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+                    stbuf.st_mode = S_IFREG | str_options.defaultPermission; // Regular file (not a directory)
                     stbuf.st_uid = fuse_get_context()->uid;
                     stbuf.st_gid = fuse_get_context()->gid;
                     stbuf.st_nlink = 1;
@@ -116,7 +116,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 
     // Fill the blobfuse current and parent directories
     struct stat stcurrentbuf, stparentbuf;
-    stcurrentbuf.st_mode = S_IFDIR | default_permission;
+    stcurrentbuf.st_mode = S_IFDIR | str_options.defaultPermission;
     stparentbuf.st_mode = S_IFDIR;
 
     filler(buf, ".", &stcurrentbuf, 0);
@@ -154,9 +154,9 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         {
                             struct stat stbuf;
                             if (is_symlink_blob(listResults[result_lists_index].first[i].metadata)) {
-                                stbuf.st_mode = S_IFLNK  | default_permission; // symlink
+                                stbuf.st_mode = S_IFLNK  | str_options.defaultPermission; // symlink
                             } else {
-                                stbuf.st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+                                stbuf.st_mode = S_IFREG | str_options.defaultPermission; // Regular file (not a directory)
                             }
                             stbuf.st_uid = fuse_get_context()->uid;
                             stbuf.st_gid = fuse_get_context()->gid;
@@ -175,7 +175,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                    	        local_list_results.push_back(prev_token_str);
 
                             struct stat stbuf;
-                            stbuf.st_mode = S_IFDIR | default_permission;
+                            stbuf.st_mode = S_IFDIR | str_options.defaultPermission;
                             stbuf.st_uid = fuse_get_context()->uid;
                             stbuf.st_gid = fuse_get_context()->gid;
                             stbuf.st_nlink = 2;

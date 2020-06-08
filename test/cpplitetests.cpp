@@ -54,7 +54,7 @@ public:
             str_options.accountName,
             str_options.accountKey,
             20,
-            str_options.use_https,
+            str_options.useHttps,
             blob_endpoint);
     }
 

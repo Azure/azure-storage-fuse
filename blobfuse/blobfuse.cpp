@@ -19,26 +19,9 @@ namespace {
     }
 }
 
-// FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
-struct options
-{
-    const char *tmp_path; // Path to the temp / file cache directory
-    const char *config_file; // Connection to Azure Storage information (account name, account key, etc)
-    const char *use_https; // True if https should be used (defaults to false)
-    const char *file_cache_timeout_in_seconds; // Timeout for the file cache (defaults to 120 seconds)
-    const char *container_name; //container to mount. Used only if config_file is not provided
-    const char *log_level; // Sets the level at which the process should log to syslog.
-    const char *use_attr_cache; // True if the cache for blob attributes should be used.
-    const char *use_adls; // True if the dfs/DataLake endpoint should be used when necessary
-    const char *version; // print blobfuse version
-    const char *help; // print blobfuse usage
-};
 
-struct options options;
-struct str_options str_options;
-int file_cache_timeout_in_seconds;
-int default_permission;
-
+struct cmdlineOptions options;
+struct configParams str_options;
 
 float kernel_version = 0.0;
 void populate_kernel_version()
@@ -63,16 +46,16 @@ void populate_kernel_version()
 	}
 }
 
-#define OPTION(t, p) { t, offsetof(struct options, p), 1 }
+#define OPTION(t, p) { t, offsetof(struct cmdlineOptions, p), 1 }
 const struct fuse_opt option_spec[] =
 {
     OPTION("--tmp-path=%s", tmp_path),
     OPTION("--config-file=%s", config_file),
-    OPTION("--use-https=%s", use_https),
+    OPTION("--use-https=%s", useHttps),
     OPTION("--file-cache-timeout-in-seconds=%s", file_cache_timeout_in_seconds),
     OPTION("--container-name=%s", container_name),
     OPTION("--log-level=%s", log_level),
-    OPTION("--use-attr-cache=%s", use_attr_cache),
+    OPTION("--use-attr-cache=%s", useAttrCache),
     OPTION("--use-adls=%s", use_adls),
     OPTION("--version", version),
     OPTION("-v", version),
@@ -382,7 +365,7 @@ void *azs_init(struct fuse_conn_info * conn)
     // TODO: Make all of this go down roughly the same pipeline, rather than having spaghettified code
     AUTH_TYPE AuthType = get_auth_type();
 
-    if (str_options.use_attr_cache)
+    if (str_options.useAttrCache)
     {
         if(AuthType == MSI_AUTH || AuthType == SPN_AUTH)
         {
@@ -419,7 +402,7 @@ void *azs_init(struct fuse_conn_info * conn)
                     str_options.accountName,
                     str_options.accountKey,
                     blobfuse_constants::max_concurrency_blob_wrapper,
-                    str_options.use_https,
+                    str_options.useHttps,
                     str_options.blobEndpoint));
         }
         else if(AuthType == SAS_AUTH) {
@@ -428,7 +411,7 @@ void *azs_init(struct fuse_conn_info * conn)
                     str_options.accountName,
                     str_options.sasToken,
                     blobfuse_constants::max_concurrency_blob_wrapper,
-                     str_options.use_https,
+                     str_options.useHttps,
                     str_options.blobEndpoint));
         }
         else
@@ -471,7 +454,7 @@ void *azs_init(struct fuse_conn_info * conn)
             str_options.accountName,
             str_options.accountKey,
             blobfuse_constants::max_concurrency_blob_wrapper,
-            str_options.use_https,
+            str_options.useHttps,
             str_options.blobEndpoint);
         }
         else if(AuthType == SAS_AUTH) {
@@ -479,7 +462,7 @@ void *azs_init(struct fuse_conn_info * conn)
             str_options.accountName,
             str_options.sasToken,
             blobfuse_constants::max_concurrency_blob_wrapper,
-            str_options.use_https,
+            str_options.useHttps,
             str_options.blobEndpoint);
         }
         else
@@ -511,7 +494,7 @@ void *azs_init(struct fuse_conn_info * conn)
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
 
-    g_gc_cache = std::make_shared<gc_cache>(str_options.tmpPath, file_cache_timeout_in_seconds);
+    g_gc_cache = std::make_shared<gc_cache>(str_options.tmpPath, str_options.fileCacheTimeoutInSeconds);
     g_gc_cache->run();
 
     return NULL;
@@ -738,11 +721,11 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     *args = FUSE_ARGS_INIT(argc, argv);
 
     // Check for existence of allow_other flag and change the default permissions based on that
-    default_permission = 0770;
+    str_options.defaultPermission = 0770;
     std::vector<std::string> string_args(argv, argv+argc);
     for (size_t i = 1; i < string_args.size(); ++i) {
       if (string_args[i].find("allow_other") != std::string::npos) {
-          default_permission = 0777; 
+          str_options.defaultPermission = 0777; 
       }
     }
 
@@ -874,34 +857,34 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     }
 
     str_options.tmpPath = tmpPathStr;
-    str_options.use_https = true;
-    if (options.use_https != NULL)
+    str_options.useHttps = true;
+    if (options.useHttps != NULL)
     {
-        std::string https(options.use_https);
+        std::string https(options.useHttps);
         if (https == "false")
         {
-            str_options.use_https = false;
+            str_options.useHttps = false;
         }
     }
 
-    str_options.use_attr_cache = false;
-    if (options.use_attr_cache != NULL)
+    str_options.useAttrCache = false;
+    if (options.useAttrCache != NULL)
     {
-        std::string attr_cache(options.use_attr_cache);
+        std::string attr_cache(options.useAttrCache);
         if (attr_cache == "true")
         {
-            str_options.use_attr_cache = true;
+            str_options.useAttrCache = true;
         }
     }
 
     if (options.file_cache_timeout_in_seconds != NULL)
     {
         std::string timeout(options.file_cache_timeout_in_seconds);
-        file_cache_timeout_in_seconds = stoi(timeout);
+        str_options.fileCacheTimeoutInSeconds = stoi(timeout);
     }
     else
     {
-        file_cache_timeout_in_seconds = 120;
+        str_options.fileCacheTimeoutInSeconds = 120;
     }
 
     str_options.useADLS = false;
@@ -978,7 +961,7 @@ int validate_storage_connection()
             str_options.accountName,
             str_options.accountKey,
             blobfuse_constants::max_concurrency_blob_wrapper,
-            str_options.use_https,
+            str_options.useHttps,
             str_options.blobEndpoint);
         }
         else if(AuthType == SAS_AUTH) {
@@ -986,7 +969,7 @@ int validate_storage_connection()
             str_options.accountName,
             str_options.sasToken,
             blobfuse_constants::max_concurrency_blob_wrapper,
-            str_options.use_https,
+            str_options.useHttps,
             str_options.blobEndpoint);
         }
         else
@@ -1032,11 +1015,11 @@ void configure_fuse(struct fuse_args *args)
     if (options.file_cache_timeout_in_seconds != NULL)
     {
         std::string timeout(options.file_cache_timeout_in_seconds);
-        file_cache_timeout_in_seconds = stoi(timeout);
+        str_options.fileCacheTimeoutInSeconds = stoi(timeout);
     }
     else
     {
-        file_cache_timeout_in_seconds = 120;
+        str_options.fileCacheTimeoutInSeconds = 120;
     }
 
     // FUSE contains a feature where it automatically implements 'soft' delete if one process has a file open when another calls unlink().
