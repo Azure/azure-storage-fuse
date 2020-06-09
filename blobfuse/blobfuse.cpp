@@ -617,7 +617,7 @@ void set_up_callbacks()
 }
 
 /*
- *  Check if the given directory is already mounted or not
+ *  Check if the given directory is already mounted for the mounttype fuse or not
  *  If mounted then re-mounting again shall fail.
  */ 
 bool is_directory_mounted(const char* mntDir) {
@@ -628,7 +628,7 @@ bool is_directory_mounted(const char* mntDir) {
      mnt_list = setmntent(_PATH_MOUNTED, "r");
      while ((mnt_ent = getmntent(mnt_list))) 
      {
-         if (!strcmp(mnt_ent->mnt_dir, mntDir)) 
+         if (!strcmp(mnt_ent->mnt_dir, mntDir) && !strcmp(mnt_ent->mnt_type, "fuse")) 
          {
              found = true;
              break;
