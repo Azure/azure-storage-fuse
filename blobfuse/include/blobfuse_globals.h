@@ -3,13 +3,18 @@
 #include <string>
 #include <map>
 #include <syslog.h>
+#include <algorithm>
+#include <blobfuse_constants.h>
 
+
+extern struct configParams str_options;
 
 // Global struct storing the Storage connection information and the tmpPath.
 struct configParams
 {
     std::string accountName;
-    std::string authType;
+    //std::string authType;
+    AUTH_TYPE authType;
     std::string blobEndpoint;
     std::string accountKey;
     std::string sasToken;
@@ -61,3 +66,7 @@ struct fhwrapper
 
     }
 };
+
+std::string to_lower(std::string original);
+inline bool is_lowercase_string(const std::string &s);
+AUTH_TYPE get_auth_type(std::string authStr = "");

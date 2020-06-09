@@ -2,8 +2,11 @@
 #define STORAGEBFSCLIENTBASE_H
 
 #include <blobfuse.h>
+#include <blobfuse_globals.h>
+#include <get_blob_property_request_base.h>
 #include <list_blobs_request_base.h>
 #include <list_paths_request.h>
+#include <blob/blob_client.h>
 #include <adls_client.h>
 
 #include "file_lock_map.h"
@@ -12,116 +15,53 @@
 using namespace azure::storage_lite;
 using namespace azure::storage_adls;
 
-struct BfsFileProperty
+class BfsFileProperty : public blob_property
 {
-    BfsFileProperty() : m_valid(false) {}
-    BfsFileProperty(std::string cache_control,
-                std::string content_disposition,
-                std::string content_encoding,
-                std::string content_language,
-                std::string content_md5,
-                std::string content_type,
-                std::string etag,
-                std::string copy_status,
-                std::vector<std::pair<std::string, std::string>> metadata,
-                time_t last_modified,
+    public:
+        BfsFileProperty() : m_valid(false) {}
+        BfsFileProperty(std::string cacheControl,
+                std::string contentDisposition,
+                std::string contentEncoding,
+                std::string contentLanguage,
+                std::string contentMd5,
+                std::string contentType,
+                std::string eTag,
+                std::string copyStatus,
+                std::vector<std::pair<std::string, std::string>> metaData,
+                time_t lastModified,
                 std::string modestring,
-                unsigned long long size) :
-                m_cache_control(cache_control),
-                m_content_disposition(content_disposition),
-                m_content_encoding(content_encoding),
-                m_content_language(content_language),
-                m_content_md5(content_md5),
-                m_content_type(content_type),
-                m_etag(etag),
-                m_copy_status(copy_status),
-                m_metadata(metadata),
-                m_last_modified(last_modified),
-                m_size(size),
+                unsigned long long Size) :
                 m_valid(true)
-    {
-        // This is mainly used in the Blob Client
-        if (!modestring.empty())
         {
-            m_file_mode = 0000; // Supply no file mode to begin with unless the mode string is empty
-            for (char & c : modestring) {
-                // Start by pushing back the mode_t.
-                m_file_mode = m_file_mode << 1; // NOLINT(hicpp-signed-bitwise) (mode_t is signed, apparently. Suppress the inspection.)
-                // Then flip the new bit based on whether the mode is enabled or not.
-                // This works because we can expect a consistent 9 character modestring.
-                m_file_mode |= (c != '-');
-            }
-        }
-        else
-        {
-            m_file_mode = 0;
-        }
+            cache_control = cacheControl;
+            content_disposition = contentDisposition;
+            content_encoding = contentEncoding;
+            content_language =contentLanguage;
+            content_md5 = contentMd5;
+            content_type = contentType;
+            etag = eTag;
+            copy_status = copyStatus;
+            metadata = metaData;
+            last_modified = lastModified;
+            size = Size;
 
-        is_directory = false;
-        if (size == 0)
-        {
-            for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
+            // This is mainly used in the Blob Client
+            if (!modestring.empty())
             {
-                if ((iter->first.compare("hdi_isfolder") == 0) && (iter->second.compare("true") == 0))
-                {
-                    is_directory = true;
+                m_file_mode = 0000; // Supply no file mode to begin with unless the mode string is empty
+                for (char & c : modestring) {
+                    // Start by pushing back the mode_t.
+                    m_file_mode = m_file_mode << 1; // NOLINT(hicpp-signed-bitwise) (mode_t is signed, apparently. Suppress the inspection.)
+                    // Then flip the new bit based on whether the mode is enabled or not.
+                    // This works because we can expect a consistent 9 character modestring.
+                    m_file_mode |= (c != '-');
                 }
             }
-        }
-    }
-    BfsFileProperty(std::string cache_control,
-                    std::string content_disposition,
-                    std::string content_encoding,
-                    std::string content_language,
-                    std::string content_md5,
-                    std::string content_type,
-                    std::string etag,
-                    std::string resource_type,
-                    std::string owner,
-                    std::string group,
-                    std::string permissions,
-                    std::vector<std::pair<std::string, std::string>> metadata,
-                    time_t last_modified,
-                    std::string modestring,
-                    unsigned long long size) :
-            m_cache_control(cache_control),
-            m_content_disposition(content_disposition),
-            m_content_encoding(content_encoding),
-            m_content_language(content_language),
-            m_content_md5(content_md5),
-            m_content_type(content_type),
-            m_etag(etag),
-            m_copy_status(""),
-            m_owner(owner),
-            m_group(group),
-            m_permissions(permissions),
-            m_metadata(metadata),
-            m_last_modified(last_modified),
-            m_size(size),
-            m_valid(true)
-    {
-        //This is mainly used in the ADLS client
-        if (!modestring.empty())
-        {
-            m_file_mode = 0000; // Supply no file mode to begin with unless the mode string is empty
-            for (char & c : modestring) {
-                // Start by pushing back the mode_t.
-                m_file_mode = m_file_mode << 1; // NOLINT(hicpp-signed-bitwise) (mode_t is signed, apparently. Suppress the inspection.)
-                // Then flip the new bit based on whether the mode is enabled or not.
-                // This works because we can expect a consistent 9 character modestring.
-                m_file_mode |= (c != '-');
+            else
+            {
+                m_file_mode = 0;
             }
-        }
-        else
-        {
-            m_file_mode = 0;
-        }
-        if(resource_type == "directory")
-        {
-            is_directory = true;
-        }
-        else
-        {
+
             is_directory = false;
             if (size == 0)
             {
@@ -134,73 +74,159 @@ struct BfsFileProperty
                 }
             }
         }
-    }
 
-    std::string m_cache_control;
-    std::string m_content_disposition;
-    std::string m_content_encoding;
-    std::string m_content_language;
-    std::string m_content_md5;
-    std::string m_content_type;
-    std::string m_etag;
-    std::string m_copy_status;
-    std::string m_owner;
-    std::string m_group;
-    std::string m_permissions;
-    std::vector<std::pair<std::string, std::string>> m_metadata;
-    time_t m_last_modified;
-    mode_t m_file_mode;
-    unsigned long long m_size;
-    bool is_directory;
-    bool m_valid;
+        BfsFileProperty(std::string cacheControl,
+                    std::string contentDisposition,
+                    std::string contentEncoding,
+                    std::string contentLanguage,
+                    std::string contentMd5,
+                    std::string contentType,
+                    std::string eTag,
+                    std::string resourceType,
+                    std::string Owner,
+                    std::string Group,
+                    std::string Permissions,
+                    std::vector<std::pair<std::string, std::string>> metaData,
+                    time_t lastModified,
+                    std::string modestring,
+                    unsigned long long Size) :
+            m_valid(true)
+        {
+            cache_control = cacheControl;
+            content_disposition = contentDisposition;
+            content_encoding = contentEncoding;
+            content_language = contentLanguage;
+            content_md5 = contentMd5;
+            content_type = contentType;
+            etag = eTag;
+            copy_status = "";
+            m_owner = Owner;
+            m_group = Group;
+            m_permissions = Permissions;
+            metadata = metaData;
+            last_modified = lastModified;
+            size = Size;
 
-    bool isValid()
-    {
-        return m_valid;
-    }
+            //This is mainly used in the ADLS client
+            if (!modestring.empty())
+            {
+                m_file_mode = 0000; // Supply no file mode to begin with unless the mode string is empty
+                for (char & c : modestring) {
+                    // Start by pushing back the mode_t.
+                    m_file_mode = m_file_mode << 1; // NOLINT(hicpp-signed-bitwise) (mode_t is signed, apparently. Suppress the inspection.)
+                    // Then flip the new bit based on whether the mode is enabled or not.
+                    // This works because we can expect a consistent 9 character modestring.
+                    m_file_mode |= (c != '-');
+                }
+            }
+            else
+            {
+                m_file_mode = 0;
+            }
+            if(resourceType == "directory")
+            {
+                is_directory = true;
+            }
+            else
+            {
+                is_directory = false;
+                if (size == 0)
+                {
+                    for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
+                    {
+                        if ((iter->first.compare("hdi_isfolder") == 0) && (iter->second.compare("true") == 0))
+                        {
+                            is_directory = true;
+                        }
+                    }
+                }
+            }
+        }
 
-    unsigned long long size()
-    {
-        return m_size;
-    }
+        //std::string m_cache_control;
+        //std::string m_content_disposition;
+        //std::string m_content_encoding;
+        //std::string m_content_language;
+        //std::string m_content_md5;
+        //std::string m_content_type;
+        //std::string m_etag;
+        //std::string m_copy_status;
+        std::string m_owner;
+        std::string m_group;
+        std::string m_permissions;
+        //std::vector<std::pair<std::string, std::string>> m_metadata;
+        //time_t m_last_modified;
+        mode_t m_file_mode;
+        //unsigned long long m_size;
+        bool is_directory;
+        bool m_valid;
 
-    time_t last_modified()
-    {
-        return m_last_modified;
-    }
+        bool isValid()
+        {
+            return m_valid;
+        }
 
+        unsigned long long get_size()
+        {
+            return size;
+        }
 
+        time_t get_last_modified()
+        {
+            return last_modified;
+        }
 };
 
-struct list_segmented_item {
-    list_segmented_item(list_blobs_segmented_item);
-    list_segmented_item(list_paths_item item);
-    std::string name;
-    std::string snapshot;
-    std::string last_modified;
-    std::string etag;
-    unsigned long long content_length;
-    std::string content_encoding;
-    std::string content_type;
-    std::string content_md5;
-    std::string content_language;
-    std::string cache_control;
-    std::string copy_status;
-    std::vector<std::pair<std::string, std::string>> metadata;
-    access_control acl;
-    mode_t mode;
-    bool is_directory;
+
+class list_segmented_item  {
+    public:
+        list_segmented_item(list_blobs_segmented_item item);
+        list_segmented_item(list_paths_item item);
+
+        list_blobs_segmented_item get_block_item()
+        {
+            return block_item;
+        }
+
+        list_paths_item get_path_item()
+        {
+            return adls_item;
+        }
+
+        bool is_adls_item()
+        {
+            return adls;
+        }
+
+    private:
+        list_blobs_segmented_item block_item;
+        list_paths_item adls_item;
+        bool adls;
 };
 
-struct list_segmented_response {
-    list_segmented_response() : m_valid(false) {}
-    list_segmented_response(list_blobs_segmented_response response);
-    list_segmented_response(list_paths_result response);
-    std::string m_ms_request_id;
-    std::vector<list_segmented_item> m_items;
-    std::string m_next_marker;
-    std::string continuation_token;
-    bool m_valid;
+class list_segmented_response {
+    public:
+        list_segmented_response(list_blobs_segmented_response response);
+        list_segmented_response(list_paths_result response);
+
+        list_blobs_segmented_response get_block_item()
+        {
+            return block_item;
+        }
+
+        list_paths_result get_path_item()
+        {
+            return adls_item;
+        }
+
+        bool is_adls_item()
+        {
+            return adls;
+        }
+    private:
+        list_blobs_segmented_response block_item;
+        list_paths_result adls_item;
+        bool adls;
 };
 
 class StorageBfsClientBase
@@ -282,7 +308,7 @@ public:
     /// LIsts all directories within a list container
     /// Greedily list all blobs using the input params.
     ///</summary>
-    virtual std::vector<std::pair<std::vector<list_segmented_item>, bool>> ListAllItemsHierarchical(const std::string& prefix, const std::string& delimiter) = 0;
+    virtual std::vector<std::pair<std::vector<list_segmented_item>, bool>> ListAllItemsSegmented(const std::string& prefix, const std::string& delimiter) = 0;
     ///<summary>
     /// Updates the UNIX-style file mode on a path.
     ///</summary>

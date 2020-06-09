@@ -55,7 +55,6 @@ extern std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
 // Helper function to map an HTTP error to an errno.
 // Should be called on any errno returned from the Azure Storage cpp lite lib.
 int map_errno(int error);
-AUTH_TYPE get_auth_type();
 
 // Read Storage connection information from the config file
 int read_config(std::string configFile);

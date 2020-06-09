@@ -9,6 +9,7 @@ set (BLOBFUSE_HEADER
   blobfuse/include/gc_cache.h
   blobfuse/include/permissions.h
   blobfuse/include/StorageBfsClientBase.h
+  blobfuse/include/BlockBlobBfsClient.h
 
   blobfuse/blob_client_cache.h
   blobfuse/OAuthToken.h
@@ -23,7 +24,9 @@ set (BLOBFUSE_SOURCE
   blobfuse/src/file_lock_map.cpp
   blobfuse/src/gc_cache.cpp
   blobfuse/src/permissions.cpp
+  blobfuse/src/blobfuse_globals.cpp
   blobfuse/src/StorageBfsClientBase.cpp
+  blobfuse/src/BlockBlobBfsClient.cpp
 
   blobfuse/blob_client_cache.cpp
   blobfuse/blob_client_attr_cache_wrapper.cpp

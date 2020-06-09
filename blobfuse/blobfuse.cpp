@@ -70,26 +70,6 @@ static struct fuse_operations azs_blob_operations;
 
 const std::string log_ident = "blobfuse";
 
-inline std::string to_lower(std::string original) {
-    std::string out;
-    for (auto idx = original.begin(); idx < original.end(); idx++) {
-        if(*idx >= 'A' && *idx <= 'Z') {
-            out += char(*idx + 32); // This cast isn't required, but clang-tidy wants to complain without it.
-        } else {
-            out += *idx;
-        }
-    }
-    return out;
-}
-
-inline bool is_lowercase_string(const std::string &s)
-{
-    return (s.size() == static_cast<size_t>(std::count_if(s.begin(), s.end(),[](unsigned char c)
-    {
-        return std::islower(c);
-    })));
-}
-
 // Read Storage connection information from the environment variables
 int read_config_env()
 {
@@ -164,7 +144,9 @@ int read_config_env()
 
         if(env_auth_type)
         {
-            str_options.authType = env_auth_type;
+            str_options.authType = get_auth_type(env_auth_type);;
+        } else {
+            str_options.authType = get_auth_type();
         }
 
         if(env_aad_endpoint)
@@ -189,47 +171,6 @@ int read_config_env()
     return 0;
 }
 
-AUTH_TYPE get_auth_type() 
-{   
-    std::string lcAuthType = to_lower(str_options.authType);
-    lcAuthType = trim(lcAuthType);
-    int lcAuthTypeSize = (int)lcAuthType.size();
-    // sometimes an extra space or tab sticks to authtype thats why this size comparison, it is not always 3 lettered
-    if(lcAuthTypeSize > 0 && lcAuthTypeSize < 5) 
-    {
-        // an extra space or tab sticks to msi thats find and not ==, this happens when we also have an MSIEndpoint and MSI_SECRET in the config
-        if (lcAuthType.find("msi") != std::string::npos) {
-            // MSI does not require any parameters to work, as a lone system assigned identity will work with no parameters.
-            return MSI_AUTH;
-        } else if (lcAuthType == "key") {
-            if(!str_options.accountKey.empty()) // An account name is already expected to be specified.
-                return KEY_AUTH;
-            else
-                return INVALID_AUTH;
-        } else if (lcAuthType == "sas") {
-            if (!str_options.sasToken.empty()) // An account name is already expected to be specified.
-                return SAS_AUTH;
-            else
-                return INVALID_AUTH;
-        } else if (lcAuthType == "spn") {
-            return SPN_AUTH;
-        }
-    } 
-    else 
-    {
-        if (!str_options.objectId.empty() || !str_options.identityClientId.empty() || !str_options.resourceId.empty() || !str_options.msiSecret.empty() || !str_options.msiEndpoint.empty()) {
-            return MSI_AUTH;
-        } else if (!str_options.accountKey.empty()) {
-            return KEY_AUTH;
-        } else if (!str_options.sasToken.empty()) {
-            return SAS_AUTH;
-        } else if (!str_options.spnClientSecret.empty() && !str_options.spnClientId.empty() && !str_options.spnTenantId.empty()) {
-            return SPN_AUTH;
-        }
-    }
-    return INVALID_AUTH;
-}
-
 // Read Storage connection information from the config file
 int read_config(const std::string configFile)
 {
@@ -243,6 +184,7 @@ int read_config(const std::string configFile)
 
     std::string line;
     std::istringstream data;
+    bool set_auth_type = false;
 
     char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
     char* env_msi_secret = getenv("MSI_SECRET");
@@ -308,8 +250,8 @@ int read_config(const std::string configFile)
         }
         else if(line.find("authType") != std::string::npos)
         {
-            std::string authTypeStr(value);
-            str_options.authType = authTypeStr;
+            str_options.authType = get_auth_type(value);
+            set_auth_type = true;
         }
         else if(line.find("msiEndpoint") != std::string::npos)
         {
@@ -341,6 +283,11 @@ int read_config(const std::string configFile)
         data.clear();
     }
 
+    if(!set_auth_type)
+    {
+        str_options.authType = get_auth_type();
+    }
+    
     if(str_options.accountName.empty())
     {
         syslog (LOG_CRIT, "Unable to start blobfuse. Account name is missing in the config file.");
