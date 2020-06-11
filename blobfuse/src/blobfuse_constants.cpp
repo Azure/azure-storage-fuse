@@ -20,6 +20,14 @@ namespace blobfuse_constants {
     const char* header_metadata = "Metadata";
     const char* header_msi_secret = "Secret";
 
+    const char* header_user_agent = "User-Agent";
+    const char* header_value_user_agent = "Azure-Storage-Fuse/1.2.4-TEST";
+    const char* header_ms_date = "x-ms-date";
+    const char* header_ms_version = "x-ms-version";
+    const char* header_value_storage_version = "2018-11-09";
+    const char* header_ms_properties = "x-ms-properties";
+    const char* header_ms_resource_type = "x-ms-resource-type";
+
     const int unknown_error = 1600;
 
     const unsigned int acl_size = 9;

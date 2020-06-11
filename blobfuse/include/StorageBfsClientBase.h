@@ -178,55 +178,35 @@ class BfsFileProperty : public blob_property
 };
 
 
-class list_segmented_item  {
-    public:
-        list_segmented_item(list_blobs_segmented_item item);
-        list_segmented_item(list_paths_item item);
-
-        list_blobs_segmented_item get_block_item()
-        {
-            return block_item;
-        }
-
-        list_paths_item get_path_item()
-        {
-            return adls_item;
-        }
-
-        bool is_adls_item()
-        {
-            return adls;
-        }
-
-    private:
-        list_blobs_segmented_item block_item;
-        list_paths_item adls_item;
-        bool adls;
+struct list_segmented_item {
+    list_segmented_item(list_blobs_segmented_item);
+    list_segmented_item(list_paths_item item);
+    std::string name;
+    std::string snapshot;
+    std::string last_modified;
+    std::string etag;
+    unsigned long long content_length;
+    std::string content_encoding;
+    std::string content_type;
+    std::string content_md5;
+    std::string content_language;
+    std::string cache_control;
+    //std::string copy_status;
+    std::vector<std::pair<std::string, std::string>> metadata;
+    access_control acl;
+    mode_t mode;
+    bool is_directory;
 };
 
-class list_segmented_response {
-    public:
-        list_segmented_response(list_blobs_segmented_response response);
-        list_segmented_response(list_paths_result response);
-
-        list_blobs_segmented_response get_block_item()
-        {
-            return block_item;
-        }
-
-        list_paths_result get_path_item()
-        {
-            return adls_item;
-        }
-
-        bool is_adls_item()
-        {
-            return adls;
-        }
-    private:
-        list_blobs_segmented_response block_item;
-        list_paths_result adls_item;
-        bool adls;
+struct list_segmented_response {
+    list_segmented_response() : m_valid(false) {}
+    list_segmented_response(list_blobs_segmented_response response);
+    list_segmented_response(list_paths_result response);
+    std::string m_ms_request_id;
+    std::vector<list_segmented_item> m_items;
+    std::string m_next_marker;
+    std::string continuation_token;
+    bool m_valid;
 };
 
 class StorageBfsClientBase

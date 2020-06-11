@@ -700,6 +700,7 @@ int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std
     return 0;
 }
 
+
 int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::vector<std::string> & files_to_remove_cache)
 {
     AZS_DEBUGLOGV("azs_rename_directory called with src = %s, dst = %s.\n", src.c_str(), dst.c_str());
@@ -776,16 +777,14 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
 
     // Rename all files & directories that don't exist in the local cache.
     errno = 0;
-    std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResults = ListAllItemsSegmented(
-                                                                                                    "/",
-                                                                                                    src.substr(1));
+    std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResults = ListAllItemsSegmented("/",
+                                                                                                src.substr(1));
     if (errno != 0)
     {
         int storage_errno = errno;
         syslog(LOG_ERR, "list blobs operation failed during attempt to rename directory %s to %s.  errno = %d.\n", src.c_str(), dst.c_str(), storage_errno);
         return 0 - map_errno(storage_errno);
     }
-         
     AZS_DEBUGLOGV("Total of %d result lists found from list_blobs call during rename operation\n.", (int)listResults.size());
     for (size_t result_lists_index = 0; result_lists_index < listResults.size(); result_lists_index++)
     {
@@ -793,20 +792,17 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
         for (size_t i = start; i < listResults[result_lists_index].first.size(); i++)
         {
             // We need to parse out just the trailing part of the path name.
-            list_segmented_item set_item = listResults[result_lists_index].first[i];
-            list_blobs_segmented_item block_item = set_item.get_block_item();
-
-            int len = block_item.name.size();
+            int len = listResults[result_lists_index].first[i].name.size();
             if (len > 0)
             {
                 std::string prev_token_str;
-                if (block_item.name.back() == '/')
+                if (listResults[result_lists_index].first[i].name.back() == '/')
                 {
-                    prev_token_str = block_item.name.substr(src.size() - 1, block_item.name.size() - src.size());
+                    prev_token_str = listResults[result_lists_index].first[i].name.substr(src.size() - 1, listResults[result_lists_index].first[i].name.size() - src.size());
                 }
                 else
                 {
-                    prev_token_str = block_item.name.substr(src.size() - 1);
+                    prev_token_str = listResults[result_lists_index].first[i].name.substr(src.size() - 1);
                 }
 
                 // TODO: order or hash the list to improve perf
@@ -824,7 +820,7 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
                     newDst[dst.size() + nameLen] = '\0';
 
                     AZS_DEBUGLOGV("Object found on the service - about to rename %s to %s.\n", newSrc, newDst);
-                    if (block_item.is_directory)
+                    if (listResults[result_lists_index].first[i].is_directory)
                     {
                         rename_directory(newSrc, newDst, files_to_remove_cache);
                     }
@@ -870,22 +866,17 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClien
         {
             success = true;
             failcount = 0;
-            list_blobs_segmented_response block_item = response.get_block_item();
-
-            AZS_DEBUGLOGV("Successful call to list_blobs_segmented.  results count = %d, next_marker = %s.\n", 
-                        (int)block_item.blobs.size(), block_item.next_marker.c_str());
-
-            continuation = block_item.next_marker;
-            if(!block_item.blobs.empty())
+            AZS_DEBUGLOGV("Successful call to list_blobs_segmented.  results count = %d, next_marker = %s.\n", (int)response.m_items.size(), response.m_next_marker.c_str());
+            continuation = response.m_next_marker;
+            if(!response.m_items.empty())
             {
-                /*bool skip_first = false;
-                if(block_item.blobs[0].name == prior)
+                bool skip_first = false;
+                if(response.m_items[0].name == prior)
                 {
                     skip_first = true;
                 }
-                prior = block_item.blobs.back().name;
-                // VB : results.emplace_back(std::move(list_segmented_item(block_item)), skip_first);
-                */
+                prior = response.m_items.back().name;
+                results.emplace_back(std::move(response.m_items), skip_first);
             }
         }
         else

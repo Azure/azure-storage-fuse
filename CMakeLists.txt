@@ -8,9 +8,10 @@ set (BLOBFUSE_HEADER
   blobfuse/include/file_lock_map.h
   blobfuse/include/gc_cache.h
   blobfuse/include/permissions.h
+  blobfuse/include/get_dfs_properties_request.h
   blobfuse/include/StorageBfsClientBase.h
   blobfuse/include/BlockBlobBfsClient.h
-
+  blobfuse/include/DataLakeBfsClient.h
   blobfuse/blob_client_cache.h
   blobfuse/OAuthToken.h
   blobfuse/OAuthTokenCredentialManager.h
@@ -24,9 +25,11 @@ set (BLOBFUSE_SOURCE
   blobfuse/src/file_lock_map.cpp
   blobfuse/src/gc_cache.cpp
   blobfuse/src/permissions.cpp
+  blobfuse/src/get_dfs_properties_request.cpp
   blobfuse/src/blobfuse_globals.cpp
   blobfuse/src/StorageBfsClientBase.cpp
   blobfuse/src/BlockBlobBfsClient.cpp
+  blobfuse/src/DataLakeBfsClient.cpp
 
   blobfuse/blob_client_cache.cpp
   blobfuse/blob_client_attr_cache_wrapper.cpp
@@ -38,6 +41,7 @@ set (BLOBFUSE_SOURCE
 )
 
 if(UNIX)
+  #set( CMAKE_VERBOSE_MAKEFILE on )
   project(blobfuse)
   find_package(Threads REQUIRED)
   find_package(CURL REQUIRED)
@@ -51,17 +55,18 @@ if(UNIX)
   add_definitions(-D_FILE_OFFSET_BITS=64)
  # set(WARNING "-Wall -Wextra -Werror -pedantic -pedantic-errors")
   set(WARNING "-Wall -Wextra -Werror")
-  set(CMAKE_CXX_FLAGS "${CMAKE_THREAD_LIBS_INIT} ${WARNING} ${CMAKE_CXX_FLAGS}")
-  include_directories(${CMAKE_SOURCE_DIR}/blobfuse ${CMAKE_SOURCE_DIR}/blobfuse/include ${CMAKE_SOURCE_DIR}/cpplite/include ${CMAKE_SOURCE_DIR}/cpplite/adls/include ${CURL_INCLUDE_DIRS} ${GNUTLS_INCLUDE_DIR} ${Boost_INCLUDE_DIR} nlohmann-json)
 
+  set(CMAKE_CXX_FLAGS "${CMAKE_THREAD_LIBS_INIT} ${WARNING} ${CMAKE_CXX_FLAGS}")
+
+  include_directories(${CMAKE_SOURCE_DIR}/blobfuse ${CMAKE_SOURCE_DIR}/blobfuse/include ${CMAKE_SOURCE_DIR}/cpplite/include ${CMAKE_SOURCE_DIR}/cpplite/adls/include ${CURL_INCLUDE_DIRS} ${GNUTLS_INCLUDE_DIR} ${Boost_INCLUDE_DIR} nlohmann-json)
   set(CMAKE_MACOSX_RPATH ON)
+  pkg_search_module(UUID REQUIRED uuid)
+  
+  link_directories(${CMAKE_SOURCE_DIR}/cpplite/build.release)
 
   add_executable(blobfuse ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} blobfuse/main.cpp)
-  add_subdirectory(cpplite)
-  add_dependencies (blobfuse azure-storage-lite)
 
-  pkg_search_module(UUID REQUIRED uuid)
-  target_link_libraries(blobfuse ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} azure-storage-lite fuse gcrypt)
+  target_link_libraries(blobfuse azure-storage-adls azure-storage-lite ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt)
   install(TARGETS blobfuse
     PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
     DESTINATION bin)

@@ -35,7 +35,7 @@ namespace azure { namespace storage_adls {
     /// Provides a client-side representation of ADLS Gen2 service on Microsoft Azure. This client is used to configure and execute requests against the service.
     /// </summary>
     /// <remarks>The service client encapsulates the base URI for the service. If the service client will be used for authenticated access, it also encapsulates the credentials for accessing the storage account.</remarks>
-    class adls_client final
+    class adls_client
     {
     public:
         /// <summary>
@@ -310,7 +310,8 @@ namespace azure { namespace storage_adls {
         {
             return m_exception_enabled;
         }
-    private:
+
+    protected:
         template<class RET, class FUNC>
         RET blob_client_adaptor(FUNC func);
 
@@ -319,7 +320,6 @@ namespace azure { namespace storage_adls {
             return !(!m_exception_enabled && errno != 0);
         }
 
-    private:
         std::shared_ptr<azure::storage_lite::blob_client> m_blob_client;
         std::shared_ptr<storage_account> m_account;
         std::shared_ptr<executor_context> m_context;

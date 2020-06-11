@@ -49,6 +49,14 @@ namespace blobfuse_constants {
     extern const char* param_oauth_resource;
     extern const char* header_metadata;
     extern const char* header_msi_secret;
+    extern const char* header_user_agent;
+    extern const char* header_value_user_agent;
+    extern const char * header_ms_date;
+    extern const char* header_ms_version;
+    extern const char* header_value_storage_version;
+    extern const char* header_ms_properties;
+    extern const char* header_ms_resource_type;
+
     extern const int unknown_error;
 
     extern const unsigned int acl_size;
