@@ -437,36 +437,67 @@ int azs_getattr(const char *path, struct stat *stbuf)
     errno = 0;
     list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(str_options.containerName, "/", "", blobNameStr, 2) ;
     
-    if (errno == 0 && response.blobs.size() > 0  && (!response.blobs[0].name.compare(blobNameStr) || !response.blobs[0].name.compare(blobNameStr + '/')) )
+    if (errno == 0 && response.blobs.size() > 0 )
     {
-        // the first element should be exact match prefix
-        if (is_directory_blob(0, response.blobs[0].metadata) || response.blobs[0].is_directory)
+        list_blobs_hierarchical_item blobItem;
+
+        unsigned int i =0;
+        
+        for (i=0; i < response.blobs.size(); i++)
         {
-            syslog(LOG_DEBUG, "%s is a directory, blob name is %s\n", mntPathString.c_str(), response.blobs[0].name.c_str() ); 
+            syslog(LOG_DEBUG, "In azs_getattr list_blobs_hierarchical_item %d file %s\n", i, response.blobs[i].name.c_str() );
+            // find the element with the exact prefix
+            // this could lead to a bug when there is a file with the same name as the directory in the parent directory. In short, that won't work.
+            if (response.blobs[i].name == blobNameStr || response.blobs[i].name == (blobNameStr + '/') )
+            {
+                blobItem = response.blobs[i];
+                syslog(LOG_DEBUG, "In azs_getattr found blob in list hierarchical file %s\n", blobItem.name.c_str() );
+                // leave 'i' at the value it is, it will be used below to check for directory empty check.
+                break;
+            }
+        }
+        
+        if (!blobItem.name.empty() && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
+        {
+            syslog(LOG_DEBUG, "%s is a directory, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str() ); 
             AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
             stbuf->st_mode = S_IFDIR | default_permission;
             // If st_nlink = 2, means directory is empty.
             // Directory size will affect behaviour for mv, rmdir, cp etc.
             stbuf->st_uid = fuse_get_context()->uid;
-            stbuf->st_gid = fuse_get_context()->gid;            
-            stbuf->st_nlink = response.blobs.size() > 1 ? 3 : 2;
+            stbuf->st_gid = fuse_get_context()->gid;   
+            // check if the directory is empty    
+            unsigned int dirSize = 1; // root directory exists so 1
+            while ( ++i < response.blobs.size() )  
+            {
+                // match dir name or longer paths to determine dirSize
+                if ( response.blobs[i].name.compare(blobNameStr + '/') < 0)
+                {
+                    dirSize++;
+                }                
+            }
+            stbuf->st_nlink = dirSize > 1 ? 3 : 2;
             stbuf->st_size = 4096;
             return 0;
         }
-        else
+        else if (!blobItem.name.empty() )
         {
-            syslog(LOG_DEBUG, "%s is a file, blob name is %s\n", mntPathString.c_str(), response.blobs[0].name.c_str() ); 
+            syslog(LOG_DEBUG, "%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str() ); 
             AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
             stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
             stbuf->st_uid = fuse_get_context()->uid;
             stbuf->st_gid = fuse_get_context()->gid;
             auto blob_property = azure_blob_client_wrapper->get_blob_property(str_options.containerName, blobNameStr);
             stbuf->st_mtime = blob_property.last_modified;
-            AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", response.blobs[0].last_modified.c_str(), blob_property.size);
+            AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", blobItem.last_modified.c_str(), blob_property.size);
             stbuf->st_nlink = 1;
             stbuf->st_size = blob_property.size;
             return 0;
         }
+        else // none of the blobs match exactly so blob not found
+        { 
+            return -(ENOENT);
+        }     
     }
     else if (errno > 0)
     {
