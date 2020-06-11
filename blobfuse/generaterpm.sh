@@ -25,13 +25,12 @@ do
      case "$1" in
         -srcdir) srcdir="$2"; shift;;
         -ver) version="$2"; shift;;
-        -sdkver) sdkver="$2"; shift;;
         -dstdir) dstdir="$2"; shift;;        
         -distrover) distrover="$2"; shift;;
         --) shift; break;;
         -*)
                 echo >&2 \
-                "Usage: $0 [-ver version] [-sdkver sdkver] [-srcdir source_directory] [-dstdir destination_directory]  [-distrover distro_version]"
+                "Usage: $0 [-ver version] [-srcdir source_directory] [-dstdir destination_directory]  [-distrover distro_version]"
                 exit 1;;
         *)  break;;     # terminate while loop
     esac
@@ -59,7 +58,7 @@ fi
 # These are needed directories for the rpmbuild package
 directories=( ./rpmbuild ./rpmbuild/SOURCES ./rpmbuild/SPECS )
 
-echo "Building RPM package for version" $version;
+echo "Building RPM package for blobfuse version" $version;
 
 origdir=`pwd`
 echo "From: " ${origdir};
@@ -72,9 +71,9 @@ done
 
 cd ${srcdir}
 echo "Creating Tar from: "${srcdir};
-tar -zcvf blobfuse-${version}.tar.gz RouterAgent http-parser
+tar -xcvf blobfuse-${version}.tar.gz blobfuse README.md LICENSE
 echo "Copying Tar to: ~/rpmbuild/SOURCES";
-cp TerAgent-${version}.tar.gz ~/rpmbuild/SOURCES
+cp blobfuse-${version}-${distrover}.tar.gz ~/rpmbuild/SOURCES
 cd -
 
 # prepare files for rpmbuild
@@ -109,40 +108,27 @@ Requires: fuse >= 2.2.7
 # %setup -q
 rm -rf blobfuse-$version
 mkdir blobfuse-$version
-tar xzvf %_sourcedir/blobfuse-$version.tar.gz -C ./TerAgent-$version
+tar xzvf %_sourcedir/blobfuse-$version-$distrover.tar.gz -C ./blbofuse-$version
 
 %build
-cd TerAgent-$version/RouterAgent/TransitEdgeRouter/Arista
 make clean
 make
-
-%install
-rm -rf %{buildroot}
-mkdir -p  %{buildroot}/usr/local/bin/ter
-mkdir -p  %{buildroot}/usr/lib/SysdbMountProfiles
-
-# Copy in builddir (this is neeed bcs we don't have a Makefile in the root)
-# ideally we should have a Makefile in the root and do make install there.
-cp -a TerAgent-$version/RouterAgent/TransitEdgeRouter/Arista/TerAgent %{buildroot}/usr/local/bin/ter
-cp -a TerAgent-$version/RouterAgent/TransitEdgeRouter/Arista/SysdbMountProfiles/TerAgent %{buildroot}/usr/lib/SysdbMountProfiles
 
 %clean
 
 %files
 %defattr(555,root,root,555)
-/usr/local/bin/ter/*
-%attr(644,root,root) /usr/lib/SysdbMountProfiles/*
 
 %changelog
-* Thu Aug 01 2018 Azure WAN Team <wandp@microsoft.com>
-- Building RPM package for TerAgent using rpmbuilder
+* June 10th 2020 Azure Storage DevX Team <blobfusedev@microsoft.com>
+- Building RPM package for Blobfuse using rpmbuilder
 
 EOF
 
 # run rpmbuild from its folder
 cd ~/rpmbuild/SPECS
-rpmbuild --target i386 --nodeps -ba TerAgent.spec
+rpmbuild --target ./ --nodeps -ba blobfuse.spec
 cd -
 
 # copy RPM output to the local directory
-cp ~/rpmbuild/RPMS/i386/TerAgent-${version}-${sdkver}.i386.rpm .
+cp ~/rpmbuild/blobfuse-${version}-${distrover}.rpm .
