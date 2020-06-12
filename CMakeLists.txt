@@ -3,12 +3,12 @@ cmake_minimum_required(VERSION 2.8)
 set (BLOBFUSE_HEADER
   blobfuse/blobfuse.h
  
-  blobfuse/include/blobfuse_constants.h
-  blobfuse/include/blobfuse_globals.h
-  blobfuse/include/file_lock_map.h
-  blobfuse/include/gc_cache.h
-  blobfuse/include/permissions.h
-  blobfuse/include/get_dfs_properties_request.h
+  blobfuse/include/BlobfuseConstants.h
+  blobfuse/include/BlobfuseGlobals.h
+  blobfuse/include/FileLockMap.h
+  blobfuse/include/BlobfuseGcCache.h
+  blobfuse/include/Permissions.h
+  blobfuse/include/DfsProperties.h
   blobfuse/include/StorageBfsClientBase.h
   blobfuse/include/BlockBlobBfsClient.h
   blobfuse/include/DataLakeBfsClient.h
@@ -21,12 +21,12 @@ set (BLOBFUSE_SOURCE
 #  blobfuse/blobfuse.cpp    # We don't include blobfuse.cpp because the file contents are directly #included in main.cpp.  This allows us to split main() and everything
 #                             else into different files, without having to define each function in a header for only one consumer.  The only reason to do all this is so
 #                             we can test functionality in blobfuse.cpp without including main() (which would break gtest).
-  blobfuse/src/blobfuse_constants.cpp
-  blobfuse/src/file_lock_map.cpp
-  blobfuse/src/gc_cache.cpp
-  blobfuse/src/permissions.cpp
-  blobfuse/src/get_dfs_properties_request.cpp
-  blobfuse/src/blobfuse_globals.cpp
+  blobfuse/src/BlobfuseConstants.cpp
+  blobfuse/src/FileLockMap.cpp
+  blobfuse/src/BlobfuseGcCache.cpp
+  blobfuse/src/Permissions.cpp
+  blobfuse/src/DfsProperties.cpp
+  blobfuse/src/BlobfuseGlobals.cpp
   blobfuse/src/StorageBfsClientBase.cpp
   blobfuse/src/BlockBlobBfsClient.cpp
   blobfuse/src/DataLakeBfsClient.cpp
