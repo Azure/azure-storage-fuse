@@ -14,8 +14,8 @@ set (BLOBFUSE_HEADER
   blobfuse/include/DataLakeBfsClient.h
   blobfuse/include/AttrCacheWrapper.h
 
-  blobfuse/OAuthToken.h
-  blobfuse/OAuthTokenCredentialManager.h
+  blobfuse/include/OAuthToken.h
+  blobfuse/include/OAuthTokenCredentialManager.h
 )
 
 set (BLOBFUSE_SOURCE
@@ -35,11 +35,13 @@ set (BLOBFUSE_SOURCE
   blobfuse/src/AttrCacheWrapperLogin.cpp
   blobfuse/src/AttrCacheWrapper.cpp
 
+  blobfuse/src/OAuthToken.cpp
+  blobfuse/src/OAuthTokenCredentialManager.cpp
+
   blobfuse/fileapis.cpp
   blobfuse/directoryapis.cpp
   blobfuse/utilities.cpp
-  blobfuse/OAuthToken.cpp
-  blobfuse/OAuthTokenCredentialManager.cpp
+
 )
 
 if(UNIX)

@@ -2,6 +2,8 @@
 #include <FileLockMap.h>
 #include <sys/file.h>
 
+int azs_rename_directory(const char *src, const char *dst);
+
 int map_errno(int error)
 {
     auto mapping = error_mapping.find(error);
@@ -108,129 +110,6 @@ int ensure_files_directory_exists_in_cache(const std::string& file_path)
     free(copypath);
     return status;
 }
-
-std::vector<std::pair<std::vector<list_blobs_segmented_item>, bool>> list_all_blobs_segmented(const std::string& container, const std::string& delimiter, const std::string& prefix)
-{
-    static const int maxFailCount = 20;
-    std::vector<std::pair<std::vector<list_blobs_segmented_item>, bool>>  results;
-
-    std::string continuation;
-
-    std::string prior;
-    bool success = false;
-    int failcount = 0;
-    do
-    {
-        AZS_DEBUGLOGV("About to call list_blobs_segmented.  Container = %s, delimiter = %s, continuation = %s, prefix = %s\n", container.c_str(), delimiter.c_str(), continuation.c_str(), prefix.c_str());
-
-        errno = 0;
-        list_blobs_segmented_response response = azure_blob_client_wrapper->list_blobs_segmented(container, delimiter, continuation, prefix);
-        if (errno == 0)
-        {
-            success = true;
-            failcount = 0;
-            AZS_DEBUGLOGV("Successful call to list_blobs_segmented.  results count = %s, next_marker = %s.\n", to_str(response.blobs.size()).c_str(), response.next_marker.c_str());
-            continuation = response.next_marker;
-            if(response.blobs.size() > 0)
-            {
-                bool skip_first = false;
-                if(response.blobs[0].name == prior)
-                {
-                    skip_first = true;
-                }
-                prior = response.blobs.back().name;
-                results.push_back(std::make_pair(std::move(response.blobs), skip_first));
-            }
-        }
-        else
-        {
-            failcount++;
-            success = false;
-            syslog(LOG_WARNING, "list_blobs_segmented failed for the %d time with errno = %d.\n", failcount, errno);
-
-        }
-    } while (((continuation.size() > 0) || !success) && (failcount < maxFailCount));
-
-    // errno will be set by list_blobs_segmented if the last call failed and we're out of retries.
-    return results;
-}
-
-/*
- * Check if the directory is empty or not by checking if there is any blob with prefix exists in the specified container.
- *
- * return
- *   - D_NOTEXIST if there's nothing there (the directory does not exist)
- *   - D_EMPTY is there's exactly one blob, and it's the ".directory" blob
- *   - D_NOTEMPTY otherwise (the directory exists and is not empty.)
- */
-int is_directory_empty(const std::string& container, const std::string& dir_name)
-{
-    std::string delimiter = "/";
-    bool dir_blob_exists = false;
-    errno = 0;
-    blob_property props = azure_blob_client_wrapper->get_blob_property(container, dir_name);
-    if ((errno == 0) && (props.valid()))
-    {
-        dir_blob_exists = is_directory_blob(props.size, props.metadata);
-    }
-    if (errno != 0)
-    {
-        if ((errno != 404) && (errno != ENOENT))
-        {
-            return -1; // Failure in fetching properties - errno set by blob_exists
-        }
-    }
-
-    std::string prefix_with_slash = dir_name;
-    prefix_with_slash.append(delimiter);
-    std::string continuation;
-    bool success = false;
-    int failcount = 0;
-    bool old_dir_blob_found = false;
-    do
-    {
-        errno = 0;
-        list_blobs_segmented_response response = azure_blob_client_wrapper->list_blobs_segmented(container, delimiter, continuation, prefix_with_slash, 2);
-        if (errno == 0)
-        {
-            success = true;
-            failcount = 0;
-            continuation = response.next_marker;
-            if (response.blobs.size() > 1)
-            {
-                return D_NOTEMPTY;
-            }
-            if (response.blobs.size() > 0)
-            {
-                if ((!old_dir_blob_found) &&
-                    (!response.blobs[0].is_directory) &&
-                    (response.blobs[0].name.size() > former_directory_signifier.size()) &&
-                    (0 == response.blobs[0].name.compare(response.blobs[0].name.size() - former_directory_signifier.size(), former_directory_signifier.size(), former_directory_signifier)))
-                {
-                    old_dir_blob_found = true;
-                }
-                else
-                {
-                    return D_NOTEMPTY;
-                }
-            }
-        }
-        else
-        {
-            success = false;
-            failcount++; //TODO: use to set errno.
-        }
-    } while ((continuation.size() > 0 || !success) && failcount < 20);
-
-    if (!success)
-    {
-    // errno will be set by list_blobs_segmented if the last call failed and we're out of retries.
-        return -1;
-    }
-
-    return old_dir_blob_found || dir_blob_exists ? D_EMPTY : D_NOTEXIST;
-}
-
 
 int azs_getattr(const char *path, struct stat *stbuf)
 {
@@ -397,6 +276,35 @@ int azs_access(const char * /*path*/, int /*mask*/)
     return 0;  // permit all access
 }
 
+int azs_readlink(const char *path, char *buf, size_t size)
+{
+    AZS_DEBUGLOGV("azs_readlink called with path = %s, buf size = %ld\n", path, size);
+
+    auto fmutex = file_lock_map::get_instance()->get_mutex(path);
+    std::lock_guard<std::mutex> lock(*fmutex);
+
+    blob_property prop = azure_blob_client_wrapper->get_blob_property(str_options.containerName, path+1);
+
+    std::stringstream os;
+
+    errno = 0;
+    azure_blob_client_wrapper->download_blob_to_stream(str_options.containerName, path+1, 0, prop.size, os);
+    if (errno != 0)
+    {
+        int storage_errno = errno;
+        syslog(LOG_ERR, "Failing blob download in azs_readlink with path %s because of an error from download_blob_to_stream.  Errno = %d.\n", path, storage_errno);
+        return 0 - map_errno(storage_errno);
+    }
+    else
+    {
+	    os.read(buf, prop.size);
+	    buf[prop.size]= '\0';
+        syslog(LOG_INFO, "Successfully downloaded the file %s with buf = %s.\n", path, buf);
+    }
+
+    return 0;
+}
+
 int azs_fsync(const char * /*path*/, int /*isdatasync*/, struct fuse_file_info * /*fi*/)
 {
     return 0; // Skip for now
@@ -409,12 +317,20 @@ int azs_chown(const char * /*path*/, uid_t /*uid*/, gid_t /*gid*/)
     return 0;
 }
 
+// VB : TODO : This needs remerging
 int azs_chmod(const char * /*path*/, mode_t /*mode*/)
 {
-    //TODO: Implement
-//    return -ENOSYS;
-    return 0;
+    #if 0
+    //This is only functional when --use-adls is enabled as a mount flag
+    AZS_DEBUGLOGV("azs_chmod called with path = %s, mode = %o.\n", path, mode);
 
+    errno = 0;
+    storage_client->ChangeMode(path, mode);
+
+    return errno;
+    #else
+    return 0;
+    #endif
 }
 
 //#ifdef HAVE_UTIMENSAT
@@ -425,6 +341,34 @@ int azs_utimens(const char * /*path*/, const struct timespec [2] /*ts[2]*/)
     return 0;
 }
 //  #endif
+
+// TODO: Fix bug where the files and directories in the source in the file cache are not deleted.
+// TODO: Fix bugs where the a file has been created but not yet uploaded.
+// TODO: Fix the bug where this fails for multi-level dirrectories.
+// TODO: If/when we upgrade to FUSE 3.0, we will need to worry about the additional possible flags (RENAME_EXCHANGE and RENAME_NOREPLACE)
+// VB : TODO : This needs remerging
+int azs_rename(const char *src, const char *dst)
+{
+    AZS_DEBUGLOGV("azs_rename called with src = %s, dst = %s.\n", src, dst);
+
+    struct stat statbuf;
+    errno = 0;
+    int getattrret = azs_getattr(src, &statbuf);
+    if (getattrret != 0)
+    {
+        return getattrret;
+    }
+    if ((statbuf.st_mode & S_IFDIR) == S_IFDIR)
+    {
+        azs_rename_directory(src, dst);
+    }
+    else
+    {
+        azs_rename_single_file(src, dst);
+    }
+
+    return 0;
+}
 
 int azs_rename_directory(const char *src, const char *dst)
 {
@@ -569,34 +513,6 @@ int azs_rename_directory(const char *src, const char *dst)
     return 0;
 }
 
-// TODO: Fix bug where the files and directories in the source in the file cache are not deleted.
-// TODO: Fix bugs where the a file has been created but not yet uploaded.
-// TODO: Fix the bug where this fails for multi-level dirrectories.
-// TODO: If/when we upgrade to FUSE 3.0, we will need to worry about the additional possible flags (RENAME_EXCHANGE and RENAME_NOREPLACE)
-int azs_rename(const char *src, const char *dst)
-{
-    AZS_DEBUGLOGV("azs_rename called with src = %s, dst = %s.\n", src, dst);
-
-    struct stat statbuf;
-    errno = 0;
-    int getattrret = azs_getattr(src, &statbuf);
-    if (getattrret != 0)
-    {
-        return getattrret;
-    }
-    if ((statbuf.st_mode & S_IFDIR) == S_IFDIR)
-    {
-        azs_rename_directory(src, dst);
-    }
-    else
-    {
-        azs_rename_single_file(src, dst);
-    }
-
-    return 0;
-}
-
-
 int azs_setxattr(const char * /*path*/, const char * /*name*/, const char * /*value*/, size_t /*size*/, int /*flags*/)
 {
     return -ENOSYS;
@@ -614,6 +530,7 @@ int azs_removexattr(const char * /*path*/, const char * /*name*/)
     return -ENOSYS;
 }
 
+
 bool is_symlink_blob(std::vector<std::pair<std::string, std::string>> metadata)
 {
     for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
@@ -624,4 +541,132 @@ bool is_symlink_blob(std::vector<std::pair<std::string, std::string>> metadata)
         }
     }
     return false;
+}
+
+
+
+
+
+
+
+std::vector<std::pair<std::vector<list_blobs_segmented_item>, bool>> list_all_blobs_segmented(const std::string& container, const std::string& delimiter, const std::string& prefix)
+{
+    static const int maxFailCount = 20;
+    std::vector<std::pair<std::vector<list_blobs_segmented_item>, bool>>  results;
+
+    std::string continuation;
+
+    std::string prior;
+    bool success = false;
+    int failcount = 0;
+    do
+    {
+        AZS_DEBUGLOGV("About to call list_blobs_segmented.  Container = %s, delimiter = %s, continuation = %s, prefix = %s\n", container.c_str(), delimiter.c_str(), continuation.c_str(), prefix.c_str());
+
+        errno = 0;
+        list_blobs_segmented_response response = azure_blob_client_wrapper->list_blobs_segmented(container, delimiter, continuation, prefix);
+        if (errno == 0)
+        {
+            success = true;
+            failcount = 0;
+            AZS_DEBUGLOGV("Successful call to list_blobs_segmented.  results count = %s, next_marker = %s.\n", to_str(response.blobs.size()).c_str(), response.next_marker.c_str());
+            continuation = response.next_marker;
+            if(response.blobs.size() > 0)
+            {
+                bool skip_first = false;
+                if(response.blobs[0].name == prior)
+                {
+                    skip_first = true;
+                }
+                prior = response.blobs.back().name;
+                results.push_back(std::make_pair(std::move(response.blobs), skip_first));
+            }
+        }
+        else
+        {
+            failcount++;
+            success = false;
+            syslog(LOG_WARNING, "list_blobs_segmented failed for the %d time with errno = %d.\n", failcount, errno);
+
+        }
+    } while (((continuation.size() > 0) || !success) && (failcount < maxFailCount));
+
+    // errno will be set by list_blobs_segmented if the last call failed and we're out of retries.
+    return results;
+}
+
+/*
+ * Check if the directory is empty or not by checking if there is any blob with prefix exists in the specified container.
+ *
+ * return
+ *   - D_NOTEXIST if there's nothing there (the directory does not exist)
+ *   - D_EMPTY is there's exactly one blob, and it's the ".directory" blob
+ *   - D_NOTEMPTY otherwise (the directory exists and is not empty.)
+ */
+int is_directory_empty(const std::string& container, const std::string& dir_name)
+{
+    std::string delimiter = "/";
+    bool dir_blob_exists = false;
+    errno = 0;
+    blob_property props = azure_blob_client_wrapper->get_blob_property(container, dir_name);
+    if ((errno == 0) && (props.valid()))
+    {
+        dir_blob_exists = is_directory_blob(props.size, props.metadata);
+    }
+    if (errno != 0)
+    {
+        if ((errno != 404) && (errno != ENOENT))
+        {
+            return -1; // Failure in fetching properties - errno set by blob_exists
+        }
+    }
+
+    std::string prefix_with_slash = dir_name;
+    prefix_with_slash.append(delimiter);
+    std::string continuation;
+    bool success = false;
+    int failcount = 0;
+    bool old_dir_blob_found = false;
+    do
+    {
+        errno = 0;
+        list_blobs_segmented_response response = azure_blob_client_wrapper->list_blobs_segmented(container, delimiter, continuation, prefix_with_slash, 2);
+        if (errno == 0)
+        {
+            success = true;
+            failcount = 0;
+            continuation = response.next_marker;
+            if (response.blobs.size() > 1)
+            {
+                return D_NOTEMPTY;
+            }
+            if (response.blobs.size() > 0)
+            {
+                if ((!old_dir_blob_found) &&
+                    (!response.blobs[0].is_directory) &&
+                    (response.blobs[0].name.size() > former_directory_signifier.size()) &&
+                    (0 == response.blobs[0].name.compare(response.blobs[0].name.size() - former_directory_signifier.size(), former_directory_signifier.size(), former_directory_signifier)))
+                {
+                    old_dir_blob_found = true;
+                }
+                else
+                {
+                    return D_NOTEMPTY;
+                }
+            }
+        }
+        else
+        {
+            success = false;
+            failcount++; //TODO: use to set errno.
+        }
+    } while ((continuation.size() > 0 || !success) && failcount < 20);
+
+    if (!success)
+    {
+    // errno will be set by list_blobs_segmented if the last call failed and we're out of retries.
+        return -1;
+    }
+
+    return old_dir_blob_found || dir_blob_exists ? D_EMPTY : D_NOTEXIST;
 }

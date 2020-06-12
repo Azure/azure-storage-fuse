@@ -962,7 +962,7 @@ void configure_fuse(struct fuse_args *args)
 {
     populate_kernel_version();
 
-    if (kernel_version < 5.4) {
+    if (kernel_version < 5.3) {
         fuse_opt_add_arg(args, "-omax_read=131072");
         fuse_opt_add_arg(args, "-omax_write=131072");
     }
