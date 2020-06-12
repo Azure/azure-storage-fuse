@@ -76,7 +76,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_accountkey
                 configurations.blobEndpoint);
         return std::make_shared<adls_client_ext>(
                 account,
-                max_concurrency_blob_wrapper,
+                configurations.concurrency,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
                                 // blobfuse if we run into anything unexpected instead of logging errors
     }
@@ -108,7 +108,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_sas()
                 configurations.blobEndpoint);
         return std::make_shared<adls_client_ext>(
                 account,
-                max_concurrency_blob_wrapper,
+                configurations.concurrency,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
                                 // blobfuse if we run into anything unexpected instead of logging errors
     }
@@ -146,7 +146,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_msi() {
                 configurations.blobEndpoint);
         return std::make_shared<adls_client_ext>(
                 account,
-                max_concurrency_blob_wrapper,
+                configurations.concurrency,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
         // blobfuse if we run into anything unexpected instead of logging errors
 
@@ -188,7 +188,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_spn()
         errno = 0;
         return std::make_shared<adls_client_ext>(
                 account,
-                max_concurrency_blob_wrapper,
+                configurations.concurrency,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
         // blobfuse if we run into anything unexpected instead of logging errors
 

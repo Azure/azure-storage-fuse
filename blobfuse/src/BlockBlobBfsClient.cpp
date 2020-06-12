@@ -48,7 +48,7 @@ bool BlockBlobBfsClient::AuthenticateStorage()
 }
 
 std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accountkey()
-{
+{ 
     syslog(LOG_DEBUG, "Authenticating using account key");
     try
     {
@@ -69,7 +69,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accou
                 configurations.blobEndpoint);
         std::shared_ptr<blob_client> blobClient= std::make_shared<blob_client>(
                 account,
-                max_concurrency_blob_wrapper);
+                configurations.concurrency);
         errno = 0;
         if(configurations.useAttrCache){
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
@@ -104,7 +104,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_sas()
                 configurations.blobEndpoint);
         std::shared_ptr<blob_client> blobClient= std::make_shared<blob_client>(
                 account,
-                max_concurrency_blob_wrapper);
+                configurations.concurrency);
         errno = 0;
         if(configurations.useAttrCache){
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));

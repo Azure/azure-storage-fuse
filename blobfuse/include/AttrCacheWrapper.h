@@ -78,7 +78,7 @@ namespace azure { namespace storage_lite {
             m_blob_client_wrapper = other.m_blob_client_wrapper;
             return *this;
         }
-
+        
         bool is_valid() const
         {
             return m_blob_client_wrapper != NULL;

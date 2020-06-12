@@ -57,6 +57,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--log-level=%s", log_level),
     OPTION("--use-attr-cache=%s", useAttrCache),
     OPTION("--use-adls=%s", use_adls),
+    OPTION("--max-concurrency=%s", concurrency),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -842,6 +843,13 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         {
             str_options.useADLS = true;
         }
+    }
+
+    str_options.concurrency = blobfuse_constants::max_concurrency_blob_wrapper;
+    if(options.concurrency != NULL)
+    {
+        std::string concur(options.concurrency);
+        str_options.concurrency = stoi(concur);
     }
 
     return 0;

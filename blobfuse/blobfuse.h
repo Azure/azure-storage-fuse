@@ -32,10 +32,10 @@
 #include <BlobfuseConstants.h>
 #include <BlobfuseGlobals.h>
 #include <BlobfuseGcCache.h>
-#include "blob/blob_client.h"
-#include "OAuthToken.h"
-#include "OAuthTokenCredentialManager.h"
-#include "blob_client_cache.h"
+#include <blob/blob_client.h>
+#include <OAuthToken.h>
+#include <OAuthTokenCredentialManager.h>
+#include <AttrCacheWrapper.h>
 
 #define UNREFERENCED_PARAMETER(p) (p)
 

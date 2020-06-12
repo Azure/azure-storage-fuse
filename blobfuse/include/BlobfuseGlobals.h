@@ -37,6 +37,7 @@ struct configParams
     //this is set by the --allow-other flag,
     // 0770 if not set, 0777 if the flag is set
     int defaultPermission;
+    int concurrency;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -52,6 +53,7 @@ struct cmdlineOptions
     const char *use_adls; // True if the dfs/DataLake endpoint should be used when necessary
     const char *version; // print blobfuse version
     const char *help; // print blobfuse usage
+    const char *concurrency; // Max Concurrency factor for blob client wrapper (default 40)
 };
 
 
