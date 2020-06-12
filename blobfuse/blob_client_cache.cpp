@@ -6,7 +6,7 @@
 #include <sys/types.h>
 #include <dirent.h>
 #include "storage_credential.h"
-#include "blobfuse_constants.h"
+#include "BlobfuseConstants.h"
 #include "blob_client_cache.h"
 
 using namespace azure::storage_lite;

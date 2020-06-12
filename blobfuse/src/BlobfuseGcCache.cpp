@@ -5,9 +5,9 @@
 #include <sys/stat.h>
 #include <sys/file.h>
 
-#include "gc_cache.h"
-#include "blobfuse_constants.h"
-#include "file_lock_map.h"
+#include "BlobfuseGcCache.h"
+#include "BlobfuseConstants.h"
+#include "FileLockMap.h"
 
 //Helper function to help calculate the disk space we have left for the cache location
 //params: none

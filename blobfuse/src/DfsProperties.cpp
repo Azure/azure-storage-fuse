@@ -2,8 +2,8 @@
 // Created by adreed on 2/7/2020.
 //
 
-#include <get_dfs_properties_request.h>
-#include <blobfuse_constants.h>
+#include <DfsProperties.h>
+#include <BlobfuseConstants.h>
 #include <utility.h>
 
 #include <base64.h>

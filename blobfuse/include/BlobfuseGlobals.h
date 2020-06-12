@@ -4,7 +4,7 @@
 #include <map>
 #include <syslog.h>
 #include <algorithm>
-#include <blobfuse_constants.h>
+#include <BlobfuseConstants.h>
 
 
 extern struct configParams str_options;

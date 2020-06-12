@@ -1,9 +1,9 @@
 #ifndef DATALAKEBFSCLIENT_H
 #define DATALAKEBFSCLIENT_H
 
-#include <blobfuse_globals.h>
+#include <BlobfuseGlobals.h>
 #include <BlockBlobBfsClient.h>
-#include <get_dfs_properties_request.h>
+#include <DfsProperties.h>
 
 using namespace azure::storage_lite;
 

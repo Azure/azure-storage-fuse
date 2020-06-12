@@ -2,7 +2,7 @@
 // Created by adreed on 2/6/2020.
 //
 
-#include <permissions.h>
+#include <Permissions.h>
 
 std::string modeToString(mode_t mode) {
     //The format for the value x-ms-acl is user::rwx,group::rwx,mask::rwx,other::rwx

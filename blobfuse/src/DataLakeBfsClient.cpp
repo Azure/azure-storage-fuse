@@ -1,9 +1,9 @@
 #include <fstream>
-#include <include/permissions.h>
+#include <include/Permissions.h>
 #include <sys/stat.h>
 #include <DataLakeBfsClient.h>
 #include <list_paths_request.h>
-#include <get_dfs_properties_request.h>
+#include <DfsProperties.h>
 
 ///<summary>
 /// Uploads contents of a file to a storage object(e.g. blob, file) to the Storage service

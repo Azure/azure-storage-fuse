@@ -2,14 +2,14 @@
 #define STORAGEBFSCLIENTBASE_H
 
 #include <blobfuse.h>
-#include <blobfuse_globals.h>
+#include <BlobfuseGlobals.h>
 #include <get_blob_property_request_base.h>
 #include <list_blobs_request_base.h>
 #include <list_paths_request.h>
 #include <blob/blob_client.h>
 #include <adls_client.h>
 
-#include "file_lock_map.h"
+#include <FileLockMap.h>
 #include "storage_errno.h"
 
 using namespace azure::storage_lite;

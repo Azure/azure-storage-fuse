@@ -1,4 +1,4 @@
-#include "blobfuse_globals.h"
+#include "BlobfuseGlobals.h"
 
 std::string to_lower(std::string original) 
 {

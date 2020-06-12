@@ -6,7 +6,7 @@
 #define BLOBFUSE_PERMISSIONS_H
 
 #include <string>
-#include <blobfuse_constants.h>
+#include <BlobfuseConstants.h>
 #include <set_access_control_request.h>
 
 using namespace azure::storage_adls;

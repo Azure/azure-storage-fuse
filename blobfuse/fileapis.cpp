@@ -1,6 +1,6 @@
 #include "blobfuse.h"
 #include <sys/file.h>
-#include <file_lock_map.h>
+#include <FileLockMap.h>
 
 std::shared_ptr<file_lock_map> file_lock_map::s_instance;
 std::mutex file_lock_map::s_mutex;

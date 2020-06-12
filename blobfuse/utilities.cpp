@@ -1,5 +1,5 @@
 #include "blobfuse.h"
-#include <file_lock_map.h>
+#include <FileLockMap.h>
 #include <sys/file.h>
 
 int map_errno(int error)

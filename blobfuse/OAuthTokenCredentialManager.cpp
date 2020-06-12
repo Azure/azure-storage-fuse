@@ -11,7 +11,7 @@
 #include "constants.h"
 #include "utility.h"
 #include <syslog.h>
-#include "blobfuse_constants.h"
+#include "BlobfuseConstants.h"
 
 using nlohmann::json;
 

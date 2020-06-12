@@ -29,9 +29,9 @@
 
 #include <fuse.h>
 #include <stddef.h>
-#include <blobfuse_constants.h>
-#include <blobfuse_globals.h>
-#include <gc_cache.h>
+#include <BlobfuseConstants.h>
+#include <BlobfuseGlobals.h>
+#include <BlobfuseGcCache.h>
 #include "blob/blob_client.h"
 #include "OAuthToken.h"
 #include "OAuthTokenCredentialManager.h"
