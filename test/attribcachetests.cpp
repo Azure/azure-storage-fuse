@@ -51,15 +51,15 @@ public:
         ASSERT_EQ(0, ret) << "Read config failed.";
         std::string blob_endpoint;
         std::string sas_token;
-        str_options.accountName.erase(remove(str_options.accountName.begin(), str_options.accountName.end(), '\r'), str_options.accountName.end());
-        str_options.accountKey.erase(remove(str_options.accountKey.begin(), str_options.accountKey.end(), '\r'), str_options.accountKey.end());
+        config_options.accountName.erase(remove(config_options.accountName.begin(), config_options.accountName.end(), '\r'), config_options.accountName.end());
+        config_options.accountKey.erase(remove(config_options.accountKey.begin(), config_options.accountKey.end(), '\r'), config_options.accountKey.end());
 
         std::shared_ptr<storage_credential> cred;
-        if (str_options.accountKey.length() > 0)
+        if (config_options.accountKey.length() > 0)
         {
-            cred = std::make_shared<shared_key_credential>(str_options.accountName, str_options.accountKey);
+            cred = std::make_shared<shared_key_credential>(config_options.accountName, config_options.accountKey);
             std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
-                    str_options.accountName, 
+                    config_options.accountName, 
                     cred, 
                     true, 
                     blob_endpoint);

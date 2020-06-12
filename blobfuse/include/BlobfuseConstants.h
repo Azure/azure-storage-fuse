@@ -72,6 +72,8 @@ namespace blobfuse_constants {
     // TODO: Ensure that we map any potential HTTP status codes we might receive.
     // Used to map HTTP errors (ex. 404) to Linux errno (ex ENOENT)
     extern const std::map<int, int> error_mapping;
+
+    extern const int HTTP_REQUEST_CONFLICT;
 }
 
 #endif

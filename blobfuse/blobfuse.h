@@ -26,16 +26,10 @@
 // 3.0 is not built-in to many distros yet.
 // This line must come before #include <fuse.h>.
 #define FUSE_USE_VERSION 29
-
 #include <fuse.h>
+
 #include <stddef.h>
-#include <BlobfuseConstants.h>
 #include <BlobfuseGlobals.h>
-#include <BlobfuseGcCache.h>
-#include <blob/blob_client.h>
-#include <OAuthToken.h>
-#include <OAuthTokenCredentialManager.h>
-#include <AttrCacheWrapper.h>
 
 #define UNREFERENCED_PARAMETER(p) (p)
 
@@ -46,11 +40,10 @@ using namespace azure::storage_lite;
 using namespace blobfuse_constants;
 
 extern std::shared_ptr<gc_cache> g_gc_cache;
-extern struct configParams str_options;
+extern struct configParams config_options;
+extern float kernel_version;
 
-// This is used to make all the calls to Storage
-// The C++ lite client does not store state, other than connection info, so we can use it between calls without issue.
-extern std::shared_ptr<blob_client_wrapper> azure_blob_client_wrapper;
+void populate_kernel_version();
 
 // Helper function to map an HTTP error to an errno.
 // Should be called on any errno returned from the Azure Storage cpp lite lib.

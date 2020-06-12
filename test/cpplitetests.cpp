@@ -48,13 +48,13 @@ public:
         ASSERT_EQ(0, ret) << "Read config failed.";
         std::string blob_endpoint;
         std::string sas_token;
-        str_options.accountName.erase(remove(str_options.accountName.begin(), str_options.accountName.end(), '\r'), str_options.accountName.end());
-        str_options.accountKey.erase(remove(str_options.accountKey.begin(), str_options.accountKey.end(), '\r'), str_options.accountKey.end());
+        config_options.accountName.erase(remove(config_options.accountName.begin(), config_options.accountName.end(), '\r'), config_options.accountName.end());
+        config_options.accountKey.erase(remove(config_options.accountKey.begin(), config_options.accountKey.end(), '\r'), config_options.accountKey.end());
         test_blob_client_wrapper = blob_client_wrapper_init_accountkey(
-            str_options.accountName,
-            str_options.accountKey,
+            config_options.accountName,
+            config_options.accountKey,
             20,
-            str_options.useHttps,
+            config_options.useHttps,
             blob_endpoint);
     }
 

@@ -228,6 +228,13 @@ void BlockBlobBfsClient::UploadFromStream(std::istream & sourceStream, const std
 {
     m_blob_client->upload_block_blob_from_stream(configurations.containerName, blobName, sourceStream);
 }
+
+void BlockBlobBfsClient::UploadFromStream(std::istream & sourceStream, const std::string blobName, 
+                        std::vector<std::pair<std::string, std::string>> & metadata)
+{
+    m_blob_client->upload_block_blob_from_stream(configurations.containerName, blobName, sourceStream, metadata);
+}
+
 ///<summary>
 /// Downloads contents of a block blob to a local file
 ///</summary>
@@ -237,6 +244,13 @@ void BlockBlobBfsClient::DownloadToFile(const std::string blobName, const std::s
     time_t last_modified = {};
     m_blob_client->download_blob_to_file(configurations.containerName, blobName, filePath, last_modified);
 }
+
+void BlockBlobBfsClient::DownloadToStream(const std::string blobName, std::ostream & destStream, 
+        unsigned long long offset, unsigned long long size)
+{
+    m_blob_client->download_blob_to_stream(configurations.containerName, blobName, offset, size, destStream);
+}
+
 ///<summary>
 /// Creates a Directory
 ///</summary>

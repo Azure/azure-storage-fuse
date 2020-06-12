@@ -64,6 +64,8 @@ int StorageBfsClientBase::ensure_directory_path_exists_cache(const std::string &
     return status;
 }
 
+list_segmented_item::list_segmented_item() 
+{}
 
 list_segmented_item::list_segmented_item(list_blobs_segmented_item item) :
         name(item.name),

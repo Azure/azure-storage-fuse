@@ -179,6 +179,7 @@ class BfsFileProperty : public blob_property
 
 
 struct list_segmented_item {
+    list_segmented_item();
     list_segmented_item(list_blobs_segmented_item);
     list_segmented_item(list_paths_item item);
     std::string name;
@@ -230,11 +231,15 @@ public:
     ///</summary>
     ///<returns>none</returns>
     virtual void UploadFromStream(std::istream & sourceStream, const std::string blobName) = 0;
+    virtual void UploadFromStream(std::istream & sourceStream, const std::string blobName, 
+                        std::vector<std::pair<std::string, std::string>> & metadata) = 0;
     ///<summary>
     /// Downloads contents of a storage object(e.g. blob, file) to a local file
     ///</summary>
     ///<returns>none</returns>
     virtual void DownloadToFile(const std::string blobName, const std::string filePath) = 0;
+    virtual void DownloadToStream(const std::string blobName, std::ostream & destStream,
+                        unsigned long long offset, unsigned long long size) = 0;
     ///<summary>
     /// Creates a Directory
     ///</summary>

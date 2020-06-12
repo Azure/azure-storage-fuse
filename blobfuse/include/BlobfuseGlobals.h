@@ -6,8 +6,19 @@
 #include <algorithm>
 #include <BlobfuseConstants.h>
 
+#include <OAuthToken.h>
+#include <OAuthTokenCredentialManager.h>
+#include <AttrCacheWrapper.h>
 
-extern struct configParams str_options;
+#include <blob/blob_client.h>
+#include <adls_client.h>
+#include <BlobfuseGcCache.h>
+
+using namespace azure::storage_lite;
+using namespace azure::storage_adls;
+
+
+extern struct configParams config_options;
 
 // Global struct storing the Storage connection information and the tmpPath.
 struct configParams

@@ -37,4 +37,6 @@ namespace blobfuse_constants {
     const std::string former_directory_signifier = ".directory";
 
     const std::map<int, int> error_mapping = {{404, ENOENT}, {403, EACCES}, {1600, ENOENT}};
+
+    const int HTTP_REQUEST_CONFLICT = 409;
 }

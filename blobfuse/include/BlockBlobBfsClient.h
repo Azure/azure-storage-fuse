@@ -30,11 +30,16 @@ public:
     ///</summary>
     ///<returns>none</returns>
     void UploadFromStream(std::istream & sourceStream, const std::string blobName) override;
+    void UploadFromStream(std::istream & sourceStream, const std::string blobName, 
+                std::vector<std::pair<std::string, std::string>> & metadata) override;
+
     ///<summary>
     /// Downloads contents of a block blob to a local file
     ///</summary>
     ///<returns>none</returns>
     void DownloadToFile(const std::string blobName, const std::string filePath) override;
+    void DownloadToStream(const std::string blobName, std::ostream & destStream,
+                unsigned long long offset, unsigned long long size) override;
     ///<summary>
     /// Creates a Directory
     ///</summary>

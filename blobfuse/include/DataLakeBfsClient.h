@@ -10,8 +10,8 @@ using namespace azure::storage_lite;
 class DataLakeBfsClient : public BlockBlobBfsClient
 {
 public:
-    DataLakeBfsClient(configParams str_options) :
-    BlockBlobBfsClient(str_options),
+    DataLakeBfsClient(configParams config_options) :
+    BlockBlobBfsClient(config_options),
     m_adls_client(NULL)
     {}
     ///<summary>

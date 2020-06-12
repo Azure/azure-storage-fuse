@@ -398,7 +398,8 @@ int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
     if(statret == 0)
     {
         //source file/directory exists in cache locally
-        if((buf.st_mode & S_IFMT) == S_IFREG)
+        if((buf.st_mode & S_IFMT) == S_IFREG ||
+           ((buf.st_mode & S_IFMT) == S_IFLNK))
         {
             //make sure directory path exists in cache
             ensure_directory_path_exists_cache(dst.c_str());
