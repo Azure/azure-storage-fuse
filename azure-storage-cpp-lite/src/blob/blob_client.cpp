@@ -5,6 +5,7 @@
 #include "blob/download_blob_request.h"
 #include "blob/create_block_blob_request.h"
 #include "blob/delete_blob_request.h"
+#include "blob/delete_blobdir_request.h"
 #include "blob/copy_blob_request.h"
 #include "blob/create_container_request.h"
 #include "blob/delete_container_request.h"
@@ -114,6 +115,14 @@ std::future<storage_outcome<void>> blob_client::delete_blob(const std::string &c
     auto http = m_client->get_handle();
 
     auto request = std::make_shared<delete_blob_request>(container, blob, delete_snapshots);
+
+    return async_executor<void>::submit(m_account, request, http, m_context);
+}
+
+std::future<storage_outcome<void>> blob_client::delete_blobdir(const std::string &container, const std::string &blob) {
+    auto http = m_client->get_handle();
+
+    auto request = std::make_shared<delete_blobdir_request>(container, blob);
 
     return async_executor<void>::submit(m_account, request, http, m_context);
 }

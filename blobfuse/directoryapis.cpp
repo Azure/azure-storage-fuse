@@ -222,17 +222,25 @@ int azs_rmdir(const char *path)
         return -ENOTEMPTY;
     }
 
-    // TODO: change this to just delete blobs.
     errno = 0;
+    // delete the actual directory path if it exists
+    azure_blob_client_wrapper->delete_blobdir(str_options.containerName, pathString.substr(1));
+    int dir_blob_deletedir_errno = errno;
+    if (dir_blob_deletedir_errno == 0)
+    {
+        syslog(LOG_INFO, "Successfully deleted directory %s. ", path);
+    }
+    // now delete the directory marker
     azure_blob_client_wrapper->delete_blob(str_options.containerName, pathString.substr(1));
     int dir_blob_delete_errno = errno;
     if (dir_blob_delete_errno == 0)
     {
-        syslog(LOG_INFO, "Successfully deleted directory marker %s for path %s. ", pathString.c_str()+1, path);
+        syslog(LOG_INFO, "Successfully deleted zero-length directory marker %s for path %s. ", pathString.c_str()+1, path);
     }
-    else
+    // the below code is old and may not be needed any more.
+    if (dir_blob_deletedir_errno != 0 && dir_blob_delete_errno != 0)
     {
-        AZS_DEBUGLOGV("Failed to delete directory marker %s at path %s, errno = %d.  Checking the .directory version.\n", mntPath, pathString.c_str()+1, dir_blob_delete_errno);
+        AZS_DEBUGLOGV("Failed to delete directory marker %s at path %s and the directory, errno = %d.  Checking the .directory version.\n", mntPath, pathString.c_str()+1, dir_blob_delete_errno);
 
         pathString.append("/.directory");
 
@@ -244,12 +252,10 @@ int azs_rmdir(const char *path)
         {
             syslog(LOG_INFO, "Successfully deleted .directory-style directory marker for path %s to blob %s. ", path, pathString.c_str()+1);
         }
-        else
-        {
-            // If they both fail, dir_blob_delete_errno will be the important one in 99.99% of cases
-            syslog(LOG_ERR, "Failed I/O operation to delete directory %s.  errno = %d\n", path, dir_blob_delete_errno);
-            return 0 - map_errno(dir_blob_delete_errno);
-        }
+        // If they both fail, dir_blob_delete_errno will be the important one in 99.99% of cases
+        syslog(LOG_ERR, "Failed I/O operation to delete zero-length directory marker %s.  errno = %d\n", path, dir_blob_delete_errno);
+        syslog(LOG_ERR, "Failed I/O operation to delete directory %s.  errno = %d\n", path, dir_blob_deletedir_errno);
+        return 0 - map_errno(dir_blob_delete_errno);        
     }
 
     return 0;

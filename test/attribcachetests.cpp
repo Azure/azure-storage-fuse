@@ -19,6 +19,7 @@ public:
     MOCK_METHOD2(get_blob_property, blob_property(const std::string &container, const std::string &blob));
     MOCK_METHOD2(blob_exists, bool(const std::string &container, const std::string &blob));
     MOCK_METHOD2(delete_blob, void(const std::string &container, const std::string &blob));
+    MOCK_METHOD2(delete_blobdir, void(const std::string &container, const std::string &blob));
     MOCK_METHOD4(start_copy, void(const std::string &sourceContainer, const std::string &sourceBlob, const std::string &destContainer, const std::string &destBlob));
 };
 
