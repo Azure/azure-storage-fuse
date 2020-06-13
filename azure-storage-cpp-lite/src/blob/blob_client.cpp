@@ -201,8 +201,8 @@ std::future<storage_outcome<list_containers_response>> blob_client::list_contain
 
     auto request = std::make_shared<list_containers_request>(prefix, include_metadata);
     request->set_maxresults(max_result);
-	
-	request->set_marker(continuation_token);
+    
+    request->set_marker(continuation_token);
 
     return async_executor<list_containers_response>::submit(m_account, request, http, m_context);
 }

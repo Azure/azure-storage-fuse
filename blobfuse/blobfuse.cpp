@@ -43,23 +43,23 @@ float kernel_version = 0.0;
 void populate_kernel_version()
 {
     struct utsname buffer;
-	if (uname (&buffer) == 0) {
-		char *p = buffer.release;
-		int i = 0;
-		float ver[5];
+    if (uname (&buffer) == 0) {
+        char *p = buffer.release;
+        int i = 0;
+        float ver[5];
 
-		while (*p) {
-			if (isdigit(*p)) {
-				ver[i] = strtof(p, &p);
-				i++;
-			} else {
-				p++;
-			}
-			if (i >= 5) break;
-		}
-		if (i > 2)
+        while (*p) {
+            if (isdigit(*p)) {
+                ver[i] = strtof(p, &p);
+                i++;
+            } else {
+                p++;
+            }
+            if (i >= 5) break;
+        }
+        if (i > 2)
             kernel_version = ver[0];
-	}
+    }
 }
 
 #define OPTION(t, p) { t, offsetof(struct options, p), 1 }

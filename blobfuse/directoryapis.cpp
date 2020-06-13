@@ -168,7 +168,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                         {
 
                             // Avoid duplicate directories - this avoids duplicate entries of legacy WASB and HNS directories
-                   	        local_list_results.push_back(prev_token_str);
+                               local_list_results.push_back(prev_token_str);
 
                             struct stat stbuf;
                             stbuf.st_mode = S_IFDIR | default_permission;
