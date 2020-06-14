@@ -107,6 +107,14 @@ namespace microsoft_azure { namespace storage {
         AZURE_STORAGE_API std::future<storage_outcome<void>> upload_block_blob_from_stream(const std::string &container, const std::string &blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata);
 
         /// <summary>
+        /// Intitiates an asynchronous operation  to delete a directory blob.
+        /// </summary>
+        /// <param name="container">The container name.</param>
+        /// <param name="blob">The directory blob name.</param>
+        /// <returns>A <see cref="std::future" /> object that represents the current operation.</returns>
+        AZURE_STORAGE_API std::future<storage_outcome<void>> delete_blobdir(const std::string &container, const std::string &blob);
+
+        /// <summary>
         /// Intitiates an asynchronous operation  to delete a blob.
         /// </summary>
         /// <param name="container">The container name.</param>
@@ -367,6 +375,13 @@ namespace microsoft_azure { namespace storage {
         virtual void delete_blob(const std::string &container, const std::string &blob) = 0;
 
         /// <summary>
+        /// Deletes a directory blob.
+        /// </summary>
+        /// <param name="container">The container name.</param>
+        /// <param name="blob">The directory blob name.</param>
+        virtual void delete_blobdir(const std::string &container, const std::string &blob) = 0;
+
+        /// <summary>
         /// Copy a blob to another.
         /// </summary>
         /// <param name="sourceContainer">The source container name.</param>
@@ -542,6 +557,13 @@ namespace microsoft_azure { namespace storage {
         /// <param name="container">The container name.</param>
         /// <param name="blob">The blob name.</param>
         void delete_blob(const std::string &container, const std::string &blob);
+
+        /// <summary>
+        /// Deletes a directory blob.
+        /// </summary>
+        /// <param name="container">The container name.</param>
+        /// <param name="blob">The directory blob name.</param>
+        void delete_blobdir(const std::string &container, const std::string &blob);
 
         /// <summary>
         /// Copy a blob to another.
@@ -833,6 +855,13 @@ namespace microsoft_azure { namespace storage {
         /// <param name="container">The container name.</param>
         /// <param name="blob">The blob name.</param>
         void delete_blob(const std::string &container, const std::string &blob);
+
+        /// <summary>
+        /// Deletes a directory blob.
+        /// </summary>
+        /// <param name="container">The container name.</param>
+        /// <param name="blob">The directory blob name.</param>
+        void delete_blobdir(const std::string &container, const std::string &blob);
 
         /// <summary>
         /// Copy a blob to another.
