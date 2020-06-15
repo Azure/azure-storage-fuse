@@ -234,7 +234,7 @@ jobs:
       #continueOnError: true
    
     # -------------------------------------------------------
-
+    # BLOCK BLOB TESTS
     # Starting gTest
     
     # Create config file for gtest
@@ -245,7 +245,7 @@ jobs:
         echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_GTEST)
         cat $(BLOBFUSE_CFG_GTEST)
         echo "Account : " $(NIGHTLY_STO_ACC_NAME)
-      displayName: "TEST - gTest Config"
+      displayName: "TEST - BLOCK gTest Config"
     
     # Run gTest with the config file created earlier
     - script:  |
@@ -253,7 +253,7 @@ jobs:
         sudo chmod 777 ./blobfusetests
         sudo ./blobfusetests 
         cd ..
-      displayName: TEST - gTest
+      displayName: TEST - BLOCK gTest
       timeoutInMinutes: 30
       continueOnError: true
    
@@ -293,7 +293,7 @@ jobs:
         sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR)
         cd -
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
-      displayName: TEST - BLOCK CPP stressTest - 1
+      displayName: TEST - BLOCK CPP stressTest
       timeoutInMinutes: 120
       continueOnError: true
 
@@ -302,33 +302,11 @@ jobs:
         sudo fusermount -u $(MOUNT_DIR)
         sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
-      displayName: TEST - BLOCK CPP stressTest Cleanup - 1
+      displayName: TEST - BLOCK CPP stressTest Cleanup
       timeoutInMinutes: 30
       continueOnError: true
+
     # -------------------------------------------------------
-
-    # Mount a directory for stressTest (ADLS) and run it
-    - script:  |
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo rm -rf $(TEMP_DIR)/*
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
-        sudo go run ./test/stressTest.go $(MOUNT_DIR)
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
-      displayName: TEST - ADLS stressTest
-      timeoutInMinutes: 120
-      continueOnError: true
-
-    - script:  |
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo fusermount -u $(MOUNT_DIR)
-        sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
-      displayName: TEST - ADLS stressTest Cleanup
-      timeoutInMinutes: 30
-      continueOnError: true
-      
-    # -------------------------------------------------------
-
     # Starting pyTest
 
     # Mount a directory for pyTest and run it
@@ -353,6 +331,41 @@ jobs:
       timeoutInMinutes: 10
       continueOnError: true
 
+    # -------------------------------------------------------
+    # ADLS TESTS
+
+    # Run gTest with the config file created earlier
+    - script:  |
+        cp $(BLOBFUSE_CFG) "./connection.cfg"
+        cd ./build/
+        sudo chmod 777 ./blobfusetests
+        sudo ./blobfusetests 
+        cd ..
+      displayName: TEST - ADLS gTest
+      timeoutInMinutes: 30
+      continueOnError: true
+
+    # Mount a directory for stressTest (ADLS) and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
+        sudo go run ./test/stressTest.go $(MOUNT_DIR)
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - ADLS stressTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - ADLS stressTest Cleanup
+      timeoutInMinutes: 30
+      continueOnError: true
+      
+    # -------------------------------------------------------
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
