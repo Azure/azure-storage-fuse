@@ -261,14 +261,7 @@ jobs:
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
-        sudo mkdir $(BLOBFUSE_STRESS_DIR)
-        sudo chmod `whoami` $(BLOBFUSE_STRESS_DIR)
-        sudo chmod 777 ./blobfusestress 
-        sudo chmod 777 $(BLOBFUSE_STRESS_DIR) 
         sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
-        #cd ./stresstests/
-        #make
-        #sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR) 
         sudo go run ./test/stressTest.go $(MOUNT_DIR)
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOB stressTest
@@ -290,11 +283,7 @@ jobs:
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
-        sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
         sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$($(BLOBFUSE_CFG)) --use-adls=true
-        #cd ./stresstests/
-        #make
-        #sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR) 
         sudo go run ./test/stressTest.go $(MOUNT_DIR)
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - ADLS stressTest
