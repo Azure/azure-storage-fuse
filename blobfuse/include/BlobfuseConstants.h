@@ -35,6 +35,7 @@ namespace blobfuse_constants {
     extern const int max_concurrency_oauth;
     extern const int max_retry_oauth;
     extern const int max_concurrency_blob_wrapper;
+    extern const int def_concurrency_blob_wrapper;
 
     extern const char* oauth_request_uri;
     extern const char* spn_request_path;

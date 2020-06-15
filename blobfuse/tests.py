@@ -335,7 +335,7 @@ class ReadWriteFileTests(BlobfuseTest):
     # test to write to a blob and read from it (unicode)
     def test_WriteReadSingleFileUnicode(self):
         file1txt = "}L"
-        filepath = os.path.join(self.blobstage, ",: hello?world-we^are%all~together1 .txt");
+        filepath = os.path.join(self.blobstage, ",: hello?world-we^areall~together1 .txt");
         #with open(filepath, 'w') as file1blob:
         #    file1blob.write(file1txt)
 
@@ -1673,7 +1673,7 @@ class CacheTests(BlobfuseTest):
         blobfuseMountCmd = "./blobfuse " + self.ramDiskContainerPath + " --tmp-path=" + self.ramDiskTmpPath + \
                            " -o attr_timeout=240 -o entry_timeout=240 -o negative_timeout=120 " \
                            "--file-cache-timeout-in-seconds=" + cache_timeout + \
-                           " --config-file=../connection.cfg --log-level=LOG_DEBUG"
+                           " --config-file=../connection.cfg --log-level=LOG_DEBUG --use-adls=true"
         os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/../build")
         os.system(blobfuseMountCmd)
 

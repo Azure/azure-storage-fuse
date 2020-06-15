@@ -52,7 +52,7 @@ jobs:
     steps:
     - script: |
         sudo apt-get update --fix-missing
-        sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+        sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ golang -y
       displayName: "Basic Tools Setup"
 
     - script: |
@@ -124,7 +124,7 @@ jobs:
 
     # Mount container using blobFuse
     - script: |
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --log-level=LOG_DEBUG
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
       displayName: "Mount container"
       timeoutInMinutes: 3
 
@@ -149,22 +149,22 @@ jobs:
       continueOnError: true
              
     # Directory Operation Testing
-    #- script: mkdir $(MOUNT_DIR)/test_dir
-    #  displayName: "TEST - Create Directory"
-    #  timeoutInMinutes: 5
-    #  continueOnError: true
+    - script: mkdir $(MOUNT_DIR)/test_dir
+      displayName: "TEST - Create Directory"
+      timeoutInMinutes: 5
+      continueOnError: true
 
     # GetStat on Directory
-    #- script: stat $(MOUNT_DIR)/test_dir
-    #  displayName: "TEST - GetStat Directory"
-    #  timeoutInMinutes: 3
-    #  continueOnError: true
+    - script: stat $(MOUNT_DIR)/test_dir
+      displayName: "TEST - GetStat Directory"
+      timeoutInMinutes: 3
+      continueOnError: true
 
     # Delete newly created Directory
-    #- script: rm -rf $(MOUNT_DIR)/test_dir
-    #  displayName: "TEST - Delete Directory"
-    #  timeoutInMinutes: 5
-    #  continueOnError: true
+    - script: rm -rf $(MOUNT_DIR)/test_dir
+      displayName: "TEST - Delete Directory"
+      timeoutInMinutes: 5
+      continueOnError: true
 
     # -------------------------------------------------------
 
@@ -255,6 +255,62 @@ jobs:
       continueOnError: true
    
     # -------------------------------------------------------
+    # Starting stressTest
+
+    # Mount a directory for stressTest and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        sudo mkdir $(BLOBFUSE_STRESS_DIR)
+        sudo chmod `whoami` $(BLOBFUSE_STRESS_DIR)
+        sudo chmod 777 ./blobfusestress 
+        sudo chmod 777 $(BLOBFUSE_STRESS_DIR) 
+        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        #cd ./stresstests/
+        #make
+        #sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR) 
+        sudo go run ./test/stressTest.go $(MOUNT_DIR)
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - BLOB stressTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(BLOBFUSE_STRESS_DIR)
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - BLOB stressTest Cleanup
+      timeoutInMinutes: 30
+      continueOnError: true
+
+    # -------------------------------------------------------
+
+    # Mount a directory for stressTest (ADLS) and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$($(BLOBFUSE_CFG)) --use-adls=true
+        #cd ./stresstests/
+        #make
+        #sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR) 
+        sudo go run ./test/stressTest.go $(MOUNT_DIR)
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - ADLS stressTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(BLOBFUSE_STRESS_DIR)
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - ADLS stressTest Cleanup
+      timeoutInMinutes: 30
+      continueOnError: true
+      
+    # -------------------------------------------------------
 
     # Starting pyTest
 
@@ -280,35 +336,6 @@ jobs:
       timeoutInMinutes: 10
       continueOnError: true
     # -------------------------------------------------------
-
-    # Starting stressTest
-
-    # Mount a directory for stressTest and run it
-    - script:  |
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo rm -rf $(TEMP_DIR)/*
-        sudo mkdir $(BLOBFUSE_STRESS_DIR)
-        sudo chmod `whoami` $(BLOBFUSE_STRESS_DIR)
-        sudo chmod 777 ./blobfusestress 
-        sudo chmod 777 $(BLOBFUSE_STRESS_DIR) 
-        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
-        cd ./stresstests/
-        make
-        sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR) 
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
-      displayName: TEST - stressTest
-      timeoutInMinutes: 120
-      continueOnError: true
-
-    - script:  |
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo fusermount -u $(MOUNT_DIR)
-        sudo rm -rf $(BLOBFUSE_STRESS_DIR)
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
-      displayName: TEST - stressTest Cleanup
-      timeoutInMinutes: 30
-      continueOnError: true
-   # -------------------------------------------------------
 
 
     # Print the log files

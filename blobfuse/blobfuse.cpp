@@ -705,11 +705,13 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         }
     }
 
-    config_options.concurrency = blobfuse_constants::max_concurrency_blob_wrapper;
+    config_options.concurrency = (int)(blobfuse_constants::def_concurrency_blob_wrapper);
     if(cmd_options.concurrency != NULL)
     {
         std::string concur(cmd_options.concurrency);
-        config_options.concurrency = stoi(concur);
+        //config_options.concurrency = stoi(concur);
+        config_options.concurrency = (stoi(concur) < blobfuse_constants::max_concurrency_blob_wrapper) ? 
+                stoi(concur) : blobfuse_constants::max_concurrency_blob_wrapper;
     }
 
     return 0;
