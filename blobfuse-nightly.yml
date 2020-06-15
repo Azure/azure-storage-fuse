@@ -57,6 +57,9 @@ jobs:
 
     - script: |
         sudo apt-get install libfuse-dev -y
+        export GOROOT=/usr/local/go
+        export GOPATH=$HOME/go
+        export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
       displayName: "libFuse Setup"
 
     # List commits done 
@@ -254,13 +257,6 @@ jobs:
       timeoutInMinutes: 30
       continueOnError: true
    
-    - script:  |
-        sudo rm -rf $(MOUNT_DIR)/* 
-        sudo fusermount -u $(MOUNT_DIR)
-      displayName: TEST - gTest Cleanup
-      timeoutInMinutes: 30
-      continueOnError: true
-
     # -------------------------------------------------------
     # Starting stressTest
 
