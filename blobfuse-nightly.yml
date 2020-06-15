@@ -252,7 +252,7 @@ jobs:
         cd ./build/
         sudo chmod 777 ./blobfusetests
         sudo ./blobfusetests 
-        cd ..
+        cd -
       displayName: TEST - BLOCK gTest
       timeoutInMinutes: 30
       continueOnError: true
@@ -268,7 +268,9 @@ jobs:
         sudo chown -R `whoami` $(BLOBFUSE_STRESS_DIR)
         sudo chmod 777 $(BLOBFUSE_STRESS_DIR)
         ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
-        sudo go run ./test/stressTest.go $(MOUNT_DIR)
+        cd test
+        go run stressTest.go $(MOUNT_DIR)
+        cd -
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK stressTest
       timeoutInMinutes: 120
@@ -318,6 +320,7 @@ jobs:
         sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
         cd ./blobfuse/
         sudo python tests.py
+        cd -
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK pyTest
       timeoutInMinutes: 120
@@ -333,24 +336,14 @@ jobs:
 
     # -------------------------------------------------------
     # ADLS TESTS
-
-    # Run gTest with the config file created earlier
-    - script:  |
-        cp $(BLOBFUSE_CFG) "./connection.cfg"
-        cd ./build/
-        sudo chmod 777 ./blobfusetests
-        sudo ./blobfusetests 
-        cd ..
-      displayName: TEST - ADLS gTest
-      timeoutInMinutes: 30
-      continueOnError: true
-
     # Mount a directory for stressTest (ADLS) and run it
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
         ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
-        sudo go run ./test/stressTest.go $(MOUNT_DIR)
+        cd test
+        go run stressTest.go $(MOUNT_DIR)
+        cd -
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - ADLS stressTest
       timeoutInMinutes: 120
@@ -372,6 +365,7 @@ jobs:
         sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
         cd ./blobfuse/
         sudo python tests.py
+        cd -
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - ADLS pyTest
       timeoutInMinutes: 120
