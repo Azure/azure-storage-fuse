@@ -254,7 +254,7 @@ jobs:
       timeoutInMinutes: 30
       continueOnError: true
    
-      - script:  |
+    - script:  |
         sudo rm -rf $(MOUNT_DIR)/* 
         sudo fusermount -u $(MOUNT_DIR)
       displayName: TEST - gTest Cleanup
