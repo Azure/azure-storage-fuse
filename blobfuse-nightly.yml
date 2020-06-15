@@ -287,7 +287,7 @@ jobs:
       timeoutInMinutes: 30
       continueOnError: true
 
-      - script:  |
+    - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
         ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
