@@ -254,6 +254,13 @@ jobs:
       timeoutInMinutes: 30
       continueOnError: true
    
+      - script:  |
+        sudo rm -rf $(MOUNT_DIR)/* 
+        sudo fusermount -u $(MOUNT_DIR)
+      displayName: TEST - gTest Cleanup
+      timeoutInMinutes: 30
+      continueOnError: true
+
     # -------------------------------------------------------
     # Starting stressTest
 
@@ -261,7 +268,10 @@ jobs:
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
-        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        sudo mkdir $(BLOBFUSE_STRESS_DIR)
+        sudo chown -R `whoami` $(BLOBFUSE_STRESS_DIR)
+        sudo chmod 777 $(BLOBFUSE_STRESS_DIR)
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
         sudo go run ./test/stressTest.go $(MOUNT_DIR)
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOB stressTest
@@ -271,19 +281,41 @@ jobs:
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo fusermount -u $(MOUNT_DIR)
-        sudo rm -rf $(BLOBFUSE_STRESS_DIR)
+        sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOB stressTest Cleanup
       timeoutInMinutes: 30
       continueOnError: true
 
+      - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        cd stresstests/
+        make
+        chmod 777 ./blobfusestress
+        sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR)
+        cd -
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - BLOB stressTest - 1
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - BLOB stressTest Cleanup - 1
+      timeoutInMinutes: 30
+      continueOnError: true
     # -------------------------------------------------------
 
     # Mount a directory for stressTest (ADLS) and run it
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
-        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$($(BLOBFUSE_CFG)) --use-adls=true
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
         sudo go run ./test/stressTest.go $(MOUNT_DIR)
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - ADLS stressTest
@@ -293,7 +325,7 @@ jobs:
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo fusermount -u $(MOUNT_DIR)
-        sudo rm -rf $(BLOBFUSE_STRESS_DIR)
+        sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - ADLS stressTest Cleanup
       timeoutInMinutes: 30
@@ -313,7 +345,7 @@ jobs:
         cd ./blobfuse/
         sudo python tests.py
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
-      displayName: TEST - pyTest
+      displayName: TEST - pyTest BLOB
       timeoutInMinutes: 120
       continueOnError: true
 
@@ -321,7 +353,26 @@ jobs:
         sudo rm -rf $(MOUNT_DIR)/*
         sudo fusermount -u $(MOUNT_DIR)
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
-      displayName: TEST - pyTest Cleanup
+      displayName: TEST - pyTest Cleanup BLOB
+      timeoutInMinutes: 10
+      continueOnError: true
+
+      - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
+        cd ./blobfuse/
+        sudo python tests.py
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - pyTest ADLS
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - pyTest Cleanup ADLS
       timeoutInMinutes: 10
       continueOnError: true
     # -------------------------------------------------------
