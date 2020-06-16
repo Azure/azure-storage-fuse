@@ -52,14 +52,14 @@ jobs:
     steps:
     - script: |
         sudo apt-get update --fix-missing
-        sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ golang -y
+        sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
       displayName: "Basic Tools Setup"
 
     - script: |
         sudo apt-get install libfuse-dev -y
-        export GOROOT=/usr/local/go
-        export GOPATH=$HOME/go
-        export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
+        #export GOROOT=/usr/local/go
+        #export GOPATH=$HOME/go
+        #export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
       displayName: "libFuse Setup"
 
     # List commits done 
@@ -148,7 +148,6 @@ jobs:
     # Clear directory form previous failed runs
     - script: |
         rm -rf $(MOUNT_DIR)/* 
-        rm -rf $(MOUNT_DIR)/.* 
       displayName: "TEST - Initial cleanup"
       timeoutInMinutes: 10
       continueOnError: true
