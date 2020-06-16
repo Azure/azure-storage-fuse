@@ -305,7 +305,7 @@ jobs:
     - script:  |
         sudo fusermount -u $(MOUNT_DIR)
         sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
-        sudo rm -rf $(TEMP_DIR))/*
+        sudo rm -rf $(TEMP_DIR)/*
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK CPP stressTest Cleanup
       timeoutInMinutes: 30

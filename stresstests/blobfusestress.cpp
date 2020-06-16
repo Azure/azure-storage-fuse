@@ -655,12 +655,12 @@ int main(int argc, char *argv[])
             struct stat st;
             if (stat(perf_source_dir.c_str(), &st) != 0) {
                 int mkdirret = mkdir(perf_source_dir.c_str(), 0777);
-                if (mkdirret < 0)
+                /*if (mkdirret < 0)
                 {
                     std::stringstream error;
                     error << "Failed to make directory.  errno = " << errno << ", directory = " << perf_source_dir;
                     throw std::runtime_error(error.str());
-                }
+                }*/
             }
 
             int parallel = 8; // Run 8 threads in parallel.
