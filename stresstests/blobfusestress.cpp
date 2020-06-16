@@ -32,6 +32,7 @@
 #include <thread>
 #include <random>
 #include <csignal>
+#include <uuid/uuid.h>
 
 void signalHandler( int signum ) {
    exit(signum);  
@@ -614,8 +615,17 @@ int main(int argc, char *argv[])
 	signal(SIGINT, signalHandler);
   
     if (argc >= 3) {
+        uuid_t dir_uuid;
+        uuid_generate( (unsigned char *)&dir_uuid );
+
+        char dir_name_uuid[37];
+        uuid_unparse_lower(dir_uuid, dir_name_uuid);
+        
+        std::string dir_name_prefix = "stresstest";
+        std::string dir_name = dir_name_prefix + dir_name_uuid;
+
         perf_source_dir = std::string(argv[2]) + "/src";  
-        perf_dest_dir_1 = std::string(argv[1]) + "/stresstest";
+        perf_dest_dir_1 = std::string(argv[1]) + "/" + dir_name;
         perf_dest_dir_2 = std::string(argv[2]) + "/dst"; 
         printf("Running with : MNT : %s, SRC : %s, DST : %s\n", \
                 perf_dest_dir_1.c_str(), perf_source_dir.c_str(), perf_dest_dir_2.c_str());
