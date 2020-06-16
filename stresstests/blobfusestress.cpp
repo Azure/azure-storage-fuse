@@ -673,6 +673,7 @@ int main(int argc, char *argv[])
 
             std::time_t end = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
             std::cout << "End time = " << std::ctime(&end) << std::endl;
+            rmdir(perf_source_dir.c_str());
         }
     }
     catch (const std::exception& e)

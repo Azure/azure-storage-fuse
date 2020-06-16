@@ -282,11 +282,7 @@ jobs:
       continueOnError: true
 
     - script:  |
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo rm -rf $(MOUNT_DIR)/.*
         sudo fusermount -u $(MOUNT_DIR)
-        sudo rm -rf $(TEMP_DIR))/*
-        sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK stressTest Cleanup
       timeoutInMinutes: 30
@@ -307,8 +303,6 @@ jobs:
       continueOnError: true
 
     - script:  |
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo rm -rf $(MOUNT_DIR)/.*
         sudo fusermount -u $(MOUNT_DIR)
         sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
         sudo rm -rf $(TEMP_DIR))/*
@@ -357,8 +351,6 @@ jobs:
       continueOnError: true
 
     - script:  |
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo rm -rf $(MOUNT_DIR)/.*
         sudo fusermount -u $(MOUNT_DIR)
         sudo rm -rf $(TEMP_DIR)/*
         sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
