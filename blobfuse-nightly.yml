@@ -351,6 +351,7 @@ jobs:
       continueOnError: true
 
     - script:  |
+        rm -rf $(MOUNT_DIR)/*
         sudo fusermount -u $(MOUNT_DIR)
         sudo rm -rf $(TEMP_DIR)/*
         sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
@@ -360,29 +361,6 @@ jobs:
       continueOnError: true
       
     # -------------------------------------------------------
-    - script:  |
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo rm -rf $(TEMP_DIR)/*
-        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
-        cd ./blobfuse/
-        sudo python tests.py
-        cd -
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
-      displayName: TEST - ADLS pyTest
-      timeoutInMinutes: 120
-      continueOnError: true
-
-    - script:  |
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo rm -rf $(MOUNT_DIR)/.*
-        sudo fusermount -u $(MOUNT_DIR)
-        sudo rm -rf $(TEMP_DIR)/.*
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
-      displayName: TEST - ADLS pyTest Cleanup
-      timeoutInMinutes: 10
-      continueOnError: true
-    # -------------------------------------------------------
-
 
     # Print the log files
     - script: sudo cat /var/log/blobfuse.log

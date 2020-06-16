@@ -383,9 +383,9 @@ size_t m_total_files;
             int mkdirret = mkdir(output_dir.c_str(), 0777);
             if (mkdirret < 0)
             {
-                std::stringstream error;
-                error << "Failed to make directory.  errno = " << errno << ", directory = " << output_dir;
-                throw std::runtime_error(error.str());
+                //std::stringstream error;
+                //error << "Failed to make directory.  errno = " << errno << ", directory = " << output_dir;
+                //throw std::runtime_error(error.str());
             }
         }
 
@@ -529,9 +529,9 @@ std::pair<size_t, size_t> populate_large(std::string source_dir, thread_pool& po
         int mkdirret = mkdir(dir.c_str(), 0777);
         if (mkdirret < 0)
         {
-            std::stringstream error;
-            error << "Failed to make directory.  errno = " << errno << ", directory = " << dir;
-            throw std::runtime_error(error.str());
+            //std::stringstream error;
+            //error << "Failed to make directory.  errno = " << errno << ", directory = " << dir;
+            //throw std::runtime_error(error.str());
         }
 
         std::string file = dir + "/file";
@@ -580,9 +580,9 @@ std::pair<size_t, size_t> populate_small(std::string source_dir, thread_pool& po
         int mkdirret = mkdir(dir.c_str(), 0777);
         if (mkdirret < 0)
         {
-            std::stringstream error;
-            error << "Failed to make directory.  errno = " << errno << ", directory = " << dir;
-            throw std::runtime_error(error.str());
+            //std::stringstream error;
+            //error << "Failed to make directory.  errno = " << errno << ", directory = " << dir;
+            //throw std::runtime_error(error.str());
         }
 
         std::string file = dir + "/file";

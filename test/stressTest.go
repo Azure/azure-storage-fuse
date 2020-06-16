@@ -247,17 +247,17 @@ func main() {
 	//fmt.Println("Creating temp directories in " + baseDir)
 
 	//  Small file test
-	var numSmallDirs int = 30
-	var numSmallFiles int = 10
+	var numSmallDirs int = 50
+	var numSmallFiles int = 20
 	var smallFileSize int = (1024 * 1024)
 
 	stressTestUpload("small", numSmallDirs, numSmallFiles, smallFileSize)
 	stressTestDownload("small", numSmallDirs, numSmallFiles, smallFileSize)
 
 	//  Big file test
-	var numBigDirs int = 10
-	var numBigFiles int = 2
-	var bigFileSize int = (100 * 1024 * 1024)
+	var numBigDirs int = 3
+	var numBigFiles int = 4
+	var bigFileSize int = (200 * 1024 * 1024)
 
 	stressTestUpload("big", numBigDirs, numBigFiles, bigFileSize)
 	stressTestDownload("big", numBigDirs, numBigFiles, bigFileSize)
