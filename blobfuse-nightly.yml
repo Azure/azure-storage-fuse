@@ -146,7 +146,9 @@ jobs:
       continueOnError: true
 
     # Clear directory form previous failed runs
-    - script: rm -rf $(MOUNT_DIR)/* 
+    - script: |
+        rm -rf $(MOUNT_DIR)/* 
+        rm -rf $(MOUNT_DIR)/.* 
       displayName: "TEST - Initial cleanup"
       timeoutInMinutes: 10
       continueOnError: true
@@ -228,7 +230,11 @@ jobs:
     # Basic testing done.....
     
     # Test complete so now unmount the directory
-    - script:  sudo fusermount -u $(MOUNT_DIR)
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR)/*
       displayName: Unmount container
       timeoutInMinutes: 20
       #continueOnError: true
@@ -278,7 +284,9 @@ jobs:
 
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
         sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR))/*
         sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK stressTest Cleanup
@@ -301,8 +309,10 @@ jobs:
 
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
         sudo fusermount -u $(MOUNT_DIR)
         sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+        sudo rm -rf $(TEMP_DIR))/*
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK CPP stressTest Cleanup
       timeoutInMinutes: 30
@@ -313,10 +323,6 @@ jobs:
 
     # Mount a directory for pyTest and run it
     - script:  |
-        sudo chown -R `whoami` $(MOUNT_DIR)
-        sudo chown -R `whoami` $(TEMP_DIR)
-        sudo chmod 777 $(MOUNT_DIR)
-        sudo chmod 777 $(TEMP_DIR)
         sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
         cd ./blobfuse/
         sudo python tests.py
@@ -328,7 +334,9 @@ jobs:
 
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
         sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR)/*
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK pyTest Cleanup
       timeoutInMinutes: 10
@@ -351,7 +359,9 @@ jobs:
 
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
         sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR)/*
         sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - ADLS stressTest Cleanup
@@ -373,7 +383,9 @@ jobs:
 
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
         sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR)/.*
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - ADLS pyTest Cleanup
       timeoutInMinutes: 10
