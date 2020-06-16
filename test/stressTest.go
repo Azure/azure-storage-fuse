@@ -116,7 +116,7 @@ func BytesCount(bytes float64, postfix string) (byteStr string) {
 }
 
 func stressTestUpload(name string, noOfDir int, noOfFiles int, fileSize int) {
-	fmt.Println("\nStarting test : '" + name + "' ")
+	fmt.Println("\nStarting test : '" + name + "' \n")
 
 	if noOfDir < noOfWorkers {
 		noOfWorkers = noOfDir
@@ -129,7 +129,7 @@ func stressTestUpload(name string, noOfDir int, noOfFiles int, fileSize int) {
 	for w := 1; w <= noOfWorkers; w++ {
 		go uploadWorker(w, jobs, results)
 	}
-	//fmt.Printf("Number of workders started : %d \n\n", noOfWorkers)
+	fmt.Printf("Number of workders started : %d \n", noOfWorkers)
 
 	var dirItem workItem
 	dirItem.optType = 1
@@ -236,8 +236,8 @@ func stressTestDownload(name string, noOfDir int, noOfFiles int, fileSize int) {
 				(float64)(totalBytes),
 				"rate"))
 	}
-	fmt.Println("Cleaning up...")
-	os.RemoveAll(baseDir + "/" + name)
+	//fmt.Println("Cleaning up...")
+	//os.RemoveAll(baseDir + "/" + name)
 	fmt.Println("-----------------------------------------------------------------------------------------\n")
 
 }
