@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -24,12 +25,15 @@ type workItem struct {
 
 func downloadWorker(id int, jobs <-chan string, results chan<- int) {
 	var errFile error
+	//var data []byte
 	for item := range jobs {
 		i := 0
 		for ; i < retryCount; i++ {
 			f, errFile := os.Open(item)
 			if errFile == nil {
 				f.Close()
+				_, _ = ioutil.ReadFile(item)
+				//fmt.Println(data)
 				fmt.Printf(".")
 				break
 			} else {
@@ -136,6 +140,9 @@ func stressTestUpload(name string, noOfDir int, noOfFiles int, fileSize int) {
 	dirItem.baseDir = baseDir + "/" + name
 
 	var fileBuff = make([]byte, fileSize)
+	rand.Read(fileBuff)
+	//fmt.Println(fileBuff)
+
 	var fileItem workItem
 	fileItem.optType = 2
 	fileItem.baseDir = baseDir + "/" + name
@@ -248,18 +255,26 @@ func main() {
 
 	//  Small file test
 	var numSmallDirs int = 50
-	var numSmallFiles int = 20
+	var numSmallFiles int = 40
 	var smallFileSize int = (1024 * 1024)
 
 	stressTestUpload("small", numSmallDirs, numSmallFiles, smallFileSize)
 	stressTestDownload("small", numSmallDirs, numSmallFiles, smallFileSize)
 
 	//  Big file test
-	var numBigDirs int = 3
-	var numBigFiles int = 4
+	var numBigDirs int = 10
+	var numBigFiles int = 10
 	var bigFileSize int = (200 * 1024 * 1024)
 
 	stressTestUpload("big", numBigDirs, numBigFiles, bigFileSize)
 	stressTestDownload("big", numBigDirs, numBigFiles, bigFileSize)
+
+	//  Big file test
+	var numHugeDirs int = 5
+	var numHugeFiles int = 1
+	var hugeFileSize int = (2 * 1024 * 1024 * 1024)
+
+	stressTestUpload("big", numHugeDirs, numHugeFiles, hugeFileSize)
+	stressTestDownload("big", numHugeDirs, numHugeFiles, hugeFileSize)
 
 }

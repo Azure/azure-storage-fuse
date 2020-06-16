@@ -316,6 +316,7 @@ jobs:
 
     # Mount a directory for pyTest and run it
     - script:  |
+        sudo rm -rf $(TEMP_DIR)/*
         sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
         cd ./blobfuse/
         sudo python tests.py
