@@ -134,10 +134,10 @@ jobs:
     # -------------------------------------------------------
 
     - script : |
-      sudo cat /var/log/blobfuse.log
-    displayName: "Dump Mount Log"
-    timeoutInMinutes: 1
-    condition: OR(succeeded(), failed())
+        sudo cat /var/log/blobfuse.log
+      displayName: "Dump Mount Log"
+      timeoutInMinutes: 1
+      condition: OR(succeeded(), failed())
 
     # Give some time for system to stablise
     - script: sleep 10s
