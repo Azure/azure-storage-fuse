@@ -309,7 +309,7 @@ std::vector<std::string> DataLakeBfsClient::Rename(std::string sourcePath, std::
     std::string srcMntPathString = prepend_mnt_path_string(sourcePath);
     std::string dstMntPathString = prepend_mnt_path_string(destinationPath);
 
-    int rename_ret = rename_cached_file(srcMntPathString.c_str(), dstMntPathString.c_str());
+    long int rename_ret = rename_cached_file(srcMntPathString.c_str(), dstMntPathString.c_str());
 
     if(rename_ret != 0)
     {
@@ -390,7 +390,7 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName) {
             );
 }
 
-int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
+long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
 {
     struct stat buf;
 
@@ -422,5 +422,5 @@ int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
         //we don't have to rename if the file or directory does not exist in the cache
         return 0;
     }
-    return 0;
+    return buf.st_size;
 }

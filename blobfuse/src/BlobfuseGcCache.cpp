@@ -3,33 +3,46 @@
 #include <unistd.h>
 #include <sys/statvfs.h>
 #include <sys/stat.h>
+#include <fstream>
 #include <sys/file.h>
 
-#include "BlobfuseGcCache.h"
-#include "BlobfuseConstants.h"
+#include <BlobfuseGcCache.h>
+#include <BlobfuseGlobals.h>
+#include <BlobfuseConstants.h>
 #include "FileLockMap.h"
 
-//Helper function to help calculate the disk space we have left for the cache location
-//params: none
-//return: Returns true if we've reached the threshold, false otherwise
+extern struct configParams config_options;
 
 bool gc_cache::check_disk_space()
 {
-    struct statvfs buf;
-    if(statvfs(cache_folder_path.c_str(), &buf) != 0)
-    {
-        return false;
-    }
+    double total;
+    double available;
+    unsigned long long used;
 
-    //calculating the percentage of the amount of used space on the cached disk
-    //<used space in bytes> = <total size of disk in bytes> - <size of available disk space in bytes>
-    //<used percent of cached disk >= <used space> / <total size>
-    //f_frsize - the fundamental file system block size (in bytes) (used to convert file system blocks to bytes)
-    //f_blocks - total number of blocks on the filesystem/disk in the units of f_frsize
-    //f_bfree - total number of free blocks in units of f_frsize
-    double total = buf.f_blocks * buf.f_frsize;
-    double available = buf.f_bfree * buf.f_frsize;
-    double used = total - available;
+    if (config_options.cacheSize == 0) {
+        struct statvfs buf;
+        if(statvfs(cache_folder_path.c_str(), &buf) != 0)
+        {
+            return false;
+        }
+
+        //calculating the percentage of the amount of used space on the cached disk
+        //<used space in bytes> = <total size of disk in bytes> - <size of available disk space in bytes>
+        //<used percent of cached disk >= <used space> / <total size>
+        //f_frsize - the fundamental file system block size (in bytes) (used to convert file system blocks to bytes)
+        //f_blocks - total number of blocks on the filesystem/disk in the units of f_frsize
+        //f_bfree - total number of free blocks in units of f_frsize
+        total = buf.f_blocks * buf.f_frsize;
+        available = buf.f_bfree * buf.f_frsize;
+        used = total - available;
+    } else {
+        if (is_directory_empty(cache_folder_path.c_str()))
+            m_current_usage = 0;
+
+        total = config_options.cacheSize;
+        used = m_current_usage;
+    }
+   
     double used_percent = (double)(used / total) * (double)100;
 
     if(used_percent >= HIGH_THRESHOLD_VALUE && !disk_threshold_reached)
@@ -43,7 +56,7 @@ bool gc_cache::check_disk_space()
     return false;
 }
 
-void gc_cache::add_file(std::string path)
+void gc_cache::uncache_file(std::string path)
 {
     file_to_delete file;
     file.path = path;
@@ -52,6 +65,15 @@ void gc_cache::add_file(std::string path)
     // lock before updating deque
     std::lock_guard<std::mutex> lock(m_deque_lock);
     m_cleanup.push_back(file);
+}
+
+void gc_cache::addCacheBytes(std::string /*path*/, long int size)
+{
+    m_current_usage += size;
+    if (m_current_usage > (config_options.cacheSize * 0.80)){
+        AZS_DEBUGLOGV("Cache reaching its max value MAX : %llu, Current %llu",
+                config_options.cacheSize, m_current_usage);
+    }
 }
 
 void gc_cache::run()
@@ -130,7 +152,12 @@ void gc_cache::run_gc_cache()
                     {
                         unlink(mntPath);
                         flock(fd, LOCK_UN);
-
+                        
+                        if (m_current_usage > (unsigned long long)buf.st_size)
+                            m_current_usage -= buf.st_size;
+                        else
+                            m_current_usage = 0;
+                        
                         //update disk space
                         disk_threshold_reached = check_disk_space();
                     }

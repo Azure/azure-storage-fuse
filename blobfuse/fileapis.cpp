@@ -92,7 +92,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
 
             errno = 0;
             time_t last_modified = {};
-            storage_client->DownloadToFile(pathString.substr(1), mntPathString);
+            long int size = storage_client->DownloadToFile(pathString.substr(1), mntPathString, last_modified);
             if (errno != 0)
             {
                 int storage_errno = errno;
@@ -104,6 +104,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             else
             {
                 syslog(LOG_INFO, "Successfully downloaded blob %s into file cache as %s.\n", pathString.c_str()+1, mntPathString.c_str());
+                g_gc_cache->addCacheBytes(mntPathString, size);
             }
             
             // preserve the last modified time
@@ -233,7 +234,7 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
     int res = pwrite(fd, buf, size, offset);
     if (res == -1)
         res = -errno;
-
+    g_gc_cache->addCacheBytes(path, size);
     return res;
 }
 
@@ -364,7 +365,7 @@ int azs_release(const char *path, struct fuse_file_info * fi)
         AZS_DEBUGLOGV("Adding file to the GC from azs_release.  File = %s\n.", mntPath);
 
         // store the file in the cleanup list
-        g_gc_cache->add_file(pathString);
+        g_gc_cache->uncache_file(pathString);
 
     }
     else

@@ -17,7 +17,7 @@
 using namespace azure::storage_lite;
 using namespace azure::storage_adls;
 
-
+bool is_directory_empty(const char *tmpDir);
 extern struct configParams config_options;
 
 // Global struct storing the Storage connection information and the tmpPath.
@@ -49,6 +49,7 @@ struct configParams
     // 0770 if not set, 0777 if the flag is set
     int defaultPermission;
     int concurrency;
+    unsigned long long cacheSize;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -65,6 +66,7 @@ struct cmdlineOptions
     const char *version; // print blobfuse version
     const char *help; // print blobfuse usage
     const char *concurrency; // Max Concurrency factor for blob client wrapper (default 40)
+    const char *cache_size_mb; // MAX Size of cache in MBs
 };
 
 

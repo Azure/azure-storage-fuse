@@ -17,9 +17,11 @@ public:
     gc_cache(std::string cache_folder, int timeout) :
         disk_threshold_reached(false),
         cache_folder_path(cache_folder),
-        file_cache_timeout_in_seconds(timeout){}
+        file_cache_timeout_in_seconds(timeout),
+        m_current_usage(0){}
     void run();
-    void add_file(std::string path);
+    void uncache_file(std::string path);
+    void addCacheBytes(std::string path, long int size);
 
 private:
     bool disk_threshold_reached;
@@ -30,4 +32,5 @@ private:
     bool check_disk_space();
     std::string cache_folder_path;
     int file_cache_timeout_in_seconds;
+    unsigned long long m_current_usage;
 };

@@ -38,6 +38,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--use-attr-cache=%s", useAttrCache),
     OPTION("--use-adls=%s", use_adls),
     OPTION("--max-concurrency=%s", concurrency),
+    OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -712,6 +713,13 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         //config_options.concurrency = stoi(concur);
         config_options.concurrency = (stoi(concur) < blobfuse_constants::max_concurrency_blob_wrapper) ? 
                 stoi(concur) : blobfuse_constants::max_concurrency_blob_wrapper;
+    }
+
+    config_options.cacheSize = 0;
+    if (cmd_options.cache_size_mb != NULL) 
+    {
+        std::string cache_size(cmd_options.cache_size_mb);
+        config_options.cacheSize = stoi(cache_size) * (unsigned long long)(1024l * 1024l);
     }
 
     return 0;

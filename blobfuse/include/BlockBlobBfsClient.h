@@ -37,8 +37,8 @@ public:
     /// Downloads contents of a block blob to a local file
     ///</summary>
     ///<returns>none</returns>
-    void DownloadToFile(const std::string blobName, const std::string filePath) override;
-    void DownloadToStream(const std::string blobName, std::ostream & destStream,
+    long int DownloadToFile(const std::string blobName, const std::string filePath, time_t& last_modified) override;
+    long int DownloadToStream(const std::string blobName, std::ostream & destStream,
                 unsigned long long offset, unsigned long long size) override;
     ///<summary>
     /// Creates a Directory

@@ -324,7 +324,11 @@ int azs_rename(const char *src, const char *dst)
 
     for(unsigned int i = 0; i < to_remove.size(); i++)
     {
-        g_gc_cache->add_file(to_remove.at(i));
+        struct stat buf;
+        if (0 == stat(to_remove.at(i).c_str(), &buf)) 
+            g_gc_cache->addCacheBytes(src, buf.st_size);
+
+        g_gc_cache->uncache_file(to_remove.at(i));
     }
 
     return 0;

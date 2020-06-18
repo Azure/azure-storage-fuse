@@ -239,16 +239,22 @@ void BlockBlobBfsClient::UploadFromStream(std::istream & sourceStream, const std
 /// Downloads contents of a block blob to a local file
 ///</summary>
 ///<returns>none</returns>
-void BlockBlobBfsClient::DownloadToFile(const std::string blobName, const std::string filePath)
+long int BlockBlobBfsClient::DownloadToFile(const std::string blobName, const std::string filePath, time_t& last_modified)
 {
-    time_t last_modified = {};
     m_blob_client->download_blob_to_file(configurations.containerName, blobName, filePath, last_modified);
+    struct stat stbuf;
+    lstat(filePath.c_str(), &stbuf);
+    if (0 == stat(filePath.c_str(), &stbuf))
+        return stbuf.st_size;
+    else
+        return 0;
 }
 
-void BlockBlobBfsClient::DownloadToStream(const std::string blobName, std::ostream & destStream, 
+long int BlockBlobBfsClient::DownloadToStream(const std::string blobName, std::ostream & destStream, 
         unsigned long long offset, unsigned long long size)
 {
     m_blob_client->download_blob_to_stream(configurations.containerName, blobName, offset, size, destStream);
+    return 0;
 }
 
 ///<summary>

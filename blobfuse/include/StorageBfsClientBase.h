@@ -237,8 +237,8 @@ public:
     /// Downloads contents of a storage object(e.g. blob, file) to a local file
     ///</summary>
     ///<returns>none</returns>
-    virtual void DownloadToFile(const std::string blobName, const std::string filePath) = 0;
-    virtual void DownloadToStream(const std::string blobName, std::ostream & destStream,
+    virtual long int DownloadToFile(const std::string blobName, const std::string filePath, time_t& last_modified) = 0;
+    virtual long int DownloadToStream(const std::string blobName, std::ostream & destStream,
                         unsigned long long offset, unsigned long long size) = 0;
     ///<summary>
     /// Creates a Directory
