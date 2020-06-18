@@ -5,6 +5,7 @@
 #include "blob/download_blob_request.h"
 #include "blob/create_block_blob_request.h"
 #include "blob/delete_blob_request.h"
+#include "blob/delete_blobdir_request.h"
 #include "blob/copy_blob_request.h"
 #include "blob/create_container_request.h"
 #include "blob/delete_container_request.h"
@@ -118,6 +119,14 @@ std::future<storage_outcome<void>> blob_client::delete_blob(const std::string &c
     return async_executor<void>::submit(m_account, request, http, m_context);
 }
 
+std::future<storage_outcome<void>> blob_client::delete_blobdir(const std::string &container, const std::string &blob) {
+    auto http = m_client->get_handle();
+
+    auto request = std::make_shared<delete_blobdir_request>(container, blob);
+
+    return async_executor<void>::submit(m_account, request, http, m_context);
+}
+
 std::future<storage_outcome<void>> blob_client::create_container(const std::string &container) {
     auto http = m_client->get_handle();
 
@@ -192,8 +201,8 @@ std::future<storage_outcome<list_containers_response>> blob_client::list_contain
 
     auto request = std::make_shared<list_containers_request>(prefix, include_metadata);
     request->set_maxresults(max_result);
-	
-	request->set_marker(continuation_token);
+    
+    request->set_marker(continuation_token);
 
     return async_executor<list_containers_response>::submit(m_account, request, http, m_context);
 }

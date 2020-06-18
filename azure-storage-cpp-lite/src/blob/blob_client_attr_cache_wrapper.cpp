@@ -337,6 +337,22 @@ namespace microsoft_azure {
         }
 
         /// <summary>
+        /// Deletes a blob.
+        /// </summary>
+        /// <param name="container">The container name.</param>
+        /// <param name="blob">The blob name.</param>
+        void blob_client_attr_cache_wrapper::delete_blobdir(const std::string &container, const std::string &blob)
+        {
+            // These calls cannot be cached because we do not have a negative cache - blobs in the cache are either valid/confirmed, or unknown (which could be deleted, or not checked on the service.)
+            std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blob));
+            std::shared_ptr<blob_client_attr_cache_wrapper::blob_cache_item> cache_item = attr_cache.get_blob_item(blob);
+            boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
+            std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
+            m_blob_client_wrapper->delete_blobdir(container, blob);
+            cache_item->m_confirmed = false;
+        }
+
+        /// <summary>
         /// Copy a blob to another.
         /// </summary>
         /// <param name="sourceContainer">The source container name.</param>
