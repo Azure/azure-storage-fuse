@@ -263,14 +263,14 @@ func main() {
 
 	//  Big file test
 	var numBigDirs int = 10
-	var numBigFiles int = 5
+	var numBigFiles int = 2
 	var bigFileSize int = (200 * 1024 * 1024)
 
 	stressTestUpload("big", numBigDirs, numBigFiles, bigFileSize)
 	stressTestDownload("big", numBigDirs, numBigFiles, bigFileSize)
 
 	//  Big file test
-	var numHugeDirs int = 3
+	var numHugeDirs int = 2
 	var numHugeFiles int = 1
 	var hugeFileSize int = (2 * 1024 * 1024 * 1024)
 
