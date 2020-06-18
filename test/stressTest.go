@@ -277,4 +277,5 @@ func main() {
 	stressTestUpload("huge", numHugeDirs, numHugeFiles, hugeFileSize)
 	stressTestDownload("huge", numHugeDirs, numHugeFiles, hugeFileSize)
 
+	os.RemoveAll(baseDir)
 }
