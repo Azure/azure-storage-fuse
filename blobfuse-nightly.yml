@@ -289,6 +289,29 @@ jobs:
       continueOnError: true
 
     # -------------------------------------------------------
+    # Mount a directory for feature test (ADLS) and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        cd test
+        go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR)
+        cd -
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - BLOCK FeatureTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR)/*
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - BLOCK FeatureTest Cleanup
+      timeoutInMinutes: 30
+      continueOnError: true
+
+    # -------------------------------------------------------
 
     # ADLS TESTS
     # Mount a directory for stressTest (ADLS) and run it
@@ -311,6 +334,29 @@ jobs:
         sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
       condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - ADLS stressTest Cleanup
+      timeoutInMinutes: 30
+      continueOnError: true
+      
+    # -------------------------------------------------------
+    # Mount a directory for feature test (ADLS) and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
+        cd test
+        go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR)
+        cd -
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - ADLS FeatureTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR)/*
+      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      displayName: TEST - ADLS FeatureTest Cleanup
       timeoutInMinutes: 30
       continueOnError: true
       
