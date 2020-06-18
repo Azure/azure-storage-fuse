@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"math/rand"
@@ -14,6 +15,8 @@ import (
 )
 
 var mntPath string = ""
+var adlsTest bool = false
+
 var minBuff = make([]byte, 1024)
 var medBuff = make([]byte, (10 * 1024 * 1024))
 var hugeBuff = make([]byte, (500 * 1024 * 1024))
@@ -42,7 +45,8 @@ func TestDirCreateDuplicate(t *testing.T) {
 
 // # Create Directory with special characters in name
 func TestDirCreateSplChar(t *testing.T) {
-	dirName := mntPath + "/!@#$%^&*()_+=-{}[]|?><.,`~"
+	//dirName := mntPath + "/!@#$%^&*()_+=-{}[]|?><.,\`~"
+	dirName := mntPath + "@#$^&*()_+=-{}[]|?><.,~"
 	err := os.Mkdir(dirName, 0777)
 	if err != nil {
 		t.Errorf("Failed to create directory : " + dirName + "(" + err.Error() + ")")
@@ -142,6 +146,7 @@ func TestDirGetStats(t *testing.T) {
 		t.Errorf("Failed to get stats of directory : " + dirName + "(" + err.Error() + ")")
 	}
 	modTineDiff := time.Now().Sub(stat.ModTime())
+	fmt.Println(stat.ModTime())
 
 	if stat.IsDir() != true ||
 		stat.Name() != "test3" ||
@@ -152,17 +157,21 @@ func TestDirGetStats(t *testing.T) {
 
 // # Change mod of directory
 func TestDirChmod(t *testing.T) {
-	dirName := mntPath + "/test3"
-	err := os.Chmod(dirName, 0744)
-	if err != nil {
-		t.Errorf("Failed to change permissoin of directory : " + dirName + "(" + err.Error() + ")")
-	}
-	stat, err := os.Stat(dirName)
-	if err != nil {
-		t.Errorf("Failed to get stats of directory : " + dirName + "(" + err.Error() + ")")
-	}
-	if stat.Mode().Perm() != 0744 {
-		t.Errorf("Failed to modify permissions of directory : " + dirName)
+	if adlsTest == true {
+		dirName := mntPath + "/test3"
+		err := os.Chmod(dirName, 0744)
+		if err != nil {
+			t.Errorf("Failed to change permissoin of directory : " + dirName + "(" + err.Error() + ")")
+		}
+		stat, err := os.Stat(dirName)
+		if err != nil {
+			t.Errorf("Failed to get stats of directory : " + dirName + "(" + err.Error() + ")")
+		}
+		if stat.Mode().Perm() != 0744 {
+			t.Errorf("Failed to modify permissions of directory : " + dirName)
+		}
+	} else {
+		t.Logf("Ignoring this case as ADLS is not configued")
 	}
 }
 
@@ -306,6 +315,7 @@ func TestFileGetStat(t *testing.T) {
 		t.Errorf("Failed to get stats of directory : " + fileName + "(" + err.Error() + ")")
 	}
 	modTineDiff := time.Now().Sub(stat.ModTime())
+	fmt.Println(stat.ModTime())
 
 	if stat.IsDir() == true ||
 		stat.Name() != "test" ||
@@ -382,15 +392,105 @@ func TestFileClean(t *testing.T) {
 
 // -------------- SymLink Level Testings -------------------
 
+// # Create a symlink to a file
+func TestLinkCreate(t *testing.T) {
+	fileName := mntPath + "/small_write.txt"
+	symName := mntPath + "/small.lnk"
+	err := ioutil.WriteFile(fileName, minBuff, 0666)
+	if err != nil {
+		t.Errorf("Failed to write file " + fileName + " (" + err.Error() + ")")
+	}
+
+	err = os.Symlink(fileName, symName)
+	if err != nil {
+		t.Errorf("Failed to create symlink " + symName + " (" + err.Error() + ")")
+	}
+}
+
+// # Read a small file using symlink
+func TestLinkRead(t *testing.T) {
+	fileName := mntPath + "/small.lnk"
+	data, err := ioutil.ReadFile(fileName)
+	if err != nil ||
+		len(data) != len(minBuff) {
+		t.Errorf("Failed to Read symlink " + fileName + " (" + err.Error() + ")")
+	}
+}
+
+// # Write a small file using symlink
+func TestLinkWrite(t *testing.T) {
+	fileName := mntPath + "/small.lnk"
+	err := ioutil.WriteFile(fileName, medBuff, 0666)
+	if err != nil {
+		t.Errorf("Failed to write file " + fileName + " (" + err.Error() + ")")
+	}
+}
+
+// # Rename the target file and validate read on symlink fails
+func TestLinkRenameTarget(t *testing.T) {
+	fileName := mntPath + "/small_write.txt"
+	symName := mntPath + "/small.lnk"
+	fileNameNew := mntPath + "/small_write_new.txt"
+	err := os.Rename(fileName, fileNameNew)
+	if err != nil {
+		t.Errorf("Failed to rename target file to : " + fileNameNew + "(" + err.Error() + ")")
+	}
+
+	_, err = ioutil.ReadFile(symName)
+	if err == nil {
+		t.Errorf("Failed to read using symlink, target deleted :  " + fileName + "(" + err.Error() + ")")
+	}
+	err = os.Rename(fileNameNew, fileName)
+}
+
+// # Delete the symklink and check target file is still intact
+func TestLinkDeleteReadTarget(t *testing.T) {
+	fileName := mntPath + "/small_write.txt"
+	symName := mntPath + "/small.lnk"
+
+	err := os.Remove(symName)
+	if err != nil {
+		t.Errorf("Failed to delete symlink : " + symName + "(" + err.Error() + ")")
+	}
+
+	data, err := ioutil.ReadFile(fileName)
+	if err != nil ||
+		len(data) != len(medBuff) {
+		t.Errorf("Failed to read using symlink, target deleted :  " + fileName + "(" + err.Error() + ")")
+	}
+
+	err = os.Symlink(fileName, symName)
+	if err != nil {
+		t.Errorf("Failed to create symlink " + symName + " (" + err.Error() + ")")
+	}
+}
+
+// # Delete a symlink to a file
+func TestLinkDelete(t *testing.T) {
+	symName := mntPath + "/small.lnk"
+	err := os.Remove(symName)
+	if err != nil {
+		t.Errorf("Failed to delete symlink " + symName + " (" + err.Error() + ")")
+	}
+}
+
 // -------------- Main Method to start the Testing -------------------
 
 func TestMain(m *testing.M) {
 	// Get the mount path from command line argument
-	pathPtr := flag.String("mnt-path", ".", "Mount Path")
+	pathPtr := flag.String("mnt-path", ".", "Mount Path of Container")
+	adlsPtr := flag.String("adls", "false", "Account is ADLS or not")
 	flag.Parse()
 
 	// Create directory for testing the feature test on mount path
 	mntPath = *pathPtr + "/feature"
+	if *adlsPtr == "true" {
+		fmt.Println("ADLS Testing...")
+		adlsTest = true
+	} else {
+		fmt.Println("BLOCK Blob Testing...")
+	}
+
 	os.Mkdir(mntPath, 0777)
 
 	rand.Read(minBuff)
