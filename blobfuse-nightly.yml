@@ -127,11 +127,17 @@ jobs:
 
     # Mount container using blobFuse
     - script: |
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true --log-level=LOG_DEBUG
       displayName: "Mount container"
       timeoutInMinutes: 3
 
     # -------------------------------------------------------
+
+    - script : |
+      sudo cat /var/log/blobfuse.log
+    displayName: "Dump Mount Log"
+    timeoutInMinutes: 1
+    condition: OR(succeeded(), failed())
 
     # Give some time for system to stablise
     - script: sleep 10s
