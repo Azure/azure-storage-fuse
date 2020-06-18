@@ -2,15 +2,21 @@ package main
 
 import (
 	"flag"
+	"io"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
 
 var mntPath string = ""
+var minBuff = make([]byte, 1024)
+var medBuff = make([]byte, (10 * 1024 * 1024))
+var hugeBuff = make([]byte, (500 * 1024 * 1024))
 
 // -------------- Directory Level Testings -------------------
 
@@ -190,13 +196,189 @@ func TestDirListRecursive(t *testing.T) {
 
 // # LASTTEST : Clean up everything created by Dir Test
 func TestDirClean(t *testing.T) {
-	err := os.RemoveAll(mntPath)
+	err := os.RemoveAll(mntPath + "/")
 	if err != nil {
 		t.Errorf("Failed to cleanup (" + err.Error() + ")")
+	}
+
+	err = os.Mkdir(mntPath, 0777)
+	if err != nil {
+		t.Errorf("Failed to re-create (" + err.Error() + ")")
 	}
 }
 
 // -------------- File Level Testings -------------------
+
+// # Create file test
+func TestFileCreate(t *testing.T) {
+	fileName := mntPath + "/create.txt"
+	_, err := os.Create(fileName)
+	if err != nil {
+		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
+	}
+}
+
+// # Create duplicate file
+func TestFileCreateDuplicate(t *testing.T) {
+	fileName := mntPath + "/create.txt"
+	_, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
+	if err != nil {
+		if !strings.Contains(err.Error(), "file exists") {
+			t.Errorf("Failed to create directory : " + fileName + "(" + err.Error() + ")")
+		}
+	}
+}
+
+// # Write a small file
+func TestFileWriteSmall(t *testing.T) {
+	fileName := mntPath + "/small_write.txt"
+	err := ioutil.WriteFile(fileName, minBuff, 0666)
+	if err != nil {
+		t.Errorf("Failed to write file " + fileName + " (" + err.Error() + ")")
+	}
+}
+
+// # Read a small file
+func TestFileReadSmall(t *testing.T) {
+	fileName := mntPath + "/small_write.txt"
+	data, err := ioutil.ReadFile(fileName)
+	if err != nil ||
+		len(data) != len(minBuff) {
+		t.Errorf("Failed to Read file " + fileName + " (" + err.Error() + ")")
+	}
+}
+
+// # Truncate a file
+func TestFileTruncate(t *testing.T) {
+	fileName := mntPath + "/small_write.txt"
+	err := os.Truncate(fileName, 2)
+	if err != nil {
+		t.Errorf("Failed to Truncate file " + fileName + " (" + err.Error() + ")")
+	}
+
+	data, err := ioutil.ReadFile(fileName)
+	//fmt.Println(len(data))
+	if err != nil ||
+		len(data) > 2 {
+		t.Errorf("Failed to Read file " + fileName + " (" + err.Error() + ")")
+	}
+}
+
+// # Create file matching directory name
+func TestFileNameConflict(t *testing.T) {
+	dirName := mntPath + "/test123"
+	fileName := mntPath + "/test"
+
+	err := os.Mkdir(dirName, 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory " + dirName + " (" + err.Error() + ")")
+	}
+
+	_, err = os.Create(fileName)
+	if err != nil {
+		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
+	}
+}
+
+// # Copy file from once directory to another
+func TestFileCopy(t *testing.T) {
+	dirName := mntPath + "/test123"
+	fileName := mntPath + "/test"
+	dstFileName := dirName + "/test_copy.txt"
+
+	src_file, err := os.OpenFile(fileName, os.O_RDWR, 0666)
+	defer src_file.Close()
+
+	dst_file, err := os.Create(dstFileName)
+	defer dst_file.Close()
+
+	_, err = io.Copy(src_file, dst_file)
+	if err != nil {
+		t.Errorf("Failed to copy file " + dstFileName + " (" + err.Error() + ")")
+	}
+}
+
+// # Get stats of a file
+func TestFileGetStat(t *testing.T) {
+	fileName := mntPath + "/test"
+	stat, err := os.Stat(fileName)
+	if err != nil {
+		t.Errorf("Failed to get stats of directory : " + fileName + "(" + err.Error() + ")")
+	}
+	modTineDiff := time.Now().Sub(stat.ModTime())
+
+	if stat.IsDir() == true ||
+		stat.Name() != "test" ||
+		modTineDiff.Hours() > 1 {
+		t.Errorf("Invalid Stats of file : " + fileName)
+	}
+}
+
+// # Change mod of file
+func TestFileChmod(t *testing.T) {
+	fileName := mntPath + "/test"
+	err := os.Chmod(fileName, 0744)
+	if err != nil {
+		t.Errorf("Failed to change permissoin of file : " + fileName + "(" + err.Error() + ")")
+	}
+	stat, err := os.Stat(fileName)
+	if err != nil {
+		t.Errorf("Failed to get stats of file : " + fileName + "(" + err.Error() + ")")
+	}
+	if stat.Mode().Perm() != 0744 {
+		t.Errorf("Failed to modify permissions of directory : " + fileName)
+	}
+}
+
+// # Create multiple med files
+func TestFileCreateMulti(t *testing.T) {
+	fileName := mntPath + "/multi"
+
+	for i := 0; i < 10; i++ {
+		new_file := fileName + strconv.Itoa(i)
+		err := ioutil.WriteFile(new_file, medBuff, 0666)
+		if err != nil {
+			t.Errorf("Failed to create file " + new_file + " (" + err.Error() + ")")
+		}
+	}
+
+}
+
+// # Delete single files
+func TestFileDeleteSingle(t *testing.T) {
+	fileName := mntPath + "/multi0"
+	if err := os.Remove(fileName); err != nil {
+		t.Errorf("Failed to delete file " + fileName + " (" + err.Error() + ")")
+	}
+}
+
+// # Delete multiple files
+func TestFileDeleteMulti(t *testing.T) {
+	fileName := mntPath + "/multi*"
+	files, err := filepath.Glob(fileName)
+	if err != nil {
+		t.Errorf("Failed to get file list " + fileName + " (" + err.Error() + ")")
+	}
+
+	for _, f := range files {
+		if err = os.Remove(f); err != nil {
+			t.Errorf("Failed to delete file " + f + " (" + err.Error() + ")")
+		}
+	}
+}
+
+// # LASTTEST : Clean up everything created by Dir Test
+func TestFileClean(t *testing.T) {
+	err := os.RemoveAll(mntPath + "/")
+	if err != nil {
+		t.Errorf("Failed to cleanup (" + err.Error() + ")")
+	}
+
+	err = os.Mkdir(mntPath, 0777)
+	if err != nil {
+		t.Errorf("Failed to re-create (" + err.Error() + ")")
+	}
+}
 
 // -------------- SymLink Level Testings -------------------
 
@@ -210,6 +392,10 @@ func TestMain(m *testing.M) {
 	// Create directory for testing the feature test on mount path
 	mntPath = *pathPtr + "/feature"
 	os.Mkdir(mntPath, 0777)
+
+	rand.Read(minBuff)
+	rand.Read(medBuff)
+	rand.Read(hugeBuff)
 
 	// Run the actual feature test
 	m.Run()
