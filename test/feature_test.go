@@ -211,7 +211,8 @@ func TestDirClean(t *testing.T) {
 	}
 
 	err = os.Mkdir(mntPath, 0777)
-	if err != nil {
+	if err != nil &&
+		!strings.Contains(err.Error(), "file exists") {
 		t.Errorf("Failed to re-create (" + err.Error() + ")")
 	}
 }
@@ -326,17 +327,21 @@ func TestFileGetStat(t *testing.T) {
 
 // # Change mod of file
 func TestFileChmod(t *testing.T) {
-	fileName := mntPath + "/test"
-	err := os.Chmod(fileName, 0744)
-	if err != nil {
-		t.Errorf("Failed to change permissoin of file : " + fileName + "(" + err.Error() + ")")
-	}
-	stat, err := os.Stat(fileName)
-	if err != nil {
-		t.Errorf("Failed to get stats of file : " + fileName + "(" + err.Error() + ")")
-	}
-	if stat.Mode().Perm() != 0744 {
-		t.Errorf("Failed to modify permissions of directory : " + fileName)
+	if adlsTest {
+		fileName := mntPath + "/test"
+		err := os.Chmod(fileName, 0744)
+		if err != nil {
+			t.Errorf("Failed to change permissoin of file : " + fileName + "(" + err.Error() + ")")
+		}
+		stat, err := os.Stat(fileName)
+		if err != nil {
+			t.Errorf("Failed to get stats of file : " + fileName + "(" + err.Error() + ")")
+		}
+		if stat.Mode().Perm() != 0744 {
+			t.Errorf("Failed to modify permissions of directory : " + fileName)
+		}
+	} else {
+		t.Logf("Ignoring this case as ADLS is not configued")
 	}
 }
 
@@ -385,7 +390,8 @@ func TestFileClean(t *testing.T) {
 	}
 
 	err = os.Mkdir(mntPath, 0777)
-	if err != nil {
+	if err != nil &&
+		!strings.Contains(err.Error(), "file exists") {
 		t.Errorf("Failed to re-create (" + err.Error() + ")")
 	}
 }
@@ -413,7 +419,7 @@ func TestLinkRead(t *testing.T) {
 	data, err := ioutil.ReadFile(fileName)
 	if err != nil ||
 		len(data) != len(minBuff) {
-		t.Errorf("Failed to Read symlink " + fileName + " (" + err.Error() + ")")
+		t.Errorf("Failed to Read symlink " + fileName)
 	}
 }
 
