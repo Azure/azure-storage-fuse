@@ -9,6 +9,7 @@
 #   The RPM package will install the binaries in destination_dir on
 #   RPM installation
 
+# disable check-buildroot (normally /usr/lib/rpm/check-buildroot) with:
 
 while [ $# -gt 0 ]
 do
@@ -72,26 +73,33 @@ tar -cvjSf blobfuse-${version}-${distrover}.tar.bz2 blobfuse-${version}
 echo "Copying Tar to: ~/rpmbuild/SOURCES";
 mv blobfuse-${version}-${distrover}.tar.bz2 ~/rpmbuild/SOURCES
 cd -
-
+# set rpm to no arch
+#rpm --define '{_arch} noarch'
 
 # prepare files for rpmbuild
 cat <<EOF >~/rpmbuild/.rpmmacros
-%_topdir   %(~/rpmbuild)
-%_tmppath  %{_topdir}/tmp
-%_bindir    BUILDROOT
+%{_topdir}   %(~/rpmbuild)
+%{_tmppath} %{_topdir}/tmp
+%{buildroot} %{_topdir}/BUILDROOT/%{name}-%{version}-%{release}
+%{_bindir}   /usr/bin
+
 EOF
 cat <<EOF > ~/rpmbuild/SPECS/blobfuse.spec
-
+%define __arch_install_post %{nil}
+%define debug_package %{nil}
+%define __spec_install_post %{nil}
 Summary:   FUSE adapter - Azure Storage Blobs
 Name: blobfuse
 Version: $version
-Release: 1
+Release: 1%{?dist}
 License: MIT.
 Group: Applications/Tools
 SOURCE0 : blobfuse-${version}-${distrover}.tar.bz2
 URL: http://github.com/Azure/azure-storage-fuse/
 
-BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXX)
+
+BuildArch: x86_64
+BuildRoot: %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-%{_arch}-XXXX)
 BuildRequires:    boost-thread
 BuildRequires:    boost-system
 BuildRequires:    boost-filesystem
@@ -99,7 +107,7 @@ BuildRequires:    boost-filesystem
 Requires: fuse >= 2.2.7
 
 %description
-%{Summary}
+FUSE adapter - Azure Storage Blob file mount adapter using the fuse livrary
 
 %prep
 
@@ -111,12 +119,13 @@ Requires: fuse >= 2.2.7
 
 %install
 # though this has the name install this is run while building the rpm
-#rm -rf $RPM_BUILD_ROOT
-#mkdir -p $RPM_BUILD_ROOT/BUILD/blobfuse-${version}
+# it is failing in the below command with some -p option
+mkdir -p %{buildroot}/%{_bindir}
+install -m 0755 %{name} %{buildroot}/%{_bindir}/%{name}
 #install -p -m 755 blobfuse $RPM_BUILD_ROOT/BUILDROOT/blobfuse-$version-%{release}-%{_arch}
 
 %clean
-rm -rf $RPM_BUILD_ROOT
+rm -rf %{buildroot}
 
 %files
 %defattr(555,root,root,555)
@@ -133,5 +142,7 @@ cd ~/rpmbuild/SPECS
 rpmbuild --target ./ --nodeps -ba blobfuse.spec
 cd -
 
-# copy RPM output to the local directory
-cp ~/rpmbuild/blobfuse-${version}-${distrover}.rpm .
+# copy RPM output to the local directory and add the distro name as part of it.
+ 
+cp ~/rpmbuild/RPMS/x86_64/blobfuse-${version}-*x86_64.rpm .
+mv blobfuse-${version}-*x86_64.rpm blobfuse-${version}-${distrover}.rpm
