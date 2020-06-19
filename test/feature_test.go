@@ -46,7 +46,7 @@ func TestDirCreateDuplicate(t *testing.T) {
 // # Create Directory with special characters in name
 func TestDirCreateSplChar(t *testing.T) {
 	//dirName := mntPath + "/!@#$%^&*()_+=-{}[]|?><.,\`~"
-	dirName := mntPath + "@#$^&*()_+=-{}[]|?><.,~"
+	dirName := mntPath + "/" + "@#$^&*()_+=-{}[]|?><.,~"
 	err := os.Mkdir(dirName, 0777)
 	if err != nil {
 		t.Errorf("Failed to create directory : " + dirName + "(" + err.Error() + ")")

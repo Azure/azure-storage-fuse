@@ -127,7 +127,7 @@ jobs:
 
     # Mount container using blobFuse
     - script: |
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true --log-level=LOG_DEBUG
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
       displayName: "Mount container"
       timeoutInMinutes: 3
 
