@@ -88,11 +88,10 @@ jobs:
                 yum install kernel-devel fuse-libs
                 . ./build.sh
                 mkdir $(Build.ArtifactStagingDirectory)/$(container_image)
-                cp ./blobfuse $(Build.ArtifactStagingDirectory)/$(container_image)
                 cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(container_image)
                 cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(container_image)
-                make package
-                cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/$(container_image)/./blobfuse-*.*.*-Oracle-Linux.deb
+                . ./generaterpm.sh -srcdir . -distrover Oracle-Linux-8.1
+                cp ./blobfuse-*.rpm  $(Build.ArtifactStagingDirectory)/$(container_image)/
             displayName: Generate blobfuse build for $(container_image)
           - task: PublishBuildArtifacts@1
             displayName: 'Publish Artifacts for blobfuse $(container_image)'

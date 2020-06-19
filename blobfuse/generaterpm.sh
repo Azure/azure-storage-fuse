@@ -1,35 +1,71 @@
 #!/bin/bash
-#   Blobfuse RPM SPEC generator and packager
+#   blobfuse RPM SPEC generator and packager
 #   Usage:
-#       $ ./rpmbuilder.sh [-ver apps_version] [-srcdir source_binaries_dir] [-distrover distro_version]
+#       $ ./generaterpm.sh [-srcdir source_binaries_dir] [-distrover distro_version]
 #
 #   The above command will build an RPM package with the specified version
 #   building the files in source_binaries_dir and packaging the blobfuse binary.
-#   If no source binaries folder is specified then ~/dev is used.
-#   The RPM package will install the binaries in destination_dir on
+#   The RPM package will install the binaries in buildroot directory on
 #   RPM installation
-
-# disable check-buildroot (normally /usr/lib/rpm/check-buildroot) with:
+#   Note: By Nara V. These rpm commands are based on the command list from 
+#          http://ftp.rpm.org/max-rpm/ch-rpm-b-command.html
 
 while [ $# -gt 0 ]
 do
      case "$1" in
-        -srcdir) srcdir="$2"; shift;;
-        -ver) version="$2"; shift;;      
+        -srcdir) srcdir="$2"; shift;;  
         -distrover) distrover="$2"; shift;;
         --) shift; break;;
         -*)
                 echo >&2 \
-                "Usage: $0 [-ver version] [-srcdir source_directory] [-distrover distro_version]"
+                "Usage: $0 [-srcdir source_directory] [-distrover distro_version]"
                 exit 1;;
         *)  break;;     # terminate while loop
     esac
     shift
 done
-
-echo "Version: " ${version};
 echo "Source dir: " ${srcdir};
 echo "Linux distro and version:" ${distrover};
+
+# Read the CMakeLists.txt to get the vrsion number
+while read -r line;
+do
+        # reading each line 
+        if [["$line" == *"CPACK_PACKAGE_VERSION_MAJOR"* ]];
+        then    
+            # ver_major = grep -o '[0-9]*' "${line}"
+            echo $line
+        fi 
+        
+done < "../CMakeLists.txt"
+
+# check if major version is set
+if [ -z "${ver_major}" ]; then
+        echo Error: Check the CMakeLists.txt. It should set the CPACK_PACKAGE_VERSION_MAJOR
+        exit 1
+fi
+
+# check if minor version is set
+if [ -z "${ver_minor}" ]; then
+        echo Error: Check the CMakeLists.txt. It should set the CPACK_PACKAGE_VERSION_MINOR
+        exit 1
+fi
+
+# check if patch version is set
+if [ -z "${ver_patch}" ]; then
+        echo Error: Check the CMakeLists.txt. It should set the CPACK_PACKAGE_VERSION_PATCH
+        exit 1
+fi
+
+# check if release version is set
+if [ -z "${ver_patch}" ]; then
+        echo Error: Check the CMakeLists.txt. It should set the CPACK_PACKAGE_VERSION_RELEASE
+        exit 1
+fi
+
+version=${ver_major}.${ver_minor}.${ver_patch}
+
+echo "Version: " ${version};
 
 # check if the rpmcontent directory exists
 if [ ! -d "${srcdir}" ]; then
@@ -39,7 +75,7 @@ fi
 
 # check the first parameter expected (version) has been passed
 if [ -z "${version}" ]; then
-        echo Error: Expected version parameter. Ex. for version 1.0 use: ./rpmbuilder.sh -ver 1.0
+        echo Error: Build version number is not set. Check your CMAkeLists for MAJOR, MINOR, PATCH and RELEASE numerical values"
         exit 1
 fi
 
@@ -73,10 +109,9 @@ tar -cvjSf blobfuse-${version}-${distrover}.tar.bz2 blobfuse-${version}
 echo "Copying Tar to: ~/rpmbuild/SOURCES";
 mv blobfuse-${version}-${distrover}.tar.bz2 ~/rpmbuild/SOURCES
 cd -
-# set rpm to no arch
-#rpm --define '{_arch} noarch'
 
 # prepare files for rpmbuild
+# setting the buildroot below has no effect. buildroot is always appending the %{_arch} at the end
 cat <<EOF >~/rpmbuild/.rpmmacros
 %{_topdir}   %(~/rpmbuild)
 %{_tmppath} %{_topdir}/tmp
@@ -84,6 +119,10 @@ cat <<EOF >~/rpmbuild/.rpmmacros
 %{_bindir}   /usr/bin
 
 EOF
+
+# disable check-buildroot (normally /usr/lib/rpm/check-buildroot) with:%define __arch_install_post %{nil}
+# also disable package debug and check_spec to save time
+
 cat <<EOF > ~/rpmbuild/SPECS/blobfuse.spec
 %define __arch_install_post %{nil}
 %define debug_package %{nil}
@@ -91,7 +130,7 @@ cat <<EOF > ~/rpmbuild/SPECS/blobfuse.spec
 Summary:   FUSE adapter - Azure Storage Blobs
 Name: blobfuse
 Version: $version
-Release: 1%{?dist}
+Release: $ver_release%{?dist}
 License: MIT.
 Group: Applications/Tools
 SOURCE0 : blobfuse-${version}-${distrover}.tar.bz2
