@@ -74,10 +74,10 @@ jobs:
 
     strategy:
       maxParallel: 8
-       matrix:
-          ORACLE81:
-            container_image: 'oracle-linux-8.1'
-            build_type: Release    
+      matrix:
+        ORACLE81:
+          container_image: 'oracle-linux-8.1'
+          build_type: Release    
          
     pool:
       vmImage:  $(container_image)
