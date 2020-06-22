@@ -379,7 +379,7 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName)
             "", // Return an empty modestring because blob doesn't support file mode bits.
             property.size);
     return ret_property;
-}
+}  
 ///<summary>
 /// Determines whether or not a path (file or directory) exists or not
 ///</summary>

@@ -105,6 +105,35 @@ dfs_properties adls_client_ext::get_dfs_path_properties(const std::string &files
         props.metadata = std::vector<std::pair<std::string, std::string>>{};
 
         std::string runningString, propName;
+        std::string temp = http->get_response_header(blobfuse_constants::header_ms_properties);
+        std::size_t pos_value = 0;
+        
+        std::size_t pos = temp.find("=");
+        while(pos != std::string::npos) {
+            propName = temp.substr(0, pos);
+            pos++;
+
+            pos_value = temp.find(",");
+            if (pos_value == std::string::npos)
+                pos_value = temp.length();
+            runningString = temp.substr(pos, (pos_value- pos));
+
+            std::string prop;
+            for (unsigned char dc : from_base64(runningString)) {
+                prop += dc;
+            }
+
+            props.metadata.emplace_back(propName, prop);
+
+            if (pos_value < temp.length()) {
+                temp = temp.substr(pos_value + 1);
+                pos = temp.find("=");
+            } else {
+                break;
+            }
+        }
+
+        #if 0
         for(char c : http->get_response_header(blobfuse_constants::header_ms_properties)) {
             if(propName.empty()) {
                 if (c == '=') {
@@ -132,6 +161,7 @@ dfs_properties adls_client_ext::get_dfs_path_properties(const std::string &files
                 }
             }
         }
+        #endif
     }
 
     return props;
