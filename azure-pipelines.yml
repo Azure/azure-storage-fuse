@@ -94,7 +94,7 @@ jobs:
             . ./generaterpm.sh -srcdir . -distrover Oracle-Linux-8.1
             cp ./blobfuse-*.rpm  $(Build.ArtifactStagingDirectory)/$(container_image)/
             displayName: Generate blobfuse build for $(container_image)
-        - task: PublishBuildArtifacts@1
-          displayName: 'Publish Artifacts for blobfuse $(container_image)'
-          condition: succeededOrFailed()
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifacts for blobfuse $(container_image)'
+        condition: succeededOrFailed()
 
