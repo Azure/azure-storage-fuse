@@ -71,29 +71,30 @@ jobs:
         condition: succeededOrFailed()
 
   - job: Linux_Build_Oracle
-        strategy:
-          maxParallel: 8
-          matrix:
-            ORACLE81:
-              container_image: 'oracle-linux-8.1'
-              build_type: Release    
-         
-        pool:
-          vmImage:  $(container_image)
-        steps:
-          - script: |
-                sudo yum install git cmake fuse-devel libcurl-devel gcc gcc-c++ gnutls-devel libgcrypt-devel libuuid-devel boost-devel fuse -y
 
-          #Do this to install fuse libraries
-                yum install kernel-devel fuse-libs
-                . ./build.sh
-                mkdir $(Build.ArtifactStagingDirectory)/$(container_image)
-                cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(container_image)
-                cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(container_image)
-                . ./generaterpm.sh -srcdir . -distrover Oracle-Linux-8.1
-                cp ./blobfuse-*.rpm  $(Build.ArtifactStagingDirectory)/$(container_image)/
+    strategy:
+      maxParallel: 8
+       matrix:
+          ORACLE81:
+            container_image: 'oracle-linux-8.1'
+            build_type: Release    
+         
+    pool:
+      vmImage:  $(container_image)
+    steps:
+      - script: |
+            sudo yum install git cmake fuse-devel libcurl-devel gcc gcc-c++ gnutls-devel libgcrypt-devel libuuid-devel boost-devel fuse -y
+
+            #Do this to install fuse libraries
+            yum install kernel-devel fuse-libs
+            . ./build.sh
+            mkdir $(Build.ArtifactStagingDirectory)/$(container_image)
+            cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(container_image)
+            cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(container_image)
+            . ./generaterpm.sh -srcdir . -distrover Oracle-Linux-8.1
+            cp ./blobfuse-*.rpm  $(Build.ArtifactStagingDirectory)/$(container_image)/
             displayName: Generate blobfuse build for $(container_image)
-          - task: PublishBuildArtifacts@1
-            displayName: 'Publish Artifacts for blobfuse $(container_image)'
-            condition: succeededOrFailed()
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publish Artifacts for blobfuse $(container_image)'
+          condition: succeededOrFailed()
 
