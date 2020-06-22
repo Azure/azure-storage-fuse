@@ -833,7 +833,7 @@ namespace microsoft_azure {
                 errno = client_not_init;
                 return;
             }
-            if(container.empty() || blob.empty())
+            if(container.empty() || blob.empty() )
             {
                 errno = invalid_parameters;
                 return;
@@ -857,6 +857,42 @@ namespace microsoft_azure {
             catch(std::exception& ex)
             {
                 syslog(LOG_ERR, "Unknown failure in delete_blob.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
+                errno = unknown_error;
+                return;
+            }
+        }
+
+        void blob_client_wrapper::delete_blobdir(const std::string &container, const std::string &blob)
+        {
+            if(!is_valid())
+            {
+                errno = client_not_init;
+                return;
+            }
+            if(container.empty() || blob.empty() )
+            {
+                errno = invalid_parameters;
+                return;
+            }
+
+            try
+            {
+                auto task = m_blobClient->delete_blobdir(container, blob);
+                task.wait();
+                auto result = task.get();
+
+                if(!result.success())
+                {
+                    errno = std::stoi(result.error().code);
+                }
+                else
+                {
+                    errno = 0;
+                }
+            }
+            catch(std::exception& ex)
+            {
+                syslog(LOG_ERR, "Unknown failure in delete_blobdir.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
                 errno = unknown_error;
                 return;
             }
