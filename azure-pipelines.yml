@@ -76,7 +76,7 @@ jobs:
       maxParallel: 8
       matrix:
         ORACLE81:
-          container_image: 'oracle-linux-8.1'
+          container_image: 'oracle-linux-7'
           build_type: Release    
          
     pool:
@@ -91,7 +91,7 @@ jobs:
             mkdir $(Build.ArtifactStagingDirectory)/$(container_image)
             cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(container_image)
             cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(container_image)
-            . ./generaterpm.sh -srcdir . -distrover Oracle-Linux-8.1
+            . ./generaterpm.sh -srcdir . -distrover Oracle-Linux-7
             cp ./blobfuse-*.rpm  $(Build.ArtifactStagingDirectory)/$(container_image)/
             displayName: Generate blobfuse build for $(container_image)
       - task: PublishBuildArtifacts@1
