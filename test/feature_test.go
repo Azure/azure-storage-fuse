@@ -45,11 +45,15 @@ func TestDirCreateDuplicate(t *testing.T) {
 
 // # Create Directory with special characters in name
 func TestDirCreateSplChar(t *testing.T) {
-	//dirName := mntPath + "/!@#$%^&*()_+=-{}[]|?><.,\`~"
-	dirName := mntPath + "/" + "@#$^&*()_+=-{}[]|?><.,~"
-	err := os.Mkdir(dirName, 0777)
-	if err != nil {
-		t.Errorf("Failed to create directory : " + dirName + "(" + err.Error() + ")")
+	if adlsTest == true {
+		//dirName := mntPath + "/!@#$%^&*()_+=-{}[]|?><.,\`~"
+		dirName := mntPath + "/" + "@#$^&*()_+=-{}[]|?><.,~"
+		err := os.Mkdir(dirName, 0777)
+		if err != nil {
+			t.Errorf("Failed to create directory : " + dirName + "(" + err.Error() + ")")
+		}
+	} else {
+		t.Logf("Ignoring this case as ADLS is not configued")
 	}
 }
 

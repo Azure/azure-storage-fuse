@@ -181,6 +181,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             stbuf->st_gid = fuse_get_context()->gid;
             stbuf->st_nlink = storage_client->IsDirectoryEmpty(blobNameStr.c_str()) == D_EMPTY ? 2 : 3;
             stbuf->st_size = 4096;
+            stbuf->st_mtime = blob_property.get_last_modified();
             return 0;
         }
 
@@ -218,6 +219,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             stbuf->st_gid = fuse_get_context()->gid;
             stbuf->st_nlink = dirSize == D_EMPTY ? 2 : 3;
             stbuf->st_size = 4096;
+            stbuf->st_mtime = time(NULL);
             return 0;
         }
         else
@@ -297,9 +299,7 @@ int azs_chmod(const char * path, mode_t mode)
     AZS_DEBUGLOGV("azs_chmod called with path = %s, mode = %o.\n", path, mode);
 
     errno = 0;
-    storage_client->ChangeMode(path, mode);
-
-    return errno;
+    return storage_client->ChangeMode(path, mode);
 }
 
 //#ifdef HAVE_UTIMENSAT
