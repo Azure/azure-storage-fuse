@@ -718,9 +718,9 @@ bool is_directory_empty(const char *tmpDir) {
     // if its more then 2 (. and ..) then its not empty
     while (((d_ent = readdir(dir)) != NULL) 
             && (cnt++ <= 2));
-    
     closedir(dir);
-
+    
+    fprintf(stdout, "count of dir entries %u", cnt);
     return (cnt <= 2);
 }
 

@@ -93,11 +93,13 @@ OAuthToken OAuthTokenCredentialManager::refresh_token()
     {
         current_oauth_token = refreshTokenCallback(httpClient);
         valid_authentication = true;
+        syslog(LOG_INFO,"blobfuse refresh token succeeded expiry time is: %s", asctime(gmtime(&current_oauth_token.expires_on)));
         return current_oauth_token;
     } 
     catch(std::runtime_error& ex) 
     {
         valid_authentication = false;
+        fprintf(stderr,"refresh token failed %s", ex.what());
         throw ex;
     }
 }
@@ -147,7 +149,7 @@ OAuthToken OAuthTokenCredentialManager::get_token()
         // Be sure to ensure you're safely manipulating the lock when modifying this function.
         token_mutex.unlock();
     }
-
+    
     return current_oauth_token;
 }
 
