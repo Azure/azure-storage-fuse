@@ -31,11 +31,25 @@ echo "Linux distro and version:" ${distrover};
 while read -r line;
 do
         # reading each line 
-        if [["$line" == *"CPACK_PACKAGE_VERSION_MAJOR"* ]];
-        then    
-            # ver_major = grep -o '[0-9]*' "${line}"
-            echo $line
-        fi 
+       # if [[$line =~ "CPACK_PACKAGE_VERSION_MAJOR" ]]
+       # then    
+       #     # ver_major = grep -o '[0-9]*' "${line}"
+       #     echo $line
+       # fi 
+       case "$line" in 
+                 *CPACK_PACKAGE_VERSION_MAJOR*)
+                 ver_major="${line//[!0-9]/}"
+                ;;
+                 *CPACK_PACKAGE_VERSION_MINOR*)
+                 ver_minor="${line//[!0-9]/}"
+                ;;
+                 *CPACK_PACKAGE_VERSION_PATCH*)
+                 ver_patch="${line//[!0-9]/}"
+                ;;
+                 *CPACK_PACKAGE_VERSION_RELEASE*)
+                 ver_release="${line//[!0-9]/}"
+                ;;
+       esac
         
 done < "../CMakeLists.txt"
 
@@ -58,7 +72,7 @@ if [ -z "${ver_patch}" ]; then
 fi
 
 # check if release version is set
-if [ -z "${ver_patch}" ]; then
+if [ -z "${ver_release}" ]; then
         echo Error: Check the CMakeLists.txt. It should set the CPACK_PACKAGE_VERSION_RELEASE
         exit 1
 fi
@@ -75,7 +89,7 @@ fi
 
 # check the first parameter expected (version) has been passed
 if [ -z "${version}" ]; then
-        echo Error: Build version number is not set. Check your CMAkeLists for MAJOR, MINOR, PATCH and RELEASE numerical values"
+        echo Error: Build version number is not set. Check your CMAkeLists for MAJOR, MINOR, PATCH and RELEASE numerical values
         exit 1
 fi
 
@@ -112,6 +126,7 @@ cd -
 
 # prepare files for rpmbuild
 # setting the buildroot below has no effect. buildroot is always appending the %{_arch} at the end
+
 cat <<EOF >~/rpmbuild/.rpmmacros
 %{_topdir}   %(~/rpmbuild)
 %{_tmppath} %{_topdir}/tmp
@@ -146,7 +161,7 @@ BuildRequires:    boost-filesystem
 Requires: fuse >= 2.2.7
 
 %description
-FUSE adapter - Azure Storage Blob file mount adapter using the fuse livrary
+FUSE adapter - Azure Storage Blob file mount adapter using the fuse library
 
 %prep
 
