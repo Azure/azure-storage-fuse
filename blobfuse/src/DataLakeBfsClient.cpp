@@ -340,9 +340,11 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
     std::string pathStr(path);
     access_control accessControl;
     accessControl.acl = modeToString(mode);
+    int lstaterrno = 0;
 
     errno = 0;
     m_adls_client->set_file_access_control(configurations.containerName, pathStr.substr(1), accessControl);
+    lstaterrno = errno;
 
     std::string mntPathString = prepend_mnt_path_string(pathStr);
     int acc = access(mntPathString.c_str(), F_OK);
@@ -354,17 +356,18 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
         int res = chmod(mntPathString.c_str(), mode);
         if (res == -1)
         {
-            int lstaterrno = errno;
+            lstaterrno = errno;
             syslog(LOG_ERR, "chmod on file %s in local cache during getattr failed with errno = %d.\n", mntPathString.c_str(), lstaterrno);
             return -lstaterrno;
         }
         else
         {
             AZS_DEBUGLOGV("chmod on file %s in local cache succeeded.\n", mntPathString.c_str());
+            return 0;
         }
     }
 
-    return errno;
+    return ((lstaterrno) ? (-lstaterrno) : 0);
 }
 
 BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName) {

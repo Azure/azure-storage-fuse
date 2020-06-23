@@ -299,7 +299,13 @@ int azs_chmod(const char * path, mode_t mode)
     AZS_DEBUGLOGV("azs_chmod called with path = %s, mode = %o.\n", path, mode);
 
     errno = 0;
-    return storage_client->ChangeMode(path, mode);
+    int ret = storage_client->ChangeMode(path, mode);
+    if (ret) {
+        AZS_DEBUGLOGV("azs_chmod failed for path = %s, mode = %o.\n", path, mode);
+        return ret;
+    }
+
+    return 0;
 }
 
 //#ifdef HAVE_UTIMENSAT
