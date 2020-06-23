@@ -124,6 +124,21 @@ set (BLOBFUSE_SOURCE
   blobfuse/OAuthTokenCredentialManager.cpp
 )
 
+
+message("beginning lsb_release")
+
+execute_process(COMMAND lsb_release -is OUTPUT_VARIABLE LSB_ID)
+execute_process(COMMAND lsb_release -rs OUTPUT_VARIABLE LSB_RELEASE)
+if( LSB_ID AND LSB_RELEASE )
+  message (${LSB_ID})
+  set(Boost_USE_STATIC_LIBS ON)
+elseif( EXISTS "/etc/debian_version" )
+  set(Boost_USE_STATIC_LIBS ON)
+  # for redhat or oracle or CentOS just set BOOST OFF because /etc/os-release will always exist
+elseif( EXISTS "/etc/os-release")
+  set(Boost_USE_STATIC_LIBS OFF)
+endif()
+
 if(UNIX)
   project(blobfuse)
   find_package(Threads REQUIRED)
@@ -131,7 +146,7 @@ if(UNIX)
   find_package(GnuTLS REQUIRED)
   find_package(PkgConfig)
   find_package(Boost REQUIRED)
-  set(Boost_USE_STATIC_LIBS ON)
+  # set(Boost_USE_STATIC_LIBS ON)
   find_package(Boost COMPONENTS filesystem system REQUIRED)
   find_package(Boost COMPONENTS thread REQUIRED)
   add_definitions(-std=c++11)
@@ -179,6 +194,7 @@ if(UNIX)
   include(CPack)
 endif(UNIX)
 
+
 if(INCLUDE_TESTS)
   # Download and build googletest at cmake time, as recommended by the googletest docs:
   # https://github.com/google/googletest/blob/master/googletest/README.md
@@ -219,7 +235,6 @@ if(INCLUDE_TESTS)
 
   project(blobfusetests)
   find_package(Boost REQUIRED)
-  set(Boost_USE_STATIC_LIBS ON)
   # make this configurable by passing param to build.sh. Dont set an enviroment variable because that will go in the cmakecache
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -ggdb")
   find_package(Boost COMPONENTS filesystem system REQUIRED)
@@ -229,5 +244,4 @@ if(INCLUDE_TESTS)
   include_directories(${Boost_INCLUDE_DIR})
   add_executable(blobfusetests ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} ${AZURE_STORAGE_HEADER} ${AZURE_STORAGE_SOURCE} blobfuse/blobfuse.cpp test/cpplitetests.cpp test/attribcachetests.cpp test/attribcachesynchronizationtests.cpp test/oauthtokentests.cpp test/oauthtokencredentialmanagertests.cpp)
   target_link_libraries(blobfusetests ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt gmock_main)
-
 endif()
