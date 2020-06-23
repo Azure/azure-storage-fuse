@@ -1,13 +1,13 @@
 #pragma once
 
-#ifdef _WIN32
-#ifdef azure_storage_adls_EXPORTS
-#define AZURE_STORAGE_ADLS_API __declspec(dllexport)
-#else
-#define AZURE_STORAGE_ADLS_API __declspec(dllimport)
-#endif
-#else /* ifdef _WIN32 */
-#define AZURE_STORAGE_ADLS_API
+#if defined(_WIN32) && defined(_WINDLL)
+    #ifdef azure_storage_adls_EXPORTS
+    #define AZURE_STORAGE_ADLS_API __declspec(dllexport)
+    #else
+    #define AZURE_STORAGE_ADLS_API __declspec(dllimport)
+    #endif
+#else /* defined(_WIN32) && defined(_WINDLL) */
+    #define AZURE_STORAGE_ADLS_API
 #endif
 
 #include "storage_outcome.h"

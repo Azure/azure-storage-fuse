@@ -1,5 +1,6 @@
 #include <array>
 #include <cstring>
+#include <stdexcept>
 
 #include "base64.h"
 

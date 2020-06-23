@@ -34,7 +34,7 @@ add_library(azure-storage-adls ${AZURE_STORAGE_ADLS_SOURCES})
 
 target_include_directories(azure-storage-adls PUBLIC include)
 if(WIN32)
-  target_compile_definitions(azure-storage-adls PRIVATE NOMINMAX)
+  target_compile_definitions(azure-storage-adls PRIVATE azure_storage_adls_EXPORTS NOMINMAX)
 endif()
 target_link_libraries(azure-storage-adls azure-storage-lite)
 
