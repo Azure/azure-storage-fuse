@@ -164,7 +164,7 @@ func TestDirChmod(t *testing.T) {
 	if adlsTest == true {
 		dirName := mntPath + "/test3"
 		err := os.Chmod(dirName, 0744)
-		if err != nil) {
+		if err != nil {
 			t.Errorf("Failed to change permissoin of directory : " + dirName + "(" + err.Error() + ")")
 		}
 		err = nil
