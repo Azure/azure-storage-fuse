@@ -50,8 +50,8 @@ jobs:
       matrix:
         UBUNTU1804:
           container_image: 'ubuntu-18.04'
-          build_type: Release
-          
+          build_type: Release    
+     
     pool:
       vmImage:  $(container_image)
     steps:
@@ -70,3 +70,4 @@ jobs:
         displayName: 'Publish Artifacts for blobfuse $(container_image)'
         condition: succeededOrFailed()
 
+ 
