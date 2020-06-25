@@ -146,7 +146,7 @@ jobs:
     # -------------------------------------------------------
 
     # Check the mount went through or not by listing the mounted directory
-    - script: ls -lRt $(MOUNT_DIR)
+    - script: ls -l $(MOUNT_DIR)
       timeoutInMinutes: 5
       displayName: "TEST - Directory Listing"
       continueOnError: true
@@ -155,7 +155,7 @@ jobs:
     - script: |
         rm -rf $(MOUNT_DIR)/* 
       displayName: "TEST - Initial cleanup"
-      timeoutInMinutes: 10
+      timeoutInMinutes: 30
       continueOnError: true
              
     # Directory Operation Testing
