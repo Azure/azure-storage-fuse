@@ -44,6 +44,8 @@ class BfsFileProperty : public blob_property
             metadata = metaData;
             last_modified = lastModified;
             size = Size;
+            last_access = last_modified;
+            last_change = last_modified;
 
             // This is mainly used in the Blob Client
             if (!modestring.empty())
@@ -63,14 +65,24 @@ class BfsFileProperty : public blob_property
             }
 
             is_directory = false;
-            if (size == 0)
+            for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
             {
-                for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
+                if ((iter->first.compare("hdi_isfolder") == 0) && (iter->second.compare("true") == 0))
                 {
-                    if ((iter->first.compare("hdi_isfolder") == 0) && (iter->second.compare("true") == 0))
-                    {
-                        is_directory = true;
-                    }
+                    is_directory = true;
+                    continue;
+                }
+
+                if (iter->first.compare("last_access") == 0)
+                {
+                    last_access = std::stoi(iter->second.c_str());
+                    continue;
+                }
+
+                if (iter->first.compare("last_change") == 0)
+                {
+                    last_change = std::stoi(iter->second.c_str());
+                    continue;
                 }
             }
         }
@@ -138,16 +150,19 @@ class BfsFileProperty : public blob_property
                 if ((iter->first.compare("hdi_isfolder") == 0) && (iter->second.compare("true") == 0))
                 {
                     is_directory = true;
+                    continue;
                 }
 
                 if (iter->first.compare("last_access") == 0)
                 {
                     last_access = std::stoi(iter->second.c_str());
+                    continue;
                 }
 
                 if (iter->first.compare("last_change") == 0)
                 {
-                    last_change = std::stoi(iter->second.c_str());;
+                    last_change = std::stoi(iter->second.c_str());
+                    continue;
                 }
             }
         }
