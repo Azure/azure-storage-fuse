@@ -182,6 +182,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
             stbuf->st_nlink = storage_client->IsDirectoryEmpty(blobNameStr.c_str()) == D_EMPTY ? 2 : 3;
             stbuf->st_size = 4096;
             stbuf->st_mtime = blob_property.get_last_modified();
+            stbuf->st_atime = blob_property.get_last_access();
+            stbuf->st_ctime = blob_property.get_last_change();
             return 0;
         }
 
@@ -194,6 +196,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
         stbuf->st_uid = fuse_get_context()->uid;
         stbuf->st_gid = fuse_get_context()->gid;
         stbuf->st_mtime = blob_property.get_last_modified();
+        stbuf->st_atime = blob_property.get_last_access();
+        stbuf->st_ctime = blob_property.get_last_change();
         stbuf->st_nlink = 1;
         stbuf->st_size = blob_property.get_size();
         return 0;
@@ -288,9 +292,7 @@ int azs_fsync(const char * /*path*/, int /*isdatasync*/, struct fuse_file_info *
 
 int azs_chown(const char * /*path*/, uid_t /*uid*/, gid_t /*gid*/)
 {
-    //TODO: Implement
-//    return -ENOSYS;
-    return 0;
+    return -ENOSYS;
 }
 
 int azs_chmod(const char * path, mode_t mode)

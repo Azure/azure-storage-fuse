@@ -181,11 +181,11 @@ jobs:
     # File Operations Testing
 
     # Create a file in mounted directory
-    - script: |
-        dd bs=1000 count=1000000 if=/dev/zero of=$(MOUNT_DIR)/test.txt
-      displayName: "TEST - Create File (1GB in size)"
-      timeoutInMinutes: 10
-      continueOnError: true
+    #- script: |
+    #    dd bs=1000 count=1000000 if=/dev/zero of=$(MOUNT_DIR)/test.txt
+    #  displayName: "TEST - Create File (1GB in size)"
+    #  timeoutInMinutes: 10
+    #  continueOnError: true
      
     # GetStat on File
     - script: stat $(MOUNT_DIR)/test.txt

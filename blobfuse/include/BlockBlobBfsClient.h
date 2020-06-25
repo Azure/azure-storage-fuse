@@ -14,6 +14,7 @@ public:
     m_blob_client(NULL)
     {}
 
+    bool isADLS() { return false; }
     ///<summary>
     /// Authenticates the storage account and container
     ///</summary>
@@ -24,7 +25,7 @@ public:
     ///</summary>
     ///TODO: params
     ///<returns>none</returns>
-    void UploadFromFile(const std::string sourcePath) override;
+    void UploadFromFile(const std::string sourcePath, METADATA &metadata) override;
     ///<summary>
     /// Uploads contents of a stream to a block blob to the Storage service
     ///</summary>
@@ -98,6 +99,9 @@ public:
     /// Updates the UNIX-style file mode on a path.
     ///</summary>
     int ChangeMode(const char* path, mode_t mode) override;
+
+    int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL);
+    
 protected:
     ///<summary>
     /// Blob Client to make blob storage calls

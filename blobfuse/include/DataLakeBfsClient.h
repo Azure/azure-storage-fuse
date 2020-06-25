@@ -14,6 +14,9 @@ public:
     BlockBlobBfsClient(config_options),
     m_adls_client(NULL)
     {}
+
+    bool isADLS() { return true; }
+    
     ///<summary>
     /// Authenticates the storage account and container
     ///</summary>
@@ -52,6 +55,9 @@ public:
     ///</summary>
     ///<returns>BfsFileProperty object which contains the property details of the file</returns>
     BfsFileProperty GetProperties(std::string pathName) override;
+
+    virtual int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL);
+
 private:
     ///<summary>
     /// Helper function - Authenticates with an account key

@@ -346,6 +346,8 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
     m_adls_client->set_file_access_control(configurations.containerName, pathStr.substr(1), accessControl);
     lstaterrno = errno;
 
+    UpdateBlobProperty(pathStr.substr(1), "last_change", std::to_string(time(NULL)));
+
     std::string mntPathString = prepend_mnt_path_string(pathStr);
     int acc = access(mntPathString.c_str(), F_OK);
     if (acc != -1)
@@ -426,4 +428,45 @@ long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
         return 0;
     }
     return buf.st_size;
+}
+
+
+int DataLakeBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata)
+{
+    errno = 0;
+    BfsFileProperty blob_property = GetProperties(pathStr);
+    if (errno) {
+        AZS_DEBUGLOGV("Failed to get property before update for %s : err %d", pathStr.c_str(), errno);
+        return errno;
+    }
+
+    bool updated = false;
+    if (!key.empty() && !value.empty())
+    {
+        for (auto iter = blob_property.metadata.begin(); iter != blob_property.metadata.end(); ++iter)
+        {
+            if (iter->first.compare(key.c_str()) == 0) {
+                iter->second = value;
+                updated = true;
+            }
+        }
+
+        if (!updated) {
+            blob_property.metadata.push_back(std::make_pair(key, value));
+            updated = true;
+        }
+    }
+    
+    if (metadata)
+        *metadata = blob_property.metadata;
+
+    errno = 0;
+    if (updated) {
+        m_adls_client->set_file_properties(configurations.containerName, pathStr, blob_property.metadata);
+        if (errno) {
+            AZS_DEBUGLOGV("Failed to update property for %s : err %d", pathStr.c_str(), errno);
+        }
+    }
+
+    return errno;
 }

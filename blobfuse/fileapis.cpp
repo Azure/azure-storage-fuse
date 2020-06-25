@@ -35,6 +35,8 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     struct stat buf;
     int statret = stat(mntPath, &buf);
     time_t now = time(NULL);
+    
+
     if ((statret != 0) || 
         ( ((now - buf.st_mtime) > config_options.fileCacheTimeoutInSeconds) && 
           ((now - buf.st_ctime) > config_options.fileCacheTimeoutInSeconds))
@@ -112,7 +114,6 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             new_time.modtime = last_modified;
             new_time.actime = 0;
             utime(mntPathString.c_str(), &new_time);
-
         }
     }
 
@@ -139,7 +140,19 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     }
 
     // TODO: Actual access control
-    fchmod(res, config_options.defaultPermission);
+    if (!storage_client->isADLS()) {
+        fchmod(res, config_options.defaultPermission);
+    } else {
+        BfsFileProperty blob_property = storage_client->GetProperties(pathString.substr(1));
+        mode_t perms = blob_property.m_file_mode == 0 ?  config_options.defaultPermission : blob_property.m_file_mode;
+        fchmod(res, perms);
+
+        // preserve the last modified time
+        struct utimbuf new_time;
+        new_time.modtime = blob_property.get_last_modified();
+        new_time.actime = blob_property.get_last_access(); 
+        utime(mntPathString.c_str(), &new_time); 
+    }
 
     // Store the open file handle, and whether or not the file should be uploaded on close().
     // TODO: Optimize the scenario where the file is open for read/write, but no actual writing occurs, to not upload the blob.
@@ -268,6 +281,15 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
     const char * mntPath = path_buffer;
     if (access(mntPath, F_OK) != -1 )
     {
+        // TODO: This will currently upload the full file on every flush() call.  We may want to keep track of whether
+        // or not flush() has been called already, and not re-upload the file each time.
+        std::string blob_name = mntPathString.substr(config_options.tmpPath.size() + 6 /* there are six characters in "/root/" */);
+        // remove extra slash
+        if(blob_name.at(0) == '/')
+        {
+            blob_name.erase(blob_name.begin() + 0);
+        }
+
         // We cannot close the actual file handle to the temp file, because of the possibility of flush being called multiple times for a given call to open().
         // For some file systems, however, close() flushes data, so we do want to do that before uploading data to a blob.
         // The solution (taken from the FUSE documentation) is to close a duplicate of the file descriptor.
@@ -306,18 +328,11 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
                     return -storage_errno;
                 }
             }
-
-            // TODO: This will currently upload the full file on every flush() call.  We may want to keep track of whether
-            // or not flush() has been called already, and not re-upload the file each time.
-            std::string blob_name = mntPathString.substr(config_options.tmpPath.size() + 6 /* there are six characters in "/root/" */);
-            // remove extra slash
-            if(blob_name.at(0) == '/')
-            {
-                blob_name.erase(blob_name.begin() + 0);
-            }
-            
+      
             errno = 0;
-            storage_client->UploadFromFile(mntPath);
+            std::vector<std::pair<std::string, std::string>> metadata;
+            storage_client->UpdateBlobProperty(blob_name, "", "", &metadata);
+            storage_client->UploadFromFile(mntPath, metadata);
             if (errno != 0)
             {
                 int storage_errno = errno;
@@ -329,6 +344,8 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             {
                 syslog(LOG_INFO, "Successfully uploaded file %s to blob %s.\n", path, blob_name.c_str());
             }
+        } else {
+            storage_client->UpdateBlobProperty(blob_name, "last_access", std::to_string(time(NULL)));
         }
     }
     else
@@ -506,7 +523,9 @@ int azs_truncate(const char * path, off_t off)
             // We want to upload a zero-length blob.
             std::istringstream emptyDataStream("");
             errno = 0;
-            storage_client->UploadFromStream(emptyDataStream, pathString.substr(1).c_str());
+            std::vector<std::pair<std::string, std::string>> metadata;
+            storage_client->UpdateBlobProperty(pathString.substr(1), "", "", &metadata);
+            storage_client->UploadFromStream(emptyDataStream, pathString.substr(1).c_str(), metadata);
             if (errno != 0)
             {
                 syslog(LOG_ERR, "Failed to upload zero-length blob to %s from azs_truncate.  errno = %d\n.", pathString.c_str()+1, errno);
@@ -544,7 +563,9 @@ int azs_truncate(const char * path, off_t off)
             // We want to upload a zero-length blob.
             std::istringstream emptyDataStream("");
             errno = 0;
-            storage_client->UploadFromStream(emptyDataStream, pathString.substr(1).c_str());
+            std::vector<std::pair<std::string, std::string>> metadata;
+            storage_client->UpdateBlobProperty(pathString.substr(1), "", "", &metadata);
+            storage_client->UploadFromStream(emptyDataStream, pathString.substr(1).c_str(), metadata);
             if (errno != 0)
             {
                 int storage_errno = errno;

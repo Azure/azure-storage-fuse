@@ -107,6 +107,10 @@ class BfsFileProperty : public blob_property
             last_modified = lastModified;
             size = Size;
 
+            is_directory = false;
+            last_access = last_modified;
+            last_change = last_modified;
+
             //This is mainly used in the ADLS client
             if (!modestring.empty())
             {
@@ -123,22 +127,27 @@ class BfsFileProperty : public blob_property
             {
                 m_file_mode = 0;
             }
+
             if(resourceType == "directory")
             {
                 is_directory = true;
             }
-            else
+
+            for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
             {
-                is_directory = false;
-                if (size == 0)
+                if ((iter->first.compare("hdi_isfolder") == 0) && (iter->second.compare("true") == 0))
                 {
-                    for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
-                    {
-                        if ((iter->first.compare("hdi_isfolder") == 0) && (iter->second.compare("true") == 0))
-                        {
-                            is_directory = true;
-                        }
-                    }
+                    is_directory = true;
+                }
+
+                if (iter->first.compare("last_access") == 0)
+                {
+                    last_access = std::stoi(iter->second.c_str());
+                }
+
+                if (iter->first.compare("last_change") == 0)
+                {
+                    last_change = std::stoi(iter->second.c_str());;
                 }
             }
         }
@@ -161,6 +170,9 @@ class BfsFileProperty : public blob_property
         bool is_directory;
         bool m_valid;
 
+        time_t last_access;
+        time_t last_change;
+
         bool isValid()
         {
             return m_valid;
@@ -174,6 +186,16 @@ class BfsFileProperty : public blob_property
         time_t get_last_modified()
         {
             return last_modified;
+        }
+
+        time_t get_last_access()
+        {
+            return last_access;
+        }
+
+        time_t get_last_change()
+        {
+            return last_change;
         }
 };
 
@@ -215,6 +237,8 @@ class StorageBfsClientBase
 public:
     StorageBfsClientBase(configParams opt) : configurations(opt)
     {}
+    virtual bool isADLS() = 0;
+    
     ///<summary>
     /// Authenticates the storage account and container
     ///</summary> 
@@ -225,7 +249,7 @@ public:
     ///</summary>
     ///TODO: params
     ///<returns>none</returns>
-    virtual void UploadFromFile(const std::string localPath) = 0;
+    virtual void UploadFromFile(const std::string localPath, METADATA &metadata) = 0;
     ///<summary>
     /// Uploads contents of a stream to a storage object(e.g. blob, file) to the Storage service
     ///</summary>
@@ -298,6 +322,9 @@ public:
     /// Updates the UNIX-style file mode on a path.
     ///</summary>
     virtual int ChangeMode(const char* path, mode_t mode) = 0;
+
+    // Update metadata for a blob
+    virtual int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL) = 0;
 
 protected:
     configParams configurations;

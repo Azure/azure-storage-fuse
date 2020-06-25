@@ -210,12 +210,10 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
 ///</summary>
 ///TODO: params
 ///<returns>none</returns>
-void BlockBlobBfsClient::UploadFromFile(const std::string sourcePath)
+void BlockBlobBfsClient::UploadFromFile(const std::string sourcePath, METADATA &metadata)
 {
-    std::vector<std::pair<std::string, std::string>> metadata;
     std::string blobName = sourcePath.substr(configurations.tmpPath.size() + 6 /* there are six characters in "/root/" */);
-
-    m_blob_client->upload_file_to_blob(sourcePath, configurations.containerName, blobName);
+    m_blob_client->upload_file_to_blob(sourcePath, configurations.containerName, blobName, metadata);
 
     // upload_file_to_blob does not return a status or success if the blob succeeded
     // it does syslog if there was an exception and changes the errno.
@@ -929,4 +927,10 @@ bool BlockBlobBfsClient::is_folder(const std::vector<std::pair<std::string,std::
 
 int BlockBlobBfsClient::ChangeMode(const char*, mode_t) {
     return -ENOSYS;
+}
+
+int BlockBlobBfsClient::UpdateBlobProperty(std::string /*pathStr*/, std::string /*key*/, std::string /*value*/, METADATA * /*metadata*/)
+{
+    //  This is not supported for block blob for now
+    return 0;
 }

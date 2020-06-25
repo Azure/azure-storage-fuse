@@ -17,6 +17,8 @@
 using namespace azure::storage_lite;
 using namespace azure::storage_adls;
 
+#define METADATA std::vector<std::pair<std::string, std::string>>
+
 bool is_directory_empty(const char *tmpDir);
 extern struct configParams config_options;
 

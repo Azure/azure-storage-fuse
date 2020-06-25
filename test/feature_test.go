@@ -431,9 +431,17 @@ func TestLinkRead(t *testing.T) {
 // # Write a small file using symlink
 func TestLinkWrite(t *testing.T) {
 	fileName := mntPath + "/small.lnk"
+	targetName := mntPath + "/small_write.txt"
 	err := ioutil.WriteFile(fileName, medBuff, 0666)
 	if err != nil {
 		t.Errorf("Failed to write file " + fileName + " (" + err.Error() + ")")
+	}
+
+	stat, err := os.Stat(targetName)
+	modTineDiff := time.Now().Sub(stat.ModTime())
+	fmt.Println(stat.ModTime())
+	if modTineDiff.Minutes > 2 {
+		t.Errorf("Last modified time mismatch for " + targetName)
 	}
 }
 
@@ -512,5 +520,5 @@ func TestMain(m *testing.M) {
 	m.Run()
 
 	//  Wipe out the test directory created for feature test
-	os.RemoveAll(mntPath)
+	os.RemoveAll(*pathPtr)
 }
