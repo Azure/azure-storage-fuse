@@ -440,7 +440,7 @@ func TestLinkWrite(t *testing.T) {
 	stat, err := os.Stat(targetName)
 	modTineDiff := time.Now().Sub(stat.ModTime())
 	fmt.Println(stat.ModTime())
-	if modTineDiff.Minutes > 2 {
+	if modTineDiff.Minutes() > 2 {
 		t.Errorf("Last modified time mismatch for " + targetName)
 	}
 }
