@@ -114,3 +114,57 @@ list_segmented_response::list_segmented_response(list_paths_result response) :
         m_items.push_back(list_segmented_item(response.paths.at(i)));
     }
 }
+
+int StorageBfsClientBase::GetCachedProperty(std::string pathStr, BfsFileProperty &prop)
+{
+    if (mUseCache) {
+        std::lock_guard<std::mutex> lock(mAttrCacheMutex);
+        BfsFileProperty cached_prop;
+
+        auto iter = mAttrCacheMap.find(pathStr);
+        if(iter != mAttrCacheMap.end()) {
+            cached_prop = iter->second;
+        }
+
+        if (cached_prop.isValid()) {
+            prop = cached_prop;
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
+int StorageBfsClientBase::SetCachedProperty(std::string pathStr, BfsFileProperty &prop)
+{
+    if (mUseCache) {
+        std::lock_guard<std::mutex> lock(mAttrCacheMutex);
+        BfsFileProperty cached_prop;
+
+        auto iter = mAttrCacheMap.find(pathStr);
+        if(iter != mAttrCacheMap.end()) {
+            mAttrCacheMap.erase(pathStr);
+        }
+
+        mAttrCacheMap[pathStr] = prop;
+        return 0;
+    }
+
+    return -1;
+}
+
+int StorageBfsClientBase::InvalidateCachedProperty(std::string pathStr)
+{
+    if (mUseCache) {
+        std::lock_guard<std::mutex> lock(mAttrCacheMutex);
+        BfsFileProperty cached_prop;
+
+        auto iter = mAttrCacheMap.find(pathStr);
+        if(iter != mAttrCacheMap.end()) {
+            iter->second.m_valid = false;
+            return 0;
+        }
+    }
+
+    return -1;
+}

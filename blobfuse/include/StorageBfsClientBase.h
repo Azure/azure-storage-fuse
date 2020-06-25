@@ -250,8 +250,15 @@ struct list_segmented_response {
 class StorageBfsClientBase
 {
 public:
-    StorageBfsClientBase(configParams opt) : configurations(opt)
-    {}
+    StorageBfsClientBase(configParams opt) : 
+        configurations(opt),
+        mUseCache(false),
+        mAttrCacheMutex(),
+        mAttrCacheMap() 
+        {
+            if (opt.useAttrCache)
+                mUseCache = true;
+        }
     virtual bool isADLS() = 0;
     
     ///<summary>
@@ -341,6 +348,10 @@ public:
     // Update metadata for a blob
     virtual int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL) = 0;
 
+    virtual int GetCachedProperty(std::string pathStr, BfsFileProperty &prop);
+    virtual int SetCachedProperty(std::string pathStr, BfsFileProperty &prop);
+    virtual int InvalidateCachedProperty(std::string pathStr);
+
 protected:
     configParams configurations;
     ///<summary>
@@ -356,6 +367,10 @@ protected:
     /// TODO: refactoring, rename variables and add comments to make sense to parsing
     ///</summary>
     int ensure_directory_path_exists_cache(const std::string & file_path);
+
+    bool mUseCache;
+    std::mutex mAttrCacheMutex;
+    std::map<std::string, BfsFileProperty> mAttrCacheMap;
 };
 
 #endif

@@ -373,10 +373,15 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
 }
 
 BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName) {
+    BfsFileProperty cache_prop;
+    if (0 == GetCachedProperty(pathName, cache_prop)) {
+        return cache_prop;
+    }
+
     dfs_properties dfsprops =
             m_adls_client->get_dfs_path_properties(configurations.containerName, pathName);
 
-    return BfsFileProperty(
+    BfsFileProperty ret_property(
             dfsprops.cache_control,
             dfsprops.content_disposition,
             dfsprops.content_encoding,
@@ -393,6 +398,10 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName) {
             dfsprops.permissions,
             dfsprops.content_length
             );
+
+    SetCachedProperty(pathName, ret_property);
+
+    return ret_property;
 }
 
 long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
@@ -467,6 +476,6 @@ int DataLakeBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, 
             AZS_DEBUGLOGV("Failed to update property for %s : err %d", pathStr.c_str(), errno);
         }
     }
-
+    InvalidateCachedProperty(pathStr);
     return errno;
 }

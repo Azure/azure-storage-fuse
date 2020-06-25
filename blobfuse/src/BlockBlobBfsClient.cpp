@@ -71,9 +71,9 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accou
                 account,
                 configurations.concurrency);
         errno = 0;
-        if(configurations.useAttrCache){
+        /*if(configurations.useAttrCache){
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
-        }
+        }*/
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch(const std::exception &ex)
@@ -106,9 +106,9 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_sas()
                 account,
                 configurations.concurrency);
         errno = 0;
-        if(configurations.useAttrCache){
+        /*if(configurations.useAttrCache){
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
-        }
+        }*/
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch(const std::exception &ex)
@@ -148,9 +148,9 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
         std::shared_ptr<blob_client> blobClient =
                 std::make_shared<blob_client>(account, max_concurrency_oauth);
         errno = 0;
-        if(configurations.useAttrCache){
+        /*if(configurations.useAttrCache){
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
-        }
+        }*/
         return std::make_shared<blob_client_wrapper>(blobClient);
 
     }
@@ -191,9 +191,9 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
         std::shared_ptr<blob_client> blobClient =
                 std::make_shared<blob_client>(account, max_concurrency_oauth);
         errno = 0;
-        if(configurations.useAttrCache){
+        /*if(configurations.useAttrCache){
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
-        }
+        }*/
         return std::make_shared<blob_client_wrapper>(blobClient);
 
     }
@@ -214,6 +214,7 @@ void BlockBlobBfsClient::UploadFromFile(const std::string sourcePath, METADATA &
 {
     std::string blobName = sourcePath.substr(configurations.tmpPath.size() + 6 /* there are six characters in "/root/" */);
     m_blob_client->upload_file_to_blob(sourcePath, configurations.containerName, blobName, metadata);
+    InvalidateCachedProperty(blobName);
 
     // upload_file_to_blob does not return a status or success if the blob succeeded
     // it does syslog if there was an exception and changes the errno.
@@ -225,12 +226,14 @@ void BlockBlobBfsClient::UploadFromFile(const std::string sourcePath, METADATA &
 void BlockBlobBfsClient::UploadFromStream(std::istream & sourceStream, const std::string blobName)
 {
     m_blob_client->upload_block_blob_from_stream(configurations.containerName, blobName, sourceStream);
+    InvalidateCachedProperty(blobName);
 }
 
 void BlockBlobBfsClient::UploadFromStream(std::istream & sourceStream, const std::string blobName, 
                         std::vector<std::pair<std::string, std::string>> & metadata)
 {
     m_blob_client->upload_block_blob_from_stream(configurations.containerName, blobName, sourceStream, metadata);
+    InvalidateCachedProperty(blobName);
 }
 
 ///<summary>
@@ -362,6 +365,11 @@ void BlockBlobBfsClient::DeleteFile(const std::string pathToDelete)
 ///<returns>BfsFileProperty object which contains the property details of the file</returns>
 BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName)
 {
+    BfsFileProperty cache_prop;
+    if (0 == GetCachedProperty(pathName, cache_prop)) {
+        return cache_prop;
+    }
+
     blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
 
     BfsFileProperty ret_property(property.cache_control,
@@ -376,6 +384,9 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName)
             property.last_modified,
             "", // Return an empty modestring because blob doesn't support file mode bits.
             property.size);
+
+    SetCachedProperty(pathName, ret_property);
+
     return ret_property;
 }  
 ///<summary>
