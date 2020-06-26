@@ -127,8 +127,12 @@ int StorageBfsClientBase::GetCachedProperty(std::string pathStr, BfsFileProperty
         }
 
         if (cached_prop.isValid()) {
-            prop = cached_prop;
-            return 0;
+            time_t curr_time = time(NULL);
+            time_t diff = curr_time - cached_prop.get_cache_time();
+            if (diff < config_options.fileCacheTimeoutInSeconds) {
+                prop = cached_prop;
+                return 0;
+            }
         }
     }
 
@@ -146,6 +150,7 @@ int StorageBfsClientBase::SetCachedProperty(std::string pathStr, BfsFileProperty
             mAttrCacheMap.erase(pathStr);
         }
 
+        prop.set_cache_time();
         mAttrCacheMap[pathStr] = prop;
         return 0;
     }

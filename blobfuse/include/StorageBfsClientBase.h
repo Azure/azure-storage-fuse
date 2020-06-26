@@ -46,6 +46,7 @@ class BfsFileProperty : public blob_property
             size = Size;
             last_access = last_modified;
             last_change = last_modified;
+            cache_time = time(NULL);
 
             // This is mainly used in the Blob Client
             if (!modestring.empty())
@@ -118,6 +119,7 @@ class BfsFileProperty : public blob_property
             metadata = metaData;
             last_modified = lastModified;
             size = Size;
+            cache_time = time(NULL);
 
             is_directory = false;
             last_access = last_modified;
@@ -187,6 +189,7 @@ class BfsFileProperty : public blob_property
 
         time_t last_access;
         time_t last_change;
+        time_t cache_time;
 
         bool isValid()
         {
@@ -211,6 +214,15 @@ class BfsFileProperty : public blob_property
         time_t get_last_change()
         {
             return last_change;
+        }
+
+        time_t get_cache_time()
+        {
+            return cache_time;
+        }
+        void set_cache_time()
+        {
+            cache_time = time(NULL);
         }
 };
 

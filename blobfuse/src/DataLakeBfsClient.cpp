@@ -223,6 +223,7 @@ bool DataLakeBfsClient::CreateDirectory(const std::string directoryPath)
 bool DataLakeBfsClient::DeleteDirectory(const std::string directoryPath)
 {
     errno = 0;
+    InvalidateCachedProperty(directoryPath);
     m_adls_client->delete_directory(configurations.containerName, directoryPath);
     if(errno != 0)
     {
@@ -299,6 +300,9 @@ D_RETURN_CODE DataLakeBfsClient::IsDirectoryEmpty(std::string path)
 ///<returns></returns>
 std::vector<std::string> DataLakeBfsClient::Rename(std::string sourcePath, std::string destinationPath)
 {
+    InvalidateCachedProperty(sourcePath);
+    InvalidateCachedProperty(destinationPath);
+    
     m_adls_client->move_file(
             configurations.containerName,
             sourcePath.substr(1),
@@ -378,10 +382,12 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName) {
         return cache_prop;
     }
 
+    errno = 0;
     dfs_properties dfsprops =
             m_adls_client->get_dfs_path_properties(configurations.containerName, pathName);
 
-    BfsFileProperty ret_property(
+    if (errno == 0) {
+        BfsFileProperty ret_property(
             dfsprops.cache_control,
             dfsprops.content_disposition,
             dfsprops.content_encoding,
@@ -399,9 +405,12 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName) {
             dfsprops.content_length
             );
 
-    SetCachedProperty(pathName, ret_property);
+        SetCachedProperty(pathName, ret_property);
 
-    return ret_property;
+        return ret_property;
+    }
+
+    return BfsFileProperty();
 }
 
 long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
