@@ -176,7 +176,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                             stbuf.st_gid = fuse_get_context()->gid;
                             stbuf.st_nlink = 2;
                             fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
-                            AZS_DEBUGLOGV("Blob directory %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
+                            AZS_DEBUGLOGV("Blob directory %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d. uid=%u. gid = %u\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult, stbuf.st_uid, stbuf.st_gid);
                         }
                     }
 

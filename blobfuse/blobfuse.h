@@ -189,7 +189,7 @@ int shared_lock_file(int flags, int fd);
 int ensure_files_directory_exists_in_cache(const std::string& file_path);
 
 // Greedily list all blobs using the input params.
-std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix);
+std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix, const std::size_t maxresults=0);
 
 // Returns:
 // 0 if there's nothing there (the directory does not exist)
