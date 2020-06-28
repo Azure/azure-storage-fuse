@@ -479,7 +479,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 if ( listResults[i].name.compare(blobNameStr + '/') < 0)
                 {
                     dirSize++;
-                    if (dirSize > 2)
+                    // listing is hierarchical so no need of the 2nd is blobitem.name empty condition but just in case for service errors
+                    if (dirSize > 2 && !blobItem.name.empty())
                     {
                         break;
                     }
@@ -493,7 +494,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                     blobItem = listResults[i];
                     syslog(LOG_DEBUG, "In azs_getattr found blob in list hierarchical file %s\n", blobItem.name.c_str() );
                     // leave 'i' at the value it is, it will be used in the remaining batches and loops to check for directory empty check.
-                    if (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/'))
+                    if (dirSize==0 && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
                     {
                         dirSize = 1; // root directory exists so 1
                     }
