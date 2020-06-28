@@ -245,6 +245,6 @@ namespace microsoft_azure
             }
 
             return output;
-        }
+        } 
     }
 }
