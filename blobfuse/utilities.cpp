@@ -492,7 +492,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 if (blobItem.name.empty() && (listResults[i].name == blobNameStr || listResults[i].name == (blobNameStr + '/')))
                 {
                     blobItem = listResults[i];
-                    syslog(LOG_DEBUG, "In azs_getattr found blob in list hierarchical file %s\n", blobItem.name.c_str() );
+                    AZS_DEBUGLOGV("In azs_getattr found blob in list hierarchical file %s\n", blobItem.name.c_str() );
                     // leave 'i' at the value it is, it will be used in the remaining batches and loops to check for directory empty check.
                     if (dirSize==0 && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
                     {
