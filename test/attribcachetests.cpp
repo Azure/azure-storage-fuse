@@ -7,12 +7,16 @@ using::testing::_;
 using ::testing::Return;
 
 // Used for GoogleMock
-class MockBlobClient : public sync_blob_client {
+class MockBlobClient : public blob_client_wrapper {
 public:
+    MockBlobClient() : blob_client_wrapper(true) {}
+    MockBlobClient(std::shared_ptr<blob_client> &wrapper) : 
+        blob_client_wrapper(wrapper) {}
+        
     MOCK_CONST_METHOD0(is_valid, bool());
-    MOCK_METHOD5(list_blobs_hierarchical, list_blobs_hierarchical_response(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults));
+    MOCK_METHOD5(list_blobs_segmented, list_blobs_segmented_response(const std::string &container, const std::string &delimiter, const std::string &continuation_token, const std::string &prefix, int maxresults));
     MOCK_METHOD4(put_blob, void(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata));
-    MOCK_METHOD4(upload_block_blob_from_stream, void(const std::string &container, const std::string blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata));
+    MOCK_METHOD5(upload_block_blob_from_stream, void(const std::string &container, const std::string blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata, size_t streamlen));
     MOCK_METHOD5(upload_file_to_blob, void(const std::string &sourcePath, const std::string &container, const std::string blob, const std::vector<std::pair<std::string, std::string>> &metadata, size_t parallel));
     MOCK_METHOD5(download_blob_to_stream, void(const std::string &container, const std::string &blob, unsigned long long offset, unsigned long long size, std::ostream &os));
     MOCK_METHOD5(download_blob_to_file, void(const std::string &container, const std::string &blob, const std::string &destPath, time_t &returned_last_modified, size_t parallel));
@@ -40,9 +44,36 @@ public:
     // This runs before each test.
     virtual void SetUp()
     {
-       container_name = "container";
-       mockClient = std::make_shared<::testing::StrictMock<MockBlobClient>>();
-       attrib_cache_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(mockClient);
+        container_name = "container";
+        #if 1
+        mockClient = std::make_shared<::testing::StrictMock<MockBlobClient>>();
+        #else
+        int ret = read_config("../connection.cfg");
+        ASSERT_EQ(0, ret) << "Read config failed.";
+        std::string blob_endpoint;
+        std::string sas_token;
+        config_options.accountName.erase(remove(config_options.accountName.begin(), config_options.accountName.end(), '\r'), config_options.accountName.end());
+        config_options.accountKey.erase(remove(config_options.accountKey.begin(), config_options.accountKey.end(), '\r'), config_options.accountKey.end());
+
+        std::shared_ptr<storage_credential> cred;
+        if (config_options.accountKey.length() > 0)
+        {
+            cred = std::make_shared<shared_key_credential>(config_options.accountName, config_options.accountKey);
+            std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
+                    config_options.accountName, 
+                    cred, 
+                    true, 
+                    blob_endpoint);
+            std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, 20);
+            mockClient = std::make_shared<::testing::StrictMock<MockBlobClient>>(blobClient);
+        }
+        else
+        {
+            syslog(LOG_ERR, "Empty account key. Failed to create blob client.");
+            mockClient = std::make_shared<::testing::StrictMock<MockBlobClient>>();
+        }
+        #endif
+        attrib_cache_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(mockClient);
     }
 
     virtual void TearDown()
@@ -88,7 +119,7 @@ void assert_blob_property_objects_equal(blob_property& left, blob_property& righ
     assert_metadata_equal(left.metadata, right.metadata);
 }
 
-void assert_list_item_equal(list_blobs_hierarchical_item &left, list_blobs_hierarchical_item &right)
+void assert_list_item_equal(list_blobs_segmented_item &left, list_blobs_segmented_item &right)
 {
     EXPECT_EQ(left.name, right.name);
     EXPECT_EQ(left.snapshot, right.snapshot);
@@ -103,12 +134,12 @@ void assert_list_item_equal(list_blobs_hierarchical_item &left, list_blobs_hiera
     EXPECT_EQ(left.status, right.status);
     EXPECT_EQ(left.state, right.state);
     EXPECT_EQ(left.duration, right.duration);
-    EXPECT_EQ(left.copy_status, right.copy_status);
+    //EXPECT_EQ(left.copy_status, right.copy_status);
     EXPECT_EQ(left.is_directory, right.is_directory);
     assert_metadata_equal(left.metadata, right.metadata);
 }
 
-void assert_list_response_objects_equal(list_blobs_hierarchical_response &left, list_blobs_hierarchical_response& right)
+void assert_list_response_objects_equal(list_blobs_segmented_response &left, list_blobs_segmented_response& right)
 {
     EXPECT_EQ(left.next_marker, right.next_marker);
     EXPECT_EQ(left.ms_request_id, right.ms_request_id);
@@ -133,7 +164,7 @@ blob_property create_blob_property(std::string etag, unsigned long long size)
     props.content_language = "content_language";
     props.content_md5 = "content_md5";
     props.content_type = "content_type";
-    props.copy_status = "copy_status";
+    props.copy_status = "";
 
 
     props.last_modified = time(NULL);
@@ -143,11 +174,11 @@ blob_property create_blob_property(std::string etag, unsigned long long size)
     return props;
 }
 
-// Helper for converting a blob_property object into a list_blobs_hierarchical_item.
+// Helper for converting a blob_property object into a list_blobs_segmented_item.
 // TODO: Remove this once cpplite unifies these two types.
-list_blobs_hierarchical_item blob_property_to_item(std::string name, blob_property prop, bool is_directory)
+list_blobs_segmented_item blob_property_to_item(std::string name, blob_property prop, bool is_directory)
 {
-    list_blobs_hierarchical_item item;
+    list_blobs_segmented_item item;
     item.name = name;
     item.is_directory = is_directory;
     item.cache_control = prop.cache_control;
@@ -158,7 +189,7 @@ list_blobs_hierarchical_item blob_property_to_item(std::string name, blob_proper
     item.content_type = prop.content_type;
     item.etag = prop.etag;
     item.metadata = prop.metadata;
-    item.copy_status = prop.copy_status;
+    //item.copy_status = prop.copy_status;
 
     char buf[30];
     std::time_t t = prop.last_modified;
@@ -246,20 +277,20 @@ TEST_F(AttribCacheTest, GetBlobPropertiesListSimple)
     blob_property prop2 = create_blob_property("etag2", 15);
     blob_property prop3 = create_blob_property("etag3", 239817328401234ull); // larger than will fit in an int
 
-    list_blobs_hierarchical_response list_response;
+    list_blobs_segmented_response list_response;
     list_response.next_marker = "marker";
     list_response.blobs.push_back(blob_property_to_item(blob1, prop1, false));
     list_response.blobs.push_back(blob_property_to_item(blob2, prop2, true)); // Ensure that directories don't get cached
     list_response.blobs.push_back(blob_property_to_item(blob3, prop3, false));
 
-    EXPECT_CALL(*mockClient, list_blobs_hierarchical(container_name, "/", "token", "prefix", 10000))
+    EXPECT_CALL(*mockClient, list_blobs_segmented(container_name, "/", "token", "prefix", 10000))
     .Times(1)
     .WillOnce(Return(list_response));
     EXPECT_CALL(*mockClient, get_blob_property(container_name, blob2))
     .Times(1)
     .WillOnce(Return(prop2));
 
-    list_blobs_hierarchical_response list_response_cache = attrib_cache_wrapper->list_blobs_hierarchical(container_name, "/", "token", "prefix", 10000);
+    list_blobs_segmented_response list_response_cache = attrib_cache_wrapper->list_blobs_segmented(container_name, "/", "token", "prefix", 10000);
     blob_property prop1_1 = attrib_cache_wrapper->get_blob_property(container_name, blob1);
     blob_property prop2_1 = attrib_cache_wrapper->get_blob_property(container_name, blob2);
     blob_property prop3_1 = attrib_cache_wrapper->get_blob_property(container_name, blob3);
@@ -299,7 +330,7 @@ TEST_F(AttribCacheTest, GetBlobPropertiesListRepeated)
     blob_property prop5_v1 = create_blob_property("etag5_1", 2);
     blob_property prop5_v2 = create_blob_property("etag5_2", 3);
 
-    list_blobs_hierarchical_response list_response_1;
+    list_blobs_segmented_response list_response_1;
     list_response_1.next_marker = "marker";
     list_response_1.blobs.push_back(blob_property_to_item(blob1, prop1, false));
     list_response_1.blobs.push_back(blob_property_to_item(blob2, prop2_v1, false));
@@ -307,7 +338,7 @@ TEST_F(AttribCacheTest, GetBlobPropertiesListRepeated)
     list_response_1.blobs.push_back(blob_property_to_item(blob5, prop5_v1, false));
 
 
-    list_blobs_hierarchical_response list_response_2;
+    list_blobs_segmented_response list_response_2;
     list_response_2.next_marker = "marker";
     list_response_2.blobs.push_back(blob_property_to_item(blob1, prop1, false));
     list_response_2.blobs.push_back(blob_property_to_item(blob2, prop2_v2, false));
@@ -321,7 +352,7 @@ TEST_F(AttribCacheTest, GetBlobPropertiesListRepeated)
         EXPECT_CALL(*mockClient, get_blob_property(container_name, blob2))
         .Times(1)
         .WillOnce(Return(prop2_v0));
-        EXPECT_CALL(*mockClient, list_blobs_hierarchical(container_name, "/", "token", "prefix", 10000))
+        EXPECT_CALL(*mockClient, list_blobs_segmented(container_name, "/", "token", "prefix", 10000))
         .Times(1)
         .WillOnce(Return(list_response_1));
         EXPECT_CALL(*mockClient, get_blob_property(container_name, blob3))
@@ -334,13 +365,13 @@ TEST_F(AttribCacheTest, GetBlobPropertiesListRepeated)
         EXPECT_CALL(*mockClient, get_blob_property(container_name, blob5))
         .Times(1)
         .WillOnce(Return(prop5_v2));
-        EXPECT_CALL(*mockClient, list_blobs_hierarchical(container_name, "/", "token", "prefix", 10000))
+        EXPECT_CALL(*mockClient, list_blobs_segmented(container_name, "/", "token", "prefix", 10000))
         .Times(1)
         .WillOnce(Return(list_response_2));
     }
 
     blob_property propcache2_0 = attrib_cache_wrapper->get_blob_property(container_name, blob2);
-    list_blobs_hierarchical_response list_response_cache_1 = attrib_cache_wrapper->list_blobs_hierarchical(container_name, "/", "token", "prefix", 10000);
+    list_blobs_segmented_response list_response_cache_1 = attrib_cache_wrapper->list_blobs_segmented(container_name, "/", "token", "prefix", 10000);
     blob_property propcache1_1 = attrib_cache_wrapper->get_blob_property(container_name, blob1);
     blob_property propcache2_1 = attrib_cache_wrapper->get_blob_property(container_name, blob2);
     blob_property propcache3_1 = attrib_cache_wrapper->get_blob_property(container_name, blob3);
@@ -352,7 +383,7 @@ TEST_F(AttribCacheTest, GetBlobPropertiesListRepeated)
 
     blob_property propcache5_post_invalidate = attrib_cache_wrapper->get_blob_property(container_name, blob5);
 
-    list_blobs_hierarchical_response list_response_cache_2 = attrib_cache_wrapper->list_blobs_hierarchical(container_name, "/", "token", "prefix", 10000);
+    list_blobs_segmented_response list_response_cache_2 = attrib_cache_wrapper->list_blobs_segmented(container_name, "/", "token", "prefix", 10000);
     blob_property propcache1_2 = attrib_cache_wrapper->get_blob_property(container_name, blob1);
     blob_property propcache2_2 = attrib_cache_wrapper->get_blob_property(container_name, blob2);
     blob_property propcache3_2 = attrib_cache_wrapper->get_blob_property(container_name, blob3);
@@ -439,7 +470,7 @@ std::map<std::string, std::function<void(std::shared_ptr<::testing::StrictMock<M
     }},
     {"UploadFromStream", [](std::shared_ptr<::testing::StrictMock<MockBlobClient>> mockClient, std::string container_name, std::string blob_name, ::testing::Sequence seq)
     {
-        EXPECT_CALL(*mockClient, upload_block_blob_from_stream(container_name, blob_name, _, _))
+        EXPECT_CALL(*mockClient, upload_block_blob_from_stream(container_name, blob_name, _, _, _))
         .Times(1)
         .InSequence(seq);
     }},
@@ -511,6 +542,7 @@ TEST_P(AttribCacheInvalidateCacheTest, Run)
     EXPECT_CALL(check, Call("2")).Times(1).InSequence(seq);
     expectationMap[operation_name](mockClient, container_name, blob_name, seq);
     EXPECT_CALL(check, Call("3")).Times(1).InSequence(seq);
+
     if (expectInvalidate[operation_name])
     {
         EXPECT_CALL(*mockClient, get_blob_property(container_name, blob_name)).Times(1).InSequence(seq)
@@ -524,6 +556,7 @@ TEST_P(AttribCacheInvalidateCacheTest, Run)
     operationMap[operation_name](attrib_cache_wrapper, container_name, blob_name);
     check.Call("3");
     blob_property prop_cache3 = attrib_cache_wrapper->get_blob_property(container_name, blob_name);
+    
 
     assert_blob_property_objects_equal(prop1, prop_cache1);
     assert_blob_property_objects_equal(prop1, prop_cache2);

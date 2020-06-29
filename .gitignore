@@ -66,3 +66,5 @@ connection.cfg
 
 # blobcp binary
 tools/blobcp
+connection.cfg
+stresstests/blobfusestress

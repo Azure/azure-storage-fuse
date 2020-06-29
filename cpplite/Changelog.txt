@@ -1,0 +1,29 @@
+Changes in v0.3:
+- Parallel blob uploading & downloading
+- Proxy support
+- Configurable retry policy
+- Default retry count is changed from 25 to 3
+- Sample for blob_client
+- Type of size parameter in upload/download APIs is changed from size_t to uint64_t
+- Fix authentication issues when running against Azurite and IoT devices
+- Bug fix: error information isn't populated if libcurl fails
+- Bug fix: downloading empty blob fails
+- Bug fix: duplicate HTTP headers in retry requests
+
+Changes in v0.2:
+- Official support for Windows and macOS
+- Compatibility with Visual Studio 2019
+- Support for OAuth authentication
+- Support for Azure Data Lake Storage Gen2 (ADLS Gen2)
+- API names changed: get_blob_property/get_container_property -> get_blob_properties/get_container_properties
+- Added two APIs: set_container_metadata and set_blob_metadata
+- Bumped up API version to 2018-11-09
+- Minimum required CMake version has been raised to 3.6
+- Enabled CI with Azure Pipelines
+- Fixed a bug: containers' metadata is not loaded from server
+- Fixed a bug: header names aren't converted to lowercase and sorted when signing request
+- Fixed a bug: query parameters aren't converted to lowercase when signing request
+- Fixed a bug: upload failed errno is discarded
+
+Changes in v0.1:
+- Initial Release

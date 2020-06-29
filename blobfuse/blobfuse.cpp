@@ -1,12 +1,19 @@
-#include "blobfuse.h"
+#include <blobfuse.h>
 #include <boost/filesystem.hpp>
 #include <string>
 #include <signal.h>
 #include <mntent.h>
 #include <sys/types.h>
 #include <dirent.h>
-#include <ctype.h>
-#include <sys/utsname.h>
+
+#include <include/StorageBfsClientBase.h>
+#include <include/BlockBlobBfsClient.h>
+#include <include/DataLakeBfsClient.h>
+
+const std::string log_ident = "blobfuse";
+struct cmdlineOptions cmd_options;
+struct configParams config_options;
+std::shared_ptr<StorageBfsClientBase> storage_client;
 
 namespace {
     std::string trim(const std::string& str) {
@@ -19,87 +26,25 @@ namespace {
     }
 }
 
-// FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
-struct options
-{
-    const char *tmp_path; // Path to the temp / file cache directory
-    const char *config_file; // Connection to Azure Storage information (account name, account key, etc)
-    const char *use_https; // True if https should be used (defaults to false)
-    const char *file_cache_timeout_in_seconds; // Timeout for the file cache (defaults to 120 seconds)
-    const char *container_name; //container to mount. Used only if config_file is not provided
-    const char *log_level; // Sets the level at which the process should log to syslog.
-    const char *use_attr_cache; // True if the cache for blob attributes should be used.
-    const char *version; // print blobfuse version
-    const char *help; // print blobfuse usage
-};
-
-struct options options;
-struct str_options str_options;
-int file_cache_timeout_in_seconds;
-int default_permission;
-
-
-float kernel_version = 0.0;
-void populate_kernel_version()
-{
-    struct utsname buffer;
-    if (uname (&buffer) == 0) {
-        char *p = buffer.release;
-        int i = 0;
-        float ver[5];
-
-        while (*p) {
-            if (isdigit(*p)) {
-                ver[i] = strtof(p, &p);
-                i++;
-            } else {
-                p++;
-            }
-            if (i >= 5) break;
-        }
-        if (i > 2)
-            kernel_version = ver[0];
-    }
-}
-
-#define OPTION(t, p) { t, offsetof(struct options, p), 1 }
+#define OPTION(t, p) { t, offsetof(struct cmdlineOptions, p), 1 }
 const struct fuse_opt option_spec[] =
 {
     OPTION("--tmp-path=%s", tmp_path),
     OPTION("--config-file=%s", config_file),
-    OPTION("--use-https=%s", use_https),
+    OPTION("--use-https=%s", useHttps),
     OPTION("--file-cache-timeout-in-seconds=%s", file_cache_timeout_in_seconds),
     OPTION("--container-name=%s", container_name),
     OPTION("--log-level=%s", log_level),
-    OPTION("--use-attr-cache=%s", use_attr_cache),
+    OPTION("--use-attr-cache=%s", useAttrCache),
+    OPTION("--use-adls=%s", use_adls),
+    OPTION("--max-concurrency=%s", concurrency),
+    OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
     OPTION("-h", help),
     FUSE_OPT_END
 };
-
-std::shared_ptr<sync_blob_client> azure_blob_client_wrapper;
-class gc_cache gc_cache;
-
-// Currently, the cpp lite lib puts the HTTP status code in errno.
-// This mapping tries to convert the HTTP status code to a standard Linux errno.
-// TODO: Ensure that we map any potential HTTP status codes we might receive.
-std::map<int, int> error_mapping = {{404, ENOENT}, {403, EACCES}, {1600, ENOENT}, {400, EFAULT}};
-
-const std::string former_directory_signifier = ".directory";
-
-static struct fuse_operations azs_blob_operations;
-
-const std::string log_ident = "blobfuse";
-
-inline bool is_lowercase_string(const std::string &s)
-{
-    return (s.size() == static_cast<size_t>(std::count_if(s.begin(), s.end(),[](unsigned char c)
-    {
-        return std::islower(c);
-    })));
-}
 
 // Read Storage connection information from the environment variables
 int read_config_env()
@@ -121,71 +66,73 @@ int read_config_env()
 
     if(env_account)
     {
-        str_options.accountName = env_account;
+        config_options.accountName = env_account;
 
         if(env_account_key)
         {
-            str_options.accountKey = env_account_key;
+            config_options.accountKey = env_account_key;
         }
 
         if(env_sas_token)
         {
-            str_options.sasToken = env_sas_token;
+            config_options.sasToken = env_sas_token;
         }
 
         if(env_identity_client_id)
         {
-            str_options.identityClientId = env_identity_client_id;
+            config_options.identityClientId = env_identity_client_id;
         }
 
         if (env_spn_client_secret)
         {
-            str_options.spnClientSecret = env_spn_client_secret;
+            config_options.spnClientSecret = env_spn_client_secret;
         }
 
         if (env_spn_tenant_id)
         {
-            str_options.spnTenantId = env_spn_tenant_id;
+            config_options.spnTenantId = env_spn_tenant_id;
         }
 
         if (env_spn_client_id)
         {
-            str_options.spnClientId = env_spn_client_id;
+            config_options.spnClientId = env_spn_client_id;
         }
 
         if(env_identity_object_id)
         {
-            str_options.objectId = env_identity_object_id;
+            config_options.objectId = env_identity_object_id;
         }
 
         if(env_identity_resource_id)
         {
-            str_options.resourceId = env_identity_resource_id;
+            config_options.resourceId = env_identity_resource_id;
         }
 
         if(env_managed_identity_endpoint)
         {
-            str_options.msiEndpoint = env_managed_identity_endpoint;
+            config_options.msiEndpoint = env_managed_identity_endpoint;
         }
 
         if(env_managed_identity_secret)
         {
-            str_options.msiSecret = env_managed_identity_secret;
+            config_options.msiSecret = env_managed_identity_secret;
         }
 
         if(env_auth_type)
         {
-            str_options.authType = env_auth_type;
+            config_options.authType = get_auth_type(env_auth_type);;
+        } else {
+            config_options.authType = get_auth_type();
         }
 
         if(env_aad_endpoint)
         {
-            str_options.aadEndpoint = env_auth_type;
+            config_options.aadEndpoint = env_auth_type;
         }
 
         if(env_blob_endpoint) {
             // Optional to specify blob endpoint
-            str_options.blobEndpoint = env_blob_endpoint;
+            config_options.blobEndpoint = env_blob_endpoint;
         }
     }
     else
@@ -198,47 +145,6 @@ int read_config_env()
     }
 
     return 0;
-}
-
-auth_type get_auth_type() 
-{   
-    std::string lcAuthType = to_lower(str_options.authType);
-    lcAuthType = trim(lcAuthType);
-    int lcAuthTypeSize = (int)lcAuthType.size();
-    // sometimes an extra space or tab sticks to authtype thats why this size comparison, it is not always 3 lettered
-    if(lcAuthTypeSize > 0 && lcAuthTypeSize < 5) 
-    {
-        // an extra space or tab sticks to msi thats find and not ==, this happens when we also have an MSIEndpoint and MSI_SECRET in the config
-        if (lcAuthType.find("msi") != std::string::npos) {
-            // MSI does not require any parameters to work, as a lone system assigned identity will work with no parameters.
-            return MSI_AUTH;
-        } else if (lcAuthType == "key") {
-            if(!str_options.accountKey.empty()) // An account name is already expected to be specified.
-                return KEY_AUTH;
-            else
-                return INVALID_AUTH;
-        } else if (lcAuthType == "sas") {
-            if (!str_options.sasToken.empty()) // An account name is already expected to be specified.
-                return SAS_AUTH;
-            else
-                return INVALID_AUTH;
-        } else if (lcAuthType == "spn") {
-            return SPN_AUTH;
-        }
-    } 
-    else 
-    {
-        if (!str_options.objectId.empty() || !str_options.identityClientId.empty() || !str_options.resourceId.empty() || !str_options.msiSecret.empty() || !str_options.msiEndpoint.empty()) {
-            return MSI_AUTH;
-        } else if (!str_options.accountKey.empty()) {
-            return KEY_AUTH;
-        } else if (!str_options.sasToken.empty()) {
-            return SAS_AUTH;
-        } else if (!str_options.spnClientSecret.empty() && !str_options.spnClientId.empty() && !str_options.spnTenantId.empty()) {
-            return SPN_AUTH;
-        }
-    }
-    return INVALID_AUTH;
 }
 
 // Read Storage connection information from the config file
@@ -254,16 +160,17 @@ int read_config(const std::string configFile)
 
     std::string line;
     std::istringstream data;
+    bool set_auth_type = false;
 
     char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
     char* env_msi_secret = getenv("MSI_SECRET");
 
     if (env_spn_client_secret) {
-        str_options.spnClientSecret = env_spn_client_secret;
+        config_options.spnClientSecret = env_spn_client_secret;
     }
 
     if (env_msi_secret) {
-        str_options.msiSecret = env_msi_secret;
+        config_options.msiSecret = env_msi_secret;
     }
 
     while(std::getline(file, line))
@@ -280,85 +187,90 @@ int read_config(const std::string configFile)
         if(line.find("accountName") != std::string::npos)
         {
             std::string accountNameStr(value);
-            str_options.accountName = accountNameStr;
+            config_options.accountName = accountNameStr;
         }
         else if(line.find("accountKey") != std::string::npos)
         {
             std::string accountKeyStr(value);
-            str_options.accountKey = accountKeyStr;
+            config_options.accountKey = accountKeyStr;
         }
         else if(line.find("sasToken") != std::string::npos)
         {
             std::string sasTokenStr(value);
-            str_options.sasToken = sasTokenStr;
+            config_options.sasToken = sasTokenStr;
         }
         else if(line.find("containerName") != std::string::npos)
         {
             std::string containerNameStr(value);
-            str_options.containerName = containerNameStr;
+            config_options.containerName = containerNameStr;
         }
         else if(line.find("blobEndpoint") != std::string::npos)
         {
             std::string blobEndpointStr(value);
-            str_options.blobEndpoint = blobEndpointStr;
+            config_options.blobEndpoint = blobEndpointStr;
         }
         else if(line.find("identityClientId") != std::string::npos)
         {
             std::string clientIdStr(value);
-            str_options.identityClientId = clientIdStr;
+            config_options.identityClientId = clientIdStr;
         }
         else if(line.find("identityObjectId") != std::string::npos)
         {
             std::string objectIdStr(value);
-            str_options.objectId = objectIdStr;
+            config_options.objectId = objectIdStr;
         }
         else if(line.find("identityResourceId") != std::string::npos)
         {
             std::string resourceIdStr(value);
-            str_options.resourceId = resourceIdStr;
+            config_options.resourceId = resourceIdStr;
         }
         else if(line.find("authType") != std::string::npos)
         {
-            std::string authTypeStr(value);
-            str_options.authType = authTypeStr;
+            config_options.authType = get_auth_type(value);
+            set_auth_type = true;
         }
         else if(line.find("msiEndpoint") != std::string::npos)
         {
             std::string msiEndpointStr(value);
-            str_options.msiEndpoint = msiEndpointStr;
+            config_options.msiEndpoint = msiEndpointStr;
         }
         else if(line.find("servicePrincipalClientId") != std::string::npos)
         {
             std::string spClientIdStr(value);
-            str_options.spnClientId = spClientIdStr;
+            config_options.spnClientId = spClientIdStr;
         }
         else if(line.find("servicePrincipalTenantId") != std::string::npos)
         {
             std::string spTenantIdStr(value);
-            str_options.spnTenantId = spTenantIdStr;
+            config_options.spnTenantId = spTenantIdStr;
         }
         else if(line.find("aadEndpoint") != std::string::npos)
         {
             std::cout << line.find("aadEndpoint");
             std::string altAADEndpointStr(value);
-            str_options.aadEndpoint = altAADEndpointStr;
+            config_options.aadEndpoint = altAADEndpointStr;
         }
         else if(line.find("logLevel") != std::string::npos)
         {
             std::string logLevel(value);
-            str_options.logLevel = logLevel;
+            config_options.logLevel = logLevel;
         }   
 
         data.clear();
     }
 
-    if(str_options.accountName.empty())
+    if(!set_auth_type)
+    {
+        config_options.authType = get_auth_type();
+    }
+    
+    if(config_options.accountName.empty())
     {
         syslog (LOG_CRIT, "Unable to start blobfuse. Account name is missing in the config file.");
         fprintf(stderr, "Unable to start blobfuse. Account name is missing in the config file.\n");
         return -1;
     }
-    else if(str_options.containerName.empty())
+    else if(config_options.containerName.empty())
     {
         syslog (LOG_CRIT, "Unable to start blobfuse. Container name is missing in the config file.");
         fprintf(stderr, "Unable to start blobfuse. Container name is missing in the config file.\n");
@@ -373,122 +285,8 @@ int read_config(const std::string configFile)
 
 void *azs_init(struct fuse_conn_info * conn)
 {
-    // TODO: Make all of this go down roughly the same pipeline, rather than having spaghettified code
-    auth_type AuthType = get_auth_type();
+    syslog(LOG_DEBUG, "azs_init ran");
 
-    if (str_options.use_attr_cache)
-    {
-        if(AuthType == MSI_AUTH || AuthType == SPN_AUTH)
-        {
-            //1. Get OAuth Token
-            std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> OTMCallback = EmptyCallback;
-
-            if (AuthType == MSI_AUTH) {
-                OTMCallback = SetUpMSICallback(
-                        str_options.identityClientId,
-                        str_options.objectId,
-                        str_options.resourceId,
-                        str_options.msiEndpoint,
-                        str_options.msiSecret);
-            } else {
-                OTMCallback = SetUpSPNCallback(
-                        str_options.spnTenantId,
-                        str_options.spnClientId,
-                        str_options.spnClientSecret,
-                        str_options.aadEndpoint);
-            }
-
-            GetTokenManagerInstance(OTMCallback); // We supply a default callback because we asssume that the oauth token manager has not initialized yet.
-            //2. try to make blob client wrapper using oauth token
-            //str_options.accountName
-            azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
-                    blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_oauth(
-                     str_options.accountName,
-                     constants::max_concurrency_blob_wrapper,
-                     str_options.blobEndpoint));
-        }
-        else if(AuthType == KEY_AUTH) {
-            azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
-                blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init_accountkey(
-                    str_options.accountName,
-                    str_options.accountKey,
-                    constants::max_concurrency_blob_wrapper,
-                    str_options.use_https,
-                    str_options.blobEndpoint));
-        }
-        else if(AuthType == SAS_AUTH) {
-            azure_blob_client_wrapper = std::make_shared<blob_client_attr_cache_wrapper>(
-                blob_client_attr_cache_wrapper::blob_client_attr_cache_wrapper_init_sastoken(
-                    str_options.accountName,
-                    str_options.sasToken,
-                    constants::max_concurrency_blob_wrapper,
-                     str_options.use_https,
-                    str_options.blobEndpoint));
-        }
-        else
-        {
-            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
-        }
-    }
-    else
-    {
-        //TODO: Make a for authtype, and then if that's not specified, then a check against what credentials were specified
-        if(AuthType == MSI_AUTH || AuthType == SPN_AUTH)
-        { // If MSI is explicit, or if MSI options are set and auth type is implicit
-            //1. get oauth token
-            std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> OTMCallback = EmptyCallback;
-
-            if (AuthType == MSI_AUTH) {
-                OTMCallback = SetUpMSICallback(
-                        str_options.identityClientId,
-                        str_options.objectId,
-                        str_options.resourceId,
-                        str_options.msiEndpoint,
-                        str_options.msiSecret);
-            } else {
-                OTMCallback = SetUpSPNCallback(
-                        str_options.spnTenantId,
-                        str_options.spnClientId,
-                        str_options.spnClientSecret,
-                        str_options.aadEndpoint);
-            }
-            
-            GetTokenManagerInstance(OTMCallback);
-            //2. try to make blob client wrapper using oauth token
-            azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
-                    str_options.accountName,
-                    constants::max_concurrency_blob_wrapper,
-                    str_options.blobEndpoint);
-        }
-        else if(AuthType == KEY_AUTH) {
-            azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
-            str_options.accountName,
-            str_options.accountKey,
-            constants::max_concurrency_blob_wrapper,
-            str_options.use_https,
-            str_options.blobEndpoint);
-        }
-        else if(AuthType == SAS_AUTH) {
-            azure_blob_client_wrapper = blob_client_wrapper_init_sastoken(
-            str_options.accountName,
-            str_options.sasToken,
-            constants::max_concurrency_blob_wrapper,
-            str_options.use_https,
-            str_options.blobEndpoint);
-        }
-        else
-        {
-            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
-        }
-    }
-
-    if(errno != 0)
-    {
-        syslog(LOG_CRIT, "azs_init - Unable to start blobfuse.  Creating blob client failed: errno = %d.\n", errno);
-
-        // TODO: Improve this error case
-        return NULL;
-    }
     /*
     cfg->attr_timeout = 360;
     cfg->kernel_cache = 1;
@@ -505,7 +303,8 @@ void *azs_init(struct fuse_conn_info * conn)
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
 
-    g_gc_cache.run();
+    g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
+    g_gc_cache->run();
 
     return NULL;
 }
@@ -527,7 +326,7 @@ void print_usage()
 
 void print_version()
 {
-    fprintf(stdout, "blobfuse 1.2.4\n");
+    fprintf(stdout, "blobfuse %s\n", BFUSE_VER);
 }
 
 int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
@@ -548,7 +347,7 @@ int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
     
     syslog(LOG_CRIT, "Setting logging level to : %s", min_log_level.c_str());
 
-    // Options for logging: LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG
+    // cmd_options for logging: LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG
     if (min_log_level == "LOG_OFF")
     {
         setlogmask(LOG_UPTO(LOG_EMERG)); // We don't use 'LOG_EMERG', so this won't log anything.
@@ -585,7 +384,7 @@ int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
         fprintf(stderr, "Error: Invalid log level \"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
         fprintf(stdout, "If not specified, logging will default to LOG_WARNING.\n\n");
     } else {
-        set_log_mask(options.log_level, false);
+        set_log_mask(cmd_options.log_level, false);
     }
     return 1;
 }
@@ -594,7 +393,7 @@ int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
  *  This function is called only during SIGUSR1 handling.
  *  Objective here is to read only the 'logLevel' from the config file
  *  If logLevel is removed from config file then reset the logging level
- *  back to what was provided int the command line options, otherwise use
+ *  back to what was provided int the command line cmd_options, otherwise use
  *  this config as the new logging level..
  */
 int refresh_from_config_file(const std::string configFile)
@@ -619,13 +418,13 @@ int refresh_from_config_file(const std::string configFile)
         if(pos != std::string::npos)
         {
            std::string logLevel = line.substr(line.find(" ")+1);
-           str_options.logLevel = trim(logLevel);
+           config_options.logLevel = trim(logLevel);
             logLevelFound = true;
         }
     }
 
     if(!logLevelFound) {
-        str_options.logLevel = (options.log_level) ? : "";
+        config_options.logLevel = (cmd_options.log_level) ? : "";
     }
 
     return 0;
@@ -635,13 +434,13 @@ void sig_usr_handler(int signum)
 {
     if (signum == SIGUSR1) {
         syslog(LOG_INFO, "Received signal SIGUSR1");
-        if (0 == refresh_from_config_file(options.config_file)) {
-            set_log_mask(str_options.logLevel.c_str(), false);
+        if (0 == refresh_from_config_file(cmd_options.config_file)) {
+            set_log_mask(config_options.logLevel.c_str(), false);
         }
     }
 }
 
-void set_up_callbacks()
+void set_up_callbacks(struct fuse_operations &azs_blob_operations)
 {
     openlog(log_ident.c_str(), LOG_NDELAY | LOG_PID, 0);
 
@@ -651,6 +450,7 @@ void set_up_callbacks()
     azs_blob_operations.statfs = azs_statfs;
     azs_blob_operations.access = azs_access;
     azs_blob_operations.readlink = azs_readlink;
+    azs_blob_operations.symlink = azs_symlink;
     azs_blob_operations.readdir = azs_readdir;
     azs_blob_operations.open = azs_open;
     azs_blob_operations.read = azs_read;
@@ -730,11 +530,11 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     *args = FUSE_ARGS_INIT(argc, argv);
 
     // Check for existence of allow_other flag and change the default permissions based on that
-    default_permission = 0770;
+    config_options.defaultPermission = 0770;
     std::vector<std::string> string_args(argv, argv+argc);
     for (size_t i = 1; i < string_args.size(); ++i) {
       if (string_args[i].find("allow_other") != std::string::npos) {
-          default_permission = 0777; 
+          config_options.defaultPermission = 0777; 
       }
     }
 
@@ -742,18 +542,18 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     try
     {
 
-        if (fuse_opt_parse(args, &options, option_spec, NULL) == -1)
+        if (fuse_opt_parse(args, &cmd_options, option_spec, NULL) == -1)
         {
             return 1;
         }
 
-        if(options.version)
+        if(cmd_options.version)
         {
             print_version();
             exit(0);
         }
 
-        if(options.help)
+        if(cmd_options.help)
         {
             print_usage();
             exit(0);
@@ -767,9 +567,9 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             return 1;
         }
 
-        if(!options.config_file)
+        if(!cmd_options.config_file)
         {
-            if(!options.container_name)
+            if(!cmd_options.container_name)
             {
                 syslog(LOG_CRIT, "Unable to start blobfuse, no config file provided and --container-name is not set.");
                 fprintf(stderr, "Error: No config file provided and --container-name is not set.\n");
@@ -777,13 +577,13 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
                 return 1;
             }
 
-            std::string container(options.container_name);
-            str_options.containerName = container;
+            std::string container(cmd_options.container_name);
+            config_options.containerName = container;
             ret = read_config_env();
         }
         else
         {
-            ret = read_config(options.config_file);
+            ret = read_config(cmd_options.config_file);
         }
 
         if (ret != 0)
@@ -797,7 +597,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         return 1;
     }
 
-    int res = set_log_mask(options.log_level, true);
+    int res = set_log_mask(cmd_options.log_level, true);
     if (res != 0)
     {
         print_usage();
@@ -805,14 +605,14 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     }
 
     // remove last trailing slash in tmp_path
-    if(!options.tmp_path)
+    if(!cmd_options.tmp_path)
     {
         fprintf(stderr, "Error: --tmp-path is not set.\n");
         print_usage();
         return 1;
     }
 
-    std::string tmpPathStr(options.tmp_path);
+    std::string tmpPathStr(cmd_options.tmp_path);
     if (!tmpPathStr.empty())
     {
         // First let's normalize the path
@@ -865,36 +665,63 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         }
     }
 
-    str_options.tmpPath = tmpPathStr;
-    str_options.use_https = true;
-    if (options.use_https != NULL)
+    config_options.tmpPath = tmpPathStr;
+    config_options.useHttps = true;
+    if (cmd_options.useHttps != NULL)
     {
-        std::string https(options.use_https);
+        std::string https(cmd_options.useHttps);
         if (https == "false")
         {
-            str_options.use_https = false;
+            config_options.useHttps = false;
         }
     }
 
-    str_options.use_attr_cache = false;
-    if (options.use_attr_cache != NULL)
+    config_options.useAttrCache = false;
+    if (cmd_options.useAttrCache != NULL)
     {
-        std::string attr_cache(options.use_attr_cache);
+        std::string attr_cache(cmd_options.useAttrCache);
         if (attr_cache == "true")
         {
-            str_options.use_attr_cache = true;
+            config_options.useAttrCache = true;
         }
     }
 
-    if (options.file_cache_timeout_in_seconds != NULL)
+    if (cmd_options.file_cache_timeout_in_seconds != NULL)
     {
-        std::string timeout(options.file_cache_timeout_in_seconds);
-        file_cache_timeout_in_seconds = stoi(timeout);
+        std::string timeout(cmd_options.file_cache_timeout_in_seconds);
+        config_options.fileCacheTimeoutInSeconds = stoi(timeout);
     }
     else
     {
-        file_cache_timeout_in_seconds = 120;
+        config_options.fileCacheTimeoutInSeconds = 120;
     }
+
+    config_options.useADLS = false;
+    if(cmd_options.use_adls != NULL)
+    {
+        std::string use_adls_value(cmd_options.use_adls);
+        if(use_adls_value == "true")
+        {
+            config_options.useADLS = true;
+        }
+    }
+
+    config_options.concurrency = (int)(blobfuse_constants::def_concurrency_blob_wrapper);
+    if(cmd_options.concurrency != NULL)
+    {
+        std::string concur(cmd_options.concurrency);
+        //config_options.concurrency = stoi(concur);
+        config_options.concurrency = (stoi(concur) < blobfuse_constants::max_concurrency_blob_wrapper) ? 
+                stoi(concur) : blobfuse_constants::max_concurrency_blob_wrapper;
+    }
+
+    config_options.cacheSize = 0;
+    if (cmd_options.cache_size_mb != NULL) 
+    {
+        std::string cache_size(cmd_options.cache_size_mb);
+        config_options.cacheSize = stoi(cache_size) * (unsigned long long)(1024l * 1024l);
+    }
+
     return 0;
 }
 
@@ -911,96 +738,6 @@ int configure_tls()
     return 0;
 }
 
-int validate_storage_connection()
-{
-    // The current implementation of blob_client_wrapper calls curl_global_init() in the constructor, and curl_global_cleanup in the destructor.
-    // Unfortunately, curl_global_init() has to be called in the same process as any HTTPS calls that are made, otherwise NSS is not configured properly.
-    // When running in daemon mode, the current process forks() and exits, while the child process lives on as a daemon.
-    // So, here we create and destroy a temp blob client in order to test the connection info, and we create the real one in azs_init, which is called after the fork().
-    {
-        std::shared_ptr<blob_client_wrapper> temp_azure_blob_client_wrapper;
-        auth_type AuthType = get_auth_type();
-        //TODO: Make a for authtype, and then if that's not specified, then a check against what credentials were specified
-        if(AuthType == MSI_AUTH || AuthType == SPN_AUTH)
-        {
-            //1. get oauth token
-            std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> OTMCallback = EmptyCallback;
-
-            if (AuthType == MSI_AUTH) {
-                OTMCallback = SetUpMSICallback(
-                        str_options.identityClientId,
-                        str_options.objectId,
-                        str_options.resourceId,
-                        str_options.msiEndpoint,
-                        str_options.msiSecret);
-            } else {
-                OTMCallback = SetUpSPNCallback(
-                        str_options.spnTenantId,
-                        str_options.spnClientId,
-                        str_options.spnClientSecret,
-                        str_options.aadEndpoint);
-            }
-
-            std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(OTMCallback);
-
-            if (!tokenManager->is_valid_connection()) {
-                // todo: isolate definitions of errno's for this function so we can output something meaningful.
-                errno = 1;
-            }
-
-            //2. try to make blob client wrapper using oauth token
-            temp_azure_blob_client_wrapper = blob_client_wrapper_init_oauth(
-                    str_options.accountName,
-                    constants::max_concurrency_blob_wrapper,
-                    str_options.blobEndpoint);
-        }
-        else if(AuthType == KEY_AUTH) {
-            temp_azure_blob_client_wrapper = blob_client_wrapper_init_accountkey(
-            str_options.accountName,
-            str_options.accountKey,
-            constants::max_concurrency_blob_wrapper,
-            str_options.use_https,
-            str_options.blobEndpoint);
-        }
-        else if(AuthType == SAS_AUTH) {
-            temp_azure_blob_client_wrapper = blob_client_wrapper_init_sastoken(
-            str_options.accountName,
-            str_options.sasToken,
-            constants::max_concurrency_blob_wrapper,
-            str_options.use_https,
-            str_options.blobEndpoint);
-        }
-        else
-        {
-            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
-            errno = 1;
-        }
-        if(errno != 0)
-        {
-            syslog(LOG_CRIT, "Unable to start blobfuse.  Creating local blob client failed: errno = %d.\n", errno);
-            fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups."
-                            " Creating blob client failed: errno = %d.\n", errno);
-            return 1;
-        }
-
-        // Check if the account name/key and container is correct by attempting to list a blob.
-        // This will succeed even if there are zero blobs.
-        list_blobs_hierarchical_response response = temp_azure_blob_client_wrapper->list_blobs_hierarchical(
-            str_options.containerName,
-            "/",
-            std::string(),
-            std::string(),
-            1);
-        if(errno != 0)
-        {
-            syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key/sas token/OAuth access token and container name. errno = %d\n", errno);
-            fprintf(stderr, "Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key/sas token/OAuth access token and container name. errno = %d\n", errno);
-            return 1;
-        }
-    }
-    return 0;
-}
-
 void configure_fuse(struct fuse_args *args)
 {
     populate_kernel_version();
@@ -1010,14 +747,14 @@ void configure_fuse(struct fuse_args *args)
         fuse_opt_add_arg(args, "-omax_write=131072");
     }
 
-    if (options.file_cache_timeout_in_seconds != NULL)
+    if (cmd_options.file_cache_timeout_in_seconds != NULL)
     {
-        std::string timeout(options.file_cache_timeout_in_seconds);
-        file_cache_timeout_in_seconds = stoi(timeout);
+        std::string timeout(cmd_options.file_cache_timeout_in_seconds);
+        config_options.fileCacheTimeoutInSeconds = stoi(timeout);
     }
     else
     {
-        file_cache_timeout_in_seconds = 120;
+        config_options.fileCacheTimeoutInSeconds = 120;
     }
 
     // FUSE contains a feature where it automatically implements 'soft' delete if one process has a file open when another calls unlink().
@@ -1036,6 +773,26 @@ int initialize_blobfuse()
         syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         fprintf(stderr, "Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         return 1;
+    }
+        //initialize storage client and authenticate, if we fail here, don't call fuse
+    if (config_options.useADLS)
+    {
+        syslog(LOG_INFO, "Initializing blobfuse using DataLake");
+        storage_client = std::make_shared<DataLakeBfsClient>(config_options);
+    }
+    else
+    {
+        syslog(LOG_DEBUG, "Initializing blobfuse using block blobs");
+        storage_client = std::make_shared<BlockBlobBfsClient>(config_options);
+    }
+    if(storage_client->AuthenticateStorage())
+    {
+        syslog(LOG_DEBUG, "Successfully Authenticated!");
+    }
+    else
+    {
+        syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+        return -1;
     }
     return 0;
 }

@@ -63,8 +63,8 @@ namespace Tests
         j = json::parse(json_request_result);
         from_json(j, t);
         
-        fprintf(stdout, "expected auth token expiry time: %s", ctime(&et.expires_on));
-        fprintf(stdout, "actual auth token expiry time: %s", ctime(&t.expires_on));
+        //fprintf(stdout, "expected auth token expiry time: %s", ctime(&et.expires_on));
+        //fprintf(stdout, "actual auth token expiry time: %s", ctime(&t.expires_on));
 
         // Gap upto 2 minutes is fine
         double diff = difftime(t.expires_on, et.expires_on);

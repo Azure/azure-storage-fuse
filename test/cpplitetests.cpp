@@ -1,6 +1,7 @@
 #include <uuid/uuid.h>
 #include <ftw.h>
 #include <random>
+#include <sys/types.h>
 #include "gtest/gtest.h"
 //#include "gmock/gmock.h"
 #include "blobfuse.h"
@@ -47,11 +48,13 @@ public:
         ASSERT_EQ(0, ret) << "Read config failed.";
         std::string blob_endpoint;
         std::string sas_token;
+        config_options.accountName.erase(remove(config_options.accountName.begin(), config_options.accountName.end(), '\r'), config_options.accountName.end());
+        config_options.accountKey.erase(remove(config_options.accountKey.begin(), config_options.accountKey.end(), '\r'), config_options.accountKey.end());
         test_blob_client_wrapper = blob_client_wrapper_init_accountkey(
-            str_options.accountName,
-            str_options.accountKey,
+            config_options.accountName,
+            config_options.accountKey,
             20,
-            str_options.use_https,
+            config_options.useHttps,
             blob_endpoint);
     }
 
@@ -100,9 +103,9 @@ public:
 std::shared_ptr<blob_client_wrapper> BlobClientWrapperTest::test_blob_client_wrapper = NULL;
 
 // Helper method to follow continuation tokens and list all blobs.  C&P from blobfuse code, we should probably move it to cpplite, although not until we figure out proper retries.
-std::vector<list_blobs_hierarchical_item> list_all_blobs(std::string container, std::string delimiter, std::string prefix)
+std::vector<list_blobs_segmented_item> list_all_blobs(std::string container, std::string delimiter, std::string prefix)
 {
-    std::vector<list_blobs_hierarchical_item> results;
+    std::vector<list_blobs_segmented_item> results;
 
     std::string continuation;
 
@@ -110,7 +113,7 @@ std::vector<list_blobs_hierarchical_item> list_all_blobs(std::string container, 
     do
     {
         errno = 0;
-        list_blobs_hierarchical_response response = BlobClientWrapperTest::test_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix);
+        list_blobs_segmented_response response = BlobClientWrapperTest::test_blob_client_wrapper->list_blobs_segmented(container, delimiter, continuation, prefix);
         if (errno == 0)
         {
             continuation = response.next_marker;
@@ -154,7 +157,7 @@ void read_from_file(std::string path, std::string &text)
 TEST_F(BlobClientWrapperTest, BlobPutDownload)
 {
     errno = 0;
-    std::vector<list_blobs_hierarchical_item> blobs = list_all_blobs(container_name, "/", "");
+    std::vector<list_blobs_segmented_item> blobs = list_all_blobs(container_name, "/", "");
     ASSERT_EQ(0, errno);
     ASSERT_EQ(0, blobs.size());
 
@@ -208,12 +211,12 @@ void read_file_data_and_validate(std::string path, unsigned int seed, size_t cou
     file_stream.seekg(0);
 
     std::minstd_rand r(seed);
-        for (size_t i = 0; i < count; i += 4 /* sizeof uint_fast32_t */)
+    for (size_t i = 0; i < count; i += 4 /* sizeof uint_fast32_t */)
     {
         uint_fast32_t expect_val = r();
         uint_fast32_t actual_val;
         file_stream.read(reinterpret_cast<char*>(&actual_val), 4);
-        ASSERT_EQ(expect_val, actual_val) << "File data incorrect at position "<< i << ".  Expected = " << expect_val << ", actual = " << actual_val;
+        ASSERT_EQ(expect_val & 0xffffffff, actual_val & 0xffffffff) << "File data incorrect at position "<< i << ".  Expected = " << expect_val << ", actual = " << actual_val;
     }
 }
 
@@ -221,7 +224,7 @@ void read_file_data_and_validate(std::string path, unsigned int seed, size_t cou
 void BlobClientWrapperTest::run_upload_download(size_t file_size)
 {
     errno = 0;
-    std::vector<list_blobs_hierarchical_item> blobs = list_all_blobs(container_name, "/", "");
+    std::vector<list_blobs_segmented_item> blobs = list_all_blobs(container_name, "/", "");
     ASSERT_EQ(0, errno);
     ASSERT_EQ(0, blobs.size());
 
@@ -236,6 +239,11 @@ void BlobClientWrapperTest::run_upload_download(size_t file_size)
 
     errno = 0;
     blobs = list_all_blobs(container_name, "/", "");
+    if (0 == blobs.size()) {
+        // Immediate listing may give error some time so retry once again
+        sleep(2);
+        blobs = list_all_blobs(container_name, "/", "");
+    }
     ASSERT_EQ(0, errno);
     ASSERT_EQ(1, blobs.size());
     ASSERT_EQ(file_size, blobs[0].content_length) << "Blob found, but size incorrect.";
@@ -261,7 +269,11 @@ TEST_F(BlobClientWrapperTest, BlobUploadDownloadMedium)
 
 TEST_F(BlobClientWrapperTest, BlobUploadDownloadLarge)
 {
+    #if 0
     run_upload_download(1 * 1024 * 1024 * 1024);  // Comment this test out if the test pass is taking too long during rapid iteration.
+    #else
+    run_upload_download(200 * 1024 * 1024);
+    #endif
 }
 
 
@@ -316,9 +328,7 @@ TEST_F(BlobClientWrapperTest, GetBlobProperties)
     blob_property props = test_blob_client_wrapper->get_blob_property(container_name, blob_1_name);
 //    ASSERT_EQ(404, errno) << "Errno incorrect for get_blob_property";  TODO: investigate why this test is failing.
 
-    time_t now = time(NULL);
-    struct tm * gmtmp = gmtime(&now);
-    time_t utcnow = mktime(gmtmp);
+    time_t utcnow = time(NULL);
     errno = 0;
     test_blob_client_wrapper->put_blob(file_path, container_name, blob_1_name);
     ASSERT_EQ(0, errno) << "put_blob failed with errno = " << errno;
@@ -328,7 +338,7 @@ TEST_F(BlobClientWrapperTest, GetBlobProperties)
     props = test_blob_client_wrapper->get_blob_property(container_name, blob_1_name);
     ASSERT_EQ(0, errno) << "get_blob_property failed";
     ASSERT_EQ(file_text.size(), props.size) << "Incorrect blob size found.";
-    ASSERT_TRUE(std::abs(std::difftime(props.last_modified, utcnow)) < 30) << "Time difference between expected and actual LMT from get_properties too large"; // Give some room for potential clock skew between local and service timestamp.
+    ASSERT_TRUE(std::abs(std::difftime(props.last_modified, utcnow)) < 30) << "Time difference between expected and actual LMT from get_properties too large" << std::abs(std::difftime(props.last_modified, utcnow)); // Give some room for potential clock skew between local and service timestamp.
 
     std::string dest_path = tmp_dir + "/destfile";
     errno = 0;
@@ -350,7 +360,7 @@ TEST_F(BlobClientWrapperTest, BlobExistsDelete)
     // Test blob_exists - error case
     errno = 0;
     ASSERT_FALSE(test_blob_client_wrapper->blob_exists(container_name, blob_1_name)) << "Blob found when it should not be.";
-    ASSERT_EQ(0, errno) << "Blob not existing causes errno to be non-0 for blob_exists.  Errno = " << errno;
+    ASSERT_EQ(404, errno) << "Blob not existing causes errno to be non-0 for blob_exists.  Errno = " << errno;
 
     // Test blob_delete - error case (404)
     errno = 0;
@@ -373,7 +383,7 @@ TEST_F(BlobClientWrapperTest, BlobExistsDelete)
 
     errno = 0;
     ASSERT_FALSE(test_blob_client_wrapper->blob_exists(container_name, blob_1_name)) << "Blob found when it should not be.";
-    ASSERT_EQ(0, errno) << "Blob not existing causes errno to be non-0 for blob_exists.  Errno = " << errno;
+    ASSERT_EQ(404, errno) << "Blob not existing causes errno to be non-0 for blob_exists.  Errno = " << errno;
 }
 
 // TODO: reduce duplicated code in this method
@@ -420,7 +430,7 @@ TEST_F(BlobClientWrapperTest, CopyBlob)
         props = test_blob_client_wrapper->get_blob_property(container_name, blob_2_name);
         ASSERT_EQ(0, errno) << "get_blob_property failed";
         sleep(1);
-    } while (props.copy_status.compare("success\r\n") != 0); // HTTP spec specifies CRLF, and we aren't trimming (but probably should).
+    } while (props.copy_status.compare("success") != 0); // HTTP spec specifies CRLF, and we aren't trimming (but probably should).
     ASSERT_EQ(file_text.size(), props.size);
 
     // Test copy blob to a new blob
@@ -436,7 +446,7 @@ TEST_F(BlobClientWrapperTest, CopyBlob)
         props = test_blob_client_wrapper->get_blob_property(container_name, blob_3_name);
         ASSERT_EQ(0, errno) << "get_blob_property failed";
         sleep(1);
-    } while (props.copy_status.compare("success\r\n") != 0); // HTTP spec specifies CRLF, and we aren't trimming (but probably should).
+    } while (props.copy_status.compare("success") != 0); // HTTP spec specifies CRLF, and we aren't trimming (but probably should).
     ASSERT_EQ(file_text.size(), props.size);
 
     // Failure case
@@ -475,7 +485,7 @@ TEST_F(BlobClientWrapperTest, ListBlobsHierarchial)
 
     // Validate that all blobs and blob "directories" are correctly found for given prefixes
     errno = 0;
-    std::vector<list_blobs_hierarchical_item> blob_list_results = list_all_blobs(container_name, "/", "");
+    std::vector<list_blobs_segmented_item> blob_list_results = list_all_blobs(container_name, "/", "");
     ASSERT_EQ(0, errno) << "list_all_blobs failed for empty prefix";
     ASSERT_EQ(6, blob_list_results.size()) << "Incorrect number of blob entries found.";
 

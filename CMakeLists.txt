@@ -1,127 +1,58 @@
 cmake_minimum_required(VERSION 2.8)
-set(AZURE_STORAGE_HEADER
-  azure-storage-cpp-lite/include/storage_EXPORTS.h
 
-  azure-storage-cpp-lite/include/base64.h
-  azure-storage-cpp-lite/include/common.h
-  azure-storage-cpp-lite/include/compare.h
-  azure-storage-cpp-lite/include/constants.h
-  azure-storage-cpp-lite/include/constants.dat
-  azure-storage-cpp-lite/include/executor.h
-  azure-storage-cpp-lite/include/hash.h
-  azure-storage-cpp-lite/include/retry.h
-  azure-storage-cpp-lite/include/utility.h
+# Not sure this Set is required or not, its not used in this file atleast
+set(VERSION "1.3.1")
 
-  azure-storage-cpp-lite/include/tinyxml2.h
-  azure-storage-cpp-lite/include/xml_parser_base.h
-  azure-storage-cpp-lite/include/tinyxml2_parser.h
-  azure-storage-cpp-lite/include/xml_writer.h
+# This macro is referred in code to print the current version
+add_definitions(-D_BLOBFUSE_VERSION_="1.3.1")
 
-  azure-storage-cpp-lite/include/storage_account.h
-  azure-storage-cpp-lite/include/storage_credential.h
-  azure-storage-cpp-lite/include/storage_outcome.h
-  azure-storage-cpp-lite/include/storage_stream.h
-  azure-storage-cpp-lite/include/storage_url.h
-  azure-storage-cpp-lite/include/storage_errno.h
-
-  azure-storage-cpp-lite/include/storage_request_base.h
-  azure-storage-cpp-lite/include/get_blob_request_base.h
-  azure-storage-cpp-lite/include/put_blob_request_base.h
-  azure-storage-cpp-lite/include/delete_blob_request_base.h
-  azure-storage-cpp-lite/include/copy_blob_request_base.h
-  azure-storage-cpp-lite/include/create_container_request_base.h
-  azure-storage-cpp-lite/include/delete_container_request_base.h
-  azure-storage-cpp-lite/include/list_containers_request_base.h
-  azure-storage-cpp-lite/include/list_blobs_request_base.h
-  azure-storage-cpp-lite/include/get_block_list_request_base.h
-  azure-storage-cpp-lite/include/put_block_request_base.h
-  azure-storage-cpp-lite/include/get_blob_property_request_base.h
-  azure-storage-cpp-lite/include/get_container_property_request_base.h
-  azure-storage-cpp-lite/include/put_block_list_request_base.h
-  azure-storage-cpp-lite/include/get_container_property_request_base.h
-  azure-storage-cpp-lite/include/append_block_request_base.h
-  azure-storage-cpp-lite/include/put_page_request_base.h
-  azure-storage-cpp-lite/include/get_page_ranges_request_base.h
-
-  azure-storage-cpp-lite/include/http_base.h
-  azure-storage-cpp-lite/include/http/libcurl_http_client.h
-
-  azure-storage-cpp-lite/include/blob/blob_client.h
-  azure-storage-cpp-lite/include/blob/download_blob_request.h
-  azure-storage-cpp-lite/include/blob/create_block_blob_request.h
-  azure-storage-cpp-lite/include/blob/delete_blob_request.h
-  azure-storage-cpp-lite/include/blob/copy_blob_request.h
-  azure-storage-cpp-lite/include/blob/create_container_request.h
-  azure-storage-cpp-lite/include/blob/delete_container_request.h
-  azure-storage-cpp-lite/include/blob/list_containers_request.h
-  azure-storage-cpp-lite/include/blob/list_blobs_request.h
-  azure-storage-cpp-lite/include/blob/get_blob_property_request.h
-  azure-storage-cpp-lite/include/blob/get_container_property_request.h
-  azure-storage-cpp-lite/include/blob/get_block_list_request.h
-  azure-storage-cpp-lite/include/blob/put_block_request.h
-  azure-storage-cpp-lite/include/blob/put_block_list_request.h
-  azure-storage-cpp-lite/include/blob/append_block_request.h
-  azure-storage-cpp-lite/include/blob/put_page_request.h
-  azure-storage-cpp-lite/include/blob/get_page_ranges_request.h
-
-  azure-storage-cpp-lite/include/todo/get_blob_metadata_request.h
-  azure-storage-cpp-lite/include/todo/get_blob_properties_request.h
-  azure-storage-cpp-lite/include/todo/query_entities_request.h
-  azure-storage-cpp-lite/include/todo/set_blob_metadata_request.h
-)
-
-set(AZURE_STORAGE_SOURCE
-  azure-storage-cpp-lite/src/base64.cpp
-  azure-storage-cpp-lite/src/constants.cpp
-  azure-storage-cpp-lite/src/hash.cpp
-  azure-storage-cpp-lite/src/utility.cpp
-
-  azure-storage-cpp-lite/src/tinyxml2.cpp
-  azure-storage-cpp-lite/src/tinyxml2_parser.cpp
-
-  azure-storage-cpp-lite/src/storage_account.cpp
-  azure-storage-cpp-lite/src/storage_credential.cpp
-  azure-storage-cpp-lite/src/storage_url.cpp
-
-  azure-storage-cpp-lite/src/get_blob_request_base.cpp
-  azure-storage-cpp-lite/src/put_blob_request_base.cpp
-  azure-storage-cpp-lite/src/delete_blob_request_base.cpp
-  azure-storage-cpp-lite/src/copy_blob_request_base.cpp
-  azure-storage-cpp-lite/src/create_container_request_base.cpp
-  azure-storage-cpp-lite/src/delete_container_request_base.cpp
-  azure-storage-cpp-lite/src/list_containers_request_base.cpp
-  azure-storage-cpp-lite/src/list_blobs_request_base.cpp
-  azure-storage-cpp-lite/src/get_blob_property_request_base.cpp
-  azure-storage-cpp-lite/src/get_block_list_request_base.cpp
-  azure-storage-cpp-lite/src/get_container_property_request_base.cpp
-  azure-storage-cpp-lite/src/put_block_request_base.cpp
-  azure-storage-cpp-lite/src/put_block_list_request_base.cpp
-  azure-storage-cpp-lite/src/append_block_request_base.cpp
-  azure-storage-cpp-lite/src/put_page_request_base.cpp
-  azure-storage-cpp-lite/src/get_page_ranges_request_base.cpp
-
-  azure-storage-cpp-lite/src/http/libcurl_http_client.cpp
-
-  azure-storage-cpp-lite/src/blob/blob_client.cpp
-  azure-storage-cpp-lite/src/blob/blob_client_wrapper.cpp
-  azure-storage-cpp-lite/src/blob/blob_client_attr_cache_wrapper.cpp
-)
+set(CPACK_PACKAGE_VERSION_MAJOR 1)
+set(CPACK_PACKAGE_VERSION_MINOR 3)  
+set(CPACK_PACKAGE_VERSION_PATCH 1)
+set(CPACK_PACKAGE_VERSION_RELEASE 1)
 
 set (BLOBFUSE_HEADER
   blobfuse/blobfuse.h
-  blobfuse/OAuthToken.h
-  blobfuse/OAuthTokenCredentialManager.h
+ 
+  blobfuse/include/BlobfuseConstants.h
+  blobfuse/include/BlobfuseGlobals.h
+  blobfuse/include/FileLockMap.h
+  blobfuse/include/BlobfuseGcCache.h
+  blobfuse/include/Permissions.h
+  blobfuse/include/DfsProperties.h
+  blobfuse/include/StorageBfsClientBase.h
+  blobfuse/include/BlockBlobBfsClient.h
+  blobfuse/include/DataLakeBfsClient.h
+  blobfuse/include/AttrCacheWrapper.h
+
+  blobfuse/include/OAuthToken.h
+  blobfuse/include/OAuthTokenCredentialManager.h
 )
 
 set (BLOBFUSE_SOURCE
 #  blobfuse/blobfuse.cpp    # We don't include blobfuse.cpp because the file contents are directly #included in main.cpp.  This allows us to split main() and everything
 #                             else into different files, without having to define each function in a header for only one consumer.  The only reason to do all this is so
 #                             we can test functionality in blobfuse.cpp without including main() (which would break gtest).
+  blobfuse/src/BlobfuseConstants.cpp
+  blobfuse/src/FileLockMap.cpp
+  blobfuse/src/BlobfuseGcCache.cpp
+  blobfuse/src/Permissions.cpp
+  blobfuse/src/DfsProperties.cpp
+  blobfuse/src/BlobfuseGlobals.cpp
+  blobfuse/src/StorageBfsClientBase.cpp
+  blobfuse/src/BlockBlobBfsClient.cpp
+  blobfuse/src/DataLakeBfsClient.cpp
+
+  blobfuse/src/AttrCacheWrapperLogin.cpp
+  blobfuse/src/AttrCacheWrapper.cpp
+
+  blobfuse/src/OAuthToken.cpp
+  blobfuse/src/OAuthTokenCredentialManager.cpp
+
   blobfuse/fileapis.cpp
   blobfuse/directoryapis.cpp
   blobfuse/utilities.cpp
-  blobfuse/OAuthToken.cpp
-  blobfuse/OAuthTokenCredentialManager.cpp
+
 )
 
 
@@ -140,6 +71,7 @@ elseif( EXISTS "/etc/os-release")
 endif()
 
 if(UNIX)
+  #set( CMAKE_VERBOSE_MAKEFILE on )
   project(blobfuse)
   find_package(Threads REQUIRED)
   find_package(CURL REQUIRED)
@@ -153,15 +85,18 @@ if(UNIX)
   add_definitions(-D_FILE_OFFSET_BITS=64)
  # set(WARNING "-Wall -Wextra -Werror -pedantic -pedantic-errors")
   set(WARNING "-Wall -Wextra -Werror")
+
   set(CMAKE_CXX_FLAGS "${CMAKE_THREAD_LIBS_INIT} ${WARNING} ${CMAKE_CXX_FLAGS}")
-  include_directories(${CMAKE_SOURCE_DIR}/blobfuse ${CMAKE_SOURCE_DIR}/azure-storage-cpp-lite/include ${CURL_INCLUDE_DIRS} ${GNUTLS_INCLUDE_DIR} ${Boost_INCLUDE_DIR} nlohmann-json)
 
+  include_directories(${CMAKE_SOURCE_DIR}/blobfuse ${CMAKE_SOURCE_DIR}/blobfuse/include ${CMAKE_SOURCE_DIR}/cpplite/include ${CMAKE_SOURCE_DIR}/cpplite/adls/include ${CURL_INCLUDE_DIRS} ${GNUTLS_INCLUDE_DIR} ${Boost_INCLUDE_DIR} nlohmann-json)
   set(CMAKE_MACOSX_RPATH ON)
-
-  add_executable(blobfuse ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} ${AZURE_STORAGE_HEADER} ${AZURE_STORAGE_SOURCE} blobfuse/main.cpp)
-
   pkg_search_module(UUID REQUIRED uuid)
-  target_link_libraries(blobfuse ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt)
+  
+  link_directories(${CMAKE_SOURCE_DIR}/cpplite/build.release)
+
+  add_executable(blobfuse ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} blobfuse/main.cpp)
+
+  target_link_libraries(blobfuse azure-storage-adls azure-storage-lite ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt)
   install(TARGETS blobfuse
     PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
     DESTINATION bin)
@@ -184,11 +119,6 @@ if(UNIX)
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft - Azure Storage")
   set(CPACK_DEBIAN_PACKAGE_DEPENDS "fuse")
   set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 1.2.4 - FUSE adapter for Azure Blob Storage")
-  set(VERSION "1.2.4")
-  set(CPACK_PACKAGE_VERSION_MAJOR 1)
-  set(CPACK_PACKAGE_VERSION_MINOR 2)  
-  set(CPACK_PACKAGE_VERSION_PATCH 4)
-  set(CPACK_PACKAGE_VERSION_RELEASE 1)
   set(CPACK_PACKAGE_NAME "blobfuse")
   set(CPACK_PACKAGE_VENDOR "Microsoft")
   include(CPack)
@@ -242,6 +172,8 @@ if(INCLUDE_TESTS)
   add_definitions(-std=c++11)
   pkg_search_module(UUID REQUIRED uuid)
   include_directories(${Boost_INCLUDE_DIR})
-  add_executable(blobfusetests ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} ${AZURE_STORAGE_HEADER} ${AZURE_STORAGE_SOURCE} blobfuse/blobfuse.cpp test/cpplitetests.cpp test/attribcachetests.cpp test/attribcachesynchronizationtests.cpp test/oauthtokentests.cpp test/oauthtokencredentialmanagertests.cpp)
-  target_link_libraries(blobfusetests ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt gmock_main)
+  add_executable(blobfusetests ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} blobfuse/blobfuse.cpp test/cpplitetests.cpp test/attribcachetests.cpp test/attribcachesynchronizationtests.cpp test/oauthtokentests.cpp test/oauthtokencredentialmanagertests.cpp)
+  link_directories(${CMAKE_SOURCE_DIR}/cpplite/build.release)
+  target_link_libraries(blobfusetests azure-storage-adls azure-storage-lite ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY}  fuse gcrypt gmock_main)
+
 endif()

@@ -18,7 +18,7 @@ bool init_test()
 	}
     std::string blob_endpoint;
     std::string sas_token;
-	test_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(str_options.accountName, str_options.accountKey, sas_token, 20, str_options.use_https, blob_endpoint));
+	test_blob_client_wrapper = std::make_shared<blob_client_wrapper>(blob_client_wrapper::blob_client_wrapper_init(config_options.accountName, config_options.accountKey, sas_token, 20, config_options.useHttps, blob_endpoint));
 	return true;
 }
 
@@ -92,7 +92,7 @@ bool tests_list_blob_hierarchical()
 
     // Validate that all blobs and blob "directories" are correctly found for given prefixes
     errno = 0;
-    std::vector<list_blobs_hierarchical_item> blob_list_results = list_all_blobs(container_name, "/", "");
+    std::vector<list_blobs_segmented_item> blob_list_results = list_all_blobs(container_name, "/", "");
     ASSERT_EQ(0, errno) << "list_all_blobs failed for empty prefix";
     ASSERT_EQ(6, blob_list_results.size()) << "Incorrect number of blob entries found.";
 
