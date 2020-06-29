@@ -1,6 +1,10 @@
 
 #include <BlobfuseConstants.h>
 
+
+const std::string hdr_usr_agnt_str = std::string("Azure-Storage-Fuse/") + std::string(BFUSE_VER);
+
+
 namespace blobfuse_constants {
     const int max_concurrency_oauth = 2;
     const int max_retry_oauth = 5;
@@ -22,7 +26,7 @@ namespace blobfuse_constants {
     const char* header_msi_secret = "Secret";
 
     const char* header_user_agent = "User-Agent";
-    const char* header_value_user_agent = "Azure-Storage-Fuse/1.2.4-TEST";
+    const char* header_value_user_agent = hdr_usr_agnt_str.c_str(); //"Azure-Storage-Fuse/1.2.4";
     const char* header_ms_date = "x-ms-date";
     const char* header_ms_version = "x-ms-version";
     const char* header_value_storage_version = "2018-11-09";

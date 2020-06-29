@@ -1,5 +1,16 @@
 cmake_minimum_required(VERSION 2.8)
 
+# Not sure this Set is required or not, its not used in this file atleast
+set(VERSION "1.3.1")
+
+# This macro is referred in code to print the current version
+add_definitions(-D_BLOBFUSE_VERSION_="1.3.1")
+
+set(CPACK_PACKAGE_VERSION_MAJOR 1)
+set(CPACK_PACKAGE_VERSION_MINOR 3)  
+set(CPACK_PACKAGE_VERSION_PATCH 1)
+set(CPACK_PACKAGE_VERSION_RELEASE 1)
+
 set (BLOBFUSE_HEADER
   blobfuse/blobfuse.h
  
@@ -108,11 +119,6 @@ if(UNIX)
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft - Azure Storage")
   set(CPACK_DEBIAN_PACKAGE_DEPENDS "fuse")
   set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 1.2.4 - FUSE adapter for Azure Blob Storage")
-  set(VERSION "1.2.4")
-  set(CPACK_PACKAGE_VERSION_MAJOR 1)
-  set(CPACK_PACKAGE_VERSION_MINOR 2)  
-  set(CPACK_PACKAGE_VERSION_PATCH 4)
-  set(CPACK_PACKAGE_VERSION_RELEASE 1)
   set(CPACK_PACKAGE_NAME "blobfuse")
   set(CPACK_PACKAGE_VENDOR "Microsoft")
   include(CPack)

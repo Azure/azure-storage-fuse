@@ -326,7 +326,7 @@ void print_usage()
 
 void print_version()
 {
-    fprintf(stdout, "blobfuse 1.2.4\n");
+    fprintf(stdout, "blobfuse %s\n", BFUSE_VER);
 }
 
 int set_log_mask(const char * min_log_level_char, bool blobfuseInit)

@@ -6,6 +6,12 @@
 #include <syslog.h>
 
 
+#ifdef _BLOBFUSE_VERSION_
+#define BFUSE_VER _BLOBFUSE_VERSION_
+#else
+#define BLBOFUSE_VERSION "Undefined"
+#endif
+
 #define AZS_DEBUGLOGV(fmt,...) do {syslog(LOG_DEBUG,"Function %s, in file %s, line %d: " fmt, __func__, __FILE__, __LINE__, __VA_ARGS__); } while(0)
 #define AZS_DEBUGLOG(fmt) do {syslog(LOG_DEBUG,"Function %s, in file %s, line %d: " fmt, __func__, __FILE__, __LINE__); } while(0)
 
