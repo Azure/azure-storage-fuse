@@ -245,6 +245,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
         }
         // If we received a different error, then let's fail with that error
         int storage_errno = errno;
+        AZS_DEBUGLOGV("Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
         syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
         return 0 - map_errno(storage_errno);
     }

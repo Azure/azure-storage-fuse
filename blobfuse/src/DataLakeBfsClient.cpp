@@ -285,7 +285,7 @@ D_RETURN_CODE DataLakeBfsClient::IsDirectoryEmpty(std::string path)
     // If we get a continuation token, and the blob size on the first or so calls is still empty, the service could
     // actually have blobs in the container, but they just didn't send them in the request, but they have a
     // continuation token so it means they could have some.
-    while ((continuation.size() > 0 || !success) && failcount < 20);
+    while ((!continuation.empty()|| !success) && failcount < maxFailCount);
 
     if(!success)
     {
