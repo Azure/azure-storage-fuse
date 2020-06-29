@@ -19,7 +19,8 @@ jobs:
     pool:
       vmImage: 'ubuntu-16.04'
     steps:
-      - script: |
+      - script: |            
+            sudo apt-get update --fix-missing
             sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
             . ./build.sh
             mkdir $(Build.ArtifactStagingDirectory)/$(container_image)

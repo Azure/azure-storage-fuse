@@ -104,7 +104,7 @@ DAT(header_value_payload_format_fullmetadata, "application/json;odata=fullmetada
 DAT(header_value_storage_version, "2018-11-09")
 DAT(header_value_metadata, "true")
 
-DAT(header_value_user_agent, "Azure-Storage-Fuse/1.2.3")
+DAT(header_value_user_agent, "Azure-Storage-Fuse/1.2.4")
 
 DAT(date_format_rfc_1123, "%a, %d %b %Y %H:%M:%S GMT")
 DAT(date_format_iso_8601, "%Y-%m-%dT%H:%M:%SZ")

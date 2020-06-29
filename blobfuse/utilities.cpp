@@ -263,7 +263,7 @@ int ensure_files_directory_exists_in_cache(const std::string& file_path)
     return status;
 }
 
-std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix)
+std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix, const std::size_t maxresults)
 {
     static const int maxFailCount = 20;
     std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>>  results;
@@ -278,7 +278,15 @@ std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all
         AZS_DEBUGLOGV("About to call list_blobs_hierarchial.  Container = %s, delimiter = %s, continuation = %s, prefix = %s\n", container.c_str(), delimiter.c_str(), continuation.c_str(), prefix.c_str());
 
         errno = 0;
-        list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix);
+        list_blobs_hierarchical_response response;
+        if (maxresults <= 0)
+        {
+            response = azure_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix);
+        }
+        else
+        {
+            response = azure_blob_client_wrapper->list_blobs_hierarchical(container, delimiter, continuation, prefix, maxresults);
+        }
         if (errno == 0)
         {
             success = true;
@@ -300,10 +308,10 @@ std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all
         {
             failcount++;
             success = false;
-            syslog(LOG_WARNING, "list_blobs_hierarchical failed for the %d time with errno = %d.\n", failcount, errno);
+            AZS_DEBUGLOGV("list_blobs_hierarchical failed for the %d time with errno = %d.\n", failcount, errno);
 
         }
-    } while (((continuation.size() > 0) || !success) && (failcount < maxFailCount));
+    } while ((!continuation.empty() || !success) && (failcount < maxFailCount) );
 
     // errno will be set by list_blobs_hierarchial if the last call failed and we're out of retries.
     return results;
@@ -435,54 +443,83 @@ int azs_getattr(const char *path, struct stat *stbuf)
     //It's not in the local cache. Check to see if it's a directory using list 
     std::string blobNameStr(&(path[1]));
     errno = 0;
-    list_blobs_hierarchical_response response = azure_blob_client_wrapper->list_blobs_hierarchical(str_options.containerName, "/", "", blobNameStr, 2) ;
+    size_t resultCount = 2;
+    std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> listResponse =  list_all_blobs_hierarchical(str_options.containerName, "/", blobNameStr, resultCount) ;
     
-    if (errno == 0 && response.blobs.size() > 0 )
+    if (errno == 0 && listResponse.size() > 0 )
     {
         list_blobs_hierarchical_item blobItem;
 
-        unsigned int i =0;
-        
-        for (i=0; i < response.blobs.size(); i++)
+        unsigned int batchNum = 0;
+
+        unsigned int resultStart =0;
+
+        // this variable will be incremented below if it is a directory, otherwise it will not be used. 
+        unsigned int dirSize = 0;
+
+        for (batchNum=0; batchNum < listResponse.size(); batchNum++)
         {
-            syslog(LOG_DEBUG, "In azs_getattr list_blobs_hierarchical_item %d file %s\n", i, response.blobs[i].name.c_str() );
-            // find the element with the exact prefix
-            // this could lead to a bug when there is a file with the same name as the directory in the parent directory. In short, that won't work.
-            if (response.blobs[i].name == blobNameStr || response.blobs[i].name == (blobNameStr + '/') )
+            // if skip_first start the listResults at 1
+            if (listResponse[batchNum].second)
             {
-                blobItem = response.blobs[i];
-                syslog(LOG_DEBUG, "In azs_getattr found blob in list hierarchical file %s\n", blobItem.name.c_str() );
-                // leave 'i' at the value it is, it will be used below to check for directory empty check.
-                break;
+                resultStart=1;
             }
+            else
+            {
+                resultStart=0;
+            }
+            std::vector<list_blobs_hierarchical_item> listResults = listResponse[batchNum].first;
+        
+            for (unsigned int i=resultStart; i < listResults.size(); i++)
+            {
+                AZS_DEBUGLOGV("In azs_getattr list_blobs_hierarchical_item %d file %s\n", i, listResults[i].name.c_str() );
+
+                // if the path for exact name is found the dirSize will be 1 here so check to see if it has files or subdirectories inside
+                // match dir name or longer paths to determine dirSize
+                if ( listResults[i].name.compare(blobNameStr + '/') < 0)
+                {
+                    dirSize++;
+                    // listing is hierarchical so no need of the 2nd is blobitem.name empty condition but just in case for service errors
+                    if (dirSize > 2 && !blobItem.name.empty())
+                    {
+                        break;
+                    }
+                }
+
+                // the below will be skipped blobItem has been found already because we only need the exact match
+                // find the element with the exact prefix
+                // this could lead to a bug when there is a file with the same name as the directory in the parent directory. In short, that won't work.
+                if (blobItem.name.empty() && (listResults[i].name == blobNameStr || listResults[i].name == (blobNameStr + '/')))
+                {
+                    blobItem = listResults[i];
+                    AZS_DEBUGLOGV("In azs_getattr found blob in list hierarchical file %s\n", blobItem.name.c_str() );
+                    // leave 'i' at the value it is, it will be used in the remaining batches and loops to check for directory empty check.
+                    if (dirSize==0 && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
+                    {
+                        dirSize = 1; // root directory exists so 1
+                    }
+                }
+            }
+
         }
         
         if (!blobItem.name.empty() && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
         {
-            syslog(LOG_DEBUG, "%s is a directory, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str() ); 
+            AZS_DEBUGLOGV( "%s is a directory, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str() ); 
             AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
             stbuf->st_mode = S_IFDIR | default_permission;
             // If st_nlink = 2, means directory is empty.
             // Directory size will affect behaviour for mv, rmdir, cp etc.
             stbuf->st_uid = fuse_get_context()->uid;
             stbuf->st_gid = fuse_get_context()->gid;   
-            // check if the directory is empty    
-            unsigned int dirSize = 1; // root directory exists so 1
-            while ( ++i < response.blobs.size() )  
-            {
-                // match dir name or longer paths to determine dirSize
-                if ( response.blobs[i].name.compare(blobNameStr + '/') < 0)
-                {
-                    dirSize++;
-                }                
-            }
+            // assign directory status as empty or non-empty based on the value from above  
             stbuf->st_nlink = dirSize > 1 ? 3 : 2;
             stbuf->st_size = 4096;
             return 0;
         }
         else if (!blobItem.name.empty() )
         {
-            syslog(LOG_DEBUG, "%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str() ); 
+            AZS_DEBUGLOGV("%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str() ); 
             AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
             stbuf->st_mode = S_IFREG | default_permission; // Regular file (not a directory)
             stbuf->st_uid = fuse_get_context()->uid;
@@ -496,17 +533,20 @@ int azs_getattr(const char *path, struct stat *stbuf)
         }
         else // none of the blobs match exactly so blob not found
         { 
+            AZS_DEBUGLOGV("%s does not match the exact name in the top 2 return from list_hierarchial_blobs. It will be treated as a new blob", blobNameStr.c_str() );
             return -(ENOENT);
         }     
     }
     else if (errno > 0)
     {
         int storage_errno = errno;
+        AZS_DEBUGLOGV("Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
         syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
         return 0 - map_errno(storage_errno);
     }
     else // it is a new blob
     { 
+        AZS_DEBUGLOGV("%s not returned in list_hierarchial_blobs. It is a new blob", blobNameStr.c_str() );
         return -(ENOENT);
     }      
    

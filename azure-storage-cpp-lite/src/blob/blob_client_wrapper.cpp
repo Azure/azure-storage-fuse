@@ -337,12 +337,12 @@ namespace microsoft_azure {
             try
             {
                 auto task = m_blobClient->list_blobs_hierarchical(container, delimiter, continuation_token, prefix, max_results);
-                task.wait();
                 auto result = task.get();
 
                 if(!result.success())
                 {
                     errno = std::stoi(result.error().code);
+                    syslog(LOG_ERR, "Result error message: %s", result.error().message.c_str());
                     //std::cout<< "error: " << result.error().code <<std::endl;
                     //std::cout<< "error: " << result.error().message <<std::endl;
                     return list_blobs_hierarchical_response();
