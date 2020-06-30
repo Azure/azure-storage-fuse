@@ -227,6 +227,7 @@ bool DataLakeBfsClient::DeleteDirectory(const std::string directoryPath)
     m_adls_client->delete_directory(configurations.containerName, directoryPath);
     if(errno != 0)
     {
+        syslog(LOG_ERR, "Failed to delete directory %s, ERR : %d", directoryPath.c_str(), errno);
         return false;
     }
     return true;

@@ -1,7 +1,3 @@
-//
-// Created by adreed on 2/6/2020.
-//
-
 #include <Permissions.h>
 
 std::string modeToString(mode_t mode) {
