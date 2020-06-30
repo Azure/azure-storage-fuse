@@ -282,14 +282,14 @@ jobs:
         cd test
         go run stressTest.go $(MOUNT_DIR)
         cd -
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      #condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK stressTest
       timeoutInMinutes: 120
       continueOnError: true
 
     - script:  |
         sudo fusermount -u $(MOUNT_DIR)
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      #condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK stressTest Cleanup
       timeoutInMinutes: 30
       continueOnError: true
@@ -303,7 +303,7 @@ jobs:
         cd test
         go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR)
         cd -
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      #condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK FeatureTest
       timeoutInMinutes: 120
       continueOnError: true
@@ -312,7 +312,7 @@ jobs:
         rm -rf $(MOUNT_DIR)/*
         sudo fusermount -u $(MOUNT_DIR)
         sudo rm -rf $(TEMP_DIR)/*
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      #condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK FeatureTest Cleanup
       timeoutInMinutes: 30
       continueOnError: true
@@ -328,7 +328,7 @@ jobs:
         cd test
         go run stressTest.go $(MOUNT_DIR)
         cd -
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      #condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - ADLS stressTest
       timeoutInMinutes: 120
       continueOnError: true
@@ -338,7 +338,7 @@ jobs:
         sudo fusermount -u $(MOUNT_DIR)
         sudo rm -rf $(TEMP_DIR)/*
         sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      #condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - ADLS stressTest Cleanup
       timeoutInMinutes: 30
       continueOnError: true
@@ -352,7 +352,7 @@ jobs:
         cd test
         go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
         cd -
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      #condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - ADLS FeatureTest
       timeoutInMinutes: 120
       continueOnError: true
@@ -361,7 +361,7 @@ jobs:
         rm -rf $(MOUNT_DIR)/*
         sudo fusermount -u $(MOUNT_DIR)
         sudo rm -rf $(TEMP_DIR)/*
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      #condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - ADLS FeatureTest Cleanup
       timeoutInMinutes: 30
       continueOnError: true
@@ -401,7 +401,7 @@ jobs:
         cd ./test/
         sudo python tests.py
         cd -
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      #condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK pyTest
       timeoutInMinutes: 120
       continueOnError: true
@@ -414,7 +414,7 @@ jobs:
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(MOUNT_DIR)/.*
         sudo rm -rf $(TEMP_DIR)/*
-      condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
+      #condition: eq(variables['Build.SourceBranchName'], 'cpplite-fix')
       displayName: TEST - BLOCK pyTest Cleanup
       timeoutInMinutes: 10
       continueOnError: true
