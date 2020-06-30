@@ -43,7 +43,8 @@ mode_t aclToMode(access_control acl)
         syslog(LOG_ERR, "Failure: Unexpected amount of permissions from service");
         return mode;
     }
-    try {
+    //try 
+    {
         if (permissions[0] == 'r')
             mode |= 0400;
         if (permissions[1] == 'w')
@@ -63,10 +64,10 @@ mode_t aclToMode(access_control acl)
         if (permissions[8] == 'x')
             mode |= 0001;
     }
-    catch(std::exception err)
+    /*catch(std::exception err)
     {
         syslog(LOG_ERR, "Failure parsing permissions from service");
         return 0;
-    }
+    }*/
     return mode;
 }

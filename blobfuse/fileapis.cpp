@@ -138,8 +138,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
         syslog(LOG_ERR, "Failed to acquire flock on file %s in file cache.  errno = %d.", mntPathString.c_str(), lock_result);
         return lock_result;
     }
-
-    // TODO: Actual access control
+    
     if (!storage_client->isADLS()) {
         fchmod(res, config_options.defaultPermission);
     } else {

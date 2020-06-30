@@ -23,7 +23,7 @@ then
 elif [ $1 == "diff" ]
 then
   echo "Diff between local subtree and remote master : "
-  git diff azure-storage-cpplite/master cpplite-fix:cpplite
+  git diff azure-storage-cpplite/master master:cpplite
 elif [ $1 == "remote-tree" ]
 then  
   echo "Adding remote git for subtree : "

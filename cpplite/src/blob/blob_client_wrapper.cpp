@@ -748,7 +748,7 @@ namespace azure {  namespace storage_lite {
                 errno = client_not_init;
                 return;
             }
-            if(container.empty() || blob.empty() )
+            if(container.empty() || blob.empty())
             {
                 errno = invalid_parameters;
                 return;
