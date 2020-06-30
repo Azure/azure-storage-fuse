@@ -13,7 +13,10 @@ namespace azure { namespace storage_adls {
         {
             list_paths_item path_item;
             path_item.name = path_element["name"].get<std::string>();
-            path_item.content_length = std::stoull(path_element["contentLength"].get<std::string>());
+            if (path_element.contains("contentLength"))
+                path_item.content_length = std::stoull(path_element["contentLength"].get<std::string>());
+            else
+                path_item.content_length = 0;
             path_item.etag = path_element["etag"].get<std::string>();
             path_item.last_modified = path_element["lastModified"].get<std::string>();
             path_item.acl.owner = path_element["owner"].get<std::string>();
