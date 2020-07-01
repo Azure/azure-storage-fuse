@@ -203,7 +203,7 @@ namespace azure {  namespace storage_lite {
         }();
 
         std::string result;
-        for (char c : path)
+        for (unsigned char c : path)
         {
             if (is_path_char[c])
             {
@@ -235,7 +235,7 @@ namespace azure {  namespace storage_lite {
         }();
 
         std::string result;
-        for (char c : query)
+        for (unsigned char c : query)
         {
             if (is_query_char[c])
             {
