@@ -39,6 +39,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--use-adls=%s", use_adls),
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
+    OPTION("--empty-dir-check=%s", empty_dir_check),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -648,6 +649,15 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         }
     }
 
+    config_options.emptyDirCheck = false;
+    if (cmd_options.empty_dir_check != NULL) {
+        std::string val(cmd_options.empty_dir_check);
+        if(val == "true")
+        {
+            config_options.emptyDirCheck = true;
+        }
+    }
+    
     if (!tmpPathStr.empty())
     {    
         struct stat sb;
@@ -656,7 +666,8 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         // so check if the dir exists first and then validate
         if (stat(tmpPathStr.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) 
         {             
-            if  (!is_directory_empty(tmpPathStr.c_str()))
+            if  (!is_directory_empty(tmpPathStr.c_str()) &&
+                 config_options.emptyDirCheck)
             {
                 syslog(LOG_CRIT, "Unable to start blobfuse. temp directory '%s'is not empty.", tmpPathStr.c_str());
                 fprintf(stderr, "Error: temp directory '%s' is not empty. blobfuse needs an empty temp directory\n", tmpPathStr.c_str());

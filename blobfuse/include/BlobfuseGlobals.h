@@ -52,6 +52,7 @@ struct configParams
     int defaultPermission;
     int concurrency;
     unsigned long long cacheSize;
+    bool emptyDirCheck;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -69,6 +70,7 @@ struct cmdlineOptions
     const char *help; // print blobfuse usage
     const char *concurrency; // Max Concurrency factor for blob client wrapper (default 40)
     const char *cache_size_mb; // MAX Size of cache in MBs
+    const char *empty_dir_check;
 };
 
 
