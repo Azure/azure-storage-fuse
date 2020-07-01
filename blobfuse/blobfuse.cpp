@@ -13,6 +13,7 @@
 const std::string log_ident = "blobfuse";
 struct cmdlineOptions cmd_options;
 struct configParams config_options;
+struct globalTimes_st globalTimes;
 std::shared_ptr<StorageBfsClientBase> storage_client;
 
 namespace {
@@ -805,5 +806,7 @@ int initialize_blobfuse()
         syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
         return -1;
     }
+
+    globalTimes.lastModifiedTime = globalTimes.lastAccessTime = globalTimes.lastChangeTime = time(NULL);
     return 0;
 }

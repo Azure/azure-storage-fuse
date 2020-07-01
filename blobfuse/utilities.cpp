@@ -127,7 +127,9 @@ int azs_getattr(const char *path, struct stat *stbuf)
         stbuf->st_gid = fuse_get_context()->gid;
         stbuf->st_nlink = 2; // Directories should have a hard-link count of 2 + (# child directories).  We don't have that count, though, so we just use 2 for now.  TODO: Evaluate if we could keep this accurate or not.
         stbuf->st_size = 4096;
-        stbuf->st_mtime = time(NULL);
+        stbuf->st_mtime = globalTimes.lastModifiedTime;
+        stbuf->st_atime = globalTimes.lastAccessTime;
+        stbuf->st_ctime = globalTimes.lastChangeTime;
         return 0;
     }
 

@@ -21,6 +21,14 @@ using namespace azure::storage_adls;
 
 bool is_directory_empty(const char *tmpDir);
 extern struct configParams config_options;
+extern struct globalTimes_st globalTimes;
+
+struct globalTimes_st
+{
+    time_t lastModifiedTime;
+    time_t lastAccessTime;
+    time_t lastChangeTime;
+};
 
 // Global struct storing the Storage connection information and the tmpPath.
 struct configParams

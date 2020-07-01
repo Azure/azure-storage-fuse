@@ -343,8 +343,10 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             {
                 syslog(LOG_INFO, "Successfully uploaded file %s to blob %s.\n", path, blob_name.c_str());
             }
+            globalTimes.lastModifiedTime = time(NULL);
         } else {
             storage_client->UpdateBlobProperty(blob_name, "last_access", std::to_string(time(NULL)));
+            globalTimes.lastAccessTime = time(NULL);
         }
     }
     else
@@ -535,7 +537,7 @@ int azs_truncate(const char * path, off_t off)
                 syslog(LOG_INFO, "Successfully uploaded zero-length blob to path %s from azs_truncate.", pathString.c_str()+1);
                 return 0;
             }
-
+            globalTimes.lastModifiedTime = time(NULL);
         }
         else
         {

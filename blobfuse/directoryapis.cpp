@@ -22,6 +22,7 @@ int azs_mkdir(const char *path, mode_t)
     {
         syslog(LOG_INFO, "Successfully created directory path: %s. ", path);
     }
+    globalTimes.lastModifiedTime = globalTimes.lastAccessTime = globalTimes.lastChangeTime = time(NULL);
     return 0;
 }
 
@@ -214,6 +215,7 @@ int azs_rmdir(const char *path)
         }
         return -errno;
     }
+    globalTimes.lastModifiedTime = globalTimes.lastAccessTime = globalTimes.lastChangeTime = time(NULL);
     return 0;
 }
 

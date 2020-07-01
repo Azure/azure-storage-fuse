@@ -352,7 +352,8 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
     lstaterrno = errno;
 
     UpdateBlobProperty(pathStr.substr(1), "last_change", std::to_string(time(NULL)));
-
+    globalTimes.lastChangeTime = time(NULL);
+    
     std::string mntPathString = prepend_mnt_path_string(pathStr);
     int acc = access(mntPathString.c_str(), F_OK);
     if (acc != -1)
