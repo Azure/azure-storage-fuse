@@ -333,7 +333,7 @@ public:
     /// Gets the properties of a path
     ///</summary>
     ///<returns>BfsFileProperty object which contains the property details of the file</returns>
-    virtual BfsFileProperty GetProperties(const std::string pathName) = 0;
+    virtual BfsFileProperty GetProperties(const std::string pathName, bool type_known = false) = 0;
     ///<summary>
     /// Determines whether or not a path (file or directory) exists or not
     ///</summary>
@@ -348,12 +348,12 @@ public:
     /// Lists
     ///</summary>
     ///<returns>none</returns>
-    virtual list_segmented_response List(std::string continuation, const std::string prefix, const std::string delimiter) = 0;
+    virtual list_segmented_response List(std::string continuation, const std::string prefix, const std::string delimiter, int max_results = 10000) = 0;
     ///<summary>
     /// LIsts all directories within a list container
     /// Greedily list all blobs using the input params.
     ///</summary>
-    virtual std::vector<std::pair<std::vector<list_segmented_item>, bool>> ListAllItemsSegmented(const std::string& prefix, const std::string& delimiter) = 0;
+    virtual std::vector<std::pair<std::vector<list_segmented_item>, bool>> ListAllItemsSegmented(const std::string& prefix, const std::string& delimiter, int max_results = 10000) = 0;
     ///<summary>
     /// Updates the UNIX-style file mode on a path.
     ///</summary>

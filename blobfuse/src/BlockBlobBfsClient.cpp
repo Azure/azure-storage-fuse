@@ -8,33 +8,34 @@
 bool BlockBlobBfsClient::AuthenticateStorage()
 {
     // Authenticate the storage account
-    switch (configurations.authType) {
-        case KEY_AUTH:
-            m_blob_client = authenticate_blob_accountkey();
-            break;
-        case SAS_AUTH:
-            m_blob_client = authenticate_blob_sas();
-            break;
-        case MSI_AUTH:
-            m_blob_client = authenticate_blob_msi();
-            break;
-        case SPN_AUTH:
-            m_blob_client = authenticate_blob_spn();
-            break;
-        default:
-            return false;
-            break;
+    switch (configurations.authType)
+    {
+    case KEY_AUTH:
+        m_blob_client = authenticate_blob_accountkey();
+        break;
+    case SAS_AUTH:
+        m_blob_client = authenticate_blob_sas();
+        break;
+    case MSI_AUTH:
+        m_blob_client = authenticate_blob_msi();
+        break;
+    case SPN_AUTH:
+        m_blob_client = authenticate_blob_spn();
+        break;
+    default:
+        return false;
+        break;
     }
 
-    if(m_blob_client->is_valid())
+    if (m_blob_client->is_valid())
     {
         //Authenticate the storage container by using a list call
         m_blob_client->list_blobs_segmented(
-                configurations.containerName,
-                "/",
-                std::string(),
-                std::string(),
-                1);
+            configurations.containerName,
+            "/",
+            std::string(),
+            std::string(),
+            1);
         if (errno != 0)
         {
             syslog(LOG_ERR,
@@ -48,7 +49,7 @@ bool BlockBlobBfsClient::AuthenticateStorage()
 }
 
 std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accountkey()
-{ 
+{
     syslog(LOG_DEBUG, "Authenticating using account key");
     try
     {
@@ -63,20 +64,21 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accou
             return std::make_shared<blob_client_wrapper>(false);
         }
         std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
-                configurations.accountName,
-                cred,
-                configurations.useHttps,
-                configurations.blobEndpoint);
-        std::shared_ptr<blob_client> blobClient= std::make_shared<blob_client>(
-                account,
-                configurations.concurrency);
+            configurations.accountName,
+            cred,
+            configurations.useHttps,
+            configurations.blobEndpoint);
+        std::shared_ptr<blob_client> blobClient = std::make_shared<blob_client>(
+            account,
+            configurations.concurrency);
         errno = 0;
-        /*if(configurations.useAttrCache){
+        if (configurations.useAttrCache)
+        {
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
-        }*/
+        }
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
-    catch(const std::exception &ex)
+    catch (const std::exception &ex)
     {
         syslog(LOG_ERR, "Failed to create blob client.  ex.what() = %s.", ex.what());
         errno = blobfuse_constants::unknown_error;
@@ -89,7 +91,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_sas()
     try
     {
         std::shared_ptr<storage_credential> cred;
-        if(configurations.sasToken.length() > 0)
+        if (configurations.sasToken.length() > 0)
         {
             cred = std::make_shared<shared_access_signature_credential>(configurations.sasToken);
         }
@@ -99,19 +101,20 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_sas()
             return std::make_shared<blob_client_wrapper>(false);
         }
         std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
-                configurations.accountName, cred,
-                configurations.useHttps,
-                configurations.blobEndpoint);
-        std::shared_ptr<blob_client> blobClient= std::make_shared<blob_client>(
-                account,
-                configurations.concurrency);
+            configurations.accountName, cred,
+            configurations.useHttps,
+            configurations.blobEndpoint);
+        std::shared_ptr<blob_client> blobClient = std::make_shared<blob_client>(
+            account,
+            configurations.concurrency);
         errno = 0;
-        /*if(configurations.useAttrCache){
+        if (configurations.useAttrCache)
+        {
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
-        }*/
+        }
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
-    catch(const std::exception &ex)
+    catch (const std::exception &ex)
     {
         syslog(LOG_ERR, "Failed to create blob client.  ex.what() = %s.", ex.what());
         errno = blobfuse_constants::unknown_error;
@@ -125,14 +128,15 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
     {
         //1. get oauth token
         std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> MSICallback = SetUpMSICallback(
-                configurations.identityClientId,
-                configurations.objectId,
-                configurations.resourceId,
-                configurations.msiEndpoint);
+            configurations.identityClientId,
+            configurations.objectId,
+            configurations.resourceId,
+            configurations.msiEndpoint);
 
         std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback);
 
-        if (!tokenManager->is_valid_connection()) {
+        if (!tokenManager->is_valid_connection())
+        {
             // todo: isolate definitions of errno's for this function so we can output something meaningful.
             errno = 1;
             return std::make_shared<blob_client_wrapper>(false);
@@ -141,24 +145,24 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
         //2. try to make blob client wrapper using oauth token
         std::shared_ptr<storage_credential> cred = std::make_shared<token_credential>("");
         std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
-                configurations.accountName,
-                cred,
-                true, //use_https must be true to use oauth
-                configurations.blobEndpoint);
+            configurations.accountName,
+            cred,
+            true, //use_https must be true to use oauth
+            configurations.blobEndpoint);
         std::shared_ptr<blob_client> blobClient =
-                std::make_shared<blob_client>(account, max_concurrency_oauth);
+            std::make_shared<blob_client>(account, max_concurrency_oauth);
         errno = 0;
-        /*if(configurations.useAttrCache){
+        if (configurations.useAttrCache)
+        {
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
-        }*/
+        }
         return std::make_shared<blob_client_wrapper>(blobClient);
-
     }
-    catch(const std::exception &ex)
+    catch (const std::exception &ex)
     {
         syslog(LOG_ERR, "Failed to create blob client.  ex.what() = %s. Please check your account name and ", ex.what());
         errno = blobfuse_constants::unknown_error;
-        return  std::make_shared<blob_client_wrapper>(false);
+        return std::make_shared<blob_client_wrapper>(false);
     }
 }
 std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
@@ -168,14 +172,15 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
     {
         //1. get oauth token
         std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SPNCallback = SetUpSPNCallback(
-                configurations.spnTenantId,
-                configurations.spnClientId,
-                configurations.spnClientSecret,
-                configurations.aadEndpoint);
+            configurations.spnTenantId,
+            configurations.spnClientId,
+            configurations.spnClientSecret,
+            configurations.aadEndpoint);
 
         std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(SPNCallback);
 
-        if (!tokenManager->is_valid_connection()) {
+        if (!tokenManager->is_valid_connection())
+        {
             // todo: isolate definitions of errno's for this function so we can output something meaningful.
             errno = 1;
             return std::make_shared<blob_client_wrapper>(false);
@@ -184,24 +189,24 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
         //2. try to make blob client wrapper using oauth token
         std::shared_ptr<storage_credential> cred = std::make_shared<token_credential>("");
         std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
-                configurations.accountName,
-                cred,
-                true, //use_https must be true to use oauth
-                configurations.blobEndpoint);
+            configurations.accountName,
+            cred,
+            true, //use_https must be true to use oauth
+            configurations.blobEndpoint);
         std::shared_ptr<blob_client> blobClient =
-                std::make_shared<blob_client>(account, max_concurrency_oauth);
+            std::make_shared<blob_client>(account, max_concurrency_oauth);
         errno = 0;
-        /*if(configurations.useAttrCache){
+        if (configurations.useAttrCache)
+        {
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
-        }*/
+        }
         return std::make_shared<blob_client_wrapper>(blobClient);
-
     }
-    catch(const std::exception &ex)
+    catch (const std::exception &ex)
     {
         syslog(LOG_ERR, "Failed to create blob client.  ex.what() = %s. Please check your account name and ", ex.what());
         errno = blobfuse_constants::unknown_error;
-        return  std::make_shared<blob_client_wrapper>(false);
+        return std::make_shared<blob_client_wrapper>(false);
     }
 }
 
@@ -222,14 +227,14 @@ void BlockBlobBfsClient::UploadFromFile(const std::string sourcePath, METADATA &
 /// Uploads contents of a stream to a block blob to the Storage service
 ///</summary>
 ///<returns>none</returns>
-void BlockBlobBfsClient::UploadFromStream(std::istream & sourceStream, const std::string blobName)
+void BlockBlobBfsClient::UploadFromStream(std::istream &sourceStream, const std::string blobName)
 {
     InvalidateCachedProperty(blobName);
     m_blob_client->upload_block_blob_from_stream(configurations.containerName, blobName, sourceStream);
 }
 
-void BlockBlobBfsClient::UploadFromStream(std::istream & sourceStream, const std::string blobName, 
-                        std::vector<std::pair<std::string, std::string>> & metadata)
+void BlockBlobBfsClient::UploadFromStream(std::istream &sourceStream, const std::string blobName,
+                                          std::vector<std::pair<std::string, std::string>> &metadata)
 {
     InvalidateCachedProperty(blobName);
     m_blob_client->upload_block_blob_from_stream(configurations.containerName, blobName, sourceStream, metadata);
@@ -239,7 +244,7 @@ void BlockBlobBfsClient::UploadFromStream(std::istream & sourceStream, const std
 /// Downloads contents of a block blob to a local file
 ///</summary>
 ///<returns>none</returns>
-long int BlockBlobBfsClient::DownloadToFile(const std::string blobName, const std::string filePath, time_t& last_modified)
+long int BlockBlobBfsClient::DownloadToFile(const std::string blobName, const std::string filePath, time_t &last_modified)
 {
     m_blob_client->download_blob_to_file(configurations.containerName, blobName, filePath, last_modified);
     struct stat stbuf;
@@ -250,8 +255,8 @@ long int BlockBlobBfsClient::DownloadToFile(const std::string blobName, const st
         return 0;
 }
 
-long int BlockBlobBfsClient::DownloadToStream(const std::string blobName, std::ostream & destStream, 
-        unsigned long long offset, unsigned long long size)
+long int BlockBlobBfsClient::DownloadToStream(const std::string blobName, std::ostream &destStream,
+                                              unsigned long long offset, unsigned long long size)
 {
     m_blob_client->download_blob_to_stream(configurations.containerName, blobName, offset, size, destStream);
     return 0;
@@ -271,25 +276,25 @@ bool BlockBlobBfsClient::CreateDirectory(const std::string directoryPath)
     errno = 0;
     InvalidateCachedProperty(directoryPath);
     m_blob_client->upload_block_blob_from_stream(
-            configurations.containerName,
-            directoryPath,
-            emptyDataStream,
-            metadata);
+        configurations.containerName,
+        directoryPath,
+        emptyDataStream,
+        metadata);
 
     if (errno != 0)
     {
         int storage_errno = errno;
         syslog(LOG_ERR,
-                "Failed to upload zero-length directory marker for path %s. errno = %d.\n",
-                directoryPath.c_str(),
-                storage_errno);
+               "Failed to upload zero-length directory marker for path %s. errno = %d.\n",
+               directoryPath.c_str(),
+               storage_errno);
         return 0 - map_errno(errno);
     }
     else
     {
         syslog(LOG_INFO,
-                "Successfully uploaded zero-length directory marker for path %s.",
-                directoryPath.c_str());
+               "Successfully uploaded zero-length directory marker for path %s.",
+               directoryPath.c_str());
     }
     return true;
 }
@@ -314,40 +319,40 @@ bool BlockBlobBfsClient::DeleteDirectory(const std::string directoryPath)
                errno);
         return false; // Failure in fetching properties - errno set by blob_exists
     }
-    switch(dir_blob_exists)
+    switch (dir_blob_exists)
     {
-        case D_NOTEXIST:
-            //log that the directory does not exist
-            syslog(LOG_ERR,
-                   "Directory does not exist in storage, no directory to delete: %s. errno = %d.\n",
-                   directoryPath.c_str(),
-                   errno);
-            errno = ENOENT;
-            return false;
-            break;
-        case D_EMPTY:
-            syslog(LOG_DEBUG,
-                   "Directory is empty, attempting deleting directory marker: %s.\n",
-                   directoryPath.c_str());
-            InvalidateCachedProperty((std::string)directoryPath);
-            DeleteFile((std::string)directoryPath);
-            return true;
-            break;
-        case D_NOTEMPTY:
-            syslog(LOG_ERR,
-                   "Directory is not empty, cannot delete: %s. errno = %d.\n",
-                   directoryPath.c_str(),
-                   errno);
-            errno = ENOTEMPTY;
-            return false;
-            break;
-        default:
-            // Unforseen error,syslog and return false at the end of function
-            syslog(LOG_ERR,
-                   "Unforseen error for deleting directory: %s. errno = %d.\n",
-                   directoryPath.c_str(),
-                   errno);
-            break;
+    case D_NOTEXIST:
+        //log that the directory does not exist
+        syslog(LOG_ERR,
+               "Directory does not exist in storage, no directory to delete: %s. errno = %d.\n",
+               directoryPath.c_str(),
+               errno);
+        errno = ENOENT;
+        return false;
+        break;
+    case D_EMPTY:
+        syslog(LOG_DEBUG,
+               "Directory is empty, attempting deleting directory marker: %s.\n",
+               directoryPath.c_str());
+        InvalidateCachedProperty((std::string)directoryPath);
+        DeleteFile((std::string)directoryPath);
+        return true;
+        break;
+    case D_NOTEMPTY:
+        syslog(LOG_ERR,
+               "Directory is not empty, cannot delete: %s. errno = %d.\n",
+               directoryPath.c_str(),
+               errno);
+        errno = ENOTEMPTY;
+        return false;
+        break;
+    default:
+        // Unforseen error,syslog and return false at the end of function
+        syslog(LOG_ERR,
+               "Unforseen error for deleting directory: %s. errno = %d.\n",
+               directoryPath.c_str(),
+               errno);
+        break;
     }
     return false;
 }
@@ -364,35 +369,138 @@ void BlockBlobBfsClient::DeleteFile(const std::string pathToDelete)
 /// Gets the properties of a path
 ///</summary>
 ///<returns>BfsFileProperty object which contains the property details of the file</returns>
-BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName)
+BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool type_known)
 {
-    BfsFileProperty cache_prop;
-    if (0 == GetCachedProperty(pathName, cache_prop)) {
+    /*BfsFileProperty cache_prop;
+    if (0 == GetCachedProperty(pathName, cache_prop))
+    {
         return cache_prop;
     }
+    */
 
     errno = 0;
-    blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
-    if (errno == 0) {
-        BfsFileProperty ret_property(property.cache_control,
-            property.content_disposition,
-            property.content_encoding,
-            property.content_language,
-            property.content_md5,
-            property.content_type,
-            property.etag,
-            property.copy_status,
-            property.metadata,
-            property.last_modified,
-            "", // Return an empty modestring because blob doesn't support file mode bits.
-            property.size);
+    if (type_known) {
+        blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
+        if (errno == 0) {
+            BfsFileProperty ret_property(property.cache_control,
+                property.content_disposition,
+                property.content_encoding,
+                property.content_language,
+                property.content_md5,
+                property.content_type,
+                property.etag,
+                property.copy_status,
+                property.metadata,
+                property.last_modified,
+                "", // Return an empty modestring because blob doesn't support file mode bits.
+                property.size);
 
-        SetCachedProperty(pathName, ret_property);
-        return ret_property;
+            SetCachedProperty(pathName, ret_property);
+            return ret_property;
+        }
+    } else {
+        int resultCount = 2;
+        std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResponse = ListAllItemsSegmented(
+            pathName, "/", resultCount);
+
+        if (errno == 0 && listResponse.size() > 0)
+        {
+            list_segmented_item blobItem;
+            unsigned int batchNum = 0;
+            unsigned int resultStart = 0;
+            // this variable will be incremented below if it is a directory, otherwise it will not be used.
+            unsigned int dirSize = 0;
+
+            for (batchNum = 0; batchNum < listResponse.size(); batchNum++)
+            {
+                // if skip_first start the listResults at 1
+                resultStart = listResponse[batchNum].second ? 1 : 0;
+
+                std::vector<list_segmented_item> listResults = listResponse[batchNum].first;
+                for (unsigned int i = resultStart; i < listResults.size(); i++)
+                {
+                    syslog(LOG_ERR,"In GetProperties list_segmented_item %d file %s\n", i, listResults[i].name.c_str());
+
+                    // if the path for exact name is found the dirSize will be 1 here so check to see if it has files or subdirectories inside
+                    // match dir name or longer paths to determine dirSize
+                    if (listResults[i].name.compare(pathName + '/') < 0)
+                    {
+                        dirSize++;
+                        // listing is hierarchical so no need of the 2nd is blobitem.name empty condition but just in case for service errors
+                        if (dirSize > 2 && !blobItem.name.empty())
+                        {
+                            break;
+                        }
+                    }
+
+                    // the below will be skipped blobItem has been found already because we only need the exact match
+                    // find the element with the exact prefix
+                    // this could lead to a bug when there is a file with the same name as the directory in the parent directory. In short, that won't work.
+                    if (blobItem.name.empty() && (listResults[i].name == pathName || listResults[i].name == (pathName + '/')))
+                    {
+                        blobItem = listResults[i];
+                        syslog(LOG_ERR,"In GetProperties found blob in list hierarchical file %s\n", blobItem.name.c_str());
+                        // leave 'i' at the value it is, it will be used in the remaining batches and loops to check for directory empty check.
+                        if (dirSize == 0 && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (pathName + '/')))
+                        {
+                            dirSize = 1; // root directory exists so 1
+                        }
+                    }
+                }
+            }
+
+            if (!blobItem.name.empty() && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (pathName + '/')))
+            {
+                blob_property property;
+                if (errno == 0) {
+                    BfsFileProperty ret_property(blobItem.cache_control,
+                        "",
+                        blobItem.content_encoding,
+                        blobItem.content_language,
+                        blobItem.content_md5,
+                        blobItem.content_type,
+                        blobItem.etag,
+                        "",
+                        blobItem.metadata,
+                        time(NULL),
+                        "", // Return an empty modestring because blob doesn't support file mode bits.
+                        0);
+                    //ret_property.is_directory = true;
+                    errno = 0;
+                    return ret_property;
+                }
+            }
+            else if (!blobItem.name.empty())
+            {
+                blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
+                if (errno == 0) {
+                    BfsFileProperty ret_property(property.cache_control,
+                        property.content_disposition,
+                        property.content_encoding,
+                        property.content_language,
+                        property.content_md5,
+                        property.content_type,
+                        property.etag,
+                        property.copy_status,
+                        property.metadata,
+                        property.last_modified,
+                        "", // Return an empty modestring because blob doesn't support file mode bits.
+                        property.size);
+
+                    SetCachedProperty(pathName, ret_property);
+                    errno = 0;
+                    return ret_property;
+                }
+            }
+            else // none of the blobs match exactly so blob not found
+            {
+                syslog(LOG_ERR,"%s does not match the exact name in the top 2 return from list_hierarchial_blobs. It will be treated as a new blob", pathName.c_str());
+                errno = ENOENT;
+            }
+        }
     }
-    
     return BfsFileProperty();
-}  
+}
 ///<summary>
 /// Determines whether or not a path (file or directory) exists or not
 ///</summary>
@@ -402,9 +510,9 @@ int BlockBlobBfsClient::Exists(const std::string pathName)
     errno = 0;
     blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
 
-    if(errno != 0)
+    if (errno != 0)
     {
-        if(errno != 404 && (errno != ENOENT))
+        if (errno != 404 && (errno != ENOENT))
         {
             //failed to fetch properties
             return 0 - map_errno(errno);
@@ -448,7 +556,7 @@ std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath
 
     if (property.isValid() && property.is_directory)
     {
-        rename_directory(sourcePath.c_str(),destinationPath.c_str(), file_paths_to_remove);
+        rename_directory(sourcePath.c_str(), destinationPath.c_str(), file_paths_to_remove);
     }
     else
     {
@@ -461,24 +569,24 @@ std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath
 ///</summary>
 ///<returns>none</returns>
 list_segmented_response
-BlockBlobBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter)
+BlockBlobBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter, int max_results)
 {
 
     //TODO: MAKE THIS BETTER
     list_blobs_segmented_response listed_blob_response = m_blob_client->list_blobs_segmented(
-            configurations.containerName,
-            delimiter,
-            continuation,
-            prefix);
+        configurations.containerName,
+        delimiter,
+        continuation,
+        prefix,
+        max_results);
     return list_segmented_response(listed_blob_response);
 }
-
 
 ///<summary>
 /// Checks if the blob is a directory
 ///</summary>
 ///<returns>none</returns>
-bool BlockBlobBfsClient::IsDirectory(const char * path)
+bool BlockBlobBfsClient::IsDirectory(const char *path)
 {
     BfsFileProperty property = GetProperties(path);
     if (property.isValid() && property.is_directory)
@@ -551,7 +659,7 @@ D_RETURN_CODE BlockBlobBfsClient::IsDirectoryEmpty(std::string path)
     return D_EMPTY;
 }
 
-int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std::vector<std::string> & files_to_remove_cache)
+int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std::vector<std::string> &files_to_remove_cache)
 {
     // TODO: if src == dst, return?
     // TODO: lock in alphabetical order?
@@ -561,11 +669,11 @@ int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std
     auto fdstmutex = file_lock_map::get_instance()->get_mutex(dst);
     std::lock_guard<std::mutex> lockdst(*fdstmutex);
 
-    const char * srcMntPath;
+    const char *srcMntPath;
     std::string srcMntPathString = prepend_mnt_path_string(src);
     srcMntPath = srcMntPathString.c_str();
 
-    const char * dstMntPath;
+    const char *dstMntPath;
     std::string dstMntPathString = prepend_mnt_path_string(dst);
     dstMntPath = dstMntPathString.c_str();
 
@@ -611,15 +719,14 @@ int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std
             do
             {
                 blob_property = GetProperties(dst.substr(1));
-            }
-            while(errno == 0 && blob_property.isValid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
-            if(blob_property.copy_status.compare(0, 7, "success") == 0)
+            } while (errno == 0 && blob_property.isValid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+            if (blob_property.copy_status.compare(0, 7, "success") == 0)
             {
                 syslog(LOG_INFO, "Copy operation from %s to %s succeeded.", src.c_str() + 1, dst.c_str() + 1);
 
-//                int retval = azs_unlink(srcPathString); // This will remove the blob from the service, and also take care of removing the directory in the local file cache.
+                //                int retval = azs_unlink(srcPathString); // This will remove the blob from the service, and also take care of removing the directory in the local file cache.
                 DeleteFile(src.substr(1));
-                if(errno != 0)
+                if (errno != 0)
                 {
                     int storage_errno = errno;
                     syslog(LOG_ERR, "Failed to delete source blob %s during rename operation.  errno = %d\n.", src.c_str() + 1, storage_errno);
@@ -678,14 +785,13 @@ int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std
             do
             {
                 blob_property = GetProperties(dst.substr(1));
-            }
-            while(errno == 0 && blob_property.isValid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
-            if(blob_property.copy_status.compare(0, 7, "success") == 0)
+            } while (errno == 0 && blob_property.isValid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+            if (blob_property.copy_status.compare(0, 7, "success") == 0)
             {
                 syslog(LOG_INFO, "Copy operation from %s to %s succeeded.", src.c_str() + 1, dst.c_str() + 1);
 
                 DeleteFile(src.substr(1));
-                if(errno != 0)
+                if (errno != 0)
                 {
                     int storage_errno = errno;
                     syslog(LOG_ERR, "Failed to delete source blob %s during rename operation.  errno = %d\n.", src.c_str() + 1, storage_errno);
@@ -718,8 +824,7 @@ int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std
     return 0;
 }
 
-
-int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::vector<std::string> & files_to_remove_cache)
+int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::vector<std::string> &files_to_remove_cache)
 {
     AZS_DEBUGLOGV("azs_rename_directory called with src = %s, dst = %s.\n", src.c_str(), dst.c_str());
     std::string srcPathStr(src);
@@ -754,7 +859,7 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
     DIR *dir_stream = opendir(mntPathString.c_str());
     if (dir_stream != NULL)
     {
-        struct dirent* dir_ent = readdir(dir_stream);
+        struct dirent *dir_ent = readdir(dir_stream);
         while (dir_ent != NULL)
         {
             if (dir_ent->d_name[0] != '.')
@@ -796,7 +901,7 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
     // Rename all files & directories that don't exist in the local cache.
     errno = 0;
     std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResults = ListAllItemsSegmented("/",
-                                                                                                src.substr(1));
+                                                                                                       src.substr(1));
     if (errno != 0)
     {
         int storage_errno = errno;
@@ -857,12 +962,12 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
     return 0;
 }
 
-
 std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClient::ListAllItemsSegmented(
-        const std::string& prefix,
-        const std::string& delimiter)
+    const std::string &prefix,
+    const std::string &delimiter,
+    int max_results)
 {
-    std::vector<std::pair<std::vector<list_segmented_item>, bool>>  results;
+    std::vector<std::pair<std::vector<list_segmented_item>, bool>> results;
 
     std::string continuation;
 
@@ -872,23 +977,23 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClien
     do
     {
         AZS_DEBUGLOGV("About to call list_blobs_hierarchial.  Container = %s, delimiter = %s, continuation = %s, prefix = %s\n",
-                configurations.containerName.c_str(),
-                delimiter.c_str(),
-                continuation.c_str(),
-                prefix.c_str());
+                      configurations.containerName.c_str(),
+                      delimiter.c_str(),
+                      continuation.c_str(),
+                      prefix.c_str());
 
         errno = 0;
-        list_segmented_response response = List(continuation, prefix, delimiter);
+        list_segmented_response response = List(continuation, prefix, delimiter, max_results);
         if (errno == 0)
         {
             success = true;
             failcount = 0;
             AZS_DEBUGLOGV("Successful call to list_blobs_segmented.  results count = %d, next_marker = %s.\n", (int)response.m_items.size(), response.m_next_marker.c_str());
             continuation = response.m_next_marker;
-            if(!response.m_items.empty())
+            if (!response.m_items.empty())
             {
                 bool skip_first = false;
-                if(response.m_items[0].name == prior)
+                if (response.m_items[0].name == prior)
                 {
                     skip_first = true;
                 }
@@ -901,7 +1006,6 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClien
             failcount++;
             success = false;
             syslog(LOG_WARNING, "list_blobs_segmented failed for the %d time with errno = %d.\n", failcount, errno);
-
         }
     } while (((!continuation.empty()) || !success) && (failcount < maxFailCount));
 
@@ -912,7 +1016,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClien
 ///<summary>
 /// Helper function - Checks metadata hdi_isfolder aka if the blob marker is a folder
 ///</summary>
-bool BlockBlobBfsClient::is_folder(const std::vector<std::pair<std::string,std::string>> & metadata)
+bool BlockBlobBfsClient::is_folder(const std::vector<std::pair<std::string, std::string>> &metadata)
 {
     for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
     {
@@ -924,7 +1028,8 @@ bool BlockBlobBfsClient::is_folder(const std::vector<std::pair<std::string,std::
     return false;
 }
 
-int BlockBlobBfsClient::ChangeMode(const char*, mode_t) {
+int BlockBlobBfsClient::ChangeMode(const char *, mode_t)
+{
     return -ENOSYS;
 }
 

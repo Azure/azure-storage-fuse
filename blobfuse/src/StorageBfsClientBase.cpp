@@ -2,9 +2,6 @@
 #include <vector>
 #include <sys/stat.h>
 #include <Permissions.h>
-//
-// Created by amanda on 1/17/20.
-//
 
 int StorageBfsClientBase::map_errno(int error)
 {

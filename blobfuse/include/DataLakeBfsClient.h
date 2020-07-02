@@ -45,7 +45,7 @@ public:
     /// Lists
     ///</summary>
     ///<returns>none</returns>
-    list_segmented_response List(std::string continuation, std::string prefix, std::string delimiter = "") override;
+    list_segmented_response List(std::string continuation, std::string prefix, std::string delimiter = "", int max_results = 10000) override;
     ///<summary>
     /// Updates the UNIX-style file mode on a path.
     ///</summary>
@@ -54,7 +54,7 @@ public:
     /// Gets the properties of a path
     ///</summary>
     ///<returns>BfsFileProperty object which contains the property details of the file</returns>
-    BfsFileProperty GetProperties(std::string pathName) override;
+    BfsFileProperty GetProperties(std::string pathName, bool type_known = false) override;
 
     virtual int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL);
 
