@@ -205,7 +205,7 @@ namespace azure { namespace storage_lite {
     /// <param name="blob">The blob name.</param>
     /// <param name="is">The source stream.</param>
     /// <param name="metadata">A <see cref="std::vector"> that respresents metadatas.</param>
-    void blob_client_attr_cache_wrapper::upload_block_blob_from_stream(const std::string &container, const std::string blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata)
+    void blob_client_attr_cache_wrapper::upload_block_blob_from_stream(const std::string &container, const std::string blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata, size_t /*streamlen*/)
     {
         // Invalidate the cache.
         // TODO: consider updating the cache with the new values.  Will require modifying cpplite to return info from put_blob.

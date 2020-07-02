@@ -333,7 +333,7 @@ public:
     /// Gets the properties of a path
     ///</summary>
     ///<returns>BfsFileProperty object which contains the property details of the file</returns>
-    virtual BfsFileProperty GetProperties(const std::string pathName) = 0;
+    virtual BfsFileProperty GetProperties(const std::string pathName, bool type_known = false) = 0;
     ///<summary>
     /// Determines whether or not a path (file or directory) exists or not
     ///</summary>

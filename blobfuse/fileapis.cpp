@@ -594,7 +594,7 @@ int azs_readlink(const char *path, char *buf, size_t size)
     std::lock_guard<std::mutex> lock(*fmutex);
     std::stringstream os;
 
-    BfsFileProperty prop = storage_client->GetProperties(path+1);
+    BfsFileProperty prop = storage_client->GetProperties(path+1, true);
     
     errno = 0;
     storage_client->DownloadToStream((path + 1), os, 0, 0);

@@ -240,7 +240,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 AZS_DEBUGLOGV("%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
                 AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
 
-                auto blob_property = storage_client->GetProperties(blobNameStr);
+                auto blob_property = storage_client->GetProperties(blobNameStr, true);
                 mode_t perms = blob_property.m_file_mode == 0 ? config_options.defaultPermission : blob_property.m_file_mode;
 
                 if (is_symlink_blob(blob_property.metadata))

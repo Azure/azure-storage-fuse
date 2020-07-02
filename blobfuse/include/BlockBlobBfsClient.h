@@ -69,7 +69,7 @@ public:
     /// Gets the properties of a path
     ///</summary>
     ///<returns>BfsFileProperty object which contains the property details of the file</returns>
-    BfsFileProperty GetProperties(std::string pathName) override;
+    BfsFileProperty GetProperties(std::string pathName, bool type_known = false) override;
     ///<summary>
     /// Determines whether or not a path (file or directory) exists or not
     ///</summary>

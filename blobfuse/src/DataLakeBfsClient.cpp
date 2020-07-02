@@ -377,7 +377,7 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
     return ((lstaterrno) ? (-lstaterrno) : 0);
 }
 
-BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName) {
+BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*type_known*/) {
     BfsFileProperty cache_prop;
     if (0 == GetCachedProperty(pathName, cache_prop)) {
         return cache_prop;
