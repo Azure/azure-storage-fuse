@@ -324,7 +324,7 @@ std::vector<std::string> DataLakeBfsClient::Rename(std::string sourcePath, std::
     return file_paths_to_remove;
 }
 
-list_segmented_response DataLakeBfsClient::List(std::string continuation, std::string prefix, std::string delimiter)
+list_segmented_response DataLakeBfsClient::List(std::string continuation, std::string prefix, std::string delimiter, int max_results)
 {
     syslog(LOG_DEBUG, "Calling List Paths, continuation:%s, prefix:%s, delimiter:%s\n",
             continuation.c_str(),
@@ -335,7 +335,7 @@ list_segmented_response DataLakeBfsClient::List(std::string continuation, std::s
             prefix,
             false,
             continuation,
-            10000);
+            max_results);
     return list_segmented_response(listed_adls_response);
 
 }

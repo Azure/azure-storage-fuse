@@ -89,12 +89,12 @@ public:
     /// Lists
     ///</summary>
     ///<returns>none</returns>
-    list_segmented_response List(std::string continuation, std::string prefix, std::string delimiter) override;
+    list_segmented_response List(std::string continuation, std::string prefix, std::string delimiter, int max_results = 10000) override;
     ///<summary>
     /// LIsts all directories within a list container
     /// Greedily list all blobs using the input params.
     ///</summary>
-    std::vector<std::pair<std::vector<list_segmented_item>, bool>> ListAllItemsSegmented(const std::string& prefix, const std::string& delimiter) override;
+    std::vector<std::pair<std::vector<list_segmented_item>, bool>> ListAllItemsSegmented(const std::string& prefix, const std::string& delimiter, int max_results = 10000) override;
     ///<summary>
     /// Updates the UNIX-style file mode on a path.
     ///</summary>

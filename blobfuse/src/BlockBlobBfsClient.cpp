@@ -461,7 +461,7 @@ std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath
 ///</summary>
 ///<returns>none</returns>
 list_segmented_response
-BlockBlobBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter)
+BlockBlobBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter, int max_results)
 {
 
     //TODO: MAKE THIS BETTER
@@ -469,7 +469,8 @@ BlockBlobBfsClient::List(std::string continuation, const std::string prefix, con
             configurations.containerName,
             delimiter,
             continuation,
-            prefix);
+            prefix,
+            max_results);
     return list_segmented_response(listed_blob_response);
 }
 
@@ -860,7 +861,8 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
 
 std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClient::ListAllItemsSegmented(
         const std::string& prefix,
-        const std::string& delimiter)
+        const std::string& delimiter,
+        int max_results)
 {
     std::vector<std::pair<std::vector<list_segmented_item>, bool>>  results;
 
@@ -878,7 +880,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClien
                 prefix.c_str());
 
         errno = 0;
-        list_segmented_response response = List(continuation, prefix, delimiter);
+        list_segmented_response response = List(continuation, prefix, delimiter, max_results);
         if (errno == 0)
         {
             success = true;
