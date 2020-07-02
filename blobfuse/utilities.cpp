@@ -166,6 +166,126 @@ int azs_getattr(const char *path, struct stat *stbuf)
     // It's not in the local cache.  Check to see if it's a blob on the service:
     std::string blobNameStr(&(path[1]));
     errno = 0;
+     AZS_DEBUGLOGV("Storage client name is %s \n", (typeid(storage_client).name()));
+    // see if it is block blob and call the block blob method
+    //if the first task is to study
+    if( !storage_client->isADLS())
+    {
+        //size_t resultCount = 2;
+     //   <std::vector<list_blobs_segmented_item>> listResponse =  ListAllItemsSegmented(str_options.containerName, "/", blobNameStr, resultCount) ;
+//TODO: ListAllItemsSegmented 
+
+        std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResponse = storage_client->ListAllItemsSegmented(blobNameStr, "/");
+
+         
+        if (errno == 0 && listResponse.size() > 0 )
+        {
+            list_segmented_item blobItem;
+
+            unsigned int batchNum = 0;
+
+            unsigned int resultStart =0;
+
+            // this variable will be incremented below if it is a directory, otherwise it will not be used. 
+            unsigned int dirSize = 0;
+            
+            for (batchNum=0; batchNum < listResponse.size(); batchNum++)
+            {
+            // if skip_first start the listResults at 1
+                if (listResponse[batchNum].second)
+                {
+                    resultStart=1;
+                }
+                else
+                {
+                    resultStart=0;
+                }
+            std::vector<list_segmented_item> listResults = listResponse[batchNum].first;
+        
+            for (unsigned int i=resultStart; i < listResults.size(); i++)
+            {
+                AZS_DEBUGLOGV("In azs_getattr list_segmented_item %d file %s\n", i, listResults[i].name.c_str() );
+
+                // if the path for exact name is found the dirSize will be 1 here so check to see if it has files or subdirectories inside
+                // match dir name or longer paths to determine dirSize
+                if ( listResults[i].name.compare(blobNameStr + '/') < 0)
+                {
+                    dirSize++;
+                    // listing is hierarchical so no need of the 2nd is blobitem.name empty condition but just in case for service errors
+                    if (dirSize > 2 && !blobItem.name.empty())
+                    {
+                        break;
+                    }
+                }
+
+                // the below will be skipped blobItem has been found already because we only need the exact match
+                // find the element with the exact prefix
+                // this could lead to a bug when there is a file with the same name as the directory in the parent directory. In short, that won't work.
+                if (blobItem.name.empty() && (listResults[i].name == blobNameStr || listResults[i].name == (blobNameStr + '/')))
+                {
+                    blobItem = listResults[i];
+                    AZS_DEBUGLOGV("In azs_getattr found blob in list hierarchical file %s\n", blobItem.name.c_str() );
+                    // leave 'i' at the value it is, it will be used in the remaining batches and loops to check for directory empty check.
+                    if (dirSize==0 && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
+                    {
+                        dirSize = 1; // root directory exists so 1
+                    }
+                }
+            }
+
+        }
+        
+        if (!blobItem.name.empty() && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
+        {
+            AZS_DEBUGLOGV( "%s is a directory, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str() ); 
+            AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
+            stbuf->st_mode = S_IFDIR | config_options.defaultPermission;
+            // If st_nlink = 2, means directory is empty.
+            // Directory size will affect behaviour for mv, rmdir, cp etc.
+            stbuf->st_uid = fuse_get_context()->uid;
+            stbuf->st_gid = fuse_get_context()->gid;   
+            // assign directory status as empty or non-empty based on the value from above  
+            stbuf->st_nlink = dirSize > 1 ? 3 : 2;
+            stbuf->st_size = 4096;
+            return 0;
+        }
+        else if (!blobItem.name.empty() )
+        {
+            AZS_DEBUGLOGV("%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str() ); 
+            AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
+            stbuf->st_mode = S_IFREG | config_options.defaultPermission; // Regular file (not a directory)
+            stbuf->st_uid = fuse_get_context()->uid;
+            stbuf->st_gid = fuse_get_context()->gid;
+            auto blob_property = storage_client->GetProperties(blobNameStr);
+            stbuf->st_mtime = blob_property.last_modified;            
+            stbuf->st_atime = blob_property.get_last_access();
+            stbuf->st_ctime = blob_property.get_last_change();
+            AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", blobItem.last_modified.c_str(), blob_property.size);
+            stbuf->st_nlink = 1;
+            stbuf->st_size = blob_property.size;
+            return 0;
+        }
+        else // none of the blobs match exactly so blob not found
+        { 
+            AZS_DEBUGLOGV("%s does not match the exact name in the top 2 return from list_hierarchial_blobs. It will be treated as a new blob", blobNameStr.c_str() );
+            return -(ENOENT);
+        }     
+    }
+    else if (errno > 0)
+    {
+        int storage_errno = errno;
+        AZS_DEBUGLOGV("Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
+        syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
+        return 0 - map_errno(storage_errno);
+    }
+    else // it is a new blob
+    { 
+        AZS_DEBUGLOGV("%s not returned in list_segmented_blobs. It is a new blob", blobNameStr.c_str() );
+        return -(ENOENT);
+    }      
+    }// end of processing for Blockblob
+    else
+    {
     BfsFileProperty blob_property = storage_client->GetProperties(blobNameStr);
     mode_t perms = blob_property.m_file_mode == 0 ?  config_options.defaultPermission : blob_property.m_file_mode;
 
@@ -249,7 +369,9 @@ int azs_getattr(const char *path, struct stat *stbuf)
         syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
         return 0 - map_errno(storage_errno);
     }
+    }
 }
+
 
 // Helper method for FTW to remove an entire directory & it's contents.
 int rm(const char *fpath, const struct stat * /*sb*/, int tflag, struct FTW * /*ftwbuf*/)
