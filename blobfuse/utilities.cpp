@@ -233,9 +233,6 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 // assign directory status as empty or non-empty based on the value from above
                 stbuf->st_nlink = dirSize > 1 ? 3 : 2;
                 stbuf->st_size = 4096;
-                stbuf->st_mtime = time(NULL);
-                stbuf->st_atime = time(NULL);
-                stbuf->st_ctime = time(NULL);
                 return 0;
             }
             else if (!blobItem.name.empty())
