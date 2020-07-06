@@ -128,13 +128,13 @@ jobs:
     - script: |
         ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true --use-attr-cache=true
       displayName: "Mount container ADLS"
-      condition: eq($(imageName), 'ubuntu-18.04')
+      condition: eq(variables.imageName, 'ubuntu-18.04')
       timeoutInMinutes: 3
 
     - script: |
         ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true --use-attr-cache=true
       displayName: "Mount container Block"
-      condition: eq($(imageName), 'ubuntu-16.04')
+      condition: eq(variables.imageName, 'ubuntu-16.04')
       timeoutInMinutes: 3
     # -------------------------------------------------------
 
