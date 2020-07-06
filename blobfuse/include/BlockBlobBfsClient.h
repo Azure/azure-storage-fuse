@@ -85,6 +85,7 @@ public:
     ///</summary>
     ///<returns>none</returns>
     std::vector<std::string> Rename(std::string sourcePath, std::string destinationPath) override;
+    std::vector<std::string> Rename(const std::string sourcePath,const  std::string destinationPath, bool isDir) override;
     ///<summary>
     /// Lists
     ///</summary>

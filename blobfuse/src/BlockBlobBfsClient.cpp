@@ -453,6 +453,12 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
             {
                 blob_property property;
                 if (errno == 0) {
+                    time_t last_mod = time(NULL);
+                    if (!blobItem.last_modified.empty()) {
+                        struct tm mtime;
+                        strptime(blobItem.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mtime);
+                        last_mod = timegm(&mtime);
+                    }
                     BfsFileProperty ret_property(blobItem.cache_control,
                         "",
                         blobItem.content_encoding,
@@ -462,7 +468,7 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
                         blobItem.etag,
                         "",
                         blobItem.metadata,
-                        time(NULL),
+                        last_mod,
                         "", // Return an empty modestring because blob doesn't support file mode bits.
                         0);
                     //ret_property.is_directory = true;
@@ -540,20 +546,9 @@ std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath
 {
     // Rename the directory blob, if it exists.
     errno = 0;
-    BfsFileProperty property = GetProperties(sourcePath);
-    std::vector<std::string> file_paths_to_remove;
-    /*if (property.isValid())
-    {
-        rename_single_file(sourcePath.c_str(), destinationPath.c_str(), file_paths_to_remove);
-    }
-    if (errno != 0)
-    {
-        if ((errno != 404) && (errno != ENOENT))
-        {
-            return file_paths_to_remove; // Failure in fetching properties - errno set by blob_exists
-        }
-    }*/
 
+    BfsFileProperty property = GetProperties(sourcePath.substr(1));
+    std::vector<std::string> file_paths_to_remove;
     if (property.isValid() && property.is_directory)
     {
         rename_directory(sourcePath.c_str(), destinationPath.c_str(), file_paths_to_remove);
@@ -564,6 +559,18 @@ std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath
     }
     return file_paths_to_remove;
 }
+
+std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath,const  std::string destinationPath, bool isDir)
+{
+    std::vector<std::string> file_paths_to_remove;
+    if (isDir) {
+        rename_directory(sourcePath.c_str(), destinationPath.c_str(), file_paths_to_remove);
+    } else {
+        rename_single_file(sourcePath.c_str(), destinationPath.c_str(), file_paths_to_remove);
+    }
+    return file_paths_to_remove;
+}
+
 ///<summary>
 /// Lists
 ///</summary>
@@ -678,8 +685,7 @@ int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std
     dstMntPath = dstMntPathString.c_str();
 
     struct stat buf;
-    int statret = stat(srcMntPath, &buf);
-    if (statret == 0)
+    if (stat(srcMntPath, &buf) == 0)
     {
         AZS_DEBUGLOGV("Source file %s in rename operation exists in the local cache.\n", src.c_str());
 
@@ -696,131 +702,66 @@ int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std
         {
             AZS_DEBUGLOGV("Successfully to renamed file %s to %s in the local cache.\n", src.c_str(), dst.c_str());
         }
+    }
+
+    errno = 0;
+    auto blob_property = GetProperties(src.substr(1), true);
+    if ((errno == 0) && blob_property.isValid())
+    {
+        AZS_DEBUGLOGV("Source file %s for rename operation exists as a blob on the service.\n", src.c_str());
+        // Blob also exists on the service.  Perform a server-side copy.
         errno = 0;
-        auto blob_property = GetProperties(src.substr(1));
-        if ((errno == 0) && blob_property.isValid())
-        {
-            AZS_DEBUGLOGV("Source file %s for rename operation exists as a blob on the service.\n", src.c_str());
-            // Blob also exists on the service.  Perform a server-side copy.
-            errno = 0;
-            Copy(src.substr(1), dst.substr(1));
-            if (errno != 0)
-            {
-                int storage_errno = errno;
-                syslog(LOG_ERR, "Attempt to call start_copy from %s to %s failed.  errno = %d\n.", src.c_str() + 1, dst.c_str() + 1, storage_errno);
-                return 0 - map_errno(errno);
-            }
-            else
-            {
-                syslog(LOG_INFO, "Successfully called start_copy from blob %s to blob %s\n", src.c_str() + 1, dst.c_str() + 1);
-            }
-
-            errno = 0;
-            do
-            {
-                blob_property = GetProperties(dst.substr(1));
-            } while (errno == 0 && blob_property.isValid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
-            if (blob_property.copy_status.compare(0, 7, "success") == 0)
-            {
-                syslog(LOG_INFO, "Copy operation from %s to %s succeeded.", src.c_str() + 1, dst.c_str() + 1);
-
-                //                int retval = azs_unlink(srcPathString); // This will remove the blob from the service, and also take care of removing the directory in the local file cache.
-                DeleteFile(src.substr(1));
-                if (errno != 0)
-                {
-                    int storage_errno = errno;
-                    syslog(LOG_ERR, "Failed to delete source blob %s during rename operation.  errno = %d\n.", src.c_str() + 1, storage_errno);
-                    return 0 - map_errno(storage_errno);
-                }
-                else
-                {
-                    syslog(LOG_INFO, "Successfully deleted source blob %s during rename operation.\n", src.c_str() + 1);
-                }
-            }
-            else
-            {
-                syslog(LOG_ERR, "Copy operation from %s to %s failed on the service.  Copy status = %s.\n", src.c_str() + 1, dst.c_str() + 1, blob_property.copy_status.c_str());
-                return EFAULT;
-            }
-
-            // store the file in the cleanup list
-            files_to_remove_cache.push_back(dst);
-
-            return 0;
-        }
-        else if (errno != 0)
+        Copy(src.substr(1), dst.substr(1));
+        if (errno != 0)
         {
             int storage_errno = errno;
-            syslog(LOG_ERR, "Failed to get blob properties for blob %s during rename operation.  errno = %d\n", src.c_str() + 1, storage_errno);
-            return 0 - map_errno(storage_errno);
+            syslog(LOG_ERR, "Attempt to call start_copy from %s to %s failed.  errno = %d\n.", src.c_str() + 1, dst.c_str() + 1, storage_errno);
+            return 0 - map_errno(errno);
         }
-    }
-    else
-    {
-        AZS_DEBUGLOGV("Source file %s in rename operation does not exist in the local cache.\n", src.c_str());
-
-        // File does not exist locally.  Just do the blob copy.
-        // TODO: remove duplicated code.
-        errno = 0;
-        auto blob_property = GetProperties(src.substr(1));
-        if ((errno == 0) && blob_property.isValid())
+        else
         {
-            AZS_DEBUGLOGV("Source file %s for rename operation exists as a blob on the service.\n", src.c_str());
+            syslog(LOG_INFO, "Successfully called start_copy from blob %s to blob %s\n", src.c_str() + 1, dst.c_str() + 1);
+        }
 
-            // Blob also exists on the service.  Perform a server-side copy.
-            errno = 0;
-            Copy(src.substr(1), dst.substr(1));
+        errno = 0;
+        do
+        {
+            blob_property = GetProperties(dst.substr(1), true);
+        } while (errno == 0 && blob_property.isValid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+
+        if (blob_property.copy_status.compare(0, 7, "success") == 0)
+        {
+            syslog(LOG_INFO, "Copy operation from %s to %s succeeded.", src.c_str() + 1, dst.c_str() + 1);
+            DeleteFile(src.substr(1));
             if (errno != 0)
             {
                 int storage_errno = errno;
-                syslog(LOG_ERR, "Attempt to call start_copy from %s to %s failed.  errno = %d\n.", src.c_str() + 1, dst.c_str() + 1, storage_errno);
+                syslog(LOG_ERR, "Failed to delete source blob %s during rename operation.  errno = %d\n.", src.c_str() + 1, storage_errno);
                 return 0 - map_errno(storage_errno);
             }
             else
             {
-                syslog(LOG_INFO, "Successfully called start_copy from blob %s to blob %s\n", src.c_str() + 1, dst.c_str() + 1);
+                syslog(LOG_INFO, "Successfully deleted source blob %s during rename operation.\n", src.c_str() + 1);
             }
-
-            errno = 0;
-            do
-            {
-                blob_property = GetProperties(dst.substr(1));
-            } while (errno == 0 && blob_property.isValid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
-            if (blob_property.copy_status.compare(0, 7, "success") == 0)
-            {
-                syslog(LOG_INFO, "Copy operation from %s to %s succeeded.", src.c_str() + 1, dst.c_str() + 1);
-
-                DeleteFile(src.substr(1));
-                if (errno != 0)
-                {
-                    int storage_errno = errno;
-                    syslog(LOG_ERR, "Failed to delete source blob %s during rename operation.  errno = %d\n.", src.c_str() + 1, storage_errno);
-                    return 0 - map_errno(storage_errno);
-                }
-                else
-                {
-                    syslog(LOG_INFO, "Successfully deleted source blob %s during rename operation.\n", src.c_str() + 1);
-                }
-            }
-            else
-            {
-                syslog(LOG_ERR, "Copy operation from %s to %s failed on the service.  Copy status = %s.\n", src.c_str() + 1, dst.c_str() + 1, blob_property.copy_status.c_str());
-                return EFAULT;
-            }
-
-            // in the case of directory_rename, there may be local cache
-            // store the file in the cleanup list
-            files_to_remove_cache.push_back(dst);
-
-            return 0;
         }
-        else if (errno != 0)
+        else
         {
-            int storage_errno = errno;
-            syslog(LOG_ERR, "Failed to get blob properties for blob %s during rename operation.  errno = %d\n", src.c_str() + 1, storage_errno);
-            return 0 - map_errno(storage_errno);
+            syslog(LOG_ERR, "Copy operation from %s to %s failed on the service.  Copy status = %s.\n", src.c_str() + 1, dst.c_str() + 1, blob_property.copy_status.c_str());
+            return EFAULT;
         }
+
+        // store the file in the cleanup list
+        files_to_remove_cache.push_back(dst);
+
+        return 0;
     }
+    else if (errno != 0)
+    {
+        int storage_errno = errno;
+        syslog(LOG_ERR, "Failed to get blob properties for blob %s during rename operation.  errno = %d\n", src.c_str() + 1, storage_errno);
+        return 0 - map_errno(storage_errno);
+    }
+    
     return 0;
 }
 
@@ -830,11 +771,11 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
     std::string srcPathStr(src);
     // Rename the directory blob, if it exists.
     errno = 0;
-
-    if (IsDirectory(srcPathStr.substr(1).c_str()))
+    BfsFileProperty property = GetProperties(srcPathStr.substr(1));
+    if ((errno == 0) && (property.is_directory))
     {
-        rename_single_file(src, dst, files_to_remove_cache);
-    }
+        rename_single_file(src.c_str(), dst.c_str(), files_to_remove_cache);
+    } 
     if (errno != 0)
     {
         if ((errno != 404) && (errno != ENOENT))
@@ -843,6 +784,7 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
         }
     }
 
+    errno = 0;
     if (src.size() > 1)
     {
         src.push_back('/');
@@ -876,12 +818,9 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
                 newDst[dst.size() + nameLen] = '\0';
 
                 AZS_DEBUGLOGV("Local object found - about to rename %s to %s.\n", newSrc, newDst);
-                if (dir_ent->d_type == DT_DIR)
-                {
+                if (dir_ent->d_type == DT_DIR) {
                     rename_directory(newSrc, newDst, files_to_remove_cache);
-                }
-                else
-                {
+                } else {
                     rename_single_file(newSrc, newDst, files_to_remove_cache);
                 }
 
@@ -900,14 +839,14 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
 
     // Rename all files & directories that don't exist in the local cache.
     errno = 0;
-    std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResults = ListAllItemsSegmented("/",
-                                                                                                       src.substr(1));
+    std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResults = ListAllItemsSegmented(src.substr(1), "/");
     if (errno != 0)
     {
         int storage_errno = errno;
         syslog(LOG_ERR, "list blobs operation failed during attempt to rename directory %s to %s.  errno = %d.\n", src.c_str(), dst.c_str(), storage_errno);
         return 0 - map_errno(storage_errno);
     }
+
     AZS_DEBUGLOGV("Total of %d result lists found from list_blobs call during rename operation\n.", (int)listResults.size());
     for (size_t result_lists_index = 0; result_lists_index < listResults.size(); result_lists_index++)
     {
@@ -943,21 +882,18 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
                     newDst[dst.size() + nameLen] = '\0';
 
                     AZS_DEBUGLOGV("Object found on the service - about to rename %s to %s.\n", newSrc, newDst);
-                    if (listResults[result_lists_index].first[i].is_directory)
-                    {
+                    if (listResults[result_lists_index].first[i].is_directory) {
                         rename_directory(newSrc, newDst, files_to_remove_cache);
-                    }
-                    else
-                    {
+                    } else {
                         rename_single_file(newSrc, newDst, files_to_remove_cache);
                     }
-
                     free(newSrc);
                     free(newDst);
                 }
             }
         }
     }
+    //src.pop_back();
     DeleteDirectory(src.c_str());
     return 0;
 }

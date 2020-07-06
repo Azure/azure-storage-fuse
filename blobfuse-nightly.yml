@@ -301,7 +301,7 @@ jobs:
       continueOnError: true
 
     # -------------------------------------------------------
-    # Mount a directory for feature test (ADLS) and run it
+    # Mount a directory for feature test (Block) and run it
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*

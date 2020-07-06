@@ -344,6 +344,7 @@ public:
     ///</summary>
     ///<returns>none</returns>
     virtual std::vector<std::string> Rename(const std::string sourcePath,const  std::string destinationPath) = 0;
+    virtual std::vector<std::string> Rename(const std::string sourcePath,const  std::string destinationPath, bool isDir) = 0;
     ///<summary>
     /// Lists
     ///</summary>

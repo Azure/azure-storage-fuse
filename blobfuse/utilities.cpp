@@ -235,6 +235,13 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 // assign directory status as empty or non-empty based on the value from above
                 stbuf->st_nlink = dirSize > 1 ? 3 : 2;
                 stbuf->st_size = 4096;
+
+                if (!blobItem.last_modified.empty()) {
+                    struct tm mtime;
+                    strptime(blobItem.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mtime);
+                    stbuf->st_mtime = timegm(&mtime);
+                    stbuf->st_atime = stbuf->st_ctime = stbuf->st_mtime;
+                }
                 return 0;
             }
             else if (!blobItem.name.empty())
@@ -452,7 +459,23 @@ int azs_rename(const char *src, const char *dst)
     AZS_DEBUGLOGV("azs_rename called with src = %s, dst = %s.\n", src, dst);
 
     errno = 0;
-    std::vector<std::string> to_remove = storage_client->Rename(src, dst);
+    struct stat stbuf;
+    errno = azs_getattr(src, &stbuf);
+    if (errno != 0)
+        return errno;
+
+    std::vector<std::string> to_remove;
+    if (storage_client->isADLS()) {
+        to_remove = storage_client->Rename(src, dst);
+    } else {
+        if (stbuf.st_mode & S_IFDIR) {
+            // Rename a directory
+            to_remove = storage_client->Rename(src, dst, true);
+        } else {
+            // Rename a file
+            to_remove = storage_client->Rename(src, dst, false);
+        }
+    }
 
     for (unsigned int i = 0; i < to_remove.size(); i++)
     {

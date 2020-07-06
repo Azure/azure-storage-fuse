@@ -299,11 +299,20 @@ D_RETURN_CODE DataLakeBfsClient::IsDirectoryEmpty(std::string path)
 /// Renames a file/directory
 ///</summary>
 ///<returns></returns>
+std::vector<std::string> DataLakeBfsClient::Rename(const std::string /*sourcePath*/, const  std::string /*destinationPath*/, bool /*isDir*/)
+{
+    // Not implemented for now, if specific handling for file or directory is needed then use this
+    errno = 0;
+    std::vector<std::string> file_paths_to_remove;
+    return file_paths_to_remove; 
+}
+
 std::vector<std::string> DataLakeBfsClient::Rename(std::string sourcePath, std::string destinationPath)
 {
-    InvalidateCachedProperty(sourcePath);
-    InvalidateCachedProperty(destinationPath);
+    InvalidateCachedProperty(sourcePath.substr(1));
+    InvalidateCachedProperty(destinationPath.substr(1));
     
+    errno = 0;
     m_adls_client->move_file(
             configurations.containerName,
             sourcePath.substr(1),
