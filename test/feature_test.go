@@ -429,6 +429,7 @@ func TestLinkRead(t *testing.T) {
 	data, err := ioutil.ReadFile(fileName)
 	if err != nil ||
 		len(data) != len(minBuff) {
+		t.Logf("Data Read : " + string(len(data)) + ", Expected  : " + string(len(minBuff)))
 		t.Errorf("Failed to Read symlink " + fileName)
 	}
 }
