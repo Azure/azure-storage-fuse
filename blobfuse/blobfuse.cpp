@@ -661,18 +661,31 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     
     if (!tmpPathStr.empty())
     {    
+        bool fail_mount = false;
         struct stat sb;
 
         // if the directory does nto exist no need to valdiate if it is empty
         // so check if the dir exists first and then validate
         if (stat(tmpPathStr.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) 
-        {             
+        {            
             if  (!is_directory_empty(tmpPathStr.c_str()) &&
                  config_options.emptyDirCheck)
             {
-                syslog(LOG_CRIT, "Unable to start blobfuse. temp directory '%s'is not empty.", tmpPathStr.c_str());
-                fprintf(stderr, "Error: temp directory '%s' is not empty. blobfuse needs an empty temp directory\n", tmpPathStr.c_str());
-                return 1;
+                // Tmp path exists. if 'root' directory is empty then also its fine
+                std::string tmprootPath = tmpPathStr + "/root";
+                if (stat(tmprootPath.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
+                    if  (!is_directory_empty(tmprootPath.c_str())) {
+                        fail_mount = true;
+                    }
+                } else {
+                    fail_mount = true;
+                }
+
+                if (fail_mount) {
+                    syslog(LOG_CRIT, "Unable to start blobfuse. temp directory '%s'is not empty.", tmpPathStr.c_str());
+                    fprintf(stderr, "Error: temp directory '%s' is not empty. blobfuse needs an empty temp directory\n", tmpPathStr.c_str());
+                    return 1;
+                }
             }
         }
     }
