@@ -91,4 +91,6 @@ bool is_token_expired_forcurrentutc(OAuthToken &token);
 /// <summary>
 time_t get_current_time_in_utc();
 
+std::string GetTokenCallback();
+
 #endif

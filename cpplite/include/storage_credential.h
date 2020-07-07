@@ -21,6 +21,7 @@ namespace azure {  namespace storage_lite {
         {
             return url;
         }
+        virtual void set_token_callback(std::string (* /*callback*/)()) {}
     };
 
     class shared_key_credential final : public storage_credential
@@ -82,8 +83,11 @@ namespace azure {  namespace storage_lite {
         void sign_request(const storage_request_base &, http_base &, const storage_url &, const storage_headers &) const override;
 
         void set_token(const std::string& token);
+        void set_token_callback(std::string (* callback)());
 
     private:
+        std::string (* m_get_token_callback)();
+        bool token_callback_set;
         std::string m_token;
         mutable std::mutex m_token_mutex;
     };

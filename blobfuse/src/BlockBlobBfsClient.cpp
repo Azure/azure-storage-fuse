@@ -144,7 +144,10 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
         }
 
         //2. try to make blob client wrapper using oauth token
+        // We should pass the token obtained earlier to this token_credentials
         std::shared_ptr<storage_credential> cred = std::make_shared<token_credential>("");
+        cred->set_token_callback(&GetTokenCallback);
+
         std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
             configurations.accountName,
             cred,
@@ -188,7 +191,10 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
         }
 
         //2. try to make blob client wrapper using oauth token
+        // We should pass the token obtained earlier to this token_credentials
         std::shared_ptr<storage_credential> cred = std::make_shared<token_credential>("");
+        cred->set_token_callback(&GetTokenCallback);
+
         std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
             configurations.accountName,
             cred,

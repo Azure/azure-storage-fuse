@@ -15,6 +15,13 @@
 
 using nlohmann::json;
 
+std::string GetTokenCallback()
+{
+    std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(EmptyCallback);
+    OAuthToken temp_token = tokenManager->get_token();
+    return temp_token.access_token;
+}
+
 /// <summary>
 /// GetTokenManagerInstance handles a singleton instance of the OAuthTokenManager.
 /// If it does not exist, it creates it using the supplied default callback.
