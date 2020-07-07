@@ -131,7 +131,8 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
             configurations.identityClientId,
             configurations.objectId,
             configurations.resourceId,
-            configurations.msiEndpoint);
+            configurations.msiEndpoint,
+            configurations.msiSecret);
 
         std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback);
 
