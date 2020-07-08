@@ -256,7 +256,13 @@ int read_config(const std::string configFile)
         {
             std::string logLevel(value);
             config_options.logLevel = logLevel;
-        }   
+        } 
+        else if(line.find("accountType") != std::string::npos)
+        {
+            std::string acctType(value);
+            if (acctType == "adls")
+                config_options.useADLS = true;
+        }  
 
         data.clear();
     }
@@ -541,6 +547,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     }
 
     int ret = 0;
+    config_options.useADLS = false;
     try
     {
 
@@ -721,13 +728,14 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.fileCacheTimeoutInSeconds = 120;
     }
 
-    config_options.useADLS = false;
     if(cmd_options.use_adls != NULL)
     {
         std::string use_adls_value(cmd_options.use_adls);
         if(use_adls_value == "true")
         {
             config_options.useADLS = true;
+        } else if(use_adls_value == "false") {
+            config_options.useADLS = false;
         }
     }
 
@@ -807,7 +815,7 @@ int initialize_blobfuse()
     }
     else
     {
-        syslog(LOG_DEBUG, "Initializing blobfuse using block blobs");
+        syslog(LOG_DEBUG, "Initializing blobfuse using BlockBlob");
         storage_client = std::make_shared<BlockBlobBfsClient>(config_options);
     }
     if(storage_client->AuthenticateStorage())

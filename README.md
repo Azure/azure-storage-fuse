@@ -105,6 +105,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * `blobEndpoint`: Specifies the blob endpoint to use. Defaults to *.blob.core.windows.net, but is useful for targeting storage emulators.
     * `authType`: Overrides the currently specified auth type. Options: Key, SAS, MSI (Using this option is only available for 1.2.0 or above)
     * `logLevel`: Specifies the logging level. Use to change the logging level dynamically. Read `Logging` section for details. For allowed values refer to `--log-level` command line option.
+    * `accountType`: Specifies the type of account. Either `block` or 'adls' can be specified, `block` being default.
 
 - Account key auth:
     * `accountKey`: Specifies the storage account key to use for authentication.

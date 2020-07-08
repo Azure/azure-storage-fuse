@@ -331,7 +331,7 @@ bool BlockBlobBfsClient::DeleteDirectory(const std::string directoryPath)
     case D_NOTEXIST:
         //log that the directory does not exist
         syslog(LOG_ERR,
-               "Directory does not exist in storage, no directory to delete: %s. errno = %d.\n",
+               "Directory does not exist in storage, no directory to delete: %s errno = %d\n",
                directoryPath.c_str(),
                errno);
         errno = ENOENT;
@@ -339,7 +339,7 @@ bool BlockBlobBfsClient::DeleteDirectory(const std::string directoryPath)
         break;
     case D_EMPTY:
         syslog(LOG_DEBUG,
-               "Directory is empty, attempting deleting directory marker: %s.\n",
+               "Directory is empty, attempting deleting directory marker: %s\n",
                directoryPath.c_str());
         InvalidateCachedProperty((std::string)directoryPath);
         DeleteFile((std::string)directoryPath);
@@ -347,7 +347,7 @@ bool BlockBlobBfsClient::DeleteDirectory(const std::string directoryPath)
         break;
     case D_NOTEMPTY:
         syslog(LOG_ERR,
-               "Directory is not empty, cannot delete: %s. errno = %d.\n",
+               "Directory is not empty, cannot delete: %s errno = %d\n",
                directoryPath.c_str(),
                errno);
         errno = ENOTEMPTY;
@@ -356,7 +356,7 @@ bool BlockBlobBfsClient::DeleteDirectory(const std::string directoryPath)
     default:
         // Unforseen error,syslog and return false at the end of function
         syslog(LOG_ERR,
-               "Unforseen error for deleting directory: %s. errno = %d.\n",
+               "Unforseen error for deleting directory: %s errno = %d\n",
                directoryPath.c_str(),
                errno);
         break;
@@ -901,7 +901,7 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
         }
     }
     //src.pop_back();
-    DeleteDirectory(src.c_str());
+    DeleteDirectory(src.substr(1).c_str());
     return 0;
 }
 
