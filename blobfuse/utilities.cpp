@@ -236,14 +236,14 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 stbuf->st_nlink = dirSize > 1 ? 3 : 2;
                 stbuf->st_size = 4096;
 
-                /*if (!blobItem.last_modified.empty()) {
+                if (!blobItem.last_modified.empty()) {
                     struct tm mtime;
                     char *ptr = strptime(blobItem.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mtime);
                     if (ptr) {
                         stbuf->st_mtime = timegm(&mtime);
                         stbuf->st_atime = stbuf->st_ctime = stbuf->st_mtime;
                     }
-                }*/
+                }
                 return 0;
             }
             else if (!blobItem.name.empty())
