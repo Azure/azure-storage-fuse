@@ -65,6 +65,11 @@ func TestDirRename(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to rename directory to : " + newName + "(" + err.Error() + ")")
 	}
+
+	//  Deleted directory shall not be present in the contianer now
+	if _, err = os.Stat(dirName); !os.IsNotExist(err) {
+		t.Errorf("Old directory exists even after rename : " + dirName + "(" + err.Error() + ")")
+	}
 }
 
 // # Move an empty directory
@@ -231,28 +236,19 @@ func TestDirClean(t *testing.T) {
 
 // # Create file test
 func TestFileCreate(t *testing.T) {
-	fileName := mntPath + "/create.txt"
-	_, err := os.Create(fileName)
+	fileName := mntPath + "/small_write.txt"
+
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
 	if err != nil {
 		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
 	}
-}
-
-// # Create duplicate file
-func TestFileCreateDuplicate(t *testing.T) {
-	fileName := mntPath + "/create.txt"
-	_, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0666)
-	if err != nil {
-		if !strings.Contains(err.Error(), "file exists") {
-			t.Errorf("Failed to create directory : " + fileName + "(" + err.Error() + ")")
-		}
-	}
+	srcFile.Close()
 }
 
 // # Write a small file
 func TestFileWriteSmall(t *testing.T) {
 	fileName := mntPath + "/small_write.txt"
-	err := ioutil.WriteFile(fileName, minBuff, 0666)
+	err := ioutil.WriteFile(fileName, minBuff, 0777)
 	if err != nil {
 		t.Errorf("Failed to write file " + fileName + " (" + err.Error() + ")")
 	}
@@ -264,7 +260,20 @@ func TestFileReadSmall(t *testing.T) {
 	data, err := ioutil.ReadFile(fileName)
 	if err != nil ||
 		len(data) != len(minBuff) {
+		fmt.Println(len(data))
+		fmt.Println(len(minBuff))
 		t.Errorf("Failed to Read file " + fileName + " (" + err.Error() + ")")
+	}
+}
+
+// # Create duplicate file
+func TestFileCreateDuplicate(t *testing.T) {
+	fileName := mntPath + "/small_write.txt"
+	_, err := os.Create(fileName)
+	if err != nil {
+		if !strings.Contains(err.Error(), "file exists") {
+			t.Errorf("Failed to create file : " + fileName + "(" + err.Error() + ")")
+		}
 	}
 }
 
@@ -277,7 +286,7 @@ func TestFileTruncate(t *testing.T) {
 	}
 
 	data, err := ioutil.ReadFile(fileName)
-	//fmt.Println(len(data))
+	fmt.Println(len(data))
 	if err != nil ||
 		len(data) > 2 {
 		t.Errorf("Failed to Read file " + fileName + " (" + err.Error() + ")")
@@ -298,6 +307,7 @@ func TestFileNameConflict(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
 	}
+	time.Sleep(3)
 }
 
 // # Copy file from once directory to another
@@ -306,13 +316,13 @@ func TestFileCopy(t *testing.T) {
 	fileName := mntPath + "/test"
 	dstFileName := dirName + "/test_copy.txt"
 
-	src_file, err := os.OpenFile(fileName, os.O_RDWR, 0666)
-	defer src_file.Close()
+	srcFile, err := os.OpenFile(fileName, os.O_RDWR, 0777)
+	defer srcFile.Close()
 
-	dst_file, err := os.Create(dstFileName)
-	defer dst_file.Close()
+	dstFile, err := os.Create(dstFileName)
+	defer dstFile.Close()
 
-	_, err = io.Copy(src_file, dst_file)
+	_, err = io.Copy(srcFile, dstFile)
 	if err != nil {
 		t.Errorf("Failed to copy file " + dstFileName + " (" + err.Error() + ")")
 	}
@@ -360,10 +370,10 @@ func TestFileCreateMulti(t *testing.T) {
 	fileName := mntPath + "/multi"
 
 	for i := 0; i < 10; i++ {
-		new_file := fileName + strconv.Itoa(i)
-		err := ioutil.WriteFile(new_file, medBuff, 0666)
+		newFile := fileName + strconv.Itoa(i)
+		err := ioutil.WriteFile(newFile, medBuff, 0777)
 		if err != nil {
-			t.Errorf("Failed to create file " + new_file + " (" + err.Error() + ")")
+			t.Errorf("Failed to create file " + newFile + " (" + err.Error() + ")")
 		}
 	}
 
@@ -410,9 +420,9 @@ func TestFileClean(t *testing.T) {
 
 // # Create a symlink to a file
 func TestLinkCreate(t *testing.T) {
-	fileName := mntPath + "/small_write.txt"
+	fileName := mntPath + "/small_write1.txt"
 	symName := mntPath + "/small.lnk"
-	err := ioutil.WriteFile(fileName, minBuff, 0666)
+	err := ioutil.WriteFile(fileName, minBuff, 0777)
 	if err != nil {
 		t.Errorf("Failed to write file " + fileName + " (" + err.Error() + ")")
 	}
@@ -421,6 +431,7 @@ func TestLinkCreate(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to create symlink " + symName + " (" + err.Error() + ")")
 	}
+	time.Sleep(3)
 }
 
 // # Read a small file using symlink
@@ -429,7 +440,8 @@ func TestLinkRead(t *testing.T) {
 	data, err := ioutil.ReadFile(fileName)
 	if err != nil ||
 		len(data) != len(minBuff) {
-		t.Logf("Data Read : " + string(len(data)) + ", Expected  : " + string(len(minBuff)))
+		fmt.Println(len(data))
+		fmt.Println(len(minBuff))
 		t.Errorf("Failed to Read symlink " + fileName)
 	}
 }
@@ -437,8 +449,8 @@ func TestLinkRead(t *testing.T) {
 // # Write a small file using symlink
 func TestLinkWrite(t *testing.T) {
 	fileName := mntPath + "/small.lnk"
-	targetName := mntPath + "/small_write.txt"
-	err := ioutil.WriteFile(fileName, medBuff, 0666)
+	targetName := mntPath + "/small_write1.txt"
+	err := ioutil.WriteFile(fileName, medBuff, 0777)
 	if err != nil {
 		t.Errorf("Failed to write file " + fileName + " (" + err.Error() + ")")
 	}
@@ -453,7 +465,7 @@ func TestLinkWrite(t *testing.T) {
 
 // # Rename the target file and validate read on symlink fails
 func TestLinkRenameTarget(t *testing.T) {
-	fileName := mntPath + "/small_write.txt"
+	fileName := mntPath + "/small_write1.txt"
 	symName := mntPath + "/small.lnk"
 	fileNameNew := mntPath + "/small_write_new.txt"
 	err := os.Rename(fileName, fileNameNew)
@@ -470,7 +482,7 @@ func TestLinkRenameTarget(t *testing.T) {
 
 // # Delete the symklink and check target file is still intact
 func TestLinkDeleteReadTarget(t *testing.T) {
-	fileName := mntPath + "/small_write.txt"
+	fileName := mntPath + "/small_write1.txt"
 	symName := mntPath + "/small.lnk"
 
 	err := os.Remove(symName)
@@ -492,11 +504,11 @@ func TestLinkDeleteReadTarget(t *testing.T) {
 
 // # Delete a symlink to a file
 func TestLinkDelete(t *testing.T) {
-	symName := mntPath + "/small.lnk"
+	/*symName := mntPath + "/small.lnk"
 	err := os.Remove(symName)
 	if err != nil {
 		t.Errorf("Failed to delete symlink " + symName + " (" + err.Error() + ")")
-	}
+	}*/
 }
 
 // -------------- Main Method to start the Testing -------------------
