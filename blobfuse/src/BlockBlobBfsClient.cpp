@@ -171,7 +171,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
 }
 std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
 {
-    syslog(LOG_DEBUG, "Authenticating using MSI");
+    syslog(LOG_DEBUG, "Authenticating using SPN");
     try
     {
         //1. get oauth token
