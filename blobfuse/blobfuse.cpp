@@ -246,7 +246,7 @@ int read_config(const std::string configFile)
             std::string spTenantIdStr(value);
             config_options.spnTenantId = spTenantIdStr;
         }
-        else if(line.find("servicePrincipaClientSecret") != std::string::npos)
+        else if(line.find("servicePrincipalClientSecret") != std::string::npos)
         {
             std::string spClientSecretStr(value);
             config_options.spnClientSecret = spClientSecretStr;
