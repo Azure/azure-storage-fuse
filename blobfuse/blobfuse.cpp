@@ -246,6 +246,11 @@ int read_config(const std::string configFile)
             std::string spTenantIdStr(value);
             config_options.spnTenantId = spTenantIdStr;
         }
+        else if(line.find("servicePrincipaClientSecret") != std::string::npos)
+        {
+            std::string spClientSecretStr(value);
+            config_options.spnClientSecret = spClientSecretStr;
+        }
         else if(line.find("aadEndpoint") != std::string::npos)
         {
             std::cout << line.find("aadEndpoint");
@@ -671,7 +676,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         bool fail_mount = false;
         struct stat sb;
 
-        // if the directory does nto exist no need to valdiate if it is empty
+        // if the directory does not exist no need to valdiate if it is empty
         // so check if the dir exists first and then validate
         if (stat(tmpPathStr.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) 
         {            
