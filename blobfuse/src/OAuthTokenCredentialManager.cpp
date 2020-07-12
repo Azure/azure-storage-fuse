@@ -463,6 +463,8 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
     queryString.append("&client_secret=" + encode_query_element(client_secret_p)); // &client_secret=...
     queryString.append("&grant_type=client_credentials"); // &grant_type=client_credentials
 
+    syslog(LOG_DEBUG, "queryString for SPN auth callback = %s", queryString.c_str());
+
     return [uri_token_request_url, queryString](std::shared_ptr<CurlEasyClient> http_client) {
         std::shared_ptr<CurlEasyRequest> request_handle = http_client->get_handle();
 
@@ -494,7 +496,11 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
                     std::string json_request_result(std::istreambuf_iterator<char>(ios.istream()),
                                                     std::istreambuf_iterator<char>());
                     req_result = json_request_result;
-                } catch(std::exception&) {}
+                } 
+                catch(std::exception &ex)
+                {
+                    syslog(LOG_WARNING, "Exception while extracting the SPN auth unsuccessful http_code %s", ex.what());
+                }
 
                 std::ostringstream errStream;
                 errStream << "Failed to retrieve OAuth Token (CURLCode: " << curl_code << ", HTTP code: " << http_code_result << "): " << req_result;
