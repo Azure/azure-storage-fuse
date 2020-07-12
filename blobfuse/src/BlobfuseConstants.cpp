@@ -12,7 +12,7 @@ namespace blobfuse_constants {
     const int def_concurrency_blob_wrapper = 10;
 
     const char* oauth_request_uri = "https://login.microsoftonline.com";
-    const char* spn_request_path = "oauth2/token";
+    const char* spn_request_path = "oauth2/v2.0/token";
     const char* msi_request_uri = "http://169.254.169.254/metadata/identity/oauth2/token";
     const char* param_oauth_resource_data = "https://storage.azure.com/";
 

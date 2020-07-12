@@ -459,7 +459,7 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
 
     // Step 2: Construct the body query
     std::string queryString("client_id=" + client_id_p); // client_id=...
-   // queryString.append("&scope=" + encode_query_element(std::string(blobfuse_constants::param_oauth_resource_data) + ".default")); // &scope=https://storage.azure.com/.default
+    queryString.append("&scope=" + encode_query_element(std::string(blobfuse_constants::param_oauth_resource_data) + ".default")); // &scope=https://storage.azure.com/.default
     queryString.append("&client_secret=" + encode_query_element(client_secret_p)); // &client_secret=...
     queryString.append("&grant_type=client_credentials"); // &grant_type=client_credentials
 
@@ -473,7 +473,7 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
        request_handle->set_url(uri_token_request_url->to_string());
        request_handle->add_header("Content-Type", "application/x-www-form-urlencoded");
 
-       // Set up body query
+       // Set up body query, SPN expects it in the body
        auto body = std::make_shared<std::stringstream>(queryString);
        request_handle->set_input_stream(storage_istream(body));
        request_handle->set_input_content_length(queryString.length());
@@ -483,8 +483,8 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
         storage_iostream ios = storage_iostream::create_storage_stream();
        request_handle->set_output_stream(ios.ostream());
 
-        // Set request method
-       request_handle->set_method(http_base::http_method::post);
+       // Set request method
+        request_handle->set_method(http_base::http_method::post);
 
         std::chrono::seconds retry_interval(blobfuse_constants::max_retry_oauth);
         OAuthToken parsed_token;
