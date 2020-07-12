@@ -459,7 +459,7 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
 
     // Step 2: Construct the body query
     std::string queryString("client_id=" + client_id_p); // client_id=...
-    queryString.append("&scope=" + encode_query_element(std::string(blobfuse_constants::param_oauth_resource_data) + ".default")); // &scope=https://storage.azure.com/.default
+   // queryString.append("&scope=" + encode_query_element(std::string(blobfuse_constants::param_oauth_resource_data) + ".default")); // &scope=https://storage.azure.com/.default
     queryString.append("&client_secret=" + encode_query_element(client_secret_p)); // &client_secret=...
     queryString.append("&grant_type=client_credentials"); // &grant_type=client_credentials
 
