@@ -455,6 +455,8 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
         uri_token_request_url = parse_url(aad_endpoint_p);
     }
 
+    syslog(LOG_DEBUG, "TOBE deleted, this is the client secret is this correct, %s", client_secret_p.c_str());
+
     uri_token_request_url->append_path((tenant_id_p.empty() ? "common" : tenant_id_p) + "/" + blobfuse_constants::spn_request_path); // /tenant/oauth2/v2.0/token
 
     // Step 2: Construct the body query
@@ -462,6 +464,7 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
     queryString.append("&scope=" + encode_query_element(std::string(blobfuse_constants::param_oauth_resource_data) + ".default")); // &scope=https://storage.azure.com/.default
     queryString.append("&client_secret=" + encode_query_element(client_secret_p)); // &client_secret=...
     queryString.append("&grant_type=client_credentials"); // &grant_type=client_credentials
+
 
     syslog(LOG_DEBUG, "queryString for SPN auth callback = %s", queryString.c_str());
 
