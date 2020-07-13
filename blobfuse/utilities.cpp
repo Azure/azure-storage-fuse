@@ -168,7 +168,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     // It's not in the local cache.  Check to see if it's a blob on the service:
     std::string blobNameStr(&(path[1]));
     errno = 0;
-    AZS_DEBUGLOGV("Storage client name is %s \n", (typeid(storage_client).name()));
+    //AZS_DEBUGLOGV("Storage client name is %s \n", (typeid(storage_client).name()));
     // see if it is block blob and call the block blob method
     //if the first task is to study
     if (!storage_client->isADLS())
