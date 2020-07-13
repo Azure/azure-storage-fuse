@@ -426,6 +426,47 @@ jobs:
       continueOnError: true
 
     # -------------------------------------------------------
+
+    # Create config file for SPN Login
+    - script: |
+        echo "accountName " $(NIGHTLY_SPN_ACC_NAME) > $(BLOBFUSE_CFG_GTEST)
+        echo "authType SPN" >> $(BLOBFUSE_CFG_GTEST)
+        echo "servicePrincipalClientId " $(NIGHTLY_SPN_CLIENT_ID) >> $(BLOBFUSE_CFG_GTEST)
+        echo "servicePrincipalTenantId " $(NIGHTLY_SPN_TENANT_ID) >> $(BLOBFUSE_CFG_GTEST)
+        echo "servicePrincipalClientSecret " $(NIGHTLY_SPN_CLIENT_SECRET) >> $(BLOBFUSE_CFG_GTEST)
+        echo "containerName " $(NIGHTLY_SPN_CONT_NAME) >> $(BLOBFUSE_CFG_GTEST)
+        cat $(BLOBFUSE_CFG_GTEST)
+        echo "Account : " $(NIGHTLY_SPN_ACC_NAME)
+      displayName: "TEST - Create SPN Config"
+
+    # List the blobs to verify that the login went successful
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        sleep 5s
+        ls -l $(MOUNT_DIR)
+        mkdir $(MOUNT_DIR)/A
+        touch $(MOUNT_DIR)/A/a.txt
+        echo "ASDF" > $(MOUNT_DIR)/A/b.txt
+        cp $(MOUNT_DIR)/A/b.txt $(MOUNT_DIR)/A/c.txt
+        ls -l $(MOUNT_DIR)/A
+        rm -rf $(MOUNT_DIR)/A
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - SPN Validation
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    # -------------------------------------------------------
+    # Cleanup at the end
+    - script:  |
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo kill -9 `pidof blobfuse`
+        sudo rm -rf $(TEMP_DIR)/*
+      displayName: Cleanup
+      timeoutInMinutes: 120
+      continueOnError: true
+
     # Print the log files
     - script: sudo cat /var/log/blobfuse.log
       displayName: Print the log file
