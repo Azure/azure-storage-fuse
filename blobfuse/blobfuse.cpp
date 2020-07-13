@@ -534,7 +534,7 @@ bool is_directory_empty(const char *tmpDir) {
             && (cnt++ <= 2));
     closedir(dir);
     
-    fprintf(stdout, "count of dir entries %u", cnt);
+    //fprintf(stdout, "count of dir entries %u", cnt);
     return (cnt <= 2);
 }
 
