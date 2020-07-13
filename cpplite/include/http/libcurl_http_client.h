@@ -131,6 +131,7 @@ namespace azure {  namespace storage_lite {
             m_input_stream = s;
             check_code(curl_easy_setopt(m_curl, CURLOPT_READFUNCTION, read));
             check_code(curl_easy_setopt(m_curl, CURLOPT_READDATA, this));
+            check_code(curl_easy_setopt(m_curl, CURLOPT_POSTFIELDS, this));
         }
 
         void set_input_content_length(uint64_t content_length)
