@@ -96,7 +96,7 @@ namespace azure {  namespace storage_lite {
         {
             std::this_thread::sleep_for(interval);
             const auto curlCode = perform();
-            syslog(LOG_DEBUG, "%s", format_request_response().c_str());
+            syslog(curlCode != CURLE_OK || unsuccessful(m_code) ? LOG_ERR : LOG_DEBUG, "%s", format_request_response().c_str());
             cb(m_code, m_error_stream, curlCode);
         }
 
@@ -131,8 +131,9 @@ namespace azure {  namespace storage_lite {
             m_input_stream = s;
             check_code(curl_easy_setopt(m_curl, CURLOPT_READFUNCTION, read));
             check_code(curl_easy_setopt(m_curl, CURLOPT_READDATA, this));
+            check_code(curl_easy_setopt(m_curl, CURLOPT_POSTFIELDS, nullptr)); // CURL won't actually read data on POSTs unless this is explicitly set.
         }
-
+        
         void set_input_content_length(uint64_t content_length)
         {
             m_input_content_length = content_length;
