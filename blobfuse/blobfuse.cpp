@@ -5,6 +5,7 @@
 #include <mntent.h>
 #include <sys/types.h>
 #include <dirent.h>
+#include <pwd.h>
 
 #include <include/StorageBfsClientBase.h>
 #include <include/BlockBlobBfsClient.h>
@@ -650,6 +651,17 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             else if (tmpPathStr.size() > 1 && tmpPathStr.compare((tmpPathStr.size() - 2), 2, "/.") == 0)
             {
                 tmpPathStr.erase(tmpPathStr.size() - 2);
+            }
+
+            if (tmpPathStr[0] == '~') {
+                const char *homedir = NULL;
+                if ((homedir = getenv("HOME")) == NULL) {
+                    homedir = getpwuid(getuid())->pw_dir;
+                }
+                if (homedir) {
+                    syslog(LOG_ERR,"Expanding '~' in tmppath to %s", homedir);
+                    tmpPathStr = std::string(homedir) + tmpPathStr.substr(1);
+                }
             }
         }
 
