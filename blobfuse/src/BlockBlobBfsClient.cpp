@@ -187,6 +187,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
         {
             // todo: isolate definitions of errno's for this function so we can output something meaningful.
             errno = 1;
+            syslog(LOG_ERR, "Failed to get token using SPN credentials.");
             return std::make_shared<blob_client_wrapper>(false);
         }
 
