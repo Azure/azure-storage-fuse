@@ -41,6 +41,8 @@ jobs:
       value: "/mnt/blobfusetmp"
     - name: BLOBFUSE_CFG
       value: "/home/vsts/work/blobfuse.cfg"
+    - name: BLOBFUSE_CFG_ADLS
+      value: "/home/vsts/work/blobfuse.cfg.adls"
     - name: BLOBFUSE_CFG_GTEST
       value: "./connection.cfg"
     - name: BLOBFUSE_STRESS_DIR
@@ -111,32 +113,41 @@ jobs:
     - script: |
         echo "::set-env name=CONT_NAME::$(containerName)"
       displayName: "Prepare contianer name"
-       
-    # Create config file for the load
+
+    # --- Create ADLS config for Ubn-18.04 and mount it with ADLS option turn on  
     - script: |
-        echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG)
-        echo "accountKey " $(NIGHTLY_STO_ACC_KEY) >> $(BLOBFUSE_CFG)
+        echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG_ADLS)
+        echo "accountKey " $(NIGHTLY_STO_ACC_KEY) >> $(BLOBFUSE_CFG_ADLS)
+        echo "authType Key" >> $(BLOBFUSE_CFG_ADLS)
+        echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_ADLS)
+        cat $(BLOBFUSE_CFG_ADLS)
+        echo "Account : " $(NIGHTLY_STO_ACC_NAME)
+      displayName: "Create config file ADLS"
+
+    # --- Create Block Blob config for Ubn-16.04 and mount it with ADLS option turn off  
+    - script: |
+        echo "accountName " $(NIGHTLY_STO_BLOB_ACC_NAME) > $(BLOBFUSE_CFG)
+        echo "accountKey " $(NIGHTLY_STO_BLOB_ACC_KEY) >> $(BLOBFUSE_CFG)
         echo "authType Key" >> $(BLOBFUSE_CFG)
         echo "containerName " $(containerName) >> $(BLOBFUSE_CFG)
         cat $(BLOBFUSE_CFG)
-        echo "Account : " $(NIGHTLY_STO_ACC_NAME)
-      displayName: "Create config file"
-     
-    # -------------------------------------------------------
+        echo "Account : " $(NIGHTLY_STO_BLOB_ACC_NAME)
+      displayName: "Create config file BlockBlob" 
 
     # Mount container using blobFuse
     - script: |
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true --use-attr-cache=true
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
       displayName: "Mount container ADLS"
       condition: eq(variables.imageName, 'ubuntu-18.04')
       timeoutInMinutes: 3
-
+  
     - script: |
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true --use-attr-cache=true
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
       displayName: "Mount container Block"
       condition: eq(variables.imageName, 'ubuntu-16.04')
       timeoutInMinutes: 3
-    # -------------------------------------------------------
+    # --------------------------------------------------------------------
+
 
     - script : |
         sudo cat /var/log/blobfuse.log
@@ -330,7 +341,7 @@ jobs:
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true
         cd test
         go run stressTest.go $(MOUNT_DIR)
         cd -
@@ -354,7 +365,7 @@ jobs:
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true
         cd test
         go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
         cd -
@@ -457,6 +468,35 @@ jobs:
       timeoutInMinutes: 120
       continueOnError: true
 
+    # -------------------------------------------------------
+
+    # Create config file for SAS Login
+    - script: |
+        echo "accountName " $(NIGHTLY_SPN_ACC_NAME) > $(BLOBFUSE_CFG_GTEST)
+        echo "sasToken " $(NIGHTLY_SPN_ACC_SAS) >> $(BLOBFUSE_CFG_GTEST)
+        echo "authType SAS" >> $(BLOBFUSE_CFG_GTEST)
+        echo "containerName " $(NIGHTLY_SPN_CONT_NAME) >> $(BLOBFUSE_CFG_GTEST)
+        cat $(BLOBFUSE_CFG_GTEST)
+        echo "Account : " $(NIGHTLY_SPN_ACC_NAME)
+      displayName: "TEST - Create SAS Config"
+
+    # List the blobs to verify that the login went successful
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        sleep 5s
+        ls -l $(MOUNT_DIR)
+        mkdir $(MOUNT_DIR)/B
+        touch $(MOUNT_DIR)/B/b.txt
+        echo "ASDF" > $(MOUNT_DIR)/B/c.txt
+        cp $(MOUNT_DIR)/A/c.txt $(MOUNT_DIR)/A/d.txt
+        ls -l $(MOUNT_DIR)/B
+        rm -rf $(MOUNT_DIR)/B
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - SPN Validation
+      timeoutInMinutes: 120
+      continueOnError: true
     # -------------------------------------------------------
     # Cleanup at the end
     - script:  |
