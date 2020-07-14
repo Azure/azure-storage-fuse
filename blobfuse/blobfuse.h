@@ -20,160 +20,34 @@
 #include <gnutls/gnutls.h>
 #include <gcrypt.h>
 #include <pthread.h>
-#include <syslog.h>
+
 
 // Declare that we're using version 2.9 of FUSE
 // 3.0 is not built-in to many distros yet.
 // This line must come before #include <fuse.h>.
 #define FUSE_USE_VERSION 29
-
 #include <fuse.h>
+
 #include <stddef.h>
-#include "blob/blob_client.h"
-#include "OAuthToken.h"
-#include "OAuthTokenCredentialManager.h"
+#include <BlobfuseGlobals.h>
 
 #define UNREFERENCED_PARAMETER(p) (p)
-
-/* Define high and low gc_cache threshold values*/
-/* These threshold values were not calculated and are just an approximation of when we should be clearing the cache */
-#define HIGH_THRESHOLD_VALUE 90
-#define LOW_THRESHOLD_VALUE 80
-
-/* Define errors and return codes */
-#define D_NOTEXIST -1
-#define D_EMPTY 0
-#define D_NOTEMPTY 1
-
-#define AZS_DEBUGLOGV(fmt,...) do {syslog(LOG_DEBUG,"Function %s, in file %s, line %d: " fmt, __func__, __FILE__, __LINE__, __VA_ARGS__); } while(0)
-#define AZS_DEBUGLOG(fmt) do {syslog(LOG_DEBUG,"Function %s, in file %s, line %d: " fmt, __func__, __FILE__, __LINE__); } while(0)
 
 // instruct gcrypt to use pthread
 GCRY_THREAD_OPTION_PTHREAD_IMPL;
 
-using namespace microsoft_azure::storage;
+using namespace azure::storage_lite;
+using namespace blobfuse_constants;
 
-// We use two different locking schemes to protect files / blobs against data corruption and data loss scenarios.
-// The first is an in-memory std::mutex, the second is flock (Linux).  Each file path gets its own mutex and flock lock.
-// The in-memory mutex should only be held while control is in a method that is directly communicating with Azure Storage.
-// The flock lock should be held continuously, from the time that the file is opened until the time that the file is closed.  It should also be held during blob download and upload.
-// Blob download should hold the flock lock in exclusive mode.  Read/write operations should hold it in shared mode.
-// Explanations for why we lock in various places are in-line.
+extern std::shared_ptr<gc_cache> g_gc_cache;
+extern struct configParams config_options;
+extern float kernel_version;
 
-// This class contains mutexes that we use to lock file paths during blob upload / download / delete.
-// Each blob / file path gets its own mutex.
-// This mutex should never be held when control is not in an open(), flush(), or unlink() method.
-class file_lock_map
-{
-public:
-    static file_lock_map* get_instance();
-    std::shared_ptr<std::mutex> get_mutex(const std::string& path);
-
-private:
-    file_lock_map()
-    {
-    }
-
-    static std::shared_ptr<file_lock_map> s_instance;
-    static std::mutex s_mutex;
-    std::mutex m_mutex;
-    std::map<std::string, std::shared_ptr<std::mutex>> m_lock_map;
-};
-
-// deque to age cached files based on timeout
-struct file_to_delete
-{
-    std::string path;
-    time_t closed_time;    
-};
-
-class gc_cache
-{
-    public:
-        gc_cache() : disk_threshold_reached(false){}
-        void run();
-        void add_file(std::string path);
-
-    private:
-        bool disk_threshold_reached;
-        const double high_threshold = HIGH_THRESHOLD_VALUE;
-        const double low_threshold = LOW_THRESHOLD_VALUE;
-        std::deque<file_to_delete> m_cleanup;
-        std::mutex m_deque_lock;
-        void run_gc_cache();
-        bool check_disk_space();
-};
-
-extern gc_cache g_gc_cache;
-
-// FUSE gives you one 64-bit pointer to use for communication between API's.
-// An instance of this struct is pointed to by that pointer.
-struct fhwrapper
-{
-    int fh; // The handle to the file in the file cache to use for read/write operations.
-    bool upload; // True if the blob should be uploaded when the file is closed.  (False when the file was opened in read-only mode.)
-    fhwrapper(int fh, bool upload) : fh(fh), upload(upload)
-    {
-
-    }
-};
-
-
-// Global struct storing the Storage connection information and the tmpPath.
-struct str_options
-{
-    std::string accountName;
-    std::string authType;
-    std::string blobEndpoint;
-    std::string accountKey;
-    std::string sasToken;
-    std::string identityClientId;
-    std::string spnClientId;
-    std::string spnClientSecret;
-    std::string spnTenantId;
-    std::string aadEndpoint;
-    std::string objectId;
-    std::string resourceId;
-    std::string msiEndpoint;
-    std::string msiSecret;
-    std::string containerName;
-    std::string tmpPath;
-    std::string logLevel;
-    bool use_https;
-    bool use_attr_cache;
-};
-
-extern struct str_options str_options;
-
-extern int file_cache_timeout_in_seconds;
-
-extern int default_permission;
-
-// This is used to make all the calls to Storage
-// The C++ lite client does not store state, other than connection info, so we can use it between calls without issue.
-extern std::shared_ptr<sync_blob_client> azure_blob_client_wrapper;
-
-// Used to map HTTP errors (ex. 404) to Linux errno (ex ENOENT)
-extern std::map<int, int> error_mapping;
-
-// Needed for compatibility with pre-GA blobfuse:
-// String that signifies that this blob represents a directory.
-// This string should be appended to the name of the directory.  The resultant string should be the name of a zero-length blob; this represents the directory on the service.
-extern const std::string former_directory_signifier;
+void populate_kernel_version();
 
 // Helper function to map an HTTP error to an errno.
 // Should be called on any errno returned from the Azure Storage cpp lite lib.
 int map_errno(int error);
-
-enum auth_type {
-    MSI_AUTH,
-    SPN_AUTH,
-    SAS_AUTH,
-    KEY_AUTH,
-    INVALID_AUTH
-};
-
-auth_type get_auth_type();
 
 // Read Storage connection information from the config file
 int read_config(std::string configFile);
@@ -189,7 +63,7 @@ int shared_lock_file(int flags, int fd);
 int ensure_files_directory_exists_in_cache(const std::string& file_path);
 
 // Greedily list all blobs using the input params.
-std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> list_all_blobs_hierarchical(const std::string& container, const std::string& delimiter, const std::string& prefix, const std::size_t maxresults=0);
+std::vector<std::pair<std::vector<list_blobs_segmented_item>, bool>> list_all_blobs_segmented(const std::string& container, const std::string& delimiter, const std::string& prefix, const std::size_t maxresults=0);
 
 // Returns:
 // 0 if there's nothing there (the directory does not exist)
@@ -377,13 +251,17 @@ void azs_destroy(void *private_data);
 /* Not implemented functions.
  */
 int azs_access(const char *path, int mask);
-int azs_readlink(const char *path, char *buf, size_t size);
 int azs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi);
 int azs_chown(const char *path, uid_t uid, gid_t gid);
 int azs_chmod(const char *path, mode_t mode);
 int azs_utimens(const char *path, const struct timespec ts[2]);
 int azs_truncate(const char *path, off_t off);
 int azs_setxattr(const char *path, const char *name, const char *value, size_t size, int flags);
+
+// symlink related handlers
+bool is_symlink_blob(std::vector<std::pair<std::string, std::string>> metadata);
+int azs_readlink(const char *path, char *buf, size_t size);
+int azs_symlink(const char *from, const char *to);
 
 /** Not implemented. */
 int azs_getxattr(const char *path, const char *name, char *value, size_t size);

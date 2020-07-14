@@ -1,4 +1,7 @@
-#include "blobfuse.h"
+#include <blobfuse.h>
+
+#include <include/StorageBfsClientBase.h>
+extern std::shared_ptr<StorageBfsClientBase> storage_client;
 
 // TODO: Bug in azs_mkdir, should fail if the directory already exists.
 int azs_mkdir(const char *path, mode_t)
@@ -6,24 +9,20 @@ int azs_mkdir(const char *path, mode_t)
     AZS_DEBUGLOGV("mkdir called with path = %s\n", path);
 
     std::string pathstr(path);
-
-    // We want to upload a zero-length blob in this case - it's just a marker that there's a directory.
-    std::istringstream emptyDataStream("");
-
-    std::vector<std::pair<std::string, std::string>> metadata;
-    metadata.push_back(std::make_pair("hdi_isfolder", "true"));
+    
     errno = 0;
-    azure_blob_client_wrapper->upload_block_blob_from_stream(str_options.containerName, pathstr.substr(1), emptyDataStream, metadata);
+    storage_client->CreateDirectory(pathstr.substr(1).c_str());
     if (errno != 0)
     {
         int storage_errno = errno;
-        syslog(LOG_ERR, "Failed to upload zero-length directory marker for path %s to blob %s.  errno = %d.\n", path, pathstr.c_str()+1, storage_errno);
+        syslog(LOG_ERR, "Failed to create directory for path: %s.  errno = %d.\n", path, storage_errno);
         return 0 - map_errno(errno);
     }
     else
     {
-        syslog(LOG_INFO, "Successfully uploaded zero-length directory marker for path %s to blob %s. ", path, pathstr.c_str()+1);
+        syslog(LOG_INFO, "Successfully created directory path: %s. ", path);
     }
+    globalTimes.lastModifiedTime = globalTimes.lastAccessTime = globalTimes.lastChangeTime = time(NULL);
     return 0;
 }
 
@@ -65,7 +64,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                 if (dir_ent->d_type == DT_DIR)
                 {
                     struct stat stbuf;
-                    stbuf.st_mode = S_IFDIR | default_permission;
+                    stbuf.st_mode = S_IFDIR | config_options.defaultPermission;
                     stbuf.st_uid = fuse_get_context()->uid;
                     stbuf.st_gid = fuse_get_context()->gid;
                     stbuf.st_nlink = 2;
@@ -79,7 +78,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                     stat((mntPathString + dir_ent->d_name).c_str(), &buffer);
 
                     struct stat stbuf;
-                    stbuf.st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+                    stbuf.st_mode = S_IFREG | config_options.defaultPermission; // Regular file (not a directory)
                     stbuf.st_uid = fuse_get_context()->uid;
                     stbuf.st_gid = fuse_get_context()->gid;
                     stbuf.st_nlink = 1;
@@ -102,7 +101,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     }
 
     errno = 0;
-    std::vector<std::pair<std::vector<list_blobs_hierarchical_item>, bool>> listResults = list_all_blobs_hierarchical(str_options.containerName, "/", pathStr.substr(1));
+    std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResults = storage_client->ListAllItemsSegmented(pathStr.substr(1), "/");
     if (errno != 0)
     {
         int storage_errno = errno;
@@ -116,7 +115,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 
     // Fill the blobfuse current and parent directories
     struct stat stcurrentbuf, stparentbuf;
-    stcurrentbuf.st_mode = S_IFDIR | default_permission;
+    stcurrentbuf.st_mode = S_IFDIR | config_options.defaultPermission;
     stparentbuf.st_mode = S_IFDIR;
 
     filler(buf, ".", &stcurrentbuf, 0);
@@ -131,33 +130,39 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
         {
             int fillerResult;
             // We need to parse out just the trailing part of the path name.
-            int len = listResults[result_lists_index].first[i].name.size();
+            list_segmented_item current_item = listResults[result_lists_index].first[i];
+            int len = current_item.name.size();
             if (len > 0)
             {
                 std::string prev_token_str;
-                if (listResults[result_lists_index].first[i].name.back() == '/')
+                if (current_item.name.back() == '/')
                 {
-                    prev_token_str = listResults[result_lists_index].first[i].name.substr(pathStr.size() - 1, listResults[result_lists_index].first[i].name.size() - pathStr.size());
+                    prev_token_str = current_item.name.substr(pathStr.size() - 1, current_item.name.size() - pathStr.size());
                 }
                 else
                 {
-                    prev_token_str = listResults[result_lists_index].first[i].name.substr(pathStr.size() - 1);
+                    prev_token_str = current_item.name.substr(pathStr.size() - 1);
                 }
 
                 // Any files that exist both on the service and in the local cache will be in both lists, we need to de-dup them.
                 // TODO: order or hash the list to improve perf
                 if (std::find(local_list_results.begin(), local_list_results.end(), prev_token_str) == local_list_results.end())
                 {
-                    if (!listResults[result_lists_index].first[i].is_directory && !is_directory_blob(listResults[result_lists_index].first[i].content_length, listResults[result_lists_index].first[i].metadata))
+                    if (!current_item.is_directory && 
+                        !is_directory_blob(current_item.content_length, current_item.metadata))
                     {
                         if ((prev_token_str.size() > 0) && (strcmp(prev_token_str.c_str(), former_directory_signifier.c_str()) != 0))
                         {
                             struct stat stbuf;
-                            stbuf.st_mode = S_IFREG | default_permission; // Regular file (not a directory)
+                            if (is_symlink_blob(current_item.metadata)) {
+                                stbuf.st_mode = S_IFLNK  | config_options.defaultPermission; // symlink
+                            } else {
+                                stbuf.st_mode = S_IFREG | config_options.defaultPermission; // Regular file (not a directory)
+                            }
                             stbuf.st_uid = fuse_get_context()->uid;
                             stbuf.st_gid = fuse_get_context()->gid;
                             stbuf.st_nlink = 1;
-                            stbuf.st_size = listResults[result_lists_index].first[i].content_length;
+                            stbuf.st_size = current_item.content_length;
                             fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
                             AZS_DEBUGLOGV("Blob %s found in directory %s on the service during readdir operation.  Adding to readdir list; fillerResult = %d.\n", prev_token_str.c_str(), pathStr.c_str()+1, fillerResult);
                         }
@@ -166,12 +171,11 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                     {
                         if (prev_token_str.size() > 0)
                         {
-
                             // Avoid duplicate directories - this avoids duplicate entries of legacy WASB and HNS directories
-                               local_list_results.push_back(prev_token_str);
+                            local_list_results.push_back(prev_token_str);
 
                             struct stat stbuf;
-                            stbuf.st_mode = S_IFDIR | default_permission;
+                            stbuf.st_mode = S_IFDIR | config_options.defaultPermission;
                             stbuf.st_uid = fuse_get_context()->uid;
                             stbuf.st_gid = fuse_get_context()->gid;
                             stbuf.st_nlink = 2;
@@ -203,61 +207,15 @@ int azs_rmdir(const char *path)
     AZS_DEBUGLOGV("Attempting to delete local cache directory %s.\n", mntPath);
     remove(mntPath); // This will fail if the cache is not empty, which is fine, as in this case it will also fail later, after the server-side check.
 
-    errno = 0;
-    int dirStatus = is_directory_empty(str_options.containerName, pathString.substr(1));
-    if (errno != 0)
+    if(!storage_client->DeleteDirectory(pathString.substr(1)))
     {
-        int storage_errno = errno;
-        syslog(LOG_ERR, "Failure to query the service to determine if directory %s is empty.  errno = %d.\n", path, storage_errno);
-        return 0 - map_errno(errno);
-    }
-    if (dirStatus == D_NOTEXIST)
-    {
-        syslog(LOG_ERR, "Directory %s does not exist; failing directory delete operation.\n", path);
-        return -ENOENT;
-    }
-    if (dirStatus == D_NOTEMPTY)
-    {
-        syslog(LOG_ERR, "Directory %s is not empty; failing directory delete operation.\n", path);
-        return -ENOTEMPTY;
-    }
-
-    errno = 0;
-    // delete the actual directory path if it exists
-    azure_blob_client_wrapper->delete_blobdir(str_options.containerName, pathString.substr(1));
-    int dir_blob_deletedir_errno = errno;
-    if (dir_blob_deletedir_errno == 0)
-    {
-        syslog(LOG_INFO, "Successfully deleted directory %s. ", path);
-    }
-    // now delete the directory marker
-    azure_blob_client_wrapper->delete_blob(str_options.containerName, pathString.substr(1));
-    int dir_blob_delete_errno = errno;
-    if (dir_blob_delete_errno == 0)
-    {
-        syslog(LOG_INFO, "Successfully deleted zero-length directory marker %s for path %s. ", pathString.c_str()+1, path);
-    }
-    // the below code is old and may not be needed any more.
-    if (dir_blob_deletedir_errno != 0 && dir_blob_delete_errno != 0)
-    {
-        AZS_DEBUGLOGV("Failed to delete directory marker %s at path %s and the directory, errno = %d.  Checking the .directory version.\n", mntPath, pathString.c_str()+1, dir_blob_delete_errno);
-
-        pathString.append("/.directory");
-
-        errno = 0;
-        azure_blob_client_wrapper->delete_blob(str_options.containerName, pathString.substr(1));
-        int old_dir_blob_delete_errno = errno;
-
-        if (old_dir_blob_delete_errno == 0)
+        if(errno == HTTP_REQUEST_CONFLICT)
         {
-            syslog(LOG_INFO, "Successfully deleted .directory-style directory marker for path %s to blob %s. ", path, pathString.c_str()+1);
+            return -ENOTEMPTY;
         }
-        // If they both fail, dir_blob_delete_errno will be the important one in 99.99% of cases
-        syslog(LOG_ERR, "Failed I/O operation to delete zero-length directory marker %s.  errno = %d\n", path, dir_blob_delete_errno);
-        syslog(LOG_ERR, "Failed I/O operation to delete directory %s.  errno = %d\n", path, dir_blob_deletedir_errno);
-        return 0 - map_errno(dir_blob_delete_errno);        
+        return -errno;
     }
-
+    globalTimes.lastModifiedTime = globalTimes.lastAccessTime = globalTimes.lastChangeTime = time(NULL);
     return 0;
 }
 
@@ -275,7 +233,7 @@ int azs_statfs(const char *path, struct statvfs *stbuf)
 
     // return tmp path stats
     errno = 0;
-    int res = statvfs(str_options.tmpPath.c_str(), stbuf);
+    int res = statvfs(config_options.tmpPath.c_str(), stbuf);
     if (res == -1)
         return -errno;
 

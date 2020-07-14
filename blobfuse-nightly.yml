@@ -16,6 +16,7 @@ schedules:
 # List of jobs to run in parallel
 jobs:
   - job: NightlySanity
+    timeoutInMinutes: 240
 
     # Define on what all OS we want to run this Pipeline
     strategy:
@@ -40,6 +41,10 @@ jobs:
       value: "/mnt/blobfusetmp"
     - name: BLOBFUSE_CFG
       value: "/home/vsts/work/blobfuse.cfg"
+    - name: BLOBFUSE_CFG_GTEST
+      value: "./connection.cfg"
+    - name: BLOBFUSE_STRESS_DIR
+      value: "/home/vsts/work/blob_stress"
    
 
     # Each job has set of steps to be done
@@ -51,6 +56,9 @@ jobs:
 
     - script: |
         sudo apt-get install libfuse-dev -y
+        #export GOROOT=/usr/local/go
+        #export GOPATH=$HOME/go
+        #export PATH=$GOPATH/bin:$GOROOT/bin:$PATH
       displayName: "libFuse Setup"
 
     # List commits done 
@@ -61,6 +69,7 @@ jobs:
 
     # Build the blobFuse binary
     - script: |
+        export INCLUDE_TESTS=1
         sudo chmod +x build.sh
         . ./build.sh
       displayName: "Build BlobFuse"
@@ -112,16 +121,28 @@ jobs:
         cat $(BLOBFUSE_CFG)
         echo "Account : " $(NIGHTLY_STO_ACC_NAME)
       displayName: "Create config file"
-        
+     
     # -------------------------------------------------------
 
     # Mount container using blobFuse
     - script: |
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --log-level=LOG_DEBUG
-      displayName: "Mount container"
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true --use-attr-cache=true
+      displayName: "Mount container ADLS"
+      condition: eq(variables.imageName, 'ubuntu-18.04')
       timeoutInMinutes: 3
 
+    - script: |
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true --use-attr-cache=true
+      displayName: "Mount container Block"
+      condition: eq(variables.imageName, 'ubuntu-16.04')
+      timeoutInMinutes: 3
     # -------------------------------------------------------
+
+    - script : |
+        sudo cat /var/log/blobfuse.log
+      displayName: "Dump Mount Log"
+      timeoutInMinutes: 1
+      condition: failed()
 
     # Give some time for system to stablise
     - script: sleep 10s
@@ -129,38 +150,36 @@ jobs:
 
     # -------------------------------------------------------
 
-    # Initial clean up of containers
-
     # Check the mount went through or not by listing the mounted directory
-    - script: ls -lRt $(MOUNT_DIR)
+    - script: ls -l $(MOUNT_DIR)
       timeoutInMinutes: 5
       displayName: "TEST - Directory Listing"
-      #continueOnError: true
+      continueOnError: true
 
-    # Directory deletion is not working so commenting this out
     # Clear directory form previous failed runs
-    #- script: rm -rf $(MOUNT_DIR)/* 
-    #  displayName: "TEST - Directory Cleaning before Begin"
-    #  timeoutInMinutes: 10
-    #  continueOnError: true
+    - script: |
+        rm -rf $(MOUNT_DIR)/* 
+      displayName: "TEST - Initial cleanup"
+      timeoutInMinutes: 30
+      continueOnError: true
              
     # Directory Operation Testing
-    #- script: mkdir $(MOUNT_DIR)/test_dir
-    #  displayName: "TEST - Create Directory"
-    #  timeoutInMinutes: 5
-    #  continueOnError: true
+    - script: mkdir $(MOUNT_DIR)/test_dir
+      displayName: "TEST - Create Directory"
+      timeoutInMinutes: 5
+      continueOnError: true
 
     # GetStat on Directory
-    #- script: stat $(MOUNT_DIR)/test_dir
-    #  displayName: "TEST - GetStat Directory"
-    #  timeoutInMinutes: 3
-    #  continueOnError: true
+    - script: stat $(MOUNT_DIR)/test_dir
+      displayName: "TEST - GetStat Directory"
+      timeoutInMinutes: 3
+      continueOnError: true
 
     # Delete newly created Directory
-    #- script: rm -rf $(MOUNT_DIR)/test_dir
-    #  displayName: "TEST - Delete Directory"
-    #  timeoutInMinutes: 5
-    #  continueOnError: true
+    - script: rm -rf $(MOUNT_DIR)/test_dir
+      displayName: "TEST - Delete Directory"
+      timeoutInMinutes: 5
+      continueOnError: true
 
     # -------------------------------------------------------
 
@@ -168,10 +187,11 @@ jobs:
 
     # Create a file in mounted directory
     - script: |
-        dd bs=1000 count=1000000 if=/dev/zero of=$(MOUNT_DIR)/test.txt
+        touch $(MOUNT_DIR)/test.txt
+      # dd bs=1000 count=1000000 if=/dev/zero of=$(MOUNT_DIR)/test.txt
       displayName: "TEST - Create File (1GB in size)"
       timeoutInMinutes: 10
-      #continueOnError: true
+      continueOnError: true
      
     # GetStat on File
     - script: stat $(MOUNT_DIR)/test.txt
@@ -221,11 +241,232 @@ jobs:
     # Basic testing done.....
     
     # Test complete so now unmount the directory
-    - script:  sudo fusermount -u $(MOUNT_DIR)
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR)/*
       displayName: Unmount container
       timeoutInMinutes: 20
       #continueOnError: true
+   
+    # -------------------------------------------------------
+    # BLOCK BLOB TESTS
+    # Starting gTest
     
+    # Create config file for gtest
+    - script: |
+        echo "accountName " $(NIGHTLY_STO_BLOB_ACC_NAME) > $(BLOBFUSE_CFG_GTEST)
+        echo "accountKey " $(NIGHTLY_STO_BLOB_ACC_KEY) >> $(BLOBFUSE_CFG_GTEST)
+        echo "authType Key" >> $(BLOBFUSE_CFG_GTEST)
+        echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_GTEST)
+        cat $(BLOBFUSE_CFG_GTEST)
+        echo "Account : " $(NIGHTLY_STO_ACC_NAME)
+      displayName: "TEST - BLOCK gTest Config"
+    
+    # Run gTest with the config file created earlier
+    - script:  |
+        cd ./build/
+        sudo chmod 777 ./blobfusetests
+        sudo ./blobfusetests 
+        cd -
+      displayName: TEST - BLOCK gTest
+      timeoutInMinutes: 30
+      continueOnError: true
+   
+    # -------------------------------------------------------
+    # Starting stressTest
+
+    # Mount a directory for stressTest and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        sudo mkdir $(BLOBFUSE_STRESS_DIR)
+        sudo chown -R `whoami` $(BLOBFUSE_STRESS_DIR)
+        sudo chmod 777 $(BLOBFUSE_STRESS_DIR)
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        cd test
+        go run stressTest.go $(MOUNT_DIR)
+        cd -
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - BLOCK stressTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        sudo fusermount -u $(MOUNT_DIR)
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - BLOCK stressTest Cleanup
+      timeoutInMinutes: 30
+      continueOnError: true
+
+    # -------------------------------------------------------
+    # Mount a directory for feature test (Block) and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        cd test
+        go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR)
+        cd -
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - BLOCK FeatureTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR)/*
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - BLOCK FeatureTest Cleanup
+      timeoutInMinutes: 30
+      continueOnError: true
+
+    # -------------------------------------------------------
+
+    # ADLS TESTS
+    # Mount a directory for stressTest (ADLS) and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
+        cd test
+        go run stressTest.go $(MOUNT_DIR)
+        cd -
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - ADLS stressTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR)/*
+        sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - ADLS stressTest Cleanup
+      timeoutInMinutes: 30
+      continueOnError: true
+      
+    # -------------------------------------------------------
+    # Mount a directory for feature test (ADLS) and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-adls=true
+        cd test
+        go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+        cd -
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - ADLS FeatureTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR)/*
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - ADLS FeatureTest Cleanup
+      timeoutInMinutes: 30
+      continueOnError: true
+      
+    # -------------------------------------------------------
+
+    # - script:  |
+    #    sudo rm -rf $(MOUNT_DIR)/*
+    #    sudo rm -rf $(TEMP_DIR)/*
+    #    ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+    #    cd stresstests/
+    #    make
+    #    chmod 777 ./blobfusestress
+    #    sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR)
+    #    cd -
+    #  condition: eq(variables['Build.SourceBranchName'], 'master')
+    #  displayName: TEST - BLOCK CPP stressTest
+    #  timeoutInMinutes: 120
+    #  continueOnError: true
+
+    # - script:  |
+    #    sudo fusermount -u $(MOUNT_DIR)
+    #    sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+    #    sudo rm -rf $(TEMP_DIR)/*
+    #  condition: eq(variables['Build.SourceBranchName'], 'master')
+    #  displayName: TEST - BLOCK CPP stressTest Cleanup
+    #  timeoutInMinutes: 30
+    #  continueOnError: true
+
+    # -------------------------------------------------------
+    # Starting pyTest
+
+    # Mount a directory for pyTest and run it
+    - script:  |
+        sudo rm -rf $(TEMP_DIR)/*
+        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        cd ./test/
+        sudo python tests.py
+        cd -
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - BLOCK pyTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo kill -9 `pidof blobfuse`
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
+        sudo rm -rf $(TEMP_DIR)/*
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - BLOCK pyTest Cleanup
+      timeoutInMinutes: 10
+      continueOnError: true
+
+    # -------------------------------------------------------
+
+    # Create config file for SPN Login
+    - script: |
+        echo "accountName " $(NIGHTLY_SPN_ACC_NAME) > $(BLOBFUSE_CFG_GTEST)
+        echo "authType SPN" >> $(BLOBFUSE_CFG_GTEST)
+        echo "servicePrincipalClientId " $(NIGHTLY_SPN_CLIENT_ID) >> $(BLOBFUSE_CFG_GTEST)
+        echo "servicePrincipalTenantId " $(NIGHTLY_SPN_TENANT_ID) >> $(BLOBFUSE_CFG_GTEST)
+        echo "servicePrincipalClientSecret " $(NIGHTLY_SPN_CLIENT_SECRET) >> $(BLOBFUSE_CFG_GTEST)
+        echo "containerName " $(NIGHTLY_SPN_CONT_NAME) >> $(BLOBFUSE_CFG_GTEST)
+        cat $(BLOBFUSE_CFG_GTEST)
+        echo "Account : " $(NIGHTLY_SPN_ACC_NAME)
+      displayName: "TEST - Create SPN Config"
+
+    # List the blobs to verify that the login went successful
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        sleep 5s
+        ls -l $(MOUNT_DIR)
+        mkdir $(MOUNT_DIR)/A
+        touch $(MOUNT_DIR)/A/a.txt
+        echo "ASDF" > $(MOUNT_DIR)/A/b.txt
+        cp $(MOUNT_DIR)/A/b.txt $(MOUNT_DIR)/A/c.txt
+        ls -l $(MOUNT_DIR)/A
+        rm -rf $(MOUNT_DIR)/A
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - SPN Validation
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    # -------------------------------------------------------
+    # Cleanup at the end
+    - script:  |
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo kill -9 `pidof blobfuse`
+        sudo rm -rf $(TEMP_DIR)/*
+      displayName: Cleanup
+      timeoutInMinutes: 120
+      continueOnError: true
+
     # Print the log files
     - script: sudo cat /var/log/blobfuse.log
       displayName: Print the log file

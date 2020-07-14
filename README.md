@@ -53,7 +53,8 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 	* [OPTIONAL] **--file-cache-timeout-in-seconds=120** : Blobs will be cached in the temp folder for this many seconds. 120 seconds by default. During this time, blobfuse will not check whether the file is up to date or not.
 	* [OPTIONAL] **--log-level=LOG_WARNING** : Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG
 	* [OPTIONAL] **--use-attr-cache=true|false** : Enables attributes of a blob being cached. False by default. (Only available in blobfuse 1.1.0 or above)
-
+    * [OPTIONAL] **--use-adls=true|false** : Enables blobfuse to access Azure DataLake storage account.
+    
 ### Valid authentication setups:
 
 - Account Name & Key (`authType Key`)
@@ -104,6 +105,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * `blobEndpoint`: Specifies the blob endpoint to use. Defaults to *.blob.core.windows.net, but is useful for targeting storage emulators.
     * `authType`: Overrides the currently specified auth type. Options: Key, SAS, MSI (Using this option is only available for 1.2.0 or above)
     * `logLevel`: Specifies the logging level. Use to change the logging level dynamically. Read `Logging` section for details. For allowed values refer to `--log-level` command line option.
+    * `accountType`: Specifies the type of account. Either `block` or `adls` can be specified, `block` is the default value. Same can also be controlled through the command line option `--use-adls=true`. If wrong account type is supplied, certain features may not work as expected. To learn more about ADLS follow the link `(https://docs.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-introduction)`
 
 - Account key auth:
     * `accountKey`: Specifies the storage account key to use for authentication.

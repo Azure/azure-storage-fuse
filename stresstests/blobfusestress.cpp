@@ -30,11 +30,18 @@
 #include <mutex>
 #include <condition_variable>
 #include <thread>
+#include <random>
+#include <csignal>
+#include <uuid/uuid.h>
+
+void signalHandler( int signum ) {
+   exit(signum);  
+}
 
 // Config
-std::string perf_source_dir("/mnt/resource/tests/src");  // Source directory for test data.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
-std::string perf_dest_dir_1("/mnt/mountdir/stress");  // blobfuse directory to copy to.  All contents will be wiped.
-std::string perf_dest_dir_2("/mnt/resource/tests/dst");  // Local destination directory.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
+std::string perf_source_dir("/home/vikas/stress_test/src");  // Source directory for test data.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
+std::string perf_dest_dir_1("/home/vikas/blob_mnt/stress");  // blobfuse directory to copy to.  All contents will be wiped.
+std::string perf_dest_dir_2("/home/vikas/stress_test/dst");  // Local destination directory.  This is an SSD on my machine.  Should not be a blobfuse directory.  All contents will be wiped.
 
 
 // There isn't really a built-in C++11 threadpool, and it ended up not being too difficult to code one up, with the specific behavior we need.
@@ -371,12 +378,15 @@ size_t m_total_files;
     // This must be kept in mind when designing file structures to copy.
     void copy_recursive(std::string input_dir, std::string output_dir)
     {
-        int mkdirret = mkdir(output_dir.c_str(), 0777);
-        if (mkdirret < 0)
-        {
-            std::stringstream error;
-            error << "Failed to make directory.  errno = " << errno << ", directory = " << output_dir;
-            throw std::runtime_error(error.str());
+        struct stat st;
+        if (stat(output_dir.c_str(), &st) != 0) {
+            int mkdirret = mkdir(output_dir.c_str(), 0777);
+            if (mkdirret < 0)
+            {
+                //std::stringstream error;
+                //error << "Failed to make directory.  errno = " << errno << ", directory = " << output_dir;
+                //throw std::runtime_error(error.str());
+            }
         }
 
         DIR *dir_stream = opendir(input_dir.c_str());
@@ -496,12 +506,20 @@ void print_test_initial_stats(int total_dir_count, int file_per_dir_count, size_
 // TODO: remove duplicated logic between populate_* methods.
 std::pair<size_t, size_t> populate_large(std::string source_dir, thread_pool& pool)
 {
+    #if 0
+    int total_dir_count = 30; 
     size_t file_size_base = 50*1024*1024;  // Each file will be roughly 50 MB in size (increase this for actual perf testing)
     long unsigned int additional_size_jitter = 1024 * 1024;  // Each file will have between 0-1MB added to it (on top of the 500 MB))
+    #else
+    int total_dir_count = 10; 
+    size_t file_size_base = 10*1024*1024; 
+    long unsigned int additional_size_jitter = 100;  // Each file will have between 0-1MB added to it (on top of the 500 MB))
+    #endif
+
     int seed = 4;  // We use a constant seed here to make each run identical; this probably doesn't matter a ton.
     std::minstd_rand r(seed);  // minstd_rand has terrible randomness properties, but it's more than good enough for our purposes here, and is far faster than better options.
     size_t total_size = 0;
-    int total_dir_count = 30;  
+     
     std::cout << "Running large file stress test." << std::endl;
     print_test_initial_stats(total_dir_count, 1, file_size_base, additional_size_jitter);
 
@@ -511,9 +529,9 @@ std::pair<size_t, size_t> populate_large(std::string source_dir, thread_pool& po
         int mkdirret = mkdir(dir.c_str(), 0777);
         if (mkdirret < 0)
         {
-            std::stringstream error;
-            error << "Failed to make directory.  errno = " << errno << ", directory = " << dir;
-            throw std::runtime_error(error.str());
+            //std::stringstream error;
+            //error << "Failed to make directory.  errno = " << errno << ", directory = " << dir;
+            //throw std::runtime_error(error.str());
         }
 
         std::string file = dir + "/file";
@@ -539,12 +557,19 @@ std::pair<size_t, size_t> populate_large(std::string source_dir, thread_pool& po
 // Directories are copied in parallel to each other, while files in a directory are copied serially.  This must be considered when choosing parameters.
 std::pair<size_t, size_t> populate_small(std::string source_dir, thread_pool& pool)
 {
-    size_t file_size_base = 1024;  // Each file has a base size of 1 KB.
-    long unsigned int additional_size_jitter = 1024;  // Each file will have between 0-1KB added to it, randomly.
     int seed = 4;
     std::minstd_rand r(seed);
+    #if 0
+    size_t file_size_base = 1024;  // Each file has a base size of 1 KB.
+    long unsigned int additional_size_jitter = 1024;  // Each file will have between 0-1KB added to it, randomly.
     int total_dir_count = 60;  
-    int file_per_dir_count = 10000;  
+    int file_per_dir_count = 10000; 
+    #else
+    size_t file_size_base = 1024;  // Each file has a base size of 1 KB.
+    long unsigned int additional_size_jitter = 10;  // Each file will have between 0-1KB added to it, randomly.
+    int total_dir_count = 10; 
+    int file_per_dir_count = 100;  
+    #endif
     size_t total_size = total_dir_count * file_per_dir_count * (file_size_base + (additional_size_jitter/2));  // Here we just estimate the total size, more than close enough.
     std::cout << "Running small file stress test." << std::endl;
     print_test_initial_stats(total_dir_count, file_per_dir_count, file_size_base, additional_size_jitter);
@@ -555,9 +580,9 @@ std::pair<size_t, size_t> populate_small(std::string source_dir, thread_pool& po
         int mkdirret = mkdir(dir.c_str(), 0777);
         if (mkdirret < 0)
         {
-            std::stringstream error;
-            error << "Failed to make directory.  errno = " << errno << ", directory = " << dir;
-            throw std::runtime_error(error.str());
+            //std::stringstream error;
+            //error << "Failed to make directory.  errno = " << errno << ", directory = " << dir;
+            //throw std::runtime_error(error.str());
         }
 
         std::string file = dir + "/file";
@@ -587,6 +612,29 @@ std::pair<size_t, size_t> populate_small(std::string source_dir, thread_pool& po
 
 int main(int argc, char *argv[])
 {
+	signal(SIGINT, signalHandler);
+  
+    if (argc >= 3) {
+        uuid_t dir_uuid;
+        uuid_generate( (unsigned char *)&dir_uuid );
+
+        char dir_name_uuid[37];
+        uuid_unparse_lower(dir_uuid, dir_name_uuid);
+        
+        std::string dir_name_prefix = "stresstest";
+        std::string dir_name = dir_name_prefix + dir_name_uuid;
+
+        perf_source_dir = std::string(argv[2]) + "/src";  
+        perf_dest_dir_1 = std::string(argv[1]) + "/" + dir_name;
+        perf_dest_dir_2 = std::string(argv[2]) + "/dst"; 
+        printf("Running with : MNT : %s, SRC : %s, DST : %s\n", \
+                perf_dest_dir_1.c_str(), perf_source_dir.c_str(), perf_dest_dir_2.c_str());
+        //return 0;
+    } else {
+        printf("\nUsage : blobfusestress <mounted-dir> <tmp-download-dir>\n\n");
+        return 0;
+    }
+
     try
     {
         std::vector<std::function<std::pair<size_t, size_t>(std::string, thread_pool&)>> populate_fns
@@ -604,14 +652,16 @@ int main(int argc, char *argv[])
             std::time_t start = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
             std::cout << "Start time = " << std::ctime(&start) << std::endl;
 
-            int mkdirret = mkdir(perf_source_dir.c_str(), 0777);
-            if (mkdirret < 0)
-            {
-                std::stringstream error;
-                error << "Failed to make directory.  errno = " << errno << ", directory = " << perf_source_dir;
-                throw std::runtime_error(error.str());
+            struct stat st;
+            if (stat(perf_source_dir.c_str(), &st) != 0) {
+                int mkdirret = mkdir(perf_source_dir.c_str(), 0777);
+                /*if (mkdirret < 0)
+                {
+                    std::stringstream error;
+                    error << "Failed to make directory.  errno = " << errno << ", directory = " << perf_source_dir;
+                    throw std::runtime_error(error.str());
+                }*/
             }
-
 
             int parallel = 8; // Run 8 threads in parallel.
             std::cout << "Parallel count = " << parallel << std::endl;
@@ -623,6 +673,7 @@ int main(int argc, char *argv[])
 
             std::time_t end = std::chrono::high_resolution_clock::to_time_t(std::chrono::high_resolution_clock::now());
             std::cout << "End time = " << std::ctime(&end) << std::endl;
+            rmdir(perf_source_dir.c_str());
         }
     }
     catch (const std::exception& e)
