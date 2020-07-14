@@ -44,16 +44,6 @@ namespace azure {  namespace storage_lite {
             return m_url;
         }
 
-        void set_body(const std::string &body) override
-        {
-            m_body = body;
-        }
-
-        std::string get_body() const override
-        {
-            return m_body;
-        }
-
         void set_method(http_method method) override
         {
             m_method = method;
