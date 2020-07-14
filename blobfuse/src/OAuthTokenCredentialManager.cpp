@@ -475,9 +475,9 @@ std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> SetUpSPNCallback(std:
        request_handle->add_header("Content-Type", "application/x-www-form-urlencoded");
 
        // Set up body query, SPN expects it in the body
-     //  auto body = std::make_shared<std::stringstream>(queryString);
-      // request_handle->set_input_stream(storage_istream(body));
-      // request_handle->set_input_content_length(queryString.length());
+       auto body = std::make_shared<std::stringstream>(queryString);
+       request_handle->set_input_stream(storage_istream(body));
+       request_handle->set_input_content_length(queryString.length());
        request_handle->add_header("Content-Length", std::to_string(queryString.length()));
 
         // Set up output stream
