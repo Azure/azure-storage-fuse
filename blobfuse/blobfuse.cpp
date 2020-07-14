@@ -320,6 +320,13 @@ void *azs_init(struct fuse_conn_info * conn)
     g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
     g_gc_cache->run();
 
+    if (config_options.authType == MSI_AUTH ||
+        config_options.authType == SPN_AUTH)
+    {
+        std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(EmptyCallback);
+        tokenManager->StartTokenMonitor();
+    }
+
     return NULL;
 }
 
