@@ -44,6 +44,16 @@ namespace azure {  namespace storage_lite {
             return m_url;
         }
 
+        void set_body(const std::string &body) override
+        {
+            m_body = body;
+        }
+
+        std::string get_body() const override
+        {
+            return m_body;
+        }
+
         void set_method(http_method method) override
         {
             m_method = method;
@@ -131,7 +141,7 @@ namespace azure {  namespace storage_lite {
             m_input_stream = s;
             check_code(curl_easy_setopt(m_curl, CURLOPT_READFUNCTION, read));
             check_code(curl_easy_setopt(m_curl, CURLOPT_READDATA, this));
-            check_code(curl_easy_setopt(m_curl, CURLOPT_POSTFIELDS, nullptr)); // CURL won't actually read data on POSTs unless this is explicitly set.
+   //         check_code(curl_easy_setopt(m_curl, CURLOPT_POSTFIELDS, nullptr)); // CURL won't actually read data on POSTs unless this is explicitly set.
         }
         
         void set_input_content_length(uint64_t content_length)
@@ -202,6 +212,7 @@ namespace azure {  namespace storage_lite {
 
         http_method m_method;
         std::string m_url;
+        std::string m_body;
         storage_istream m_input_stream;
         storage_ostream m_output_stream;
         storage_iostream m_error_stream;
