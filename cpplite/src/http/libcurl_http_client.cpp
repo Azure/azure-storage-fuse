@@ -47,6 +47,12 @@ namespace azure { namespace storage_lite {
                 break;
             case http_method::post:
                 check_code(curl_easy_setopt(m_curl, CURLOPT_CUSTOMREQUEST, constants::http_post));
+                if (!m_body.empty())
+                {
+                    syslog(LOG_DEBUG, "Inside libcurl_http: post body: %s", m_body.c_str());
+                    check_code(curl_easy_setopt(m_curl, CURLOPT_POSTFIELDSSIZE, m_body.length()));
+                    check_code(curl_easy_setopt(m_curl, CURLOPT_POSTFIELDS, m_body));
+                }
                 break;
             case http_method::patch:
                 check_code(curl_easy_setopt(m_curl, CURLOPT_UPLOAD, 1L));
