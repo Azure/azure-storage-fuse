@@ -1,3 +1,4 @@
+[Unit]
 Description=A virtual file system adapter for Azure Blob storage.
 After=network.target
 
