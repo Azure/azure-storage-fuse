@@ -494,7 +494,7 @@ jobs:
         ls -l $(MOUNT_DIR)/B
         rm -rf $(MOUNT_DIR)/B
       # condition: eq(variables['Build.SourceBranchName'], 'master')
-      displayName: TEST - SPN Validation
+      displayName: TEST - SAS Validation
       timeoutInMinutes: 120
       continueOnError: true
     # -------------------------------------------------------
