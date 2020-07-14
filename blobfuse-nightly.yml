@@ -24,9 +24,11 @@ jobs:
         Ubuntu-16:
           imageName: 'ubuntu-16.04'
           containerName: 'test-cnt-ubn-16'
+          quickTestDir: 'ubn16'
         Ubuntu-18:
           imageName: 'ubuntu-18.04' 
           containerName: 'test-cnt-ubn-18'
+          quickTestDir: 'ubn18'
         #Ubuntu-20:
         #  imageName: 'ubuntu-20.04' 
         #  containerName: 'test-cnt-ubn-20'
@@ -449,6 +451,7 @@ jobs:
         cat $(BLOBFUSE_CFG_GTEST)
         echo "Account : " $(NIGHTLY_SPN_ACC_NAME)
       displayName: "TEST - Create SPN Config"
+      condition: eq(variables.imageName, 'ubuntu-18.04')
 
     # List the blobs to verify that the login went successful
     - script:  |
@@ -461,12 +464,15 @@ jobs:
         touch $(MOUNT_DIR)/A/a.txt
         echo "ASDF" > $(MOUNT_DIR)/A/b.txt
         cp $(MOUNT_DIR)/A/b.txt $(MOUNT_DIR)/A/c.txt
-        ls -l $(MOUNT_DIR)/A
+        ls -lRt $(MOUNT_DIR)/A
         rm -rf $(MOUNT_DIR)/A
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo kill -9 `pidof blobfuse`
       # condition: eq(variables['Build.SourceBranchName'], 'master')
       displayName: TEST - SPN Validation
       timeoutInMinutes: 120
       continueOnError: true
+      condition: eq(variables.imageName, 'ubuntu-18.04')
 
     # -------------------------------------------------------
 
@@ -479,6 +485,7 @@ jobs:
         cat $(BLOBFUSE_CFG_GTEST)
         echo "Account : " $(NIGHTLY_SPN_ACC_NAME)
       displayName: "TEST - Create SAS Config"
+      condition: eq(variables.imageName, 'ubuntu-16.04')
 
     # List the blobs to verify that the login went successful
     - script:  |
@@ -490,14 +497,18 @@ jobs:
         mkdir $(MOUNT_DIR)/B
         touch $(MOUNT_DIR)/B/b.txt
         echo "ASDF" > $(MOUNT_DIR)/B/c.txt
-        cp $(MOUNT_DIR)/A/c.txt $(MOUNT_DIR)/A/d.txt
-        ls -l $(MOUNT_DIR)/B
+        cp $(MOUNT_DIR)/B/c.txt $(MOUNT_DIR)/B/d.txt
+        ls -lRt $(MOUNT_DIR)/B
         rm -rf $(MOUNT_DIR)/B
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo kill -9 `pidof blobfuse`
       # condition: eq(variables['Build.SourceBranchName'], 'master')
       displayName: TEST - SAS Validation
       timeoutInMinutes: 120
       continueOnError: true
+      condition: eq(variables.imageName, 'ubuntu-16.04')
     # -------------------------------------------------------
+
     # Cleanup at the end
     - script:  |
         sudo fusermount -u $(MOUNT_DIR)

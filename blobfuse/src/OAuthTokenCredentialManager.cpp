@@ -64,6 +64,11 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
     {
         syslog(LOG_INFO, "calling refresh token\n");
         refresh_token();
+        #ifdef TOKEN_REFRESH_THREAD
+        std::thread t1(std::bind(&OAuthTokenCredentialManager::TokenWatcher, this));
+        t1.detach();
+        syslog(LOG_ERR,"Refresh token handed over to thread");
+        #endif
     } 
     catch(std::runtime_error& ex)
     {
@@ -79,6 +84,41 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
         syslog(LOG_ERR, "Unable to retrieve OAuth Token with given credentials.");
     }
 }
+
+#ifdef TOKEN_REFRESH_THREAD
+void OAuthTokenCredentialManager::TokenWatcher()
+{
+    int retry_count = 0;
+    while(true) {
+        usleep(30 * 1000);
+        if (!is_token_expired())
+            continue;
+
+        retry_count = 0;
+        token_mutex.lock();
+        while (retry_count < 5) {
+            try {
+                // Attempt to refresh.
+                fprintf(stdout, "oauth token has expired so calling refresh_token() %d\n", retry_count);
+                syslog(LOG_WARNING, "oauth token has expired so calling refresh_token() %d\n", retry_count);
+            
+                refresh_token();
+                break;
+            } catch (std::runtime_error &ex) {
+                // If we fail, explain ourselves and unlock.
+                syslog(LOG_ERR, "Unable to refresh OAuth token: %s\n", ex.what());
+                syslog(LOG_ERR, "Retry refreshing the token trail %d", retry_count++);
+                usleep(10 * 1000);
+            }
+        }
+        token_mutex.unlock();
+
+        if (retry_count >= 5) {
+            syslog(LOG_ERR, "oauth token has expired and refresh has failed\n");
+        }
+    }
+}
+#endif
 
 /// <summary>
 /// Check for valid authentication which is set by the constructor, and refresh functions.
@@ -98,6 +138,10 @@ OAuthToken OAuthTokenCredentialManager::refresh_token()
 {
     try
     {
+        #ifdef TOKEN_REFRESH_THREAD
+        valid_authentication = false;
+        #endif
+
         current_oauth_token = refreshTokenCallback(httpClient);
         valid_authentication = true;
         syslog(LOG_INFO,"blobfuse refresh token succeeded expiry time is: %s", asctime(gmtime(&current_oauth_token.expires_on)));
@@ -117,6 +161,35 @@ OAuthToken OAuthTokenCredentialManager::refresh_token()
 /// </summary>
 OAuthToken OAuthTokenCredentialManager::get_token()
 {
+    #ifdef TOKEN_REFRESH_THREAD
+    if ((!valid_authentication) && is_token_expired()) {
+        // Lock the mutex.
+        if (!token_mutex.try_lock()) {
+            fprintf(stdout, "Locking mutex failed, so some token is being acquired., so just wait and get that\n");
+            syslog(LOG_WARNING, "Locking mutex failed, so some token is being acquired., so just wait and get that\n");
+
+            time_t current_time;
+            current_time =  get_current_time_in_utc();
+
+            // There's a five minute segment where the token hasn't actually expired yet, but we're already trying to refresh it.
+            // We can just use the currently active token instead, rather than waiting for the refresh.
+            // This'll save some downtime on systems under constant use.
+            if (current_time < current_oauth_token.expires_on) {
+                return current_oauth_token;
+            } else {
+                // If it's not still live, let's just wait for the refresh to finish.
+                // This is a sub-optimal method to wait for this event as it can end up blocking other routines after the token has finished refreshing.
+                // If we were working in Go, I (Adele) would suggest using a sync.WaitGroup for this functionality.
+                syslog(LOG_ERR, "Wait for token to get refreshed as buffer time has expired");
+                token_mutex.lock();
+            }
+        }
+
+        // Note that we don't always lock in this function and sometimes return early.
+        // Be sure to ensure you're safely manipulating the lock when modifying this function.
+        token_mutex.unlock();
+    }
+    #else
     if (is_token_expired()) {
         // Lock the mutex.
         if (token_mutex.try_lock()) {
@@ -156,8 +229,9 @@ OAuthToken OAuthTokenCredentialManager::get_token()
         // Be sure to ensure you're safely manipulating the lock when modifying this function.
         token_mutex.unlock();
     }
-    
-    return current_oauth_token;
+    #endif
+
+    return current_oauth_token; 
 }
 
 /// <summary>

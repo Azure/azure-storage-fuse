@@ -9,6 +9,10 @@
 #ifndef OAUTH_TOKEN_CREDENTIAL_MANAGER_H
 #define OAUTH_TOKEN_CREDENTIAL_MANAGER_H
 
+// Enable this to start a thread to refresh the token instread of 
+// service thread checking the timer for each request and going for refresh
+//#define TOKEN_REFRESH_THREAD
+
 using namespace azure::storage_lite;
 
 class OAuthTokenCredentialManager {
@@ -17,6 +21,11 @@ public:
     /// OauthTokenCredentialManager Constructor
     /// </summary>
     OAuthTokenCredentialManager(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback);
+
+#ifdef TOKEN_REFRESH_THREAD
+    void TokenWatcher();
+#endif
+    
     /// <summary>
     /// Check for valid authentication which is set by the constructor, and refresh functions.
     /// </summary>
