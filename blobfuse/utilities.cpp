@@ -133,13 +133,17 @@ int azs_getattr(const char *path, struct stat *stbuf)
         return 0;
     }
 
-    // Ensure that we don't get attributes while the file is in an intermediate state.
-    std::shared_ptr<std::mutex> fmutex = file_lock_map::get_instance()->get_mutex(path);
-    std::lock_guard<std::mutex> lock(*fmutex);
-
     // Check and see if the file/directory exists locally (because it's being buffered.)  If so, skip the call to Storage.
     std::string pathString(path);
+
+    // Replace '\' with '/' as for azure storage they will be considered as path seperators
+    std::replace(pathString.begin(), pathString.end(), '\\', '/');
+
     std::string mntPathString = prepend_mnt_path_string(pathString);
+
+    // Ensure that we don't get attributes while the file is in an intermediate state.
+    std::shared_ptr<std::mutex> fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
+    std::lock_guard<std::mutex> lock(*fmutex);
 
     int res;
     int acc = access(mntPathString.c_str(), F_OK);
@@ -166,7 +170,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     }
 
     // It's not in the local cache.  Check to see if it's a blob on the service:
-    std::string blobNameStr(&(path[1]));
+    std::string blobNameStr(pathString.substr(1).c_str());
     errno = 0;
     //AZS_DEBUGLOGV("Storage client name is %s \n", (typeid(storage_client).name()));
     // see if it is block blob and call the block blob method
