@@ -29,9 +29,10 @@ jobs:
           imageName: 'ubuntu-18.04' 
           containerName: 'test-cnt-ubn-18'
           quickTestDir: 'ubn18'
-        #Ubuntu-20:
-        #  imageName: 'ubuntu-20.04' 
-        #  containerName: 'test-cnt-ubn-20'
+        Ubuntu-20:
+          imageName: 'ubuntu-20.04' 
+          containerName: 'test-cnt-ubn-20'
+          quickTestDir: 'ubn20'
     pool:
       vmImage: $(imageName)
 
@@ -140,7 +141,7 @@ jobs:
     - script: |
         ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
       displayName: "Mount container ADLS"
-      condition: eq(variables.imageName, 'ubuntu-18.04')
+      condition: or(eq(variables.imageName, 'ubuntu-18.04'), eq(variables.imageName, 'ubuntu-20.04'))
       timeoutInMinutes: 3
   
     - script: |
