@@ -8,13 +8,12 @@ trigger:
   branches:
     include:
       - master
-      - vibhansa/ubn20Pipeline
+
 pr:
   branches:
     include:
       - dev
       - master
-      - vibhansa/ubn20Pipeline
 
 jobs:
   - job: UbuntuBuilds
@@ -61,7 +60,7 @@ jobs:
 
       # Test the binary just to make sure it was built fine
       - script: |
-          ./blobfuse --version
+          ./build/blobfuse --version
         displayName: "Test the binary"
 
       # Copy binaries required for the package
@@ -92,4 +91,4 @@ jobs:
       # Publish the Artifacts
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifacts for blobfuse $(container_image)'
-        condition: succeededOrFailed()
+        #condition: succeededOrFailed()
