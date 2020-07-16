@@ -10,10 +10,30 @@ fi
 
 ## Build the cpplite lib first
 #echo "Building the cpplite lib"
+if [ $1 == "debug" ]
+then
+rm -rf cpplite/build.release
+rm -rf build/blobfuse
+mkdir cpplite/build.release
+cd cpplite/build.release
+echo "Building cpplite in Debug mode"
+cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_ADLS=ON -DUSE_OPENSSL=OFF
+else
 mkdir cpplite/build.release
 cd cpplite/build.release
 cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_ADLS=ON -DUSE_OPENSSL=OFF
+fi
+
 cmake --build .
+status=$?
+
+if test $status -eq 0
+then
+	echo "************************ CPPLite build Successful ***************************** "
+else
+	echo "************************ CPPLite build Failed ***************************** "
+	exit $status
+fi
 cd -
 
 ## install pkg-config, cmake, libcurl and libfuse first
