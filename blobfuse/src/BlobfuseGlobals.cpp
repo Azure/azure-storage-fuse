@@ -25,10 +25,20 @@ inline bool is_lowercase_string(const std::string &s)
     })));
 }
 
+std::string trim(const std::string& str) 
+{
+    const size_t start = str.find_first_not_of(' ');
+    if (std::string::npos == start) {
+        return std::string();
+    }
+    const size_t end = str.find_last_not_of(' ');
+    return str.substr(start, end - start + 1);
+}
+
 AUTH_TYPE get_auth_type(std::string authStr) 
 {
     if(!authStr.empty()) {
-        std::string lcAuthType = to_lower(authStr);
+        std::string lcAuthType = trim(to_lower(authStr));
         syslog(LOG_DEBUG, "Auth type set as %s", lcAuthType.c_str());
         int lcAuthTypeSize = (int)lcAuthType.size();
          // sometimes an extra space or tab sticks to authtype thats why this size comparison, it is not always 3 lettered
