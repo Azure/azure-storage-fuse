@@ -71,10 +71,6 @@ jobs:
           cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(container_image)
           cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(container_image)
           cp ./blobfusetests $(Build.BinariesDirectory)
-        displayName: "Prepare Artifacts"
-
-      # Build the package
-      - script: |
           make package
           cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/$(container_image)
         displayName: "Build Artifacts"
