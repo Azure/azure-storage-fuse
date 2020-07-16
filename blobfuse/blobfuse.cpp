@@ -189,21 +189,25 @@ int read_config(const std::string configFile)
     
         if(line.find("accountName") != std::string::npos)
         {
+            syslog(LOG_DEBUG, "Account name found");
             std::string accountNameStr(value);
             config_options.accountName = accountNameStr;
         }
         else if(line.find("accountKey") != std::string::npos)
         {
+            syslog(LOG_DEBUG, "Account Key found");
             std::string accountKeyStr(value);
             config_options.accountKey = accountKeyStr;
         }
         else if(line.find("sasToken") != std::string::npos)
         {
+            syslog(LOG_DEBUG, "Sas Token found");
             std::string sasTokenStr(value);
             config_options.sasToken = sasTokenStr;
         }
         else if(line.find("containerName") != std::string::npos)
         {
+            syslog(LOG_DEBUG, "Container name found");
             std::string containerNameStr(value);
             config_options.containerName = containerNameStr;
         }
@@ -834,6 +838,7 @@ int initialize_blobfuse()
     {
         syslog(LOG_DEBUG, "Initializing blobfuse using BlockBlob");
         storage_client = std::make_shared<BlockBlobBfsClient>(config_options);
+        syslog(LOG_DEBUG, "Setup storage client");
     }
     if(storage_client->AuthenticateStorage())
     {
