@@ -245,6 +245,36 @@ func TestFileCreate(t *testing.T) {
 	srcFile.Close()
 }
 
+func TestFileCreateSpclChar(t *testing.T) {
+	fileName := mntPath + "/ΣΑΠΦΩ.txt"
+
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	if err != nil {
+		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
+	}
+	srcFile.Close()
+}
+
+func TestFileCreateUtf8Char(t *testing.T) {
+	fileName := mntPath + "/भारत.txt"
+
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	if err != nil {
+		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
+	}
+	srcFile.Close()
+}
+
+func TestFileCreateLabel(t *testing.T) {
+	fileName := mntPath + "/chunk_f13c48d4-5c1e-11ea-b41d-000d3afe1867.label"
+
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	if err != nil {
+		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
+	}
+	srcFile.Close()
+}
+
 // # Write a small file
 func TestFileWriteSmall(t *testing.T) {
 	fileName := mntPath + "/small_write.txt"
