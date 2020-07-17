@@ -10,7 +10,7 @@ fi
 
 ## Build the cpplite lib first
 #echo "Building the cpplite lib"
-if [ $1 == "debug" ]
+if [ $1 = "debug" ]
 then
 rm -rf cpplite/build.release
 rm -rf build/blobfuse

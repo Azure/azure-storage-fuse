@@ -25,26 +25,41 @@ inline bool is_lowercase_string(const std::string &s)
     })));
 }
 
+std::string trim(const std::string& str) 
+{
+    const size_t start = str.find_first_not_of(' ');
+    if (std::string::npos == start) {
+        return std::string();
+    }
+    const size_t end = str.find_last_not_of(' ');
+    return str.substr(start, end - start + 1);
+}
+
 AUTH_TYPE get_auth_type(std::string authStr) 
 {
     if(!authStr.empty()) {
-        std::string lcAuthType = to_lower(authStr);
-        if (lcAuthType == "msi") {
+        std::string lcAuthType = trim(to_lower(authStr));
+        syslog(LOG_DEBUG, "Auth type set as %s", lcAuthType.c_str());
+        int lcAuthTypeSize = (int)lcAuthType.size();
+         // sometimes an extra space or tab sticks to authtype thats why this size comparison, it is not always 3 lettered
+        if(lcAuthTypeSize > 0 && lcAuthTypeSize < 5) 
+        {
+            // an extra space or tab sticks to msi thats find and not ==, this happens when we also have an MSIEndpoint and MSI_SECRET in the config
+            if (lcAuthType.find("msi") != std::string::npos) {
             // MSI does not require any parameters to work, asa a lone system assigned identity will work with no parameters.
             return MSI_AUTH;
-        } else if (lcAuthType == "key") {
-            if(!config_options.accountKey.empty()) // An account name is already expected to be specified.
-                return KEY_AUTH;
-            else
-                return INVALID_AUTH;
-        } else if (lcAuthType == "sas") {
-            if (!config_options.sasToken.empty()) // An account name is already expected to be specified.
-                return SAS_AUTH;
-            else
-                return INVALID_AUTH;
-        } else if (lcAuthType == "spn") {
-            return SPN_AUTH;
-        }
+            } 
+            else if (lcAuthType.find("key") != std::string::npos) {
+                    return KEY_AUTH;
+            }
+            else if (lcAuthType.find("sas") != std::string::npos) {
+                    syslog(LOG_DEBUG, "Auth Type set to SAS_AUTH");
+                    return SAS_AUTH;
+            }
+            else if (lcAuthType.find("spn") != std::string::npos) {
+                    return SPN_AUTH;
+            } 
+        }       
     } else {
         if (!config_options.objectId.empty() ||
             !config_options.identityClientId.empty() ||

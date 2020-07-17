@@ -8,6 +8,7 @@ trigger:
   branches:
     include:
       - master
+
 pr:
   branches:
     include:
@@ -15,60 +16,76 @@ pr:
       - master
 
 jobs:
-  - job: Linux_Build    
-    pool:
-      vmImage: 'ubuntu-16.04'
-    steps:
-      - script: |            
-            sudo apt-get update --fix-missing
-            sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
-            . ./build.sh
-            mkdir $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ./blobfuse $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ./blobfusetests $(Build.BinariesDirectory)
-            make package
-            cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/$(container_image)
-        env:
-          INCLUDE_TESTS: 1
-        displayName: Generate blobfuse build for Ubuntu 16.04
-      - script: |
-            ls -al
-            chmod 777 ./blobfusetests
-            $(Build.BinariesDirectory)/blobfusetests --gtest_filter=-BlobClientWrapperTest.*
-        workingDirectory: $(Build.BinariesDirectory)
-        condition: succeededOrFailed()  
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifacts for blobfuse $(container_image)'
-        condition: succeededOrFailed()
+  - job: UbuntuBuilds
 
-# Add ubuntu-20.04 and more releases here.
-  - job: Linux_Build_18_19
-
+    # Define on what all OS we want to run this Pipeline
     strategy:
-      maxParallel: 8
       matrix:
-        UBUNTU1804:
-          container_image: 'ubuntu-18.04'
-          build_type: Release    
-     
+        Ubuntu-16:
+          container_image: 'ubuntu-16.04'
+          build_type: Release 
+        Ubuntu-18:
+          container_image: 'ubuntu-18.04' 
+          build_type: Release 
+        Ubuntu-20:
+          container_image: 'ubuntu-20.04' 
+          build_type: Release 
     pool:
-      vmImage:  $(container_image)
+      vmImage: $(container_image)
+
     steps:
+      # Install all dependencies
       - script: |
-            sudo apt-get update --fix-missing
-            sudo apt-get install pkg-config libfuse-dev cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
-            . ./build.sh
-            mkdir $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ./blobfuse $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(container_image)
-            make package
-            cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/$(container_image)
-        displayName: Generate blobfuse build for $(container_image)
+          sudo apt-get update --fix-missing
+          sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+        displayName: "Basic Tools Setup"
+
+      # Install libfuse
+      - script: |
+          sudo apt-get install libfuse-dev -y
+        displayName: "libFuse Setup"
+
+      # List commits consumed for this build
+      - script: |
+          echo "Below commits were done in last 12 hours : " `date` 
+          git --no-pager log --since="12 hours ago" --stat
+        displayName: "List Commits"
+
+      # Build the blobFuse binary
+      - script: |
+          export INCLUDE_TESTS=1
+          sudo chmod +x build.sh
+          . ./build.sh
+        displayName: "Build BlobFuse"
+
+      # Test the binary just to make sure it was built fine
+      - script: |
+          ./build/blobfuse --version
+        displayName: "Test the binary"
+
+      # Copy binaries required for the package
+      - script: |
+          cd ./build/
+          mkdir $(Build.ArtifactStagingDirectory)/$(container_image)
+          cp ./blobfuse $(Build.ArtifactStagingDirectory)/$(container_image)
+          cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(container_image)
+          cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(container_image)
+          cp ./blobfusetests $(Build.BinariesDirectory)
+          make package
+          cp ./blobfuse-*.*.*-Linux.deb  $(Build.ArtifactStagingDirectory)/$(container_image)
+        displayName: "Build Artifacts"
+
+      # Test the binary
+      # For now only on Ubn16.04
+      - script: |
+          ls -al
+          chmod 777 ./blobfusetests
+          $(Build.BinariesDirectory)/blobfusetests --gtest_filter=-BlobClientWrapperTest.*
+        workingDirectory: $(Build.BinariesDirectory)
+        condition: eq(variables.container_image, 'ubuntu-16.04')
+        displayName: "GTest on Ubn-16"
+  
+      # Publish the Artifacts
       - task: PublishBuildArtifacts@1
         displayName: 'Publish Artifacts for blobfuse $(container_image)'
-        condition: succeededOrFailed()
-
- 
+        #condition: succeededOrFailed()
