@@ -20,6 +20,7 @@
 
 #include "http_base.h"
 
+extern bool gEnableLogsHttp;
 namespace azure {  namespace storage_lite {
 
     class CurlEasyClient;
@@ -96,7 +97,12 @@ namespace azure {  namespace storage_lite {
         {
             std::this_thread::sleep_for(interval);
             const auto curlCode = perform();
-            syslog(curlCode != CURLE_OK || unsuccessful(m_code) ? LOG_ERR : LOG_DEBUG, "%s", format_request_response().c_str());
+            if (gEnableLogsHttp || 
+                curlCode != CURLE_OK ||
+                unsuccessful(m_code)) 
+            {
+                syslog(curlCode != CURLE_OK || unsuccessful(m_code) ? LOG_ERR : LOG_DEBUG, "%s", format_request_response().c_str());
+            }
             cb(m_code, m_error_stream, curlCode);
         }
 
@@ -350,6 +356,7 @@ namespace azure {  namespace storage_lite {
             curl_global_init(CURL_GLOBAL_DEFAULT);
             for (int i = 0; i < m_size; i++) {
                 CURL *h = curl_easy_init();
+                curl_easy_setopt(h, CURLOPT_CAPATH, ca_path.c_str());
                 m_handles.push(h);
             }
         }

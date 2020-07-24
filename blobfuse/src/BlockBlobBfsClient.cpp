@@ -282,7 +282,7 @@ bool BlockBlobBfsClient::CreateDirectory(const std::string directoryPath)
     std::vector<std::pair<std::string, std::string>> metadata;
     metadata.push_back(std::make_pair("hdi_isfolder", "true"));
     errno = 0;
-    InvalidateCachedProperty(directoryPath);
+    //InvalidateCachedProperty(directoryPath);
     m_blob_client->upload_block_blob_from_stream(
         configurations.containerName,
         directoryPath,

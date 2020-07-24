@@ -28,6 +28,8 @@ elif [ $1 == "remote-tree" ]
 then  
   echo "Adding remote git for subtree : "
   git remote add -f azure-storage-cpplite https://github.com/Azure/azure-storage-cpplite
+else
+  echo "Options : pull push add remove list diff remote-tree"
 fi
 echo
 
