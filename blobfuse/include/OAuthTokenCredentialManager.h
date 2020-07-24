@@ -11,7 +11,7 @@
 
 // Enable this to start a thread to refresh the token instread of 
 // service thread checking the timer for each request and going for refresh
-#define TOKEN_REFRESH_THREAD
+//#define TOKEN_REFRESH_THREAD
 
 // This shall be disabled as this expires token faster
 /*

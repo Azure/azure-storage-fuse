@@ -2,6 +2,8 @@
 #include <ctype.h>
 #include <sys/utsname.h>
 
+bool gEnableLogsHttp;
+
 std::string to_lower(std::string original) 
 {
     std::string out;

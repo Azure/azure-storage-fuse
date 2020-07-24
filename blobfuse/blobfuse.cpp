@@ -362,6 +362,8 @@ int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
         setlogmask(LOG_UPTO(LOG_WARNING));
         return 0;
     }
+    gEnableLogsHttp = false;
+
     std::string min_log_level(min_log_level_char);
     if (min_log_level.empty())
     {
@@ -395,11 +397,13 @@ int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
     }
     if (min_log_level == "LOG_INFO")
     {
+        gEnableLogsHttp = true;
         setlogmask(LOG_UPTO(LOG_INFO));
         return 0;
     }
     if (min_log_level == "LOG_DEBUG")
     {
+        gEnableLogsHttp = true;
         setlogmask(LOG_UPTO(LOG_DEBUG));
         return 0;
     }
