@@ -356,6 +356,7 @@ namespace azure {  namespace storage_lite {
             curl_global_init(CURL_GLOBAL_DEFAULT);
             for (int i = 0; i < m_size; i++) {
                 CURL *h = curl_easy_init();
+                curl_easy_setopt(h, CURLOPT_CAPATH, ca_path.c_str());
                 m_handles.push(h);
             }
         }
