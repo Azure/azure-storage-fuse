@@ -946,6 +946,11 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClien
                 results.emplace_back(std::move(response.m_items), skip_first);
             }
         }
+        else if (errno ==400 || errno == 404)
+        {
+            success = true;
+            syslog(LOG_WARNING, "list_blobs_segmented indicates blob not found");
+        }
         else
         {
             failcount++;
