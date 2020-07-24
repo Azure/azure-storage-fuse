@@ -133,13 +133,17 @@ int azs_getattr(const char *path, struct stat *stbuf)
         return 0;
     }
 
-    // Ensure that we don't get attributes while the file is in an intermediate state.
-    std::shared_ptr<std::mutex> fmutex = file_lock_map::get_instance()->get_mutex(path);
-    std::lock_guard<std::mutex> lock(*fmutex);
-
     // Check and see if the file/directory exists locally (because it's being buffered.)  If so, skip the call to Storage.
     std::string pathString(path);
+    
+    // Replace '\' with '/' as for azure storage they will be considered as path seperators
+    std::replace(pathString.begin(), pathString.end(), '\\', '/');
+
     std::string mntPathString = prepend_mnt_path_string(pathString);
+
+    // Ensure that we don't get attributes while the file is in an intermediate state.
+    std::shared_ptr<std::mutex> fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
+    std::lock_guard<std::mutex> lock(*fmutex);
 
     int res;
     int acc = access(mntPathString.c_str(), F_OK);
@@ -166,7 +170,13 @@ int azs_getattr(const char *path, struct stat *stbuf)
     }
 
     // It's not in the local cache.  Check to see if it's a blob on the service:
-    std::string blobNameStr(&(path[1]));
+    std::string blobNameStr(pathString.substr(1).c_str());
+    if (blobNameStr.rfind(".Trash", 0) == 0 ||
+        blobNameStr.rfind(".xdg-volume-info", 0) == 0 ||
+        blobNameStr.rfind("autorun.inf", 0) == 0) {
+         return -(ENOENT);
+    }
+
     errno = 0;
     //AZS_DEBUGLOGV("Storage client name is %s \n", (typeid(storage_client).name()));
     // see if it is block blob and call the block blob method
@@ -251,10 +261,11 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 AZS_DEBUGLOGV("%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
                 AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
 
-                auto blob_property = storage_client->GetProperties(blobNameStr, true);
-                mode_t perms = blob_property.m_file_mode == 0 ? config_options.defaultPermission : blob_property.m_file_mode;
+                //auto blob_property = storage_client->GetProperties(blobNameStr, true);
+                //mode_t perms = blob_property.m_file_mode == 0 ? config_options.defaultPermission : blob_property.m_file_mode;
+                mode_t perms = config_options.defaultPermission;
 
-                if (is_symlink_blob(blob_property.metadata))
+                if (is_symlink_blob(blobItem.metadata))
                 {
                     stbuf->st_mode = S_IFLNK | perms;
                 }
@@ -265,12 +276,23 @@ int azs_getattr(const char *path, struct stat *stbuf)
 
                 stbuf->st_uid = fuse_get_context()->uid;
                 stbuf->st_gid = fuse_get_context()->gid;
-                stbuf->st_mtime = blob_property.last_modified;
-                stbuf->st_atime = blob_property.get_last_access();
-                stbuf->st_ctime = blob_property.get_last_change();
-                AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", blobItem.last_modified.c_str(), blob_property.size);
+                //stbuf->st_mtime = blob_property.last_modified;
+                //stbuf->st_atime = blob_property.get_last_access();
+                //stbuf->st_ctime = blob_property.get_last_change();
+                if (!blobItem.last_modified.empty()) {
+                    struct tm mtime;
+                    char *ptr = strptime(blobItem.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mtime);
+                    if (ptr) {
+                        stbuf->st_mtime = timegm(&mtime);
+                        stbuf->st_atime = stbuf->st_ctime = stbuf->st_mtime;
+                    }
+                }
+                //stbuf->st_size = blob_property.size;
+                //AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", blobItem.last_modified.c_str(), blob_property.size);
+                stbuf->st_size = blobItem.content_length;
+                AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", blobItem.last_modified.c_str(), blobItem.content_length);
                 stbuf->st_nlink = 1;
-                stbuf->st_size = blob_property.size;
+                
                 return 0;
             }
             else // none of the blobs match exactly so blob not found

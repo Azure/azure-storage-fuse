@@ -203,7 +203,7 @@ jobs:
     - script: |
         touch $(MOUNT_DIR)/test.txt
       # dd bs=1000 count=1000000 if=/dev/zero of=$(MOUNT_DIR)/test.txt
-      displayName: "TEST - Create File (1GB in size)"
+      displayName: "TEST - Create File (Empty)"
       timeoutInMinutes: 10
       continueOnError: true
      
@@ -215,8 +215,8 @@ jobs:
 
     # File Read-Write test
     - script: |
-        sudo cat /var/log/*.log > $(MOUNT_DIR)/test.log
-        cat $(MOUNT_DIR)/test.log
+        sudo cat blobfuse-nightly.yml > $(MOUNT_DIR)/test.log
+        sudo cat $(MOUNT_DIR)/test.log
         stat $(MOUNT_DIR)/test.log
       displayName: "TEST - Write to file and Read back"
       timeoutInMinutes: 10
@@ -298,12 +298,35 @@ jobs:
         sudo mkdir $(BLOBFUSE_STRESS_DIR)
         sudo chown -R `whoami` $(BLOBFUSE_STRESS_DIR)
         sudo chmod 777 $(BLOBFUSE_STRESS_DIR)
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --use-attr-cache=true
         cd test
         go run stressTest.go $(MOUNT_DIR)
         cd -
       # condition: eq(variables['Build.SourceBranchName'], 'master')
       displayName: TEST - BLOCK stressTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        sudo fusermount -u $(MOUNT_DIR)
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - BLOCK stressTest Cleanup
+      timeoutInMinutes: 30
+      continueOnError: true
+
+    # Mount a directory for stressTest and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        sudo mkdir $(BLOBFUSE_STRESS_DIR)
+        sudo chown -R `whoami` $(BLOBFUSE_STRESS_DIR)
+        sudo chmod 777 $(BLOBFUSE_STRESS_DIR)
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        cd test
+        go run stressTest.go $(MOUNT_DIR)
+        cd -
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - BLOCK stressTest No Attr Cache
       timeoutInMinutes: 120
       continueOnError: true
 
@@ -344,7 +367,7 @@ jobs:
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
         cd test
         go run stressTest.go $(MOUNT_DIR)
         cd -
@@ -363,6 +386,29 @@ jobs:
       timeoutInMinutes: 30
       continueOnError: true
       
+    # Mount a directory for stressTest (ADLS) and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true
+        cd test
+        go run stressTest.go $(MOUNT_DIR)
+        cd -
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - ADLS stressTest No Attr Cache
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR)/*
+        sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - ADLS stressTest Cleanup
+      timeoutInMinutes: 30
+      continueOnError: true
+
     # -------------------------------------------------------
     # Mount a directory for feature test (ADLS) and run it
     - script:  |

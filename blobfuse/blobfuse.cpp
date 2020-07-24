@@ -324,6 +324,13 @@ void *azs_init(struct fuse_conn_info * conn)
     g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
     g_gc_cache->run();
 
+    if (config_options.authType == MSI_AUTH ||
+        config_options.authType == SPN_AUTH)
+    {
+        std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(EmptyCallback);
+        tokenManager->StartTokenMonitor();
+    }
+
     return NULL;
 }
 
@@ -355,6 +362,8 @@ int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
         setlogmask(LOG_UPTO(LOG_WARNING));
         return 0;
     }
+    gEnableLogsHttp = false;
+
     std::string min_log_level(min_log_level_char);
     if (min_log_level.empty())
     {
@@ -388,11 +397,13 @@ int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
     }
     if (min_log_level == "LOG_INFO")
     {
+        gEnableLogsHttp = true;
         setlogmask(LOG_UPTO(LOG_INFO));
         return 0;
     }
     if (min_log_level == "LOG_DEBUG")
     {
+        gEnableLogsHttp = true;
         setlogmask(LOG_UPTO(LOG_DEBUG));
         return 0;
     }

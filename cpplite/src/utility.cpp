@@ -1,4 +1,6 @@
 #include <ctime>
+#include <iomanip>
+#include <sstream>
 
 #include "utility.h"
 
@@ -79,7 +81,6 @@ namespace azure {  namespace storage_lite {
 
     std::string get_ms_date(date_format format)
     {
-        char buf[30];
         std::time_t t = std::time(nullptr);
         std::tm *pm;
 #ifdef _WIN32
@@ -89,8 +90,23 @@ namespace azure {  namespace storage_lite {
 #else
         pm = std::gmtime(&t);
 #endif
-        size_t s = std::strftime(buf, 30, (format == date_format::iso_8601 ? constants::date_format_iso_8601 : constants::date_format_rfc_1123), pm);
-        return std::string(buf, s);
+        if (format == date_format::iso_8601)
+        {
+            char buf[32];
+            std::strftime(buf, sizeof(buf), constants::date_format_iso_8601, pm);
+            return std::string(buf);
+        }
+        else if (format == date_format::rfc_1123)
+        {
+            std::stringstream ss;
+            ss.imbue(std::locale("C"));
+            ss << std::put_time(pm, constants::date_format_rfc_1123);
+            return ss.str();
+        }
+        else
+        {
+            throw std::runtime_error("unknown datetime format");
+        }
     }
 
     std::string get_ms_range(unsigned long long start_byte, unsigned long long end_byte)

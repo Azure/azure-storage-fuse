@@ -3,9 +3,17 @@ BLOBFS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 ## Use "export INCLUDE_TESTS=1" to enable building tests
 
-cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo ..'
-if [ -n "${INCLUDE_TESTS}" ]; then
-    cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_TESTS=1 ..'
+if [ $1 = "debug" ]
+then
+	cmake_args='-DCMAKE_BUILD_TYPE=Debug ..'
+	if [ -n "${INCLUDE_TESTS}" ]; then
+		cmake_args='-DCMAKE_BUILD_TYPE=Debug -DINCLUDE_TESTS=1 ..'
+	fi
+else
+	cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo ..'
+	if [ -n "${INCLUDE_TESTS}" ]; then
+		cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_TESTS=1 ..'
+	fi
 fi
 
 ## Build the cpplite lib first

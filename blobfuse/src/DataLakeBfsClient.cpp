@@ -40,8 +40,7 @@ bool DataLakeBfsClient::AuthenticateStorage()
         //Authenticate the storage container by using a list call
         m_adls_client->list_paths_segmented(
                 configurations.containerName,
-                "/",
-                1);
+                "/", false, "", 1);
         if (errno != 0)
         {
             syslog(LOG_ERR,
@@ -357,6 +356,7 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
     int lstaterrno = 0;
 
     errno = 0;
+    InvalidateCachedProperty(pathStr.substr(1));
     m_adls_client->set_file_access_control(configurations.containerName, pathStr.substr(1), accessControl);
     lstaterrno = errno;
 
@@ -459,7 +459,7 @@ long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
     return buf.st_size;
 }
 
-
+#if 0
 int DataLakeBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata)
 {
     errno = 0;
@@ -499,3 +499,9 @@ int DataLakeBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, 
     InvalidateCachedProperty(pathStr);
     return errno;
 }
+#else
+int DataLakeBfsClient::UpdateBlobProperty(std::string /*pathStr*/, std::string /*key*/, std::string /*value*/, METADATA */*metadata*/)
+{
+    return 0;
+}
+#endif
