@@ -32,6 +32,12 @@ public:
     ///</summary>
     ///<returns>none</returns>
     bool DeleteDirectory(const std::string directoryPath) override;
+
+     ///<summary>
+    /// Does the ADLS Directory or blob exist
+    ///</summary>
+    ///<returns>none</returns>
+    int Exists(const std::string directoryPath) override;
     ///<summary>
     /// Helper function - Checks if the "directory" blob is empty
     ///</summary>

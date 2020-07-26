@@ -215,6 +215,16 @@ bool DataLakeBfsClient::CreateDirectory(const std::string directoryPath)
     }
     return true;
 }
+
+///<summary>
+/// Does the blob/directory exist
+///</summary>
+///<returns>none</returns>
+int DataLakeBfsClient::Exists(const std::string directoryPath)
+{
+    return (int) m_adls_client->file_exists(configurations.containerName, directoryPath);
+}
+
 ///<summary>
 /// Deletes a Directory
 ///</summary>
