@@ -20,7 +20,9 @@ static const int maxFailCount = 20;
 class BfsFileProperty : public blob_property
 {
     public:
-        BfsFileProperty() : m_valid(false) {}
+        BfsFileProperty() : m_valid(false), m_not_exists(false) {}
+        BfsFileProperty(bool not_exists) : m_valid(true), m_not_exists(not_exists) {}
+
         BfsFileProperty(std::string cacheControl,
                 std::string contentDisposition,
                 std::string contentEncoding,
@@ -49,6 +51,7 @@ class BfsFileProperty : public blob_property
             last_access = last_modified;
             last_change = last_modified;
             cache_time = time(NULL);
+            m_not_exists = false;
 
             // This is mainly used in the Blob Client
             if (!modestring.empty())
@@ -126,6 +129,7 @@ class BfsFileProperty : public blob_property
             is_directory = false;
             last_access = last_modified;
             last_change = last_modified;
+            m_not_exists = false;
 
             //This is mainly used in the ADLS client
             if (!modestring.empty())
@@ -171,23 +175,13 @@ class BfsFileProperty : public blob_property
             }
         }
 
-        //std::string m_cache_control;
-        //std::string m_content_disposition;
-        //std::string m_content_encoding;
-        //std::string m_content_language;
-        //std::string m_content_md5;
-        //std::string m_content_type;
-        //std::string m_etag;
-        //std::string m_copy_status;
         std::string m_owner;
         std::string m_group;
         std::string m_permissions;
-        //std::vector<std::pair<std::string, std::string>> m_metadata;
-        //time_t m_last_modified;
         mode_t m_file_mode;
-        //unsigned long long m_size;
         bool is_directory;
         bool m_valid;
+        bool m_not_exists;
 
         time_t last_access;
         time_t last_change;
@@ -196,6 +190,11 @@ class BfsFileProperty : public blob_property
         bool isValid()
         {
             return m_valid;
+        }
+
+        bool exists()
+        {
+            return !m_not_exists;
         }
 
         unsigned long long get_size()

@@ -208,6 +208,7 @@ bool DataLakeBfsClient::CreateDirectory(const std::string directoryPath)
     // We could call the block blob CreateDirectory instead but that would require making the metadata with hdi_isfolder
     // it's easier if we let the service do that for us
     errno = 0;
+    InvalidateCachedProperty(directoryPath);
     m_adls_client->create_directory(configurations.containerName, directoryPath);
     if(errno != 0)
     {
@@ -419,6 +420,13 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
         SetCachedProperty(pathName, ret_property);
 
         return ret_property;
+    }
+
+    if (errno == 404) {
+        cache_prop = BfsFileProperty(true);
+        SetCachedProperty(pathName, cache_prop);
+        errno = 404;
+        return cache_prop;
     }
 
     return BfsFileProperty();

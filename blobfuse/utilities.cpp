@@ -320,7 +320,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
         BfsFileProperty blob_property = storage_client->GetProperties(blobNameStr);
         mode_t perms = blob_property.m_file_mode == 0 ? config_options.defaultPermission : blob_property.m_file_mode;
 
-        if ((errno == 0) && blob_property.isValid())
+        if ((errno == 0) && blob_property.isValid() && blob_property.exists())
         {
             if (blob_property.is_directory)
             {
@@ -356,7 +356,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             stbuf->st_size = blob_property.get_size();
             return 0;
         }
-        else if (errno == 0 && !blob_property.isValid())
+        else if (errno == 0 && !blob_property.isValid() && blob_property.exists())
         {
             // Check to see if it's a directory, instead of a file
             errno = 0;
@@ -388,7 +388,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
         }
         else
         {
-            if (errno == 404)
+            if (errno == 404 || !blob_property.exists())
             {
                 // The file does not currently exist on the service or in the cache
                 // If the command they are calling is just checking for existence, fuse will call the next operation

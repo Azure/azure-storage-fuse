@@ -558,7 +558,7 @@ std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath
 
     BfsFileProperty property = GetProperties(sourcePath.substr(1));
     std::vector<std::string> file_paths_to_remove;
-    if (property.isValid() && property.is_directory)
+    if (property.isValid() && property.exists() && property.is_directory)
     {
         rename_directory(sourcePath.c_str(), destinationPath.c_str(), file_paths_to_remove);
     }
@@ -605,7 +605,7 @@ BlockBlobBfsClient::List(std::string continuation, const std::string prefix, con
 bool BlockBlobBfsClient::IsDirectory(const char *path)
 {
     BfsFileProperty property = GetProperties(path);
-    if (property.isValid() && property.is_directory)
+    if (property.isValid() && property.exists() && property.is_directory)
         return true;
     else
         return false;
@@ -715,7 +715,7 @@ int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std
 
     errno = 0;
     auto blob_property = GetProperties(src.substr(1), true);
-    if ((errno == 0) && blob_property.isValid())
+    if ((errno == 0) && blob_property.isValid() && blob_property.exists())
     {
         AZS_DEBUGLOGV("Source file %s for rename operation exists as a blob on the service.\n", src.c_str());
         // Blob also exists on the service.  Perform a server-side copy.
@@ -736,7 +736,7 @@ int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std
         do
         {
             blob_property = GetProperties(dst.substr(1), true);
-        } while (errno == 0 && blob_property.isValid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+        } while (errno == 0 && blob_property.isValid() && blob_property.exists() && blob_property.copy_status.compare(0, 7, "pending") == 0);
 
         if (blob_property.copy_status.compare(0, 7, "success") == 0)
         {

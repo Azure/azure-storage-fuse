@@ -119,15 +119,17 @@ int StorageBfsClientBase::GetCachedProperty(std::string pathStr, BfsFileProperty
         BfsFileProperty cached_prop;
 
         auto iter = mAttrCacheMap.find(pathStr);
-        if(iter != mAttrCacheMap.end()) {
-            cached_prop = iter->second;
+        if(iter == mAttrCacheMap.end()) {
+            return -1;    
         }
 
-        if (cached_prop.isValid()) {
-            time_t curr_time = time(NULL);
-            time_t diff = curr_time - cached_prop.get_cache_time();
-            if (diff < config_options.fileCacheTimeoutInSeconds) {
-                prop = cached_prop;
+        time_t curr_time = time(NULL);
+        time_t diff = curr_time - iter->second.get_cache_time();
+
+        if (iter->second.isValid()) {
+            if ((iter->second.exists() && diff < config_options.fileCacheTimeoutInSeconds) ||
+                (!iter->second.exists() && diff < 20)) {
+                prop = iter->second;
                 return 0;
             }
         }
