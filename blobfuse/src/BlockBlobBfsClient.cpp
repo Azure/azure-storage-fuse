@@ -282,7 +282,7 @@ bool BlockBlobBfsClient::CreateDirectory(const std::string directoryPath)
     std::vector<std::pair<std::string, std::string>> metadata;
     metadata.push_back(std::make_pair("hdi_isfolder", "true"));
     errno = 0;
-    //InvalidateCachedProperty(directoryPath);
+    InvalidateCachedProperty(directoryPath);
     m_blob_client->upload_block_blob_from_stream(
         configurations.containerName,
         directoryPath,
@@ -379,12 +379,11 @@ void BlockBlobBfsClient::DeleteFile(const std::string pathToDelete)
 ///<returns>BfsFileProperty object which contains the property details of the file</returns>
 BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool type_known)
 {
-    /*BfsFileProperty cache_prop;
+    BfsFileProperty cache_prop;
     if (0 == GetCachedProperty(pathName, cache_prop))
     {
         return cache_prop;
     }
-    */
 
     errno = 0;
     if (type_known) {
@@ -555,7 +554,9 @@ std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath
 {
     // Rename the directory blob, if it exists.
     errno = 0;
-
+    InvalidateCachedProperty(sourcePath.substr(1));
+    InvalidateCachedProperty(destinationPath.substr(1));
+    
     BfsFileProperty property = GetProperties(sourcePath.substr(1));
     std::vector<std::string> file_paths_to_remove;
     if (property.isValid() && property.exists() && property.is_directory)
@@ -571,6 +572,9 @@ std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath
 
 std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath,const  std::string destinationPath, bool isDir)
 {
+    InvalidateCachedProperty(sourcePath.substr(1));
+    InvalidateCachedProperty(destinationPath.substr(1));
+    
     std::vector<std::string> file_paths_to_remove;
     if (isDir) {
         rename_directory(sourcePath.c_str(), destinationPath.c_str(), file_paths_to_remove);
