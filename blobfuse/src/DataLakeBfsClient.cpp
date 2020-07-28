@@ -459,7 +459,7 @@ long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
     return buf.st_size;
 }
 
-#if 0
+#if 1
 int DataLakeBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata)
 {
     errno = 0;
