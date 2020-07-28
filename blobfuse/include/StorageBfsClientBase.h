@@ -20,8 +20,8 @@ static const int maxFailCount = 20;
 class BfsFileProperty : public blob_property
 {
     public:
-        BfsFileProperty() : m_valid(false), m_not_exists(false) {}
-        BfsFileProperty(bool not_exists) : m_valid(true), m_not_exists(not_exists) {}
+        BfsFileProperty() : m_valid(false), m_not_exists(false), m_empty_dir(false) {}
+        BfsFileProperty(bool not_exists) : m_valid(true), m_not_exists(not_exists), m_empty_dir(false) {}
 
         BfsFileProperty(std::string cacheControl,
                 std::string contentDisposition,
@@ -52,6 +52,7 @@ class BfsFileProperty : public blob_property
             last_change = last_modified;
             cache_time = time(NULL);
             m_not_exists = false;
+            m_empty_dir = false;
 
             // This is mainly used in the Blob Client
             if (!modestring.empty())
@@ -130,6 +131,7 @@ class BfsFileProperty : public blob_property
             last_access = last_modified;
             last_change = last_modified;
             m_not_exists = false;
+            m_empty_dir = false;
 
             //This is mainly used in the ADLS client
             if (!modestring.empty())
@@ -182,6 +184,7 @@ class BfsFileProperty : public blob_property
         bool is_directory;
         bool m_valid;
         bool m_not_exists;
+        bool m_empty_dir;
 
         time_t last_access;
         time_t last_change;
@@ -190,6 +193,16 @@ class BfsFileProperty : public blob_property
         bool isValid()
         {
             return m_valid;
+        }
+
+        bool IsDirectoryEmpty()
+        {
+            return m_empty_dir;
+        }
+
+        void DirectoryIsEmpty()
+        {
+            m_empty_dir = true;
         }
 
         bool exists()

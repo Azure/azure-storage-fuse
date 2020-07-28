@@ -72,10 +72,12 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accou
             account,
             configurations.concurrency);
         errno = 0;
+        #if 0
         if (configurations.useAttrCache)
         {
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
         }
+        #endif
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch (const std::exception &ex)
@@ -108,10 +110,12 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_sas()
             account,
             configurations.concurrency);
         errno = 0;
+        #if 0
         if (configurations.useAttrCache)
         {
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
         }
+        #endif
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch (const std::exception &ex)
@@ -156,10 +160,12 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
         std::shared_ptr<blob_client> blobClient =
             std::make_shared<blob_client>(account, max_concurrency_oauth);
         errno = 0;
+        #if 0
         if (configurations.useAttrCache)
         {
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
         }
+        #endif
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch (const std::exception &ex)
@@ -204,10 +210,12 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
         std::shared_ptr<blob_client> blobClient =
             std::make_shared<blob_client>(account, max_concurrency_oauth);
         errno = 0;
+        #if 0
         if (configurations.useAttrCache)
         {
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
         }
+        #endif
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch (const std::exception &ex)
@@ -479,7 +487,11 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
                         last_mod,
                         "", // Return an empty modestring because blob doesn't support file mode bits.
                         0);
-                    //ret_property.is_directory = true;
+                    ret_property.is_directory = true;
+                    if (dirSize <= 1)
+                        ret_property.DirectoryIsEmpty();
+
+                    SetCachedProperty(pathName, ret_property);
                     errno = 0;
                     return ret_property;
                 }
@@ -509,7 +521,11 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
             else // none of the blobs match exactly so blob not found
             {
                 syslog(LOG_ERR,"%s does not match the exact name in the top 2 return from list_hierarchial_blobs. It will be treated as a new blob", pathName.c_str());
-                errno = ENOENT;
+                //errno = ENOENT;
+                cache_prop = BfsFileProperty(true);
+                SetCachedProperty(pathName, cache_prop);
+                errno = 404;
+                return cache_prop;
             }
         }
     }
