@@ -182,7 +182,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     //AZS_DEBUGLOGV("Storage client name is %s \n", (typeid(storage_client).name()));
     // see if it is block blob and call the block blob method
     //if the first task is to study
-    #if 0
+    #if 1
     if (!storage_client->isADLS())
     {
         int resultCount = 2;
@@ -332,9 +332,9 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 // Directory size will affect behaviour for mv, rmdir, cp etc.
                 stbuf->st_uid = fuse_get_context()->uid;
                 stbuf->st_gid = fuse_get_context()->gid;
-                if (!storage_client->isADLS())
-                     stbuf->st_nlink = blob_property.IsDirectoryEmpty() == D_EMPTY ? 2 : 3;
-                else
+                //if (!storage_client->isADLS())
+                //     stbuf->st_nlink = blob_property.IsDirectoryEmpty() == D_EMPTY ? 2 : 3;
+                //else
                     stbuf->st_nlink = storage_client->IsDirectoryEmpty(blobNameStr.c_str()) == D_EMPTY ? 2 : 3;
                 stbuf->st_size = 4096;
                 stbuf->st_mtime = blob_property.get_last_modified();
