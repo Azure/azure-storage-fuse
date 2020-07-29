@@ -395,6 +395,7 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
     }
 
     errno = 0;
+    #if 0
     dfs_properties dfsprops =
             m_adls_client->get_dfs_path_properties(configurations.containerName, pathName);
 
@@ -421,7 +422,46 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
 
         return ret_property;
     }
+    #else
+    // resource_type = directory not available in this, metadata may not be present
+    // Owner group and permissions are not available
+    // Missing properties
+    //  dfsprops.resource_type, owner, group, permissions, 
+    blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
+    if (errno == 0) {
+        BfsFileProperty ret_property(property.cache_control,
+            property.content_disposition,
+            property.content_encoding,
+            property.content_language,
+            property.content_md5,
+            property.content_type,
+            property.etag,
+            property.copy_status,
+            property.metadata,
+            property.last_modified,
+            "",
+            property.size);
 
+        access_control acl;
+        if (ret_property.is_directory) {
+            acl = m_adls_client->get_directory_access_control(configurations.containerName, pathName);
+        } else {
+            acl = m_adls_client->get_file_access_control(configurations.containerName, pathName);
+        }
+        if (errno == 0) {
+            ret_property.m_owner = acl.owner;
+            ret_property.m_group = acl.group;
+            ret_property.m_permissions = acl.permissions;
+            ret_property.SetFileMode(ret_property.m_permissions);
+        } else {
+            syslog(LOG_ERR, "Unable to retreive blob access control info for %s", pathName.c_str());
+        }
+
+        SetCachedProperty(pathName, ret_property);
+        return ret_property;
+    }
+    #endif
+    
     if (errno == 404) {
         cache_prop = BfsFileProperty(true);
         SetCachedProperty(pathName, cache_prop);
@@ -467,7 +507,7 @@ long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
     return buf.st_size;
 }
 
-#if 1
+#if 0
 int DataLakeBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata)
 {
     errno = 0;

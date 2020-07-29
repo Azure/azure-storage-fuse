@@ -133,22 +133,8 @@ class BfsFileProperty : public blob_property
             m_not_exists = false;
             m_empty_dir = false;
 
-            //This is mainly used in the ADLS client
-            if (!modestring.empty())
-            {
-                m_file_mode = 0000; // Supply no file mode to begin with unless the mode string is empty
-                for (char & c : modestring) {
-                    // Start by pushing back the mode_t.
-                    m_file_mode = m_file_mode << 1; // NOLINT(hicpp-signed-bitwise) (mode_t is signed, apparently. Suppress the inspection.)
-                    // Then flip the new bit based on whether the mode is enabled or not.
-                    // This works because we can expect a consistent 9 character modestring.
-                    m_file_mode |= (c != '-');
-                }
-            }
-            else
-            {
-                m_file_mode = 0;
-            }
+            SetFileMode(modestring);
+           
 
             if(resourceType == "directory")
             {
@@ -203,6 +189,24 @@ class BfsFileProperty : public blob_property
         void DirectoryIsEmpty()
         {
             m_empty_dir = true;
+        }
+
+        void SetFileMode(std::string modestring) 
+        {
+             m_file_mode = 0000; // Supply no file mode to begin with unless the mode string is empty
+            //This is mainly used in the ADLS client
+            
+            if (!modestring.empty())
+            {
+               
+                for (char & c : modestring) {
+                    // Start by pushing back the mode_t.
+                    m_file_mode = m_file_mode << 1; // NOLINT(hicpp-signed-bitwise) (mode_t is signed, apparently. Suppress the inspection.)
+                    // Then flip the new bit based on whether the mode is enabled or not.
+                    // This works because we can expect a consistent 9 character modestring.
+                    m_file_mode |= (c != '-');
+                }
+            }
         }
 
         bool exists()
