@@ -395,7 +395,7 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
     }
 
     errno = 0;
-    #if 0
+    #if 1
     dfs_properties dfsprops =
             m_adls_client->get_dfs_path_properties(configurations.containerName, pathName);
 
