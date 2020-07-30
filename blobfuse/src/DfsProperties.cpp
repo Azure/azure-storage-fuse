@@ -10,6 +10,11 @@
 #include <blob/blob_client.h>
 #include <adls_client.h>
 
+#include <storage_errno.h>
+#include <sys/stat.h>
+#include <iostream>
+#include <fstream>
+
 using namespace azure::storage_adls;
 using namespace azure::storage_lite;
 
@@ -167,4 +172,147 @@ dfs_properties adls_client_ext::get_dfs_path_properties(const std::string &files
     return props;
 }
 
+off_t get_file_size(const std::string file_name)
+{
+    off_t size = 0;
+    struct stat st;
+
+    if(stat(file_name.c_str(), &st) == 0)
+    {
+        size = st.st_size;
+    }
+    return size;
+}
+
+void adls_client_ext::append_data_from_file(const std::string &src_file, const std::string& filesystem, const std::string& file, const std::vector<std::pair<std::string, std::string>>& properties)
+{
+    const long long MAX_BLOB_SIZE = 5242880000000; // 4.77TB 
+    const long long MIN_UPLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
+
+    if(src_file.empty() || filesystem.empty() || file.empty())
+    {
+        errno = invalid_parameters;
+        return;
+    }
+    
+    long long file_size = get_file_size(src_file);        
+    if (file_size > MAX_BLOB_SIZE) {
+        errno = EFBIG;
+        return;
+    }
+
+    // Upoad to adls is a three step process
+    // 1. Create a file place holder
+    errno = 0;
+    create_file(filesystem, file);
+    if (errno) {
+        return;
+    }
+
+    if (file_size == 0) {
+        // This is an empty file nothing more to be done here
+        return;
+    }
+
+    // 2. Upload all the blocks
+    long long offset = 0;
+
+    if(file_size <= (64 * 1024 * 1024)){
+        // upto 64 MB file just upload in one shot
+        offset = file_size;
+        std::ifstream ifs(src_file, std::ios::in | std::ios::binary);
+
+        if(!ifs)
+        {
+            syslog(LOG_DEBUG, "Failed to open the input stream in append_data_from_file.  errno = %d, sourcePath = %s.", errno, src_file.c_str());
+            errno = unknown_error;
+            return;
+        }
+
+        append_data_from_stream(filesystem, file, 0, ifs, 0);
+
+        if (errno) {
+            syslog(LOG_DEBUG, "Failed to upload the input stream in append_data_from_file.  errno = %d, sourcePath = %s.", errno, src_file.c_str());
+            ifs.close();
+            return;
+        }
+
+        ifs.close();
+    } else {
+        // File is bigger so we need to split this up
+        long long block_size = MIN_UPLOAD_CHUNK_SIZE;
+        if(file_size > (50000 * MIN_UPLOAD_CHUNK_SIZE))
+        {
+            long long min_block = file_size / 50000; 
+            int remainder = min_block % 4*1024*1024;
+            min_block += 4*1024*1024 - remainder;
+            block_size = min_block < MIN_UPLOAD_CHUNK_SIZE ? MIN_UPLOAD_CHUNK_SIZE : min_block;
+        }
+
+        std::deque<std::future<int>> task_list;
+        int result = 0;
+
+        for(offset = 0; offset < file_size; offset += block_size)
+        {
+            // control the number of submitted jobs.
+            while(task_list.size() > maxConcurrency)
+            {
+                auto r = task_list.front().get();
+                task_list.pop_front();
+                if (0 == result) {
+                    result = r;
+                }
+            }
+            if (0 != result) {
+                break;
+            }
+
+            auto single_put = std::async(std::launch::async, [this, filesystem, file, src_file, file_size, offset, block_size](){
+                std::ifstream ifs(src_file, std::ios::in | std::ios::binary);
+                if(!ifs)
+                {
+                    syslog(LOG_DEBUG, "Failed to open the input stream in append_data_from_file.  errno = %d, sourcePath = %s.", errno, src_file.c_str());
+                    errno = unknown_error;
+                    return unknown_error;
+                }
+                ifs.seekg(offset);
+
+                if (block_size >= (file_size - offset))
+                    append_data_from_stream(filesystem, file, offset, ifs, 0);
+                else
+                    append_data_from_stream(filesystem, file, offset, ifs, block_size);
+
+                int result = errno;
+                ifs.close();           
+                return result; 
+            });
+            task_list.push_back(std::move(single_put));
+        } 
+
+        // Wait for all async threads to finish the upload
+        for(auto &task: task_list)
+        {
+            const auto r = task.get();
+            if(0 == result)
+            {
+                result = r;
+            }
+        } 
+    }
+
+    if (offset < file_size) {
+        syslog(LOG_DEBUG, "Failed to upload data in append_data_from_file.  errno = %d, sourcePath = %s.", errno, src_file.c_str());
+        return;
+    }
+
+    // 3. Flush the data to persist it
+    flush_data(filesystem, file, file_size);
+
+    // 4. Metadata for file is yet not updated so lets update that
+    if (properties.size() > 0)
+        set_file_properties(filesystem, file, properties);
+
+    return;
+}
+    
 }}

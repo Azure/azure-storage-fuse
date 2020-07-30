@@ -507,6 +507,19 @@ long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
     return buf.st_size;
 }
 
+#define USE_ADLS_ENDPOINT
+void DataLakeBfsClient::UploadFromFile(const std::string sourcePath, METADATA &metadata)
+{
+    #ifdef USE_ADLS_ENDPOINT
+    std::string blobName = sourcePath.substr(configurations.tmpPath.size() + 6 /* there are six characters in "/root/" */);
+    InvalidateCachedProperty(blobName);
+    m_adls_client->append_data_from_file(sourcePath, configurations.containerName, blobName, metadata);
+    #else
+    BlockBlobBfsClient::UploadFromFile(sourcePath, metadata);
+    #endif
+
+}
+
 #if 0
 int DataLakeBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata)
 {
