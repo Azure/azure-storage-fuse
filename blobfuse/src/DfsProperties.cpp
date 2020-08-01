@@ -99,7 +99,7 @@ dfs_properties adls_client_ext::get_dfs_path_properties(const std::string &files
         props.owner = http->get_response_header(constants::header_ms_owner);
         props.group = http->get_response_header(constants::header_ms_group);
         props.permissions = http->get_response_header(constants::header_ms_permissions);
-        props.acl = http->get_response_header(constants::header_ms_acl);
+      //  props.acl = http->get_response_header(constants::header_ms_acl);
 
         // props.metadata TODO
         props.metadata = std::vector<std::pair<std::string, std::string>>{};
