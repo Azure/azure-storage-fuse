@@ -316,15 +316,6 @@ int azs_getattr(const char *path, struct stat *stbuf)
     } // end of processing for Blockblob
     else
     {
-        if (storage_client->Exists(blobNameStr) == 0)
-        {
-                // The file does not currently exist on the service or in the cache
-                // If the command they are calling is just checking for existence, fuse will call the next operation
-                // dependent on this error number. If the command cannot continue without the existence it will print out
-                // the correct error to the user.
-                syslog(LOG_WARNING, "File does not currently exist on the storage or cache");
-                return -(ENOENT);
-        }
         BfsFileProperty blob_property = storage_client->GetProperties(blobNameStr);
         mode_t perms = blob_property.m_file_mode == 0 ? config_options.defaultPermission : blob_property.m_file_mode;
 
