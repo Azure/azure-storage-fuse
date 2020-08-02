@@ -232,7 +232,7 @@ int DataLakeBfsClient::Exists(const std::string directoryPath)
 bool DataLakeBfsClient::DeleteDirectory(const std::string directoryPath)
 {
     errno = 0;
-    InvalidateCachedProperty(directoryPath);
+   // InvalidateCachedProperty(directoryPath);
     m_adls_client->delete_directory(configurations.containerName, directoryPath);
     if(errno != 0)
     {
@@ -286,6 +286,11 @@ D_RETURN_CODE DataLakeBfsClient::IsDirectoryEmpty(std::string path)
                 }
             }
         }
+        else if (errno ==400 || errno == 404)
+        {
+            success = true;
+            syslog(LOG_WARNING, "adls list list_blobs_segmented indicates blob not found errno: %u", errno);
+        }
         else
         {
             success = false;
@@ -318,8 +323,8 @@ std::vector<std::string> DataLakeBfsClient::Rename(const std::string /*sourcePat
 
 std::vector<std::string> DataLakeBfsClient::Rename(std::string sourcePath, std::string destinationPath)
 {
-    InvalidateCachedProperty(sourcePath.substr(1));
-    InvalidateCachedProperty(destinationPath.substr(1));
+  //  InvalidateCachedProperty(sourcePath.substr(1));
+  //  InvalidateCachedProperty(destinationPath.substr(1));
     
     errno = 0;
     m_adls_client->move_file(
@@ -359,14 +364,14 @@ list_segmented_response DataLakeBfsClient::List(std::string continuation, std::s
 }
 
 int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
-    // TODO: Once ADLS works in blobfuse, verify that we don't need to get the access
+    
     std::string pathStr(path);
     access_control accessControl;
     accessControl.acl = modeToString(mode);
     int lstaterrno = 0;
 
     errno = 0;
-    InvalidateCachedProperty(pathStr.substr(1));
+   // InvalidateCachedProperty(pathStr.substr(1));
     m_adls_client->set_file_access_control(configurations.containerName, pathStr.substr(1), accessControl);
     lstaterrno = errno;
 
@@ -398,11 +403,7 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
 }
 
 BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*type_known*/) {
-   /*  BfsFileProperty cache_prop;
-    if (0 == GetCachedProperty(pathName, cache_prop)) {
-        return cache_prop;
-    } */
-
+  
     errno = 0;
     dfs_properties dfsprops =
             m_adls_client->get_dfs_path_properties(configurations.containerName, pathName);
@@ -425,8 +426,6 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
             dfsprops.permissions,
             dfsprops.content_length
             );
-
-      //  SetCachedProperty(pathName, ret_property);
 
         return ret_property;
     }
@@ -506,7 +505,7 @@ int DataLakeBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, 
             AZS_DEBUGLOGV("Failed to update property for %s : err %d", pathStr.c_str(), errno);
         }
     }
-    InvalidateCachedProperty(pathStr);
+   // InvalidateCachedProperty(pathStr);
     return errno;
 }
 #else

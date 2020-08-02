@@ -226,7 +226,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
 void BlockBlobBfsClient::UploadFromFile(const std::string sourcePath, METADATA &metadata)
 {
     std::string blobName = sourcePath.substr(configurations.tmpPath.size() + 6 /* there are six characters in "/root/" */);
-    InvalidateCachedProperty(blobName);
+  //  InvalidateCachedProperty(blobName);
     m_blob_client->upload_file_to_blob(sourcePath, configurations.containerName, blobName, metadata);
     // upload_file_to_blob does not return a status or success if the blob succeeded
     // it does syslog if there was an exception and changes the errno.
@@ -237,14 +237,14 @@ void BlockBlobBfsClient::UploadFromFile(const std::string sourcePath, METADATA &
 ///<returns>none</returns>
 void BlockBlobBfsClient::UploadFromStream(std::istream &sourceStream, const std::string blobName)
 {
-    InvalidateCachedProperty(blobName);
+  //  InvalidateCachedProperty(blobName);
     m_blob_client->upload_block_blob_from_stream(configurations.containerName, blobName, sourceStream);
 }
 
 void BlockBlobBfsClient::UploadFromStream(std::istream &sourceStream, const std::string blobName,
                                           std::vector<std::pair<std::string, std::string>> &metadata)
 {
-    InvalidateCachedProperty(blobName);
+  //  InvalidateCachedProperty(blobName);
     m_blob_client->upload_block_blob_from_stream(configurations.containerName, blobName, sourceStream, metadata);
 }
 
@@ -342,7 +342,7 @@ bool BlockBlobBfsClient::DeleteDirectory(const std::string directoryPath)
         syslog(LOG_DEBUG,
                "Directory is empty, attempting deleting directory marker: %s\n",
                directoryPath.c_str());
-        InvalidateCachedProperty((std::string)directoryPath);
+     //   InvalidateCachedProperty((std::string)directoryPath);
         DeleteFile((std::string)directoryPath);
         return true;
         break;
@@ -370,7 +370,7 @@ bool BlockBlobBfsClient::DeleteDirectory(const std::string directoryPath)
 ///<returns>none</returns>
 void BlockBlobBfsClient::DeleteFile(const std::string pathToDelete)
 {
-    InvalidateCachedProperty(pathToDelete);
+  //  InvalidateCachedProperty(pathToDelete);
     m_blob_client->delete_blob(configurations.containerName, pathToDelete);
 }
 ///<summary>
@@ -396,7 +396,7 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
                 "", // Return an empty modestring because blob doesn't support file mode bits.
                 property.size);
 
-            SetCachedProperty(pathName, ret_property);
+          //  SetCachedProperty(pathName, ret_property);
             return ret_property;
         }
     } else {
@@ -495,7 +495,7 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
                         "", // Return an empty modestring because blob doesn't support file mode bits.
                         property.size);
 
-                    SetCachedProperty(pathName, ret_property);
+               //     SetCachedProperty(pathName, ret_property);
                     errno = 0;
                     return ret_property;
                 }

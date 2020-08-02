@@ -180,10 +180,10 @@ int adls_client_ext::adls_exists(const std::string &filesystem, const std::strin
     {
         exists=1;
     }
-    if (!success() && errno != 404)
+    if (errno == 404)
     {
         exists=0;
-    }
+    } 
     return exists;
 }
 
