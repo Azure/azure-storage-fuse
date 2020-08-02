@@ -168,4 +168,24 @@ dfs_properties adls_client_ext::get_dfs_path_properties(const std::string &files
     return props;
 }
 
+int adls_client_ext::adls_exists(const std::string &filesystem, const std::string &path) 
+{
+    int exists = 0;
+    auto http = m_blob_client->client()->get_handle();
+    auto request = std::make_shared<get_dfs_properties_request>(filesystem, path);
+    auto async_func = std::bind(&azure::storage_lite::async_executor<void>::submit, m_account, request, http, m_context);
+    blob_client_adaptor_ext<void>(async_func);   
+    
+    if (success())
+    {
+        exists=1;
+    }
+    if (!success() && errno != 404)
+    {
+        exists=0;
+    }
+    return exists;
+}
+
+
 }}

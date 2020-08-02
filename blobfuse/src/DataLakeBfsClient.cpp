@@ -217,6 +217,15 @@ bool DataLakeBfsClient::CreateDirectory(const std::string directoryPath)
 }
 
 ///<summary>
+/// Does the blob/directory exist
+///</summary>
+///<returns>none</returns>
+int DataLakeBfsClient::Exists(const std::string directoryPath)
+{
+    return m_adls_client->adls_exists(configurations.containerName, directoryPath);
+}
+
+///<summary>
 /// Deletes a Directory
 ///</summary>
 ///<returns>none</returns>
@@ -389,10 +398,10 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
 }
 
 BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*type_known*/) {
-    BfsFileProperty cache_prop;
+   /*  BfsFileProperty cache_prop;
     if (0 == GetCachedProperty(pathName, cache_prop)) {
         return cache_prop;
-    }
+    } */
 
     errno = 0;
     dfs_properties dfsprops =
@@ -417,7 +426,7 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
             dfsprops.content_length
             );
 
-        SetCachedProperty(pathName, ret_property);
+      //  SetCachedProperty(pathName, ret_property);
 
         return ret_property;
     }
