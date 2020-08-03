@@ -379,12 +379,12 @@ void BlockBlobBfsClient::DeleteFile(const std::string pathToDelete)
 ///<returns>BfsFileProperty object which contains the property details of the file</returns>
 BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool type_known)
 {
-    BfsFileProperty cache_prop;
+   /*  BfsFileProperty cache_prop;
     if (0 == GetCachedProperty(pathName, cache_prop))
     {
         return cache_prop;
     }
-    
+  */  
 
     errno = 0;
     if (type_known) {
@@ -946,7 +946,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClien
                 results.emplace_back(std::move(response.m_items), skip_first);
             }
         }
-        else if (errno ==400 || errno == 404)
+        else if (errno == 404)
         {
             success = true;
             syslog(LOG_WARNING, "list_blobs_segmented indicates blob not found");

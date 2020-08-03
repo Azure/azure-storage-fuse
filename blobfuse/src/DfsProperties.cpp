@@ -1,5 +1,5 @@
 //
-// Created by adreed on 2/7/2020.
+// ADLS specific properties
 //
 
 #include <DfsProperties.h>
@@ -168,6 +168,8 @@ dfs_properties adls_client_ext::get_dfs_path_properties(const std::string &files
     return props;
 }
 
+/// Method that calls the dfs endpoint to find out if the pathe exists
+/// returns 0 if there is no path returns 1 if there is path
 int adls_client_ext::adls_exists(const std::string &filesystem, const std::string &path) 
 {
     int exists = 0;
