@@ -379,12 +379,6 @@ void BlockBlobBfsClient::DeleteFile(const std::string pathToDelete)
 ///<returns>BfsFileProperty object which contains the property details of the file</returns>
 BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool type_known)
 {
-    BfsFileProperty cache_prop;
-    if (0 == GetCachedProperty(pathName, cache_prop))
-    {
-        return cache_prop;
-    }
-
     errno = 0;
     if (type_known) {
         blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
@@ -402,7 +396,6 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
                 "", // Return an empty modestring because blob doesn't support file mode bits.
                 property.size);
 
-            SetCachedProperty(pathName, ret_property);
             return ret_property;
         }
     } else {
@@ -483,7 +476,6 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
                     if (dirSize <= 1)
                         ret_property.DirectoryIsEmpty();
 
-                    SetCachedProperty(pathName, ret_property);
                     errno = 0;
                     return ret_property;
                 }
@@ -505,7 +497,6 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
                         "", // Return an empty modestring because blob doesn't support file mode bits.
                         property.size);
 
-                    SetCachedProperty(pathName, ret_property);
                     errno = 0;
                     return ret_property;
                 }
@@ -514,8 +505,7 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
             {
                 syslog(LOG_ERR,"%s does not match the exact name in the top 2 return from list_hierarchial_blobs. It will be treated as a new blob", pathName.c_str());
                 //errno = ENOENT;
-                cache_prop = BfsFileProperty(true);
-                SetCachedProperty(pathName, cache_prop);
+                BfsFileProperty cache_prop = BfsFileProperty(true);
                 errno = 404;
                 return cache_prop;
             }
