@@ -114,7 +114,7 @@ list_segmented_response::list_segmented_response(list_paths_result response) :
 
 int StorageBfsClientBase::GetCachedProperty(std::string pathStr, BfsFileProperty &prop)
 {
-    if (mUseCache) {
+    if (mUseCache && isADLS()) {
         std::lock_guard<std::mutex> lock(mAttrCacheMutex);
         BfsFileProperty cached_prop;
 
@@ -139,7 +139,7 @@ int StorageBfsClientBase::GetCachedProperty(std::string pathStr, BfsFileProperty
 
 int StorageBfsClientBase::SetCachedProperty(std::string pathStr, BfsFileProperty &prop)
 {
-    if (mUseCache) {
+    if (mUseCache && isADLS()) {
         std::lock_guard<std::mutex> lock(mAttrCacheMutex);
         BfsFileProperty cached_prop;
 
@@ -158,7 +158,7 @@ int StorageBfsClientBase::SetCachedProperty(std::string pathStr, BfsFileProperty
 
 int StorageBfsClientBase::InvalidateCachedProperty(std::string pathStr)
 {
-    if (mUseCache) {
+    if (mUseCache && isADLS()) {
         std::lock_guard<std::mutex> lock(mAttrCacheMutex);
         BfsFileProperty cached_prop;
 
