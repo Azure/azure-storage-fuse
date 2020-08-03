@@ -112,7 +112,7 @@ list_segmented_response::list_segmented_response(list_paths_result response) :
     }
 }
 
-/* int StorageBfsClientBase::GetCachedProperty(std::string pathStr, BfsFileProperty &prop)
+int StorageBfsClientBase::GetCachedProperty(std::string pathStr, BfsFileProperty &prop)
 {
     if (mUseCache) {
         std::lock_guard<std::mutex> lock(mAttrCacheMutex);
@@ -167,4 +167,4 @@ int StorageBfsClientBase::InvalidateCachedProperty(std::string pathStr)
     }
 
     return -1;
-} */
+} 

@@ -232,7 +232,7 @@ int DataLakeBfsClient::Exists(const std::string directoryPath)
 bool DataLakeBfsClient::DeleteDirectory(const std::string directoryPath)
 {
     errno = 0;
-   // InvalidateCachedProperty(directoryPath);
+    InvalidateCachedProperty(directoryPath);
     m_adls_client->delete_directory(configurations.containerName, directoryPath);
     if(errno != 0)
     {
@@ -323,8 +323,8 @@ std::vector<std::string> DataLakeBfsClient::Rename(const std::string /*sourcePat
 
 std::vector<std::string> DataLakeBfsClient::Rename(std::string sourcePath, std::string destinationPath)
 {
-  //  InvalidateCachedProperty(sourcePath.substr(1));
-  //  InvalidateCachedProperty(destinationPath.substr(1));
+    InvalidateCachedProperty(sourcePath.substr(1));
+    InvalidateCachedProperty(destinationPath.substr(1));
     
     errno = 0;
     m_adls_client->move_file(
@@ -371,7 +371,7 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
     int lstaterrno = 0;
 
     errno = 0;
-   // InvalidateCachedProperty(pathStr.substr(1));
+    InvalidateCachedProperty(pathStr.substr(1));
     m_adls_client->set_file_access_control(configurations.containerName, pathStr.substr(1), accessControl);
     lstaterrno = errno;
 
@@ -505,7 +505,7 @@ int DataLakeBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, 
             AZS_DEBUGLOGV("Failed to update property for %s : err %d", pathStr.c_str(), errno);
         }
     }
-   // InvalidateCachedProperty(pathStr);
+    InvalidateCachedProperty(pathStr);
     return errno;
 }
 #else
