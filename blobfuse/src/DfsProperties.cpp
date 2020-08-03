@@ -138,35 +138,6 @@ dfs_properties adls_client_ext::get_dfs_path_properties(const std::string &files
             }
         }
 
-        #if 0
-        for(char c : http->get_response_header(blobfuse_constants::header_ms_properties)) {
-            if(propName.empty()) {
-                if (c == '=') {
-                    // Push state forward for the property value
-                    propName = runningString;
-                    runningString = "";
-                } else {
-                    runningString += c;
-                }
-            } else {
-                if (c == ',') {
-                    // base64 decode the value, write the metadata the vector, and move on.
-                    std::string prop;
-                    for (unsigned char dc : from_base64(runningString)) {
-                        prop += dc;
-                    }
-
-                    props.metadata.emplace_back(propName, prop);
-
-                    // Reset state for the next property
-                    propName = "";
-                    runningString = "";
-                } else {
-                    runningString += c;
-                }
-            }
-        }
-        #endif
     }
 
     return props;
