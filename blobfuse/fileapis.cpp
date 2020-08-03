@@ -12,8 +12,6 @@ std::deque<file_to_delete> cleanup;
 std::mutex deque_lock;
 std::shared_ptr<gc_cache> g_gc_cache;
 
-//#define BLOBFUSE_PRESERVE_METADATA
-
 // Opens a file for reading or writing
 // Behavior is defined by a normal, open() system call.
 // In all methods in this file, the variables "path" and "pathString" refer to the input path - the path as seen by the application using FUSE as a file system.
@@ -332,9 +330,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
       
             errno = 0;
             std::vector<std::pair<std::string, std::string>> metadata;
-            #ifdef BLOBFUSE_PRESERVE_METADATA
             storage_client->UpdateBlobProperty(blob_name, "", "", &metadata);
-            #endif
             storage_client->UploadFromFile(mntPath, metadata);
 
             if (errno != 0)
@@ -350,9 +346,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             }
             globalTimes.lastModifiedTime = time(NULL);
         } else {
-            #ifdef BLOBFUSE_PRESERVE_METADATA
             storage_client->UpdateBlobProperty(blob_name, "last_access", std::to_string(time(NULL)));
-            #endif
             globalTimes.lastAccessTime = time(NULL);
         }
     }
@@ -532,9 +526,7 @@ int azs_truncate(const char * path, off_t off)
             std::istringstream emptyDataStream("");
             errno = 0;
             std::vector<std::pair<std::string, std::string>> metadata;
-            #ifdef BLOBFUSE_PRESERVE_METADATA
             storage_client->UpdateBlobProperty(pathString.substr(1), "", "", &metadata);
-            #endif
             storage_client->UploadFromStream(emptyDataStream, pathString.substr(1).c_str(), metadata);
             if (errno != 0)
             {
@@ -574,9 +566,7 @@ int azs_truncate(const char * path, off_t off)
             std::istringstream emptyDataStream("");
             errno = 0;
             std::vector<std::pair<std::string, std::string>> metadata;
-            #ifdef BLOBFUSE_PRESERVE_METADATA
             storage_client->UpdateBlobProperty(pathString.substr(1), "", "", &metadata);
-            #endif
             storage_client->UploadFromStream(emptyDataStream, pathString.substr(1).c_str(), metadata);
             if (errno != 0)
             {

@@ -72,12 +72,10 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accou
             account,
             configurations.concurrency);
         errno = 0;
-        #if 0
-        if (configurations.useAttrCache)
+        if (configurations.useAttrCache && !isADLS())
         {
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
         }
-        #endif
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch (const std::exception &ex)
@@ -110,12 +108,10 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_sas()
             account,
             configurations.concurrency);
         errno = 0;
-        #if 0
-        if (configurations.useAttrCache)
+        if (configurations.useAttrCache && !isADLS())
         {
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
         }
-        #endif
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch (const std::exception &ex)
@@ -160,12 +156,10 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
         std::shared_ptr<blob_client> blobClient =
             std::make_shared<blob_client>(account, max_concurrency_oauth);
         errno = 0;
-        #if 0
-        if (configurations.useAttrCache)
+        if (configurations.useAttrCache && !isADLS())
         {
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
         }
-        #endif
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch (const std::exception &ex)
@@ -210,12 +204,10 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
         std::shared_ptr<blob_client> blobClient =
             std::make_shared<blob_client>(account, max_concurrency_oauth);
         errno = 0;
-        #if 0
-        if (configurations.useAttrCache)
+        if (configurations.useAttrCache && !isADLS())
         {
             return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
         }
-        #endif
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch (const std::exception &ex)
