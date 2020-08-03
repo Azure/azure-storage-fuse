@@ -8,8 +8,8 @@ const std::string hdr_usr_agnt_str = std::string("Azure-Storage-Fuse/") + std::s
 namespace blobfuse_constants {
     const int max_concurrency_oauth = 2;
     const int max_retry_oauth = 5;
-    const int max_concurrency_blob_wrapper = 50;
-    const int def_concurrency_blob_wrapper = 40;
+    const int max_concurrency_blob_wrapper = 40;
+    const int def_concurrency_blob_wrapper = 30;
 
     const char* oauth_request_uri = "https://login.microsoftonline.com";
     const char* spn_request_path = "oauth2/v2.0/token";
