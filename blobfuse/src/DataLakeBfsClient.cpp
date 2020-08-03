@@ -507,7 +507,7 @@ long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
     return buf.st_size;
 }
 
-#define USE_ADLS_ENDPOINT_FOR_UPLOAD
+//#define USE_ADLS_ENDPOINT_FOR_UPLOAD
 void DataLakeBfsClient::UploadFromFile(const std::string sourcePath, METADATA &metadata)
 {
     #ifdef USE_ADLS_ENDPOINT_FOR_UPLOAD
