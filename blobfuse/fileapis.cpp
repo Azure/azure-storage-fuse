@@ -332,7 +332,6 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             std::vector<std::pair<std::string, std::string>> metadata;
             storage_client->UpdateBlobProperty(blob_name, "", "", &metadata);
             storage_client->UploadFromFile(mntPath, metadata);
-
             if (errno != 0)
             {
                 int storage_errno = errno;
