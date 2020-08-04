@@ -112,8 +112,11 @@ list_segmented_response::list_segmented_response(list_paths_result response) :
     }
 }
 
+//#define ADLS_USE_NEW_ATTR_CACHE
+
 int StorageBfsClientBase::GetCachedProperty(std::string pathStr, BfsFileProperty &prop)
 {
+    #ifdef ADLS_USE_NEW_ATTR_CACHE
     if (mUseCache && isADLS()) {
         std::lock_guard<std::mutex> lock(mAttrCacheMutex);
         BfsFileProperty cached_prop;
@@ -133,12 +136,17 @@ int StorageBfsClientBase::GetCachedProperty(std::string pathStr, BfsFileProperty
             }
         }
     }
+    #else
+    UNUSED(pathStr);
+    UNUSED(prop);
+    #endif
 
     return -1;
 }
 
 int StorageBfsClientBase::SetCachedProperty(std::string pathStr, BfsFileProperty &prop)
 {
+    #ifdef ADLS_USE_NEW_ATTR_CACHE
     if (mUseCache && isADLS()) {
         std::lock_guard<std::mutex> lock(mAttrCacheMutex);
 
@@ -151,12 +159,17 @@ int StorageBfsClientBase::SetCachedProperty(std::string pathStr, BfsFileProperty
         mAttrCacheMap[pathStr] = prop;
         return 0;
     }
+    #else
+    UNUSED(pathStr);
+    UNUSED(prop);
+    #endif
 
     return -1;
 }
 
 int StorageBfsClientBase::InvalidateCachedProperty(std::string pathStr)
 {
+    #ifdef ADLS_USE_NEW_ATTR_CACHE
     if (mUseCache && isADLS()) {
         std::lock_guard<std::mutex> lock(mAttrCacheMutex);
 
@@ -166,6 +179,9 @@ int StorageBfsClientBase::InvalidateCachedProperty(std::string pathStr)
             return 0;
         }
     }
+    #else
+    UNUSED(pathStr);
+    #endif
 
     return -1;
 } 

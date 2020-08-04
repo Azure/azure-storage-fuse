@@ -16,6 +16,7 @@ using namespace azure::storage_lite;
 using namespace azure::storage_adls;
 
 static const int maxFailCount = 20;
+#define UNUSED(x) (void)(x)
 
 class BfsFileProperty : public blob_property
 {
