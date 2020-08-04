@@ -56,11 +56,20 @@ bool AttrCacheBfsClient::AuthenticateStorage()
 
 void AttrCacheBfsClient::UploadFromFile(const std::string sourcePath, METADATA &metadata)
 {
-    std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(sourcePath));
-    std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(sourcePath);
+    std::string blobName = sourcePath.substr(configurations.tmpPath.size() + 6);
+    std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blobName));
+    std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(blobName);
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
-    cache_item->m_confirmed = false;
+    if (cache_item->m_confirmed) {
+        struct stat stbuf;
+        if (0 == stat(sourcePath.c_str(), &stbuf)) {
+            cache_item->m_props.size = stbuf.st_size;
+            cache_item->m_props.last_modified = time(NULL);
+        }
+        else
+            cache_item->m_confirmed = false;
+    }
     return blob_client->UploadFromFile(sourcePath, metadata);
 }
 
@@ -70,7 +79,10 @@ void AttrCacheBfsClient::UploadFromStream(std::istream &sourceStream, const std:
     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(blobName);
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
-    cache_item->m_confirmed = false;
+     if (cache_item->m_confirmed) {
+        cache_item->m_props.last_modified = time(NULL);
+        cache_item->m_props.size = 0;
+    }
     return blob_client->UploadFromStream(sourceStream, blobName);
 }
 
@@ -81,7 +93,10 @@ void AttrCacheBfsClient::UploadFromStream(std::istream &sourceStream, const std:
     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(blobName);
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
-    cache_item->m_confirmed = false;
+     if (cache_item->m_confirmed) {
+        cache_item->m_props.last_modified = time(NULL);
+        cache_item->m_props.size = 0;
+    }
     return blob_client->UploadFromStream(sourceStream, blobName, metadata);
 }
 
@@ -113,7 +128,10 @@ bool AttrCacheBfsClient::DeleteDirectory(const std::string directoryPath)
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
     bool ret = blob_client->DeleteDirectory(directoryPath);
-    cache_item->m_confirmed = false;
+    if (cache_item->m_confirmed) {
+        cache_item->m_props.m_valid = true;
+        cache_item->m_props.m_not_exists = false;
+    }
     return ret;
 }
 
@@ -124,7 +142,10 @@ void AttrCacheBfsClient::DeleteFile(const std::string pathToDelete)
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
     blob_client->DeleteFile(pathToDelete);
-    cache_item->m_confirmed = false;
+    if (cache_item->m_confirmed) {
+        cache_item->m_props.m_valid = true;
+        cache_item->m_props.m_not_exists = false;
+    }
 }
 
 BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool type_known)
@@ -226,7 +247,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
              blob_client->ListAllItemsSegmented(prefix, delimiter, max_results);
 
     #if 1
-    if (errno == 0 && listResponse.size() > 0 && !isAdlsMode)
+    if (errno == 0 && listResponse.size() > 0)
     {
         list_segmented_item blobItem;
         unsigned int batchNum = 0;

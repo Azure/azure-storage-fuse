@@ -9,6 +9,7 @@ namespace azure { namespace storage_lite {
         CurlEasyRequest::CurlEasyRequest(std::shared_ptr<CurlEasyClient> client, CURL *h)
             : m_client(client), m_curl(h), m_slist(NULL)
         {
+            check_code(curl_easy_setopt(m_curl, CURLOPT_NOSIGNAL, 1L));
             check_code(curl_easy_setopt(m_curl, CURLOPT_HEADERFUNCTION, header_callback));
             check_code(curl_easy_setopt(m_curl, CURLOPT_HEADERDATA, this));
         }

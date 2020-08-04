@@ -263,7 +263,7 @@ public:
     ///</summary>
     ///TODO: params
     ///<returns>none</returns>
-    virtual void UploadFromFile(const std::string localPath, METADATA &metadata) = 0;
+    virtual void UploadFromFile(const std::string localPath, METADATA &metadata) = 0    ;
     ///<summary>
     /// Uploads contents of a stream to a storage object(e.g. blob, file) to the Storage service
     ///</summary>

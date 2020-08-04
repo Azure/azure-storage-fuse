@@ -498,13 +498,7 @@ long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
 //#define USE_ADLS_ENDPOINT_FOR_UPLOAD
 void DataLakeBfsClient::UploadFromFile(const std::string sourcePath, METADATA &metadata)
 {
-    #ifdef USE_ADLS_ENDPOINT_FOR_UPLOAD
-    std::string blobName = sourcePath.substr(configurations.tmpPath.size() + 6 /* there are six characters in "/root/" */);
-    m_adls_client->append_data_from_file(sourcePath, configurations.containerName, blobName, metadata);
-    #else
     BlockBlobBfsClient::UploadFromFile(sourcePath, metadata);
-    #endif
-
 }
 
 #if 0
