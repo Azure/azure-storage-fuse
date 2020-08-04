@@ -226,7 +226,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
              blob_client->ListAllItemsSegmented(prefix, delimiter, max_results);
 
     #if 1
-    if (errno == 0 && listResponse.size() > 0)
+    if (errno == 0 && listResponse.size() > 0 && !isAdlsMode)
     {
         list_segmented_item blobItem;
         unsigned int batchNum = 0;
@@ -260,6 +260,10 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                         last_mod,
                         blobItem.acl.permissions,
                         blobItem.content_length);
+
+                    if (blobItem.is_directory)
+                        ret_property.is_directory = true;
+
                     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(listResults[i].name);
                     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
                     cache_item->m_props = ret_property;

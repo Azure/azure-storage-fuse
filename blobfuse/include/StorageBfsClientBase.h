@@ -59,6 +59,7 @@ class BfsFileProperty //: public blob_property
                     continue;
                 }
 
+                /*
                 if (iter->first.compare("last_access") == 0)
                 {
                     last_access = std::stoi(iter->second.c_str());
@@ -70,6 +71,7 @@ class BfsFileProperty //: public blob_property
                     last_change = std::stoi(iter->second.c_str());
                     continue;
                 }
+                */
             }
         }
 
@@ -112,7 +114,7 @@ class BfsFileProperty //: public blob_property
                     is_directory = true;
                     continue;
                 }
-
+                /*
                 if (iter->first.compare("last_access") == 0)
                 {
                     last_access = std::stoi(iter->second.c_str());
@@ -124,6 +126,7 @@ class BfsFileProperty //: public blob_property
                     last_change = std::stoi(iter->second.c_str());
                     continue;
                 }
+                */
             }
         }
 
