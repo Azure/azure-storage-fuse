@@ -60,6 +60,12 @@ public:
     virtual void UploadFromFile(const std::string sourcePath, METADATA &metadata);
     virtual int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL);
 
+    ///<summary>
+    /// Determines whether or not a path (file or directory) exists or not
+    ///</summary>
+    ///<returns>none</returns>
+    int Exists(std::string pathName) override;
+    
 private:
     ///<summary>
     /// Helper function - Authenticates with an account key

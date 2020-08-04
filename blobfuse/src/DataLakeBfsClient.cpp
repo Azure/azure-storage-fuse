@@ -520,6 +520,13 @@ void DataLakeBfsClient::UploadFromFile(const std::string sourcePath, METADATA &m
 
 }
 
+int DataLakeBfsClient::Exists(const std::string pathName)
+{
+    errno = 0;
+    BfsFileProperty blob_property = GetProperties(pathName);
+    return blob_property.exists();
+ }
+
 #if 0
 int DataLakeBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata)
 {

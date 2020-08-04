@@ -551,7 +551,7 @@ int azs_truncate(const char * path, off_t off)
         AZS_DEBUGLOGV("File to truncate %s does not exist in the local cache.\n", path);
 
         // The blob/file does not exist locally.  We need to see if it exists on the service (if it doesn't we return ENOENT.)
-        //if (storage_client->Exists(pathString.substr(1))) // TODO: Once we have support for access conditions, we could remove this call, and replace with a put_block_list with if-match-*
+        if (storage_client->Exists(pathString.substr(1))) // TODO: Once we have support for access conditions, we could remove this call, and replace with a put_block_list with if-match-*
         {
             AZS_DEBUGLOGV("Blob %s representing file %s exists on the service.\n", pathString.c_str()+1, path);
 
@@ -580,11 +580,11 @@ int azs_truncate(const char * path, off_t off)
                 return 0;
             }
         }
-        /*else
+        else
         {
             syslog(LOG_ERR, "File %s does not exist; failing azs_truncate.\n", path);
             return -ENOENT;
-        }*/
+        }
     }
     return 0;
 }
