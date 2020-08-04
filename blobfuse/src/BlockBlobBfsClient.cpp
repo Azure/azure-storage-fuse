@@ -361,13 +361,7 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
     if (type_known) {
         blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
         if (errno == 0) {
-            BfsFileProperty ret_property(property.cache_control,
-                property.content_disposition,
-                property.content_encoding,
-                property.content_language,
-                property.content_md5,
-                property.content_type,
-                property.etag,
+            BfsFileProperty ret_property(
                 property.copy_status,
                 property.metadata,
                 property.last_modified,
@@ -438,13 +432,7 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
                         if (ptr)
                             last_mod = timegm(&mtime);
                     }
-                    BfsFileProperty ret_property(blobItem.cache_control,
-                        "",
-                        blobItem.content_encoding,
-                        blobItem.content_language,
-                        blobItem.content_md5,
-                        blobItem.content_type,
-                        blobItem.etag,
+                    BfsFileProperty ret_property(
                         "",
                         blobItem.metadata,
                         last_mod,
@@ -462,13 +450,7 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
             {
                 blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
                 if (errno == 0) {
-                    BfsFileProperty ret_property(property.cache_control,
-                        property.content_disposition,
-                        property.content_encoding,
-                        property.content_language,
-                        property.content_md5,
-                        property.content_type,
-                        property.etag,
+                    BfsFileProperty ret_property(
                         property.copy_status,
                         property.metadata,
                         property.last_modified,

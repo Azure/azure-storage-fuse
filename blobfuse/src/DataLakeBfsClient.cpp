@@ -406,13 +406,6 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
 
     if (errno == 0) {
         BfsFileProperty ret_property(
-            dfsprops.cache_control,
-            dfsprops.content_disposition,
-            dfsprops.content_encoding,
-            dfsprops.content_language,
-            dfsprops.content_md5,
-            dfsprops.content_type,
-            dfsprops.etag,
             dfsprops.resource_type,
             dfsprops.owner,
             dfsprops.group,
@@ -432,13 +425,7 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
     //  dfsprops.resource_type, owner, group, permissions, 
     blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
     if (errno == 0) {
-        BfsFileProperty ret_property(property.cache_control,
-            property.content_disposition,
-            property.content_encoding,
-            property.content_language,
-            property.content_md5,
-            property.content_type,
-            property.etag,
+        BfsFileProperty ret_property(
             property.copy_status,
             property.metadata,
             property.last_modified,

@@ -112,8 +112,9 @@ bool AttrCacheBfsClient::DeleteDirectory(const std::string directoryPath)
     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(directoryPath);
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
-    blob_client->DeleteDirectory(directoryPath);
+    bool ret = blob_client->DeleteDirectory(directoryPath);
     cache_item->m_confirmed = false;
+    return ret;
 }
 
 void AttrCacheBfsClient::DeleteFile(const std::string pathToDelete)
@@ -251,13 +252,6 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                 if (isAdlsMode)
                 {
                     BfsFileProperty ret_property(
-                        blobItem.cache_control,
-                        "",
-                        blobItem.content_encoding,
-                        blobItem.content_language,
-                        blobItem.content_md5,
-                        blobItem.content_type,
-                        blobItem.etag,
                         "",
                         blobItem.acl.owner,
                         blobItem.acl.group,
@@ -271,13 +265,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                     cache_item->m_props = ret_property;
                     cache_item->m_confirmed = true;
                 } else {
-                    BfsFileProperty ret_property(blobItem.cache_control,
-                            "",
-                            blobItem.content_encoding,
-                            blobItem.content_language,
-                            blobItem.content_md5,
-                            blobItem.content_type,
-                            blobItem.etag,
+                    BfsFileProperty ret_property(
                             "",
                             blobItem.metadata,
                             last_mod,

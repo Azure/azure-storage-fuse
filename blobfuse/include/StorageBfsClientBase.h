@@ -18,19 +18,20 @@ using namespace azure::storage_adls;
 static const int maxFailCount = 20;
 #define UNUSED(x) (void)(x)
 
-class BfsFileProperty : public blob_property
+class BfsFileProperty //: public blob_property
 {
     public:
         BfsFileProperty() : m_valid(false), m_not_exists(false), m_empty_dir(false) {}
-        BfsFileProperty(bool not_exists) : m_valid(true), m_not_exists(not_exists), m_empty_dir(false) {}
+        BfsFileProperty(bool not_exists) : m_valid(true), m_not_exists(not_exists), m_empty_dir(false) 
+        {
+            size = 0;
+            last_modified = 0;
+            m_file_mode = 0;
+            is_directory = false;
+            last_access = last_change = last_modified;
+        }
 
-        BfsFileProperty(std::string cacheControl,
-                std::string contentDisposition,
-                std::string contentEncoding,
-                std::string contentLanguage,
-                std::string contentMd5,
-                std::string contentType,
-                std::string eTag,
+        BfsFileProperty(
                 std::string copyStatus,
                 std::vector<std::pair<std::string, std::string>> metaData,
                 time_t lastModified,
@@ -38,20 +39,12 @@ class BfsFileProperty : public blob_property
                 unsigned long long Size) :
                 m_valid(true)
         {
-            cache_control = cacheControl;
-            content_disposition = contentDisposition;
-            content_encoding = contentEncoding;
-            content_language =contentLanguage;
-            content_md5 = contentMd5;
-            content_type = contentType;
-            etag = eTag;
             copy_status = copyStatus;
             metadata = metaData;
             last_modified = lastModified;
             size = Size;
             last_access = last_modified;
             last_change = last_modified;
-            cache_time = time(NULL);
             m_not_exists = false;
             m_empty_dir = false;
 
@@ -80,13 +73,7 @@ class BfsFileProperty : public blob_property
             }
         }
 
-        BfsFileProperty(std::string cacheControl,
-                    std::string contentDisposition,
-                    std::string contentEncoding,
-                    std::string contentLanguage,
-                    std::string contentMd5,
-                    std::string contentType,
-                    std::string eTag,
+        BfsFileProperty(
                     std::string resourceType,
                     std::string Owner,
                     std::string Group,
@@ -97,13 +84,6 @@ class BfsFileProperty : public blob_property
                     unsigned long long Size) :
             m_valid(true)
         {
-            cache_control = cacheControl;
-            content_disposition = contentDisposition;
-            content_encoding = contentEncoding;
-            content_language = contentLanguage;
-            content_md5 = contentMd5;
-            content_type = contentType;
-            etag = eTag;
             copy_status = "";
             m_owner = Owner;
             m_group = Group;
@@ -111,7 +91,6 @@ class BfsFileProperty : public blob_property
             metadata = metaData;
             last_modified = lastModified;
             size = Size;
-            cache_time = time(NULL);
 
             is_directory = false;
             last_access = last_modified;
@@ -148,6 +127,11 @@ class BfsFileProperty : public blob_property
             }
         }
 
+        std::string copy_status;
+        std::vector<std::pair<std::string, std::string>> metadata;
+        time_t last_modified;
+        unsigned long long size;
+
         std::string m_owner;
         std::string m_group;
         std::string m_permissions;
@@ -159,7 +143,6 @@ class BfsFileProperty : public blob_property
 
         time_t last_access;
         time_t last_change;
-        time_t cache_time;
 
         bool isValid()
         {
@@ -217,15 +200,6 @@ class BfsFileProperty : public blob_property
         time_t get_last_change()
         {
             return last_change;
-        }
-
-        time_t get_cache_time()
-        {
-            return cache_time;
-        }
-        void set_cache_time()
-        {
-            cache_time = time(NULL);
         }
 };
 
