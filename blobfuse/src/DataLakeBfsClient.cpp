@@ -215,6 +215,16 @@ bool DataLakeBfsClient::CreateDirectory(const std::string directoryPath)
     }
     return true;
 }
+
+///<summary>
+/// Does the blob/directory exist
+///</summary>
+///<returns>none</returns>
+int DataLakeBfsClient::Exists(const std::string directoryPath)
+{
+    return m_adls_client->adls_exists(configurations.containerName, directoryPath);
+}
+
 ///<summary>
 /// Deletes a Directory
 ///</summary>
@@ -275,6 +285,11 @@ D_RETURN_CODE DataLakeBfsClient::IsDirectoryEmpty(std::string path)
                     return D_NOTEMPTY;
                 }
             }
+        }
+        else if (errno ==400 || errno == 404)
+        {
+            success = true;
+            syslog(LOG_WARNING, "adls list list_blobs_segmented indicates blob not found errno: %u", errno);
         }
         else
         {
@@ -349,7 +364,7 @@ list_segmented_response DataLakeBfsClient::List(std::string continuation, std::s
 }
 
 int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
-    // TODO: Once ADLS works in blobfuse, verify that we don't need to get the access
+    
     std::string pathStr(path);
     access_control accessControl;
     accessControl.acl = modeToString(mode);
@@ -388,11 +403,7 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
 }
 
 BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*type_known*/) {
-    BfsFileProperty cache_prop;
-    if (0 == GetCachedProperty(pathName, cache_prop)) {
-        return cache_prop;
-    }
-
+  
     errno = 0;
     dfs_properties dfsprops =
             m_adls_client->get_dfs_path_properties(configurations.containerName, pathName);
@@ -415,8 +426,6 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
             dfsprops.permissions,
             dfsprops.content_length
             );
-
-        SetCachedProperty(pathName, ret_property);
 
         return ret_property;
     }

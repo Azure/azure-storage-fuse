@@ -140,7 +140,6 @@ int StorageBfsClientBase::SetCachedProperty(std::string pathStr, BfsFileProperty
 {
     if (mUseCache) {
         std::lock_guard<std::mutex> lock(mAttrCacheMutex);
-        BfsFileProperty cached_prop;
 
         auto iter = mAttrCacheMap.find(pathStr);
         if(iter != mAttrCacheMap.end()) {
@@ -159,7 +158,6 @@ int StorageBfsClientBase::InvalidateCachedProperty(std::string pathStr)
 {
     if (mUseCache) {
         std::lock_guard<std::mutex> lock(mAttrCacheMutex);
-        BfsFileProperty cached_prop;
 
         auto iter = mAttrCacheMap.find(pathStr);
         if(iter != mAttrCacheMap.end()) {
@@ -169,4 +167,4 @@ int StorageBfsClientBase::InvalidateCachedProperty(std::string pathStr)
     }
 
     return -1;
-}
+} 
