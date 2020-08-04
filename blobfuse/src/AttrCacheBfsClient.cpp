@@ -112,8 +112,8 @@ bool AttrCacheBfsClient::DeleteDirectory(const std::string directoryPath)
     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(directoryPath);
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
+    blob_client->DeleteDirectory(directoryPath);
     cache_item->m_confirmed = false;
-    return blob_client->DeleteDirectory(directoryPath);
 }
 
 void AttrCacheBfsClient::DeleteFile(const std::string pathToDelete)
@@ -122,8 +122,8 @@ void AttrCacheBfsClient::DeleteFile(const std::string pathToDelete)
     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(pathToDelete);
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
+    blob_client->DeleteFile(pathToDelete);
     cache_item->m_confirmed = false;
-    return DeleteFile(pathToDelete);
 }
 
 BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool type_known)
