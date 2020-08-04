@@ -78,7 +78,7 @@ public:
     /// </summary>
     /// <param name="filesystem">The filesystem name.</param>
     /// <param name="path">The path.</param>
-    AZURE_STORAGE_API int adls_exists(const std::string& filesystem, const std::string& path);
+    AZURE_STORAGE_API int adls_exists(const std::string& filesystem, const std::string& path, std::shared_ptr<azure::storage_lite::CurlEasyRequest> http = NULL);
 
         
     template<class RET, class FUNC>

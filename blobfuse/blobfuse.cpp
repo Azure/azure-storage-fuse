@@ -10,6 +10,7 @@
 #include <include/StorageBfsClientBase.h>
 #include <include/BlockBlobBfsClient.h>
 #include <include/DataLakeBfsClient.h>
+#include <include/AttrCacheBfsClient.h>
 
 const std::string log_ident = "blobfuse";
 struct cmdlineOptions cmd_options;
@@ -839,8 +840,14 @@ int initialize_blobfuse()
         fprintf(stderr, "Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         return 1;
     }
-        //initialize storage client and authenticate, if we fail here, don't call fuse
-    if (config_options.useADLS)
+    
+    //initialize storage client and authenticate, if we fail here, don't call fuse
+    if (config_options.useAttrCache) 
+    {
+        syslog(LOG_INFO, "Initializing blobfuse with attr caching enabled");
+        storage_client = std::make_shared<AttrCacheBfsClient>(config_options);
+    }
+    else if (config_options.useADLS)
     {
         syslog(LOG_INFO, "Initializing blobfuse using DataLake");
         storage_client = std::make_shared<DataLakeBfsClient>(config_options);

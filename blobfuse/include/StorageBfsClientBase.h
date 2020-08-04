@@ -364,10 +364,6 @@ public:
     // Update metadata for a blob
     virtual int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL) = 0;
 
-    virtual int GetCachedProperty(std::string pathStr, BfsFileProperty &prop);
-    virtual int SetCachedProperty(std::string pathStr, BfsFileProperty &prop);
-    virtual int InvalidateCachedProperty(std::string pathStr);
-
 protected:
     configParams configurations;
     ///<summary>

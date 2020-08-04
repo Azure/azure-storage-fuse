@@ -24,6 +24,7 @@ set (BLOBFUSE_HEADER
   blobfuse/include/StorageBfsClientBase.h
   blobfuse/include/BlockBlobBfsClient.h
   blobfuse/include/DataLakeBfsClient.h
+  blobfuse/include/AttrCacheBfsClient.h
   blobfuse/include/AttrCacheWrapper.h
 
   blobfuse/include/OAuthToken.h
@@ -43,7 +44,8 @@ set (BLOBFUSE_SOURCE
   blobfuse/src/StorageBfsClientBase.cpp
   blobfuse/src/BlockBlobBfsClient.cpp
   blobfuse/src/DataLakeBfsClient.cpp
-
+  blobfuse/src/AttrCacheBfsClient.cpp
+  
   blobfuse/src/AttrCacheWrapperLogin.cpp
   blobfuse/src/AttrCacheWrapper.cpp
 

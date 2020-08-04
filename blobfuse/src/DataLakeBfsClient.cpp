@@ -208,7 +208,6 @@ bool DataLakeBfsClient::CreateDirectory(const std::string directoryPath)
     // We could call the block blob CreateDirectory instead but that would require making the metadata with hdi_isfolder
     // it's easier if we let the service do that for us
     errno = 0;
-    InvalidateCachedProperty(directoryPath);
     m_adls_client->create_directory(configurations.containerName, directoryPath);
     if(errno != 0)
     {
@@ -233,7 +232,6 @@ int DataLakeBfsClient::Exists(const std::string directoryPath)
 bool DataLakeBfsClient::DeleteDirectory(const std::string directoryPath)
 {
     errno = 0;
-    InvalidateCachedProperty(directoryPath);
     m_adls_client->delete_directory(configurations.containerName, directoryPath);
     if(errno != 0)
     {
@@ -324,9 +322,6 @@ std::vector<std::string> DataLakeBfsClient::Rename(const std::string /*sourcePat
 
 std::vector<std::string> DataLakeBfsClient::Rename(std::string sourcePath, std::string destinationPath)
 {
-    InvalidateCachedProperty(sourcePath.substr(1));
-    InvalidateCachedProperty(destinationPath.substr(1));
-    
     errno = 0;
     m_adls_client->move_file(
             configurations.containerName,
@@ -372,7 +367,6 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
     int lstaterrno = 0;
 
     errno = 0;
-    InvalidateCachedProperty(pathStr.substr(1));
     m_adls_client->set_file_access_control(configurations.containerName, pathStr.substr(1), accessControl);
     lstaterrno = errno;
 
@@ -466,14 +460,12 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
             syslog(LOG_ERR, "Unable to retreive blob access control info for %s", pathName.c_str());
         }
 
-        SetCachedProperty(pathName, ret_property);
         return ret_property;
     }
     #endif
     
     if (errno == 404) {
         BfsFileProperty cache_prop = BfsFileProperty(true);
-        SetCachedProperty(pathName, cache_prop);
         errno = 404;
         return cache_prop;
     }
@@ -521,7 +513,6 @@ void DataLakeBfsClient::UploadFromFile(const std::string sourcePath, METADATA &m
 {
     #ifdef USE_ADLS_ENDPOINT_FOR_UPLOAD
     std::string blobName = sourcePath.substr(configurations.tmpPath.size() + 6 /* there are six characters in "/root/" */);
-    InvalidateCachedProperty(blobName);
     m_adls_client->append_data_from_file(sourcePath, configurations.containerName, blobName, metadata);
     #else
     BlockBlobBfsClient::UploadFromFile(sourcePath, metadata);
@@ -566,7 +557,6 @@ int DataLakeBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, 
             AZS_DEBUGLOGV("Failed to update property for %s : err %d", pathStr.c_str(), errno);
         }
     }
-    InvalidateCachedProperty(pathStr);
     return errno;
 }
 #else

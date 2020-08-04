@@ -172,6 +172,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
     // It's not in the local cache.  Check to see if it's a blob on the service:
     std::string blobNameStr(pathString.substr(1).c_str());
     if (blobNameStr == ".Trash" ||
+        blobNameStr == ".Trash-1000" ||
         blobNameStr == ".xdg-volume-info" ||
         blobNameStr == "autorun.inf") {
         syslog(LOG_DEBUG, "Ignoring %s in getattr", blobNameStr.c_str());
