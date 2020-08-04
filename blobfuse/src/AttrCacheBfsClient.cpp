@@ -248,7 +248,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                         last_mod = timegm(&mtime);
                 }   
 
-                if (isADLS)
+                if (isAdlsMode)
                 {
                     BfsFileProperty ret_property(
                         blobItem.cache_control,
