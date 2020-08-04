@@ -1,5 +1,5 @@
 //
-// Created by adreed on 2/7/2020.
+// ADLS specific properties
 //
 
 #include <DfsProperties.h>
@@ -104,7 +104,8 @@ dfs_properties adls_client_ext::get_dfs_path_properties(const std::string &files
         props.owner = http->get_response_header(constants::header_ms_owner);
         props.group = http->get_response_header(constants::header_ms_group);
         props.permissions = http->get_response_header(constants::header_ms_permissions);
-        props.acl = http->get_response_header(constants::header_ms_acl);
+        // acl is not returned in this call
+              //  props.acl = http->get_response_header(constants::header_ms_acl);
 
         // props.metadata TODO
         props.metadata = std::vector<std::pair<std::string, std::string>>{};
@@ -286,4 +287,26 @@ void adls_client_ext::append_data_from_file(const std::string &src_file, const s
     return;
 }
     
+/// Method that calls the dfs endpoint to find out if the pathe exists
+/// returns 0 if there is no path returns 1 if there is path
+int adls_client_ext::adls_exists(const std::string &filesystem, const std::string &path) 
+{
+    int exists = 0;
+    auto http = m_blob_client->client()->get_handle();
+    auto request = std::make_shared<get_dfs_properties_request>(filesystem, path);
+    auto async_func = std::bind(&azure::storage_lite::async_executor<void>::submit, m_account, request, http, m_context);
+    blob_client_adaptor_ext<void>(async_func);   
+    
+    if (success())
+    {
+        exists=1;
+    }
+    if (errno == 404)
+    {
+        exists=0;
+    } 
+    return exists;
+}
+
+
 }}

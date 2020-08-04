@@ -72,6 +72,15 @@ public:
     AZURE_STORAGE_API dfs_properties get_dfs_path_properties(const std::string& filesystem, const std::string& path);
     AZURE_STORAGE_ADLS_API void append_data_from_file(const std::string &src_file, const std::string& filesystem, const std::string& file, const std::vector<std::pair<std::string, std::string>>& properties = std::vector<std::pair<std::string, std::string>>());
      
+
+    /// <summary>
+    /// Returns 1 if path exists false otherwise.
+    /// </summary>
+    /// <param name="filesystem">The filesystem name.</param>
+    /// <param name="path">The path.</param>
+    AZURE_STORAGE_API int adls_exists(const std::string& filesystem, const std::string& path);
+
+        
     template<class RET, class FUNC>
     RET blob_client_adaptor_ext(FUNC func);
 

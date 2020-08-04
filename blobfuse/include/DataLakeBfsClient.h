@@ -32,6 +32,13 @@ public:
     ///</summary>
     ///<returns>none</returns>
     bool DeleteDirectory(const std::string directoryPath) override;
+
+     ///<summary>
+    /// Does the ADLS Directory or blob exist
+    ///</summary>
+    ///<returns>none</returns>
+    int Exists(const std::string directoryPath) override;
+    
     ///<summary>
     /// Helper function - Checks if the "directory" blob is empty
     ///</summary>
@@ -60,12 +67,6 @@ public:
     virtual void UploadFromFile(const std::string sourcePath, METADATA &metadata);
     virtual int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL);
 
-    ///<summary>
-    /// Determines whether or not a path (file or directory) exists or not
-    ///</summary>
-    ///<returns>none</returns>
-    int Exists(std::string pathName) override;
-    
 private:
     ///<summary>
     /// Helper function - Authenticates with an account key

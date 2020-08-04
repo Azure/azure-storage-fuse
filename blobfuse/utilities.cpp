@@ -263,8 +263,6 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 AZS_DEBUGLOGV("%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
                 AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
 
-                //auto blob_property = storage_client->GetProperties(blobNameStr, true);
-                //mode_t perms = blob_property.m_file_mode == 0 ? config_options.defaultPermission : blob_property.m_file_mode;
                 mode_t perms = config_options.defaultPermission;
 
                 if (is_symlink_blob(blobItem.metadata))
@@ -278,9 +276,6 @@ int azs_getattr(const char *path, struct stat *stbuf)
 
                 stbuf->st_uid = fuse_get_context()->uid;
                 stbuf->st_gid = fuse_get_context()->gid;
-                //stbuf->st_mtime = blob_property.last_modified;
-                //stbuf->st_atime = blob_property.get_last_access();
-                //stbuf->st_ctime = blob_property.get_last_change();
                 if (!blobItem.last_modified.empty()) {
                     struct tm mtime;
                     char *ptr = strptime(blobItem.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mtime);
