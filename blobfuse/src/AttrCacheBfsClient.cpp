@@ -12,6 +12,26 @@ std::string get_parent_str(std::string object)
     return std::string();
 }
 
+// Directory is getting deleted, invalidate all the files and directories recursively inside
+void AttrCache::invalidate_dir_recursively(const std::string& path)
+{
+    std::shared_ptr<AttrCacheItem> cache_item;
+    std::lock_guard<std::mutex> lock(blobs_mutex);
+    for (auto item = blob_cache.begin(); item != blob_cache.end(); item++) 
+    {
+        if (item->first.rfind(path.c_str(), 0) == 0)
+        {
+            cache_item = item->second;
+            if (cache_item->m_confirmed) {
+                //cache_item->m_confirmed = false;
+                // Let the cache be still valid but mark that file no more exists on the storage
+                cache_item->m_props.m_valid = true;
+                cache_item->m_props.m_not_exists = true;
+            }
+        }
+    }
+}
+
 // Performs a thread-safe map lookup of the input key in the directory map.
 // Will create new entries if necessary before returning.
 std::shared_ptr<boost::shared_mutex> AttrCache::get_dir_item(const std::string& path)
@@ -123,6 +143,7 @@ bool AttrCacheBfsClient::CreateDirectory(const std::string directoryPath)
 
 bool AttrCacheBfsClient::DeleteDirectory(const std::string directoryPath)
 {
+    #if 0
     std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(directoryPath));
     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(directoryPath);
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
@@ -130,8 +151,12 @@ bool AttrCacheBfsClient::DeleteDirectory(const std::string directoryPath)
     bool ret = blob_client->DeleteDirectory(directoryPath);
     if (cache_item->m_confirmed) {
         cache_item->m_props.m_valid = true;
-        cache_item->m_props.m_not_exists = false;
+        cache_item->m_props.m_not_exists = true;
     }
+    #else
+    attr_cache.invalidate_dir_recursively(directoryPath);
+    bool ret = blob_client->DeleteDirectory(directoryPath);
+    #endif
     return ret;
 }
 
@@ -144,7 +169,7 @@ void AttrCacheBfsClient::DeleteFile(const std::string pathToDelete)
     blob_client->DeleteFile(pathToDelete);
     if (cache_item->m_confirmed) {
         cache_item->m_props.m_valid = true;
-        cache_item->m_props.m_not_exists = false;
+        cache_item->m_props.m_not_exists = true;
     }
 }
 
@@ -261,7 +286,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
             std::vector<list_segmented_item> listResults = listResponse[batchNum].first;
             for (unsigned int i = resultStart; i < listResults.size(); i++)
             {
-                blobItem = listResults[i]; 
+                blobItem = listResults[i];
                 time_t last_mod = time(NULL);
                 if (!blobItem.last_modified.empty()) {
                     struct tm mtime;

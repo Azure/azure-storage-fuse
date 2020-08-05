@@ -250,6 +250,15 @@ jobs:
       timeoutInMinutes: 10
       continueOnError: true
 
+    # Upload blobs and validate data by comparing 
+    - script: |
+        cp -R ./* $(MOUNT_DIR)/
+        diff -qr ./ $(MOUNT_DIR)/
+        rm -rf $(MOUNT_DIR)/*
+      displayName: "TEST - Data Validation"
+      timeoutInMinutes: 5
+      continueOnError: true
+
     # -------------------------------------------------------
 
     # Basic testing done.....
@@ -569,3 +578,4 @@ jobs:
     - script: sudo cat /var/log/blobfuse.log
       displayName: Print the log file
       continueOnError: true
+    
