@@ -400,7 +400,6 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
 BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*type_known*/) {
   
     errno = 0;
-    #if 1
     dfs_properties dfsprops =
             m_adls_client->get_dfs_path_properties(configurations.containerName, pathName);
 
@@ -418,38 +417,6 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
 
         return ret_property;
     }
-    #else
-    // resource_type = directory not available in this, metadata may not be present
-    // Owner group and permissions are not available
-    // Missing properties
-    //  dfsprops.resource_type, owner, group, permissions, 
-    blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
-    if (errno == 0) {
-        BfsFileProperty ret_property(
-            property.copy_status,
-            property.metadata,
-            property.last_modified,
-            "",
-            property.size);
-
-        access_control acl;
-        if (ret_property.is_directory) {
-            acl = m_adls_client->get_directory_access_control(configurations.containerName, pathName);
-        } else {
-            acl = m_adls_client->get_file_access_control(configurations.containerName, pathName);
-        }
-        if (errno == 0) {
-            ret_property.m_owner = acl.owner;
-            ret_property.m_group = acl.group;
-            ret_property.m_permissions = acl.permissions;
-            ret_property.SetFileMode(ret_property.m_permissions);
-        } else {
-            syslog(LOG_ERR, "Unable to retreive blob access control info for %s", pathName.c_str());
-        }
-
-        return ret_property;
-    }
-    #endif
     
     if (errno == 404) {
         BfsFileProperty cache_prop = BfsFileProperty(true);
@@ -493,12 +460,6 @@ long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
         return 0;
     }
     return buf.st_size;
-}
-
-//#define USE_ADLS_ENDPOINT_FOR_UPLOAD
-void DataLakeBfsClient::UploadFromFile(const std::string sourcePath, METADATA &metadata)
-{
-    BlockBlobBfsClient::UploadFromFile(sourcePath, metadata);
 }
 
 #if 0

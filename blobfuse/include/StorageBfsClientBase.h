@@ -18,7 +18,7 @@ using namespace azure::storage_adls;
 static const int maxFailCount = 20;
 #define UNUSED(x) (void)(x)
 
-class BfsFileProperty //: public blob_property
+class BfsFileProperty 
 {
     public:
         BfsFileProperty() : m_valid(false), m_not_exists(false), m_empty_dir(false) {}
@@ -263,7 +263,7 @@ public:
     ///</summary>
     ///TODO: params
     ///<returns>none</returns>
-    virtual void UploadFromFile(const std::string localPath, METADATA &metadata) = 0    ;
+    virtual void UploadFromFile(const std::string localPath, METADATA &metadata) = 0;
     ///<summary>
     /// Uploads contents of a stream to a storage object(e.g. blob, file) to the Storage service
     ///</summary>
