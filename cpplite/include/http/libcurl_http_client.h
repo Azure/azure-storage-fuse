@@ -197,7 +197,7 @@ namespace azure {  namespace storage_lite {
             check_code(curl_easy_setopt(m_curl, CURLOPT_LOW_SPEED_LIMIT, 1024L * 17L));
 
             // For the moment, we are only using one type of timeout per operation, so we clear the other one, in case it was set for this handle by a prior operation:
-            check_code(curl_easy_setopt(m_curl, CURLOPT_TIMEOUT, 30L));
+            check_code(curl_easy_setopt(m_curl, CURLOPT_TIMEOUT, 0L));
         }
 
     private:
