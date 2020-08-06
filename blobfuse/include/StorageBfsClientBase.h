@@ -130,23 +130,6 @@ class BfsFileProperty
             }
         }
 
-        std::string copy_status;
-        std::vector<std::pair<std::string, std::string>> metadata;
-        time_t last_modified;
-        unsigned long long size;
-
-        std::string m_owner;
-        std::string m_group;
-        std::string m_permissions;
-        mode_t m_file_mode;
-        bool is_directory;
-        bool m_valid;
-        bool m_not_exists;
-        bool m_empty_dir;
-
-        time_t last_access;
-        time_t last_change;
-
         bool isValid()
         {
             return m_valid;
@@ -192,18 +175,37 @@ class BfsFileProperty
 
         time_t get_last_modified()
         {
-            return last_modified;
+            return last_modified != 0 ? last_modified : time(NULL);
         }
 
         time_t get_last_access()
         {
-            return last_access;
+            return last_access != 0 ? last_access : get_last_modified();
         }
 
         time_t get_last_change()
         {
-            return last_change;
+            return last_change != 0 ? last_change : get_last_modified();
         }
+
+        
+        std::string copy_status;
+        std::vector<std::pair<std::string, std::string>> metadata;
+        time_t last_modified;
+        unsigned long long size;
+
+        std::string m_owner;
+        std::string m_group;
+        std::string m_permissions;
+        mode_t m_file_mode;
+        bool is_directory;
+        bool m_valid;
+        bool m_not_exists;
+        bool m_empty_dir;
+
+        time_t last_access;
+        time_t last_change;
+
 };
 
 

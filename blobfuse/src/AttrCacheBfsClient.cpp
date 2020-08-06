@@ -86,6 +86,7 @@ void AttrCacheBfsClient::UploadFromFile(const std::string sourcePath, METADATA &
         if (0 == stat(sourcePath.c_str(), &stbuf)) {
             cache_item->m_props.size = stbuf.st_size;
             cache_item->m_props.last_modified = time(NULL);
+            cache_item->m_props.m_not_exists = false;
         }
         else
             cache_item->m_confirmed = false;
@@ -100,8 +101,9 @@ void AttrCacheBfsClient::UploadFromStream(std::istream &sourceStream, const std:
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
      if (cache_item->m_confirmed) {
-        cache_item->m_props.last_modified = time(NULL);
         cache_item->m_props.size = 0;
+        cache_item->m_props.last_modified = time(NULL);
+        cache_item->m_props.m_not_exists = false;
     }
     return blob_client->UploadFromStream(sourceStream, blobName);
 }
@@ -114,8 +116,9 @@ void AttrCacheBfsClient::UploadFromStream(std::istream &sourceStream, const std:
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
      if (cache_item->m_confirmed) {
-        cache_item->m_props.last_modified = time(NULL);
         cache_item->m_props.size = 0;
+        cache_item->m_props.last_modified = time(NULL);
+        cache_item->m_props.m_not_exists = false;
     }
     return blob_client->UploadFromStream(sourceStream, blobName, metadata);
 }
@@ -138,25 +141,13 @@ bool AttrCacheBfsClient::CreateDirectory(const std::string directoryPath)
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
     cache_item->m_confirmed = false;
-   return blob_client->CreateDirectory(directoryPath);
+    return blob_client->CreateDirectory(directoryPath);
 }
 
 bool AttrCacheBfsClient::DeleteDirectory(const std::string directoryPath)
 {
-    #if 0
-    std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(directoryPath));
-    std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(directoryPath);
-    boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
-    std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
-    bool ret = blob_client->DeleteDirectory(directoryPath);
-    if (cache_item->m_confirmed) {
-        cache_item->m_props.m_valid = true;
-        cache_item->m_props.m_not_exists = true;
-    }
-    #else
     attr_cache.invalidate_dir_recursively(directoryPath);
     bool ret = blob_client->DeleteDirectory(directoryPath);
-    #endif
     return ret;
 }
 
