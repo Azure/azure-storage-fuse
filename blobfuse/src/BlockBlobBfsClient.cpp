@@ -944,3 +944,8 @@ int BlockBlobBfsClient::UpdateBlobProperty(std::string /*pathStr*/, std::string 
     //  This is not supported for block blob for now
     return 0;
 }
+
+access_control BlockBlobBfsClient::GetAccessControl(const std::string /*pathName*/)
+{
+    return access_control();
+}

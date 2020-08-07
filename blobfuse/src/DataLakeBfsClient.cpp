@@ -512,3 +512,8 @@ int DataLakeBfsClient::UpdateBlobProperty(std::string /*pathStr*/, std::string /
     return 0;
 }
 #endif
+
+access_control DataLakeBfsClient::GetAccessControl(const std::string pathName)
+{
+    return m_adls_client->get_file_access_control(configurations.containerName, pathName);
+}

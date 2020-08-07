@@ -315,8 +315,14 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                             "",
                             blobItem.metadata,
                             last_mod,
-                            isAdlsMode ? blobItem.acl.permissions : "", 
+                            "", 
                             blobItem.content_length);
+
+                    if (isAdlsMode) {
+                        access_control acl = blob_client->GetAccessControl(listResults[i].name);
+                        ret_property.SetFileMode(acl.permissions);
+                    }
+
                     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(listResults[i].name);
                     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
                     cache_item->m_props = ret_property;
@@ -346,4 +352,9 @@ int AttrCacheBfsClient::ChangeMode(const char *path, mode_t mode)
 int AttrCacheBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA * metadata)
 {
     return blob_client->UpdateBlobProperty(pathStr, key, value, metadata);
+}
+
+access_control AttrCacheBfsClient::GetAccessControl(const std::string pathName)
+{
+    return blob_client->GetAccessControl(pathName);
 }
