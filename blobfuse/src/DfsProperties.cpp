@@ -10,6 +10,11 @@
 #include <blob/blob_client.h>
 #include <adls_client.h>
 
+#include <storage_errno.h>
+#include <sys/stat.h>
+#include <iostream>
+#include <fstream>
+
 using namespace azure::storage_adls;
 using namespace azure::storage_lite;
 
@@ -75,12 +80,9 @@ RET adls_client_ext::blob_client_adaptor_ext(FUNC func)
 dfs_properties adls_client_ext::get_dfs_path_properties(const std::string &filesystem, const std::string &path) 
 {
     auto http = m_blob_client->client()->get_handle();
-    auto request = std::make_shared<get_dfs_properties_request>(filesystem, path);
-    auto async_func = std::bind(&azure::storage_lite::async_executor<void>::submit, m_account, request, http, m_context);
-    blob_client_adaptor_ext<void>(async_func);   
-
     dfs_properties props;
-    if (success())
+    
+    if (adls_exists(filesystem, path, http))
     {
         props.cache_control = http->get_response_header(constants::header_cache_control);
         props.content_disposition = http->get_response_header(constants::header_content_disposition);
@@ -134,35 +136,6 @@ dfs_properties adls_client_ext::get_dfs_path_properties(const std::string &files
             }
         }
 
-        #if 0
-        for(char c : http->get_response_header(blobfuse_constants::header_ms_properties)) {
-            if(propName.empty()) {
-                if (c == '=') {
-                    // Push state forward for the property value
-                    propName = runningString;
-                    runningString = "";
-                } else {
-                    runningString += c;
-                }
-            } else {
-                if (c == ',') {
-                    // base64 decode the value, write the metadata the vector, and move on.
-                    std::string prop;
-                    for (unsigned char dc : from_base64(runningString)) {
-                        prop += dc;
-                    }
-
-                    props.metadata.emplace_back(propName, prop);
-
-                    // Reset state for the next property
-                    propName = "";
-                    runningString = "";
-                } else {
-                    runningString += c;
-                }
-            }
-        }
-        #endif
     }
 
     return props;
@@ -170,10 +143,12 @@ dfs_properties adls_client_ext::get_dfs_path_properties(const std::string &files
 
 /// Method that calls the dfs endpoint to find out if the pathe exists
 /// returns 0 if there is no path returns 1 if there is path
-int adls_client_ext::adls_exists(const std::string &filesystem, const std::string &path) 
+int adls_client_ext::adls_exists(const std::string &filesystem, const std::string &path, std::shared_ptr<azure::storage_lite::CurlEasyRequest> http) 
 {
     int exists = 0;
-    auto http = m_blob_client->client()->get_handle();
+    if (http == NULL)
+        http = m_blob_client->client()->get_handle();
+
     auto request = std::make_shared<get_dfs_properties_request>(filesystem, path);
     auto async_func = std::bind(&azure::storage_lite::async_executor<void>::submit, m_account, request, http, m_context);
     blob_client_adaptor_ext<void>(async_func);   

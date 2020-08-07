@@ -72,10 +72,6 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accou
             account,
             configurations.concurrency);
         errno = 0;
-        if (configurations.useAttrCache)
-        {
-            return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
-        }
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch (const std::exception &ex)
@@ -108,10 +104,6 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_sas()
             account,
             configurations.concurrency);
         errno = 0;
-        if (configurations.useAttrCache)
-        {
-            return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
-        }
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch (const std::exception &ex)
@@ -156,10 +148,6 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
         std::shared_ptr<blob_client> blobClient =
             std::make_shared<blob_client>(account, max_concurrency_oauth);
         errno = 0;
-        if (configurations.useAttrCache)
-        {
-            return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
-        }
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch (const std::exception &ex)
@@ -204,10 +192,6 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
         std::shared_ptr<blob_client> blobClient =
             std::make_shared<blob_client>(account, max_concurrency_oauth);
         errno = 0;
-        if (configurations.useAttrCache)
-        {
-            return std::make_shared<blob_client_attr_cache_wrapper>(std::make_shared<blob_client_wrapper>(blobClient));
-        }
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
     catch (const std::exception &ex)
@@ -226,7 +210,6 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
 void BlockBlobBfsClient::UploadFromFile(const std::string sourcePath, METADATA &metadata)
 {
     std::string blobName = sourcePath.substr(configurations.tmpPath.size() + 6 /* there are six characters in "/root/" */);
-    InvalidateCachedProperty(blobName);
     m_blob_client->upload_file_to_blob(sourcePath, configurations.containerName, blobName, metadata);
     // upload_file_to_blob does not return a status or success if the blob succeeded
     // it does syslog if there was an exception and changes the errno.
@@ -237,14 +220,12 @@ void BlockBlobBfsClient::UploadFromFile(const std::string sourcePath, METADATA &
 ///<returns>none</returns>
 void BlockBlobBfsClient::UploadFromStream(std::istream &sourceStream, const std::string blobName)
 {
-    InvalidateCachedProperty(blobName);
     m_blob_client->upload_block_blob_from_stream(configurations.containerName, blobName, sourceStream);
 }
 
 void BlockBlobBfsClient::UploadFromStream(std::istream &sourceStream, const std::string blobName,
                                           std::vector<std::pair<std::string, std::string>> &metadata)
 {
-    InvalidateCachedProperty(blobName);
     m_blob_client->upload_block_blob_from_stream(configurations.containerName, blobName, sourceStream, metadata);
 }
 
@@ -282,7 +263,6 @@ bool BlockBlobBfsClient::CreateDirectory(const std::string directoryPath)
     std::vector<std::pair<std::string, std::string>> metadata;
     metadata.push_back(std::make_pair("hdi_isfolder", "true"));
     errno = 0;
-    //InvalidateCachedProperty(directoryPath);
     m_blob_client->upload_block_blob_from_stream(
         configurations.containerName,
         directoryPath,
@@ -342,7 +322,6 @@ bool BlockBlobBfsClient::DeleteDirectory(const std::string directoryPath)
         syslog(LOG_DEBUG,
                "Directory is empty, attempting deleting directory marker: %s\n",
                directoryPath.c_str());
-        InvalidateCachedProperty((std::string)directoryPath);
         DeleteFile((std::string)directoryPath);
         return true;
         break;
@@ -370,7 +349,6 @@ bool BlockBlobBfsClient::DeleteDirectory(const std::string directoryPath)
 ///<returns>none</returns>
 void BlockBlobBfsClient::DeleteFile(const std::string pathToDelete)
 {
-    InvalidateCachedProperty(pathToDelete);
     m_blob_client->delete_blob(configurations.containerName, pathToDelete);
 }
 ///<summary>
@@ -379,31 +357,17 @@ void BlockBlobBfsClient::DeleteFile(const std::string pathToDelete)
 ///<returns>BfsFileProperty object which contains the property details of the file</returns>
 BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool type_known)
 {
-   /*  BfsFileProperty cache_prop;
-    if (0 == GetCachedProperty(pathName, cache_prop))
-    {
-        return cache_prop;
-    }
-  */  
-
     errno = 0;
     if (type_known) {
         blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
         if (errno == 0) {
-            BfsFileProperty ret_property(property.cache_control,
-                property.content_disposition,
-                property.content_encoding,
-                property.content_language,
-                property.content_md5,
-                property.content_type,
-                property.etag,
+            BfsFileProperty ret_property(
                 property.copy_status,
                 property.metadata,
                 property.last_modified,
                 "", // Return an empty modestring because blob doesn't support file mode bits.
                 property.size);
 
-            SetCachedProperty(pathName, ret_property);
             return ret_property;
         }
     } else {
@@ -468,19 +432,16 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
                         if (ptr)
                             last_mod = timegm(&mtime);
                     }
-                    BfsFileProperty ret_property(blobItem.cache_control,
-                        "",
-                        blobItem.content_encoding,
-                        blobItem.content_language,
-                        blobItem.content_md5,
-                        blobItem.content_type,
-                        blobItem.etag,
+                    BfsFileProperty ret_property(
                         "",
                         blobItem.metadata,
                         last_mod,
                         "", // Return an empty modestring because blob doesn't support file mode bits.
                         0);
-                    //ret_property.is_directory = true;
+                    ret_property.is_directory = true;
+                    if (dirSize <= 1)
+                        ret_property.DirectoryIsEmpty();
+
                     errno = 0;
                     return ret_property;
                 }
@@ -489,20 +450,13 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
             {
                 blob_property property = m_blob_client->get_blob_property(configurations.containerName, pathName);
                 if (errno == 0) {
-                    BfsFileProperty ret_property(property.cache_control,
-                        property.content_disposition,
-                        property.content_encoding,
-                        property.content_language,
-                        property.content_md5,
-                        property.content_type,
-                        property.etag,
+                    BfsFileProperty ret_property(
                         property.copy_status,
                         property.metadata,
                         property.last_modified,
                         "", // Return an empty modestring because blob doesn't support file mode bits.
                         property.size);
 
-                    SetCachedProperty(pathName, ret_property);
                     errno = 0;
                     return ret_property;
                 }
@@ -510,7 +464,10 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
             else // none of the blobs match exactly so blob not found
             {
                 syslog(LOG_ERR,"%s does not match the exact name in the top 2 return from list_hierarchial_blobs. It will be treated as a new blob", pathName.c_str());
-                errno = ENOENT;
+                //errno = ENOENT;
+                BfsFileProperty cache_prop = BfsFileProperty(true);
+                errno = 404;
+                return cache_prop;
             }
         }
     }
@@ -555,10 +512,9 @@ std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath
 {
     // Rename the directory blob, if it exists.
     errno = 0;
-
     BfsFileProperty property = GetProperties(sourcePath.substr(1));
     std::vector<std::string> file_paths_to_remove;
-    if (property.isValid() && property.is_directory)
+    if (property.isValid() && property.exists() && property.is_directory)
     {
         rename_directory(sourcePath.c_str(), destinationPath.c_str(), file_paths_to_remove);
     }
@@ -605,7 +561,7 @@ BlockBlobBfsClient::List(std::string continuation, const std::string prefix, con
 bool BlockBlobBfsClient::IsDirectory(const char *path)
 {
     BfsFileProperty property = GetProperties(path);
-    if (property.isValid() && property.is_directory)
+    if (property.isValid() && property.exists() && property.is_directory)
         return true;
     else
         return false;
@@ -715,7 +671,7 @@ int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std
 
     errno = 0;
     auto blob_property = GetProperties(src.substr(1), true);
-    if ((errno == 0) && blob_property.isValid())
+    if ((errno == 0) && blob_property.isValid() && blob_property.exists())
     {
         AZS_DEBUGLOGV("Source file %s for rename operation exists as a blob on the service.\n", src.c_str());
         // Blob also exists on the service.  Perform a server-side copy.
@@ -736,7 +692,7 @@ int BlockBlobBfsClient::rename_single_file(std::string src, std::string dst, std
         do
         {
             blob_property = GetProperties(dst.substr(1), true);
-        } while (errno == 0 && blob_property.isValid() && blob_property.copy_status.compare(0, 7, "pending") == 0);
+        } while (errno == 0 && blob_property.isValid() && blob_property.exists() && blob_property.copy_status.compare(0, 7, "pending") == 0);
 
         if (blob_property.copy_status.compare(0, 7, "success") == 0)
         {

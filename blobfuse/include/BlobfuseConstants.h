@@ -37,6 +37,8 @@ enum AUTH_TYPE {
 #define HIGH_THRESHOLD_VALUE 90
 #define LOW_THRESHOLD_VALUE 80
 
+#define MAX_GET_LIST_RESULT_LIMIT 5000
+
 namespace blobfuse_constants {
     extern const int max_concurrency_oauth;
     extern const int max_retry_oauth;

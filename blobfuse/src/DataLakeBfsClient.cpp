@@ -232,7 +232,6 @@ int DataLakeBfsClient::Exists(const std::string directoryPath)
 bool DataLakeBfsClient::DeleteDirectory(const std::string directoryPath)
 {
     errno = 0;
-    InvalidateCachedProperty(directoryPath);
     m_adls_client->delete_directory(configurations.containerName, directoryPath);
     if(errno != 0)
     {
@@ -323,9 +322,6 @@ std::vector<std::string> DataLakeBfsClient::Rename(const std::string /*sourcePat
 
 std::vector<std::string> DataLakeBfsClient::Rename(std::string sourcePath, std::string destinationPath)
 {
-    InvalidateCachedProperty(sourcePath.substr(1));
-    InvalidateCachedProperty(destinationPath.substr(1));
-    
     errno = 0;
     m_adls_client->move_file(
             configurations.containerName,
@@ -356,7 +352,7 @@ list_segmented_response DataLakeBfsClient::List(std::string continuation, std::s
     list_paths_result listed_adls_response = m_adls_client->list_paths_segmented(
             configurations.containerName,
             prefix,
-            false,
+            false, // True here means it will list all blobs recursively
             continuation,
             max_results);
     return list_segmented_response(listed_adls_response);
@@ -371,7 +367,6 @@ int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
     int lstaterrno = 0;
 
     errno = 0;
-    InvalidateCachedProperty(pathStr.substr(1));
     m_adls_client->set_file_access_control(configurations.containerName, pathStr.substr(1), accessControl);
     lstaterrno = errno;
 
@@ -410,13 +405,6 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
 
     if (errno == 0) {
         BfsFileProperty ret_property(
-            dfsprops.cache_control,
-            dfsprops.content_disposition,
-            dfsprops.content_encoding,
-            dfsprops.content_language,
-            dfsprops.content_md5,
-            dfsprops.content_type,
-            dfsprops.etag,
             dfsprops.resource_type,
             dfsprops.owner,
             dfsprops.group,
@@ -428,6 +416,12 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
             );
 
         return ret_property;
+    }
+    
+    if (errno == 404) {
+        BfsFileProperty cache_prop = BfsFileProperty(true);
+        errno = 404;
+        return cache_prop;
     }
 
     return BfsFileProperty();
@@ -505,7 +499,6 @@ int DataLakeBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, 
             AZS_DEBUGLOGV("Failed to update property for %s : err %d", pathStr.c_str(), errno);
         }
     }
-    InvalidateCachedProperty(pathStr);
     return errno;
 }
 #else

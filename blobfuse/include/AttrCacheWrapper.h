@@ -30,11 +30,11 @@ namespace azure { namespace storage_lite {
     /// <param name="blob_endpoint">Blob endpoint URI to allow non-public clouds as well as custom domains.</param>
     /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
     std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_sastoken(
-    const std::string &account_name,
-    const std::string &sas_token,
-    const unsigned int concurrency,
-    bool use_https = true,
-    const std::string &blob_endpoint = "");
+        const std::string &account_name,
+        const std::string &sas_token,
+        const unsigned int concurrency,
+        bool use_https = true,
+        const std::string &blob_endpoint = "");
 
     /// <summary>
     /// Constructs a blob client wrapper from storage account credential.
@@ -46,9 +46,9 @@ namespace azure { namespace storage_lite {
     /// <param name="blob_endpoint">Blob endpoint URI to allow non-public clouds as well as custom domains.</param>
     /// <returns>Return a <see cref="microsoft_azure::storage::blob_client_wrapper"> object.</returns>
     std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_oauth(
-    const std::string &account_name,
-    const unsigned int concurrency,
-    const std::string &blob_endpoint = "");
+        const std::string &account_name,
+        const unsigned int concurrency,
+        const std::string &blob_endpoint = "");
 
     // A wrapper around the "blob_client_wrapper" that provides in-memory caching for "get_blob_properties" calls.
     class blob_client_attr_cache_wrapper : public blob_client_wrapper

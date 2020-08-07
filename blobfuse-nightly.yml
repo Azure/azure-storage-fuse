@@ -250,6 +250,15 @@ jobs:
       timeoutInMinutes: 10
       continueOnError: true
 
+    # Upload blobs and validate data by comparing 
+    - script: |
+        cp -R ./blobfuse/* $(MOUNT_DIR)/
+        diff -qr ./blobfuse/ $(MOUNT_DIR)/
+        rm -rf $(MOUNT_DIR)/*
+      displayName: "TEST - Data Validation"
+      timeoutInMinutes: 10
+      continueOnError: true
+
     # -------------------------------------------------------
 
     # Basic testing done.....
@@ -293,6 +302,7 @@ jobs:
 
     # Mount a directory for stressTest and run it
     - script:  |
+        sudo fusermount -u $(MOUNT_DIR)
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
         sudo mkdir $(BLOBFUSE_STRESS_DIR)
@@ -569,3 +579,4 @@ jobs:
     - script: sudo cat /var/log/blobfuse.log
       displayName: Print the log file
       continueOnError: true
+    

@@ -171,16 +171,19 @@ int azs_getattr(const char *path, struct stat *stbuf)
 
     // It's not in the local cache.  Check to see if it's a blob on the service:
     std::string blobNameStr(pathString.substr(1).c_str());
-    if (blobNameStr.rfind(".Trash", 0) == 0 ||
-        blobNameStr.rfind(".xdg-volume-info", 0) == 0 ||
-        blobNameStr.rfind("autorun.inf", 0) == 0) {
-         return -(ENOENT);
+    if (blobNameStr == ".Trash" ||
+        blobNameStr == ".Trash-1000" ||
+        blobNameStr == ".xdg-volume-info" ||
+        blobNameStr == "autorun.inf") {
+        syslog(LOG_DEBUG, "Ignoring %s in getattr", blobNameStr.c_str());
+        return -(ENOENT);
     }
 
     errno = 0;
     //AZS_DEBUGLOGV("Storage client name is %s \n", (typeid(storage_client).name()));
     // see if it is block blob and call the block blob method
     //if the first task is to study
+    #if 1
     if (!storage_client->isADLS())
     {
         int resultCount = 2;
@@ -310,11 +313,12 @@ int azs_getattr(const char *path, struct stat *stbuf)
         }
     } // end of processing for Blockblob
     else
+    #endif
     {
         BfsFileProperty blob_property = storage_client->GetProperties(blobNameStr);
         mode_t perms = blob_property.m_file_mode == 0 ? config_options.defaultPermission : blob_property.m_file_mode;
 
-        if ((errno == 0) && blob_property.isValid())
+        if ((errno == 0) && blob_property.isValid() && blob_property.exists())
         {
             if (blob_property.is_directory)
             {
@@ -324,7 +328,11 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 // Directory size will affect behaviour for mv, rmdir, cp etc.
                 stbuf->st_uid = fuse_get_context()->uid;
                 stbuf->st_gid = fuse_get_context()->gid;
-                stbuf->st_nlink = storage_client->IsDirectoryEmpty(blobNameStr.c_str()) == D_EMPTY ? 2 : 3;
+                if (storage_client->isADLS())
+                    stbuf->st_nlink = storage_client->IsDirectoryEmpty(blobNameStr.c_str()) == D_EMPTY ? 2 : 3;
+                else
+                    stbuf->st_nlink = blob_property.IsDirectoryEmpty() ? 2 : 3;
+
                 stbuf->st_size = 4096;
                 stbuf->st_mtime = blob_property.get_last_modified();
                 stbuf->st_atime = blob_property.get_last_access();
@@ -350,7 +358,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             stbuf->st_size = blob_property.get_size();
             return 0;
         }
-        else if (errno == 0 && !blob_property.isValid())
+        else if (errno == 0 && !blob_property.isValid() && blob_property.exists())
         {
             // Check to see if it's a directory, instead of a file
             errno = 0;
@@ -382,7 +390,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
         }
         else
         {
-            if (errno == 404)
+            if (errno == 404 || !blob_property.exists())
             {
                 // The file does not currently exist on the service or in the cache
                 // If the command they are calling is just checking for existence, fuse will call the next operation
