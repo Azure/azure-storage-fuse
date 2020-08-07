@@ -318,10 +318,10 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                             "", 
                             blobItem.content_length);
 
-                    if (isAdlsMode) {
+                    /*if (isAdlsMode) {
                         access_control acl = blob_client->GetAccessControl(listResults[i].name);
                         ret_property.SetFileMode(acl.permissions);
-                    }
+                    }*/
 
                     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(listResults[i].name);
                     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
