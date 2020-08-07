@@ -20,13 +20,15 @@ int azs_open(const char *path, struct fuse_file_info *fi)
 {
     syslog (LOG_DEBUG, "azs_open called with path = %s, fi->flags = %X.\n", path, fi->flags);
     std::string pathString(path);
+    std::replace(pathString.begin(), pathString.end(), '\\', '/');
+    
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
 
     // Here, we lock the file path using the mutex.  This ensures that multiple threads aren't trying to create and download the same blob/file simultaneously.
     // We cannot use "flock" to prevent against this, because a) the file might not yet exist, and b) flock locks do not persist across file delete / recreate operations, and file renames.
-    auto fmutex = file_lock_map::get_instance()->get_mutex(path);
+    auto fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
     std::lock_guard<std::mutex> lock(*fmutex);
 
     // If the file/blob being opened does not exist in the cache, or the version in the cache is too old, we need to download / refresh the data from the service.
@@ -192,10 +194,12 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 {
     AZS_DEBUGLOGV("azs_create called with path = %s, mode = %d, fi->flags = %x\n", path, mode, fi->flags);
 
-    auto fmutex = file_lock_map::get_instance()->get_mutex(path);
+    std::string pathString(path);
+    std::replace(pathString.begin(), pathString.end(), '\\', '/');
+
+    auto fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
     std::lock_guard<std::mutex> lock(*fmutex);
 
-    std::string pathString(path);
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
@@ -259,6 +263,8 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
     // At this point, the shared flock will be held.
 
     // In some cases, due (I believe) to us using the hard_unlink option, path will be null.  Thus, we need to get the file name from the file descriptor:
+    std::string pathString(path);
+    std::replace(pathString.begin(), pathString.end(), '\\', '/');
 
     char path_link_buffer[50];
     snprintf(path_link_buffer, 50, "/proc/self/fd/%d", (((struct fhwrapper *)fi->fh)->fh));
@@ -375,6 +381,8 @@ int azs_release(const char *path, struct fuse_file_info * fi)
 
 // TODO: Make this method resiliant to renames of the file (same way flush() is)
     std::string pathString(path);
+    std::replace(pathString.begin(), pathString.end(), '\\', '/');
+
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
@@ -398,6 +406,8 @@ int azs_unlink(const char *path)
 {
     AZS_DEBUGLOGV("azs_unlink called with path = %s.\n", path);
     std::string pathString(path);
+    std::replace(pathString.begin(), pathString.end(), '\\', '/');
+
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
@@ -412,7 +422,7 @@ int azs_unlink(const char *path)
     // Most of the time, this will work here as well, because when we upload the blob in flush(), the Azure Storage C++ Lite library acquires a new handle to the file to upload it.  If the file has been unlinked during this time, no data will be uploaded.
     // However, there is a potential race condition.  If unlink() is called in between the Azure Storage C++ Lite library opening the file (for upload), and actually uploading the data, data may be successfully uploaded.
     // Acquiring the mutex here guards against that condition.
-    auto fmutex = file_lock_map::get_instance()->get_mutex(path);
+    auto fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
     std::lock_guard<std::mutex> lock(*fmutex);
     int remove_success = remove(mntPath);
     // We don't fail if the remove() failed, because that's just removing the file in the local file cache, which may or may not be there.
@@ -467,6 +477,8 @@ int azs_truncate(const char * path, off_t off)
     AZS_DEBUGLOGV("azs_truncate called.  Path = %s, offset = %s\n", path, to_str(off).c_str());
 
     std::string pathString(path);
+    std::replace(pathString.begin(), pathString.end(), '\\', '/');
+
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
@@ -476,7 +488,7 @@ int azs_truncate(const char * path, off_t off)
         // TODO: Refactor azs_open, azs_flush, and azs_release so as to not require us calling them directly here
         struct fuse_file_info fi;
         fi.flags = O_RDWR;
-        int res = azs_open(path, &fi);
+        int res = azs_open(pathString.c_str(), &fi);
         if(res != 0)
         {
             syslog(LOG_ERR, "Failing azs_truncate operation on file %s due to failure %d from azs_open.\n.", path, res);
@@ -488,11 +500,11 @@ int azs_truncate(const char * path, off_t off)
         if (truncret == 0)
         {
             AZS_DEBUGLOGV("Successfully truncated file %s in the local file cache.", mntPath);
-            int flushret = azs_flush(path, &fi);
+            int flushret = azs_flush(pathString.c_str(), &fi);
             if(flushret != 0)
             {
                 syslog(LOG_ERR, "Failing azs_truncate operation on file %s due to failure %d from azs_flush.  Note that truncate on cached file succeeded.\n.", path, flushret);
-                azs_release(path, &fi);
+                azs_release(pathString.c_str(), &fi);
                 return flushret;
             }
         }
@@ -500,11 +512,11 @@ int azs_truncate(const char * path, off_t off)
         {
             int truncate_errno = errno;
             syslog(LOG_ERR, "Failing azs_truncate operation on file %s due to failure to truncate local file in cache.  Errno = %d.\n.", path, truncate_errno);
-            azs_release(path, &fi);
+            azs_release(pathString.c_str(), &fi);
             return -truncate_errno;
         }
 
-        azs_release(path, &fi);
+        azs_release(pathString.c_str(), &fi);
         return 0;
     }
 
@@ -592,14 +604,17 @@ int azs_readlink(const char *path, char *buf, size_t size)
 {
     AZS_DEBUGLOGV("azs_readlink called with path = %s, buf size = %ld\n", path, size);
 
-    auto fmutex = file_lock_map::get_instance()->get_mutex(path);
+    std::string pathString(path);
+    std::replace(pathString.begin(), pathString.end(), '\\', '/');
+
+    auto fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
     std::lock_guard<std::mutex> lock(*fmutex);
     std::stringstream os;
 
-    BfsFileProperty prop = storage_client->GetProperties(path+1, true);
+    BfsFileProperty prop = storage_client->GetProperties(pathString.c_str() + 1, true);
     
     errno = 0;
-    storage_client->DownloadToStream((path + 1), os, 0, 0);
+    storage_client->DownloadToStream(pathString.c_str() + 1, os, 0, 0);
     if (errno != 0)
     {
         int storage_errno = errno;
@@ -619,16 +634,21 @@ int azs_readlink(const char *path, char *buf, size_t size)
 int azs_symlink(const char *from, const char *to)
 {
     AZS_DEBUGLOGV("azs_symlink called with from = %s to = %s\n", from, to);
+    std::string fromStr(from);
+    std::string toStr(to);
 
-    auto fmutex = file_lock_map::get_instance()->get_mutex(from);
+    std::replace(fromStr.begin(), fromStr.end(), '\\', '/');
+    std::replace(toStr.begin(), toStr.end(), '\\', '/');
+
+    auto fmutex = file_lock_map::get_instance()->get_mutex(fromStr.c_str());
     std::lock_guard<std::mutex> lock(*fmutex);
 
     std::vector<std::pair<std::string, std::string>> metadata;
     metadata.push_back(std::make_pair("is_symlink", "true"));
-    std::istringstream is(from);
+    std::istringstream is(fromStr.c_str());
 
     errno = 0;
-    storage_client->UploadFromStream(is, (to + 1), metadata);
+    storage_client->UploadFromStream(is, toStr.c_str() + 1, metadata);
     if (errno != 0)
     {
         int storage_errno = errno;

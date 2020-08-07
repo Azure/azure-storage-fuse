@@ -15,11 +15,13 @@ std::string get_parent_str(std::string object)
 // Directory is getting deleted, invalidate all the files and directories recursively inside
 void AttrCache::invalidate_dir_recursively(const std::string& path)
 {
+    std::string dirPath = path + "/";
     std::shared_ptr<AttrCacheItem> cache_item;
     std::lock_guard<std::mutex> lock(blobs_mutex);
     for (auto item = blob_cache.begin(); item != blob_cache.end(); item++) 
     {
-        if (item->first.rfind(path.c_str(), 0) == 0)
+        if (item->first.rfind(dirPath.c_str(), 0) == 0 ||
+            item->first == path)
         {
             cache_item = item->second;
             if (cache_item->m_confirmed) {
@@ -286,6 +288,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                         last_mod = timegm(&mtime);
                 }   
 
+                #if 0
                 if (isAdlsMode)
                 {
                     BfsFileProperty ret_property(
@@ -305,13 +308,15 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
                     cache_item->m_props = ret_property;
                     cache_item->m_confirmed = true;
-                } else {
+                } else 
+                #endif
+                {
                     BfsFileProperty ret_property(
                             "",
                             blobItem.metadata,
                             last_mod,
-                            "", // Return an empty modestring because blob doesn't support file mode bits.
-                            0);
+                            isAdlsMode ? blobItem.acl.permissions : "", 
+                            blobItem.content_length);
                     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(listResults[i].name);
                     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
                     cache_item->m_props = ret_property;

@@ -265,6 +265,16 @@ func TestFileCreateUtf8Char(t *testing.T) {
 	srcFile.Close()
 }
 
+func TestFileCreateLongName(t *testing.T) {
+	fileName := mntPath + "Higher Call_ An Incredible True Story of Combat and Chivalry in the War-Torn Skies of World War II, A - Adam Makos & Larry Alexander.epub"
+
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	if err != nil {
+		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
+	}
+	srcFile.Close()
+}
+
 func TestFileCreateLabel(t *testing.T) {
 	fileName := mntPath + "/chunk_f13c48d4-5c1e-11ea-b41d-000d3afe1867.label"
 

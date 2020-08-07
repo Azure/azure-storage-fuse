@@ -349,13 +349,18 @@ list_segmented_response DataLakeBfsClient::List(std::string continuation, std::s
             continuation.c_str(),
             prefix.c_str(),
             delimiter.c_str());
+    #if 0
     list_paths_result listed_adls_response = m_adls_client->list_paths_segmented(
             configurations.containerName,
             prefix,
             false, // True here means it will list all blobs recursively
             continuation,
             max_results);
+        
     return list_segmented_response(listed_adls_response);
+    #else
+    return BlockBlobBfsClient::List(continuation, prefix, delimiter, max_results);
+    #endif
 
 }
 
