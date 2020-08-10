@@ -18,20 +18,33 @@ void AttrCache::invalidate_dir_recursively(const std::string& path)
     std::string dirPath = path + "/";
     std::shared_ptr<AttrCacheItem> cache_item;
     std::lock_guard<std::mutex> lock(blobs_mutex);
+
+    auto iter = blob_cache.find(path);
+    if (iter != blob_cache.end()) {
+        cache_item = iter->second;
+        if (cache_item->m_confirmed) {
+            // Let the cache be still valid but mark that file no more exists on the storage
+            cache_item->m_props.m_valid = true;
+            cache_item->m_props.m_not_exists = true;
+        }
+    }
+
     for (auto item = blob_cache.begin(); item != blob_cache.end(); item++) 
     {
-        if (item->first.rfind(dirPath.c_str(), 0) == 0 ||
-            item->first == path)
+        // Mark everything under this dir as not existent now
+        if (item->first.rfind(dirPath.c_str(), 0) == 0)
         {
             cache_item = item->second;
             if (cache_item->m_confirmed) {
-                //cache_item->m_confirmed = false;
                 // Let the cache be still valid but mark that file no more exists on the storage
                 cache_item->m_props.m_valid = true;
                 cache_item->m_props.m_not_exists = true;
             }
         }
     }
+
+
+
 }
 
 // Performs a thread-safe map lookup of the input key in the directory map.
@@ -176,10 +189,12 @@ BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool typ
         boost::shared_lock<boost::shared_mutex> sharedlock(cache_item->m_mutex);
         if (cache_item->m_confirmed)
         {
+            #if 0
             if (isAdlsMode && (cache_item->m_props.m_file_mode == 0)) {
                 access_control acl = blob_client->GetAccessControl(pathName);
                 cache_item->m_props.SetFileMode(acl.permissions);
             }
+            #endif
             
             return cache_item->m_props;
         }
@@ -293,7 +308,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                         last_mod = timegm(&mtime);
                 }   
 
-                #if 0
+                #if 1
                 if (isAdlsMode)
                 {
                     BfsFileProperty ret_property(
@@ -344,7 +359,8 @@ int AttrCacheBfsClient::ChangeMode(const char *path, mode_t mode)
         std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(pathStr.substr(1));
         boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
         std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
-        cache_item->m_confirmed = false;
+        if (cache_item->m_confirmed)
+            cache_item->m_props.SetFileMode(mode);
     }
     return blob_client->ChangeMode(path, mode);
 }

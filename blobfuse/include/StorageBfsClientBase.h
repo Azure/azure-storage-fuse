@@ -145,6 +145,11 @@ class BfsFileProperty
             m_empty_dir = true;
         }
 
+        void SetFileMode(mode_t mode) 
+        {
+            m_file_mode = mode;
+        }
+
         void SetFileMode(std::string modestring) 
         {
             m_file_mode = 0000; // Supply no file mode to begin with unless the mode string is empty
