@@ -176,6 +176,11 @@ BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool typ
         boost::shared_lock<boost::shared_mutex> sharedlock(cache_item->m_mutex);
         if (cache_item->m_confirmed)
         {
+            if (isAdlsMode && (cache_item->m_props.m_file_mode == 0)) {
+                access_control acl = blob_client->GetAccessControl(pathName);
+                cache_item->m_props.SetFileMode(acl.permissions);
+            }
+            
             return cache_item->m_props;
         }
     }
@@ -317,11 +322,6 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                             last_mod,
                             "", 
                             blobItem.content_length);
-
-                    /*if (isAdlsMode) {
-                        access_control acl = blob_client->GetAccessControl(listResults[i].name);
-                        ret_property.SetFileMode(acl.permissions);
-                    }*/
 
                     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(listResults[i].name);
                     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
