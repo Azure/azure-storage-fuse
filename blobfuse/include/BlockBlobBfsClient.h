@@ -70,7 +70,7 @@ public:
     ///</summary>
     ///<returns>BfsFileProperty object which contains the property details of the file</returns>
     BfsFileProperty GetProperties(std::string pathName, bool type_known = false) override;
-    access_control GetAccessControl(const std::string pathName) override;
+    void GetExtraProperties(const std::string pathName, BfsFileProperty &prop) override;
 
     ///<summary>
     /// Determines whether or not a path (file or directory) exists or not

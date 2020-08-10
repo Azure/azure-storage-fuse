@@ -64,7 +64,7 @@ public:
     ///</summary>
     ///<returns>BfsFileProperty object which contains the property details of the file</returns>
     BfsFileProperty GetProperties(std::string pathName, bool type_known = false) override;
-    access_control GetAccessControl(const std::string pathName) override;
+    void GetExtraProperties(const std::string pathName, BfsFileProperty &prop) override;
     
     virtual int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL);
 

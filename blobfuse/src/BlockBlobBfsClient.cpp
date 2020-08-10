@@ -945,7 +945,7 @@ int BlockBlobBfsClient::UpdateBlobProperty(std::string /*pathStr*/, std::string 
     return 0;
 }
 
-access_control BlockBlobBfsClient::GetAccessControl(const std::string /*pathName*/)
+void BlockBlobBfsClient::GetExtraProperties(const std::string /*pathName*/, BfsFileProperty & /*prop*/)
 {
-    return access_control();
+    return;
 }
