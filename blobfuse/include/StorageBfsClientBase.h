@@ -18,8 +18,6 @@ using namespace azure::storage_adls;
 static const int maxFailCount = 20;
 #define UNUSED(x) (void)(x)
 
-#define USE_DFS_ENDPOINT_LIST_FOR_ADLS
-
 class BfsFileProperty 
 {
     public:

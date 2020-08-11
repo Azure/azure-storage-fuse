@@ -197,7 +197,8 @@ BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool typ
         boost::shared_lock<boost::shared_mutex> sharedlock(cache_item->m_mutex);
         if (cache_item->m_confirmed)
         {
-            #ifndef USE_DFS_ENDPOINT_LIST_FOR_ADLS
+            
+            #if 0
             if (isAdlsMode && (cache_item->m_props.m_file_mode == 0)) {
                 blob_client->GetExtraProperties(pathName, cache_item->m_props);
             }
@@ -206,6 +207,7 @@ BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool typ
                 blob_client->GetExtraProperties(pathName, cache_item->m_props);
             }
             #endif
+            
             
             return cache_item->m_props;
         }
@@ -319,7 +321,6 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                         last_mod = timegm(&mtime);
                 }   
 
-                #ifndef USE_DFS_ENDPOINT_LIST_FOR_ADLS
                 if (isAdlsMode)
                 {
                     BfsFileProperty ret_property(
@@ -339,9 +340,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
                     cache_item->m_props = ret_property;
                     cache_item->m_confirmed = true;
-                } else 
-                #endif
-                {
+                } else {
                     BfsFileProperty ret_property(
                             "",
                             blobItem.metadata,

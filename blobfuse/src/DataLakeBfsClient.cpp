@@ -349,7 +349,7 @@ list_segmented_response DataLakeBfsClient::List(std::string continuation, std::s
             continuation.c_str(),
             prefix.c_str(),
             delimiter.c_str());
-    #ifdef USE_DFS_ENDPOINT_LIST_FOR_ADLS
+    #if 1
     list_paths_result listed_adls_response = m_adls_client->list_paths_segmented(
             configurations.containerName,
             prefix,
