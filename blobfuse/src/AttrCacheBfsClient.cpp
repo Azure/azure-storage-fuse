@@ -203,7 +203,7 @@ BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool typ
                 blob_client->GetExtraProperties(pathName, cache_item->m_props);
             }
             #else
-            if (isAdlsMode && !cache_item->m_props.meta_retreived) {
+            if (isAdlsMode && !cache_item->m_props.is_directory && !cache_item->m_props.meta_retreived) {
                 blob_client->GetExtraProperties(pathName, cache_item->m_props);
             }
             #endif
