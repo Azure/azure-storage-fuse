@@ -519,7 +519,7 @@ void DataLakeBfsClient::GetExtraProperties(const std::string pathName, BfsFilePr
     // When we are using blob endpoint we do not get the file permissions in List api
     // When we are using dfs  endpoint we do not get the metadata in List api
 
-    #ifndef USE_DFS_ENDPOINT_LIST_FOR_ADLS
+    #if 0
     access_control acl = m_adls_client->get_file_access_control(configurations.containerName, pathName);
     prop.SetFileMode(acl.permissions);
     #else
