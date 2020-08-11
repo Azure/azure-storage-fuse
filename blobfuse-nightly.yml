@@ -259,6 +259,13 @@ jobs:
       timeoutInMinutes: 10
       continueOnError: true
 
+    # Listing Time check 
+    - script: |
+        time for i in {1..10}; do ls -l $(MOUNT_DIR); done
+      displayName: "TEST - List time"
+      timeoutInMinutes: 5
+      continueOnError: true
+
     # -------------------------------------------------------
 
     # Basic testing done.....
