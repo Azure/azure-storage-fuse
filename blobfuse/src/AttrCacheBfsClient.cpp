@@ -44,9 +44,30 @@ void AttrCache::invalidate_dir_recursively(const std::string& path)
             }
         }
     }
+}
 
+bool AttrCache::is_directory_empty(const std::string& path)
+{
+    std::string dirPath = path + "/";
+    std::shared_ptr<AttrCacheItem> cache_item;
+    std::lock_guard<std::mutex> lock(blobs_mutex);
 
+    for (auto item = blob_cache.begin(); item != blob_cache.end(); item++) 
+    {
+        // Mark everything under this dir as not existent now
+        if (item->first.rfind(dirPath.c_str(), 0) == 0)
+        {
+            cache_item = item->second;
+            if (cache_item->m_confirmed && 
+                cache_item->m_props.m_valid &&
+                !cache_item->m_props.m_not_exists) 
+            {
+                return false;
+            }
+        }
+    }
 
+    return true;
 }
 
 // Performs a thread-safe map lookup of the input key in the directory map.
@@ -197,18 +218,21 @@ BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool typ
         boost::shared_lock<boost::shared_mutex> sharedlock(cache_item->m_mutex);
         if (cache_item->m_confirmed)
         {
-            
-            #if 0
-            if (isAdlsMode && (cache_item->m_props.m_file_mode == 0)) {
-                blob_client->GetExtraProperties(pathName, cache_item->m_props);
+            if (isAdlsMode && 
+                cache_item->m_props.m_valid &&
+                !cache_item->m_props.m_not_exists && 
+                !cache_item->m_props.is_directory)
+            {
+                #if 0
+                if (cache_item->m_props.m_file_mode == 0) {
+                    blob_client->GetExtraProperties(pathName, cache_item->m_props);
+                }
+                #else
+                if (!cache_item->m_props.meta_retreived) {
+                    blob_client->GetExtraProperties(pathName, cache_item->m_props);
+                }
+                #endif
             }
-            #else
-            /*if (isAdlsMode && !cache_item->m_props.is_directory && !cache_item->m_props.meta_retreived) {
-                blob_client->GetExtraProperties(pathName, cache_item->m_props);
-            }*/
-            #endif
-            
-            
             return cache_item->m_props;
         }
     }
@@ -286,6 +310,9 @@ bool AttrCacheBfsClient::IsDirectory(const char *path)
 
 D_RETURN_CODE AttrCacheBfsClient::IsDirectoryEmpty(std::string path)
 {
+    if (!attr_cache.is_directory_empty(path))
+        return D_NOTEMPTY;
+
     return blob_client->IsDirectoryEmpty(path);
 }
 
