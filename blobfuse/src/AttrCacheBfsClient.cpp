@@ -310,10 +310,9 @@ bool AttrCacheBfsClient::IsDirectory(const char *path)
 
 D_RETURN_CODE AttrCacheBfsClient::IsDirectoryEmpty(std::string path)
 {
-    /*
     if (!attr_cache.is_directory_empty(path))
         return D_NOTEMPTY;
-    */
+    
     return blob_client->IsDirectoryEmpty(path);
 }
 
