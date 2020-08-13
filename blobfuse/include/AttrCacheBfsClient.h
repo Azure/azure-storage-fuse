@@ -75,6 +75,7 @@ public:
     AttrCacheBfsClient(configParams opt) :
     StorageBfsClientBase(opt)
     {
+        noSymlinks = opt.noSymlinks;
         if (opt.useADLS)
         {
             isAdlsMode = true;
@@ -184,5 +185,6 @@ public:
         std::shared_ptr<StorageBfsClientBase> blob_client;
         AttrCache attr_cache;
         bool isAdlsMode;
+        bool noSymlinks;
 };
 #endif //ATTRCACHEBFSCLIENTBASE_H

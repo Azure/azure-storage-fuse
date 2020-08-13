@@ -40,6 +40,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--log-level=%s", log_level),
     OPTION("--use-attr-cache=%s", useAttrCache),
     OPTION("--use-adls=%s", use_adls),
+    OPTION("--no_symlinks=%s", no_symlinks),
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
@@ -570,6 +571,8 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 
     int ret = 0;
     config_options.useADLS = false;
+    config_options.noSymlinks = false;
+
     try
     {
 
@@ -770,6 +773,15 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         } else if(use_adls_value == "false") {
             config_options.useADLS = false;
         }
+    }
+
+    if(cmd_options.no_symlinks != NULL)
+    {
+        std::string no_symlinks(cmd_options.no_symlinks);
+        if(no_symlinks == "true")
+        {
+            config_options.noSymlinks = true;
+        } 
     }
 
     config_options.concurrency = (int)(blobfuse_constants::def_concurrency_blob_wrapper);

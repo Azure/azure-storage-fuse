@@ -218,7 +218,7 @@ BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool typ
         boost::shared_lock<boost::shared_mutex> sharedlock(cache_item->m_mutex);
         if (cache_item->m_confirmed)
         {
-            if (isAdlsMode && 
+            if (isAdlsMode && !noSymlinks && 
                 cache_item->m_props.m_valid &&
                 !cache_item->m_props.m_not_exists && 
                 !cache_item->m_props.is_directory)
