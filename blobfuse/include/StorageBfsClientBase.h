@@ -21,7 +21,11 @@ static const int maxFailCount = 20;
 class BfsFileProperty 
 {
     public:
-        BfsFileProperty() : m_valid(false), m_not_exists(false), m_empty_dir(false) {}
+        BfsFileProperty() : m_valid(false), m_not_exists(false), m_empty_dir(false) 
+        {
+            meta_retreived = false;
+        }
+        
         BfsFileProperty(bool not_exists) : m_valid(true), m_not_exists(not_exists), m_empty_dir(false) 
         {
             size = 0;
@@ -29,6 +33,7 @@ class BfsFileProperty
             m_file_mode = 0;
             is_directory = false;
             last_access = last_change = last_modified;
+            meta_retreived = false;
         }
 
         BfsFileProperty(
@@ -47,6 +52,7 @@ class BfsFileProperty
             last_change = last_modified;
             m_not_exists = false;
             m_empty_dir = false;
+            meta_retreived = false;
 
             SetFileMode(modestring);
 
@@ -99,6 +105,7 @@ class BfsFileProperty
             last_change = last_modified;
             m_not_exists = false;
             m_empty_dir = false;
+            meta_retreived = false;
 
             SetFileMode(modestring);
            
@@ -143,6 +150,11 @@ class BfsFileProperty
         void DirectoryIsEmpty()
         {
             m_empty_dir = true;
+        }
+
+        void SetFileMode(mode_t mode) 
+        {
+            m_file_mode = mode;
         }
 
         void SetFileMode(std::string modestring) 
@@ -202,6 +214,7 @@ class BfsFileProperty
         bool m_valid;
         bool m_not_exists;
         bool m_empty_dir;
+        bool meta_retreived;
 
         time_t last_access;
         time_t last_change;
@@ -314,6 +327,8 @@ public:
     ///</summary>
     ///<returns>BfsFileProperty object which contains the property details of the file</returns>
     virtual BfsFileProperty GetProperties(const std::string pathName, bool type_known = false) = 0;
+    virtual void GetExtraProperties(const std::string pathName, BfsFileProperty &prop) = 0;
+    
     ///<summary>
     /// Determines whether or not a path (file or directory) exists or not
     ///</summary>

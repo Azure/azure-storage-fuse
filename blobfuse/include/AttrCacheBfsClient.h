@@ -58,6 +58,7 @@ public:
     std::shared_ptr<boost::shared_mutex> get_dir_item(const std::string& path);
     std::shared_ptr<AttrCacheItem> get_blob_item(const std::string& path);
     void invalidate_dir_recursively(const std::string& path);
+    bool is_directory_empty(const std::string& path);
 
 private:
     std::map<std::string, std::shared_ptr<AttrCacheItem>> blob_cache;
@@ -74,6 +75,7 @@ public:
     AttrCacheBfsClient(configParams opt) :
     StorageBfsClientBase(opt)
     {
+        noSymlinks = opt.noSymlinks;
         if (opt.useADLS)
         {
             isAdlsMode = true;
@@ -145,6 +147,7 @@ public:
     ///</summary>
     ///<returns>BfsFileProperty object which contains the property details of the file</returns>
     BfsFileProperty GetProperties(std::string pathName, bool type_known = false) override;
+    void GetExtraProperties(const std::string pathName, BfsFileProperty &prop) override;
     ///<summary>
     /// Determines whether or not a path (file or directory) exists or not
     ///</summary>
@@ -182,5 +185,6 @@ public:
         std::shared_ptr<StorageBfsClientBase> blob_client;
         AttrCache attr_cache;
         bool isAdlsMode;
+        bool noSymlinks;
 };
 #endif //ATTRCACHEBFSCLIENTBASE_H

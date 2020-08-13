@@ -9,7 +9,9 @@ int azs_mkdir(const char *path, mode_t)
     AZS_DEBUGLOGV("mkdir called with path = %s\n", path);
 
     std::string pathstr(path);
-    
+    // Replace '\' with '/' as for azure storage they will be considered as path seperators
+    std::replace(pathstr.begin(), pathstr.end(), '\\', '/');
+
     errno = 0;
     storage_client->CreateDirectory(pathstr.substr(1).c_str());
     if (errno != 0)
@@ -46,6 +48,9 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     {
         pathStr.push_back('/');
     }
+
+    // Replace '\' with '/' as for azure storage they will be considered as path seperators
+    std::replace(pathStr.begin(), pathStr.end(), '\\', '/');
 
     std::vector<std::string> local_list_results;
 
@@ -200,6 +205,10 @@ int azs_rmdir(const char *path)
     AZS_DEBUGLOGV("azs_rmdir called with path = %s\n", path);
 
     std::string pathString(path);
+    
+    // Replace '\' with '/' as for azure storage they will be considered as path seperators
+    std::replace(pathString.begin(), pathString.end(), '\\', '/');
+
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();

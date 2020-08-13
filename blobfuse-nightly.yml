@@ -253,7 +253,9 @@ jobs:
     # Upload blobs and validate data by comparing 
     - script: |
         cp -R ./blobfuse/* $(MOUNT_DIR)/
-        diff -qr ./blobfuse/ $(MOUNT_DIR)/
+        touch ./blobfuse/ishallcomeindiff.file
+        time for i in {1..10}; do ls -l $(MOUNT_DIR); done
+        diff -qr ./blobfuse/ $(MOUNT_DIR)/ 
         rm -rf $(MOUNT_DIR)/*
       displayName: "TEST - Data Validation"
       timeoutInMinutes: 10
@@ -296,7 +298,35 @@ jobs:
       displayName: TEST - BLOCK gTest
       timeoutInMinutes: 30
       continueOnError: true
-   
+
+    # -------------------------------------------------------
+    # Starting pyTest
+
+    # Mount a directory for pyTest and run it
+    - script:  |
+        sudo rm -rf $(TEMP_DIR)/*
+        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        cd ./test/
+        sudo python tests.py
+        cd -
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - BLOCK pyTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo kill -9 `pidof blobfuse`
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
+        sudo rm -rf $(TEMP_DIR)/*
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - BLOCK pyTest Cleanup
+      timeoutInMinutes: 10
+      continueOnError: true
+
     # -------------------------------------------------------
     # Starting stressTest
 
@@ -370,6 +400,7 @@ jobs:
       timeoutInMinutes: 30
       continueOnError: true
 
+
     # -------------------------------------------------------
 
     # ADLS TESTS
@@ -419,12 +450,36 @@ jobs:
       timeoutInMinutes: 30
       continueOnError: true
 
+    # Mount a directory for stressTest (ADLS) without symlink and run it
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(TEMP_DIR)/*
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --no_symlinks=true
+        cd test
+        go run stressTest.go $(MOUNT_DIR)
+        cd -
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - ADLS stressTest noSymlinks
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        rm -rf $(MOUNT_DIR)/*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo rm -rf $(TEMP_DIR)/*
+        sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - ADLS stressTest Cleanup noSymlinks
+      timeoutInMinutes: 30
+      continueOnError: true
+
     # -------------------------------------------------------
     # Mount a directory for feature test (ADLS) and run it
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
         ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true
+        pidof blobfuse
         cd test
         go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
         cd -
@@ -467,33 +522,6 @@ jobs:
     #  timeoutInMinutes: 30
     #  continueOnError: true
 
-    # -------------------------------------------------------
-    # Starting pyTest
-
-    # Mount a directory for pyTest and run it
-    - script:  |
-        sudo rm -rf $(TEMP_DIR)/*
-        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
-        cd ./test/
-        sudo python tests.py
-        cd -
-      # condition: eq(variables['Build.SourceBranchName'], 'master')
-      displayName: TEST - BLOCK pyTest
-      timeoutInMinutes: 120
-      continueOnError: true
-
-    - script:  |
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo rm -rf $(MOUNT_DIR)/.*
-        sudo fusermount -u $(MOUNT_DIR)
-        sudo kill -9 `pidof blobfuse`
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo rm -rf $(MOUNT_DIR)/.*
-        sudo rm -rf $(TEMP_DIR)/*
-      # condition: eq(variables['Build.SourceBranchName'], 'master')
-      displayName: TEST - BLOCK pyTest Cleanup
-      timeoutInMinutes: 10
-      continueOnError: true
 
     # -------------------------------------------------------
 

@@ -349,13 +349,18 @@ list_segmented_response DataLakeBfsClient::List(std::string continuation, std::s
             continuation.c_str(),
             prefix.c_str(),
             delimiter.c_str());
+    #if 1
     list_paths_result listed_adls_response = m_adls_client->list_paths_segmented(
             configurations.containerName,
             prefix,
             false, // True here means it will list all blobs recursively
             continuation,
             max_results);
+        
     return list_segmented_response(listed_adls_response);
+    #else
+    return BlockBlobBfsClient::List(continuation, prefix, delimiter, max_results);
+    #endif
 
 }
 
@@ -414,6 +419,7 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
             dfsprops.permissions,
             dfsprops.content_length
             );
+        ret_property.meta_retreived = true;
 
         return ret_property;
     }
@@ -507,3 +513,19 @@ int DataLakeBfsClient::UpdateBlobProperty(std::string /*pathStr*/, std::string /
     return 0;
 }
 #endif
+
+void DataLakeBfsClient::GetExtraProperties(const std::string pathName, BfsFileProperty &prop)
+{
+    // When we are using blob endpoint we do not get the file permissions in List api
+    // When we are using dfs  endpoint we do not get the metadata in List api
+
+    #if 0
+    access_control acl = m_adls_client->get_file_access_control(configurations.containerName, pathName);
+    prop.SetFileMode(acl.permissions);
+    #else
+    prop.metadata = m_adls_client->get_file_properties(configurations.containerName, pathName);
+    prop.meta_retreived = true;
+    #endif
+
+    return;
+}

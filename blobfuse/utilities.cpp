@@ -183,7 +183,6 @@ int azs_getattr(const char *path, struct stat *stbuf)
     //AZS_DEBUGLOGV("Storage client name is %s \n", (typeid(storage_client).name()));
     // see if it is block blob and call the block blob method
     //if the first task is to study
-    #if 1
     if (!storage_client->isADLS())
     {
         int resultCount = 2;
@@ -313,7 +312,6 @@ int azs_getattr(const char *path, struct stat *stbuf)
         }
     } // end of processing for Blockblob
     else
-    #endif
     {
         BfsFileProperty blob_property = storage_client->GetProperties(blobNameStr);
         mode_t perms = blob_property.m_file_mode == 0 ? config_options.defaultPermission : blob_property.m_file_mode;
@@ -328,11 +326,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 // Directory size will affect behaviour for mv, rmdir, cp etc.
                 stbuf->st_uid = fuse_get_context()->uid;
                 stbuf->st_gid = fuse_get_context()->gid;
-                if (storage_client->isADLS())
-                    stbuf->st_nlink = storage_client->IsDirectoryEmpty(blobNameStr.c_str()) == D_EMPTY ? 2 : 3;
-                else
-                    stbuf->st_nlink = blob_property.IsDirectoryEmpty() ? 2 : 3;
-
+                stbuf->st_nlink = storage_client->IsDirectoryEmpty(blobNameStr.c_str()) == D_EMPTY ? 2 : 3;
                 stbuf->st_size = 4096;
                 stbuf->st_mtime = blob_property.get_last_modified();
                 stbuf->st_atime = blob_property.get_last_access();
@@ -456,9 +450,12 @@ int azs_chmod(const char *path, mode_t mode)
 {
     //This is only functional when --use-adls is enabled as a mount flag
     AZS_DEBUGLOGV("azs_chmod called with path = %s, mode = %o.\n", path, mode);
-
+    
+    std::string pathString(path);
+    std::replace(pathString.begin(), pathString.end(), '\\', '/');
+    
     errno = 0;
-    int ret = storage_client->ChangeMode(path, mode);
+    int ret = storage_client->ChangeMode(pathString.c_str(), mode);
     if (ret)
     {
         AZS_DEBUGLOGV("azs_chmod failed for path = %s, mode = %o.\n", path, mode);
@@ -485,22 +482,27 @@ int azs_rename(const char *src, const char *dst)
 {
     AZS_DEBUGLOGV("azs_rename called with src = %s, dst = %s.\n", src, dst);
 
+    std::string fromStr(src);
+    std::replace(fromStr.begin(), fromStr.end(), '\\', '/');
+     std::string toStr(dst);
+    std::replace(toStr.begin(), toStr.end(), '\\', '/');
+
     errno = 0;
     struct stat stbuf;
-    errno = azs_getattr(src, &stbuf);
+    errno = azs_getattr(fromStr.c_str(), &stbuf);
     if (errno != 0)
         return errno;
 
     std::vector<std::string> to_remove;
     if (storage_client->isADLS()) {
-        to_remove = storage_client->Rename(src, dst);
+        to_remove = storage_client->Rename(fromStr.c_str(), toStr.c_str());
     } else {
         if (stbuf.st_mode & S_IFDIR) {
             // Rename a directory
-            to_remove = storage_client->Rename(src, dst, true);
+            to_remove = storage_client->Rename(fromStr.c_str(), toStr.c_str(), true);
         } else {
             // Rename a file
-            to_remove = storage_client->Rename(src, dst, false);
+            to_remove = storage_client->Rename(fromStr.c_str(), toStr.c_str(), false);
         }
     }
 
@@ -508,7 +510,7 @@ int azs_rename(const char *src, const char *dst)
     {
         struct stat buf;
         if (0 == stat(to_remove.at(i).c_str(), &buf))
-            g_gc_cache->addCacheBytes(src, buf.st_size);
+            g_gc_cache->addCacheBytes(fromStr.c_str(), buf.st_size);
 
         g_gc_cache->uncache_file(to_remove.at(i));
     }

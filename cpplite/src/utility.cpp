@@ -247,6 +247,9 @@ namespace azure {  namespace storage_lite {
             ret['+'] = 0;
             // Surprisingly, '=' also needs to be encoded because Azure Storage server side is so strict.
             ret['='] = 0;
+
+            // Support '&' in file name like in 'A&b.txt'
+            ret['&'] = 0;
             return ret;
         }();
 

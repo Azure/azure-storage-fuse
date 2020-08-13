@@ -15,21 +15,59 @@ std::string get_parent_str(std::string object)
 // Directory is getting deleted, invalidate all the files and directories recursively inside
 void AttrCache::invalidate_dir_recursively(const std::string& path)
 {
+    std::string dirPath = path + "/";
     std::shared_ptr<AttrCacheItem> cache_item;
     std::lock_guard<std::mutex> lock(blobs_mutex);
+
+    auto iter = blob_cache.find(path);
+    if (iter != blob_cache.end()) {
+        cache_item = iter->second;
+        if (cache_item->m_confirmed) {
+            // Let the cache be still valid but mark that file no more exists on the storage
+            cache_item->m_props.m_valid = true;
+            cache_item->m_props.m_not_exists = true;
+            cache_item->m_props.meta_retreived = false;
+        }
+    }
+
     for (auto item = blob_cache.begin(); item != blob_cache.end(); item++) 
     {
-        if (item->first.rfind(path.c_str(), 0) == 0)
+        // Mark everything under this dir as not existent now
+        if (item->first.rfind(dirPath.c_str(), 0) == 0)
         {
             cache_item = item->second;
             if (cache_item->m_confirmed) {
-                //cache_item->m_confirmed = false;
                 // Let the cache be still valid but mark that file no more exists on the storage
                 cache_item->m_props.m_valid = true;
                 cache_item->m_props.m_not_exists = true;
+                cache_item->m_props.meta_retreived = false;
             }
         }
     }
+}
+
+bool AttrCache::is_directory_empty(const std::string& path)
+{
+    std::string dirPath = path + "/";
+    std::shared_ptr<AttrCacheItem> cache_item;
+    std::lock_guard<std::mutex> lock(blobs_mutex);
+
+    for (auto item = blob_cache.begin(); item != blob_cache.end(); item++) 
+    {
+        // Mark everything under this dir as not existent now
+        if (item->first.rfind(dirPath.c_str(), 0) == 0)
+        {
+            cache_item = item->second;
+            if (cache_item->m_confirmed && 
+                cache_item->m_props.m_valid &&
+                !cache_item->m_props.m_not_exists) 
+            {
+                return false;
+            }
+        }
+    }
+
+    return true;
 }
 
 // Performs a thread-safe map lookup of the input key in the directory map.
@@ -87,6 +125,8 @@ void AttrCacheBfsClient::UploadFromFile(const std::string sourcePath, METADATA &
             cache_item->m_props.size = stbuf.st_size;
             cache_item->m_props.last_modified = time(NULL);
             cache_item->m_props.m_not_exists = false;
+            cache_item->m_props.meta_retreived = true;
+            cache_item->m_props.metadata = metadata;
         }
         else
             cache_item->m_confirmed = false;
@@ -119,6 +159,9 @@ void AttrCacheBfsClient::UploadFromStream(std::istream &sourceStream, const std:
         cache_item->m_props.size = 0;
         cache_item->m_props.last_modified = time(NULL);
         cache_item->m_props.m_not_exists = false;
+        cache_item->m_props.meta_retreived = true;
+        cache_item->m_props.metadata = metadata;
+        
     }
     return blob_client->UploadFromStream(sourceStream, blobName, metadata);
 }
@@ -161,6 +204,7 @@ void AttrCacheBfsClient::DeleteFile(const std::string pathToDelete)
     if (cache_item->m_confirmed) {
         cache_item->m_props.m_valid = true;
         cache_item->m_props.m_not_exists = true;
+        cache_item->m_props.meta_retreived = false;
     }
 }
 
@@ -174,6 +218,21 @@ BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool typ
         boost::shared_lock<boost::shared_mutex> sharedlock(cache_item->m_mutex);
         if (cache_item->m_confirmed)
         {
+            if (isAdlsMode && !noSymlinks && 
+                cache_item->m_props.m_valid &&
+                !cache_item->m_props.m_not_exists && 
+                !cache_item->m_props.is_directory)
+            {
+                #if 0
+                if (cache_item->m_props.m_file_mode == 0) {
+                    blob_client->GetExtraProperties(pathName, cache_item->m_props);
+                }
+                #else
+                if (!cache_item->m_props.meta_retreived) {
+                    blob_client->GetExtraProperties(pathName, cache_item->m_props);
+                }
+                #endif
+            }
             return cache_item->m_props;
         }
     }
@@ -251,6 +310,9 @@ bool AttrCacheBfsClient::IsDirectory(const char *path)
 
 D_RETURN_CODE AttrCacheBfsClient::IsDirectoryEmpty(std::string path)
 {
+    if (!attr_cache.is_directory_empty(path))
+        return D_NOTEMPTY;
+    
     return blob_client->IsDirectoryEmpty(path);
 }
 
@@ -310,8 +372,9 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
                             "",
                             blobItem.metadata,
                             last_mod,
-                            "", // Return an empty modestring because blob doesn't support file mode bits.
-                            0);
+                            "", 
+                            blobItem.content_length);
+
                     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(listResults[i].name);
                     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
                     cache_item->m_props = ret_property;
@@ -333,7 +396,8 @@ int AttrCacheBfsClient::ChangeMode(const char *path, mode_t mode)
         std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(pathStr.substr(1));
         boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
         std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
-        cache_item->m_confirmed = false;
+        if (cache_item->m_confirmed)
+            cache_item->m_props.SetFileMode(mode);
     }
     return blob_client->ChangeMode(path, mode);
 }
@@ -341,4 +405,9 @@ int AttrCacheBfsClient::ChangeMode(const char *path, mode_t mode)
 int AttrCacheBfsClient::UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA * metadata)
 {
     return blob_client->UpdateBlobProperty(pathStr, key, value, metadata);
+}
+
+void AttrCacheBfsClient::GetExtraProperties(const std::string pathName, BfsFileProperty &prop)
+{
+    return blob_client->GetExtraProperties(pathName, prop);
 }

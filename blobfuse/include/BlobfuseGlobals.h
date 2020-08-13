@@ -55,6 +55,7 @@ struct configParams
     bool useHttps;
     bool useAttrCache;
     bool useADLS;
+    bool noSymlinks;
     //this is set by the --allow-other flag,
     // 0770 if not set, 0777 if the flag is set
     int defaultPermission;
@@ -74,6 +75,7 @@ struct cmdlineOptions
     const char *log_level; // Sets the level at which the process should log to syslog.
     const char *useAttrCache; // True if the cache for blob attributes should be used.
     const char *use_adls; // True if the dfs/DataLake endpoint should be used when necessary
+    const char *no_symlinks; // Whether to enable symlink support on adls account or not
     const char *version; // print blobfuse version
     const char *help; // print blobfuse usage
     const char *concurrency; // Max Concurrency factor for blob client wrapper (default 40)
