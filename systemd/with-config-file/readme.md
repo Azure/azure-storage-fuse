@@ -6,4 +6,5 @@ systemd service file for Azure Storage fuse with config file.
 3. Edit the file, changing environment values in Service block.
 4. Run command to reload service config files: `systemctl daemon-reload`
 5. Start service: `systemctl start blobfuse.service`
-6. (Optional) Make the service starting with system: `systemctl enable blobfuse.service`
+6. Make the service starting with system: `systemctl enable blobfuse.service`
+7. Please Note that the example has the User AzureUser, please create a user called AzureUser or replace this with an existing user.
