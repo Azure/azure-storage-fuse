@@ -57,6 +57,15 @@ func TestDirCreateSplChar(t *testing.T) {
 	}
 }
 
+// # Create Directory with slash in name
+func TestDirCreateSlashChar(t *testing.T) {
+	dirName := mntPath + "PRQ//STUV"
+	err := os.Mkdir(dirName, 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory : " + dirName + "(" + err.Error() + ")")
+	}
+}
+
 // # Rename a directory
 func TestDirRename(t *testing.T) {
 	dirName := mntPath + "/test1"
@@ -267,6 +276,16 @@ func TestFileCreateUtf8Char(t *testing.T) {
 
 func TestFileCreateLongName(t *testing.T) {
 	fileName := mntPath + "Higher Call_ An Incredible True Story of Combat and Chivalry in the War-Torn Skies of World War II, A - Adam Makos & Larry Alexander.epub"
+
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	if err != nil {
+		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
+	}
+	srcFile.Close()
+}
+
+func TestFileCreateSlashName(t *testing.T) {
+	fileName := mntPath + "abcd//efg.txt"
 
 	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
 	if err != nil {
