@@ -59,7 +59,7 @@ func TestDirCreateSplChar(t *testing.T) {
 
 // # Create Directory with slash in name
 func TestDirCreateSlashChar(t *testing.T) {
-	dirName := mntPath + "PRQ//STUV"
+	dirName := mntPath + "PRQ\\STUV"
 	err := os.Mkdir(dirName, 0777)
 	if err != nil {
 		t.Errorf("Failed to create directory : " + dirName + "(" + err.Error() + ")")
@@ -285,7 +285,7 @@ func TestFileCreateLongName(t *testing.T) {
 }
 
 func TestFileCreateSlashName(t *testing.T) {
-	fileName := mntPath + "abcd//efg.txt"
+	fileName := mntPath + "abcd\\efg.txt"
 
 	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
 	if err != nil {
