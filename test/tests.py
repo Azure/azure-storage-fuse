@@ -72,10 +72,10 @@ class BlobfuseTest(unittest.TestCase):
         
     def tearDown(self):
 		if os.path.exists(self.blobstage):
-            os.system("sudo rm -rf " + self.blobstage + "/*")
+			os.system("sudo rm -rf " + self.blobstage + "/*")
             #shutil.rmtree(self.blobstage)
-        if os.path.exists(self.localdir):
-            os.system("sudo rm -rf " + self.localdir + "/*")
+		if os.path.exists(self.localdir):
+			os.system("sudo rm -rf " + self.localdir + "/*")
 
     # helper functions
     def validate_dir_removal(self, dirPath, dirName, parentDir):
