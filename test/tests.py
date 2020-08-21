@@ -62,16 +62,16 @@ class BlobfuseTest(unittest.TestCase):
         self.blobstage = os.path.join(self.blobdir, "testing")
         if not os.path.exists(self.localdir):
             os.system("sudo mkdir " + self.localdir)
-        os.system("sudo chown `whoami` " + self.localdir)
-        os.system("sudo chmod 777 " + self.localdir)
+        #os.system("sudo chown -R `whoami` " + self.localdir)
+        #os.system("sudo chmod 777 " + self.localdir)
 
         if not os.path.exists(self.blobstage):
             os.system("sudo mkdir " + self.blobstage)
-        os.system("sudo chown `whoami` " + self.blobstage)
-        os.system("sudo chmod 777 " + self.blobstage)
+        #os.system("sudo chown -R `whoami` " + self.blobstage)
+        #os.system("sudo chmod 777 " + self.blobstage)
         
     def tearDown(self):
-        if os.path.exists(self.blobstage):
+		if os.path.exists(self.blobstage):
             os.system("sudo rm -rf " + self.blobstage + "/*")
             #shutil.rmtree(self.blobstage)
         if os.path.exists(self.localdir):
@@ -1600,7 +1600,7 @@ class CacheTests(BlobfuseTest):
     #path to ramdisk
     ramDiskPath = "/mnt/ramdisk"
     #path to cache container for blobfuse in ramdisk
-    ramDiskTmpPath = "/mnt/ramdiskblobfuseTmp"
+    ramDiskTmpPath = "/mnt/ramdisk/blobfuseTmp"
     #path to mounted container in ramdisk
     ramDiskContainerPath = "/mnt/ramdiskMountedCnt"
     #upper/high threshold
@@ -1616,20 +1616,20 @@ class CacheTests(BlobfuseTest):
         if not os.path.exists(self.ramDiskPath):
             #os.mkdir(self.ramDiskPath)
             os.system("sudo mkdir " + self.ramDiskPath)
-        os.system("sudo chown `whoami` " + self.ramDiskPath)
+        os.system("sudo chown -R `whoami` " + self.ramDiskPath)
         os.system("sudo chmod 777 " + self.ramDiskPath)
 
         if not os.path.exists(self.ramDiskTmpPath):
             #os.mkdir(self.ramDiskTmpPath)
             os.system("sudo mkdir " + self.ramDiskTmpPath)
-        os.system("sudo chown `whoami` " + self.ramDiskTmpPath)
+        os.system("sudo chown -R `whoami` " + self.ramDiskTmpPath)
         os.system("sudo chmod 777 " + self.ramDiskTmpPath)
         #os.chown(self.ramDiskTmpPath, os.geteuid(), os.getgid())
 
         if not os.path.exists(self.ramDiskContainerPath):
             #os.mkdir(self.ramDiskContainerPath)
             os.system("sudo mkdir " + self.ramDiskContainerPath)
-        os.system("sudo chown `whoami` " + self.ramDiskContainerPath)
+        os.system("sudo chown -R `whoami` " + self.ramDiskContainerPath)
         os.system("sudo chmod 777 " + self.ramDiskContainerPath)
         #os.chown(self.ramDiskContainerPath, os.geteuid(), os.getgid())
 
@@ -1652,7 +1652,7 @@ class CacheTests(BlobfuseTest):
 
 
         #delete cache/temp directory if still exists
-        #if os.path.exists(self.ramDiskPath):
+        if os.path.exists(self.ramDiskPath):
             #shutil.rmtree(self.ramDiskPath)
             os.system("sudo rm -rf "+ self.ramDiskPath + "/*")
 
@@ -1671,7 +1671,7 @@ class CacheTests(BlobfuseTest):
         #os.system("sudo fusermount -u " + self.ramDiskContainerPath)
 
         blobfuseMountCmd = "./blobfuse " + self.ramDiskContainerPath + " --tmp-path=" + self.ramDiskTmpPath + \
-                           " -o attr_timeout=240 -o entry_timeout=240 -o negative_timeout=120 " \
+                           " -o attr_timeout=240 -o entry_timeout=240 -o negative_timeout=120 -o allow_other " \
                            "--file-cache-timeout-in-seconds=" + cache_timeout + \
                            " --config-file=../connection.cfg --log-level=LOG_DEBUG --use-adls=true"
         os.chdir(os.path.dirname(os.path.abspath(__file__)) + "/../build")
@@ -1689,7 +1689,7 @@ class CacheTests(BlobfuseTest):
         # arrange
         if not os.path.exists(testDirPath):
             os.mkdir(testDirPath)
-        os.chown(testDirPath, os.geteuid(), os.getgid())
+        #os.chown(testDirPath, os.geteuid(), os.getgid())
 
         filename = str(uuid.uuid4())
 
@@ -1730,7 +1730,7 @@ class CacheTests(BlobfuseTest):
             #os.mkdir(testDirPath)
             os.system("sudo mkdir " + testDirPath)
         #os.chown(testDirPath, os.geteuid(), os.getgid())
-        os.system("sudo chown `whoami` " + testDirPath)
+        #os.system("sudo chown `whoami` " + testDirPath)
         os.system("sudo chmod 777 " + testDirPath)
 
         filename = str(uuid.uuid4())
