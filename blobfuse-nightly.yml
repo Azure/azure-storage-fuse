@@ -300,34 +300,6 @@ jobs:
       continueOnError: true
 
     # -------------------------------------------------------
-    # Starting pyTest
-
-    # Mount a directory for pyTest and run it
-    - script:  |
-        sudo rm -rf $(TEMP_DIR)/*
-        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
-        cd ./test/
-        sudo python tests.py
-        cd -
-      # condition: eq(variables['Build.SourceBranchName'], 'master')
-      displayName: TEST - BLOCK pyTest
-      timeoutInMinutes: 120
-      continueOnError: true
-
-    - script:  |
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo rm -rf $(MOUNT_DIR)/.*
-        sudo fusermount -u $(MOUNT_DIR)
-        sudo kill -9 `pidof blobfuse`
-        sudo rm -rf $(MOUNT_DIR)/*
-        sudo rm -rf $(MOUNT_DIR)/.*
-        sudo rm -rf $(TEMP_DIR)/*
-      # condition: eq(variables['Build.SourceBranchName'], 'master')
-      displayName: TEST - BLOCK pyTest Cleanup
-      timeoutInMinutes: 10
-      continueOnError: true
-
-    # -------------------------------------------------------
     # Starting stressTest
 
     # Mount a directory for stressTest and run it
@@ -497,6 +469,34 @@ jobs:
       timeoutInMinutes: 30
       continueOnError: true
       
+    # -------------------------------------------------------
+    # Starting pyTest
+
+    # Mount a directory for pyTest and run it
+    - script:  |
+        sudo rm -rf $(TEMP_DIR)/*
+        sudo cp $(BLOBFUSE_CFG_ADLS) $(BLOBFUSE_CFG_GTEST)
+        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
+        cd ./test/
+        sudo python tests.py
+        cd -
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - BLOCK pyTest
+      timeoutInMinutes: 120
+      continueOnError: true
+
+    - script:  |
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
+        sudo fusermount -u $(MOUNT_DIR)
+        sudo kill -9 `pidof blobfuse`
+        sudo rm -rf $(MOUNT_DIR)/*
+        sudo rm -rf $(MOUNT_DIR)/.*
+        sudo rm -rf $(TEMP_DIR)/*
+      # condition: eq(variables['Build.SourceBranchName'], 'master')
+      displayName: TEST - BLOCK pyTest Cleanup
+      timeoutInMinutes: 10
+      continueOnError: true
     # -------------------------------------------------------
 
     # - script:  |
