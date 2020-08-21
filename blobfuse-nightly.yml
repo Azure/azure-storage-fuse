@@ -305,7 +305,7 @@ jobs:
     # Mount a directory for pyTest and run it
     - script:  |
         sudo rm -rf $(TEMP_DIR)/*
-        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
         cd ./test/
         sudo python tests.py
         cd -
