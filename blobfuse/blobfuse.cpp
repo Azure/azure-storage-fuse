@@ -433,6 +433,7 @@ int refresh_from_config_file(const std::string configFile)
     if(!file)
     {
         syslog(LOG_CRIT, "Unable to read config file : %s", configFile.c_str());
+        fprintf(stderr, "Unable to read config file : %s", configFile.c_str());
         return -1;
     }
 
@@ -872,10 +873,11 @@ int initialize_blobfuse()
     }
     if(storage_client->AuthenticateStorage())
     {
-        syslog(LOG_DEBUG, "Successfully Authenticated!");
+        syslog(LOG_DEBUG, "Successfully Authenticated!");   
     }
     else
     {
+        fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
         syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
         return -1;
     }
