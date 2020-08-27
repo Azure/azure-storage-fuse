@@ -877,8 +877,8 @@ int initialize_blobfuse()
     }
     else
     {
-        syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
         fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+        syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
         return -1;
     }
 
