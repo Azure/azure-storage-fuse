@@ -66,14 +66,14 @@ list_segmented_item::list_segmented_item()
 
 list_segmented_item::list_segmented_item(list_blobs_segmented_item item) :
         name(item.name),
-        snapshot(item.snapshot),
+        //snapshot(item.snapshot),
         last_modified(item.last_modified),
-        etag(item.etag),
+        //etag(item.etag),
         content_length(item.content_length),
-        content_encoding(item.content_encoding),
-        content_md5(item.content_md5),
-        content_language(item.content_language),
-        cache_control(item.cache_control),
+        //content_encoding(item.content_encoding),
+        //content_md5(item.content_md5),
+        //content_language(item.content_language),
+        //cache_control(item.cache_control),
         //copy_status(item.copy_status),
         metadata(std::move(item.metadata)),
         is_directory(item.is_directory) {}
@@ -81,7 +81,7 @@ list_segmented_item::list_segmented_item(list_blobs_segmented_item item) :
 list_segmented_item::list_segmented_item(list_paths_item item) :
         name(item.name),
         last_modified(item.last_modified),
-        etag(item.etag),
+        //etag(item.etag),
         content_length(item.content_length),
         acl(item.acl),
         mode(aclToMode(item.acl)),
@@ -94,9 +94,10 @@ list_segmented_response::list_segmented_response(list_blobs_segmented_response r
 {
     //TODO make this better
     unsigned int item_size = response.blobs.size();
+    m_items.reserve(item_size);
     for(unsigned int i = 0; i < item_size; i++)
     {
-        m_items.push_back(list_segmented_item(response.blobs.at(i)));
+        m_items.emplace_back(list_segmented_item(response.blobs.at(i)));
     }
 }
 
@@ -106,9 +107,10 @@ list_segmented_response::list_segmented_response(list_paths_result response) :
 {
     //TODO make this better
     unsigned int item_size = response.paths.size();
+    m_items.reserve(item_size);
     for(unsigned int i = 0; i < item_size; i++)
     {
-        m_items.push_back(list_segmented_item(response.paths.at(i)));
+        m_items.emplace_back(list_segmented_item(response.paths.at(i)));
     }
 }
 

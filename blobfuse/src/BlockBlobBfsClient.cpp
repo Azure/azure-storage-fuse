@@ -875,6 +875,8 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClien
     std::string prior;
     bool success = false;
     int failcount = 0;
+    uint total_count = 0;
+    uint iteration = 0;
     do
     {
         AZS_DEBUGLOGV("About to call list_blobs_hierarchial.  Container = %s, delimiter = %s, continuation = %s, prefix = %s\n",
@@ -889,7 +891,14 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClien
         {
             success = true;
             failcount = 0;
+
+            iteration++;
+            total_count += response.m_items.size();
+            
             AZS_DEBUGLOGV("Successful call to list_blobs_segmented.  results count = %d, next_marker = %s.\n", (int)response.m_items.size(), response.m_next_marker.c_str());
+            AZS_DEBUGLOGV("#### So far %u items retreived in %u iterations.\n", total_count, iteration);
+            
+
             continuation = response.m_next_marker;
             if (!response.m_items.empty())
             {
