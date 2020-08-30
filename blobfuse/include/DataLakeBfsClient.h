@@ -54,7 +54,7 @@ public:
     /// Lists
     ///</summary>
     ///<returns>none</returns>
-    list_segmented_response List(std::string continuation, std::string prefix, std::string delimiter = "", int max_results = 10000) override;
+    void List(std::string continuation, std::string prefix, std::string delimiter, list_segmented_response &resp, int max_results = 10000) override;
     ///<summary>
     /// Updates the UNIX-style file mode on a path.
     ///</summary>

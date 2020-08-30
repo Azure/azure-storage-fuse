@@ -106,7 +106,8 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     }
 
     errno = 0;
-    std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResults = storage_client->ListAllItemsSegmented(pathStr.substr(1), "/");
+    std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResults;
+    storage_client->ListAllItemsSegmented(pathStr.substr(1), "/", listResults);
     if (errno != 0)
     {
         int storage_errno = errno;

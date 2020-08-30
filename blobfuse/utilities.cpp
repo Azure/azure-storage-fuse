@@ -186,8 +186,9 @@ int azs_getattr(const char *path, struct stat *stbuf)
     if (!storage_client->isADLS())
     {
         int resultCount = 2;
-        std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResponse = storage_client->ListAllItemsSegmented(
-                            blobNameStr, "/", resultCount);
+        std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResponse;
+        storage_client->ListAllItemsSegmented(
+                            blobNameStr, "/", listResponse, resultCount);
 
         if (errno == 0 && listResponse.size() > 0)
         {

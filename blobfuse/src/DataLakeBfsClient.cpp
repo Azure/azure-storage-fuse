@@ -343,7 +343,7 @@ std::vector<std::string> DataLakeBfsClient::Rename(std::string sourcePath, std::
     return file_paths_to_remove;
 }
 
-list_segmented_response DataLakeBfsClient::List(std::string continuation, std::string prefix, std::string delimiter, int max_results)
+void DataLakeBfsClient::List(std::string continuation, std::string prefix, std::string delimiter, list_segmented_response &resp, int max_results)
 {
     syslog(LOG_DEBUG, "Calling List Paths, continuation:%s, prefix:%s, delimiter:%s\n",
             continuation.c_str(),
@@ -356,12 +356,12 @@ list_segmented_response DataLakeBfsClient::List(std::string continuation, std::s
             false, // True here means it will list all blobs recursively
             continuation,
             max_results);
-        
-    return list_segmented_response(listed_adls_response);
-    #else
-    return BlockBlobBfsClient::List(continuation, prefix, delimiter, max_results);
-    #endif
 
+    if (errno == 0) 
+        resp.populate(listed_adls_response);
+    #else
+    BlockBlobBfsClient::List(continuation, prefix, delimiter, resp, max_results);
+    #endif
 }
 
 int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
