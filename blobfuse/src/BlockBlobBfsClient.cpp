@@ -540,7 +540,7 @@ std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath
 /// Lists
 ///</summary>
 ///<returns>none</returns>
-void
+int
 BlockBlobBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter, list_segmented_response &resp, int max_results)
 {
     //TODO: MAKE THIS BETTER
@@ -552,6 +552,7 @@ BlockBlobBfsClient::List(std::string continuation, const std::string prefix, con
         max_results);
     if (errno == 0)
         resp.populate(listed_blob_response);
+    return errno;
 }
 
 ///<summary>
@@ -865,7 +866,7 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
     return 0;
 }
 
-void BlockBlobBfsClient::ListAllItemsSegmented(
+int BlockBlobBfsClient::ListAllItemsSegmented(
     const std::string &prefix,
     const std::string &delimiter,
     LISTALL_RES &results,
@@ -926,6 +927,7 @@ void BlockBlobBfsClient::ListAllItemsSegmented(
     } while (((!continuation.empty()) || !success) && (failcount < maxFailCount));
 
     // errno will be set by list_blobs_hierarchial if the last call failed and we're out of retries.
+    return errno;
 }
 
 ///<summary>

@@ -348,12 +348,12 @@ public:
     /// Lists
     ///</summary>
     ///<returns>none</returns>
-    virtual void List(std::string continuation, const std::string prefix, const std::string delimiter, list_segmented_response &resp, int max_results = MAX_GET_LIST_RESULT_LIMIT) = 0;
+    virtual int List(std::string continuation, const std::string prefix, const std::string delimiter, list_segmented_response &resp, int max_results = MAX_GET_LIST_RESULT_LIMIT) = 0;
     ///<summary>
     /// LIsts all directories within a list container
     /// Greedily list all blobs using the input params.
     ///</summary>
-    virtual void ListAllItemsSegmented(const std::string& prefix, const std::string& delimiter, LISTALL_RES &list_results, int max_results = MAX_GET_LIST_RESULT_LIMIT) = 0;
+    virtual int ListAllItemsSegmented(const std::string& prefix, const std::string& delimiter, LISTALL_RES &list_results, int max_results = MAX_GET_LIST_RESULT_LIMIT) = 0;
     ///<summary>
     /// Updates the UNIX-style file mode on a path.
     ///</summary>

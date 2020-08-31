@@ -297,10 +297,11 @@ std::vector<std::string> AttrCacheBfsClient::Rename(const std::string sourcePath
     return blob_client->Rename(sourcePath, destinationPath, isDir);
 }
 
-void
+int
 AttrCacheBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter, list_segmented_response &resp, int max_results)
 {
     blob_client->List(continuation, prefix, delimiter, resp, max_results);
+    return errno;
 }
 
 bool AttrCacheBfsClient::IsDirectory(const char *path)
@@ -316,7 +317,7 @@ D_RETURN_CODE AttrCacheBfsClient::IsDirectoryEmpty(std::string path)
     return blob_client->IsDirectoryEmpty(path);
 }
 
-void AttrCacheBfsClient::ListAllItemsSegmented(
+int AttrCacheBfsClient::ListAllItemsSegmented(
     const std::string &prefix,
     const std::string &delimiter,
     LISTALL_RES &listResponse,
@@ -384,6 +385,7 @@ void AttrCacheBfsClient::ListAllItemsSegmented(
         }
     }
     #endif
+    return errno;
 }
 
 int AttrCacheBfsClient::ChangeMode(const char *path, mode_t mode)
