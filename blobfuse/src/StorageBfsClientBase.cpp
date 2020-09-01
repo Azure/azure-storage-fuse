@@ -70,10 +70,10 @@ list_segmented_item::list_segmented_item(list_blobs_segmented_item &item) :
         last_modified(item.last_modified),
         //etag(item.etag),
         content_length(item.content_length),
-        //content_encoding(item.content_encoding),
-        //content_md5(item.content_md5),
-        //content_language(item.content_language),
-        //cache_control(item.cache_control),
+        content_encoding(item.content_encoding),
+        content_md5(item.content_md5),
+        content_language(item.content_language),
+        cache_control(item.cache_control),
         //copy_status(item.copy_status),
         metadata(std::move(item.metadata)),
         is_directory(item.is_directory) {}
@@ -88,7 +88,7 @@ list_segmented_item::list_segmented_item(list_paths_item &item) :
         is_directory(item.is_directory) {}
 
 list_segmented_response::list_segmented_response(list_blobs_segmented_response &response) :
-        //m_ms_request_id(std::move(response.ms_request_id)),
+        m_ms_request_id(std::move(response.ms_request_id)),
         m_next_marker(response.next_marker),
         m_valid(true)
 {
@@ -117,6 +117,7 @@ list_segmented_response::list_segmented_response(list_paths_result &response) :
 void
 list_segmented_response::populate(list_blobs_segmented_response &response)
 {
+    m_ms_request_id = response.ms_request_id;
     m_next_marker = response.next_marker;
     m_valid = true;
 
