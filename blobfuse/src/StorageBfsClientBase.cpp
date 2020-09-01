@@ -66,9 +66,9 @@ list_segmented_item::list_segmented_item()
 
 list_segmented_item::list_segmented_item(list_blobs_segmented_item &item) :
         name(item.name),
-        //snapshot(item.snapshot),
+        snapshot(item.snapshot),
         last_modified(item.last_modified),
-        //etag(item.etag),
+        etag(item.etag),
         content_length(item.content_length),
         content_encoding(item.content_encoding),
         content_md5(item.content_md5),
@@ -81,7 +81,7 @@ list_segmented_item::list_segmented_item(list_blobs_segmented_item &item) :
 list_segmented_item::list_segmented_item(list_paths_item &item) :
         name(item.name),
         last_modified(item.last_modified),
-        //etag(item.etag),
+        etag(item.etag),
         content_length(item.content_length),
         acl(item.acl),
         mode(aclToMode(item.acl)),
