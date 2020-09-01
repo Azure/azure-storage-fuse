@@ -372,8 +372,8 @@ BfsFileProperty BlockBlobBfsClient::GetProperties(std::string pathName, bool typ
         }
     } else {
         int resultCount = 2;
-        std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResponse = ListAllItemsSegmented(
-            pathName, "/", resultCount);
+        std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResponse;
+        ListAllItemsSegmented(pathName, "/", listResponse, resultCount);
 
         if (errno == 0 && listResponse.size() > 0)
         {
@@ -540,10 +540,9 @@ std::vector<std::string> BlockBlobBfsClient::Rename(const std::string sourcePath
 /// Lists
 ///</summary>
 ///<returns>none</returns>
-list_segmented_response
-BlockBlobBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter, int max_results)
+int
+BlockBlobBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter, list_segmented_response &resp, int max_results)
 {
-
     //TODO: MAKE THIS BETTER
     list_blobs_segmented_response listed_blob_response = m_blob_client->list_blobs_segmented(
         configurations.containerName,
@@ -551,7 +550,9 @@ BlockBlobBfsClient::List(std::string continuation, const std::string prefix, con
         continuation,
         prefix,
         max_results);
-    return list_segmented_response(listed_blob_response);
+    if (errno == 0)
+        resp.populate(listed_blob_response);
+    return errno;
 }
 
 ///<summary>
@@ -804,7 +805,9 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
 
     // Rename all files & directories that don't exist in the local cache.
     errno = 0;
-    std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResults = ListAllItemsSegmented(src.substr(1), "/");
+    std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResults;
+    ListAllItemsSegmented(src.substr(1), "/", listResults);
+
     if (errno != 0)
     {
         int storage_errno = errno;
@@ -863,18 +866,18 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
     return 0;
 }
 
-std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClient::ListAllItemsSegmented(
+int BlockBlobBfsClient::ListAllItemsSegmented(
     const std::string &prefix,
     const std::string &delimiter,
+    LISTALL_RES &results,
     int max_results)
 {
-    std::vector<std::pair<std::vector<list_segmented_item>, bool>> results;
-
     std::string continuation;
-
     std::string prior;
     bool success = false;
     int failcount = 0;
+    uint total_count = 0;
+    uint iteration = 0;
     do
     {
         AZS_DEBUGLOGV("About to call list_blobs_hierarchial.  Container = %s, delimiter = %s, continuation = %s, prefix = %s\n",
@@ -884,12 +887,20 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClien
                       prefix.c_str());
 
         errno = 0;
-        list_segmented_response response = List(continuation, prefix, delimiter, max_results);
+        list_segmented_response response;
+        List(continuation, prefix, delimiter, response, max_results);
         if (errno == 0)
         {
             success = true;
             failcount = 0;
+
+            iteration++;
+            total_count += response.m_items.size();
+            
             AZS_DEBUGLOGV("Successful call to list_blobs_segmented.  results count = %d, next_marker = %s.\n", (int)response.m_items.size(), response.m_next_marker.c_str());
+            AZS_DEBUGLOGV("#### So far %u items retreived in %u iterations.\n", total_count, iteration);
+            
+
             continuation = response.m_next_marker;
             if (!response.m_items.empty())
             {
@@ -916,7 +927,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> BlockBlobBfsClien
     } while (((!continuation.empty()) || !success) && (failcount < maxFailCount));
 
     // errno will be set by list_blobs_hierarchial if the last call failed and we're out of retries.
-    return results;
+    return errno;
 }
 
 ///<summary>

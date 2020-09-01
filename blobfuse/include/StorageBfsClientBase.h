@@ -224,8 +224,8 @@ class BfsFileProperty
 
 struct list_segmented_item {
     list_segmented_item();
-    list_segmented_item(list_blobs_segmented_item);
-    list_segmented_item(list_paths_item item);
+    list_segmented_item(list_blobs_segmented_item &item);
+    list_segmented_item(list_paths_item &item);
     std::string name;
     std::string snapshot;
     std::string last_modified;
@@ -245,8 +245,12 @@ struct list_segmented_item {
 
 struct list_segmented_response {
     list_segmented_response() : m_valid(false) {}
-    list_segmented_response(list_blobs_segmented_response response);
-    list_segmented_response(list_paths_result response);
+    list_segmented_response(list_blobs_segmented_response &response);
+    list_segmented_response(list_paths_result &response);
+
+    void populate(list_blobs_segmented_response &response);
+    void populate(list_paths_result &response);
+
     std::string m_ms_request_id;
     std::vector<list_segmented_item> m_items;
     std::string m_next_marker;
@@ -344,12 +348,12 @@ public:
     /// Lists
     ///</summary>
     ///<returns>none</returns>
-    virtual list_segmented_response List(std::string continuation, const std::string prefix, const std::string delimiter, int max_results = MAX_GET_LIST_RESULT_LIMIT) = 0;
+    virtual int List(std::string continuation, const std::string prefix, const std::string delimiter, list_segmented_response &resp, int max_results = MAX_GET_LIST_RESULT_LIMIT) = 0;
     ///<summary>
     /// LIsts all directories within a list container
     /// Greedily list all blobs using the input params.
     ///</summary>
-    virtual std::vector<std::pair<std::vector<list_segmented_item>, bool>> ListAllItemsSegmented(const std::string& prefix, const std::string& delimiter, int max_results = MAX_GET_LIST_RESULT_LIMIT) = 0;
+    virtual int ListAllItemsSegmented(const std::string& prefix, const std::string& delimiter, LISTALL_RES &list_results, int max_results = MAX_GET_LIST_RESULT_LIMIT) = 0;
     ///<summary>
     /// Updates the UNIX-style file mode on a path.
     ///</summary>

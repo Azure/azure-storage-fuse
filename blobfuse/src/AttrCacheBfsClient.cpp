@@ -297,10 +297,11 @@ std::vector<std::string> AttrCacheBfsClient::Rename(const std::string sourcePath
     return blob_client->Rename(sourcePath, destinationPath, isDir);
 }
 
-list_segmented_response
-AttrCacheBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter, int max_results)
+int
+AttrCacheBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter, list_segmented_response &resp, int max_results)
 {
-    return blob_client->List(continuation, prefix, delimiter, max_results);
+    blob_client->List(continuation, prefix, delimiter, resp, max_results);
+    return errno;
 }
 
 bool AttrCacheBfsClient::IsDirectory(const char *path)
@@ -316,13 +317,13 @@ D_RETURN_CODE AttrCacheBfsClient::IsDirectoryEmpty(std::string path)
     return blob_client->IsDirectoryEmpty(path);
 }
 
-std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClient::ListAllItemsSegmented(
+int AttrCacheBfsClient::ListAllItemsSegmented(
     const std::string &prefix,
     const std::string &delimiter,
+    LISTALL_RES &listResponse,
     int max_results)
 {
-    std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResponse =
-             blob_client->ListAllItemsSegmented(prefix, delimiter, max_results);
+    blob_client->ListAllItemsSegmented(prefix, delimiter, listResponse, max_results);
 
     #if 1
     if (errno == 0 && listResponse.size() > 0)
@@ -384,8 +385,7 @@ std::vector<std::pair<std::vector<list_segmented_item>, bool>> AttrCacheBfsClien
         }
     }
     #endif
-
-    return listResponse;
+    return errno;
 }
 
 int AttrCacheBfsClient::ChangeMode(const char *path, mode_t mode)

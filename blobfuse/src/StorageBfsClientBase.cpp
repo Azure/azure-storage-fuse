@@ -64,7 +64,7 @@ int StorageBfsClientBase::ensure_directory_path_exists_cache(const std::string &
 list_segmented_item::list_segmented_item() 
 {}
 
-list_segmented_item::list_segmented_item(list_blobs_segmented_item item) :
+list_segmented_item::list_segmented_item(list_blobs_segmented_item &item) :
         name(item.name),
         snapshot(item.snapshot),
         last_modified(item.last_modified),
@@ -78,7 +78,7 @@ list_segmented_item::list_segmented_item(list_blobs_segmented_item item) :
         metadata(std::move(item.metadata)),
         is_directory(item.is_directory) {}
 
-list_segmented_item::list_segmented_item(list_paths_item item) :
+list_segmented_item::list_segmented_item(list_paths_item &item) :
         name(item.name),
         last_modified(item.last_modified),
         etag(item.etag),
@@ -87,29 +87,61 @@ list_segmented_item::list_segmented_item(list_paths_item item) :
         mode(aclToMode(item.acl)),
         is_directory(item.is_directory) {}
 
-list_segmented_response::list_segmented_response(list_blobs_segmented_response response) :
+list_segmented_response::list_segmented_response(list_blobs_segmented_response &response) :
         m_ms_request_id(std::move(response.ms_request_id)),
-        m_next_marker(std::move(response.next_marker)),
+        m_next_marker(response.next_marker),
         m_valid(true)
 {
     //TODO make this better
     unsigned int item_size = response.blobs.size();
+    m_items.reserve(item_size);
     for(unsigned int i = 0; i < item_size; i++)
     {
-        m_items.push_back(list_segmented_item(response.blobs.at(i)));
+        m_items.emplace_back(list_segmented_item(response.blobs.at(i)));
     }
 }
 
-list_segmented_response::list_segmented_response(list_paths_result response) :
-    continuation_token(std::move(response.continuation_token)),
+list_segmented_response::list_segmented_response(list_paths_result &response) :
+    continuation_token(response.continuation_token),
     m_valid(true)
 {
     //TODO make this better
     unsigned int item_size = response.paths.size();
+    m_items.reserve(item_size);
     for(unsigned int i = 0; i < item_size; i++)
     {
-        m_items.push_back(list_segmented_item(response.paths.at(i)));
+        m_items.emplace_back(list_segmented_item(response.paths.at(i)));
     }
 }
 
+void
+list_segmented_response::populate(list_blobs_segmented_response &response)
+{
+    m_ms_request_id = response.ms_request_id;
+    m_next_marker = response.next_marker;
+    m_valid = true;
+
+    unsigned int item_size = response.blobs.size();
+    m_items.reserve(item_size);
+
+    for(unsigned int i = 0; i < item_size; i++)
+    {
+        m_items.emplace_back(list_segmented_item(response.blobs.at(i)));
+    }
+}
+
+void
+list_segmented_response::populate(list_paths_result &response)
+{
+    continuation_token = response.continuation_token;
+    m_valid = true;
+
+    //TODO make this better
+    unsigned int item_size = response.paths.size();
+    m_items.reserve(item_size);
+    for(unsigned int i = 0; i < item_size; i++)
+    {
+        m_items.emplace_back(list_segmented_item(response.paths.at(i)));
+    }
+}
 
