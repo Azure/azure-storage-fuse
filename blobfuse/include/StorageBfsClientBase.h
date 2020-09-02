@@ -331,6 +331,8 @@ public:
     ///</summary>
     ///<returns>BfsFileProperty object which contains the property details of the file</returns>
     virtual BfsFileProperty GetProperties(const std::string pathName, bool type_known = false) = 0;
+    virtual BfsFileProperty GetFileProperties(const std::string pathName, bool cache_only = true);
+    
     virtual void GetExtraProperties(const std::string pathName, BfsFileProperty &prop) = 0;
     
     ///<summary>

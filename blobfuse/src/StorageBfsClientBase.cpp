@@ -24,6 +24,11 @@ std::string StorageBfsClientBase::prepend_mnt_path_string(const std::string& pat
     return result.append(configurations.tmpPath).append("/root").append(path);
 }
 
+BfsFileProperty StorageBfsClientBase::GetFileProperties(const std::string /*pathName*/, bool /*cache_only*/)
+{
+    return BfsFileProperty();
+}
+
 int StorageBfsClientBase::ensure_directory_path_exists_cache(const std::string & file_path)
 {
     char *pp;
@@ -128,6 +133,8 @@ list_segmented_response::populate(list_blobs_segmented_response &response)
     {
         m_items.emplace_back(list_segmented_item(response.blobs.at(i)));
     }
+    if (m_items.size() == item_size)
+        errno = 0;
 }
 
 void
@@ -143,5 +150,7 @@ list_segmented_response::populate(list_paths_result &response)
     {
         m_items.emplace_back(list_segmented_item(response.paths.at(i)));
     }
+    if (m_items.size() == item_size)
+        errno = 0;
 }
 

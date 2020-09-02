@@ -246,6 +246,34 @@ BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool typ
     }
 }
 
+BfsFileProperty AttrCacheBfsClient::GetFileProperties(const std::string pathName, bool cache_only)
+{
+    std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(pathName));
+    std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(pathName);
+    boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
+
+    {
+        boost::shared_lock<boost::shared_mutex> sharedlock(cache_item->m_mutex);
+        if (cache_item->m_confirmed &&
+            (!cache_item->m_props.m_not_exists) && 
+            (!cache_item->m_props.is_directory))
+        {
+            return cache_item->m_props;
+        }
+    }
+
+    if (!cache_only)
+    {
+        std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
+        errno = 0;
+        cache_item->m_props = blob_client->GetProperties(pathName);
+        cache_item->m_confirmed = true;
+        return cache_item->m_props;
+    }
+
+    return BfsFileProperty();
+}
+
 int AttrCacheBfsClient::Exists(const std::string pathName)
 {
     return blob_client->Exists(pathName);
@@ -300,8 +328,7 @@ std::vector<std::string> AttrCacheBfsClient::Rename(const std::string sourcePath
 int
 AttrCacheBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter, list_segmented_response &resp, int max_results)
 {
-    blob_client->List(continuation, prefix, delimiter, resp, max_results);
-    return errno;
+    return blob_client->List(continuation, prefix, delimiter, resp, max_results);
 }
 
 bool AttrCacheBfsClient::IsDirectory(const char *path)

@@ -185,6 +185,34 @@ int azs_getattr(const char *path, struct stat *stbuf)
     //if the first task is to study
     if (!storage_client->isADLS())
     {
+        if (config_options.useAttrCache)
+        {
+            // If attr-cache is enable then instead of calling list 
+            // get the attributes from cache for file. for dir we will still
+            // rely on list apis.
+            BfsFileProperty file_property = storage_client->GetFileProperties(blobNameStr, true);
+            if (file_property.isValid() && file_property.exists())
+            {
+                if (is_symlink_blob(file_property.metadata))
+                {
+                    stbuf->st_mode = S_IFLNK | config_options.defaultPermission;
+                }
+                else
+                {
+                    stbuf->st_mode = S_IFREG | config_options.defaultPermission; 
+                }
+                stbuf->st_uid = fuse_get_context()->uid;
+                stbuf->st_gid = fuse_get_context()->gid;
+                stbuf->st_atime = stbuf->st_ctime = stbuf->st_mtime = file_property.get_last_modified();
+                stbuf->st_nlink = 1;
+                stbuf->st_size = file_property.get_size();
+
+                AZS_DEBUGLOGV("File Prop Cache : size is %llu ", file_property.get_size());
+                return 0;
+            }
+        }
+
+
         int resultCount = 2;
         std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResponse;
         storage_client->ListAllItemsSegmented(
