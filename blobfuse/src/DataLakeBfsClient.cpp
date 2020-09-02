@@ -359,10 +359,11 @@ int DataLakeBfsClient::List(std::string continuation, std::string prefix, std::s
 
     if (errno == 0) 
         resp.populate(listed_adls_response);
-    #else
-    BlockBlobBfsClient::List(continuation, prefix, delimiter, resp, max_results);
-    #endif
     return errno;
+    #else
+    return BlockBlobBfsClient::List(continuation, prefix, delimiter, resp, max_results);
+    #endif
+    
 }
 
 int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {
