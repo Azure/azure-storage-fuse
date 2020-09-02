@@ -154,3 +154,10 @@ list_segmented_response::populate(list_paths_result &response)
         errno = 0;
 }
 
+void
+list_segmented_response::reset()
+{
+    m_items.clear();
+    m_valid = false;
+    continuation_token = m_next_marker = m_ms_request_id = "";
+}

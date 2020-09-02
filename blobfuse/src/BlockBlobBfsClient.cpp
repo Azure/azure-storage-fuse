@@ -878,6 +878,9 @@ int BlockBlobBfsClient::ListAllItemsSegmented(
     int failcount = 0;
     uint total_count = 0;
     uint iteration = 0;
+    list_segmented_response response;
+
+    results.reserve(200);
     do
     {
         AZS_DEBUGLOGV("About to call list_blobs_hierarchial.  Container = %s, delimiter = %s, continuation = %s, prefix = %s\n",
@@ -887,7 +890,7 @@ int BlockBlobBfsClient::ListAllItemsSegmented(
                       prefix.c_str());
 
         errno = 0;
-        list_segmented_response response;
+        response.reset();
         List(continuation, prefix, delimiter, response, max_results);
         if (errno == 0)
         {
@@ -910,7 +913,7 @@ int BlockBlobBfsClient::ListAllItemsSegmented(
                     skip_first = true;
                 }
                 prior = response.m_items.back().name;
-                results.emplace_back(std::move(response.m_items), skip_first);
+                results.emplace_back(response.m_items, skip_first);
             }
         }
         else if (errno == 404)

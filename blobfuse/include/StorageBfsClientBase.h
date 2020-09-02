@@ -250,7 +250,8 @@ struct list_segmented_response {
 
     void populate(list_blobs_segmented_response &response);
     void populate(list_paths_result &response);
-
+    void reset();
+    
     std::string m_ms_request_id;
     std::vector<list_segmented_item> m_items;
     std::string m_next_marker;
