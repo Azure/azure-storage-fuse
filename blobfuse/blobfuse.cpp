@@ -41,6 +41,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--use-attr-cache=%s", useAttrCache),
     OPTION("--use-adls=%s", use_adls),
     OPTION("--no_symlinks=%s", no_symlinks),
+    OPTION("--no-symlinks=%s", no_symlinks),
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
