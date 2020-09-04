@@ -40,6 +40,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--log-level=%s", log_level),
     OPTION("--use-attr-cache=%s", useAttrCache),
     OPTION("--use-adls=%s", use_adls),
+    OPTION("--no-symlinks=%s", no_symlinks),    
     OPTION("--no_symlinks=%s", no_symlinks),
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
@@ -412,8 +413,8 @@ int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
 
     if (blobfuseInit) {
         syslog(LOG_CRIT, "Unable to start blobfuse. Error: Invalid log level \"%s\"", min_log_level.c_str());
-        fprintf(stderr, "Error: Invalid log level \"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
-        fprintf(stdout, "If not specified, logging will default to LOG_WARNING.\n\n");
+        fprintf(stderr, "Unable to start blobfuse. Error: Invalid log level Specified\"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
+        fprintf(stdout, "If --log-level is not specified logging level will default to  LOG_WARNING.\n\n");
     } else {
         set_log_mask(cmd_options.log_level, false);
     }
