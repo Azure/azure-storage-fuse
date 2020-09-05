@@ -314,8 +314,10 @@ void *azs_init(struct fuse_conn_info * conn)
     cfg->entry_timeout = 120;
     cfg->negative_timeout = 120;
     */
-    if (kernel_version < 5.4) {
+   // even 4.18 does not like this so 5.4 is not enough so 
+    if (kernel_version < 4.16) {
         conn->max_write = 4194304;
+        // let fuselib pick 128KB
         //conn->max_read = 4194304;
     } else {
         conn->want |= FUSE_CAP_BIG_WRITES;
@@ -822,7 +824,7 @@ void configure_fuse(struct fuse_args *args)
 {
     populate_kernel_version();
 
-    if (kernel_version < 5.4) {
+    if (kernel_version < 4.16) {
         fuse_opt_add_arg(args, "-omax_read=131072");
         fuse_opt_add_arg(args, "-omax_write=131072");
     }
