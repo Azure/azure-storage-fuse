@@ -109,7 +109,7 @@ void populate_kernel_version()
              syslog(LOG_WARNING, "Could not obtain the Linux kernel version for distro %s so max_read and max_write will be set to default values of 128 kb, exception %s", name.release, e.what());
          }
 
-         fprintf (stdout, "release is %f, Kernel version is %s", ver, name.release);
+        syslog(LOG_INFO, "release is %f, Kernel version is %s", ver, name.release);
          
          kernel_version = ver;
 	}
