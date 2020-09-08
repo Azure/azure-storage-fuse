@@ -220,17 +220,18 @@ int azs_getattr(const char *path, struct stat *stbuf)
         do
         {
             storage_client->List("", blobNameStr, "/", response, resultCount);
+            
+            if (errno == 404 || response.m_items.size() == 0)
+            {
+                syslog(LOG_WARNING, "File does not currently exist on the storage or cache");
+                return -(ENOENT);
+            }
+
             if (errno != 0)
             {
                 success = false;
                 failcount++;
                 continue; 
-            }
-
-            if (errno == 404 || response.m_items.size() == 0)
-            {
-                syslog(LOG_WARNING, "File does not currently exist on the storage or cache");
-                return -(ENOENT);
             }
 
             success = true;
@@ -267,19 +268,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 }
             }
 
-            if (!blobItem.name.empty() && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
+            if (!blobItem.name.empty()) 
             {
-                AZS_DEBUGLOGV("%s is a directory, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
-                AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
-                stbuf->st_mode = S_IFDIR | config_options.defaultPermission;
-                // If st_nlink = 2, means directory is empty.
-                // Directory size will affect behaviour for mv, rmdir, cp etc.
-                stbuf->st_uid = fuse_get_context()->uid;
-                stbuf->st_gid = fuse_get_context()->gid;
-                // assign directory status as empty or non-empty based on the value from above
-                stbuf->st_nlink = dirSize > 1 ? 3 : 2;
-                stbuf->st_size = 4096;
-
                 if (!blobItem.last_modified.empty()) {
                     struct tm mtime;
                     char *ptr = strptime(blobItem.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mtime);
@@ -288,39 +278,37 @@ int azs_getattr(const char *path, struct stat *stbuf)
                         stbuf->st_atime = stbuf->st_ctime = stbuf->st_mtime;
                     }
                 }
-                return 0;
-            }
-            else if (!blobItem.name.empty())
-            {
-                AZS_DEBUGLOGV("%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
-                AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
 
-                mode_t perms = config_options.defaultPermission;
+                stbuf->st_uid = fuse_get_context()->uid;
+                stbuf->st_gid = fuse_get_context()->gid;
 
-                if (is_symlink_blob(blobItem.metadata))
+                if (blobItem.is_directory || is_directory_blob(0, blobItem.metadata))
                 {
-                    stbuf->st_mode = S_IFLNK | perms;
+                    AZS_DEBUGLOGV("%s is a directory, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
+                    AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
+                    stbuf->st_mode = S_IFDIR | config_options.defaultPermission;
+                    // If st_nlink = 2, means directory is empty.
+                    // Directory size will affect behaviour for mv, rmdir, cp etc.
+                    // assign directory status as empty or non-empty based on the value from above
+                    stbuf->st_nlink = dirSize > 1 ? 3 : 2;
+                    stbuf->st_size = 4096;
+                    return 0;
                 }
                 else
                 {
-                    stbuf->st_mode = S_IFREG | perms; // Regular file (not a directory)
-                }
+                    AZS_DEBUGLOGV("%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
+                    AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
 
-                stbuf->st_uid = fuse_get_context()->uid;
-                stbuf->st_gid = fuse_get_context()->gid;
-                if (!blobItem.last_modified.empty()) {
-                    struct tm mtime;
-                    char *ptr = strptime(blobItem.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mtime);
-                    if (ptr) {
-                        stbuf->st_mtime = timegm(&mtime);
-                        stbuf->st_atime = stbuf->st_ctime = stbuf->st_mtime;
+                    mode_t perms = config_options.defaultPermission;
+                    if (is_symlink_blob(blobItem.metadata)) {
+                        stbuf->st_mode = S_IFLNK | perms;
+                    } else {
+                        stbuf->st_mode = S_IFREG | perms; // Regular file (not a directory)
                     }
+                    stbuf->st_size = blobItem.content_length;
+                    stbuf->st_nlink = 1;
+                    return 0;
                 }
-                stbuf->st_size = blobItem.content_length;
-                AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", blobItem.last_modified.c_str(), blobItem.content_length);
-                stbuf->st_nlink = 1;
-                
-                return 0;
             }
         } while((!success) && (failcount < 20));
 

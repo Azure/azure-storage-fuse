@@ -124,10 +124,6 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     int fillerResult = 0;
     list_segmented_response response;
 
-
-    stbuf.st_uid = fuse_get_context()->uid;
-    stbuf.st_gid = fuse_get_context()->gid;
-
     errno = 0;
     do
     {
@@ -178,6 +174,9 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                                     local_list_results.end())
                         {
                             // Item not found in local cached list so add this one
+                            stbuf.st_uid = fuse_get_context()->uid;
+                            stbuf.st_gid = fuse_get_context()->gid;
+                            stbuf.st_size = 0;
 
                             if (!response.m_items[i].is_directory && 
                                 !is_directory_blob(response.m_items[i].content_length, response.m_items[i].metadata))
@@ -194,6 +193,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                                 // Blob is Directory
                                 stbuf.st_mode = S_IFDIR | config_options.defaultPermission;
                                 stbuf.st_nlink = 2;
+                                local_list_results.push_back(prev_token_str);
                             }
 
                             fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);

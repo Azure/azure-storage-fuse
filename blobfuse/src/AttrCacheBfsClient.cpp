@@ -328,7 +328,54 @@ std::vector<std::string> AttrCacheBfsClient::Rename(const std::string sourcePath
 int
 AttrCacheBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter, list_segmented_response &resp, int max_results)
 {
-    return blob_client->List(continuation, prefix, delimiter, resp, max_results);
+    blob_client->List(continuation, prefix, delimiter, resp, max_results);
+    if (errno != 0)
+        return errno;
+
+    for (unsigned int i = 0; i < resp.m_items.size(); i++)
+    {
+        time_t last_mod = time(NULL);
+        if (!resp.m_items[i].last_modified.empty()) {
+            struct tm mtime;
+            char *ptr = strptime(resp.m_items[i].last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mtime);
+            if (ptr)
+                last_mod = timegm(&mtime);
+        }   
+
+        if (isAdlsMode)
+        {
+            BfsFileProperty ret_property(
+                "",
+                resp.m_items[i].acl.owner,
+                resp.m_items[i].acl.group,
+                resp.m_items[i].acl.permissions,
+                resp.m_items[i].metadata,
+                last_mod,
+                resp.m_items[i].acl.permissions,
+                resp.m_items[i].content_length);
+
+            if (resp.m_items[i].is_directory)
+                ret_property.is_directory = true;
+
+            std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(resp.m_items[i].name);
+            std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
+            cache_item->m_props = ret_property;
+            cache_item->m_confirmed = true;
+        } else {
+            BfsFileProperty ret_property(
+                    "",
+                    resp.m_items[i].metadata,
+                    last_mod,
+                    "", 
+                    resp.m_items[i].content_length);
+
+            std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(resp.m_items[i].name);
+            std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
+            cache_item->m_props = ret_property;
+            cache_item->m_confirmed = true; 
+        } 
+    }
+    return 0;
 }
 
 bool AttrCacheBfsClient::IsDirectory(const char *path)
