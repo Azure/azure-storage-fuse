@@ -40,6 +40,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--log-level=%s", log_level),
     OPTION("--use-attr-cache=%s", useAttrCache),
     OPTION("--use-adls=%s", use_adls),
+    OPTION("--no-symlinks=%s", no_symlinks),    
     OPTION("--no_symlinks=%s", no_symlinks),
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
@@ -313,8 +314,10 @@ void *azs_init(struct fuse_conn_info * conn)
     cfg->entry_timeout = 120;
     cfg->negative_timeout = 120;
     */
-    if (kernel_version < 5.4) {
+   // even 4.18 does not like this so 5.4 is not enough so 
+    if (kernel_version < 4.16) {
         conn->max_write = 4194304;
+        // let fuselib pick 128KB
         //conn->max_read = 4194304;
     } else {
         conn->want |= FUSE_CAP_BIG_WRITES;
@@ -412,8 +415,8 @@ int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
 
     if (blobfuseInit) {
         syslog(LOG_CRIT, "Unable to start blobfuse. Error: Invalid log level \"%s\"", min_log_level.c_str());
-        fprintf(stderr, "Error: Invalid log level \"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
-        fprintf(stdout, "If not specified, logging will default to LOG_WARNING.\n\n");
+        fprintf(stderr, "Unable to start blobfuse. Error: Invalid log level Specified\"%s\".  Permitted values are LOG_OFF, LOG_CRIT, LOG_ERR, LOG_WARNING, LOG_INFO, LOG_DEBUG.\n", min_log_level.c_str());
+        fprintf(stdout, "If --log-level is not specified logging level will default to  LOG_WARNING.\n\n");
     } else {
         set_log_mask(cmd_options.log_level, false);
     }
@@ -821,7 +824,7 @@ void configure_fuse(struct fuse_args *args)
 {
     populate_kernel_version();
 
-    if (kernel_version < 5.4) {
+    if (kernel_version < 4.16) {
         fuse_opt_add_arg(args, "-omax_read=131072");
         fuse_opt_add_arg(args, "-omax_write=131072");
     }

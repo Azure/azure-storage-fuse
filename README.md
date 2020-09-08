@@ -55,8 +55,8 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 	* [OPTIONAL] **--log-level=LOG_WARNING** : Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG
 	* [OPTIONAL] **--use-attr-cache=true|false** : Enables attributes of a blob being cached. False by default. (Only available in blobfuse 1.1.0 or above)
     * [OPTIONAL] **--use-adls=true|false** : Enables blobfuse to access Azure DataLake storage account.
-    * [OPTIONAL] **--no_symlinks=true** : Turns off symlinks. Turning off symlinks will improve performance. Symlinks are on by default.
-    * [OPTIONAL] **--max-concurrency=12** : option to override fuse max_concurrency, default=12
+    * [OPTIONAL] **--no-symlinks=true** : Turns off symlinks. Turning off symlinks will improve performance. Symlinks are on by default.
+    * [OPTIONAL] **--max-concurrency=12** : option to override fuse max_concurrency, default=40
     * [OPTIONAL] **--cache-size-mb=1000** : option to setup the cache-size in MB. Default will be 80% of the available memory, eviction will happen beyond that. Use this option to lower the cache size or increase it.
      * [OPTIONAL] **--attr_timeout=20** : The attribute timeout in seconds. Performance improvement option. It is a default fuse option. For further details look at the FUSE man page. The attributes of recently accessed files will be saved for the specified seconds.
      * [OPTIONAL] **--entry_timeout=20** : The entry timeout in seconds. Performance improvement option. It is a default fuse option. For further details look at the FUSE man page. The attributes of recently accessed files will be saved for the specified seconds.
