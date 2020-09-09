@@ -217,7 +217,7 @@ namespace azure {  namespace storage_lite {
         bool m_is_input_length_known = false;
         std::function<bool(http_code)> m_switch_error_callback;
 
-        http_code m_code;
+        http_code m_code =0;
         std::map<std::string, std::string, case_insensitive_compare> m_response_headers;
 
         AZURE_STORAGE_API static size_t header_callback(char *buffer, size_t size, size_t nitems, void *userdata);          

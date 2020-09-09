@@ -81,24 +81,36 @@ AUTH_TYPE get_auth_type(std::string authStr)
 }
 
 float kernel_version = 0.0;
+//  populate the kernel version so that we leverage a higher value for max_read and max_write , default being 128 KB only for libfuse ti may affect performance
 void populate_kernel_version()
 {
-    struct utsname buffer;
-	if (uname (&buffer) == 0) {
-		char *p = buffer.release;
-		int i = 0;
-		float ver[5];
+    struct utsname name;
+	if (uname (&name) == 0) {
+		std::string release = name.release;
+        int decimalindex = release.find ('.', 0);
+        if (decimalindex > 0)
+         {
+            uint pos_end = decimalindex +2;
+            if (release.length() > pos_end+1)
+            {
+                release = release.substr(0, pos_end+1);
+            } 
+            // if the release is shorter let it have the whole value
+         }
+         // Now try to convert it to float, if you cannot convert return a big value so that the max_read and max_write do not get set 
+         float ver = 99.00;
+         try
+         {
+             ver = atof(release.c_str());
+         }
+         catch(const std::exception& e)
+         {
+             fprintf(stderr, "Could not obtain the Linux kernel version for distro %s so max_read and max_write will be set to default values of 128 kb, exception: %s", name.release, e.what());
+             syslog(LOG_WARNING, "Could not obtain the Linux kernel version for distro %s so max_read and max_write will be set to default values of 128 kb, exception %s", name.release, e.what());
+         }
 
-		while (*p) {
-			if (isdigit(*p)) {
-				ver[i] = strtof(p, &p);
-				i++;
-			} else {
-				p++;
-			}
-			if (i >= 5) break;
-		}
-		if (i > 2)
-            kernel_version = ver[0];
+        syslog(LOG_INFO, "release is %f, Kernel version is %s", ver, name.release);
+         
+         kernel_version = ver;
 	}
 }
