@@ -224,13 +224,15 @@ int azs_getattr(const char *path, struct stat *stbuf)
             
             if (errno == 404 || response.m_items.size() == 0)
             {
-                syslog(LOG_WARNING, "File does not currently exist on the storage or cache");
+                syslog(LOG_WARNING, "File does not currently exist on the storage or cache, errno : %d", errno);
                 response.reset();
                 return -(ENOENT);
             }
 
             if (errno != 0)
             {
+                syslog(LOG_WARNING, "Failed to get info on %s, errno : %d",
+                    blobNameStr.c_str(), errno);
                 success = false;
                 failcount++;
                 continue; 
@@ -261,7 +263,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                                                 response.m_items[i].name == (blobNameStr + '/')))
                 {
                     blobItem = response.m_items[i];
-                    AZS_DEBUGLOGV("In azs_getattr found blob in list hierarchical file %s\n", blobItem.name.c_str());
+                    AZS_DEBUGLOGV("In azs_getattr found blob in list file %s\n", blobItem.name.c_str());
                     // leave 'i' at the value it is, it will be used in the remaining batches and loops to check for directory empty check.
                     if (dirSize == 0 && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
                     {
@@ -286,7 +288,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
 
                 if (blobItem.is_directory || is_directory_blob(0, blobItem.metadata))
                 {
-                    AZS_DEBUGLOGV("%s is a directory, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
+                    //AZS_DEBUGLOGV("%s is a directory, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
                     AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
                     stbuf->st_mode = S_IFDIR | config_options.defaultPermission;
                     // If st_nlink = 2, means directory is empty.
@@ -299,7 +301,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 }
                 else
                 {
-                    AZS_DEBUGLOGV("%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
+                    //AZS_DEBUGLOGV("%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
                     AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
 
                     mode_t perms = config_options.defaultPermission;
