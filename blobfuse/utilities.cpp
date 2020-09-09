@@ -219,11 +219,13 @@ int azs_getattr(const char *path, struct stat *stbuf)
         list_segmented_item blobItem;
         do
         {
+            response.reset();
             storage_client->List("", blobNameStr, "/", response, resultCount);
             
             if (errno == 404 || response.m_items.size() == 0)
             {
                 syslog(LOG_WARNING, "File does not currently exist on the storage or cache");
+                response.reset();
                 return -(ENOENT);
             }
 
@@ -292,6 +294,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                     // assign directory status as empty or non-empty based on the value from above
                     stbuf->st_nlink = dirSize > 1 ? 3 : 2;
                     stbuf->st_size = 4096;
+                    response.reset();
                     return 0;
                 }
                 else
@@ -307,6 +310,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                     }
                     stbuf->st_size = blobItem.content_length;
                     stbuf->st_nlink = 1;
+                    response.reset();
                     return 0;
                 }
             }
@@ -317,11 +321,13 @@ int azs_getattr(const char *path, struct stat *stbuf)
             int storage_errno = errno;
             AZS_DEBUGLOGV("Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
             syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
+            response.reset();
             return 0 - map_errno(storage_errno);
         }
         else // it is a new blob
         {
             AZS_DEBUGLOGV("%s not returned in list_segmented_blobs. It is a new blob", blobNameStr.c_str());
+            response.reset();
             return -(ENOENT);
         }
     } // end of processing for Blockblob

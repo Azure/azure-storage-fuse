@@ -158,6 +158,8 @@ void
 list_segmented_response::reset()
 {
     m_items.clear();
+    m_items.shrink_to_fit();
+    
     m_valid = false;
     continuation_token = m_next_marker = m_ms_request_id = "";
 }

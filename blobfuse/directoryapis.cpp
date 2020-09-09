@@ -121,7 +121,6 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     uint iteration = 0;
     std::string prev_token_str;
     struct stat stbuf;
-    int fillerResult = 0;
     list_segmented_response response;
 
     errno = 0;
@@ -196,9 +195,10 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                                 local_list_results.push_back(prev_token_str);
                             }
 
-                            fillerResult = filler(buf, prev_token_str.c_str(), &stbuf, 0);
-                            AZS_DEBUGLOGV("Adding to readdir list : %s : fillerResult = %d. uid=%u. gid = %u\n", 
-                                    prev_token_str.c_str(), fillerResult, stbuf.st_uid, stbuf.st_gid);
+                            //int fillerResult = 
+                            filler(buf, prev_token_str.c_str(), &stbuf, 0);
+                            //AZS_DEBUGLOGV("Adding to readdir list : %s : fillerResult = %d. uid=%u. gid = %u\n", 
+                            //        prev_token_str.c_str(), fillerResult, stbuf.st_uid, stbuf.st_gid);
                         }
                     }
                 }
@@ -218,6 +218,9 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
             syslog(LOG_WARNING, "list_blobs failed for the %d time with errno = %d.\n", failcount, errno);
         }
     } while (((!continuation.empty()) || !success) && (failcount < 20));
+
+    local_list_results.clear();
+    local_list_results.shrink_to_fit();
 
     return 0;
 }

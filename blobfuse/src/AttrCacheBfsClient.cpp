@@ -329,7 +329,7 @@ int
 AttrCacheBfsClient::List(std::string continuation, const std::string prefix, const std::string delimiter, list_segmented_response &resp, int max_results)
 {
     blob_client->List(continuation, prefix, delimiter, resp, max_results);
-    if (errno != 0)
+    if (errno != 0 || !configurations.cacheOnList)
         return errno;
 
     for (unsigned int i = 0; i < resp.m_items.size(); i++)
@@ -400,7 +400,7 @@ int AttrCacheBfsClient::ListAllItemsSegmented(
     blob_client->ListAllItemsSegmented(prefix, delimiter, listResponse, max_results);
 
     #if 1
-    if (errno == 0 && listResponse.size() > 0)
+    if (errno == 0 && listResponse.size() > 0 && configurations.cacheOnList)
     {
         list_segmented_item blobItem;
         unsigned int batchNum = 0;
