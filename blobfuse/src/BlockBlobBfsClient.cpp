@@ -550,8 +550,13 @@ BlockBlobBfsClient::List(std::string continuation, const std::string prefix, con
         continuation,
         prefix,
         max_results);
+
     if (errno == 0)
         resp.populate(listed_blob_response);
+    
+    listed_blob_response.blobs.clear();
+    listed_blob_response.blobs.shrink_to_fit();
+
     return errno;
 }
 

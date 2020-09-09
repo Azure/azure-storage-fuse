@@ -331,7 +331,7 @@ AttrCacheBfsClient::List(std::string continuation, const std::string prefix, con
     blob_client->List(continuation, prefix, delimiter, resp, max_results);
     if (errno != 0 || !configurations.cacheOnList)
         return errno;
-
+    int errno_org = errno;
     for (unsigned int i = 0; i < resp.m_items.size(); i++)
     {
         time_t last_mod = time(NULL);
@@ -375,7 +375,7 @@ AttrCacheBfsClient::List(std::string continuation, const std::string prefix, con
             cache_item->m_confirmed = true; 
         } 
     }
-    return 0;
+    return errno_org;
 }
 
 bool AttrCacheBfsClient::IsDirectory(const char *path)
@@ -398,7 +398,7 @@ int AttrCacheBfsClient::ListAllItemsSegmented(
     int max_results)
 {
     blob_client->ListAllItemsSegmented(prefix, delimiter, listResponse, max_results);
-
+    int errno_org = errno;
     #if 1
     if (errno == 0 && listResponse.size() > 0 && configurations.cacheOnList)
     {
@@ -459,7 +459,7 @@ int AttrCacheBfsClient::ListAllItemsSegmented(
         }
     }
     #endif
-    return errno;
+    return errno_org;
 }
 
 int AttrCacheBfsClient::ChangeMode(const char *path, mode_t mode)

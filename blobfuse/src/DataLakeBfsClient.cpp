@@ -359,6 +359,10 @@ int DataLakeBfsClient::List(std::string continuation, std::string prefix, std::s
 
     if (errno == 0) 
         resp.populate(listed_adls_response);
+    
+    listed_adls_response.paths.clear();
+    listed_adls_response.paths.shrink_to_fit();
+
     return errno;
     #else
     return BlockBlobBfsClient::List(continuation, prefix, delimiter, resp, max_results);
