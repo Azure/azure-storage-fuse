@@ -8,7 +8,7 @@
 
 using namespace azure::storage_lite;
 
-#define MAX_BLOB_CACHE_LEN 700000
+#define MAX_BLOB_CACHE_LEN 12000000
 
 enum PROP_FLAG
 {
