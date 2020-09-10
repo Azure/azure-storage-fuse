@@ -24,6 +24,7 @@ class BfsFileProperty
         BfsFileProperty() : m_valid(false), m_not_exists(false), m_empty_dir(false) 
         {
             meta_retreived = false;
+            is_symlink = false;
         }
         
         BfsFileProperty(bool not_exists) : m_valid(true), m_not_exists(not_exists), m_empty_dir(false) 
@@ -34,6 +35,7 @@ class BfsFileProperty
             is_directory = false;
             last_access = last_change = last_modified;
             meta_retreived = false;
+            is_symlink = false;
         }
 
         BfsFileProperty(
@@ -53,32 +55,12 @@ class BfsFileProperty
             m_not_exists = false;
             m_empty_dir = false;
             meta_retreived = false;
+            is_symlink = false;
 
             SetFileMode(modestring);
 
             is_directory = false;
-            for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
-            {
-                if ((iter->first.compare("hdi_isfolder") == 0) && (iter->second.compare("true") == 0))
-                {
-                    is_directory = true;
-                    continue;
-                }
-
-                /*
-                if (iter->first.compare("last_access") == 0)
-                {
-                    last_access = std::stoi(iter->second.c_str());
-                    continue;
-                }
-
-                if (iter->first.compare("last_change") == 0)
-                {
-                    last_change = std::stoi(iter->second.c_str());
-                    continue;
-                }
-                */
-            }
+            parseMetaData(metadata);
         }
 
         BfsFileProperty(
@@ -106,6 +88,7 @@ class BfsFileProperty
             m_not_exists = false;
             m_empty_dir = false;
             meta_retreived = false;
+            is_symlink = false;
 
             SetFileMode(modestring);
            
@@ -114,6 +97,11 @@ class BfsFileProperty
                 is_directory = true;
             }
 
+            parseMetaData(metadata);
+        }
+
+        void parseMetaData(std::vector<std::pair<std::string, std::string>> &metadata)
+        {
             for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
             {
                 if ((iter->first.compare("hdi_isfolder") == 0) && (iter->second.compare("true") == 0))
@@ -121,6 +109,13 @@ class BfsFileProperty
                     is_directory = true;
                     continue;
                 }
+                
+                if ((iter->first.compare("is_symlink") == 0) && (iter->second.compare("true") == 0))
+                {
+                    is_symlink = true;
+                    continue;
+                }
+                
                 /*
                 if (iter->first.compare("last_access") == 0)
                 {
@@ -200,6 +195,10 @@ class BfsFileProperty
             return last_change != 0 ? last_change : get_last_modified();
         }
 
+        bool is_blob_symlink()
+        {
+            return is_symlink;
+        }
         
         std::string copy_status;
         std::vector<std::pair<std::string, std::string>> metadata;
@@ -215,6 +214,7 @@ class BfsFileProperty
         bool m_not_exists;
         bool m_empty_dir;
         bool meta_retreived;
+        bool is_symlink;
 
         time_t last_access;
         time_t last_change;
