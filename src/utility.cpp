@@ -1,6 +1,4 @@
 #include <ctime>
-#include <iomanip>
-#include <sstream>
 
 #include "utility.h"
 
@@ -98,10 +96,14 @@ namespace azure {  namespace storage_lite {
         }
         else if (format == date_format::rfc_1123)
         {
-            std::stringstream ss;
-            ss.imbue(std::locale("C"));
-            ss << std::put_time(pm, constants::date_format_rfc_1123);
-            return ss.str();
+            static const char* weekdays[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+            static const char* months[] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+            std::string rfc_1123_format = constants::date_format_rfc_1123;
+            rfc_1123_format.replace(rfc_1123_format.find("%a"), 2, weekdays[pm->tm_wday]);
+            rfc_1123_format.replace(rfc_1123_format.find("%b"), 2, months[pm->tm_mon]);
+            char buf[32];
+            std::strftime(buf, sizeof(buf), rfc_1123_format.data(), pm);
+            return std::string(buf);
         }
         else
         {
