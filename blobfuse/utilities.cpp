@@ -222,7 +222,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
             response.reset();
             storage_client->List("", blobNameStr, "/", response, resultCount);
             
-            if (errno == 404 || response.m_items.size() == 0)
+            if (errno == 404 || 
+                (errno == 0  && response.m_items.size() == 0))
             {
                 syslog(LOG_WARNING, "File does not currently exist on the storage or cache, errno : %d", errno);
                 response.reset();
