@@ -193,7 +193,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
             BfsFileProperty file_property = storage_client->GetFileProperties(blobNameStr, true);
             if (file_property.isValid() && file_property.exists())
             {
-                if (is_symlink_blob(file_property.metadata))
+                if (file_property.is_symlink || 
+                    is_symlink_blob(file_property.metadata))
                 {
                     stbuf->st_mode = S_IFLNK | config_options.defaultPermission;
                 }
@@ -358,7 +359,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
             }
 
             AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
-            if (is_symlink_blob(blob_property.metadata))
+            if (blob_property.is_symlink ||
+                is_symlink_blob(blob_property.metadata))
             {
                 stbuf->st_mode = S_IFLNK | perms;
             }
