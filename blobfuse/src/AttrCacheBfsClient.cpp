@@ -146,9 +146,17 @@ void AttrCacheBfsClient::UploadFromStream(std::istream &sourceStream, const std:
     std::lock_guard<std::mutex> lock(cache_item->m_mutex);
 
      if (IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED)) {
-        cache_item->size = 0;
+        auto cur = sourceStream.tellg();
+        sourceStream.seekg(0, std::ios_base::end);
+        auto end = sourceStream.tellg();
+        sourceStream.seekg(cur);
+
+        cache_item->size = end - cur;
         cache_item->last_modified = time(NULL);
         CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_NOT_EXISTS);
+
+        // Metadata vector is emptry to clean all flags which might have been set using metadata.
+        cache_item->clearMetaFlags();
         SET_PROP_FLAG(cache_item->flags, PROP_FLAG_META_RETREIVED);
     }
     return blob_client->UploadFromStream(sourceStream, blobName);
@@ -164,7 +172,12 @@ void AttrCacheBfsClient::UploadFromStream(std::istream &sourceStream, const std:
     std::lock_guard<std::mutex> lock(cache_item->m_mutex);
 
      if (IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED)) {
-        cache_item->size = 0;
+        auto cur = sourceStream.tellg();
+        sourceStream.seekg(0, std::ios_base::end);
+        auto end = sourceStream.tellg();
+        sourceStream.seekg(cur);
+
+        cache_item->size = end - cur;
         cache_item->last_modified = time(NULL);
         CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_NOT_EXISTS);
         cache_item->parseMetaData(metadata);
@@ -214,7 +227,7 @@ void AttrCacheBfsClient::DeleteFile(const std::string pathToDelete)
     if (IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED)) {
         SET_PROP_FLAG(cache_item->flags, PROP_FLAG_VALID);
         SET_PROP_FLAG(cache_item->flags, PROP_FLAG_NOT_EXISTS);
-        CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_META_RETREIVED);
+        cache_item->clearMetaFlags();
     }
 }
 

@@ -78,8 +78,16 @@ public:
         return props;
     }
 
+    void clearMetaFlags()
+    {
+        CLEAR_PROP_FLAG(flags, PROP_FLAG_IS_SYMLINK);
+        CLEAR_PROP_FLAG(flags, PROP_FLAG_IS_DIR);
+        CLEAR_PROP_FLAG(flags, PROP_FLAG_META_RETREIVED);
+    }
+
     void parseMetaData(std::vector<std::pair<std::string, std::string>> &metadata)
     {
+        clearMetaFlags();
         SET_PROP_FLAG(flags, PROP_FLAG_META_RETREIVED);
         for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
         {
