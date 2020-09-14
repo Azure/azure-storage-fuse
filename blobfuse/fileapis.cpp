@@ -258,6 +258,10 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
 {
     AZS_DEBUGLOGV("azs_flush called with path = %s, fi->flags = %d, (((struct fhwrapper *)fi->fh)->fh) = %d.\n", path, fi->flags, (((struct fhwrapper *)fi->fh)->fh));
 
+    if (!path || strlen(path) == 0) {
+        AZS_DEBUGLOGV("azs_flush called with path = %s. Ignoring null path\n", path);
+        return 0;
+    }
     // At this point, the shared flock will be held.
 
     // In some cases, due (I believe) to us using the hard_unlink option, path will be null.  Thus, we need to get the file name from the file descriptor:
