@@ -34,7 +34,7 @@ enum PROP_FLAG
 class AttrCacheItem
 {
 public:
-    AttrCacheItem() : m_mutex(), flags(0)
+    AttrCacheItem() : /*m_mutex(),*/ flags(0)
     {
 
     }
@@ -105,7 +105,7 @@ public:
         SET_PROP_FLAG(flags, PROP_FLAG_META_RETREIVED);
     }
  
-    std::mutex m_mutex;
+    //std::mutex m_mutex;
     
     time_t last_modified;
     unsigned long long size;

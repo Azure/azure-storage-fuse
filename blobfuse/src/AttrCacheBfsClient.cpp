@@ -26,7 +26,7 @@ void AttrCache::invalidate_dir_recursively(const std::string& path)
             // Let the cache be still valid but mark that file no more exists on the storage
             SET_PROP_FLAG(cache_item->flags, PROP_FLAG_VALID);
             SET_PROP_FLAG(cache_item->flags, PROP_FLAG_NOT_EXISTS);
-            CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_META_RETREIVED);
+            cache_item->clearMetaFlags();
         }
     }
 
@@ -40,7 +40,7 @@ void AttrCache::invalidate_dir_recursively(const std::string& path)
                 // Let the cache be still valid but mark that file no more exists on the storage
                 SET_PROP_FLAG(cache_item->flags, PROP_FLAG_VALID);
                 SET_PROP_FLAG(cache_item->flags, PROP_FLAG_NOT_EXISTS);
-                CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_META_RETREIVED);
+                cache_item->clearMetaFlags();
             }
         }
     }
@@ -121,7 +121,7 @@ void AttrCacheBfsClient::UploadFromFile(const std::string sourcePath, METADATA &
 
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
     //std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
-    std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+    //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
 
     if (IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED)) {
         struct stat stbuf;
@@ -143,7 +143,7 @@ void AttrCacheBfsClient::UploadFromStream(std::istream &sourceStream, const std:
     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(blobName);
 
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
-    std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+    //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
 
      if (IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED)) {
         auto cur = sourceStream.tellg();
@@ -169,7 +169,7 @@ void AttrCacheBfsClient::UploadFromStream(std::istream &sourceStream, const std:
     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(blobName);
 
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
-    std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+    //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
 
      if (IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED)) {
         auto cur = sourceStream.tellg();
@@ -202,7 +202,7 @@ bool AttrCacheBfsClient::CreateDirectory(const std::string directoryPath)
     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(directoryPath);
 
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
-    std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+    //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
 
     CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
     return blob_client->CreateDirectory(directoryPath);
@@ -221,12 +221,12 @@ void AttrCacheBfsClient::DeleteFile(const std::string pathToDelete)
     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(pathToDelete);
 
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
-    std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+    //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
     
     blob_client->DeleteFile(pathToDelete);
     if (IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED)) {
-        SET_PROP_FLAG(cache_item->flags, PROP_FLAG_VALID);
         SET_PROP_FLAG(cache_item->flags, PROP_FLAG_NOT_EXISTS);
+        SET_PROP_FLAG(cache_item->flags, PROP_FLAG_VALID);
         cache_item->clearMetaFlags();
     }
 }
@@ -239,7 +239,7 @@ BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool typ
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
 
     {
-        std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+        //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
 
         if (IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED))
         {
@@ -259,7 +259,7 @@ BfsFileProperty AttrCacheBfsClient::GetProperties(std::string pathName, bool typ
     }
 
     {
-        std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+        //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
         errno = 0;
         BfsFileProperty prop = blob_client->GetProperties(pathName, type_known);
         cache_item->SetProperties(prop);
@@ -276,7 +276,7 @@ BfsFileProperty AttrCacheBfsClient::GetFileProperties(const std::string pathName
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
 
     {
-        std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+        //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
 
         if (IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED) &&
             (!IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_NOT_EXISTS)) &&
@@ -288,7 +288,7 @@ BfsFileProperty AttrCacheBfsClient::GetFileProperties(const std::string pathName
 
     if (!cache_only)
     {
-        std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+        //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
         
         errno = 0;
         BfsFileProperty prop = blob_client->GetProperties(pathName);
@@ -320,14 +320,14 @@ std::vector<std::string> AttrCacheBfsClient::Rename(const std::string sourcePath
     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(sourcePath.substr(1));
 
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
-    std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+    //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
     CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
 
     std::shared_ptr<boost::shared_mutex> ddir_mutex = attr_cache.get_dir_item(get_parent_str(destinationPath.substr(1)));
     std::shared_ptr<AttrCacheItem> dcache_item = attr_cache.get_blob_item(destinationPath.substr(1));
 
     boost::shared_lock<boost::shared_mutex> ddirlock(*ddir_mutex);
-    std::lock_guard<std::mutex> dlock(dcache_item->m_mutex);
+    //std::lock_guard<std::mutex> dlock(dcache_item->m_mutex);
     CLEAR_PROP_FLAG(dcache_item->flags, PROP_FLAG_CONFIRMED);
 
     return blob_client->Rename(sourcePath, destinationPath);
@@ -342,14 +342,14 @@ std::vector<std::string> AttrCacheBfsClient::Rename(const std::string sourcePath
     std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(srcPathStr.substr(1));
     
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
-    std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+    //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
     CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
 
     std::shared_ptr<boost::shared_mutex> ddir_mutex = attr_cache.get_dir_item(get_parent_str(dstPathStr.substr(1)));
     std::shared_ptr<AttrCacheItem> dcache_item = attr_cache.get_blob_item(dstPathStr.substr(1));
 
     boost::shared_lock<boost::shared_mutex> ddirlock(*ddir_mutex);
-    std::lock_guard<std::mutex> dlock(dcache_item->m_mutex);
+    //std::lock_guard<std::mutex> dlock(dcache_item->m_mutex);
     CLEAR_PROP_FLAG(dcache_item->flags, PROP_FLAG_CONFIRMED);
 
     return blob_client->Rename(sourcePath, destinationPath, isDir);
@@ -387,10 +387,12 @@ AttrCacheBfsClient::List(std::string continuation, const std::string prefix, con
             if (resp.m_items[i].is_directory)
                 ret_property.is_directory = true;
 
-            std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(resp.m_items[i].name);
-            std::lock_guard<std::mutex> lock(cache_item->m_mutex);
-            cache_item->SetProperties(ret_property);
-            SET_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
+            if (resp.m_items[i].name.back() != '/') {
+                std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(resp.m_items[i].name);
+                //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+                cache_item->SetProperties(ret_property);
+                SET_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
+            }
         } else {
             BfsFileProperty ret_property(
                     "",
@@ -399,10 +401,12 @@ AttrCacheBfsClient::List(std::string continuation, const std::string prefix, con
                     "", 
                     resp.m_items[i].content_length);
 
-            std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(resp.m_items[i].name);
-            std::lock_guard<std::mutex> lock(cache_item->m_mutex);
-            cache_item->SetProperties(ret_property);
-            SET_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
+            if (resp.m_items[i].name.back() != '/') {
+                std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(resp.m_items[i].name);
+                //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+                cache_item->SetProperties(ret_property);
+                SET_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
+            }
         } 
     }
     return errno_org;
@@ -468,10 +472,12 @@ int AttrCacheBfsClient::ListAllItemsSegmented(
                     if (blobItem.is_directory)
                         ret_property.is_directory = true;
 
-                    std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(listResults[i].name);
-                    std::lock_guard<std::mutex> lock(cache_item->m_mutex);
-                    cache_item->SetProperties(ret_property);
-                    SET_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
+                    if (listResults[i].name.back() != '/') {
+                        std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(listResults[i].name);
+                        //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+                        cache_item->SetProperties(ret_property);
+                        SET_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
+                    }
                 } else {
                     BfsFileProperty ret_property(
                             "",
@@ -480,10 +486,12 @@ int AttrCacheBfsClient::ListAllItemsSegmented(
                             "", 
                             blobItem.content_length);
 
-                    std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(listResults[i].name);
-                    std::lock_guard<std::mutex> lock(cache_item->m_mutex);
-                    cache_item->SetProperties(ret_property);
-                    SET_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
+                    if (listResults[i].name.back() != '/') {
+                        std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(listResults[i].name);
+                        //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+                        cache_item->SetProperties(ret_property);
+                        SET_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
+                    }
                 }  
             }
         }
@@ -500,7 +508,7 @@ int AttrCacheBfsClient::ChangeMode(const char *path, mode_t mode)
         std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(pathStr.substr(1));
 
         boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
-        std::lock_guard<std::mutex> lock(cache_item->m_mutex);
+        //std::lock_guard<std::mutex> lock(cache_item->m_mutex);
         if (IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED))
             cache_item->m_file_mode = mode;
     }
