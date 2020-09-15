@@ -93,6 +93,30 @@ namespace azure {  namespace storage_lite {
         }
     };
 
+    // Exponential retry policy
+    class expo_retry_policy final : public retry_policy_base
+    {
+    public:
+        retry_info evaluate(const retry_context& context) const override
+        {
+            if (context.numbers() == 0) {
+                return retry_info(true, std::chrono::seconds(0));
+            } else if (context.numbers() < 26 && can_retry(context.result())) {
+                double delay = (pow(1.2, context.numbers()-1)-1);
+                delay = std::min(delay, 60.0); // Maximum backoff delay of 1 minute
+                delay *= (((double)rand())/RAND_MAX)/2 + 0.75;
+                return retry_info(true, std::chrono::seconds((int)delay));
+            }
+            return retry_info(false, std::chrono::seconds(0));
+        }
+
+    private:
+        bool can_retry(http_base::http_code code) const
+        {
+            return retryable(code);
+        }
+    };
+
     // No-retry policy
     class no_retry_policy final : public retry_policy_base
     {

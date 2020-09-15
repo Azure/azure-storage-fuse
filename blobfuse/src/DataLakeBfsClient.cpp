@@ -35,6 +35,9 @@ bool DataLakeBfsClient::AuthenticateStorage()
             break;
     }
 
+    if (m_blob_client)
+        m_blob_client->set_retry_policy(std::make_shared<azure::storage_lite::expo_retry_policy>());
+        
     if(m_adls_client != NULL)
     {
         //Authenticate the storage container by using a list call
