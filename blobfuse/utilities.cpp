@@ -142,8 +142,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
     std::string mntPathString = prepend_mnt_path_string(pathString);
 
     // Ensure that we don't get attributes while the file is in an intermediate state.
-    std::shared_ptr<std::mutex> fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
-    std::lock_guard<std::mutex> lock(*fmutex);
+    //std::shared_ptr<std::mutex> fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
+    //std::lock_guard<std::mutex> lock(*fmutex);
 
     int res;
     int acc = access(mntPathString.c_str(), F_OK);
