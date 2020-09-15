@@ -789,12 +789,13 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         } 
     }
 
+    config_options.cacheOnList = true;
     if(cmd_options.cache_on_list != NULL)
     {
         std::string cache_prop(cmd_options.cache_on_list);
-        if(cache_prop == "true")
+        if(cache_prop == "false")
         {
-            config_options.cacheOnList = true;
+            config_options.cacheOnList = false;
         } 
     }
 
