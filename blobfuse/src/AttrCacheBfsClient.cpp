@@ -129,7 +129,7 @@ void AttrCacheBfsClient::UploadFromFile(const std::string sourcePath, METADATA &
             cache_item->size = stbuf.st_size;
             cache_item->last_modified = time(NULL);
             CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_NOT_EXISTS);
-            SET_PROP_FLAG(cache_item->flags, PROP_FLAG_META_RETREIVED);
+            cache_item->parseMetaData(metadata);
         }
         else
             CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
