@@ -46,10 +46,6 @@ public:
         size                = props.size;
         m_file_mode         = props.m_file_mode; 
 
-        if (props.m_valid)
-            SET_PROP_FLAG(flags, PROP_FLAG_VALID);
-        if (props.m_not_exists)
-            SET_PROP_FLAG(flags, PROP_FLAG_NOT_EXISTS);
         if (props.is_directory)
             SET_PROP_FLAG(flags, PROP_FLAG_IS_DIR);
         if (props.m_empty_dir)
@@ -58,6 +54,10 @@ public:
             SET_PROP_FLAG(flags, PROP_FLAG_META_RETREIVED);
         if (props.is_symlink)
             SET_PROP_FLAG(flags, PROP_FLAG_IS_SYMLINK);
+        if (props.m_valid)
+            SET_PROP_FLAG(flags, PROP_FLAG_VALID);
+        if (props.m_not_exists)
+            SET_PROP_FLAG(flags, PROP_FLAG_NOT_EXISTS);
     }
 
     BfsFileProperty GetProperties()
@@ -80,15 +80,14 @@ public:
 
     void clearMetaFlags()
     {
+        CLEAR_PROP_FLAG(flags, PROP_FLAG_META_RETREIVED);
         CLEAR_PROP_FLAG(flags, PROP_FLAG_IS_SYMLINK);
         CLEAR_PROP_FLAG(flags, PROP_FLAG_IS_DIR);
-        CLEAR_PROP_FLAG(flags, PROP_FLAG_META_RETREIVED);
     }
 
     void parseMetaData(std::vector<std::pair<std::string, std::string>> &metadata)
     {
         clearMetaFlags();
-        SET_PROP_FLAG(flags, PROP_FLAG_META_RETREIVED);
         for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
         {
             if ((iter->first.compare("hdi_isfolder") == 0) && (iter->second.compare("true") == 0))
@@ -103,6 +102,7 @@ public:
                 continue;
             }
         }
+        SET_PROP_FLAG(flags, PROP_FLAG_META_RETREIVED);
     }
  
     std::mutex m_mutex;
