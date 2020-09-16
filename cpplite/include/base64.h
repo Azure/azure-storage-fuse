@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <stdexcept>
 
 #include "storage_EXPORTS.h"
 

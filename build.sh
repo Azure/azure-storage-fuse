@@ -5,7 +5,7 @@ BLOBFS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 ## Build the cpplite lib first
 #echo "Building the cpplite lib"
-if [ $1 = "debug" ]
+if [ "$1" = "debug" ]
 then
 rm -rf cpplite/build.release
 rm -rf build/blobfuse
@@ -39,7 +39,7 @@ cd build
 # Copy the cpplite lib here
 #cp ../cpplite/build.release/libazure*.a ./ 
 
-if [ $1 = "debug" ]
+if [ "$1" = "debug" ]
 then
 	cmake_args='-DCMAKE_BUILD_TYPE=Debug ..'
 	if [ -n "${INCLUDE_TESTS}" ]; then
