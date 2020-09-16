@@ -143,7 +143,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
             iteration++;
             total_count += response.m_items.size();
             
-            AZS_DEBUGLOGV("Successful call to list_blobs_segmented.  results count = %d, next_marker = %s.\n", (int)response.m_items.size(), response.m_next_marker.c_str());
+            //AZS_DEBUGLOGV("Successful call to list_blobs_segmented.  results count = %d, next_marker = %s.\n", (int)response.m_items.size(), response.m_next_marker.c_str());
             
             continuation = response.m_next_marker;
             if (!response.m_items.empty())

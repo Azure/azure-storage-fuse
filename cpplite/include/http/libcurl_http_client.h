@@ -310,12 +310,14 @@ namespace azure {  namespace storage_lite {
             out += " ==> REQUEST/RESPONSE :: ";
             out += http_method_label[m_method] + " " + tmpURL + "?";
             // our headers
+
+            std::string header, name, value;
             for(auto x = m_slist; x->next != nullptr; x = x->next) {
-                std::string header = std::string(x->data);
+                header = std::string(x->data);
                 auto splitAt = header.find(':');
                 if (splitAt != header.length() - 1) {
-                    std::string name = header.substr(0, splitAt);
-                    std::string value = header.substr(splitAt + 2);
+                    name = header.substr(0, splitAt);
+                    value = header.substr(splitAt + 2);
                     if(name == "Authorization" || name == "Secret") {
                         value = "****";
                     }
@@ -326,13 +328,24 @@ namespace azure {  namespace storage_lite {
             }
             out += "--------------------------------------------------------------------------------";
             out += "RESPONSE Status :: " + std::to_string(m_code) + " :: ";
+            if (m_response_headers.size() > 0 ) {
+                std::string req_id = get_response_header(constants::header_ms_request_id);
+                if (!req_id.empty()) {
+                    out += "REQ ID : " + req_id;
+                } else {
+                    std::string req_id = get_response_header(constants::header_ms_client_request_id);
+                    if (!req_id.empty()) {
+                        out += "REQ ID : " + req_id;
+                    }
+                }
+            }
             // their headers
-            for(const auto& pair : m_headers) {
+            /*for(const auto& pair : m_response_headers) {
                 auto lineReturn = pair.second.find('\n');
                 // ternary statement also trims the carriage return character, which accidentally clears lines.
                 auto trimmed_str = pair.second.substr(0, pair.second[lineReturn - 1] == '\r' ? lineReturn - 1 : lineReturn );
                 out = out.append("&").append(pair.first).append("=").append(trimmed_str);
-            }
+            }*/
 
             return out;
         }  
