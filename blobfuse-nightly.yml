@@ -139,13 +139,13 @@ jobs:
 
     # Mount container using blobFuse
     - script: |
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --cache-on-list=true
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
       displayName: "Mount container ADLS"
       condition: or(eq(variables.imageName, 'ubuntu-18.04'), eq(variables.imageName, 'ubuntu-20.04'))
       timeoutInMinutes: 3
   
     - script: |
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true --cache-on-list=true
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
       displayName: "Mount container Block"
       condition: eq(variables.imageName, 'ubuntu-16.04')
       timeoutInMinutes: 3
@@ -426,7 +426,7 @@ jobs:
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --no-symlinks=true --cache-on-list=true
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --no-symlinks=true
         cd test
         go run stressTest.go $(MOUNT_DIR)
         cd -
@@ -476,7 +476,7 @@ jobs:
     - script:  |
         sudo rm -rf $(TEMP_DIR)/*
         sudo cp $(BLOBFUSE_CFG_ADLS) $(BLOBFUSE_CFG_GTEST)
-        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --cache-on-list=true
+        sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
         cd ./test/
         sudo python tests.py
         cd -

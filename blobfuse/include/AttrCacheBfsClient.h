@@ -8,7 +8,9 @@
 
 using namespace azure::storage_lite;
 
-#define MAX_BLOB_CACHE_LEN 12000000
+// Entry in attr-cache is roughly 40 bytes
+// Keeping limit of total entries to be 20 Million
+#define MAX_BLOB_CACHE_LEN 20000000
 
 enum PROP_FLAG
 {

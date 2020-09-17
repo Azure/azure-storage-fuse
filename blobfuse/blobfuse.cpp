@@ -577,7 +577,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     int ret = 0;
     config_options.useADLS = false;
     config_options.noSymlinks = false;
-    config_options.cacheOnList = false;
+    config_options.cacheOnList = true;
     try
     {
 
@@ -789,7 +789,6 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         } 
     }
 
-    config_options.cacheOnList = true;
     if(cmd_options.cache_on_list != NULL)
     {
         std::string cache_prop(cmd_options.cache_on_list);
