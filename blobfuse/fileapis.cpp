@@ -259,10 +259,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
     AZS_DEBUGLOGV("azs_flush called with path = %s, fi->flags = %d, (((struct fhwrapper *)fi->fh)->fh) = %d.\n", path, fi->flags, (((struct fhwrapper *)fi->fh)->fh));
 
     // At this point, the shared flock will be held.
-
     // In some cases, due (I believe) to us using the hard_unlink option, path will be null.  Thus, we need to get the file name from the file descriptor:
-    std::string pathString(path);
-    std::replace(pathString.begin(), pathString.end(), '\\', '/');
 
     char path_link_buffer[50];
     snprintf(path_link_buffer, 50, "/proc/self/fd/%d", (((struct fhwrapper *)fi->fh)->fh));
@@ -292,6 +289,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
         {
             blob_name.erase(blob_name.begin() + 0);
         }
+        std::replace(blob_name.begin(), blob_name.end(), '\\', '/');
 
         // We cannot close the actual file handle to the temp file, because of the possibility of flush being called multiple times for a given call to open().
         // For some file systems, however, close() flushes data, so we do want to do that before uploading data to a blob.
@@ -349,7 +347,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             }
             globalTimes.lastModifiedTime = time(NULL);
         } else {
-            storage_client->UpdateBlobProperty(blob_name, "last_access", std::to_string(time(NULL)));
+            //storage_client->UpdateBlobProperty(blob_name, "last_access", std::to_string(time(NULL)));
             globalTimes.lastAccessTime = time(NULL);
         }
     }

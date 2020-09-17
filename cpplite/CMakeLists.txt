@@ -180,11 +180,11 @@ if(BUILD_ADLS)
   add_subdirectory(adls)
 endif()
 
-if(BUILD_TESTS)
+if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME AND BUILD_TESTS)
   add_subdirectory(test)
 endif()
 
-if(BUILD_SAMPLES)
+if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME AND BUILD_SAMPLES)
   add_subdirectory(sample)
 endif()
 

@@ -3,22 +3,9 @@ BLOBFS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 ## Use "export INCLUDE_TESTS=1" to enable building tests
 
-if [ $1 = "debug" ]
-then
-	cmake_args='-DCMAKE_BUILD_TYPE=Debug ..'
-	if [ -n "${INCLUDE_TESTS}" ]; then
-		cmake_args='-DCMAKE_BUILD_TYPE=Debug -DINCLUDE_TESTS=1 ..'
-	fi
-else
-	cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo ..'
-	if [ -n "${INCLUDE_TESTS}" ]; then
-		cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_TESTS=1 ..'
-	fi
-fi
-
 ## Build the cpplite lib first
 #echo "Building the cpplite lib"
-if [ $1 = "debug" ]
+if [ "$1" = "debug" ]
 then
 rm -rf cpplite/build.release
 rm -rf build/blobfuse
@@ -51,6 +38,19 @@ cd build
 
 # Copy the cpplite lib here
 #cp ../cpplite/build.release/libazure*.a ./ 
+
+if [ "$1" = "debug" ]
+then
+	cmake_args='-DCMAKE_BUILD_TYPE=Debug ..'
+	if [ -n "${INCLUDE_TESTS}" ]; then
+		cmake_args='-DCMAKE_BUILD_TYPE=Debug -DINCLUDE_TESTS=1 ..'
+	fi
+else
+	cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo ..'
+	if [ -n "${INCLUDE_TESTS}" ]; then
+		cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_TESTS=1 ..'
+	fi
+fi
 
 ## Use cmake3 if it's available.  If not, then fallback to the default "cmake".  Otherwise, fail.
 cmake3 $cmake_args

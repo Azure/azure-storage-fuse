@@ -35,6 +35,9 @@ bool DataLakeBfsClient::AuthenticateStorage()
             break;
     }
 
+    if (m_blob_client)
+        m_blob_client->set_retry_policy(std::make_shared<azure::storage_lite::expo_retry_policy>());
+        
     if(m_adls_client != NULL)
     {
         //Authenticate the storage container by using a list call
@@ -359,10 +362,15 @@ int DataLakeBfsClient::List(std::string continuation, std::string prefix, std::s
 
     if (errno == 0) 
         resp.populate(listed_adls_response);
-    #else
-    BlockBlobBfsClient::List(continuation, prefix, delimiter, resp, max_results);
-    #endif
+    
+    listed_adls_response.paths.clear();
+    listed_adls_response.paths.shrink_to_fit();
+
     return errno;
+    #else
+    return BlockBlobBfsClient::List(continuation, prefix, delimiter, resp, max_results);
+    #endif
+    
 }
 
 int DataLakeBfsClient::ChangeMode(const char *path, mode_t mode) {

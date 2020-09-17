@@ -142,8 +142,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
     std::string mntPathString = prepend_mnt_path_string(pathString);
 
     // Ensure that we don't get attributes while the file is in an intermediate state.
-    std::shared_ptr<std::mutex> fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
-    std::lock_guard<std::mutex> lock(*fmutex);
+    //std::shared_ptr<std::mutex> fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
+    //std::lock_guard<std::mutex> lock(*fmutex);
 
     int res;
     int acc = access(mntPathString.c_str(), F_OK);
@@ -185,98 +185,97 @@ int azs_getattr(const char *path, struct stat *stbuf)
     //if the first task is to study
     if (!storage_client->isADLS())
     {
-        int resultCount = 2;
-        std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResponse;
-        storage_client->ListAllItemsSegmented(
-                            blobNameStr, "/", listResponse, resultCount);
-
-        if (errno == 0 && listResponse.size() > 0)
+        if (config_options.useAttrCache)
         {
-            list_segmented_item blobItem;
-            unsigned int batchNum = 0;
-            unsigned int resultStart = 0;
-            // this variable will be incremented below if it is a directory, otherwise it will not be used.
-            unsigned int dirSize = 0;
-
-            for (batchNum = 0; batchNum < listResponse.size(); batchNum++)
+            // If attr-cache is enable then instead of calling list 
+            // get the attributes from cache for file. for dir we will still
+            // rely on list apis.
+            BfsFileProperty file_property = storage_client->GetFileProperties(blobNameStr, true);
+            if (file_property.isValid() && file_property.exists())
             {
-                // if skip_first start the listResults at 1
-                resultStart = listResponse[batchNum].second ? 1 : 0;
-
-                std::vector<list_segmented_item> listResults = listResponse[batchNum].first;
-                for (unsigned int i = resultStart; i < listResults.size(); i++)
+                if (file_property.is_symlink || 
+                    is_symlink_blob(file_property.metadata))
                 {
-                    AZS_DEBUGLOGV("In azs_getattr list_segmented_item %d file %s\n", i, listResults[i].name.c_str());
-
-                    // if the path for exact name is found the dirSize will be 1 here so check to see if it has files or subdirectories inside
-                    // match dir name or longer paths to determine dirSize
-                    if (listResults[i].name.compare(blobNameStr + '/') < 0)
-                    {
-                        dirSize++;
-                        // listing is hierarchical so no need of the 2nd is blobitem.name empty condition but just in case for service errors
-                        if (dirSize > 2 && !blobItem.name.empty())
-                        {
-                            break;
-                        }
-                    }
-
-                    // the below will be skipped blobItem has been found already because we only need the exact match
-                    // find the element with the exact prefix
-                    // this could lead to a bug when there is a file with the same name as the directory in the parent directory. In short, that won't work.
-                    if (blobItem.name.empty() && (listResults[i].name == blobNameStr || listResults[i].name == (blobNameStr + '/')))
-                    {
-                        blobItem = listResults[i];
-                        AZS_DEBUGLOGV("In azs_getattr found blob in list hierarchical file %s\n", blobItem.name.c_str());
-                        // leave 'i' at the value it is, it will be used in the remaining batches and loops to check for directory empty check.
-                        if (dirSize == 0 && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
-                        {
-                            dirSize = 1; // root directory exists so 1
-                        }
-                    }
-                }
-            }
-
-            if (!blobItem.name.empty() && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
-            {
-                AZS_DEBUGLOGV("%s is a directory, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
-                AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
-                stbuf->st_mode = S_IFDIR | config_options.defaultPermission;
-                // If st_nlink = 2, means directory is empty.
-                // Directory size will affect behaviour for mv, rmdir, cp etc.
-                stbuf->st_uid = fuse_get_context()->uid;
-                stbuf->st_gid = fuse_get_context()->gid;
-                // assign directory status as empty or non-empty based on the value from above
-                stbuf->st_nlink = dirSize > 1 ? 3 : 2;
-                stbuf->st_size = 4096;
-
-                if (!blobItem.last_modified.empty()) {
-                    struct tm mtime;
-                    char *ptr = strptime(blobItem.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mtime);
-                    if (ptr) {
-                        stbuf->st_mtime = timegm(&mtime);
-                        stbuf->st_atime = stbuf->st_ctime = stbuf->st_mtime;
-                    }
-                }
-                return 0;
-            }
-            else if (!blobItem.name.empty())
-            {
-                AZS_DEBUGLOGV("%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
-                AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
-
-                mode_t perms = config_options.defaultPermission;
-
-                if (is_symlink_blob(blobItem.metadata))
-                {
-                    stbuf->st_mode = S_IFLNK | perms;
+                    stbuf->st_mode = S_IFLNK | config_options.defaultPermission;
                 }
                 else
                 {
-                    stbuf->st_mode = S_IFREG | perms; // Regular file (not a directory)
+                    stbuf->st_mode = S_IFREG | config_options.defaultPermission; 
                 }
-
                 stbuf->st_uid = fuse_get_context()->uid;
                 stbuf->st_gid = fuse_get_context()->gid;
+                stbuf->st_atime = stbuf->st_ctime = stbuf->st_mtime = file_property.get_last_modified();
+                stbuf->st_nlink = 1;
+                stbuf->st_size = file_property.get_size();
+
+                AZS_DEBUGLOGV("File Prop Cache : size is %llu ", file_property.get_size());
+                return 0;
+            }
+        }
+
+        int resultCount = 2;
+        bool success = false;
+        int failcount = 0;
+        list_segmented_response response;
+        list_segmented_item blobItem;
+        do
+        {
+            response.reset();
+            storage_client->List("", blobNameStr, "/", response, resultCount);
+            
+            if (errno == 404 || 
+                (errno == 0  && response.m_items.size() == 0))
+            {
+                syslog(LOG_WARNING, "File does not currently exist on the storage or cache, errno : %d", errno);
+                response.reset();
+                return -(ENOENT);
+            }
+
+            if (errno != 0)
+            {
+                syslog(LOG_WARNING, "Failed to get info on %s, errno : %d",
+                    blobNameStr.c_str(), errno);
+                success = false;
+                failcount++;
+                continue; 
+            }
+
+            success = true;
+            unsigned int dirSize = 0;
+            for (unsigned int i = 0; i < response.m_items.size(); i++)
+            {
+                AZS_DEBUGLOGV("In azs_getattr list_segmented_item %d file %s\n", i, response.m_items[i].name.c_str());
+
+                // if the path for exact name is found the dirSize will be 1 here so check to see if it has files or subdirectories inside
+                // match dir name or longer paths to determine dirSize
+                if (response.m_items[i].name.compare(blobNameStr + '/') < 0)
+                {
+                    dirSize++;
+                    // listing is hierarchical so no need of the 2nd is blobitem.name empty condition but just in case for service errors
+                    if (dirSize > 2 && !blobItem.name.empty())
+                    {
+                        break;
+                    }
+                }
+
+                // the below will be skipped blobItem has been found already because we only need the exact match
+                // find the element with the exact prefix
+                // this could lead to a bug when there is a file with the same name as the directory in the parent directory. In short, that won't work.
+                if (blobItem.name.empty() && (response.m_items[i].name == blobNameStr || 
+                                                response.m_items[i].name == (blobNameStr + '/')))
+                {
+                    blobItem = response.m_items[i];
+                    AZS_DEBUGLOGV("In azs_getattr found blob in list file %s\n", blobItem.name.c_str());
+                    // leave 'i' at the value it is, it will be used in the remaining batches and loops to check for directory empty check.
+                    if (dirSize == 0 && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
+                    {
+                        dirSize = 1; // root directory exists so 1
+                    }
+                }
+            }
+
+            if (!blobItem.name.empty()) 
+            {
                 if (!blobItem.last_modified.empty()) {
                     struct tm mtime;
                     char *ptr = strptime(blobItem.last_modified.c_str(), "%a, %d %b %Y %H:%M:%S", &mtime);
@@ -285,30 +284,54 @@ int azs_getattr(const char *path, struct stat *stbuf)
                         stbuf->st_atime = stbuf->st_ctime = stbuf->st_mtime;
                     }
                 }
-                //stbuf->st_size = blob_property.size;
-                //AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", blobItem.last_modified.c_str(), blob_property.size);
-                stbuf->st_size = blobItem.content_length;
-                AZS_DEBUGLOGV("The last modified time is %s, the size is %llu ", blobItem.last_modified.c_str(), blobItem.content_length);
-                stbuf->st_nlink = 1;
-                
-                return 0;
+
+                stbuf->st_uid = fuse_get_context()->uid;
+                stbuf->st_gid = fuse_get_context()->gid;
+
+                if (blobItem.is_directory || is_directory_blob(0, blobItem.metadata))
+                {
+                    //AZS_DEBUGLOGV("%s is a directory, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
+                    AZS_DEBUGLOGV("Blob %s, representing a directory, found during get_attr.\n", path);
+                    stbuf->st_mode = S_IFDIR | config_options.defaultPermission;
+                    // If st_nlink = 2, means directory is empty.
+                    // Directory size will affect behaviour for mv, rmdir, cp etc.
+                    // assign directory status as empty or non-empty based on the value from above
+                    stbuf->st_nlink = dirSize > 1 ? 3 : 2;
+                    stbuf->st_size = 4096;
+                    response.reset();
+                    return 0;
+                }
+                else
+                {
+                    //AZS_DEBUGLOGV("%s is a file, blob name is %s\n", mntPathString.c_str(), blobItem.name.c_str());
+                    AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
+
+                    mode_t perms = config_options.defaultPermission;
+                    if (is_symlink_blob(blobItem.metadata)) {
+                        stbuf->st_mode = S_IFLNK | perms;
+                    } else {
+                        stbuf->st_mode = S_IFREG | perms; // Regular file (not a directory)
+                    }
+                    stbuf->st_size = blobItem.content_length;
+                    stbuf->st_nlink = 1;
+                    response.reset();
+                    return 0;
+                }
             }
-            else // none of the blobs match exactly so blob not found
-            {
-                AZS_DEBUGLOGV("%s does not match the exact name in the top 2 return from list_hierarchial_blobs. It will be treated as a new blob", blobNameStr.c_str());
-                return -(ENOENT);
-            }
-        }
-        else if (errno > 0)
+        } while((!success) && (failcount < 20));
+
+        if (errno > 0)
         {
             int storage_errno = errno;
             AZS_DEBUGLOGV("Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
             syslog(LOG_ERR, "Failure when attempting to determine if %s exists on the service.  errno = %d.\n", blobNameStr.c_str(), storage_errno);
+            response.reset();
             return 0 - map_errno(storage_errno);
         }
         else // it is a new blob
         {
             AZS_DEBUGLOGV("%s not returned in list_segmented_blobs. It is a new blob", blobNameStr.c_str());
+            response.reset();
             return -(ENOENT);
         }
     } // end of processing for Blockblob
@@ -336,7 +359,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
             }
 
             AZS_DEBUGLOGV("Blob %s, representing a file, found during get_attr.\n", path);
-            if (is_symlink_blob(blob_property.metadata))
+            if (blob_property.is_symlink ||
+                is_symlink_blob(blob_property.metadata))
             {
                 stbuf->st_mode = S_IFLNK | perms;
             }

@@ -69,10 +69,12 @@ void gc_cache::uncache_file(std::string path)
 
 void gc_cache::addCacheBytes(std::string /*path*/, long int size)
 {
-    m_current_usage += size;
-    if (m_current_usage > (config_options.cacheSize * 0.80)){
-        AZS_DEBUGLOGV("Cache reaching its max value MAX : %llu, Current %llu",
-                config_options.cacheSize, m_current_usage);
+    if (config_options.cacheSize > 0) {
+        m_current_usage += size;
+        if (m_current_usage > (config_options.cacheSize * 0.80)){
+            AZS_DEBUGLOGV("Cache reaching its max value MAX : %llu, Current %llu",
+                    config_options.cacheSize, m_current_usage);
+        }
     }
 }
 
@@ -126,8 +128,8 @@ void gc_cache::run_gc_cache()
 
             struct stat buf;
             stat(mntPath, &buf);
-            if ((((now - buf.st_mtime) > file_cache_timeout_in_seconds) && ((now - buf.st_ctime) > file_cache_timeout_in_seconds))
-                || disk_threshold_reached)
+            if (((now - buf.st_mtime) > file_cache_timeout_in_seconds) ||
+                disk_threshold_reached)
             {
                 //clean up the file from cache
                 int fd = open(mntPath, O_WRONLY);

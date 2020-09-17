@@ -227,6 +227,44 @@ func TestDirListRecursive(t *testing.T) {
 	//fmt.Print(files)
 }
 
+// # Rename directory with data
+func TestDirRenameFull(t *testing.T) {
+	dirName := mntPath + "/full_dir"
+	newName := mntPath + "/full_dir_rename"
+	fileName := dirName + "/test_file_"
+
+	err := os.Mkdir(dirName, 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory : " + dirName + "(" + err.Error() + ")")
+	}
+
+	err := os.Mkdir(dirName + "/tmp", 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory : " + dirName + "/tmp (" + err.Error() + ")")
+	}
+
+	for i := 0; i < 10; i++ {
+		newFile := fileName + strconv.Itoa(i)
+		err := ioutil.WriteFile(newFile, medBuff, 0777)
+		if err != nil {
+			t.Errorf("Failed to create file " + newFile + " (" + err.Error() + ")")
+		}
+	}
+
+	err := os.Rename(dirName, newName)
+	if err != nil {
+		t.Errorf("Failed to rename directory to : " + newName + "(" + err.Error() + ")")
+	}
+
+	//  Deleted directory shall not be present in the contianer now
+	if _, err = os.Stat(dirName); !os.IsNotExist(err) {
+		t.Errorf("Old directory exists even after rename : " + dirName + "(" + err.Error() + ")")
+	}
+	if _, err = os.Stat(newName); os.IsNotExist(err) {
+		t.Errorf("New directory does not exists even after rename : " + newName + "(" + err.Error() + ")")
+	}
+}
+
 // # LASTTEST : Clean up everything created by Dir Test
 func TestDirClean(t *testing.T) {
 	err := os.RemoveAll(mntPath + "/")

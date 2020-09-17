@@ -547,6 +547,12 @@ namespace azure { namespace storage_lite {
         /// <param name="destContainer">The destination container name.</param>
         /// <param name="destBlob">The destination blob name.</param>
         AZURE_STORAGE_API virtual void start_copy(const std::string &sourceContainer, const std::string &sourceBlob, const std::string &destContainer, const std::string &destBlob);
+        
+        AZURE_STORAGE_API void set_retry_policy(std::shared_ptr<retry_policy_base> retry_policy)
+        {
+            if (m_blobClient)
+                m_blobClient->context()->set_retry_policy(retry_policy); 
+        }
     protected:
         blob_client_wrapper() {}
     private:

@@ -1,5 +1,6 @@
 #include "storage_url.h"
 #include "utility.h"
+#include <stdexcept>
 
 namespace azure {  namespace storage_lite {
 

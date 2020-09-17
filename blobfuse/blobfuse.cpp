@@ -42,6 +42,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--use-adls=%s", use_adls),
     OPTION("--no-symlinks=%s", no_symlinks),    
     OPTION("--no_symlinks=%s", no_symlinks),
+    OPTION("--cache-on-list=%s", cache_on_list),
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
@@ -576,7 +577,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     int ret = 0;
     config_options.useADLS = false;
     config_options.noSymlinks = false;
-
+    config_options.cacheOnList = true;
     try
     {
 
@@ -785,6 +786,15 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         if(no_symlinks == "true")
         {
             config_options.noSymlinks = true;
+        } 
+    }
+
+    if(cmd_options.cache_on_list != NULL)
+    {
+        std::string cache_prop(cmd_options.cache_on_list);
+        if(cache_prop == "false")
+        {
+            config_options.cacheOnList = false;
         } 
     }
 

@@ -216,7 +216,7 @@ jobs:
     # File Read-Write test
     - script: |
         sudo cat blobfuse-nightly.yml > $(MOUNT_DIR)/test.log
-        sudo cat $(MOUNT_DIR)/test.log
+        sudo diff $(MOUNT_DIR)/test.log blobfuse-nightly.yml
         stat $(MOUNT_DIR)/test.log
       displayName: "TEST - Write to file and Read back"
       timeoutInMinutes: 10
@@ -230,8 +230,13 @@ jobs:
 
     # File copy test
     - script: |
-        cp -r ./blobfuse/*.* $(MOUNT_DIR)/
-      displayName: "TEST - Copy File"
+        mkdir $(MOUNT_DIR)/copy_dir
+        cp -r ./blobfuse/ $(MOUNT_DIR)/copy_dir
+        ls -l $(MOUNT_DIR)/copy_dir
+        mv $(MOUNT_DIR)/copy_dir $(MOUNT_DIR)/copy_dir_new
+        stat $(MOUNT_DIR)/copy_dir
+        stat $(MOUNT_DIR)/copy_dir_new
+      displayName: "TEST - Copy File and Rename Dir"
       timeoutInMinutes: 10
       continueOnError: true
 
@@ -426,7 +431,7 @@ jobs:
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --no_symlinks=true
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --no-symlinks=true
         cd test
         go run stressTest.go $(MOUNT_DIR)
         cd -

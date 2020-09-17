@@ -1,7 +1,7 @@
 #include "hash.h"
 #include "base64.h"
 
-#ifdef WIN32
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <Windows.h>
 #include <bcrypt.h>
@@ -20,7 +20,7 @@ namespace azure {  namespace storage_lite {
     {
         unsigned int digest_length = SHA256_DIGEST_LENGTH;
         unsigned char digest[SHA256_DIGEST_LENGTH];
-#ifdef WIN32
+#ifdef _WIN32
         static const BCRYPT_ALG_HANDLE hmac_sha256_algorithm_handle = []() {
             BCRYPT_ALG_HANDLE handle;
             NTSTATUS status = BCryptOpenAlgorithmProvider(&handle, BCRYPT_SHA256_ALGORITHM, NULL, BCRYPT_ALG_HANDLE_HMAC_FLAG);

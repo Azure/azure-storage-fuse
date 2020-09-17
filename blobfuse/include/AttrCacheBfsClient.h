@@ -8,28 +8,111 @@
 
 using namespace azure::storage_lite;
 
+// Entry in attr-cache is roughly 40 bytes
+// Keeping limit of total entries to be 20 Million
+#define MAX_BLOB_CACHE_LEN 20000000
+
+enum PROP_FLAG
+{
+    PROP_FLAG_UNKNOWN       = 0,
+    PROP_FLAG_CONFIRMED     = 1,
+    PROP_FLAG_VALID,
+    PROP_FLAG_NOT_EXISTS,
+    PROP_FLAG_IS_DIR,
+    PROP_FLAG_EMPTY_DIR,
+    PROP_FLAG_META_RETREIVED,
+    PROP_FLAG_IS_SYMLINK,
+
+    PROP_FLAG_MAX           = 31
+};
+
+#define SET_PROP_FLAG(val, flag) \
+        (val |= (1 << flag))
+#define CLEAR_PROP_FLAG(val, flag) \
+        (val &= ~(1 << flag))
+#define IS_PROP_FLAG_SET(val, flag) \
+        (val & (1 << flag))
 
 class AttrCacheItem
 {
 public:
-    AttrCacheItem(std::string name, BfsFileProperty props) : m_confirmed(false), m_mutex(), m_name(name), m_props(props)
+    AttrCacheItem() : /*m_mutex(),*/ flags(0)
     {
 
     }
 
-    // True if this item should accurately represent a blob on the service.
-    // False if not (or unknown).  Marking an item as not confirmed is invalidating the cache.
-    bool m_confirmed;
+    void SetProperties(BfsFileProperty &props)
+    {
+        flags               = 0;
+        last_modified       = props.last_modified;
+        size                = props.size;
+        m_file_mode         = props.m_file_mode; 
 
-    // A mutex that can be locked in shared or unique mode (reader/writer lock)
-    // TODO: Consider switching this to be a regular mutex
-    boost::shared_mutex m_mutex;
+        if (props.is_directory)
+            SET_PROP_FLAG(flags, PROP_FLAG_IS_DIR);
+        if (props.m_empty_dir)
+            SET_PROP_FLAG(flags, PROP_FLAG_EMPTY_DIR);
+        if (props.meta_retreived)
+            SET_PROP_FLAG(flags, PROP_FLAG_META_RETREIVED);
+        if (props.is_symlink)
+            SET_PROP_FLAG(flags, PROP_FLAG_IS_SYMLINK);
+        if (props.m_valid)
+            SET_PROP_FLAG(flags, PROP_FLAG_VALID);
+        if (props.m_not_exists)
+            SET_PROP_FLAG(flags, PROP_FLAG_NOT_EXISTS);
+    }
 
-    // Name of the blob
-    std::string m_name;
+    BfsFileProperty GetProperties()
+    {
+        BfsFileProperty props;
 
-    // The (cached) properties of the blob
-    BfsFileProperty m_props;
+        props.last_modified     = last_modified;
+        props.size              = size;
+        props.m_file_mode       = m_file_mode;
+
+        props.m_valid           = IS_PROP_FLAG_SET(flags, PROP_FLAG_VALID);
+        props.m_not_exists      = IS_PROP_FLAG_SET(flags, PROP_FLAG_NOT_EXISTS);
+        props.is_directory      = IS_PROP_FLAG_SET(flags, PROP_FLAG_IS_DIR);
+        props.m_empty_dir       = IS_PROP_FLAG_SET(flags, PROP_FLAG_EMPTY_DIR);
+        props.meta_retreived    = IS_PROP_FLAG_SET(flags, PROP_FLAG_META_RETREIVED);
+        props.is_symlink        = IS_PROP_FLAG_SET(flags, PROP_FLAG_IS_SYMLINK);
+
+        return props;
+    }
+
+    void clearMetaFlags()
+    {
+        CLEAR_PROP_FLAG(flags, PROP_FLAG_META_RETREIVED);
+        CLEAR_PROP_FLAG(flags, PROP_FLAG_IS_SYMLINK);
+        CLEAR_PROP_FLAG(flags, PROP_FLAG_IS_DIR);
+    }
+
+    void parseMetaData(std::vector<std::pair<std::string, std::string>> &metadata)
+    {
+        clearMetaFlags();
+        for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
+        {
+            if ((iter->first.compare("hdi_isfolder") == 0) && (iter->second.compare("true") == 0))
+            {
+                SET_PROP_FLAG(flags, PROP_FLAG_IS_DIR);
+                continue;
+            }
+            
+            if ((iter->first.compare("is_symlink") == 0) && (iter->second.compare("true") == 0))
+            {
+                SET_PROP_FLAG(flags, PROP_FLAG_IS_SYMLINK);
+                continue;
+            }
+        }
+        SET_PROP_FLAG(flags, PROP_FLAG_META_RETREIVED);
+    }
+ 
+    //std::mutex m_mutex;
+    
+    time_t last_modified;
+    unsigned long long size;
+    mode_t m_file_mode;
+    uint32_t flags;
 };
 
 // A thread-safe cache of the properties of the blobs in a container on the service.
@@ -59,6 +142,11 @@ public:
     std::shared_ptr<AttrCacheItem> get_blob_item(const std::string& path);
     void invalidate_dir_recursively(const std::string& path);
     bool is_directory_empty(const std::string& path);
+
+    unsigned int get_blob_item_len()
+    {
+        return blob_cache.size();
+    }
 
 private:
     std::map<std::string, std::shared_ptr<AttrCacheItem>> blob_cache;
@@ -147,6 +235,7 @@ public:
     ///</summary>
     ///<returns>BfsFileProperty object which contains the property details of the file</returns>
     BfsFileProperty GetProperties(std::string pathName, bool type_known = false) override;
+    BfsFileProperty GetFileProperties(const std::string pathName, bool cache_only = true);
     void GetExtraProperties(const std::string pathName, BfsFileProperty &prop) override;
     ///<summary>
     /// Determines whether or not a path (file or directory) exists or not
