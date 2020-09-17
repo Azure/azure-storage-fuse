@@ -231,7 +231,7 @@ jobs:
     # File copy test
     - script: |
         mkdir $(MOUNT_DIR)/copy_dir
-        cp -r ./* $(MOUNT_DIR)/copy_dir
+        cp -r ./blobfuse/ $(MOUNT_DIR)/copy_dir
         ls -l $(MOUNT_DIR)/copy_dir
         mv $(MOUNT_DIR)/copy_dir $(MOUNT_DIR)/copy_dir_new
         stat $(MOUNT_DIR)/copy_dir
