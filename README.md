@@ -79,9 +79,9 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
             - Object ID
             - Resource ID
 - Service Principal Name (`authType SPN`)
-    - Client ID
-    - Tenant ID
-    - Client Secret
+    - Requires servicePrincipalClientId, servicePrincipalTenantId, servicePrincipalClientSecret specified in the config file.    
+    - Alternatively servicePrincipalClientSecret can be specified by the environment value AZURE_STORAGE_SPN_CLIENT_SECRET 
+    - AZURE_STORAGE_AAD_ENDPOINT`environment value can be used to specify a custom AAD endpoint to authenticate against
 
 ### Environment variables
 
