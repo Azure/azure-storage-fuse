@@ -238,7 +238,7 @@ func TestDirRenameFull(t *testing.T) {
 		t.Errorf("Failed to create directory : " + dirName + "(" + err.Error() + ")")
 	}
 
-	err := os.Mkdir(dirName + "/tmp", 0777)
+	err = os.Mkdir(dirName + "/tmp", 0777)
 	if err != nil {
 		t.Errorf("Failed to create directory : " + dirName + "/tmp (" + err.Error() + ")")
 	}
@@ -251,7 +251,7 @@ func TestDirRenameFull(t *testing.T) {
 		}
 	}
 
-	err := os.Rename(dirName, newName)
+	err = os.Rename(dirName, newName)
 	if err != nil {
 		t.Errorf("Failed to rename directory to : " + newName + "(" + err.Error() + ")")
 	}
