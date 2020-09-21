@@ -1759,7 +1759,7 @@ class CacheTests(BlobfuseTest):
         if LOCAL_TEST :
             print("Ignoring usage check in Local Test")
         else :
-            self.assertLess(int(percent.strip('%')), self.lower_threshold)
+            self.assertLessEqual(int(percent.strip('%')), self.lower_threshold)
 
         # cleanup
         if os.path.exists(testDirPath):
@@ -1832,7 +1832,7 @@ class CacheTests(BlobfuseTest):
         if LOCAL_TEST :
             print("Ingoring usage check for Local Test")
         else :
-            self.assertLess(int(percent.strip('%')), self.lower_threshold)
+            self.assertLessEqual(int(percent.strip('%')), self.lower_threshold)
         # cleanup
 
         if os.path.exists(testDirPath):
