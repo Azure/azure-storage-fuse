@@ -185,7 +185,7 @@ OAuthToken OAuthTokenCredentialManager::refresh_token()
 /// </summary>
 OAuthToken OAuthTokenCredentialManager::get_token()
 {
-    #ifndef TOKEN_REFRESH_THREAD
+    #ifdef TOKEN_REFRESH_THREAD
     // since the thread would have updated the expired token just check if valid_authentication
    // and return the current token, control will fall to the if is_token_expired() below if this directive is undefined.
     if (valid_authentication)
@@ -193,6 +193,7 @@ OAuthToken OAuthTokenCredentialManager::get_token()
         return current_oauth_token;
     }
     #endif
+    syslog(LOG_DEBUG, "No thread to refresh token so checking if the token has expired ...\n");
     if (is_token_expired()) {
         // Lock the mutex.
         if (token_mutex.try_lock()) {
