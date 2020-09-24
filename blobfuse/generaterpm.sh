@@ -116,8 +116,8 @@ echo "Creating Tar from: "${srcdir};
 
 mkdir -p blobfuse-${version}
 cp blobfuse blobfuse-${version}/
-cp README.md blobfuse-${version}/
-cp LICENSE blobfuse-${version}/
+cp ../README.md blobfuse-${version}/
+cp ../LICENSE blobfuse-${version}/
 
 tar -cvjSf blobfuse-${version}-${distrover}.tar.bz2 blobfuse-${version}
 echo "Copying Tar to: ~/rpmbuild/SOURCES";
@@ -186,7 +186,7 @@ rm -rf %{buildroot}
 /usr/bin/blobfuse
 
 %changelog
-* $(date) Blobfuse Dev blobfusedev@microsoft.com> ${version}
+* $(date +"%a %b %d %Y") Blobfuse Dev blobfusedev@microsoft.com> ${version}
 - Building RPM package for Blobfuse using rpmbuilder
 
 EOF
