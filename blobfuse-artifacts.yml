@@ -9,12 +9,6 @@ trigger:
     include:
       - master
 
-pr:
-  branches:
-    include:
-      - dev
-      - master
-
 jobs:
   - job: Set_1
 
