@@ -213,19 +213,26 @@ int azs_getattr(const char *path, struct stat *stbuf)
             }
         }
 
-        int resultCount = 2;
+        // though we want atmost 2 results set the count to high, we will exit as soon as we finf the file.
+        int resultCount = 5000;
         bool success = false;
         int failcount = 0;
         list_segmented_response response;
         list_segmented_item blobItem;
+        std::string continuation = "";
+        std::string delimiter = "/";
         do
         {
             response.reset();
-            // we are only listing directories, empty directories should be covered above
-            storage_client->List("", blobNameStr +"/", "/", response, resultCount);
+            //reset success to false for each call
+            success = false;
+            blobItem = {};
+            // we are only listing directories, lexicographical return is failing when we set max_result to 2 so setting it higher.
+            storage_client->List(continuation, blobNameStr, delimiter, response, resultCount);
+
+            continuation = response.m_next_marker;
             
-            if (errno == 404 || 
-                (errno == 0  && response.m_items.size() == 0))
+            if (errno == 404 )
             {
                 syslog(LOG_WARNING, "File does not currently exist on the storage or cache, errno : %d", errno);
                 response.reset();
@@ -252,7 +259,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 if (response.m_items[i].name.compare(blobNameStr + '/') < 0)
                 {
                     dirSize++;
-                    // listing is hierarchical so no need of the 2nd is blobitem.name empty condition but just in case for service errors
+                    // listing is not always lexicographical for service errors
                     if (dirSize > 2 && !blobItem.name.empty())
                     {
                         break;
@@ -266,6 +273,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
                                                 response.m_items[i].name == (blobNameStr + '/')))
                 {
                     blobItem = response.m_items[i];
+                    //set success =true since we found blob or virtual directory
+                    success = true;
                     AZS_DEBUGLOGV("In azs_getattr found blob in list file %s\n", blobItem.name.c_str());
                     // leave 'i' at the value it is, it will be used in the remaining batches and loops to check for directory empty check.
                     if (dirSize == 0 && (is_directory_blob(0, blobItem.metadata) || blobItem.is_directory || blobItem.name == (blobNameStr + '/')))
@@ -319,7 +328,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                     return 0;
                 }
             }
-        } while((!success) && (failcount < 20));
+        } while(!success && !continuation.empty() && failcount < 20);
 
         if (errno > 0)
         {
