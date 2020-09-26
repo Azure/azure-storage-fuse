@@ -229,7 +229,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             blobItem = {};
             // we are only listing directories, lexicographical return is failing when we set max_result to 2 so setting it higher.
             storage_client->List(continuation, blobNameStr, delimiter, response, resultCount);
-
+            AZS_DEBUGLOGV("In azs_getattr list_segmented_item do loop blob prefix: % continuation: %s", blobNameStr,continuation);
             continuation = response.m_next_marker;
             
             if (errno == 404 )
@@ -402,7 +402,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
             {
                 AZS_DEBUGLOGV("Directory %s found on the service.\n", blobNameStr.c_str());
                 stbuf->st_mode = S_IFDIR | config_options.defaultPermission;
-                // If st_nlink = 2, means direcotry is empty.
+                // If st_nlink = 2, means directory is empty.
                 // Directory size will affect behaviour for mv, rmdir, cp etc.
                 stbuf->st_uid = fuse_get_context()->uid;
                 stbuf->st_gid = fuse_get_context()->gid;
