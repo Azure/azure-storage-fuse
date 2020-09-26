@@ -221,7 +221,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
         do
         {
             response.reset();
-            storage_client->List("", blobNameStr, "/", response, resultCount);
+            // we are only listing directories, empty directories should be covered above
+            storage_client->List("", blobNameStr +"/", "/", response, resultCount);
             
             if (errno == 404 || 
                 (errno == 0  && response.m_items.size() == 0))
