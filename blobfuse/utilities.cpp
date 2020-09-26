@@ -229,8 +229,8 @@ int azs_getattr(const char *path, struct stat *stbuf)
             blobItem = {};
             // we are only listing directories, lexicographical return is failing when we set max_result to 2 so setting it higher.
             storage_client->List(continuation, blobNameStr, delimiter, response, resultCount);
-            AZS_DEBUGLOGV("In azs_getattr list_segmented_item do loop blob prefix: %s continuation: %s", blobNameStr.c_str(),continuation.c_str());
             continuation = response.m_next_marker;
+             AZS_DEBUGLOGV("In azs_getattr list_segmented_item do loop blob prefix: %s continuation: %s", blobNameStr.c_str(),continuation.c_str());
             
             if (errno == 404 )
             {
@@ -248,7 +248,6 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 continue; 
             }
 
-            success = true;
             unsigned int dirSize = 0;
             for (unsigned int i = 0; i < response.m_items.size(); i++)
             {
