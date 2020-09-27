@@ -270,6 +270,7 @@ jobs:
       # Cleanup work directory of self hosted agent
       - script: |
           sudo rm -rf $(WORK_DIR)
+          sudo rm -rf ~/rpmbuild
         displayName: 'Cleanup'
         condition: succeededOrFailed()
   # -------    RHEL Pipelines end here ------------------
