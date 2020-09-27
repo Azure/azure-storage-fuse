@@ -102,6 +102,7 @@ echo "Building RPM package for blobfuse version" $version;
 origdir=`pwd`
 echo "From: " ${origdir};
 
+sudo rm -rf ~/rpmbuild
 # prepare tree
 for dir in ${directories[*]}
 do
