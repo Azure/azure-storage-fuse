@@ -1,0 +1,286 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+#ci trigger on every branch so that private branch owners know if they have broken the build
+#ci trigger on PR only for the master branch
+trigger:
+  branches:
+    include:
+      - master
+
+jobs:
+  - job: Set_1
+
+    # Define on what all OS we want to run this Pipeline
+    strategy:
+      matrix:
+        Ubuntu-16:
+          container_image: 'ubuntu-16.04'
+          build_type: Release 
+        Ubuntu-18:
+          container_image: 'ubuntu-18.04' 
+          build_type: Release 
+        Ubuntu-20:
+          container_image: 'ubuntu-20.04' 
+          build_type: Release 
+    pool:
+      vmImage: $(container_image)
+
+    steps:
+      # Install all dependencies
+      - script: |
+          sudo apt-get update --fix-missing
+          sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+        displayName: "Basic Tools Setup"
+
+      # Install libfuse
+      - script: |
+          sudo apt-get install libfuse-dev -y
+        displayName: "libFuse Setup"
+
+      # List commits consumed for this build
+      - script: |
+          echo "Below commits were done in last 12 hours : " `date` 
+          git --no-pager log --since="12 hours ago" --stat
+        displayName: "List Commits"
+
+      # Build the blobFuse binary
+      - script: |
+          sudo chmod +x build.sh
+          . ./build.sh
+        displayName: "Build BlobFuse"
+
+      # Test the binary just to make sure it was built fine
+      - script: |
+          ./build/blobfuse --version
+        displayName: "Test the binary"
+
+      # Copy binaries required for the package
+      - script: |
+          cd ./build/
+          mkdir $(Build.ArtifactStagingDirectory)/$(container_image)
+          cp ./blobfuse $(Build.ArtifactStagingDirectory)/$(container_image)
+          cp ../README.md $(Build.ArtifactStagingDirectory)/$(container_image)
+          cp ../LICENSE $(Build.ArtifactStagingDirectory)/$(container_image)
+          cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(container_image)
+          cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(container_image)
+          cp ./blobfusetests $(Build.BinariesDirectory)
+          make package
+          mv ./blobfuse-*.*.*-Linux.deb ./`./blobfuse -v | tr ' ' '-'`-$(container_image)-x86_64.deb
+          cp ./blobfuse-*.*.*.deb  $(Build.ArtifactStagingDirectory)/$(container_image)
+        displayName: "Build Artifacts"
+
+      # Publish the Artifacts
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifacts for blobfuse $(container_image)'
+        #condition: succeededOrFailed()
+
+  # -------    Ubuntu Pipelines end here ------------------
+  
+  - job: Set_2
+
+    strategy:
+      matrix:
+        Debian-9.0:
+          DistroVer: "Debian9.0"
+          AgentName : "DEB 9.0"
+          Description: "Debian Linux 9.0"
+
+    pool:
+      name: "Blobfuse Pool"
+      demands:
+      - Agent.Name -equals $(AgentName)
+
+    steps:
+      # Install all dependencies
+      - script: |
+          sudo apt-get update --fix-missing
+          sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+        displayName: "Basic Tools Setup"
+
+      # Install libfuse
+      - script: |
+          sudo apt-get install libfuse-dev -y
+        displayName: "libFuse Setup"
+
+      # List commits consumed for this build
+      - script: |
+          echo "Below commits were done in last 12 hours : " `date` 
+          git --no-pager log --since="12 hours ago" --stat
+        displayName: "List Commits"
+
+      # Build the blobFuse binary
+      - script: |
+          sudo chmod +x build.sh
+          . ./build.sh
+        displayName: "Build BlobFuse"
+
+      # Test the binary just to make sure it was built fine
+      - script: |
+          ./build/blobfuse --version
+        displayName: "Test the binary"
+
+      # Copy binaries required for the package
+      - script: |
+          cd ./build/
+          mkdir $(Build.ArtifactStagingDirectory)/$(DistroVer)
+          cp ./blobfuse $(Build.ArtifactStagingDirectory)/$(DistroVer)
+          cp ../README.md $(Build.ArtifactStagingDirectory)/$(DistroVer)
+          cp ../LICENSE $(Build.ArtifactStagingDirectory)/$(DistroVer)
+          cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(DistroVer)
+          cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(DistroVer)
+          cp ./blobfusetests $(Build.BinariesDirectory)
+          make package
+          mv ./blobfuse-*.*.*-Linux.deb ./`./blobfuse -v | tr ' ' '-'`-$(DistroVer)-x86_64.deb
+          cp ./blobfuse-*.*.*.deb  $(Build.ArtifactStagingDirectory)/$(DistroVer)
+          cd ..
+        displayName: "Build Artifacts"
+
+      # Publish the Artifacts
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
+        #condition: succeededOrFailed()
+      
+      # Cleanup work directory of self hosted agent
+      - script: |
+          sudo rm -rf *
+        displayName: 'Cleanup'
+        condition: succeededOrFailed()
+
+  # -------    Debain Pipelines end here ------------------
+
+  - job: Set_3
+    strategy:
+      matrix:
+        RHEL-7.8:
+          DistroVer: "RHEL7.8"
+          AgentName : "RHEL 7.8"
+          Description: "Red Hat Enterprise Linux 7.8"
+          SignRequired: 1
+        RHEL-8.1:
+          DistroVer: "RHEL-8.1"
+          AgentName: "RHEL 8.1"
+          Description: "Red Hat Enterprise Linux 8.1"
+          SignRequired: 1
+        RHEL-8.2:
+          DistroVer: "RHEL-8.2"
+          AgentName: "RHEL 8.2"
+          Description: "Red Hat Enterprise Linux 8.2"
+          SignRequired: 1
+        CentOS-8.0:
+          DistroVer: "CentOS-8.0"
+          AgentName: "COS 8.0"
+          Description: "CentOS Linux 8.0"
+          SignRequired: 0
+        Oracle-8.1:
+          DistroVer: "Oracle-8.1"
+          AgentName: "ORA 8.1"
+          Description: "Oracle Linux 8.1 Gen 2"
+          SignRequired: 1
+
+    pool:
+      name: "Blobfuse Pool"
+      demands:
+      - Agent.Name -equals $(AgentName)
+
+    variables:
+    - name: WORK_DIR
+      value: "/usr/pipeline/blobfuse"
+    - name: ROOT_DIR
+      value: "/usr/pipeline/blobfuse/azure-storage-fuse"
+
+    steps:
+      # DevOps checks for a specific git version and it fails on some distros
+      # so instead of pipeline checking out the code, do it manually
+      - checkout: none
+
+      # Install all dependencies
+      - script: |
+          echo $(Description)
+          hostnamectl
+        displayName: "Print Agent Info"
+
+      # Install all dependencies
+      - script: |
+          sudo yum install git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libgcrypt-devel rpm-build -y
+        displayName: "Basic Tools Setup"
+
+      # Install libfuse
+      - script: |
+          sudo yum install fuse-devel -y
+        displayName: "libFuse Setup"
+
+      # Prebuild cleanup
+      - script: |
+          sudo rm -rf $(WORK_DIR)
+        displayName: "Prebuild cleanup"
+
+      # Checkout code
+      - script: |
+          sudo mkdir -p $(WORK_DIR)
+          sudo chown -R `whoami` $(WORK_DIR)
+          chmod 777 $(WORK_DIR)
+        displayName: "Create Directory structure"
+
+      # Checkout code
+      - script: |
+          git clone https://github.com/Azure/azure-storage-fuse
+        displayName: "Checkout code"
+        workingDirectory: $(WORK_DIR)
+
+
+      # List commits consumed for this build
+      - script: |
+          echo "Below commits were done in last 12 hours : " `date` 
+          git --no-pager log --since="12 hours ago" --stat
+        displayName: "List Commits"
+        workingDirectory: $(ROOT_DIR)
+
+      # Build the blobFuse binary
+      - script: |
+          sudo chmod +x build.sh
+          . ./build.sh
+        displayName: "Build BlobFuse"
+        workingDirectory: $(ROOT_DIR)
+
+      # Test the binary just to make sure it was built fine
+      - script: |
+          ./build/blobfuse --version
+        displayName: "Test the binary"
+        workingDirectory: $(ROOT_DIR)
+
+      # Test the binary just to make sure it was built fine
+      - script: |
+          sudo rm -rf ~/rpmbuild
+        displayName: "Cleanup old RPMS"
+        workingDirectory: $(ROOT_DIR)
+
+      # Generate the RPM
+      - script: |
+          cd blobfuse
+          mkdir $(Build.ArtifactStagingDirectory)/$(DistroVer)
+          ./generaterpm.sh -srcdir ../build -distrover $(DistroVer)
+          mv ./blobfuse-*.*.*.rpm ./`../build/blobfuse -v | tr ' ' '-'`-$(DistroVer)-x86_64.rpm
+          cp ./blobfuse-*-*.rpm  $(Build.ArtifactStagingDirectory)/$(DistroVer)
+        displayName: "Build the RPM"
+        workingDirectory: $(ROOT_DIR)
+
+      # Sign the RPM
+      - script: |
+          echo $(SignRequired)
+        displayName: 'Sign the build'
+        condition: eq(variables.SignRequired, 1)
+
+
+      # Publish the Artifacts
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
+      
+      # Cleanup work directory of self hosted agent
+      - script: |
+          sudo rm -rf $(WORK_DIR)
+          sudo rm -rf ~/rpmbuild
+        displayName: 'Cleanup'
+        condition: succeededOrFailed()
+  # -------    RHEL Pipelines end here ------------------
