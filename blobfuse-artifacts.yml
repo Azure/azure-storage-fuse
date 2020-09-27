@@ -211,9 +211,13 @@ jobs:
           sudo yum install fuse-devel -y
         displayName: "libFuse Setup"
 
-      # Checkout code
+      # Prebuild cleanup
       - script: |
           sudo rm -rf $(WORK_DIR)
+        displayName: "Prebuild cleanup"
+
+      # Checkout code
+      - script: |
           sudo mkdir -p $(WORK_DIR)
           sudo chown -R `whoami` $(WORK_DIR)
           chmod 777 $(WORK_DIR)
