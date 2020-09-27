@@ -249,6 +249,7 @@ jobs:
       # Generate the RPM
       - script: |
           cd blobfuse
+          sudo rm -rf ~/rpmbuild
           mkdir $(Build.ArtifactStagingDirectory)/$(DistroVer)
           ./generaterpm.sh -srcdir ../build -distrover $(DistroVer)
           mv ./blobfuse-*.*.*.rpm ./`../build/blobfuse -v | tr ' ' '-'`-$(DistroVer)-x86_64.rpm
