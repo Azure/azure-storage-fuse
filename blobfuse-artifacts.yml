@@ -300,7 +300,7 @@ stages:
     steps:
       - task: GitHubRelease@1
         inputs:
-          gitHubConnection: vibhansa-msft
+          gitHubConnection: vibhansa-msft-git
           repositoryName: '$(Build.Repository.Name)' 
           action: 'create' # Options: create, edit, delete
           target: '$(Build.SourceVersion)' # Required when action == Create || Action == Edit
