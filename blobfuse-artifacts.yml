@@ -336,17 +336,25 @@ stages:
         inputs:
           artifactName: 'blobfuse'
           downloadPath: $(Build.ArtifactStagingDirectory)
-
+      
       - script: |
           sudo ls -lRt $(Build.ArtifactStagingDirectory)
         displayName: "List the artifacts"
+      
+      - task: EsrpCodeSigning@1
+        inputs:
+          FolderPath: $(Build.ArtifactStagingDirectory)/blobfuse/
+          Pattern: '*.rpm, *.deb'
+          SessionTimeout: '60'
+          MaxConcurrency: '50'
+          MaxRetryAttempts: '5'
 
       - task: GitHubRelease@1
         inputs:
-          #gitHubConnection: 'vibhansa-msft-git'
-          #repositoryName: 'vibhansa-msft/azure-storage-fuse'
-          gitHubConnection: 'blobfuse-git-rel'
-          repositoryName: 'Azure/azure-storage-fuse'
+          gitHubConnection: 'vibhansa-msft-git'
+          repositoryName: 'vibhansa-msft/azure-storage-fuse'
+          #gitHubConnection: 'blobfuse-git-rel'
+          #repositoryName: 'Azure/azure-storage-fuse'
           action: 'edit'
           
           target: '$(Build.SourceVersion)'
