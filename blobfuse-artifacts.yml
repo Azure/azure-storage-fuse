@@ -146,6 +146,8 @@ stages:
       
       # Cleanup work directory of self hosted agent
       - script: |
+          pwd
+          cd /`pwd | cut -d '/' -f 2,3,4,5`
           sudo rm -rf *
         displayName: 'Cleanup'
         condition: succeededOrFailed()
@@ -284,6 +286,9 @@ stages:
       - script: |
           sudo rm -rf $(WORK_DIR)
           sudo rm -rf ~/rpmbuild
+          pwd
+          cd /`pwd | cut -d '/' -f 2,3,4,5`
+          sudo rm -rf *
         displayName: 'Cleanup'
         condition: succeededOrFailed()
   # -------    RHEL Pipelines end here ------------------
@@ -298,7 +303,7 @@ stages:
       vmImage: 'ubuntu-18.04'
 
     steps:
-      - task: GitHubRelease@1
+      - task: GitHubRelease@0
         inputs:
           gitHubConnection: vibhansa-msft-git
           repositoryName: '$(Build.Repository.Name)' 
