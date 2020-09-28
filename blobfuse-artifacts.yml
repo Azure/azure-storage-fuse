@@ -144,11 +144,12 @@ stages:
         displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
         condition: succeeded()
 
-      #- script: |
-      #    pwd
+      - script: |
+          pwd
+          sudo rm -rf $(Agent.BuildDirectory)
+          sudo rm -rf $(Build.SourcesDirectory)
       #    cd /`pwd | cut -d '/' -f 2,3,4,5`
       #    sudo rm -rf *
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
         displayName: 'Clean Agent Directories'
         condition: always()
 
@@ -286,14 +287,15 @@ stages:
       - script: |
           sudo rm -rf $(WORK_DIR)
           sudo rm -rf ~/rpmbuild
-        displayName: 'Cleanup'
+        displayName: 'Cleanup temp directories'
         condition: succeededOrFailed()
 
-      #- script: |
-      #    pwd
+      - script: |
+          pwd
+          sudo rm -rf $(Agent.BuildDirectory)
+          sudo rm -rf $(Build.SourcesDirectory)
       #    cd /`pwd | cut -d '/' -f 2,3,4,5`
       #    sudo rm -rf *
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
         displayName: 'Clean Agent Directories'
         condition: always()
 
