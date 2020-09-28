@@ -358,8 +358,8 @@ stages:
           tag: ${{ parameters.tag }}
           
           assets: |
-            $(Build.ArtifactStagingDirectory)/*/*.rpm
-            $(Build.ArtifactStagingDirectory)/*/*.deb
+            $(Build.ArtifactStagingDirectory)/blobfuse/*/*.rpm
+            $(Build.ArtifactStagingDirectory)/blobfuse/*/*.deb
 
           changeLogCompareToRelease: 'lastFullRelease'
           changeLogType: 'commitBased'
