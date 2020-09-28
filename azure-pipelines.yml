@@ -85,7 +85,8 @@ jobs:
         condition: eq(variables.container_image, 'ubuntu-16.04')
         displayName: "GTest on Ubn-16"
   
+      # Moving publish artifacts to a seperate pipeline
       # Publish the Artifacts
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifacts for blobfuse $(container_image)'
-        #condition: succeededOrFailed()
+      #- task: PublishBuildArtifacts@1
+      #  displayName: 'Publish Artifacts for blobfuse $(container_image)'
+      #  #condition: succeededOrFailed()
