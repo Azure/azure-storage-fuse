@@ -81,6 +81,7 @@ stages:
 
       # Publish the Artifacts
       - task: PublishBuildArtifacts@1
+        artifactName: 'blobfuse'
         displayName: 'Publish Artifacts for blobfuse $(container_image)'
         condition: succeeded()
 
@@ -150,6 +151,7 @@ stages:
 
       # Publish the Artifacts
       - task: PublishBuildArtifacts@1
+        artifactName: 'blobfuse'
         displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
         condition: succeeded()
 
@@ -291,6 +293,7 @@ stages:
 
       # Publish the Artifacts
       - task: PublishBuildArtifacts@1
+        artifactName: 'blobfuse'
         displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
         condition: succeeded()
       
@@ -331,6 +334,7 @@ stages:
       - task: DownloadBuildArtifacts@0
         displayName: 'Download Build Artifacts'
         inputs:
+          artifactName: 'blobfuse'
           downloadPath: $(Build.ArtifactStagingDirectory)
 
       - script: |
