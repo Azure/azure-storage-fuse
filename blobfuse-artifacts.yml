@@ -298,7 +298,7 @@ stages:
       vmImage: 'ubuntu-18.04'
 
     steps:
-      - task: GitHubRelease@0
+      - task: GitHubRelease@2
         inputs:
           gitHubConnection: vibhansa-msft
           repositoryName: '$(Build.Repository.Name)' 
