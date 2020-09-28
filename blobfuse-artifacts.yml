@@ -272,7 +272,7 @@ stages:
       - script: |
           echo $(SignRequired)
         displayName: 'Sign the build'
-        condition: and(succeeded(), (variables.SignRequired, 1))
+        condition: and(succeeded(), eq(variables.SignRequired, 1))
 
 
       # Publish the Artifacts
