@@ -10,11 +10,6 @@ parameters:
   type: string
   default: 'blobfuse-'
 
-trigger:
-  branches:
-    include:
-      - master
-
 stages:
 - stage: BuildArtifact
   jobs:
