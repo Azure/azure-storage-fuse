@@ -341,8 +341,10 @@ stages:
 
       - task: GitHubRelease@1
         inputs:
-          gitHubConnection: 'vibhansa-msft-git'
-          repositoryName: 'vibhansa-msft/azure-storage-fuse'
+          #gitHubConnection: 'vibhansa-msft-git'
+          #repositoryName: 'vibhansa-msft/azure-storage-fuse'
+          gitHubConnection: 'blobfuse-git-rel'
+          repositoryName: 'Azure/azure-storage-fuse'
           action: 'edit'
           
           target: '$(Build.SourceVersion)'
