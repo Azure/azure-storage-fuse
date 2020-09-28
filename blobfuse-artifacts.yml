@@ -343,11 +343,14 @@ stages:
       
       - task: EsrpCodeSigning@1
         inputs:
-          FolderPath: $(Build.ArtifactStagingDirectory)/blobfuse/
-          Pattern: '*.rpm, *.deb'
-          SessionTimeout: '60'
-          MaxConcurrency: '50'
-          MaxRetryAttempts: '5'
+          ConnectedServiceName: 'microsoft'
+          FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse/'
+          Pattern: '*.rpm'
+          CertificateId: '450779001'
+          OpusName: 'blobfuse'
+          SessionTimeout: '60'
+          MaxConcurrency: '50'
+          MaxRetryAttempts: '5'
 
       - task: GitHubRelease@1
         inputs:
