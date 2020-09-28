@@ -10,9 +10,8 @@ parameters:
   type: string
   default: 'blobfuse-'
 
-trigger:
-  none:
-    
+trigger: none
+
 stages:
 - stage: BuildArtifact
   jobs:
