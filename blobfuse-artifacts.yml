@@ -93,7 +93,10 @@ stages:
       name: "Blobfuse Pool"
       demands:
       - Agent.Name -equals $(AgentName)
-
+    
+    variables:
+      skipComponentGovernanceDetection: true
+      
     steps:
       # Install all dependencies
       - script: |
@@ -194,6 +197,8 @@ stages:
       value: "/usr/pipeline/blobfuse"
     - name: ROOT_DIR
       value: "/usr/pipeline/blobfuse/azure-storage-fuse"
+    - name: skipComponentGovernanceDetection
+      value: true
 
     steps:
       # DevOps checks for a specific git version and it fails on some distros
