@@ -4,6 +4,12 @@
 # https://aka.ms/yaml
 #ci trigger on every branch so that private branch owners know if they have broken the build
 #ci trigger on PR only for the master branch
+parameters:
+- name: tag
+  displayName: 'New Release Tag'
+  type: string
+  default: 'blobfuse-'
+
 trigger:
   branches:
     include:
@@ -96,7 +102,7 @@ stages:
     
     variables:
       skipComponentGovernanceDetection: true
-      
+
     steps:
       # Install all dependencies
       - script: |
@@ -318,17 +324,28 @@ stages:
     steps:
       - checkout: none
 
+      - script: |
+          sudo ls -lRt $(Build.ArtifactStagingDirectory)
+        displayName: "List the artifacts"
+
       - task: GitHubRelease@1
         inputs:
           gitHubConnection: 'vibhansa-msft-git'
           repositoryName: 'vibhansa-msft/azure-storage-fuse'
-          action: 'create'
+          action: 'edit'
+          
           target: '$(Build.SourceVersion)'
           tagSource: 'userSpecifiedTag'
-          tag: 'Blobfuse-test123'
+
+          # Modify this before every new release
+          title: ${{ parameters.tag }}
+          tag: ${{ parameters.tag }}
+          
           assets: |
-            $(Build.ArtifactStagingDirectory)/**/*.rpm
-            $(Build.ArtifactStagingDirectory)/**/*.deb
+            $(Build.ArtifactStagingDirectory)/*/*.rpm
+            $(Build.ArtifactStagingDirectory)/*/*.deb
+
           changeLogCompareToRelease: 'lastFullRelease'
           changeLogType: 'commitBased'
           isDraft: false
+          assetUploadMode: replace
