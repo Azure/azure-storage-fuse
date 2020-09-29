@@ -10,7 +10,9 @@ parameters:
   type: string
   default: 'blobfuse-'
 
+# Do not trigger this pipeline automatically
 trigger: none
+pr: none
 
 stages:
 - stage: BuildArtifact
