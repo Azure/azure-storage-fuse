@@ -4,12 +4,17 @@
 # https://aka.ms/yaml
 #ci trigger on every branch so that private branch owners know if they have broken the build
 #ci trigger on PR only for the master branch
-trigger:
-  branches:
-    include:
-      - master
+parameters:
+- name: tag
+  displayName: 'New Release Tag'
+  type: string
+  default: 'blobfuse-'
 
-jobs:
+trigger: none
+
+stages:
+- stage: BuildArtifact
+  jobs:
   - job: Set_1
 
     # Define on what all OS we want to run this Pipeline
@@ -73,8 +78,10 @@ jobs:
 
       # Publish the Artifacts
       - task: PublishBuildArtifacts@1
+        inputs:
+          artifactName: 'blobfuse'
         displayName: 'Publish Artifacts for blobfuse $(container_image)'
-        #condition: succeededOrFailed()
+        condition: succeeded()
 
   # -------    Ubuntu Pipelines end here ------------------
   
@@ -91,6 +98,9 @@ jobs:
       name: "Blobfuse Pool"
       demands:
       - Agent.Name -equals $(AgentName)
+    
+    variables:
+      skipComponentGovernanceDetection: true
 
     steps:
       # Install all dependencies
@@ -139,14 +149,19 @@ jobs:
 
       # Publish the Artifacts
       - task: PublishBuildArtifacts@1
+        inputs:
+          artifactName: 'blobfuse'
         displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
-        #condition: succeededOrFailed()
-      
-      # Cleanup work directory of self hosted agent
+        condition: succeeded()
+
       - script: |
-          sudo rm -rf *
-        displayName: 'Cleanup'
-        condition: succeededOrFailed()
+          pwd
+          #sudo rm -rf $(Agent.BuildDirectory)
+          #sudo rm -rf $(Build.SourcesDirectory)
+          cd /`pwd | cut -d '/' -f 2,3,4,5`
+          sudo rm -rf [0-9]
+        displayName: 'Clean Agent Directories'
+        condition: always()
 
   # -------    Debain Pipelines end here ------------------
 
@@ -189,6 +204,8 @@ jobs:
       value: "/usr/pipeline/blobfuse"
     - name: ROOT_DIR
       value: "/usr/pipeline/blobfuse/azure-storage-fuse"
+    - name: skipComponentGovernanceDetection
+      value: true
 
     steps:
       # DevOps checks for a specific git version and it fails on some distros
@@ -270,17 +287,91 @@ jobs:
       - script: |
           echo $(SignRequired)
         displayName: 'Sign the build'
-        condition: eq(variables.SignRequired, 1)
+        condition: and(succeeded(), eq(variables.SignRequired, 1))
 
 
       # Publish the Artifacts
       - task: PublishBuildArtifacts@1
+        inputs:
+          artifactName: 'blobfuse'
         displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
+        condition: succeeded()
       
       # Cleanup work directory of self hosted agent
       - script: |
           sudo rm -rf $(WORK_DIR)
           sudo rm -rf ~/rpmbuild
-        displayName: 'Cleanup'
+        displayName: 'Cleanup temp directories'
         condition: succeededOrFailed()
+
+      - script: |
+          pwd
+          #sudo rm -rf $(Agent.BuildDirectory)
+          #sudo rm -rf $(Build.SourcesDirectory)
+          cd /`pwd | cut -d '/' -f 2,3,4,5`
+          sudo rm -rf [0-9]
+        displayName: 'Clean Agent Directories'
+        condition: always()
+
   # -------    RHEL Pipelines end here ------------------
+
+
+- stage: ReleaseArtifact
+  dependsOn: BuildArtifact
+  condition: succeeded('BuildArtifact') 
+  jobs:
+  - job: ReleaseBlobfuse
+    pool:
+      vmImage: 'ubuntu-18.04'
+
+    steps:
+      - checkout: none
+
+      - script: |
+          echo ${{ parameters.tag }}
+        displayName: "Tag Name"
+
+      - task: DownloadBuildArtifacts@0
+        displayName: 'Download Build Artifacts'
+        inputs:
+          artifactName: 'blobfuse'
+          downloadPath: $(Build.ArtifactStagingDirectory)
+      
+      - script: |
+          sudo ls -lRt $(Build.ArtifactStagingDirectory)
+        displayName: "List the artifacts"
+      
+      #- task: EsrpCodeSigning@1
+      #  inputs:
+      #    ConnectedServiceName: 'microsoft'
+      #    FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse/'
+      #    Pattern: '*.rpm'
+      #    CertificateId: '450779001'
+      #    OpusName: 'blobfuse'
+      #    SessionTimeout: '60'
+      #    MaxConcurrency: '50'
+      #    MaxRetryAttempts: '5'
+
+      - task: GitHubRelease@1
+        inputs:
+          #gitHubConnection: 'vibhansa-msft-git'
+          #repositoryName: 'vibhansa-msft/azure-storage-fuse'
+          gitHubConnection: 'blobfuse-git-rel'
+          repositoryName: 'Azure/azure-storage-fuse'
+          action: 'edit'
+          
+          target: '$(Build.SourceVersion)'
+          tagSource: 'userSpecifiedTag'
+
+          # Modify this before every new release
+          title: ${{ parameters.tag }}
+          tag: ${{ parameters.tag }}
+          
+          assets: |
+            $(Build.ArtifactStagingDirectory)/blobfuse/*/*.rpm
+            $(Build.ArtifactStagingDirectory)/blobfuse/*/*.deb
+
+          changeLogCompareToRelease: 'lastFullRelease'
+          changeLogType: 'commitBased'
+          isDraft: false
+          assetUploadMode: replace
