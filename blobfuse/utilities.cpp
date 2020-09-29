@@ -540,6 +540,7 @@ int azs_rename(const char *src, const char *dst)
         }
     }
     if (errno != 0 ) {
+        syslog(LOG_ERR, "Failed to rename %s, err : %d", fromStr.c_str(), errno);
         return 0 - map_errno(errno);
     }
 
