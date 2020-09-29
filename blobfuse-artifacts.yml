@@ -171,7 +171,7 @@ stages:
     strategy:
       matrix:
         RHEL-7.8:
-          DistroVer: "RHEL7.8"
+          DistroVer: "RHEL-7.8"
           AgentName : "RHEL 7.8"
           Description: "Red Hat Enterprise Linux 7.8"
           SignRequired: 1
@@ -316,6 +316,138 @@ stages:
         condition: always()
 
   # -------    RHEL Pipelines end here ------------------
+
+  - job: Set_4
+    strategy:
+      matrix:
+        SUSE-15G2:
+          DistroVer: "Suse-15Gen2"
+          AgentName : "SUSE 15G2"
+          Description: "SUSE Ent Linux 15-SP1-Gen2"
+          SignRequired: 1
+
+    pool:
+      name: "Blobfuse Pool"
+      demands:
+      - Agent.Name -equals $(AgentName)
+
+    variables:
+    - name: WORK_DIR
+      value: "/home/pipeline/blobfuse"
+    - name: ROOT_DIR
+      value: "/home/pipeline/blobfuse/azure-storage-fuse"
+    - name: skipComponentGovernanceDetection
+      value: true
+
+    steps:
+      # DevOps checks for a specific git version and it fails on some distros
+      # so instead of pipeline checking out the code, do it manually
+      - checkout: none
+
+      # Install all dependencies
+      - script: |
+          echo $(Description)
+          hostnamectl
+        displayName: "Print Agent Info"
+
+      # Install all dependencies
+      - script: |
+          #sudo zypper in <>
+          sudo zypper -n update git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libboost*devel libgcrypt-devel rpm-build
+        displayName: "Basic Tools Setup"
+
+      # Install libfuse
+      - script: |
+          sudo zypper -n update fuse-devel
+        displayName: "libFuse Setup"
+
+      # Prebuild cleanup
+      - script: |
+          sudo rm -rf $(WORK_DIR)
+        displayName: "Prebuild cleanup"
+
+      # Checkout code
+      - script: |
+          sudo mkdir -p $(WORK_DIR)
+          sudo chown -R `whoami` $(WORK_DIR)
+          chmod 777 $(WORK_DIR)
+        displayName: "Create Directory structure"
+
+      # Checkout code
+      - script: |
+          git clone https://github.com/Azure/azure-storage-fuse
+        displayName: "Checkout code"
+        workingDirectory: $(WORK_DIR)
+
+
+      # List commits consumed for this build
+      - script: |
+          echo "Below commits were done in last 12 hours : " `date` 
+          git --no-pager log --since="12 hours ago" --stat
+        displayName: "List Commits"
+        workingDirectory: $(ROOT_DIR)
+
+      # Build the blobFuse binary
+      - script: |
+          sudo chmod +x build.sh
+          . ./build.sh
+        displayName: "Build BlobFuse"
+        workingDirectory: $(ROOT_DIR)
+
+      # Test the binary just to make sure it was built fine
+      - script: |
+          ./build/blobfuse --version
+        displayName: "Test the binary"
+        workingDirectory: $(ROOT_DIR)
+
+      # Test the binary just to make sure it was built fine
+      - script: |
+          sudo rm -rf ~/rpmbuild
+        displayName: "Cleanup old RPMS"
+        workingDirectory: $(ROOT_DIR)
+
+      # Generate the RPM
+      - script: |
+          cd blobfuse
+          mkdir $(Build.ArtifactStagingDirectory)/$(DistroVer)
+          ./generaterpm.sh -srcdir ../build -distrover $(DistroVer)
+          mv ./blobfuse-*.*.*.rpm ./`../build/blobfuse -v | tr ' ' '-'`-$(DistroVer)-x86_64.rpm
+          cp ./blobfuse-*-*.rpm  $(Build.ArtifactStagingDirectory)/$(DistroVer)
+        displayName: "Build the RPM"
+        workingDirectory: $(ROOT_DIR)
+
+      # Sign the RPM
+      - script: |
+          echo $(SignRequired)
+        displayName: 'Sign the build'
+        condition: and(succeeded(), eq(variables.SignRequired, 1))
+
+
+      # Publish the Artifacts
+      - task: PublishBuildArtifacts@1
+        inputs:
+          artifactName: 'blobfuse'
+        displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
+        condition: succeeded()
+      
+      # Cleanup work directory of self hosted agent
+      - script: |
+          sudo rm -rf $(WORK_DIR)
+          sudo rm -rf ~/rpmbuild
+        displayName: 'Cleanup temp directories'
+        condition: succeededOrFailed()
+
+      - script: |
+          pwd
+          #sudo rm -rf $(Agent.BuildDirectory)
+          #sudo rm -rf $(Build.SourcesDirectory)
+          cd /`pwd | cut -d '/' -f 2,3,4,5`
+          sudo rm -rf [0-9]
+        displayName: 'Clean Agent Directories'
+        condition: always()
+
+  # -------    SUSE Pipelines end here ------------------
+
 
 
 - stage: ReleaseArtifact
