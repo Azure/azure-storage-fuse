@@ -870,6 +870,7 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
     }
     //src.pop_back();
     DeleteDirectory(src.substr(1).c_str());
+    errno = 0;
     return 0;
 }
 
