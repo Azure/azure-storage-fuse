@@ -36,7 +36,7 @@ namespace azure {  namespace storage_lite {
         add_ms_header(h, headers, constants::header_ms_version, constants::header_value_storage_blob_version);
 
         // set copy src
-        add_ms_header(h, headers, constants::header_ms_copy_source, a.credential()->transform_url(source_url.get_domain() + source_url.get_path()));
+        add_ms_header(h, headers, constants::header_ms_copy_source, a.credential()->transform_url(source_url.get_domain() + encode_url_path(source_url.get_path())));
 
         a.credential()->sign_request(r, h, url, headers);
     }
