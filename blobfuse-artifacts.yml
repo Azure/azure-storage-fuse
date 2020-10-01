@@ -625,27 +625,28 @@ stages:
           sudo ls -lRt $(Build.ArtifactStagingDirectory)
         displayName: "List the artifacts"
       
-      #- task: EsrpCodeSigning@1
-      #  inputs:
-      #    ConnectedServiceName: 'ESRP Code signing blobfuse'
-      #    FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse/'
-      #    Pattern: '*.rpm, *.deb'
-      #    CertificateId: '9997'
-      #    OpusName: 'blobfuse'
-      #    SessionTimeout: '60'
-      #    MaxConcurrency: '50'
-      #    MaxRetryAttempts: '5'
-
       - task: EsrpCodeSigning@1
         inputs:
           ConnectedServiceName: 'ESRP Code signing blobfuse'
           FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse/'
           Pattern: '*.rpm, *.deb'
+          OpusName: 'blobfuse'
+          SessionTimeout: '60'
+          MaxConcurrency: '50'
+          MaxRetryAttempts: '5'
+
+      - task: EsrpCodeSigning@1
+        condition: succeededOrFailed()
+        inputs:
+          ConnectedServiceName: 'ESRP Code signing blobfuse'
+          FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse/'
+          Pattern: '*.rpm, *.deb'
           signConfigType: 'inlineSignParams'
-          #"keyCode": "CP-231522​",   >>> was before operationsSetCode
+          
           inlineOperation: |
             [
               {
+                "keyCode": "CP-231522​",  
                 "operationSetCode": "SigntoolSign",
                 "parameters": [
                   {
