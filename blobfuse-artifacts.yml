@@ -480,16 +480,16 @@ stages:
           sudo ls -lRt $(Build.ArtifactStagingDirectory)
         displayName: "List the artifacts"
       
-      #- task: EsrpCodeSigning@1
-      #  inputs:
-      #    ConnectedServiceName: 'microsoft'
-      #    FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse/'
-      #    Pattern: '*.rpm'
-      #    CertificateId: '450779001'
-      #    OpusName: 'blobfuse'
-      #    SessionTimeout: '60'
-      #    MaxConcurrency: '50'
-      #    MaxRetryAttempts: '5'
+      - task: EsrpCodeSigning@1
+        inputs:
+          ConnectedServiceName: 'ESRP Code signing blobfuse'
+          FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse/*/'
+          Pattern: '*.rpm,*.deb'
+          signConfigType: 'inlineSignParams'
+          SessionTimeout: '60'
+          MaxConcurrency: '50'
+          MaxRetryAttempts: '5'
+          VerboseLogin: true'
 
       - task: GitHubRelease@1
         inputs:
