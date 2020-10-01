@@ -539,6 +539,10 @@ int azs_rename(const char *src, const char *dst)
             to_remove = storage_client->Rename(fromStr.c_str(), toStr.c_str(), false);
         }
     }
+    if (errno != 0 ) {
+        syslog(LOG_ERR, "Failed to rename %s, err : %d", fromStr.c_str(), errno);
+        return 0 - map_errno(errno);
+    }
 
     for (unsigned int i = 0; i < to_remove.size(); i++)
     {
