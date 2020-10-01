@@ -16,7 +16,7 @@ parameters:
   default: false
 
 - name: fast_run
-  displayName: 'Skip Builds'
+  displayName: 'Test Run'
   type: boolean
   default: false
 
