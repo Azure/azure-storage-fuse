@@ -567,11 +567,26 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 
     // Check for existence of allow_other flag and change the default permissions based on that
     config_options.defaultPermission = 0770;
+    config_options.readOnly = false;
+
+    bool allow_other_present = false;
     std::vector<std::string> string_args(argv, argv+argc);
     for (size_t i = 1; i < string_args.size(); ++i) {
       if (string_args[i].find("allow_other") != std::string::npos) {
           config_options.defaultPermission = 0777; 
+          allow_other_present = true;
       }
+      if (string_args[i].compare("ro") == 0) {
+          config_options.readOnly = true; 
+      }
+    }
+
+    if (config_options.readOnly) {
+        if (allow_other_present) {
+            config_options.defaultPermission = 0444;
+        } else {
+            config_options.defaultPermission = 0440;
+        }
     }
 
     int ret = 0;
@@ -867,6 +882,10 @@ int initialize_blobfuse()
         return 1;
     }
     
+    if (config_options.readOnly){
+        syslog(LOG_INFO, "Initializing blobfuse in Read-Only mode.");
+    }
+
     //initialize storage client and authenticate, if we fail here, don't call fuse
     if (config_options.useAttrCache) 
     {

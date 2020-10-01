@@ -19,6 +19,11 @@ std::shared_ptr<gc_cache> g_gc_cache;
 int azs_open(const char *path, struct fuse_file_info *fi)
 {
     syslog (LOG_DEBUG, "azs_open called with path = %s, fi->flags = %X.\n", path, fi->flags);
+    if (config_options.readOnly) {
+        AZS_DEBUGLOGV("readonly mode mount. Returning early for %s", path);
+        return 0;
+    }
+
     std::string pathString(path);
     std::replace(pathString.begin(), pathString.end(), '\\', '/');
     
@@ -175,6 +180,30 @@ int azs_open(const char *path, struct fuse_file_info *fi)
  */
 int azs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
+    if (config_options.readOnly) {
+        std::string pathString(path);
+        std::replace(pathString.begin(), pathString.end(), '\\', '/');
+        std::stringstream os;
+
+        errno = 0;
+        storage_client->DownloadToStream(pathString.c_str() + 1, os, offset, size);
+        if (errno != 0) {
+            int storage_errno = errno;
+            syslog(LOG_ERR, "Failed to read file %s because of an error from download_blob_to_stream.  Errno = %d.\n", path, storage_errno);
+            return 0 - map_errno(storage_errno);
+        } 
+        auto cur = os.tellg();
+        os.seekg(0, std::ios_base::end);
+        auto end = os.tellg();
+        os.seekg(cur);
+
+        size = end - cur;
+        os.read(buf, size);
+        buf[size]= '\0';
+        return size;
+    }
+    
+
     int fd = ((struct fhwrapper *)fi->fh)->fh;
 
     errno = 0;
@@ -256,6 +285,11 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
 
 int azs_flush(const char *path, struct fuse_file_info *fi)
 {
+    if (config_options.readOnly) {
+        AZS_DEBUGLOGV("readonly mode mount. Returning early for %s", (path) ? : "NULL");
+        return 0;
+    }
+
     AZS_DEBUGLOGV("azs_flush called with path = %s, fi->flags = %d, (((struct fhwrapper *)fi->fh)->fh) = %d.\n", path, fi->flags, (((struct fhwrapper *)fi->fh)->fh));
 
     // At this point, the shared flock will be held.
@@ -363,6 +397,11 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
 // Note that there is not much point in doing error-checking in this method, as release() does not offer a way to communicate any errors with the caller (it's called async with the thread that called close())
 int azs_release(const char *path, struct fuse_file_info * fi)
 {
+    if (config_options.readOnly) {
+        AZS_DEBUGLOGV("readonly mode mount. Returning early for %s", (path) ? : "NULL");
+        return 0;
+    }
+    
     AZS_DEBUGLOGV("azs_release called with path = %s, fi->flags = %d\n", path, fi->flags);
 
     // Unlock the file

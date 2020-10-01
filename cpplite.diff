@@ -11208,3 +11208,4 @@ diff -r azure-storage-cpp-lite-org/src/utility.cpp cpplite/src/utility.cpp
 > 
 > }}   // azure::storage_lite
 Only in cpplite/: test
+Only in cpplite/: testlocal

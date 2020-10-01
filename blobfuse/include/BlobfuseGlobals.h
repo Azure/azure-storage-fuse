@@ -64,6 +64,7 @@ struct configParams
     int concurrency;
     unsigned long long cacheSize;
     bool emptyDirCheck;
+    bool readOnly;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
