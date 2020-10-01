@@ -10,6 +10,16 @@ parameters:
   type: string
   default: 'blobfuse-'
 
+- name: post_release
+  displayName: 'Post Release on Github'
+  type: integer
+  default: 0
+
+- name: fast_run
+  displayName: 'Skip Builds'
+  type: integer
+  default: 0
+
 # Do not trigger this pipeline automatically
 trigger: none
 pr: none
@@ -88,6 +98,7 @@ stages:
   # -------    Ubuntu Pipelines end here ------------------
   
   - job: Set_2
+    condition: eq( ${{ parameters.fast_run }}, 0)
 
     strategy:
       matrix:
@@ -168,6 +179,8 @@ stages:
   # -------    Debain Pipelines end here ------------------
 
   - job: Set_3
+    condition: eq( ${{ parameters.fast_run }}, 0)
+
     strategy:
       matrix:
         RHEL-7.5:
@@ -323,6 +336,8 @@ stages:
   # -------    RHEL Pipelines end here ------------------
 
   - job: Set_4
+    condition: eq( ${{ parameters.fast_run }}, 0)
+    
     strategy:
       matrix:
         SUSE-15G2:
@@ -492,6 +507,7 @@ stages:
           VerboseLogin: true'
 
       - task: GitHubRelease@1
+        condition: eq( ${{ parameters.post_release }}, 1)
         inputs:
           #gitHubConnection: 'vibhansa-msft-git'
           #repositoryName: 'vibhansa-msft/azure-storage-fuse'
