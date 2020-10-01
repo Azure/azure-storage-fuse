@@ -642,10 +642,10 @@ stages:
           FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse/'
           Pattern: '*.rpm, *.deb'
           signConfigType: 'inlineSignParams'
+          #"keyCode": "CP-231522​",   >>> was before operationsSetCode
           inlineOperation: |
             [
               {
-                #"keyCode": "CP-231522​",
                 "operationSetCode": "SigntoolSign",
                 "parameters": [
                   {
