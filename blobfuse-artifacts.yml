@@ -630,7 +630,7 @@ stages:
           ConnectedServiceName: 'ESRP Code signing blobfuse'
           FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse/'
           Pattern: '*.rpm, *.deb'
-          CertificateId: '450779001'
+          CertificateId: '9997'
           OpusName: 'blobfuse'
           SessionTimeout: '60'
           MaxConcurrency: '50'
