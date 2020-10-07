@@ -524,3 +524,8 @@ void AttrCacheBfsClient::GetExtraProperties(const std::string pathName, BfsFileP
 {
     return blob_client->GetExtraProperties(pathName, prop);
 }
+
+int AttrCacheBfsClient::RefreshSASToken(std::string sas)
+{
+    return blob_client->RefreshSASToken(sas);
+}
