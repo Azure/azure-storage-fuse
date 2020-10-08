@@ -77,16 +77,9 @@ stages:
         # Copy binaries required for the package
         - script: |
             cd ./build/
-            mkdir $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ./blobfuse $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ../README.md $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ../LICENSE $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(container_image)
-            cp ./blobfusetests $(Build.BinariesDirectory)
             make package
             mv ./blobfuse-*.*.*-Linux.deb ./`./blobfuse -v | tr ' ' '-'`-$(container_image)-x86_64.deb
-            cp ./blobfuse-*.*.*.deb  $(Build.ArtifactStagingDirectory)/$(container_image)
+            cp ./blobfuse-*.*.*.deb  $(Build.ArtifactStagingDirectory)/
           displayName: "Build Artifacts"
 
         # Publish the Artifacts
@@ -146,16 +139,9 @@ stages:
         # Copy binaries required for the package
         - script: |
             cd ./build/
-            mkdir $(Build.ArtifactStagingDirectory)/$(DistroVer)
-            cp ./blobfuse $(Build.ArtifactStagingDirectory)/$(DistroVer)
-            cp ../README.md $(Build.ArtifactStagingDirectory)/$(DistroVer)
-            cp ../LICENSE $(Build.ArtifactStagingDirectory)/$(DistroVer)
-            cp ../systemd/10-blobfuse.conf $(Build.ArtifactStagingDirectory)/$(DistroVer)
-            cp ../systemd/blobfuse-logrotate $(Build.ArtifactStagingDirectory)/$(DistroVer)
-            cp ./blobfusetests $(Build.BinariesDirectory)
             make package
             mv ./blobfuse-*.*.*-Linux.deb ./`./blobfuse -v | tr ' ' '-'`-$(DistroVer)-x86_64.deb
-            cp ./blobfuse-*.*.*.deb  $(Build.ArtifactStagingDirectory)/$(DistroVer)
+            cp ./blobfuse-*.*.*.deb  $(Build.ArtifactStagingDirectory)/
             cd ..
           displayName: "Build Artifacts"
 
@@ -301,7 +287,7 @@ stages:
             mkdir $(Build.ArtifactStagingDirectory)/$(DistroVer)
             ./generaterpm.sh -srcdir ../build -distrover $(DistroVer)
             mv ./blobfuse-*.*.*.rpm ./`../build/blobfuse -v | tr ' ' '-'`-$(DistroVer)-x86_64.rpm
-            cp ./blobfuse-*-*.rpm  $(Build.ArtifactStagingDirectory)/$(DistroVer)
+            cp ./blobfuse-*-*.rpm  $(Build.ArtifactStagingDirectory)/
           displayName: "Build the RPM"
           workingDirectory: $(ROOT_DIR)
 
@@ -432,7 +418,7 @@ stages:
             mkdir $(Build.ArtifactStagingDirectory)/$(DistroVer)
             ./generaterpm.sh -srcdir ../build -distrover $(DistroVer)
             mv ./blobfuse-*.*.*.rpm ./`../build/blobfuse -v | tr ' ' '-'`-$(DistroVer)-x86_64.rpm
-            cp ./blobfuse-*-*.rpm  $(Build.ArtifactStagingDirectory)/$(DistroVer)
+            cp ./blobfuse-*-*.rpm  $(Build.ArtifactStagingDirectory)/
           displayName: "Build the RPM"
           workingDirectory: $(ROOT_DIR)
 
@@ -563,7 +549,7 @@ stages:
             mkdir $(Build.ArtifactStagingDirectory)/$(DistroVer)
             ./generaterpm.sh -srcdir ../build -distrover $(DistroVer)
             mv ./blobfuse-*.*.*.rpm ./`../build/blobfuse -v | tr ' ' '-'`-$(DistroVer)-x86_64.rpm
-            cp ./blobfuse-*-*.rpm  $(Build.ArtifactStagingDirectory)/$(DistroVer)
+            cp ./blobfuse-*-*.rpm  $(Build.ArtifactStagingDirectory)/
           displayName: "Build the RPM"
           workingDirectory: $(ROOT_DIR)
 
@@ -698,8 +684,8 @@ stages:
             tag: ${{ parameters.tag }}
             
             assets: |
-              $(Build.ArtifactStagingDirectory)/blobfuse/*/*.rpm
-              $(Build.ArtifactStagingDirectory)/blobfuse/*/*.deb
+              $(Build.ArtifactStagingDirectory)/blobfuse/*.rpm
+              $(Build.ArtifactStagingDirectory)/blobfuse/*.deb
 
             changeLogCompareToRelease: 'lastFullRelease'
             changeLogType: 'commitBased'
