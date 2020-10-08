@@ -60,7 +60,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * [OPTIONAL] **--cache-size-mb=1000** : option to setup the cache-size in MB. Default will be 80% of the available memory, eviction will happen beyond that. Use this option to lower the cache size or increase it.
      * [OPTIONAL] **--attr_timeout=20** : The attribute timeout in seconds. Performance improvement option. It is a default fuse option. For further details look at the FUSE man page. The attributes of recently accessed files will be saved for the specified seconds.
      * [OPTIONAL] **--entry_timeout=20** : The entry timeout in seconds. Performance improvement option. It is a default fuse option. For further details look at the FUSE man page. The attributes of recently accessed files will be saved for the specified seconds.
-    
+     * [OPTIONAL] **-o ro** : This is a fuse option that allows a read-only mount. When this command line option is provided blobfuse will mount the container in read-only mode. In addition blobfuse will start streaming the date being read instead of downloading the file and caching it locally.
     
 ### Valid authentication setups:
 
