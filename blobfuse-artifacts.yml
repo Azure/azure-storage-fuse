@@ -175,37 +175,31 @@ stages:
             DistroVer: "CentOS-8.0"
             AgentName: "COS 8.0"
             Description: "CentOS Linux 8.0"
-            SignRequired: 1
 
           Oracle-8.1:
             DistroVer: "Oracle-8.1"
             AgentName: "ORA 8.1"
             Description: "Oracle Linux 8.1 Gen 2"
-            SignRequired: 1
 
           RHEL-7.5:
             DistroVer: "RHEL-7.5"
             AgentName : "RHEL 7.5"
             Description: "Red Hat Enterprise Linux 7.5"
-            SignRequired: 1
 
           RHEL-7.8:
             DistroVer: "RHEL-7.8"
             AgentName : "RHEL 7.8"
             Description: "Red Hat Enterprise Linux 7.8"
-            SignRequired: 1
 
           RHEL-8.1:
             DistroVer: "RHEL-8.1"
             AgentName: "RHEL 8.1"
             Description: "Red Hat Enterprise Linux 8.1"
-            SignRequired: 1
 
           RHEL-8.2:
             DistroVer: "RHEL-8.2"
             AgentName: "RHEL 8.2"
             Description: "Red Hat Enterprise Linux 8.2"
-            SignRequired: 1
 
       pool:
         name: "Blobfuse Pool"
@@ -296,13 +290,6 @@ stages:
           displayName: "Build the RPM"
           workingDirectory: $(ROOT_DIR)
 
-        # Sign the RPM
-        - script: |
-            echo $(SignRequired)
-          displayName: 'Sign the build'
-          condition: and(succeeded(), eq(variables.SignRequired, 1))
-
-
         # Publish the Artifacts
         - task: PublishBuildArtifacts@1
           inputs:
@@ -335,7 +322,6 @@ stages:
             DistroVer: "Suse-15Gen2"
             AgentName : "SUSE 15G2"
             Description: "SUSE Ent Linux 15-SP1-Gen2"
-            SignRequired: 1
 
       pool:
         name: "Blobfuse Pool"
@@ -427,13 +413,6 @@ stages:
           displayName: "Build the RPM"
           workingDirectory: $(ROOT_DIR)
 
-        # Sign the RPM
-        - script: |
-            echo $(SignRequired)
-          displayName: 'Sign the build'
-          condition: and(succeeded(), eq(variables.SignRequired, 1))
-
-
         # Publish the Artifacts
         - task: PublishBuildArtifacts@1
           inputs:
@@ -467,7 +446,6 @@ stages:
             DistroVer: "RHEL-7.8"
             AgentName : "RHEL 7.8"
             Description: "Red Hat Enterprise Linux 7.8"
-            SignRequired: 1
 
       pool:
         name: "Blobfuse Pool"
@@ -557,13 +535,6 @@ stages:
             cp ./blobfuse-*-*.rpm  $(Build.ArtifactStagingDirectory)/
           displayName: "Build the RPM"
           workingDirectory: $(ROOT_DIR)
-
-        # Sign the RPM
-        - script: |
-            echo $(SignRequired)
-          displayName: 'Sign the build'
-          condition: and(succeeded(), eq(variables.SignRequired, 1))
-
 
         # Publish the Artifacts
         - task: PublishBuildArtifacts@1
