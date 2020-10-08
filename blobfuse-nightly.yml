@@ -595,10 +595,10 @@ jobs:
 
     # Create config file for SAS Login
     - script: |
-        echo "accountName " $(NIGHTLY_SPN_ACC_NAME) > $(BLOBFUSE_CFG_GTEST)
-        echo "sasToken " $(NIGHTLY_SPN_ACC_SAS) >> $(BLOBFUSE_CFG_GTEST)
+        echo "accountName " $(NIGHTLY_STO_BLOB_ACC_NAME) > $(BLOBFUSE_CFG_GTEST)
+        echo "sasToken " $(NIGHTLY_STO_ACC_SAS) >> $(BLOBFUSE_CFG_GTEST)
         echo "authType SAS" >> $(BLOBFUSE_CFG_GTEST)
-        echo "containerName " $(NIGHTLY_SPN_CONT_NAME) >> $(BLOBFUSE_CFG_GTEST)
+        echo "containerName " $(containerName) >> $(BLOBFUSE_CFG)
         cat $(BLOBFUSE_CFG_GTEST)
         echo "Account : " $(NIGHTLY_SPN_ACC_NAME)
       displayName: "TEST - Create SAS Config"
