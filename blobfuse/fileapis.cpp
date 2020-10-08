@@ -19,8 +19,8 @@ std::shared_ptr<gc_cache> g_gc_cache;
 int azs_open(const char *path, struct fuse_file_info *fi)
 {
     syslog (LOG_DEBUG, "azs_open called with path = %s, fi->flags = %X.\n", path, fi->flags);
-    if (config_options.readOnly) {
-        AZS_DEBUGLOGV("readonly mode mount. Returning early for %s", path);
+    if (config_options.streamRead) {
+        AZS_DEBUGLOGV("Stream read mode mount. Returning early for %s", path);
         return 0;
     }
 
@@ -180,7 +180,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
  */
 int azs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-    if (config_options.readOnly) {
+    if (config_options.streamRead) {
         std::string pathString(path);
         std::replace(pathString.begin(), pathString.end(), '\\', '/');
         std::stringstream os;
@@ -285,8 +285,8 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
 
 int azs_flush(const char *path, struct fuse_file_info *fi)
 {
-    if (config_options.readOnly) {
-        AZS_DEBUGLOGV("readonly mode mount. Returning early for %s", (path) ? : "NULL");
+    if (config_options.streamRead) {
+        AZS_DEBUGLOGV("Stream read mode mount. Returning early for %s", (path) ? : "NULL");
         return 0;
     }
 
@@ -397,8 +397,8 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
 // Note that there is not much point in doing error-checking in this method, as release() does not offer a way to communicate any errors with the caller (it's called async with the thread that called close())
 int azs_release(const char *path, struct fuse_file_info * fi)
 {
-    if (config_options.readOnly) {
-        AZS_DEBUGLOGV("readonly mode mount. Returning early for %s", (path) ? : "NULL");
+    if (config_options.streamRead) {
+        AZS_DEBUGLOGV("Stream read mode mount. Returning early for %s", (path) ? : "NULL");
         return 0;
     }
     

@@ -65,6 +65,7 @@ struct configParams
     unsigned long long cacheSize;
     bool emptyDirCheck;
     bool readOnly;
+    bool streamRead;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -85,6 +86,7 @@ struct cmdlineOptions
     const char *concurrency; // Max Concurrency factor for blob client wrapper (default 40)
     const char *cache_size_mb; // MAX Size of cache in MBs
     const char *empty_dir_check;
+    const char *stream_read; // Whether to cache the file in read only mode or stream
 };
 
 

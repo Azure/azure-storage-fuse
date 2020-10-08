@@ -46,6 +46,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
+    OPTION("--stream-read=%s", stream_read),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -784,6 +785,14 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.fileCacheTimeoutInSeconds = 120;
     }
 
+    config_options.streamRead = false;
+    if (cmd_options.stream_read != NULL)
+    {
+        std::string stream_read(cmd_options.stream_read);
+        if (config_options.readOnly && (stream_read == "true"))
+            config_options.streamRead = true;
+    }
+
     if(cmd_options.use_adls != NULL)
     {
         std::string use_adls_value(cmd_options.use_adls);
@@ -882,8 +891,8 @@ int initialize_blobfuse()
         return 1;
     }
     
-    if (config_options.readOnly){
-        syslog(LOG_INFO, "Initializing blobfuse in Read-Only mode.");
+    if (config_options.streamRead){
+        syslog(LOG_INFO, "Initializing blobfuse in Read-Only Stream mode.");
     }
 
     //initialize storage client and authenticate, if we fail here, don't call fuse
