@@ -361,7 +361,7 @@ jobs:
         sudo rm -rf $(TEMP_DIR)/*
         ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
         cd test
-        go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR)
+        set -e && go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR)
         cd -
       # condition: eq(variables['Build.SourceBranchName'], 'master')
       displayName: TEST - BLOCK FeatureTest
@@ -458,7 +458,7 @@ jobs:
         ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true
         pidof blobfuse
         cd test
-        go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+        set -e && go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
         cd -
       # condition: eq(variables['Build.SourceBranchName'], 'master')
       displayName: TEST - ADLS FeatureTest

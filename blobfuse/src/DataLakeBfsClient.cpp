@@ -325,24 +325,30 @@ std::vector<std::string> DataLakeBfsClient::Rename(const std::string /*sourcePat
 
 std::vector<std::string> DataLakeBfsClient::Rename(std::string sourcePath, std::string destinationPath)
 {
+    std::vector<std::string> file_paths_to_remove;
+
     errno = 0;
     m_adls_client->move_file(
             configurations.containerName,
             sourcePath.substr(1),
             configurations.containerName,
             destinationPath.substr(1));
+    
+    if(errno != 0) {
+        syslog(LOG_ERR, "Failure to rename source file %s in container.  Errno = %d.\n", sourcePath.c_str(), errno);
+    } else {
+        std::string srcMntPathString = prepend_mnt_path_string(sourcePath);
+        std::string dstMntPathString = prepend_mnt_path_string(destinationPath);
 
-    std::vector<std::string> file_paths_to_remove;
-    std::string srcMntPathString = prepend_mnt_path_string(sourcePath);
-    std::string dstMntPathString = prepend_mnt_path_string(destinationPath);
+        long int rename_ret = rename_cached_file(srcMntPathString.c_str(), dstMntPathString.c_str());
 
-    long int rename_ret = rename_cached_file(srcMntPathString.c_str(), dstMntPathString.c_str());
-
-    if(rename_ret != 0)
-    {
-        syslog(LOG_ERR, "Failure to rename source file %s in the local cache.  Errno = %d.\n", sourcePath.c_str(), errno);
+        if(rename_ret != 0) {
+            syslog(LOG_ERR, "Failure to rename source file %s in the local cache.  Errno = %d.\n", sourcePath.c_str(), errno);
+        }
+        
+        file_paths_to_remove.push_back(sourcePath);
+        errno = 0;
     }
-    file_paths_to_remove.push_back(sourcePath);
     return file_paths_to_remove;
 }
 
