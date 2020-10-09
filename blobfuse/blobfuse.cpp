@@ -424,6 +424,12 @@ int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
     return 1;
 }
 
+void set_new_sas_token()
+{
+    syslog(LOG_DEBUG, "Sas Token Refresh");
+    storage_client->RefreshSASToken(config_options.sasToken);
+}
+
 /*
  *  This function is called only during SIGUSR1 handling.
  *  Objective here is to read only the 'logLevel' from the config file
@@ -431,8 +437,15 @@ int set_log_mask(const char * min_log_level_char, bool blobfuseInit)
  *  back to what was provided int the command line cmd_options, otherwise use
  *  this config as the new logging level..
  */
+
+#define LOG_LVL_REFRESH             (1 << 0)
+#define SAS_TOKEN_REFRESH           (1 << 1)
+unsigned int CONF_FILE_REFRESH = 0;
+
 int refresh_from_config_file(const std::string configFile)
 {
+    CONF_FILE_REFRESH = 0;
+
     std::ifstream file(configFile);
     if(!file)
     {
@@ -450,12 +463,26 @@ int refresh_from_config_file(const std::string configFile)
             continue;
         }
 
-       std::size_t pos = line.find("logLevel");
+        // Refresh logging level
+        std::size_t pos = line.find("logLevel");
         if(pos != std::string::npos)
         {
-           std::string logLevel = line.substr(line.find(" ")+1);
-           config_options.logLevel = trim(logLevel);
-            logLevelFound = true;
+           std::string logLevel = trim(line.substr(line.find(" ") + 1));
+           if (logLevel.compare(config_options.logLevel)) {
+                config_options.logLevel = logLevel;
+                logLevelFound = true;
+                CONF_FILE_REFRESH |= LOG_LVL_REFRESH;
+           }
+        }
+
+        // Refresh the SAS token so that token change does not require remount
+        if(line.find("sasToken") != std::string::npos)
+        {
+            std::string sasTokenStr = trim(line.substr(line.find(" ") + 1));
+            if (sasTokenStr.compare(config_options.sasToken)) {
+                config_options.sasToken = sasTokenStr;
+                CONF_FILE_REFRESH |= SAS_TOKEN_REFRESH;
+            }
         }
     }
 
@@ -471,7 +498,11 @@ void sig_usr_handler(int signum)
     if (signum == SIGUSR1) {
         syslog(LOG_INFO, "Received signal SIGUSR1");
         if (0 == refresh_from_config_file(cmd_options.config_file)) {
-            set_log_mask(config_options.logLevel.c_str(), false);
+            if (CONF_FILE_REFRESH & LOG_LVL_REFRESH)
+                set_log_mask(config_options.logLevel.c_str(), false);
+            
+            if (CONF_FILE_REFRESH & SAS_TOKEN_REFRESH)
+                set_new_sas_token();
         }
     }
 }

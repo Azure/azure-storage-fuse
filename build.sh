@@ -7,8 +7,8 @@ BLOBFS_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 #echo "Building the cpplite lib"
 if [ "$1" = "debug" ]
 then
-rm -rf cpplite/build.release
-rm -rf build/blobfuse
+#rm -rf cpplite/build.release
+#rm -rf build/blobfuse
 mkdir cpplite/build.release
 cd cpplite/build.release
 echo "Building cpplite in Debug mode"
