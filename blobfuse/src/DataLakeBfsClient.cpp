@@ -341,13 +341,10 @@ std::vector<std::string> DataLakeBfsClient::Rename(std::string sourcePath, std::
         std::string dstMntPathString = prepend_mnt_path_string(destinationPath);
 
         long int rename_ret = rename_cached_file(srcMntPathString.c_str(), dstMntPathString.c_str());
-
         if(rename_ret != 0) {
             syslog(LOG_ERR, "Failure to rename source file %s in the local cache.  Errno = %d.\n", sourcePath.c_str(), errno);
-        }
-        
+        } 
         file_paths_to_remove.push_back(sourcePath);
-        errno = 0;
     }
     return file_paths_to_remove;
 }
@@ -462,7 +459,6 @@ long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
             //make sure directory path exists in cache
             ensure_directory_path_exists_cache(dst.c_str());
         }
-        errno = 0;
         int rename_ret = rename(src.c_str(), dst.c_str());
         if(rename_ret < 0)
         {
@@ -474,13 +470,9 @@ long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
             AZS_DEBUGLOGV("Successfully to renamed file %s to %s in the local cache.\n", src.c_str(), dst.c_str());
         }
     }
-    else
-    {
-        AZS_DEBUGLOGV("Failure to find source %s in the local cache. errno = %d\n", src.c_str(), errno);
-        //we don't have to rename if the file or directory does not exist in the cache
-        return 0;
-    }
-    return buf.st_size;
+
+    errno = 0;
+    return 0;
 }
 
 #if 0
