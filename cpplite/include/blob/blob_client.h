@@ -398,6 +398,10 @@ namespace azure { namespace storage_lite {
             return *this;
         }
 
+        virtual std::shared_ptr<blob_client> client() {
+            return m_blobClient;
+        }
+
         virtual bool is_valid() const
         {
             return m_valid && (m_blobClient != NULL);

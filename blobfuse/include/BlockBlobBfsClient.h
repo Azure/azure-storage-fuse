@@ -104,7 +104,7 @@ public:
     int ChangeMode(const char* path, mode_t mode) override;
 
     int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL);
-    
+    virtual int RefreshSASToken(std::string sas);
 protected:
     ///<summary>
     /// Blob Client to make blob storage calls
