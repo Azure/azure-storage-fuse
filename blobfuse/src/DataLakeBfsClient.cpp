@@ -541,3 +541,20 @@ void DataLakeBfsClient::GetExtraProperties(const std::string pathName, BfsFilePr
 
     return;
 }
+
+
+int DataLakeBfsClient::RefreshSASToken(std::string sas)
+{
+    std::shared_ptr<storage_credential> cred;
+    if (sas.length() > 0)
+    {
+        cred = std::make_shared<shared_access_signature_credential>(sas);
+        if (!cred) {
+            syslog(LOG_ERR, "Failed to create new credential with SAS token");
+            return -1;
+        }
+        m_adls_client->account()->credential(cred);
+        m_blob_client->client()->account()->credential(cred);
+    }
+    return 0;
+}

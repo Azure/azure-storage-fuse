@@ -67,7 +67,7 @@ public:
     void GetExtraProperties(const std::string pathName, BfsFileProperty &prop) override;
     
     virtual int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL);
-
+    virtual int RefreshSASToken(std::string sas);
 private:
     ///<summary>
     /// Helper function - Authenticates with an account key
