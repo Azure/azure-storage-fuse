@@ -340,11 +340,14 @@ std::vector<std::string> DataLakeBfsClient::Rename(std::string sourcePath, std::
         std::string srcMntPathString = prepend_mnt_path_string(sourcePath);
         std::string dstMntPathString = prepend_mnt_path_string(destinationPath);
 
-        long int rename_ret = rename_cached_file(srcMntPathString.c_str(), dstMntPathString.c_str());
+        bool cache_cleared = false;
+        long int rename_ret = rename_cached_file(srcMntPathString.c_str(), dstMntPathString.c_str(), cache_cleared);
         if(rename_ret != 0) {
             syslog(LOG_ERR, "Failure to rename source file %s in the local cache.  Errno = %d.\n", sourcePath.c_str(), errno);
         } 
-        file_paths_to_remove.push_back(sourcePath);
+        
+        if (cache_cleared)
+            file_paths_to_remove.push_back(sourcePath);
     }
     return file_paths_to_remove;
 }
@@ -445,10 +448,11 @@ BfsFileProperty DataLakeBfsClient::GetProperties(std::string pathName, bool /*ty
     return BfsFileProperty();
 }
 
-long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
+long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst, bool &cache_cleared)
 {
     struct stat buf;
 
+    cache_cleared = false;
     int statret = stat(src.c_str(), &buf);
     if(statret == 0)
     {
@@ -467,6 +471,7 @@ long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
         }
         else
         {
+            cache_cleared = true;
             AZS_DEBUGLOGV("Successfully to renamed file %s to %s in the local cache.\n", src.c_str(), dst.c_str());
         }
     }

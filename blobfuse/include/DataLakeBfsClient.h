@@ -89,7 +89,7 @@ private:
     /// Helper function - Renames cached files
     ///</summary>
     ///<returns>Error value</return>
-    long int rename_cached_file(std::string src, std::string dest);
+    long int rename_cached_file(std::string src, std::string dest, bool &cache_cleared);
     ///<summary>
     /// ADLS Client to make dfs storage calls
     ///</summary>
