@@ -270,6 +270,8 @@ public:
 
     int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL);
     
+    int RefreshSASToken(std::string sas);
+    
     private:
         std::shared_ptr<StorageBfsClientBase> blob_client;
         AttrCache attr_cache;

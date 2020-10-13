@@ -45,6 +45,10 @@ namespace azure { namespace storage_adls {
         /// <param name="exception_enabled">Whether to use exception or errno for error handling.</param>
         AZURE_STORAGE_ADLS_API adls_client(std::shared_ptr<storage_account> account, int max_concurrency, bool exception_enabled = true);
 
+        AZURE_STORAGE_ADLS_API std::shared_ptr<storage_account> account() {
+            return m_account;
+        }
+        
         /// <summary>
         /// Creates a filesystem. If the filesystem already exists, the operation fails.
         /// </summary>

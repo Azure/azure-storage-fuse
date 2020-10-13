@@ -31,6 +31,11 @@ namespace azure {  namespace storage_lite {
             return m_credential;
         }
 
+        void credential(std::shared_ptr<storage_credential> cred)
+        {
+            m_credential = cred;
+        }
+
         storage_url get_url(service service) const
         {
             switch (service)
