@@ -471,6 +471,8 @@ long int DataLakeBfsClient::rename_cached_file(std::string src, std::string dst)
     else
     {
         AZS_DEBUGLOGV("Failure to find source %s in the local cache. errno = %d\n", src.c_str(), errno);
+        //reset this as it is not an issue
+        errno=0;
         //we don't have to rename if the file or directory does not exist in the cache
         return 0;
     }
