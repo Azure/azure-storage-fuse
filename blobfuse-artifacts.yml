@@ -103,6 +103,10 @@ stages:
             DistroVer: "Debian9.0"
             AgentName : "DEB 9.0"
             Description: "Debian Linux 9.0"
+          Debian-10.0:
+            DistroVer: "Debian10.0"
+            AgentName : "DEB 10.0"
+            Description: "Debian Linux 10.0 Gen 1"
 
       pool:
         name: "Blobfuse Pool"
