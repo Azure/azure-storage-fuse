@@ -958,7 +958,8 @@ bool BlockBlobBfsClient::is_folder(const std::vector<std::pair<std::string, std:
 
 int BlockBlobBfsClient::ChangeMode(const char *, mode_t)
 {
-    return -ENOSYS;
+    // allow edit if it is block blob, no need to check permissions
+    return 0;
 }
 
 int BlockBlobBfsClient::UpdateBlobProperty(std::string /*pathStr*/, std::string /*key*/, std::string /*value*/, METADATA * /*metadata*/)
