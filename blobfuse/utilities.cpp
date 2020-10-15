@@ -477,7 +477,9 @@ int azs_fsync(const char * /*path*/, int /*isdatasync*/, struct fuse_file_info *
 
 int azs_chown(const char * /*path*/, uid_t /*uid*/, gid_t /*gid*/)
 {
-    return -ENOSYS;
+    //TODO: is it ok to change ownership if it is ADLS. Should blbofuse allow this?
+    // Block blob should allow changing ownership.
+    return 0;
 }
 
 int azs_chmod(const char *path, mode_t mode)
