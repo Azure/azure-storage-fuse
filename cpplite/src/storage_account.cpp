@@ -51,6 +51,15 @@ namespace azure {  namespace storage_lite {
             m_file_url.set_domain(domain);
             m_adls_url.set_domain(domain);
 
+            std::string blob_ep = "";
+            auto pos = host.find(".dfs.");
+            if (pos != std::string::npos) {
+                blob_ep = host.substr(0, pos);
+                blob_ep += ".blob.";
+                blob_ep += host.substr(pos + strlen(".dfs."));
+                m_blob_url.set_domain(scheme + blob_ep);
+            }
+
             if (!path.empty()) {
                 m_blob_url.append_path(path);
                 m_table_url.append_path(path);
