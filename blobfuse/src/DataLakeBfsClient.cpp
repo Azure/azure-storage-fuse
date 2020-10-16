@@ -81,6 +81,8 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_accountkey
                 configurations.concurrency,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
                                 // blobfuse if we run into anything unexpected instead of logging errors
+        syslog(LOG_DEBUG, "storage account urls: %s", account.get()->get_url(azure::storage_lite::storage_account::service::blob).to_string().c_str());
+
     }
     catch(const std::exception &ex)
     {
@@ -187,13 +189,13 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_spn()
                 cred,
                 true, //use_https must be true to use oauth
                 configurations.blobEndpoint);
+        
         errno = 0;
         return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
         // blobfuse if we run into anything unexpected instead of logging errors
-
     }
     catch(const std::exception &ex)
     {

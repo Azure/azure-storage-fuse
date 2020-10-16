@@ -40,16 +40,20 @@ namespace azure {  namespace storage_lite {
 
             auto slash_pos = endpoint.find('/');
             std::string host = endpoint.substr(0, slash_pos);
-
+            auto accountname_pos = host.find('.');
+            std::string accountName = host.substr(0, accountname_pos);
+            auto suffix_pos = host.find('.', accountname_pos+1);
+            std::string suffix = host.substr(suffix_pos );
             auto path_start = endpoint.find_first_not_of('/', slash_pos);
             std::string path = path_start == std::string::npos ? "" : endpoint.substr(path_start);
 
-            std::string domain = scheme + host;
-            m_blob_url.set_domain(domain);
-            m_table_url.set_domain(domain);
-            m_queue_url.set_domain(domain);
-            m_file_url.set_domain(domain);
-            m_adls_url.set_domain(domain);
+            std::string domain = scheme + account_name;
+
+            m_blob_url.set_domain(domain + ".blob" + suffix);
+            m_table_url.set_domain(domain + ".table" + suffix);
+            m_queue_url.set_domain(domain + ".queue" + suffix);
+            m_file_url.set_domain(domain + ".file" + suffix);
+            m_adls_url.set_domain(domain + ".dfs" + suffix);
 
             if (!path.empty()) {
                 m_blob_url.append_path(path);
