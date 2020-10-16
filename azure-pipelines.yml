@@ -87,6 +87,6 @@ jobs:
   
       # Moving publish artifacts to a seperate pipeline
       # Publish the Artifacts
-      #- task: PublishBuildArtifacts@1
-      #  displayName: 'Publish Artifacts for blobfuse $(container_image)'
-      #  #condition: succeededOrFailed()
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifacts for blobfuse $(container_image)'
+        condition: succeededOrFailed()
