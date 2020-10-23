@@ -47,17 +47,17 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 - See [mount.sh](https://github.com/Azure/azure-storage-fuse/blob/master/mount.sh) provided in this repository for a sample of most used options
 - In addition to the FUSE module options; blobfuse offers following options:
 	* **--tmp-path=/path/to/cache** : Configures the tmp location for the cache. Always configure the fastest disk (SSD or ramdisk) for best performance. 
-	* [OPTIONAL] **--empty-dir-check=true** : Allows remounting using a non-empty tmp-path, default is false
+	* [OPTIONAL] **--empty-dir-check=true** : Allows remounting using a non-empty tmp-path, default is false. This option is only available after version 1.3.1.
 	* [OPTIONAL] **--config-file=/path/to/connection.cfg** : Configures the path for the file where the account credentials are provided
 	* [OPTIONAL] **--container-name=container** : Required if no configuration file is specified. Also set account name and key/SAS via the environment variables AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCESS_KEY/AZURE_STORAGE_SAS_TOKEN
 	* [OPTIONAL] **--use-https=true|false** : Enables HTTPS communication with Blob storage. True by default. HTTPS must be if you are communicating to the Storage Container through OAuth.
 	* [OPTIONAL] **--file-cache-timeout-in-seconds=120** : Blobs will be cached in the temp folder for this many seconds. 120 seconds by default. During this time, blobfuse will not check whether the file is up to date or not.
 	* [OPTIONAL] **--log-level=LOG_WARNING** : Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG
 	* [OPTIONAL] **--use-attr-cache=true|false** : Enables attributes of a blob being cached. False by default. (Only available in blobfuse 1.1.0 or above)
-    * [OPTIONAL] **--use-adls=true|false** : Enables blobfuse to access Azure DataLake storage account.
-    * [OPTIONAL] **--no-symlinks=true** : Turns off symlinks. Turning off symlinks will improve performance. Symlinks are on by default.
+    * [OPTIONAL] **--use-adls=true|false** : Enables blobfuse to access Azure DataLake storage account.This option is only available after version 1.3.1
+    * [OPTIONAL] **--no-symlinks=true** : Turns off symlinks. Turning off symlinks will improve performance. Symlinks are on by default. This option is only available after version 1.3.1.
     * [OPTIONAL] **--max-concurrency=12** : option to override fuse max_concurrency, default=40
-    * [OPTIONAL] **--cache-size-mb=1000** : option to setup the cache-size in MB. Default will be 80% of the available memory, eviction will happen beyond that. Use this option to lower the cache size or increase it.
+    * [OPTIONAL] **--cache-size-mb=1000** : option to setup the cache-size in MB. Default will be 80% of the available memory, eviction will happen beyond that. Use this option to lower the cache size or increase it. This option is only available after version 1.3.1.
      * [OPTIONAL] **--attr_timeout=20** : The attribute timeout in seconds. Performance improvement option. It is a default fuse option. For further details look at the FUSE man page. The attributes of recently accessed files will be saved for the specified seconds.
      * [OPTIONAL] **--entry_timeout=20** : The entry timeout in seconds. Performance improvement option. It is a default fuse option. For further details look at the FUSE man page. The attributes of recently accessed files will be saved for the specified seconds.
     
