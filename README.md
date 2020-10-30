@@ -88,7 +88,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 - General options
     * `AZURE_STORAGE_ACCOUNT`: Specifies the storage account blobfuse targets.
     * `AZURE_STORAGE_BLOB_ENDPOINT`: Specifies the blob endpoint to use. Defaults to *.blob.core.windows.net, but is useful for targeting storage emulators.
-    * `AZURE_STORAGE_AUTH_TYPE`: Overrides the currently specified auth type. Case insensitive. Options: Key, SAS, MSI
+    * `AZURE_STORAGE_AUTH_TYPE`: Overrides the currently specified auth type. Case insensitive. Options: Key, SAS, MSI, SPN
 
 - Account key auth:
     * `AZURE_STORAGE_ACCESS_KEY`: Specifies the storage account key to use for authentication.
