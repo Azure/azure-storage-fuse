@@ -217,6 +217,9 @@ namespace azure {  namespace storage_lite {
             }
             // Parameter path is already joint with '/'.
             ret['/'] = 1;
+            // Do not use % directly in path, if filename contains this then we need to encode
+            ret[37] = 0;
+
             return ret;
         }();
 
