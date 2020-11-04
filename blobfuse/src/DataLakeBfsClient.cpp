@@ -40,6 +40,10 @@ bool DataLakeBfsClient::AuthenticateStorage()
         
     if(m_adls_client != NULL)
     {
+        if (m_adls_client->get_blob_client() && m_adls_client->get_blob_client()->context())
+            m_adls_client->get_blob_client()->context()->set_retry_policy(
+                        std::make_shared<azure::storage_lite::expo_retry_policy>());
+        
         //Authenticate the storage container by using a list call
         m_adls_client->list_paths_segmented(
                 configurations.containerName,
@@ -81,8 +85,6 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_accountkey
                 configurations.concurrency,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
                                 // blobfuse if we run into anything unexpected instead of logging errors
-        syslog(LOG_DEBUG, "storage account urls: %s", account.get()->get_url(azure::storage_lite::storage_account::service::blob).to_string().c_str());
-
     }
     catch(const std::exception &ex)
     {
@@ -90,6 +92,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_accountkey
         errno = blobfuse_constants::unknown_error;
         return NULL;
     }
+    return NULL;
 }
 std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_sas()
 {
