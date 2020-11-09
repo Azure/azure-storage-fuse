@@ -36,7 +36,7 @@ mode_t aclToMode(access_control acl)
     }
     else if(permissions.size() != blobfuse_constants::acl_size)
     {
-        syslog(LOG_ERR, "Failure: Unexpected amount of permissions from service");
+        syslog(LOG_ERR, "Failure: Unexpected amount of permissions from service : %s", permissions.c_str());
         return mode;
     }
     //try 
