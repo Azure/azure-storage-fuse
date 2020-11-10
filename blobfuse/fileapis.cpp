@@ -37,6 +37,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     struct stat buf;
     int statret = stat(mntPath, &buf);
     time_t now = time(NULL);
+    bool new_download = false;
     
 
     if (statret != 0 || 
@@ -114,6 +115,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             new_time.modtime = last_modified;
             new_time.actime = 0;
             utime(mntPathString.c_str(), &new_time);
+            new_download = true;
         }
     }
 
@@ -139,18 +141,20 @@ int azs_open(const char *path, struct fuse_file_info *fi)
         return lock_result;
     }
     
-    if (!storage_client->isADLS()) {
-        fchmod(res, config_options.defaultPermission);
-    } else {
-        BfsFileProperty blob_property = storage_client->GetProperties(pathString.substr(1));
-        mode_t perms = blob_property.m_file_mode == 0 ?  config_options.defaultPermission : blob_property.m_file_mode;
-        fchmod(res, perms);
+    if (new_download) {
+        if (!storage_client->isADLS()) {
+            fchmod(res, config_options.defaultPermission);
+        } else {
+            BfsFileProperty blob_property = storage_client->GetProperties(pathString.substr(1));
+            mode_t perms = blob_property.m_file_mode == 0 ?  config_options.defaultPermission : blob_property.m_file_mode;
+            fchmod(res, perms);
 
-        // preserve the last modified time
-        struct utimbuf new_time;
-        new_time.modtime = blob_property.get_last_modified();
-        new_time.actime = blob_property.get_last_access(); 
-        utime(mntPathString.c_str(), &new_time); 
+            // preserve the last modified time
+            struct utimbuf new_time;
+            new_time.modtime = blob_property.get_last_modified();
+            new_time.actime = blob_property.get_last_access(); 
+            utime(mntPathString.c_str(), &new_time); 
+        }
     }
 
     // Store the open file handle, and whether or not the file should be uploaded on close().
@@ -489,6 +493,14 @@ int azs_truncate(const char * path, off_t off)
         {
             syslog(LOG_ERR, "Failing azs_truncate operation on file %s due to failure %d from azs_open.\n.", path, res);
             return res;
+        }
+
+        // If the file in cache has exactly the same size then there is no need to do trucate and upload
+        struct stat buf;
+        int statret = stat(mntPath, &buf);
+        if (statret == 0 && buf.st_size == off) {
+            azs_release(pathString.c_str(), &fi);
+            return 0;
         }
 
         errno = 0;
