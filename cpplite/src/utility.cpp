@@ -18,6 +18,8 @@
 #include <vector>
 #include <algorithm>
 
+extern bool gEncodeFullFileName;
+
 namespace azure {  namespace storage_lite {
 
     std::string to_lowercase(std::string str)
@@ -217,8 +219,10 @@ namespace azure {  namespace storage_lite {
             }
             // Parameter path is already joint with '/'.
             ret['/'] = 1;
+
             // Do not use % directly in path, if filename contains this then we need to encode
-            ret[37] = 0;
+            if (gEncodeFullFileName)
+                ret[37] = 0;
 
             return ret;
         }();

@@ -84,6 +84,7 @@ struct cmdlineOptions
     const char *concurrency; // Max Concurrency factor for blob client wrapper (default 40)
     const char *cache_size_mb; // MAX Size of cache in MBs
     const char *empty_dir_check;
+    const char *encode_full_file_name; // Encode the '%' symbol in file name
 };
 
 
