@@ -455,7 +455,7 @@ jobs:
     - script:  |
         sudo rm -rf $(MOUNT_DIR)/*
         sudo rm -rf $(TEMP_DIR)/*
-        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true
+        ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --encode-full-file-name=true
         pidof blobfuse
         cd test
         set -e && go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
