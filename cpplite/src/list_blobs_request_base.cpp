@@ -3,6 +3,7 @@
 #include "constants.h"
 #include "utility.h"
 
+extern bool gEncodeFullFileName;
 namespace azure {  namespace storage_lite {
 
 void list_blobs_request_base::build_request(const storage_account &a, http_base &h) const
@@ -18,7 +19,12 @@ void list_blobs_request_base::build_request(const storage_account &a, http_base 
 
     url.add_query(constants::query_restype, constants::query_restype_container);
     url.add_query(constants::query_comp, constants::query_comp_list);
-    add_optional_query(url, constants::query_prefix, r.prefix());
+
+    if (gEncodeFullFileName)
+        add_optional_query(url, constants::query_prefix, encode_url_path(r.prefix()));
+    else
+        add_optional_query(url, constants::query_prefix, r.prefix());
+
     add_optional_query(url, constants::query_delimiter, r.delimiter());
     add_optional_query(url, constants::query_marker, r.marker());
     add_optional_query(url, constants::query_maxresults, r.maxresults());

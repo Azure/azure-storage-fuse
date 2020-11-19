@@ -535,6 +535,10 @@ int azs_truncate(const char * path, off_t off)
     int statret = stat(mntPath, &buf);
     if (statret == 0)
     {
+        if (buf.st_size == off) {
+            return 0;
+        }
+
         // The file exists in the local cache.  So, we call truncate() on the file in the cache, then upload a zero-length blob to the service, overriding any data.
         int truncret = truncate(mntPath, 0);
         if (truncret == 0)
