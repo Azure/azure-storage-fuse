@@ -99,7 +99,11 @@ if(UNIX)
 
   add_executable(blobfuse ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} blobfuse/main.cpp)
 
-  target_link_libraries(blobfuse azure-storage-adls azure-storage-lite ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt)
+  if(INCLUDE_EXTRALIB)
+    target_link_libraries(blobfuse azure-storage-adls azure-storage-lite ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt stdc++ m dl)
+  else()
+    target_link_libraries(blobfuse azure-storage-adls azure-storage-lite ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt)
+  endif()
   install(TARGETS blobfuse
     PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
     DESTINATION bin)

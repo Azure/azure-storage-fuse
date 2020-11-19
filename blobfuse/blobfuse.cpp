@@ -304,7 +304,7 @@ int read_config(const std::string configFile)
     }
 }
 
-
+int configure_tls();
 void *azs_init(struct fuse_conn_info * conn)
 {
     syslog(LOG_DEBUG, "azs_init ran");
@@ -318,6 +318,23 @@ void *azs_init(struct fuse_conn_info * conn)
    // even 4.18 does not like this so 5.4 is not enough so 
     if (kernel_version < 4.16) {
         conn->max_write = 4194304;
+        // Curl was not intialized for lower version as that results into
+        // failure post fork. So tls and cpplite were not initialized pre-fork for lower
+        // kernel version. Do the init now before starting.
+        syslog(LOG_CRIT, "** Post fork TLS and curl init");
+        
+        configure_tls();
+        if(storage_client->AuthenticateStorage())
+        {
+            syslog(LOG_DEBUG, "Successfully Authenticated!");   
+        }
+        else
+        {
+            fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            exit(1);
+        }
+
         // let fuselib pick 128KB
         //conn->max_read = 4194304;
     } else {
@@ -915,15 +932,20 @@ int initialize_blobfuse()
         storage_client = std::make_shared<BlockBlobBfsClient>(config_options);
         syslog(LOG_DEBUG, "Setup storage client");
     }
-    if(storage_client->AuthenticateStorage())
-    {
-        syslog(LOG_DEBUG, "Successfully Authenticated!");   
-    }
-    else
-    {
-        fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
-        syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
-        return -1;
+
+    if (kernel_version < 4.16) {
+        syslog(LOG_CRIT, "** Delaying authentication to post fork older kernel versions");
+    } else {
+        if(storage_client->AuthenticateStorage())
+        {
+            syslog(LOG_DEBUG, "Successfully Authenticated!");   
+        }
+        else
+        {
+            fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            return -1;
+        }
     }
 
     globalTimes.lastModifiedTime = globalTimes.lastAccessTime = globalTimes.lastChangeTime = time(NULL);

@@ -1,5 +1,6 @@
 #include "blobfuse.cpp"
 
+extern float kernel_version;
 
 int main(int argc, char *argv[])
 {
@@ -13,13 +14,18 @@ int main(int argc, char *argv[])
         return ret;
     }
 
-    ret = configure_tls();
-    if (ret != 0)
-    {
-        return ret;
-    }
-
     configure_fuse(&args);
+
+    if (kernel_version < 4.16) {
+        // Lower kernel version delaying tls init to post fork
+        syslog(LOG_CRIT, "** Delaying tls init to post fork for lower kernel version");
+    } else {
+        ret = configure_tls();
+        if (ret != 0)
+        {
+            return ret;
+        }
+    }
 
     ret = initialize_blobfuse();
     if (ret != 0)
