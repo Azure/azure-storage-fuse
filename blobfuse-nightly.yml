@@ -771,6 +771,9 @@ jobs:
       
       # --- Create config files for testing
       - script: |
+          touch $(BLOBFUSE_CFG_FILE)
+          sudo chown -R `whoami` $(BLOBFUSE_CFG_FILE)
+          chmod 777 $(BLOBFUSE_CFG_FILE)
           echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG_FILE)
           echo "accountKey " $(NIGHTLY_STO_ACC_KEY) >> $(BLOBFUSE_CFG_FILE)
           echo "authType Key" >> $(BLOBFUSE_CFG_FILE)
