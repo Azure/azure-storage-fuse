@@ -783,6 +783,7 @@ jobs:
         workingDirectory: $(ROOT_DIR)
         displayName: 'Cleanup Directories'
         timeoutInMinutes: 30
+        condition: always()
 
       - script: |
           pwd
