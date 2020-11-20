@@ -335,21 +335,24 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             }
       
             errno = 0;
-            std::vector<std::pair<std::string, std::string>> metadata;
-            storage_client->UpdateBlobProperty(blob_name, "", "", &metadata);
-            storage_client->UploadFromFile(mntPath, metadata);
-            if (errno != 0)
-            {
-                int storage_errno = errno;
-                syslog(LOG_ERR, "Failing blob upload in azs_flush with input path %s because of an error from upload_file_to_blob().  Errno = %d.\n", path, storage_errno);
-                free(path_buffer);
-                return 0 - map_errno(storage_errno);
+            if (buf.st_mtime > ((struct fhwrapper *)fi->fh)->mtime_at_upload) {
+                std::vector<std::pair<std::string, std::string>> metadata;
+                storage_client->UpdateBlobProperty(blob_name, "", "", &metadata);
+                storage_client->UploadFromFile(mntPath, metadata);
+                if (errno != 0)
+                {
+                    int storage_errno = errno;
+                    syslog(LOG_ERR, "Failing blob upload in azs_flush with input path %s because of an error from upload_file_to_blob().  Errno = %d.\n", path, storage_errno);
+                    free(path_buffer);
+                    return 0 - map_errno(storage_errno);
+                }
+                else
+                {
+                    syslog(LOG_INFO, "Successfully uploaded file %s to blob %s.\n", path, blob_name.c_str());
+                    ((struct fhwrapper *)fi->fh)->mtime_at_upload = buf.st_mtime;
+                }
+                globalTimes.lastModifiedTime = time(NULL);
             }
-            else
-            {
-                syslog(LOG_INFO, "Successfully uploaded file %s to blob %s.\n", path, blob_name.c_str());
-            }
-            globalTimes.lastModifiedTime = time(NULL);
         } else {
             //storage_client->UpdateBlobProperty(blob_name, "last_access", std::to_string(time(NULL)));
             globalTimes.lastAccessTime = time(NULL);
@@ -378,6 +381,7 @@ int azs_release(const char *path, struct fuse_file_info * fi)
     // Close the file handle.
     // This must be done, even if the file no longer exists, otherwise we're leaking file handles.
     close(((struct fhwrapper *)fi->fh)->fh);
+    ((struct fhwrapper *)fi->fh)->mtime_at_upload = 0;
 
 // TODO: Make this method resiliant to renames of the file (same way flush() is)
     std::string pathString(path);

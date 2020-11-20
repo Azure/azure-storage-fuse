@@ -94,7 +94,9 @@ struct fhwrapper
 {
     int fh; // The handle to the file in the file cache to use for read/write operations.
     bool upload; // True if the blob should be uploaded when the file is closed.  (False when the file was opened in read-only mode.)
-    fhwrapper(int fh, bool upload) : fh(fh), upload(upload)
+    uint32_t mtime_at_upload = 0;
+
+    fhwrapper(int fh, bool upload) : fh(fh), upload(upload), mtime_at_upload(0)
     {
 
     }
