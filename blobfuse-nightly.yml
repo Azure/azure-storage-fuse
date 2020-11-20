@@ -659,12 +659,6 @@ jobs:
           Description: "Red Hat Enterprise Linux 7.5"
           containerName: 'test-cnt-rhel-75'
 
-        #RHEL-7.8:
-        #  DistroVer: "RHEL-7.8"
-        #  AgentName : "RHEL 7.8"
-        #  Description: "Red Hat Enterprise Linux 7.8"
-        #  containerName: 'test-cnt-rhel-78'
-
         #RHEL-8.1:
         #  DistroVer: "RHEL-8.1"
         #  AgentName: "RHEL 8.1"
