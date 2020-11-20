@@ -450,7 +450,7 @@ stages:
             DistroVer: "RHEL-7.8"
             AgentName : "RHEL 7.8"
             Description: "Red Hat Enterprise Linux 7.8"
-          RHEL-7.8:
+          RHEL-7.5:
             DistroVer: "RHEL-7.5"
             AgentName : "RHEL 7.5"
             Description: "Red Hat Enterprise Linux 7.5"
