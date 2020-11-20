@@ -646,6 +646,9 @@ jobs:
         displayName: Print the log file
         continueOnError: true
     
+
+
+  # Other then Ubuntu just run the feature_test
   - job: NightlySanity_RHEL
     timeoutInMinutes: 240
     strategy:
@@ -654,6 +657,7 @@ jobs:
           DistroVer: "RHEL-7.5"
           AgentName : "RHEL 7.5"
           Description: "Red Hat Enterprise Linux 7.5"
+          containerName: 'test-cnt-rhel-75'
 
     pool:
       name: "Blobfuse Pool"
@@ -670,17 +674,11 @@ jobs:
       value: true
 
     - name: MOUNT_DIR
-      value: "/home/vsts/work/blob_mnt"
+      value: "/usr/pipeline/blob_mnt"
     - name: TEMP_DIR
-      value: "/mnt/blobfusetmp"
-    - name: BLOBFUSE_CFG
-      value: "/home/vsts/work/blobfuse.cfg"
-    - name: BLOBFUSE_CFG_ADLS
-      value: "/home/vsts/work/blobfuse.cfg.adls"
-    - name: BLOBFUSE_CFG_GTEST
-      value: "./connection.cfg"
-    - name: BLOBFUSE_STRESS_DIR
-      value: "/home/vsts/work/blob_stress"
+      value: "/usr/pipeline/temp"
+    - name: BLOBFUSE_CFG_FILE
+      value: "/usr/pipeline/blobfuse.cfg"
     
     steps:
       # DevOps checks for a specific git version and it fails on some distros
@@ -743,18 +741,51 @@ jobs:
         workingDirectory: $(ROOT_DIR)
 
       # Add the test work here
-
-      # Cleanup work directory of self hosted agent
+      # Create directory structures for the basic testing
       - script: |
+          sudo mkdir -p $(MOUNT_DIR)
+          sudo chown -R `whoami` $(MOUNT_DIR)
+          chmod 777 $(MOUNT_DIR)
+          sudo mkdir -p $(TEMP_DIR)
+          sudo chown -R `whoami` $(TEMP_DIR)
+          chmod 777 $(TEMP_DIR)
+        displayName: "Create Directories"
+      
+      # --- Create config files for testing
+      - script: |
+          echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG_FILE)
+          echo "accountKey " $(NIGHTLY_STO_ACC_KEY) >> $(BLOBFUSE_CFG_FILE)
+          echo "authType Key" >> $(BLOBFUSE_CFG_FILE)
+          echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_FILE)
+          cat $(BLOBFUSE_CFG_FILE)
+          echo "Account : " $(NIGHTLY_STO_ACC_NAME)
+        displayName: "Create config file"
+
+      # Mount a directory for feature test (Block) and run it
+      - script:  |
+          sudo rm -rf $(MOUNT_DIR)/*
+          sudo rm -rf $(TEMP_DIR)/*
+          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE)
+          cd test
+          set -e && go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+        workingDirectory: $(ROOT_DIR)
+        displayName: TEST - BLOCK FeatureTest
+        timeoutInMinutes: 120
+
+      - script:  |
+          rm -rf $(MOUNT_DIR)/*
+          sudo fusermount -u $(MOUNT_DIR)
+          sudo kill -9 `pidof blobfuse`
+          sudo rm -rf $(TEMP_DIR)/
+          sudo rm -rf $(MOUNT_DIR)
+          sudo rm -rf $(BLOBFUSE_CFG_FILE)
           sudo rm -rf $(WORK_DIR)
-          sudo rm -rf ~/rpmbuild
-        displayName: 'Cleanup temp directories'
-        condition: succeededOrFailed()
+        workingDirectory: $(ROOT_DIR)
+        displayName: 'Cleanup Directories'
+        timeoutInMinutes: 30
 
       - script: |
           pwd
-          #sudo rm -rf $(Agent.BuildDirectory)
-          #sudo rm -rf $(Build.SourcesDirectory)
           cd /`pwd | cut -d '/' -f 2,3,4,5`
           sudo rm -rf [0-9]
         displayName: 'Clean Agent Directories'
