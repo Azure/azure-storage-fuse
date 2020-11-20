@@ -47,7 +47,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 - See [mount.sh](https://github.com/Azure/azure-storage-fuse/blob/master/mount.sh) provided in this repository for a sample of most used options
 - In addition to the FUSE module options; blobfuse offers following options:
 	* **--tmp-path=/path/to/cache** : Configures the tmp location for the cache. Always configure the fastest disk (SSD or ramdisk) for best performance. 
-	* [OPTIONAL] **--empty-dir-check=true** : Allows remounting using a non-empty tmp-path, default is false. This option is only available after version 1.3.1.
+	* [OPTIONAL] **--empty-dir-check=true** : Disallows remounting using a non-empty tmp-path, default is false. This option is only available after version 1.3.1.
 	* [OPTIONAL] **--config-file=/path/to/connection.cfg** : Configures the path for the file where the account credentials are provided
 	* [OPTIONAL] **--container-name=container** : Required if no configuration file is specified. Also set account name and key/SAS via the environment variables AZURE_STORAGE_ACCOUNT and AZURE_STORAGE_ACCESS_KEY/AZURE_STORAGE_SAS_TOKEN
 	* [OPTIONAL] **--use-https=true|false** : Enables HTTPS communication with Blob storage. True by default. HTTPS must be if you are communicating to the Storage Container through OAuth.
@@ -88,7 +88,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 - General options
     * `AZURE_STORAGE_ACCOUNT`: Specifies the storage account blobfuse targets.
     * `AZURE_STORAGE_BLOB_ENDPOINT`: Specifies the blob endpoint to use. Defaults to *.blob.core.windows.net, but is useful for targeting storage emulators.
-    * `AZURE_STORAGE_AUTH_TYPE`: Overrides the currently specified auth type. Case insensitive. Options: Key, SAS, MSI
+    * `AZURE_STORAGE_AUTH_TYPE`: Overrides the currently specified auth type. Case insensitive. Options: Key, SAS, MSI, SPN
 
 - Account key auth:
     * `AZURE_STORAGE_ACCESS_KEY`: Specifies the storage account key to use for authentication.
