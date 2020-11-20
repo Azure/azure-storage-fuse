@@ -696,7 +696,7 @@ jobs:
     - name: TEMP_DIR
       value: "/usr/pipeline/temp"
     - name: BLOBFUSE_CFG_FILE
-      value: "/usr/pipeline/blobfuse.cfg"
+      value: "/usr/pipeline/blobfuse/azure-storage-fuse/test/blobfuse.cfg"
     
     steps:
       # DevOps checks for a specific git version and it fails on some distros
@@ -717,7 +717,7 @@ jobs:
 
       # Install libfuse
       - script: |
-          sudo yum install fuse-devel -y
+          sudo yum install fuse fuse-devel -y
         displayName: "libFuse Setup"
 
       # Prebuild cleanup
@@ -762,17 +762,17 @@ jobs:
       # Add the test work here
       # Create directory structures for the basic testing
       - script: |
-          sudo mkdir -p $(MOUNT_DIR)
+          sudo mkdir $(MOUNT_DIR)
           sudo chown -R `whoami` $(MOUNT_DIR)
           chmod 777 $(MOUNT_DIR)
-          sudo mkdir -p $(TEMP_DIR)
+          sudo mkdir $(TEMP_DIR)
           sudo chown -R `whoami` $(TEMP_DIR)
           chmod 777 $(TEMP_DIR)
         displayName: "Create Directories"
       
       # --- Create config files for testing
       - script: |
-          touch $(BLOBFUSE_CFG_FILE)
+          sudo touch $(BLOBFUSE_CFG_FILE)
           sudo chown -R `whoami` $(BLOBFUSE_CFG_FILE)
           chmod 777 $(BLOBFUSE_CFG_FILE)
           echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG_FILE)
