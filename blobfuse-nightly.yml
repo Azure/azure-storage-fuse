@@ -659,23 +659,23 @@ jobs:
           Description: "Red Hat Enterprise Linux 7.5"
           containerName: 'test-cnt-rhel-75'
 
-        RHEL-7.8:
-          DistroVer: "RHEL-7.8"
-          AgentName : "RHEL 7.8"
-          Description: "Red Hat Enterprise Linux 7.8"
-          containerName: 'test-cnt-rhel-78'
+        #RHEL-7.8:
+        #  DistroVer: "RHEL-7.8"
+        #  AgentName : "RHEL 7.8"
+        #  Description: "Red Hat Enterprise Linux 7.8"
+        #  containerName: 'test-cnt-rhel-78'
 
-        RHEL-8.1:
-          DistroVer: "RHEL-8.1"
-          AgentName: "RHEL 8.1"
-          Description: "Red Hat Enterprise Linux 8.1"
-          containerName: 'test-cnt-rhel-81'
+        #RHEL-8.1:
+        #  DistroVer: "RHEL-8.1"
+        #  AgentName: "RHEL 8.1"
+        #  Description: "Red Hat Enterprise Linux 8.1"
+        #  containerName: 'test-cnt-rhel-81'
 
-        RHEL-8.2:
-          DistroVer: "RHEL-8.2"
-          AgentName: "RHEL 8.2"
-          Description: "Red Hat Enterprise Linux 8.2"
-          containerName: 'test-cnt-rhel-82'
+        #RHEL-8.2:
+        #  DistroVer: "RHEL-8.2"
+        #  AgentName: "RHEL 8.2"
+        #  Description: "Red Hat Enterprise Linux 8.2"
+        #  containerName: 'test-cnt-rhel-82'
 
     pool:
       name: "Blobfuse Pool"
@@ -795,7 +795,7 @@ jobs:
       - script: | 
           sudo rm -rf $(MOUNT_DIR)/*  
           cd test
-          set -e && go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+          go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
         workingDirectory: $(ROOT_DIR)
         displayName: TEST - BLOCK FeatureTest
         timeoutInMinutes: 120
