@@ -789,6 +789,11 @@ jobs:
           sudo rm -rf $(MOUNT_DIR)/*
           sudo rm -rf $(TEMP_DIR)/*
           ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE)
+        workingDirectory: $(ROOT_DIR)
+        displayName: "Mount Blobfuse"
+
+      - script: | 
+          sudo rm -rf $(MOUNT_DIR)/*  
           cd test
           set -e && go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
         workingDirectory: $(ROOT_DIR)
