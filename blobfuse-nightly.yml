@@ -784,6 +784,7 @@ jobs:
 
       # Mount a directory for feature test (Block) and run it
       - script:  |
+          sudo fusermount -u $(MOUNT_DIR)
           sudo rm -rf $(MOUNT_DIR)/*
           sudo rm -rf $(TEMP_DIR)/*
           ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE)
