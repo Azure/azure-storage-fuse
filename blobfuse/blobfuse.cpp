@@ -933,9 +933,14 @@ int initialize_blobfuse()
         syslog(LOG_DEBUG, "Setup storage client");
     }
 
-    if (kernel_version < 4.16) {
-        syslog(LOG_CRIT, "** Delaying authentication to post fork older kernel versions");
-    } else {
+    syslog(LOG_DEBUG, "Kernel version is %f", kernel_version);
+
+    if (kernel_version < 4.16) 
+    {
+        syslog(LOG_WARNING, "** Delaying authentication to post fork older kernel versions");
+    } 
+    else 
+    {
         if(storage_client->AuthenticateStorage())
         {
             syslog(LOG_DEBUG, "Successfully Authenticated!");   
