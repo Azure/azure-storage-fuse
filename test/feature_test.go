@@ -340,7 +340,7 @@ func TestFileCreateMultiSpclCharWithinSpclDir(t *testing.T) {
 		t.Errorf("Failed to get stat of file : " + fileName + "(" + err.Error() + ")")
 	}
 
-	files, err := ioutil.ReadDir(mntPath)
+	files, err := ioutil.ReadDir(speclDirName)
 	if err != nil ||
 		len(files) < 1 {
 		t.Errorf("Failed to list directory : " + mntPath + "(" + err.Error() + ")")
