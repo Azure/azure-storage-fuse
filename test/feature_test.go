@@ -321,38 +321,38 @@ func TestFileCreateMultiSpclChar(t *testing.T) {
 	speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
 	fileName := mntPath + "/" + speclChar
 
-	if adlsTest == true {
-		srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
-		if err != nil {
-			t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
-		}
-		srcFile.Close()
-		time.Sleep(time.Second * 2)
+	//if adlsTest == true {
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	if err != nil {
+		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
+	}
+	srcFile.Close()
+	time.Sleep(time.Second * 2)
 
-		_, err = os.Stat(fileName)
-		if err != nil {
-			t.Errorf("Failed to get stat of file : " + fileName + "(" + err.Error() + ")")
-		}
+	_, err = os.Stat(fileName)
+	if err != nil {
+		t.Errorf("Failed to get stat of file : " + fileName + "(" + err.Error() + ")")
+	}
 
-		files, err := ioutil.ReadDir(mntPath)
-		if err != nil ||
-			len(files) < 1 {
-			t.Errorf("Failed to list directory : " + mntPath + "(" + err.Error() + ")")
-		}
+	files, err := ioutil.ReadDir(mntPath)
+	if err != nil ||
+		len(files) < 1 {
+		t.Errorf("Failed to list directory : " + mntPath + "(" + err.Error() + ")")
+	}
 
-		found := false
-		for _, file := range files {
-			fmt.Println("######" + file.Name())
-			if file.Name() == speclChar {
-				fmt.Println("###### FOUND : " + file.Name())
-				found = true
-			}
-		}
-
-		if !found {
-			t.Errorf("Failed to find file with name " + speclChar)
+	found := false
+	for _, file := range files {
+		fmt.Println("######" + file.Name())
+		if file.Name() == speclChar {
+			fmt.Println("###### FOUND : " + file.Name())
+			found = true
 		}
 	}
+
+	if !found {
+		t.Errorf("Failed to find file with name " + speclChar)
+	}
+	//}
 }
 
 func TestFileCreateLongName(t *testing.T) {
