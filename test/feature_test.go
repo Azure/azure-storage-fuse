@@ -490,7 +490,7 @@ func TestFileNameConflict(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
 	}
-	time.Sleep(3)
+	time.Sleep(time.Second * 3)
 }
 
 // # Copy file from once directory to another
@@ -614,7 +614,7 @@ func TestLinkCreate(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to create symlink " + symName + " (" + err.Error() + ")")
 	}
-	time.Sleep(3)
+	time.Sleep(time.Second * 3)
 }
 
 // # Read a small file using symlink
