@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
 
     if (kernel_version < 4.16) {
         // Lower kernel version delaying tls init to post fork
-        syslog(LOG_CRIT, "** Delaying tls init to post fork for lower kernel version");
+        syslog(LOG_CRIT, "** Delaying tls init to post fork for older kernel version");
     } else {
         ret = configure_tls();
         if (ret != 0)

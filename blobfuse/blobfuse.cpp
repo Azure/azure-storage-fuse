@@ -321,7 +321,7 @@ void *azs_init(struct fuse_conn_info * conn)
         // Curl was not intialized for lower version as that results into
         // failure post fork. So tls and cpplite were not initialized pre-fork for lower
         // kernel version. Do the init now before starting.
-        syslog(LOG_CRIT, "** Post fork TLS and curl init");
+        syslog(LOG_CRIT, "** Post fork authentication for older kernel version");
         
         configure_tls();
         if(storage_client->AuthenticateStorage())
@@ -937,7 +937,7 @@ int initialize_blobfuse()
 
     if (kernel_version < 4.16) 
     {
-        syslog(LOG_WARNING, "** Delaying authentication to post fork older kernel versions");
+        syslog(LOG_WARNING, "** Delaying authentication to post fork for older kernel versions");
     } 
     else 
     {
