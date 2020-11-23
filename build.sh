@@ -52,6 +52,20 @@ else
 	fi
 fi
 
+kernel_ver_str=`uname -r | cut -d "." -f1,2`
+kernel_ver=$(bc -l <<< "$kernel_ver_str")
+echo "######################## KERNEL VERSION $kernel_ver ###################################"
+if [ "$1" = "debug" ]
+then
+	if [ 1 -eq "$(echo "${kernel_ver} < 4.16" | bc)" ]
+	then
+		echo "Kernel version is lower then 4.16"
+		cmake_args="-DINCLUDE_EXTRALIB=1 $cmake_args"
+	else
+		echo "Kernel version is bigger then 4.16"
+	fi
+fi
+
 ## Use cmake3 if it's available.  If not, then fallback to the default "cmake".  Otherwise, fail.
 cmake3 $cmake_args
 if [ $? -ne 0 ]

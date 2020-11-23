@@ -13,7 +13,7 @@
 #include <include/AttrCacheBfsClient.h>
 
 
-bool gEncodeFullFileName = false;
+bool gEncodeFullFileName = true;
 
 const std::string log_ident = "blobfuse";
 struct cmdlineOptions cmd_options;
@@ -308,7 +308,7 @@ int read_config(const std::string configFile)
     }
 }
 
-
+int configure_tls();
 void *azs_init(struct fuse_conn_info * conn)
 {
     syslog(LOG_DEBUG, "azs_init ran");
@@ -322,6 +322,23 @@ void *azs_init(struct fuse_conn_info * conn)
    // even 4.18 does not like this so 5.4 is not enough so 
     if (kernel_version < 4.16) {
         conn->max_write = 4194304;
+        // Curl was not intialized for lower version as that results into
+        // failure post fork. So tls and cpplite were not initialized pre-fork for lower
+        // kernel version. Do the init now before starting.
+        syslog(LOG_CRIT, "** Post fork authentication for older kernel version");
+        
+        configure_tls();
+        if(storage_client->AuthenticateStorage())
+        {
+            syslog(LOG_DEBUG, "Successfully Authenticated!");   
+        }
+        else
+        {
+            fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            exit(1);
+        }
+
         // let fuselib pick 128KB
         //conn->max_read = 4194304;
     } else {
@@ -852,10 +869,13 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     if(cmd_options.encode_full_file_name != NULL)
     {
         std::string encode_full_file_name(cmd_options.encode_full_file_name);
-        if(encode_full_file_name == "true")
+        if(encode_full_file_name == "false")
+        {
+            gEncodeFullFileName = false;
+        } else if(encode_full_file_name == "true")
         {
             gEncodeFullFileName = true;
-        } 
+        }
     }
 
     return 0;
@@ -928,15 +948,25 @@ int initialize_blobfuse()
         storage_client = std::make_shared<BlockBlobBfsClient>(config_options);
         syslog(LOG_DEBUG, "Setup storage client");
     }
-    if(storage_client->AuthenticateStorage())
+
+    syslog(LOG_DEBUG, "Kernel version is %f", kernel_version);
+
+    if (kernel_version < 4.16) 
     {
-        syslog(LOG_DEBUG, "Successfully Authenticated!");   
-    }
-    else
+        syslog(LOG_WARNING, "** Delaying authentication to post fork for older kernel versions");
+    } 
+    else 
     {
-        fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
-        syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
-        return -1;
+        if(storage_client->AuthenticateStorage())
+        {
+            syslog(LOG_DEBUG, "Successfully Authenticated!");   
+        }
+        else
+        {
+            fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            return -1;
+        }
     }
 
     globalTimes.lastModifiedTime = globalTimes.lastAccessTime = globalTimes.lastChangeTime = time(NULL);
