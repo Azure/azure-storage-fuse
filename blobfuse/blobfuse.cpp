@@ -943,9 +943,7 @@ int initialize_blobfuse()
     if (libcurl_version < 7.54) 
     {
         syslog(LOG_WARNING, "** Delaying authentication to post fork for older curl versions");
-    } 
-    else 
-    {
+    } else {
         if(storage_client->AuthenticateStorage())
         {
             syslog(LOG_DEBUG, "Successfully Authenticated!");   
