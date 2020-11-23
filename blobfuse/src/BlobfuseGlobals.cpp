@@ -1,6 +1,7 @@
 #include "BlobfuseGlobals.h"
 #include <ctype.h>
 #include <sys/utsname.h>
+#include <curl/curl.h>
 
 bool gEnableLogsHttp;
 
@@ -78,6 +79,16 @@ AUTH_TYPE get_auth_type(std::string authStr)
         }
     }
     return INVALID_AUTH;
+}
+
+float libcurl_version = 0.0;
+void  populate_libcurl_version()
+{
+	curl_version_info_data *d = curl_version_info(CURLVERSION_NOW);	
+	if (d) {
+		syslog(LOG_INFO, "CURL Version is %s", d->version);
+		libcurl_version = std::stof(d->version);
+	}
 }
 
 float kernel_version = 0.0;

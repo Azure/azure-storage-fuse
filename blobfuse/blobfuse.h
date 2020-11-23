@@ -42,8 +42,10 @@ using namespace blobfuse_constants;
 extern std::shared_ptr<gc_cache> g_gc_cache;
 extern struct configParams config_options;
 extern float kernel_version;
+extern float libcurl_version;
 
 void populate_kernel_version();
+void populate_libcurl_version();
 
 // Helper function to map an HTTP error to an errno.
 // Should be called on any errno returned from the Azure Storage cpp lite lib.
