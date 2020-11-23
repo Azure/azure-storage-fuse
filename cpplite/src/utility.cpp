@@ -259,6 +259,11 @@ namespace azure {  namespace storage_lite {
 
             // Support '&' in file name like in 'A&b.txt'
             ret['&'] = 0;
+
+            // Do not use % directly in path, if filename contains this then we need to encode
+            if (gEncodeFullFileName)
+                ret[37] = 0;
+                
             return ret;
         }();
 
