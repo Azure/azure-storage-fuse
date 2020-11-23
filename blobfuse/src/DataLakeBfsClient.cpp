@@ -90,6 +90,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_accountkey
         errno = blobfuse_constants::unknown_error;
         return NULL;
     }
+    return NULL;
 }
 std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_sas()
 {

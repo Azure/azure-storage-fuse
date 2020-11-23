@@ -257,6 +257,13 @@ stages:
           displayName: "Checkout code"
           workingDirectory: $(WORK_DIR)
 
+        # Checkout branch
+        - script: |
+            echo $(Build.SourceBranch)
+            echo "Going for checkout of " `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`  
+            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
+          displayName: "Checkout Branch"
+          workingDirectory: $(ROOT_DIR)
 
         # List commits consumed for this build
         - script: |
@@ -380,6 +387,13 @@ stages:
           displayName: "Checkout code"
           workingDirectory: $(WORK_DIR)
 
+        # Checkout branch
+        - script: |
+            echo $(Build.SourceBranch)
+            echo "Going for checkout of " `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`  
+            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
+          displayName: "Checkout Branch"
+          workingDirectory: $(ROOT_DIR)
 
         # List commits consumed for this build
         - script: |
@@ -450,6 +464,10 @@ stages:
             DistroVer: "RHEL-7.8"
             AgentName : "RHEL 7.8"
             Description: "Red Hat Enterprise Linux 7.8"
+          RHEL-7.5:
+            DistroVer: "RHEL-7.5"
+            AgentName : "RHEL 7.5"
+            Description: "Red Hat Enterprise Linux 7.5"
 
       pool:
         name: "Blobfuse Pool"
@@ -503,6 +521,13 @@ stages:
           displayName: "Checkout code"
           workingDirectory: $(WORK_DIR)
 
+        # Checkout branch
+        - script: |
+            echo $(Build.SourceBranch)
+            echo "Going for checkout of " `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`  
+            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
+          displayName: "Checkout Branch"
+          workingDirectory: $(ROOT_DIR)
 
         # List commits consumed for this build
         - script: |
