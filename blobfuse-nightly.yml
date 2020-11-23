@@ -22,7 +22,7 @@ parameters:
 jobs:
   - ${{ if eq(parameters.quick_test, false) }}:
     - job: NightlySanity_Ubuntu
-      timeoutInMinutes: 240
+      timeoutInMinutes: 300
 
       # Define on what all OS we want to run this Pipeline
       strategy:
