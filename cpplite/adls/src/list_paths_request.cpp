@@ -3,7 +3,6 @@
 #include "storage_url.h"
 #include "utility.h"
 
-extern bool gEncodeFullFileName;
 namespace azure { namespace storage_adls {
 
     void list_paths_request::build_request(const storage_account& account, http_base& http) const

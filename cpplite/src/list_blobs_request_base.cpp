@@ -3,7 +3,6 @@
 #include "constants.h"
 #include "utility.h"
 
-extern bool gEncodeFullFileName;
 namespace azure {  namespace storage_lite {
 
 void list_blobs_request_base::build_request(const storage_account &a, http_base &h) const
