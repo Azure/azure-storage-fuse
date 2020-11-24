@@ -869,7 +869,7 @@ jobs:
 
         # Install libfuse
         - script: |
-            sudo apt-get install libfuse-dev -y
+            sudo apt-get install libfuse-dev libfuse fuse -y
           displayName: "libFuse Setup"
 
         # Prebuild cleanup
