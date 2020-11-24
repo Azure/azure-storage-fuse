@@ -864,7 +864,7 @@ jobs:
         # Install all dependencies
         - script: |
             sudo apt-get update --fix-missing
-            sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+            sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ golang -y
           displayName: "Basic Tools Setup"
 
         # Install libfuse
