@@ -20,7 +20,7 @@ parameters:
 
 # List of jobs to run in parallel
 jobs:
-  - ${{ true }}:
+  - ${{ if true }}:
     - job: Set_1
       timeoutInMinutes: 300
 
