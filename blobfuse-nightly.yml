@@ -13,14 +13,14 @@ schedules:
   always: true
 
 parameters:
-- name: quick_test
+- name: exhaustive_test
   displayName: 'Express Test'
   type: boolean
-  default: false
+  default: true
 
 # List of jobs to run in parallel
 jobs:
-  - ${{ if eq(parameters.quick_test, false) }}:
+  - ${{ true }}:
     - job: Set_1
       timeoutInMinutes: 300
 
@@ -648,7 +648,7 @@ jobs:
     
 
 
-  - ${{ if eq(parameters.quick_test, true) }}:
+  - ${{ if eq(parameters.exhaustive_test, true) }}:
     # Other then Ubuntu just run the feature_test
     - job: Set_2
       timeoutInMinutes: 240
@@ -841,7 +841,6 @@ jobs:
           displayName: 'Clean Agent Directories'
           condition: always()
 
-  - ${{ if eq(parameters.quick_test, true) }}:
     - job: Set_3
       timeoutInMinutes: 240
       strategy:
@@ -1008,7 +1007,6 @@ jobs:
           displayName: 'Clean Agent Directories'
           condition: always()
 
-  - ${{ if eq(parameters.quick_test, true) }}:
     - job: Set_4
       timeoutInMinutes: 240
       strategy:
@@ -1167,110 +1165,4 @@ jobs:
             cd /`pwd | cut -d '/' -f 2,3,4,5`
             sudo rm -rf [0-9]
           displayName: 'Clean Agent Directories'
-          condition: always()
-
-  - ${{ if eq(parameters.quick_test, true) }}:
-    - job: Set_5
-      timeoutInMinutes: 240
-      strategy:
-        matrix:
-          Ubuntu-16:
-            imageName: 'ubuntu-16.04'
-            containerName: 'test-cnt-ubn-16'
-            quickTestDir: 'ubn16'
-          Ubuntu-18:
-            imageName: 'ubuntu-18.04' 
-            containerName: 'test-cnt-ubn-18'
-            quickTestDir: 'ubn18'
-          Ubuntu-20:
-            imageName: 'ubuntu-20.04' 
-            containerName: 'test-cnt-ubn-20'
-            quickTestDir: 'ubn20'
-      pool:
-        vmImage: $(imageName)
-
-      variables:
-      - group: NightlyBlobFuse
-      - name: MOUNT_DIR
-        value: "/home/vsts/work/blob_mnt"
-      - name: TEMP_DIR
-        value: "/mnt/blobfusetmp"
-      - name: BLOBFUSE_CFG_FILE
-        value: "/home/vsts/work/blobfuse.cfg"
-      
-      steps:
-        # Install all dependencies
-        - script: |
-            echo $(Description)
-            hostnamectl
-          displayName: "Print Agent Info"
-
-        # Install all dependencies
-        - script: |
-            sudo apt-get update --fix-missing
-            sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ golang -y
-          displayName: "Basic Tools Setup"
-
-        # Install libfuse
-        - script: |
-            sudo apt-get install libfuse-dev fuse -y
-          displayName: "libFuse Setup"
-
-        # Build the blobFuse binary
-        - script: |
-            sudo chmod +x build.sh
-            . ./build.sh
-          displayName: "Build BlobFuse"
-
-        # Test the binary just to make sure it was built fine
-        - script: |
-            ./build/blobfuse --version
-          displayName: "Test the binary"
-
-        # Add the test work here
-        # Create directory structures for the basic testing
-        - script: |
-            sudo mkdir $(MOUNT_DIR)
-            sudo chown -R `whoami` $(MOUNT_DIR)
-            chmod 777 $(MOUNT_DIR)
-            sudo mkdir $(TEMP_DIR)
-            sudo chown -R `whoami` $(TEMP_DIR)
-            chmod 777 $(TEMP_DIR)
-          displayName: "Create Directories"
-        
-        # --- Create config files for testing
-        - script: |
-            sudo touch $(BLOBFUSE_CFG_FILE)
-            sudo chown -R `whoami` $(BLOBFUSE_CFG_FILE)
-            chmod 777 $(BLOBFUSE_CFG_FILE)
-            echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG_FILE)
-            echo "accountKey " $(NIGHTLY_STO_ACC_KEY) >> $(BLOBFUSE_CFG_FILE)
-            echo "authType Key" >> $(BLOBFUSE_CFG_FILE)
-            echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_FILE)
-            cat $(BLOBFUSE_CFG_FILE)
-            echo "Account : " $(NIGHTLY_STO_ACC_NAME)
-          displayName: "Create config file"
-
-        # Mount a directory for feature test (Block) and run it
-        - script:  |
-            curl --version
-            sudo fusermount -u $(MOUNT_DIR)
-            sudo rm -rf $(MOUNT_DIR)/*
-            sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
-          displayName: "Mount Blobfuse"
-
-        - script: | 
-            sudo rm -rf $(MOUNT_DIR)/*  
-            cd test
-            go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
-          displayName: TEST - ADLS FeatureTest
-          timeoutInMinutes: 120
-
-        - script:  |
-            sudo rm -rf $(MOUNT_DIR)/*
-            sudo fusermount -u $(MOUNT_DIR)
-            sudo kill -9 `pidof blobfuse`
-          displayName: 'Cleanup Directories'
-          timeoutInMinutes: 30
           condition: always()
