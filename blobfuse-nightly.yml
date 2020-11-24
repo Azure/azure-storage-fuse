@@ -948,7 +948,7 @@ jobs:
 
         - script: | 
             sudo rm -rf $(MOUNT_DIR)/*  
-            sudo cd test
+            cd test
             sudo go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
           workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
