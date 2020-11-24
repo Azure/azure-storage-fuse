@@ -106,9 +106,6 @@ namespace azure { namespace storage_lite {
 
             // The (cached) properties of the blob
             blob_property m_props;
-
-            // time it got added to cache
-            time_t  m_cachedTime;
         };
 
         // A thread-safe cache of the properties of the blobs in a container on the service.

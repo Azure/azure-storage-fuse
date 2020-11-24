@@ -103,7 +103,6 @@ namespace azure { namespace storage_lite {
                     std::unique_lock<boost::shared_mutex> uniquelock(cache_item->m_mutex);
                     cache_item->m_props = properties;
                     cache_item->m_confirmed = true;
-                    cache_item->m_cachedTime = time(NULL);
                 }
             }
         }
@@ -309,7 +308,6 @@ namespace azure { namespace storage_lite {
                 return blob_property(false); // keep errno unchanged
             }
             cache_item->m_confirmed = true;
-            cache_item->m_cachedTime = time(NULL);
             return cache_item->m_props;
         }
     }
