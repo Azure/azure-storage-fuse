@@ -660,17 +660,35 @@ jobs:
             Description: "Red Hat Enterprise Linux 7.5"
             containerName: 'test-cnt-rhel-75'
 
-          #RHEL-8.1:
-          #  DistroVer: "RHEL-8.1"
-          #  AgentName: "RHEL 8.1"
-          #  Description: "Red Hat Enterprise Linux 8.1"
-          #  containerName: 'test-cnt-rhel-81'
+          RHEL-8.1:
+            DistroVer: "RHEL-8.1"
+            AgentName: "RHEL 8.1"
+            Description: "Red Hat Enterprise Linux 8.1"
+            containerName: 'test-cnt-rhel-81'
 
-          #RHEL-8.2:
-          #  DistroVer: "RHEL-8.2"
-          #  AgentName: "RHEL 8.2"
-          #  Description: "Red Hat Enterprise Linux 8.2"
-          #  containerName: 'test-cnt-rhel-82'
+          RHEL-8.2:
+            DistroVer: "RHEL-8.2"
+            AgentName: "RHEL 8.2"
+            Description: "Red Hat Enterprise Linux 8.2"
+            containerName: 'test-cnt-rhel-82'
+
+          CentOS-7.0:
+            DistroVer: "CentOS-7.0"
+            AgentName: "COS 7.0"
+            Description: "CentOS Linux 7.0"
+            containerName: 'test-cnt-cent-7'
+
+          CentOS-8.0:
+            DistroVer: "CentOS-8.0"
+            AgentName: "COS 8.0"
+            Description: "CentOS Linux 8.0"
+            containerName: 'test-cnt-cent-8'
+
+          Oracle-8.1:
+            DistroVer: "Oracle-8.1"
+            AgentName: "ORA 8.1"
+            Description: "Oracle Linux 8.1 Gen 2"
+            containerName: 'test-cnt-ora-81'
 
       pool:
         name: "Blobfuse Pool"
