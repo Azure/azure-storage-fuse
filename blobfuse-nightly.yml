@@ -21,7 +21,7 @@ parameters:
 # List of jobs to run in parallel
 jobs:
   - ${{ if eq(parameters.quick_test, false) }}:
-    - job: NightlySanity_Ubuntu
+    - job: Set_1
       timeoutInMinutes: 300
 
       # Define on what all OS we want to run this Pipeline
@@ -650,7 +650,7 @@ jobs:
 
   - ${{ if eq(parameters.quick_test, true) }}:
     # Other then Ubuntu just run the feature_test
-    - job: NightlySanity_RHEL
+    - job: Set_2
       timeoutInMinutes: 240
       strategy:
         matrix:
@@ -750,7 +750,14 @@ jobs:
             git clone https://github.com/Azure/azure-storage-fuse
           displayName: "Checkout code"
           workingDirectory: $(WORK_DIR)
-
+          
+        # Checkout branch
+        - script: |
+            echo $(Build.SourceBranch)
+            echo "Going for checkout of " `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`  
+            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
+          displayName: "Checkout Branch"
+          workingDirectory: $(ROOT_DIR)
 
         # List commits consumed for this build
         - script: |
@@ -834,7 +841,7 @@ jobs:
           condition: always()
 
   - ${{ if eq(parameters.quick_test, true) }}:
-    - job: NightlySanity_Debian
+    - job: Set_3
       timeoutInMinutes: 240
       strategy:
         matrix:
@@ -910,6 +917,13 @@ jobs:
           displayName: "Checkout code"
           workingDirectory: $(WORK_DIR)
 
+        # Checkout branch
+        - script: |
+            echo $(Build.SourceBranch)
+            echo "Going for checkout of " `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`  
+            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
+          displayName: "Checkout Branch"
+          workingDirectory: $(ROOT_DIR)
 
         # List commits consumed for this build
         - script: |
