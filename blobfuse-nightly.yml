@@ -1191,23 +1191,14 @@ jobs:
 
       variables:
       - group: NightlyBlobFuse
-      - name: WORK_DIR
-        value: "/home/vsts/work/"
-      - name: ROOT_DIR
-        value: "/home/vsts/work/azure-storage-fuse"
-      - name: skipComponentGovernanceDetection
-        value: true
-
       - name: MOUNT_DIR
         value: "/home/vsts/work/blob_mnt"
       - name: TEMP_DIR
         value: "/mnt/blobfusetmp"
       - name: BLOBFUSE_CFG_FILE
-        value: "/home/vsts/blobfuse.cfg"
+        value: "/home/vsts/work/blobfuse.cfg"
       
       steps:
-        - checkout: none
-
         # Install all dependencies
         - script: |
             echo $(Description)
@@ -1224,34 +1215,6 @@ jobs:
         - script: |
             sudo apt-get install libfuse-dev fuse -y
           displayName: "libFuse Setup"
-
-        # Prebuild cleanup
-        - script: |
-            sudo fusermount -u $(MOUNT_DIR)
-            sudo kill -9 `pidof blobfuse`
-            sudo rm -rf $(WORK_DIR)
-          displayName: "Prebuild cleanup"
-
-        # Checkout code
-        - script: |
-            sudo mkdir -p $(WORK_DIR)
-            sudo chown -R `whoami` $(WORK_DIR)
-            chmod 777 $(WORK_DIR)
-          displayName: "Create Directory structure"
-
-        # Checkout code
-        - script: |
-            git clone https://github.com/Azure/azure-storage-fuse
-          displayName: "Checkout code"
-          workingDirectory: $(WORK_DIR)
-
-        # Checkout branch
-        - script: |
-            echo $(Build.SourceBranch)
-            echo "Going for checkout of " `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`  
-            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
-          displayName: "Checkout Branch"
-          workingDirectory: $(ROOT_DIR)
 
         # List commits consumed for this build
         - script: |
@@ -1319,18 +1282,7 @@ jobs:
             sudo rm -rf $(MOUNT_DIR)/*
             sudo fusermount -u $(MOUNT_DIR)
             sudo kill -9 `pidof blobfuse`
-            sudo rm -rf $(TEMP_DIR)/
-            sudo rm -rf $(MOUNT_DIR)
-            sudo rm -rf $(BLOBFUSE_CFG_FILE)
-            sudo rm -rf $(WORK_DIR)
           workingDirectory: $(ROOT_DIR)
           displayName: 'Cleanup Directories'
           timeoutInMinutes: 30
-          condition: always()
-
-        - script: |
-            pwd
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-          displayName: 'Clean Agent Directories'
           condition: always()
