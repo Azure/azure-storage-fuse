@@ -1216,25 +1216,16 @@ jobs:
             sudo apt-get install libfuse-dev fuse -y
           displayName: "libFuse Setup"
 
-        # List commits consumed for this build
-        - script: |
-            echo "Below commits were done in last 12 hours : " `date` 
-            git --no-pager log --since="12 hours ago" --stat
-          displayName: "List Commits"
-          workingDirectory: $(ROOT_DIR)
-
         # Build the blobFuse binary
         - script: |
             sudo chmod +x build.sh
             . ./build.sh
           displayName: "Build BlobFuse"
-          workingDirectory: $(ROOT_DIR)
 
         # Test the binary just to make sure it was built fine
         - script: |
             ./build/blobfuse --version
           displayName: "Test the binary"
-          workingDirectory: $(ROOT_DIR)
 
         # Add the test work here
         # Create directory structures for the basic testing
@@ -1267,14 +1258,12 @@ jobs:
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
-          workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
 
         - script: | 
             sudo rm -rf $(MOUNT_DIR)/*  
             cd test
             go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
-          workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
           timeoutInMinutes: 120
 
@@ -1282,7 +1271,6 @@ jobs:
             sudo rm -rf $(MOUNT_DIR)/*
             sudo fusermount -u $(MOUNT_DIR)
             sudo kill -9 `pidof blobfuse`
-          workingDirectory: $(ROOT_DIR)
           displayName: 'Cleanup Directories'
           timeoutInMinutes: 30
           condition: always()
