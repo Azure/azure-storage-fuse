@@ -940,20 +940,20 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0
+            sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
 
         - script: | 
             sudo rm -rf $(MOUNT_DIR)/*  
-            cd test
-            go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+            sudo cd test
+            sudo go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
           workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
           timeoutInMinutes: 120
 
         - script:  |
-            rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(MOUNT_DIR)/*
             sudo fusermount -u $(MOUNT_DIR)
             sudo kill -9 `pidof blobfuse`
             sudo rm -rf $(TEMP_DIR)/
