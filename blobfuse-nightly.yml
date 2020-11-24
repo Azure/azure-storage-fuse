@@ -14,7 +14,7 @@ schedules:
 
 parameters:
 - name: exhaustive_test
-  displayName: 'Express Test'
+  displayName: 'Exhaustive Test'
   type: boolean
   default: true
 
