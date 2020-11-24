@@ -665,6 +665,7 @@ jobs:
             AgentName : "RHEL 7.5.2"
             Description: "Red Hat Enterprise Linux 7.5 Old Curl"
             containerName: 'test-cnt-rhel-75-test'
+            
           RHEL-8.1:
             DistroVer: "RHEL-8.1"
             AgentName: "RHEL 8.1"
