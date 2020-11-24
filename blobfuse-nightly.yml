@@ -805,6 +805,7 @@ jobs:
 
         # Mount a directory for feature test (Block) and run it
         - script:  |
+            curl --version
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
@@ -971,6 +972,7 @@ jobs:
 
         # Mount a directory for feature test (Block) and run it
         - script:  |
+            curl --version
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
@@ -1131,6 +1133,7 @@ jobs:
 
         # Mount a directory for feature test (Block) and run it
         - script:  |
+            curl --version
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
