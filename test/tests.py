@@ -177,7 +177,8 @@ class RenameTests(BlobfuseTest):
         testFileNewName = "testFileMoved"
         testFileNewPath = os.path.join(self.blobstage, testFileNewName)
 
-        os.open(testFilePath, os.O_CREAT)
+        fd = os.open(testFilePath, os.O_CREAT)
+        os.close(fd)
         os.system("mv " + testFilePath + " " + testFileNewPath)
         #os.rename(testFilePath, testFileNewPath)
 
@@ -199,6 +200,7 @@ class RenameTests(BlobfuseTest):
 
         os.mkdir(testDirPath)
         fd = os.open(testFilePath, os.O_CREAT)
+        os.close(fd)
         os.system("mv " + testFilePath + " " + destFilePath)
         #os.rename(testFilePath, destFilePath)
 
@@ -218,7 +220,7 @@ class RenameTests(BlobfuseTest):
         fd = os.open(testFilePath, os.O_CREAT | os.O_WRONLY)
         testData = "test data"
         os.write(fd, testData.encode())
-        
+        os.close(fd)
         os.system("mv " + testFilePath + " " + destFilePath)
         #os.rename(testFilePath, destFilePath)
 
