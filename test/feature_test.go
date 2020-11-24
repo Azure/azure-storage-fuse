@@ -154,8 +154,35 @@ func TestDirDeleteNonEmpty(t *testing.T) {
 
 // # Delete non-empty directory recursively
 func TestDirDeleteRecursive(t *testing.T) {
-	dirName := mntPath + "/test3NE"
-	err := os.RemoveAll(dirName)
+	dirName := mntPath + "/testREC"
+
+	err := os.Mkdir(dirName, 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory : " + dirName + " (" + err.Error() + ")")
+	}
+
+	err = os.Mkdir(dirName+"/level1", 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory : " + dirName + "/level1 (" + err.Error() + ")")
+	}
+
+	err = os.Mkdir(dirName+"/level2", 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory : " + dirName + "/level2 (" + err.Error() + ")")
+	}
+
+	err = os.Mkdir(dirName+"/level1/l1", 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory : " + dirName + "/level1/l1 (" + err.Error() + ")")
+	}
+
+	srcFile, err := os.OpenFile(dirName+"/level2/abc.txt", os.O_CREATE, 0777)
+	if err != nil {
+		t.Errorf("Failed to create file : " + dirName + "/level2/abc.txt (" + err.Error() + ")")
+	}
+	srcFile.Close()
+
+	err = os.RemoveAll(dirName)
 	if err != nil {
 		t.Errorf("Failed to delete directory recursively : " + dirName + "(" + err.Error() + ")")
 	}
