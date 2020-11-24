@@ -648,7 +648,7 @@ jobs:
     
 
 
-  - ${{ if eq(parameters.quick_test, true) }}:
+  - ${{ if eq(parameters.quick_test, false) }}:
     # Other then Ubuntu just run the feature_test
     - job: NightlySanity_RHEL
       timeoutInMinutes: 240
@@ -815,7 +815,7 @@ jobs:
           displayName: 'Clean Agent Directories'
           condition: always()
 
-      # Other then Ubuntu just run the feature_test
+  - ${{ if eq(parameters.quick_test, true) }}:
     - job: NightlySanity_Debian
       timeoutInMinutes: 240
       strategy:
