@@ -181,7 +181,6 @@ func TestDirDeleteRecursive(t *testing.T) {
 		t.Errorf("Failed to create file : " + dirName + "/level2/abc.txt (" + err.Error() + ")")
 	}
 	srcFile.Close()
-
 	err = os.RemoveAll(dirName)
 	if err != nil {
 		t.Errorf("Failed to delete directory recursively : " + dirName + "(" + err.Error() + ")")
