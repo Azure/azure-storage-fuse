@@ -41,7 +41,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     
 
     if (statret != 0 || 
-        ((now - buf.st_mtime) > config_options.fileCacheTimeoutInSeconds))
+        (((now - buf.st_mtime) > config_options.fileCacheTimeoutInSeconds) && ((now - buf.st_ctime) > config_options.fileCacheTimeoutInSeconds)))
     {
         bool skipCacheUpdate = false;
         if (statret == 0) // File exists

@@ -322,31 +322,34 @@ void *azs_init(struct fuse_conn_info * conn)
    // even 4.18 does not like this so 5.4 is not enough so 
     if (kernel_version < 4.16) {
         conn->max_write = 4194304;
-        // Curl was not intialized for lower version as that results into
-        // failure post fork. So tls and cpplite were not initialized pre-fork for lower
-        // kernel version. Do the init now before starting.
-        syslog(LOG_CRIT, "** Post fork authentication for older kernel version");
-        
-        configure_tls();
-        if(storage_client->AuthenticateStorage())
-        {
-            syslog(LOG_DEBUG, "Successfully Authenticated!");   
-        }
-        else
-        {
-            fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
-            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
-            exit(1);
-        }
-
-        // let fuselib pick 128KB
-        //conn->max_read = 4194304;
+	// let fuselib pick 128KB
+	//conn->max_read = 4194304;
     } else {
         conn->want |= FUSE_CAP_BIG_WRITES;
     }
     conn->max_readahead = 4194304;
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
+
+
+    if (libcurl_version < 7.54) {
+	// Curl was not intialized for lower version as that results into
+	// failure post fork. So tls and cpplite were not initialized pre-fork for lower
+	// kernel version. Do the init now before starting.
+	syslog(LOG_CRIT, "** Post fork authentication for older libcurl version");
+
+	configure_tls();
+	if(storage_client->AuthenticateStorage())
+	{
+	    syslog(LOG_DEBUG, "Successfully Authenticated!");   
+	}
+	else
+	{
+	    fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+	    syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            exit(1);
+	}
+    }
 
     g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
     g_gc_cache->run();
@@ -897,6 +900,7 @@ int configure_tls()
 void configure_fuse(struct fuse_args *args)
 {
     populate_kernel_version();
+    populate_libcurl_version();
 
     if (kernel_version < 4.16) {
         fuse_opt_add_arg(args, "-omax_read=131072");
@@ -950,13 +954,12 @@ int initialize_blobfuse()
     }
 
     syslog(LOG_DEBUG, "Kernel version is %f", kernel_version);
+    syslog(LOG_DEBUG, "libcurl version is %f", libcurl_version);
 
-    if (kernel_version < 4.16) 
+    if (libcurl_version < 7.54) 
     {
-        syslog(LOG_WARNING, "** Delaying authentication to post fork for older kernel versions");
-    } 
-    else 
-    {
+        syslog(LOG_WARNING, "** Delaying authentication to post fork for older curl versions");
+    } else {
         if(storage_client->AuthenticateStorage())
         {
             syslog(LOG_DEBUG, "Successfully Authenticated!");   
