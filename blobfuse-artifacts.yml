@@ -175,6 +175,11 @@ stages:
     - job: Set_3
       strategy:
         matrix:
+          CentOS-7.0:
+            DistroVer: "CentOS-7.0"
+            AgentName: "COS 7.0"
+            Description: "CentOS Linux 7.0"
+            
           CentOS-8.0:
             DistroVer: "CentOS-8.0"
             AgentName: "COS 8.0"
