@@ -225,6 +225,7 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 
     struct fhwrapper *fhwrap = new fhwrapper(res, true);
     fi->fh = (long unsigned int)fhwrap;
+    fhwrap->upload = true;
     syslog(LOG_INFO, "Successfully created file %s in file cache.\n", path);
     AZS_DEBUGLOGV("Returning success from azs_create with file %s.\n", path);
     return 0;
@@ -253,6 +254,7 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
     if (res == -1)
         res = -errno;
     g_gc_cache->addCacheBytes(path, size);
+    ((struct fhwrapper *)fi->fh)->upload = true;
     return res;
 }
 
@@ -299,7 +301,8 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
         // For some file systems, however, close() flushes data, so we do want to do that before uploading data to a blob.
         // The solution (taken from the FUSE documentation) is to close a duplicate of the file descriptor.
         close(dup(((struct fhwrapper *)fi->fh)->fh));
-        if (((struct fhwrapper *)fi->fh)->upload)
+        if (((struct fhwrapper *)fi->fh)->write_mode && 
+            ((struct fhwrapper *)fi->fh)->upload)
         {
             // Here, we acquire the mutex on the file path.  This is necessary to guard against several race conditions.
             // For example, say that a cache refresh is triggered.  There is a small window of time where the file has been removed and not yet re-downloaded.
@@ -335,24 +338,22 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             }
       
             errno = 0;
-            if (buf.st_mtime > ((struct fhwrapper *)fi->fh)->mtime_at_upload) {
-                std::vector<std::pair<std::string, std::string>> metadata;
-                storage_client->UpdateBlobProperty(blob_name, "", "", &metadata);
-                storage_client->UploadFromFile(mntPath, metadata);
-                if (errno != 0)
-                {
-                    int storage_errno = errno;
-                    syslog(LOG_ERR, "Failing blob upload in azs_flush with input path %s because of an error from upload_file_to_blob().  Errno = %d.\n", path, storage_errno);
-                    free(path_buffer);
-                    return 0 - map_errno(storage_errno);
-                }
-                else
-                {
-                    syslog(LOG_INFO, "Successfully uploaded file %s to blob %s.\n", path, blob_name.c_str());
-                    ((struct fhwrapper *)fi->fh)->mtime_at_upload = buf.st_mtime;
-                }
-                globalTimes.lastModifiedTime = time(NULL);
+            std::vector<std::pair<std::string, std::string>> metadata;
+            storage_client->UpdateBlobProperty(blob_name, "", "", &metadata);
+            storage_client->UploadFromFile(mntPath, metadata);
+            if (errno != 0)
+            {
+                int storage_errno = errno;
+                syslog(LOG_ERR, "Failing blob upload in azs_flush with input path %s because of an error from upload_file_to_blob().  Errno = %d.\n", path, storage_errno);
+                free(path_buffer);
+                return 0 - map_errno(storage_errno);
             }
+            else
+            {
+                syslog(LOG_INFO, "Successfully uploaded file %s to blob %s.\n", path, blob_name.c_str());
+                ((struct fhwrapper *)fi->fh)->upload = false;
+            }
+            globalTimes.lastModifiedTime = time(NULL);
         } else {
             //storage_client->UpdateBlobProperty(blob_name, "last_access", std::to_string(time(NULL)));
             globalTimes.lastAccessTime = time(NULL);
@@ -381,7 +382,7 @@ int azs_release(const char *path, struct fuse_file_info * fi)
     // Close the file handle.
     // This must be done, even if the file no longer exists, otherwise we're leaking file handles.
     close(((struct fhwrapper *)fi->fh)->fh);
-    ((struct fhwrapper *)fi->fh)->mtime_at_upload = 0;
+    ((struct fhwrapper *)fi->fh)->upload = false;
 
 // TODO: Make this method resiliant to renames of the file (same way flush() is)
     std::string pathString(path);
@@ -512,6 +513,7 @@ int azs_truncate(const char * path, off_t off)
         if (truncret == 0)
         {
             AZS_DEBUGLOGV("Successfully truncated file %s in the local file cache.", mntPath);
+            ((struct fhwrapper *)fi.fh)->upload = true;
             int flushret = azs_flush(pathString.c_str(), &fi);
             if(flushret != 0)
             {
