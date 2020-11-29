@@ -59,7 +59,7 @@ func TestDirCreateSplChar(t *testing.T) {
 
 // # Create Directory with slash in name
 func TestDirCreateSlashChar(t *testing.T) {
-	dirName := mntPath + "PRQ\\STUV"
+	dirName := mntPath + "/" + "PRQ\\STUV"
 	err := os.Mkdir(dirName, 0777)
 	if err != nil {
 		t.Errorf("Failed to create directory : " + dirName + "(" + err.Error() + ")")
@@ -121,6 +121,11 @@ func TestDirMoveNonEmpty(t *testing.T) {
 		t.Errorf("Failed to create directory : " + dir3Name + "(" + err.Error() + ")")
 	}
 
+	err = os.Mkdir(dir3Name+"/abcdTest", 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory : " + dir3Name + "/abcdTest (" + err.Error() + ")")
+	}
+
 	err = os.Rename(dir2Name, dir3Name+"/test2")
 	if err != nil {
 		t.Errorf("Failed to Move directory : " + dir2Name + "(" + err.Error() + ")")
@@ -138,7 +143,7 @@ func TestDirDeleteEmpty(t *testing.T) {
 
 // # Delete non-empty directory
 func TestDirDeleteNonEmpty(t *testing.T) {
-	dirName := mntPath + "/test3NE"
+	dirName := mntPath + "/test3NE/abcdTest"
 	err := os.Remove(dirName)
 	if err != nil {
 		if !strings.Contains(err.Error(), "directory not empty") {
@@ -149,8 +154,34 @@ func TestDirDeleteNonEmpty(t *testing.T) {
 
 // # Delete non-empty directory recursively
 func TestDirDeleteRecursive(t *testing.T) {
-	dirName := mntPath + "/test3NE"
-	err := os.RemoveAll(dirName)
+	dirName := mntPath + "/testREC"
+
+	err := os.Mkdir(dirName, 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory : " + dirName + " (" + err.Error() + ")")
+	}
+
+	err = os.Mkdir(dirName+"/level1", 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory : " + dirName + "/level1 (" + err.Error() + ")")
+	}
+
+	err = os.Mkdir(dirName+"/level2", 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory : " + dirName + "/level2 (" + err.Error() + ")")
+	}
+
+	err = os.Mkdir(dirName+"/level1/l1", 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory : " + dirName + "/level1/l1 (" + err.Error() + ")")
+	}
+
+	srcFile, err := os.OpenFile(dirName+"/level2/abc.txt", os.O_CREATE, 0777)
+	if err != nil {
+		t.Errorf("Failed to create file : " + dirName + "/level2/abc.txt (" + err.Error() + ")")
+	}
+	srcFile.Close()
+	err = os.RemoveAll(dirName)
 	if err != nil {
 		t.Errorf("Failed to delete directory recursively : " + dirName + "(" + err.Error() + ")")
 	}
@@ -238,7 +269,7 @@ func TestDirRenameFull(t *testing.T) {
 		t.Errorf("Failed to create directory : " + dirName + "(" + err.Error() + ")")
 	}
 
-	err = os.Mkdir(dirName + "/tmp", 0777)
+	err = os.Mkdir(dirName+"/tmp", 0777)
 	if err != nil {
 		t.Errorf("Failed to create directory : " + dirName + "/tmp (" + err.Error() + ")")
 	}
@@ -310,6 +341,87 @@ func TestFileCreateUtf8Char(t *testing.T) {
 		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
 	}
 	srcFile.Close()
+}
+
+func TestFileCreateMultiSpclCharWithinSpclDir(t *testing.T) {
+	speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
+	speclDirName := mntPath + "/" + "abc%23%24%25efg-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत"
+	fileName := speclDirName + "/" + speclChar
+
+	err := os.Mkdir(speclDirName, 0777)
+	if err != nil {
+		t.Errorf("Failed to create directory " + speclDirName + " (" + err.Error() + ")")
+	}
+
+	//if adlsTest == true {
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	if err != nil {
+		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
+	}
+	srcFile.Close()
+	time.Sleep(time.Second * 2)
+
+	_, err = os.Stat(fileName)
+	if err != nil {
+		t.Errorf("Failed to get stat of file : " + fileName + "(" + err.Error() + ")")
+	}
+
+	files, err := ioutil.ReadDir(speclDirName)
+	if err != nil ||
+		len(files) < 1 {
+		t.Errorf("Failed to list directory : " + mntPath + "(" + err.Error() + ")")
+	}
+
+	found := false
+	for _, file := range files {
+		fmt.Println("######" + file.Name())
+		if file.Name() == speclChar {
+			fmt.Println("###### FOUND : " + file.Name())
+			found = true
+		}
+	}
+
+	if !found {
+		t.Errorf("Failed to find file with name " + speclChar)
+	}
+	//}
+}
+func TestFileCreateMultiSpclChar(t *testing.T) {
+	speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
+	fileName := mntPath + "/" + speclChar
+
+	//if adlsTest == true {
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	if err != nil {
+		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
+	}
+	srcFile.Close()
+	time.Sleep(time.Second * 2)
+
+	_, err = os.Stat(fileName)
+	if err != nil {
+		t.Errorf("Failed to get stat of file : " + fileName + "(" + err.Error() + ")")
+	}
+
+	files, err := ioutil.ReadDir(mntPath)
+	if err != nil ||
+		len(files) < 1 {
+		t.Errorf("Failed to list directory : " + mntPath + "(" + err.Error() + ")")
+	}
+
+	found := false
+	for _, file := range files {
+		fmt.Println("######" + file.Name())
+		if file.Name() == speclChar {
+			fmt.Println("###### FOUND : " + file.Name())
+			found = true
+		}
+	}
+
+	if !found {
+		t.Errorf("Failed to find file with name " + speclChar)
+	}
+	//}
 }
 
 func TestFileCreateLongName(t *testing.T) {
@@ -404,7 +516,7 @@ func TestFileNameConflict(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
 	}
-	time.Sleep(3)
+	time.Sleep(time.Second * 3)
 }
 
 // # Copy file from once directory to another
@@ -528,7 +640,7 @@ func TestLinkCreate(t *testing.T) {
 	if err != nil {
 		t.Errorf("Failed to create symlink " + symName + " (" + err.Error() + ")")
 	}
-	time.Sleep(3)
+	time.Sleep(time.Second * 3)
 }
 
 // # Read a small file using symlink

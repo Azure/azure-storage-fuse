@@ -84,6 +84,7 @@ struct cmdlineOptions
     const char *concurrency; // Max Concurrency factor for blob client wrapper (default 40)
     const char *cache_size_mb; // MAX Size of cache in MBs
     const char *empty_dir_check;
+    const char *encode_full_file_name; // Encode the '%' symbol in file name
 };
 
 
@@ -93,7 +94,8 @@ struct fhwrapper
 {
     int fh; // The handle to the file in the file cache to use for read/write operations.
     bool upload; // True if the blob should be uploaded when the file is closed.  (False when the file was opened in read-only mode.)
-    fhwrapper(int fh, bool upload) : fh(fh), upload(upload)
+    bool write_mode;
+    fhwrapper(int fh, bool write) : fh(fh), upload(false), write_mode(write)
     {
 
     }

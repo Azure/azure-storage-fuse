@@ -163,8 +163,6 @@ stages:
 
         - script: |
             pwd
-            #sudo rm -rf $(Agent.BuildDirectory)
-            #sudo rm -rf $(Build.SourcesDirectory)
             cd /`pwd | cut -d '/' -f 2,3,4,5`
             sudo rm -rf [0-9]
           displayName: 'Clean Agent Directories'

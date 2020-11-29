@@ -177,8 +177,10 @@ class RenameTests(BlobfuseTest):
         testFileNewName = "testFileMoved"
         testFileNewPath = os.path.join(self.blobstage, testFileNewName)
 
-        os.open(testFilePath, os.O_CREAT)
-        os.rename(testFilePath, testFileNewPath)
+        fd = os.open(testFilePath, os.O_CREAT)
+        os.close(fd)
+        os.system("mv " + testFilePath + " " + testFileNewPath)
+        #os.rename(testFilePath, testFileNewPath)
 
         with self.assertRaises(OSError) as e:
             os.stat(testFilePath)
@@ -198,7 +200,9 @@ class RenameTests(BlobfuseTest):
 
         os.mkdir(testDirPath)
         fd = os.open(testFilePath, os.O_CREAT)
-        os.rename(testFilePath, destFilePath)
+        os.close(fd)
+        os.system("mv " + testFilePath + " " + destFilePath)
+        #os.rename(testFilePath, destFilePath)
 
         self.validate_file_removal(testFilePath, testFileName, self.blobstage)
         self.validate_file_creation(destFilePath, testFileName, testDirPath)
@@ -216,7 +220,9 @@ class RenameTests(BlobfuseTest):
         fd = os.open(testFilePath, os.O_CREAT | os.O_WRONLY)
         testData = "test data"
         os.write(fd, testData.encode())
-        os.rename(testFilePath, destFilePath)
+        os.close(fd)
+        os.system("mv " + testFilePath + " " + destFilePath)
+        #os.rename(testFilePath, destFilePath)
 
         fd = os.open(destFilePath, os.O_RDONLY)
         data = os.read(fd, 20)

@@ -315,6 +315,11 @@ namespace azure { namespace storage_adls {
             return m_exception_enabled;
         }
 
+        AZURE_STORAGE_ADLS_API std::shared_ptr<azure::storage_lite::blob_client> get_blob_client()
+        {
+            return m_blob_client;
+        }
+
     protected:
         template<class RET, class FUNC>
         RET blob_client_adaptor(FUNC func);
