@@ -301,8 +301,9 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
         // For some file systems, however, close() flushes data, so we do want to do that before uploading data to a blob.
         // The solution (taken from the FUSE documentation) is to close a duplicate of the file descriptor.
         close(dup(((struct fhwrapper *)fi->fh)->fh));
-        if (((struct fhwrapper *)fi->fh)->write_mode && 
-            ((struct fhwrapper *)fi->fh)->upload)
+        if (((struct fhwrapper *)fi->fh)->write_mode  
+            && ((struct fhwrapper *)fi->fh)->upload
+           )
         {
             // Here, we acquire the mutex on the file path.  This is necessary to guard against several race conditions.
             // For example, say that a cache refresh is triggered.  There is a small window of time where the file has been removed and not yet re-downloaded.
