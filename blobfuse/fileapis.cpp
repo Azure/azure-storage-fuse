@@ -302,7 +302,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
         // The solution (taken from the FUSE documentation) is to close a duplicate of the file descriptor.
         close(dup(((struct fhwrapper *)fi->fh)->fh));
         if (((struct fhwrapper *)fi->fh)->write_mode  
-            //&& ((struct fhwrapper *)fi->fh)->upload
+            && ((struct fhwrapper *)fi->fh)->upload
            )
         {
             // Here, we acquire the mutex on the file path.  This is necessary to guard against several race conditions.
