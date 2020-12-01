@@ -12,9 +12,6 @@
 #include <include/DataLakeBfsClient.h>
 #include <include/AttrCacheBfsClient.h>
 
-
-bool gEncodeFullFileName = true;
-
 const std::string log_ident = "blobfuse";
 struct cmdlineOptions cmd_options;
 struct configParams config_options;
@@ -49,7 +46,6 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
-    OPTION("--encode-full-file-name=%s", encode_full_file_name),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -867,18 +863,6 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     {
         std::string cache_size(cmd_options.cache_size_mb);
         config_options.cacheSize = stoi(cache_size) * (unsigned long long)(1024l * 1024l);
-    }
-
-    if(cmd_options.encode_full_file_name != NULL)
-    {
-        std::string encode_full_file_name(cmd_options.encode_full_file_name);
-        if(encode_full_file_name == "false")
-        {
-            gEncodeFullFileName = false;
-        } else if(encode_full_file_name == "true")
-        {
-            gEncodeFullFileName = true;
-        }
     }
 
     return 0;

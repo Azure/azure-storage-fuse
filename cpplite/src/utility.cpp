@@ -217,14 +217,7 @@ namespace azure {  namespace storage_lite {
             {
                 ret[c] = 1;
             }
-            // Parameter path is already joint with '/'.
-            ret['/'] = 1;
-
-            // Do not use % directly in path, if filename contains this then we need to encode
-            /* if (gEncodeFullFileName) {
-                ret[37] = 0;
-            } */
-
+            
             return ret;
         }();
 
@@ -253,11 +246,6 @@ namespace azure {  namespace storage_lite {
             {
                 ret[c] = 1;
             }
-           
-            /* // Do not use % directly in path, if filename contains this then we need to encode
-            if (gEncodeFullFileName) {
-                ret[37] = 0;
-            } */
                 
             return ret;
         }();
