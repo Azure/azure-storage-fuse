@@ -346,6 +346,7 @@ func TestFileCreateUtf8Char(t *testing.T) {
 func TestFileCreateMultiSpclCharWithinSpclDir(t *testing.T) {
 	speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
 	speclDirName := mntPath + "/" + "abc%23%24%25efg-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत"
+	secFile := speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|\\abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|.txt"
 	fileName := speclDirName + "/" + speclChar
 
 	err := os.Mkdir(speclDirName, 0777)
@@ -353,8 +354,14 @@ func TestFileCreateMultiSpclCharWithinSpclDir(t *testing.T) {
 		t.Errorf("Failed to create directory " + speclDirName + " (" + err.Error() + ")")
 	}
 
+	srcFile, err := os.OpenFile(secFile, os.O_CREATE, 0777)
+	if err != nil {
+		t.Errorf("Failed to create file " + secFile + " (" + err.Error() + ")")
+	}
+	srcFile.Close()
+
 	//if adlsTest == true {
-	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	srcFile, err = os.OpenFile(fileName, os.O_CREATE, 0777)
 	if err != nil {
 		t.Errorf("Failed to create file " + fileName + " (" + err.Error() + ")")
 	}
