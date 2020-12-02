@@ -18,8 +18,6 @@
 #include <vector>
 #include <algorithm>
 
-extern bool gEncodeFullFileName;
-
 namespace azure {  namespace storage_lite {
 
     std::string to_lowercase(std::string str)
