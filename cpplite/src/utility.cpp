@@ -217,7 +217,16 @@ namespace azure {  namespace storage_lite {
             {
                 ret[c] = 1;
             }
+            // Parameter path is already joint with '/'.
+            ret['/'] = 1;
             
+            // Literal + needs to be encoded
+            ret['+'] = 0;
+            // Surprisingly, '=' also needs to be encoded because Azure Storage server side is so strict.
+            ret['='] = 0;
+            // also encode %, & 
+            ret[37] = 0;
+            ret['&'] = 0;
             return ret;
         }();
 
@@ -246,7 +255,13 @@ namespace azure {  namespace storage_lite {
             {
                 ret[c] = 1;
             }
-                
+            // Literal + needs to be encoded
+            ret['+'] = 0;
+            // Surprisingly, '=' also needs to be encoded because Azure Storage server side is so strict.
+            ret['='] = 0;
+            // also encode %, & 
+            ret[37] = 0;
+            ret['&'] = 0;
             return ret;
         }();
 
