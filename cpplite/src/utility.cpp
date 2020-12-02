@@ -18,8 +18,6 @@
 #include <vector>
 #include <algorithm>
 
-extern bool gEncodeFullFileName;
-
 namespace azure {  namespace storage_lite {
 
     std::string to_lowercase(std::string str)
@@ -213,25 +211,20 @@ namespace azure {  namespace storage_lite {
         static const std::vector<uint8_t> is_path_char = []()
         {
             std::vector<uint8_t> ret(256, 0);
-            for (char c : std::string(unreserved) + std::string(subdelimiters) + "%!@/")
+            for (char c : std::string(unreserved) + std::string(subdelimiters) + "%!@/:")
             {
                 ret[c] = 1;
             }
             // Parameter path is already joint with '/'.
             ret['/'] = 1;
-
-            // Do not use % directly in path, if filename contains this then we need to encode
-            if (gEncodeFullFileName) {
-                ret[37] = 0;
-                ret['+'] = 0;
-                // Surprisingly, '=' also needs to be encoded because Azure Storage server side is so strict.
-                ret['='] = 0;
-
-                // Support '&' in file name like in 'A&b.txt'
-                ret['&'] = 0;
-                ret[':'] = 1;
-            }
-
+            
+            // Literal + needs to be encoded
+            ret['+'] = 0;
+            // Surprisingly, '=' also needs to be encoded because Azure Storage server side is so strict.
+            ret['='] = 0;
+            // also encode %, & 
+            ret[37] = 0;
+            ret['&'] = 0;
             return ret;
         }();
 
@@ -256,7 +249,7 @@ namespace azure {  namespace storage_lite {
         static const std::vector<uint8_t> is_query_char = []()
         {
             std::vector<uint8_t> ret(256, 0);
-            for (char c : std::string(unreserved) + std::string(subdelimiters) + "%!@/?")
+            for (char c : std::string(unreserved) + std::string(subdelimiters) + "%!@/?:")
             {
                 ret[c] = 1;
             }
@@ -264,16 +257,9 @@ namespace azure {  namespace storage_lite {
             ret['+'] = 0;
             // Surprisingly, '=' also needs to be encoded because Azure Storage server side is so strict.
             ret['='] = 0;
-
-            // Support '&' in file name like in 'A&b.txt'
+            // also encode %, & 
+            ret[37] = 0;
             ret['&'] = 0;
-
-            // Do not use % directly in path, if filename contains this then we need to encode
-            if (gEncodeFullFileName) {
-                ret[':'] = 1;
-                ret[37] = 0;
-            }
-                
             return ret;
         }();
 
