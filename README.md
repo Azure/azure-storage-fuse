@@ -189,7 +189,7 @@ Please take careful note of the following points, before using blobfuse:
 By default, blobfuse will log to syslog.  The default settings will, in some cases, log relevant file paths to syslog.  If this is sensitive information, turn off logging completely.  See the [wiki](https://github.com/Azure/azure-storage-fuse/wiki/5.-Logging) for more details.
 
 ### Current Limitations
-- Some file system APIs have not been implemented: readlink, symlink, link, chmod, chown, fsync, lock and extended attribute calls.
+- Some file system APIs have not been implemented: readlink, link, fsync, lock and extended attribute calls.
 - Not optimized for updating an existing file. blobfuse downloads the entire file to local cache to be able to modify and update the file
 - When using enabling the "--use-attr-cache" feature, there may be an issue with overflow and will not clear the attribute cache until blobfuse is unmounted
 - See the list of differences between POSIX and blobfuse [here](https://github.com/Azure/azure-storage-fuse/wiki/4.-Limitations-%7C-Differences-from-POSIX)
