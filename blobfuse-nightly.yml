@@ -1337,7 +1337,7 @@ jobs:
           sudo fusermount -u $(MOUNT_DIR)
           sudo rm -rf $(MOUNT_DIR)/*
           sudo rm -rf $(TEMP_DIR)/*
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+          ./build//blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE)
         workingDirectory: $(ROOT_DIR)
         displayName: "Mount Blobfuse"
 
@@ -1346,12 +1346,12 @@ jobs:
           df
           sudo ps -aux | grep blobfuse
           ls -l $(MOUNT_DIR)
-          mkdir $(MOUNT_DIR)/C
-          touch $(MOUNT_DIR)/C/b.txt
-          echo "ASDF" > $(MOUNT_DIR)/C/c.txt
-          cp $(MOUNT_DIR)/C/c.txt $(MOUNT_DIR)/C/d.txt
-          ls -lRt $(MOUNT_DIR)/C
-          rm -rf $(MOUNT_DIR)/C
+          mkdir $(MOUNT_DIR)/MSITest
+          touch $(MOUNT_DIR)/MSITest/b.txt
+          echo "ASDF" > $(MOUNT_DIR)/MSITest/c.txt
+          cp $(MOUNT_DIR)/MSITest/c.txt $(MOUNT_DIR)/MSITest/d.txt
+          ls -lRt $(MOUNT_DIR)/MSITest
+          rm -rf $(MOUNT_DIR)/MSITest
           sudo fusermount -u $(MOUNT_DIR)
           sudo kill -9 `pidof blobfuse`
         # condition: eq(variables['Build.SourceBranchName'], 'master')
