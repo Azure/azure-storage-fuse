@@ -1233,7 +1233,7 @@ jobs:
       timeoutInMinutes: 100
       strategy:
         matrix:
-          Debian-9.0:
+          MSI_Test:
             DistroVer: "Ubn16_MSI"
             AgentName : "MSITestVM"
             Description: "MSI Test"
