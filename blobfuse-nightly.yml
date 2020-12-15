@@ -26,8 +26,8 @@ jobs:
 
       # Define on what all OS we want to run this Pipeline
       strategy:
-        - ${{ if eq(parameters.exhaustive_test, true) }}:
-          matrix:
+        matrix:
+          ${{ if eq(parameters.exhaustive_test, true) }}:
             Ubuntu-16:
               imageName: 'ubuntu-16.04'
               containerName: 'test-cnt-ubn-16'
@@ -40,12 +40,13 @@ jobs:
               imageName: 'ubuntu-20.04' 
               containerName: 'test-cnt-ubn-20'
               quickTestDir: 'ubn20'
-        - ${{ if eq(parameters.exhaustive_test, false) }}:
-          matrix:
+
+          ${{ if eq(parameters.exhaustive_test, false) }}:
             Ubuntu-18:
               imageName: 'ubuntu-18.04' 
               containerName: 'test-cnt-ubn-18'
               quickTestDir: 'ubn18'
+
       pool:
         vmImage: $(imageName)
 
