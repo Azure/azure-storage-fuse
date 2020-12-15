@@ -617,8 +617,9 @@ jobs:
           sudo rm -rf $(TEMP_DIR)/*
           ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true 
           sleep 5s
+          df
           ls -l $(MOUNT_DIR)
-          mkdir $(MOUNT_DIR)/B`
+          mkdir $(MOUNT_DIR)/B
           touch $(MOUNT_DIR)/B/a.txt
           echo "ASDF" > $(MOUNT_DIR)/B/b.txt
           cp $(MOUNT_DIR)/A/b.txt $(MOUNT_DIR)/B/c.txt
