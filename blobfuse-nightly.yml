@@ -613,15 +613,16 @@ jobs:
       - script:  |
           sudo rm -rf $(MOUNT_DIR)/*
           sudo rm -rf $(TEMP_DIR)/*
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true -o allow_other --use-attr-cache=true
+          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true 
           sleep 5s
           ls -l $(MOUNT_DIR)
-          mkdir $(MOUNT_DIR)/A
-          touch $(MOUNT_DIR)/A/a.txt
-          echo "ASDF" > $(MOUNT_DIR)/A/b.txt
-          cp $(MOUNT_DIR)/A/b.txt $(MOUNT_DIR)/A/c.txt
-          ls -lRt $(MOUNT_DIR)/A
-          rm -rf $(MOUNT_DIR)/A
+          mkdir $(MOUNT_DIR)/B`
+          touch $(MOUNT_DIR)/B/a.txt
+          echo "ASDF" > $(MOUNT_DIR)/B/b.txt
+          cp $(MOUNT_DIR)/A/b.txt $(MOUNT_DIR)/B/c.txt
+          ls -lRt $(MOUNT_DIR)/B
+          df
+          rm -rf $(MOUNT_DIR)/B
           sudo fusermount -u $(MOUNT_DIR)
           sudo kill -9 `pidof blobfuse`
         # condition: eq(variables['Build.SourceBranchName'], 'master')
