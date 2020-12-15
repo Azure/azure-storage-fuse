@@ -597,6 +597,41 @@ jobs:
         continueOnError: true
         condition: eq(variables.imageName, 'ubuntu-18.04')
 
+      # List blobs for adls login with spn auth
+      - script: |
+          echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG_ADLS)
+          echo "authType SPN" >> $(BLOBFUSE_CFG_ADLS)
+          echo "servicePrincipalClientId " $(NIGHTLY_ADL_SPN_CLIENT_ID) >> $(BLOBFUSE_CFG_ADLS)
+          echo "servicePrincipalTenantId " $(NIGHTLY_ADL_SPN_TENANT_ID) >> $(BLOBFUSE_CFG_ADLS)
+          echo "servicePrincipalClientSecret " $(NIGHTLY_ADL_SPN_CLIENT_SECRET) >> $(BLOBFUSE_CFG_ADLS)
+          echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_ADLS)
+          cat $(BLOBFUSE_CFG_ADLS)
+        displayName: "TEST - Create SPN Config for ADLS Gen2"
+        condition: eq(variables.imageName, 'ubuntu-18.04')
+
+      # List the blobs to verify that the login went successful with SPN auth and ADLs and list works
+      - script:  |
+          sudo rm -rf $(MOUNT_DIR)/*
+          sudo rm -rf $(TEMP_DIR)/*
+          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true 
+          sleep 5s
+          ls -l $(MOUNT_DIR)
+          mkdir $(MOUNT_DIR)/B`
+          touch $(MOUNT_DIR)/B/a.txt
+          echo "ASDF" > $(MOUNT_DIR)/B/b.txt
+          cp $(MOUNT_DIR)/A/b.txt $(MOUNT_DIR)/B/c.txt
+          ls -lRt $(MOUNT_DIR)/B
+          df
+          rm -rf $(MOUNT_DIR)/B
+          sudo fusermount -u $(MOUNT_DIR)
+          sudo kill -9 `pidof blobfuse`
+        # condition: eq(variables['Build.SourceBranchName'], 'master')
+        displayName: TEST - SPN Validation for ADLS Gen2
+        timeoutInMinutes: 120
+        continueOnError: true
+        condition: eq(variables.imageName, 'ubuntu-18.04')
+        
+
       # -------------------------------------------------------
 
       # Create config file for SAS Login

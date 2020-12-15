@@ -145,7 +145,8 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_msi() {
 
         //2. try to make blob client wrapper using oauth token
         errno = 0;
-        std::shared_ptr<storage_credential> cred = std::make_shared<token_credential>("");
+        std::shared_ptr<storage_credential> cred = std::make_shared<token_credential>("");        
+        cred->set_token_callback(&GetTokenCallback);
         std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
                 configurations.accountName,
                 cred,
@@ -186,7 +187,8 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_spn()
         }
 
         //2. try to make blob client wrapper using oauth token
-        std::shared_ptr<storage_credential> cred = std::make_shared<token_credential>("");
+        std::shared_ptr<storage_credential> cred = std::make_shared<token_credential>("");        
+        cred->set_token_callback(&GetTokenCallback);
         std::shared_ptr<storage_account> account = std::make_shared<storage_account>(
                 configurations.accountName,
                 cred,
