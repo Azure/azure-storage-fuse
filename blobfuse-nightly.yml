@@ -1363,6 +1363,9 @@ jobs:
           pwd
           cd /`pwd | cut -d '/' -f 2,3,4,5`
           sudo rm -rf [0-9]
+          sudo rm -rf $(WORK_DIR)
+          sudo rm -rf $(MOUNT_DIR)/*
+          sudo rm -rf $(TEMP_DIR)/*
         displayName: 'Clean Agent Directories'
         condition: always()
 
