@@ -17,6 +17,12 @@ parameters:
   displayName: 'Exhaustive Test'
   type: boolean
   default: true
+- name: msi_test
+  displayName: 'MSI Test'
+  type: boolean
+  default: true
+
+
 
 # List of jobs to run in parallel
 jobs:
@@ -27,18 +33,26 @@ jobs:
       # Define on what all OS we want to run this Pipeline
       strategy:
         matrix:
-          Ubuntu-16:
-            imageName: 'ubuntu-16.04'
-            containerName: 'test-cnt-ubn-16'
-            quickTestDir: 'ubn16'
-          Ubuntu-18:
-            imageName: 'ubuntu-18.04' 
-            containerName: 'test-cnt-ubn-18'
-            quickTestDir: 'ubn18'
-          Ubuntu-20:
-            imageName: 'ubuntu-20.04' 
-            containerName: 'test-cnt-ubn-20'
-            quickTestDir: 'ubn20'
+          ${{ if eq(parameters.exhaustive_test, true) }}:
+            Ubuntu-16:
+              imageName: 'ubuntu-16.04'
+              containerName: 'test-cnt-ubn-16'
+              quickTestDir: 'ubn16'
+            Ubuntu-18:
+              imageName: 'ubuntu-18.04' 
+              containerName: 'test-cnt-ubn-18'
+              quickTestDir: 'ubn18'
+            Ubuntu-20:
+              imageName: 'ubuntu-20.04' 
+              containerName: 'test-cnt-ubn-20'
+              quickTestDir: 'ubn20'
+
+          ${{ if eq(parameters.exhaustive_test, false) }}:
+            Ubuntu-18:
+              imageName: 'ubuntu-18.04' 
+              containerName: 'test-cnt-ubn-18'
+              quickTestDir: 'ubn18'
+
       pool:
         vmImage: $(imageName)
 
@@ -313,252 +327,253 @@ jobs:
       # -------------------------------------------------------
       # Starting stressTest
 
-      # Mount a directory for stressTest and run it
-      - script:  |
-          sudo fusermount -u $(MOUNT_DIR)
-          sudo rm -rf $(MOUNT_DIR)/*
-          sudo rm -rf $(TEMP_DIR)/*
-          sudo mkdir $(BLOBFUSE_STRESS_DIR)
-          sudo chown -R `whoami` $(BLOBFUSE_STRESS_DIR)
-          sudo chmod 777 $(BLOBFUSE_STRESS_DIR)
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --use-attr-cache=true
-          cd test
-          go run stressTest.go $(MOUNT_DIR)
-          cd -
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - BLOCK stressTest
-        timeoutInMinutes: 120
-        continueOnError: true
+      - ${{ if eq(parameters.exhaustive_test, true) }}:
+        # Mount a directory for stressTest and run it
+        - script:  |
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+            sudo mkdir $(BLOBFUSE_STRESS_DIR)
+            sudo chown -R `whoami` $(BLOBFUSE_STRESS_DIR)
+            sudo chmod 777 $(BLOBFUSE_STRESS_DIR)
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --use-attr-cache=true
+            cd test
+            go run stressTest.go $(MOUNT_DIR)
+            cd -
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - BLOCK stressTest
+          timeoutInMinutes: 120
+          continueOnError: true
 
-      - script:  |
-          sudo fusermount -u $(MOUNT_DIR)
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - BLOCK stressTest Cleanup
-        timeoutInMinutes: 30
-        continueOnError: true
+        - script:  |
+            sudo fusermount -u $(MOUNT_DIR)
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - BLOCK stressTest Cleanup
+          timeoutInMinutes: 30
+          continueOnError: true
 
-      # Mount a directory for stressTest and run it
-      - script:  |
-          sudo rm -rf $(MOUNT_DIR)/*
-          sudo rm -rf $(TEMP_DIR)/*
-          sudo mkdir $(BLOBFUSE_STRESS_DIR)
-          sudo chown -R `whoami` $(BLOBFUSE_STRESS_DIR)
-          sudo chmod 777 $(BLOBFUSE_STRESS_DIR)
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
-          cd test
-          go run stressTest.go $(MOUNT_DIR)
-          cd -
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - BLOCK stressTest No Attr Cache
-        timeoutInMinutes: 120
-        continueOnError: true
+        # Mount a directory for stressTest and run it
+        - script:  |
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+            sudo mkdir $(BLOBFUSE_STRESS_DIR)
+            sudo chown -R `whoami` $(BLOBFUSE_STRESS_DIR)
+            sudo chmod 777 $(BLOBFUSE_STRESS_DIR)
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+            cd test
+            go run stressTest.go $(MOUNT_DIR)
+            cd -
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - BLOCK stressTest No Attr Cache
+          timeoutInMinutes: 120
+          continueOnError: true
 
-      - script:  |
-          sudo fusermount -u $(MOUNT_DIR)
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - BLOCK stressTest Cleanup
-        timeoutInMinutes: 30
-        continueOnError: true
+        - script:  |
+            sudo fusermount -u $(MOUNT_DIR)
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - BLOCK stressTest Cleanup
+          timeoutInMinutes: 30
+          continueOnError: true
 
-      # -------------------------------------------------------
-      # Mount a directory for feature test (Block) and run it
-      - script:  |
-          sudo rm -rf $(MOUNT_DIR)/*
-          sudo rm -rf $(TEMP_DIR)/*
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --file-cache-timeout-in-seconds=0
-          cd test
-          set -e && go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR)
-          cd -
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - BLOCK FeatureTest
-        timeoutInMinutes: 120
-        continueOnError: true
+        # -------------------------------------------------------
+        # Mount a directory for feature test (Block) and run it
+        - script:  |
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --file-cache-timeout-in-seconds=0
+            cd test
+            set -e && go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR)
+            cd -
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - BLOCK FeatureTest
+          timeoutInMinutes: 120
+          continueOnError: true
 
-      - script:  |
-          rm -rf $(MOUNT_DIR)/*
-          sudo fusermount -u $(MOUNT_DIR)
-          sudo rm -rf $(TEMP_DIR)/*
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - BLOCK FeatureTest Cleanup
-        timeoutInMinutes: 30
-        continueOnError: true
-
-
-      # -------------------------------------------------------
-
-      # ADLS TESTS
-      # Mount a directory for stressTest (ADLS) and run it
-      - script:  |
-          sudo rm -rf $(MOUNT_DIR)/*
-          sudo rm -rf $(TEMP_DIR)/*
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
-          cd test
-          go run stressTest.go $(MOUNT_DIR)
-          cd -
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - ADLS stressTest
-        timeoutInMinutes: 120
-        continueOnError: true
-
-      - script:  |
-          rm -rf $(MOUNT_DIR)/*
-          sudo fusermount -u $(MOUNT_DIR)
-          sudo rm -rf $(TEMP_DIR)/*
-          sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - ADLS stressTest Cleanup
-        timeoutInMinutes: 30
-        continueOnError: true
-        
-      # Mount a directory for stressTest (ADLS) and run it
-      - script:  |
-          sudo rm -rf $(MOUNT_DIR)/*
-          sudo rm -rf $(TEMP_DIR)/*
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true
-          cd test
-          go run stressTest.go $(MOUNT_DIR)
-          cd -
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - ADLS stressTest No Attr Cache
-        timeoutInMinutes: 120
-        continueOnError: true
-
-      - script:  |
-          rm -rf $(MOUNT_DIR)/*
-          sudo fusermount -u $(MOUNT_DIR)
-          sudo rm -rf $(TEMP_DIR)/*
-          sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - ADLS stressTest Cleanup
-        timeoutInMinutes: 30
-        continueOnError: true
-
-      # Mount a directory for stressTest (ADLS) without symlink and run it
-      - script:  |
-          sudo rm -rf $(MOUNT_DIR)/*
-          sudo rm -rf $(TEMP_DIR)/*
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --no-symlinks=true
-          cd test
-          go run stressTest.go $(MOUNT_DIR)
-          cd -
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - ADLS stressTest noSymlinks
-        timeoutInMinutes: 120
-        continueOnError: true
-
-      - script:  |
-          rm -rf $(MOUNT_DIR)/*
-          sudo fusermount -u $(MOUNT_DIR)
-          sudo rm -rf $(TEMP_DIR)/*
-          sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - ADLS stressTest Cleanup noSymlinks
-        timeoutInMinutes: 30
-        continueOnError: true
-
-      # -------------------------------------------------------
-      # Mount a directory for feature test (ADLS) and run it
-      - script:  |
-          sudo rm -rf $(MOUNT_DIR)/*
-          sudo rm -rf $(TEMP_DIR)/*
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0
-          pidof blobfuse
-          cd test
-          set -e && go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
-          cd -
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - ADLS FeatureTest
-        timeoutInMinutes: 120
-        continueOnError: true
-
-      - script:  |
-          rm -rf $(MOUNT_DIR)/*
-          sudo fusermount -u $(MOUNT_DIR)
-          sudo rm -rf $(TEMP_DIR)/*
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - ADLS FeatureTest Cleanup
-        timeoutInMinutes: 30
-        continueOnError: true
-        
-      # -------------------------------------------------------
-      # Starting pyTest
-
-      # Mount a directory for pyTest and run it
-      - script:  |
-          sudo rm -rf $(TEMP_DIR)/*
-          sudo cp $(BLOBFUSE_CFG_ADLS) $(BLOBFUSE_CFG_GTEST)
-          sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
-          cd ./test/
-          sudo python tests.py
-          cd -
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - ADLS pyTest
-        timeoutInMinutes: 120
-        continueOnError: true
-
-      - script:  |
-          sudo rm -rf $(MOUNT_DIR)/*
-          sudo rm -rf $(MOUNT_DIR)/.*
-          sudo fusermount -u $(MOUNT_DIR)
-          sudo kill -9 `pidof blobfuse`
-          sudo rm -rf $(MOUNT_DIR)/*
-          sudo rm -rf $(MOUNT_DIR)/.*
-          sudo rm -rf $(TEMP_DIR)/*
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - ADLS pyTest Cleanup
-        timeoutInMinutes: 10
-        continueOnError: true
+        - script:  |
+            rm -rf $(MOUNT_DIR)/*
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(TEMP_DIR)/*
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - BLOCK FeatureTest Cleanup
+          timeoutInMinutes: 30
+          continueOnError: true
 
 
-      # Mount a directory for pyTest (block) and run it
-      - script:  |
-          sudo rm -rf $(TEMP_DIR)/*
-          sudo cp $(BLOBFUSE_CFG) $(BLOBFUSE_CFG_GTEST)
-          sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
-          cd ./test/
-          sudo python tests.py
-          cd -
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - BLOCK pyTest
-        timeoutInMinutes: 120
-        continueOnError: true
+        # -------------------------------------------------------
 
-      - script:  |
-          sudo rm -rf $(MOUNT_DIR)/*
-          sudo rm -rf $(MOUNT_DIR)/.*
-          sudo fusermount -u $(MOUNT_DIR)
-          sudo kill -9 `pidof blobfuse`
-          sudo rm -rf $(MOUNT_DIR)/*
-          sudo rm -rf $(MOUNT_DIR)/.*
-          sudo rm -rf $(TEMP_DIR)/*
-        # condition: eq(variables['Build.SourceBranchName'], 'master')
-        displayName: TEST - BLOCK pyTest Cleanup
-        timeoutInMinutes: 10
-        continueOnError: true
-      # -------------------------------------------------------
+        # ADLS TESTS
+        # Mount a directory for stressTest (ADLS) and run it
+        - script:  |
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
+            cd test
+            go run stressTest.go $(MOUNT_DIR)
+            cd -
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - ADLS stressTest
+          timeoutInMinutes: 120
+          continueOnError: true
 
-      # - script:  |
-      #    sudo rm -rf $(MOUNT_DIR)/*
-      #    sudo rm -rf $(TEMP_DIR)/*
-      #    ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
-      #    cd stresstests/
-      #    make
-      #    chmod 777 ./blobfusestress
-      #    sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR)
-      #    cd -
-      #  condition: eq(variables['Build.SourceBranchName'], 'master')
-      #  displayName: TEST - BLOCK CPP stressTest
-      #  timeoutInMinutes: 120
-      #  continueOnError: true
+        - script:  |
+            rm -rf $(MOUNT_DIR)/*
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(TEMP_DIR)/*
+            sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - ADLS stressTest Cleanup
+          timeoutInMinutes: 30
+          continueOnError: true
+          
+        # Mount a directory for stressTest (ADLS) and run it
+        - script:  |
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true
+            cd test
+            go run stressTest.go $(MOUNT_DIR)
+            cd -
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - ADLS stressTest No Attr Cache
+          timeoutInMinutes: 120
+          continueOnError: true
 
-      # - script:  |
-      #    sudo fusermount -u $(MOUNT_DIR)
-      #    sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
-      #    sudo rm -rf $(TEMP_DIR)/*
-      #  condition: eq(variables['Build.SourceBranchName'], 'master')
-      #  displayName: TEST - BLOCK CPP stressTest Cleanup
-      #  timeoutInMinutes: 30
-      #  continueOnError: true
+        - script:  |
+            rm -rf $(MOUNT_DIR)/*
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(TEMP_DIR)/*
+            sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - ADLS stressTest Cleanup
+          timeoutInMinutes: 30
+          continueOnError: true
+
+        # Mount a directory for stressTest (ADLS) without symlink and run it
+        - script:  |
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --no-symlinks=true
+            cd test
+            go run stressTest.go $(MOUNT_DIR)
+            cd -
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - ADLS stressTest noSymlinks
+          timeoutInMinutes: 120
+          continueOnError: true
+
+        - script:  |
+            rm -rf $(MOUNT_DIR)/*
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(TEMP_DIR)/*
+            sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - ADLS stressTest Cleanup noSymlinks
+          timeoutInMinutes: 30
+          continueOnError: true
+
+        # -------------------------------------------------------
+        # Mount a directory for feature test (ADLS) and run it
+        - script:  |
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0
+            pidof blobfuse
+            cd test
+            set -e && go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+            cd -
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - ADLS FeatureTest
+          timeoutInMinutes: 120
+          continueOnError: true
+
+        - script:  |
+            rm -rf $(MOUNT_DIR)/*
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(TEMP_DIR)/*
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - ADLS FeatureTest Cleanup
+          timeoutInMinutes: 30
+          continueOnError: true
+          
+        # -------------------------------------------------------
+        # Starting pyTest
+
+        # Mount a directory for pyTest and run it
+        - script:  |
+            sudo rm -rf $(TEMP_DIR)/*
+            sudo cp $(BLOBFUSE_CFG_ADLS) $(BLOBFUSE_CFG_GTEST)
+            sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
+            cd ./test/
+            sudo python tests.py
+            cd -
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - ADLS pyTest
+          timeoutInMinutes: 120
+          continueOnError: true
+
+        - script:  |
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(MOUNT_DIR)/.*
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo kill -9 `pidof blobfuse`
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(MOUNT_DIR)/.*
+            sudo rm -rf $(TEMP_DIR)/*
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - ADLS pyTest Cleanup
+          timeoutInMinutes: 10
+          continueOnError: true
+
+
+        # Mount a directory for pyTest (block) and run it
+        - script:  |
+            sudo rm -rf $(TEMP_DIR)/*
+            sudo cp $(BLOBFUSE_CFG) $(BLOBFUSE_CFG_GTEST)
+            sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
+            cd ./test/
+            sudo python tests.py
+            cd -
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - BLOCK pyTest
+          timeoutInMinutes: 120
+          continueOnError: true
+
+        - script:  |
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(MOUNT_DIR)/.*
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo kill -9 `pidof blobfuse`
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(MOUNT_DIR)/.*
+            sudo rm -rf $(TEMP_DIR)/*
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - BLOCK pyTest Cleanup
+          timeoutInMinutes: 10
+          continueOnError: true
+        # -------------------------------------------------------
+
+        # - script:  |
+        #    sudo rm -rf $(MOUNT_DIR)/*
+        #    sudo rm -rf $(TEMP_DIR)/*
+        #    ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        #    cd stresstests/
+        #    make
+        #    chmod 777 ./blobfusestress
+        #    sudo ./blobfusestress $(MOUNT_DIR) $(BLOBFUSE_STRESS_DIR)
+        #    cd -
+        #  condition: eq(variables['Build.SourceBranchName'], 'master')
+        #  displayName: TEST - BLOCK CPP stressTest
+        #  timeoutInMinutes: 120
+        #  continueOnError: true
+
+        # - script:  |
+        #    sudo fusermount -u $(MOUNT_DIR)
+        #    sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+        #    sudo rm -rf $(TEMP_DIR)/*
+        #  condition: eq(variables['Build.SourceBranchName'], 'master')
+        #  displayName: TEST - BLOCK CPP stressTest Cleanup
+        #  timeoutInMinutes: 30
+        #  continueOnError: true
 
 
       # -------------------------------------------------------
@@ -580,8 +595,11 @@ jobs:
       - script:  |
           sudo rm -rf $(MOUNT_DIR)/*
           sudo rm -rf $(TEMP_DIR)/*
+          sudo fusermount -u $(MOUNT_DIR)s
           ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
           sleep 5s
+          df
+          sudo ps -aux | grep blobfuse
           ls -l $(MOUNT_DIR)
           mkdir $(MOUNT_DIR)/A
           touch $(MOUNT_DIR)/A/a.txt
@@ -615,13 +633,14 @@ jobs:
           sudo rm -rf $(TEMP_DIR)/*
           ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true 
           sleep 5s
+          df
+          sudo ps -aux | grep blobfuse
           ls -l $(MOUNT_DIR)
-          mkdir $(MOUNT_DIR)/B`
+          mkdir $(MOUNT_DIR)/B
           touch $(MOUNT_DIR)/B/a.txt
           echo "ASDF" > $(MOUNT_DIR)/B/b.txt
-          cp $(MOUNT_DIR)/A/b.txt $(MOUNT_DIR)/B/c.txt
+          cp $(MOUNT_DIR)/B/b.txt $(MOUNT_DIR)/B/c.txt
           ls -lRt $(MOUNT_DIR)/B
-          df
           rm -rf $(MOUNT_DIR)/B
           sudo fusermount -u $(MOUNT_DIR)
           sudo kill -9 `pidof blobfuse`
@@ -1207,3 +1226,154 @@ jobs:
             sudo rm -rf [0-9]
           displayName: 'Clean Agent Directories'
           condition: always()
+
+
+  - ${{ if eq(parameters.msi_test, true) }}:
+    - job: Set_5
+      timeoutInMinutes: 100
+      strategy:
+        matrix:
+          MSI_Test:
+            DistroVer: "Ubn16_MSI"
+            AgentName : "MSITestVM"
+            Description: "MSI Test"
+
+      pool:
+        name: "Blobfuse Pool"
+        demands:
+        - Agent.Name -equals $(AgentName)
+
+      variables:
+      - group: NightlyBlobFuse
+      - name: WORK_DIR
+        value: "/home/vsts/work/"
+      - name: ROOT_DIR
+        value: "/home/vsts/work/azure-storage-fuse"
+      - name: skipComponentGovernanceDetection
+        value: true
+
+      - name: MOUNT_DIR
+        value: "/home/AzureUser/pipeline/blob_mnt"
+      - name: TEMP_DIR
+        value: "/home/AzureUser/pipeline/blobfusetmp"
+      - name: BLOBFUSE_CFG_FILE
+        value: "/home/AzureUser/pipeline/blobfuseMSI.cfg"
+      
+      steps:
+        - checkout: none
+
+        # Install all dependencies
+        - script: |
+            echo $(Description)
+            hostnamectl
+          displayName: "Print Agent Info"
+
+        # Install all dependencies
+        - script: |
+            sudo apt-get update --fix-missing
+            sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ golang -y
+          displayName: "Basic Tools Setup"
+
+        # Install libfuse
+        - script: |
+            sudo apt-get install libfuse-dev fuse -y
+          displayName: "libFuse Setup"
+
+        # Prebuild cleanup
+        - script: |
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo kill -9 `pidof blobfuse`
+            sudo rm -rf $(WORK_DIR)
+          displayName: "Prebuild cleanup"
+
+        # Checkout code
+        - script: |
+            sudo mkdir -p $(WORK_DIR)
+            sudo chown -R `whoami` $(WORK_DIR)
+            chmod 777 $(WORK_DIR)
+          displayName: "Create Directory structure"
+
+        # Checkout code
+        - script: |
+            git clone https://github.com/Azure/azure-storage-fuse
+          displayName: "Checkout code"
+          workingDirectory: $(WORK_DIR)
+
+        # Checkout branch
+        - script: |
+            echo $(Build.SourceBranch)
+            echo "Going for checkout of " `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`  
+            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
+          displayName: "Checkout Branch"
+          workingDirectory: $(ROOT_DIR)
+
+        # List commits consumed for this build
+        - script: |
+            echo "Below commits were done in last 12 hours : " `date` 
+            git --no-pager log --since="12 hours ago" --stat
+          displayName: "List Commits"
+          workingDirectory: $(ROOT_DIR)
+
+        # Build the blobFuse binary
+        - script: |
+            sudo chmod +x build.sh
+            . ./build.sh
+          displayName: "Build BlobFuse"
+          workingDirectory: $(ROOT_DIR)
+
+        # Test the binary just to make sure it was built fine
+        - script: |
+            ./build/blobfuse --version
+          displayName: "Test the binary"
+          workingDirectory: $(ROOT_DIR)
+
+        # Add the test work here
+        # Create directory structures for the basic testing
+        - script: |
+            sudo mkdir $(MOUNT_DIR)
+            sudo chown -R `whoami` $(MOUNT_DIR)
+            chmod 777 $(MOUNT_DIR)
+            sudo mkdir $(TEMP_DIR)
+            sudo chown -R `whoami` $(TEMP_DIR)
+            chmod 777 $(TEMP_DIR)
+          displayName: "Create Directories"
+        
+        # Mount a directory for feature test (Block) and run it
+        - script:  |
+            curl --version
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+            ./build//blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE)
+          workingDirectory: $(ROOT_DIR)
+          displayName: "Mount Blobfuse"
+
+        # List the blobs to verify that the login went successful
+        - script:  |
+            df
+            sudo ps -aux | grep blobfuse
+            ls -l $(MOUNT_DIR)
+            mkdir $(MOUNT_DIR)/MSITest
+            touch $(MOUNT_DIR)/MSITest/b.txt
+            echo "ASDF" > $(MOUNT_DIR)/MSITest/c.txt
+            cp $(MOUNT_DIR)/MSITest/c.txt $(MOUNT_DIR)/MSITest/d.txt
+            ls -lRt $(MOUNT_DIR)/MSITest
+            rm -rf $(MOUNT_DIR)/MSITest
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo kill -9 `pidof blobfuse`
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - MSI Validation
+          timeoutInMinutes: 120
+          continueOnError: true
+
+        - script: |
+            pwd
+            cd /`pwd | cut -d '/' -f 2,3,4,5`
+            sudo rm -rf [0-9]
+            sudo rm -rf $(WORK_DIR)
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+          displayName: 'Clean Agent Directories'
+          condition: always()
+
+    
