@@ -33,6 +33,7 @@ cd -
 
 ## install pkg-config, cmake, libcurl and libfuse first
 ## For example, on ubuntu - sudo apt-get install pkg-config libfuse-dev cmake libcurl4-openssl-dev -y
+## on RHEL/CentOS sudo dnf -y install pkgconfig fuse-devel cmake curl-devel gcc gcc-c++ make gnutls-devel libuuid-devel boost-devel libgcrypt-devel rpm-build
 mkdir build
 cd build
 
