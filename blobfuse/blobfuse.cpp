@@ -18,6 +18,8 @@ struct configParams config_options;
 struct globalTimes_st globalTimes;
 std::shared_ptr<StorageBfsClientBase> storage_client;
 
+extern bool gZonalDNS;
+
 namespace {
     std::string trim(const std::string& str) {
         const size_t start = str.find_first_not_of(' ');
@@ -276,6 +278,12 @@ int read_config(const std::string configFile)
             std::string acctType(value);
             if (acctType == "adls")
                 config_options.useADLS = true;
+        } 
+        else if(line.find("zonalDNS") != std::string::npos)
+        {
+            std::string val(value);
+            if (val == "true")
+                gZonalDNS = true;
         }  
 
         data.clear();
