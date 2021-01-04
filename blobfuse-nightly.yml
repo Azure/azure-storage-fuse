@@ -1378,7 +1378,7 @@ jobs:
 
   - ${{ if eq(parameters.msi_test, true) }}:
     - job: Set_6
-      timeoutInMinutes: 100
+      timeoutInMinutes: 30
       strategy:
         matrix:
           MSI_Test:
@@ -1524,13 +1524,12 @@ jobs:
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE_ADLS) --use-adls=true
             df
             sudo ps -aux | grep blobfuse
-            ls -l $(MOUNT_DIR)
-            mkdir $(MOUNT_DIR)/MSITest
-            touch $(MOUNT_DIR)/MSITest/b.txt
-            echo "ASDF" > $(MOUNT_DIR)/MSITest/c.txt
-            cp $(MOUNT_DIR)/MSITest/c.txt $(MOUNT_DIR)/MSITest/d.txt
-            ls -lRt $(MOUNT_DIR)/MSITest
-            rm -rf $(MOUNT_DIR)/MSITest
+            mkdir $(MOUNT_DIR)/MSITestADLS
+            touch $(MOUNT_DIR)/MSITestADLS/b.txt
+            echo "ASDF" > $(MOUNT_DIR)/MSITestADLS/c.txt
+            cp $(MOUNT_DIR)/MSITestADLS/c.txt $(MOUNT_DIR)/MSITestADLS/d.txt
+            ls -lRt $(MOUNT_DIR)/MSITestADLS
+            rm -rf $(MOUNT_DIR)/MSITestADLS
             sudo fusermount -u $(MOUNT_DIR)
           # condition: eq(variables['Build.SourceBranchName'], 'master')
           displayName: TEST - MSI Validation ADLS
