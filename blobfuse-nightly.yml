@@ -1510,14 +1510,17 @@ jobs:
             ls -lRt $(MOUNT_DIR)/MSITest
             rm -rf $(MOUNT_DIR)/MSITest
             sudo fusermount -u $(MOUNT_DIR)
-            sudo kill -9 `pidof ./build/blobfuse`
           # condition: eq(variables['Build.SourceBranchName'], 'master')
           displayName: TEST - MSI Validation
           timeoutInMinutes: 120
           continueOnError: true
+          workingDirectory: $(ROOT_DIR)
 
         # List the blobs to verify that the login went successful
         - script:  |
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE_ADLS) --use-adls=true
             df
             sudo ps -aux | grep blobfuse
@@ -1529,11 +1532,11 @@ jobs:
             ls -lRt $(MOUNT_DIR)/MSITest
             rm -rf $(MOUNT_DIR)/MSITest
             sudo fusermount -u $(MOUNT_DIR)
-            sudo kill -9 `pidof ./build/blobfuse`
           # condition: eq(variables['Build.SourceBranchName'], 'master')
           displayName: TEST - MSI Validation ADLS
           timeoutInMinutes: 120
           continueOnError: true
+          workingDirectory: $(ROOT_DIR)
 
         - script: |
             pwd
