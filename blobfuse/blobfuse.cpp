@@ -344,8 +344,12 @@ void *azs_init(struct fuse_conn_info * conn)
         else
         {
             char errStr[] = "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.\n";
-            if (stdoutFD != -1)
-                write(stdoutFD, errStr, sizeof(errStr));
+            if (stdoutFD != -1) {
+                ssize_t n = write(stdoutFD, errStr, sizeof(errStr));
+                if (n == -1) {
+                    syslog(LOG_ERR, "Failed to report back the status of auth.");
+                }
+            }
             syslog(LOG_ERR, "%s", errStr);
             exit(1);
         }
@@ -353,7 +357,7 @@ void *azs_init(struct fuse_conn_info * conn)
     if (stdoutFD != -1) {
         // Test code to print on console 
         //char errStr[] = "Blobfuse Auth successful\n";
-        //write(stdoutFD, errStr, sizeof(errStr));
+        //ssize_t n = write(stdoutFD, errStr, sizeof(errStr));
             
         close(stdoutFD);
     }
