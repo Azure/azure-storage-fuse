@@ -18,6 +18,8 @@ struct configParams config_options;
 struct globalTimes_st globalTimes;
 std::shared_ptr<StorageBfsClientBase> storage_client;
 
+int stdoutFD = -1;
+
 namespace {
     std::string trim(const std::string& str) {
         const size_t start = str.find_first_not_of(' ');
@@ -329,22 +331,31 @@ void *azs_init(struct fuse_conn_info * conn)
 
 
     if (libcurl_version < 7.54) {
-	// Curl was not intialized for lower version as that results into
-	// failure post fork. So tls and cpplite were not initialized pre-fork for lower
-	// kernel version. Do the init now before starting.
-	syslog(LOG_CRIT, "** Post fork authentication for older libcurl version");
+        // Curl was not intialized for lower version as that results into
+        // failure post fork. So tls and cpplite were not initialized pre-fork for lower
+        // kernel version. Do the init now before starting.
+        syslog(LOG_CRIT, "** Post fork authentication for older libcurl version");
 
-	configure_tls();
-	if(storage_client->AuthenticateStorage())
-	{
-	    syslog(LOG_DEBUG, "Successfully Authenticated!");   
-	}
-	else
-	{
-	    fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
-	    syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+        configure_tls();
+        if(storage_client->AuthenticateStorage())
+        {
+            syslog(LOG_DEBUG, "Successfully Authenticated!");   
+        }
+        else
+        {
+            char errStr[] = "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.\n";
+            if (stdoutFD != -1)
+                write(stdoutFD, errStr, sizeof(errStr));
+            syslog(LOG_ERR, "%s", errStr);
             exit(1);
-	}
+        }
+    }
+    if (stdoutFD != -1) {
+        // Test code to print on console 
+        //char errStr[] = "Blobfuse Auth successful\n";
+        //write(stdoutFD, errStr, sizeof(errStr));
+            
+        close(stdoutFD);
     }
 
     g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
