@@ -83,6 +83,7 @@ namespace blobfuse_constants {
     extern const std::map<int, int> error_mapping;
 
     extern const int HTTP_REQUEST_CONFLICT;
+    extern const float minCurlVersion;
 }
 
 #endif

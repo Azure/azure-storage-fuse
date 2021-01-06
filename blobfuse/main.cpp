@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
 
     configure_fuse(&args);
 
-    if (libcurl_version < 7.54) {
+    if (libcurl_version < blobfuse_constants::minCurlVersion) {
         syslog(LOG_CRIT, "** Delaying tls init to post fork for older libcurl version");
     } else {
         ret = configure_tls();
