@@ -18,7 +18,7 @@ struct configParams config_options;
 struct globalTimes_st globalTimes;
 std::shared_ptr<StorageBfsClientBase> storage_client;
 
-int stdoutFD = -1;
+int stdErrFD = -1;
 
 namespace {
     std::string trim(const std::string& str) {
@@ -306,12 +306,15 @@ int read_config(const std::string configFile)
     }
 }
 
-void destroyBlobfuse()
+void destroyBlobfuseOnAuthError()
 {
     char errStr[] = "Unmounting blobfuse.\n";
     syslog(LOG_ERR, errStr, sizeof(errStr));
-    write(stdoutFD, errStr, sizeof(errStr));
-    close(stdoutFD);
+    ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
+    if (n == -1) {
+        syslog(LOG_ERR, "Failed to report back failure.");
+    }
+    close(stdErrFD);
     fuse_unmount(config_options.mntPath.c_str(), NULL);
 }
 
@@ -355,27 +358,27 @@ void *azs_init(struct fuse_conn_info * conn)
         else
         {
             char errStr[] = "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.\n";
-            if (stdoutFD != -1) {
-                ssize_t n = write(stdoutFD, errStr, sizeof(errStr));
+            if (stdErrFD != -1) {
+                ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
                 if (n == -1) {
                     syslog(LOG_ERR, "Failed to report back the status of auth.");
                 }
             }
             syslog(LOG_ERR, "%s", errStr);
-            std::thread t1(std::bind(&destroyBlobfuse));
+            std::thread t1(std::bind(&destroyBlobfuseOnAuthError));
             t1.detach();
             return NULL;
         }
     }
-    if (stdoutFD != -1) {
+    if (stdErrFD != -1) {
         // Test code to print on console 
         /*char errStr[] = "Blobfuse Auth successful\n";
-        ssize_t n = write(stdoutFD, errStr, sizeof(errStr));
+        ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
         if (n == -1) {
             syslog(LOG_ERR, "Failed to report back the status of auth.");
         }*/
             
-        close(stdoutFD);
+        close(stdErrFD);
     }
 
     if (config_options.authType == MSI_AUTH ||

@@ -1,12 +1,12 @@
 #include "blobfuse.cpp"
 
 extern float libcurl_version;
-extern int stdoutFD;
+extern int stdErrFD;
 
 int main(int argc, char *argv[])
 {
     // Copy the stdout of parent for child to output
-    stdoutFD = dup(2);
+    stdErrFD = dup(2);
 
     static struct fuse_operations azs_blob_operations;
     set_up_callbacks(azs_blob_operations);
