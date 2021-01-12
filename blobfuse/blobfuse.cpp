@@ -355,6 +355,7 @@ void *azs_init(struct fuse_conn_info * conn)
             syslog(LOG_ERR, "Unmounting : %s", mntPath.c_str());
             fuse_unmount(mntPath.c_str(), NULL);
 
+            close(stdoutFD);
             exit(1);
         }
     }
