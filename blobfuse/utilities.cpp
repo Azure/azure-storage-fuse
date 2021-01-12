@@ -453,7 +453,6 @@ int rm(const char *fpath, const struct stat * /*sb*/, int tflag, struct FTW * /*
     }
 }
 
-extern bool fuseDestroed;
 // Delete the entire contents of tmpPath.
 void azs_destroy(void * /*private_data*/)
 {
@@ -463,9 +462,6 @@ void azs_destroy(void * /*private_data*/)
     errno = 0;
     // FTW_DEPTH instructs FTW to do a post-order traversal (children of a directory before the actual directory.)
     nftw(rootPath.c_str(), rm, 20, FTW_DEPTH);
-    
-    syslog(LOG_ERR, "azs_destroy done");
-    fuseDestroed = true;
 }
 
 // Not yet implemented section:

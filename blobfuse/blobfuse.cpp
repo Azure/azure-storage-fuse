@@ -19,8 +19,6 @@ struct globalTimes_st globalTimes;
 std::shared_ptr<StorageBfsClientBase> storage_client;
 
 int stdoutFD = -1;
-volatile bool fuseDestroed = false;
-std::string mntPath = "";
 
 namespace {
     std::string trim(const std::string& str) {
@@ -308,6 +306,14 @@ int read_config(const std::string configFile)
     }
 }
 
+void destroyBlobfuse()
+{
+    syslog(LOG_ERR, "Unmounting : %s", config_options.mntPath.c_str());
+    write(stdoutFD, "Done\n", 6);
+    fuse_unmount(config_options.mntPath.c_str(), NULL);
+    close(stdoutFD);
+}
+
 int configure_tls();
 void *azs_init(struct fuse_conn_info * conn)
 {
@@ -331,7 +337,9 @@ void *azs_init(struct fuse_conn_info * conn)
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
 
-
+    g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
+    g_gc_cache->run();
+    
     if (libcurl_version < blobfuse_constants::minCurlVersion) {
         // Curl was not intialized for lower version as that results into
         // failure post fork. So tls and cpplite were not initialized pre-fork for lower
@@ -353,21 +361,9 @@ void *azs_init(struct fuse_conn_info * conn)
                 }
             }
             syslog(LOG_ERR, "%s", errStr);
-            syslog(LOG_ERR, "Unmounting : %s", mntPath.c_str());
-            fuse_unmount(mntPath.c_str(), NULL);
-
-            // Wait for fuse_destroy to get called
-            for (int i = 0; i < 5; i++) {
-                sleep(2);
-                
-                if (fuseDestroed) {
-                    sleep(1);
-                    break;
-                }
-            }
-
-            close(stdoutFD);
-            exit(1);
+            std::thread t1(std::bind(&destroyBlobfuse));
+            t1.detach();
+            return NULL;
         }
     }
     if (stdoutFD != -1) {
@@ -380,9 +376,6 @@ void *azs_init(struct fuse_conn_info * conn)
             
         close(stdoutFD);
     }
-
-    g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
-    g_gc_cache->run();
 
     if (config_options.authType == MSI_AUTH ||
         config_options.authType == SPN_AUTH)
@@ -690,7 +683,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             fprintf(stderr, "Error: '%s' is already mounted. Recheck your config\n", argv[1]);
             return 1;
         }
-        mntPath = std::string(argv[1]);
+        config_options.mntPath = std::string(argv[1]);
 
         if(!cmd_options.config_file)
         {

@@ -131,6 +131,6 @@ void populate_kernel_version()
 
         syslog(LOG_INFO, "release is %f, Kernel version is %s", ver, name.release);
          
-         kernel_version = ver;
+        kernel_version = ver;
 	}
 }
