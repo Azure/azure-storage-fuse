@@ -903,14 +903,14 @@ jobs:
             cat $(BLOBFUSE_CFG_FILE)
             echo "Account : " $(NIGHTLY_STO_ACC_NAME)
           displayName: "Create config file - Negative"
-          condition: eq(variables.containerName, 'test-cnt-rhel-75-test')
+          condition: or(eq(variables.containerName, 'test-cnt-rhel-75-test'), eq(variables.containerName, 'test-cnt-rhel-82'))
 
         # Mount a directory for feature test (Block) and run it
         - script:  |
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse - Negative"
-          condition: eq(variables.containerName, 'test-cnt-rhel-75-test')
+          condition: or(eq(variables.containerName, 'test-cnt-rhel-75-test'), eq(variables.containerName, 'test-cnt-rhel-82'))
 
         - script:  |
             rm -rf $(MOUNT_DIR)/*
