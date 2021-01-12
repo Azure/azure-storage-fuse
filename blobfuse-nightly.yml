@@ -885,6 +885,36 @@ jobs:
             rm -rf $(MOUNT_DIR)/*
             sudo fusermount -u $(MOUNT_DIR)
             sudo kill -9 `pidof blobfuse`
+          workingDirectory: $(ROOT_DIR)
+          displayName: 'Unmount blobfuse'
+          timeoutInMinutes: 30
+          condition: always()
+
+        # --- Negative testing for auth failure post fork
+        - script: |
+            sudo touch $(BLOBFUSE_CFG_FILE)
+            sudo chown -R `whoami` $(BLOBFUSE_CFG_FILE)
+            chmod 777 $(BLOBFUSE_CFG_FILE)
+            echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG_FILE)
+            echo "accountKey " $(NIGHTLY_STO_ACC_KEY) "abc" >> $(BLOBFUSE_CFG_FILE)
+            echo "authType Key" >> $(BLOBFUSE_CFG_FILE)
+            echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_FILE)
+            cat $(BLOBFUSE_CFG_FILE)
+            echo "Account : " $(NIGHTLY_STO_ACC_NAME)
+          displayName: "Create config file - Negative"
+          condition: eq(variables.containerName, 'test-cnt-rhel-75-test')
+
+        # Mount a directory for feature test (Block) and run it
+        - script:  |
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+          workingDirectory: $(ROOT_DIR)
+          displayName: "Mount Blobfuse - Negative"
+          condition: eq(variables.containerName, 'test-cnt-rhel-75-test')
+
+        - script:  |
+            rm -rf $(MOUNT_DIR)/*
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo kill -9 `pidof blobfuse`
             sudo rm -rf $(TEMP_DIR)/
             sudo rm -rf $(MOUNT_DIR)
             sudo rm -rf $(BLOBFUSE_CFG_FILE)
