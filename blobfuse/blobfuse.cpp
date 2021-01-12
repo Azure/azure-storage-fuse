@@ -308,7 +308,7 @@ int read_config(const std::string configFile)
 
 void destroyBlobfuse()
 {
-    char errStr[] = "Unmounting\n";
+    char errStr[] = "Unmounting blobfuse.\n";
     syslog(LOG_ERR, errStr, sizeof(errStr));
     write(stdoutFD, errStr, sizeof(errStr));
     close(stdoutFD);
