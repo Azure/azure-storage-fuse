@@ -909,7 +909,7 @@ jobs:
         # This mount is bound to fail so to ignore the exit code of the blobfuse use '|| :' to redirect output to null
         # with this output will come on screen but the piepline task will not fail due to exit(1) by blobfuse
         - script:  |
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true || :
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true 2>&1 || :
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse - Negative"
           # condition: or(eq(variables.containerName, 'test-cnt-rhel-75-test'), eq(variables.containerName, 'test-cnt-rhel-82'))
