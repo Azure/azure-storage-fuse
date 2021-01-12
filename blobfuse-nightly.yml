@@ -705,7 +705,7 @@ jobs:
   - ${{ if eq(parameters.exhaustive_test, true) }}:
     # Other then Ubuntu just run the feature_test
     - job: Set_2
-      timeoutInMinutes: 240
+      timeoutInMinutes: 30
       strategy:
         matrix:
           RHEL-7.5-new-curl:
@@ -879,14 +879,14 @@ jobs:
             go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
           workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
-          timeoutInMinutes: 120
+          timeoutInMinutes: 20
 
         - script:  |
             rm -rf $(MOUNT_DIR)/*
             sudo fusermount -u $(MOUNT_DIR)
           workingDirectory: $(ROOT_DIR)
           displayName: 'Unmount blobfuse'
-          timeoutInMinutes: 30
+          timeoutInMinutes: 5
           condition: always()
 
         # --- Negative testing for auth failure post fork
@@ -919,7 +919,7 @@ jobs:
             sudo rm -rf $(WORK_DIR)
           workingDirectory: $(ROOT_DIR)
           displayName: 'Cleanup Directories'
-          timeoutInMinutes: 30
+          timeoutInMinutes: 5
           condition: always()
 
         - script: |
@@ -930,7 +930,7 @@ jobs:
           condition: always()
 
     - job: Set_3
-      timeoutInMinutes: 240
+      timeoutInMinutes: 30
       strategy:
         matrix:
           Debian-9.0:
@@ -1073,7 +1073,7 @@ jobs:
             go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
           workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
-          timeoutInMinutes: 120
+          timeoutInMinutes: 20
 
         - script:  |
             sudo rm -rf $(MOUNT_DIR)/*
@@ -1085,7 +1085,7 @@ jobs:
             sudo rm -rf $(WORK_DIR)
           workingDirectory: $(ROOT_DIR)
           displayName: 'Cleanup Directories'
-          timeoutInMinutes: 30
+          timeoutInMinutes: 5
           condition: always()
 
         - script: |
@@ -1096,7 +1096,7 @@ jobs:
           condition: always()
 
     - job: Set_4
-      timeoutInMinutes: 240
+      timeoutInMinutes: 30
       strategy:
         matrix:
           SUSE-15G2:
@@ -1233,7 +1233,7 @@ jobs:
             go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
           workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
-          timeoutInMinutes: 120
+          timeoutInMinutes: 20
 
         - script:  |
             sudo rm -rf $(MOUNT_DIR)/*
@@ -1245,7 +1245,7 @@ jobs:
             sudo rm -rf $(WORK_DIR)
           workingDirectory: $(ROOT_DIR)
           displayName: 'Cleanup Directories'
-          timeoutInMinutes: 30
+          timeoutInMinutes: 5
           condition: always()
 
         - script: |
@@ -1258,7 +1258,7 @@ jobs:
 
   - ${{ if eq(parameters.msi_test, true) }}:
     - job: Set_5
-      timeoutInMinutes: 100
+      timeoutInMinutes: 30
       strategy:
         matrix:
           MSI_Test:
@@ -1391,7 +1391,7 @@ jobs:
             sudo kill -9 `pidof blobfuse`
           # condition: eq(variables['Build.SourceBranchName'], 'master')
           displayName: TEST - MSI Validation
-          timeoutInMinutes: 120
+          timeoutInMinutes: 20
           continueOnError: true
 
         - script: |
@@ -1406,7 +1406,7 @@ jobs:
 
   - ${{ if eq(parameters.msi_test, true) }}:
     - job: Set_6
-      timeoutInMinutes: 30
+      timeoutInMinutes: 60
       strategy:
         matrix:
           MSI_Test:
@@ -1540,7 +1540,7 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
           # condition: eq(variables['Build.SourceBranchName'], 'master')
           displayName: TEST - MSI Validation
-          timeoutInMinutes: 120
+          timeoutInMinutes: 20
           continueOnError: true
           workingDirectory: $(ROOT_DIR)
 
@@ -1561,7 +1561,7 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
           # condition: eq(variables['Build.SourceBranchName'], 'master')
           displayName: TEST - MSI Validation ADLS
-          timeoutInMinutes: 120
+          timeoutInMinutes: 20
           continueOnError: true
           workingDirectory: $(ROOT_DIR)
 
