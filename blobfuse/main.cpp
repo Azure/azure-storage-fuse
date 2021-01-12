@@ -6,7 +6,7 @@ extern int stdoutFD;
 int main(int argc, char *argv[])
 {
     // Copy the stdout of parent for child to output
-    stdoutFD = dup(1);
+    stdoutFD = dup(2);
 
     static struct fuse_operations azs_blob_operations;
     set_up_callbacks(azs_blob_operations);
