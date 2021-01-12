@@ -867,6 +867,8 @@ jobs:
         - script:  |
             curl --version
             sudo fusermount -u $(MOUNT_DIR)
+            sudo kill -9 `pidof ./build/blobfuse`
+            sudo kill -9 `pidof fusermount`
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
@@ -906,11 +908,15 @@ jobs:
         # Mount a directory for feature test (Block) and run it
         - script:  |
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+            sudo kill -9 `pidof ./build/blobfuse`
+            sudo kill -9 `pidof fusermount`
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse - Negative"
           condition: eq(variables.containerName, 'test-cnt-rhel-75-test')
 
         - script:  |
+            sudo kill -9 `pidof ./build/blobfuse`
+            sudo kill -9 `pidof fusermount`
             rm -rf $(MOUNT_DIR)/*
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(TEMP_DIR)/
