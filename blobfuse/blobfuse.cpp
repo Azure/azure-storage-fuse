@@ -308,10 +308,11 @@ int read_config(const std::string configFile)
 
 void destroyBlobfuse()
 {
-    syslog(LOG_ERR, "Unmounting : %s", config_options.mntPath.c_str());
-    write(stdoutFD, "Done\n", 6);
-    fuse_unmount(config_options.mntPath.c_str(), NULL);
+    char errStr[] = "Unmounting\n";
+    syslog(LOG_ERR, errStr, sizeof(errStr));
+    write(stdoutFD, errStr, sizeof(errStr));
     close(stdoutFD);
+    fuse_unmount(config_options.mntPath.c_str(), NULL);
 }
 
 int configure_tls();
