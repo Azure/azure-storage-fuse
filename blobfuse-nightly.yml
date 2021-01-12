@@ -884,7 +884,6 @@ jobs:
         - script:  |
             rm -rf $(MOUNT_DIR)/*
             sudo fusermount -u $(MOUNT_DIR)
-            sudo kill -9 `pidof blobfuse`
           workingDirectory: $(ROOT_DIR)
           displayName: 'Unmount blobfuse'
           timeoutInMinutes: 30
@@ -914,7 +913,6 @@ jobs:
         - script:  |
             rm -rf $(MOUNT_DIR)/*
             sudo fusermount -u $(MOUNT_DIR)
-            sudo kill -9 `pidof blobfuse`
             sudo rm -rf $(TEMP_DIR)/
             sudo rm -rf $(MOUNT_DIR)
             sudo rm -rf $(BLOBFUSE_CFG_FILE)
