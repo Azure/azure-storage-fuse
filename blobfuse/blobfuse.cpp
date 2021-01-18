@@ -19,6 +19,7 @@ struct globalTimes_st globalTimes;
 std::shared_ptr<StorageBfsClientBase> storage_client;
 
 int stdErrFD = -1;
+bool is_directory_mounted(const char* mntDir);
 
 namespace {
     std::string trim(const std::string& str) {
@@ -309,13 +310,33 @@ int read_config(const std::string configFile)
 void destroyBlobfuseOnAuthError()
 {
     char errStr[] = "Unmounting blobfuse.\n";
+    
     syslog(LOG_ERR, errStr, sizeof(errStr));
     ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
     if (n == -1) {
         syslog(LOG_ERR, "Failed to report back failure.");
     }
-    close(stdErrFD);
+    
     fuse_unmount(config_options.mntPath.c_str(), NULL);
+
+    if (is_directory_mounted(config_options.mntPath.c_str())) 
+    {
+        char errStr[] = "Failed to unmount blobfuse. Manually unmount using fusermount command.\n";
+        syslog(LOG_ERR, errStr, sizeof(errStr));
+        ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
+        if (n == -1) {
+            syslog(LOG_ERR, "%s", errStr);
+        }
+    } else {
+        char errStr[] = "Unmounted blobfuse successfully.\n";
+        syslog(LOG_ERR, errStr, sizeof(errStr));
+        ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
+        if (n == -1) {
+            syslog(LOG_ERR, "%s", errStr);
+        }
+    }
+    close(stdErrFD);
+    exit(1);
 }
 
 int configure_tls();
@@ -330,7 +351,7 @@ void *azs_init(struct fuse_conn_info * conn)
     cfg->negative_timeout = 120;
     */
    // even 4.18 does not like this so 5.4 is not enough so 
-    if (kernel_version < 4.16) {
+    if (kernel_version < blobfuse_constants::minKernelVersion) {
         conn->max_write = 4194304;
 	// let fuselib pick 128KB
 	//conn->max_read = 4194304;
@@ -377,7 +398,6 @@ void *azs_init(struct fuse_conn_info * conn)
         if (n == -1) {
             syslog(LOG_ERR, "Failed to report back the status of auth.");
         }*/
-            
         close(stdErrFD);
     }
 
@@ -917,7 +937,7 @@ void configure_fuse(struct fuse_args *args)
     populate_kernel_version();
     populate_libcurl_version();
 
-    if (kernel_version < 4.16) {
+    if (kernel_version < blobfuse_constants::minKernelVersion) {
         fuse_opt_add_arg(args, "-omax_read=131072");
         fuse_opt_add_arg(args, "-omax_write=131072");
     }

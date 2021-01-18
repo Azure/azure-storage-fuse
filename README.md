@@ -113,7 +113,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 
 - General options
     * `accountName`: Specifies the storage account blobfuse targets.
-    * `blobEndpoint`: Specifies the blob endpoint to use. Defaults to *.blob.core.windows.net, but is useful for targeting storage emulators. (e.g. storageaccountname.blob.region.azurestack.company.com)
+    * `blobEndpoint`: Optional parameter, defaults to `blob.core.windows.net`". This parameter should be specified for zonal dns accounts, custom domain name accounts or storage emulators.(e.g. storageaccountname.blob.region.azurestack.company.com)
     * `authType`: Overrides the currently specified auth type. Options: Key, SAS, MSI, SPN (Using this option is only available for 1.2.0 or above)
     * `logLevel`: Specifies the logging level. Use to change the logging level dynamically. Read `Logging` section for details. For allowed values refer to `--log-level` command line option.
     * `accountType`: Specifies the type of account. Either `block` or `adls` can be specified, `block` is the default value. Same can also be controlled through the command line option `--use-adls=true`. If wrong account type is supplied, certain features may not work as expected. To learn more about ADLS follow the link `(https://docs.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-introduction)`

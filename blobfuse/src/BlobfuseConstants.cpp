@@ -45,4 +45,5 @@ namespace blobfuse_constants {
 
     const int HTTP_REQUEST_CONFLICT = 409;
     const float minCurlVersion = 7.54;
+    const float minKernelVersion = 4.16;
 }
