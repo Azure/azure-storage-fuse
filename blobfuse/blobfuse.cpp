@@ -19,6 +19,8 @@ struct globalTimes_st globalTimes;
 std::shared_ptr<StorageBfsClientBase> storage_client;
 
 extern bool gZonalDNS;
+int stdErrFD = -1;
+bool is_directory_mounted(const char* mntDir);
 
 namespace {
     std::string trim(const std::string& str) {
@@ -312,6 +314,38 @@ int read_config(const std::string configFile)
     }
 }
 
+void destroyBlobfuseOnAuthError()
+{
+    char errStr[] = "Unmounting blobfuse.\n";
+    
+    syslog(LOG_ERR, errStr, sizeof(errStr));
+    ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
+    if (n == -1) {
+        syslog(LOG_ERR, "Failed to report back failure.");
+    }
+    
+    fuse_unmount(config_options.mntPath.c_str(), NULL);
+
+    if (is_directory_mounted(config_options.mntPath.c_str())) 
+    {
+        char errStr[] = "Failed to unmount blobfuse. Manually unmount using fusermount command.\n";
+        syslog(LOG_ERR, errStr, sizeof(errStr));
+        ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
+        if (n == -1) {
+            syslog(LOG_ERR, "%s", errStr);
+        }
+    } else {
+        char errStr[] = "Unmounted blobfuse successfully.\n";
+        syslog(LOG_ERR, errStr, sizeof(errStr));
+        ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
+        if (n == -1) {
+            syslog(LOG_ERR, "%s", errStr);
+        }
+    }
+    close(stdErrFD);
+    exit(1);
+}
+
 int configure_tls();
 void *azs_init(struct fuse_conn_info * conn)
 {
@@ -324,7 +358,7 @@ void *azs_init(struct fuse_conn_info * conn)
     cfg->negative_timeout = 120;
     */
    // even 4.18 does not like this so 5.4 is not enough so 
-    if (kernel_version < 4.16) {
+    if (kernel_version < blobfuse_constants::minKernelVersion) {
         conn->max_write = 4194304;
 	// let fuselib pick 128KB
 	//conn->max_read = 4194304;
@@ -335,28 +369,44 @@ void *azs_init(struct fuse_conn_info * conn)
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
 
-
-    if (libcurl_version < 7.54) {
-	// Curl was not intialized for lower version as that results into
-	// failure post fork. So tls and cpplite were not initialized pre-fork for lower
-	// kernel version. Do the init now before starting.
-	syslog(LOG_CRIT, "** Post fork authentication for older libcurl version");
-
-	configure_tls();
-	if(storage_client->AuthenticateStorage())
-	{
-	    syslog(LOG_DEBUG, "Successfully Authenticated!");   
-	}
-	else
-	{
-	    fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
-	    syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
-            exit(1);
-	}
-    }
-
     g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
     g_gc_cache->run();
+    
+    if (libcurl_version < blobfuse_constants::minCurlVersion) {
+        // Curl was not intialized for lower version as that results into
+        // failure post fork. So tls and cpplite were not initialized pre-fork for lower
+        // kernel version. Do the init now before starting.
+        syslog(LOG_CRIT, "** Post fork authentication for older libcurl version");
+
+        configure_tls();
+        if(storage_client->AuthenticateStorage())
+        {
+            syslog(LOG_DEBUG, "Successfully Authenticated!");   
+        }
+        else
+        {
+            char errStr[] = "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.\n";
+            if (stdErrFD != -1) {
+                ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
+                if (n == -1) {
+                    syslog(LOG_ERR, "Failed to report back the status of auth.");
+                }
+            }
+            syslog(LOG_ERR, "%s", errStr);
+            std::thread t1(std::bind(&destroyBlobfuseOnAuthError));
+            t1.detach();
+            return NULL;
+        }
+    }
+    if (stdErrFD != -1) {
+        // Test code to print on console 
+        /*char errStr[] = "Blobfuse Auth successful\n";
+        ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
+        if (n == -1) {
+            syslog(LOG_ERR, "Failed to report back the status of auth.");
+        }*/
+        close(stdErrFD);
+    }
 
     if (config_options.authType == MSI_AUTH ||
         config_options.authType == SPN_AUTH)
@@ -664,6 +714,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             fprintf(stderr, "Error: '%s' is already mounted. Recheck your config\n", argv[1]);
             return 1;
         }
+        config_options.mntPath = std::string(argv[1]);
 
         if(!cmd_options.config_file)
         {
@@ -893,7 +944,7 @@ void configure_fuse(struct fuse_args *args)
     populate_kernel_version();
     populate_libcurl_version();
 
-    if (kernel_version < 4.16) {
+    if (kernel_version < blobfuse_constants::minKernelVersion) {
         fuse_opt_add_arg(args, "-omax_read=131072");
         fuse_opt_add_arg(args, "-omax_write=131072");
     }
@@ -947,7 +998,7 @@ int initialize_blobfuse()
     syslog(LOG_DEBUG, "Kernel version is %f", kernel_version);
     syslog(LOG_DEBUG, "libcurl version is %f", libcurl_version);
 
-    if (libcurl_version < 7.54) 
+    if (libcurl_version < blobfuse_constants::minCurlVersion) 
     {
         syslog(LOG_WARNING, "** Delaying authentication to post fork for older curl versions");
     } else {
@@ -957,7 +1008,7 @@ int initialize_blobfuse()
         }
         else
         {
-            fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.\n");
             syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
             return -1;
         }
