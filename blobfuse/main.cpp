@@ -1,9 +1,13 @@
 #include "blobfuse.cpp"
 
 extern float libcurl_version;
+extern int stdErrFD;
 
 int main(int argc, char *argv[])
 {
+    // Copy the stdout of parent for child to output
+    stdErrFD = dup(2);
+
     static struct fuse_operations azs_blob_operations;
     set_up_callbacks(azs_blob_operations);
 
@@ -16,7 +20,7 @@ int main(int argc, char *argv[])
 
     configure_fuse(&args);
 
-    if (libcurl_version < 7.54) {
+    if (libcurl_version < blobfuse_constants::minCurlVersion) {
         syslog(LOG_CRIT, "** Delaying tls init to post fork for older libcurl version");
     } else {
         ret = configure_tls();
