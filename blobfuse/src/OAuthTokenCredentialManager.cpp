@@ -125,7 +125,7 @@ void OAuthTokenCredentialManager::TokenMonitor()
                 // If we fail, explain ourselves and unlock.
                 syslog(LOG_ERR, "OAUTH Token : TokenMonitor : Failed to refresh (%s)\n", ex.what());
                 syslog(LOG_ERR, "OAUTH Token : TokenMonitor : Retry refreshing the token attempt %d", retry_count++);
-                usleep(10 * 1000);
+                usleep(100 * 1000);
             }
         }
         token_mutex.unlock();

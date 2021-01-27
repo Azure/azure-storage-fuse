@@ -106,7 +106,11 @@ void gc_cache::run_gc_cache()
         if(is_empty)
         {
             //run it every 1 second
-            usleep(1000);
+            sleep(1);
+            if (config_options.block_lst_sec > 0) {
+                //AZS_DEBUGLOGV("Reducing lst block wait time %d\n", config_options.block_lst_sec);
+                config_options.block_lst_sec--;
+            }
             continue;
         }
 
@@ -184,7 +188,7 @@ void gc_cache::run_gc_cache()
         else
         {
             // no file was timed out - let's wait a second
-            usleep(1000);
+            sleep(1);
             //check disk space
             disk_threshold_reached = check_disk_space();
         }

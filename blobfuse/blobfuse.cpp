@@ -49,6 +49,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
+    OPTION("--block-list-on-mount=%s", block_list_on_mount_for_secs),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -916,6 +917,14 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         std::string cache_size(cmd_options.cache_size_mb);
         config_options.cacheSize = stoi(cache_size) * (unsigned long long)(1024l * 1024l);
     }
+
+    config_options.block_lst_sec = 0;
+    if (cmd_options.block_list_on_mount_for_secs != NULL) 
+    {
+        std::string block_lst_sec(cmd_options.block_list_on_mount_for_secs);
+        config_options.block_lst_sec = stoi(block_lst_sec);
+    }
+    
     return 0;
 }
 
