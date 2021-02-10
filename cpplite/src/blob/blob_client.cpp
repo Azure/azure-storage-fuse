@@ -37,6 +37,7 @@ typedef SSIZE_T ssize_t;
 #include "mstream.h"
 
 #include <curl/curl.h>
+#include <boost/algorithm/string/predicate.hpp>
 
 namespace azure {  namespace storage_lite {
 
@@ -195,6 +196,19 @@ std::future<storage_outcome<void>> blob_client::upload_block_blob_from_stream(co
     auto end = is.tellg();
     is.seekg(cur);
     request->set_content_length(static_cast<unsigned int>(end - cur));
+
+    syslog(LOG_DEBUG, "BLOB WO LEN");
+    syslog(LOG_DEBUG, "Blob: %s", blob.c_str());
+
+    if(boost::algorithm::ends_with(blob, ".m3u8"))
+    {
+        request->set_content_type("application/x-mpegURL");
+    }
+    else if(boost::algorithm::ends_with(blob, ".ts"))
+    {
+        request->set_content_type("video/MP2T");
+    }
+
     if (metadata.size() > 0)
     {
         request->set_metadata(metadata);
@@ -212,10 +226,24 @@ std::future<storage_outcome<void>> blob_client::upload_block_blob_from_stream(co
     auto request = std::make_shared<create_block_blob_request>(container, blob);
 
     request->set_content_length(static_cast<unsigned int>(streamlen));
+
+    syslog(LOG_DEBUG, "BLOB W LEN");
+    syslog(LOG_DEBUG, "Blob: %s", blob.c_str());
+
+    if(boost::algorithm::ends_with(blob, ".m3u8"))
+    {
+        request->set_content_type("application/x-mpegURL");
+    }
+    else if(boost::algorithm::ends_with(blob, ".ts"))
+    {
+        request->set_content_type("video/MP2T");
+    }
+
     if (metadata.size() > 0)
     {
         request->set_metadata(metadata);
     }
+
 
     http->set_input_stream(storage_istream(is));
     http->set_is_input_length_known();
@@ -334,7 +362,7 @@ std::future<storage_outcome<void>> blob_client::upload_block_from_buffer(const s
     http->set_input_stream(storage_istream(is));
     http->set_is_input_length_known();
     http->set_input_content_length(bufferlen);
-
+ 
     return async_executor<void>::submit(m_account, request, http, m_context);
 }
 

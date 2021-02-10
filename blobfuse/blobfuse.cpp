@@ -342,6 +342,7 @@ void destroyBlobfuseOnAuthError()
 int configure_tls();
 void *azs_init(struct fuse_conn_info * conn)
 {
+    syslog(LOG_DEBUG, "ELIAS CUSTOMIZATIONS 2021-02-09 2036 EST");
     syslog(LOG_DEBUG, "azs_init ran");
 
     /*

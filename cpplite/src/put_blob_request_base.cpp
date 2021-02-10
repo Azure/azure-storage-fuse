@@ -2,6 +2,7 @@
 
 #include "constants.h"
 #include "utility.h"
+#include <syslog.h>
 
 namespace azure {  namespace storage_lite {
 
@@ -25,6 +26,7 @@ void put_blob_request_base::build_request(const storage_account &a, http_base &h
     add_content_length(h, headers, r.content_length());
     add_optional_content_md5(h, headers, r.content_md5());
     add_optional_content_type(h, headers, r.content_type());
+
     add_access_condition_headers(h, headers, r);
 
     add_optional_header(h, constants::header_cache_control, r.cache_control());
