@@ -60,7 +60,9 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * [OPTIONAL] **--cache-size-mb=1000** : option to setup the cache-size in MB. Default will be 80% of the available memory, eviction will happen beyond that. Use this option to lower the cache size or increase it. This option is only available after version 1.3.1.
      * [OPTIONAL] **--attr_timeout=20** : The attribute timeout in seconds. Performance improvement option. It is a default fuse option. For further details look at the FUSE man page. The attributes of recently accessed files will be saved for the specified seconds.
      * [OPTIONAL] **--entry_timeout=20** : The entry timeout in seconds. Performance improvement option. It is a default fuse option. For further details look at the FUSE man page. The attributes of recently accessed files will be saved for the specified seconds.
-    
+     * [OPTIONAL] **--high-disk-threshold=90** : High disk threshold percentage. When disk usage of cache directory reaches this mark start evicting the cache. This parameter overrides 'file-cache-timeout-in-seconds' parameter and cached file will be removed even if timeout is yet to expire. Files which are currently in use (open) will not be evicted from cache.
+     * [OPTIONAL] **--low-disk-threshold=80** : Low disk threshold percentage. When disk usage of cache directory reaches high-disk-threshold mark start evicting the cache. Stop cache eviction when disk usage returns back to level specified by low-disk-threshold.
+     
     
 ### Valid authentication setups:
 
