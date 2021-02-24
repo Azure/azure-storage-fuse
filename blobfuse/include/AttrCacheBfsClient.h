@@ -98,7 +98,9 @@ public:
                 continue;
             }
             
-            if ((iter->first.compare("is_symlink") == 0) && (iter->second.compare("true") == 0))
+            if (((iter->first.compare("is_symlink") == 0) || 
+                 (iter->first.compare("Is_symlink") == 0)) && 
+                (iter->second.compare("true") == 0))
             {
                 SET_PROP_FLAG(flags, PROP_FLAG_IS_SYMLINK);
                 continue;
