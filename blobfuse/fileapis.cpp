@@ -224,6 +224,8 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     }
 
     struct fhwrapper *fhwrap = new fhwrapper(res, true);
+    fhwrap->upload_on_close = true;
+
     fi->fh = (long unsigned int)fhwrap;
     syslog(LOG_INFO, "Successfully created file %s in file cache.\n", path);
     AZS_DEBUGLOGV("Returning success from azs_create with file %s.\n", path);
@@ -252,6 +254,8 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
     int res = pwrite(fd, buf, size, offset);
     if (res == -1)
         res = -errno;
+    ((struct fhwrapper *)fi->fh)->upload_on_close = true;
+
     g_gc_cache->addCacheBytes(path, size);
     return res;
 }
@@ -299,7 +303,10 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
         // For some file systems, however, close() flushes data, so we do want to do that before uploading data to a blob.
         // The solution (taken from the FUSE documentation) is to close a duplicate of the file descriptor.
         close(dup(((struct fhwrapper *)fi->fh)->fh));
-        if (((struct fhwrapper *)fi->fh)->upload)
+        if ((config_options.uploadIfModified &&
+              ((struct fhwrapper *)fi->fh)->upload_on_close)  ||
+            ((!config_options.uploadIfModified) &&
+              ((struct fhwrapper *)fi->fh)->write_mode))
         {
             // Here, we acquire the mutex on the file path.  This is necessary to guard against several race conditions.
             // For example, say that a cache refresh is triggered.  There is a small window of time where the file has been removed and not yet re-downloaded.
@@ -347,6 +354,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             }
             else
             {
+                ((struct fhwrapper *)fi->fh)->upload_on_close = false;
                 syslog(LOG_INFO, "Successfully uploaded file %s to blob %s.\n", path, blob_name.c_str());
             }
             globalTimes.lastModifiedTime = time(NULL);
@@ -377,6 +385,7 @@ int azs_release(const char *path, struct fuse_file_info * fi)
 
     // Close the file handle.
     // This must be done, even if the file no longer exists, otherwise we're leaking file handles.
+    ((struct fhwrapper *)fi->fh)->upload_on_close = false;
     close(((struct fhwrapper *)fi->fh)->fh);
 
 // TODO: Make this method resiliant to renames of the file (same way flush() is)
@@ -508,6 +517,7 @@ int azs_truncate(const char * path, off_t off)
         if (truncret == 0)
         {
             AZS_DEBUGLOGV("Successfully truncated file %s in the local file cache.", mntPath);
+            ((struct fhwrapper *)fi.fh)->upload_on_close = true;
             int flushret = azs_flush(pathString.c_str(), &fi);
             if(flushret != 0)
             {
