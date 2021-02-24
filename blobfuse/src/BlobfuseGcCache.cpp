@@ -45,11 +45,11 @@ bool gc_cache::check_disk_space()
    
     double used_percent = (double)(used / total) * (double)100;
 
-    if(used_percent >= HIGH_THRESHOLD_VALUE && !disk_threshold_reached)
+    if(used_percent >= config_options.high_disk_threshold && !disk_threshold_reached)
     {
         return true;
     }
-    else if(used_percent >= LOW_THRESHOLD_VALUE && disk_threshold_reached)
+    else if(used_percent >= config_options.low_disk_threshold && disk_threshold_reached)
     {
         return true;
     }
