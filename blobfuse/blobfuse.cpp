@@ -49,12 +49,9 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
-<<<<<<< HEAD
     OPTION("--upload-if-modified=%s", upload_if_modified),
-=======
     OPTION("--high-disk-threshold=%s", high_disk_threshold),
     OPTION("--low-disk-threshold=%s", low_disk_threshold),
->>>>>>> origin/master
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
