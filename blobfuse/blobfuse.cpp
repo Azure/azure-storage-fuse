@@ -49,6 +49,8 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
+    OPTION("--high-disk-threshold=%s", high_disk_threshold),
+    OPTION("--low-disk-threshold=%s", low_disk_threshold),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -681,6 +683,9 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     config_options.useADLS = false;
     config_options.noSymlinks = false;
     config_options.cacheOnList = true;
+    config_options.high_disk_threshold = HIGH_THRESHOLD_VALUE;
+    config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
+
     try
     {
 
@@ -917,6 +922,35 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         std::string cache_size(cmd_options.cache_size_mb);
         config_options.cacheSize = stoi(cache_size) * (unsigned long long)(1024l * 1024l);
     }
+
+    // Make high and low disk threshold percentage a configurable option
+    if (cmd_options.high_disk_threshold != NULL) 
+    {
+        std::string high_disk_thr(cmd_options.high_disk_threshold);
+        config_options.high_disk_threshold = stoi(high_disk_thr);
+        if (config_options.high_disk_threshold < 0 || config_options.high_disk_threshold > 100) {
+            syslog(LOG_ERR, "Invalid high_disk_threshold, reverting back to default value");
+            config_options.high_disk_threshold = HIGH_THRESHOLD_VALUE;
+        }
+    }
+
+    if (cmd_options.low_disk_threshold != NULL) 
+    {
+        std::string low_disk_thr(cmd_options.low_disk_threshold);
+        config_options.low_disk_threshold = stoi(low_disk_thr);
+        if (config_options.low_disk_threshold < 0 || config_options.low_disk_threshold > 100) {
+            syslog(LOG_ERR, "Invalid low_disk_threshold, reverting back to default value");
+            config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
+        }
+    }
+
+    if (config_options.low_disk_threshold >= config_options.high_disk_threshold) {
+        syslog(LOG_ERR, "Invalid disk_thresholds, reverting back to default values");
+        config_options.high_disk_threshold = HIGH_THRESHOLD_VALUE;
+        config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
+    }
+    syslog(LOG_INFO, "Disk Thresholds : %d - %d", config_options.high_disk_threshold, config_options.low_disk_threshold);
+
     return 0;
 }
 
