@@ -67,6 +67,8 @@ struct configParams
     std::string mntPath;
     int high_disk_threshold;
     int low_disk_threshold;
+    unsigned long long cachePollTimeout;
+    unsigned long long maxEviction;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -90,6 +92,8 @@ struct cmdlineOptions
     const char *encode_full_file_name; // Encode the '%' symbol in file name
     const char *high_disk_threshold; // High disk threshold percentage
     const char *low_disk_threshold; // Low disk threshold percentage
+    const char *cache_poll_timeout; // Timeout for cache eviction thread in case queue is empty
+    const char *max_eviction; // Maximum number of files to be deleted from cache to converse cpu
 };
 
 

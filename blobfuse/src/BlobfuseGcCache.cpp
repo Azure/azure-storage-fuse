@@ -87,6 +87,7 @@ void gc_cache::run()
 // cleanup function to clean cached files that are too old
 void gc_cache::run_gc_cache()
 {
+    unsigned long long evicted = 0;
 
     while(true){
 
@@ -100,19 +101,28 @@ void gc_cache::run_gc_cache()
             {
                 file = m_cleanup.front();
             }
+
+            if ((!is_empty) && 
+                config_options.maxEviction > 0 && 
+                evicted >= config_options.maxEviction) {
+                is_empty = true;
+            }
         }
 
         //if deque is empty, skip
         if(is_empty)
         {
             //run it every 1 second
-            usleep(1000);
+            evicted = 0;
+            usleep(config_options.cachePollTimeout);
             continue;
         }
 
         time_t now = time(NULL);
         //check if the closed time is old enough to delete
-        if(((now - file.closed_time) > file_cache_timeout_in_seconds) || disk_threshold_reached)
+        if(file_cache_timeout_in_seconds == 0 ||
+           disk_threshold_reached ||
+           ((now - file.closed_time) > file_cache_timeout_in_seconds))
         {
             AZS_DEBUGLOGV("File %s being considered for deletion by file cache GC.\n", file.path.c_str());
 
@@ -152,6 +162,7 @@ void gc_cache::run_gc_cache()
                     }
                     else
                     {
+                        evicted++;
                         unlink(mntPath);
                         flock(fd, LOCK_UN);
                         
@@ -179,12 +190,13 @@ void gc_cache::run_gc_cache()
                 std::lock_guard<std::mutex> lock(m_deque_lock);
                 m_cleanup.pop_front();
             }
-
+        
         }
         else
         {
             // no file was timed out - let's wait a second
-            usleep(1000);
+            evicted = 0;
+            usleep(config_options.cachePollTimeout);
             //check disk space
             disk_threshold_reached = check_disk_space();
         }

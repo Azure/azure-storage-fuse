@@ -51,6 +51,8 @@ const struct fuse_opt option_spec[] =
     OPTION("--empty-dir-check=%s", empty_dir_check),
     OPTION("--high-disk-threshold=%s", high_disk_threshold),
     OPTION("--low-disk-threshold=%s", low_disk_threshold),
+    OPTION("--cache-poll-timeout=%s", cache_poll_timeout),
+    OPTION("--max-eviction=%s", max_eviction),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -949,6 +951,21 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
     }
     syslog(LOG_INFO, "Disk Thresholds : %d - %d", config_options.high_disk_threshold, config_options.low_disk_threshold);
+
+
+    config_options.cachePollTimeout = 1000;
+    if (cmd_options.cache_poll_timeout != NULL) 
+    {
+        std::string timeout(cmd_options.cache_poll_timeout);
+        config_options.cachePollTimeout = stoi(timeout);
+    }
+
+    config_options.maxEviction = 0;
+    if (cmd_options.max_eviction != NULL) 
+    {
+        std::string max_evic(cmd_options.max_eviction);
+        config_options.maxEviction = stoi(max_evic);
+    }
 
     return 0;
 }
