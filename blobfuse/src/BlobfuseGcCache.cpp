@@ -107,9 +107,9 @@ void gc_cache::run_gc_cache()
         {
             //run it every 1 second
             sleep(1);
-            if (config_options.block_lst_sec > 0) {
-                //AZS_DEBUGLOGV("Reducing lst block wait time %d\n", config_options.block_lst_sec);
-                config_options.block_lst_sec--;
+            if (config_options.cancel_list_on_mount_secs > 0) {
+                //AZS_DEBUGLOGV("Reducing lst block wait time %d\n", config_options.cancel_list_on_mount_secs);
+                config_options.cancel_list_on_mount_secs--;
             }
             continue;
         }

@@ -49,7 +49,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
-    OPTION("--block-list-on-mount=%s", block_list_on_mount_for_secs),
+    OPTION("--cancel-list-on-mount-seconds=%s", cancel_list_on_mount_seconds),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -918,11 +918,11 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.cacheSize = stoi(cache_size) * (unsigned long long)(1024l * 1024l);
     }
 
-    config_options.block_lst_sec = 0;
-    if (cmd_options.block_list_on_mount_for_secs != NULL) 
+    config_options.cancel_list_on_mount_secs = 0;
+    if (cmd_options.cancel_list_on_mount_seconds != NULL) 
     {
-        std::string block_lst_sec(cmd_options.block_list_on_mount_for_secs);
-        config_options.block_lst_sec = stoi(block_lst_sec);
+        std::string cancel_list_on_mount_secs(cmd_options.cancel_list_on_mount_seconds);
+        config_options.cancel_list_on_mount_secs = stoi(cancel_list_on_mount_secs);
     }
     
     return 0;

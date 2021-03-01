@@ -44,8 +44,8 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 {
     AZS_DEBUGLOGV("azs_readdir called with path = %s\n", path);
 
-    if (config_options.block_lst_sec > 0) {
-        AZS_DEBUGLOGV("azs_readdir blocked by user config for %d more secs\n", config_options.block_lst_sec);
+    if (config_options.cancel_list_on_mount_secs > 0) {
+        AZS_DEBUGLOGV("azs_readdir blocked by user config for %d more secs\n", config_options.cancel_list_on_mount_secs);
         return 0;
     }
 

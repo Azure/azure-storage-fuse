@@ -60,7 +60,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * [OPTIONAL] **--cache-size-mb=1000** : option to setup the cache-size in MB. Default will be 80% of the available memory, eviction will happen beyond that. Use this option to lower the cache size or increase it. This option is only available after version 1.3.1.
      * [OPTIONAL] **--attr_timeout=20** : The attribute timeout in seconds. Performance improvement option. It is a default fuse option. For further details look at the FUSE man page. The attributes of recently accessed files will be saved for the specified seconds.
      * [OPTIONAL] **--entry_timeout=20** : The entry timeout in seconds. Performance improvement option. It is a default fuse option. For further details look at the FUSE man page. The attributes of recently accessed files will be saved for the specified seconds.
-     * [OPTIONAL] ** --block-list-on-mount=0** : libFuse implicitly issues a list command on mount resulting into a call to container to retreive a list of blobs. User can avoid this call by disabling the list feature for given number of seconds specified in this parameter. Default value is 0 meaning list call is not disabled.    
+     * [OPTIONAL] ** --cancel-list-on-mount-seconds=0** : libFuse implicitly issues a list command on mount resulting into a call to container to retreive list of blobs. User can avoid this call by disabling the list feature for given number of seconds specified in this parameter. Default value is 0 meaning list call is not disabled.    
     
 ### Valid authentication setups:
 
