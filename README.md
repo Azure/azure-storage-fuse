@@ -61,6 +61,9 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--attr_timeout=20** : The attribute timeout in seconds. Performance improvement option. It is a default fuse option. For further details look at the FUSE man page. The attributes of recently accessed files will be saved for the specified seconds.
      * [OPTIONAL] **--entry_timeout=20** : The entry timeout in seconds. Performance improvement option. It is a default fuse option. For further details look at the FUSE man page. The attributes of recently accessed files will be saved for the specified seconds.
      * [OPTIONAL] ** --cancel-list-on-mount-seconds=0** : libFuse implicitly issues a list command on mount resulting into a call to container to retreive list of blobs. User can avoid this call by disabling the list feature for given number of seconds specified in this parameter. Default value is 0 meaning list call is not disabled.    
+     * [OPTIONAL] **--high-disk-threshold=90** : High disk threshold percentage. When disk usage of cache directory reaches this mark start evicting the cache. This parameter overrides 'file-cache-timeout-in-seconds' parameter and cached file will be removed even if timeout is yet to expire. Files which are currently in use (open) will not be evicted from cache.
+     * [OPTIONAL] **--low-disk-threshold=80** : Low disk threshold percentage. When disk usage of cache directory reaches high-disk-threshold mark start evicting the cache. Stop cache eviction when disk usage returns back to level specified by low-disk-threshold.
+
     
 ### Valid authentication setups:
 

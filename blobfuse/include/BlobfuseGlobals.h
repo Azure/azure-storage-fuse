@@ -66,6 +66,8 @@ struct configParams
     volatile int  cancel_list_on_mount_secs;
     bool emptyDirCheck;
     std::string mntPath;
+    int high_disk_threshold;
+    int low_disk_threshold;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -88,6 +90,8 @@ struct cmdlineOptions
     const char *cancel_list_on_mount_seconds; // Block the list api call on mount for n seconds
     const char *empty_dir_check;
     const char *encode_full_file_name; // Encode the '%' symbol in file name
+    const char *high_disk_threshold; // High disk threshold percentage
+    const char *low_disk_threshold; // Low disk threshold percentage
 };
 
 
