@@ -148,7 +148,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
             true, //use_https must be true to use oauth
             configurations.blobEndpoint);
         std::shared_ptr<blob_client> blobClient =
-            std::make_shared<blob_client>(account, max_concurrency_oauth);
+            std::make_shared<blob_client>(account, configurations.concurrency);
         errno = 0;
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
@@ -192,7 +192,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
             true, //use_https must be true to use oauth
             configurations.blobEndpoint);
         std::shared_ptr<blob_client> blobClient =
-            std::make_shared<blob_client>(account, max_concurrency_oauth);
+            std::make_shared<blob_client>(account, configurations.concurrency);
         errno = 0;
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
@@ -212,7 +212,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
 void BlockBlobBfsClient::UploadFromFile(const std::string sourcePath, METADATA &metadata)
 {
     std::string blobName = sourcePath.substr(configurations.tmpPath.size() + 6 /* there are six characters in "/root/" */);
-    m_blob_client->upload_file_to_blob(sourcePath, configurations.containerName, blobName, metadata);
+    m_blob_client->upload_file_to_blob(sourcePath, configurations.containerName, blobName, metadata, configurations.concurrency);
     // upload_file_to_blob does not return a status or success if the blob succeeded
     // it does syslog if there was an exception and changes the errno.
 }
@@ -237,7 +237,7 @@ void BlockBlobBfsClient::UploadFromStream(std::istream &sourceStream, const std:
 ///<returns>none</returns>
 long int BlockBlobBfsClient::DownloadToFile(const std::string blobName, const std::string filePath, time_t &last_modified)
 {
-    m_blob_client->download_blob_to_file(configurations.containerName, blobName, filePath, last_modified);
+    m_blob_client->download_blob_to_file(configurations.containerName, blobName, filePath, last_modified, configurations.concurrency);
     struct stat stbuf;
     lstat(filePath.c_str(), &stbuf);
     if (0 == stat(filePath.c_str(), &stbuf))
