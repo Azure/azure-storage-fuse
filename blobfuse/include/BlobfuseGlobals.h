@@ -63,6 +63,7 @@ struct configParams
     int defaultPermission;
     int concurrency;
     unsigned long long cacheSize;
+    volatile int  cancel_list_on_mount_secs;
     bool emptyDirCheck;
     std::string mntPath;
     int high_disk_threshold;
@@ -86,6 +87,7 @@ struct cmdlineOptions
     const char *help; // print blobfuse usage
     const char *concurrency; // Max Concurrency factor for blob client wrapper (default 40)
     const char *cache_size_mb; // MAX Size of cache in MBs
+    const char *cancel_list_on_mount_seconds; // Block the list api call on mount for n seconds
     const char *empty_dir_check;
     const char *encode_full_file_name; // Encode the '%' symbol in file name
     const char *high_disk_threshold; // High disk threshold percentage
