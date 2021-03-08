@@ -49,6 +49,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
+    OPTION("--cancel-list-on-mount-seconds=%s", cancel_list_on_mount_seconds),
     OPTION("--high-disk-threshold=%s", high_disk_threshold),
     OPTION("--low-disk-threshold=%s", low_disk_threshold),
     OPTION("--version", version),
@@ -922,6 +923,12 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.cacheSize = stoi(cache_size) * (unsigned long long)(1024l * 1024l);
     }
 
+    config_options.cancel_list_on_mount_secs = 0;
+    if (cmd_options.cancel_list_on_mount_seconds != NULL) 
+    {
+        std::string cancel_list_on_mount_secs(cmd_options.cancel_list_on_mount_seconds);
+        config_options.cancel_list_on_mount_secs = stoi(cancel_list_on_mount_secs);
+    }
     // Make high and low disk threshold percentage a configurable option
     if (cmd_options.high_disk_threshold != NULL) 
     {
@@ -949,7 +956,6 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
     }
     syslog(LOG_INFO, "Disk Thresholds : %d - %d", config_options.high_disk_threshold, config_options.low_disk_threshold);
-
     return 0;
 }
 
