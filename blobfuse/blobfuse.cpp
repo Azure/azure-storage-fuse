@@ -49,6 +49,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
+    OPTION("--cancel-list-on-mount-seconds=%s", cancel_list_on_mount_seconds),
     OPTION("--high-disk-threshold=%s", high_disk_threshold),
     OPTION("--low-disk-threshold=%s", low_disk_threshold),
     OPTION("--cache-poll-timeout=%s", cache_poll_timeout),
@@ -343,6 +344,21 @@ void destroyBlobfuseOnAuthError()
     exit(1);
 }
 
+void oneSecondTimer()
+{
+    int max_count = config_options.cancel_list_on_mount_secs;
+
+    for (int i = 1; i <= max_count; i++) {
+        sleep(1);
+
+        if (--config_options.cancel_list_on_mount_secs == 0) {
+            syslog(LOG_DEBUG, "Timer : List api is unblocked now");
+        }
+        syslog(LOG_DEBUG, "Timer : List api blocked for %d seconds", config_options.cancel_list_on_mount_secs);
+    }
+    
+}
+
 int configure_tls();
 void *azs_init(struct fuse_conn_info * conn)
 {
@@ -410,6 +426,11 @@ void *azs_init(struct fuse_conn_info * conn)
     {
         std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(EmptyCallback);
         tokenManager->StartTokenMonitor();
+    }
+
+    if (config_options.cancel_list_on_mount_secs > 0) {
+        std::thread t1(std::bind(&oneSecondTimer));
+        t1.detach();
     }
 
     return NULL;
@@ -665,6 +686,7 @@ bool is_directory_empty(const char *tmpDir) {
     //fprintf(stdout, "count of dir entries %u", cnt);
     return (cnt <= 2);
 }
+
 
 int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 {
@@ -924,6 +946,13 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.cacheSize = stoi(cache_size) * (unsigned long long)(1024l * 1024l);
     }
 
+    config_options.cancel_list_on_mount_secs = 0;
+    if (cmd_options.cancel_list_on_mount_seconds != NULL) 
+    {
+        std::string cancel_list_on_mount_secs(cmd_options.cancel_list_on_mount_seconds);
+        config_options.cancel_list_on_mount_secs = stoi(cancel_list_on_mount_secs);
+    }
+
     // Make high and low disk threshold percentage a configurable option
     if (cmd_options.high_disk_threshold != NULL) 
     {
@@ -950,14 +979,12 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.high_disk_threshold = HIGH_THRESHOLD_VALUE;
         config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
     }
-    syslog(LOG_INFO, "Disk Thresholds : %d - %d", config_options.high_disk_threshold, config_options.low_disk_threshold);
-
-
+    
     config_options.cachePollTimeout = 1000;
     if (cmd_options.cache_poll_timeout != NULL) 
     {
         std::string timeout(cmd_options.cache_poll_timeout);
-        config_options.cachePollTimeout = stoi(timeout);
+        config_options.cachePollTimeout = stoi(timeout) * 1000;
     }
 
     config_options.maxEviction = 0;
@@ -967,6 +994,11 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.maxEviction = stoi(max_evic);
     }
 
+    syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d", 
+        config_options.high_disk_threshold, config_options.low_disk_threshold,
+        config_options.cachePollTimeout, config_options.maxEviction,
+        config_options.cancel_list_on_mount_secs);
+        
     return 0;
 }
 

@@ -70,6 +70,9 @@ jobs:
         value: "./connection.cfg"
       - name: BLOBFUSE_STRESS_DIR
         value: "/home/vsts/work/blob_stress"
+      - name: DECODE_PERCENTS
+        value: false
+        
     
 
       # Each job has set of steps to be done
