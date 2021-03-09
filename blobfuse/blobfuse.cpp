@@ -49,6 +49,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
+    OPTION("--upload-modified-only=%s", upload_if_modified),
     OPTION("--cancel-list-on-mount-seconds=%s", cancel_list_on_mount_seconds),
     OPTION("--high-disk-threshold=%s", high_disk_threshold),
     OPTION("--low-disk-threshold=%s", low_disk_threshold),
@@ -836,6 +837,15 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         if(val == "true")
         {
             config_options.emptyDirCheck = true;
+        }
+    }
+
+    config_options.uploadIfModified = false;
+    if (cmd_options.upload_if_modified != NULL) {
+        std::string val(cmd_options.upload_if_modified);
+        if(val == "true")
+        {
+            config_options.uploadIfModified = true;
         }
     }
     

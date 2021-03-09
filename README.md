@@ -63,9 +63,9 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--cancel-list-on-mount-seconds=0** : libFuse implicitly issues a list command on mount resulting into a call to container to retreive list of blobs. User can avoid this call by disabling the list feature for given number of seconds specified in this parameter. Default value is 0 meaning list call is not disabled.    
      * [OPTIONAL] **--high-disk-threshold=90** : High disk threshold percentage. When disk usage of cache directory reaches this mark start evicting the cache. This parameter overrides 'file-cache-timeout-in-seconds' parameter and cached file will be removed even if timeout is yet to expire. Files which are currently in use (open) will not be evicted from cache.
      * [OPTIONAL] **--low-disk-threshold=80** : Low disk threshold percentage. When disk usage of cache directory reaches high-disk-threshold mark start evicting the cache. Stop cache eviction when disk usage returns back to level specified by low-disk-threshold.
+     * [OPTIONAL] **--upload-modified-only=false** : If any file is open in 'write' mode then blobfuse upload that file on close, ir-respective of file was modified or not. Setting this flag to true means files will be uploaded only if they were modified after opening.
      * [OPTIONAL] **--cache-poll-timeout=1** : Timeout (milisecond) of checking the blobfuse cache for any possible eviction and free up space. Default is 1 milisecond.
      * [OPTIONAL] **--max-eviction=0** : How many cached files shall be evicted at a time, in case multiple are expired. This is to conserve the CPU usage done for cache eviction. Remaining files will be evicted in the next turn. '0' means there is no upper limit and all expired files will get evicted, may result in 100% CPU usage.
-     
 
 
 ### Valid authentication setups:
