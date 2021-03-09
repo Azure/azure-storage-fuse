@@ -65,6 +65,7 @@ struct configParams
     unsigned long long cacheSize;
     volatile int  cancel_list_on_mount_secs;
     bool emptyDirCheck;
+    bool uploadIfModified;
     std::string mntPath;
     int high_disk_threshold;
     int low_disk_threshold;
@@ -89,6 +90,7 @@ struct cmdlineOptions
     const char *cache_size_mb; // MAX Size of cache in MBs
     const char *cancel_list_on_mount_seconds; // Block the list api call on mount for n seconds
     const char *empty_dir_check;
+    const char *upload_if_modified;
     const char *encode_full_file_name; // Encode the '%' symbol in file name
     const char *high_disk_threshold; // High disk threshold percentage
     const char *low_disk_threshold; // Low disk threshold percentage
@@ -100,8 +102,9 @@ struct cmdlineOptions
 struct fhwrapper
 {
     int fh; // The handle to the file in the file cache to use for read/write operations.
-    bool upload; // True if the blob should be uploaded when the file is closed.  (False when the file was opened in read-only mode.)
-    fhwrapper(int fh, bool flag) : fh(fh), upload(flag)
+    bool write_mode; // False when the file was opened in read-only mode
+    bool upload_on_close; // False if file is not written or created. Upload only if the flag is true
+    fhwrapper(int fh, bool mode) : fh(fh), write_mode(mode), upload_on_close(false)
     {
 
     }
