@@ -21,6 +21,7 @@ std::shared_ptr<StorageBfsClientBase> storage_client;
 extern bool gZonalDNS;
 int stdErrFD = -1;
 bool is_directory_mounted(const char* mntDir);
+time_t gMountTime;
 
 namespace {
     std::string trim(const std::string& str) {
@@ -54,6 +55,8 @@ const struct fuse_opt option_spec[] =
     OPTION("--cancel-list-on-mount-seconds=%s", cancel_list_on_mount_seconds),
     OPTION("--high-disk-threshold=%s", high_disk_threshold),
     OPTION("--low-disk-threshold=%s", low_disk_threshold),
+    OPTION("--cache-poll-timeout-msec=%s", cache_poll_timeout_msec),
+    OPTION("--max-eviction=%s", max_eviction),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -355,6 +358,7 @@ void *azs_init(struct fuse_conn_info * conn)
 {
     syslog(LOG_DEBUG, "azs_init ran");
 
+    gMountTime = time(NULL);
     /*
     cfg->attr_timeout = 360;
     cfg->kernel_cache = 1;
@@ -673,6 +677,7 @@ bool is_directory_empty(const char *tmpDir) {
     return (cnt <= 2);
 }
 
+
 int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 {
     // FUSE has a standard method of argument parsing, here we just follow the pattern.
@@ -946,6 +951,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         std::string cancel_list_on_mount_secs(cmd_options.cancel_list_on_mount_seconds);
         config_options.cancel_list_on_mount_secs = stoi(cancel_list_on_mount_secs);
     }
+
     // Make high and low disk threshold percentage a configurable option
     if (cmd_options.high_disk_threshold != NULL) 
     {
@@ -972,7 +978,26 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.high_disk_threshold = HIGH_THRESHOLD_VALUE;
         config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
     }
-    syslog(LOG_INFO, "Disk Thresholds : %d - %d", config_options.high_disk_threshold, config_options.low_disk_threshold);
+    
+    config_options.cachePollTimeout = 1000;
+    if (cmd_options.cache_poll_timeout_msec != NULL) 
+    {
+        std::string timeout(cmd_options.cache_poll_timeout_msec);
+        config_options.cachePollTimeout = stoi(timeout) * 1000;
+    }
+
+    config_options.maxEviction = 0;
+    if (cmd_options.max_eviction != NULL) 
+    {
+        std::string max_evic(cmd_options.max_eviction);
+        config_options.maxEviction = stoi(max_evic);
+    }
+
+    syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d", 
+        config_options.high_disk_threshold, config_options.low_disk_threshold,
+        config_options.cachePollTimeout, config_options.maxEviction,
+        config_options.cancel_list_on_mount_secs);
+        
     return 0;
 }
 
