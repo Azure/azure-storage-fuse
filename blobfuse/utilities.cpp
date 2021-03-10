@@ -579,7 +579,9 @@ bool is_symlink_blob(std::vector<std::pair<std::string, std::string>> metadata)
 {
     for (auto iter = metadata.begin(); iter != metadata.end(); ++iter)
     {
-        if ((iter->first.compare("is_symlink") == 0) && (iter->second.compare("true") == 0))
+        if (((iter->first.compare("is_symlink") == 0) || 
+             (iter->first.compare("Is_symlink") == 0)) && 
+            (iter->second.compare("true") == 0))
         {
             return true;
         }

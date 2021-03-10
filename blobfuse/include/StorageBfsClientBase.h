@@ -110,7 +110,9 @@ class BfsFileProperty
                     continue;
                 }
                 
-                if ((iter->first.compare("is_symlink") == 0) && (iter->second.compare("true") == 0))
+                if (((iter->first.compare("is_symlink") == 0) || 
+                     (iter->first.compare("Is_symlink") == 0)) && 
+                    (iter->second.compare("true") == 0))
                 {
                     is_symlink = true;
                     continue;
