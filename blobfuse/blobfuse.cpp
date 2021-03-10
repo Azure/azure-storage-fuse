@@ -20,6 +20,7 @@ std::shared_ptr<StorageBfsClientBase> storage_client;
 
 int stdErrFD = -1;
 bool is_directory_mounted(const char* mntDir);
+time_t gMountTime;
 
 namespace {
     std::string trim(const std::string& str) {
@@ -53,7 +54,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--cancel-list-on-mount-seconds=%s", cancel_list_on_mount_seconds),
     OPTION("--high-disk-threshold=%s", high_disk_threshold),
     OPTION("--low-disk-threshold=%s", low_disk_threshold),
-    OPTION("--cache-poll-timeout=%s", cache_poll_timeout),
+    OPTION("--cache-poll-timeout-msec=%s", cache_poll_timeout_msec),
     OPTION("--max-eviction=%s", max_eviction),
     OPTION("--version", version),
     OPTION("-v", version),
@@ -345,26 +346,12 @@ void destroyBlobfuseOnAuthError()
     exit(1);
 }
 
-void oneSecondTimer()
-{
-    int max_count = config_options.cancel_list_on_mount_secs;
-
-    for (int i = 1; i <= max_count; i++) {
-        sleep(1);
-
-        if (--config_options.cancel_list_on_mount_secs == 0) {
-            syslog(LOG_DEBUG, "Timer : List api is unblocked now");
-        }
-        syslog(LOG_DEBUG, "Timer : List api blocked for %d seconds", config_options.cancel_list_on_mount_secs);
-    }
-    
-}
-
 int configure_tls();
 void *azs_init(struct fuse_conn_info * conn)
 {
     syslog(LOG_DEBUG, "azs_init ran");
 
+    gMountTime = time(NULL);
     /*
     cfg->attr_timeout = 360;
     cfg->kernel_cache = 1;
@@ -427,11 +414,6 @@ void *azs_init(struct fuse_conn_info * conn)
     {
         std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(EmptyCallback);
         tokenManager->StartTokenMonitor();
-    }
-
-    if (config_options.cancel_list_on_mount_secs > 0) {
-        std::thread t1(std::bind(&oneSecondTimer));
-        t1.detach();
     }
 
     return NULL;
@@ -991,9 +973,9 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     }
     
     config_options.cachePollTimeout = 1000;
-    if (cmd_options.cache_poll_timeout != NULL) 
+    if (cmd_options.cache_poll_timeout_msec != NULL) 
     {
-        std::string timeout(cmd_options.cache_poll_timeout);
+        std::string timeout(cmd_options.cache_poll_timeout_msec);
         config_options.cachePollTimeout = stoi(timeout) * 1000;
     }
 

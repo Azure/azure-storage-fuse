@@ -2,6 +2,7 @@
 
 #include <include/StorageBfsClientBase.h>
 extern std::shared_ptr<StorageBfsClientBase> storage_client;
+extern time_t gMountTime;
 
 // TODO: Bug in azs_mkdir, should fail if the directory already exists.
 int azs_mkdir(const char *path, mode_t)
@@ -45,8 +46,17 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     AZS_DEBUGLOGV("azs_readdir called with path = %s\n", path);
 
     if (config_options.cancel_list_on_mount_secs > 0) {
-        AZS_DEBUGLOGV("azs_readdir blocked by user config for %d more secs\n", config_options.cancel_list_on_mount_secs);
-        return 0;
+        time_t now = time(NULL);
+        if ((now - gMountTime) < config_options.cancel_list_on_mount_secs)
+        {
+            AZS_DEBUGLOGV("azs_readdir blocked by user config for %d secs\n", 
+                config_options.cancel_list_on_mount_secs - (int)(now - gMountTime));
+            return 0;
+        } else {
+            AZS_DEBUGLOGV("azs_readdir un-blocked %d secs\n",
+                config_options.cancel_list_on_mount_secs - (int)(now - gMountTime));
+            config_options.cancel_list_on_mount_secs = 0;
+        }
     }
 
     std::string pathStr(path);

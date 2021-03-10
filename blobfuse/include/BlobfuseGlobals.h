@@ -96,7 +96,7 @@ struct cmdlineOptions
     const char *encode_full_file_name; // Encode the '%' symbol in file name
     const char *high_disk_threshold; // High disk threshold percentage
     const char *low_disk_threshold; // Low disk threshold percentage
-    const char *cache_poll_timeout; // Timeout for cache eviction thread in case queue is empty
+    const char *cache_poll_timeout_msec; // Timeout for cache eviction thread in case queue is empty
     const char *max_eviction; // Maximum number of files to be deleted from cache to converse cpu
 };
 
