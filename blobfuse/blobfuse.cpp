@@ -285,10 +285,10 @@ int read_config(const std::string configFile)
             if (acctType == "adls")
                 config_options.useADLS = true;
         } 
-        else if(line.find("zonalDNS") != std::string::npos)
+        else if(line.find("dnsType") != std::string::npos)
         {
             std::string val(value);
-            if (val == "true")
+            if (val == "zonal")
                 gZonalDNS = true;
         }  
 
