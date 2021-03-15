@@ -474,6 +474,29 @@ jobs:
           timeoutInMinutes: 30
           continueOnError: true
 
+        # Mount a directory for stressTest (ADLS) and run 3 instance in parallel for stress test
+        - script:  |
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+            sudo apt-get install parallel -y
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
+            cd test
+            for i in 1 2 3; do echo "go run stressTest.go $(MOUNT_DIR)"; done | parallel -j 3
+            cd -
+          displayName: TEST - ADLS stressTest Parallel
+          timeoutInMinutes: 120
+          condition: eq(variables.imageName, 'ubuntu-18.04')
+
+        - script:  |
+            rm -rf $(MOUNT_DIR)/*
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(TEMP_DIR)/*
+            sudo rm -rf $(BLOBFUSE_STRESS_DIR)/*
+          displayName: TEST - ADLS stressTest Cleanup Parallel
+          timeoutInMinutes: 30
+          condition: eq(variables.imageName, 'ubuntu-18.04')
+
+
         # -------------------------------------------------------
         # Mount a directory for feature test (ADLS) and run it
         - script:  |
