@@ -21,6 +21,7 @@ std::shared_ptr<StorageBfsClientBase> storage_client;
 int stdErrFD = -1;
 bool is_directory_mounted(const char* mntDir);
 time_t gMountTime;
+extern bool gSetContentType;
 
 namespace {
     std::string trim(const std::string& str) {
@@ -56,6 +57,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--low-disk-threshold=%s", low_disk_threshold),
     OPTION("--cache-poll-timeout-msec=%s", cache_poll_timeout_msec),
     OPTION("--max-eviction=%s", max_eviction),
+    OPTION("--set-content-type=%s", set_content_type),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -984,6 +986,13 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     {
         std::string max_evic(cmd_options.max_eviction);
         config_options.maxEviction = stoi(max_evic);
+    }
+
+    if (cmd_options.set_content_type != NULL) 
+    {
+        std::string val(cmd_options.set_content_type);
+        if (val == "true")
+            gSetContentType = true;
     }
 
     syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d", 

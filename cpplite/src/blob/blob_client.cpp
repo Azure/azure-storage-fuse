@@ -38,6 +38,8 @@ typedef SSIZE_T ssize_t;
 
 #include <curl/curl.h>
 
+bool gSetContentType = false;
+
 namespace azure {  namespace storage_lite {
 
 namespace {
@@ -184,6 +186,46 @@ std::future<storage_outcome<void>> blob_client::download_blob_to_buffer(const st
     return context->task_promise.get_future();
 }
 
+std::map<std::string, std::string> contentTypeMap {
+	{".css", "text/css"},
+	{".gif",  "image/gif"},
+	{".htm",  "text/html"},
+	{".html", "text/html"},
+	{".jpeg", "image/jpeg"},
+	{".jpg",  "image/jpeg"},
+	{".js",   "application/javascript"},
+	{".mjs",  "application/javascript"},
+	{".pdf",  "application/pdf"},
+	{".png",  "image/png"},
+	{".svg",  "image/svg+xml"},
+	{".wasm", "application/wasm"},
+	{".webp", "image/webp"},
+	{".xml",  "text/xml"},
+    {".m3u8", "application/x-mpegURL"},
+    {".ts", "video/MP2T"},
+};
+
+std::string GetContentType(std::string blob) {
+    std::string type = "application/octet-stream";
+    std::string ext = "";
+
+    size_t i = blob.rfind('.', blob.length());
+    if (i != std::string::npos) {
+        ext = blob.substr(i, blob.length() - i);
+        if (ext.length() > 6)
+            return type;
+
+        transform(ext.begin(), ext.end(), ext.begin(), ::tolower); 
+
+        auto iter = contentTypeMap.find(ext);
+        if (iter != contentTypeMap.end()) 
+            type = iter->second;
+    }
+
+   return type;
+}
+
+
 std::future<storage_outcome<void>> blob_client::upload_block_blob_from_stream(const std::string &container, const std::string &blob, std::istream &is, const std::vector<std::pair<std::string, std::string>> &metadata)
 {
     auto http = m_client->get_handle();
@@ -199,6 +241,9 @@ std::future<storage_outcome<void>> blob_client::upload_block_blob_from_stream(co
     {
         request->set_metadata(metadata);
     }
+
+    if (gSetContentType)
+        request->set_content_type(GetContentType(blob));
 
     http->set_input_stream(storage_istream(is));
 
@@ -217,6 +262,8 @@ std::future<storage_outcome<void>> blob_client::upload_block_blob_from_stream(co
         request->set_metadata(metadata);
     }
 
+    if (gSetContentType) 
+        request->set_content_type(GetContentType(blob));
     http->set_input_stream(storage_istream(is));
     http->set_is_input_length_known();
     http->set_input_content_length(streamlen);
@@ -532,6 +579,9 @@ std::future<storage_outcome<void>> blob_client::put_block_list(const std::string
 
     auto request = std::make_shared<put_block_list_request>(container, blob);
     request->set_block_list(block_list);
+    if (gSetContentType)
+        request->set_content_type(GetContentType(blob));
+
     if (metadata.size() > 0)
     {
         request->set_metadata(metadata);
