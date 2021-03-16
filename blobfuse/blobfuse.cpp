@@ -18,6 +18,7 @@ struct configParams config_options;
 struct globalTimes_st globalTimes;
 std::shared_ptr<StorageBfsClientBase> storage_client;
 
+extern bool gZonalDNS;
 int stdErrFD = -1;
 bool is_directory_mounted(const char* mntDir);
 time_t gMountTime;
@@ -288,6 +289,12 @@ int read_config(const std::string configFile)
             std::string acctType(value);
             if (acctType == "adls")
                 config_options.useADLS = true;
+        } 
+        else if(line.find("dnsType") != std::string::npos)
+        {
+            std::string val(value);
+            if (val == "zonal")
+                gZonalDNS = true;
         }  
 
         data.clear();
@@ -826,10 +833,12 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 
     config_options.uploadIfModified = false;
     if (cmd_options.upload_if_modified != NULL) {
+        syslog(LOG_DEBUG, "upload_if_modified is not null");
         std::string val(cmd_options.upload_if_modified);
         if(val == "true")
         {
             config_options.uploadIfModified = true;
+            syslog(LOG_DEBUG, "upload_if_modified is true");
         }
     }
     

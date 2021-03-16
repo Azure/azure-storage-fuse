@@ -5,11 +5,11 @@ set(VERSION "1.3.6")
 
 # This macro is referred in code to print the current version
 # Change CPACK_DEBIAN_PACKAGE_DESCRIPTION as well in this file while bumping up the version
-add_definitions(-D_BLOBFUSE_VERSION_="1.3.6")
+add_definitions(-D_BLOBFUSE_VERSION_="1.3.7")
 
 set(CPACK_PACKAGE_VERSION_MAJOR 1)
 set(CPACK_PACKAGE_VERSION_MINOR 3)  
-set(CPACK_PACKAGE_VERSION_PATCH 6)
+set(CPACK_PACKAGE_VERSION_PATCH 7)
 set(CPACK_PACKAGE_VERSION_RELEASE 1)
 
 set (BLOBFUSE_HEADER
@@ -125,7 +125,7 @@ if(UNIX)
   set(CPACK_GENERATOR "DEB")
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft - Azure Storage")
   set(CPACK_DEBIAN_PACKAGE_DEPENDS "fuse")
-  set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 1.3.6 - FUSE adapter for Azure Blob Storage")
+  set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 1.3.7 - FUSE adapter for Azure Blob Storage")
   set(CPACK_PACKAGE_NAME "blobfuse")
   set(CPACK_PACKAGE_VENDOR "Microsoft")
   include(CPack)
