@@ -2,6 +2,8 @@
 
 #include "constants.h"
 
+bool gZonalDNS = false;
+
 namespace azure {  namespace storage_lite {
 
     std::shared_ptr<storage_account> storage_account::development_storage_account()
@@ -40,14 +42,20 @@ namespace azure {  namespace storage_lite {
 
             auto slash_pos = endpoint.find('/');
             std::string host = endpoint.substr(0, slash_pos);
+
             auto accountname_pos = host.find('.');
-            std::string accountName = host.substr(0, accountname_pos);
-            auto suffix_pos = host.find('.', accountname_pos+1);
+            std::string accountName = host.substr(0, accountname_pos++);
+            auto suffix_pos = host.find('.', accountname_pos);
+            std::string zone = host.substr(accountname_pos, (suffix_pos - accountname_pos));
             std::string suffix = host.substr(suffix_pos );
             auto path_start = endpoint.find_first_not_of('/', slash_pos);
             std::string path = path_start == std::string::npos ? "" : endpoint.substr(path_start);
 
             std::string domain = scheme + account_name;
+
+            if (gZonalDNS) {
+                domain = domain + "." + zone;
+            }
 
             m_blob_url.set_domain(domain + ".blob" + suffix);
             m_table_url.set_domain(domain + ".table" + suffix);
