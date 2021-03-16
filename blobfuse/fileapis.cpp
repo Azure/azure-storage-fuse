@@ -107,7 +107,10 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             else
             {
                 syslog(LOG_INFO, "Successfully downloaded blob %s into file cache as %s.\n", pathString.c_str()+1, mntPathString.c_str());
-                g_gc_cache->addCacheBytes(mntPathString, size);
+                if (config_options.fileCacheTimeoutInSeconds == 0)
+                {
+                    g_gc_cache->addCacheBytes(mntPathString, size);
+                }
             }
             
             // preserve the last modified time
@@ -254,6 +257,7 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
     int res = pwrite(fd, buf, size, offset);
     if (res == -1)
         res = -errno;
+    AZS_DEBUGLOGV("azs_write called with path= %s", path);
     ((struct fhwrapper *)fi->fh)->upload_on_close = true;
 
     g_gc_cache->addCacheBytes(path, size);
@@ -303,6 +307,8 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
         // For some file systems, however, close() flushes data, so we do want to do that before uploading data to a blob.
         // The solution (taken from the FUSE documentation) is to close a duplicate of the file descriptor.
         close(dup(((struct fhwrapper *)fi->fh)->fh));
+        AZS_DEBUGLOGV("azs_flush: path = %s, upload_on_close = %d, modified only flag config_options.uploadIfModified = %d, .\n", path, (((struct fhwrapper *)fi->fh)->upload_on_close), config_options.uploadIfModified);
+
         if ((config_options.uploadIfModified &&
               ((struct fhwrapper *)fi->fh)->upload_on_close)  ||
             ((!config_options.uploadIfModified) &&
@@ -395,15 +401,14 @@ int azs_release(const char *path, struct fuse_file_info * fi)
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
-    if (access(mntPath, F_OK) != -1 )
+    if (access(mntPath, F_OK) != -1 && config_options.fileCacheTimeoutInSeconds > 0)
     {
         AZS_DEBUGLOGV("Adding file to the GC from azs_release.  File = %s\n.", mntPath);
 
         // store the file in the cleanup list
         g_gc_cache->uncache_file(pathString);
-
     }
-    else
+    else if (config_options.fileCacheTimeoutInSeconds > 0)
     {
         syslog(LOG_INFO, "Accessing file %s from azs_release failed.\n", mntPath);
     }
