@@ -27,7 +27,6 @@ namespace azure { namespace storage_lite {
             return blob_type::block_blob;
         }
 
-        //  Changes submitted by @eliaspuurunen :  PR #568
         std::string content_type() const override
         {
             return m_content_type;
