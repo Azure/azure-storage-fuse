@@ -28,7 +28,7 @@ parameters:
 jobs:
   - ${{ if true }}:
     - job: Set_1
-      timeoutInMinutes: 300
+      timeoutInMinutes: 400
 
       # Define on what all OS we want to run this Pipeline
       strategy:

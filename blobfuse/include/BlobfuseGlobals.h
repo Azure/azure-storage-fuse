@@ -98,6 +98,7 @@ struct cmdlineOptions
     const char *low_disk_threshold; // Low disk threshold percentage
     const char *cache_poll_timeout_msec; // Timeout for cache eviction thread in case queue is empty
     const char *max_eviction; // Maximum number of files to be deleted from cache to converse cpu
+    const char *set_content_type; // Whether to set content type while upload blob
 };
 
 

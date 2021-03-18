@@ -27,6 +27,17 @@ namespace azure { namespace storage_lite {
             return blob_type::block_blob;
         }
 
+        std::string content_type() const override
+        {
+            return m_content_type;
+        }
+
+        create_block_blob_request &set_content_type(std::string content_type)
+        {
+            m_content_type = content_type;
+            return *this;
+        }
+
         unsigned int content_length() const override
         {
             return m_content_length;
@@ -55,6 +66,7 @@ namespace azure { namespace storage_lite {
         std::string m_blob;
 
         unsigned int m_content_length;
+        std::string m_content_type;
         std::vector<std::pair<std::string, std::string>> m_metadata;
     };
 
