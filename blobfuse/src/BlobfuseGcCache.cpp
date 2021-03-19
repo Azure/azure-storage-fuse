@@ -28,13 +28,14 @@ bool gc_cache::check_disk_space()
             is_sudo_user = true;
         user_detected = true;
 
-        AZS_DEBUGLOGV("GC_Cache User identified. Privillaged : %d", (int)(is_sudo_user));
+        AZS_DEBUGLOGV("GC_Cache User identified. Privileged : %d", (int)(is_sudo_user));
     }
 
     if (config_options.cacheSize == 0) {
         struct statvfs buf;
         if(statvfs(cache_folder_path.c_str(), &buf) != 0)
         {
+            AZS_DEBUGLOGV("GC_Cache statvfs failed wieh err %d", errno);
             return false;
         }
 
