@@ -35,7 +35,7 @@ bool gc_cache::check_disk_space()
         struct statvfs buf;
         if(statvfs(cache_folder_path.c_str(), &buf) != 0)
         {
-            AZS_DEBUGLOGV("GC_Cache statvfs failed wieh err %d", errno);
+            AZS_DEBUGLOGV("GC_Cache statvfs failed with err : %d", errno);
             return false;
         }
 
