@@ -67,12 +67,10 @@ bool gc_cache::check_disk_space()
 
     if(used_percent >= config_options.high_disk_threshold && !disk_threshold_reached)
     {
-        AZS_DEBUGLOGV("GC_Cache Disk threshold reached : usage is %.2f", used_percent);
         return true;
     }
     else if(used_percent >= config_options.low_disk_threshold && disk_threshold_reached)
     {
-        AZS_DEBUGLOGV("GC_Cache Disk threshold still high : usage is %.2f", used_percent);
         return true;
     }
     return false;
