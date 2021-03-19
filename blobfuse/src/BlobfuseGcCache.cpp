@@ -19,6 +19,18 @@ bool gc_cache::check_disk_space()
     double available;
     unsigned long long used;
 
+    static bool user_detected = false;
+    static bool is_sudo_user = false;
+
+    if (!user_detected) {
+        // If effective uid = 0 then we are running as sudo
+        if (geteuid() == 0)
+            is_sudo_user = true;
+        user_detected = true;
+
+        AZS_DEBUGLOGV("GC_Cache User identified. Privillaged : %d", (int)(is_sudo_user));
+    }
+
     if (config_options.cacheSize == 0) {
         struct statvfs buf;
         if(statvfs(cache_folder_path.c_str(), &buf) != 0)
@@ -32,8 +44,16 @@ bool gc_cache::check_disk_space()
         //f_frsize - the fundamental file system block size (in bytes) (used to convert file system blocks to bytes)
         //f_blocks - total number of blocks on the filesystem/disk in the units of f_frsize
         //f_bfree - total number of free blocks in units of f_frsize
+
+        // f_bfree : Number of blocks free (root user)
+        // f_bavail : Nukber of blocks available for unprivillaged user (non root)
         total = buf.f_blocks * buf.f_frsize;
-        available = buf.f_bfree * buf.f_frsize;
+
+        if (is_sudo_user)
+            available = buf.f_bfree * buf.f_frsize;
+        else    
+            available = buf.f_bavail * buf.f_frsize;
+
         used = total - available;
     } else {
         if (is_directory_empty(cache_folder_path.c_str()))
@@ -47,10 +67,12 @@ bool gc_cache::check_disk_space()
 
     if(used_percent >= config_options.high_disk_threshold && !disk_threshold_reached)
     {
+        AZS_DEBUGLOGV("GC_Cache Disk threshold reached : usage is %.2f", used_percent);
         return true;
     }
     else if(used_percent >= config_options.low_disk_threshold && disk_threshold_reached)
     {
+        AZS_DEBUGLOGV("GC_Cache Disk threshold still high : usage is %.2f", used_percent);
         return true;
     }
     return false;
