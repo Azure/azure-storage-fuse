@@ -183,7 +183,7 @@ Please take careful note of the following points, before using blobfuse:
 	- to go back to your default logging level (provided in command line options) 
 		- remove the `logLevel` entry from config file 
 		- after saving config file send `SIGUSR1` to running instance of blobfuse.
-- By default logs are directed to system-configured syslog file e.g. /var/log/syslog
+- By default logs are directed to system-configured log file e.g. /var/log/syslog or var/log/message (Depending Upon the Linux OS Family)
 - If user wishes to redirect blobfuse logs to a different file, follow the below procedure
 	- copy 10-blobfuse.conf to `/etc/rsyslog.d/`
 	- copy blobfuse-logrotate to `/etc/logrotate.d/`
