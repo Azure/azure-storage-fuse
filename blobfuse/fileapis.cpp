@@ -107,10 +107,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             else
             {
                 syslog(LOG_INFO, "Successfully downloaded blob %s into file cache as %s.\n", pathString.c_str()+1, mntPathString.c_str());
-                if (config_options.fileCacheTimeoutInSeconds == 0)
-                {
-                    g_gc_cache->addCacheBytes(mntPathString, size);
-                }
+                g_gc_cache->addCacheBytes(mntPathString, size);
             }
             
             // preserve the last modified time
@@ -401,14 +398,14 @@ int azs_release(const char *path, struct fuse_file_info * fi)
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
-    if (access(mntPath, F_OK) != -1 && config_options.fileCacheTimeoutInSeconds > 0)
+    if (access(mntPath, F_OK) != -1)
     {
         AZS_DEBUGLOGV("Adding file to the GC from azs_release.  File = %s\n.", mntPath);
 
         // store the file in the cleanup list
         g_gc_cache->uncache_file(pathString);
     }
-    else if (config_options.fileCacheTimeoutInSeconds > 0)
+    else
     {
         syslog(LOG_INFO, "Accessing file %s from azs_release failed.\n", mntPath);
     }
