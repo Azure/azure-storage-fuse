@@ -164,6 +164,19 @@ void gc_cache::run_gc_cache()
             {
                 //clean up the file from cache
                 int fd = open(mntPath, O_WRONLY);
+                if (errno == 13) {
+                    close(fd);
+                    int fdr = open(mntPath, O_RDONLY);
+                    if (fdr > 0) {
+                        errno = 0;
+                        if (fchmod(fdr, config_options.defaultPermission) == 0) {
+                            AZS_DEBUGLOGV("GCClean clould not open for delete, so, Write protection overwritten for %s, resubmitting for cleanup", mntPath);
+                            }
+                        //TODO: If there is lock issue below convert permissions back to what it was.
+                        close(fdr);
+                    }
+                    fd = open(mntPath, O_WRONLY);
+                }
                 if (fd > 0)
                 {
                     int flockres = flock(fd, LOCK_EX|LOCK_NB);
@@ -198,8 +211,7 @@ void gc_cache::run_gc_cache()
 
                     close(fd);
                 }
-                else
-                {
+                else {
                     //TODO:if we can't open the file consistently, should we just try to move onto the next file?
                     //or somehow timeout on a file we can't open?
                     AZS_DEBUGLOGV("Failed to open file %s from file cache in GC, skipping cleanup. errno from open = %d.", mntPath, errno);
