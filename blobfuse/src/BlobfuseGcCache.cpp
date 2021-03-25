@@ -237,6 +237,7 @@ void gc_cache::run_gc_cache()
                         AZS_DEBUGLOGV("Failed to open file %s from file cache in GC, skipping cleanup. errno from open = %d.", mntPath, errno);
                         if (permissionsoverwritten == true)
                         {
+                            fchmod(fd, originalpermissions);
                             AZS_DEBUGLOGV("Permissions overwriiten for file %s original %d, overwritten permission %d", mntPath, originalpermissions, config_options.defaultPermission);
                         }
                     }
