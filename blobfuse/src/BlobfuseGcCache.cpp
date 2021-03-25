@@ -10,6 +10,7 @@
 #include <BlobfuseGlobals.h>
 #include <BlobfuseConstants.h>
 #include "FileLockMap.h"
+#include "Permissions.h"
 
 extern struct configParams config_options;
 
@@ -115,6 +116,8 @@ void gc_cache::run_gc_cache()
         // lock the deque
         file_to_delete file;
         bool is_empty;
+        bool permissionsoverwritten = false;
+        int originalpermissions ;
         {
             std::lock_guard<std::mutex> lock(m_deque_lock);
             is_empty = m_cleanup.empty();
@@ -164,6 +167,28 @@ void gc_cache::run_gc_cache()
             {
                 //clean up the file from cache
                 int fd = open(mntPath, O_WRONLY);
+                if (errno == 13) {
+                    AZS_DEBUGLOGV("GCClean ran into permissions issur for opening WRONLY for file %s", mntPath);
+                    int fdr = open(mntPath, O_RDONLY);
+                    if (fdr > 0) {
+                        errno = 0;
+                        originalpermissions = buf.st_mode;
+                        if (fchmod(fdr, config_options.defaultPermission) == 0) {
+                            AZS_DEBUGLOGV("GCClean could not open for delete, so, Write protection overwritten for %s, resubmitting for cleanup", mntPath);
+                            permissionsoverwritten = true;
+                        }
+                        else
+                        {
+                            AZS_DEBUGLOGV("GC cleanup no write file permission and Unable to change permissions to file %s", mntPath);
+                        }
+                        //TODO: If there is lock issue below convert permissions back to what it was.
+                        close(fdr);
+                    }
+                    else{
+                         AZS_DEBUGLOGV("Failed to open file %s in read only mode errno = %d.", mntPath, errno);
+                    }
+                    fd = open(mntPath, O_WRONLY);
+                }
                 if (fd > 0)
                 {
                     int flockres = flock(fd, LOCK_EX|LOCK_NB);
@@ -198,11 +223,19 @@ void gc_cache::run_gc_cache()
 
                     close(fd);
                 }
-                else
-                {
-                    //TODO:if we can't open the file consistently, should we just try to move onto the next file?
-                    //or somehow timeout on a file we can't open?
-                    AZS_DEBUGLOGV("Failed to open file %s from file cache in GC, skipping cleanup. errno from open = %d.", mntPath, errno);
+                else {
+                    if (errno == 2)
+                    {
+                        AZS_DEBUGLOGV("File %s does not exist, gc cleanup not done",mntPath);
+                    }
+                    else{
+                        //TODO:we are not putting the file back in the queue should we?
+                        AZS_DEBUGLOGV("Failed to open file %s from file cache in GC, skipping cleanup. errno from open = %d.", mntPath, errno);
+                        if (permissionsoverwritten == true)
+                        {
+                            AZS_DEBUGLOGV("Permissions overwriiten for file %s original %d, overwritten permission %d", mntPath, originalpermissions, config_options.defaultPermission);
+                        }
+                    }
                 }
             }
 
