@@ -168,7 +168,7 @@ void gc_cache::run_gc_cache()
                 //clean up the file from cache
                 int fd = open(mntPath, O_WRONLY);
                 if (errno == 13) {
-                    AZS_DEBUGLOGV("GCClean ran into permissions issur for opening WRONLY for file %s", mntPath);
+                    AZS_DEBUGLOGV("GCClean ran into permission issues for opening WRONLY for file %s", mntPath);
                     int fdr = open(mntPath, O_RDONLY);
                     if (fdr > 0) {
                         errno = 0;
@@ -179,7 +179,7 @@ void gc_cache::run_gc_cache()
                         }
                         else
                         {
-                            AZS_DEBUGLOGV("GC cleanup no write file permission and Unable to change permissions to file %s", mntPath);
+                            AZS_DEBUGLOGV("GC cleanup fails with no write file permission and Unable to change permissions to file %s", mntPath);
                         }
                         //TODO: If there is lock issue below convert permissions back to what it was.
                         close(fdr);
@@ -204,6 +204,10 @@ void gc_cache::run_gc_cache()
                         {
                             // Failed to acquire the lock for some other reason.  We close the open fd, and continue.
                             syslog(LOG_ERR, "Did not clean up file %s from file cache because we failed to acquire the flock for an unknown reason, errno = %d.\n", mntPath, errno);
+                        }
+                        if (permissionsoverwritten == true)
+                        {
+                            fchmod(fd, originalpermissions);
                         }
                     }
                     else
