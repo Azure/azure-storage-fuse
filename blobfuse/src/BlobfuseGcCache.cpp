@@ -117,7 +117,7 @@ void gc_cache::run_gc_cache()
         file_to_delete file;
         bool is_empty;
         bool permissionsoverwritten = false;
-        int originalpermissions ;
+        int originalpermissions = config_options.defaultPermission;
         {
             std::lock_guard<std::mutex> lock(m_deque_lock);
             is_empty = m_cleanup.empty();
