@@ -117,7 +117,7 @@ void gc_cache::run_gc_cache()
         file_to_delete file;
         bool is_empty;
         bool permissionsoverwritten = false;
-        int originalpermissions ;
+        int originalpermissions = config_options.defaultPermission;
         {
             std::lock_guard<std::mutex> lock(m_deque_lock);
             is_empty = m_cleanup.empty();
@@ -168,7 +168,7 @@ void gc_cache::run_gc_cache()
                 //clean up the file from cache
                 int fd = open(mntPath, O_WRONLY);
                 if (errno == 13) {
-                    AZS_DEBUGLOGV("GCClean ran into permissions issur for opening WRONLY for file %s", mntPath);
+                    AZS_DEBUGLOGV("GCClean ran into permission issues for opening WRONLY for file %s", mntPath);
                     int fdr = open(mntPath, O_RDONLY);
                     if (fdr > 0) {
                         errno = 0;
@@ -179,7 +179,7 @@ void gc_cache::run_gc_cache()
                         }
                         else
                         {
-                            AZS_DEBUGLOGV("GC cleanup no write file permission and Unable to change permissions to file %s", mntPath);
+                            AZS_DEBUGLOGV("GC cleanup fails with no write file permission and Unable to change permissions to file %s", mntPath);
                         }
                         //TODO: If there is lock issue below convert permissions back to what it was.
                         close(fdr);
@@ -204,6 +204,10 @@ void gc_cache::run_gc_cache()
                         {
                             // Failed to acquire the lock for some other reason.  We close the open fd, and continue.
                             syslog(LOG_ERR, "Did not clean up file %s from file cache because we failed to acquire the flock for an unknown reason, errno = %d.\n", mntPath, errno);
+                        }
+                        if (permissionsoverwritten == true)
+                        {
+                            fchmod(fd, originalpermissions);
                         }
                     }
                     else
@@ -233,6 +237,7 @@ void gc_cache::run_gc_cache()
                         AZS_DEBUGLOGV("Failed to open file %s from file cache in GC, skipping cleanup. errno from open = %d.", mntPath, errno);
                         if (permissionsoverwritten == true)
                         {
+                            fchmod(fd, originalpermissions);
                             AZS_DEBUGLOGV("Permissions overwriiten for file %s original %d, overwritten permission %d", mntPath, originalpermissions, config_options.defaultPermission);
                         }
                     }
