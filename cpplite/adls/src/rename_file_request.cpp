@@ -21,8 +21,8 @@ namespace azure { namespace storage_adls {
         http.add_header(constants::header_user_agent, constants::header_value_user_agent);
         add_ms_header(http, headers, constants::header_ms_date, get_ms_date(date_format::rfc_1123));
         add_ms_header(http, headers, constants::header_ms_version, constants::header_value_storage_blob_version);
-        add_ms_header(http, headers, constants::header_ms_rename_source, encode_url_path("/" + m_source_filesystem + "/" + m_source_path));
-
+        //add_ms_header(http, headers, constants::header_ms_rename_source, encode_url_path("/" + m_source_filesystem + "/" + m_source_path));
+        account.credential()->add_ms_rename_header(http, headers, constants::header_ms_rename_source, encode_url_path("/" + m_source_filesystem + "/" + m_source_path));
         account.credential()->sign_request(*this, http, url, headers);
     }
 
