@@ -21,6 +21,14 @@ namespace azure {  namespace storage_lite {
         {
             return url;
         }
+        virtual void add_ms_rename_header(http_base &h, storage_headers &headers, const std::string &name, const std::string &value) const
+        {
+             if (!value.empty())
+            {
+                h.add_header(name, value);
+                headers.ms_headers[name] = value;
+            }
+        }
         virtual void set_token_callback(std::string (* /*callback*/)()) {}
     };
 
@@ -65,7 +73,7 @@ namespace azure {  namespace storage_lite {
 
         AZURE_STORAGE_API void sign_request(const storage_request_base &r, http_base &h, const storage_url &url, const storage_headers &headers) const override;
         AZURE_STORAGE_API std::string transform_url(std::string url) const override;
-
+        AZURE_STORAGE_API void add_ms_rename_header(http_base &h, storage_headers &headers, const std::string &name, const std::string &value) const override;
     private:
         std::string m_sas_token;
     };

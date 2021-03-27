@@ -70,7 +70,7 @@ namespace azure {  namespace storage_lite {
 
     std::string shared_access_signature_credential::transform_url(std::string url) const
     {
-        if (url.find('?') != std::string::npos) {
+                if (url.find('?') != std::string::npos) {
             url.append("&");
         }
         else {
@@ -85,6 +85,16 @@ namespace azure {  namespace storage_lite {
         std::string transformed_url = transform_url(h.get_url());
         h.set_url(transformed_url);
     }
+
+    void shared_access_signature_credential::add_ms_rename_header(http_base &h, storage_headers &headers, const std::string &name, const std::string &value) const
+        {
+             if (!value.empty())
+            {
+                std::string transformedvalue = transform_url(value);
+                h.add_header(name, transformedvalue);
+                headers.ms_headers[name] = transformedvalue;
+            }                       
+        }
 
     AZURE_STORAGE_API token_credential::token_credential(const std::string &token)
         : m_token(std::move(token)) 
@@ -116,5 +126,6 @@ namespace azure {  namespace storage_lite {
     {
         m_get_token_callback = callback;
         token_callback_set = true;
-    }
+    }    
+
 }}   // azure::storage_lite
