@@ -35,7 +35,6 @@ struct globalTimes_st
 struct configParams
 {
     std::string accountName;
-    //std::string authType;
     AUTH_TYPE authType;
     std::string blobEndpoint;
     std::string accountKey;
@@ -52,6 +51,7 @@ struct configParams
     std::string containerName;
     std::string tmpPath;
     std::string logLevel;
+    std::string caCertPath;
     int fileCacheTimeoutInSeconds;
     bool useHttps;
     bool useAttrCache;

@@ -248,6 +248,11 @@ int read_config(const std::string configFile)
             std::string resourceIdStr(value);
             config_options.resourceId = resourceIdStr;
         }
+        else if(line.find("caCertPath") != std::string::npos)
+        {
+            std::string caCertPathStr(value);
+            config_options.caCertPath = caCertPathStr;
+        }
         else if(line.find("authType") != std::string::npos)
         {
             config_options.authType = get_auth_type(value);

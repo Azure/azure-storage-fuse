@@ -72,7 +72,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accou
             configurations.blobEndpoint);
         std::shared_ptr<blob_client> blobClient = std::make_shared<blob_client>(
             account,
-            configurations.concurrency);
+            configurations.concurrency, config_options.certPath);
         errno = 0;
         return std::make_shared<blob_client_wrapper>(blobClient);
     }
