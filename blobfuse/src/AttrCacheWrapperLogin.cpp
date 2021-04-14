@@ -41,7 +41,7 @@ namespace azure { namespace storage_lite {
                 return std::make_shared<blob_client_wrapper>(false);
             }
             std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
-            std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit);
+            std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit, config_options.caCertPath);
             errno = 0;
             return std::make_shared<blob_client_wrapper>(blobClient);
         }
@@ -83,7 +83,7 @@ namespace azure { namespace storage_lite {
                 return std::make_shared<blob_client_wrapper>(false);
             }
             std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
-            std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit);
+            std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit, config_options.caCertPath);
             errno = 0;
             return std::make_shared<blob_client_wrapper>(blobClient);
         }
@@ -117,7 +117,7 @@ namespace azure { namespace storage_lite {
                 true, //use_https must be true to use oauth
                 blob_endpoint);
             std::shared_ptr<blob_client> blobClient =
-                std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit);
+                std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit, config_options.caCertPath);
             errno = 0;
             return std::make_shared<blob_client_wrapper>(blobClient);
         }

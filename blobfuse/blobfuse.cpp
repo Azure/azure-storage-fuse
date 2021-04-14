@@ -250,6 +250,7 @@ int read_config(const std::string configFile)
         }
         else if(line.find("caCertPath") != std::string::npos)
         {
+            syslog(LOG_DEBUG, "caCertPath has a non null value");
             std::string caCertPathStr(value);
             config_options.caCertPath = caCertPathStr;
         }
@@ -752,6 +753,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         else
         {
             ret = read_config(cmd_options.config_file);
+            syslog(LOG_DEBUG, "done reading config file");
         }
 
         if (ret != 0)

@@ -64,7 +64,8 @@ public:
                     cred, 
                     true, 
                     blob_endpoint);
-            std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, 20);
+            std::string caCertPath;
+            std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, 20, caCertPath);
             mockClient = std::make_shared<::testing::StrictMock<MockBlobClient>>(blobClient);
         }
         else
