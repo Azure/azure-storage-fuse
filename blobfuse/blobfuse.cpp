@@ -427,7 +427,15 @@ void *azs_init(struct fuse_conn_info * conn)
     if (config_options.authType == MSI_AUTH ||
         config_options.authType == SPN_AUTH)
     {
-        std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(EmptyCallback);
+        std::shared_ptr<OAuthTokenCredentialManager> tokenManager;
+        if (config_options.caCertPath.empty())
+        {
+            tokenManager = GetTokenManagerInstance(EmptyCallback);
+        }
+        else
+        {
+            tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.caCertPath);        }
+
         tokenManager->StartTokenMonitor();
     }
 

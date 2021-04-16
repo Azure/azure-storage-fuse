@@ -1,6 +1,6 @@
 //
 // OAuthTokenCredentialManager.cpp
-// This class calls the Aunthentication provider and caches an OAuthToke.
+// This class calls the Aunthentication provider and caches an OAuthToken.
 // It refreshes the token 5 minutes before expiry
 //
 #include "OAuthTokenCredentialManager.h"
@@ -28,13 +28,20 @@ std::string GetTokenCallback()
 /// If no callback is supplied and the token manager doesn't exist, this function will throw.
 /// No callback is necessary to get the current instance.
 /// </summary>
-std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> defaultCallback) {
+std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> defaultCallback, const std::string& caCertPath) {
     if(TokenManagerSingleton == nullptr) {
         if (defaultCallback == nullptr) {
             throw std::runtime_error("Tried to initialize the OAuthTokenCredentialManager, but failed because the default callback was empty!");
         }
 
-        TokenManagerSingleton = std::make_shared<OAuthTokenCredentialManager>(defaultCallback);
+        if (caCertPath.empty())
+        {
+            TokenManagerSingleton = std::make_shared<OAuthTokenCredentialManager>(defaultCallback);
+        }
+        else
+        {
+            TokenManagerSingleton = std::make_shared<OAuthTokenCredentialManager>(defaultCallback, caCertPath);
+        }
     }
 
     return TokenManagerSingleton;
@@ -44,6 +51,26 @@ std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::functi
 /// OauthTokenCredentialManager Constructor
 /// </summary>
 OAuthTokenCredentialManager::OAuthTokenCredentialManager(
+    std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback)
+{
+    httpClient = std::make_shared<CurlEasyClient>(blobfuse_constants::max_concurrency_oauth);
+    Init(refreshCallback);
+}
+
+/// <summary>
+/// OauthTokenCredentialManager Constructor
+/// </summary>
+OAuthTokenCredentialManager::OAuthTokenCredentialManager(
+    std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback, std::string caCertPath)
+{
+    httpClient = std::make_shared<CurlEasyClient>(blobfuse_constants::max_concurrency_oauth, caCertPath);
+    Init(refreshCallback);
+}
+
+/// <summary>
+/// Initialize method of the constructor, OauthTokenCredentialManager Constructor
+/// </summary>
+void OAuthTokenCredentialManager::Init(
     std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback)
 {
     if (refreshCallback == nullptr) {
@@ -57,7 +84,6 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
         syslog(LOG_INFO, "refresh callback set");
     }
 
-    httpClient = std::make_shared<CurlEasyClient>(blobfuse_constants::max_concurrency_oauth);
     refreshTokenCallback = refreshCallback;
 
     try 
