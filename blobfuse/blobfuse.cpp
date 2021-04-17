@@ -60,6 +60,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-eviction=%s", max_eviction),
     OPTION("--set-content-type=%s", set_content_type),
     OPTION("--version", version),
+    OPTION("--ca-cert-path", caCertPath),
     OPTION("-v", version),
     OPTION("--help", help),
     OPTION("-h", help),
