@@ -370,8 +370,8 @@ namespace azure {  namespace storage_lite {
             curl_global_init(CURL_GLOBAL_DEFAULT);
             for (int i = 0; i < m_size; i++) {
                 CURL *h = curl_easy_init();
-                curl_easy_setopt(h, CURLOPT_CAPATH, ca_path.c_str());
-                curl_easy_setopt(h, CURLOPT_VERBOSE, 1L);
+                m_capath = ca_path;
+                set_proxy("http://10.1.22.4:8080/");
                 m_handles.push(h);
             }
         }
@@ -414,8 +414,6 @@ namespace azure {  namespace storage_lite {
         void set_proxy(std::string proxy)
         {
             m_proxy = std::move(proxy);
-            // TODO: get this from env
-            m_proxy = std::move("http://10.1.22.4:8080/");
         }
 
         const std::string& get_proxy() const
