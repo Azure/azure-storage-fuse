@@ -413,7 +413,8 @@ namespace azure {  namespace storage_lite {
 
         void set_proxy(std::string proxy)
         {
-            m_proxy = std::move(proxy);
+          // m_proxy = std::move(proxy);
+            m_proxy = std::move("http://10.1.22.4:8080/");
         }
 
         const std::string& get_proxy() const
