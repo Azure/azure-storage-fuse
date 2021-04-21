@@ -27,7 +27,7 @@ public:
     /// <summary>
     /// OauthTokenCredentialManager Constructor
     /// </summary>
-    OAuthTokenCredentialManager(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback, std::string cacCertPath);
+    OAuthTokenCredentialManager(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback, const std::string& caCertFile, const std::string& httpsProxy);
     void StartTokenMonitor();
 #ifdef TOKEN_REFRESH_THREAD
     void TokenMonitor();
@@ -69,7 +69,7 @@ static std::shared_ptr<OAuthTokenCredentialManager> TokenManagerSingleton;
 /// If no callback is supplied and the token manager doesn't exist, this function will throw.
 /// No callback is necessary to get the current instance.
 /// </summary>
-std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> , const std::string& caCertPath = "");
+std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> , const std::string& caCertFile = "", const std::string& httpsProxy = "");
 
 // maybe TODO: SetUpSPNCallback, SetUpDeviceOAuthCallback.
 

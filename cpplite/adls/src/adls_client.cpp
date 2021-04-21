@@ -23,7 +23,7 @@ namespace azure { namespace storage_adls {
         m_context->set_json_parser(std::make_shared<nlohmann_json_parser>());
     }
 
-    adls_client::adls_client(std::shared_ptr<storage_account> account, int max_concurrency, std::string ca_path, bool exception_enabled) : m_account(account), m_blob_client(std::make_shared<azure::storage_lite::blob_client>(account, max_concurrency, ca_path)), m_context(m_blob_client->context()), m_exception_enabled(exception_enabled)
+    adls_client::adls_client(std::shared_ptr<storage_account> account, int max_concurrency, const std::string& ca_path, const std::string& https_proxy, bool exception_enabled) : m_account(account), m_blob_client(std::make_shared<azure::storage_lite::blob_client>(account, max_concurrency, ca_path, https_proxy)), m_context(m_blob_client->context()), m_exception_enabled(exception_enabled)
     {
         m_context->set_json_parser(std::make_shared<nlohmann_json_parser>());
     }

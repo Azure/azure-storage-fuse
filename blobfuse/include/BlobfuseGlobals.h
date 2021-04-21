@@ -51,7 +51,8 @@ struct configParams
     std::string containerName;
     std::string tmpPath;
     std::string logLevel;
-    std::string caCertPath;
+    std::string caCertFile;
+    std::string httpsProxy;
     int fileCacheTimeoutInSeconds;
     bool useHttps;
     bool useAttrCache;
@@ -87,7 +88,8 @@ struct cmdlineOptions
     const char *no_symlinks; // Whether to enable symlink support on adls account or not
     const char *cache_on_list; // Cache blob property when list operation is done
     const char *version; // print blobfuse version
-    const char *caCertPath; // if proxy is being used, this indicates the cert path
+    const char *caCertFile; // if proxy is being used, this indicates the cert path
+    const char *httpsProxy; // proxy server from the environment variable https_proxy, if the command line or config overrides it then the env variable will be overridden
     const char *help; // print blobfuse usage
     const char *concurrency; // Max Concurrency factor for blob client wrapper (default 40)
     const char *cache_size_mb; // MAX Size of cache in MBs

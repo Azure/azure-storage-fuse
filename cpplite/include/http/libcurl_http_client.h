@@ -364,14 +364,14 @@ namespace azure {  namespace storage_lite {
         }
 
         //Sets CURL CA BUNDLE location for all the curl handlers.
-        CurlEasyClient(int size, const std::string& ca_path) : m_size(size), m_capath(ca_path)
+        CurlEasyClient(int size, const std::string& ca_path, const std::string& https_proxy) : m_size(size), m_capath(ca_path), m_proxy(https_proxy)
         {
             syslog(LOG_DEBUG, "In libcurl CurlEasyClient ca path= %s", ca_path.c_str());
             curl_global_init(CURL_GLOBAL_DEFAULT);
             for (int i = 0; i < m_size; i++) {
                 CURL *h = curl_easy_init();
-                m_capath = ca_path;
-                set_proxy("http://10.1.22.4:8080/");
+               // m_capath = ca_path;
+               // set_proxy("http://10.1.22.4:8080/");
                 m_handles.push(h);
             }
         }

@@ -47,7 +47,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--use-attr-cache=%s", useAttrCache),
     OPTION("--use-adls=%s", use_adls),
     OPTION("--no-symlinks=%s", no_symlinks),    
-    OPTION("--no_symlinks=%s", no_symlinks),
+   // OPTION("--no_symlinks=%s", no_symlinks),
     OPTION("--cache-on-list=%s", cache_on_list),
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
@@ -60,7 +60,8 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-eviction=%s", max_eviction),
     OPTION("--set-content-type=%s", set_content_type),
     OPTION("--version", version),
-    OPTION("--ca-cert-path", caCertPath),
+    OPTION("--ca-cert-file", caCertFile),
+    OPTION("--https-proxy", httpsProxy),
     OPTION("-v", version),
     OPTION("--help", help),
     OPTION("-h", help),
@@ -84,6 +85,7 @@ int read_config_env()
     char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
     char* env_auth_type = getenv("AZURE_STORAGE_AUTH_TYPE");
     char* env_aad_endpoint = getenv("AZURE_STORAGE_AAD_ENDPOINT");
+    char* env_https_proxy = getenv("https_proxy");
 
     if(env_account)
     {
@@ -154,6 +156,10 @@ int read_config_env()
         if(env_blob_endpoint) {
             // Optional to specify blob endpoint
             config_options.blobEndpoint = env_blob_endpoint;
+        }
+
+        if(env_https_proxy) {
+            config_options.httpsProxy = env_https_proxy;
         }
     }
     else
@@ -249,11 +255,17 @@ int read_config(const std::string configFile)
             std::string resourceIdStr(value);
             config_options.resourceId = resourceIdStr;
         }
-        else if(line.find("caCertPath") != std::string::npos)
+        else if(line.find("caCertFile") != std::string::npos)
         {
-            syslog(LOG_DEBUG, "caCertPath has a non null value");
-            std::string caCertPathStr(value);
-            config_options.caCertPath = caCertPathStr;
+            syslog(LOG_DEBUG, "caCertFile has a non null value");
+            std::string caCertFileStr(value);
+            config_options.caCertFile = caCertFileStr;
+        }
+        else if(line.find("httpsProxy") != std::string::npos)
+        {
+            std::string httpsProxyStr(value);
+            config_options.httpsProxy = httpsProxyStr;
+            syslog(LOG_DEBUG, "Proxy server %s will be used to connect to storage account", config_options.httpsProxy.c_str());
         }
         else if(line.find("authType") != std::string::npos)
         {
@@ -429,13 +441,13 @@ void *azs_init(struct fuse_conn_info * conn)
         config_options.authType == SPN_AUTH)
     {
         std::shared_ptr<OAuthTokenCredentialManager> tokenManager;
-        if (config_options.caCertPath.empty())
+        if (config_options.caCertFile.empty())
         {
             tokenManager = GetTokenManagerInstance(EmptyCallback);
         }
         else
         {
-            tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.caCertPath);        }
+            tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.caCertFile, config_options.httpsProxy);        }
 
         tokenManager->StartTokenMonitor();
     }

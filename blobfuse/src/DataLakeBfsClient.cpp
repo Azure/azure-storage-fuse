@@ -80,7 +80,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_accountkey
                 cred,
                 configurations.useHttps,
                 configurations.blobEndpoint);
-        if ( configurations.caCertPath.empty())
+        if ( configurations.caCertFile.empty())
         {
             return std::make_shared<adls_client_ext>(
                 account,
@@ -93,7 +93,8 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_accountkey
             return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
-                configurations.caCertPath,
+                configurations.caCertFile,
+                configurations.httpsProxy,
                 false); 
         }
     }
@@ -124,7 +125,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_sas()
                 configurations.accountName, cred,
                 configurations.useHttps,
                 configurations.blobEndpoint);
-        if ( configurations.caCertPath.empty())
+        if ( configurations.caCertFile.empty())
         {
             return std::make_shared<adls_client_ext>(
                 account,
@@ -137,7 +138,8 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_sas()
             return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
-                configurations.caCertPath,
+                configurations.caCertFile,
+                configurations.httpsProxy,
                 false); 
         }
     }
@@ -174,7 +176,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_msi() {
                 cred,
                 true, //use_https must be true to use oauth
                 configurations.blobEndpoint);
-        if ( configurations.caCertPath.empty())
+        if ( configurations.caCertFile.empty())
         {
             return std::make_shared<adls_client_ext>(
                 account,
@@ -187,7 +189,8 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_msi() {
             return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
-                configurations.caCertPath,
+                configurations.caCertFile,
+                configurations.httpsProxy,
                 false); 
         }
 
@@ -229,7 +232,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_spn()
                 configurations.blobEndpoint);
         
         errno = 0;
-        if ( configurations.caCertPath.empty())
+        if ( configurations.caCertFile.empty())
         {
             return std::make_shared<adls_client_ext>(
                 account,
@@ -242,7 +245,8 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_spn()
             return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
-                configurations.caCertPath,
+                configurations.caCertFile,
+                configurations.httpsProxy,
                 false); 
         }
     }

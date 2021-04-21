@@ -68,8 +68,9 @@ public:
                 std::shared_ptr<storage_account> account, 
                 int max_concurrency, 
                 std::string ca_path,
+                std::string https_proxy,
                 bool exception_enabled = true) :
-                adls_client(account, max_concurrency, ca_path, exception_enabled),
+                adls_client(account, max_concurrency, ca_path, https_proxy, exception_enabled),
                 maxConcurrency(max_concurrency)
     {
 

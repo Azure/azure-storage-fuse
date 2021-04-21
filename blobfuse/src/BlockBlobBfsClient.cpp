@@ -71,7 +71,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accou
             configurations.useHttps,
             configurations.blobEndpoint);
         std::shared_ptr<blob_client> blobClient;
-        if (configurations.caCertPath.empty())
+        if (configurations.caCertFile.empty())
         {
             blobClient = std::make_shared<blob_client>(
             account,
@@ -82,7 +82,8 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accou
             blobClient = std::make_shared<blob_client>(
             account,
             configurations.concurrency,
-            configurations.caCertPath);
+            configurations.caCertFile,
+            configurations.httpsProxy);
         }
         errno = 0;
         return std::make_shared<blob_client_wrapper>(blobClient);
@@ -114,7 +115,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_sas()
             configurations.useHttps,
             configurations.blobEndpoint);
         std::shared_ptr<blob_client> blobClient;
-        if (configurations.caCertPath.empty())
+        if (configurations.caCertFile.empty())
         {
             blobClient = std::make_shared<blob_client>(
             account,
@@ -125,7 +126,8 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_sas()
             blobClient = std::make_shared<blob_client>(
             account,
             configurations.concurrency,
-            configurations.caCertPath);
+            configurations.caCertFile,
+            configurations.httpsProxy);
         }
         errno = 0;
         return std::make_shared<blob_client_wrapper>(blobClient);
@@ -170,7 +172,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
             true, //use_https must be true to use oauth
             configurations.blobEndpoint);
         std::shared_ptr<blob_client> blobClient;
-        if (configurations.caCertPath.empty())
+        if (configurations.caCertFile.empty())
         {
             blobClient = std::make_shared<blob_client>(
             account,
@@ -181,7 +183,8 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
             blobClient = std::make_shared<blob_client>(
             account,
             configurations.concurrency,
-            configurations.caCertPath);
+            configurations.caCertFile,
+            configurations.httpsProxy);
         }
         errno = 0;
         return std::make_shared<blob_client_wrapper>(blobClient);
@@ -227,7 +230,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
             configurations.blobEndpoint);
         syslog(LOG_DEBUG, "Before calling blob client");
         std::shared_ptr<blob_client> blobClient;
-        if (configurations.caCertPath.empty())
+        if (configurations.caCertFile.empty())
         {
             blobClient = std::make_shared<blob_client>(
             account,
@@ -238,7 +241,8 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
             blobClient = std::make_shared<blob_client>(
             account,
             configurations.concurrency,
-            configurations.caCertPath);
+            configurations.caCertFile,
+            configurations.httpsProxy);
         }
         errno = 0;
         return std::make_shared<blob_client_wrapper>(blobClient);

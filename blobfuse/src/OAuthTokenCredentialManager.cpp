@@ -28,19 +28,19 @@ std::string GetTokenCallback()
 /// If no callback is supplied and the token manager doesn't exist, this function will throw.
 /// No callback is necessary to get the current instance.
 /// </summary>
-std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> defaultCallback, const std::string& caCertPath) {
+std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> defaultCallback, const std::string& caCertFile, const std::string& httpsProxy) {
     if(TokenManagerSingleton == nullptr) {
         if (defaultCallback == nullptr) {
             throw std::runtime_error("Tried to initialize the OAuthTokenCredentialManager, but failed because the default callback was empty!");
         }
 
-        if (caCertPath.empty())
+        if (caCertFile.empty())
         {
             TokenManagerSingleton = std::make_shared<OAuthTokenCredentialManager>(defaultCallback);
         }
         else
         {
-            TokenManagerSingleton = std::make_shared<OAuthTokenCredentialManager>(defaultCallback, caCertPath);
+            TokenManagerSingleton = std::make_shared<OAuthTokenCredentialManager>(defaultCallback, caCertFile, httpsProxy);
         }
     }
 
@@ -61,9 +61,9 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
 /// OauthTokenCredentialManager Constructor
 /// </summary>
 OAuthTokenCredentialManager::OAuthTokenCredentialManager(
-    std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback, std::string caCertPath)
+    std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback, const std::string& caCertFile, const std::string& httpsProxy)
 {
-    httpClient = std::make_shared<CurlEasyClient>(blobfuse_constants::max_concurrency_oauth, caCertPath);
+    httpClient = std::make_shared<CurlEasyClient>(blobfuse_constants::max_concurrency_oauth, caCertFile, httpsProxy);
     Init(refreshCallback);
 }
 
