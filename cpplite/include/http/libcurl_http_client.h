@@ -370,8 +370,6 @@ namespace azure {  namespace storage_lite {
             curl_global_init(CURL_GLOBAL_DEFAULT);
             for (int i = 0; i < m_size; i++) {
                 CURL *h = curl_easy_init();
-               // m_capath = ca_path;
-               // set_proxy("http://10.1.22.4:8080/");
                 m_handles.push(h);
             }
         }

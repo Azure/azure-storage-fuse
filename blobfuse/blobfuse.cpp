@@ -60,8 +60,8 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-eviction=%s", max_eviction),
     OPTION("--set-content-type=%s", set_content_type),
     OPTION("--version", version),
-    OPTION("--ca-cert-file", caCertFile),
-    OPTION("--https-proxy", httpsProxy),
+    OPTION("--ca-cert-file=%s", caCertFile),
+    OPTION("--https-proxy=%s", httpsProxy),
     OPTION("-v", version),
     OPTION("--help", help),
     OPTION("-h", help),
@@ -143,7 +143,7 @@ int read_config_env()
 
         if(env_auth_type)
         {
-            config_options.authType = get_auth_type(env_auth_type);;
+            config_options.authType = get_auth_type(env_auth_type);
         } else {
             config_options.authType = get_auth_type();
         }
