@@ -59,9 +59,9 @@ const struct fuse_opt option_spec[] =
     OPTION("--cache-poll-timeout-msec=%s", cache_poll_timeout_msec),
     OPTION("--max-eviction=%s", max_eviction),
     OPTION("--set-content-type=%s", set_content_type),
-    OPTION("--version", version),
     OPTION("--ca-cert-file=%s", caCertFile),
     OPTION("--https-proxy=%s", httpsProxy),
+    OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
     OPTION("-h", help),
@@ -769,6 +769,14 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 
             std::string container(cmd_options.container_name);
             config_options.containerName = container;
+            if(!cmd_options.httpsProxy)
+            {
+                config_options.httpsProxy = cmd_options.httpsProxy;
+            }
+            if(!cmd_options.caCertFile)
+            {
+                config_options.caCertFile = cmd_options.caCertFile;
+            }
             ret = read_config_env();
         }
         else
