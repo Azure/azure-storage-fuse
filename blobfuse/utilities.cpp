@@ -141,27 +141,38 @@ int azs_getattr(const char *path, struct stat *stbuf)
 
     std::string mntPathString = prepend_mnt_path_string(pathString);
 
-    // Ensure that we don't get attributes while the file is in an intermediate state.
-    //std::shared_ptr<std::mutex> fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
-    //std::lock_guard<std::mutex> lock(*fmutex);
-
     int res;
     int acc = access(mntPathString.c_str(), F_OK);
     if (acc != -1)
     {
         AZS_DEBUGLOGV("Accessing mntPath = %s for getattr succeeded; object is in the local cache.\n", mntPathString.c_str());
-        //(void) fi;
-        res = lstat(mntPathString.c_str(), stbuf);
-        if (res == -1)
-        {
-            int lstaterrno = errno;
-            syslog(LOG_ERR, "lstat on file %s in local cache during getattr failed with errno = %d.\n", mntPathString.c_str(), lstaterrno);
-            return -lstaterrno;
+
+        // Ensure that we don't get attributes while the file is in an intermediate state.
+        bool file_locked = false;
+        std::shared_ptr<std::mutex> fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
+
+        if ((*fmutex).try_lock()) {
+            // File is not locked so we can use the cache directory
+            (*fmutex).unlock();
+        } else {
+            // File is locked so it may be under download, not a good time to refer local cache
+            file_locked = true;
+            syslog(LOG_DEBUG, "lstat on file %s ignored as file is locked\n", mntPathString.c_str());
         }
-        else
-        {
-            AZS_DEBUGLOGV("lstat on file %s in local cache succeeded.\n", mntPathString.c_str());
-            return 0;
+
+        if (!file_locked) {
+            res = lstat(mntPathString.c_str(), stbuf);
+            if (res == -1)
+            {
+                int lstaterrno = errno;
+                syslog(LOG_ERR, "lstat on file %s in local cache during getattr failed with errno = %d.\n", mntPathString.c_str(), lstaterrno);
+                return -lstaterrno;
+            }
+            else
+            {
+                AZS_DEBUGLOGV("lstat on file %s in local cache succeeded.\n", mntPathString.c_str());
+                return 0;
+            }
         }
     }
     else
