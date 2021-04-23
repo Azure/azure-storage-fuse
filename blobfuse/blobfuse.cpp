@@ -771,11 +771,13 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             config_options.containerName = container;
             if(!cmd_options.httpsProxy)
             {
-                config_options.httpsProxy = cmd_options.httpsProxy;
+                std::string httpsProxy(cmd_options.httpsProxy);
+                config_options.httpsProxy = httpsProxy;
             }
             if(!cmd_options.caCertFile)
             {
-                config_options.caCertFile = cmd_options.caCertFile;
+                std::string caCertFile(cmd_options.caCertFile);
+                config_options.caCertFile = caCertFile;
             }
             ret = read_config_env();
         }
