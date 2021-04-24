@@ -1610,7 +1610,7 @@ jobs:
       timeoutInMinutes: 60
       strategy:
         matrix:
-          MSI_Test:
+          Proxy_Test:
             DistroVer: "Ubuntu-20P"
             AgentName : "UBN20Proxy"
             Description: "Blobfuse : Proxy"
