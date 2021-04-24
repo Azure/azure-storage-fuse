@@ -21,7 +21,10 @@ parameters:
   displayName: 'MSI Test'
   type: boolean
   default: true
-
+- name: proxy_test
+  displayName: 'Proxy Test'
+  type: boolean
+  default: true
 
 
 # List of jobs to run in parallel
@@ -1605,7 +1608,7 @@ jobs:
           displayName: 'Clean Agent Directories'
           condition: always()
     
-  - ${{ if eq(parameters.msi_test, true) }}:    
+  - ${{ if eq(parameters.proxy_test, true) }}:    
     - job: Set_7
       timeoutInMinutes: 60
       strategy:
