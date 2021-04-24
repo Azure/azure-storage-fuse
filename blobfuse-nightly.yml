@@ -1660,11 +1660,19 @@ jobs:
             sudo apt-get update --fix-missing
             sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ golang -y
           displayName: "Basic Tools Setup"
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
 
         # Install libfuse
         - script: |
             sudo apt-get install libfuse-dev fuse -y
           displayName: "libFuse Setup"
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
 
         # Prebuild cleanup
         - script: |
@@ -1687,6 +1695,10 @@ jobs:
             git clone https://github.com/Azure/azure-storage-fuse
           displayName: "Checkout code"
           workingDirectory: $(WORK_DIR)
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
 
         # Checkout branch
         - script: |
@@ -1695,6 +1707,10 @@ jobs:
             git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
           displayName: "Checkout Branch"
           workingDirectory: $(ROOT_DIR)
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
 
         # List commits consumed for this build
         - script: |
@@ -1702,6 +1718,12 @@ jobs:
             git --no-pager log --since="12 hours ago" --stat
           displayName: "List Commits"
           workingDirectory: $(ROOT_DIR)
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
+
+          
 
         # Build the blobFuse binary
         - script: |
@@ -1749,6 +1771,11 @@ jobs:
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
+
 
         - script: | 
             sudo rm -rf $(MOUNT_DIR)/*  
@@ -1757,6 +1784,11 @@ jobs:
           workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
           timeoutInMinutes: 20
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
+
 
         - script:  |
             sudo rm -rf $(MOUNT_DIR)/*
