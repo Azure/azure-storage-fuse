@@ -1679,6 +1679,8 @@ jobs:
 
         # Checkout code
         - script: |
+            echo "HTTP  : " $http_proxy
+            echo "HTTPS : " $https_proxy
             git clone https://github.com/Azure/azure-storage-fuse
           displayName: "Checkout code"
           workingDirectory: $(WORK_DIR)
