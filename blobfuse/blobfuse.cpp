@@ -72,7 +72,9 @@ const struct fuse_opt option_spec[] =
 int read_config_env()
 {
     char* env_account = getenv("AZURE_STORAGE_ACCOUNT");
+    fprintf(stdout, "done getenv storage account");
     char* env_account_key = getenv("AZURE_STORAGE_ACCESS_KEY");
+    fprintf(stdout, "done getenv storage key");
     char* env_sas_token = getenv("AZURE_STORAGE_SAS_TOKEN");
     char* env_blob_endpoint = getenv("AZURE_STORAGE_BLOB_ENDPOINT");
     char* env_identity_client_id = getenv("AZURE_STORAGE_IDENTITY_CLIENT_ID");
@@ -86,7 +88,8 @@ int read_config_env()
     char* env_auth_type = getenv("AZURE_STORAGE_AUTH_TYPE");
     char* env_aad_endpoint = getenv("AZURE_STORAGE_AAD_ENDPOINT");
     char* env_https_proxy = getenv("https_proxy");
-
+    fprintf(stdout, "done getenv https proxy");
+fprintf(stdout, "The env account is %s", env_account);
     if(env_account)
     {
         config_options.accountName = env_account;
@@ -707,7 +710,9 @@ bool is_directory_empty(const char *tmpDir) {
 }
 
 
-int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
+int 
+
+read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 {
     // FUSE has a standard method of argument parsing, here we just follow the pattern.
     *args = FUSE_ARGS_INIT(argc, argv);
@@ -758,7 +763,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.mntPath = std::string(argv[1]);
 
         if(!cmd_options.config_file)
-        {
+        {fprintf(stdout, "no config file");
             if(!cmd_options.container_name)
             {
                 syslog(LOG_CRIT, "Unable to start blobfuse, no config file provided and --container-name is not set.");
@@ -769,22 +774,23 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 
             std::string container(cmd_options.container_name);
             config_options.containerName = container;
-            if(!cmd_options.httpsProxy)
+            if(cmd_options.httpsProxy)
             {
                 std::string httpsProxy(cmd_options.httpsProxy);
                 config_options.httpsProxy = httpsProxy;
             }
-            if(!cmd_options.caCertFile)
+            if(cmd_options.caCertFile)
             {
                 std::string caCertFile(cmd_options.caCertFile);
                 config_options.caCertFile = caCertFile;
             }
+            fprintf(stdout, "done parsing cacertfile");
             ret = read_config_env();
+            fprintf(stdout, "done reading env files");
         }
         else
         {
             ret = read_config(cmd_options.config_file);
-            syslog(LOG_DEBUG, "done reading config file");
         }
 
         if (ret != 0)
@@ -792,8 +798,9 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             return ret;
         }
     }
-    catch(std::exception &)
+    catch(std::exception &ex)
     {
+        fprintf(stderr, "Exception thrown while parsing arguments %s", ex.what());
         print_usage();
         return 1;
     }
