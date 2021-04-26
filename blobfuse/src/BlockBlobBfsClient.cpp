@@ -40,9 +40,26 @@ bool BlockBlobBfsClient::AuthenticateStorage()
             1);
         if (errno != 0)
         {
-            syslog(LOG_ERR,
-                   "Unable to start blobfuse.  Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key/sas token/OAuth access token and container name. errno = %d\n",
-                   errno);
+            std::string errorString;
+            switch (errno) {
+                case 5:
+                    errorString="Unable to start blobfuse. Couldn't resolve proxy name errno=";
+                    break;
+                case 6:
+                    errorString="Unable to start blobfuse. DNS server lookup failed errno=";
+                    break;
+                case 28:
+                    errorString="Unable to start blobfuse. Connection timed out errno=";
+                    break;
+                case 35:
+                    errorString="Unable to start blobfuse. Unknown SSL protocol error errno=";
+                    break;
+                default:
+                    errorString="Unable to start blobfuse. Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key/sas token/OAuth access token and container name. errno=";
+                    break;
+            }
+            syslog(LOG_ERR,"%s%d\n",errorString,errno);
+            fprintf(stderr,"%s%d\n",errorString,errno);
             return false;
         }
         return true;

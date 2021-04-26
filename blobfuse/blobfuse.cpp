@@ -46,8 +46,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--log-level=%s", log_level),
     OPTION("--use-attr-cache=%s", useAttrCache),
     OPTION("--use-adls=%s", use_adls),
-    OPTION("--no-symlinks=%s", no_symlinks),    
-   // OPTION("--no_symlinks=%s", no_symlinks),
+    OPTION("--no-symlinks=%s", no_symlinks), 
     OPTION("--cache-on-list=%s", cache_on_list),
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
@@ -61,6 +60,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--set-content-type=%s", set_content_type),
     OPTION("--ca-cert-file=%s", caCertFile),
     OPTION("--https-proxy=%s", httpsProxy),
+    OPTION("--http-proxy=%s", httpProxy),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -262,9 +262,9 @@ int read_config(const std::string configFile)
         }
         else if(line.find("caCertFile") != std::string::npos)
         {
-            syslog(LOG_DEBUG, "caCertFile has a non null value");
             std::string caCertFileStr(value);
-            config_options.caCertFile = caCertFileStr;
+            config_options.caCertFile = caCertFileStr;            
+            syslog(LOG_DEBUG, "caCertFile has the value %s", config_options.caCertFile.c_str());
         }
         else if(line.find("httpsProxy") != std::string::npos)
         {
@@ -1159,8 +1159,8 @@ int initialize_blobfuse()
         }
         else
         {
-            fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.\n");
-            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            fprintf(stderr, "Unable to start blobfuse due to authentication or connectivity issues. Please check the readme for valid auth setups.\n");
+            syslog(LOG_ERR, "Unable to start blobfuse due to authentication or connectivity issues. Please check the readme for valid auth setups.");
             return -1;
         }
     }
