@@ -68,8 +68,8 @@ bool DataLakeBfsClient::AuthenticateStorage()
                     errorString="Unable to start blobfuse. Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key/sas token/OAuth access token and container name. errno=";
                     break;
             }
-            syslog(LOG_ERR,"%s%d\n",errorString,errno);
-            fprintf(stderr,"%s%d\n",errorString,errno);
+            syslog(LOG_ERR,"%s%d\n",errorString.c_str(),errno);
+            fprintf(stderr,"%s%d\n",errorString.c_str(),errno);
             return false;
         }
         return true;
