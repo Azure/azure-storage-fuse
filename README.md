@@ -119,6 +119,11 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * `AZURE_STORAGE_AAD_ENDPOINT`: Specifies a custom AAD endpoint to authenticate against
     * `AZURE_STORAGE_SPN_CLIENT_SECRET`: Specifies the client secret for your application registration.
 
+- Proxy Server:
+     * `httpsProxy`: The proxy server address. Example: http://10.1.22.4:8080/".    
+    * `httpProxy`: The proxy server address when https is turned off forcing http. Example: http://10.1.22.4:8080/".
+
+
 ### Config file options
 
 - General options
@@ -148,8 +153,8 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * (environment variable) `AZURE_STORAGE_SPN_CLIENT_SECRET`: Specifies the client secret for your application registration. Please store this in the environment variable, not a config option.
 - Proxy Server:
     * `caCertFile`: The absolute full name with path of the ca certificate for the proxy server. Example: /etc/ssl/certs/mitmproxy-ca-cert.pem
-    * `httpsProxy`: The proxy server address. Example: http://10.1.22.4:8080/".    
-    * `httpProxy`: When https is turned off, the proxy server address. Example: http://10.1.22.4:8080/".
+    * `httpsProxy`: The proxy server address. Example: http://10.1.22.4:8080/". Environment variable can be created instead of this config as export https_proxy=http://10.1.22.4:8080/.   
+    * `httpProxy`:  The proxy server address when https is turned off forcing http. Example: http://10.1.22.4:8080/". Environment variable can be created instead of this config as export https_proxy=http://10.1.22.4:8080/.
 
 ## Considerations
 
