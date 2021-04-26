@@ -72,9 +72,7 @@ const struct fuse_opt option_spec[] =
 int read_config_env()
 {
     char* env_account = getenv("AZURE_STORAGE_ACCOUNT");
-    fprintf(stdout, "done getenv storage account");
     char* env_account_key = getenv("AZURE_STORAGE_ACCESS_KEY");
-    fprintf(stdout, "done getenv storage key");
     char* env_sas_token = getenv("AZURE_STORAGE_SAS_TOKEN");
     char* env_blob_endpoint = getenv("AZURE_STORAGE_BLOB_ENDPOINT");
     char* env_identity_client_id = getenv("AZURE_STORAGE_IDENTITY_CLIENT_ID");
@@ -88,8 +86,8 @@ int read_config_env()
     char* env_auth_type = getenv("AZURE_STORAGE_AUTH_TYPE");
     char* env_aad_endpoint = getenv("AZURE_STORAGE_AAD_ENDPOINT");
     char* env_https_proxy = getenv("https_proxy");
-    fprintf(stdout, "done getenv https proxy");
-fprintf(stdout, "The env account is %s", env_account);
+    char* env_http_proxy = getenv("http_proxy");
+    
     if(env_account)
     {
         config_options.accountName = env_account;
@@ -163,6 +161,10 @@ fprintf(stdout, "The env account is %s", env_account);
 
         if(env_https_proxy) {
             config_options.httpsProxy = env_https_proxy;
+        }
+
+        if(env_http_proxy) {
+            config_options.httpProxy = env_http_proxy;
         }
     }
     else
@@ -268,7 +270,13 @@ int read_config(const std::string configFile)
         {
             std::string httpsProxyStr(value);
             config_options.httpsProxy = httpsProxyStr;
-            syslog(LOG_DEBUG, "Proxy server %s will be used to connect to storage account", config_options.httpsProxy.c_str());
+            syslog(LOG_DEBUG, "Https Proxy server %s will be used to connect to storage account", config_options.httpsProxy.c_str());
+        }
+        else if(line.find("httpProxy") != std::string::npos)
+        {
+            std::string httpProxyStr(value);
+            config_options.httpProxy = httpProxyStr;
+            syslog(LOG_DEBUG, "Http Proxy server %s will be used to connect to storage account", config_options.httpsProxy.c_str());
         }
         else if(line.find("authType") != std::string::npos)
         {
@@ -784,9 +792,14 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
                 std::string caCertFile(cmd_options.caCertFile);
                 config_options.caCertFile = caCertFile;
             }
-            fprintf(stdout, "done parsing cacertfile");
+            if(cmd_options.httpProxy)
+            {
+                std::string httpProxy(cmd_options.httpProxy);
+                config_options.httpProxy = httpProxy;
+            }
+
             ret = read_config_env();
-            fprintf(stdout, "done reading env files");
+            fprintf(stdout, "done reading env vars");
         }
         else
         {
@@ -1106,6 +1119,13 @@ int initialize_blobfuse()
         syslog(LOG_CRIT, "Unable to start blobfuse.  Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         fprintf(stderr, "Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         return 1;
+    }
+
+    // if https is turned off and an http proxy server is specified just set https proxy server to the http proxy server
+    // this is a hack but we only use the https_proxy 'variable' while calling the cpplite library and setting this will avoid iof condition checks
+    if(!config_options.useHttps && !config_options.httpProxy.empty())
+    {
+        config_options.httpsProxy = config_options.httpProxy;
     }
     
     //initialize storage client and authenticate, if we fail here, don't call fuse
