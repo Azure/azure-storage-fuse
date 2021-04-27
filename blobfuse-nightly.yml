@@ -21,7 +21,10 @@ parameters:
   displayName: 'MSI Test'
   type: boolean
   default: true
-
+- name: proxy_test
+  displayName: 'Proxy Test'
+  type: boolean
+  default: true
 
 
 # List of jobs to run in parallel
@@ -1605,3 +1608,204 @@ jobs:
           displayName: 'Clean Agent Directories'
           condition: always()
     
+  - ${{ if eq(parameters.proxy_test, true) }}:    
+    - job: Set_7
+      timeoutInMinutes: 60
+      strategy:
+        matrix:
+          Proxy_Test:
+            DistroVer: "Ubuntu-20P"
+            AgentName : "UBN20Proxy"
+            Description: "Blobfuse : Proxy"
+            containerName: 'ubn-20-proxy'
+
+      pool:
+        name: "Blobfuse Pool"
+        demands:
+        - Agent.Name -equals $(AgentName)
+
+      variables:
+      - group: NightlyBlobFuse
+      - name: WORK_DIR
+        value: "/home/vsts/work/"
+      - name: ROOT_DIR
+        value: "/home/vsts/work/azure-storage-fuse"
+      - name: skipComponentGovernanceDetection
+        value: true
+
+      - name: MOUNT_DIR
+        value: "/home/vsts/work/blob_mnt"
+      - name: TEMP_DIR
+        value: "/mnt/blobfusetmp"
+      - name: BLOBFUSE_CFG_FILE
+        value: "/home/vsts/blobfuse.cfg"
+      
+      steps:
+        - checkout: none
+
+        # Install all dependencies
+        - script: |
+            echo $(Description)
+            hostnamectl
+          displayName: "Print Agent Info"
+
+        - script: |
+            export http_proxy="http://10.1.22.4:8080/"
+            export https_proxy="http://10.1.22.4:8080/"
+            export no_proxy="localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
+          displayName: "Setup Proxy"          
+
+        # Install all dependencies
+        - script: |
+            sudo apt-get update --fix-missing
+            sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ golang -y
+          displayName: "Basic Tools Setup"
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
+
+        # Install libfuse
+        - script: |
+            sudo apt-get install libfuse-dev fuse -y
+          displayName: "libFuse Setup"
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
+
+        # Prebuild cleanup
+        - script: |
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo kill -9 `pidof blobfuse`
+            sudo rm -rf $(WORK_DIR)
+          displayName: "Prebuild cleanup"
+
+        # Checkout code
+        - script: |
+            sudo mkdir -p $(WORK_DIR)
+            sudo chown -R `whoami` $(WORK_DIR)
+            chmod 777 $(WORK_DIR)
+          displayName: "Create Directory structure"
+
+        # Checkout code
+        - script: |
+            echo "HTTP  : " $http_proxy
+            echo "HTTPS : " $https_proxy
+            git clone https://github.com/Azure/azure-storage-fuse
+          displayName: "Checkout code"
+          workingDirectory: $(WORK_DIR)
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
+
+        # Checkout branch
+        - script: |
+            echo $(Build.SourceBranch)
+            echo "Going for checkout of " `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`  
+            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
+          displayName: "Checkout Branch"
+          workingDirectory: $(ROOT_DIR)
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
+
+        # List commits consumed for this build
+        - script: |
+            echo "Below commits were done in last 12 hours : " `date` 
+            git --no-pager log --since="12 hours ago" --stat
+          displayName: "List Commits"
+          workingDirectory: $(ROOT_DIR)
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
+
+          
+
+        # Build the blobFuse binary
+        - script: |
+            sudo chmod +x build.sh
+            . ./build.sh
+          displayName: "Build BlobFuse"
+          workingDirectory: $(ROOT_DIR)
+
+        # Test the binary just to make sure it was built fine
+        - script: |
+            ./build/blobfuse --version
+          displayName: "Test the binary"
+          workingDirectory: $(ROOT_DIR)
+
+        # Add the test work here
+        # Create directory structures for the basic testing
+        - script: |
+            sudo mkdir $(MOUNT_DIR)
+            sudo chown -R `whoami` $(MOUNT_DIR)
+            chmod 777 $(MOUNT_DIR)
+            sudo mkdir $(TEMP_DIR)
+            sudo chown -R `whoami` $(TEMP_DIR)
+            chmod 777 $(TEMP_DIR)
+          displayName: "Create Directories"
+        
+        # --- Create config files for testing
+        - script: |
+            sudo touch $(BLOBFUSE_CFG_FILE)
+            sudo chown -R `whoami` $(BLOBFUSE_CFG_FILE)
+            chmod 777 $(BLOBFUSE_CFG_FILE)
+            echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG_FILE)
+            echo "accountKey " $(NIGHTLY_STO_ACC_KEY) >> $(BLOBFUSE_CFG_FILE)
+            echo "authType Key" >> $(BLOBFUSE_CFG_FILE)
+            echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_FILE)
+            cat $(BLOBFUSE_CFG_FILE)
+            echo "Account : " $(NIGHTLY_STO_ACC_NAME)
+          displayName: "Create config file"
+
+        # Mount a directory for feature test (Block) and run it
+        - script:  |
+            curl --version
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+          workingDirectory: $(ROOT_DIR)
+          displayName: "Mount Blobfuse"
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
+
+
+        - script: | 
+            sudo rm -rf $(MOUNT_DIR)/*  
+            cd test
+            go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+          workingDirectory: $(ROOT_DIR)
+          displayName: TEST - ADLS FeatureTest
+          timeoutInMinutes: 20
+          env:
+            http_proxy: "http://10.1.22.4:8080/"
+            https_proxy: "http://10.1.22.4:8080/"
+            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
+
+
+        - script:  |
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo kill -9 `pidof blobfuse`
+            sudo rm -rf $(TEMP_DIR)/
+            sudo rm -rf $(MOUNT_DIR)
+            sudo rm -rf $(BLOBFUSE_CFG_FILE)
+            sudo rm -rf $(WORK_DIR)
+          workingDirectory: $(ROOT_DIR)
+          displayName: 'Cleanup Directories'
+          timeoutInMinutes: 5
+          condition: always()
+
+        - script: |
+            pwd
+            cd /`pwd | cut -d '/' -f 2,3,4,5`
+            sudo rm -rf [0-9]
+          displayName: 'Clean Agent Directories'
+          condition: always()

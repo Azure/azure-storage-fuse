@@ -64,6 +64,18 @@ public:
 
     }
 
+    adls_client_ext(
+                std::shared_ptr<storage_account> account, 
+                int max_concurrency, 
+                std::string ca_path,
+                std::string https_proxy,
+                bool exception_enabled = true) :
+                adls_client(account, max_concurrency, ca_path, https_proxy, exception_enabled),
+                maxConcurrency(max_concurrency)
+    {
+
+    }
+
     /// <summary>
     /// Gets the full properties for a path.
     /// </summary>

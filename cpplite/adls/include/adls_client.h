@@ -45,6 +45,13 @@ namespace azure { namespace storage_adls {
         /// <param name="exception_enabled">Whether to use exception or errno for error handling.</param>
         AZURE_STORAGE_ADLS_API adls_client(std::shared_ptr<storage_account> account, int max_concurrency, bool exception_enabled = true);
 
+        /// <summary>
+        /// Initializes a new instance of the <see cref="azure::storage_adls::adls_client" /> class.
+        /// <param name="account">An existing <see cref="azure::storage_alds::storage_account" /> object.</param>
+        /// <param name="max_concurrency">An int value indicates the maximum concurrency expected during executing requests against the service.</param>
+        /// <param name="exception_enabled">Whether to use exception or errno for error handling.</param>
+        AZURE_STORAGE_ADLS_API adls_client(std::shared_ptr<storage_account> account, int max_concurrency, const std::string& ca_path, const std::string& https_proxy, bool exception_enabled = true);
+
         AZURE_STORAGE_ADLS_API std::shared_ptr<storage_account> account() {
             return m_account;
         }

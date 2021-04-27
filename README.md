@@ -67,6 +67,9 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--cache-poll-timeout-msec=1** : Timeout (milisecond) of checking the blobfuse cache for any possible eviction and free up space. Default is 1 milisecond.
      * [OPTIONAL] **--max-eviction=0** : How many cached files shall be evicted at a time, in case multiple are expired. This is to conserve the CPU usage done for cache eviction. Remaining files will be evicted in the next turn. '0' means there is no upper limit and all expired files will get evicted, may result in 100% CPU usage.
      * [OPTIONAL] **--set-content-type=false** : While uploading blob set the 'content-type' property based on file extension. Disabled by default, to enable set value to 'true'.
+     * [OPTIONAL] **--ca-cert-file=/etc/ssl/certs/proxy.pem** : If external network is only available through a proxy server, this parameter should specify the proxy pem certificate otherwise blobfuse cannot connect to the storage account.
+     * [OPTIONAL] **--httpsproxy=http://10.1.22.4:8080/** : If external network is only available through a proxy server, this parameter should specify the proxy server along with the port which is 8080 unless there are some deviations from normal port allocation numbers.
+     * [OPTIONAL] **--httpproxy=http://10.1.22.4:8080/** : Only used when https is turned off using --use-https=false, and if external network is only available through a proxy server, this parameter should specify the proxy server along with the port which is 8080 unless there are some deviations from normal port allocation numbers.
      
 
 ### Valid authentication setups:
@@ -116,6 +119,11 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * `AZURE_STORAGE_AAD_ENDPOINT`: Specifies a custom AAD endpoint to authenticate against
     * `AZURE_STORAGE_SPN_CLIENT_SECRET`: Specifies the client secret for your application registration.
 
+- Proxy Server:
+     * `httpsProxy`: The proxy server address. Example: http://10.1.22.4:8080/".    
+    * `httpProxy`: The proxy server address when https is turned off forcing http. Example: http://10.1.22.4:8080/".
+
+
 ### Config file options
 
 - General options
@@ -143,6 +151,10 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * `servicePrincipalTenantId`: Specifies the tenant ID for your application registration
     * `aadEndpoint`: Specifies a custom AAD endpoint to authenticate against
     * (environment variable) `AZURE_STORAGE_SPN_CLIENT_SECRET`: Specifies the client secret for your application registration. Please store this in the environment variable, not a config option.
+- Proxy Server:
+    * `caCertFile`: The absolute full name with path of the ca certificate for the proxy server. Example: /etc/ssl/certs/mitmproxy-ca-cert.pem
+    * `httpsProxy`: The proxy server address. Example: http://10.1.22.4:8080/". Environment variable can be created instead of this config as export https_proxy=http://10.1.22.4:8080/.   
+    * `httpProxy`:  The proxy server address when https is turned off forcing http. Example: http://10.1.22.4:8080/". Environment variable can be created instead of this config as export https_proxy=http://10.1.22.4:8080/.
 
 ## Considerations
 

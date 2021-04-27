@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 
 # Change this while bumping up the version, needed for RHEL package
-set(VERSION "1.3.6")
+set(VERSION "1.3.7")
 
 # This macro is referred in code to print the current version
 # Change CPACK_DEBIAN_PACKAGE_DESCRIPTION as well in this file while bumping up the version

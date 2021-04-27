@@ -46,8 +46,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--log-level=%s", log_level),
     OPTION("--use-attr-cache=%s", useAttrCache),
     OPTION("--use-adls=%s", use_adls),
-    OPTION("--no-symlinks=%s", no_symlinks),    
-    OPTION("--no_symlinks=%s", no_symlinks),
+    OPTION("--no-symlinks=%s", no_symlinks), 
     OPTION("--cache-on-list=%s", cache_on_list),
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
@@ -59,6 +58,9 @@ const struct fuse_opt option_spec[] =
     OPTION("--cache-poll-timeout-msec=%s", cache_poll_timeout_msec),
     OPTION("--max-eviction=%s", max_eviction),
     OPTION("--set-content-type=%s", set_content_type),
+    OPTION("--ca-cert-file=%s", caCertFile),
+    OPTION("--https-proxy=%s", httpsProxy),
+    OPTION("--http-proxy=%s", httpProxy),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -83,7 +85,9 @@ int read_config_env()
     char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
     char* env_auth_type = getenv("AZURE_STORAGE_AUTH_TYPE");
     char* env_aad_endpoint = getenv("AZURE_STORAGE_AAD_ENDPOINT");
-
+    char* env_https_proxy = getenv("https_proxy");
+    char* env_http_proxy = getenv("http_proxy");
+    
     if(env_account)
     {
         config_options.accountName = env_account;
@@ -140,7 +144,7 @@ int read_config_env()
 
         if(env_auth_type)
         {
-            config_options.authType = get_auth_type(env_auth_type);;
+            config_options.authType = get_auth_type(env_auth_type);
         } else {
             config_options.authType = get_auth_type();
         }
@@ -153,6 +157,14 @@ int read_config_env()
         if(env_blob_endpoint) {
             // Optional to specify blob endpoint
             config_options.blobEndpoint = env_blob_endpoint;
+        }
+
+        if(env_https_proxy) {
+            config_options.httpsProxy = env_https_proxy;
+        }
+
+        if(env_http_proxy) {
+            config_options.httpProxy = env_http_proxy;
         }
     }
     else
@@ -247,6 +259,24 @@ int read_config(const std::string configFile)
         {
             std::string resourceIdStr(value);
             config_options.resourceId = resourceIdStr;
+        }
+        else if(line.find("caCertFile") != std::string::npos)
+        {
+            std::string caCertFileStr(value);
+            config_options.caCertFile = caCertFileStr;            
+            syslog(LOG_DEBUG, "caCertFile has the value %s", config_options.caCertFile.c_str());
+        }
+        else if(line.find("httpsProxy") != std::string::npos)
+        {
+            std::string httpsProxyStr(value);
+            config_options.httpsProxy = httpsProxyStr;
+            syslog(LOG_DEBUG, "Https Proxy server %s will be used to connect to storage account", config_options.httpsProxy.c_str());
+        }
+        else if(line.find("httpProxy") != std::string::npos)
+        {
+            std::string httpProxyStr(value);
+            config_options.httpProxy = httpProxyStr;
+            syslog(LOG_DEBUG, "Http Proxy server %s will be used to connect to storage account", config_options.httpsProxy.c_str());
         }
         else if(line.find("authType") != std::string::npos)
         {
@@ -421,7 +451,15 @@ void *azs_init(struct fuse_conn_info * conn)
     if (config_options.authType == MSI_AUTH ||
         config_options.authType == SPN_AUTH)
     {
-        std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(EmptyCallback);
+        std::shared_ptr<OAuthTokenCredentialManager> tokenManager;
+        if (config_options.caCertFile.empty())
+        {
+            tokenManager = GetTokenManagerInstance(EmptyCallback);
+        }
+        else
+        {
+            tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.caCertFile, config_options.httpsProxy);        }
+
         tokenManager->StartTokenMonitor();
     }
 
@@ -680,7 +718,9 @@ bool is_directory_empty(const char *tmpDir) {
 }
 
 
-int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
+int 
+
+read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 {
     // FUSE has a standard method of argument parsing, here we just follow the pattern.
     *args = FUSE_ARGS_INIT(argc, argv);
@@ -731,7 +771,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.mntPath = std::string(argv[1]);
 
         if(!cmd_options.config_file)
-        {
+        {fprintf(stdout, "no config file");
             if(!cmd_options.container_name)
             {
                 syslog(LOG_CRIT, "Unable to start blobfuse, no config file provided and --container-name is not set.");
@@ -742,7 +782,24 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 
             std::string container(cmd_options.container_name);
             config_options.containerName = container;
+            if(cmd_options.httpsProxy)
+            {
+                std::string httpsProxy(cmd_options.httpsProxy);
+                config_options.httpsProxy = httpsProxy;
+            }
+            if(cmd_options.caCertFile)
+            {
+                std::string caCertFile(cmd_options.caCertFile);
+                config_options.caCertFile = caCertFile;
+            }
+            if(cmd_options.httpProxy)
+            {
+                std::string httpProxy(cmd_options.httpProxy);
+                config_options.httpProxy = httpProxy;
+            }
+
             ret = read_config_env();
+            fprintf(stdout, "done reading env vars");
         }
         else
         {
@@ -754,8 +811,9 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             return ret;
         }
     }
-    catch(std::exception &)
+    catch(std::exception &ex)
     {
+        fprintf(stderr, "Exception thrown while parsing arguments %s", ex.what());
         print_usage();
         return 1;
     }
@@ -1062,6 +1120,13 @@ int initialize_blobfuse()
         fprintf(stderr, "Failed to create directory on cache directory: %s, errno = %d.\n", prepend_mnt_path_string("/placeholder").c_str(),  errno);
         return 1;
     }
+
+    // if https is turned off and an http proxy server is specified just set https proxy server to the http proxy server
+    // this is a hack but we only use the https_proxy 'variable' while calling the cpplite library and setting this will avoid iof condition checks
+    if(!config_options.useHttps && !config_options.httpProxy.empty())
+    {
+        config_options.httpsProxy = config_options.httpProxy;
+    }
     
     //initialize storage client and authenticate, if we fail here, don't call fuse
     if (config_options.useAttrCache) 
@@ -1094,8 +1159,8 @@ int initialize_blobfuse()
         }
         else
         {
-            fprintf(stderr, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.\n");
-            syslog(LOG_ERR, "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.");
+            fprintf(stderr, "Unable to start blobfuse due to authentication or connectivity issues. Please check the readme for valid auth setups.\n");
+            syslog(LOG_ERR, "Unable to start blobfuse due to authentication or connectivity issues. Please check the readme for valid auth setups.");
             return -1;
         }
     }

@@ -41,9 +41,22 @@ namespace azure { namespace storage_lite {
                 return std::make_shared<blob_client_wrapper>(false);
             }
             std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
-            std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit);
-            errno = 0;
-            return std::make_shared<blob_client_wrapper>(blobClient);
+            
+            if (config_options.caCertFile.empty())
+            {
+                std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit);
+                errno = 0;
+                return std::make_shared<blob_client_wrapper>(blobClient);
+            }
+            else
+            {
+                std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account,
+                 concurrency_limit, 
+                 config_options.caCertFile,
+                 config_options.httpsProxy);
+                errno = 0;
+                return std::make_shared<blob_client_wrapper>(blobClient);
+            }
         }
         catch(const std::exception &ex)
         {
@@ -52,7 +65,6 @@ namespace azure { namespace storage_lite {
             return std::make_shared<blob_client_wrapper>(false);
         }
     }
-
 
     std::shared_ptr<blob_client_wrapper> blob_client_wrapper_init_sastoken(
         const std::string &account_name,
@@ -83,7 +95,17 @@ namespace azure { namespace storage_lite {
                 return std::make_shared<blob_client_wrapper>(false);
             }
             std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
-            std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit);
+            std::shared_ptr<blob_client> blobClient;
+            if (config_options.caCertFile.empty())
+            {
+                blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit);
+            }
+            else
+            {
+                blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit, 
+                config_options.caCertFile,
+                config_options.httpsProxy);
+            }
             errno = 0;
             return std::make_shared<blob_client_wrapper>(blobClient);
         }
@@ -116,10 +138,24 @@ namespace azure { namespace storage_lite {
                 cred,
                 true, //use_https must be true to use oauth
                 blob_endpoint);
+            if (config_options.caCertFile.empty())
+            {
+                std::shared_ptr<blob_client> blobClient= 
+                std::make_shared<azure::storage_lite::blob_client>(account, 
+                concurrency_limit);
+                errno = 0;
+                return std::make_shared<blob_client_wrapper>(blobClient);
+            }
+            else
+            {
             std::shared_ptr<blob_client> blobClient =
-                std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit);
-            errno = 0;
-            return std::make_shared<blob_client_wrapper>(blobClient);
+                std::make_shared<azure::storage_lite::blob_client>(account, 
+                concurrency_limit, 
+                config_options.caCertFile,
+                config_options.httpsProxy);
+                errno = 0;
+                return std::make_shared<blob_client_wrapper>(blobClient);
+            }
         }
         catch(const std::exception &ex)
         {
@@ -128,5 +164,5 @@ namespace azure { namespace storage_lite {
             return std::make_shared<blob_client_wrapper>(false);
         }
     }
-
-} }
+} 
+}

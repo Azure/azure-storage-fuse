@@ -50,9 +50,26 @@ bool DataLakeBfsClient::AuthenticateStorage()
                 "/", false, "", 1);
         if (errno != 0)
         {
-            syslog(LOG_ERR,
-                   "Unable to start blobfuse.  Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key/sas token/OAuth access token and container name. errno = %d\n",
-                   errno);
+            std::string errorString;
+            switch (errno) {
+                case 5:
+                    errorString="Unable to start blobfuse. Couldn't resolve proxy name errno=";
+                    break;
+                case 6:
+                    errorString="Unable to start blobfuse. DNS server lookup failed errno=";
+                    break;
+                case 28:
+                    errorString="Unable to start blobfuse. Connection timed out errno=";
+                    break;
+                case 35:
+                    errorString="Unable to start blobfuse. Unknown SSL protocol error errno=";
+                    break;
+                default:
+                    errorString="Unable to start blobfuse. Failed to connect to the storage container. There might be something wrong about the storage config, please double check the storage account name, account key/sas token/OAuth access token and container name. errno=";
+                    break;
+            }
+            syslog(LOG_ERR,"%s%d\n",errorString.c_str(),errno);
+            fprintf(stderr,"%s%d\n",errorString.c_str(),errno);
             return false;
         }
         return true;
@@ -80,11 +97,23 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_accountkey
                 cred,
                 configurations.useHttps,
                 configurations.blobEndpoint);
-        return std::make_shared<adls_client_ext>(
+        if ( configurations.caCertFile.empty())
+        {
+            return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
                                 // blobfuse if we run into anything unexpected instead of logging errors
+        }
+        else
+        {
+            return std::make_shared<adls_client_ext>(
+                account,
+                configurations.concurrency,
+                configurations.caCertFile,
+                configurations.httpsProxy,
+                false); 
+        }
     }
     catch(const std::exception &ex)
     {
@@ -113,11 +142,23 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_sas()
                 configurations.accountName, cred,
                 configurations.useHttps,
                 configurations.blobEndpoint);
-        return std::make_shared<adls_client_ext>(
+        if ( configurations.caCertFile.empty())
+        {
+            return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
                                 // blobfuse if we run into anything unexpected instead of logging errors
+        }
+        else
+        {
+            return std::make_shared<adls_client_ext>(
+                account,
+                configurations.concurrency,
+                configurations.caCertFile,
+                configurations.httpsProxy,
+                false); 
+        }
     }
     catch(const std::exception &ex)
     {
@@ -152,11 +193,23 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_msi() {
                 cred,
                 true, //use_https must be true to use oauth
                 configurations.blobEndpoint);
-        return std::make_shared<adls_client_ext>(
+        if ( configurations.caCertFile.empty())
+        {
+            return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
-        // blobfuse if we run into anything unexpected instead of logging errors
+                                // blobfuse if we run into anything unexpected instead of logging errors
+        }
+        else
+        {
+            return std::make_shared<adls_client_ext>(
+                account,
+                configurations.concurrency,
+                configurations.caCertFile,
+                configurations.httpsProxy,
+                false); 
+        }
 
     }
     catch (const std::exception &ex) {
@@ -196,11 +249,23 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_spn()
                 configurations.blobEndpoint);
         
         errno = 0;
-        return std::make_shared<adls_client_ext>(
+        if ( configurations.caCertFile.empty())
+        {
+            return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
-        // blobfuse if we run into anything unexpected instead of logging errors
+                                // blobfuse if we run into anything unexpected instead of logging errors
+        }
+        else
+        {
+            return std::make_shared<adls_client_ext>(
+                account,
+                configurations.concurrency,
+                configurations.caCertFile,
+                configurations.httpsProxy,
+                false); 
+        }
     }
     catch(const std::exception &ex)
     {
