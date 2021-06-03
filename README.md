@@ -11,6 +11,8 @@ Blobfuse is stable, and is supported by Azure Storage given that it is used with
 - Local cache to improve subsequent access times
 - Parallel download and upload features for fast access to large blobs
 - Allows multiple nodes to mount the same container for read-only scenarios.
+- Authenicates using storage key credentials, SaS Key, Managed Identity and SPN
+- Allows ADLS Gen2 features
 
 ## Installation
 You can install blobfuse from the Linux Software Repository for Microsoft products. The process is explained in the [blobfuse installation](https://github.com/Azure/azure-storage-fuse/wiki/1.-Installation) page. Alternatively, you can clone this repository, install the dependencies (fuse, libcurl, gcrypt and GnuTLS) and build from source code. See details in the [wiki](https://github.com/Azure/azure-storage-fuse/wiki/1.-Installation#build-from-source).
