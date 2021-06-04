@@ -107,7 +107,7 @@ list_segmented_response::list_segmented_response(list_blobs_segmented_response &
 }
 
 list_segmented_response::list_segmented_response(list_paths_result &response) :
-    continuation_token(response.continuation_token),
+    m_next_marker(response.continuation_token),
     m_valid(true)
 {
     //TODO make this better
@@ -140,7 +140,7 @@ list_segmented_response::populate(list_blobs_segmented_response &response)
 void
 list_segmented_response::populate(list_paths_result &response)
 {
-    continuation_token = response.continuation_token;
+    m_next_marker = response.continuation_token;
     m_valid = true;
 
     //TODO make this better
@@ -161,5 +161,5 @@ list_segmented_response::reset()
     m_items.shrink_to_fit();
     
     m_valid = false;
-    continuation_token = m_next_marker = m_ms_request_id = "";
+    m_next_marker = m_ms_request_id = "";
 }

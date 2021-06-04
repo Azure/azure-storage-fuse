@@ -24,7 +24,7 @@ parameters:
 - name: proxy_test
   displayName: 'Proxy Test'
   type: boolean
-  default: true
+  default: false
 
 
 # List of jobs to run in parallel
