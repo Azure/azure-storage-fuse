@@ -167,7 +167,7 @@ jobs:
       - script: |
           ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
         displayName: "Mount container ADLS"
-        condition: or(eq(variables.imageName, 'ubuntu-18.04'), eq(variables.imageName, 'ubuntu-20.04'))
+        condition: eq(variables.imageName, 'ubuntu-20.04')
         timeoutInMinutes: 3
     
       - script: |
