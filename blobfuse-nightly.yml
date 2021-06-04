@@ -646,7 +646,7 @@ jobs:
       - script: |
           ls -l $(MOUNT_DIR)/huge | wc -l
         displayName: "HugeList: Dir Listing"
-        timeoutInMinutes: 30
+        timeoutInMinutes: 120
 
       # Unmount Huge Listing
       - script: |
