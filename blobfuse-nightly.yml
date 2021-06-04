@@ -605,6 +605,59 @@ jobs:
         #  continueOnError: true
 
 
+
+      # -------------------------------------------------------
+      # Huge flie listing test cases
+
+      - script: |
+          echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG_ADLS)
+          echo "accountKey " $(NIGHTLY_STO_ACC_KEY) >> $(BLOBFUSE_CFG_ADLS)
+          echo "authType Key" >> $(BLOBFUSE_CFG_ADLS)
+          echo "containerName testcnt" >> $(BLOBFUSE_CFG_ADLS)
+          cat $(BLOBFUSE_CFG_ADLS)
+          echo "Account : " $(NIGHTLY_STO_ACC_NAME)
+        displayName: "Create config file ADLS"
+
+      # --- Create Block Blob config for Ubn-16.04 and mount it with ADLS option turn off  
+      - script: |
+          echo "accountName " $(NIGHTLY_STO_BLOB_ACC_NAME) > $(BLOBFUSE_CFG)
+          echo "accountKey " $(NIGHTLY_STO_BLOB_ACC_KEY) >> $(BLOBFUSE_CFG)
+          echo "authType Key" >> $(BLOBFUSE_CFG)
+          echo "containerName testcnt1" >> $(BLOBFUSE_CFG)
+          cat $(BLOBFUSE_CFG)
+          echo "Account : " $(NIGHTLY_STO_BLOB_ACC_NAME)
+        displayName: "Create config file BlockBlob" 
+
+      # Mount container using blobFuse (ADLS)
+      - script: |
+          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
+        displayName: "HugeList: Mount container ADLS"
+        condition: eq(variables.imageName, 'ubuntu-20.04')
+        timeoutInMinutes: 3
+
+      # Mount container using blobFuse (block Blob)
+      - script: |
+          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
+        displayName: "HugeList: Mount container Block"
+        condition: eq(variables.imageName, 'ubuntu-18.04')
+        timeoutInMinutes: 3
+
+      # Test huge listing
+      - script: |
+          ls -l $(MOUNT_DIR)/huge | wc -l
+        displayName: "HugeList: Dir Listing"
+        timeoutInMinutes: 30
+
+      # Unmount Huge Listing
+      - script: |
+          sudo fusermount -u $(MOUNT_DIR)
+          sudo kill -9 `pidof blobfuse`
+          sudo rm -rf $(MOUNT_DIR)/*
+          sudo rm -rf $(MOUNT_DIR)/.*
+          sudo rm -rf $(TEMP_DIR)/*
+        displayName: "HugeList: UnMount"
+        timeoutInMinutes: 2
+
       # -------------------------------------------------------
 
       # Create config file for SPN Login
