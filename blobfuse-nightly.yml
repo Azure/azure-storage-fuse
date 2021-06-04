@@ -37,10 +37,10 @@ jobs:
       strategy:
         matrix:
           ${{ if eq(parameters.exhaustive_test, true) }}:
-            Ubuntu-16:
-              imageName: 'ubuntu-16.04'
-              containerName: 'test-cnt-ubn-16'
-              quickTestDir: 'ubn16'
+            #Ubuntu-16:
+            #  imageName: 'ubuntu-16.04'
+            #  containerName: 'test-cnt-ubn-16'
+            #  quickTestDir: 'ubn16'
             Ubuntu-18:
               imageName: 'ubuntu-18.04' 
               containerName: 'test-cnt-ubn-18'
@@ -173,7 +173,7 @@ jobs:
       - script: |
           ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
         displayName: "Mount container Block"
-        condition: eq(variables.imageName, 'ubuntu-16.04')
+        condition: eq(variables.imageName, 'ubuntu-18.04')
         timeoutInMinutes: 3
       # --------------------------------------------------------------------
 
@@ -691,7 +691,7 @@ jobs:
           cat $(BLOBFUSE_CFG_GTEST)
           echo "Account : " $(NIGHTLY_SPN_ACC_NAME)
         displayName: "TEST - Create SAS Config"
-        condition: eq(variables.imageName, 'ubuntu-16.04')
+        condition: eq(variables.imageName, 'ubuntu-18.04')
 
       # List the blobs to verify that the login went successful
       - script:  |
@@ -712,7 +712,7 @@ jobs:
         displayName: TEST - SAS Validation
         timeoutInMinutes: 120
         continueOnError: true
-        condition: eq(variables.imageName, 'ubuntu-16.04')
+        condition: eq(variables.imageName, 'ubuntu-18.04')
       # -------------------------------------------------------
 
       # Cleanup at the end
