@@ -630,7 +630,7 @@ jobs:
 
       # Mount container using blobFuse (ADLS)
       - script: |
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
+          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --no-symlinks=true
         displayName: "HugeList: Mount container ADLS"
         condition: eq(variables.imageName, 'ubuntu-20.04')
         timeoutInMinutes: 3
