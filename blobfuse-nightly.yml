@@ -669,7 +669,7 @@ jobs:
           cat $(BLOBFUSE_CFG_GTEST)
           echo "Account : " $(NIGHTLY_SPN_ACC_NAME)
         displayName: "TEST - Create SPN Config"
-        condition: eq(variables.imageName, 'ubuntu-18.04')
+        condition: eq(variables.imageName, 'ubuntu-20.04')
 
       # List the blobs to verify that the login went successful
       - script:  |
@@ -693,7 +693,7 @@ jobs:
         displayName: TEST - SPN Validation
         timeoutInMinutes: 120
         continueOnError: true
-        condition: eq(variables.imageName, 'ubuntu-18.04')
+        condition: eq(variables.imageName, 'ubuntu-20.04')
 
       # List blobs for adls login with spn auth
       - script: |
@@ -705,7 +705,7 @@ jobs:
           echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_ADLS)
           cat $(BLOBFUSE_CFG_ADLS)
         displayName: "TEST - Create SPN Config for ADLS Gen2"
-        condition: eq(variables.imageName, 'ubuntu-18.04')
+        condition: eq(variables.imageName, 'ubuntu-20.04')
 
       # List the blobs to verify that the login went successful with SPN auth and ADLs and list works
       - script:  |
@@ -728,7 +728,7 @@ jobs:
         displayName: TEST - SPN Validation for ADLS Gen2
         timeoutInMinutes: 120
         continueOnError: true
-        condition: eq(variables.imageName, 'ubuntu-18.04')
+        condition: eq(variables.imageName, 'ubuntu-20.04')
         
 
       # -------------------------------------------------------
@@ -740,7 +740,7 @@ jobs:
           echo "authType SAS" >> $(BLOBFUSE_CFG_GTEST)
           echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_GTEST)
           cat $(BLOBFUSE_CFG_GTEST)
-          echo "Account : " $(NIGHTLY_SPN_ACC_NAME)
+          echo "Account : " $(NIGHTLY_STO_BLOB_ACC_NAME)
         displayName: "TEST - Create SAS Config"
         condition: eq(variables.imageName, 'ubuntu-18.04')
 
@@ -761,6 +761,38 @@ jobs:
           sudo kill -9 `pidof blobfuse`
         # condition: eq(variables['Build.SourceBranchName'], 'master')
         displayName: TEST - SAS Validation
+        timeoutInMinutes: 120
+        continueOnError: true
+        condition: eq(variables.imageName, 'ubuntu-18.04')
+
+        # Create config file for ADLS SAS Login
+      - script: |
+          echo "accountName " $(AZTEST_ADLS_ACC_NAME) > $(BLOBFUSE_CFG_GTEST)
+          echo "sasToken " $(AZTEST_ADLS_SAS) >> $(BLOBFUSE_CFG_GTEST)
+          echo "authType SAS" >> $(BLOBFUSE_CFG_GTEST)
+          echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_GTEST)
+          cat $(BLOBFUSE_CFG_GTEST)
+          echo "Account : " $(AZTEST_ADLS_ACC_NAME)
+        displayName: "TEST - Create ADLS SAS Config"
+        condition: eq(variables.imageName, 'ubuntu-18.04')
+
+      # List the blobs to verify that the login went successful
+      - script:  |
+          sudo rm -rf $(MOUNT_DIR)/*
+          sudo rm -rf $(TEMP_DIR)/*
+          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --use-adls=true
+          sleep 5s
+          ls -l $(MOUNT_DIR)
+          mkdir $(MOUNT_DIR)/B
+          touch $(MOUNT_DIR)/B/b.txt
+          echo "ASDF" > $(MOUNT_DIR)/B/c.txt
+          cp $(MOUNT_DIR)/B/c.txt $(MOUNT_DIR)/B/d.txt
+          ls -lRt $(MOUNT_DIR)/B
+          rm -rf $(MOUNT_DIR)/B
+          sudo fusermount -u $(MOUNT_DIR)
+          sudo kill -9 `pidof blobfuse`
+        # condition: eq(variables['Build.SourceBranchName'], 'master')
+        displayName: TEST - ADLS SAS Validation
         timeoutInMinutes: 120
         continueOnError: true
         condition: eq(variables.imageName, 'ubuntu-18.04')
