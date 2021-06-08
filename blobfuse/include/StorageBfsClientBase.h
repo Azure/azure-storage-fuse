@@ -257,7 +257,6 @@ struct list_segmented_response {
     std::string m_ms_request_id;
     std::vector<list_segmented_item> m_items;
     std::string m_next_marker;
-    std::string continuation_token;
     bool m_valid;
 };
 
