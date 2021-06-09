@@ -1073,7 +1073,7 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     if (cmd_options.max_retry != NULL) 
     {
         std::string max_retry(cmd_options.max_retry);
-        config_options.maxEviction = stoi(max_retry);
+        config_options.maxTryCount = stoi(max_retry);
     }
     
     config_options.maxTimeoutSeconds = 60.0;
@@ -1087,7 +1087,7 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     if (cmd_options.retry_delay != NULL) 
     {
         std::string retry_delay(cmd_options.retry_delay);
-        config_options.maxTimeoutSeconds = stod(retry_delay, &offset);
+        config_options.retryDelay = stod(retry_delay, &offset);
     }
 
     syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d Retry Policy (%d, %f, %f)", 

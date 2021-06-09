@@ -94,7 +94,7 @@ namespace azure {  namespace storage_lite {
     };
 
     // Exponential retry policy
-    class flex_retry_policy final : public retry_policy_base
+    class expo_retry_policy final : public retry_policy_base
     {
     public:
         retry_info evaluate(const retry_context& context) const override
@@ -118,20 +118,28 @@ namespace azure {  namespace storage_lite {
     };
 
 
+    //#define CPPLITE_DEBUG_RETRY_POLICY 1
     // Configurable retry policy
-    class config_retry_policy final : public retry_policy_base
+    class flex_retry_policy final : public retry_policy_base
     {
     public:
-        config_retry_policy(int max_try, double max_timeout_seconds, double retry_delay) :
+        flex_retry_policy(int max_try, double max_timeout_seconds, double retry_delay) :
                     maxTryCount(max_try), maxTimeoutSeconds(max_timeout_seconds), retryDelay(retry_delay){}
 
         retry_info evaluate(const retry_context& context) const override
         {
+            #ifndef CPPLITE_DEBUG_RETRY_POLICY
             if (context.numbers() == 0) {
                 return retry_info(true, std::chrono::seconds(0));
-            } else if (context.numbers() < maxTryCount && can_retry(context.result())) {
+            } else 
+            #endif 
+            if (context.numbers() < maxTryCount && can_retry(context.result())) {
                 // retryDelay ^ try number : to make it exponential with every try
+                #ifndef CPPLITE_DEBUG_RETRY_POLICY
                 double delay = (pow(retryDelay, context.numbers()-1)-1);
+                #else
+                double delay = (pow(retryDelay, context.numbers()+1)-1);
+                #endif
 
                 // Cap max delay at configured time
                 delay = std::min(delay, maxTimeoutSeconds); // Maximum backoff delay of 1 minute
@@ -147,7 +155,11 @@ namespace azure {  namespace storage_lite {
     private:
         bool can_retry(http_base::http_code code) const
         {
+            #ifndef CPPLITE_DEBUG_RETRY_POLICY
             return retryable(code);
+            #else
+            return code  == 200 ? true : true;
+            #endif
         }
 
         int maxTryCount;

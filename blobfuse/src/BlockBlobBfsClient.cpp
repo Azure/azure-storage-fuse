@@ -31,10 +31,10 @@ bool BlockBlobBfsClient::AuthenticateStorage()
     {
         std::shared_ptr<retry_policy_base> retry_policy;
         if (configurations.maxTryCount) {
-            retry_policy = std::make_shared<azure::storage_lite::config_retry_policy>(
+            retry_policy = std::make_shared<azure::storage_lite::flex_retry_policy>(
                     configurations.maxTryCount, configurations.maxTimeoutSeconds, configurations.retryDelay);    
         } else {
-            retry_policy = std::make_shared<azure::storage_lite::flex_retry_policy>();
+            retry_policy = std::make_shared<azure::storage_lite::expo_retry_policy>();
         }
 
         m_blob_client->set_retry_policy(retry_policy);
