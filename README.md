@@ -82,20 +82,20 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 - Account Name & SAS (`authType SAS`)
     - Requires the accountName, containerName and sasToken specified in the config file or command line.
     - Alternatively accountName can be specified by the environment values AZURE_STORAGE_ACCOUNT
-- Managed Service Identity (`authType MSI`)
+- Managed Identity (`authType MSI`)
     - Single assigned identity:
         - No extra parameters needed.
     - Multiple assigned identities:
         - At least one of the following for the intended identity:
-            - Client ID (Use this if you are using a custom MSI endpoint)
+            - Client ID (Use this if you are using a custom Managed Identity endpoint)
             - Object ID
             - Resource ID
-    - Add both Contributor and Storage Blob Contributor roles to this identity in the Storage account.
+    - Add Storage Blob Data Contributor roles to this identity in the Storage account.
 - Service Principal Name (`authType SPN`)
     - Requires servicePrincipalClientId, servicePrincipalTenantId, servicePrincipalClientSecret specified in the config file.    
     - Alternatively servicePrincipalClientSecret can be specified by the environment value AZURE_STORAGE_SPN_CLIENT_SECRET 
     - AZURE_STORAGE_AAD_ENDPOINT`environment value can be used to specify a custom AAD endpoint to authenticate against
-    - Add both Contributor and Storage Blob Contributor roles to this identity in the Storage account.
+    - Add Storage Blob Data Contributor roles to this identity in the Storage account.
 
 ### Environment variables
 
