@@ -63,7 +63,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--http-proxy=%s", httpProxy),
 
     OPTION("--max-retry=%s", max_retry),
-    OPTION("--max-delay-in-retry=%s", max_timeout),
+    OPTION("--max-retry-interval-in-seconds=%s", max_timeout),
     OPTION("--retry-delay-factor=%s", retry_delay),
 
     OPTION("--version", version),
