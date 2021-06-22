@@ -61,6 +61,11 @@ const struct fuse_opt option_spec[] =
     OPTION("--ca-cert-file=%s", caCertFile),
     OPTION("--https-proxy=%s", httpsProxy),
     OPTION("--http-proxy=%s", httpProxy),
+
+    OPTION("--max-retry=%s", max_retry),
+    OPTION("--max-retry-interval-in-seconds=%s", max_timeout),
+    OPTION("--retry-delay-factor=%s", retry_delay),
+
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -1062,10 +1067,34 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             gSetContentType = true;
     }
 
-    syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d", 
+    // Azure retry policy config
+    std::size_t offset = 0;
+    config_options.maxTryCount = 0;
+    if (cmd_options.max_retry != NULL) 
+    {
+        std::string max_retry(cmd_options.max_retry);
+        config_options.maxTryCount = stoi(max_retry);
+    }
+    
+    config_options.maxTimeoutSeconds = 60.0;
+    if (cmd_options.max_timeout != NULL) 
+    {
+        std::string max_timeout(cmd_options.max_timeout);
+        config_options.maxTimeoutSeconds = stod(max_timeout, &offset);
+    }
+    
+    config_options.retryDelay = 1.2;
+    if (cmd_options.retry_delay != NULL) 
+    {
+        std::string retry_delay(cmd_options.retry_delay);
+        config_options.retryDelay = stod(retry_delay, &offset);
+    }
+
+    syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d Retry Policy (%d, %f, %f)", 
         config_options.high_disk_threshold, config_options.low_disk_threshold,
         config_options.cachePollTimeout, config_options.maxEviction,
-        config_options.cancel_list_on_mount_secs);
+        config_options.cancel_list_on_mount_secs,
+        config_options.maxTryCount, config_options.maxTimeoutSeconds, config_options.retryDelay);
         
     return 0;
 }

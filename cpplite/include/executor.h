@@ -74,13 +74,22 @@ namespace azure {  namespace storage_lite {
                 http->set_error_stream([](http_base::http_code) { return true; }, storage_iostream::create_storage_stream());
                 request->build_request(*account, *http);
 
+                #ifndef CPPLITE_DEBUG_RETRY_POLICY
                 retry_info info = retry->numbers() == 0 ? retry_info(true, std::chrono::seconds(0)) : context->retry_policy()->evaluate(*retry);
+                #else
+                retry_info info = context->retry_policy()->evaluate(*retry);
+                #endif
+
                 if (info.should_retry())
                 {
                     http->submit([promise, outcome, account, request, http, context, retry](http_base::http_code result, storage_istream s, CURLcode code)
                     {
                         std::string str(std::istreambuf_iterator<char>(s.istream()), std::istreambuf_iterator<char>());
-                        if (code != CURLE_OK || unsuccessful(result))
+                        if (code != CURLE_OK || unsuccessful(result)
+                        #ifdef CPPLITE_DEBUG_RETRY_POLICY
+                        || code == 200 || code == CURLE_OK
+                        #endif
+                        )
                         {
                             storage_error error;
                             if (code != CURLE_OK)
@@ -95,7 +104,13 @@ namespace azure {  namespace storage_lite {
                             }
 
                             *outcome = storage_outcome<RESPONSE_TYPE>(error);
+                            
+                            #ifndef CPPLITE_DEBUG_RETRY_POLICY
                             retry->add_result(code == CURLE_OK ? result: 503);
+                            #else
+                            retry->add_result(503);
+                            #endif
+
                             http->reset_input_stream();
                             http->reset_output_stream();
                             async_executor<RESPONSE_TYPE>::submit_helper(promise, outcome, account, request, http, context, retry);
@@ -148,12 +163,20 @@ namespace azure {  namespace storage_lite {
                 http->set_error_stream(unsuccessful, storage_iostream::create_storage_stream());
                 request->build_request(*account, *http);
 
+                #ifndef CPPLITE_DEBUG_RETRY_POLICY
                 retry_info info = retry->numbers() == 0 ? retry_info(true, std::chrono::seconds(0)) : context->retry_policy()->evaluate(*retry);
+                #else
+                retry_info info = context->retry_policy()->evaluate(*retry);
+                #endif
                 if (info.should_retry())
                 {
                     http->submit([promise, outcome, account, request, http, context, retry](http_base::http_code result, storage_istream s, CURLcode code)
                     {
-                        if (code != CURLE_OK || unsuccessful(result))
+                        if (code != CURLE_OK || unsuccessful(result)
+                        #ifdef CPPLITE_DEBUG_RETRY_POLICY
+                        || code == 200 || code == CURLE_OK
+                        #endif
+                        )
                         {
                             storage_error error;
                             if (code != CURLE_OK)
@@ -169,7 +192,12 @@ namespace azure {  namespace storage_lite {
                             }
 
                             *outcome = storage_outcome<void>(error);
+                            #ifndef CPPLITE_DEBUG_RETRY_POLICY
                             retry->add_result(code == CURLE_OK ? result: 503);
+                            #else
+                            retry->add_result(503);
+                            #endif
+
                             http->reset_input_stream();
                             http->reset_output_stream();
                             async_executor<void>::submit_helper(promise, outcome, account, request, http, context, retry);
