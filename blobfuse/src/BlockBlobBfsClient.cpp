@@ -29,7 +29,15 @@ bool BlockBlobBfsClient::AuthenticateStorage()
 
     if (m_blob_client->is_valid())
     {
-        m_blob_client->set_retry_policy(std::make_shared<azure::storage_lite::expo_retry_policy>());
+        std::shared_ptr<retry_policy_base> retry_policy;
+        if (configurations.maxTryCount) {
+            retry_policy = std::make_shared<azure::storage_lite::flex_retry_policy>(
+                    configurations.maxTryCount, configurations.maxTimeoutSeconds, configurations.retryDelay);    
+        } else {
+            retry_policy = std::make_shared<azure::storage_lite::expo_retry_policy>();
+        }
+
+        m_blob_client->set_retry_policy(retry_policy);
 
         //Authenticate the storage container by using a list call
         m_blob_client->list_blobs_segmented(

@@ -72,6 +72,8 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--ca-cert-file=/etc/ssl/certs/proxy.pem** : If external network is only available through a proxy server, this parameter should specify the proxy pem certificate otherwise blobfuse cannot connect to the storage account. This option is only available from version 1.3.7
      * [OPTIONAL] **--httpsproxy=http://10.1.22.4:8080/** : If external network is only available through a proxy server, this parameter should specify the proxy server along with the port which is 8080 unless there are some deviations from normal port allocation numbers. This option is only available from version 1.3.7
      * [OPTIONAL] **--httpproxy=http://10.1.22.4:8080/** : Only used when https is turned off using --use-https=false, and if external network is only available through a proxy server, this parameter should specify the proxy server along with the port which is 8080 unless there are some deviations from normal port allocation numbers. This option is only available from version 1.3.7
+     * [OPTIONAL] **--max-retry=26** : Maximum retry count if the failure codes are retryable. Default count is 26.
+     * [OPTIONAL] **--max-retry-interval-in-seconds=60** : Maximum number of seconds between 2 retries, retry interval is exponentially increased but it can never exceed this value. Default naximum interval is 60 seconds.
      * [OPTIONAL] **--basic-remount-check=false** : Try checking for a remount by reading /etc/mtab instead of calling the syscall setmntent
      * [OPTIONAL] **--pre-mount-validate=false** : Skip cURL version check and validate storage connection before mount.
 
@@ -83,20 +85,20 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
 - Account Name & SAS (`authType SAS`)
     - Requires the accountName, containerName and sasToken specified in the config file or command line.
     - Alternatively accountName can be specified by the environment values AZURE_STORAGE_ACCOUNT
-- Managed Service Identity (`authType MSI`)
+- Managed Identity (`authType MSI`)
     - Single assigned identity:
         - No extra parameters needed.
     - Multiple assigned identities:
         - At least one of the following for the intended identity:
-            - Client ID (Use this if you are using a custom MSI endpoint)
+            - Client ID (Use this if you are using a custom Managed Identity endpoint)
             - Object ID
             - Resource ID
-    - Add both Contributor and Storage Blob Contributor roles to this identity in the Storage account.
+    - Add Storage Blob Data Contributor roles to this identity in the Storage account.
 - Service Principal Name (`authType SPN`)
     - Requires servicePrincipalClientId, servicePrincipalTenantId, servicePrincipalClientSecret specified in the config file.    
     - Alternatively servicePrincipalClientSecret can be specified by the environment value AZURE_STORAGE_SPN_CLIENT_SECRET 
     - AZURE_STORAGE_AAD_ENDPOINT`environment value can be used to specify a custom AAD endpoint to authenticate against
-    - Add both Contributor and Storage Blob Contributor roles to this identity in the Storage account.
+    - Add Storage Blob Data Contributor roles to this identity in the Storage account.
 
 ### Environment variables
 
