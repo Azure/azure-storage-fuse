@@ -73,6 +73,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--httpsproxy=http://10.1.22.4:8080/** : If external network is only available through a proxy server, this parameter should specify the proxy server along with the port which is 8080 unless there are some deviations from normal port allocation numbers. This option is only available from version 1.3.7
      * [OPTIONAL] **--httpproxy=http://10.1.22.4:8080/** : Only used when https is turned off using --use-https=false, and if external network is only available through a proxy server, this parameter should specify the proxy server along with the port which is 8080 unless there are some deviations from normal port allocation numbers. This option is only available from version 1.3.7
      * [OPTIONAL] **--basic-remount-check=false** : Try checking for a remount by reading /etc/mtab instead of calling the syscall setmntent
+     * [OPTIONAL] **--pre-mount-validate=false** : Skip cURL version check and validate storage connection before mount.
 
 ### Valid authentication setups:
 

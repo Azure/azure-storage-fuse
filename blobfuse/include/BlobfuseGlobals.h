@@ -74,6 +74,7 @@ struct configParams
     unsigned long long cachePollTimeout;
     unsigned long long maxEviction;
     bool basicRemountCheck;
+    bool preMountValidate;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -106,6 +107,7 @@ struct cmdlineOptions
     const char *max_eviction; // Maximum number of files to be deleted from cache to converse cpu
     const char *set_content_type; // Whether to set content type while upload blob
     const char *basic_remount_check; // Check for remount by reading /etc/mtab
+    const char *pre_mount_validate; // Validate storage auth before the mount
 };
 
 

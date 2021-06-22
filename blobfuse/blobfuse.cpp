@@ -62,6 +62,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--https-proxy=%s", httpsProxy),
     OPTION("--http-proxy=%s", httpProxy),
     OPTION("--basic-remount-check=%s", basic_remount_check),
+    OPTION("--pre-mount-validate=%s", pre_mount_validate),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -413,7 +414,7 @@ void *azs_init(struct fuse_conn_info * conn)
     g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
     g_gc_cache->run();
     
-    if (libcurl_version < blobfuse_constants::minCurlVersion) {
+    if (!config_options.preMountValidate && libcurl_version < blobfuse_constants::minCurlVersion) {
         // Curl was not intialized for lower version as that results into
         // failure post fork. So tls and cpplite were not initialized pre-fork for lower
         // kernel version. Do the init now before starting.
@@ -1093,6 +1094,14 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             gSetContentType = true;
     }
 
+    config_options.preMountValidate = false;
+    if (cmd_options.pre_mount_validate != NULL) 
+    {
+        std::string val(cmd_options.pre_mount_validate);
+        if (val == "true")
+            config_options.preMountValidate = true;
+    }
+
     syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d", 
         config_options.high_disk_threshold, config_options.low_disk_threshold,
         config_options.cachePollTimeout, config_options.maxEviction,
@@ -1180,7 +1189,7 @@ int initialize_blobfuse()
     syslog(LOG_DEBUG, "Kernel version is %f", kernel_version);
     syslog(LOG_DEBUG, "libcurl version is %f", libcurl_version);
 
-    if (libcurl_version < blobfuse_constants::minCurlVersion) 
+    if (!config_options.preMountValidate && libcurl_version < blobfuse_constants::minCurlVersion) 
     {
         syslog(LOG_WARNING, "** Delaying authentication to post fork for older curl versions");
     } else {
