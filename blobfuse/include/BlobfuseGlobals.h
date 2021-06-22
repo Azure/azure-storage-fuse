@@ -73,6 +73,7 @@ struct configParams
     int low_disk_threshold;
     unsigned long long cachePollTimeout;
     unsigned long long maxEviction;
+    bool basicRemountCheck;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -104,6 +105,7 @@ struct cmdlineOptions
     const char *cache_poll_timeout_msec; // Timeout for cache eviction thread in case queue is empty
     const char *max_eviction; // Maximum number of files to be deleted from cache to converse cpu
     const char *set_content_type; // Whether to set content type while upload blob
+    const char *basic_remount_check; // Check for remount by reading /etc/mtab
 };
 
 

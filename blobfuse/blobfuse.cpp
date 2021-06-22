@@ -61,6 +61,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--ca-cert-file=%s", caCertFile),
     OPTION("--https-proxy=%s", httpsProxy),
     OPTION("--http-proxy=%s", httpProxy),
+    OPTION("--basic-remount-check=%s", basic_remount_check),
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -676,22 +677,42 @@ void set_up_callbacks(struct fuse_operations &azs_blob_operations)
  *  If mounted then re-mounting again shall fail.
  */ 
 bool is_directory_mounted(const char* mntDir) {
-     struct mntent *mnt_ent;
-     bool found = false;
-     FILE *mnt_list;
- 
-     mnt_list = setmntent(_PATH_MOUNTED, "r");
-     while ((mnt_ent = getmntent(mnt_list))) 
-     {
-         if (!strcmp(mnt_ent->mnt_dir, mntDir) && !strcmp(mnt_ent->mnt_type, "fuse")) 
-         {
-             found = true;
-             break;
-         }
-     }
-     endmntent(mnt_list);
-     return found;
+    bool found = false;
 
+    if (!config_options.basicRemountCheck) {
+        struct mntent *mnt_ent;
+
+        FILE *mnt_list;
+
+        mnt_list = setmntent(_PATH_MOUNTED, "r");
+        while ((mnt_ent = getmntent(mnt_list))) 
+        {
+            if (!strcmp(mnt_ent->mnt_dir, mntDir) && !strcmp(mnt_ent->mnt_type, "fuse")) 
+            {
+                found = true;
+                break;
+            }
+        }
+        endmntent(mnt_list);
+    } else {
+        ssize_t read = 0;
+        size_t len = 0;
+        char *line = NULL;
+
+        FILE *fp = fopen("/etc/mtab", "r");
+        if (fp != NULL) {
+            while ((read = getline(&line, &len, fp)) != -1) {
+                if (strstr(line, mntDir) != NULL && strstr(line, "fuse") != NULL) 
+                {
+                    found = true;
+                    break;
+                }
+            }
+        fclose(fp);
+        }
+    }
+    
+    return found;
 }
 
 /*
@@ -761,6 +782,16 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             exit(0);
         }
 
+        config_options.basicRemountCheck = false;
+        if (cmd_options.basic_remount_check != NULL)
+        {
+            std::string remnt_chk(cmd_options.basic_remount_check);
+            if (remnt_chk == "true")
+            {
+                config_options.basicRemountCheck = true;
+            }
+        }
+
         if (args && args->argv && argc > 1 && 
             is_directory_mounted(argv[1])) 
         {
@@ -770,8 +801,8 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         }
         config_options.mntPath = std::string(argv[1]);
 
-        if(!cmd_options.config_file)
-        {fprintf(stdout, "no config file");
+        if(!cmd_options.config_file) {
+            fprintf(stdout, "no config file");
             if(!cmd_options.container_name)
             {
                 syslog(LOG_CRIT, "Unable to start blobfuse, no config file provided and --container-name is not set.");
