@@ -701,7 +701,7 @@ bool is_directory_mounted(const char* mntDir) {
         }
         endmntent(mnt_list);
     } else {
-        syslog(LOG_INFO, "Reading mtab to detect directory is already mounted or not");
+        syslog(LOG_INFO, "Reading /etc/mtab to detect directory is already mounted or not");
         ssize_t read = 0;
         size_t len = 0;
         char *line = NULL;
