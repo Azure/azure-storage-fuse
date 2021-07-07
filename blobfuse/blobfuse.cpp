@@ -685,6 +685,7 @@ bool is_directory_mounted(const char* mntDir) {
     bool found = false;
 
     if (!config_options.basicRemountCheck) {
+        syslog(LOG_INFO, "Using syscall to detect directory is already mounted or not");
         struct mntent *mnt_ent;
 
         FILE *mnt_list;
@@ -700,6 +701,7 @@ bool is_directory_mounted(const char* mntDir) {
         }
         endmntent(mnt_list);
     } else {
+        syslog(LOG_INFO, "Reading mtab to detect directory is already mounted or not");
         ssize_t read = 0;
         size_t len = 0;
         char *line = NULL;
@@ -793,6 +795,7 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             std::string remnt_chk(cmd_options.basic_remount_check);
             if (remnt_chk == "true")
             {
+                syslog(LOG_INFO, "Basic remount check enabled");
                 config_options.basicRemountCheck = true;
             }
         }
@@ -1102,8 +1105,10 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     if (cmd_options.pre_mount_validate != NULL) 
     {
         std::string val(cmd_options.pre_mount_validate);
-        if (val == "true")
+        if (val == "true") {
+            syslog(LOG_INFO, "Pre mount validation enabled");
             config_options.preMountValidate = true;
+        }
     }
 
     // Azure retry policy config
