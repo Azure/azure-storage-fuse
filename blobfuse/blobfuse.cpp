@@ -61,11 +61,12 @@ const struct fuse_opt option_spec[] =
     OPTION("--ca-cert-file=%s", caCertFile),
     OPTION("--https-proxy=%s", httpsProxy),
     OPTION("--http-proxy=%s", httpProxy),
-
     OPTION("--max-retry=%s", max_retry),
     OPTION("--max-retry-interval-in-seconds=%s", max_timeout),
     OPTION("--retry-delay-factor=%s", retry_delay),
-
+    OPTION("--basic-remount-check=%s", basic_remount_check),
+    OPTION("--pre-mount-validate=%s", pre_mount_validate),
+    
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -417,7 +418,7 @@ void *azs_init(struct fuse_conn_info * conn)
     g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
     g_gc_cache->run();
     
-    if (libcurl_version < blobfuse_constants::minCurlVersion) {
+    if (!config_options.preMountValidate && libcurl_version < blobfuse_constants::minCurlVersion) {
         // Curl was not intialized for lower version as that results into
         // failure post fork. So tls and cpplite were not initialized pre-fork for lower
         // kernel version. Do the init now before starting.
@@ -681,22 +682,44 @@ void set_up_callbacks(struct fuse_operations &azs_blob_operations)
  *  If mounted then re-mounting again shall fail.
  */ 
 bool is_directory_mounted(const char* mntDir) {
-     struct mntent *mnt_ent;
-     bool found = false;
-     FILE *mnt_list;
- 
-     mnt_list = setmntent(_PATH_MOUNTED, "r");
-     while ((mnt_ent = getmntent(mnt_list))) 
-     {
-         if (!strcmp(mnt_ent->mnt_dir, mntDir) && !strcmp(mnt_ent->mnt_type, "fuse")) 
-         {
-             found = true;
-             break;
-         }
-     }
-     endmntent(mnt_list);
-     return found;
+    bool found = false;
 
+    if (!config_options.basicRemountCheck) {
+        syslog(LOG_INFO, "Using syscall to detect directory is already mounted or not");
+        struct mntent *mnt_ent;
+
+        FILE *mnt_list;
+
+        mnt_list = setmntent(_PATH_MOUNTED, "r");
+        while ((mnt_ent = getmntent(mnt_list))) 
+        {
+            if (!strcmp(mnt_ent->mnt_dir, mntDir) && !strcmp(mnt_ent->mnt_type, "fuse")) 
+            {
+                found = true;
+                break;
+            }
+        }
+        endmntent(mnt_list);
+    } else {
+        syslog(LOG_INFO, "Reading /etc/mtab to detect directory is already mounted or not");
+        ssize_t read = 0;
+        size_t len = 0;
+        char *line = NULL;
+
+        FILE *fp = fopen("/etc/mtab", "r");
+        if (fp != NULL) {
+            while ((read = getline(&line, &len, fp)) != -1) {
+                if (strstr(line, mntDir) != NULL && strstr(line, "fuse") != NULL) 
+                {
+                    found = true;
+                    break;
+                }
+            }
+        fclose(fp);
+        }
+    }
+    
+    return found;
 }
 
 /*
@@ -766,6 +789,17 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             exit(0);
         }
 
+        config_options.basicRemountCheck = false;
+        if (cmd_options.basic_remount_check != NULL)
+        {
+            std::string remnt_chk(cmd_options.basic_remount_check);
+            if (remnt_chk == "true")
+            {
+                syslog(LOG_INFO, "Basic remount check enabled");
+                config_options.basicRemountCheck = true;
+            }
+        }
+
         if (args && args->argv && argc > 1 && 
             is_directory_mounted(argv[1])) 
         {
@@ -775,8 +809,8 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         }
         config_options.mntPath = std::string(argv[1]);
 
-        if(!cmd_options.config_file)
-        {fprintf(stdout, "no config file");
+        if(!cmd_options.config_file) {
+            fprintf(stdout, "no config file");
             if(!cmd_options.container_name)
             {
                 syslog(LOG_CRIT, "Unable to start blobfuse, no config file provided and --container-name is not set.");
@@ -1067,6 +1101,16 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             gSetContentType = true;
     }
 
+    config_options.preMountValidate = false;
+    if (cmd_options.pre_mount_validate != NULL) 
+    {
+        std::string val(cmd_options.pre_mount_validate);
+        if (val == "true") {
+            syslog(LOG_INFO, "Pre mount validation enabled");
+            config_options.preMountValidate = true;
+        }
+    }
+
     // Azure retry policy config
     std::size_t offset = 0;
     config_options.maxTryCount = 0;
@@ -1178,7 +1222,7 @@ int initialize_blobfuse()
     syslog(LOG_DEBUG, "Kernel version is %f", kernel_version);
     syslog(LOG_DEBUG, "libcurl version is %f", libcurl_version);
 
-    if (libcurl_version < blobfuse_constants::minCurlVersion) 
+    if (!config_options.preMountValidate && libcurl_version < blobfuse_constants::minCurlVersion) 
     {
         syslog(LOG_WARNING, "** Delaying authentication to post fork for older curl versions");
     } else {
