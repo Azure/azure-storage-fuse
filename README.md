@@ -1,9 +1,9 @@
-# blobfuse
+# BlobFuse - A Microsoft supported Azure Storage FUSE driver
 ## About
 
-blobfuse is an open source project developed to provide a virtual filesystem backed by the Azure Blob storage. It uses the [libfuse](https://github.com/libfuse/libfuse) open source library to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage Blob REST APIs.
+BlobFuse is an open source project developed to provide a virtual filesystem backed by the Azure Blob storage. It uses the [libfuse](https://github.com/libfuse/libfuse) open source library to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage Blob REST APIs.
 
-Blobfuse is stable, and is supported by Azure Storage given that it is used within its limits documented here. Blobfuse supports both reads and writes however, it does guarantee continuous sync on data written to storage using other APIs or other mounts of blobfuse. For data integrity it is recommended that multiple sources do not modify the same blob. Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/requests/questions.
+Blobfuse is stable, and is ***supported by Microsoft*** provided that it is used within its limits documented here. Blobfuse supports both reads and writes however, it does guarantee continuous sync on data written to storage using other APIs or other mounts of blobfuse. For data integrity it is recommended that multiple sources do not modify the same blob. Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/requests/questions.
 
 ## Features
 - Mount a Blob storage container on Linux
