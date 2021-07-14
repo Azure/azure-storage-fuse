@@ -80,6 +80,10 @@ struct configParams
     double retryDelay;
     bool basicRemountCheck;
     bool preMountValidate;
+
+    bool readOnlyMount;
+    bool streamRead;
+    uint64_t readStreamBufferSize;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -116,6 +120,9 @@ struct cmdlineOptions
     const char *retry_delay; // Exponential factor for each retry
     const char *basic_remount_check; // Check for remount by reading /etc/mtab
     const char *pre_mount_validate; // Validate storage auth before the mount
+
+    const char *stream_read; // Allow user to stream the read operation
+    const char *stream_buffer; // Stream buffer max size
 };
 
 

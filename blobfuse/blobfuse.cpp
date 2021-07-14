@@ -67,6 +67,9 @@ const struct fuse_opt option_spec[] =
     OPTION("--basic-remount-check=%s", basic_remount_check),
     OPTION("--pre-mount-validate=%s", pre_mount_validate),
     
+    OPTION("--read-stream=%s", stream_read),
+    OPTION("--stream-buffer-size-mb=%s", stream_buffer),
+
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -755,10 +758,15 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 
     // Check for existence of allow_other flag and change the default permissions based on that
     config_options.defaultPermission = 0770;
+    config_options.readOnlyMount = false;
+
     std::vector<std::string> string_args(argv, argv+argc);
     for (size_t i = 1; i < string_args.size(); ++i) {
       if (string_args[i].find("allow_other") != std::string::npos) {
           config_options.defaultPermission = 0777; 
+      }
+      if (string_args[i].find("ro") != std::string::npos) {
+          config_options.readOnlyMount = true;
       }
     }
 
@@ -1134,12 +1142,40 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.retryDelay = stod(retry_delay, &offset);
     }
 
+    config_options.streamRead = false;
+    if(cmd_options.stream_read != NULL)
+    {
+        std::string stream_read(cmd_options.stream_read);
+        if(stream_read == "true")
+        {
+            config_options.streamRead = true;
+        } 
+    }
+    
+    config_options.readStreamBufferSize = (500 * 1024 * 1024);
+    if (cmd_options.stream_buffer != NULL) 
+    {
+        std::string stream_buffer(cmd_options.stream_buffer);
+        config_options.readStreamBufferSize = uint64_t(stod(stream_buffer, &offset))  * uint64_t(1024 * 1024);
+    }
+
+    if (config_options.streamRead && !config_options.readOnlyMount) {
+        syslog(LOG_ERR, "Streaming Read is supported only on Readonly Mounts. Use '-o ro' option in mount command");    
+        fprintf(stderr, "Streaming Read is supported only on Readonly Mounts. Use '-o ro' option in mount command");  
+        return 1;
+    }
+
     syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d Retry Policy (%d, %f, %f)", 
         config_options.high_disk_threshold, config_options.low_disk_threshold,
         config_options.cachePollTimeout, config_options.maxEviction,
         config_options.cancel_list_on_mount_secs,
         config_options.maxTryCount, config_options.maxTimeoutSeconds, config_options.retryDelay);
-        
+
+    if (config_options.streamRead) {
+        syslog(LOG_INFO, "Streaming Read : %d, Stream buffer size : %lu", 
+            config_options.streamRead, config_options.readStreamBufferSize);
+    }
+
     return 0;
 }
 

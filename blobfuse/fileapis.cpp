@@ -31,6 +31,12 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     auto fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
     std::lock_guard<std::mutex> lock(*fmutex);
 
+
+    if (config_options.streamRead) {
+        // TODO : STREAM : We need to open a dummy handle here and fetch the first block of the file for streaming
+        return 0;
+    }
+
     // If the file/blob being opened does not exist in the cache, or the version in the cache is too old, we need to download / refresh the data from the service.
     // If the file hasn't been modified, st_ctime is the time when the file was originally downloaded or created.  st_mtime is the time when the file was last modified.  
     // We only want to refresh if enough time has passed that both are more than cache_timeout seconds ago.
@@ -179,6 +185,14 @@ int azs_open(const char *path, struct fuse_file_info *fi)
  */
 int azs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
+    if (config_options.streamRead) {
+        // TODO : STREAM : Used the cached buffer to read the data
+        //       - if offset is withing the range serve data from memory
+        //       - if offset is outside fetch a new block and cache it
+        //       - if total memory usage has gone out of range then delete the cached blocks
+        return 0;
+    }
+
     int fd = ((struct fhwrapper *)fi->fh)->fh;
 
     errno = 0;
@@ -269,6 +283,11 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
 
     // At this point, the shared flock will be held.
     // In some cases, due (I believe) to us using the hard_unlink option, path will be null.  Thus, we need to get the file name from the file descriptor:
+
+    if (config_options.streamRead) {
+        //  As no file handel was created in case of streaming read nothing to be done here.
+        return 0;
+    }
 
     char path_link_buffer[50];
     snprintf(path_link_buffer, 50, "/proc/self/fd/%d", (((struct fhwrapper *)fi->fh)->fh));
@@ -380,6 +399,11 @@ int azs_release(const char *path, struct fuse_file_info * fi)
 {
     AZS_DEBUGLOGV("azs_release called with path = %s, fi->flags = %d\n", path, fi->flags);
 
+    if (config_options.streamRead) {
+        // TODO : STREAM : Clear off buffers here when user closes the handle
+        return 0;
+    }
+
     // Unlock the file
     // Note that this will release the shared lock acquired in the corresponding open() call (the one that gave us this file descriptor, in the fuse_file_info).
     // It will not release any locks acquired from other calls to open(), in this process or in others.
@@ -486,6 +510,10 @@ int azs_unlink(const char *path)
 int azs_truncate(const char * path, off_t off)
 {
     AZS_DEBUGLOGV("azs_truncate called.  Path = %s, offset = %s\n", path, to_str(off).c_str());
+
+    if (config_options.streamRead) {
+        return ENOSYS;
+    }
 
     std::string pathString(path);
     std::replace(pathString.begin(), pathString.end(), '\\', '/');

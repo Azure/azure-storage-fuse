@@ -76,7 +76,8 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--max-retry-interval-in-seconds=60** : Maximum number of seconds between 2 retries, retry interval is exponentially increased but it can never exceed this value. Default naximum interval is 60 seconds.
      * [OPTIONAL] **--basic-remount-check=false** : Try checking for a remount by reading /etc/mtab instead of calling the syscall setmntent
      * [OPTIONAL] **--pre-mount-validate=false** : Skip cURL version check and validate storage connection before mount.
-
+     * [OPTIONAL] **--read-stream=false** : Instead of caching files on disk, stream data directly from container. This option works only with 'read-only' mount. Use "-o ro" option in mount command to enable read-only mount.
+     * [OPTIONAL] **--stream-buffer-size-mb=500** : When read streaming is enabled, cap memory usage for storing block upto this limit.
 ### Valid authentication setups:
 
 - Account Name & Key (`authType Key`)
