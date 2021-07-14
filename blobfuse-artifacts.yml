@@ -15,11 +15,6 @@ parameters:
   type: boolean
   default: false
 
-- name: code_signing
-  displayName: 'Send artifact for signing'
-  type: boolean
-  default: true
-
 - name: fast_run
   displayName: 'Test Run'
   type: boolean
@@ -617,69 +612,9 @@ stages:
       
       - script: |
           sudo ls -lRt $(Build.ArtifactStagingDirectory)
-        displayName: "List the artifacts"
+        displayName: "List the artifacts"      
       
       
-      - ${{ if eq(parameters.code_signing, true) }}:
-        # Standar way of code signing
-        - task: EsrpCodeSigning@1
-          inputs:
-            ConnectedServiceName: 'ESRP Code signing blobfuse'
-            FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse/'
-            Pattern: '*.rpm, *.deb'
-            OpusName: 'blobfuse'
-            SessionTimeout: '60'
-            MaxConcurrency: '50'
-            MaxRetryAttempts: '5'
-
-      - ${{ if eq(parameters.code_signing, true) }}:
-        # Inline code signing trial
-        - task: EsrpCodeSigning@1
-          condition: succeededOrFailed()
-          inputs:
-            ConnectedServiceName: 'ESRP Code signing blobfuse'
-            FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse/'
-            Pattern: '*.rpm, *.deb'
-            signConfigType: 'inlineSignParams'
-            
-            inlineOperation: |
-              [
-                {
-                  "keyCode": "CP-230012​",  
-                  "operationSetCode": "SigntoolSign",
-                  "parameters": [
-                    {
-                      "parameterName": "OpusName",
-                      "parameterValue": "blobfuse"
-                    },
-                    {
-                      "parameterName": "OpusInfo",
-                      "parameterValue": "http://www.microsoft.com"
-                    },
-                    {
-                      "parameterName": "PageHash",
-                      "parameterValue": "/NPH"
-                    },
-                    {
-                      "parameterName": "FileDigest",
-                      "parameterValue": "/fd sha256"
-                    },
-                    {
-                      "parameterName": "TimeStamp",
-                      "parameterValue": "/tr \"http://rfc3161.gtm.corp.microsoft.com/TSS/HttpTspServer\" /td sha256"
-                    }
-                  ],
-                  "toolName": "signtool.exe",
-                  "toolVersion": "6.2.9304.0"
-                }
-              ]
-            SessionTimeout: '60'
-            MaxConcurrency: '50'
-            MaxRetryAttempts: '5'
-            VerboseLogin: true'
-
-      
-
       - ${{ if eq(parameters.post_release, true) }}:
         - task: GitHubRelease@1
           inputs:
