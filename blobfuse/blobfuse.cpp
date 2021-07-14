@@ -11,12 +11,14 @@
 #include <include/BlockBlobBfsClient.h>
 #include <include/DataLakeBfsClient.h>
 #include <include/AttrCacheBfsClient.h>
+#include <BlobStreamer.h>
 
 const std::string log_ident = "blobfuse";
 struct cmdlineOptions cmd_options;
 struct configParams config_options;
 struct globalTimes_st globalTimes;
 std::shared_ptr<StorageBfsClientBase> storage_client;
+std::shared_ptr<BlobStreamer> blob_streamer;
 
 extern bool gZonalDNS;
 int stdErrFD = -1;
@@ -69,6 +71,8 @@ const struct fuse_opt option_spec[] =
     
     OPTION("--read-stream=%s", stream_read),
     OPTION("--stream-buffer-size-mb=%s", stream_buffer),
+    OPTION("--max-cache-block-per-file=%s", max_block_per_file),
+    
 
     OPTION("--version", version),
     OPTION("-v", version),
@@ -470,6 +474,10 @@ void *azs_init(struct fuse_conn_info * conn)
             tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.caCertFile, config_options.httpsProxy);        }
 
         tokenManager->StartTokenMonitor();
+    }
+
+    if (config_options.streamRead) {
+        blob_streamer = std::make_shared<BlobStreamer>(storage_client, config_options.readStreamBufferSize, config_options.maxBlockPerFile);
     }
 
     return NULL;
@@ -1159,6 +1167,14 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.readStreamBufferSize = uint64_t(stod(stream_buffer, &offset))  * uint64_t(1024 * 1024);
     }
 
+    config_options.maxBlockPerFile = MAX_BLOCKS_PER_FILE;
+    if (cmd_options.max_block_per_file != NULL) 
+    {
+        std::string max_block(cmd_options.max_block_per_file);
+        config_options.maxBlockPerFile = stod(max_block, &offset);
+    }
+
+
     if (config_options.streamRead && !config_options.readOnlyMount) {
         syslog(LOG_ERR, "Streaming Read is supported only on Readonly Mounts. Use '-o ro' option in mount command");    
         fprintf(stderr, "Streaming Read is supported only on Readonly Mounts. Use '-o ro' option in mount command");  
@@ -1172,8 +1188,9 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.maxTryCount, config_options.maxTimeoutSeconds, config_options.retryDelay);
 
     if (config_options.streamRead) {
-        syslog(LOG_INFO, "Streaming Read : %d, Stream buffer size : %lu", 
-            config_options.streamRead, config_options.readStreamBufferSize);
+        syslog(LOG_INFO, "Streaming Read : %d, Stream buffer size : %lu, Max Blocks : %d", 
+            config_options.streamRead, config_options.readStreamBufferSize,
+            config_options.maxBlockPerFile);
     }
 
     return 0;

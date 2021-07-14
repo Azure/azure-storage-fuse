@@ -3,7 +3,10 @@
 #include <FileLockMap.h>
 
 #include <include/StorageBfsClientBase.h>
+#include <BlobStreamer.h>
+
 extern std::shared_ptr<StorageBfsClientBase> storage_client;
+extern std::shared_ptr<BlobStreamer> blob_streamer;
 
 std::shared_ptr<file_lock_map> file_lock_map::s_instance;
 std::mutex file_lock_map::s_mutex;
@@ -33,7 +36,11 @@ int azs_open(const char *path, struct fuse_file_info *fi)
 
 
     if (config_options.streamRead) {
-        // TODO : STREAM : We need to open a dummy handle here and fetch the first block of the file for streaming
+        blob_streamer->OpenFile(pathString.substr(1).c_str());
+
+        int fid = blob_streamer->GetDummyHandle();
+        struct fhwrapper *fhwrap = new fhwrapper(fid, (((fi->flags & O_WRONLY) == O_WRONLY) || ((fi->flags & O_RDWR) == O_RDWR)));
+        fi->fh = (long unsigned int)fhwrap; // Store the file handle for later use.
         return 0;
     }
 
@@ -186,11 +193,10 @@ int azs_open(const char *path, struct fuse_file_info *fi)
 int azs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
     if (config_options.streamRead) {
-        // TODO : STREAM : Used the cached buffer to read the data
-        //       - if offset is withing the range serve data from memory
-        //       - if offset is outside fetch a new block and cache it
-        //       - if total memory usage has gone out of range then delete the cached blocks
-        return 0;
+        std::string pathString(path);
+        std::replace(pathString.begin(), pathString.end(), '\\', '/');
+
+        return blob_streamer->ReadFile(pathString.substr(1).c_str(), offset, size, buf);
     }
 
     int fd = ((struct fhwrapper *)fi->fh)->fh;
@@ -400,7 +406,9 @@ int azs_release(const char *path, struct fuse_file_info * fi)
     AZS_DEBUGLOGV("azs_release called with path = %s, fi->flags = %d\n", path, fi->flags);
 
     if (config_options.streamRead) {
-        // TODO : STREAM : Clear off buffers here when user closes the handle
+        std::string pathString(path);
+        std::replace(pathString.begin(), pathString.end(), '\\', '/');
+        blob_streamer->CloseFile(pathString.substr(1).c_str());
         return 0;
     }
 

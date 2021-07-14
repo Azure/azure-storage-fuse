@@ -78,6 +78,9 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--pre-mount-validate=false** : Skip cURL version check and validate storage connection before mount.
      * [OPTIONAL] **--read-stream=false** : Instead of caching files on disk, stream data directly from container. This option works only with 'read-only' mount. Use "-o ro" option in mount command to enable read-only mount.
      * [OPTIONAL] **--stream-buffer-size-mb=500** : When read streaming is enabled, cap memory usage for storing block upto this limit.
+     * [OPTIONAL] **--max_block_per_file=3** : Maximum number of blocks to be cached in memory for a file in case of streaming.
+
+
 ### Valid authentication setups:
 
 - Account Name & Key (`authType Key`)
