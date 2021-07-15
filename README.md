@@ -75,7 +75,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--max-retry=26** : Maximum retry count if the failure codes are retryable. Default count is 26.  This option is only available from version 1.3.8
      * [OPTIONAL] **--max-retry-interval-in-seconds=60** : Maximum number of seconds between 2 retries, retry interval is exponentially increased but it can never exceed this value. Default naximum interval is 60 seconds.  This option is only available from version 1.3.8
      * [OPTIONAL] **--basic-remount-check=false** : Set this to true if you want to check for an already mounted status using /etc/mtab instead of calling the syscall setmntent. Default is true. It is known that for AKS 1.19, blobfuse will throw a segmentation fault error, so set this to false.  This option is only available from version 1.3.8
-     * [OPTIONAL] **--pre-mount-validate=false** : Set this to false to skip the cURL version check and just straight validate storage connection before mount. Default is true, so use this only if you know that you have the recent Curl version, otherwise blobfuse will hang. This option is only available from version 1.3.8
+     * [OPTIONAL] **--pre-mount-validate=false** : Set this to true to skip the cURL version check and just straight validate storage connection before mount. Default is false, so use this only if you know that you have the recent Curl version, otherwise blobfuse will hang. This option is only available from version 1.3.8
 
 ### Valid authentication setups:
 
