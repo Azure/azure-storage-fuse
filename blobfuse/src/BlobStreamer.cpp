@@ -3,15 +3,27 @@
 
 const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
 
+CacheSizeCalculator* CacheSizeCalculator::mInstance = NULL;
+CacheSizeCalculator* CacheSizeCalculator::GetObj()
+{
+    if (NULL == mInstance) {
+        mInstance = new CacheSizeCalculator();
+    }
+    return mInstance;
+}
+
+
 // Add a new block to this stream object
 int StreamObject::AddBlock(BlobBlock* block, uint64_t max_blocks_per_file)
 {
-    if (m_block_list.size() >= max_blocks_per_file) {
+    if (m_block_list.size() >= max_blocks_per_file || 
+        CacheSizeCalculator::GetObj()->MaxLimitReached()) {
         // We have exceeeded max number of blocks allowed so delete the end of the queue
         RemoveBlock();
     }
 
     // Add the new block to front of the list (LRU)
+    CacheSizeCalculator::GetObj()->AddSize(block->buff.str().size());
     m_block_list.push_front(block);
 
     return 0;
@@ -25,6 +37,7 @@ int StreamObject::RemoveBlock()
 
     if (last_block) {
         // Release memory used by this block
+        CacheSizeCalculator::GetObj()->RemoveSize(last_block->buff.str().size());
         last_block->buff.clear();
         delete last_block;
     }
@@ -69,7 +82,7 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
         block->valid = true;
         block->last = false;
         
-        blob_client->DownloadToStream(file_name, block->buff, start_offset, DOWNLOAD_CHUNK_SIZE);
+        azclient->DownloadToStream(file_name, block->buff, start_offset, DOWNLOAD_CHUNK_SIZE);
         uint32_t read_len = block->buff.str().size();
         block->end = block->start + read_len;
 
@@ -78,7 +91,6 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
             block->last = true;
         }
 
-        UpdateUSage(block->buff.str().size());
         obj->AddBlock(block, max_blocks_per_file);
     }
     obj->UnLock();
@@ -94,12 +106,12 @@ int BlobStreamer::OpenFile(const char* file_name)
         m_mutex.lock();
 
         StreamObject* obj = NULL;
-        auto iter = m_file_map.find(file_name);
+        auto iter = file_map.find(file_name);
         
-        if(iter == m_file_map.end()) {
+        if(iter == file_map.end()) {
             // File is not found in the map so create a new entry and cache the first block
             obj =  new StreamObject;
-            m_file_map[file_name] = obj;
+            file_map[file_name] = obj;
         } else {
             // File object exists in our map
             obj = iter->second;
@@ -124,8 +136,8 @@ int BlobStreamer::CloseFile(const char* file_name)
     if (max_blocks_per_file > 0) {
 
         m_mutex.lock();
-        auto iter = m_file_map.find(file_name);
-        if(iter == m_file_map.end()) {
+        auto iter = file_map.find(file_name);
+        if(iter == file_map.end()) {
             m_mutex.unlock();
             return -1;
         }
@@ -137,7 +149,7 @@ int BlobStreamer::CloseFile(const char* file_name)
             // All open handles are closed so file info has been cleanedup
             // We can remove the entry from the map now. Next open will cause a new entry.
             m_mutex.lock();
-            m_file_map.erase(file_name);
+            file_map.erase(file_name);
             delete obj;
             m_mutex.unlock();
         }
@@ -155,7 +167,7 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
     if (max_blocks_per_file <= 0) {
         // Get data in form of a stream and fill the output buffer with data retreived
         std::stringstream os;
-        blob_client->DownloadToStream(file_name, os, offset, length);
+        azclient->DownloadToStream(file_name, os, offset, length);
         len = os.str().size();
         os.read(out, len);
         out[len]= '\0';
@@ -163,8 +175,8 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
     } else {
         // Caching of block is allowed so we need to check block exists or not
         m_mutex.lock();
-        auto iter = m_file_map.find(file_name);
-        if(iter == m_file_map.end()) {
+        auto iter = file_map.find(file_name);
+        if(iter == file_map.end()) {
             m_mutex.unlock();
             return 0;
         }

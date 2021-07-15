@@ -15,6 +15,56 @@ using namespace azure::storage_adls;
 // Maximum number of blocks to be stored per file in case caching is enabled
 #define MAX_BLOCKS_PER_FILE 3
 
+class CacheSizeCalculator
+{
+    public:
+        static CacheSizeCalculator* GetObj();
+
+        void SetMaxSize(uint64_t max) {
+            max_usage = max;
+        }   
+
+        void AddSize(uint64_t bytes) {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            current_usage += bytes; 
+        }
+
+        void RemoveSize(uint64_t bytes) {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (current_usage < bytes)
+                current_usage = 0;
+            else 
+                current_usage -= bytes; 
+        }
+
+        uint64_t GetUsage() {
+            return current_usage;
+        }
+
+        bool MaxLimitReached() {
+            bool flag = current_usage >= max_usage;
+            if (flag) {
+                syslog(LOG_INFO, "Current block cache usage has reached the configured limit %lu > %lu", current_usage, max_usage);
+            }
+
+            return flag;
+        }
+
+    private:
+
+        CacheSizeCalculator() {
+            current_usage = max_usage = 0;
+        }
+
+        static CacheSizeCalculator* mInstance;  // Static object for singleton class
+        
+
+        uint64_t        current_usage;          //  Current memory usage based on how many blocks are cached
+        uint64_t        max_usage;              //  Max memory usage allowed by configuration for caching
+        std::mutex      m_mutex;                //  Mutex to sync the map
+
+};
+
 // Structure representing one block segment
 struct BlobBlock {
         bool                valid;  // Block is valid or not
@@ -86,11 +136,14 @@ class StreamObject {
 class  BlobStreamer {
     public:
         BlobStreamer(std::shared_ptr<StorageBfsClientBase> client, uint64_t buffer_size, int max_blocks):
-            blob_client(client)
+            azclient(client)
         {
+            if (buffer_size == 0) {
+                buffer_size = INT64_MAX;
+            }
+
+            CacheSizeCalculator::GetObj()->SetMaxSize(buffer_size);
             nextHandle = 0;
-            current_usage = 0;
-            max_usage = buffer_size;
             max_blocks_per_file = max_blocks;
         }
 
@@ -98,12 +151,6 @@ class  BlobStreamer {
         int GetDummyHandle() {
             std::lock_guard<std::mutex> lock(m_mutex);
             return ++nextHandle;
-        }
-
-        // Update the current usage
-        void UpdateUSage(int size){
-            std::lock_guard<std::mutex> lock(m_mutex);
-            current_usage += size;
         }
 
         // Open file causes a new entry in map and caching its first buffer
@@ -119,15 +166,12 @@ class  BlobStreamer {
         BlobBlock* GetBlock(const char* file_name, uint64_t offset, StreamObject* obj);
 
     private:
-        uint64_t        current_usage;          //  Current memory usage based on how many blocks are cached
-        uint64_t        max_usage;              //  Max memory usage allowed by configuration for caching
         uint64_t        max_blocks_per_file;    //  Max number of blocks we can cache per file
         int             nextHandle;             //  Next available handle id
         std::mutex      m_mutex;                //  Mutex to sync the map
         
-
-        std::map<std::string, StreamObject*>    m_file_map;  // Map holding stream object per file
-        std::shared_ptr<StorageBfsClientBase>   blob_client; // Storage client object to download new blocks     
+        std::map<std::string, StreamObject*>    file_map;           // Map holding stream object per file
+        std::shared_ptr<StorageBfsClientBase>   azclient;        // Storage client object to download new blocks     
 
 };
 

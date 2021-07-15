@@ -525,6 +525,53 @@ jobs:
           continueOnError: true
           
         # -------------------------------------------------------
+        # Mount a directory for Streaming test
+        - script:  |
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0
+            pidof blobfuse
+
+            for i in {10,50,100,200,500,1024}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > myfile_{}' 
+            cp myfile_* $(MOUNT_DIR)
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - Streaming Test Preparation
+          timeoutInMinutes: 120
+          continueOnError: true
+
+        - script:  |
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(TEMP_DIR)/*
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - Streaming Test Preparation-done
+          timeoutInMinutes: 30
+          continueOnError: true
+        
+        - script:  |
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0 --read-stream=true --max_block_per_file=3 --stream-buffer-size-mb=500 -o ro
+            pidof blobfuse
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - Streaming Test Mount
+          timeoutInMinutes: 120
+          continueOnError: true
+
+        - script:  |
+            for i in {10,50,100,200,500,1024}; do echo $i; done | parallel --will-cite -j 5 'diff myfile_{} $(MOUNT_DIR)/myfile_{}' 
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - Streaming Test
+          timeoutInMinutes: 120
+          continueOnError: true
+
+        - script:  |
+            rm -rf $(MOUNT_DIR)/*
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(TEMP_DIR)/*
+          # condition: eq(variables['Build.SourceBranchName'], 'master')
+          displayName: TEST - Streaming Test Cleanup
+          timeoutInMinutes: 30
+          continueOnError: true
+
+        # -------------------------------------------------------
         # Starting pyTest
 
         # Mount a directory for pyTest and run it
