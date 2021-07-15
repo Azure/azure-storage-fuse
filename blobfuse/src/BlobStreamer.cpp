@@ -77,6 +77,8 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
 
     if (block == NULL || block->valid == false) {
         // Either block was not found or its not valid so download a new block
+        syslog(LOG_DEBUG, "File %s Block offset %lu : not found. Download and cache", file_name, offset);
+
         BlobBlock *block = new BlobBlock;
         block->start = start_offset;
         block->valid = true;
@@ -88,6 +90,7 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
 
         if (read_len < DOWNLOAD_CHUNK_SIZE) {
             // We asked to read 16MB but got less data then assume its the end of file
+            syslog(LOG_DEBUG, "File %s Block offset %lu : is last block", file_name, offset);
             block->last = true;
         }
 
@@ -148,6 +151,7 @@ int BlobStreamer::CloseFile(const char* file_name)
         if (0 == obj->DecRefCount()) {
             // All open handles are closed so file info has been cleanedup
             // We can remove the entry from the map now. Next open will cause a new entry.
+            syslog(LOG_DEBUG, "All handles for %s released, cleanup cached blocks", file_name);
             m_mutex.lock();
             file_map.erase(file_name);
             delete obj;
@@ -198,11 +202,18 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
 
         // Based on offset and length and available data calculate length of data being read
         len = block->buff.tellg();
+        syslog(LOG_DEBUG, "%s : Block Start : %lu, Length : %lu, Current : %d",
+                    file_name, block->start, block->buff.str().size(), len);
+
         if (len < 0) {
             // we have hit end of the buffer
             len = block->buff.str().size() - start_offset;
         } else {
             len = (len - start_offset);
+        }
+
+        if (len > (int)length) {
+            syslog(LOG_ERR, "Invalid read length from the buffer");
         }
 
         if (len < 0) {
