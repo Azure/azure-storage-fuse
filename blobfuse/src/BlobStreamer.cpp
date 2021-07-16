@@ -92,6 +92,14 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
         block->last = false;
         
         azclient->DownloadToStream(file_name, block->buff, start_offset, DOWNLOAD_CHUNK_SIZE);
+        if (errno != 0)
+        {
+            int storage_errno = errno;
+            syslog(LOG_ERR, "Failed to download block of %s with offset %lu.  Errno = %d.\n", file_name, start_offset, storage_errno);
+            obj->UnLock();
+            return NULL;
+        }
+        
         uint32_t read_len = block->buff.str().size();
         block->end = (block->start + read_len) - 1;
 
@@ -180,7 +188,15 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
     if (max_blocks_per_file <= 0) {
         // Get data in form of a stream and fill the output buffer with data retreived
         std::stringstream os;
+        
         azclient->DownloadToStream(file_name, os, offset, length);
+        if (errno != 0)
+        {
+            int storage_errno = errno;
+            syslog(LOG_ERR, "Failed to download block of %s with offset %lu.  Errno = %d.\n", file_name, offset, storage_errno);
+            return -errno;
+        }
+
         len = os.str().size();
         os.read(out, len);
         out[len] = '\0';
@@ -204,7 +220,7 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
         if (block == NULL){
             // For some reason we failed to get the block object
             syslog(LOG_ERR, "Failed to get block for %s with offset %lu", file_name, offset);
-            return 0;
+            return -errno;
         }
         
         // Based on offset and block being used calculate the start offset inside the block
@@ -238,7 +254,7 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
         } else {
             // Data is fully available in this block so finish the read from this block and return
             block->buff.seekg(start_offset, std::ios::beg);
-            block->buff.read(out, length);
+            block->buff.read((out + len), length);
             block->lck.unlock();
 
             len += length;
