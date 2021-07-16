@@ -72,6 +72,7 @@ struct BlobBlock {
         uint64_t            start;  // Start offset of block
         uint64_t            end;    // End offset of block
         std::stringstream   buff;   // Buffer holding the data
+        std::mutex          lck;    // No one shall delete the block when someone is reading it
 };
 
 // StreamObject : Holds all available blocks for a given file

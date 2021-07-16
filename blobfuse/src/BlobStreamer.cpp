@@ -2,6 +2,7 @@
 #include <BlobStreamer.h>
 
 const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
+//const unsigned long long DOWNLOAD_CHUNK_SIZE = 10;
 
 CacheSizeCalculator* CacheSizeCalculator::mInstance = NULL;
 CacheSizeCalculator* CacheSizeCalculator::GetObj()
@@ -33,7 +34,13 @@ int StreamObject::AddBlock(BlobBlock* block, uint64_t max_blocks_per_file)
 int StreamObject::RemoveBlock()
 {
     BlobBlock* last_block = m_block_list.back();
+
+    // Lock it so that we wait untill any reader is using this block
+    // then we remove it from the list and unlock, as its not in the list now,
+    // no one can search or use it anymore
+    last_block->lck.lock();
     m_block_list.pop_back();
+    last_block->lck.unlock();
 
     if (last_block) {
         // Release memory used by this block
@@ -79,14 +86,14 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
         // Either block was not found or its not valid so download a new block
         syslog(LOG_DEBUG, "File %s Block offset %lu : not found. Download and cache", file_name, offset);
 
-        BlobBlock *block = new BlobBlock;
+        block = new BlobBlock;
         block->start = start_offset;
         block->valid = true;
         block->last = false;
         
         azclient->DownloadToStream(file_name, block->buff, start_offset, DOWNLOAD_CHUNK_SIZE);
         uint32_t read_len = block->buff.str().size();
-        block->end = block->start + read_len;
+        block->end = (block->start + read_len) - 1;
 
         if (read_len < DOWNLOAD_CHUNK_SIZE) {
             // We asked to read 16MB but got less data then assume its the end of file
@@ -96,6 +103,7 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
 
         obj->AddBlock(block, max_blocks_per_file);
     }
+    block->lck.lock();
     obj->UnLock();
 
     return block;
@@ -126,7 +134,8 @@ int BlobStreamer::OpenFile(const char* file_name)
         obj->IncRefCount();
 
         // Download and save the first block of this file for future read.
-        GetBlock(file_name, 0, obj);
+        BlobBlock* block = GetBlock(file_name, 0, obj);
+        block->lck.unlock();
     }
 
     return 0;
@@ -174,57 +183,70 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
         azclient->DownloadToStream(file_name, os, offset, length);
         len = os.str().size();
         os.read(out, len);
-        out[len]= '\0';
+        out[len] = '\0';
+        return len;
+    } 
 
-    } else {
-        // Caching of block is allowed so we need to check block exists or not
-        m_mutex.lock();
-        auto iter = file_map.find(file_name);
-        if(iter == file_map.end()) {
-            m_mutex.unlock();
-            return 0;
-        }
-        StreamObject* obj = iter->second;
+    // Caching of block is allowed so we need to check block exists or not
+    m_mutex.lock();
+    auto iter = file_map.find(file_name);
+    if(iter == file_map.end()) {
         m_mutex.unlock();
+        return 0;
+    }
+    StreamObject* obj = iter->second;
+    m_mutex.unlock();
 
+    while (length > 0) {
+        //  At max the data requested may overlap two blocks
+        //  as soon as we get the full data we return back
         BlobBlock* block = GetBlock(file_name, offset, obj);
         if (block == NULL){
             // For some reason we failed to get the block object
+            syslog(LOG_ERR, "Failed to get block for %s with offset %lu", file_name, offset);
             return 0;
         }
         
         // Based on offset and block being used calculate the start offset inside the block
-        int start_offset = offset - block->start;
+        uint64_t start_offset = offset - block->start;
+        uint64_t pending_data = block->buff.str().size() - start_offset;
 
-        // As cached buffer is a stream seek to intended offset and read data from there
-        block->buff.seekg(start_offset, std::ios::beg);
-        block->buff.read(out, length);
+        syslog(LOG_ERR, "%s : Block (%lu, %lu)  Request (%lu, %lu)  Read (%lu, %lu)",
+                file_name, block->start, block->end, 
+                offset, length, 
+                start_offset, pending_data);
 
-        // Based on offset and length and available data calculate length of data being read
-        len = block->buff.tellg();
-        syslog(LOG_DEBUG, "%s : Block Start : %lu, Length : %lu, Current : %d",
-                    file_name, block->start, block->buff.str().size(), len);
+        if (pending_data < length) {
+            // Either request overlaps two blocks or request exceeds the file size
+            // So read the remaining data from this block and decide
+            block->buff.seekg(start_offset, std::ios::beg);
+            block->buff.read((out + len), pending_data);
+            block->lck.unlock();
 
-        if (len < 0) {
-            // we have hit end of the buffer
-            len = block->buff.str().size() - start_offset;
+            len += pending_data;
+
+            if (block->last) {
+                // This block is the last so terminate the loop
+                syslog(LOG_ERR, "%s read at offset %lu marks end of file with %d bytes", file_name, offset, len);
+                length = 0;
+            } else {
+                // Data overlaps two blocks so we need to to partial read here
+                length -= pending_data;
+                offset += pending_data;
+                syslog(LOG_ERR, "%s read at offset %lu overlaps two blocks for %lu bytes", file_name, offset, length);
+            }
         } else {
-            len = (len - start_offset);
+            // Data is fully available in this block so finish the read from this block and return
+            block->buff.seekg(start_offset, std::ios::beg);
+            block->buff.read(out, length);
+            block->lck.unlock();
+
+            len += length;
+            length = 0;
         }
+    }
 
-        if (len > (int)length) {
-            syslog(LOG_ERR, "Invalid read length from the buffer");
-        }
-
-        if (len < 0) {
-            // Should not happen but just in case shit happens
-            len = 0;
-        }
-
-        out[len] = '\0';
-
-    } 
-
+    out[len] = '\0';
     return len;
 }
 
