@@ -2,7 +2,8 @@
 #include <BlobStreamer.h>
 
 const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
-//const unsigned long long DOWNLOAD_CHUNK_SIZE = 10;
+const unsigned long long DOWNLOAD_SINGLE_CUNK_FILE_SIZE = 64 * 1024 * 1024;
+
 
 CacheSizeCalculator* CacheSizeCalculator::mInstance = NULL;
 CacheSizeCalculator* CacheSizeCalculator::GetObj()
@@ -17,15 +18,15 @@ CacheSizeCalculator* CacheSizeCalculator::GetObj()
 // Add a new block to this stream object
 int StreamObject::AddBlock(BlobBlock* block, uint64_t max_blocks_per_file)
 {
-    if (m_block_list.size() >= max_blocks_per_file || 
+    if (GetCacheListSize() >= max_blocks_per_file || 
         CacheSizeCalculator::GetObj()->MaxLimitReached()) {
         // We have exceeeded max number of blocks allowed so delete the end of the queue
         RemoveBlock();
     }
 
     // Add the new block to front of the list (LRU)
-    CacheSizeCalculator::GetObj()->AddSize(block->buff.str().size());
-    m_block_list.push_front(block);
+    CacheSizeCalculator::GetObj()->AddSize(block->length);
+    m_block_cache_list.push_front(block);
 
     return 0;
 }
@@ -33,18 +34,18 @@ int StreamObject::AddBlock(BlobBlock* block, uint64_t max_blocks_per_file)
 // Remove a unused block from the list
 int StreamObject::RemoveBlock()
 {
-    BlobBlock* last_block = m_block_list.back();
+    BlobBlock* last_block = m_block_cache_list.back();
 
     // Lock it so that we wait untill any reader is using this block
     // then we remove it from the list and unlock, as its not in the list now,
     // no one can search or use it anymore
     last_block->lck.lock();
-    m_block_list.pop_back();
+    m_block_cache_list.pop_back();
     last_block->lck.unlock();
 
     if (last_block) {
         // Release memory used by this block
-        CacheSizeCalculator::GetObj()->RemoveSize(last_block->buff.str().size());
+        CacheSizeCalculator::GetObj()->RemoveSize(last_block->length);
         last_block->buff.clear();
         delete last_block;
     }
@@ -56,7 +57,7 @@ int StreamObject::RemoveBlock()
 BlobBlock* StreamObject::GetBlock(uint64_t offset)
 {
     // Start offsets are rounded off to 16MB multiples so just match the start offset
-    for(auto it = m_block_list.begin(); it != m_block_list.end(); ++it) {
+    for(auto it = m_block_cache_list.begin(); it != m_block_cache_list.end(); ++it) {
         if ((*it)->valid && (*it)->start == offset) {
             return (*it);
         }
@@ -68,7 +69,7 @@ BlobBlock* StreamObject::GetBlock(uint64_t offset)
 // Cleanup the file info for this object as its no more nee
 void StreamObject::Cleanup()
 {
-    while(m_block_list.size() > 0)
+    while(GetCacheListSize() > 0)
         RemoveBlock();
 }
 
@@ -77,9 +78,24 @@ void StreamObject::Cleanup()
 //  Get block of a given file based on give offset
 BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, StreamObject* obj)
 {
+    unsigned long long download_chunk_size = DOWNLOAD_CHUNK_SIZE;
     uint64_t start_offset = offset - (offset % DOWNLOAD_CHUNK_SIZE);
 
     obj->Lock();
+
+    if (obj->GetCacheListSize() == 0 && offset == 0) {
+        // There is nothing cached and this if the first request to download the block.
+        // So get the block list here and keep it handy for future
+        obj->SetBlockIdList(azclient->GetBlockList(file_name));
+    }
+
+    if (obj->IsSingleBlockFile()) {
+        // This file was uploaded as a single block of max 64MB so download entire data in one shot
+        // as the block list will be empty and later we can not download based on block id
+        download_chunk_size = DOWNLOAD_SINGLE_CUNK_FILE_SIZE;
+        start_offset = offset - (offset % DOWNLOAD_SINGLE_CUNK_FILE_SIZE);
+    }
+    
     BlobBlock *block = obj->GetBlock(start_offset);
 
     if (block == NULL || block->valid == false) {
@@ -90,8 +106,8 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
         block->start = start_offset;
         block->valid = true;
         block->last = false;
-        
-        azclient->DownloadToStream(file_name, block->buff, start_offset, DOWNLOAD_CHUNK_SIZE);
+
+        azclient->DownloadToStream(file_name, block->buff, start_offset, download_chunk_size);
         if (errno != 0)
         {
             obj->UnLock();
@@ -107,16 +123,15 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
             return NULL;
         }
         
-        uint32_t read_len = block->buff.str().size();
-        block->end = (block->start + read_len) - 1;
-
-        if (read_len < DOWNLOAD_CHUNK_SIZE) {
+        block->length = block->buff.str().size();
+        if (block->length < download_chunk_size) {
             // We asked to read 16MB but got less data then assume its the end of file
             syslog(LOG_ERR, "File %s Block offset %lu : is last block", file_name, offset);
             block->last = true;
         }
 
         obj->AddBlock(block, max_blocks_per_file);
+
     }
     block->lck.lock();
     obj->UnLock();
@@ -237,10 +252,10 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
         
         // Based on offset and block being used calculate the start offset inside the block
         uint64_t start_offset = offset - block->start;
-        uint64_t pending_data = block->buff.str().size() - start_offset;
+        uint64_t pending_data = block->length - start_offset;
 
         syslog(LOG_ERR, "%s : Block (%lu, %lu, %d)  Request (%lu, %lu)  Read (%lu, %lu)",
-                file_name, block->start, block->end, block->last, 
+                file_name, block->start, ((block->length + block->start) - 1), block->last, 
                 offset, length, 
                 start_offset, pending_data);
 

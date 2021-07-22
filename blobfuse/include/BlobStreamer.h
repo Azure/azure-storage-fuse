@@ -57,7 +57,6 @@ class CacheSizeCalculator
         }
 
         static CacheSizeCalculator* mInstance;  // Static object for singleton class
-        
 
         uint64_t        current_usage;          //  Current memory usage based on how many blocks are cached
         uint64_t        max_usage;              //  Max memory usage allowed by configuration for caching
@@ -70,16 +69,25 @@ struct BlobBlock {
         bool                valid;  // Block is valid or not
         bool                last;   // This block is the last block of file
         uint64_t            start;  // Start offset of block
-        uint64_t            end;    // End offset of block
+        uint64_t            length;    // End offset of block
         std::stringstream   buff;   // Buffer holding the data
         std::mutex          lck;    // No one shall delete the block when someone is reading it
+
+        BlobBlock() {
+            valid = false;
+            last = false;
+            start = 0;
+            length = 0;
+        }
 };
+
 
 // StreamObject : Holds all available blocks for a given file
 class StreamObject {
     public:
         StreamObject() {
             ref_count = 0;
+            m_id_list = false;
         }
 
         int IncRefCount() {
@@ -112,6 +120,23 @@ class StreamObject {
             m_mutex.unlock();
         }
 
+        void SetBlockIdList(get_block_list_response az_block_list) {
+            m_block_id_list = az_block_list;
+            m_id_list = true;
+        }
+
+        bool BlockIdListRetreived() {
+            return m_id_list;
+        }
+
+        bool IsSingleBlockFile(){
+            return m_block_id_list.committed.size() == 0;
+        }
+
+        uint64_t GetCacheListSize() {
+            return uint64_t(m_block_cache_list.size());
+        }
+
 
         // Add a new block for this file
         int AddBlock(BlobBlock* block, uint64_t max_blocks);
@@ -128,8 +153,11 @@ class StreamObject {
     private:
         int                 ref_count;      // How many open handles are there for this file
         std::mutex          m_mutex;        // Mutex for safety
+        bool                m_id_list;      // Block id list was retreived or not
         
-        list<BlobBlock*>    m_block_list;   // List of blocks cached for this file
+        list<BlobBlock*>    m_block_cache_list;   // List of blocks cached for this file
+        get_block_list_response
+                            m_block_id_list; // List of committed and uncommitted blocks for this file
 };
 
 

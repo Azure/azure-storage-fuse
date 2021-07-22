@@ -1063,3 +1063,14 @@ int BlockBlobBfsClient::RefreshSASToken(std::string sas)
     }
     return 0;
 }
+
+
+get_block_list_response BlockBlobBfsClient::GetBlockList(const std::string &blob)
+{
+    return m_blob_client->get_block_list(configurations.containerName, blob);
+}
+
+void BlockBlobBfsClient::PutBlockList(const std::string &blob, const std::vector<put_block_list_request_base::block_item> &block_list, const std::vector<std::pair<std::string, std::string>> &metadata)
+{
+    return m_blob_client->put_block_list(configurations.containerName, blob, block_list, metadata);
+}

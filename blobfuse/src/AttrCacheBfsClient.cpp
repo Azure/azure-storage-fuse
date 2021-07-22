@@ -529,3 +529,15 @@ int AttrCacheBfsClient::RefreshSASToken(std::string sas)
 {
     return blob_client->RefreshSASToken(sas);
 }
+
+
+
+get_block_list_response AttrCacheBfsClient::GetBlockList(const std::string &blob)
+{
+    return blob_client->GetBlockList(blob);
+}
+
+void AttrCacheBfsClient::PutBlockList(const std::string &blob, const std::vector<put_block_list_request_base::block_item> &block_list, const std::vector<std::pair<std::string, std::string>> &metadata)
+{
+    return blob_client->PutBlockList(blob, block_list, metadata);
+}

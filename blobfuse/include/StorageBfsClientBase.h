@@ -367,6 +367,10 @@ public:
     virtual int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL) = 0;
 
     virtual int RefreshSASToken(std::string sas) = 0;
+
+
+    virtual get_block_list_response GetBlockList(const std::string &blob) = 0;
+    virtual void PutBlockList(const std::string &blob, const std::vector<put_block_list_request_base::block_item> &block_list, const std::vector<std::pair<std::string, std::string>> &metadata) = 0;
     
 protected:
     configParams configurations;

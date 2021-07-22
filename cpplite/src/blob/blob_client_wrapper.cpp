@@ -815,4 +815,38 @@ namespace azure {  namespace storage_lite {
             }
         }
 
+
+        get_block_list_response blob_client_wrapper::get_block_list(const std::string &container, const std::string &blob) 
+        {
+            try
+            {
+                auto result = m_blobClient->get_block_list(container, blob).get();
+                if(!result.success())
+                {
+                    errno = std::stoi(result.error().code);
+                    return get_block_list_response();
+                }
+                else
+                {
+                    errno = 0;
+                    return result.response();
+                }
+            }
+            catch(std::exception& ex)
+            {
+                syslog(LOG_ERR,"Unknown failure in get_block_list.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
+                errno = unknown_error;
+                return get_block_list_response();
+            }
+        }
+
+        void blob_client_wrapper::put_block_list(const std::string &container, const std::string &blob, const std::vector<put_block_list_request_base::block_item> &block_list, const std::vector<std::pair<std::string, std::string>> &metadata)
+        {
+            m_blobClient->put_block_list(container, blob, block_list, metadata);
+        }
+
+
+
 }} // azure::storage_lite
+
+
