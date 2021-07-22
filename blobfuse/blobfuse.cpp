@@ -1175,11 +1175,13 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     }
 
 
+    /*
     if (config_options.streamRead && !config_options.readOnlyMount) {
         syslog(LOG_ERR, "Streaming Read is supported only on Readonly Mounts. Use '-o ro' option in mount command");    
         fprintf(stderr, "Streaming Read is supported only on Readonly Mounts. Use '-o ro' option in mount command");  
         return 1;
     }
+    */
 
     syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d Retry Policy (%d, %f, %f)", 
         config_options.high_disk_threshold, config_options.low_disk_threshold,

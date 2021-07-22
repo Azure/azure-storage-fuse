@@ -290,11 +290,6 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
     // At this point, the shared flock will be held.
     // In some cases, due (I believe) to us using the hard_unlink option, path will be null.  Thus, we need to get the file name from the file descriptor:
 
-    if (config_options.streamRead) {
-        //  As no file handel was created in case of streaming read nothing to be done here.
-        return 0;
-    }
-
     char path_link_buffer[50];
     snprintf(path_link_buffer, 50, "/proc/self/fd/%d", (((struct fhwrapper *)fi->fh)->fh));
 
@@ -518,10 +513,6 @@ int azs_unlink(const char *path)
 int azs_truncate(const char * path, off_t off)
 {
     AZS_DEBUGLOGV("azs_truncate called.  Path = %s, offset = %s\n", path, to_str(off).c_str());
-
-    if (config_options.streamRead) {
-        return ENOSYS;
-    }
 
     std::string pathString(path);
     std::replace(pathString.begin(), pathString.end(), '\\', '/');
