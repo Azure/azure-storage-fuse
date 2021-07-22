@@ -82,7 +82,7 @@ struct configParams
     bool preMountValidate;
 
     bool readOnlyMount;
-    bool streamRead;
+    bool streaming;
     uint64_t readStreamBufferSize;
     int maxBlockPerFile;
 };
@@ -122,7 +122,7 @@ struct cmdlineOptions
     const char *basic_remount_check; // Check for remount by reading /etc/mtab
     const char *pre_mount_validate; // Validate storage auth before the mount
 
-    const char *stream_read; // Allow user to stream the read operation
+    const char *streaming; // Allow user to stream the read operation
     const char *stream_buffer; // Stream buffer max size
     const char *max_block_per_file; // Number of blocks to be cached per file in case of streaming
 };
@@ -135,9 +135,10 @@ struct fhwrapper
     int fh; // The handle to the file in the file cache to use for read/write operations.
     bool write_mode; // False when the file was opened in read-only mode
     bool upload_on_close; // False if file is not written or created. Upload only if the flag is true
+    bool file_created; // This is a new file being created by user
     fhwrapper(int fh, bool mode) : fh(fh), write_mode(mode), upload_on_close(false)
     {
-
+        file_created = false;
     }
 };
 

@@ -188,8 +188,14 @@ class  BlobStreamer {
         // Read file searches the map gets the object and gets the required block based on offset
         int ReadFile(const char* file_name, uint64_t offset, uint64_t length, char* out);
 
+        // Write file searches the map gets the object and gets the required block based on offset and update+uploads it
+        int WriteFile(const char* file_name, uint64_t offset, uint64_t length, const char* data);
+
         // Close file decrements ref count and cleansup file info if all handles are closed
         int CloseFile(const char* file_name);
+
+        // Delete file removes all the buffers in the memory
+        int DeleteFile(const char* file_name);
 
         // Search and add a new block if it does not exists for the given file
         BlobBlock* GetBlock(const char* file_name, uint64_t offset, StreamObject* obj);

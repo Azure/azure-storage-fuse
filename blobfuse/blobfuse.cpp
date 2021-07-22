@@ -69,7 +69,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--basic-remount-check=%s", basic_remount_check),
     OPTION("--pre-mount-validate=%s", pre_mount_validate),
     
-    OPTION("--read-stream=%s", stream_read),
+    OPTION("--streaming=%s", streaming),
     OPTION("--stream-buffer-size-mb=%s", stream_buffer),
     OPTION("--max-cache-block-per-file=%s", max_block_per_file),
     
@@ -476,7 +476,7 @@ void *azs_init(struct fuse_conn_info * conn)
         tokenManager->StartTokenMonitor();
     }
 
-    if (config_options.streamRead) {
+    if (config_options.streaming) {
         blob_streamer = std::make_shared<BlobStreamer>(storage_client, config_options.readStreamBufferSize, config_options.maxBlockPerFile);
     }
 
@@ -1150,13 +1150,13 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.retryDelay = stod(retry_delay, &offset);
     }
 
-    config_options.streamRead = false;
-    if(cmd_options.stream_read != NULL)
+    config_options.streaming = false;
+    if(cmd_options.streaming != NULL)
     {
-        std::string stream_read(cmd_options.stream_read);
-        if(stream_read == "true")
+        std::string streaming(cmd_options.streaming);
+        if(streaming == "true")
         {
-            config_options.streamRead = true;
+            config_options.streaming = true;
         } 
     }
     
@@ -1176,7 +1176,7 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 
 
     /*
-    if (config_options.streamRead && !config_options.readOnlyMount) {
+    if (config_options.streaming && !config_options.readOnlyMount) {
         syslog(LOG_ERR, "Streaming Read is supported only on Readonly Mounts. Use '-o ro' option in mount command");    
         fprintf(stderr, "Streaming Read is supported only on Readonly Mounts. Use '-o ro' option in mount command");  
         return 1;
@@ -1189,9 +1189,9 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.cancel_list_on_mount_secs,
         config_options.maxTryCount, config_options.maxTimeoutSeconds, config_options.retryDelay);
 
-    if (config_options.streamRead) {
-        syslog(LOG_INFO, "Streaming Read : %d, Stream buffer size : %lu, Max Blocks : %d", 
-            config_options.streamRead, config_options.readStreamBufferSize,
+    if (config_options.streaming) {
+        syslog(LOG_INFO, "Streaming : %d, Stream buffer size : %lu, Max Blocks : %d", 
+            config_options.streaming, config_options.readStreamBufferSize,
             config_options.maxBlockPerFile);
     }
 

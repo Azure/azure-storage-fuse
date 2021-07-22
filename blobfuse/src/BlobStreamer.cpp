@@ -201,6 +201,31 @@ int BlobStreamer::CloseFile(const char* file_name)
     return 0;
 }
 
+
+// Read file retreives the data from cache and sends it back to the caller
+int BlobStreamer::DeleteFile(const char* file_name)
+{
+    if (max_blocks_per_file <= 0) {
+        return 0;
+    }
+
+    // Caching of block is allowed so we need to check block exists or not
+    m_mutex.lock();
+    auto iter = file_map.find(file_name);
+    if(iter == file_map.end()) {
+        m_mutex.unlock();
+        return 0;
+    }
+    StreamObject* obj = iter->second;
+    obj->Lock();
+    file_map.erase(file_name);
+    m_mutex.unlock();
+
+    obj->Cleanup();
+    delete obj;
+    return 0;
+}
+
 // Read file retreives the data from cache and sends it back to the caller
 int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t length, char* out)
 {
@@ -295,3 +320,36 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
 
 
 
+// WriteFile will get the requested block and update the data in it and upload the block list again to container 
+int BlobStreamer::WriteFile(const char* file_name, uint64_t offset, uint64_t length, const char* data)
+{
+    int len = 0;
+    
+    // If block caching is not allowed as per config then stream data directly from container.
+    if (max_blocks_per_file <= 0) {
+       return 0;
+    } 
+
+    // Caching of block is allowed so we need to check block exists or not
+    m_mutex.lock();
+    auto iter = file_map.find(file_name);
+    if(iter == file_map.end()) {
+        m_mutex.unlock();
+        return 0;
+    }
+    StreamObject* obj = iter->second;
+    m_mutex.unlock();
+
+    while (length > 0) {
+        //  At max the data requested may overlap two blocks
+        //  as soon as we get the full data we return back
+        BlobBlock* block = GetBlock(file_name, offset, obj);
+        if (block == NULL) {
+            syslog(LOG_ERR,"Failed : %ld", strlen(data));
+        }
+        length = 0;
+        len = 0;
+    }
+
+    return len;
+}

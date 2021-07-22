@@ -76,7 +76,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--max-retry-interval-in-seconds=60** : Maximum number of seconds between 2 retries, retry interval is exponentially increased but it can never exceed this value. Default naximum interval is 60 seconds.  This option is only available from version 1.3.8
      * [OPTIONAL] **--basic-remount-check=false** : Set this to true if you want to check for an already mounted status using /etc/mtab instead of calling the syscall setmntent. Default is true. It is known that for AKS 1.19, blobfuse will throw a segmentation fault error, so set this to false.  This option is only available from version 1.3.8
      * [OPTIONAL] **--pre-mount-validate=false** : Set this to true to skip the cURL version check and just straight validate storage connection before mount. Default is false, so use this only if you know that you have the recent Curl version, otherwise blobfuse will hang. This option is only available from version 1.3.8
-     * [OPTIONAL] **--read-stream=false** : Instead of caching files on disk, stream data directly from container. This option works only with 'read-only' mount. Use "-o ro" option in mount command to enable read-only mount.
+     * [OPTIONAL] **--streaming=false** : Instead of caching files on disk, stream data directly to/from container. Only the files which are created newly will be dumped to disk.
      * [OPTIONAL] **--stream-buffer-size-mb=500** : When read streaming is enabled, cap memory usage for storing block upto this limit.
      * [OPTIONAL] **--max_block_per_file=3** : Maximum number of blocks to be cached in memory for a file in case of streaming.
 

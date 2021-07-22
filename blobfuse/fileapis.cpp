@@ -35,11 +35,12 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     std::lock_guard<std::mutex> lock(*fmutex);
 
 
-    if (config_options.streamRead) {
+    if (config_options.streaming) {
         blob_streamer->OpenFile(pathString.substr(1).c_str());
 
         int fid = blob_streamer->GetDummyHandle();
         struct fhwrapper *fhwrap = new fhwrapper(fid, (((fi->flags & O_WRONLY) == O_WRONLY) || ((fi->flags & O_RDWR) == O_RDWR)));
+        fhwrap->file_created = false;
         fi->fh = (long unsigned int)fhwrap; // Store the file handle for later use.
         return 0;
     }
@@ -192,7 +193,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
  */
 int azs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-    if (config_options.streamRead) {
+    if (config_options.streaming) {
         std::string pathString(path);
         std::replace(pathString.begin(), pathString.end(), '\\', '/');
 
@@ -245,6 +246,7 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
 
     struct fhwrapper *fhwrap = new fhwrapper(res, true);
     fhwrap->upload_on_close = true;
+    fhwrap->file_created = true;
 
     fi->fh = (long unsigned int)fhwrap;
     syslog(LOG_INFO, "Successfully created file %s in file cache.\n", path);
@@ -270,6 +272,15 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
 {
     int fd = ((struct fhwrapper *)fi->fh)->fh;
 
+    if (config_options.streaming && 
+       !(((struct fhwrapper *)fi)->file_created)) {
+           // Streaming is enable and this file is not a newly created one so we need to stream the write operation 
+        std::string pathString(path);
+        std::replace(pathString.begin(), pathString.end(), '\\', '/');
+
+        return blob_streamer->WriteFile(pathString.substr(1).c_str(), offset, size, buf);
+    }
+
     errno = 0;
     int res = pwrite(fd, buf, size, offset);
     if (res == -1)
@@ -292,6 +303,13 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
 
     char path_link_buffer[50];
     snprintf(path_link_buffer, 50, "/proc/self/fd/%d", (((struct fhwrapper *)fi->fh)->fh));
+
+    if (config_options.streaming && 
+       !(((struct fhwrapper *)fi)->file_created)) {
+           // Streaming is enable so no need to flush this file here. Writes were already streamed up
+
+        return 0;
+    }
 
     // canonicalize_file_name will follow symlinks to give the actual path name.
     char *path_buffer = canonicalize_file_name(path_link_buffer);
@@ -400,7 +418,9 @@ int azs_release(const char *path, struct fuse_file_info * fi)
 {
     AZS_DEBUGLOGV("azs_release called with path = %s, fi->flags = %d\n", path, fi->flags);
 
-    if (config_options.streamRead) {
+    if (config_options.streaming && 
+       !(((struct fhwrapper *)fi)->file_created)) {
+        // Streaming is enable and this file was not newly created so just close the dummy handle
         std::string pathString(path);
         std::replace(pathString.begin(), pathString.end(), '\\', '/');
         blob_streamer->CloseFile(pathString.substr(1).c_str());
@@ -476,7 +496,12 @@ int azs_unlink(const char *path)
 
     int retval = 0;
     errno = 0;
-    storage_client->DeleteFile(pathString.substr(1));
+    if (config_options.streaming) {
+        blob_streamer->DeleteFile(pathString.substr(1).c_str());
+    } else {
+        storage_client->DeleteFile(pathString.substr(1));
+    }
+
     if (errno != 0)
     {
         int storage_errno = errno;
@@ -542,7 +567,15 @@ int azs_truncate(const char * path, off_t off)
         }
 
         errno = 0;
-        int truncret = truncate(mntPath, off);
+        int truncret = 0;
+
+        // TODO : VB : if streaming is enable then we need to truncate the file here through buffers.
+        if (config_options.streaming) {
+            truncret = -1;
+        } else {
+            truncret = truncate(mntPath, off);
+        }
+
         if (truncret == 0)
         {
             AZS_DEBUGLOGV("Successfully truncated file %s in the local file cache.", mntPath);
