@@ -72,14 +72,13 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--ca-cert-file=/etc/ssl/certs/proxy.pem** : If external network is only available through a proxy server, this parameter should specify the proxy pem certificate otherwise blobfuse cannot connect to the storage account. This option is only available from version 1.3.7
      * [OPTIONAL] **--httpsproxy=http://10.1.22.4:8080/** : If external network is only available through a proxy server, this parameter should specify the proxy server along with the port which is 8080 unless there are some deviations from normal port allocation numbers. This option is only available from version 1.3.7
      * [OPTIONAL] **--httpproxy=http://10.1.22.4:8080/** : Only used when https is turned off using --use-https=false, and if external network is only available through a proxy server, this parameter should specify the proxy server along with the port which is 8080 unless there are some deviations from normal port allocation numbers. This option is only available from version 1.3.7
-     * [OPTIONAL] **--max-retry=26** : Maximum retry count if the failure codes are retryable. Default count is 26.
-     * [OPTIONAL] **--max-retry-interval-in-seconds=60** : Maximum number of seconds between 2 retries, retry interval is exponentially increased but it can never exceed this value. Default naximum interval is 60 seconds.
-     * [OPTIONAL] **--basic-remount-check=false** : Try checking for a remount by reading /etc/mtab instead of calling the syscall setmntent
-     * [OPTIONAL] **--pre-mount-validate=false** : Skip cURL version check and validate storage connection before mount.
+     * [OPTIONAL] **--max-retry=26** : Maximum retry count if the failure codes are retryable. Default count is 26.  This option is only available from version 1.3.8
+     * [OPTIONAL] **--max-retry-interval-in-seconds=60** : Maximum number of seconds between 2 retries, retry interval is exponentially increased but it can never exceed this value. Default naximum interval is 60 seconds.  This option is only available from version 1.3.8
+     * [OPTIONAL] **--basic-remount-check=false** : Set this to true if you want to check for an already mounted status using /etc/mtab instead of calling the syscall setmntent. Default is true. It is known that for AKS 1.19, blobfuse will throw a segmentation fault error, so set this to false.  This option is only available from version 1.3.8
+     * [OPTIONAL] **--pre-mount-validate=false** : Set this to true to skip the cURL version check and just straight validate storage connection before mount. Default is false, so use this only if you know that you have the recent Curl version, otherwise blobfuse will hang. This option is only available from version 1.3.8
      * [OPTIONAL] **--read-stream=false** : Instead of caching files on disk, stream data directly from container. This option works only with 'read-only' mount. Use "-o ro" option in mount command to enable read-only mount.
      * [OPTIONAL] **--stream-buffer-size-mb=500** : When read streaming is enabled, cap memory usage for storing block upto this limit.
      * [OPTIONAL] **--max_block_per_file=3** : Maximum number of blocks to be cached in memory for a file in case of streaming.
-
 
 ### Valid authentication setups:
 
