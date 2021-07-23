@@ -548,7 +548,8 @@ namespace azure { namespace storage_lite {
         // Get the list of blocks from blob client
         AZURE_STORAGE_API virtual get_block_list_response get_block_list(const std::string &container, const std::string &blob);
         AZURE_STORAGE_API virtual void put_block_list(const std::string &container, const std::string &blob, const std::vector<put_block_list_request_base::block_item> &block_list, const std::vector<std::pair<std::string, std::string>> &metadata);
-       
+        AZURE_STORAGE_API virtual void upload_block_from_buffer(const std::string &container, const std::string &blob, const std::string &blockid, const char* buffer, uint64_t bufferlen);
+
         /// <summary>
         /// Copy a blob to another.
         /// </summary>

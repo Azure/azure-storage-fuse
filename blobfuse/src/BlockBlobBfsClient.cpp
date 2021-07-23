@@ -1074,3 +1074,8 @@ void BlockBlobBfsClient::PutBlockList(const std::string &blob, const std::vector
 {
     return m_blob_client->put_block_list(configurations.containerName, blob, block_list, metadata);
 }
+
+void BlockBlobBfsClient::UploadBlockWithID(const std::string &blob, const std::string &blockid, const char* buffer, uint64_t bufferlen)
+{
+    return m_blob_client->upload_block_from_buffer(configurations.containerName, blob, blockid, buffer, bufferlen);
+}

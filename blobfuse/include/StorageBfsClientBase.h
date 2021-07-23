@@ -371,7 +371,8 @@ public:
 
     virtual get_block_list_response GetBlockList(const std::string &blob) = 0;
     virtual void PutBlockList(const std::string &blob, const std::vector<put_block_list_request_base::block_item> &block_list, const std::vector<std::pair<std::string, std::string>> &metadata) = 0;
-    
+    virtual void UploadBlockWithID(const std::string &blob, const std::string &blockid, const char* buffer, uint64_t bufferlen) = 0;
+
 protected:
     configParams configurations;
     ///<summary>

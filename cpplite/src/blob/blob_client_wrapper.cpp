@@ -846,6 +846,31 @@ namespace azure {  namespace storage_lite {
         }
 
 
+        void blob_client_wrapper::upload_block_from_buffer(const std::string &container, const std::string &blob, const std::string &blockid, const char* buffer, uint64_t bufferlen)
+        {
+            try
+            {
+                auto result = m_blobClient->upload_block_from_buffer(container, blob, blockid, buffer, bufferlen).get();
+                if(!result.success())
+                {
+                    errno = std::stoi(result.error().code);
+                    return;
+                }
+                else
+                {
+                    errno = 0;
+                    return;
+                }
+            }
+            catch(std::exception& ex)
+            {
+                syslog(LOG_ERR,"Unknown failure in put_block.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
+                errno = unknown_error;
+                return;
+            }
+        }
+
+
 
 }} // azure::storage_lite
 

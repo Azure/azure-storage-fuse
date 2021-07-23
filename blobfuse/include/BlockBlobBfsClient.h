@@ -108,7 +108,7 @@ public:
 
     get_block_list_response GetBlockList(const std::string &blob);
     void PutBlockList(const std::string &blob, const std::vector<put_block_list_request_base::block_item> &block_list, const std::vector<std::pair<std::string, std::string>> &metadata);
-    
+    void UploadBlockWithID(const std::string &blob, const std::string &blockid, const char* buffer, uint64_t bufferlen);
 protected:
     ///<summary>
     /// Blob Client to make blob storage calls

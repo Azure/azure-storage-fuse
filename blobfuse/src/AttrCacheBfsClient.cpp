@@ -541,3 +541,8 @@ void AttrCacheBfsClient::PutBlockList(const std::string &blob, const std::vector
 {
     return blob_client->PutBlockList(blob, block_list, metadata);
 }
+
+void AttrCacheBfsClient::UploadBlockWithID(const std::string &blob, const std::string &blockid, const char* buffer, uint64_t bufferlen)
+{
+    return blob_client->UploadBlockWithID(blob, blockid, buffer, bufferlen);
+}

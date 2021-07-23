@@ -81,6 +81,12 @@ struct BlobBlock {
         }
 };
 
+struct BlockIdItem {
+    std::string name;
+    unsigned long long begin;
+    unsigned long long size;
+    azure::storage_lite::put_block_list_request_base::block_type type;
+};
 
 // StreamObject : Holds all available blocks for a given file
 class StreamObject {
@@ -121,7 +127,17 @@ class StreamObject {
         }
 
         void SetBlockIdList(get_block_list_response az_block_list) {
-            m_block_id_list = az_block_list;
+            unsigned long long start_offset = 0;
+            for (uint32_t i = 0; i < az_block_list.committed.size(); i++) {
+                BlockIdItem item;
+                item.begin = start_offset;
+                item.name = az_block_list.committed[i].name;
+                item.size = az_block_list.committed[i].size;
+                item.type = azure::storage_lite::put_block_list_request_base::block_type::committed;
+                m_block_id_list.push_back(item);
+
+                start_offset += item.size;
+            }
             m_id_list = true;
         }
 
@@ -130,7 +146,7 @@ class StreamObject {
         }
 
         bool IsSingleBlockFile(){
-            return m_block_id_list.committed.size() == 0;
+            return m_block_id_list.size() == 0;
         }
 
         uint64_t GetCacheListSize() {
@@ -146,7 +162,7 @@ class StreamObject {
 
         // Get the block based on offset and length, if not add it
         BlobBlock* GetBlock(uint64_t offset);
-
+        
         // Remove all blocks and wipe out this file info
         void Cleanup();
 
@@ -156,7 +172,9 @@ class StreamObject {
         bool                m_id_list;      // Block id list was retreived or not
         
         list<BlobBlock*>    m_block_cache_list;   // List of blocks cached for this file
-        get_block_list_response
+
+    public:
+        std::vector<BlockIdItem>
                             m_block_id_list; // List of committed and uncommitted blocks for this file
 };
 
@@ -191,11 +209,17 @@ class  BlobStreamer {
         // Write file searches the map gets the object and gets the required block based on offset and update+uploads it
         int WriteFile(const char* file_name, uint64_t offset, uint64_t length, const char* data);
 
+        // Write file searches the map gets the object and gets the required block based on offset and update+uploads it
+        int FlushFile(const char* file_name);
+
         // Close file decrements ref count and cleansup file info if all handles are closed
         int CloseFile(const char* file_name);
 
         // Delete file removes all the buffers in the memory
         int DeleteFile(const char* file_name);
+
+        // Upload modified block back to container
+        int UploadBlock(const char* file_name, StreamObject* obj, BlobBlock* block);
 
         // Search and add a new block if it does not exists for the given file
         BlobBlock* GetBlock(const char* file_name, uint64_t offset, StreamObject* obj);

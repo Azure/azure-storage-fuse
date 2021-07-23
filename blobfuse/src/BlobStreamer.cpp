@@ -1,9 +1,19 @@
 
 #include <BlobStreamer.h>
+#include <base64.h>
 
 const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
 const unsigned long long DOWNLOAD_SINGLE_CUNK_FILE_SIZE = 64 * 1024 * 1024;
 
+std::string GenerateBlockId(unsigned int idx) {
+    std::string raw_block_id = std::to_string((int)idx);
+    //pad the string to length of 6.
+    raw_block_id.insert(raw_block_id.begin(), 12 - raw_block_id.length(), '0');
+    const std::string block_id_un_base64 = raw_block_id + get_uuid();
+    const std::string block_id(azure::storage_lite::to_base64(reinterpret_cast<const unsigned char*>(block_id_un_base64.c_str()), block_id_un_base64.size()));
+    put_block_list_request_base::block_item block;
+    return raw_block_id;
+}
 
 CacheSizeCalculator* CacheSizeCalculator::mInstance = NULL;
 CacheSizeCalculator* CacheSizeCalculator::GetObj()
@@ -66,6 +76,7 @@ BlobBlock* StreamObject::GetBlock(uint64_t offset)
     return NULL;
 }
 
+
 // Cleanup the file info for this object as its no more nee
 void StreamObject::Cleanup()
 {
@@ -73,7 +84,7 @@ void StreamObject::Cleanup()
         RemoveBlock();
 }
 
-
+// -----------------------------------------------------------------------------------------------------------
 
 //  Get block of a given file based on give offset
 BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, StreamObject* obj)
@@ -137,6 +148,28 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
     obj->UnLock();
 
     return block;
+}
+
+// Upload the blck based on its offset
+int BlobStreamer::UploadBlock(const char* file_name, StreamObject* obj, BlobBlock* block)
+{
+    obj->Lock();
+    
+    for (unsigned int i = 0; i < obj->m_block_id_list.size(); i++) {
+        if (obj->m_block_id_list[i].begin == block->start) {
+            errno = 0;
+            azclient->UploadBlockWithID(file_name, obj->m_block_id_list[i].name, block->buff.str().c_str(), uint64_t(block->length));
+            if (errno != 0) {
+                syslog(LOG_ERR,"Failed to upload block for file %s, block offset : %ld, length : %ld", file_name, block->start, block->length);
+                return -errno;
+            }
+            obj->m_block_id_list[i].type =  azure::storage_lite::put_block_list_request_base::block_type::uncommitted;
+            break;
+        }
+    }
+    obj->UnLock();
+
+    return 0;
 }
 
 // When file open is hit, just download the first block of file and cache it if caching is allowed
@@ -226,6 +259,51 @@ int BlobStreamer::DeleteFile(const char* file_name)
     return 0;
 }
 
+// FlushFile will update the block list to the container
+int BlobStreamer::FlushFile(const char* file_name)
+{
+    // Caching of block is allowed so we need to check block exists or not
+    m_mutex.lock();
+    auto iter = file_map.find(file_name);
+    if(iter == file_map.end()) {
+        m_mutex.unlock();
+        return 0;
+    }
+    StreamObject* obj = iter->second;
+    obj->Lock();
+    m_mutex.unlock();
+    
+    if (obj->IsSingleBlockFile()) {
+        obj->UnLock();
+        return 0;
+    }
+
+    errno = 0;
+    std::vector<azure::storage_lite::put_block_list_request_base::block_item> block_list;
+
+    for (unsigned int i = 0; i < obj->m_block_id_list.size(); i++) {
+        azure::storage_lite::put_block_list_request_base::block_item item;
+        item.id = obj->m_block_id_list[i].name;
+        item.type = obj->m_block_id_list[i].type;
+        block_list.push_back(item);
+    }
+
+    azclient->PutBlockList(file_name, block_list, std::vector<std::pair<std::string, std::string>>());
+    obj->UnLock();
+
+    if (errno != 0) {
+        int storage_errno = errno;
+        syslog(LOG_ERR, "Failed to upload block listof %s Errno = %d.\n", file_name, storage_errno);
+        return -storage_errno;
+    }
+
+    for (unsigned int i = 0; i < obj->m_block_id_list.size(); i++) {
+        obj->m_block_id_list[i].type = azure::storage_lite::put_block_list_request_base::block_type::committed;
+    }
+
+    return 0;
+}
+
 // Read file retreives the data from cache and sends it back to the caller
 int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t length, char* out)
 {
@@ -241,7 +319,7 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
         {
             int storage_errno = errno;
             syslog(LOG_ERR, "Failed to download block of %s with offset %lu.  Errno = %d.\n", file_name, offset, storage_errno);
-            return -errno;
+            return -storage_errno;
         }
 
         len = os.str().size();
@@ -279,7 +357,7 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
         uint64_t start_offset = offset - block->start;
         uint64_t pending_data = block->length - start_offset;
 
-        syslog(LOG_ERR, "%s : Block (%lu, %lu, %d)  Request (%lu, %lu)  Read (%lu, %lu)",
+        syslog(LOG_ERR, "%s : Read Block (%lu, %lu, %d)  Request (%lu, %lu)  Read (%lu, %lu)",
                 file_name, block->start, ((block->length + block->start) - 1), block->last, 
                 offset, length, 
                 start_offset, pending_data);
@@ -325,11 +403,6 @@ int BlobStreamer::WriteFile(const char* file_name, uint64_t offset, uint64_t len
 {
     int len = 0;
     
-    // If block caching is not allowed as per config then stream data directly from container.
-    if (max_blocks_per_file <= 0) {
-       return 0;
-    } 
-
     // Caching of block is allowed so we need to check block exists or not
     m_mutex.lock();
     auto iter = file_map.find(file_name);
@@ -345,10 +418,55 @@ int BlobStreamer::WriteFile(const char* file_name, uint64_t offset, uint64_t len
         //  as soon as we get the full data we return back
         BlobBlock* block = GetBlock(file_name, offset, obj);
         if (block == NULL) {
-            syslog(LOG_ERR,"Failed : %ld", strlen(data));
+            if (errno == 416) {
+                // Range given the request is invalid so we mark it as end of file
+                errno = 0;
+                return 0;
+            }
+            // For some reason we failed to get the block object
+            syslog(LOG_ERR, "Failed to get block for %s with offset %lu", file_name, offset);
+            return -errno;
         }
-        length = 0;
-        len = 0;
+        
+        // Based on offset and block being used calculate the start offset inside the block
+        uint64_t start_offset = offset - block->start;
+        uint64_t pending_data = block->length - start_offset;
+
+        syslog(LOG_ERR, "%s : Write Block (%lu, %lu, %d)  Request (%lu, %lu)  Read (%lu, %lu)",
+                file_name, block->start, ((block->length + block->start) - 1), block->last, 
+                offset, length, 
+                start_offset, pending_data);
+        
+        if (pending_data < length) {
+            // Either request overlaps two blocks or request exceeds the file size
+            // So read the remaining data from this block and decide
+            block->buff.seekp(start_offset, std::ios::beg);
+            block->buff.write((data + len), pending_data);
+            
+            len += pending_data;
+
+            if (block->last) {
+                // This block is the last so terminate the loop
+                syslog(LOG_ERR, "%s read at offset %lu marks end of file with %d bytes", file_name, offset, len);
+                length = 0;
+            } else {
+                // Data overlaps two blocks so we need to to partial read here
+                length -= pending_data;
+                offset += pending_data;
+                syslog(LOG_ERR, "%s read at offset %lu overlaps two blocks for %lu bytes", file_name, offset, length);
+            }
+        } else {
+            // Data is fully available in this block so finish the read from this block and return
+            block->buff.seekp(start_offset, std::ios::beg);
+            block->buff.write((data + len), length);
+
+            len += length;
+            length = 0;
+        }
+
+        // TODO : VB : Whatever block we have modified find its id and upload  that block again.
+        UploadBlock(file_name, obj, block);
+        block->lck.unlock();
     }
 
     return len;

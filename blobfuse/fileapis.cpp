@@ -304,13 +304,6 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
     char path_link_buffer[50];
     snprintf(path_link_buffer, 50, "/proc/self/fd/%d", (((struct fhwrapper *)fi->fh)->fh));
 
-    if (config_options.streaming && 
-       !(((struct fhwrapper *)fi)->file_created)) {
-           // Streaming is enable so no need to flush this file here. Writes were already streamed up
-
-        return 0;
-    }
-
     // canonicalize_file_name will follow symlinks to give the actual path name.
     char *path_buffer = canonicalize_file_name(path_link_buffer);
     if (path_buffer == NULL)
@@ -326,17 +319,32 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
     // Note that we don't have to prepend the tmpPath, because we already have it, because we're not using the input path but instead are querying for it.
     std::string mntPathString(path_buffer);
     const char * mntPath = path_buffer;
+
+    std::string blob_name = mntPathString.substr(config_options.tmpPath.size() + 6 /* there are six characters in "/root/" */);
+    // remove extra slash
+    if(blob_name.at(0) == '/')
+    {
+        blob_name.erase(blob_name.begin() + 0);
+    }
+    std::replace(blob_name.begin(), blob_name.end(), '\\', '/');
+
+    if (config_options.streaming && 
+       !(((struct fhwrapper *)fi)->file_created)) {
+           // Streaming is enable so no need to flush this file here. Writes were already streamed up
+        if ((config_options.uploadIfModified &&
+              ((struct fhwrapper *)fi->fh)->upload_on_close)  ||
+            ((!config_options.uploadIfModified) &&
+              ((struct fhwrapper *)fi->fh)->write_mode))
+        {
+            blob_streamer->FlushFile(blob_name.c_str());
+        }
+        return 0;
+    }
+
     if (access(mntPath, F_OK) != -1 )
     {
         // TODO: This will currently upload the full file on every flush() call.  We may want to keep track of whether
         // or not flush() has been called already, and not re-upload the file each time.
-        std::string blob_name = mntPathString.substr(config_options.tmpPath.size() + 6 /* there are six characters in "/root/" */);
-        // remove extra slash
-        if(blob_name.at(0) == '/')
-        {
-            blob_name.erase(blob_name.begin() + 0);
-        }
-        std::replace(blob_name.begin(), blob_name.end(), '\\', '/');
 
         // We cannot close the actual file handle to the temp file, because of the possibility of flush being called multiple times for a given call to open().
         // For some file systems, however, close() flushes data, so we do want to do that before uploading data to a blob.
