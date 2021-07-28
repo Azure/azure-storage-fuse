@@ -136,6 +136,7 @@ struct fhwrapper
     bool write_mode; // False when the file was opened in read-only mode
     bool upload_on_close; // False if file is not written or created. Upload only if the flag is true
     bool file_created; // This is a new file being created by user
+    std::string file_name; // name of the file in case of streaming as we can not convert handle id to file name back
     fhwrapper(int fh, bool mode) : fh(fh), write_mode(mode), upload_on_close(false)
     {
         file_created = false;

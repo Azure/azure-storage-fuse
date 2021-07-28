@@ -41,6 +41,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
         int fid = blob_streamer->GetDummyHandle();
         struct fhwrapper *fhwrap = new fhwrapper(fid, (((fi->flags & O_WRONLY) == O_WRONLY) || ((fi->flags & O_RDWR) == O_RDWR)));
         fhwrap->file_created = false;
+        fhwrap->file_name = pathString.substr(1);
         fi->fh = (long unsigned int)fhwrap; // Store the file handle for later use.
         return 0;
     }
@@ -194,10 +195,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
 int azs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
     if (config_options.streaming) {
-        std::string pathString(path);
-        std::replace(pathString.begin(), pathString.end(), '\\', '/');
-
-        return blob_streamer->ReadFile(pathString.substr(1).c_str(), offset, size, buf);
+        return blob_streamer->ReadFile(((struct fhwrapper *)fi->fh)->file_name.c_str(), offset, size, buf);
     }
 
     int fd = ((struct fhwrapper *)fi->fh)->fh;
@@ -247,6 +245,7 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     struct fhwrapper *fhwrap = new fhwrapper(res, true);
     fhwrap->upload_on_close = true;
     fhwrap->file_created = true;
+    fhwrap->file_name = pathString.substr(1);
 
     fi->fh = (long unsigned int)fhwrap;
     syslog(LOG_INFO, "Successfully created file %s in file cache.\n", path);
@@ -273,12 +272,9 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
     int fd = ((struct fhwrapper *)fi->fh)->fh;
 
     if (config_options.streaming && 
-       !(((struct fhwrapper *)fi)->file_created)) {
+       !(((struct fhwrapper *)fi->fh)->file_created) ) {
            // Streaming is enable and this file is not a newly created one so we need to stream the write operation 
-        std::string pathString(path);
-        std::replace(pathString.begin(), pathString.end(), '\\', '/');
-
-        return blob_streamer->WriteFile(pathString.substr(1).c_str(), offset, size, buf);
+        return blob_streamer->WriteFile(((struct fhwrapper *)fi->fh)->file_name.c_str(), offset, size, buf);
     }
 
     errno = 0;
@@ -297,6 +293,19 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
 int azs_flush(const char *path, struct fuse_file_info *fi)
 {
     AZS_DEBUGLOGV("azs_flush called with path = %s, fi->flags = %d, (((struct fhwrapper *)fi->fh)->fh) = %d.\n", path, fi->flags, (((struct fhwrapper *)fi->fh)->fh));
+
+    if (config_options.streaming && 
+       !(((struct fhwrapper *)fi->fh)->file_created)) {
+           // Streaming is enable so no need to flush this file here. Writes were already streamed up
+        if ((config_options.uploadIfModified &&
+              ((struct fhwrapper *)fi->fh)->upload_on_close)  ||
+            ((!config_options.uploadIfModified) &&
+              ((struct fhwrapper *)fi->fh)->write_mode))
+        {
+            blob_streamer->FlushFile(((struct fhwrapper *)fi->fh)->file_name.c_str());
+        }
+        return 0;
+    }
 
     // At this point, the shared flock will be held.
     // In some cases, due (I believe) to us using the hard_unlink option, path will be null.  Thus, we need to get the file name from the file descriptor:
@@ -320,31 +329,18 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
     std::string mntPathString(path_buffer);
     const char * mntPath = path_buffer;
 
-    std::string blob_name = mntPathString.substr(config_options.tmpPath.size() + 6 /* there are six characters in "/root/" */);
-    // remove extra slash
-    if(blob_name.at(0) == '/')
-    {
-        blob_name.erase(blob_name.begin() + 0);
-    }
-    std::replace(blob_name.begin(), blob_name.end(), '\\', '/');
-
-    if (config_options.streaming && 
-       !(((struct fhwrapper *)fi)->file_created)) {
-           // Streaming is enable so no need to flush this file here. Writes were already streamed up
-        if ((config_options.uploadIfModified &&
-              ((struct fhwrapper *)fi->fh)->upload_on_close)  ||
-            ((!config_options.uploadIfModified) &&
-              ((struct fhwrapper *)fi->fh)->write_mode))
-        {
-            blob_streamer->FlushFile(blob_name.c_str());
-        }
-        return 0;
-    }
-
     if (access(mntPath, F_OK) != -1 )
     {
         // TODO: This will currently upload the full file on every flush() call.  We may want to keep track of whether
         // or not flush() has been called already, and not re-upload the file each time.
+
+        std::string blob_name = mntPathString.substr(config_options.tmpPath.size() + 6 /* there are six characters in "/root/" */);
+        // remove extra slash
+        if(blob_name.at(0) == '/')
+        {
+            blob_name.erase(blob_name.begin() + 0);
+        }
+        std::replace(blob_name.begin(), blob_name.end(), '\\', '/');
 
         // We cannot close the actual file handle to the temp file, because of the possibility of flush being called multiple times for a given call to open().
         // For some file systems, however, close() flushes data, so we do want to do that before uploading data to a blob.
@@ -427,11 +423,9 @@ int azs_release(const char *path, struct fuse_file_info * fi)
     AZS_DEBUGLOGV("azs_release called with path = %s, fi->flags = %d\n", path, fi->flags);
 
     if (config_options.streaming && 
-       !(((struct fhwrapper *)fi)->file_created)) {
+       !(((struct fhwrapper *)fi->fh)->file_created)) {
         // Streaming is enable and this file was not newly created so just close the dummy handle
-        std::string pathString(path);
-        std::replace(pathString.begin(), pathString.end(), '\\', '/');
-        blob_streamer->CloseFile(pathString.substr(1).c_str());
+        blob_streamer->CloseFile(((struct fhwrapper *)fi->fh)->file_name.c_str());
         return 0;
     }
 

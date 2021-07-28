@@ -153,18 +153,71 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
 // Upload the blck based on its offset
 int BlobStreamer::UploadBlock(const char* file_name, StreamObject* obj, BlobBlock* block)
 {
+    uint64_t block_len = block->buff.str().size();
+
     obj->Lock();
-    
-    for (unsigned int i = 0; i < obj->m_block_id_list.size(); i++) {
-        if (obj->m_block_id_list[i].begin == block->start) {
+    if (obj->IsSingleBlockFile()) {
+        // If the file is small then it may be having only one block and not the list
+        if (block_len <= DOWNLOAD_SINGLE_CUNK_FILE_SIZE) {
+            // It can still fit in 64MB block so not need to break it down
             errno = 0;
-            azclient->UploadBlockWithID(file_name, obj->m_block_id_list[i].name, block->buff.str().c_str(), uint64_t(block->length));
+            azclient->UploadFromStream(block->buff, file_name);
             if (errno != 0) {
-                syslog(LOG_ERR,"Failed to upload block for file %s, block offset : %ld, length : %ld", file_name, block->start, block->length);
+                syslog(LOG_ERR,"Failed to upload block from stream for file %s, block offset : %ld, length : %ld", file_name, block->start, block->length);
                 return -errno;
             }
-            obj->m_block_id_list[i].type =  azure::storage_lite::put_block_list_request_base::block_type::uncommitted;
-            break;
+        } else {
+            // We need to break this down to 16BM chunks here
+            unsigned int idx = 0;
+            while (block_len > 0) {
+                BlockIdItem item;
+                item.name = GenerateBlockId(idx++);
+                item.begin = (idx * DOWNLOAD_CHUNK_SIZE);
+                item.size = (block_len > DOWNLOAD_CHUNK_SIZE) ? DOWNLOAD_CHUNK_SIZE : block_len;
+                item.type =  azure::storage_lite::put_block_list_request_base::block_type::uncommitted;
+
+                azclient->UploadBlockWithID(file_name, item.name, (block->buff.str().c_str() + item.begin), item.size);
+                if (errno != 0) {
+                    syslog(LOG_ERR,"Failed to upload block for file %s, block offset : %lld, length : %lld", file_name, item.begin, item.size);
+                    return -errno;
+                }
+                obj->m_block_id_list.push_back(item);
+                block_len -= item.size;
+            }
+        }
+    } else {
+        for (unsigned int i = 0; i < obj->m_block_id_list.size(); i++) {
+            if (obj->m_block_id_list[i].begin == block->start) {
+                if (block_len <= DOWNLOAD_CHUNK_SIZE) {
+                    // Post writing also block size is not going beyond 16MB
+                    errno = 0;
+                    azclient->UploadBlockWithID(file_name, obj->m_block_id_list[i].name, block->buff.str().c_str(), block_len);
+                    if (errno != 0) {
+                        syslog(LOG_ERR,"Failed to upload block for file %s, block offset : %ld, length : %ld", file_name, block->start, block->length);
+                        return -errno;
+                    }
+                    obj->m_block_id_list[i].type =  azure::storage_lite::put_block_list_request_base::block_type::uncommitted;
+                    break;
+                } else {
+                    // Post write block size has gone beyond 16MB so we need to break this down to multiple blocks now
+                    obj->m_block_id_list.pop_back();
+                    while (block_len > 0) {
+                        BlockIdItem item;
+                        item.name = GenerateBlockId(i++);
+                        item.begin = (i * DOWNLOAD_CHUNK_SIZE);
+                        item.size = (block_len > DOWNLOAD_CHUNK_SIZE) ? DOWNLOAD_CHUNK_SIZE : block_len;
+                        item.type =  azure::storage_lite::put_block_list_request_base::block_type::uncommitted;
+
+                        azclient->UploadBlockWithID(file_name, item.name, (block->buff.str().c_str() + item.begin), item.size);
+                        if (errno != 0) {
+                            syslog(LOG_ERR,"Failed to upload block for file %s, block offset : %lld, length : %lld", file_name, item.begin, item.size);
+                            return -errno;
+                        }
+                        obj->m_block_id_list.push_back(item);
+                        block_len -= item.size;
+                    }
+                }
+            }
         }
     }
     obj->UnLock();
@@ -436,8 +489,15 @@ int BlobStreamer::WriteFile(const char* file_name, uint64_t offset, uint64_t len
                 file_name, block->start, ((block->length + block->start) - 1), block->last, 
                 offset, length, 
                 start_offset, pending_data);
-        
-        if (pending_data < length) {
+
+        if (obj->IsSingleBlockFile() || block->last) {
+            // This file is single block file (< 64MB) so far so there is no block id list created for this.
+            // Just write the data to the uni-block and be done with it
+            block->buff.seekp(start_offset, std::ios::beg);
+            block->buff.write((data + len), length);
+            len += length;
+            length = 0;
+        } else if (pending_data < length) {
             // Either request overlaps two blocks or request exceeds the file size
             // So read the remaining data from this block and decide
             block->buff.seekp(start_offset, std::ios::beg);
@@ -459,12 +519,10 @@ int BlobStreamer::WriteFile(const char* file_name, uint64_t offset, uint64_t len
             // Data is fully available in this block so finish the read from this block and return
             block->buff.seekp(start_offset, std::ios::beg);
             block->buff.write((data + len), length);
-
             len += length;
             length = 0;
         }
 
-        // TODO : VB : Whatever block we have modified find its id and upload  that block again.
         UploadBlock(file_name, obj, block);
         block->lck.unlock();
     }
