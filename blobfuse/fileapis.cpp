@@ -1,7 +1,6 @@
 #include "blobfuse.h"
 #include <sys/file.h>
 #include <FileLockMap.h>
-
 #include <include/StorageBfsClientBase.h>
 #include <BlobStreamer.h>
 
@@ -16,6 +15,64 @@ std::mutex file_lock_map::s_mutex;
 std::deque<file_to_delete> cleanup;
 std::mutex deque_lock;
 std::shared_ptr<gc_cache> g_gc_cache;
+
+
+int DownloadFileToDisk(std::string pathString, std::string mntPathString, BfsFileProperty blob_property, bool is_delayed)
+{
+    errno = 0;
+    time_t last_modified = {};
+  
+    std::string disk_path = mntPathString;
+
+    /*
+    if (is_delayed)
+        disk_path += "__TEMP__";
+    */
+
+    long int size = storage_client->DownloadToFile(pathString.substr(1), disk_path, last_modified);
+    if (errno != 0)
+    {
+        int storage_errno = errno;
+        syslog(LOG_ERR, "Failed to download blob into cache.  Blob name: %s, file name = %s, storage errno = %d.\n", pathString.c_str()+1, mntPathString.c_str(),  errno);
+
+        remove(mntPathString.c_str());
+        return 0 - map_errno(storage_errno);
+    }
+    else
+    {
+        syslog(LOG_INFO, "Successfully downloaded blob %s into file cache as %s.\n", pathString.c_str()+1, mntPathString.c_str());
+        g_gc_cache->addCacheBytes(mntPathString, size);
+    }
+    
+    // preserve the last modified time
+
+    /*
+    if (is_delayed)
+        rename(disk_path.c_str(), mntPathString.c_str());
+    */
+   
+    struct utimbuf new_time;
+    new_time.modtime = last_modified;
+    new_time.actime = 0;
+    utime(mntPathString.c_str(), &new_time);
+
+    if (is_delayed) {
+        if (storage_client->isADLS()) {
+            // preserve the last modified time
+            struct utimbuf new_time;
+            new_time.modtime = blob_property.get_last_modified();
+            new_time.actime = blob_property.get_last_access(); 
+            utime(mntPathString.c_str(), &new_time); 
+        }
+
+        // As this download was running in a seperate thread, now allow others waiting for the file
+        auto def_dmutex = file_lock_map::get_instance()->get_delay_mutex(pathString.substr(1).c_str());
+        def_dmutex->unlock();
+    }
+
+    return 0;
+}
+
 
 // Opens a file for reading or writing
 // Behavior is defined by a normal, open() system call.
@@ -111,27 +168,42 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             }
 
             errno = 0;
-            time_t last_modified = {};
-            long int size = storage_client->DownloadToFile(pathString.substr(1), mntPathString, last_modified);
-            if (errno != 0)
-            {
-                int storage_errno = errno;
-                syslog(LOG_ERR, "Failed to download blob into cache.  Blob name: %s, file name = %s, storage errno = %d.\n", pathString.c_str()+1, mntPathString.c_str(),  errno);
+            if (!config_options.backgroundDownload) {
+                int res = DownloadFileToDisk(pathString, mntPathString, BfsFileProperty(), false);
+                if (res != 0) return res;
+            } else {
+                // User has configured to delay the download and do it in background.
+                // So here we just create a placeholder file and return back the call.
+                // FUSE will set the O_CREAT and O_WRONLY flags, but not O_EXCL, which is generally assumed for 'create' semantics.
+                errno = 0;
+                BfsFileProperty blob_property = storage_client->GetProperties(pathString.substr(1));
+                if ((errno == 0) && blob_property.isValid() && blob_property.exists()) {
+                    // File exists on the container so create a dummy file of same size here and return back the handle for it
+                    int tempFD = open(mntPath, O_WRONLY|O_CREAT);
+                    if (tempFD == -1)
+                    {
+                        syslog (LOG_ERR, "Failed to open %s; unable to open file %s in cache directory.  Errno = %d", path, mntPath, errno);
+                        return -errno;
+                    }
+                    fchmod(tempFD, config_options.defaultPermission);
+                    close(tempFD);
+                    truncate64(mntPath, blob_property.size);
+                    if (errno != 0) {
+                        syslog(LOG_ERR, "Failed to resize the file %s (%d)", mntPath, errno);
+                    }
 
-                remove(mntPath);
-                return 0 - map_errno(storage_errno);
+                    auto dmutex = file_lock_map::get_instance()->get_delay_mutex(pathString.substr(1).c_str());
+                    dmutex->lock();
+
+                    //DownloadFileToDisk(pathString, mntPathString, true);
+                    std::thread t1(std::bind(&DownloadFileToDisk, pathString, mntPathString, blob_property, true));
+                    t1.detach();
+                } else {
+                    // Failure in getting properties of the given file
+                    syslog(LOG_ERR, "Failed to get properties for %s", mntPath);
+                    return -errno;
+                }
             }
-            else
-            {
-                syslog(LOG_INFO, "Successfully downloaded blob %s into file cache as %s.\n", pathString.c_str()+1, mntPathString.c_str());
-                g_gc_cache->addCacheBytes(mntPathString, size);
-            }
-            
-            // preserve the last modified time
-            struct utimbuf new_time;
-            new_time.modtime = last_modified;
-            new_time.actime = 0;
-            utime(mntPathString.c_str(), &new_time);
             new_download = true;
         }
     }
@@ -177,6 +249,8 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     // Store the open file handle, and whether or not the file should be uploaded on close().
     // TODO: Optimize the scenario where the file is open for read/write, but no actual writing occurs, to not upload the blob.
     struct fhwrapper *fhwrap = new fhwrapper(res, (((fi->flags & O_WRONLY) == O_WRONLY) || ((fi->flags & O_RDWR) == O_RDWR)));
+    fhwrap->file_created = false;
+    fhwrap->file_name = pathString.substr(1);
     fi->fh = (long unsigned int)fhwrap; // Store the file handle for later use.
 
     AZS_DEBUGLOGV("Returning success from azs_open, file = %s\n", path);
@@ -198,6 +272,13 @@ int azs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
 {
     if (config_options.streaming) {
         return blob_streamer->ReadFile(((struct fhwrapper *)fi->fh)->file_name.c_str(), offset, size, buf);
+    }
+
+    if (config_options.backgroundDownload) {
+        // Wait untill the download has finished
+        auto dmutex = file_lock_map::get_instance()->get_delay_mutex(((struct fhwrapper *)fi->fh)->file_name.c_str());
+        dmutex->lock();
+        dmutex->unlock();
     }
 
     int fd = ((struct fhwrapper *)fi->fh)->fh;
@@ -281,6 +362,13 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
     }
     #endif
 
+    if (config_options.backgroundDownload) {
+        // Wait untill the download has finished
+        auto dmutex = file_lock_map::get_instance()->get_delay_mutex(((struct fhwrapper *)fi->fh)->file_name.c_str());
+        dmutex->lock();
+        dmutex->unlock();
+    }
+
     errno = 0;
     int res = pwrite(fd, buf, size, offset);
     if (res == -1)
@@ -313,6 +401,19 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
 
         return 0;
     }
+
+    if (config_options.backgroundDownload) {
+        // Wait untill the download has finished
+        auto dmutex = file_lock_map::get_instance()->get_delay_mutex(((struct fhwrapper *)fi->fh)->file_name.c_str());
+        if (dmutex->try_lock()) {
+            dmutex->unlock();
+        } else {
+            // File is still under download so we can not flush at this moment
+            // However some time immeidatly after open also we get a flush call, so no need to block it here
+            return 0;
+        }
+    }
+
 
     // At this point, the shared flock will be held.
     // In some cases, due (I believe) to us using the hard_unlink option, path will be null.  Thus, we need to get the file name from the file descriptor:

@@ -78,15 +78,23 @@ bool gc_cache::check_disk_space()
     return false;
 }
 
-void gc_cache::uncache_file(std::string path)
+void gc_cache::uncache_file(std::string path, bool force)
 {
     file_to_delete file;
     file.path = path;
+    file.force = force;
     file.closed_time = time(NULL);
+
 
     // lock before updating deque
     std::lock_guard<std::mutex> lock(m_deque_lock);
-    m_cleanup.push_back(file);
+    if (force) {
+        // If a force delete is done due to fsync then put this file in front of the queue
+        // so that this can be deleted early then other files waiting for expiry
+        m_cleanup.push_front(file);
+    } else {
+        m_cleanup.push_back(file);
+    }
 }
 
 void gc_cache::addCacheBytes(std::string /*path*/, long int size)
@@ -146,6 +154,7 @@ void gc_cache::run_gc_cache()
         //check if the closed time is old enough to delete
         if(file_cache_timeout_in_seconds == 0 ||
            disk_threshold_reached ||
+           file.force ||
            ((now - file.closed_time) > file_cache_timeout_in_seconds))
         {
             AZS_DEBUGLOGV("File %s being considered for deletion by file cache GC.\n", file.path.c_str());
@@ -163,7 +172,8 @@ void gc_cache::run_gc_cache()
             struct stat buf;
             stat(mntPath, &buf);
             if (((now - buf.st_mtime) > file_cache_timeout_in_seconds) ||
-                disk_threshold_reached)
+                disk_threshold_reached ||
+                file.force)
             {
                 //clean up the file from cache
                 int fd = open(mntPath, O_WRONLY);

@@ -9,6 +9,7 @@ struct file_to_delete
 {
     std::string path;
     time_t closed_time;
+    bool force;
 };
 
 class gc_cache
@@ -20,7 +21,7 @@ public:
         file_cache_timeout_in_seconds(timeout),
         m_current_usage(0){}
     void run();
-    void uncache_file(std::string path);
+    void uncache_file(std::string path, bool force = false);
     void addCacheBytes(std::string path, long int size);
 
 private:

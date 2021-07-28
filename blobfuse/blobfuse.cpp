@@ -72,6 +72,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--streaming=%s", streaming),
     OPTION("--stream-buffer-size-mb=%s", stream_buffer),
     OPTION("--max-cache-block-per-file=%s", max_block_per_file),
+    OPTION("--background-download=%s", background_download),
     
 
     OPTION("--version", version),
@@ -1174,6 +1175,15 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.maxBlockPerFile = stod(max_block, &offset);
     }
 
+    config_options.backgroundDownload = false;
+    if (cmd_options.background_download != NULL) {
+        std::string background_download(cmd_options.background_download);
+        if(background_download == "true")
+        {
+            config_options.backgroundDownload = true;
+        } 
+    }
+
     if (config_options.streaming && !config_options.readOnlyMount) {
         syslog(LOG_ERR, "Streaming Read is supported only on Readonly Mounts. Use '-o ro' option in mount command");    
         fprintf(stderr, "Streaming Read is supported only on Readonly Mounts. Use '-o ro' option in mount command");  
@@ -1191,6 +1201,10 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         syslog(LOG_INFO, "Streaming : %d, Stream buffer size : %lu, Max Blocks : %d", 
             config_options.streaming, config_options.readStreamBufferSize,
             config_options.maxBlockPerFile);
+    }
+
+    if (config_options.backgroundDownload) {
+        syslog(LOG_INFO, "Background download is turned on");
     }
 
     return 0;

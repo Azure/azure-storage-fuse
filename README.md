@@ -13,6 +13,7 @@ Blobfuse is stable, and is ***supported by Microsoft*** provided that it is used
 - Allows multiple nodes to mount the same container for read-only scenarios.
 - Authenicates using storage key credentials, SaS Key, Managed Identity and SPN
 - Allows ADLS Gen2 features
+- When the file cache timeout is set to a higher value and user wants to evict a file forcefully from disk cache, use 'sync' command with the file name on mounted directory.
 
 ## Installation
 You can install blobfuse from the Linux Software Repository for Microsoft products. The process is explained in the [blobfuse installation](https://github.com/Azure/azure-storage-fuse/wiki/1.-Installation) page. Alternatively, you can clone this repository, install the dependencies (fuse, libcurl, gcrypt and GnuTLS) and build from source code. See details in the [wiki](https://github.com/Azure/azure-storage-fuse/wiki/1.-Installation#build-from-source).
@@ -79,6 +80,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--streaming=false** : Instead of caching files on disk, stream data directly to/from container. Only the files which are created newly will be dumped to disk.
      * [OPTIONAL] **--stream-buffer-size-mb=500** : When read streaming is enabled, cap memory usage for storing block upto this limit.
      * [OPTIONAL] **--max_block_per_file=3** : Maximum number of blocks to be cached in memory for a file in case of streaming.
+     * [OPTIONAL] **--background-download=false** : Instead of downloading the file in 'open' system call, download it in background and return 'open' system call. Follow up 'read'/'write' calls will wait for download to complete.
 
 ### Valid authentication setups:
 
