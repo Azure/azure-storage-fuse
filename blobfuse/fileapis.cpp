@@ -8,6 +8,8 @@
 extern std::shared_ptr<StorageBfsClientBase> storage_client;
 extern std::shared_ptr<BlobStreamer> blob_streamer;
 
+//#define BLOBFUSE_WRITE_STREAM_BLOB
+
 std::shared_ptr<file_lock_map> file_lock_map::s_instance;
 std::mutex file_lock_map::s_mutex;
 
@@ -271,11 +273,13 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
 {
     int fd = ((struct fhwrapper *)fi->fh)->fh;
 
+    #ifdef BLOBFUSE_WRITE_STREAM_BLOB
     if (config_options.streaming && 
        !(((struct fhwrapper *)fi->fh)->file_created) ) {
            // Streaming is enable and this file is not a newly created one so we need to stream the write operation 
         return blob_streamer->WriteFile(((struct fhwrapper *)fi->fh)->file_name.c_str(), offset, size, buf);
     }
+    #endif
 
     errno = 0;
     int res = pwrite(fd, buf, size, offset);
@@ -297,6 +301,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
     if (config_options.streaming && 
        !(((struct fhwrapper *)fi->fh)->file_created)) {
            // Streaming is enable so no need to flush this file here. Writes were already streamed up
+        #ifdef BLOBFUSE_WRITE_STREAM_BLOB
         if ((config_options.uploadIfModified &&
               ((struct fhwrapper *)fi->fh)->upload_on_close)  ||
             ((!config_options.uploadIfModified) &&
@@ -304,6 +309,8 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
         {
             blob_streamer->FlushFile(((struct fhwrapper *)fi->fh)->file_name.c_str());
         }
+        #endif
+
         return 0;
     }
 
@@ -571,12 +578,16 @@ int azs_truncate(const char * path, off_t off)
         errno = 0;
         int truncret = 0;
 
+        #ifdef BLOBFUSE_WRITE_STREAM_BLOB
         // TODO : VB : if streaming is enable then we need to truncate the file here through buffers.
         if (config_options.streaming) {
             truncret = -1;
-        } else {
+        } else 
+        #endif
+        {
             truncret = truncate(mntPath, off);
         }
+
 
         if (truncret == 0)
         {
