@@ -50,7 +50,7 @@ int DownloadFileToDisk(std::string pathString, std::string mntPathString, BfsFil
     if (is_delayed)
         rename(disk_path.c_str(), mntPathString.c_str());
     */
-   
+
     struct utimbuf new_time;
     new_time.modtime = last_modified;
     new_time.actime = 0;
@@ -187,8 +187,8 @@ int azs_open(const char *path, struct fuse_file_info *fi)
                     }
                     fchmod(tempFD, config_options.defaultPermission);
                     close(tempFD);
-                    truncate64(mntPath, blob_property.size);
-                    if (errno != 0) {
+                    int ret = truncate64(mntPath, blob_property.size);
+                    if (ret !=0 || errno != 0) {
                         syslog(LOG_ERR, "Failed to resize the file %s (%d)", mntPath, errno);
                     }
 
