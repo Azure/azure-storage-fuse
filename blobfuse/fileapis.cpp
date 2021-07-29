@@ -179,7 +179,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
                 BfsFileProperty blob_property = storage_client->GetProperties(pathString.substr(1));
                 if ((errno == 0) && blob_property.isValid() && blob_property.exists()) {
                     // File exists on the container so create a dummy file of same size here and return back the handle for it
-                    int tempFD = open(mntPath, O_WRONLY|O_CREAT);
+                    int tempFD = open(mntPath, O_WRONLY|O_CREAT, config_options.defaultPermission);
                     if (tempFD == -1)
                     {
                         syslog (LOG_ERR, "Failed to open %s; unable to open file %s in cache directory.  Errno = %d", path, mntPath, errno);
