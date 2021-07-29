@@ -79,7 +79,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--pre-mount-validate=false** : Set this to true to skip the cURL version check and just straight validate storage connection before mount. Default is false, so use this only if you know that you have the recent Curl version, otherwise blobfuse will hang. This option is only available from version 1.3.8
      * [OPTIONAL] **--streaming=false** : Instead of caching files on disk, stream data directly to/from container. Only the files which are created newly will be dumped to disk.
      * [OPTIONAL] **--stream-buffer-size-mb=500** : When read streaming is enabled, cap memory usage for storing block upto this limit.
-     * [OPTIONAL] **--max_block_per_file=3** : Maximum number of blocks to be cached in memory for a file in case of streaming.
+     * [OPTIONAL] **--max-cache-block-per-file=3** : Maximum number of blocks to be cached in memory for a file in case of streaming.
      * [OPTIONAL] **--background-download=false** : Instead of downloading the file in 'open' system call, download it in background and return 'open' system call. Follow up 'read'/'write' calls will wait for download to complete.
 
 ### Valid authentication setups:

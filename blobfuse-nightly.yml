@@ -548,7 +548,7 @@ jobs:
           continueOnError: true
         
         - script:  |
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0 --streaming=true --max_block_per_file=3 --stream-buffer-size-mb=500 -o ro
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0 --streaming=true --max-cache-block-per-file=3 --stream-buffer-size-mb=500 -o ro
             pidof blobfuse
           # condition: eq(variables['Build.SourceBranchName'], 'master')
           displayName: TEST - Streaming Test Mount
