@@ -28,7 +28,7 @@ int DownloadFileToDisk(std::string pathString, std::string mntPathString, BfsFil
     if (is_delayed)
         disk_path += "__TEMP__";
     */
-
+    syslog(LOG_DEBUG, "Starting download for file  %s", pathString.c_str());
     long int size = storage_client->DownloadToFile(pathString.substr(1), disk_path, last_modified);
     if (errno != 0)
     {
@@ -271,18 +271,22 @@ int azs_open(const char *path, struct fuse_file_info *fi)
  */
 int azs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
+    AZS_DEBUGLOGV("azs_read called with path = %s\n", path);
+    struct fhwrapper *fhw = ((struct fhwrapper *)fi->fh);
+
     if (config_options.streaming) {
-        return blob_streamer->ReadFile(((struct fhwrapper *)fi->fh)->file_name.c_str(), offset, size, buf);
+        return blob_streamer->ReadFile(fhw->file_name.c_str(), offset, size, buf);
     }
 
     if (config_options.backgroundDownload) {
         // Wait untill the download has finished
-        auto dmutex = file_lock_map::get_instance()->get_delay_mutex(((struct fhwrapper *)fi->fh)->file_name.c_str());
+        auto dmutex = file_lock_map::get_instance()->get_delay_mutex(fhw->file_name.c_str());
         dmutex->lock();
         dmutex->unlock();
     }
 
-    int fd = ((struct fhwrapper *)fi->fh)->fh;
+    AZS_DEBUGLOGV("azs_read called with path = %s PROCEEDING\n", path);
+    int fd = fhw->fh;
 
     errno = 0;
     int res = pread(fd, buf, size, offset);
@@ -416,28 +420,8 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
         }
     }
 
-
-    // At this point, the shared flock will be held.
-    // In some cases, due (I believe) to us using the hard_unlink option, path will be null.  Thus, we need to get the file name from the file descriptor:
-
-    char path_link_buffer[50];
-    snprintf(path_link_buffer, 50, "/proc/self/fd/%d", (fhw->fh));
-
-    // canonicalize_file_name will follow symlinks to give the actual path name.
-    char *path_buffer = canonicalize_file_name(path_link_buffer);
-    if (path_buffer == NULL)
-    {
-        AZS_DEBUGLOGV("Skipped blob upload in azs_flush with input path %s because file no longer exists.\n", path);
-        return 0;
-    }
-    else
-    {
-        AZS_DEBUGLOGV("Successfully looked up mntPath.  Input path = %s, path_link_buffer = %s, path_buffer = %s\n", path, path_link_buffer, path_buffer);
-    }
-
-    // Note that we don't have to prepend the tmpPath, because we already have it, because we're not using the input path but instead are querying for it.
-    std::string mntPathString(path_buffer);
-    const char * mntPath = path_buffer;
+    std::string mntPathString = prepend_mnt_path_string("/" + fhw->file_name);
+    const char *mntPath = mntPathString.c_str();
 
     if (access(mntPath, F_OK) != -1 )
     {
@@ -483,15 +467,12 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
                     // In this case, we do not want to upload a zero-length blob to the service or error out, we want to silently discard any data that has been written and
                     // and with no blob on the service or in the cache.
                     // This mimics the behavior of a real file system.
-
-                    free(path_buffer);
                     AZS_DEBUGLOGV("Skipped blob upload in azs_flush with input path %s because file no longer exists due to a race condition with azs_unlink.\n", path);
                     return 0;
                 }
                 else
                 {
                     syslog(LOG_ERR, "Failing blob upload in azs_flush with input path %s because of an error from stat().  Errno = %d.\n", path, storage_errno);
-                    free(path_buffer);
                     return -storage_errno;
                 }
             }
@@ -504,7 +485,6 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             {
                 int storage_errno = errno;
                 syslog(LOG_ERR, "Failing blob upload in azs_flush with input path %s because of an error from upload_file_to_blob().  Errno = %d.\n", path, storage_errno);
-                free(path_buffer);
                 return 0 - map_errno(storage_errno);
             }
             else
@@ -523,7 +503,6 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
         AZS_DEBUGLOGV("Skipped blob upload in azs_flush with input path %s because file no longer exists.\n", path);
     }
 
-    free(path_buffer);
     return 0;
 }
 
