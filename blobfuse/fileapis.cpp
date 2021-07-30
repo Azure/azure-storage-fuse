@@ -99,7 +99,6 @@ int azs_open(const char *path, struct fuse_file_info *fi)
 
         int fid = blob_streamer->GetDummyHandle();
         struct fhwrapper *fhwrap = new fhwrapper(fid, (((fi->flags & O_WRONLY) == O_WRONLY) || ((fi->flags & O_RDWR) == O_RDWR)));
-        fhwrap->file_created = false;
         fhwrap->file_name = pathString.substr(1);
         fi->fh = (long unsigned int)fhwrap; // Store the file handle for later use.
         return 0;
@@ -249,8 +248,10 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     // Store the open file handle, and whether or not the file should be uploaded on close().
     // TODO: Optimize the scenario where the file is open for read/write, but no actual writing occurs, to not upload the blob.
     struct fhwrapper *fhwrap = new fhwrapper(res, (((fi->flags & O_WRONLY) == O_WRONLY) || ((fi->flags & O_RDWR) == O_RDWR)));
-    fhwrap->file_created = false;
     fhwrap->file_name = pathString.substr(1);
+    if (new_download)
+        SET_FHW_FLAG(fhwrap->flags, FILE_DONWLOADED_IN_OPEN);
+
     fi->fh = (long unsigned int)fhwrap; // Store the file handle for later use.
 
     AZS_DEBUGLOGV("Returning success from azs_open, file = %s\n", path);
@@ -326,8 +327,8 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     }
 
     struct fhwrapper *fhwrap = new fhwrapper(res, true);
-    fhwrap->upload_on_close = true;
-    fhwrap->file_created = true;
+    SET_FHW_FLAG(fhwrap->flags, FILE_UPLOAD_ON_CLOSE);
+    SET_FHW_FLAG(fhwrap->flags, FILE_CREATED);
     fhwrap->file_name = pathString.substr(1);
 
     fi->fh = (long unsigned int)fhwrap;
@@ -374,7 +375,7 @@ int azs_write(const char *path, const char *buf, size_t size, off_t offset, stru
     if (res == -1)
         res = -errno;
     AZS_DEBUGLOGV("azs_write called with path= %s", path);
-    ((struct fhwrapper *)fi->fh)->upload_on_close = true;
+    SET_FHW_FLAG(((struct fhwrapper *)fi->fh)->flags, FILE_UPLOAD_ON_CLOSE);
 
     g_gc_cache->addCacheBytes(path, size);
     return res;
@@ -386,16 +387,17 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
 {
     AZS_DEBUGLOGV("azs_flush called with path = %s, fi->flags = %d, (((struct fhwrapper *)fi->fh)->fh) = %d.\n", path, fi->flags, (((struct fhwrapper *)fi->fh)->fh));
 
+    struct fhwrapper *fhw = ((struct fhwrapper *)fi->fh);
     if (config_options.streaming && 
-       !(((struct fhwrapper *)fi->fh)->file_created)) {
+       !(IS_FHW_FLAG_SET(fhw->flags, FILE_CREATED))) {
            // Streaming is enable so no need to flush this file here. Writes were already streamed up
         #ifdef BLOBFUSE_WRITE_STREAM_BLOB
         if ((config_options.uploadIfModified &&
-              ((struct fhwrapper *)fi->fh)->upload_on_close)  ||
+              IS_FHW_FLAG_SET(fhw->flags, FILE_UPLOAD_ON_CLOSE))  ||
             ((!config_options.uploadIfModified) &&
-              ((struct fhwrapper *)fi->fh)->write_mode))
+              IS_FHW_FLAG_SET(fhw, FILE_OPEN_WRITE_MODE)))
         {
-            blob_streamer->FlushFile(((struct fhwrapper *)fi->fh)->file_name.c_str());
+            blob_streamer->FlushFile(fhw->file_name.c_str());
         }
         #endif
 
@@ -404,7 +406,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
 
     if (config_options.backgroundDownload) {
         // Wait untill the download has finished
-        auto dmutex = file_lock_map::get_instance()->get_delay_mutex(((struct fhwrapper *)fi->fh)->file_name.c_str());
+        auto dmutex = file_lock_map::get_instance()->get_delay_mutex(fhw->file_name.c_str());
         if (dmutex->try_lock()) {
             dmutex->unlock();
         } else {
@@ -419,7 +421,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
     // In some cases, due (I believe) to us using the hard_unlink option, path will be null.  Thus, we need to get the file name from the file descriptor:
 
     char path_link_buffer[50];
-    snprintf(path_link_buffer, 50, "/proc/self/fd/%d", (((struct fhwrapper *)fi->fh)->fh));
+    snprintf(path_link_buffer, 50, "/proc/self/fd/%d", (fhw->fh));
 
     // canonicalize_file_name will follow symlinks to give the actual path name.
     char *path_buffer = canonicalize_file_name(path_link_buffer);
@@ -454,12 +456,12 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
         // For some file systems, however, close() flushes data, so we do want to do that before uploading data to a blob.
         // The solution (taken from the FUSE documentation) is to close a duplicate of the file descriptor.
         close(dup(((struct fhwrapper *)fi->fh)->fh));
-        AZS_DEBUGLOGV("azs_flush: path = %s, upload_on_close = %d, modified only flag config_options.uploadIfModified = %d, .\n", path, (((struct fhwrapper *)fi->fh)->upload_on_close), config_options.uploadIfModified);
+        AZS_DEBUGLOGV("azs_flush: path = %s, upload_on_close = %d, modified only flag config_options.uploadIfModified = %d, .\n", path,  IS_FHW_FLAG_SET(fhw->flags, FILE_UPLOAD_ON_CLOSE), config_options.uploadIfModified);
 
         if ((config_options.uploadIfModified &&
-              ((struct fhwrapper *)fi->fh)->upload_on_close)  ||
+               IS_FHW_FLAG_SET(fhw->flags, FILE_UPLOAD_ON_CLOSE))  ||
             ((!config_options.uploadIfModified) &&
-              ((struct fhwrapper *)fi->fh)->write_mode))
+              IS_FHW_FLAG_SET(fhw->flags, FILE_OPEN_WRITE_MODE)))
         {
             // Here, we acquire the mutex on the file path.  This is necessary to guard against several race conditions.
             // For example, say that a cache refresh is triggered.  There is a small window of time where the file has been removed and not yet re-downloaded.
@@ -507,7 +509,7 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             }
             else
             {
-                ((struct fhwrapper *)fi->fh)->upload_on_close = false;
+                CLEAR_FHW_FLAG(fhw->flags, FILE_UPLOAD_ON_CLOSE);
                 syslog(LOG_INFO, "Successfully uploaded file %s to blob %s.\n", path, blob_name.c_str());
             }
             globalTimes.lastModifiedTime = time(NULL);
@@ -530,10 +532,11 @@ int azs_release(const char *path, struct fuse_file_info * fi)
 {
     AZS_DEBUGLOGV("azs_release called with path = %s, fi->flags = %d\n", path, fi->flags);
 
+    struct fhwrapper *fhw = ((struct fhwrapper *)fi->fh);
     if (config_options.streaming && 
-       !(((struct fhwrapper *)fi->fh)->file_created)) {
+       !(IS_FHW_FLAG_SET(fhw->flags, FILE_CREATED))) {
         // Streaming is enable and this file was not newly created so just close the dummy handle
-        blob_streamer->CloseFile(((struct fhwrapper *)fi->fh)->file_name.c_str());
+        blob_streamer->CloseFile(fhw->file_name.c_str());
         return 0;
     }
 
@@ -541,11 +544,11 @@ int azs_release(const char *path, struct fuse_file_info * fi)
     // Note that this will release the shared lock acquired in the corresponding open() call (the one that gave us this file descriptor, in the fuse_file_info).
     // It will not release any locks acquired from other calls to open(), in this process or in others.
     // If the file handle is invalid, this will fail with EBADF, which is not an issue here.
-    flock(((struct fhwrapper *)fi->fh)->fh, LOCK_UN);
+    flock(fhw->fh, LOCK_UN);
 
     // Close the file handle.
     // This must be done, even if the file no longer exists, otherwise we're leaking file handles.
-    ((struct fhwrapper *)fi->fh)->upload_on_close = false;
+    CLEAR_FHW_FLAG(fhw->flags, FILE_UPLOAD_ON_CLOSE);
     close(((struct fhwrapper *)fi->fh)->fh);
 
 // TODO: Make this method resiliant to renames of the file (same way flush() is)
@@ -555,12 +558,19 @@ int azs_release(const char *path, struct fuse_file_info * fi)
     const char * mntPath;
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
+
     if (access(mntPath, F_OK) != -1)
     {
         AZS_DEBUGLOGV("Adding file to the GC from azs_release.  File = %s\n.", mntPath);
 
         // store the file in the cleanup list
-        g_gc_cache->uncache_file(pathString);
+        if (IS_FHW_FLAG_SET(fhw->flags, FILE_FORCE_DELETE) && 
+            !IS_FHW_FLAG_SET(fhw->flags, FILE_DONWLOADED_IN_OPEN)) {
+            storage_client->InvalidateFile(pathString.substr(1));
+            g_gc_cache->uncache_file(pathString, true);
+        } else {
+            g_gc_cache->uncache_file(pathString);
+        }
     }
     else
     {
@@ -693,7 +703,7 @@ int azs_truncate(const char * path, off_t off)
         if (truncret == 0)
         {
             AZS_DEBUGLOGV("Successfully truncated file %s in the local file cache.", mntPath);
-            ((struct fhwrapper *)fi.fh)->upload_on_close = true;
+            SET_FHW_FLAG(((struct fhwrapper *)fi.fh)->flags, FILE_UPLOAD_ON_CLOSE);
             int flushret = azs_flush(pathString.c_str(), &fi);
             if(flushret != 0)
             {

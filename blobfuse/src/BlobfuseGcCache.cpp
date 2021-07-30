@@ -225,7 +225,8 @@ void gc_cache::run_gc_cache()
                         evicted++;
                         unlink(mntPath);
                         flock(fd, LOCK_UN);
-                        
+                        AZS_DEBUGLOGV("File %s being deleted successfully by file cache GC.\n", file.path.c_str());
+
                         if (m_current_usage > (unsigned long long)buf.st_size)
                             m_current_usage -= buf.st_size;
                         else

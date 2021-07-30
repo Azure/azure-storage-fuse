@@ -1079,3 +1079,8 @@ void BlockBlobBfsClient::UploadBlockWithID(const std::string &blob, const std::s
 {
     return m_blob_client->upload_block_from_buffer(configurations.containerName, blob, blockid, buffer, bufferlen);
 }
+
+void BlockBlobBfsClient::InvalidateFile(const std::string)
+{
+    return;
+}

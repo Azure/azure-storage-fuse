@@ -132,16 +132,33 @@ struct cmdlineOptions
 
 // FUSE gives you one 64-bit pointer to use for communication between API's.
 // An instance of this struct is pointed to by that pointer.
+enum FHW_FLAGS
+{
+    FILE_FLAG_UNKNOWN           = 0,
+    FILE_OPEN_WRITE_MODE        = 1,    // False when the file was opened in read-only mode
+    FILE_UPLOAD_ON_CLOSE,               // False if file is not written or created. Upload only if the flag is true
+    FILE_CREATED,                       // This is a new file being created by user
+    FILE_FORCE_DELETE,                  // False if file is not written or created. Upload only if the flag is true
+    FILE_DONWLOADED_IN_OPEN,            // File was downloaded during open of this handle
+    FILE_FLAG_MAX               = 15
+};
+
+#define SET_FHW_FLAG(val, flag) \
+        (val |= (1 << flag))
+#define CLEAR_FHW_FLAG(val, flag) \
+        (val &= ~(1 << flag))
+#define IS_FHW_FLAG_SET(val, flag) \
+        (val & (1 << flag))
 struct fhwrapper
 {
     int fh; // The handle to the file in the file cache to use for read/write operations.
-    bool write_mode; // False when the file was opened in read-only mode
-    bool upload_on_close; // False if file is not written or created. Upload only if the flag is true
-    bool file_created; // This is a new file being created by user
+    uint16_t flags;
     std::string file_name; // name of the file in case of streaming as we can not convert handle id to file name back
-    fhwrapper(int fh, bool mode) : fh(fh), write_mode(mode), upload_on_close(false)
+    fhwrapper(int fh, bool mode) : fh(fh)
     {
-        file_created = false;
+        flags = 0;
+        if (mode)
+            SET_FHW_FLAG(flags, FILE_OPEN_WRITE_MODE);
     }
 };
 

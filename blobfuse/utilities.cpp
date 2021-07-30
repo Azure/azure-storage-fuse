@@ -481,14 +481,10 @@ int azs_access(const char * /*path*/, int /*mask*/)
     return 0; // permit all access
 }
 
-int azs_fsync(const char * path, int /*isdatasync*/, struct fuse_file_info * /*fi*/)
+int azs_fsync(const char * path, int /*isdatasync*/, struct fuse_file_info *fi)
 {
     syslog(LOG_INFO, "FSYNC : Request for forceful eviction of file : %s", path);
-    std::string pathString(path);
-    std::replace(pathString.begin(), pathString.end(), '\\', '/');
-    
-    g_gc_cache->uncache_file(pathString, true);
-
+    SET_FHW_FLAG(((struct fhwrapper *)fi->fh)->flags, FILE_FORCE_DELETE);
     return 0; 
 }
 
