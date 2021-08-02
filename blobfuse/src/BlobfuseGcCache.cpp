@@ -154,6 +154,7 @@ void gc_cache::run_gc_cache()
         //check if the closed time is old enough to delete
         if(file_cache_timeout_in_seconds == 0 ||
            disk_threshold_reached ||
+           file.force ||
            ((now - file.closed_time) > file_cache_timeout_in_seconds))
         {
             AZS_DEBUGLOGV("File %s being considered for deletion by file cache GC.\n", file.path.c_str());
@@ -171,6 +172,7 @@ void gc_cache::run_gc_cache()
             struct stat buf;
             stat(mntPath, &buf);
             if (((now - buf.st_mtime) > file_cache_timeout_in_seconds) ||
+                file.force ||
                 disk_threshold_reached)
             {
                 //clean up the file from cache
@@ -223,6 +225,7 @@ void gc_cache::run_gc_cache()
                         evicted++;
                         unlink(mntPath);
                         flock(fd, LOCK_UN);
+                        AZS_DEBUGLOGV("File %s deleted successfully by file cache GC.\n", file.path.c_str());
                         
                         if (m_current_usage > (unsigned long long)buf.st_size)
                             m_current_usage -= buf.st_size;
