@@ -19,7 +19,7 @@ int DownloadFileToDisk(std::string pathString, std::string mntPathString, BfsFil
 
     std::string disk_path = mntPathString;
 
-    syslog(LOG_DEBUG, "Starting download for file  %s", pathString.c_str());
+    syslog(LOG_DEBUG, "Starting download of file  %s", pathString.c_str());
     long int size = storage_client->DownloadToFile(pathString.substr(1), disk_path, last_modified);
     if (errno != 0)
     {
@@ -169,7 +169,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
                     auto dmutex = file_lock_map::get_instance()->get_delay_mutex(pathString.substr(1).c_str());
                     dmutex->lock();
 
-                    //DownloadFileToDisk(pathString, mntPathString, true);
+                    syslog(LOG_DEBUG, "Delaying download of file %s", mntPath);
                     std::thread t1(std::bind(&DownloadFileToDisk, pathString, mntPathString, blob_property, true));
                     t1.detach();
                 } else {

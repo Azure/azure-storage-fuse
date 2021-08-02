@@ -538,7 +538,7 @@ void AttrCacheBfsClient::InvalidateFile(const std::string blob)
     boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
 
     if (cache_item != NULL && 
-        IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_VALID))
+        IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED))
     {
         CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
     }
