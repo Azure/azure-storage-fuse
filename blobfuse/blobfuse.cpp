@@ -66,7 +66,9 @@ const struct fuse_opt option_spec[] =
     OPTION("--retry-delay-factor=%s", retry_delay),
     OPTION("--basic-remount-check=%s", basic_remount_check),
     OPTION("--pre-mount-validate=%s", pre_mount_validate),
-    
+    OPTION("--background-download=%s", background_download),
+    OPTION("--evict-on-sync=%s", evict_on_sync),
+
     OPTION("--version", version),
     OPTION("-v", version),
     OPTION("--help", help),
@@ -1134,12 +1136,35 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.retryDelay = stod(retry_delay, &offset);
     }
 
-    syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d Retry Policy (%d, %f, %f)", 
+    config_options.backgroundDownload = false;
+    if (cmd_options.background_download != NULL) {
+        std::string background_download(cmd_options.background_download);
+        if(background_download == "true")
+        {
+            config_options.backgroundDownload = true;
+        } 
+    }
+
+    config_options.evictOnSync = false;
+    if (cmd_options.evict_on_sync != NULL) {
+        std::string evict(cmd_options.evict_on_sync);
+        if(evict == "true")
+        {
+            config_options.evictOnSync = true;
+        } 
+    }
+
+    syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d Retry Policy (%d, %f, %f), Background Download %d, Evict on sync %d", 
         config_options.high_disk_threshold, config_options.low_disk_threshold,
         config_options.cachePollTimeout, config_options.maxEviction,
         config_options.cancel_list_on_mount_secs,
-        config_options.maxTryCount, config_options.maxTimeoutSeconds, config_options.retryDelay);
-        
+        config_options.maxTryCount, config_options.maxTimeoutSeconds, config_options.retryDelay, config_options.backgroundDownload,
+        config_options.evictOnSync);
+
+    if (config_options.backgroundDownload) {
+        syslog(LOG_INFO, "Background download is turned on");
+    }
+    
     return 0;
 }
 

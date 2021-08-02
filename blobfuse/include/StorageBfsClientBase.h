@@ -367,7 +367,7 @@ public:
     virtual int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL) = 0;
 
     virtual int RefreshSASToken(std::string sas) = 0;
-    
+    virtual void InvalidateFile(const std::string blob) = 0;
 protected:
     configParams configurations;
     ///<summary>

@@ -12,6 +12,53 @@ std::deque<file_to_delete> cleanup;
 std::mutex deque_lock;
 std::shared_ptr<gc_cache> g_gc_cache;
 
+int DownloadFileToDisk(std::string pathString, std::string mntPathString, BfsFileProperty blob_property, bool is_delayed)
+{
+    errno = 0;
+    time_t last_modified = {};
+
+    std::string disk_path = mntPathString;
+
+    syslog(LOG_DEBUG, "Starting download for file  %s", pathString.c_str());
+    long int size = storage_client->DownloadToFile(pathString.substr(1), disk_path, last_modified);
+    if (errno != 0)
+    {
+        int storage_errno = errno;
+        syslog(LOG_ERR, "Failed to download blob into cache.  Blob name: %s, file name = %s, storage errno = %d.\n", pathString.c_str()+1, mntPathString.c_str(),  errno);
+
+        remove(mntPathString.c_str());
+        return 0 - map_errno(storage_errno);
+    }
+    else
+    {
+        syslog(LOG_INFO, "Successfully downloaded blob %s into file cache as %s.\n", pathString.c_str()+1, mntPathString.c_str());
+        g_gc_cache->addCacheBytes(mntPathString, size);
+    }
+
+    // preserve the last modified time
+    struct utimbuf new_time;
+    new_time.modtime = last_modified;
+    new_time.actime = 0;
+    utime(mntPathString.c_str(), &new_time);
+
+    if (is_delayed) {
+        if (storage_client->isADLS()) {
+            // preserve the last modified time
+            struct utimbuf new_time;
+            new_time.modtime = blob_property.get_last_modified();
+            new_time.actime = blob_property.get_last_access(); 
+            utime(mntPathString.c_str(), &new_time); 
+        }
+
+        // As this download was running in a seperate thread, now allow others waiting for the file
+        auto def_dmutex = file_lock_map::get_instance()->get_delay_mutex(pathString.substr(1).c_str());
+        def_dmutex->unlock();
+    }
+
+    return 0;
+}
+
+
 // Opens a file for reading or writing
 // Behavior is defined by a normal, open() system call.
 // In all methods in this file, the variables "path" and "pathString" refer to the input path - the path as seen by the application using FUSE as a file system.
@@ -93,29 +140,44 @@ int azs_open(const char *path, struct fuse_file_info *fi)
                 return -1;
             }
 
-            errno = 0;
-            time_t last_modified = {};
-            long int size = storage_client->DownloadToFile(pathString.substr(1), mntPathString, last_modified);
-            if (errno != 0)
-            {
-                int storage_errno = errno;
-                syslog(LOG_ERR, "Failed to download blob into cache.  Blob name: %s, file name = %s, storage errno = %d.\n", pathString.c_str()+1, mntPathString.c_str(),  errno);
-
-                remove(mntPath);
-                return 0 - map_errno(storage_errno);
-            }
-            else
-            {
-                syslog(LOG_INFO, "Successfully downloaded blob %s into file cache as %s.\n", pathString.c_str()+1, mntPathString.c_str());
-                g_gc_cache->addCacheBytes(mntPathString, size);
-            }
-            
-            // preserve the last modified time
-            struct utimbuf new_time;
-            new_time.modtime = last_modified;
-            new_time.actime = 0;
-            utime(mntPathString.c_str(), &new_time);
             new_download = true;
+
+            if (!config_options.backgroundDownload) {
+                int res = DownloadFileToDisk(pathString, mntPathString, BfsFileProperty(), false);
+                if (res != 0) return res;
+            } else {
+                // User has configured to delay the download and do it in background.
+                // So here we just create a placeholder file and return back the call.
+                // FUSE will set the O_CREAT and O_WRONLY flags, but not O_EXCL, which is generally assumed for 'create' semantics.
+                errno = 0;
+                BfsFileProperty blob_property = storage_client->GetProperties(pathString.substr(1));
+                if ((errno == 0) && blob_property.isValid() && blob_property.exists()) {
+                    // File exists on the container so create a dummy file of same size here and return back the handle for it
+                    int tempFD = open(mntPath, O_WRONLY|O_CREAT, config_options.defaultPermission);
+                    if (tempFD == -1)
+                    {
+                        syslog (LOG_ERR, "Failed to open %s; unable to open file %s in cache directory.  Errno = %d", path, mntPath, errno);
+                        return -errno;
+                    }
+                    fchmod(tempFD, config_options.defaultPermission);
+                    close(tempFD);
+                    int ret = truncate64(mntPath, blob_property.size);
+                    if (ret !=0 || errno != 0) {
+                        syslog(LOG_ERR, "Failed to resize the file %s (%d)", mntPath, errno);
+                    }
+
+                    auto dmutex = file_lock_map::get_instance()->get_delay_mutex(pathString.substr(1).c_str());
+                    dmutex->lock();
+
+                    //DownloadFileToDisk(pathString, mntPathString, true);
+                    std::thread t1(std::bind(&DownloadFileToDisk, pathString, mntPathString, blob_property, true));
+                    t1.detach();
+                } else {
+                    // Failure in getting properties of the given file
+                    syslog(LOG_ERR, "Failed to get properties for %s", mntPath);
+                    return -errno;
+                }
+            }
         }
     }
 
@@ -160,6 +222,10 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     // Store the open file handle, and whether or not the file should be uploaded on close().
     // TODO: Optimize the scenario where the file is open for read/write, but no actual writing occurs, to not upload the blob.
     struct fhwrapper *fhwrap = new fhwrapper(res, (((fi->flags & O_WRONLY) == O_WRONLY) || ((fi->flags & O_RDWR) == O_RDWR)));
+    fhwrap->file_name = pathString.substr(1);
+    if (new_download)
+        SET_FHW_FLAG(fhwrap->flags, FILE_DONWLOADED_IN_OPEN);
+
     fi->fh = (long unsigned int)fhwrap; // Store the file handle for later use.
 
     AZS_DEBUGLOGV("Returning success from azs_open, file = %s\n", path);
@@ -179,7 +245,15 @@ int azs_open(const char *path, struct fuse_file_info *fi)
  */
 int azs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-    int fd = ((struct fhwrapper *)fi->fh)->fh;
+    struct fhwrapper *fhw = ((struct fhwrapper *)fi->fh);
+    int fd = fhw->fh;
+
+    if (config_options.backgroundDownload) {
+        // Wait untill the download has finished
+        auto dmutex = file_lock_map::get_instance()->get_delay_mutex(fhw->file_name.c_str());
+        dmutex->lock();
+        dmutex->unlock();
+    }
 
     errno = 0;
     int res = pread(fd, buf, size, offset);
@@ -224,7 +298,10 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
     }
 
     struct fhwrapper *fhwrap = new fhwrapper(res, true);
-    fhwrap->upload_on_close = true;
+
+    SET_FHW_FLAG(fhwrap->flags, FILE_UPLOAD_ON_CLOSE);
+    SET_FHW_FLAG(fhwrap->flags, FILE_CREATED);
+    fhwrap->file_name = pathString.substr(1);
 
     fi->fh = (long unsigned int)fhwrap;
     syslog(LOG_INFO, "Successfully created file %s in file cache.\n", path);
@@ -248,14 +325,22 @@ int azs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
  */
 int azs_write(const char *path, const char *buf, size_t size, off_t offset, struct fuse_file_info *fi)
 {
-    int fd = ((struct fhwrapper *)fi->fh)->fh;
+    struct fhwrapper *fhw = ((struct fhwrapper *)fi->fh);
+    int fd = fhw->fh;
+
+    if (config_options.backgroundDownload) {
+        // Wait untill the download has finished
+        auto dmutex = file_lock_map::get_instance()->get_delay_mutex(fhw->file_name.c_str());
+        dmutex->lock();
+        dmutex->unlock();
+    }
 
     errno = 0;
     int res = pwrite(fd, buf, size, offset);
     if (res == -1)
         res = -errno;
     AZS_DEBUGLOGV("azs_write called with path= %s", path);
-    ((struct fhwrapper *)fi->fh)->upload_on_close = true;
+    SET_FHW_FLAG(fhw->flags, FILE_UPLOAD_ON_CLOSE);
 
     g_gc_cache->addCacheBytes(path, size);
     return res;
@@ -269,25 +354,23 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
 
     // At this point, the shared flock will be held.
     // In some cases, due (I believe) to us using the hard_unlink option, path will be null.  Thus, we need to get the file name from the file descriptor:
+    struct fhwrapper *fhw = ((struct fhwrapper *)fi->fh);
 
-    char path_link_buffer[50];
-    snprintf(path_link_buffer, 50, "/proc/self/fd/%d", (((struct fhwrapper *)fi->fh)->fh));
-
-    // canonicalize_file_name will follow symlinks to give the actual path name.
-    char *path_buffer = canonicalize_file_name(path_link_buffer);
-    if (path_buffer == NULL)
-    {
-        AZS_DEBUGLOGV("Skipped blob upload in azs_flush with input path %s because file no longer exists.\n", path);
-        return 0;
-    }
-    else
-    {
-        AZS_DEBUGLOGV("Successfully looked up mntPath.  Input path = %s, path_link_buffer = %s, path_buffer = %s\n", path, path_link_buffer, path_buffer);
+    if (config_options.backgroundDownload) {
+        // Wait untill the download has finished
+        auto dmutex = file_lock_map::get_instance()->get_delay_mutex(fhw->file_name.c_str());
+        if (dmutex->try_lock()) {
+            dmutex->unlock();
+        } else {
+            // File is still under download so we can not flush at this moment
+            // However some time immeidatly after open also we get a flush call, so no need to block it here
+            return 0;
+        }
     }
 
     // Note that we don't have to prepend the tmpPath, because we already have it, because we're not using the input path but instead are querying for it.
-    std::string mntPathString(path_buffer);
-    const char * mntPath = path_buffer;
+    std::string mntPathString = prepend_mnt_path_string("/" + fhw->file_name);
+    const char *mntPath = mntPathString.c_str();
     if (access(mntPath, F_OK) != -1 )
     {
         // TODO: This will currently upload the full file on every flush() call.  We may want to keep track of whether
@@ -304,12 +387,12 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
         // For some file systems, however, close() flushes data, so we do want to do that before uploading data to a blob.
         // The solution (taken from the FUSE documentation) is to close a duplicate of the file descriptor.
         close(dup(((struct fhwrapper *)fi->fh)->fh));
-        AZS_DEBUGLOGV("azs_flush: path = %s, upload_on_close = %d, modified only flag config_options.uploadIfModified = %d, .\n", path, (((struct fhwrapper *)fi->fh)->upload_on_close), config_options.uploadIfModified);
+        AZS_DEBUGLOGV("azs_flush: path = %s, upload_on_close = %d, modified only flag config_options.uploadIfModified = %d, .\n", path, IS_FHW_FLAG_SET(fhw->flags, FILE_UPLOAD_ON_CLOSE), config_options.uploadIfModified);
 
         if ((config_options.uploadIfModified &&
-              ((struct fhwrapper *)fi->fh)->upload_on_close)  ||
+              IS_FHW_FLAG_SET(fhw->flags, FILE_UPLOAD_ON_CLOSE))  ||
             ((!config_options.uploadIfModified) &&
-              ((struct fhwrapper *)fi->fh)->write_mode))
+              IS_FHW_FLAG_SET(fhw->flags, FILE_OPEN_WRITE_MODE)))
         {
             // Here, we acquire the mutex on the file path.  This is necessary to guard against several race conditions.
             // For example, say that a cache refresh is triggered.  There is a small window of time where the file has been removed and not yet re-downloaded.
@@ -331,15 +414,12 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
                     // In this case, we do not want to upload a zero-length blob to the service or error out, we want to silently discard any data that has been written and
                     // and with no blob on the service or in the cache.
                     // This mimics the behavior of a real file system.
-
-                    free(path_buffer);
                     AZS_DEBUGLOGV("Skipped blob upload in azs_flush with input path %s because file no longer exists due to a race condition with azs_unlink.\n", path);
                     return 0;
                 }
                 else
                 {
                     syslog(LOG_ERR, "Failing blob upload in azs_flush with input path %s because of an error from stat().  Errno = %d.\n", path, storage_errno);
-                    free(path_buffer);
                     return -storage_errno;
                 }
             }
@@ -352,12 +432,11 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
             {
                 int storage_errno = errno;
                 syslog(LOG_ERR, "Failing blob upload in azs_flush with input path %s because of an error from upload_file_to_blob().  Errno = %d.\n", path, storage_errno);
-                free(path_buffer);
                 return 0 - map_errno(storage_errno);
             }
             else
             {
-                ((struct fhwrapper *)fi->fh)->upload_on_close = false;
+                CLEAR_FHW_FLAG(fhw->flags, FILE_UPLOAD_ON_CLOSE);
                 syslog(LOG_INFO, "Successfully uploaded file %s to blob %s.\n", path, blob_name.c_str());
             }
             globalTimes.lastModifiedTime = time(NULL);
@@ -371,7 +450,6 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
         AZS_DEBUGLOGV("Skipped blob upload in azs_flush with input path %s because file no longer exists.\n", path);
     }
 
-    free(path_buffer);
     return 0;
 }
 
@@ -380,15 +458,17 @@ int azs_release(const char *path, struct fuse_file_info * fi)
 {
     AZS_DEBUGLOGV("azs_release called with path = %s, fi->flags = %d\n", path, fi->flags);
 
+    struct fhwrapper *fhw = ((struct fhwrapper *)fi->fh);
+    
     // Unlock the file
     // Note that this will release the shared lock acquired in the corresponding open() call (the one that gave us this file descriptor, in the fuse_file_info).
     // It will not release any locks acquired from other calls to open(), in this process or in others.
     // If the file handle is invalid, this will fail with EBADF, which is not an issue here.
-    flock(((struct fhwrapper *)fi->fh)->fh, LOCK_UN);
+    flock(fhw->fh, LOCK_UN);
 
     // Close the file handle.
     // This must be done, even if the file no longer exists, otherwise we're leaking file handles.
-    ((struct fhwrapper *)fi->fh)->upload_on_close = false;
+    CLEAR_FHW_FLAG(fhw->flags, FILE_UPLOAD_ON_CLOSE);
     close(((struct fhwrapper *)fi->fh)->fh);
 
 // TODO: Make this method resiliant to renames of the file (same way flush() is)
@@ -403,7 +483,13 @@ int azs_release(const char *path, struct fuse_file_info * fi)
         AZS_DEBUGLOGV("Adding file to the GC from azs_release.  File = %s\n.", mntPath);
 
         // store the file in the cleanup list
-        g_gc_cache->uncache_file(pathString);
+        if (IS_FHW_FLAG_SET(fhw->flags, FILE_FORCE_DELETE) && 
+            !IS_FHW_FLAG_SET(fhw->flags, FILE_DONWLOADED_IN_OPEN)) {
+            storage_client->InvalidateFile(pathString.substr(1));
+            g_gc_cache->uncache_file(pathString, true);
+        } else {
+            g_gc_cache->uncache_file(pathString);
+        }
     }
     else
     {
@@ -519,7 +605,7 @@ int azs_truncate(const char * path, off_t off)
         if (truncret == 0)
         {
             AZS_DEBUGLOGV("Successfully truncated file %s in the local file cache.", mntPath);
-            ((struct fhwrapper *)fi.fh)->upload_on_close = true;
+            SET_FHW_FLAG(((struct fhwrapper *)fi.fh)->flags, FILE_UPLOAD_ON_CLOSE);
             int flushret = azs_flush(pathString.c_str(), &fi);
             if(flushret != 0)
             {

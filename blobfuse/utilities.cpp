@@ -481,9 +481,13 @@ int azs_access(const char * /*path*/, int /*mask*/)
     return 0; // permit all access
 }
 
-int azs_fsync(const char * /*path*/, int /*isdatasync*/, struct fuse_file_info * /*fi*/)
+int azs_fsync(const char * path, int /*isdatasync*/, struct fuse_file_info *fi)
 {
-    return 0; // Skip for now
+    if (config_options.evictOnSync) {
+        syslog(LOG_INFO, "FSYNC : Request for forceful eviction of file : %s", path);
+        SET_FHW_FLAG(((struct fhwrapper *)fi->fh)->flags, FILE_FORCE_DELETE);
+    }
+    return 0; 
 }
 
 int azs_chown(const char * /*path*/, uid_t /*uid*/, gid_t /*gid*/)

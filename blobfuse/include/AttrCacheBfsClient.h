@@ -274,6 +274,8 @@ public:
     
     int RefreshSASToken(std::string sas);
     
+    void InvalidateFile(const std::string blob);
+
     private:
         std::shared_ptr<StorageBfsClientBase> blob_client;
         AttrCache attr_cache;
