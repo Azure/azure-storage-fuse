@@ -76,8 +76,8 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--max-retry-interval-in-seconds=60** : Maximum number of seconds between 2 retries, retry interval is exponentially increased but it can never exceed this value. Default naximum interval is 60 seconds.  This option is only available from version 1.3.8
      * [OPTIONAL] **--basic-remount-check=false** : Set this to true if you want to check for an already mounted status using /etc/mtab instead of calling the syscall setmntent. Default is true. It is known that for AKS 1.19, blobfuse will throw a segmentation fault error, so set this to false.  This option is only available from version 1.3.8
      * [OPTIONAL] **--pre-mount-validate=false** : Set this to true to skip the cURL version check and just straight validate storage connection before mount. Default is false, so use this only if you know that you have the recent Curl version, otherwise blobfuse will hang. This option is only available from version 1.3.8
-    * [OPTIONAL] **--background-download=false** : Instead of downloading the file in 'open' system call, download it in background post 'open'. Follow up 'read'/'write' calls will wait for download to complete.
-    * [OPTIONAL] **--evict-on-sync=false** : When file cache timeout is set to a higher value and user wants to force evict a file from cache use the sync command to do the same. If set to false, sync command on file is ignored.
+    * [OPTIONAL] **--background-download=false** : Instead of downloading the file in 'open' system call, download it in background post 'open'. Follow up 'read'/'write' calls will wait for download to complete. This option is only available from version 1.3.9
+    * [OPTIONAL] **--evict-on-sync=false** : When file cache timeout is set to a higher value and user wants to force evict a file from cache use the sync command to do the same. If set to false, sync command on file is ignored. This option is only available from version 1.3.9
 ### Valid authentication setups:
 
 - Account Name & Key (`authType Key`)
@@ -180,6 +180,7 @@ Please take careful note of the following points, before using blobfuse:
   - Blobfuse currently does not manage available disk space in the tmp path. Make sure to have enough space, or reduce ```--file-cache-timeout-in-seconds``` value to accelerating purging cached files.
   - In order to delete the cache, un-mount and re-mount blobfuse.
   - Do not use the same cache directory for multiple instances of blobfuse, or for any other purpose while blobfuse is running.
+- When the cache timeout is set to a higher value and user wants to forcefully evict a file from cache in-between then user 'sync' command on the file to evict it forcefully. To enable this feature use '--evict-on-sync=true' cli option while mounting.
 
 ### If your workload is read-only:
 - Because blobs get cached locally and reused for a number of seconds (--file-cache-timeout-in-seconds), if the blob on the service is modified, these changes will only be retrieved after the local cache times out, and the file is closed and re-opened.
@@ -216,7 +217,7 @@ Please take careful note of the following points, before using blobfuse:
 By default, blobfuse will log to syslog.  The default settings will, in some cases, log relevant file paths to syslog.  If this is sensitive information, turn off logging completely.  See the [wiki](https://github.com/Azure/azure-storage-fuse/wiki/5.-Logging) for more details.
 
 ### Current Limitations
-- Some file system APIs have not been implemented: readlink, link, fsync, lock and extended attribute calls.
+- Some file system APIs have not been implemented: readlink, link, lock and extended attribute calls.
 - Not optimized for updating an existing file. blobfuse downloads the entire file to local cache to be able to modify and update the file
 - When using enabling the "--use-attr-cache" feature, there may be an issue with overflow and will not clear the attribute cache until blobfuse is unmounted
 - See the list of differences between POSIX and blobfuse [here](https://github.com/Azure/azure-storage-fuse/wiki/4.-Limitations-%7C-Differences-from-POSIX)
