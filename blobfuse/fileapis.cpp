@@ -580,6 +580,13 @@ int azs_truncate(const char * path, off_t off)
     std::string mntPathString = prepend_mnt_path_string(pathString);
     mntPath = mntPathString.c_str();
 
+    if (config_options.backgroundDownload) {
+        // Wait untill the download has finished
+        auto dmutex = file_lock_map::get_instance()->get_delay_mutex(pathString.substr(1).c_str());
+        dmutex->lock();
+        dmutex->unlock();
+    }
+
     if (off != 0) // Truncating to zero gets optimized
     {
         // TODO: Refactor azs_open, azs_flush, and azs_release so as to not require us calling them directly here
