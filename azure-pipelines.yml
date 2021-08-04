@@ -21,9 +21,9 @@ jobs:
     # Define on what all OS we want to run this Pipeline
     strategy:
       matrix:
-        Ubuntu-16:
-          container_image: 'ubuntu-16.04'
-          build_type: Release 
+        #Ubuntu-16:
+        #  container_image: 'ubuntu-16.04'
+        #  build_type: Release 
         Ubuntu-18:
           container_image: 'ubuntu-18.04' 
           build_type: Release 
@@ -82,8 +82,8 @@ jobs:
           chmod 777 ./blobfusetests
           $(Build.BinariesDirectory)/blobfusetests --gtest_filter=-BlobClientWrapperTest.*
         workingDirectory: $(Build.BinariesDirectory)
-        condition: eq(variables.container_image, 'ubuntu-16.04')
-        displayName: "GTest on Ubn-16"
+        condition: eq(variables.container_image, 'ubuntu-20.04')
+        displayName: "GTest on Ubn-20"
   
       # Moving publish artifacts to a seperate pipeline
       # Publish the Artifacts
