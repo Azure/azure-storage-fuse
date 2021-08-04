@@ -33,9 +33,9 @@ stages:
       # Define on what all OS we want to run this Pipeline
       strategy:
         matrix:
-          Ubuntu-16:
-            container_image: 'ubuntu-16.04'
-            build_type: Release 
+          #Ubuntu-16:
+          #  container_image: 'ubuntu-16.04'
+          #  build_type: Release 
           Ubuntu-18:
             container_image: 'ubuntu-18.04' 
             build_type: Release 
