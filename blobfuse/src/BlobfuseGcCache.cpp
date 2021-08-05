@@ -171,9 +171,10 @@ void gc_cache::run_gc_cache()
 
             struct stat buf;
             stat(mntPath, &buf);
-            if (((now - buf.st_mtime) > file_cache_timeout_in_seconds) ||
+            if (file_cache_timeout_in_seconds == 0 ||
+                disk_threshold_reached ||
                 file.force ||
-                disk_threshold_reached)
+                (((now - buf.st_mtime) > file_cache_timeout_in_seconds) && ((now - buf.st_ctime) > file_cache_timeout_in_seconds)))
             {
                 //clean up the file from cache
                 int fd = open(mntPath, O_WRONLY);
