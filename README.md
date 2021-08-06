@@ -77,7 +77,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--basic-remount-check=false** : Set this to true if you want to check for an already mounted status using /etc/mtab instead of calling the syscall setmntent. Default is true. It is known that for AKS 1.19, blobfuse will throw a segmentation fault error, so set this to false.  This option is only available from version 1.3.8
      * [OPTIONAL] **--pre-mount-validate=false** : Set this to true to skip the cURL version check and just straight validate storage connection before mount. Default is false, so use this only if you know that you have the recent Curl version, otherwise blobfuse will hang. This option is only available from version 1.3.8
     * [OPTIONAL] **--background-download=false** : Set this true if you want file download to run in the background on open. Setting this to true will put a wait on 'read'/'write' calls till download completes. If the file is already in the local cache this switch is not evaluated. Default value is false. This option is only available from version 1.4.0
-    * [OPTIONAL] **--evict-on-sync=false** : Set this to true if you want the particular file or directory content and attribute cache to be invalidated when the linux "sync" command is issued on a file or on a directory. Default is false. This option is only available from version 1.4.0
+    * [OPTIONAL] **--invalidate-on-sync=false** : Set this to true if you want the particular file or directory content and attribute cache to be invalidated when the linux "sync" command is issued on a file or on a directory. 'sync' on file will remove the file from cache and invalidate its attribute cache, while 'sync' on directory will invalidate attribute cache for all files and directories under it recursively. Default is false. This option is only available from version 1.4.0
 ### Valid authentication setups:
 
 - Account Name & Key (`authType Key`)
@@ -180,7 +180,7 @@ Please take careful note of the following points, before using blobfuse:
   - Blobfuse currently does not manage available disk space in the tmp path. Make sure to have enough space, or reduce ```--file-cache-timeout-in-seconds``` value to accelerating purging cached files.
   - In order to delete the cache, un-mount and re-mount blobfuse.
   - Do not use the same cache directory for multiple instances of blobfuse, or for any other purpose while blobfuse is running.
-- When the cache timeout is set to a higher value and user wants to forcefully evict a file from cache in-between then user 'sync' command on the file to evict it forcefully. To enable this feature use '--evict-on-sync=true' cli option while mounting.
+- When the cache timeout is set to a higher value and user wants to forcefully evict a file from cache in-between then user 'sync' command on the file to evict it forcefully. To enable this feature use '--invalidate-on-sync=true' cli option while mounting.
 
 ### If your workload is read-only:
 - Because blobs get cached locally and reused for a number of seconds (--file-cache-timeout-in-seconds), if the blob on the service is modified, these changes will only be retrieved after the local cache times out, and the file is closed and re-opened.

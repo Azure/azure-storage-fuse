@@ -67,7 +67,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--basic-remount-check=%s", basic_remount_check),
     OPTION("--pre-mount-validate=%s", pre_mount_validate),
     OPTION("--background-download=%s", background_download),
-    OPTION("--evict-on-sync=%s", evict_on_sync),
+    OPTION("--invalidate-on-sync=%s", invalidate_on_sync),
 
     OPTION("--version", version),
     OPTION("-v", version),
@@ -657,6 +657,7 @@ void set_up_callbacks(struct fuse_operations &azs_blob_operations)
     azs_blob_operations.read = azs_read;
     azs_blob_operations.release = azs_release;
     azs_blob_operations.fsync = azs_fsync;
+    azs_blob_operations.fsyncdir = azs_fsyncdir;
     azs_blob_operations.create = azs_create;
     azs_blob_operations.write = azs_write;
     azs_blob_operations.mkdir = azs_mkdir;
@@ -1145,12 +1146,12 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         } 
     }
 
-    config_options.evictOnSync = false;
-    if (cmd_options.evict_on_sync != NULL) {
-        std::string evict(cmd_options.evict_on_sync);
+    config_options.invalidateOnSync = false;
+    if (cmd_options.invalidate_on_sync != NULL) {
+        std::string evict(cmd_options.invalidate_on_sync);
         if(evict == "true")
         {
-            config_options.evictOnSync = true;
+            config_options.invalidateOnSync = true;
         } 
     }
 
@@ -1159,7 +1160,7 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.cachePollTimeout, config_options.maxEviction,
         config_options.cancel_list_on_mount_secs,
         config_options.maxTryCount, config_options.maxTimeoutSeconds, config_options.retryDelay, config_options.backgroundDownload,
-        config_options.evictOnSync);
+        config_options.invalidateOnSync);
 
     if (config_options.backgroundDownload) {
         syslog(LOG_INFO, "Background download is turned on");

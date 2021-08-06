@@ -496,10 +496,21 @@ int azs_access(const char * /*path*/, int /*mask*/)
 
 int azs_fsync(const char * path, int /*isdatasync*/, struct fuse_file_info *fi)
 {
-    if (config_options.evictOnSync) {
+    if (config_options.invalidateOnSync) {
         syslog(LOG_INFO, "FSYNC : Request for forceful eviction of file : %s", path);
         SET_FHW_FLAG(((struct fhwrapper *)fi->fh)->flags, FILE_FORCE_DELETE);
     }
+    return 0; 
+}
+
+int azs_fsyncdir(const char *path, int, struct fuse_file_info *)
+{
+    if (config_options.invalidateOnSync) {
+        syslog(LOG_INFO, "FSYNC : Request for forceful invalidation of directory : %s", path);
+        std::string pathString(path);
+        storage_client->InvalidateDir(pathString.substr(1));
+    }
+
     return 0; 
 }
 

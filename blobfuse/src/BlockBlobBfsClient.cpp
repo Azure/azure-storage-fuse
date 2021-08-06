@@ -1068,3 +1068,8 @@ void BlockBlobBfsClient::InvalidateFile(const std::string)
 {
     return;
 }
+
+void BlockBlobBfsClient::InvalidateDir(const std::string)
+{
+    return;
+}

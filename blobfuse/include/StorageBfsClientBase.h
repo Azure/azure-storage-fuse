@@ -368,6 +368,7 @@ public:
 
     virtual int RefreshSASToken(std::string sas) = 0;
     virtual void InvalidateFile(const std::string blob) = 0;
+    virtual void InvalidateDir(const std::string dir) = 0;
 protected:
     configParams configurations;
     ///<summary>

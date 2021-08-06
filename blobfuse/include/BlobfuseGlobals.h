@@ -82,7 +82,7 @@ struct configParams
     bool preMountValidate;
 
     bool backgroundDownload;
-    bool evictOnSync;
+    bool invalidateOnSync;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -120,7 +120,7 @@ struct cmdlineOptions
     const char *basic_remount_check; // Check for remount by reading /etc/mtab
     const char *pre_mount_validate; // Validate storage auth before the mount
     const char *background_download; // Download the file in background instead of downloading in open call
-    const char *evict_on_sync; // Delete file from cache when fsync is called 
+    const char *invalidate_on_sync; // Delete file from cache when fsync is called 
 };
 
 

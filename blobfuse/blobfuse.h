@@ -254,6 +254,7 @@ void azs_destroy(void *private_data);
  */
 int azs_access(const char *path, int mask);
 int azs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi);
+int azs_fsyncdir(const char *path, int isdatasync, struct fuse_file_info *fi);
 int azs_chown(const char *path, uid_t uid, gid_t gid);
 int azs_chmod(const char *path, mode_t mode);
 int azs_utimens(const char *path, const struct timespec ts[2]);

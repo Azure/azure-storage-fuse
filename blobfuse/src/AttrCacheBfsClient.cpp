@@ -543,3 +543,9 @@ void AttrCacheBfsClient::InvalidateFile(const std::string blob)
         CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
     }
 }
+
+void AttrCacheBfsClient::InvalidateDir(const std::string directoryPath)
+{
+    attr_cache.invalidate_dir_recursively(directoryPath);
+    return;
+}
