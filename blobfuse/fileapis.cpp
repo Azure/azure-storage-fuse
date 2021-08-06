@@ -37,19 +37,11 @@ int DownloadFileToDisk(std::string pathString, std::string mntPathString, BfsFil
 
     // preserve the last modified time
     struct utimbuf new_time;
-    new_time.modtime = last_modified;
-    new_time.actime = 0;
+    new_time.modtime = blob_property.get_last_modified();;
+    new_time.actime = blob_property.get_last_modified();;
     utime(mntPathString.c_str(), &new_time);
 
     if (is_delayed) {
-        if (storage_client->isADLS()) {
-            // preserve the last modified time
-            struct utimbuf new_time;
-            new_time.modtime = blob_property.get_last_modified();
-            new_time.actime = blob_property.get_last_access(); 
-            utime(mntPathString.c_str(), &new_time); 
-        }
-
         // As this download was running in a seperate thread, now allow others waiting for the file
         auto def_dmutex = file_lock_map::get_instance()->get_delay_mutex(pathString.substr(1).c_str());
         def_dmutex->unlock();
