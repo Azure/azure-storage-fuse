@@ -219,6 +219,7 @@ By default, blobfuse will log to syslog.  The default settings will, in some cas
 - Not optimized for updating an existing file. blobfuse downloads the entire file to local cache to be able to modify and update the file
 - When using enabling the "--use-attr-cache" feature, there may be an issue with overflow and will not clear the attribute cache until blobfuse is unmounted
 - See the list of differences between POSIX and blobfuse [here](https://github.com/Azure/azure-storage-fuse/wiki/4.-Limitations-%7C-Differences-from-POSIX)
+- For Gen-2 account is ACL is set at blob with additional principals and mask, 'chmod' operation done on that blob will remove mask and additional pricipals if any.
 
 ## License
 This project is licensed under MIT.
