@@ -180,7 +180,7 @@ Please take careful note of the following points, before using blobfuse:
   - Blobfuse currently does not manage available disk space in the tmp path. Make sure to have enough space, or reduce ```--file-cache-timeout-in-seconds``` value to accelerating purging cached files.
   - In order to delete the cache, un-mount and re-mount blobfuse.
   - Do not use the same cache directory for multiple instances of blobfuse, or for any other purpose while blobfuse is running.
-- When the cache timeout is set to a higher value and user wants to forcefully evict a file from cache in-between then user 'sync' command on the file to evict it forcefully. To enable this feature use '--invalidate-on-sync=true' cli option while mounting.
+- When file-cache-timeout is set to a higher value and user wants to force evict a file from cache before configured time then use 'sync/fsync' command on the file to evict it forcefully. To enable this feature use '--invalidate-on-sync=true' cli option while mounting. If 'sync/fsync' is done on dir it will invalidate attribute cache for all child path for that directory.
 
 ### If your workload is read-only:
 - Because blobs get cached locally and reused for a number of seconds (--file-cache-timeout-in-seconds), if the blob on the service is modified, these changes will only be retrieved after the local cache times out, and the file is closed and re-opened.
