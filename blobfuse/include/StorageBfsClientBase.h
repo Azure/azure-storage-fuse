@@ -161,13 +161,18 @@ class BfsFileProperty
             
             if (!modestring.empty())
             {
+                if(modestring.size() != blobfuse_constants::acl_size)
+                {
+                    syslog(LOG_DEBUG, "Unexpected amount of permissions from service : %s", modestring.c_str());
+                }
                
-                for (char & c : modestring) {
+                for (uint32_t i = 0; i < blobfuse_constants::acl_size; i++)
+                {
                     // Start by pushing back the mode_t.
                     m_file_mode = m_file_mode << 1; // NOLINT(hicpp-signed-bitwise) (mode_t is signed, apparently. Suppress the inspection.)
                     // Then flip the new bit based on whether the mode is enabled or not.
                     // This works because we can expect a consistent 9 character modestring.
-                    m_file_mode |= (c != '-');
+                    m_file_mode |= (modestring[i] != '-');
                 }
             }
         }
