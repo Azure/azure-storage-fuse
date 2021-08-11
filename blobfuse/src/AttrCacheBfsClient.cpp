@@ -529,3 +529,23 @@ int AttrCacheBfsClient::RefreshSASToken(std::string sas)
 {
     return blob_client->RefreshSASToken(sas);
 }
+
+
+void AttrCacheBfsClient::InvalidateFile(const std::string blob)
+{
+    std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(blob));
+    std::shared_ptr<AttrCacheItem> cache_item = attr_cache.get_blob_item(blob);
+    boost::shared_lock<boost::shared_mutex> dirlock(*dir_mutex);
+
+    if (cache_item != NULL && 
+        IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED))
+    {
+        CLEAR_PROP_FLAG(cache_item->flags, PROP_FLAG_CONFIRMED);
+    }
+}
+
+void AttrCacheBfsClient::InvalidateDir(const std::string directoryPath)
+{
+    attr_cache.invalidate_dir_recursively(directoryPath);
+    return;
+}

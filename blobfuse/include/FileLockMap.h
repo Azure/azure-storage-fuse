@@ -20,7 +20,8 @@ class file_lock_map
 public:
     static file_lock_map* get_instance();
     std::shared_ptr<std::mutex> get_mutex(const std::string& path);
-
+    std::shared_ptr<std::mutex> get_delay_mutex(const std::string& path);
+    
 private:
     file_lock_map()
     {
@@ -30,5 +31,8 @@ private:
     static std::mutex s_mutex;
     std::mutex m_mutex;
     std::map<std::string, std::shared_ptr<std::mutex>> m_lock_map;
+    
+    std::mutex d_mutex;
+    std::map<std::string, std::shared_ptr<std::mutex>> m_delay_map;
 };
 #endif //FILE_LOCK_MAP_H

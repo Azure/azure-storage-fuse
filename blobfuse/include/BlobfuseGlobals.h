@@ -80,6 +80,9 @@ struct configParams
     double retryDelay;
     bool basicRemountCheck;
     bool preMountValidate;
+
+    bool backgroundDownload;
+    bool invalidateOnSync;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -116,19 +119,41 @@ struct cmdlineOptions
     const char *retry_delay; // Exponential factor for each retry
     const char *basic_remount_check; // Check for remount by reading /etc/mtab
     const char *pre_mount_validate; // Validate storage auth before the mount
+    const char *background_download; // Download the file in background instead of downloading in open call
+    const char *invalidate_on_sync; // Delete file from cache when fsync is called 
 };
 
 
 // FUSE gives you one 64-bit pointer to use for communication between API's.
 // An instance of this struct is pointed to by that pointer.
+enum FHW_FLAGS
+{
+    FILE_FLAG_UNKNOWN           = 0,
+    FILE_OPEN_WRITE_MODE        = 1,    // False when the file was opened in read-only mode
+    FILE_UPLOAD_ON_CLOSE,               // False if file is not written or created. Upload only if the flag is true
+    FILE_CREATED,                       // This is a new file being created by user
+    FILE_FORCE_DELETE,                  // False if file is not written or created. Upload only if the flag is true
+    FILE_DONWLOADED_IN_OPEN,            // File was downloaded during open of this handle
+    FILE_FLAG_MAX               = 15
+};
+
+#define SET_FHW_FLAG(val, flag) \
+        (val |= (1 << flag))
+#define CLEAR_FHW_FLAG(val, flag) \
+        (val &= ~(1 << flag))
+#define IS_FHW_FLAG_SET(val, flag) \
+        (val & (1 << flag))
+
 struct fhwrapper
 {
     int fh; // The handle to the file in the file cache to use for read/write operations.
-    bool write_mode; // False when the file was opened in read-only mode
-    bool upload_on_close; // False if file is not written or created. Upload only if the flag is true
-    fhwrapper(int fh, bool mode) : fh(fh), write_mode(mode), upload_on_close(false)
+    uint16_t flags;
+    std::string file_name; // name of the file in case of streaming as we can not convert handle id to file name back
+    fhwrapper(int fh, bool mode) : fh(fh)
     {
-
+        flags = 0;
+        if (mode)
+            SET_FHW_FLAG(flags, FILE_OPEN_WRITE_MODE);
     }
 };
 

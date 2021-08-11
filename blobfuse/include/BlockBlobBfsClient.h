@@ -105,6 +105,9 @@ public:
 
     int UpdateBlobProperty(std::string pathStr, std::string key, std::string value, METADATA *metadata = NULL);
     virtual int RefreshSASToken(std::string sas);
+    void InvalidateFile(const std::string blob);
+    void InvalidateDir(const std::string dir);
+    
 protected:
     ///<summary>
     /// Blob Client to make blob storage calls

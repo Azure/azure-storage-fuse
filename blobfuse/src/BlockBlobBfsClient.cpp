@@ -1063,3 +1063,13 @@ int BlockBlobBfsClient::RefreshSASToken(std::string sas)
     }
     return 0;
 }
+
+void BlockBlobBfsClient::InvalidateFile(const std::string)
+{
+    return;
+}
+
+void BlockBlobBfsClient::InvalidateDir(const std::string)
+{
+    return;
+}

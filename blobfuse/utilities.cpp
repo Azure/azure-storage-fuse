@@ -146,18 +146,31 @@ int azs_getattr(const char *path, struct stat *stbuf)
     if (acc != -1)
     {
         AZS_DEBUGLOGV("Accessing mntPath = %s for getattr succeeded; object is in the local cache.\n", mntPathString.c_str());
-
+        
         // Ensure that we don't get attributes while the file is in an intermediate state.
         bool file_locked = false;
-        std::shared_ptr<std::mutex> fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
 
-        if ((*fmutex).try_lock()) {
-            // File is not locked so we can use the cache directory
-            (*fmutex).unlock();
+        if (config_options.backgroundDownload) {
+            // Wait untill the download has finished
+            auto dmutex = file_lock_map::get_instance()->get_delay_mutex(pathString.substr(1).c_str());
+            if (dmutex->try_lock()) {
+                dmutex->unlock();
+            } else {
+                // File is still under download so we can not flush at this moment
+                // However some time immeidatly after open also we get a flush call, so no need to block it here
+                syslog(LOG_DEBUG, "lstat on file %s ignored as file is locked\n", mntPathString.c_str());
+                file_locked = true;
+            }
         } else {
-            // File is locked so it may be under download, not a good time to refer local cache
-            file_locked = true;
-            syslog(LOG_DEBUG, "lstat on file %s ignored as file is locked\n", mntPathString.c_str());
+            std::shared_ptr<std::mutex> fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
+            if ((*fmutex).try_lock()) {
+                // File is not locked so we can use the cache directory
+                (*fmutex).unlock();
+            } else {
+                // File is locked so it may be under download, not a good time to refer local cache
+                file_locked = true;
+                syslog(LOG_DEBUG, "lstat on file %s ignored as file is locked\n", mntPathString.c_str());
+            }
         }
 
         if (!file_locked) {
@@ -481,9 +494,24 @@ int azs_access(const char * /*path*/, int /*mask*/)
     return 0; // permit all access
 }
 
-int azs_fsync(const char * /*path*/, int /*isdatasync*/, struct fuse_file_info * /*fi*/)
+int azs_fsync(const char * path, int /*isdatasync*/, struct fuse_file_info *fi)
 {
-    return 0; // Skip for now
+    if (config_options.invalidateOnSync) {
+        syslog(LOG_INFO, "FSYNC : Request for forceful eviction of file : %s", path);
+        SET_FHW_FLAG(((struct fhwrapper *)fi->fh)->flags, FILE_FORCE_DELETE);
+    }
+    return 0; 
+}
+
+int azs_fsyncdir(const char *path, int, struct fuse_file_info *)
+{
+    if (config_options.invalidateOnSync) {
+        syslog(LOG_INFO, "FSYNC : Request for forceful invalidation of directory : %s", path);
+        std::string pathString(path);
+        storage_client->InvalidateDir(pathString.substr(1));
+    }
+
+    return 0; 
 }
 
 int azs_chown(const char * /*path*/, uid_t /*uid*/, gid_t /*gid*/)
