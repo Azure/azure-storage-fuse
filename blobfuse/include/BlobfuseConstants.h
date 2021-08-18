@@ -85,6 +85,7 @@ namespace blobfuse_constants {
     extern const int HTTP_REQUEST_CONFLICT;
     extern const float minCurlVersion;
     extern const float minKernelVersion;
+    extern const int maxStreamBlocksPerFile;
 }
 
 #endif

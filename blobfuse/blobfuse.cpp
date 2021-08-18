@@ -11,12 +11,14 @@
 #include <include/BlockBlobBfsClient.h>
 #include <include/DataLakeBfsClient.h>
 #include <include/AttrCacheBfsClient.h>
+#include <BlobStreamer.h>
 
 const std::string log_ident = "blobfuse";
 struct cmdlineOptions cmd_options;
 struct configParams config_options;
 struct globalTimes_st globalTimes;
 std::shared_ptr<StorageBfsClientBase> storage_client;
+std::shared_ptr<BlobStreamer> blob_streamer;
 
 extern bool gZonalDNS;
 int stdErrFD = -1;
@@ -68,6 +70,9 @@ const struct fuse_opt option_spec[] =
     OPTION("--pre-mount-validate=%s", pre_mount_validate),
     OPTION("--background-download=%s", background_download),
     OPTION("--invalidate-on-sync=%s", invalidate_on_sync),
+    OPTION("--streaming=%s", streaming),
+    OPTION("--stream-cache-mb=%s", stream_buffer),
+    OPTION("--max-block-per-file=%s", max_block_per_file),
 
     OPTION("--version", version),
     OPTION("-v", version),
@@ -471,6 +476,13 @@ void *azs_init(struct fuse_conn_info * conn)
         tokenManager->StartTokenMonitor();
     }
 
+    if (config_options.streaming) {
+        blob_streamer = std::make_shared<BlobStreamer>(
+                            storage_client, 
+                            config_options.readStreamBufferSize, 
+                            config_options.maxBlockPerFile);
+    }
+
     return NULL;
 }
 
@@ -758,10 +770,15 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 
     // Check for existence of allow_other flag and change the default permissions based on that
     config_options.defaultPermission = 0770;
+    config_options.readOnlyMount = false;
+
     std::vector<std::string> string_args(argv, argv+argc);
     for (size_t i = 1; i < string_args.size(); ++i) {
       if (string_args[i].find("allow_other") != std::string::npos) {
           config_options.defaultPermission = 0777; 
+      }
+      if (string_args[i].find("ro") != std::string::npos) {
+          config_options.readOnlyMount = true;
       }
     }
 
@@ -771,7 +788,7 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     config_options.cacheOnList = true;
     config_options.high_disk_threshold = HIGH_THRESHOLD_VALUE;
     config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
-
+    
     try
     {
 
@@ -1155,6 +1172,36 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         } 
     }
 
+    config_options.streaming = false;
+    if(cmd_options.streaming != NULL)
+    {
+        std::string streaming(cmd_options.streaming);
+        if(streaming == "true")
+        {
+            config_options.streaming = true;
+        } 
+    }
+
+    config_options.readStreamBufferSize = (500 * 1024 * 1024);
+    if (cmd_options.stream_buffer != NULL) 
+    {
+        std::string stream_buffer(cmd_options.stream_buffer);
+        config_options.readStreamBufferSize = uint64_t(stod(stream_buffer, &offset))  * uint64_t(1024 * 1024);
+    }
+
+    config_options.maxBlockPerFile = blobfuse_constants::maxStreamBlocksPerFile;
+    if (cmd_options.max_block_per_file != NULL) 
+    {
+        std::string max_block(cmd_options.max_block_per_file);
+        config_options.maxBlockPerFile = stod(max_block, &offset);
+    }
+
+    if (config_options.streaming && !config_options.readOnlyMount) {
+        syslog(LOG_ERR, "Read-Streaming is supported only on Readonly Mounts. Use '-o ro' option in mount command");    
+        fprintf(stderr, "Read-Streaming is supported only on Readonly Mounts. Use '-o ro' option in mount command");  
+        return 1;
+    }
+
     syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d Retry Policy (%d, %f, %f), Background Download %d, Evict on sync %d", 
         config_options.high_disk_threshold, config_options.low_disk_threshold,
         config_options.cachePollTimeout, config_options.maxEviction,
@@ -1166,6 +1213,12 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         syslog(LOG_INFO, "Background download is turned on");
     }
     
+    if (config_options.streaming) {
+        syslog(LOG_INFO, "Streaming : %d, Stream buffer size : %lu, Max Blocks : %d", 
+            config_options.streaming, config_options.readStreamBufferSize,
+            config_options.maxBlockPerFile);
+    }
+
     return 0;
 }
 

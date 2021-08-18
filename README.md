@@ -78,6 +78,10 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
      * [OPTIONAL] **--pre-mount-validate=false** : Set this to true to skip the cURL version check and just straight validate storage connection before mount. Default is false, so use this only if you know that you have the recent Curl version, otherwise blobfuse will hang. This option is only available from version 1.3.8
     * [OPTIONAL] **--background-download=false** : Set this true if you want file download to run in the background on open. Setting this to true will put a wait on 'read'/'write' calls till download completes. If the file is already in the local cache this switch is not evaluated. Default value is false. This option is only available from version 1.4.0
     * [OPTIONAL] **--invalidate-on-sync=false** : Set this to true if you want the particular file or directory content and attribute cache to be invalidated when the linux "sync" command is issued on a file or on a directory. 'sync' on file will remove the file from cache and invalidate its attribute cache, while 'sync' on directory will invalidate attribute cache for all files and directories under it recursively. Default is false. This option is only available from version 1.4.0
+    * [OPTIONAL] **--streaming=false** : Enable read streaming of files instead of disk-caching. This option works only with read-only mount. This option is only available from version 1.4.0
+    * [OPTIONAL] **--stream-cache-mb=500** : Limit total amount of data being cached in memory to conserve memory footprint of blobfuse.
+    * [OPTIONAL] **--max-block-per-file=3** : Maximum number of blocks to be cached in memory for a read streaming.
+
 ### Valid authentication setups:
 
 - Account Name & Key (`authType Key`)

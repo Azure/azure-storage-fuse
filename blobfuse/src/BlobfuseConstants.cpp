@@ -46,4 +46,6 @@ namespace blobfuse_constants {
     const int HTTP_REQUEST_CONFLICT = 409;
     const float minCurlVersion = 7.76;
     const float minKernelVersion = 4.16;
+
+    const int maxStreamBlocksPerFile = 3;
 }

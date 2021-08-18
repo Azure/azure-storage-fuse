@@ -83,6 +83,11 @@ struct configParams
 
     bool backgroundDownload;
     bool invalidateOnSync;
+
+    bool readOnlyMount;
+    bool streaming;
+    uint64_t readStreamBufferSize;
+    int maxBlockPerFile;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -121,6 +126,9 @@ struct cmdlineOptions
     const char *pre_mount_validate; // Validate storage auth before the mount
     const char *background_download; // Download the file in background instead of downloading in open call
     const char *invalidate_on_sync; // Delete file from cache when fsync is called 
+    const char *streaming; // Allow user to stream the read operation
+    const char *stream_buffer; // Stream buffer max size
+    const char *max_block_per_file; // Number of blocks to be cached per file in case of streaming
 };
 
 

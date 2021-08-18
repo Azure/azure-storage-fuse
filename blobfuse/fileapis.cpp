@@ -3,7 +3,10 @@
 #include <FileLockMap.h>
 
 #include <include/StorageBfsClientBase.h>
+#include <BlobStreamer.h>
+
 extern std::shared_ptr<StorageBfsClientBase> storage_client;
+extern std::shared_ptr<BlobStreamer> blob_streamer;
 
 std::shared_ptr<file_lock_map> file_lock_map::s_instance;
 std::mutex file_lock_map::s_mutex;
@@ -69,6 +72,16 @@ int azs_open(const char *path, struct fuse_file_info *fi)
     // We cannot use "flock" to prevent against this, because a) the file might not yet exist, and b) flock locks do not persist across file delete / recreate operations, and file renames.
     auto fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
     std::lock_guard<std::mutex> lock(*fmutex);
+
+    if (config_options.streaming) {
+        blob_streamer->OpenFile(pathString.substr(1).c_str());
+
+        int fid = blob_streamer->GetDummyHandle();
+        struct fhwrapper *fhwrap = new fhwrapper(fid, false);
+        fhwrap->file_name = pathString.substr(1);
+        fi->fh = (long unsigned int)fhwrap; // Store the file handle for later use.
+        return 0;
+    }
 
     // If the file/blob being opened does not exist in the cache, or the version in the cache is too old, we need to download / refresh the data from the service.
     // If the file hasn't been modified, st_ctime is the time when the file was originally downloaded or created.  st_mtime is the time when the file was last modified.  
@@ -240,6 +253,10 @@ int azs_read(const char *path, char *buf, size_t size, off_t offset, struct fuse
     struct fhwrapper *fhw = ((struct fhwrapper *)fi->fh);
     int fd = fhw->fh;
 
+    if (config_options.streaming) {
+        return blob_streamer->ReadFile(fhw->file_name.c_str(), offset, size, buf);
+    }
+
     if (config_options.backgroundDownload) {
         // Wait untill the download has finished
         auto dmutex = file_lock_map::get_instance()->get_delay_mutex(fhw->file_name.c_str());
@@ -348,6 +365,10 @@ int azs_flush(const char *path, struct fuse_file_info *fi)
     // In some cases, due (I believe) to us using the hard_unlink option, path will be null.  Thus, we need to get the file name from the file descriptor:
     struct fhwrapper *fhw = ((struct fhwrapper *)fi->fh);
 
+    if (config_options.streaming) {
+        return 0;
+    }
+
     if (config_options.backgroundDownload) {
         // Wait untill the download has finished
         auto dmutex = file_lock_map::get_instance()->get_delay_mutex(fhw->file_name.c_str());
@@ -452,6 +473,11 @@ int azs_release(const char *path, struct fuse_file_info * fi)
 
     struct fhwrapper *fhw = ((struct fhwrapper *)fi->fh);
     
+    if (config_options.streaming) {
+        blob_streamer->CloseFile(fhw->file_name.c_str());
+        return 0;
+    }
+
     // Unlock the file
     // Note that this will release the shared lock acquired in the corresponding open() call (the one that gave us this file descriptor, in the fuse_file_info).
     // It will not release any locks acquired from other calls to open(), in this process or in others.
@@ -513,7 +539,14 @@ int azs_unlink(const char *path)
     // Acquiring the mutex here guards against that condition.
     auto fmutex = file_lock_map::get_instance()->get_mutex(pathString.c_str());
     std::lock_guard<std::mutex> lock(*fmutex);
-    int remove_success = remove(mntPath);
+
+    int remove_success = 0;
+    if (config_options.streaming) {
+        remove_success = blob_streamer->DeleteFile(pathString.substr(1).c_str());
+    } else {
+        remove_success = remove(mntPath);
+    }
+
     // We don't fail if the remove() failed, because that's just removing the file in the local file cache, which may or may not be there.
 
     if (!remove_success)
