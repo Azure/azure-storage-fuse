@@ -498,7 +498,9 @@ int azs_fsync(const char * path, int /*isdatasync*/, struct fuse_file_info *fi)
 {
     if (config_options.invalidateOnSync) {
         syslog(LOG_INFO, "FSYNC : Request for forceful eviction of file : %s", path);
-        SET_FHW_FLAG(((struct fhwrapper *)fi->fh)->flags, FILE_FORCE_DELETE);
+        struct fhwrapper *fhw = ((struct fhwrapper *)fi->fh);
+        storage_client->InvalidateFile(fhw->file_name);
+        SET_FHW_FLAG(fhw->flags, FILE_FORCE_DELETE);
     }
     return 0; 
 }
