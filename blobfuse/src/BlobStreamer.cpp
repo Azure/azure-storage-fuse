@@ -1,9 +1,7 @@
 #include <BlobStreamer.h>
 #include <base64.h>
 
-const unsigned long long DOWNLOAD_CHUNK_SIZE = 16 * 1024 * 1024;
-const unsigned long long DOWNLOAD_SINGLE_CUNK_FILE_SIZE = 64 * 1024 * 1024;
-
+extern struct configParams config_options;
 CacheSizeCalculator* CacheSizeCalculator::mInstance = NULL;
 CacheSizeCalculator* CacheSizeCalculator::GetObj()
 {
@@ -78,17 +76,7 @@ void StreamObject::Cleanup()
 //  Get block of a given file based on give offset
 BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, StreamObject* obj)
 {
-    unsigned long long download_chunk_size = 0;
-    uint64_t start_offset = 0;
-
-    if (offset < DOWNLOAD_SINGLE_CUNK_FILE_SIZE) {
-        // First chunk we consider to be 64MB and rest all to be of 16MB.
-        download_chunk_size = DOWNLOAD_SINGLE_CUNK_FILE_SIZE;
-        start_offset = offset - (offset % DOWNLOAD_SINGLE_CUNK_FILE_SIZE);
-    } else {
-        download_chunk_size = DOWNLOAD_CHUNK_SIZE;
-        start_offset = offset - (offset % DOWNLOAD_CHUNK_SIZE);
-    }
+    uint64_t start_offset = (offset - (offset % block_size));
 
     obj->Lock();
 
@@ -103,7 +91,7 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
         block->valid = true;
         block->last = false;
 
-        azclient->DownloadToStream(file_name, block->buff, start_offset, download_chunk_size);
+        azclient->DownloadToStream(file_name, block->buff, start_offset, block_size);
         if (errno != 0)
         {
             obj->UnLock();
@@ -120,7 +108,7 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
         }
 
         block->length = block->buff.str().size();
-        if (block->length < download_chunk_size) {
+        if (block->length < block_size) {
             // We asked to read 16MB but got less data then assume its the end of file
             syslog(LOG_ERR, "File %s Block offset %lu : is last block", file_name, offset);
             block->last = true;
@@ -236,10 +224,17 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
     if (max_blocks_per_file <= 0) {
         // Get data in form of a stream and fill the output buffer with data retreived
         std::stringstream os;
-
+        syslog(LOG_ERR, "%s : Read (%lu, %lu)",
+                file_name, offset, length);
         azclient->DownloadToStream(file_name, os, offset, length);
         if (errno != 0)
         {
+            if (errno == 416) {
+                // Range given the request is invalid so we mark it as end of file
+                errno = 0;
+                return 0;
+            }
+
             int storage_errno = errno;
             syslog(LOG_ERR, "Failed to download block of %s with offset %lu.  Errno = %d.\n", file_name, offset, storage_errno);
             return -storage_errno;

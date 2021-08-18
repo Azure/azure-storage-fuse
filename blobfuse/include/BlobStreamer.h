@@ -143,7 +143,7 @@ class StreamObject {
 // BlobStreamer : Holds a map holding StreamObject for each file being open
 class  BlobStreamer {
     public:
-        BlobStreamer(std::shared_ptr<StorageBfsClientBase> client, uint64_t buffer_size, int max_blocks):
+        BlobStreamer(std::shared_ptr<StorageBfsClientBase> client, uint64_t buffer_size, int max_blocks, uint64_t blk_size):
             azclient(client)
         {
             if (buffer_size == 0) {
@@ -153,6 +153,7 @@ class  BlobStreamer {
             CacheSizeCalculator::GetObj()->SetMaxSize(buffer_size);
             nextHandle = 0;
             max_blocks_per_file = max_blocks;
+            block_size = blk_size;
         }
 
         // As all data is cached in memory, there is no physical handle we can open so just return back a seq number for handle
@@ -178,6 +179,7 @@ class  BlobStreamer {
 
     private:
         uint64_t        max_blocks_per_file;    //  Max number of blocks we can cache per file
+        uint64_t        block_size;             //  Size of each block to be downloaded
         int             nextHandle;             //  Next available handle id
         std::mutex      m_mutex;                //  Mutex to sync the map
 

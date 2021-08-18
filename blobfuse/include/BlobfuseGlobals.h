@@ -88,6 +88,7 @@ struct configParams
     bool streaming;
     uint64_t readStreamBufferSize;
     int maxBlockPerFile;
+    uint64_t blockSize;
 };
 
 // FUSE contains a specific type of command-line option parsing; here we are just following the pattern.
@@ -129,6 +130,7 @@ struct cmdlineOptions
     const char *streaming; // Allow user to stream the read operation
     const char *stream_buffer; // Stream buffer max size
     const char *max_block_per_file; // Number of blocks to be cached per file in case of streaming
+    const char *block_size_mb; // Size of each block to be downloaded during streaming
 };
 
 
