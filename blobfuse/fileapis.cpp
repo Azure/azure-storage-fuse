@@ -501,10 +501,9 @@ int azs_release(const char *path, struct fuse_file_info * fi)
         AZS_DEBUGLOGV("Adding file to the GC from azs_release.  File = %s\n.", mntPath);
 
         // store the file in the cleanup list
-        if (IS_FHW_FLAG_SET(fhw->flags, FILE_FORCE_DELETE) && 
-            !IS_FHW_FLAG_SET(fhw->flags, FILE_DONWLOADED_IN_OPEN)) {
-            storage_client->InvalidateFile(pathString.substr(1));
+        if (IS_FHW_FLAG_SET(fhw->flags, FILE_FORCE_DELETE)) {
             g_gc_cache->uncache_file(pathString, true);
+            storage_client->InvalidateFile(pathString.substr(1));
         } else {
             g_gc_cache->uncache_file(pathString);
         }
