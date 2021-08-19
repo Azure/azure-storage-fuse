@@ -194,12 +194,14 @@ class BfsFileProperty
 
         time_t get_last_access()
         {
-            return last_access != 0 ? last_access : get_last_modified();
+            //return last_access != 0 ? last_access : get_last_modified();
+            return get_last_modified();
         }
 
         time_t get_last_change()
         {
-            return last_change != 0 ? last_change : get_last_modified();
+            //return last_change != 0 ? last_change : get_last_modified();
+            return get_last_modified();
         }
 
         bool is_blob_symlink()
