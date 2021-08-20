@@ -33,17 +33,18 @@ int StreamObject::RemoveBlock()
 {
     BlobBlock* last_block = m_block_cache_list.back();
 
-    // Lock it so that we wait untill any reader is using this block
-    // then we remove it from the list and unlock, as its not in the list now,
-    // no one can search or use it anymore
-    last_block->lck.lock();
-    m_block_cache_list.pop_back();
-    last_block->lck.unlock();
-
     if (last_block) {
+        // Lock it so that we wait untill any reader is using this block
+        // then we remove it from the list and unlock, as its not in the list now,
+        // no one can search or use it anymore
+        last_block->lck.lock();
+        m_block_cache_list.pop_back();
+        
         // Release memory used by this block
         CacheSizeCalculator::GetObj()->RemoveSize(last_block->length);
         last_block->buff.clear();
+        last_block->lck.unlock();
+        
         delete last_block;
     }
 
@@ -179,6 +180,11 @@ int BlobStreamer::CloseFile(const char* file_name)
             
             m_mutex.lock();
             file_map.erase(file_name);
+            
+            obj->Lock();
+            obj->Cleanup();
+            obj->UnLock();
+
             delete obj;
             m_mutex.unlock();
         }
@@ -204,12 +210,16 @@ int BlobStreamer::DeleteFile(const char* file_name)
     }
 
     StreamObject* obj = iter->second;
-    obj->Lock();
     file_map.erase(file_name);
     m_mutex.unlock();
 
-    obj->Cleanup();
-    delete obj;
+    if (obj) {
+        obj->Lock();
+        obj->Cleanup();
+        obj->UnLock();
+
+        delete obj;
+    }
 
     return 0;
 }
