@@ -711,14 +711,14 @@ jobs:
 
       # Create config file for SPN Login
       - script: |
-          echo "accountName " $(NIGHTLY_SPN_ACC_NAME) > $(BLOBFUSE_CFG_GTEST)
+          echo "accountName " $(NIGHTLY_STO_BLOB_ACC_NAME) > $(BLOBFUSE_CFG_GTEST)
           echo "authType SPN" >> $(BLOBFUSE_CFG_GTEST)
-          echo "servicePrincipalClientId " $(NIGHTLY_SPN_CLIENT_ID) >> $(BLOBFUSE_CFG_GTEST)
-          echo "servicePrincipalTenantId " $(NIGHTLY_SPN_TENANT_ID) >> $(BLOBFUSE_CFG_GTEST)
-          echo "servicePrincipalClientSecret " $(NIGHTLY_SPN_CLIENT_SECRET) >> $(BLOBFUSE_CFG_GTEST)
-          echo "containerName " $(NIGHTLY_SPN_CONT_NAME) >> $(BLOBFUSE_CFG_GTEST)
+          echo "servicePrincipalClientId " $(NIGHTLY_ADL_SPN_CLIENT_ID) >> $(BLOBFUSE_CFG_GTEST)
+          echo "servicePrincipalTenantId " $(NIGHTLY_ADL_SPN_TENANT_ID) >> $(BLOBFUSE_CFG_GTEST)
+          echo "servicePrincipalClientSecret " $(NIGHTLY_ADL_SPN_CLIENT_SECRET) >> $(BLOBFUSE_CFG_GTEST)
+          echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_GTEST)
           cat $(BLOBFUSE_CFG_GTEST)
-          echo "Account : " $(NIGHTLY_SPN_ACC_NAME)
+          echo "Account : " $(NIGHTLY_STO_BLOB_ACC_NAME)
         displayName: "TEST - Create SPN Config"
         condition: eq(variables.imageName, 'ubuntu-20.04')
 
