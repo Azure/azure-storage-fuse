@@ -63,18 +63,18 @@ class CacheSizeCalculator
 
 // Structure representing one block segment
 struct BlobBlock {
-        bool                valid;  // Block is valid or not
-        bool                last;   // This block is the last block of file
-        uint64_t            start;  // Start offset of block
-        uint64_t            length;    // End offset of block
-        std::stringstream   buff;   // Buffer holding the data
-        std::mutex          lck;    // No one shall delete the block when someone is reading it
+        bool                valid;          // Block is valid or not
+        bool                last;           // This block is the last block of file
+        uint64_t            start_offset;    // Start offset of block
+        uint64_t            data_length;    // End offset of block
+        std::stringstream   buff;           // Buffer holding the data
+        std::mutex          lck;            // No one shall delete the block when someone is reading it
 
         BlobBlock() {
             valid = false;
             last = false;
-            start = 0;
-            length = 0;
+            start_offset = 0;
+            data_length = 0;
         }
 };
 

@@ -22,7 +22,7 @@ int StreamObject::AddBlock(BlobBlock* block, uint64_t max_blocks_per_file)
     }
 
     // Add the new block to front of the list (LRU)
-    CacheSizeCalculator::GetObj()->AddSize(block->length);
+    CacheSizeCalculator::GetObj()->AddSize(block->data_length);
     m_block_cache_list.push_front(block);
 
     return 0;
@@ -41,7 +41,7 @@ int StreamObject::RemoveBlock()
         m_block_cache_list.pop_back();
         
         // Release memory used by this block
-        CacheSizeCalculator::GetObj()->RemoveSize(last_block->length);
+        CacheSizeCalculator::GetObj()->RemoveSize(last_block->data_length);
         last_block->buff.clear();
         last_block->lck.unlock();
         
@@ -54,9 +54,9 @@ int StreamObject::RemoveBlock()
 // Search for a block based on offset
 BlobBlock* StreamObject::GetBlock(uint64_t offset)
 {
-    // Start offsets are rounded off to 16MB multiples so just match the start offset
+    // Start offsets are rounded off to block-size multiples so just match the start offset
     for(auto it = m_block_cache_list.begin(); it != m_block_cache_list.end(); ++it) {
-        if ((*it)->valid && (*it)->start == offset) {
+        if ((*it)->valid && (*it)->start_offset == offset) {
             return (*it);
         }
     }
@@ -77,6 +77,9 @@ void StreamObject::Cleanup()
 //  Get block of a given file based on give offset
 BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, StreamObject* obj)
 {
+    // As we always download in term of block_size to search a block that can serve this request
+    // we need to find the start offset of block to which this offset belongs so convert offset
+    // to its closest start-offset of a given block.
     uint64_t start_offset = (offset - (offset % block_size));
 
     obj->Lock();
@@ -88,7 +91,7 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
         syslog(LOG_DEBUG, "File %s Block offset %lu : not found. Download and cache", file_name, offset);
 
         block = new BlobBlock;
-        block->start = start_offset;
+        block->start_offset = start_offset;
         block->valid = true;
         block->last = false;
 
@@ -108,8 +111,8 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
             return NULL;
         }
 
-        block->length = block->buff.str().size();
-        if (block->length < block_size) {
+        block->data_length = block->buff.str().size();
+        if (block->data_length < block_size) {
             // We asked to read 16MB but got less data then assume its the end of file
             syslog(LOG_ERR, "File %s Block offset %lu : is last block", file_name, offset);
             block->last = true;
@@ -282,11 +285,11 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
         }
 
         // Based on offset and block being used calculate the start offset inside the block
-        uint64_t start_offset = offset - block->start;
-        uint64_t pending_data = block->length - start_offset;
+        uint64_t start_offset = offset - block->start_offset;
+        uint64_t pending_data = block->data_length - start_offset;
 
         syslog(LOG_ERR, "%s : Read Block (%lu, %lu, %d)  Request (%lu, %lu)  Read (%lu, %lu)",
-                file_name, block->start, ((block->length + block->start) - 1), block->last, 
+                file_name, block->start_offset, ((block->data_length + block->start_offset) - 1), block->last, 
                 offset, length, 
                 start_offset, pending_data);
 
