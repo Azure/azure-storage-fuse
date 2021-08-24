@@ -237,8 +237,7 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
     if (max_blocks_per_file <= 0) {
         // Get data in form of a stream and fill the output buffer with data retreived
         std::stringstream os;
-        //syslog(LOG_DEBUG, "%s : Read (%lu, %lu)", \
-                file_name, offset, length);
+        //syslog(LOG_DEBUG, "%s : Read (%lu, %lu)", file_name, offset, length);
         azclient->DownloadToStream(file_name, os, offset, length);
         if (errno != 0)
         {
