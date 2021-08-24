@@ -102,7 +102,7 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
 
             int storage_errno = errno;
             if (errno == 416) {
-                syslog(LOG_ERR, "Failed to download block of %s with offset %lu.  Errno = %d (Out of range).\n", file_name, start_offset, storage_errno);
+                syslog(LOG_DEBUG, "Failed to download block of %s with offset %lu.  Errno = %d (Out of range).\n", file_name, start_offset, storage_errno);
                 errno = storage_errno;
                 return NULL;
             }
@@ -114,7 +114,7 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
         block->data_length = block->buff.str().size();
         if (block->data_length < block_size) {
             // We asked to read 16MB but got less data then assume its the end of file
-            syslog(LOG_ERR, "File %s Block offset %lu : is last block", file_name, offset);
+            //syslog(LOG_DEBUG, "File %s Block offset %lu : is last block", file_name, offset);
             block->last = true;
         }
 
@@ -237,7 +237,7 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
     if (max_blocks_per_file <= 0) {
         // Get data in form of a stream and fill the output buffer with data retreived
         std::stringstream os;
-        syslog(LOG_ERR, "%s : Read (%lu, %lu)",
+        //syslog(LOG_DEBUG, "%s : Read (%lu, %lu)", \
                 file_name, offset, length);
         azclient->DownloadToStream(file_name, os, offset, length);
         if (errno != 0)
@@ -288,7 +288,7 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
         uint64_t start_offset = offset - block->start_offset;
         uint64_t pending_data = block->data_length - start_offset;
 
-        syslog(LOG_ERR, "%s : Read Block (%lu, %lu, %d)  Request (%lu, %lu)  Read (%lu, %lu)",
+        syslog(LOG_DEBUG, "%s : Read Block (%lu, %lu, %d)  Request (%lu, %lu)  Read (%lu, %lu)",
                 file_name, block->start_offset, ((block->data_length + block->start_offset) - 1), block->last, 
                 offset, length, 
                 start_offset, pending_data);
@@ -304,13 +304,13 @@ int BlobStreamer::ReadFile(const char* file_name, uint64_t offset, uint64_t leng
 
             if (block->last) {
                 // This block is the last so terminate the loop
-                syslog(LOG_ERR, "%s read at offset %lu marks end of file with %d bytes", file_name, offset, len);
+                //syslog(LOG_DEBUG, "%s read at offset %lu marks end of file with %d bytes", file_name, offset, len);
                 length = 0;
             } else {
                 // Data overlaps two blocks so we need to to partial read here
                 length -= pending_data;
                 offset += pending_data;
-                syslog(LOG_ERR, "%s read at offset %lu overlaps two blocks for %lu bytes", file_name, offset, length);
+                //syslog(LOG_DEBUG, "%s read at offset %lu overlaps two blocks for %lu bytes", file_name, offset, length);
             }
         } else {
             // Data is fully available in this block so finish the read from this block and return
