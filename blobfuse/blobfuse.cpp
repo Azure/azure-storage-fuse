@@ -72,7 +72,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--invalidate-on-sync=%s", invalidate_on_sync),
     OPTION("--streaming=%s", streaming),
     OPTION("--stream-cache-mb=%s", stream_buffer),
-    OPTION("--max-block-per-file=%s", max_block_per_file),
+    OPTION("--max-blocks-per-file=%s", max_blocks_per_file),
     OPTION("--block-size-mb=%s", block_size_mb),
 
     OPTION("--version", version),
@@ -481,7 +481,7 @@ void *azs_init(struct fuse_conn_info * conn)
         blob_streamer = std::make_shared<BlobStreamer>(
                             storage_client, 
                             config_options.readStreamBufferSize, 
-                            config_options.maxBlockPerFile,
+                            config_options.maxBlocksPerFile,
                             config_options.blockSize);
     }
 
@@ -1191,11 +1191,11 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.readStreamBufferSize = uint64_t(stod(stream_buffer, &offset))  * uint64_t(1024 * 1024);
     }
 
-    config_options.maxBlockPerFile = blobfuse_constants::maxStreamBlocksPerFile;
-    if (cmd_options.max_block_per_file != NULL) 
+    config_options.maxBlocksPerFile = blobfuse_constants::maxStreamBlocksPerFile;
+    if (cmd_options.max_blocks_per_file != NULL) 
     {
-        std::string max_block(cmd_options.max_block_per_file);
-        config_options.maxBlockPerFile = stod(max_block, &offset);
+        std::string max_block(cmd_options.max_blocks_per_file);
+        config_options.maxBlocksPerFile = stod(max_block, &offset);
     }
 
     config_options.blockSize = (16 * 1024 * 1024);
@@ -1226,7 +1226,7 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     if (config_options.streaming) {
         syslog(LOG_INFO, "Streaming : %d, Stream buffer size : %lu, Max Blocks : %d, Block Size : %ld", 
             config_options.streaming, config_options.readStreamBufferSize,
-            config_options.maxBlockPerFile, config_options.blockSize);
+            config_options.maxBlocksPerFile, config_options.blockSize);
     }
 
     return 0;

@@ -80,7 +80,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * [OPTIONAL] **--invalidate-on-sync=false** : Set this to true if you want the particular file or directory content and attribute cache to be invalidated when the linux "sync" command is issued on a file or on a directory. 'sync' on file will remove the file from cache and invalidate its attribute cache, while 'sync' on directory will invalidate attribute cache for all files and directories under it recursively. Default is false. This option is only available from version 1.4.0
     * [OPTIONAL] **--streaming=false** : Enable read streaming of files instead of disk-caching. This option works only with read-only mount. This option is only available from version 1.4.0
     * [OPTIONAL] **--stream-cache-mb=500** : Limit total amount of data being cached in memory to conserve memory footprint of blobfuse.
-    * [OPTIONAL] **--max-block-per-file=3** : Maximum number of blocks to be cached in memory for a read streaming.
+    * [OPTIONAL] **--max-blocks-per-file=3** : Maximum number of blocks to be cached in memory for a read streaming.
     * [OPTIONAL] **--block-size-mb=16** : Size (in MB) of a block to be downloaded during streaming.
     
 ### Valid authentication setups:
