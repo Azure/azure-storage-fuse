@@ -191,7 +191,8 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_msi() {
                 configurations.identityClientId,
                 configurations.objectId,
                 configurations.resourceId,
-                configurations.msiEndpoint);
+                configurations.msiEndpoint,
+                configurations.msiSecret);
 
         std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback);
 
