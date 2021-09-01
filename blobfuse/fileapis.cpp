@@ -15,7 +15,7 @@ std::deque<file_to_delete> cleanup;
 std::mutex deque_lock;
 std::shared_ptr<gc_cache> g_gc_cache;
 
-int DownloadFileToDisk(std::string pathString, std::string mntPathString, BfsFileProperty blob_property, bool is_delayed)
+int DownloadFileToDisk(std::string pathString, std::string mntPathString, bool is_delayed)
 {
     errno = 0;
     time_t last_modified = {};
@@ -40,8 +40,9 @@ int DownloadFileToDisk(std::string pathString, std::string mntPathString, BfsFil
 
     // preserve the last modified time
     struct utimbuf new_time;
-    new_time.modtime = blob_property.get_last_modified();;
-    new_time.actime = blob_property.get_last_modified();;
+    new_time.modtime = last_modified;
+    new_time.actime = last_modified;
+
     utime(mntPathString.c_str(), &new_time);
 
     if (is_delayed) {
@@ -148,7 +149,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
             new_download = true;
 
             if (!config_options.backgroundDownload) {
-                int res = DownloadFileToDisk(pathString, mntPathString, BfsFileProperty(), false);
+                int res = DownloadFileToDisk(pathString, mntPathString, false);
                 if (res != 0) return res;
             } else {
                 // User has configured to delay the download and do it in background.
@@ -175,7 +176,7 @@ int azs_open(const char *path, struct fuse_file_info *fi)
                     dmutex->lock();
 
                     syslog(LOG_DEBUG, "Delaying download of file %s", mntPath);
-                    std::thread t1(std::bind(&DownloadFileToDisk, pathString, mntPathString, blob_property, true));
+                    std::thread t1(std::bind(&DownloadFileToDisk, pathString, mntPathString, true));
                     t1.detach();
                 } else {
                     // Failure in getting properties of the given file
