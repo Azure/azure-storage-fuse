@@ -165,7 +165,7 @@ int read_config_env()
 
         if(env_aad_endpoint)
         {
-            config_options.aadEndpoint = env_auth_type;
+            config_options.aadEndpoint = env_aad_endpoint;
         }
 
         if(env_blob_endpoint) {
@@ -319,7 +319,6 @@ int read_config(const std::string configFile)
         }
         else if(line.find("aadEndpoint") != std::string::npos)
         {
-            std::cout << line.find("aadEndpoint");
             std::string altAADEndpointStr(value);
             config_options.aadEndpoint = altAADEndpointStr;
         }
