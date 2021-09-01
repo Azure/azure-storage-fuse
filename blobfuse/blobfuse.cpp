@@ -1228,6 +1228,8 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             config_options.maxBlocksPerFile, config_options.blockSize);
     }
 
+    
+    syslog(LOG_INFO,"Blobfuse version : %s", _BLOBFUSE_VERSION_);
     return 0;
 }
 
