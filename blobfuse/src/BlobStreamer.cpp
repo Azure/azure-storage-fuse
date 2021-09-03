@@ -97,13 +97,28 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
         block->valid = true;
         block->last = false;
 
-        if (block_size > MAX_BLOCK_SIZE_FOR_SINGLE_READ) {
+        uint64_t download_size = block_size;
+        if (download_size > MAX_BLOCK_SIZE_FOR_SINGLE_READ && 
+            obj->GetSize() > 0) 
+        {
+            if ((start_offset + download_size) > obj->GetSize()) {
+                download_size = obj->GetSize() - start_offset;
+                if (download_size == 0) {
+                    obj->UnLock();
+                    syslog(LOG_ERR, "Failed to download block of %s with offset %lu.  Errno : (Out of range).\n", file_name, start_offset);
+                    errno = 416;
+                    return NULL;
+                }
+            }
+        }
+
+        if (download_size < MAX_BLOCK_SIZE_FOR_SINGLE_READ) {
+            azclient->DownloadToStream(file_name, block->buff, start_offset, download_size);
+        } else {
             char *buff = (char*)malloc(block_size);
-            azclient->DownloadToBuffer(file_name, buff, start_offset, block_size, config_options.concurrency);
+            azclient->DownloadToBuffer(file_name, buff, start_offset, download_size, config_options.concurrency);
             block->buff.write(buff, block_size);
             free(buff);
-        } else {
-            azclient->DownloadToStream(file_name, block->buff, start_offset, block_size);
         }
 
         if (errno != 0)
@@ -152,6 +167,13 @@ int BlobStreamer::OpenFile(const char* file_name)
             // File is not found in the map so create a new entry and cache the first block
             obj =  new StreamObject;
             file_map[file_name] = obj;
+
+            if (block_size > MAX_BLOCK_SIZE_FOR_SINGLE_READ) {
+                BfsFileProperty blob_property = azclient->GetProperties(file_name);
+                if ((errno == 0) && blob_property.isValid() && blob_property.exists()) {
+                    obj->SetSize(blob_property.size);
+                }
+            }
         } else {
             // File object exists in our map
             obj = iter->second;
