@@ -306,6 +306,8 @@ public:
     virtual long int DownloadToFile(const std::string blobName, const std::string filePath, time_t& last_modified) = 0;
     virtual long int DownloadToStream(const std::string blobName, std::ostream & destStream,
                         unsigned long long offset, unsigned long long size) = 0;
+    virtual long int DownloadToBuffer(const std::string blobName, char* destBuff,
+                        unsigned long long offset, unsigned long long size, int parallel) = 0;
     ///<summary>
     /// Creates a Directory
     ///</summary>

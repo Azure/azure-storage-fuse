@@ -208,6 +208,9 @@ public:
     long int DownloadToFile(const std::string blobName, const std::string filePath, time_t& last_modified) override;
     long int DownloadToStream(const std::string blobName, std::ostream & destStream,
                 unsigned long long offset, unsigned long long size) override;
+    long int DownloadToBuffer(const std::string blobName, char* destBuff,
+                unsigned long long offset, unsigned long long size, int parallel) override;
+
     ///<summary>
     /// Creates a Directory
     ///</summary>

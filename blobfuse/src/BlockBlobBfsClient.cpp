@@ -329,6 +329,13 @@ long int BlockBlobBfsClient::DownloadToStream(const std::string blobName, std::o
     return 0;
 }
 
+long int BlockBlobBfsClient::DownloadToBuffer(const std::string blobName, char* destBuff,
+                                                unsigned long long offset, unsigned long long size, int parallel)
+{
+    m_blob_client->download_blob_to_buffer(configurations.containerName, blobName, offset, size, destBuff, parallel);
+    return 0;
+}
+
 ///<summary>
 /// Creates a Directory
 ///</summary>

@@ -1,6 +1,8 @@
 #include <BlobStreamer.h>
 #include <base64.h>
 
+#define MAX_BLOCK_SIZE_FOR_SINGLE_READ (64 * 1204 * 1024)
+
 extern struct configParams config_options;
 CacheSizeCalculator* CacheSizeCalculator::mInstance = NULL;
 CacheSizeCalculator* CacheSizeCalculator::GetObj()
@@ -95,7 +97,15 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
         block->valid = true;
         block->last = false;
 
-        azclient->DownloadToStream(file_name, block->buff, start_offset, block_size);
+        if (block_size > MAX_BLOCK_SIZE_FOR_SINGLE_READ) {
+            char *buff = (char*)malloc(block_size);
+            azclient->DownloadToBuffer(file_name, buff, start_offset, block_size, config_options.concurrency);
+            block->buff.write(buff, block_size);
+            free(buff);
+        } else {
+            azclient->DownloadToStream(file_name, block->buff, start_offset, block_size);
+        }
+
         if (errno != 0)
         {
             obj->UnLock();
