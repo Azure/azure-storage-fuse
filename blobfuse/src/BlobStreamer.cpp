@@ -115,9 +115,9 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
         if (download_size < MAX_BLOCK_SIZE_FOR_SINGLE_READ) {
             azclient->DownloadToStream(file_name, block->buff, start_offset, download_size);
         } else {
-            char *buff = (char*)malloc(block_size);
+            char *buff = (char*)malloc(download_size);
             azclient->DownloadToBuffer(file_name, buff, start_offset, download_size, config_options.concurrency);
-            block->buff.write(buff, block_size);
+            block->buff.write(buff, download_size);
             free(buff);
         }
 
