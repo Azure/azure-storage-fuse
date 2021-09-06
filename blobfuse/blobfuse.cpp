@@ -284,13 +284,13 @@ int read_config(const std::string configFile)
         {
             std::string httpsProxyStr(value);
             config_options.httpsProxy = httpsProxyStr;
-            syslog(LOG_DEBUG, "Https Proxy server %s will be used to connect to storage account", config_options.httpsProxy.c_str());
+            syslog(LOG_INFO, "Https Proxy server %s will be used to connect to storage account", config_options.httpsProxy.c_str());
         }
         else if(line.find("httpProxy") != std::string::npos)
         {
             std::string httpProxyStr(value);
             config_options.httpProxy = httpProxyStr;
-            syslog(LOG_DEBUG, "Http Proxy server %s will be used to connect to storage account", config_options.httpsProxy.c_str());
+            syslog(LOG_INFO, "Http Proxy server %s will be used to connect to storage account", config_options.httpProxy.c_str());
         }
         else if(line.find("authType") != std::string::npos)
         {
