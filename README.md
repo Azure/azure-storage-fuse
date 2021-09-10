@@ -133,8 +133,8 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * `AZURE_STORAGE_SPN_CLIENT_SECRET`: Specifies the client secret for your application registration.
 
 - Proxy Server:
-     * `httpsProxy`: The proxy server address. Example: http://10.1.22.4:8080/".    
-    * `httpProxy`: The proxy server address when https is turned off forcing http. Example: http://10.1.22.4:8080/".
+     * `HTTPS_PROXY`: The proxy server address. Example: http://10.1.22.4:8080/".    
+     * `HTTP_PROXY`: The proxy server address when https is turned off forcing http. Example: http://10.1.22.4:8080/".
 
 
 ### Config file options
