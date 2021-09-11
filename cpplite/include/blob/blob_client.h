@@ -508,7 +508,8 @@ namespace azure { namespace storage_lite {
         /// <param name="size">The size of the data to download from the blob, in bytes.</param>
         /// <param name="os">The target stream.</param>
         AZURE_STORAGE_API virtual void download_blob_to_stream(const std::string &container, const std::string &blob, unsigned long long offset, unsigned long long size, std::ostream &os);
-
+        AZURE_STORAGE_API virtual void download_blob_to_buffer(const std::string &container, const std::string &blob, unsigned long long offset, unsigned long long size, char* buffer, int parallelism);
+        
         /// <summary>
         /// Downloads the contents of a blob to a local file.
         /// </summary>

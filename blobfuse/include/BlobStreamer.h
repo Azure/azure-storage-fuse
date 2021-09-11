@@ -83,6 +83,7 @@ class StreamObject {
     public:
         StreamObject() {
             ref_count = 0;
+            file_size = 0;
         }
 
         int IncRefCount() {
@@ -105,6 +106,14 @@ class StreamObject {
         int GetRefCount() {
             std::lock_guard<std::mutex> lock(m_mutex);
             return ref_count;
+        }
+
+        void SetSize(uint64_t size) {
+            file_size = size;
+        }
+
+        uint64_t GetSize() {
+            return file_size;
         }
 
         void Lock() {
@@ -134,6 +143,7 @@ class StreamObject {
 
     private:
         int                 ref_count;      // How many open handles are there for this file
+        uint64_t            file_size;      // Total size of the file
         std::mutex          m_mutex;        // Mutex for safety
 
         list<BlobBlock*>    m_block_cache_list;   // List of blocks cached for this file
