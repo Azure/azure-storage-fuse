@@ -165,7 +165,7 @@ int read_config_env()
 
         if(env_aad_endpoint)
         {
-            config_options.aadEndpoint = env_auth_type;
+            config_options.aadEndpoint = env_aad_endpoint;
         }
 
         if(env_blob_endpoint) {
@@ -319,7 +319,6 @@ int read_config(const std::string configFile)
         }
         else if(line.find("aadEndpoint") != std::string::npos)
         {
-            std::cout << line.find("aadEndpoint");
             std::string altAADEndpointStr(value);
             config_options.aadEndpoint = altAADEndpointStr;
         }
@@ -1229,6 +1228,8 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             config_options.maxBlocksPerFile, config_options.blockSize);
     }
 
+    
+    syslog(LOG_INFO,"Blobfuse version : %s", _BLOBFUSE_VERSION_);
     return 0;
 }
 
