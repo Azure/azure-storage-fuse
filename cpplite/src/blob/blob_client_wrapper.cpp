@@ -583,6 +583,38 @@ namespace azure {  namespace storage_lite {
             }
         }
 
+        void blob_client_wrapper::download_blob_to_buffer(const std::string &container, const std::string &blob, unsigned long long offset, unsigned long long size, char* buffer, int parallelism)
+        {
+            if(!is_valid())
+            {
+                errno = client_not_init;
+                return;
+            }
+
+            try
+            {
+                auto task = m_blobClient->download_blob_to_buffer(container, blob, offset, size, buffer, parallelism);
+                task.wait();
+                auto result = task.get();
+
+                if(!result.success())
+                {
+                    errno = std::stoi(result.error().code);
+                }
+                else
+                {
+                    errno = 0;
+                }
+            }
+            catch(std::exception& ex)
+            {
+                logger::log(log_level::error, "Unknown failure in download_blob_to_buffer.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
+                errno = unknown_error;
+                return;
+            }
+        }
+
+
         void blob_client_wrapper::download_blob_to_file(const std::string &container, const std::string &blob, const std::string &destPath, time_t &returned_last_modified, size_t parallel)
         {
             if(!is_valid())

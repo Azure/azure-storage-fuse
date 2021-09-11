@@ -196,6 +196,12 @@ long int AttrCacheBfsClient::DownloadToStream(const std::string blobName, std::o
     return blob_client->DownloadToStream(blobName, destStream, offset, size);
 }
 
+long int AttrCacheBfsClient::DownloadToBuffer(const std::string blobName, char* destBuff,
+                                                unsigned long long offset, unsigned long long size, int parallel)
+{
+    return blob_client->DownloadToBuffer(blobName, destBuff, offset, size, parallel);
+}
+
 bool AttrCacheBfsClient::CreateDirectory(const std::string directoryPath)
 {
     std::shared_ptr<boost::shared_mutex> dir_mutex = attr_cache.get_dir_item(get_parent_str(directoryPath));
