@@ -74,6 +74,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--stream-cache-mb=%s", stream_buffer),
     OPTION("--max-blocks-per-file=%s", max_blocks_per_file),
     OPTION("--block-size-mb=%s", block_size_mb),
+    OPTION("--enable-gen1=%s", enable_gen1),
 
     OPTION("--version", version),
     OPTION("-v", version),
@@ -399,6 +400,68 @@ void destroyBlobfuseOnAuthError()
 }
 
 int configure_tls();
+
+void *validate_storage(){
+    if (!config_options.preMountValidate && libcurl_version < blobfuse_constants::minCurlVersion) {
+        // Curl was not intialized for lower version as that results into
+        // failure post fork. So tls and cpplite were not initialized pre-fork for lower
+        // kernel version. Do the init now before starting.
+        syslog(LOG_CRIT, "** Post fork authentication for older libcurl version");
+
+        configure_tls();
+        if(storage_client->AuthenticateStorage())
+        {
+            syslog(LOG_DEBUG, "Successfully Authenticated!");
+        }
+        else
+        {
+            char errStr[] = "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.\n";
+            if (stdErrFD != -1) {
+                ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
+                if (n == -1) {
+                    syslog(LOG_ERR, "Failed to report back the status of auth.");
+                }
+            }
+            syslog(LOG_ERR, "%s", errStr);
+            std::thread t1(std::bind(&destroyBlobfuseOnAuthError));
+            t1.detach();
+            return NULL;
+        }
+    }
+    if (stdErrFD != -1) {
+        // Test code to print on console
+        /*char errStr[] = "Blobfuse Auth successful\n";
+        ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
+        if (n == -1) {
+            syslog(LOG_ERR, "Failed to report back the status of auth.");
+        }*/
+        close(stdErrFD);
+    }
+
+    if (config_options.authType == MSI_AUTH ||
+        config_options.authType == SPN_AUTH)
+    {
+        std::shared_ptr<OAuthTokenCredentialManager> tokenManager;
+        if (config_options.caCertFile.empty())
+        {
+            tokenManager = GetTokenManagerInstance(EmptyCallback);
+        }
+        else
+        {
+            tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.caCertFile, config_options.httpsProxy);        }
+
+        tokenManager->StartTokenMonitor();
+    }
+
+    if (config_options.streaming) {
+        blob_streamer = std::make_shared<BlobStreamer>(
+                storage_client,
+                config_options.readStreamBufferSize,
+                config_options.maxBlocksPerFile,
+                config_options.blockSize);
+    }
+    return NULL;
+}
 void *azs_init(struct fuse_conn_info * conn)
 {
     syslog(LOG_DEBUG, "azs_init ran");
@@ -425,66 +488,18 @@ void *azs_init(struct fuse_conn_info * conn)
     g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
     g_gc_cache->run();
     
-    if (!config_options.preMountValidate && libcurl_version < blobfuse_constants::minCurlVersion) {
-        // Curl was not intialized for lower version as that results into
-        // failure post fork. So tls and cpplite were not initialized pre-fork for lower
-        // kernel version. Do the init now before starting.
-        syslog(LOG_CRIT, "** Post fork authentication for older libcurl version");
-
-        configure_tls();
-        if(storage_client->AuthenticateStorage())
-        {
-            syslog(LOG_DEBUG, "Successfully Authenticated!");   
-        }
-        else
-        {
-            char errStr[] = "Unable to start blobfuse due to a lack of credentials. Please check the readme for valid auth setups.\n";
-            if (stdErrFD != -1) {
-                ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
-                if (n == -1) {
-                    syslog(LOG_ERR, "Failed to report back the status of auth.");
-                }
-            }
-            syslog(LOG_ERR, "%s", errStr);
-            std::thread t1(std::bind(&destroyBlobfuseOnAuthError));
-            t1.detach();
-            return NULL;
-        }
-    }
-    if (stdErrFD != -1) {
-        // Test code to print on console 
-        /*char errStr[] = "Blobfuse Auth successful\n";
-        ssize_t n = write(stdErrFD, errStr, sizeof(errStr));
-        if (n == -1) {
-            syslog(LOG_ERR, "Failed to report back the status of auth.");
-        }*/
-        close(stdErrFD);
-    }
-
-    if (config_options.authType == MSI_AUTH ||
-        config_options.authType == SPN_AUTH)
-    {
-        std::shared_ptr<OAuthTokenCredentialManager> tokenManager;
-        if (config_options.caCertFile.empty())
-        {
-            tokenManager = GetTokenManagerInstance(EmptyCallback);
-        }
-        else
-        {
-            tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.caCertFile, config_options.httpsProxy);        }
-
-        tokenManager->StartTokenMonitor();
-    }
-
-    if (config_options.streaming) {
-        blob_streamer = std::make_shared<BlobStreamer>(
-                            storage_client, 
-                            config_options.readStreamBufferSize, 
-                            config_options.maxBlocksPerFile,
-                            config_options.blockSize);
+    if (!config_options.enableGen1){
+        validate_storage();
     }
 
     return NULL;
+}
+
+int invoke_rust_fuse(struct cmdlineOptions opts){
+    std::string lvl(opts.enable_gen1);
+    std::cout<<"EnableGen1: "<<lvl<<std::endl;
+    std::cout<<"Rust Fuse for Gen1 invoked"<<std::endl;
+    return 0;
 }
 
 // TODO: print FUSE usage as well
@@ -808,6 +823,18 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         {
             print_usage();
             exit(0);
+        }
+
+        config_options.enableGen1 = false;
+        if (cmd_options.enable_gen1 != NULL)
+        {
+            std::string gen1_flag_val(cmd_options.enable_gen1);
+            if (gen1_flag_val == "true"){
+                syslog(LOG_INFO, "Gen1 support invoked");
+                config_options.enableGen1 = true;
+                int ou = invoke_rust_fuse(cmd_options);
+                exit(ou);
+            }
         }
 
         config_options.basicRemountCheck = false;
