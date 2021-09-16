@@ -75,8 +75,6 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-blocks-per-file=%s", max_blocks_per_file),
     OPTION("--block-size-mb=%s", block_size_mb),
     OPTION("--enable-gen1=%s", enable_gen1),
-    OPTION("--attr_timeout=%s", attr_timeout),
-    OPTION("--entry_timeout=%s", entry_timeout),
 
     OPTION("--version", version),
     OPTION("-v", version),
@@ -772,9 +770,7 @@ bool is_directory_empty(const char *tmpDir) {
 }
 
 
-int 
-
-read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
+int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 {
     // FUSE has a standard method of argument parsing, here we just follow the pattern.
     *args = FUSE_ARGS_INIT(argc, argv);
@@ -782,6 +778,7 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     // Check for existence of allow_other flag and change the default permissions based on that
     config_options.defaultPermission = 0770;
     config_options.readOnlyMount = false;
+    config_options.entryTimeout = -1;
 
     std::vector<std::string> string_args(argv, argv+argc);
     for (size_t i = 1; i < string_args.size(); ++i) {
@@ -790,6 +787,22 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
       }
       if (string_args[i].find("ro") != std::string::npos) {
           config_options.readOnlyMount = true;
+      }
+      if (string_args[i].find("attr_timeout") !=std::string::npos)
+      {
+          istringstream data;
+          data.str(string_args[i].substr(string_args[i].find('=')+1));
+          const std::string value(trim(data.str()));
+          int attr = stoi(value);
+          config_options.attrTimeout = attr;
+      }
+      if (string_args[i].find("entry_timeout") !=std::string::npos)
+      {
+          istringstream data;
+          data.str(string_args[i].substr(string_args[i].find('=')+1));
+          const std::string value(trim(data.str()));
+          int attr = stoi(value);
+          config_options.entryTimeout = attr;
       }
     }
 
@@ -852,7 +865,7 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 
         if(!cmd_options.config_file) {
             fprintf(stdout, "no config file");
-            if(!cmd_options.container_name)
+            if(!cmd_options.container_name && !config_options.enableGen1)
             {
                 syslog(LOG_CRIT, "Unable to start blobfuse, no config file provided and --container-name is not set.");
                 fprintf(stderr, "Error: No config file provided and --container-name is not set.\n");
@@ -1133,21 +1146,7 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.maxTryCount = stoi(max_retry);
     }
 
-    config_options.attrTimeout = 0;
-    if(cmd_options.attr_timeout != NULL)
-    {
-        std::string attrtime(cmd_options.attr_timeout);
-        config_options.attrTimeout = stoi(attrtime);
-    }
-
-    config_options.entryTimeout = 0;
-    if(cmd_options.entry_timeout!= NULL)
-    {
-        std::string entrytime(cmd_options.entry_timeout);
-        config_options.entryTimeout = stoi(entrytime);
-    }
-    else
-    {
+    if (config_options.entryTimeout == -1){
         config_options.entryTimeout = 240;
     }
 

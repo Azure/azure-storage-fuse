@@ -136,8 +136,6 @@ struct cmdlineOptions
     const char *max_blocks_per_file; // Number of blocks to be cached per file in case of streaming
     const char *block_size_mb; // Size of each block to be downloaded during streaming
     const char *enable_gen1; //Flag to enable gen1 support in blobfuse
-    const char *attr_timeout;
-    const char *entry_timeout;
 };
 
 
