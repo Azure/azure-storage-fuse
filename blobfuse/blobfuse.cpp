@@ -75,6 +75,8 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-blocks-per-file=%s", max_blocks_per_file),
     OPTION("--block-size-mb=%s", block_size_mb),
     OPTION("--enable-gen1=%s", enable_gen1),
+    OPTION("--attr_timeout=%s", attr_timeout),
+    OPTION("--entry_timeout=%s", entry_timeout),
 
     OPTION("--version", version),
     OPTION("-v", version),
@@ -355,7 +357,7 @@ int read_config(const std::string configFile)
         fprintf(stderr, "Unable to start blobfuse. Account name is missing in the config file.\n");
         return -1;
     }
-    else if(config_options.containerName.empty())
+    else if(config_options.containerName.empty() && !config_options.enableGen1)
     {
         syslog (LOG_CRIT, "Unable to start blobfuse. Container name is missing in the config file.");
         fprintf(stderr, "Unable to start blobfuse. Container name is missing in the config file.\n");
@@ -493,13 +495,6 @@ void *azs_init(struct fuse_conn_info * conn)
     }
 
     return NULL;
-}
-
-int invoke_rust_fuse(struct cmdlineOptions opts){
-    std::string lvl(opts.enable_gen1);
-    std::cout<<"EnableGen1: "<<lvl<<std::endl;
-    std::cout<<"Rust Fuse for Gen1 invoked"<<std::endl;
-    return 0;
 }
 
 // TODO: print FUSE usage as well
@@ -832,8 +827,6 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             if (gen1_flag_val == "true"){
                 syslog(LOG_INFO, "Gen1 support invoked");
                 config_options.enableGen1 = true;
-                int ou = invoke_rust_fuse(cmd_options);
-                exit(ou);
             }
         }
 
@@ -912,250 +905,222 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         return 1;
     }
 
-    // remove last trailing slash in tmp_path
-    if(!cmd_options.tmp_path)
-    {
-        fprintf(stderr, "Error: --tmp-path is not set.\n");
-        print_usage();
-        return 1;
-    }
 
-    std::string tmpPathStr(cmd_options.tmp_path);
-    if (!tmpPathStr.empty())
-    {
-        // First let's normalize the path
-        // Don't use canonical because that will check for path existence and permissions
-#if BOOST_VERSION > 106000 // lexically_normal was added in boost 1.60.0; ubuntu 16 is only up to 1.58.0
-        tmpPathStr = boost::filesystem::path(tmpPathStr).lexically_normal().string();
-#else
-        tmpPathStr = boost::filesystem::path(tmpPathStr).normalize().string();
-#endif
-
-        // Double check that we have not just emptied this string
-        if (!tmpPathStr.empty())
-        {
-            // Trim any trailing '/' or '/.'
-            // This will also create a blank string for just '/' which will fail out at the next block
-            // .lexically_normal() returns '/.' for directories
-            if (tmpPathStr[tmpPathStr.size() - 1] == '/')
-            {
-                tmpPathStr.erase(tmpPathStr.size() - 1);
-            }
-            else if (tmpPathStr.size() > 1 && tmpPathStr.compare((tmpPathStr.size() - 2), 2, "/.") == 0)
-            {
-                tmpPathStr.erase(tmpPathStr.size() - 2);
-            }
-
-            if (tmpPathStr[0] == '~') {
-                const char *homedir = NULL;
-                if ((homedir = getenv("HOME")) == NULL) {
-                    homedir = getpwuid(getuid())->pw_dir;
-                }
-                if (homedir) {
-                    syslog(LOG_ERR,"Expanding '~' in tmppath to %s", homedir);
-                    tmpPathStr = std::string(homedir) + tmpPathStr.substr(1);
-                }
-            }
-        }
-
-        // Error out if we emptied this string
-        if (tmpPathStr.empty())
-        {
-            fprintf(stderr, "Error: --tmp-path resolved to empty path.\n");
+    if (!config_options.enableGen1) {
+        // remove last trailing slash in tmp_path
+        if (!cmd_options.tmp_path) {
+            fprintf(stderr, "Error: --tmp-path is not set.\n");
             print_usage();
             return 1;
         }
-    }
 
-    config_options.emptyDirCheck = false;
-    if (cmd_options.empty_dir_check != NULL) {
-        std::string val(cmd_options.empty_dir_check);
-        if(val == "true")
-        {
-            config_options.emptyDirCheck = true;
-        }
-    }
+        std::string tmpPathStr(cmd_options.tmp_path);
+        if (!tmpPathStr.empty()) {
+            // First let's normalize the path
+            // Don't use canonical because that will check for path existence and permissions
+#if BOOST_VERSION > 106000 // lexically_normal was added in boost 1.60.0; ubuntu 16 is only up to 1.58.0
+            tmpPathStr = boost::filesystem::path(tmpPathStr).lexically_normal().string();
+#else
+            tmpPathStr = boost::filesystem::path(tmpPathStr).normalize().string();
+#endif
 
-    config_options.uploadIfModified = false;
-    if (cmd_options.upload_if_modified != NULL) {
-        syslog(LOG_DEBUG, "upload_if_modified is not null");
-        std::string val(cmd_options.upload_if_modified);
-        if(val == "true")
-        {
-            config_options.uploadIfModified = true;
-            syslog(LOG_DEBUG, "upload_if_modified is true");
-        }
-    }
-    
-    if (!tmpPathStr.empty())
-    {    
-        bool fail_mount = false;
-        struct stat sb;
-
-        // if the directory does not exist no need to valdiate if it is empty
-        // so check if the dir exists first and then validate
-        if (stat(tmpPathStr.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) 
-        {            
-            if  (!is_directory_empty(tmpPathStr.c_str()) &&
-                 config_options.emptyDirCheck)
-            {
-                // Tmp path exists. if 'root' directory is empty then also its fine
-                std::string tmprootPath = tmpPathStr + "/root";
-                if (stat(tmprootPath.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
-                    if  (!is_directory_empty(tmprootPath.c_str())) {
-                        fail_mount = true;
-                    }
-                } else {
-                    fail_mount = true;
+            // Double check that we have not just emptied this string
+            if (!tmpPathStr.empty()) {
+                // Trim any trailing '/' or '/.'
+                // This will also create a blank string for just '/' which will fail out at the next block
+                // .lexically_normal() returns '/.' for directories
+                if (tmpPathStr[tmpPathStr.size() - 1] == '/') {
+                    tmpPathStr.erase(tmpPathStr.size() - 1);
+                } else if (tmpPathStr.size() > 1 && tmpPathStr.compare((tmpPathStr.size() - 2), 2, "/.") == 0) {
+                    tmpPathStr.erase(tmpPathStr.size() - 2);
                 }
 
-                if (fail_mount) {
-                    syslog(LOG_CRIT, "Unable to start blobfuse. temp directory '%s'is not empty.", tmpPathStr.c_str());
-                    fprintf(stderr, "Error: temp directory '%s' is not empty. blobfuse needs an empty temp directory\n", tmpPathStr.c_str());
-                    return 1;
+                if (tmpPathStr[0] == '~') {
+                    const char *homedir = NULL;
+                    if ((homedir = getenv("HOME")) == NULL) {
+                        homedir = getpwuid(getuid())->pw_dir;
+                    }
+                    if (homedir) {
+                        syslog(LOG_ERR, "Expanding '~' in tmppath to %s", homedir);
+                        tmpPathStr = std::string(homedir) + tmpPathStr.substr(1);
+                    }
+                }
+            }
+
+            // Error out if we emptied this string
+            if (tmpPathStr.empty()) {
+                fprintf(stderr, "Error: --tmp-path resolved to empty path.\n");
+                print_usage();
+                return 1;
+            }
+        }
+
+        config_options.emptyDirCheck = false;
+        if (cmd_options.empty_dir_check != NULL) {
+            std::string val(cmd_options.empty_dir_check);
+            if (val == "true") {
+                config_options.emptyDirCheck = true;
+            }
+        }
+
+        config_options.uploadIfModified = false;
+        if (cmd_options.upload_if_modified != NULL) {
+            syslog(LOG_DEBUG, "upload_if_modified is not null");
+            std::string val(cmd_options.upload_if_modified);
+            if (val == "true") {
+                config_options.uploadIfModified = true;
+                syslog(LOG_DEBUG, "upload_if_modified is true");
+            }
+        }
+
+        if (!tmpPathStr.empty()) {
+            bool fail_mount = false;
+            struct stat sb;
+
+            // if the directory does not exist no need to valdiate if it is empty
+            // so check if the dir exists first and then validate
+            if (stat(tmpPathStr.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
+                if (!is_directory_empty(tmpPathStr.c_str()) &&
+                    config_options.emptyDirCheck) {
+                    // Tmp path exists. if 'root' directory is empty then also its fine
+                    std::string tmprootPath = tmpPathStr + "/root";
+                    if (stat(tmprootPath.c_str(), &sb) == 0 && S_ISDIR(sb.st_mode)) {
+                        if (!is_directory_empty(tmprootPath.c_str())) {
+                            fail_mount = true;
+                        }
+                    } else {
+                        fail_mount = true;
+                    }
+
+                    if (fail_mount) {
+                        syslog(LOG_CRIT, "Unable to start blobfuse. temp directory '%s'is not empty.",
+                               tmpPathStr.c_str());
+                        fprintf(stderr,
+                                "Error: temp directory '%s' is not empty. blobfuse needs an empty temp directory\n",
+                                tmpPathStr.c_str());
+                        return 1;
+                    }
                 }
             }
         }
-    }
 
-    config_options.tmpPath = tmpPathStr;
-    config_options.useHttps = true;
-    if (cmd_options.useHttps != NULL)
-    {
-        std::string https(cmd_options.useHttps);
-        if (https == "false")
-        {
-            config_options.useHttps = false;
+        config_options.tmpPath = tmpPathStr;
+        config_options.useHttps = true;
+        if (cmd_options.useHttps != NULL) {
+            std::string https(cmd_options.useHttps);
+            if (https == "false") {
+                config_options.useHttps = false;
+            }
         }
-    }
 
-    config_options.useAttrCache = false;
-    if (cmd_options.useAttrCache != NULL)
-    {
-        std::string attr_cache(cmd_options.useAttrCache);
-        if (attr_cache == "true")
-        {
-            config_options.useAttrCache = true;
+        config_options.useAttrCache = false;
+        if (cmd_options.useAttrCache != NULL) {
+            std::string attr_cache(cmd_options.useAttrCache);
+            if (attr_cache == "true") {
+                config_options.useAttrCache = true;
+            }
         }
-    }
 
-    if (cmd_options.file_cache_timeout_in_seconds != NULL)
-    {
-        std::string timeout(cmd_options.file_cache_timeout_in_seconds);
-        config_options.fileCacheTimeoutInSeconds = stoi(timeout);
-    }
-    else
-    {
-        config_options.fileCacheTimeoutInSeconds = 120;
-    }
-
-    if(cmd_options.use_adls != NULL)
-    {
-        std::string use_adls_value(cmd_options.use_adls);
-        if(use_adls_value == "true")
-        {
-            config_options.useADLS = true;
-        } else if(use_adls_value == "false") {
-            config_options.useADLS = false;
+        if (cmd_options.file_cache_timeout_in_seconds != NULL) {
+            std::string timeout(cmd_options.file_cache_timeout_in_seconds);
+            config_options.fileCacheTimeoutInSeconds = stoi(timeout);
+        } else {
+            config_options.fileCacheTimeoutInSeconds = 120;
         }
-    }
 
-    if(cmd_options.no_symlinks != NULL)
-    {
-        std::string no_symlinks(cmd_options.no_symlinks);
-        if(no_symlinks == "true")
-        {
-            config_options.noSymlinks = true;
-        } 
-    }
+        if (cmd_options.use_adls != NULL) {
+            std::string use_adls_value(cmd_options.use_adls);
+            if (use_adls_value == "true") {
+                config_options.useADLS = true;
+            } else if (use_adls_value == "false") {
+                config_options.useADLS = false;
+            }
+        }
 
-    if(cmd_options.cache_on_list != NULL)
-    {
-        std::string cache_prop(cmd_options.cache_on_list);
-        if(cache_prop == "false")
-        {
-            config_options.cacheOnList = false;
-        } 
-    }
+        if (cmd_options.no_symlinks != NULL) {
+            std::string no_symlinks(cmd_options.no_symlinks);
+            if (no_symlinks == "true") {
+                config_options.noSymlinks = true;
+            }
+        }
 
-    config_options.concurrency = (int)(blobfuse_constants::def_concurrency_blob_wrapper);
-    if(cmd_options.concurrency != NULL)
-    {
-        std::string concur(cmd_options.concurrency);
-        //config_options.concurrency = stoi(concur);
-        config_options.concurrency = (stoi(concur) < blobfuse_constants::max_concurrency_blob_wrapper) ? 
-                stoi(concur) : blobfuse_constants::max_concurrency_blob_wrapper;
-    }
+        if (cmd_options.cache_on_list != NULL) {
+            std::string cache_prop(cmd_options.cache_on_list);
+            if (cache_prop == "false") {
+                config_options.cacheOnList = false;
+            }
+        }
 
-    config_options.cacheSize = 0;
-    if (cmd_options.cache_size_mb != NULL) 
-    {
-        std::string cache_size(cmd_options.cache_size_mb);
-        config_options.cacheSize = stoi(cache_size) * (unsigned long long)(1024l * 1024l);
-    }
+        config_options.concurrency = (int) (blobfuse_constants::def_concurrency_blob_wrapper);
+        if (cmd_options.concurrency != NULL) {
+            std::string concur(cmd_options.concurrency);
+            //config_options.concurrency = stoi(concur);
+            config_options.concurrency = (stoi(concur) < blobfuse_constants::max_concurrency_blob_wrapper) ?
+                                         stoi(concur) : blobfuse_constants::max_concurrency_blob_wrapper;
+        }
 
-    config_options.cancel_list_on_mount_secs = 0;
-    if (cmd_options.cancel_list_on_mount_seconds != NULL) 
-    {
-        std::string cancel_list_on_mount_secs(cmd_options.cancel_list_on_mount_seconds);
-        config_options.cancel_list_on_mount_secs = stoi(cancel_list_on_mount_secs);
-    }
+        config_options.cacheSize = 0;
+        if (cmd_options.cache_size_mb != NULL) {
+            std::string cache_size(cmd_options.cache_size_mb);
+            config_options.cacheSize = stoi(cache_size) * (unsigned long long) (1024l * 1024l);
+        }
 
-    // Make high and low disk threshold percentage a configurable option
-    if (cmd_options.high_disk_threshold != NULL) 
-    {
-        std::string high_disk_thr(cmd_options.high_disk_threshold);
-        config_options.high_disk_threshold = stoi(high_disk_thr);
-        if (config_options.high_disk_threshold < 0 || config_options.high_disk_threshold > 100) {
-            syslog(LOG_ERR, "Invalid high_disk_threshold, reverting back to default value");
+        config_options.cancel_list_on_mount_secs = 0;
+        if (cmd_options.cancel_list_on_mount_seconds != NULL) {
+            std::string cancel_list_on_mount_secs(cmd_options.cancel_list_on_mount_seconds);
+            config_options.cancel_list_on_mount_secs = stoi(cancel_list_on_mount_secs);
+        }
+
+        // Make high and low disk threshold percentage a configurable option
+        if (cmd_options.high_disk_threshold != NULL) {
+            std::string high_disk_thr(cmd_options.high_disk_threshold);
+            config_options.high_disk_threshold = stoi(high_disk_thr);
+            if (config_options.high_disk_threshold < 0 || config_options.high_disk_threshold > 100) {
+                syslog(LOG_ERR, "Invalid high_disk_threshold, reverting back to default value");
+                config_options.high_disk_threshold = HIGH_THRESHOLD_VALUE;
+            }
+        }
+
+        if (cmd_options.low_disk_threshold != NULL) {
+            std::string low_disk_thr(cmd_options.low_disk_threshold);
+            config_options.low_disk_threshold = stoi(low_disk_thr);
+            if (config_options.low_disk_threshold < 0 || config_options.low_disk_threshold > 100) {
+                syslog(LOG_ERR, "Invalid low_disk_threshold, reverting back to default value");
+                config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
+            }
+        }
+
+        if (config_options.low_disk_threshold >= config_options.high_disk_threshold) {
+            syslog(LOG_ERR, "Invalid disk_thresholds, reverting back to default values");
             config_options.high_disk_threshold = HIGH_THRESHOLD_VALUE;
-        }
-    }
-
-    if (cmd_options.low_disk_threshold != NULL) 
-    {
-        std::string low_disk_thr(cmd_options.low_disk_threshold);
-        config_options.low_disk_threshold = stoi(low_disk_thr);
-        if (config_options.low_disk_threshold < 0 || config_options.low_disk_threshold > 100) {
-            syslog(LOG_ERR, "Invalid low_disk_threshold, reverting back to default value");
             config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
         }
-    }
 
-    if (config_options.low_disk_threshold >= config_options.high_disk_threshold) {
-        syslog(LOG_ERR, "Invalid disk_thresholds, reverting back to default values");
-        config_options.high_disk_threshold = HIGH_THRESHOLD_VALUE;
-        config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
-    }
-    
-    config_options.cachePollTimeout = 1000;
-    if (cmd_options.cache_poll_timeout_msec != NULL) 
-    {
-        std::string timeout(cmd_options.cache_poll_timeout_msec);
-        config_options.cachePollTimeout = stoi(timeout) * 1000;
-    }
+        config_options.cachePollTimeout = 1000;
+        if (cmd_options.cache_poll_timeout_msec != NULL) {
+            std::string timeout(cmd_options.cache_poll_timeout_msec);
+            config_options.cachePollTimeout = stoi(timeout) * 1000;
+        }
 
-    config_options.maxEviction = 0;
-    if (cmd_options.max_eviction != NULL) 
-    {
-        std::string max_evic(cmd_options.max_eviction);
-        config_options.maxEviction = stoi(max_evic);
-    }
+        config_options.maxEviction = 0;
+        if (cmd_options.max_eviction != NULL) {
+            std::string max_evic(cmd_options.max_eviction);
+            config_options.maxEviction = stoi(max_evic);
+        }
 
-    if (cmd_options.set_content_type != NULL) 
-    {
-        std::string val(cmd_options.set_content_type);
-        if (val == "true")
-            gSetContentType = true;
-    }
+        if (cmd_options.set_content_type != NULL) {
+            std::string val(cmd_options.set_content_type);
+            if (val == "true")
+                gSetContentType = true;
+        }
 
-    config_options.preMountValidate = false;
-    if (cmd_options.pre_mount_validate != NULL) 
-    {
-        std::string val(cmd_options.pre_mount_validate);
-        if (val == "true") {
-            syslog(LOG_INFO, "Pre mount validation enabled");
-            config_options.preMountValidate = true;
+        config_options.preMountValidate = false;
+        if (cmd_options.pre_mount_validate != NULL) {
+            std::string val(cmd_options.pre_mount_validate);
+            if (val == "true") {
+                syslog(LOG_INFO, "Pre mount validation enabled");
+                config_options.preMountValidate = true;
+            }
         }
     }
 
@@ -1167,92 +1132,106 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         std::string max_retry(cmd_options.max_retry);
         config_options.maxTryCount = stoi(max_retry);
     }
-    
-    config_options.maxTimeoutSeconds = 60.0;
-    if (cmd_options.max_timeout != NULL) 
+
+    config_options.attrTimeout = 0;
+    if(cmd_options.attr_timeout != NULL)
     {
-        std::string max_timeout(cmd_options.max_timeout);
-        config_options.maxTimeoutSeconds = stod(max_timeout, &offset);
-    }
-    
-    config_options.retryDelay = 1.2;
-    if (cmd_options.retry_delay != NULL) 
-    {
-        std::string retry_delay(cmd_options.retry_delay);
-        config_options.retryDelay = stod(retry_delay, &offset);
+        std::string attrtime(cmd_options.attr_timeout);
+        config_options.attrTimeout = stoi(attrtime);
     }
 
-    config_options.backgroundDownload = false;
-    if (cmd_options.background_download != NULL) {
-        std::string background_download(cmd_options.background_download);
-        if(background_download == "true")
-        {
-            config_options.backgroundDownload = true;
-        } 
+    config_options.entryTimeout = 0;
+    if(cmd_options.entry_timeout!= NULL)
+    {
+        std::string entrytime(cmd_options.entry_timeout);
+        config_options.entryTimeout = stoi(entrytime);
     }
-
-    config_options.invalidateOnSync = false;
-    if (cmd_options.invalidate_on_sync != NULL) {
-        std::string evict(cmd_options.invalidate_on_sync);
-        if(evict == "true")
-        {
-            config_options.invalidateOnSync = true;
-        } 
+    else
+    {
+        config_options.entryTimeout = 240;
     }
 
     config_options.streaming = false;
-    if(cmd_options.streaming != NULL)
-    {
+    if (cmd_options.streaming != NULL) {
         std::string streaming(cmd_options.streaming);
-        if(streaming == "true")
-        {
+        if (streaming == "true") {
             config_options.streaming = true;
-        } 
+        }
     }
 
-    config_options.readStreamBufferSize = (500 * 1024 * 1024);
-    if (cmd_options.stream_buffer != NULL) 
-    {
-        std::string stream_buffer(cmd_options.stream_buffer);
-        config_options.readStreamBufferSize = uint64_t(stod(stream_buffer, &offset))  * uint64_t(1024 * 1024);
-    }
+    if (!config_options.enableGen1) {
 
-    config_options.maxBlocksPerFile = blobfuse_constants::maxStreamBlocksPerFile;
-    if (cmd_options.max_blocks_per_file != NULL) 
-    {
-        std::string max_block(cmd_options.max_blocks_per_file);
-        config_options.maxBlocksPerFile = stod(max_block, &offset);
-    }
+        config_options.maxTimeoutSeconds = 60.0;
+        if (cmd_options.max_timeout != NULL) {
+            std::string max_timeout(cmd_options.max_timeout);
+            config_options.maxTimeoutSeconds = stod(max_timeout, &offset);
+        }
 
-    config_options.blockSize = (16 * 1024 * 1024);
-    if (cmd_options.block_size_mb != NULL) 
-    {
-        std::string block_size(cmd_options.block_size_mb);
-        config_options.blockSize = uint64_t(stod(block_size, &offset));
-        config_options.blockSize = uint64_t((config_options.blockSize) * 1024 * 1024);
-    }
+        config_options.retryDelay = 1.2;
+        if (cmd_options.retry_delay != NULL) {
+            std::string retry_delay(cmd_options.retry_delay);
+            config_options.retryDelay = stod(retry_delay, &offset);
+        }
 
-    if (config_options.streaming && !config_options.readOnlyMount) {
-        syslog(LOG_ERR, "Read-Streaming is supported only on Readonly Mounts. Use '-o ro' option in mount command");    
-        fprintf(stderr, "Read-Streaming is supported only on Readonly Mounts. Use '-o ro' option in mount command");  
-        return 1;
-    }
+        config_options.backgroundDownload = false;
+        if (cmd_options.background_download != NULL) {
+            std::string background_download(cmd_options.background_download);
+            if (background_download == "true") {
+                config_options.backgroundDownload = true;
+            }
+        }
 
-    syslog(LOG_INFO, "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d Retry Policy (%d, %f, %f), Background Download %d, Evict on sync %d", 
-        config_options.high_disk_threshold, config_options.low_disk_threshold,
-        config_options.cachePollTimeout, config_options.maxEviction,
-        config_options.cancel_list_on_mount_secs,
-        config_options.maxTryCount, config_options.maxTimeoutSeconds, config_options.retryDelay, config_options.backgroundDownload,
-        config_options.invalidateOnSync);
+        config_options.invalidateOnSync = false;
+        if (cmd_options.invalidate_on_sync != NULL) {
+            std::string evict(cmd_options.invalidate_on_sync);
+            if (evict == "true") {
+                config_options.invalidateOnSync = true;
+            }
+        }
 
-    if (config_options.backgroundDownload) {
-        syslog(LOG_INFO, "Background download is turned on");
-    }
-    
-    if (config_options.streaming) {
-        syslog(LOG_INFO, "Streaming : %d, Stream buffer size : %lu, Max Blocks : %d, Block Size : %ld", 
-            config_options.streaming, config_options.readStreamBufferSize,
-            config_options.maxBlocksPerFile, config_options.blockSize);
+        config_options.readStreamBufferSize = (500 * 1024 * 1024);
+        if (cmd_options.stream_buffer != NULL) {
+            std::string stream_buffer(cmd_options.stream_buffer);
+            config_options.readStreamBufferSize = uint64_t(stod(stream_buffer, &offset)) * uint64_t(1024 * 1024);
+        }
+
+        config_options.maxBlocksPerFile = blobfuse_constants::maxStreamBlocksPerFile;
+        if (cmd_options.max_blocks_per_file != NULL) {
+            std::string max_block(cmd_options.max_blocks_per_file);
+            config_options.maxBlocksPerFile = stod(max_block, &offset);
+        }
+
+        config_options.blockSize = (16 * 1024 * 1024);
+        if (cmd_options.block_size_mb != NULL) {
+            std::string block_size(cmd_options.block_size_mb);
+            config_options.blockSize = uint64_t(stod(block_size, &offset));
+            config_options.blockSize = uint64_t((config_options.blockSize) * 1024 * 1024);
+        }
+
+        if (config_options.streaming && !config_options.readOnlyMount) {
+            syslog(LOG_ERR, "Read-Streaming is supported only on Readonly Mounts. Use '-o ro' option in mount command");
+            fprintf(stderr, "Read-Streaming is supported only on Readonly Mounts. Use '-o ro' option in mount command");
+            return 1;
+        }
+
+        syslog(LOG_INFO,
+               "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d Retry Policy (%d, %f, %f), Background Download %d, Evict on sync %d",
+               config_options.high_disk_threshold, config_options.low_disk_threshold,
+               config_options.cachePollTimeout, config_options.maxEviction,
+               config_options.cancel_list_on_mount_secs,
+               config_options.maxTryCount, config_options.maxTimeoutSeconds, config_options.retryDelay,
+               config_options.backgroundDownload,
+               config_options.invalidateOnSync);
+
+        if (config_options.backgroundDownload) {
+            syslog(LOG_INFO, "Background download is turned on");
+        }
+
+        if (config_options.streaming) {
+            syslog(LOG_INFO, "Streaming : %d, Stream buffer size : %lu, Max Blocks : %d, Block Size : %ld",
+                   config_options.streaming, config_options.readStreamBufferSize,
+                   config_options.maxBlocksPerFile, config_options.blockSize);
+        }
     }
 
     
@@ -1300,6 +1279,60 @@ void configure_fuse(struct fuse_args *args)
     fuse_opt_add_arg(args, "-ofsname=blobfuse");
     fuse_opt_add_arg(args, "-okernel_cache");
     umask(0);
+}
+
+int mount_rust_fuse(){
+    json j;
+    if(config_options.authType == SPN_AUTH){
+        j["ClientSecret"] = config_options.spnClientSecret;
+        j["ClientId"] = config_options.spnClientId;
+        j["TenantId"] = config_options.spnTenantId;
+        if(config_options.aadEndpoint != "")
+        {
+            j["AuthorityUrl"] = config_options.aadEndpoint;
+        }
+        else
+        {
+            j["AuthorityUrl"] = "https://login.microsoftonline.com";
+        }
+
+        j["CredentialType"] = "servicePrincipal";
+    }else if (config_options.authType == MSI_AUTH) {
+        j["ClientSecret"] = config_options.msiSecret;
+        j["CredentialType"] = "msi";
+    }else{
+        return -1;
+    }
+    j["ResourceUrl"] = "https://datalake.azure.net/";
+    j["FuseAttrTimeout"] = config_options.attrTimeout;
+    j["FuseEntryTimeout"] = config_options.entryTimeout;
+    j["UseLocalCache"] = !config_options.streaming;
+    if(config_options.defaultPermission == 0777)
+    {
+        j["AllowOther"] = true;
+    }
+    else{
+        j["AllowOther"] = false;
+    }
+
+    j["LogLevel"] = config_options.logLevel;
+
+    j["RetryCount"] = config_options.maxTryCount;
+
+    j["ResourceId"] = "adl://"+config_options.accountName+".azuredatalakestore.net/";
+
+    std::string serialized = j.dump(4);
+
+    std::cout<<serialized<<std::endl;
+    ofstream outdata;
+    outdata.open("rustfuse.json");
+    if( !outdata ) { // file couldn't be opened
+        cerr << "Error: file could not be opened" << endl;
+        return -1;
+    }
+    outdata<<serialized<<endl;
+    outdata.close();
+    return 0;
 }
 
 int initialize_blobfuse()

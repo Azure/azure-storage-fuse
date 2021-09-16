@@ -18,6 +18,11 @@ int main(int argc, char *argv[])
         return ret;
     }
 
+    if(config_options.enableGen1){
+        ret = mount_rust_fuse();
+        exit(ret);
+    }
+
     configure_fuse(&args);
 
     if (libcurl_version < blobfuse_constants::minCurlVersion) {
