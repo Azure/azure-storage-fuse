@@ -211,6 +211,11 @@ int read_config(const std::string configFile)
 
     char* env_spn_client_secret = getenv("AZURE_STORAGE_SPN_CLIENT_SECRET");
     char* env_msi_secret = getenv("MSI_SECRET");
+    char* env_account_key = getenv("AZURE_STORAGE_ACCESS_KEY");
+    char* env_sas_token = getenv("AZURE_STORAGE_SAS_TOKEN");
+
+    char* env_spn_client_id = getenv("AZURE_STORAGE_SPN_CLIENT_ID");
+    char* env_spn_tenant_id = getenv("AZURE_STORAGE_SPN_TENANT_ID");
 
     if (env_spn_client_secret) {
         config_options.spnClientSecret = env_spn_client_secret;
@@ -218,6 +223,27 @@ int read_config(const std::string configFile)
 
     if (env_msi_secret) {
         config_options.msiSecret = env_msi_secret;
+    }
+
+    if(env_account_key)
+    {
+        config_options.accountKey = env_account_key;
+    }
+
+    if(env_sas_token)
+    {
+        config_options.sasToken = env_sas_token;
+    }
+
+
+    if (env_spn_tenant_id)
+    {
+        config_options.spnTenantId = env_spn_tenant_id;
+    }
+
+    if (env_spn_client_id)
+    {
+        config_options.spnClientId = env_spn_client_id;
     }
 
     while(std::getline(file, line))
@@ -349,22 +375,22 @@ int read_config(const std::string configFile)
         config_options.authType = get_auth_type();
     }
     
-    if(config_options.accountName.empty())
-    {
-        syslog (LOG_CRIT, "Unable to start blobfuse. Account name is missing in the config file.");
-        fprintf(stderr, "Unable to start blobfuse. Account name is missing in the config file.\n");
-        return -1;
+    if (!config_options.enableGen1) {
+        if(config_options.accountName.empty())
+        {
+            syslog (LOG_CRIT, "Unable to start blobfuse. Account name is missing in the config file.");
+            fprintf(stderr, "Unable to start blobfuse. Account name is missing in the config file.\n");
+            return -1;
+        }
+        else if(config_options.containerName.empty())
+        {
+            syslog (LOG_CRIT, "Unable to start blobfuse. Container name is missing in the config file.");
+            fprintf(stderr, "Unable to start blobfuse. Container name is missing in the config file.\n");
+            return -1;
+        }
     }
-    else if(config_options.containerName.empty() && !config_options.enableGen1)
-    {
-        syslog (LOG_CRIT, "Unable to start blobfuse. Container name is missing in the config file.");
-        fprintf(stderr, "Unable to start blobfuse. Container name is missing in the config file.\n");
-        return -1;
-    }
-    else
-    {
-        return 0;
-    }
+
+    return 0;
 }
 
 void destroyBlobfuseOnAuthError()
@@ -488,9 +514,7 @@ void *azs_init(struct fuse_conn_info * conn)
     g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
     g_gc_cache->run();
     
-    if (!config_options.enableGen1){
-        validate_storage();
-    }
+    validate_storage();
 
     return NULL;
 }
@@ -662,10 +686,14 @@ void sig_usr_handler(int signum)
     }
 }
 
-void set_up_callbacks(struct fuse_operations &azs_blob_operations)
+void init_essentials() 
 {
     openlog(log_ident.c_str(), LOG_NDELAY | LOG_PID, 0);
+    signal(SIGUSR1, sig_usr_handler);
+}
 
+void set_up_callbacks(struct fuse_operations &azs_blob_operations)
+{
     // Here, we set up all the callbacks that FUSE requires.
     azs_blob_operations.init = azs_init;
     azs_blob_operations.getattr = azs_getattr;
@@ -697,8 +725,6 @@ void set_up_callbacks(struct fuse_operations &azs_blob_operations)
     azs_blob_operations.listxattr = azs_listxattr;
     azs_blob_operations.removexattr = azs_removexattr;
     azs_blob_operations.flush = azs_flush;
-
-    signal(SIGUSR1, sig_usr_handler);
 }
 
 /*
@@ -778,26 +804,22 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     // Check for existence of allow_other flag and change the default permissions based on that
     config_options.defaultPermission = 0770;
     config_options.readOnlyMount = false;
-    config_options.entryTimeout = -1;
+    config_options.entryTimeout = 240;
+    config_options.attrTimeout = 240;
 
     std::vector<std::string> string_args(argv, argv+argc);
     for (size_t i = 1; i < string_args.size(); ++i) {
       if (string_args[i].find("allow_other") != std::string::npos) {
           config_options.defaultPermission = 0777; 
-      }
-      if (string_args[i].find("ro") != std::string::npos) {
+      } else if (string_args[i].find("ro") != std::string::npos) {
           config_options.readOnlyMount = true;
-      }
-      if (string_args[i].find("attr_timeout") !=std::string::npos)
-      {
+      } else if (string_args[i].find("attr_timeout") !=std::string::npos) {
           istringstream data;
           data.str(string_args[i].substr(string_args[i].find('=')+1));
           const std::string value(trim(data.str()));
           int attr = stoi(value);
           config_options.attrTimeout = attr;
-      }
-      if (string_args[i].find("entry_timeout") !=std::string::npos)
-      {
+      } else if (string_args[i].find("entry_timeout") !=std::string::npos) {
           istringstream data;
           data.str(string_args[i].substr(string_args[i].find('=')+1));
           const std::string value(trim(data.str()));
@@ -815,7 +837,6 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     
     try
     {
-
         if (fuse_opt_parse(args, &cmd_options, option_spec, NULL) == -1)
         {
             return 1;
@@ -832,7 +853,7 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             print_usage();
             exit(0);
         }
-
+    
         config_options.enableGen1 = false;
         if (cmd_options.enable_gen1 != NULL)
         {
@@ -864,17 +885,20 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.mntPath = std::string(argv[1]);
 
         if(!cmd_options.config_file) {
-            fprintf(stdout, "no config file");
-            if(!cmd_options.container_name && !config_options.enableGen1)
-            {
-                syslog(LOG_CRIT, "Unable to start blobfuse, no config file provided and --container-name is not set.");
-                fprintf(stderr, "Error: No config file provided and --container-name is not set.\n");
-                print_usage();
-                return 1;
+            //fprintf(stdout, "no config file");
+            if (!config_options.enableGen1) {
+                if(!cmd_options.container_name)
+                {
+                    syslog(LOG_CRIT, "Unable to start blobfuse, no config file provided and --container-name is not set.");
+                    fprintf(stderr, "Error: No config file provided and --container-name is not set.\n");
+                    print_usage();
+                    return 1;
+                } 
+
+                std::string container(cmd_options.container_name);
+                config_options.containerName = container;
             }
 
-            std::string container(cmd_options.container_name);
-            config_options.containerName = container;
             if(cmd_options.httpsProxy)
             {
                 std::string httpsProxy(cmd_options.httpsProxy);
@@ -976,16 +1000,6 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             }
         }
 
-        config_options.uploadIfModified = false;
-        if (cmd_options.upload_if_modified != NULL) {
-            syslog(LOG_DEBUG, "upload_if_modified is not null");
-            std::string val(cmd_options.upload_if_modified);
-            if (val == "true") {
-                config_options.uploadIfModified = true;
-                syslog(LOG_DEBUG, "upload_if_modified is true");
-            }
-        }
-
         if (!tmpPathStr.empty()) {
             bool fail_mount = false;
             struct stat sb;
@@ -1016,125 +1030,135 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
                 }
             }
         }
-
         config_options.tmpPath = tmpPathStr;
-        config_options.useHttps = true;
-        if (cmd_options.useHttps != NULL) {
-            std::string https(cmd_options.useHttps);
-            if (https == "false") {
-                config_options.useHttps = false;
-            }
-        }
+    }
 
-        config_options.useAttrCache = false;
-        if (cmd_options.useAttrCache != NULL) {
-            std::string attr_cache(cmd_options.useAttrCache);
-            if (attr_cache == "true") {
-                config_options.useAttrCache = true;
-            }
+    config_options.uploadIfModified = false;
+    if (cmd_options.upload_if_modified != NULL) {
+        syslog(LOG_DEBUG, "upload_if_modified is not null");
+        std::string val(cmd_options.upload_if_modified);
+        if (val == "true") {
+            config_options.uploadIfModified = true;
+            syslog(LOG_DEBUG, "upload_if_modified is true");
         }
+    }
 
-        if (cmd_options.file_cache_timeout_in_seconds != NULL) {
-            std::string timeout(cmd_options.file_cache_timeout_in_seconds);
-            config_options.fileCacheTimeoutInSeconds = stoi(timeout);
-        } else {
-            config_options.fileCacheTimeoutInSeconds = 120;
+    config_options.useHttps = true;
+    if (cmd_options.useHttps != NULL) {
+        std::string https(cmd_options.useHttps);
+        if (https == "false") {
+            config_options.useHttps = false;
         }
+    }
 
-        if (cmd_options.use_adls != NULL) {
-            std::string use_adls_value(cmd_options.use_adls);
-            if (use_adls_value == "true") {
-                config_options.useADLS = true;
-            } else if (use_adls_value == "false") {
-                config_options.useADLS = false;
-            }
+    if (cmd_options.use_adls != NULL) {
+        std::string use_adls_value(cmd_options.use_adls);
+        if (use_adls_value == "true") {
+            config_options.useADLS = true;
+        } else if (use_adls_value == "false") {
+            config_options.useADLS = false;
         }
+    }
 
-        if (cmd_options.no_symlinks != NULL) {
-            std::string no_symlinks(cmd_options.no_symlinks);
-            if (no_symlinks == "true") {
-                config_options.noSymlinks = true;
-            }
+    if (cmd_options.no_symlinks != NULL) {
+        std::string no_symlinks(cmd_options.no_symlinks);
+        if (no_symlinks == "true") {
+            config_options.noSymlinks = true;
         }
+    }
 
-        if (cmd_options.cache_on_list != NULL) {
-            std::string cache_prop(cmd_options.cache_on_list);
-            if (cache_prop == "false") {
-                config_options.cacheOnList = false;
-            }
+    if (cmd_options.cache_on_list != NULL) {
+        std::string cache_prop(cmd_options.cache_on_list);
+        if (cache_prop == "false") {
+            config_options.cacheOnList = false;
         }
+    }
 
-        config_options.concurrency = (int) (blobfuse_constants::def_concurrency_blob_wrapper);
-        if (cmd_options.concurrency != NULL) {
-            std::string concur(cmd_options.concurrency);
-            //config_options.concurrency = stoi(concur);
-            config_options.concurrency = (stoi(concur) < blobfuse_constants::max_concurrency_blob_wrapper) ?
-                                         stoi(concur) : blobfuse_constants::max_concurrency_blob_wrapper;
-        }
+    config_options.concurrency = (int) (blobfuse_constants::def_concurrency_blob_wrapper);
+    if (cmd_options.concurrency != NULL) {
+        std::string concur(cmd_options.concurrency);
+        //config_options.concurrency = stoi(concur);
+        config_options.concurrency = (stoi(concur) < blobfuse_constants::max_concurrency_blob_wrapper) ?
+                                        stoi(concur) : blobfuse_constants::max_concurrency_blob_wrapper;
+    }
 
-        config_options.cacheSize = 0;
-        if (cmd_options.cache_size_mb != NULL) {
-            std::string cache_size(cmd_options.cache_size_mb);
-            config_options.cacheSize = stoi(cache_size) * (unsigned long long) (1024l * 1024l);
-        }
+    config_options.cacheSize = 0;
+    if (cmd_options.cache_size_mb != NULL) {
+        std::string cache_size(cmd_options.cache_size_mb);
+        config_options.cacheSize = stoi(cache_size) * (unsigned long long) (1024l * 1024l);
+    }
 
-        config_options.cancel_list_on_mount_secs = 0;
-        if (cmd_options.cancel_list_on_mount_seconds != NULL) {
-            std::string cancel_list_on_mount_secs(cmd_options.cancel_list_on_mount_seconds);
-            config_options.cancel_list_on_mount_secs = stoi(cancel_list_on_mount_secs);
-        }
+    config_options.cancel_list_on_mount_secs = 0;
+    if (cmd_options.cancel_list_on_mount_seconds != NULL) {
+        std::string cancel_list_on_mount_secs(cmd_options.cancel_list_on_mount_seconds);
+        config_options.cancel_list_on_mount_secs = stoi(cancel_list_on_mount_secs);
+    }
 
-        // Make high and low disk threshold percentage a configurable option
-        if (cmd_options.high_disk_threshold != NULL) {
-            std::string high_disk_thr(cmd_options.high_disk_threshold);
-            config_options.high_disk_threshold = stoi(high_disk_thr);
-            if (config_options.high_disk_threshold < 0 || config_options.high_disk_threshold > 100) {
-                syslog(LOG_ERR, "Invalid high_disk_threshold, reverting back to default value");
-                config_options.high_disk_threshold = HIGH_THRESHOLD_VALUE;
-            }
-        }
-
-        if (cmd_options.low_disk_threshold != NULL) {
-            std::string low_disk_thr(cmd_options.low_disk_threshold);
-            config_options.low_disk_threshold = stoi(low_disk_thr);
-            if (config_options.low_disk_threshold < 0 || config_options.low_disk_threshold > 100) {
-                syslog(LOG_ERR, "Invalid low_disk_threshold, reverting back to default value");
-                config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
-            }
-        }
-
-        if (config_options.low_disk_threshold >= config_options.high_disk_threshold) {
-            syslog(LOG_ERR, "Invalid disk_thresholds, reverting back to default values");
+    // Make high and low disk threshold percentage a configurable option
+    if (cmd_options.high_disk_threshold != NULL) {
+        std::string high_disk_thr(cmd_options.high_disk_threshold);
+        config_options.high_disk_threshold = stoi(high_disk_thr);
+        if (config_options.high_disk_threshold < 0 || config_options.high_disk_threshold > 100) {
+            syslog(LOG_ERR, "Invalid high_disk_threshold, reverting back to default value");
             config_options.high_disk_threshold = HIGH_THRESHOLD_VALUE;
+        }
+    }
+
+    if (cmd_options.low_disk_threshold != NULL) {
+        std::string low_disk_thr(cmd_options.low_disk_threshold);
+        config_options.low_disk_threshold = stoi(low_disk_thr);
+        if (config_options.low_disk_threshold < 0 || config_options.low_disk_threshold > 100) {
+            syslog(LOG_ERR, "Invalid low_disk_threshold, reverting back to default value");
             config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
         }
+    }
 
-        config_options.cachePollTimeout = 1000;
-        if (cmd_options.cache_poll_timeout_msec != NULL) {
-            std::string timeout(cmd_options.cache_poll_timeout_msec);
-            config_options.cachePollTimeout = stoi(timeout) * 1000;
-        }
+    if (config_options.low_disk_threshold >= config_options.high_disk_threshold) {
+        syslog(LOG_ERR, "Invalid disk_thresholds, reverting back to default values");
+        config_options.high_disk_threshold = HIGH_THRESHOLD_VALUE;
+        config_options.low_disk_threshold = LOW_THRESHOLD_VALUE;
+    }
 
-        config_options.maxEviction = 0;
-        if (cmd_options.max_eviction != NULL) {
-            std::string max_evic(cmd_options.max_eviction);
-            config_options.maxEviction = stoi(max_evic);
-        }
+    config_options.cachePollTimeout = 1000;
+    if (cmd_options.cache_poll_timeout_msec != NULL) {
+        std::string timeout(cmd_options.cache_poll_timeout_msec);
+        config_options.cachePollTimeout = stoi(timeout) * 1000;
+    }
 
-        if (cmd_options.set_content_type != NULL) {
-            std::string val(cmd_options.set_content_type);
-            if (val == "true")
-                gSetContentType = true;
-        }
+    config_options.maxEviction = 0;
+    if (cmd_options.max_eviction != NULL) {
+        std::string max_evic(cmd_options.max_eviction);
+        config_options.maxEviction = stoi(max_evic);
+    }
 
-        config_options.preMountValidate = false;
-        if (cmd_options.pre_mount_validate != NULL) {
-            std::string val(cmd_options.pre_mount_validate);
-            if (val == "true") {
-                syslog(LOG_INFO, "Pre mount validation enabled");
-                config_options.preMountValidate = true;
-            }
+    if (cmd_options.set_content_type != NULL) {
+        std::string val(cmd_options.set_content_type);
+        if (val == "true")
+            gSetContentType = true;
+    }
+
+    config_options.preMountValidate = false;
+    if (cmd_options.pre_mount_validate != NULL) {
+        std::string val(cmd_options.pre_mount_validate);
+        if (val == "true") {
+            syslog(LOG_INFO, "Pre mount validation enabled");
+            config_options.preMountValidate = true;
         }
+    }
+
+    config_options.useAttrCache = false;
+    if (cmd_options.useAttrCache != NULL) {
+        std::string attr_cache(cmd_options.useAttrCache);
+        if (attr_cache == "true") {
+            config_options.useAttrCache = true;
+        }
+    }
+
+    if (cmd_options.file_cache_timeout_in_seconds != NULL) {
+        std::string timeout(cmd_options.file_cache_timeout_in_seconds);
+        config_options.fileCacheTimeoutInSeconds = stoi(timeout);
+    } else {
+        config_options.fileCacheTimeoutInSeconds = 120;
     }
 
     // Azure retry policy config
@@ -1158,55 +1182,54 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         }
     }
 
+    config_options.maxTimeoutSeconds = 60.0;
+    if (cmd_options.max_timeout != NULL) {
+        std::string max_timeout(cmd_options.max_timeout);
+        config_options.maxTimeoutSeconds = stod(max_timeout, &offset);
+    }
+
+    config_options.retryDelay = 1.2;
+    if (cmd_options.retry_delay != NULL) {
+        std::string retry_delay(cmd_options.retry_delay);
+        config_options.retryDelay = stod(retry_delay, &offset);
+    }
+
+    config_options.backgroundDownload = false;
+    if (cmd_options.background_download != NULL) {
+        std::string background_download(cmd_options.background_download);
+        if (background_download == "true") {
+            config_options.backgroundDownload = true;
+        }
+    }
+
+    config_options.invalidateOnSync = false;
+    if (cmd_options.invalidate_on_sync != NULL) {
+        std::string evict(cmd_options.invalidate_on_sync);
+        if (evict == "true") {
+            config_options.invalidateOnSync = true;
+        }
+    }
+
+    config_options.readStreamBufferSize = (500 * 1024 * 1024);
+    if (cmd_options.stream_buffer != NULL) {
+        std::string stream_buffer(cmd_options.stream_buffer);
+        config_options.readStreamBufferSize = uint64_t(stod(stream_buffer, &offset)) * uint64_t(1024 * 1024);
+    }
+
+    config_options.maxBlocksPerFile = blobfuse_constants::maxStreamBlocksPerFile;
+    if (cmd_options.max_blocks_per_file != NULL) {
+        std::string max_block(cmd_options.max_blocks_per_file);
+        config_options.maxBlocksPerFile = stod(max_block, &offset);
+    }
+
+    config_options.blockSize = (16 * 1024 * 1024);
+    if (cmd_options.block_size_mb != NULL) {
+        std::string block_size(cmd_options.block_size_mb);
+        config_options.blockSize = uint64_t(stod(block_size, &offset));
+        config_options.blockSize = uint64_t((config_options.blockSize) * 1024 * 1024);
+    }
+
     if (!config_options.enableGen1) {
-
-        config_options.maxTimeoutSeconds = 60.0;
-        if (cmd_options.max_timeout != NULL) {
-            std::string max_timeout(cmd_options.max_timeout);
-            config_options.maxTimeoutSeconds = stod(max_timeout, &offset);
-        }
-
-        config_options.retryDelay = 1.2;
-        if (cmd_options.retry_delay != NULL) {
-            std::string retry_delay(cmd_options.retry_delay);
-            config_options.retryDelay = stod(retry_delay, &offset);
-        }
-
-        config_options.backgroundDownload = false;
-        if (cmd_options.background_download != NULL) {
-            std::string background_download(cmd_options.background_download);
-            if (background_download == "true") {
-                config_options.backgroundDownload = true;
-            }
-        }
-
-        config_options.invalidateOnSync = false;
-        if (cmd_options.invalidate_on_sync != NULL) {
-            std::string evict(cmd_options.invalidate_on_sync);
-            if (evict == "true") {
-                config_options.invalidateOnSync = true;
-            }
-        }
-
-        config_options.readStreamBufferSize = (500 * 1024 * 1024);
-        if (cmd_options.stream_buffer != NULL) {
-            std::string stream_buffer(cmd_options.stream_buffer);
-            config_options.readStreamBufferSize = uint64_t(stod(stream_buffer, &offset)) * uint64_t(1024 * 1024);
-        }
-
-        config_options.maxBlocksPerFile = blobfuse_constants::maxStreamBlocksPerFile;
-        if (cmd_options.max_blocks_per_file != NULL) {
-            std::string max_block(cmd_options.max_blocks_per_file);
-            config_options.maxBlocksPerFile = stod(max_block, &offset);
-        }
-
-        config_options.blockSize = (16 * 1024 * 1024);
-        if (cmd_options.block_size_mb != NULL) {
-            std::string block_size(cmd_options.block_size_mb);
-            config_options.blockSize = uint64_t(stod(block_size, &offset));
-            config_options.blockSize = uint64_t((config_options.blockSize) * 1024 * 1024);
-        }
-
         if (config_options.streaming && !config_options.readOnlyMount) {
             syslog(LOG_ERR, "Read-Streaming is supported only on Readonly Mounts. Use '-o ro' option in mount command");
             fprintf(stderr, "Read-Streaming is supported only on Readonly Mounts. Use '-o ro' option in mount command");
@@ -1214,13 +1237,13 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         }
 
         syslog(LOG_INFO,
-               "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d Retry Policy (%d, %f, %f), Background Download %d, Evict on sync %d",
-               config_options.high_disk_threshold, config_options.low_disk_threshold,
-               config_options.cachePollTimeout, config_options.maxEviction,
-               config_options.cancel_list_on_mount_secs,
-               config_options.maxTryCount, config_options.maxTimeoutSeconds, config_options.retryDelay,
-               config_options.backgroundDownload,
-               config_options.invalidateOnSync);
+                "Disk Thresholds : %d - %d, Cache Eviction : %llu-%llu, List Cancel time : %d Retry Policy (%d, %f, %f), Background Download %d, Evict on sync %d",
+                config_options.high_disk_threshold, config_options.low_disk_threshold,
+                config_options.cachePollTimeout, config_options.maxEviction,
+                config_options.cancel_list_on_mount_secs,
+                config_options.maxTryCount, config_options.maxTimeoutSeconds, config_options.retryDelay,
+                config_options.backgroundDownload,
+                config_options.invalidateOnSync);
 
         if (config_options.backgroundDownload) {
             syslog(LOG_INFO, "Background download is turned on");
@@ -1228,12 +1251,11 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
 
         if (config_options.streaming) {
             syslog(LOG_INFO, "Streaming : %d, Stream buffer size : %lu, Max Blocks : %d, Block Size : %ld",
-                   config_options.streaming, config_options.readStreamBufferSize,
-                   config_options.maxBlocksPerFile, config_options.blockSize);
+                    config_options.streaming, config_options.readStreamBufferSize,
+                    config_options.maxBlocksPerFile, config_options.blockSize);
         }
-    }
+    }   
 
-    
     syslog(LOG_INFO,"Blobfuse version : %s", _BLOBFUSE_VERSION_);
     return 0;
 }
@@ -1293,73 +1315,6 @@ std::string exec(const char* cmd) {
     return result;
 }
 
-int mount_rust_fuse(char* argv[]){
-    json j;
-    if(config_options.authType == SPN_AUTH){
-        j["clientsecret"] = config_options.spnClientSecret;
-        j["clientid"] = config_options.spnClientId;
-        j["tenantid"] = config_options.spnTenantId;
-        if(config_options.aadEndpoint != "")
-        {
-            j["authorityurl"] = config_options.aadEndpoint;
-        }
-        else
-        {
-            j["authorityurl"] = "https://login.microsoftonline.com";
-        }
-
-        j["credentialtype"] = "servicePrincipal";
-    }else{
-        return -1;
-    }
-    j["resourceurl"] = "https://datalake.azure.net/";
-    j["fuseattrtimeout"] = config_options.attrTimeout;
-    j["fuseentrytimeout"] = config_options.entryTimeout;
-    j["uselocalcache"] = !config_options.streaming;
-    if(config_options.defaultPermission == 0777)
-    {
-        j["fuseallowother"] = true;
-    }
-    else{
-        j["fuseallowother"] = false;
-    }
-
-    if (config_options.logLevel == ""){
-        j["loglevel"] = "log_debug";
-    }else {
-        j["loglevel"] = config_options.logLevel;
-    }
-
-    if (config_options.maxTryCount == 0){
-        j["retrycount"] = 10;
-    }else{
-        j["retrycount"] = config_options.maxTryCount;
-    }
-
-    j["retryjitter"] = 1;
-
-    j["resourceid"] = "adl://"+config_options.accountName+".azuredatalakestore.net/";
-
-    j["mountdir"] = argv[1];
-
-    std::string serialized = j.dump(4);
-
-    std::cout<<serialized<<std::endl;
-    ofstream outdata;
-    outdata.open("blobfuse-config.json");
-    if( !outdata ) { // file couldn't be opened
-        cerr << "Error: file could not be opened" << endl;
-        return -1;
-    }
-    outdata<<serialized<<endl;
-    outdata.close();
-
-    std::string cmd = "./rustfuse";
-    std::cout<<exec(cmd.c_str())<<std::endl;
-
-    return 0;
-}
-
 int initialize_blobfuse()
 {
     if(0 != ensure_files_directory_exists_in_cache(prepend_mnt_path_string("/placeholder")))
@@ -1414,5 +1369,77 @@ int initialize_blobfuse()
     }
 
     globalTimes.lastModifiedTime = globalTimes.lastAccessTime = globalTimes.lastChangeTime = time(NULL);
+    return 0;
+}
+
+
+// Code to generate json file for rustfuse and launch the binary
+int mount_rust_fuse(char* argv[]){
+    json j;
+    if (config_options.authType == SPN_AUTH){
+        j["clientsecret"] = config_options.spnClientSecret;
+        j["clientid"] = config_options.spnClientId;
+        j["tenantid"] = config_options.spnTenantId;
+        if(config_options.aadEndpoint != "")
+        {
+            j["authorityurl"] = config_options.aadEndpoint;
+        }
+        else
+        {
+            j["authorityurl"] = "https://login.microsoftonline.com";
+        }
+
+        j["credentialtype"] = "servicePrincipal";
+    } else{
+        return -1;
+    }
+
+    j["resourceurl"] = "https://datalake.azure.net/";
+    j["fuseattrtimeout"] = config_options.attrTimeout;
+    j["fuseentrytimeout"] = config_options.entryTimeout;
+    j["uselocalcache"] = !config_options.streaming;
+    
+    if(config_options.defaultPermission == 0777)
+    {
+        j["fuseallowother"] = true;
+    } else {
+        j["fuseallowother"] = false;
+    }
+
+    if (config_options.logLevel == ""){
+        j["loglevel"] = "log_debug";
+    } else {
+        j["loglevel"] = config_options.logLevel;
+    }
+
+    if (config_options.maxTryCount == 0){
+        j["retrycount"] = 10;
+    } else{
+        j["retrycount"] = config_options.maxTryCount;
+    }
+
+    j["retryjitter"] = 1;
+
+    j["resourceid"] = "adl://"+config_options.accountName+".azuredatalakestore.net/";
+
+    j["mountdir"] = argv[1];
+
+    std::string serialized = j.dump(4);
+
+    std::cout<<serialized<<std::endl;
+    ofstream outdata;
+    outdata.open("blobfuse-config.json");
+    
+    if( !outdata ) { // file couldn't be opened
+        cerr << "Error: file could not be opened" << endl;
+        return -1;
+    }
+    
+    outdata<<serialized<<endl;
+    outdata.close();
+
+    std::string cmd = "./rustfuse";
+    std::cout<<exec(cmd.c_str())<<std::endl;
+
     return 0;
 }

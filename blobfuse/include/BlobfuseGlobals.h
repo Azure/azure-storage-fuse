@@ -55,8 +55,6 @@ struct configParams
     std::string httpsProxy;
     std::string httpProxy;
     int fileCacheTimeoutInSeconds;
-    int attrTimeout;
-    int entryTimeout;
     bool useHttps;
     bool useAttrCache;
     bool useADLS;
@@ -92,6 +90,8 @@ struct configParams
     int maxBlocksPerFile;
     uint64_t blockSize;
 
+    int attrTimeout;
+    int entryTimeout;
     bool enableGen1;
 };
 

@@ -8,9 +8,8 @@ int main(int argc, char *argv[])
     // Copy the stdout of parent for child to output
     stdErrFD = dup(2);
 
-    static struct fuse_operations azs_blob_operations;
-    set_up_callbacks(azs_blob_operations);
-
+    init_essentials();
+    
     struct fuse_args args;
     int ret = read_and_set_arguments(argc, argv, &args);
     if (ret != 0)
@@ -22,6 +21,9 @@ int main(int argc, char *argv[])
         ret = mount_rust_fuse(argv);
         exit(ret);
     }
+
+    static struct fuse_operations azs_blob_operations;
+    set_up_callbacks(azs_blob_operations);
 
     configure_fuse(&args);
 
