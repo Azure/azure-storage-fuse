@@ -1280,57 +1280,83 @@ void configure_fuse(struct fuse_args *args)
     umask(0);
 }
 
-int mount_rust_fuse(){
+std::string exec(const char* cmd) {
+    std::array<char, 128> buffer;
+    std::string result;
+    std::unique_ptr<FILE, decltype(&pclose)> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) {
+        throw std::runtime_error("popen() failed!");
+    }
+    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+        result += buffer.data();
+    }
+    return result;
+}
+
+int mount_rust_fuse(char* argv[]){
     json j;
     if(config_options.authType == SPN_AUTH){
-        j["ClientSecret"] = config_options.spnClientSecret;
-        j["ClientId"] = config_options.spnClientId;
-        j["TenantId"] = config_options.spnTenantId;
+        j["clientsecret"] = config_options.spnClientSecret;
+        j["clientid"] = config_options.spnClientId;
+        j["tenantid"] = config_options.spnTenantId;
         if(config_options.aadEndpoint != "")
         {
-            j["AuthorityUrl"] = config_options.aadEndpoint;
+            j["authorityurl"] = config_options.aadEndpoint;
         }
         else
         {
-            j["AuthorityUrl"] = "https://login.microsoftonline.com";
+            j["authorityurl"] = "https://login.microsoftonline.com";
         }
 
-        j["CredentialType"] = "servicePrincipal";
-    }else if (config_options.authType == MSI_AUTH) {
-        j["ClientSecret"] = config_options.msiSecret;
-        j["CredentialType"] = "msi";
+        j["credentialtype"] = "servicePrincipal";
     }else{
         return -1;
     }
-    j["ResourceUrl"] = "https://datalake.azure.net/";
-    j["FuseAttrTimeout"] = config_options.attrTimeout;
-    j["FuseEntryTimeout"] = config_options.entryTimeout;
-    j["UseLocalCache"] = !config_options.streaming;
+    j["resourceurl"] = "https://datalake.azure.net/";
+    j["fuseattrtimeout"] = config_options.attrTimeout;
+    j["fuseentrytimeout"] = config_options.entryTimeout;
+    j["uselocalcache"] = !config_options.streaming;
     if(config_options.defaultPermission == 0777)
     {
-        j["AllowOther"] = true;
+        j["fuseallowother"] = true;
     }
     else{
-        j["AllowOther"] = false;
+        j["fuseallowother"] = false;
     }
 
-    j["LogLevel"] = config_options.logLevel;
+    if (config_options.logLevel == ""){
+        j["loglevel"] = "log_debug";
+    }else {
+        j["loglevel"] = config_options.logLevel;
+    }
 
-    j["RetryCount"] = config_options.maxTryCount;
+    if (config_options.maxTryCount == 0){
+        j["retrycount"] = 10;
+    }else{
+        j["retrycount"] = config_options.maxTryCount;
+    }
 
-    j["ResourceId"] = "adl://"+config_options.accountName+".azuredatalakestore.net/";
+    j["retryjitter"] = 1;
+
+    j["resourceid"] = "adl://"+config_options.accountName+".azuredatalakestore.net/";
+
+    j["mountdir"] = argv[1];
 
     std::string serialized = j.dump(4);
 
     std::cout<<serialized<<std::endl;
     ofstream outdata;
-    outdata.open("rustfuse.json");
+    outdata.open("blobfuse-config.json");
     if( !outdata ) { // file couldn't be opened
         cerr << "Error: file could not be opened" << endl;
         return -1;
     }
     outdata<<serialized<<endl;
     outdata.close();
+
+    std::string cmd = "./rustfuse";
+    std::cout<<exec(cmd.c_str())<<std::endl;
+
     return 0;
 }
 

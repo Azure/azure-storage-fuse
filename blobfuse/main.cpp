@@ -19,7 +19,7 @@ int main(int argc, char *argv[])
     }
 
     if(config_options.enableGen1){
-        ret = mount_rust_fuse();
+        ret = mount_rust_fuse(argv);
         exit(ret);
     }
 
