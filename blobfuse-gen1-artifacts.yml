@@ -77,6 +77,7 @@ stages:
         workingDirectory: $(ROOT_DIR)
       
       - script: |
+          cd call-datasetfuse-gen1
           cp ./target/release/call-gen1datasetfuse $(Build.ArtifactStagingDirectory)/datasetfuse
         displayName: "Copy Artifact"
         workingDirectory: $(ROOT_DIR)
@@ -84,7 +85,7 @@ stages:
       # Publish the Artifacts
       - task: PublishBuildArtifacts@1
         inputs:
-          artifactName: 'datasetfuse'
+          artifactName: 'rustbin'
         displayName: 'Publish Artifacts for datasetfuse'
         condition: succeeded()
 
@@ -152,12 +153,12 @@ stages:
       - task: DownloadBuildArtifacts@0
         displayName: 'Download DatasetFuse Artifacts'
         inputs:
-          artifactName: 'datasetfuse'
+          artifactName: 'rustbin'
           downloadPath: $(ROOT_DIR)
       
       - script: |
-          cp ./datasetfuse/* ./
-          rm -rf ./datasetfuse/*
+          cp ./rustbin/* ./
+          rm -rf ./rustbin/*
           chmod 777 ./datasetfuse
           ls -l ./datasetfuse
         displayName: "Prepare for packaging"
