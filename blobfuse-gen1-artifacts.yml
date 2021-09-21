@@ -34,6 +34,7 @@ stages:
       - script: |
           sudo apt-get update --fix-missing
           sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+          sudo apt-get install libfuse-dev -y
         displayName: "Basic Tools Setup"
 
       - script: |
@@ -44,6 +45,8 @@ stages:
           rustup install nightly
           rustup install nightly-2021-09-01 ​ 
           rustup default nightly-2021-09-01-x86_64-unknown-linux-gnu
+          sudo apt install llvm
+          llvm-config --prefix
         displayName: "Rust Setup"
 
       - script: |
@@ -53,7 +56,6 @@ stages:
 
       # Checkout branch
       - script: |
-          echo $(Build.SourceBranch)
           git checkout narven/json_parsing
         displayName: "Checkout Branch"
         workingDirectory: $(ROOT_DIR)
