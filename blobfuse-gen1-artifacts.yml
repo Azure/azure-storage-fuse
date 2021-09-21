@@ -1,0 +1,181 @@
+# Pipeline to build artifact for gen1 compliant datasetfuse
+
+# Do not trigger this pipeline automatically
+trigger: none
+pr: none
+
+stages:
+
+# ---------------------- Build datasetfuse here and copy binary to artifact ------------------------------
+- stage: BuildDatasetFuse
+  jobs:
+  - job: DatasetFuseBuild
+
+    # Define on what all OS we want to run this Pipeline
+    strategy:
+      matrix:
+        Ubuntu-18:
+          container_image: 'ubuntu-18.04' 
+          build_type: Release 
+    pool:
+      vmImage: $(container_image)
+
+    variables:
+    - group: NightlyBlobFuse
+    - name: WORK_DIR
+      value: "/home/vsts/work/"
+    - name: ROOT_DIR
+      value: "/home/vsts/work/BlobFuse-ADLSGen1"
+
+    steps:
+      - checkout: none
+
+      # Install all dependencies
+      - script: |
+          sudo apt-get update --fix-missing
+          sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ rustc -y
+        displayName: "Basic Tools Setup"
+
+      - script: |
+          git clone https://$(DEVOPS_UNAME):$(DEVOPS_PWD)@dev.azure.com/azstorage/_git/BlobFuse-ADLSGen1
+        displayName: "Checkout code"
+        workingDirectory: $(WORK_DIR)
+
+      # Checkout branch
+      - script: |
+          echo $(Build.SourceBranch)
+          git checkout narven/json_parsing
+        displayName: "Checkout Branch"
+        workingDirectory: $(ROOT_DIR)
+
+      # List commits consumed for this build
+      - script: |
+          echo "Below commits were done in last 12 hours : " `date` 
+          git --no-pager log --since="12 hours ago" --stat
+        displayName: "List Commits"
+        workingDirectory: $(ROOT_DIR)
+
+      # Build datasetfuse binary
+      - script: |
+          cargo build
+        displayName: "Build the binary"
+        workingDirectory: $(ROOT_DIR)
+      
+      - script: |
+          cp ./datasetfuse $(Build.ArtifactStagingDirectory)/
+        displayName: "Copy Artifact"
+        workingDirectory: $(ROOT_DIR)
+      
+      # Publish the Artifacts
+      - task: PublishBuildArtifacts@1
+        inputs:
+          artifactName: 'datasetfuse'
+        displayName: 'Publish Artifacts for datasetfuse'
+        condition: succeeded()
+
+
+# ---------------------- Build blobfuse and create a .deb package ------------------------------
+- stage: BuildArtifact
+  dependsOn: BuildDatasetFuse
+  condition: succeeded('BuildDatasetFuse') 
+
+  jobs:
+  - job: BlobfuseBuild
+
+    # Define on what all OS we want to run this Pipeline
+    strategy:
+      matrix:
+        Ubuntu-18:
+          container_image: 'ubuntu-18.04' 
+          build_type: Release 
+    pool:
+      vmImage: $(container_image)
+
+    variables:
+    - group: NightlyBlobFuse
+    - name: WORK_DIR
+      value: "/home/vsts/work/"
+    - name: ROOT_DIR
+      value: "/home/vsts/work/azure-storage-fuse"
+
+    steps:
+      - checkout: none
+
+      # Install all dependencies
+      - script: |
+          sudo apt-get update --fix-missing
+          sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+        displayName: "Basic Tools Setup"
+
+      # Install libfuse
+      - script: |
+          sudo apt-get install libfuse-dev -y
+        displayName: "libFuse Setup"
+
+      - script: |
+          git clone https://github.com/Azure/azure-storage-fuse
+        displayName: "Checkout code"
+        workingDirectory: $(WORK_DIR)
+
+      # Checkout branch
+      - script: |
+          echo $(Build.SourceBranch)
+          echo "Going for checkout of " `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`  
+          git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
+        displayName: "Checkout Branch"
+        workingDirectory: $(ROOT_DIR)
+
+      # List commits consumed for this build
+      - script: |
+          echo "Below commits were done in last 12 hours : " `date` 
+          git --no-pager log --since="12 hours ago" --stat
+        displayName: "List Commits"
+        workingDirectory: $(ROOT_DIR)
+
+      # ---- DO NOT CHANGE THE ORDER HERE. datasetfuse binary shall on root before we build blobfuse ------
+      # Copy datasetfuse binary to blobfuse root 
+      - task: DownloadBuildArtifacts@0
+        displayName: 'Download DatasetFuse Artifacts'
+        inputs:
+          artifactName: 'datasetfuse'
+          downloadPath: $(ROOT_DIR)
+      
+      - script: |
+          cp ./datasetfuse/* ./
+          rm -rf ./datasetfuse/*
+          chmod 777 ./datasetfuse
+          ls -l ./datasetfuse
+        displayName: "Prepare for packaging"
+        workingDirectory: $(ROOT_DIR)
+      #--------------------------------------------------------------------------------------------------------
+
+      # Build the blobFuse binary
+      - script: |
+          sudo chmod +x build.sh
+          . ./build.sh
+        displayName: "Build BlobFuse"
+        workingDirectory: $(ROOT_DIR)
+
+      # Test the binary just to make sure it was built fine
+      - script: |
+          ./build/blobfuse --version
+        displayName: "Test the binary"
+        workingDirectory: $(ROOT_DIR)
+
+      # Copy binaries required for the package
+      - script: |
+          cd ./build/
+          make package
+          mv ./blobfuse-*.*.*-Linux.deb ./`./blobfuse -v | tr ' ' '-'`-$(container_image)-x86_64.deb
+          dpkg -c blobfuse*.deb
+          cp ./blobfuse-*.*.*.deb  $(Build.ArtifactStagingDirectory)/
+        displayName: "Build Artifacts"
+        workingDirectory: $(ROOT_DIR)
+
+      # Publish the Artifacts
+      - task: PublishBuildArtifacts@1
+        inputs:
+          artifactName: 'blobfuse'
+        displayName: 'Publish Artifacts for blobfuse $(container_image)'
+        condition: succeeded()
+

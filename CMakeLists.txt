@@ -124,6 +124,12 @@ if(UNIX)
           DESTINATION bin)
   endif()
 
+  if ( EXISTS "${CMAKE_SOURCE_DIR}/datasetfuse")
+  install(FILES ${CMAKE_SOURCE_DIR}/datasetfuse
+          PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
+          DESTINATION bin)
+  endif()
+
   set(CPACK_GENERATOR "DEB")
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft - Azure Storage")
   set(CPACK_DEBIAN_PACKAGE_DEPENDS "fuse")
