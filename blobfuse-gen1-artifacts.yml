@@ -68,6 +68,8 @@ stages:
       # Build datasetfuse binary
       - script: |
           cd call-datasetfuse-gen1
+          { echo 'cargo-features = ["edition2021"]'; cat Cargo.toml; } > Cargo_new.toml
+          mv Cargo_new.toml Cargo.toml
           cargo build --release
         displayName: "Build the binary"
         workingDirectory: $(ROOT_DIR)
