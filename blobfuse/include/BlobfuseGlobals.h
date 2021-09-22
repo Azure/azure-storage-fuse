@@ -65,7 +65,6 @@ struct configParams
     int defaultPermission;
     int concurrency;
     unsigned long long cacheSize;
-    int requiredFreeSpace;
     volatile int  cancel_list_on_mount_secs;
     bool emptyDirCheck;
     bool uploadIfModified;
@@ -91,8 +90,10 @@ struct configParams
     int maxBlocksPerFile;
     uint64_t blockSize;
 
+    // Gen-1 specific config
     int attrTimeout;
     int entryTimeout;
+    int requiredFreeSpace;
     bool enableGen1;
 };
 

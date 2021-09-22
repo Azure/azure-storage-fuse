@@ -1384,7 +1384,9 @@ int initialize_blobfuse()
 int mount_rust_fuse(char* argv[]){
     json j;
     if (config_options.authType == SPN_AUTH){
-        j["clientsecret"] = config_options.spnClientSecret;
+        // adlsgen1fuse will be reading secret from env variable (ADL_CLIENT_SECRET) hence no reason to include this.
+        //j["clientsecret"] = config_options.spnClientSecret;
+
         j["clientid"] = config_options.spnClientId;
         j["tenantid"] = config_options.spnTenantId;
         if(config_options.aadEndpoint != "")
@@ -1398,6 +1400,7 @@ int mount_rust_fuse(char* argv[]){
 
         j["credentialtype"] = "servicePrincipal";
     } else{
+        syslog(LOG_ERR, "For Gen1 account only SPN auth is supported.");
         return -1;
     }
 
@@ -1441,30 +1444,32 @@ int mount_rust_fuse(char* argv[]){
 
     std::string serialized = j.dump(4);
 
-    std::cout<<serialized<<std::endl;
+    //std::cout<<serialized<<std::endl;
+
+    const char* gen1ConfigFile = "adlsgen1fuse.json";
     ofstream outdata;
-    outdata.open("blobfuse-config.json");
-    
+
+    char curdir[512];
+    char* ret = getcwd(curdir, 512);
+    if (ret == NULL){
+        std::cout<<"Couldn't get working directory of blobfuse"<<std::endl;
+        syslog(LOG_ERR, "Failed to get current directory (%d)", errno);
+        return -1;
+    }
+
+    outdata.open(std::string(curdir) + "/" + gen1ConfigFile);
     if( !outdata ) { // file couldn't be opened
         cerr << "Error: file could not be opened" << endl;
+        syslog(LOG_ERR, "Failed to open gen1 config file (%d)", errno);
         return -1;
     }
     
     outdata<<serialized<<endl;
     outdata.close();
 
-    char curdir[512];
-    char* ret = getcwd(curdir, 512);
-    if (ret == NULL){
-        std::cout<<"Couldn't get working directory of blobfuse"<<std::endl;
-        char errStr[] = "mount_rust_fuse::error obtaining current working dir\n";
-        syslog(LOG_ERR, errStr, sizeof(errStr));
-        return -1;
-    }
+    std::string pathToJson = std::string(curdir) + "/" + gen1ConfigFile;
 
-    std::string pathToJson = std::string(curdir) + "/blobfuse-config.json";
-
-    std::string cmd = "./adlsgen1fuse " + pathToJson;
+    std::string cmd = "adlsgen1fuse " + pathToJson;
     std::cout<<exec(cmd.c_str())<<std::endl;
 
     return 0;
