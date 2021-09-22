@@ -1,4 +1,4 @@
-# Pipeline to build artifact for gen1 compliant datasetfuse
+# Pipeline to build artifact for gen1 compliant adlsgen1fuse
 
 # Do not trigger this pipeline automatically
 trigger: none
@@ -6,10 +6,10 @@ pr: none
 
 stages:
 
-# ---------------------- Build datasetfuse here and copy binary to artifact ------------------------------
-- stage: BuildDatasetFuse
+# ---------------------- Build adlsgen1fuse here and copy binary to artifact ------------------------------
+- stage: BuildAdlsGen1Fuse
   jobs:
-  - job: DatasetFuseBuild
+  - job: AdlsGen1FuseBuild
 
     # Define on what all OS we want to run this Pipeline
     strategy:
@@ -67,7 +67,7 @@ stages:
         displayName: "List Commits"
         workingDirectory: $(ROOT_DIR)
 
-      # Build datasetfuse binary
+      # Build adlsgen1fuse binary
       - script: |
           cd call-datasetfuse-gen1
           { echo 'cargo-features = ["edition2021"]'; cat Cargo.toml; } > Cargo_new.toml
@@ -78,7 +78,7 @@ stages:
       
       - script: |
           cd call-datasetfuse-gen1
-          cp ./target/release/call-gen1datasetfuse $(Build.ArtifactStagingDirectory)/datasetfuse
+          cp ./target/release/call-gen1datasetfuse $(Build.ArtifactStagingDirectory)/adlsgen1fuse
         displayName: "Copy Artifact"
         workingDirectory: $(ROOT_DIR)
       
@@ -86,14 +86,14 @@ stages:
       - task: PublishBuildArtifacts@1
         inputs:
           artifactName: 'rustbin'
-        displayName: 'Publish Artifacts for datasetfuse'
+        displayName: 'Publish Artifacts for adlsgen1fuse'
         condition: succeeded()
 
 
 # ---------------------- Build blobfuse and create a .deb package ------------------------------
 - stage: BuildArtifact
-  dependsOn: BuildDatasetFuse
-  condition: succeeded('BuildDatasetFuse') 
+  dependsOn: BuildAdlsGen1Fuse
+  condition: succeeded('BuildAdlsGen1Fuse')
 
   jobs:
   - job: BlobfuseBuild
@@ -148,10 +148,10 @@ stages:
         displayName: "List Commits"
         workingDirectory: $(ROOT_DIR)
 
-      # ---- DO NOT CHANGE THE ORDER HERE. datasetfuse binary shall on root before we build blobfuse ------
-      # Copy datasetfuse binary to blobfuse root 
+      # ---- DO NOT CHANGE THE ORDER HERE. adlsgen1fuse binary shall on root before we build blobfuse ------
+      # Copy adlsgen1fuse binary to blobfuse root
       - task: DownloadBuildArtifacts@0
-        displayName: 'Download DatasetFuse Artifacts'
+        displayName: 'Download AdlsGen1Fuse Artifacts'
         inputs:
           artifactName: 'rustbin'
           downloadPath: $(ROOT_DIR)
@@ -159,8 +159,8 @@ stages:
       - script: |
           cp ./rustbin/* ./
           rm -rf ./rustbin/*
-          chmod 777 ./datasetfuse
-          ls -l ./datasetfuse
+          chmod 777 ./adlsgen1fuse
+          ls -l ./adlsgen1fuse
         displayName: "Prepare for packaging"
         workingDirectory: $(ROOT_DIR)
       #--------------------------------------------------------------------------------------------------------

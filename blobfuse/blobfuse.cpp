@@ -1395,10 +1395,15 @@ int mount_rust_fuse(char* argv[]){
     }
 
     j["resourceurl"] = "https://datalake.azure.net/";
-    j["fuseattrtimeout"] = config_options.attrTimeout;
-    j["fuseentrytimeout"] = config_options.entryTimeout;
-    j["uselocalcache"] = !config_options.streaming;
-    
+
+    if(config_options.attrTimeout != 240){
+        j["fuseattrtimeout"] = config_options.attrTimeout;
+    }
+
+    if(config_options.entryTimeout != 240){
+        j["fuseentrytimeout"] = config_options.entryTimeout;
+    }
+
     if(config_options.defaultPermission == 0777)
     {
         j["fuseallowother"] = true;
@@ -1406,19 +1411,18 @@ int mount_rust_fuse(char* argv[]){
         j["fuseallowother"] = false;
     }
 
-    if (config_options.logLevel == ""){
-        j["loglevel"] = "log_debug";
-    } else {
+    if (config_options.logLevel != ""){
         j["loglevel"] = config_options.logLevel;
     }
 
-    if (config_options.maxTryCount == 0){
-        j["retrycount"] = 10;
-    } else{
+    if (config_options.maxTryCount != 0){
         j["retrycount"] = config_options.maxTryCount;
     }
 
-    j["retryjitter"] = 1;
+    unsigned long long maxcache = config_options.cacheSize / ((unsigned long long) (1024l * 1024l));
+    if (maxcache != 1000){
+        j["maxcachesizeinmb"] = maxcache;
+    }
 
     j["resourceid"] = "adl://"+config_options.accountName+".azuredatalakestore.net/";
 
@@ -1438,7 +1442,18 @@ int mount_rust_fuse(char* argv[]){
     outdata<<serialized<<endl;
     outdata.close();
 
-    std::string cmd = "./rustfuse";
+    char curdir[512];
+    char* ret = getcwd(curdir, 512);
+    if (ret == NULL){
+        std::cout<<"Couldn't get working directory of blobfuse"<<std::endl;
+        char errStr[] = "mount_rust_fuse::error obtaining current working dir\n";
+        syslog(LOG_ERR, errStr, sizeof(errStr));
+        return -1;
+    }
+
+    std::string pathToJson = std::string(curdir) + "/blobfuse-config.json";
+
+    std::string cmd = "./adlsgen1fuse " + pathToJson;
     std::cout<<exec(cmd.c_str())<<std::endl;
 
     return 0;
