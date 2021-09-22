@@ -65,6 +65,7 @@ struct configParams
     int defaultPermission;
     int concurrency;
     unsigned long long cacheSize;
+    int requiredFreeSpace;
     volatile int  cancel_list_on_mount_secs;
     bool emptyDirCheck;
     bool uploadIfModified;
@@ -115,6 +116,7 @@ struct cmdlineOptions
     const char *help; // print blobfuse usage
     const char *concurrency; // Max Concurrency factor for blob client wrapper (default 40)
     const char *cache_size_mb; // MAX Size of cache in MBs
+    const char *required_free_space_mb;
     const char *cancel_list_on_mount_seconds; // Block the list api call on mount for n seconds
     const char *empty_dir_check;
     const char *upload_if_modified;

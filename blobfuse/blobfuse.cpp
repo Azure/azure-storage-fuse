@@ -52,6 +52,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--cache-on-list=%s", cache_on_list),
     OPTION("--max-concurrency=%s", concurrency),
     OPTION("--cache-size-mb=%s", cache_size_mb),
+    OPTION("--required-free-space-mb=%s", required_free_space_mb),
     OPTION("--empty-dir-check=%s", empty_dir_check),
     OPTION("--upload-modified-only=%s", upload_if_modified),
     OPTION("--cancel-list-on-mount-seconds=%s", cancel_list_on_mount_seconds),
@@ -1088,6 +1089,12 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.cacheSize = stoi(cache_size) * (unsigned long long) (1024l * 1024l);
     }
 
+    config_options.requiredFreeSpace = 0;
+    if (cmd_options.required_free_space_mb != NULL) {
+        std::string req_size(cmd_options.required_free_space_mb);
+        config_options.requiredFreeSpace = stoi(req_size);
+    }
+
     config_options.cancel_list_on_mount_secs = 0;
     if (cmd_options.cancel_list_on_mount_seconds != NULL) {
         std::string cancel_list_on_mount_secs(cmd_options.cancel_list_on_mount_seconds);
@@ -1422,6 +1429,10 @@ int mount_rust_fuse(char* argv[]){
     unsigned long long maxcache = config_options.cacheSize / ((unsigned long long) (1024l * 1024l));
     if (maxcache != 1000){
         j["maxcachesizeinmb"] = maxcache;
+    }
+
+    if (config_options.requiredFreeSpace !=0 ){
+        j["requiredfreespaceinmb"] = config_options.requiredFreeSpace;
     }
 
     j["resourceid"] = "adl://"+config_options.accountName+".azuredatalakestore.net/";
