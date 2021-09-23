@@ -375,15 +375,16 @@ int read_config(const std::string configFile)
     {
         config_options.authType = get_auth_type();
     }
-    
+
+    if(config_options.accountName.empty())
+    {
+        syslog (LOG_CRIT, "Unable to start blobfuse. Account name is missing in the config file.");
+        fprintf(stderr, "Unable to start blobfuse. Account name is missing in the config file.\n");
+        return -1;
+    }
+
     if (!config_options.enableGen1) {
-        if(config_options.accountName.empty())
-        {
-            syslog (LOG_CRIT, "Unable to start blobfuse. Account name is missing in the config file.");
-            fprintf(stderr, "Unable to start blobfuse. Account name is missing in the config file.\n");
-            return -1;
-        }
-        else if(config_options.containerName.empty())
+        if(config_options.containerName.empty())
         {
             syslog (LOG_CRIT, "Unable to start blobfuse. Container name is missing in the config file.");
             fprintf(stderr, "Unable to start blobfuse. Container name is missing in the config file.\n");
@@ -1032,6 +1033,11 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
             }
         }
         config_options.tmpPath = tmpPathStr;
+    }else {
+        if (cmd_options.tmp_path != NULL){
+            std::string tpath(cmd_options.tmp_path);
+            config_options.tmpPath = tpath;
+        }
     }
 
     config_options.uploadIfModified = false;
@@ -1438,13 +1444,17 @@ int mount_rust_fuse(char* argv[]){
         j["requiredfreespaceinmb"] = config_options.requiredFreeSpace;
     }
 
+    if (config_options.tmpPath != ""){
+        j["cachedir"] = config_options.tmpPath;
+    }
+
     j["resourceid"] = "adl://"+config_options.accountName+".azuredatalakestore.net/";
 
     j["mountdir"] = argv[1];
 
     std::string serialized = j.dump(4);
 
-    //std::cout<<serialized<<std::endl;
+    std::cout<<serialized<<std::endl;
 
     const char* gen1ConfigFile = "adlsgen1fuse.json";
     ofstream outdata;
