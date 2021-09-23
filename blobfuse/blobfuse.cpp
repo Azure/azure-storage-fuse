@@ -76,6 +76,8 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-blocks-per-file=%s", max_blocks_per_file),
     OPTION("--block-size-mb=%s", block_size_mb),
     OPTION("--enable-gen1=%s", enable_gen1),
+    OPTION("--extension=%s", extension_lib),
+    
 
     OPTION("--version", version),
     OPTION("-v", version),
@@ -694,40 +696,6 @@ void init_essentials()
     signal(SIGUSR1, sig_usr_handler);
 }
 
-void set_up_callbacks(struct fuse_operations &azs_blob_operations)
-{
-    // Here, we set up all the callbacks that FUSE requires.
-    azs_blob_operations.init = azs_init;
-    azs_blob_operations.getattr = azs_getattr;
-    azs_blob_operations.statfs = azs_statfs;
-    azs_blob_operations.access = azs_access;
-    azs_blob_operations.readlink = azs_readlink;
-    azs_blob_operations.symlink = azs_symlink;
-    azs_blob_operations.readdir = azs_readdir;
-    azs_blob_operations.open = azs_open;
-    azs_blob_operations.read = azs_read;
-    azs_blob_operations.release = azs_release;
-    azs_blob_operations.fsync = azs_fsync;
-    azs_blob_operations.fsyncdir = azs_fsyncdir;
-    azs_blob_operations.create = azs_create;
-    azs_blob_operations.write = azs_write;
-    azs_blob_operations.mkdir = azs_mkdir;
-    azs_blob_operations.unlink = azs_unlink;
-    azs_blob_operations.rmdir = azs_rmdir;
-    azs_blob_operations.chown = azs_chown;
-    azs_blob_operations.chmod = azs_chmod;
-    //#ifdef HAVE_UTIMENSAT
-    azs_blob_operations.utimens = azs_utimens;
-    //#endif
-    azs_blob_operations.destroy = azs_destroy;
-    azs_blob_operations.truncate = azs_truncate;
-    azs_blob_operations.rename = azs_rename;
-    azs_blob_operations.setxattr = azs_setxattr;
-    azs_blob_operations.getxattr = azs_getxattr;
-    azs_blob_operations.listxattr = azs_listxattr;
-    azs_blob_operations.removexattr = azs_removexattr;
-    azs_blob_operations.flush = azs_flush;
-}
 
 /*
  *  Check if the given directory is already mounted for the mounttype fuse or not
@@ -1239,6 +1207,13 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     }
 
     if (!config_options.enableGen1) {
+        config_options.extensionLib = "";
+        if (cmd_options.extension_lib != NULL) {
+            std::string ext_lib(cmd_options.extension_lib);
+            config_options.extensionLib = ext_lib;
+            syslog(LOG_INFO, "Extension configured : %s", config_options.extensionLib.c_str());
+        }
+
         if (config_options.streaming && !config_options.readOnlyMount) {
             syslog(LOG_ERR, "Read-Streaming is supported only on Readonly Mounts. Use '-o ro' option in mount command");
             fprintf(stderr, "Read-Streaming is supported only on Readonly Mounts. Use '-o ro' option in mount command");

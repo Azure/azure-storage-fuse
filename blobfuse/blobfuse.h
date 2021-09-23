@@ -288,4 +288,5 @@ std::string to_str(const T& value) {
    return out.str();
 }
 
+void set_up_callbacks(struct fuse_operations &azs_blob_operations);
 #endif

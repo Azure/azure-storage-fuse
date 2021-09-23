@@ -2,9 +2,12 @@
 #include <FileLockMap.h>
 #include <sys/file.h>
 #include <BlobfuseGlobals.h>
+#include <dlfcn.h>
+
 
 #include <include/StorageBfsClientBase.h>
 extern std::shared_ptr<StorageBfsClientBase> storage_client;
+extern void *extHandle;
 
 int azs_rename_directory(const char *src, const char *dst);
 
@@ -486,6 +489,10 @@ void azs_destroy(void * /*private_data*/)
     errno = 0;
     // FTW_DEPTH instructs FTW to do a post-order traversal (children of a directory before the actual directory.)
     nftw(rootPath.c_str(), rm, 20, FTW_DEPTH);
+
+    if (config_options.extensionLib != "" && extHandle != NULL) {
+        dlclose(extHandle);
+    }
 }
 
 // Not yet implemented section:
