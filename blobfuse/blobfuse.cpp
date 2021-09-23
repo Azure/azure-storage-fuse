@@ -806,8 +806,8 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     // Check for existence of allow_other flag and change the default permissions based on that
     config_options.defaultPermission = 0770;
     config_options.readOnlyMount = false;
-    config_options.entryTimeout = 240;
-    config_options.attrTimeout = 240;
+    config_options.entryTimeout = 0;
+    config_options.attrTimeout = 0;
 
     std::vector<std::string> string_args(argv, argv+argc);
     for (size_t i = 1; i < string_args.size(); ++i) {
@@ -1183,10 +1183,6 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.maxTryCount = stoi(max_retry);
     }
 
-    if (config_options.entryTimeout == -1){
-        config_options.entryTimeout = 240;
-    }
-
     config_options.streaming = false;
     if (cmd_options.streaming != NULL) {
         std::string streaming(cmd_options.streaming);
@@ -1412,11 +1408,11 @@ int mount_rust_fuse(char* argv[]){
 
     j["resourceurl"] = "https://datalake.azure.net/";
 
-    if(config_options.attrTimeout != 240){
+    if(config_options.attrTimeout != 0){
         j["fuseattrtimeout"] = config_options.attrTimeout;
     }
 
-    if(config_options.entryTimeout != 240){
+    if(config_options.entryTimeout != 0){
         j["fuseentrytimeout"] = config_options.entryTimeout;
     }
 
