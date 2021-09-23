@@ -1444,7 +1444,12 @@ int mount_rust_fuse(char* argv[]){
         j["cachedir"] = config_options.tmpPath;
     }
 
-    j["resourceid"] = "adl://"+config_options.accountName+".azuredatalakestore.net/";
+    if (config_options.containerName != ""){
+        j["resourceid"] = "adl://"+config_options.accountName+".azuredatalakestore.net/" + config_options.containerName + "/";
+    }else{
+        j["resourceid"] = "adl://"+config_options.accountName+".azuredatalakestore.net/";
+    }
+
 
     j["mountdir"] = argv[1];
 
