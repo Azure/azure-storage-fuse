@@ -1457,18 +1457,19 @@ int mount_rust_fuse(char* argv[]){
 
 //    std::cout<<serialized<<std::endl;
 
-    const char* gen1ConfigFile = "adlsgen1fuse.json";
+    std::string gen1ConfigFile = "adlsgen1fuse.json";
     ofstream outdata;
 
-    char curdir[512];
-    char* ret = getcwd(curdir, 512);
-    if (ret == NULL){
-        std::cout<<"Couldn't get working directory of blobfuse"<<std::endl;
-        syslog(LOG_ERR, "Failed to get current directory (%d)", errno);
-        return -1;
-    }
+//    char curdir[512];
+//    char* ret = getcwd(curdir, 512);
+//    if (ret == NULL){
+//        std::cout<<"Couldn't get working directory of blobfuse"<<std::endl;
+//        syslog(LOG_ERR, "Failed to get current directory (%d)", errno);
+//        return -1;
+//    }
+    std::string pathToConf = "/tmp/" + gen1ConfigFile;
 
-    outdata.open(std::string(curdir) + "/" + gen1ConfigFile);
+    outdata.open(pathToConf);
     if( !outdata ) { // file couldn't be opened
         cerr << "Error: file could not be opened" << endl;
         syslog(LOG_ERR, "Failed to open gen1 config file (%d)", errno);
@@ -1478,9 +1479,7 @@ int mount_rust_fuse(char* argv[]){
     outdata<<serialized<<endl;
     outdata.close();
 
-    std::string pathToJson = std::string(curdir) + "/" + gen1ConfigFile;
-
-    std::string cmd = "adlsgen1fuse " + pathToJson;
+    std::string cmd = "adlsgen1fuse " + pathToConf;
     std::cout<<exec(cmd.c_str())<<std::endl;
 
     return 0;
