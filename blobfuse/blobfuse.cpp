@@ -1455,7 +1455,7 @@ int mount_rust_fuse(char* argv[]){
 
     std::string serialized = j.dump(4);
 
-    std::cout<<serialized<<std::endl;
+//    std::cout<<serialized<<std::endl;
 
     const char* gen1ConfigFile = "adlsgen1fuse.json";
     ofstream outdata;
