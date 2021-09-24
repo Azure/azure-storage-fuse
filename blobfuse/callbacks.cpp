@@ -70,8 +70,8 @@ void set_up_extension_callbacks(struct fuse_operations &azs_blob_operations)
     callback_exchanger fuse_regsiter_func = NULL;
     callback_exchanger storage_regsiter_func = NULL;
 
-    fuse_regsiter_func = (callback_exchanger)dlsym(extHandle, "populateFuseCallbacks");
-    storage_regsiter_func = (callback_exchanger)dlsym(extHandle, "populateStorageCallbacks");
+    fuse_regsiter_func = (callback_exchanger)dlsym(extHandle, "populate_fuse_callbacks");
+    storage_regsiter_func = (callback_exchanger)dlsym(extHandle, "populate_storage_callbacks");
     
     // Validate lib has legit functions exposed with this name
     if (fuse_regsiter_func == NULL || storage_regsiter_func == NULL) {
@@ -98,11 +98,11 @@ void set_up_extension_callbacks(struct fuse_operations &azs_blob_operations)
     }
     #else
     // Get extension callbacks to be registered to fuse
-    populateFuseCallbacks(&fuse_callbacks);
+    populate_fuse_callbacks(&fuse_callbacks);
 
     // Supply our callbacks to extension so that it can interact us back
     set_up_blobfuse_callbacks(storage_callbacks);
-    populateStorageCallbacks(&storage_callbacks);
+    populate_storage_callbacks(&storage_callbacks);
 
     // VB : Test Code Below to call init of galactus and get a callback to azs_init
     //struct fuse_conn_info test_conn;

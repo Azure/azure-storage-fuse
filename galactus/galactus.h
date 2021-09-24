@@ -68,10 +68,10 @@ extern "C" {
 struct fuse_operations storage_callbacks;
 
 // Call this method to populate callbacks to be registered to fuse
-int populateFuseCallbacks(struct fuse_operations *opts);
+int populate_fuse_callbacks(struct fuse_operations *opts);
 
 // Call this method to populate callbacks to communicate with blobfuse
-int populateStorageCallbacks(struct fuse_operations *opts);
+int populate_storage_callbacks(struct fuse_operations *opts);
 
 #ifdef __cplusplus
 }

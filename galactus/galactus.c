@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-int populateFuseCallbacks(struct fuse_operations *opts)
+int populate_fuse_callbacks(struct fuse_operations *opts)
 {
     syslog(LOG_INFO, "EXT : Populating fuse callbacks");
     opts->init           = ext_init;
@@ -45,7 +45,7 @@ int populateFuseCallbacks(struct fuse_operations *opts)
 }
 
 // Call this method to populate callbacks to communicate with blobfuse
-int populateStorageCallbacks(struct fuse_operations *opts)
+int populate_storage_callbacks(struct fuse_operations *opts)
 {
     syslog(LOG_INFO, "EXT : Populating storage callbacks");
 
