@@ -1,15 +1,15 @@
 cmake_minimum_required(VERSION 2.8)
 
 # Change this while bumping up the version, needed for RHEL package
-set(VERSION "1.5.0-beta")
+set(VERSION "1.5.1-beta")
 
 # This macro is referred in code to print the current version
 # Change CPACK_DEBIAN_PACKAGE_DESCRIPTION as well in this file while bumping up the version
-add_definitions(-D_BLOBFUSE_VERSION_="1.5.0-beta")
+add_definitions(-D_BLOBFUSE_VERSION_="1.5.1-beta")
 
 set(CPACK_PACKAGE_VERSION_MAJOR 1)
 set(CPACK_PACKAGE_VERSION_MINOR 5)  
-set(CPACK_PACKAGE_VERSION_PATCH 0)
+set(CPACK_PACKAGE_VERSION_PATCH 1)
 set(CPACK_PACKAGE_VERSION_RELEASE 1)
 
 set (BLOBFUSE_HEADER
@@ -94,18 +94,18 @@ if(UNIX)
 
   set(CMAKE_CXX_FLAGS "${CMAKE_THREAD_LIBS_INIT} ${WARNING} ${CMAKE_CXX_FLAGS}")
 
-  include_directories(${CMAKE_SOURCE_DIR}/blobfuse ${CMAKE_SOURCE_DIR}/blobfuse/include ${CMAKE_SOURCE_DIR}/blobfuse/extension ${CMAKE_SOURCE_DIR}/cpplite/include ${CMAKE_SOURCE_DIR}/cpplite/adls/include ${CURL_INCLUDE_DIRS} ${GNUTLS_INCLUDE_DIR} ${Boost_INCLUDE_DIR} nlohmann-json)
+  include_directories(${CMAKE_SOURCE_DIR}/blobfuse ${CMAKE_SOURCE_DIR}/blobfuse/include ${CMAKE_SOURCE_DIR}/galactus ${CMAKE_SOURCE_DIR}/cpplite/include ${CMAKE_SOURCE_DIR}/cpplite/adls/include ${CURL_INCLUDE_DIRS} ${GNUTLS_INCLUDE_DIR} ${Boost_INCLUDE_DIR} nlohmann-json)
   set(CMAKE_MACOSX_RPATH ON)
   pkg_search_module(UUID REQUIRED uuid)
   
-  link_directories(${CMAKE_SOURCE_DIR}/cpplite/build.release)
+  link_directories(${CMAKE_SOURCE_DIR}/cpplite/build.release ${CMAKE_SOURCE_DIR}/galactus)
 
   add_executable(blobfuse ${BLOBFUSE_HEADER} ${BLOBFUSE_SOURCE} blobfuse/main.cpp)
 
   if(INCLUDE_EXTRALIB)
-    target_link_libraries(blobfuse azure-storage-adls azure-storage-lite ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt stdc++ m dl)
+    target_link_libraries(blobfuse azure-storage-adls azure-storage-lite ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt stdc++ m dl )
   else()
-    target_link_libraries(blobfuse azure-storage-adls azure-storage-lite ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt dl)
+    target_link_libraries(blobfuse azure-storage-adls azure-storage-lite ${CURL_LIBRARIES} ${GNUTLS_LIBRARIES} ${CMAKE_THREAD_LIBS_INIT} ${UUID_LIBRARIES} ${Boost_FILESYSTEM_LIBRARY} ${Boost_SYSTEM_LIBRARY} ${Boost_THREAD_LIBRARY} fuse gcrypt dl )
   endif()
   install(TARGETS blobfuse
     PERMISSIONS OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_READ GROUP_EXECUTE WORLD_READ WORLD_EXECUTE
@@ -137,7 +137,7 @@ if(UNIX)
   set(CPACK_GENERATOR "DEB")
   set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Microsoft - Azure Storage")
   set(CPACK_DEBIAN_PACKAGE_DEPENDS "fuse")
-  set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 1.5.0-beta - FUSE adapter for Azure Blob Storage")
+  set(CPACK_DEBIAN_PACKAGE_DESCRIPTION "blobfuse 1.5.1-beta - FUSE adapter for Azure Blob Storage")
   set(CPACK_PACKAGE_NAME "blobfuse")
   set(CPACK_PACKAGE_VENDOR "Microsoft")
   include(CPack)

@@ -490,9 +490,11 @@ void azs_destroy(void * /*private_data*/)
     // FTW_DEPTH instructs FTW to do a post-order traversal (children of a directory before the actual directory.)
     nftw(rootPath.c_str(), rm, 20, FTW_DEPTH);
 
+    #ifdef __DYNAMIC_LOAD_EXT__   
     if (config_options.extensionLib != "" && extHandle != NULL) {
         dlclose(extHandle);
     }
+    #endif
 }
 
 // Not yet implemented section:

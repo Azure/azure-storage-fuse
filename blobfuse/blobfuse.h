@@ -21,6 +21,7 @@
 #include <gcrypt.h>
 #include <pthread.h>
 
+#define __DYNAMIC_LOAD_EXT__
 
 // Declare that we're using version 2.9 of FUSE
 // 3.0 is not built-in to many distros yet.

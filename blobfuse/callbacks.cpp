@@ -1,10 +1,14 @@
 #include <blobfuse.h>
 #include <dlfcn.h>
 
-extern struct configParams config_options;
+#ifdef __DYNAMIC_LOAD_EXT__
 void *extHandle = NULL;
-
 typedef void* (*callback_exchanger)(struct fuse_operations *opts);
+#else
+#include <galactus.h>
+#endif
+
+extern struct configParams config_options;
 
 void set_up_blobfuse_callbacks(struct fuse_operations &azs_blob_operations)
 {
@@ -44,48 +48,70 @@ void set_up_blobfuse_callbacks(struct fuse_operations &azs_blob_operations)
 void set_up_extension_callbacks(struct fuse_operations &azs_blob_operations)
 {
     syslog(LOG_INFO, "Going for extension registeration");
-    
+    struct fuse_operations fuse_callbacks;
+    struct fuse_operations storage_callbacks;
+
+    memset(&fuse_callbacks, 0, sizeof(struct fuse_operations));
+    memset(&storage_callbacks, 0, sizeof(struct fuse_operations));
+
+    #ifdef __DYNAMIC_LOAD_EXT__    
     // Load the configured library here
     extHandle = dlopen (config_options.extensionLib.c_str(), RTLD_LAZY);
     if (extHandle == NULL) {
         syslog(LOG_ERR, "Failed to open extension library (%d)", errno);
+        fprintf(stderr, "Failed to open extension library %s, errno (%d)\n", config_options.extensionLib.c_str(), errno);
         exit(1);
     }
 
     syslog(LOG_INFO, "Address of init %p, destroy %p", azs_init, azs_destroy);
-
-    callback_exchanger fuse_callbacks = NULL;
-    callback_exchanger storage_callbacks = NULL;
-
-    // Get callback table exchange apis from the extesion library
-    fuse_callbacks = (callback_exchanger)dlsym(extHandle, "populateFuseCallbacks");
-    storage_callbacks = (callback_exchanger)dlsym(extHandle, "populateStorageCallbacks");
-
-    if (fuse_callbacks == NULL || storage_callbacks == NULL) {
-        syslog(LOG_ERR, "Loaded lib does not honour callback contracts (%d)", errno);
-        exit(1);
-    }
-
-    // Create a local structure and populate it with blobfuse callbacks
-    // This we need to pass on to the extension so that it can call our functions
-    struct fuse_operations blobfuse_callbacks;
-    set_up_blobfuse_callbacks(blobfuse_callbacks);
-    if (0 != storage_callbacks(&blobfuse_callbacks)) {
-        syslog(LOG_ERR, "Failed to register storage callbacks to extension (%d)", errno);
-        exit(1);
-    }
-
+    
     // Get the function pointers from the lib and store them in given structure
     // Once we register these methods to libfuse, calls will directly land into extension
-    struct fuse_operations extension_callbacks;
-    if (0 != fuse_callbacks(&extension_callbacks)) {
-        syslog(LOG_ERR, "Failed to retreive fuse callbacks from extension (%d)", errno);
+    callback_exchanger fuse_regsiter_func = NULL;
+    callback_exchanger storage_regsiter_func = NULL;
+
+    fuse_regsiter_func = (callback_exchanger)dlsym(extHandle, "populateFuseCallbacks");
+    storage_regsiter_func = (callback_exchanger)dlsym(extHandle, "populateStorageCallbacks");
+    
+    // Validate lib has legit functions exposed with this name
+    if (fuse_regsiter_func == NULL || storage_regsiter_func == NULL) {
+        syslog(LOG_ERR, "Loaded lib does not honour callback contracts (%d)", errno);
+        fprintf(stderr, "Loaded lib does not honour callback contracts, lib (%s) errno (%d)\n", config_options.extensionLib.c_str(), errno);
         exit(1);
     }
+
+    // Use the fuse registeration function to get callback table from extension
+    // This table will later be registered to libfuse so that kernel callbacks land directly in extension    
+    if (0 != fuse_regsiter_func(&fuse_callbacks)) {
+        syslog(LOG_ERR, "Failed to retreive fuse callbacks from extension (%d)", errno);
+        fprintf(stderr, "Failed to retreive fuse callbacks from extension (%d)", errno);
+        exit(1);
+    }
+
+    // Populate blobfuse callbacks and register them to extension
+    // This helps extension to make a call back to blobfuse to connect to storage
+    set_up_blobfuse_callbacks(storage_callbacks);
+    if (0 != storage_regsiter_func(&storage_callbacks)) {
+        syslog(LOG_ERR, "Failed to register fuse callbacks to extension (%d)", errno);
+        fprintf(stderr, "Failed to register fuse callbacks to extension (%d)", errno);
+        exit(1);
+    }
+    #else
+    // Get extension callbacks to be registered to fuse
+    populateFuseCallbacks(&fuse_callbacks);
+
+    // Supply our callbacks to extension so that it can interact us back
+    set_up_blobfuse_callbacks(storage_callbacks);
+    populateStorageCallbacks(&storage_callbacks);
+
+    // VB : Test Code Below to call init of galactus and get a callback to azs_init
+    //struct fuse_conn_info test_conn;
+    //fuse_callbacks.init(&test_conn);
+    #endif
 
     // We have registered our methods to lib and have received fuse handlers from the lib
     // Now register the fuse handlers of extension lib to fuse.
-    azs_blob_operations = extension_callbacks;
+    azs_blob_operations = fuse_callbacks;
 }
 
 
