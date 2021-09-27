@@ -14,6 +14,7 @@
 // Declare that we're using version 2.9 of FUSE
 // 3.0 is not built-in to many distros yet.
 // This line must come before #include <fuse.h>.
+// Fuse3 is not supported yet
 #define FUSE_USE_VERSION 29
 #include <fuse.h>
 
