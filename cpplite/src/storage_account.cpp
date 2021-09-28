@@ -51,7 +51,7 @@ namespace azure {  namespace storage_lite {
             auto path_start = endpoint.find_first_not_of('/', slash_pos);
             std::string path = path_start == std::string::npos ? "" : endpoint.substr(path_start);
 
-            std::string domain = scheme + account_name;
+            std::string domain = scheme + accountName;
 
             if (gZonalDNS) {
                 domain = domain + "." + zone;
