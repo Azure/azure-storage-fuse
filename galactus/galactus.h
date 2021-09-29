@@ -68,6 +68,9 @@ extern "C" {
 // Global variable to hold the storage callback table
 struct fuse_operations storage_callbacks;
 
+// Return a well defined string to ensure its a legit blobfuse amigo
+const char* validate_signature(const char* sign);
+
 // Call this method to populate callbacks to be registered to fuse
 int populate_fuse_callbacks(struct fuse_operations *opts);
 

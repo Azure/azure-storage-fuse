@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <syslog.h>
+#include <string.h>
 
 #include "galactus.h"
 #include "callback_handlers.h"
@@ -9,9 +10,30 @@
 extern "C" {
 #endif
 
+int signature_verified = 0;
+const char* launcher_call_sign = "ola-amigo!!";
+const char* my_call_sign = "ola-amigo!!!";
+
+const char* validate_signature(const char* sign)
+{
+    if (strcmp(sign, launcher_call_sign) == 0) {
+        syslog(LOG_INFO, "EXT : Launcher signature verified");
+        signature_verified = 1;
+        return my_call_sign;
+    }
+
+    return "adios!!";
+}
+
 int populate_fuse_callbacks(struct fuse_operations *opts)
 {
     syslog(LOG_INFO, "EXT : Populating fuse callbacks");
+
+    if (!signature_verified) {
+        syslog(LOG_ERR, "EXT : Not a friendly neighbour.");
+        return -1;
+    }
+
     opts->init           = ext_init;
     opts->destroy        = ext_destroy;
     
@@ -48,6 +70,11 @@ int populate_fuse_callbacks(struct fuse_operations *opts)
 int populate_storage_callbacks(struct fuse_operations *opts)
 {
     syslog(LOG_INFO, "EXT : Populating storage callbacks");
+    
+    if (!signature_verified) {
+        syslog(LOG_ERR, "EXT : Not a friendly neighbour.");
+        return -1;
+    }
 
     storage_callbacks = *opts;
     return 0;

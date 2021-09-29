@@ -3,7 +3,8 @@
 
 #ifdef __DYNAMIC_LOAD_EXT__
 void *extHandle = NULL;
-typedef void* (*callback_exchanger)(struct fuse_operations *opts);
+typedef int (*callback_exchanger)(struct fuse_operations *opts);
+typedef const char* (*lib_validator)(const char* sign);
 #else
 #include <galactus.h>
 #endif
@@ -69,14 +70,27 @@ void set_up_extension_callbacks(struct fuse_operations &azs_blob_operations)
     // Once we register these methods to libfuse, calls will directly land into extension
     callback_exchanger fuse_regsiter_func = NULL;
     callback_exchanger storage_regsiter_func = NULL;
+    lib_validator lib_validator_func = NULL;
 
     fuse_regsiter_func = (callback_exchanger)dlsym(extHandle, "populate_fuse_callbacks");
     storage_regsiter_func = (callback_exchanger)dlsym(extHandle, "populate_storage_callbacks");
+    lib_validator_func = (lib_validator)dlsym(extHandle, "validate_signature");
     
     // Validate lib has legit functions exposed with this name
-    if (fuse_regsiter_func == NULL || storage_regsiter_func == NULL) {
+    if (fuse_regsiter_func == NULL || storage_regsiter_func == NULL || lib_validator_func == NULL) {
         syslog(LOG_ERR, "Loaded lib does not honour callback contracts (%d)", errno);
         fprintf(stderr, "Loaded lib does not honour callback contracts, lib (%s) errno (%d)\n", config_options.extensionLib.c_str(), errno);
+        exit(1);
+    }
+
+    // Going for handshake with galactus
+    const char* my_call_sign = "ola-amigo!!";
+    const char* lib_call_sign = "ola-amigo!!!";
+
+    const char* call_sign = lib_validator_func(my_call_sign);
+    if (strcmp(call_sign, lib_call_sign) != 0) {
+        syslog(LOG_ERR, "Unable to validate the lib");
+        fprintf(stderr, "Unable to validate the lib");
         exit(1);
     }
 
