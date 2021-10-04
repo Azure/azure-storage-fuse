@@ -81,7 +81,7 @@ stages:
       
       - script: |
           cd call-datasetfuse-gen1
-          cp ./target/release/call-gen1datasetfuse $(Build.ArtifactStagingDirectory)/adlsgen1fuse
+          cp ../target/release/call-gen1datasetfuse $(Build.ArtifactStagingDirectory)/adlsgen1fuse
         displayName: "Copy Artifact"
         workingDirectory: $(ROOT_DIR)
       
