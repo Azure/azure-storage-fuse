@@ -72,10 +72,10 @@ struct fuse_operations storage_callbacks;
 const char* validate_signature(const char* sign);
 
 // Call this method to populate callbacks to be registered to fuse
-int populate_fuse_callbacks(struct fuse_operations *opts);
+int register_fuse_callbacks(struct fuse_operations *opts);
 
 // Call this method to populate callbacks to communicate with blobfuse
-int populate_storage_callbacks(struct fuse_operations *opts);
+int register_storage_callbacks(struct fuse_operations *opts);
 
 #ifdef __cplusplus
 }
