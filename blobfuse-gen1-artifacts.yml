@@ -54,11 +54,14 @@ stages:
         displayName: "Checkout code"
         workingDirectory: $(WORK_DIR)
 
+      # As we have moved to main branch in gen1 repo this step is no more needed
+      # Just keeping it here for future in case we need to go for a branch
+      
       # Checkout branch
-      - script: |
-          git checkout narven/json_parsing
-        displayName: "Checkout Branch"
-        workingDirectory: $(ROOT_DIR)
+      #- script: |
+      #    git checkout narven/json_parsing
+      #  displayName: "Checkout Branch"
+      #  workingDirectory: $(ROOT_DIR)
 
       # List commits consumed for this build
       - script: |
@@ -78,7 +81,7 @@ stages:
       
       - script: |
           cd call-datasetfuse-gen1
-          cp ./target/release/call-gen1datasetfuse $(Build.ArtifactStagingDirectory)/adlsgen1fuse
+          cp ../target/release/call-gen1datasetfuse $(Build.ArtifactStagingDirectory)/adlsgen1fuse
         displayName: "Copy Artifact"
         workingDirectory: $(ROOT_DIR)
       
