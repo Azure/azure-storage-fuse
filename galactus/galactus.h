@@ -5,8 +5,8 @@
 // BLOBFUSE : This is the extension contract to be implemented to create and extension
 // blobfuse_ext.c is a sample code for the same
 
-// Use this command to build blobfuse_ext.c : "gcc -shared -o libgalactus.so -D_FILE_OFFSET_BITS=64 -DCMAKE_BUILD_TYPE=Debug -fPIC *.c"
-// Use this command to build a static lib : gcc -Wall -fPIC -D_FILE_OFFSET_BITS=64 -DCMAKE_BUILD_TYPE=Debug -c *.c && ar -cvq libgalactus.a *.o
+// Use this command to build a extension .so : "gcc -shared -o libgalactus.so -D_FILE_OFFSET_BITS=64 -DCMAKE_BUILD_TYPE=Debug -fPIC *.c"
+// Use this command to build a static .lib : gcc -Wall -fPIC -D_FILE_OFFSET_BITS=64 -DCMAKE_BUILD_TYPE=Debug -c *.c && ar -cvq libgalactus.a *.o
 #include <stddef.h>
 #include <stdio.h>
 
@@ -70,6 +70,9 @@ struct fuse_operations storage_callbacks;
 
 // Return a well defined string to ensure its a legit blobfuse amigo
 const char* validate_signature(const char* sign);
+
+// Call this method to pass on a config file to extension, in case it wants to read anything
+int init_extension(const char* conf_file);
 
 // Call this method to populate callbacks to be registered to fuse
 int register_fuse_callbacks(struct fuse_operations *opts);

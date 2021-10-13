@@ -25,6 +25,12 @@ const char* validate_signature(const char* sign)
     return "adios!!";
 }
 
+int init_extension(const char* conf_file)
+{
+    syslog(LOG_INFO, "EXT : Received config file %s", conf_file);
+    return 0;
+}
+
 int register_fuse_callbacks(struct fuse_operations *opts)
 {
     syslog(LOG_INFO, "EXT : Populating fuse callbacks");

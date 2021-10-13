@@ -5,6 +5,7 @@
 void *extHandle = NULL;
 typedef int (*callback_exchanger)(struct fuse_operations *opts);
 typedef const char* (*lib_validator)(const char* sign);
+typedef int (*lib_initializer)(const char* conf_file);
 #else
 #include <galactus.h>
 #endif
@@ -71,13 +72,15 @@ void set_up_extension_callbacks(struct fuse_operations &azs_blob_operations)
     callback_exchanger fuse_regsiter_func = NULL;
     callback_exchanger storage_regsiter_func = NULL;
     lib_validator lib_validator_func = NULL;
+    lib_initializer lib_init_func = NULL;
 
     fuse_regsiter_func = (callback_exchanger)dlsym(extHandle, "register_fuse_callbacks");
     storage_regsiter_func = (callback_exchanger)dlsym(extHandle, "register_storage_callbacks");
     lib_validator_func = (lib_validator)dlsym(extHandle, "validate_signature");
+    lib_init_func = (lib_initializer)dlsym(extHandle, "init_extension");
     
     // Validate lib has legit functions exposed with this name
-    if (fuse_regsiter_func == NULL || storage_regsiter_func == NULL || lib_validator_func == NULL) {
+    if (fuse_regsiter_func == NULL || storage_regsiter_func == NULL || lib_validator_func == NULL || lib_init_func == NULL) {
         syslog(LOG_ERR, "Loaded lib does not honour callback contracts (%d)", errno);
         fprintf(stderr, "Loaded lib does not honour callback contracts, lib (%s) errno (%d)\n", config_options.extensionLib.c_str(), errno);
         exit(1);
@@ -91,6 +94,12 @@ void set_up_extension_callbacks(struct fuse_operations &azs_blob_operations)
     if (strcmp(call_sign, lib_call_sign) != 0) {
         syslog(LOG_ERR, "Unable to validate the lib");
         fprintf(stderr, "Unable to validate the lib");
+        exit(1);
+    }
+
+    if (0 != lib_init_func("abcd.txt")) {
+        syslog(LOG_ERR, "Failed to initialize extension");
+        fprintf(stderr, "Failed to initialize extension");
         exit(1);
     }
 
