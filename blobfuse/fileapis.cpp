@@ -62,6 +62,11 @@ int DownloadFileToDisk(std::string pathString, std::string mntPathString, bool i
 int azs_open(const char *path, struct fuse_file_info *fi)
 {
     syslog (LOG_DEBUG, "azs_open called with path = %s, fi->flags = %X.\n", path, fi->flags);
+    if (fi->flags & O_SYNC || fi->flags & __O_DIRECT) {
+        fi->flags &= ~(O_SYNC | __O_DIRECT);
+        syslog (LOG_DEBUG, "azs_open reset flags path = %s, fi->flags = %X.\n", path, fi->flags);
+    }
+
     std::string pathString(path);
     std::replace(pathString.begin(), pathString.end(), '\\', '/');
     
