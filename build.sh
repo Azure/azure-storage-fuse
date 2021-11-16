@@ -49,7 +49,7 @@ then
 else
 	cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo ..'
 	if [ -n "${INCLUDE_TESTS}" ]; then
-		cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo -DINCLUDE_TESTS=1 ..'
+		cmake_args='-DCMAKE_BUILD_TYPE=RelWithDebInfo ..'
 	fi
 fi
 
