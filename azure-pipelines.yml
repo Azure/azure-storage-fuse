@@ -77,13 +77,13 @@ jobs:
 
       # Test the binary
       # For now only on Ubn16.04
-      - script: |
-          ls -al
-          chmod 777 ./blobfusetests
-          $(Build.BinariesDirectory)/blobfusetests --gtest_filter=-BlobClientWrapperTest.*
-        workingDirectory: $(Build.BinariesDirectory)
-        condition: eq(variables.container_image, 'ubuntu-18.04')
-        displayName: "GTest on Ubn-18"
+      #- script: |
+      #    ls -al
+      #    chmod 777 ./blobfusetests
+      #    $(Build.BinariesDirectory)/blobfusetests --gtest_filter=-BlobClientWrapperTest.*
+      #  workingDirectory: $(Build.BinariesDirectory)
+      #  condition: eq(variables.container_image, 'ubuntu-18.04')
+      #  displayName: "GTest on Ubn-18"
   
       # Moving publish artifacts to a seperate pipeline
       # Publish the Artifacts
