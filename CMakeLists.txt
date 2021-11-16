@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.6)
 
 # Change this while bumping up the version, needed for RHEL package
 set(VERSION "1.4.2-beta")
