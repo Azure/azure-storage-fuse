@@ -82,6 +82,8 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     * [OPTIONAL] **--stream-cache-mb=500** : Limit total amount of data being cached in memory to conserve memory footprint of blobfuse.
     * [OPTIONAL] **--max-blocks-per-file=3** : Maximum number of blocks to be cached in memory for a read streaming.
     * [OPTIONAL] **--block-size-mb=16** : Size (in MB) of a block to be downloaded during streaming. If configured block-size is <= 64MB then block will be downloaded in a single thread. For higher block size parts of it will be downloaded in parallel. "--max-concurrency" parameter can be used to control parallelism factor. When higher block size is configured, memory usage of blobfuse will be high as these blocks are cached in memory only.
+    * [OPTIONAL] **--ignore-open-flags=falgs** : There are certain flags in Open file-system call. If file handle is open with those flags then read/write operations fail at times. This CLI option allows user to supress those flags and blobfuse will ignore them while opening a file handle. Ignored flags are O_SYNC and O_DIRECT.
+
     
 ### Valid authentication setups:
 

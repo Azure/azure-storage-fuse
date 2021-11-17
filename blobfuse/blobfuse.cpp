@@ -74,6 +74,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--stream-cache-mb=%s", stream_buffer),
     OPTION("--max-blocks-per-file=%s", max_blocks_per_file),
     OPTION("--block-size-mb=%s", block_size_mb),
+    OPTION("--ignore-open-flags=%s", ignore_open_flags),
 
     OPTION("--version", version),
     OPTION("-v", version),
@@ -1203,6 +1204,16 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         std::string block_size(cmd_options.block_size_mb);
         config_options.blockSize = uint64_t(stod(block_size, &offset));
         config_options.blockSize = uint64_t((config_options.blockSize) * 1024 * 1024);
+    }
+
+    config_options.ignoreOpenFlags = false;
+    if(cmd_options.ignore_open_flags != NULL)
+    {
+        std::string ignore(cmd_options.ignore_open_flags);
+        if(ignore == "true")
+        {
+            config_options.ignoreOpenFlags = true;
+        } 
     }
 
     if (config_options.streaming && !config_options.readOnlyMount) {
