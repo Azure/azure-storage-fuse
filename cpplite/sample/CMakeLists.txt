@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 2.8)
+cmake_minimum_required(VERSION 3.6)
 
 add_executable(azure-storage-sample sample.cpp)
 if(WIN32)

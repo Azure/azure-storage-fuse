@@ -321,14 +321,14 @@ jobs:
         displayName: "TEST - BLOCK gTest Config"
       
       # Run gTest with the config file created earlier
-      - script:  |
-          cd ./build/
-          sudo chmod 777 ./blobfusetests
-          sudo ./blobfusetests 
-          cd -
-        displayName: TEST - BLOCK gTest
-        timeoutInMinutes: 30
-        continueOnError: true
+      #- script:  |
+      #    cd ./build/
+      #    sudo chmod 777 ./blobfusetests
+      #    sudo ./blobfusetests 
+      #    cd -
+      #  displayName: TEST - BLOCK gTest
+      #  timeoutInMinutes: 30
+      #  continueOnError: true
 
       # -------------------------------------------------------
       # Starting stressTest
