@@ -203,6 +203,8 @@ std::map<std::string, std::string> contentTypeMap {
 	{".xml",  "text/xml"},
     {".m3u8", "application/x-mpegURL"},
     {".ts", "video/MP2T"},
+    // As submitted by @bo44arov on github
+    {".mp4", "video/mp4"},
 };
 
 std::string GetContentType(std::string blob) {

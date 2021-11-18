@@ -187,7 +187,9 @@ int BlobStreamer::OpenFile(const char* file_name)
         if (block_size <= MAX_BLOCK_SIZE_FOR_SINGLE_READ) {
             // Download and save the first block of this file for future read.
             BlobBlock* block = GetBlock(file_name, 0, obj);
-            block->lck.unlock();
+            if (block != NULL) {
+                block->lck.unlock();
+            }
         }
     }
 

@@ -76,6 +76,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-blocks-per-file=%s", max_blocks_per_file),
     OPTION("--block-size-mb=%s", block_size_mb),
     OPTION("--enable-gen1=%s", enable_gen1),
+    OPTION("--ignore-open-flags=%s", ignore_open_flags),
 
     OPTION("--version", version),
     OPTION("-v", version),
@@ -1238,6 +1239,16 @@ int read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         config_options.blockSize = uint64_t((config_options.blockSize) * 1024 * 1024);
     }
 
+    config_options.ignoreOpenFlags = false;
+    if(cmd_options.ignore_open_flags != NULL)
+    {
+        std::string ignore(cmd_options.ignore_open_flags);
+        if(ignore == "true")
+        {
+            config_options.ignoreOpenFlags = true;
+        } 
+    }
+    
     if (!config_options.enableGen1) {
         if (config_options.streaming && !config_options.readOnlyMount) {
             syslog(LOG_ERR, "Read-Streaming is supported only on Readonly Mounts. Use '-o ro' option in mount command");
