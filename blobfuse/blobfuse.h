@@ -96,7 +96,11 @@ bool is_directory_blob(unsigned long long size, std::vector<std::pair<std::strin
  * @param  stbuf The 'stat' struct containing the output information.
  * @return       TODO: Error codes
  */
+#if FUSE_MAJOR_VERSION >=3
 int azs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info*);
+#else
+int azs_getattr(const char *path, struct stat *stbuf);
+#endif
 
 /**
 * statfs gets the file system statistics for the tmpPath/local cache path
@@ -130,8 +134,11 @@ int azs_mkdir(const char *path, mode_t mode);
  * @param  fi     File info about the directory to be read.
  * @return        TODO: error codes.
  */
+#if FUSE_MAJOR_VERSION >= 3
 int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi, fuse_readdir_flags);
-
+#else
+int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi);
+#endif
 
 /**
  * Open an item (a file) for writing or reading.
@@ -233,7 +240,11 @@ int azs_rmdir(const char *path);
  * @param  dst Path to the destination file or directory.
  * @return      TODO: Error codes.
  */
+#if FUSE_MAJOR_VERSION >= 3
 int azs_rename(const char *src, const char *dst, unsigned int);
+#else
+int azs_rename(const char *src, const char *dst);
+#endif
 
 /**
  * Initialize the filesystem.
@@ -244,7 +255,11 @@ int azs_rename(const char *src, const char *dst, unsigned int);
  * @param  conn Configuration info of fuse driver.
  * @return      TODO: Error codes.
  */
+#if FUSE_MAJOR_VERSION >= 3
 void* azs_init(struct fuse_conn_info * conn, struct fuse_config*);
+#else
+void* azs_init(struct fuse_conn_info * conn);
+#endif
 
 /**
  * Un-mount the file system
@@ -261,10 +276,17 @@ void azs_destroy(void *private_data);
 int azs_access(const char *path, int mask);
 int azs_fsync(const char *path, int isdatasync, struct fuse_file_info *fi);
 int azs_fsyncdir(const char *path, int isdatasync, struct fuse_file_info *fi);
+#if FUSE_MAJOR_VERSION >= 3
 int azs_chown(const char *path, uid_t uid, gid_t gid, struct fuse_file_info*);
 int azs_chmod(const char *path, mode_t mode, struct fuse_file_info*);
 int azs_utimens(const char *path, const struct timespec ts[2], struct fuse_file_info*);
 int azs_truncate(const char *path, off_t off, struct fuse_file_info*);
+#else
+int azs_chown(const char *path, uid_t uid, gid_t gid);
+int azs_chmod(const char *path, mode_t mode);
+int azs_utimens(const char *path, const struct timespec ts[2]);
+int azs_truncate(const char *path, off_t off);
+#endif
 int azs_setxattr(const char *path, const char *name, const char *value, size_t size, int flags);
 
 // symlink related handlers

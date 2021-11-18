@@ -595,7 +595,11 @@ int azs_unlink(const char *path)
     return retval;
 }
 
+#if FUSE_MAJOR_VERSION >= 3
 int azs_truncate(const char * path, off_t off, struct fuse_file_info*)
+#else
+int azs_truncate(const char * path, off_t off)
+#endif
 {
     AZS_DEBUGLOGV("azs_truncate called.  Path = %s, offset = %s\n", path, to_str(off).c_str());
 
