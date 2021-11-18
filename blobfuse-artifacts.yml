@@ -109,10 +109,19 @@ stages:
         - Agent.Name -equals $(AgentName)
       
       variables:
-        skipComponentGovernanceDetection: true
+        - name: WORK_DIR
+          value: "/usr/pipeline/blobfuse"
+        - name: ROOT_DIR
+          value: "/usr/pipeline/blobfuse/azure-storage-fuse"
+        - name: skipComponentGovernanceDetection
+          value: true
 
       steps:
         # Install all dependencies
+        # DevOps checks for a specific git version and it fails on some distros
+        # so instead of pipeline checking out the code, do it manually
+        - checkout: none
+
         - script: |
             sudo apt-get update --fix-missing
             sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
@@ -123,22 +132,31 @@ stages:
             sudo apt-get install libfuse-dev -y
           displayName: "libFuse Setup"
 
+        # Checkout code
+        - script: |
+            git clone https://github.com/Azure/azure-storage-fuse
+          displayName: "Checkout code"
+          workingDirectory: $(WORK_DIR)
+
         # List commits consumed for this build
         - script: |
             echo "Below commits were done in last 12 hours : " `date` 
             git --no-pager log --since="12 hours ago" --stat
           displayName: "List Commits"
+          workingDirectory: $(ROOT_DIR)
 
         # Build the blobFuse binary
         - script: |
             sudo chmod +x build.sh
             . ./build.sh
           displayName: "Build BlobFuse"
+          workingDirectory: $(ROOT_DIR)
 
         # Test the binary just to make sure it was built fine
         - script: |
             ./build/blobfuse --version
           displayName: "Test the binary"
+          workingDirectory: $(ROOT_DIR)
 
         # Copy binaries required for the package
         - script: |
@@ -148,6 +166,7 @@ stages:
             cp ./blobfuse-*.*.*.deb  $(Build.ArtifactStagingDirectory)/
             cd ..
           displayName: "Build Artifacts"
+          workingDirectory: $(ROOT_DIR)
 
         # Publish the Artifacts
         - task: PublishBuildArtifacts@1
@@ -155,6 +174,7 @@ stages:
             artifactName: 'blobfuse'
           displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
           condition: succeeded()
+          workingDirectory: $(ROOT_DIR)
 
         - script: |
             pwd
