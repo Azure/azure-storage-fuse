@@ -375,7 +375,10 @@ void destroyBlobfuseOnAuthError()
     if (n == -1) {
         syslog(LOG_ERR, "Failed to report back failure.");
     }
-    
+#if FUSE_MAJOR_VERSION < 3
+    fuse_unmount(config_options.mntPath.c_str(), NULL);
+#endif
+
     if (is_directory_mounted(config_options.mntPath.c_str())) 
     {
         char errStr[] = "Failed to unmount blobfuse. Manually unmount using fusermount command.\n";
@@ -397,7 +400,11 @@ void destroyBlobfuseOnAuthError()
 }
 
 int configure_tls();
+#if FUSE_MAJOR_VERSION < 3
+void *azs_init(struct fuse_conn_info * conn )
+#else
 void *azs_init(struct fuse_conn_info * conn, struct fuse_config* cfg )
+#endif
 {
     syslog(LOG_DEBUG, "azs_init ran");
 
@@ -407,8 +414,10 @@ void *azs_init(struct fuse_conn_info * conn, struct fuse_config* cfg )
     cfg->entry_timeout = 120;
     cfg->negative_timeout = 120;
     */
+#if FUSE_MAJOR_VERSION >= 3
     cfg->kernel_cache = 1;
     cfg->hard_remove = 1;
+#endif
 
    // even 4.18 does not like this so 5.4 is not enough so 
     if (kernel_version < blobfuse_constants::minKernelVersion) {
@@ -416,10 +425,21 @@ void *azs_init(struct fuse_conn_info * conn, struct fuse_config* cfg )
 	// let fuselib pick 128KB
 	//conn->max_read = 4194304;
     } 
+    else {
+#if FUSE_MAJOR_VERSION < 3
+        conn->want |= FUSE_CAP_BIG_WRITES;
+#else
+        // big writes always enabled in fuse3
+#endif
+    }
     conn->max_readahead = 4194304;
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
+
+#if FUSE_MAJOR_VERSION >=3
+    // allows kernel to flush cache on mtime change or file size change
     conn->want |= FUSE_CAP_AUTO_INVAL_DATA;
+#endif
 
     g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
     g_gc_cache->run();
@@ -1268,6 +1288,13 @@ void configure_fuse(struct fuse_args *args)
     // FUSE contains a feature where it automatically implements 'soft' delete if one process has a file open when another calls unlink().
     // This feature causes us a bunch of problems, so we use "-ohard_remove" to disable it, and track the needed 'soft delete' functionality on our own.
     fuse_opt_add_arg(args, "-ofsname=blobfuse");
+
+#if FUSE_MAJOR_VERSION < 3
+    fuse_opt_add_arg(args, "-ohard_remove");
+    fuse_opt_add_arg(args, "-obig_writes");
+    fuse_opt_add_arg(args, "-okernel_cache");
+#endif
+
     umask(0);
 }
 
