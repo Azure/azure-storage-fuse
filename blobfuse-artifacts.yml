@@ -132,6 +132,12 @@ stages:
             sudo apt-get install libfuse-dev -y
           displayName: "libFuse Setup"
 
+        # Create directory
+        - script: |
+            sudo mkdir -p $(WORK_DIR)
+            sudo chmod 777 $(WORK_DIR)
+          displayName: "Create directory"
+
         # Checkout code
         - script: |
             git clone https://github.com/Azure/azure-storage-fuse
@@ -174,7 +180,6 @@ stages:
             artifactName: 'blobfuse'
           displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
           condition: succeeded()
-          workingDirectory: $(ROOT_DIR)
 
         - script: |
             pwd
