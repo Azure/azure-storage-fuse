@@ -134,6 +134,7 @@ stages:
 
         # Create directory
         - script: |
+            sudo rm -rf $(WORK_DIR)
             sudo mkdir -p $(WORK_DIR)
             sudo chmod 777 $(WORK_DIR)
           displayName: "Create directory"
