@@ -115,7 +115,7 @@ int ensure_files_directory_exists_in_cache(const std::string &file_path)
     return status;
 }
 
-int azs_getattr(const char *path, struct stat *stbuf)
+int azs_getattr(const char *path, struct stat *stbuf, struct fuse_file_info*)
 {
     AZS_DEBUGLOGV("azs_getattr called with path = %s\n", path);
 
@@ -516,14 +516,14 @@ int azs_fsyncdir(const char *path, int, struct fuse_file_info *)
     return 0; 
 }
 
-int azs_chown(const char * /*path*/, uid_t /*uid*/, gid_t /*gid*/)
+int azs_chown(const char * /*path*/, uid_t /*uid*/, gid_t /*gid*/, struct fuse_file_info*)
 {
     //TODO: is it ok to change ownership if it is ADLS. Should blbofuse allow this?
     // Block blob should allow changing ownership.
     return 0;
 }
 
-int azs_chmod(const char *path, mode_t mode)
+int azs_chmod(const char *path, mode_t mode, struct fuse_file_info*)
 {
     //This is only functional when --use-adls is enabled as a mount flag
     AZS_DEBUGLOGV("azs_chmod called with path = %s, mode = %o.\n", path, mode);
@@ -543,7 +543,7 @@ int azs_chmod(const char *path, mode_t mode)
 }
 
 //#ifdef HAVE_UTIMENSAT
-int azs_utimens(const char * /*path*/, const struct timespec[2] /*ts[2]*/)
+int azs_utimens(const char * /*path*/, const struct timespec[2] /*ts[2]*/, struct fuse_file_info*)
 {
     //TODO: Implement
     //    return -ENOSYS;
@@ -555,7 +555,7 @@ int azs_utimens(const char * /*path*/, const struct timespec[2] /*ts[2]*/)
 // TODO: Fix bugs where the a file has been created but not yet uploaded.
 // TODO: Fix the bug where this fails for multi-level dirrectories.
 // TODO: If/when we upgrade to FUSE 3.0, we will need to worry about the additional possible flags (RENAME_EXCHANGE and RENAME_NOREPLACE)
-int azs_rename(const char *src, const char *dst)
+int azs_rename(const char *src, const char *dst, unsigned int)
 {
     AZS_DEBUGLOGV("azs_rename called with src = %s, dst = %s.\n", src, dst);
 
@@ -566,7 +566,7 @@ int azs_rename(const char *src, const char *dst)
 
     errno = 0;
     struct stat stbuf;
-    errno = azs_getattr(fromStr.c_str(), &stbuf);
+    errno = azs_getattr(fromStr.c_str(), &stbuf, NULL);
     if (errno != 0)
         return errno;
 

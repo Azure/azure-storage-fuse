@@ -41,7 +41,7 @@ int azs_mkdir(const char *path, mode_t)
  * @param  flags  Not used.  TODO: Consider prefetching on FUSE_READDIR_PLUS.
  * @return        TODO: error codes.
  */
-int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, struct fuse_file_info *)
+int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, struct fuse_file_info *, fuse_readdir_flags )
 {
     AZS_DEBUGLOGV("azs_readdir called with path = %s\n", path);
 
@@ -70,6 +70,8 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
 
     std::vector<std::string> local_list_results;
 
+    enum fuse_fill_dir_flags fill_flags = fuse_fill_dir_flags();
+
     // Scan for any files that exist in the local cache.
     // It is possible that there are files in the cache that aren't on the service - if a file has been opened but not yet uplaoded, for example.
     std::string mntPathString = prepend_mnt_path_string(pathStr);
@@ -90,7 +92,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                     stbuf.st_gid = fuse_get_context()->gid;
                     stbuf.st_nlink = 2;
                     stbuf.st_size = 4096;
-                    filler(buf, dir_ent->d_name, &stbuf, 0);
+                    filler(buf, dir_ent->d_name, &stbuf, 0, fill_flags);
                     AZS_DEBUGLOGV("Subdirectory %s found in local cache directory %s during readdir operation.\n", dir_ent->d_name, mntPathString.c_str());
                 }
                 else
@@ -104,7 +106,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                     stbuf.st_gid = fuse_get_context()->gid;
                     stbuf.st_nlink = 1;
                     stbuf.st_size = buffer.st_size;
-                    filler(buf, dir_ent->d_name, &stbuf, 0); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
+                    filler(buf, dir_ent->d_name, &stbuf, 0, fill_flags); // TODO: Add stat information.  Consider FUSE_FILL_DIR_PLUS.
                     AZS_DEBUGLOGV("File %s found in local cache directory %s during readdir operation.\n", dir_ent->d_name, mntPathString.c_str());
                 }
 
@@ -126,8 +128,8 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
     stcurrentbuf.st_mode = S_IFDIR | config_options.defaultPermission;
     stparentbuf.st_mode = S_IFDIR;
 
-    filler(buf, ".", &stcurrentbuf, 0);
-    filler(buf, "..", &stparentbuf, 0);
+    filler(buf, ".", &stcurrentbuf, 0, fill_flags);
+    filler(buf, "..", &stparentbuf, 0, fill_flags);
 
     std::string continuation = "";
     std::string prior = "";
@@ -212,7 +214,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                             }
 
                             //int fillerResult = 
-                            filler(buf, prev_token_str.c_str(), &stbuf, 0);
+                            filler(buf, prev_token_str.c_str(), &stbuf, 0, fill_flags);
                             //AZS_DEBUGLOGV("Adding to readdir list : %s : fillerResult = %d. uid=%u. gid = %u\n", 
                             //        prev_token_str.c_str(), fillerResult, stbuf.st_uid, stbuf.st_gid);
                         }
@@ -275,7 +277,7 @@ int azs_statfs(const char *path, struct statvfs *stbuf)
     std::string pathString(path);
 
     struct stat statbuf;
-    int getattrret = azs_getattr(path, &statbuf);
+    int getattrret = azs_getattr(path, &statbuf, NULL);
     if (getattrret != 0)
     {
         return getattrret;

@@ -67,6 +67,10 @@ then
 	fi
 fi
 
+if [ -n "${AZS_FUSE3}" ]; then
+   cmake_args="-DAZS_FUSE3=1 $cmake_args"
+fi
+
 ## Use cmake3 if it's available.  If not, then fallback to the default "cmake".  Otherwise, fail.
 cmake3 $cmake_args
 if [ $? -ne 0 ]

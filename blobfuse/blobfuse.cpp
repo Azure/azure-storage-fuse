@@ -376,8 +376,6 @@ void destroyBlobfuseOnAuthError()
         syslog(LOG_ERR, "Failed to report back failure.");
     }
     
-    fuse_unmount(config_options.mntPath.c_str(), NULL);
-
     if (is_directory_mounted(config_options.mntPath.c_str())) 
     {
         char errStr[] = "Failed to unmount blobfuse. Manually unmount using fusermount command.\n";
@@ -399,28 +397,29 @@ void destroyBlobfuseOnAuthError()
 }
 
 int configure_tls();
-void *azs_init(struct fuse_conn_info * conn)
+void *azs_init(struct fuse_conn_info * conn, struct fuse_config* cfg )
 {
     syslog(LOG_DEBUG, "azs_init ran");
 
     gMountTime = time(NULL);
     /*
     cfg->attr_timeout = 360;
-    cfg->kernel_cache = 1;
     cfg->entry_timeout = 120;
     cfg->negative_timeout = 120;
     */
+    cfg->kernel_cache = 1;
+    cfg->hard_remove = 1;
+
    // even 4.18 does not like this so 5.4 is not enough so 
     if (kernel_version < blobfuse_constants::minKernelVersion) {
         conn->max_write = 4194304;
 	// let fuselib pick 128KB
 	//conn->max_read = 4194304;
-    } else {
-        conn->want |= FUSE_CAP_BIG_WRITES;
-    }
+    } 
     conn->max_readahead = 4194304;
     conn->max_background = 128;
     //  conn->want |= FUSE_CAP_WRITEBACK_CACHE | FUSE_CAP_EXPORT_SUPPORT; // TODO: Investigate putting this back in when we downgrade to fuse 2.9
+    conn->want |= FUSE_CAP_AUTO_INVAL_DATA;
 
     g_gc_cache = std::make_shared<gc_cache>(config_options.tmpPath, config_options.fileCacheTimeoutInSeconds);
     g_gc_cache->run();
@@ -1268,10 +1267,7 @@ void configure_fuse(struct fuse_args *args)
 
     // FUSE contains a feature where it automatically implements 'soft' delete if one process has a file open when another calls unlink().
     // This feature causes us a bunch of problems, so we use "-ohard_remove" to disable it, and track the needed 'soft delete' functionality on our own.
-    fuse_opt_add_arg(args, "-ohard_remove");
-    fuse_opt_add_arg(args, "-obig_writes");
     fuse_opt_add_arg(args, "-ofsname=blobfuse");
-    fuse_opt_add_arg(args, "-okernel_cache");
     umask(0);
 }
 

@@ -1,5 +1,6 @@
 #include "blobfuse.h"
 #include <sys/file.h>
+#include <utime.h>
 #include <FileLockMap.h>
 
 #include <include/StorageBfsClientBase.h>
@@ -594,7 +595,7 @@ int azs_unlink(const char *path)
     return retval;
 }
 
-int azs_truncate(const char * path, off_t off)
+int azs_truncate(const char * path, off_t off, struct fuse_file_info*)
 {
     AZS_DEBUGLOGV("azs_truncate called.  Path = %s, offset = %s\n", path, to_str(off).c_str());
 
