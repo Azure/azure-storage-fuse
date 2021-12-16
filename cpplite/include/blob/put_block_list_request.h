@@ -53,6 +53,11 @@ namespace azure {  namespace storage_lite {
             return *this;
         }
 
+        std::string ms_blob_content_type() const 
+        { 
+            return m_content_type; 
+        }
+
     private:
         std::string m_container;
         std::string m_blob;

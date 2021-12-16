@@ -87,24 +87,19 @@ class StreamObject {
         }
 
         int IncRefCount() {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            //std::lock_guard<std::mutex> lock(m_mutex);
             ref_count++;
             return ref_count;
         }
 
         int DecRefCount() {
-            std::lock_guard<std::mutex> lock(m_mutex);
+            //std::lock_guard<std::mutex> lock(m_mutex);
             ref_count--;
 
             if (ref_count == 0) {
                 Cleanup();
             }
 
-            return ref_count;
-        }
-
-        int GetRefCount() {
-            std::lock_guard<std::mutex> lock(m_mutex);
             return ref_count;
         }
 
