@@ -95,11 +95,6 @@ class StreamObject {
         int DecRefCount() {
             //std::lock_guard<std::mutex> lock(m_mutex);
             ref_count--;
-
-            if (ref_count == 0) {
-                Cleanup();
-            }
-
             return ref_count;
         }
 
