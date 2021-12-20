@@ -98,6 +98,10 @@ class StreamObject {
             return ref_count;
         }
 
+        int GetRefCount() {
+            return ref_count;
+        }
+
         void SetSize(uint64_t size) {
             file_size = size;
         }

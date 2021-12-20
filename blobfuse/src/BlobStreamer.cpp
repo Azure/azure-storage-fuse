@@ -181,6 +181,7 @@ int BlobStreamer::OpenFile(const char* file_name)
         
         // Mark one more open handle exists for this file
         obj->IncRefCount();
+        syslog(LOG_DEBUG, "OpenFile incremented refcount for %s (%d)", file_name, obj->GetRefCount());
         m_mutex.unlock();
 
         if (block_size <= MAX_BLOCK_SIZE_FOR_SINGLE_READ) {
@@ -209,6 +210,7 @@ int BlobStreamer::CloseFile(const char* file_name)
         }
 
         StreamObject* obj = iter->second;
+        syslog(LOG_DEBUG, "CloseFile current refcount for %s (%d)", file_name, obj->GetRefCount());
         if (0 == obj->DecRefCount()) {
             // All open handles are closed so file info has been cleanedup
             // We can remove the entry from the map now. Next open will cause a new entry.
