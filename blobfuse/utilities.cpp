@@ -142,6 +142,17 @@ int azs_getattr(const char *path, struct stat *stbuf)
     std::string mntPathString = prepend_mnt_path_string(pathString);
 
     int res;
+
+    char real_path[PATH_MAX];
+    char *result = realpath(mntPathString.c_str(), real_path);
+    if (result != NULL) {
+        // Path got resolved. lets check we are not moving away from temp path
+        std::string realPathString(real_path);
+        if (std::string::npos == realPathString.find(config_options.absoluateTmpPath)) {
+            AZS_DEBUGLOGV("Resolved absolute path is = %s for %s, and its out of scope\n", real_path, mntPathString.c_str());
+            return -(ENOENT);
+        }
+    }
     int acc = access(mntPathString.c_str(), F_OK);
     if (acc != -1)
     {
