@@ -143,16 +143,6 @@ int azs_getattr(const char *path, struct stat *stbuf)
 
     int res;
 
-    char real_path[PATH_MAX];
-    char *result = realpath(mntPathString.c_str(), real_path);
-    if (result != NULL) {
-        // Path got resolved. lets check we are not moving away from temp path
-        std::string realPathString(real_path);
-        if (std::string::npos == realPathString.find(config_options.absoluateTmpPath)) {
-            AZS_DEBUGLOGV("Resolved absolute path is = %s for %s, and its out of scope\n", real_path, mntPathString.c_str());
-            return -(ENOENT);
-        }
-    }
     int acc = access(mntPathString.c_str(), F_OK);
     if (acc != -1)
     {
@@ -194,6 +184,20 @@ int azs_getattr(const char *path, struct stat *stbuf)
             }
             else
             {
+                char real_path[PATH_MAX];
+                char *result = realpath(mntPathString.c_str(), real_path);
+                if (result != NULL) {
+                    // Path got resolved. lets check we are not moving away from temp path
+                    // If the file name was created using \..\..\..\abc.txt kind of pattern then mergin it with temp cache path
+                    // may lead the path out of the temp cache folde rand blobfuse may end up deleting those file if open is hit
+                    // To restrict that here we stop getattr and return enoent so that open is never called for such path
+                    // any absolute path going out of temp cache path needs to be invalidated
+                    std::string realPathString(real_path);
+                    if (std::string::npos == realPathString.find(config_options.absoluateTmpPath)) {
+                        AZS_DEBUGLOGV("Resolved absolute path is = %s for %s, and its out of scope\n", real_path, mntPathString.c_str());
+                        return -(ENOENT);
+                    }
+                }
                 AZS_DEBUGLOGV("lstat on file %s in local cache succeeded.\n", mntPathString.c_str());
                 return 0;
             }
