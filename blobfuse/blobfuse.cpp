@@ -993,6 +993,12 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
     }
 
     config_options.tmpPath = tmpPathStr;
+    char real_path[PATH_MAX];
+    char *result = realpath(tmpPathStr.c_str(), real_path);
+    if (result != NULL) {
+        config_options.absoluteTmpPath = std::string(real_path);
+    }
+
     config_options.useHttps = true;
     if (cmd_options.useHttps != NULL)
     {
