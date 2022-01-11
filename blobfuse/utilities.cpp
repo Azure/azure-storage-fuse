@@ -188,7 +188,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 char *result = realpath(mntPathString.c_str(), real_path);
                 if (result != NULL) {
                     // Path got resolved. lets check we are not moving away from temp path
-                    // If the file name was created using \..\..\..\abc.txt kind of pattern then mergin it with temp cache path
+                    // If the file name was created using \..\..\..\abc.txt kind of pattern then merging it with temp cache path
                     // may lead the path out of the temp cache folde rand blobfuse may end up deleting those file if open is hit
                     // To restrict that here we stop getattr and return enoent so that open is never called for such path
                     // any absolute path going out of temp cache path needs to be invalidated
