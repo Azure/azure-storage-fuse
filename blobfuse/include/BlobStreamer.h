@@ -86,6 +86,7 @@ class StreamObject {
             file_size = 0;
         }
 
+        //  Caller must hold the object level lock before calling any of the refcount methods
         int IncRefCount() {
             //std::lock_guard<std::mutex> lock(m_mutex);
             ref_count++;
