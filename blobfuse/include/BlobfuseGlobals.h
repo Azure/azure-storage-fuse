@@ -50,7 +50,7 @@ struct configParams
     std::string msiSecret;
     std::string containerName;
     std::string tmpPath;
-    std::string absoluateTmpPath;
+    std::string absoluteTmpPath;
     std::string logLevel;
     std::string caCertFile;
     std::string httpsProxy;
