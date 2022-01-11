@@ -193,7 +193,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                     // To restrict that here we stop getattr and return enoent so that open is never called for such path
                     // any absolute path going out of temp cache path needs to be invalidated
                     std::string realPathString(real_path);
-                    if (std::string::npos == realPathString.find(config_options.absoluateTmpPath)) {
+                    if (std::string::npos == realPathString.find(config_options.absoluteTmpPath)) {
                         AZS_DEBUGLOGV("Resolved absolute path is = %s for %s, and its out of scope\n", real_path, mntPathString.c_str());
                         return -(ENOENT);
                     }
