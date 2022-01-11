@@ -266,6 +266,7 @@ std::future<storage_outcome<void>> blob_client::upload_block_blob_from_stream(co
 
     if (gSetContentType) 
         request->set_content_type(GetContentType(blob));
+
     http->set_input_stream(storage_istream(is));
     http->set_is_input_length_known();
     http->set_input_content_length(streamlen);
@@ -378,7 +379,7 @@ std::future<storage_outcome<void>> blob_client::upload_block_from_buffer(const s
 
     auto request = std::make_shared<put_block_request>(container, blob, blockid);
     request->set_content_length(static_cast<unsigned int>(bufferlen));
-
+    
     auto is = std::make_shared<imstream>(buff, bufferlen);
     http->set_input_stream(storage_istream(is));
     http->set_is_input_length_known();

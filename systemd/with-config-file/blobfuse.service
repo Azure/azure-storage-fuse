@@ -28,9 +28,9 @@ Environment=attr_timeout=240
 Environment=entry_timeout=240
 Environment=negative_timeout=120
 Type=simple
-#ExecStart=/home/AzureUser/azure-storage-fuse/build/blobfuse /home/AzureUser/mntblobfuse --tmp-path=/home/AzureUser/tmpblobfuse --config-file=/home/AzureUser/azure-storage-fuse/connectionnarasubfuse.cfg --use-https=true --file-cache-timeout-in-seconds=20 --log-level=LOG_DEBUG --use-attr-cache=true -o attr_timeout=120 -o entry_timeout=120 -o negative_timeout=120 -o allow_other -d
+#ExecStart=/home/AzureUser/azure-storage-fuse/build/blobfuse /home/AzureUser/mntblobfuse --tmp-path=/home/AzureUser/tmpblobfuse --config-file=/home/AzureUser/azure-storage-fuse/connectionnarasubfuse.cfg --use-https=true --file-cache-timeout-in-seconds=20 --log-level=LOG_DEBUG --use-attr-cache=true -o attr_timeout=120 -o entry_timeout=120 -o negative_timeout=120 -o allow_other
 #ExecStop=/usr/bin/fusermount -u /home/AzureUser/mntblobfuse
-ExecStart=/home/AzureUser/azure-storage-fuse/build/blobfuse ${BlobMountingPoint} --tmp-path=${BlobTmp} --config-file=${BlobConfigFile} --use-https=true --file-cache-timeout-in-seconds=20 --log-level=LOG_DEBUG --use-attr-cache=true -o attr_timeout=120 -o entry_timeout=120 -o negative_timeout=120 -o allow_other -d
+ExecStart=/home/AzureUser/azure-storage-fuse/build/blobfuse ${BlobMountingPoint} --tmp-path=${BlobTmp} --config-file=${BlobConfigFile} --use-https=true --file-cache-timeout-in-seconds=20 --log-level=LOG_DEBUG --use-attr-cache=true -o attr_timeout=120 -o entry_timeout=120 -o negative_timeout=120 -o allow_other
 ExecStop=/usr/bin/fusermount -u ${BlobMountingPoint}
 
 [Install]

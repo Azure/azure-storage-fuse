@@ -178,11 +178,11 @@ int BlobStreamer::OpenFile(const char* file_name)
             // File object exists in our map
             obj = iter->second;
         }
-
-        m_mutex.unlock();
-
+        
         // Mark one more open handle exists for this file
         obj->IncRefCount();
+        syslog(LOG_DEBUG, "OpenFile incremented refcount for %s (%d)", file_name, obj->GetRefCount());
+        m_mutex.unlock();
 
         if (block_size <= MAX_BLOCK_SIZE_FOR_SINGLE_READ) {
             // Download and save the first block of this file for future read.
@@ -210,14 +210,12 @@ int BlobStreamer::CloseFile(const char* file_name)
         }
 
         StreamObject* obj = iter->second;
-        m_mutex.unlock();
-
+        syslog(LOG_DEBUG, "CloseFile current refcount for %s (%d)", file_name, obj->GetRefCount());
         if (0 == obj->DecRefCount()) {
             // All open handles are closed so file info has been cleanedup
             // We can remove the entry from the map now. Next open will cause a new entry.
             syslog(LOG_DEBUG, "All handles for %s released, cleanup cached blocks", file_name);
             
-            m_mutex.lock();
             file_map.erase(file_name);
             
             obj->Lock();
@@ -225,8 +223,9 @@ int BlobStreamer::CloseFile(const char* file_name)
             obj->UnLock();
 
             delete obj;
-            m_mutex.unlock();
         }
+
+        m_mutex.unlock();
     }
 
     return 0;
@@ -250,7 +249,6 @@ int BlobStreamer::DeleteFile(const char* file_name)
 
     StreamObject* obj = iter->second;
     file_map.erase(file_name);
-    m_mutex.unlock();
 
     if (obj) {
         obj->Lock();
@@ -259,6 +257,8 @@ int BlobStreamer::DeleteFile(const char* file_name)
 
         delete obj;
     }
+    
+    m_mutex.unlock();
 
     return 0;
 }
