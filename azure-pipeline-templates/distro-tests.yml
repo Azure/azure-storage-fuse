@@ -1,0 +1,189 @@
+parameters:
+  - name: working_dir
+    type: string
+  - name: root_dir
+    type: string
+  - name: temp_dir
+    type: string
+  - name: mount_dir
+    type: string
+  - name: config_path
+    type: string
+  - name: container
+    type: string
+  - name: installStep
+    type: step
+  - name: gopath
+    type: string
+  - name: blob_account_name
+    type: string
+  - name: blob_account_key
+    type: string
+  - name: adls_account_name
+    type: string
+  - name: adls_account_key
+    type: string
+  - name: distro_name
+    type: string
+  - name: tags
+    type: string
+    default: "null"    
+  - name: fuselib
+    type: string
+    default: "libfuse3-dev"
+
+steps:
+  - checkout: none
+
+  # Get the host details on which these test are running
+  - script: |
+      echo $(Description)
+      hostnamectl
+    displayName: 'Print Agent Info'
+
+
+  # Create directory strucutre and prepare to mount
+  - ${{ parameters.installStep }}
+  - script: |
+      sudo rm -rf $(ROOT_DIR)
+      sudo mkdir -p $(ROOT_DIR)
+      sudo chown -R `whoami` $(ROOT_DIR)
+      chmod 777 $(ROOT_DIR)
+      mkdir -p $(ROOT_DIR)/go/src
+    displayName: 'Create Directory Structure'
+
+  # Clone the repo
+  - script: |
+      git clone https://github.com/Azure/azure-storage-fuse
+    displayName: 'Checkout Code'
+    workingDirectory: $(ROOT_DIR)/go/src
+
+  # Checkout the branch
+  - script: |
+      git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+    displayName: 'Checkout Branch'
+    workingDirectory: ${{ parameters.working_dir }}
+    
+  # Build the code
+  - template: 'build.yml'
+    parameters:
+      root_dir: ${{ parameters.root_dir }}
+      working_directory: ${{ parameters.working_dir }}
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      hostedAgent: false
+      gopath: ${{ parameters.gopath }}
+      container: ${{ parameters.container }}
+      tags: ${{ parameters.tags }}
+      fuselib: ${{ parameters.fuselib }}
+      
+  - script: |
+      cd ${{ parameters.working_dir }}
+      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_path }}
+    displayName: 'Create Config File'
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.blob_account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.blob_account_key }}
+      ACCOUNT_TYPE: 'block'
+      ACCOUNT_ENDPOINT: 'https://${{ parameters.blob_account_name }}.blob.core.windows.net'
+    continueOnError: false
+
+  # Print config file
+  - script: |
+      cat ${{ parameters.config_path }}
+    displayName: 'Print config file'
+
+  # Cli option test
+  - script: |
+      ${{ parameters.working_dir }}/blobfuse2 --help
+    displayName: 'CLI help string check'
+
+  # Basic End to End test to check sanity on this distro
+  # Start End to End test on this distro
+  - template: 'e2e-tests.yml'
+    parameters:
+      working_dir: ${{ parameters.working_dir }}
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      adls: false
+      idstring: 'Distro BlockBlob with Key Credentials'
+      distro_name: ${{ parameters.distro_name }}
+      mountStep:
+        script: |
+          ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_path }}
+        displayName: 'E2E TEST: Mount container'
+        timeoutInMinutes: 3
+        continueOnError: false
+
+  - template: 'cleanup.yml'
+    parameters:
+      working_dir: ${{ parameters.working_dir }}
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+
+  - script: |
+      cd ${{ parameters.working_dir }}
+      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_path }}
+    displayName: 'Create Config File'
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.adls_account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.adls_account_key }}
+      ACCOUNT_TYPE: 'adls'
+      ACCOUNT_ENDPOINT: 'https://${{ parameters.adls_account_name }}.dfs.core.windows.net'
+    continueOnError: false
+
+  # Print config file
+  - script: |
+      cat ${{ parameters.config_path }}
+    displayName: 'Print config file'
+
+  # Cli option test
+  - script: |
+      ${{ parameters.working_dir }}/blobfuse2 --help
+    displayName: 'CLI help string check'
+
+  # Basic End to End test to check sanity on this distro
+  # Start End to End test on this distro
+  - template: 'e2e-tests.yml'
+    parameters:
+      working_dir: ${{ parameters.working_dir }}
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      adls: true
+      idstring: 'Distro ADLS with Key Credentials'
+      distro_name: ${{ parameters.distro_name }}
+      mountStep:
+        script: |
+          ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_path }}
+        displayName: 'E2E TEST: Mount container'
+        timeoutInMinutes: 3
+        continueOnError: false
+
+  - template: 'cleanup.yml'
+    parameters:
+      working_dir: ${{ parameters.working_dir }}
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+
+
+  # Cleanup go tools dir  
+  - task: GO@0
+    inputs:
+      command: 'clean'
+      arguments: '-cache -modcache -testcache -i'
+      workingDirectory: ${{ parameters.working_dir }}
+    displayName: 'Clean up go tool dirs'
+    timeoutInMinutes: 20
+    continueOnError: true
+    condition: always()
+
+  # Cleanup Agent dir  
+  - script: |
+      sudo rm -rf ${root_dir}
+      pwd
+      cd /`pwd | cut -d '/' -f 2,3,4,5`
+      sudo rm -rf [0-9]
+    displayName: 'Clean Agent Directories'
+    env:
+      root_dir: ${{ parameters.root_dir }}
+    condition: always()

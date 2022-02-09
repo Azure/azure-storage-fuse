@@ -1,0 +1,54 @@
+parameters:
+  - name: work_dir
+    type: string
+  - name: root_dir
+    type: string
+  - name: unit_test
+    type: boolean
+    default: false
+  - name: tags
+    type: string
+    default: "null"
+
+steps:
+  # Installing Go tool
+  - task: ShellScript@2
+    inputs:
+      scriptPath: "${{ parameters.work_dir }}/go_installer.sh"
+      args: "${{ parameters.root_dir }}/ 1.16.2"
+    displayName: "Installing Go tools"
+
+  # Installing Blobfuse2 Dependencies via go get
+  - task: Go@0
+    inputs:
+      command: 'get'
+      arguments: '-d'
+      workingDirectory: ${{ parameters.work_dir }}
+    displayName: "Installing Blobfuse2 Dependencies"
+
+  # Build the binary  
+  - task: Go@0
+    inputs:
+      command: 'build'
+      arguments: "-tags ${{ parameters.tags }}"
+      workingDirectory: ${{ parameters.work_dir }}
+    displayName: 'Building Blobfuse2'
+  
+  # Verifying whether built binary is correct
+  - script: |
+      sudo chmod +x ./blobfuse2
+      ./blobfuse2 --version
+    workingDirectory: ${{ parameters.work_dir }}
+    displayName: "Test Binary built"
+    continueOnError: false
+
+  # Run Unit tests if parameters is true
+  - ${{ if eq(parameters.unit_test, true) }}:
+      - task: Go@0
+        inputs:
+          command: 'test'
+          arguments: '-v ./... --tags=unittest,${{ parameters.tags }} -coverprofile utcover.cov'
+          workingDirectory: ${{ parameters.work_dir }}
+        displayName: "Unit tests"
+
+

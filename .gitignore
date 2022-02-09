@@ -1,0 +1,15 @@
+.idea/
+.vscode/
+*.out
+config.yaml
+testcnf.yaml
+blobfuse2.log
+blobfuse2.test
+azuretest.json
+blobfuse2
+venv/
+*.backup
+__debug_bin
+.env
+test/manual_scripts/create1000.go
+test/manual_scripts/cachetest.go
