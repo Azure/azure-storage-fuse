@@ -1,2 +1,0 @@
-#az cli command for generating the sas token, open a command prompt, make sure you are logged in to az cli. The token would be output in the command window.
-az storage container generate-sas --account-name <accountname Eg:naraadls> --account-key <accountKey> -n <container name> --permissions dlrwac --start <today's date Eg: 2021-03-26> --expiry <date greater than now eg:2021-03-28>
