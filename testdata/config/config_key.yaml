@@ -1,0 +1,19 @@
+logging:
+  level: log_debug
+  file-path: "blobfuse2-logs.txt"
+
+account-name: { NIGHTLY_STO_ACC_NAME }
+container-name: { 0 }
+auth:
+  type: key
+  account-account-key: { NIGHTLY_STO_ACC_KEY }
+components:
+  - libfuse
+  - loopbackfs
+
+libfuse:
+  attribute-expiration-sec: 0
+  entry-expiration-sec: 0
+
+loopbackfs:
+  path: { 1 }

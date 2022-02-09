@@ -1,0 +1,261 @@
+/*
+    _____           _____   _____   ____          ______  _____  ------
+   |     |  |      |     | |     | |     |     | |       |            |
+   |     |  |      |     | |     | |     |     | |       |            |
+   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
+   |     |  |      |     | |     | |     |     |       | |       |
+   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
+
+
+   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
+
+   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Author : <blobfusedev@microsoft.com>
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE
+*/
+
+package libfuse
+
+import (
+	"blobfuse2/common"
+	"blobfuse2/common/config"
+	"blobfuse2/common/log"
+	"blobfuse2/internal"
+	"context"
+	"fmt"
+)
+
+/* NOTES:
+   - Component shall have a structure which inherits "internal.BaseComponent" to participate in pipeline
+   - Component shall register a name and its constructor to participate in pipeline  (add by default by generator)
+   - Order of calls : Constructor -> Configure -> Start ..... -> Stop
+   - To read any new setting from config file follow the Configure method default comments
+*/
+
+// Common structure for Component
+type Libfuse struct {
+	internal.BaseComponent
+	mountPath           string
+	dirPermission       uint
+	filePermission      uint
+	readOnly            bool
+	attributeExpiration uint32
+	entryExpiration     uint32
+	negativeTimeout     uint32
+	allowOther          bool
+	ownerUID            uint32
+	ownerGID            uint32
+	traceEnable         bool
+}
+
+// To support pagination in readdir calls this structure holds a block of items for a given directory
+type dirChildCache struct {
+	sIndex   uint64              // start index of current block of items
+	eIndex   uint64              // End index of current block of items
+	length   uint64              // Length of the children list
+	token    string              // Token to get next block of items from container
+	children []*internal.ObjAttr // Slice holding current block of childres
+}
+
+// Structure defining your config parameters
+type LibfuseOptions struct {
+	mountPath               string
+	DefaultPermission       uint32 `config:"default-permission" yaml:"default-permission,omitempty"`
+	AttributeExpiration     uint32 `config:"attribute-expiration-sec" yaml:"attribute-expiration-sec,omitempty"`
+	EntryExpiration         uint32 `config:"entry-expiration-sec" yaml:"entry-expiration-sec,omitempty"`
+	NegativeEntryExpiration uint32 `config:"negative-entry-expiration-sec" yaml:"negative-entry-expiration-sec,omitempty"`
+	EnableFuseTrace         bool   `config:"fuse-trace" yaml:"fuse-trace,omitempty"`
+	allowOther              bool   `config:"allow-other"`
+	readOnly                bool   `config:"read-only"`
+}
+
+const compName = "libfuse"
+const defaultEntryExpiration = 120
+const defaultAttrExpiration = 120
+const defaultNegativeEntryExpiration = 120
+
+var fuseFS *Libfuse
+
+// Bitmasks in Go: https://yourbasic.org/golang/bitmask-flag-set-clear/
+
+var ignoreFiles = map[string]bool{
+	".Trash":           true,
+	".Trash-1000":      true,
+	".xdg-volume-info": true,
+	"autorun.inf":      true,
+}
+
+//  Verification to check satisfaction criteria with Component Interface
+var _ internal.Component = &Libfuse{}
+
+func (lf *Libfuse) Name() string {
+	return compName
+}
+
+func (lf *Libfuse) SetName(name string) {
+	lf.BaseComponent.SetName(name)
+}
+
+func (lf *Libfuse) SetNextComponent(nc internal.Component) {
+	lf.BaseComponent.SetNextComponent(nc)
+}
+
+// Start : Pipeline calls this method to start the component functionality
+//  this shall not block the call otherwise pipeline will not start
+func (lf *Libfuse) Start(ctx context.Context) error {
+	log.Trace("Libfuse::Start : Starting component %s", lf.Name())
+
+	// This marks the global fuse object so shall be the first statement
+	fuseFS = lf
+
+	// This starts the libfuse process and hence shall always be the last statement
+	lf.initFuse()
+
+	return nil
+}
+
+// Stop : Stop the component functionality and kill all threads started
+func (lf *Libfuse) Stop() error {
+	log.Trace("Libfuse::Stop : Stopping component %s", lf.Name())
+	lf.destroyFuse()
+	return nil
+}
+
+// Validate : Validate available config and convert them if required
+func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
+	lf.mountPath = opt.mountPath
+	lf.readOnly = opt.readOnly
+	lf.traceEnable = opt.EnableFuseTrace
+	lf.allowOther = opt.allowOther
+
+	if opt.allowOther {
+		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
+		lf.filePermission = uint(common.DefaultAllowOtherPermissionBits)
+	} else {
+		if opt.DefaultPermission != 0 {
+			lf.dirPermission = uint(opt.DefaultPermission)
+			lf.filePermission = uint(opt.DefaultPermission)
+		} else {
+			lf.dirPermission = uint(common.DefaultDirectoryPermissionBits)
+			lf.filePermission = uint(common.DefaultFilePermissionBits)
+		}
+	}
+
+	if config.IsSet(compName + ".entry-expiration") {
+		lf.entryExpiration = opt.EntryExpiration
+	} else {
+		lf.entryExpiration = defaultEntryExpiration
+	}
+
+	if config.IsSet(compName + ".attribute-expiration") {
+		lf.attributeExpiration = opt.AttributeExpiration
+	} else {
+		lf.attributeExpiration = defaultAttrExpiration
+	}
+
+	if config.IsSet(compName + ".negativeTimeout") {
+		lf.negativeTimeout = opt.NegativeEntryExpiration
+	} else {
+		lf.negativeTimeout = defaultNegativeEntryExpiration
+	}
+
+	var err error
+	lf.ownerUID, lf.ownerGID, err = common.GetCurrentUser()
+	if err != nil {
+		log.Err("Libfuse::Validate : config error [unable to obtain current user info]")
+		return nil
+	}
+
+	return nil
+}
+
+// Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
+//  Return failure if any config is not valid to exit the process
+func (lf *Libfuse) Configure() error {
+	log.Trace("Libfuse::Configure : %s", lf.Name())
+
+	// >> If you do not need any config parameters remove below code and return nil
+	conf := LibfuseOptions{}
+	err := config.UnmarshalKey(lf.Name(), &conf)
+	if err != nil {
+		log.Err("Libfuse::Configure : config error [invalid config attributes]")
+		return fmt.Errorf("Libfuse: config error [invalid config attributes]")
+	}
+	// Extract values from 'conf' and store them as you wish here
+
+	err = config.UnmarshalKey("mount-path", &conf.mountPath)
+	if err != nil {
+		log.Err("Libfuse::Configure : config error [unable to obtain mount-path]")
+		return err
+	}
+	err = config.UnmarshalKey("read-only", &conf.readOnly)
+	if err != nil {
+		log.Err("Libfuse::Configure : config error [unable to obtain read-only]")
+		return err
+	}
+
+	err = config.UnmarshalKey("allow-other", &conf.allowOther)
+	if err != nil {
+		log.Err("Libfuse::Configure : config error [unable to obtain allow-other]")
+		return err
+	}
+
+	err = lf.Validate(&conf)
+	if err != nil {
+		log.Err("Libfuse::Configure : config error [invalid config settings]")
+		return fmt.Errorf("libfuse config error: invalid config settings")
+	}
+
+	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d",
+		lf.readOnly, lf.allowOther, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout)
+
+	return nil
+}
+
+// OnConfigChange : If component has registered, on config file change this method is called
+func (lf *Libfuse) OnConfigChange() {
+}
+
+// ------------------------- Factory -------------------------------------------
+
+// Pipeline will call this method to create your object, initialize your variables here
+// << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
+func NewLibfuseComponent() internal.Component {
+	comp := &Libfuse{}
+	comp.SetName(compName)
+	return comp
+}
+
+// On init register this component to pipeline and supply your constructor
+func init() {
+	internal.AddComponent(compName, NewLibfuseComponent)
+
+	attrTimeoutFlag := config.AddUint32Flag("attr-timeout", 0, " The attribute timeout in seconds")
+	config.BindPFlag(compName+".attribute-expiration-sec", attrTimeoutFlag)
+
+	entryTimeoutFlag := config.AddUint32Flag("entry-timeout", 0, "The entry timeout in seconds.")
+	config.BindPFlag(compName+".entry-expiration-sec", entryTimeoutFlag)
+
+	negativeTimeoutFlag := config.AddUint32Flag("negative-timeout", 0, "The negative entry timeout in seconds.")
+	config.BindPFlag(compName+".negative-entry-expiration-sec", negativeTimeoutFlag)
+
+	allowOther := config.AddBoolFlag("allow-other", false, "Allow other users to access this mount point.")
+	config.BindPFlag("allow-other", allowOther)
+}

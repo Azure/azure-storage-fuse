@@ -1,0 +1,104 @@
+# NOTE : All true|false config are set to 'false' by default
+# Daemon configuration
+foreground: true|false <run blobfuse2 in foreground or backgound>
+# Common configurations
+read-only: true|false <mount in read only mode - used for Streaming and FUSE>
+allow-other: true|false <allow other users to access the mounted directory - used for FUSE and File Cache>
+
+# Logger configuration
+logging:
+  type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - base>
+  level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug <log level. Default - log_warning>
+  file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>
+  max-file-size-mb: <maximum allowed size for each log file (in MB). Default - 512 MB>
+  file-count: <maximum number of files to be rotated to preserve old logs. Default - 10>
+  track-time: true|false <track time taken by important operations>
+
+# Pipeline configuration. Choose components to be engaged. The order below is the priority order that needs to be followed.
+components:
+  - libfuse
+  - stream
+  - file_cache
+  - attr_cache
+  - azstorage
+  - loopbackfs
+
+# Libfuse configuration
+libfuse:
+  default-permission: 0777|0666|0644|0444 <default permissions to be presented for block blobs>
+  attribute-expiration-sec: <time kernel can cache inode attributes (in sec)>
+  entry-expiration-sec: <time kernel can cache directory listing attributes (in sec)>
+  negative-entry-expiration-sec: <time kernel can cache attributes of non existant paths (in sec)>
+  fuse-trace: true|false <enable libfuse api trace logs for debugging>
+ 
+  # Streaming configuration
+stream:
+  # If block-size-mb, blocks-per-file or cache-size-mb are 0, the stream component will not cache blocks. 
+  block-size-mb: <size of each block to be cached in memory while streaming (in MB). Default - 0 MB>
+  blocks-per-file: <maximum number of blocks, per file, that can be cached at any given time. Default - 0>
+  cache-size-mb: <total amount of memory that streaming can consume on the system. Default - 0 MB>
+  policy: lfu|lru|arc <cache eviction policy for cached blocks. Default - arc>
+  cache-on-file-handle: true|false <cache block per file handle instead of file-name. (better performance but increases memory consumption)>
+
+# Disk cache related configuration  
+file_cache:
+  # Required
+  path: <path to local disk cache>
+
+  # Optional 
+  policy: lru|lfu <eviction policy to be engaged for cache eviction. lru = least recently used file to be delted, lfu = least frequently used file to be deleted. Default - lru> 
+  timeout-sec: <default cache eviction timeout (in sec). Default - 0 sec> 
+  max-eviction: <number of files that can be evicted at once. Default - 5000>
+  max-size-mb: <maximum cache size allowed. Default - 0 (unlimited)>
+  high-threshold: <% disk space consumed which triggers eviction. This parameter overrides 'timeout-sec' parameter and cached files will be removed even if they have not expired. Default - 80>
+  low-threshold: <% disk space consumed which triggers eviction to stop when previoulsy triggered by the high-threshold. Default - 60>
+  create-empty-file: true|false <create an empty file on container when create call is received from kernel>
+  allow-non-empty-temp: true|false <allow non empty temp directory at startup>
+  cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
+  policy-trace: true|false <generate eviction policy logs showing which files will expire soon>
+
+# Attribute cache related configuration
+attr_cache:
+  timeout-sec: <time attributes can be cached (in sec). Default - 120 sec>
+  no-cache-on-list: true|false <do not cache attributes during listing, to optimize performance>
+  no-symlinks: true|false <to improve performance disable symlink support. symlinks will be treated like regular files.>
+  
+# Azure storage configuration
+azstorage:
+  type: block|adls <type of storage account to be connected. Default - block>
+  use-http: true|false <use http instead of https for storage connection>
+  account-name: <name of the storage account>
+  endpoint: <storage account endpoint (example - https://account-name.blob.core.windows.net)>
+  account-key: <storage account key>
+  sas: <storage account sas>
+  appid: <storage account app id / client id for MSI>
+  resid: <storage account resource id for MSI>
+  objid: <object id for MSI>
+  tenantid: <storage account tenant id for SPN>
+  clientid: <storage account client id for SPN>
+  clientsecret: <storage account client secret for SPN>
+  aadendpoint: <storage account custom aad endpoint>
+  mode: key|sas|spn|msi <kind of authentication to be used>
+  container: <name of the storage container to be mounted>
+  subdirectory: <name of subdirectory to be mounted instead of whole container>
+  block-size-mb: <size of each block (in MB). Default - 16 MB>
+  max-concurrency: <number of parallel upload/download threads. Default - 32>
+  tier: hot|cool|archive|none <blob-tier to be set while uploading a blob. Default - none>
+  block-list-on-mount-sec: <time list api to be blocked after mount (in sec). Default - 0 sec>
+  max-retries: <number of retries to attempt for any operation failure. Default - 3>
+  max-retry-timeout-sec: <maximum timeout allowed for a given retry (in sec). Default - 3600 sec>
+  retry-backoff-sec: <retry backoff between two tries (in sec). Default - 1 sec>
+  max-retry-delay-sec: <maximum delay between two tries (in sec). Default - 3 sec>
+  http-proxy: ip-address:port <http proxy to be used for connection>
+  https-proxy: ip-address:port <https proxy to be used for connection>
+  sdk-trace: true|false <enable storage sdk logging>
+  fail-unsupported-op: true|false <for block blob account return failure for unsupported operations like chmod and chown>
+
+
+# Mount all configuration
+mountall:
+  # whitelist takes precedence over blacklist in case of conflicts
+  container-whitelist:
+    - <list of containers to be mounted>
+  container-blacklist:
+    - <list of containers not to be mounted>

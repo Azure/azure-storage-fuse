@@ -1,0 +1,29 @@
+[Unit]
+Description=A virtual file system adapter for Azure Blob storage.
+After=network-online.target
+Requires=network-online.target
+WorkingDirectory=/home/AzureUser/azure-storage-fuse
+User=AzureUser
+
+[Service]
+
+# Configures the mountpoint.<path/to/the/mounting/point>
+Environment=BlobMountingPoint=/home/AzureUser/mntblobfuse
+# Configures the tmp location for the cache. Always configure the fastest disk (SSD or ramdisk) for best performance.
+Environment=BlobTmp=/home/AzureUser/tmpblobfuse
+# Config file path
+Environment=BlobConfigFile=/home/AzureUser/azure-storage-fuse/blobfuse2.yaml
+
+# Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG
+Environment=BlobLogLevel=LOG_DEBUG
+
+# Under the hood
+Environment=attr_timeout=240
+Environment=entry_timeout=240
+Environment=negative_timeout=120
+Type=simple
+ExecStart=/usr/local/bin/blobfuse2 mount ${BlobMountingPoint} --tmp-path=${BlobTmp} --config-file=${BlobConfigFile} --log-level=${BlobLogLevel}  
+ExecStop=/usr/bin/fusermount -u ${BlobMountingPoint}
+
+[Install]
+WantedBy=multi-user.target
