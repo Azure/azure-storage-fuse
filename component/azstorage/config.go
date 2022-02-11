@@ -161,6 +161,14 @@ type AzStorageOptions struct {
 	HttpsProxyAddress       string `config:"https-proxy" yaml:"https-proxy,omitempty"`
 	SdkTrace                bool   `config:"sdk-trace" yaml:"sdk-trace,omitempty"`
 	FailUnsupportedOp       bool   `config:"fail-unsupported-op" yaml:"fail-unsupported-op,omitempty"`
+
+	// STE config
+	STEEnable         bool  `config:"ste-enable" yaml:"ste-enable,omitempty"`
+	STEMinFileSize    int64 `config:"ste-min-file-size-mb" yaml:"ste-min-file-size-mb,omitempty"`
+	STESlicePool      int64 `config:"ste-slice-pool-gb" yaml:"ste-slice-pool-gb,omitempty"`
+	STECacheLimit     int64 `config:"ste-cache-limit-gb" yaml:"ste-cache-limit-gb,omitempty"`
+	STEFileCountLimit int64 `config:"ste-max-file-count" yaml:"ste-max-file-count,omitempty"`
+	STEGCPercent      int   `config:"ste-gc-percent" yaml:"ste-gc-percent,omitempty"`
 }
 
 //  RegisterEnvVariables : Register environment varilables
@@ -354,12 +362,54 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.maxRetryDelay = opt.MaxRetryDelay
 	}
 
-	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, Endpoint: %s, ListBlock: %d",
+	ParseAndValidateSTEConfig(az, opt)
+
+	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, EndPoint: %s, ListBlock: %d",
 		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,
 		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.cancelListForSeconds)
 
 	log.Info("ParseAndValidateConfig : Retry Config: Retry count %d, Max Timeout %d, BackOff Time %d, Max Delay %d",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay)
+
+	return nil
+}
+
+// ParseAndValidateSTEConfig : Parse and validate STE config
+func ParseAndValidateSTEConfig(az *AzStorage, opt AzStorageOptions) error {
+	az.stConfig.steEnable = opt.STEEnable
+
+	if opt.STESlicePool == 0 {
+		az.stConfig.steSlicePool = 4 * (1024 * 1024 * 1024)
+	} else {
+		az.stConfig.steSlicePool = opt.STESlicePool * (1024 * 1024 * 1024)
+	}
+
+	if opt.STECacheLimit == 0 {
+		az.stConfig.steCacheLimit = 2 * (1024 * 1024 * 1024)
+	} else {
+		az.stConfig.steCacheLimit = opt.STECacheLimit * (1024 * 1024 * 1024)
+	}
+
+	if opt.STEFileCountLimit == 0 {
+		az.stConfig.steFileCountLimit = 64
+	} else {
+		az.stConfig.steFileCountLimit = opt.STEFileCountLimit
+	}
+
+	if opt.STEGCPercent == 0 {
+		az.stConfig.steGCPercent = 20
+	} else {
+		az.stConfig.steGCPercent = opt.STEGCPercent
+	}
+
+	if opt.STEMinFileSize == 0 {
+		az.stConfig.steMinFileSize = 100 * (1024 * 1024)
+	} else {
+		az.stConfig.steMinFileSize = opt.STEMinFileSize * (1024 * 1024)
+	}
+
+	log.Info("ParseAndValidateSTEConfig : Enable: %d, SlicePool : %d, CacheLimit : %d, FileCount : %d, GCPercent : %d",
+		az.stConfig.steEnable, az.stConfig.steSlicePool, az.stConfig.steCacheLimit, az.stConfig.steFileCountLimit, az.stConfig.steGCPercent)
 
 	return nil
 }

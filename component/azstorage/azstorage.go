@@ -393,12 +393,12 @@ func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 
 func (az *AzStorage) CopyToFile(options internal.CopyToFileOptions) error {
 	log.Trace("AzStorage::CopyToFile : Read file %s", options.Name)
-	return az.storage.ReadToFile(options.Name, options.Offset, options.Count, options.File)
+	return az.storage.ReadToFile(options.Name, options.Offset, options.Count, options.File, ReadFileOptions{localPath: options.LocalPath})
 }
 
 func (az *AzStorage) CopyFromFile(options internal.CopyFromFileOptions) error {
 	log.Trace("AzStorage::CopyFromFile : Upload file %s", options.Name)
-	return az.storage.WriteFromFile(options.Name, nil, options.File)
+	return az.storage.WriteFromFile(options.Name, nil, options.File, WriteFileOptions{localPath: options.LocalPath})
 }
 
 // Symlink operations

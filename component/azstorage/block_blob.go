@@ -86,6 +86,8 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 		Snapshots: false,
 	}
 
+	bb.PopulateSTEConfig(cfg)
+
 	return nil
 }
 
@@ -164,6 +166,17 @@ func (bb *BlockBlob) SetupPipeline() error {
 
 	// Create the container url
 	bb.Container = bb.Service.NewContainerURL(bb.Config.container)
+
+	bb.InitializeSTE()
+	return nil
+}
+
+// InitializeSTE : If STE is configured then init it.
+func (bb *BlockBlob) InitializeSTE() error {
+	// Initialie the STE object
+	if bb.Config.steEnable {
+		bb.STE.Initialize(bb.steConfig)
+	}
 
 	return nil
 }
@@ -522,22 +535,36 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 }
 
 // ReadToFile : Download a blob to a local file
-func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.File) (err error) {
+func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.File, options ReadFileOptions) (err error) {
 	log.Trace("BlockBlob::ReadToFile : name %s, offset : %d, count %d", name, offset, count)
 	defer exectime.StatTimeCurrentBlock("BlockBlob::ReadToFile")()
 
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
 
 	defer log.TimeTrack(time.Now(), "BlockBlob::ReadToFile", name)
-	err = azblob.DownloadBlobToFile(context.Background(), blobURL, offset, count, fi, bb.downloadOptions)
 
-	if err != nil {
-		e := storeBlobErrToErr(err)
-		if e == ErrFileNotFound {
-			return syscall.ENOENT
-		} else {
-			log.Err("BlockBlob::ReadToFile : Failed to download blob %s (%s)", name, err.Error())
+	if bb.steConfig.Enable && options.localPath != "" && bb.steConfig.MinFileSize < count {
+		err = bb.STE.Download(DownloadParam{
+			filePath:  options.localPath,
+			blobPath:  blobURL.String(),
+			blockSize: bb.Config.blockSize,
+		})
+
+		if err != nil {
+			log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s (%s)", name, err.Error())
 			return err
+		}
+	} else {
+		err = azblob.DownloadBlobToFile(context.Background(), blobURL, offset, count, fi, bb.downloadOptions)
+
+		if err != nil {
+			e := storeBlobErrToErr(err)
+			if e == ErrFileNotFound {
+				return syscall.ENOENT
+			} else {
+				log.Err("BlockBlob::ReadToFile : Failed to download blob %s (%s)", name, err.Error())
+				return err
+			}
 		}
 	}
 
@@ -599,32 +626,56 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 }
 
 // WriteFromFile : Upload local file to blob
-func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *os.File) (err error) {
+func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *os.File, options WriteFileOptions) (err error) {
 	log.Trace("BlockBlob::WriteFromFile : name %s", name)
 	defer exectime.StatTimeCurrentBlock("WriteFromFile::WriteFromFile")()
 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
-	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
-		BlockSize:      bb.Config.blockSize,
-		Parallelism:    bb.Config.maxConcurrency,
-		Metadata:       metadata,
-		BlobAccessTier: bb.Config.defaultTier,
-		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
-			ContentType: getContentType(name),
-		},
-	})
 
-	if err != nil {
-		serr := storeBlobErrToErr(err)
-		if serr == BlobIsUnderLease {
-			log.Err("BlockBlob::WriteFromFile : %s is under a lease, can not update file (%s)", name, err.Error())
-			return syscall.EIO
-		} else {
-			log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s (%s)", name, err.Error())
+	var fileSize = int64(0)
+	if options.localPath != "" {
+		info, err := os.Stat(options.localPath)
+		if err == nil {
+			fileSize = info.Size()
 		}
-		return err
+	}
+
+	if bb.steConfig.Enable && bb.steConfig.MinFileSize < fileSize {
+		err = bb.STE.Upload(UploadParam{
+			filePath:  options.localPath,
+			blobPath:  blobURL.String(),
+			blockSize: bb.Config.blockSize,
+			meta:      metadata,
+			tier:      bb.getSTETier(),
+		})
+
+		if err != nil {
+			log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s (%s)", name, err.Error())
+			return err
+		}
+	} else {
+		_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
+			BlockSize:      bb.Config.blockSize,
+			Parallelism:    bb.Config.maxConcurrency,
+			Metadata:       metadata,
+			BlobAccessTier: bb.Config.defaultTier,
+			BlobHTTPHeaders: azblob.BlobHTTPHeaders{
+				ContentType: getContentType(name),
+			},
+		})
+
+		if err != nil {
+			serr := storeBlobErrToErr(err)
+			if serr == BlobIsUnderLease {
+				log.Err("BlockBlob::WriteFromFile : %s is under a lease, can not update file (%s)", name, err.Error())
+				return syscall.EIO
+			} else {
+				log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s (%s)", name, err.Error())
+			}
+			return err
+		}
 	}
 
 	return nil

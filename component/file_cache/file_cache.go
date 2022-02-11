@@ -761,10 +761,11 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			// Download/Copy the file from storage to the local file.
 			err = fc.NextComponent().CopyToFile(
 				internal.CopyToFileOptions{
-					Name:   options.Name,
-					Offset: 0,
-					Count:  fileSize,
-					File:   f,
+					Name:      options.Name,
+					Offset:    0,
+					Count:     fileSize,
+					File:      f,
+					LocalPath: localPath,
 				})
 			if err != nil {
 				log.Err("FileCache::OpenFile : error downloading file from storage %s [%s]", options.Name, err.Error())
@@ -1011,8 +1012,9 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 
 		err = fc.NextComponent().CopyFromFile(
 			internal.CopyFromFileOptions{
-				Name: options.Handle.Path,
-				File: uploadHandle,
+				Name:      options.Handle.Path,
+				File:      uploadHandle,
+				LocalPath: localPath,
 			})
 		if err != nil {
 			uploadHandle.Close()

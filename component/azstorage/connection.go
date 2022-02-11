@@ -34,6 +34,7 @@
 package azstorage
 
 import (
+	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
 	"net/url"
@@ -41,6 +42,8 @@ import (
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+
+	stecommon "github.com/Azure/azure-storage-azcopy/v10/common"
 )
 
 // Example for azblob usage : https://godoc.org/github.com/Azure/azure-storage-blob-go/azblob#pkg-examples
@@ -68,21 +71,43 @@ type AzStorageConfig struct {
 	sdkTrace              bool
 	ignoreAccessModifiers bool
 	mountAllContainers    bool
+
+	// STE config
+	steEnable         bool
+	steMinFileSize    int64
+	steSlicePool      int64
+	steCacheLimit     int64
+	steFileCountLimit int64
+	steGCPercent      int
 }
+
 type AzStorageConnection struct {
 	Config AzStorageConfig
 
 	Pipeline pipeline.Pipeline
 
 	Endpoint *url.URL
+
+	// STE related stuff
+	steConfig AzSTEConfig
+	STE       AzSTE
 }
 
+type WriteFileOptions struct {
+	localPath string
+}
+
+type ReadFileOptions struct {
+	localPath string
+}
 type AzConnection interface {
 	Configure(cfg AzStorageConfig) error
 	UpdateConfig(cfg AzStorageConfig) error
 
 	SetupPipeline() error
 	TestPipeline() error
+
+	InitializeSTE() error
 
 	ListContainers() ([]string, error)
 
@@ -105,11 +130,11 @@ type AzConnection interface {
 	// Standard operations to be supported by any account type
 	List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error)
 
-	ReadToFile(name string, offset int64, count int64, fi *os.File) error
+	ReadToFile(name string, offset int64, count int64, fi *os.File, options ReadFileOptions) error
 	ReadBuffer(name string, offset int64, len int64) ([]byte, error)
 	ReadInBuffer(name string, offset int64, len int64, data []byte) error
 
-	WriteFromFile(name string, metadata map[string]string, fi *os.File) error
+	WriteFromFile(name string, metadata map[string]string, fi *os.File, options WriteFileOptions) error
 	WriteFromBuffer(name string, metadata map[string]string, data []byte) error
 
 	ChangeMod(string, os.FileMode) error
@@ -142,4 +167,32 @@ func NewAzStorageConnection(cfg AzStorageConfig) AzConnection {
 	}
 
 	return nil
+}
+
+// ------ STE Specific implementations ----------------
+// PopulateSTEConfig : Convert config to STEConfig structure
+func (conn *AzStorageConnection) PopulateSTEConfig(cfg AzStorageConfig) error {
+	conn.steConfig = AzSTEConfig{
+		Enable:         cfg.steEnable,
+		MinFileSize:    cfg.steMinFileSize,
+		SlicePool:      cfg.steSlicePool,
+		CacheLimit:     cfg.steCacheLimit,
+		FileCountLimit: cfg.steFileCountLimit,
+		GCPercent:      cfg.steGCPercent,
+		partFilePath:   os.ExpandEnv(common.DefaultWorkDir),
+	}
+	return nil
+}
+
+func (conn *AzStorageConnection) getSTETier() stecommon.BlockBlobTier {
+	switch conn.Config.defaultTier {
+	case azblob.AccessTierHot:
+		return stecommon.EBlockBlobTier.Hot()
+	case azblob.AccessTierCool:
+		return stecommon.EBlockBlobTier.Cool()
+	case azblob.AccessTierArchive:
+		return stecommon.EBlockBlobTier.Archive()
+	default:
+		return stecommon.EBlockBlobTier.None()
+	}
 }

@@ -121,15 +121,17 @@ type TruncateFileOptions struct {
 }
 
 type CopyToFileOptions struct {
-	Name   string
-	Offset int64
-	Count  int64
-	File   *os.File
+	Name      string
+	Offset    int64
+	Count     int64
+	File      *os.File
+	LocalPath string
 }
 
 type CopyFromFileOptions struct {
-	Name string
-	File *os.File
+	Name      string
+	File      *os.File
+	LocalPath string
 }
 
 type FlushFileOptions struct {

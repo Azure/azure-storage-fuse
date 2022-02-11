@@ -87,6 +87,8 @@ func transformConfig(dlConfig AzStorageConfig) AzStorageConfig {
 
 func (dl *Datalake) Configure(cfg AzStorageConfig) error {
 	dl.Config = cfg
+
+	dl.PopulateSTEConfig(cfg)
 	return dl.BlockBlob.Configure(transformConfig(cfg))
 }
 
@@ -166,7 +168,15 @@ func (dl *Datalake) SetupPipeline() error {
 	// Create the filesystem url
 	dl.Filesystem = dl.Service.NewFileSystemURL(dl.Config.container)
 
+	// Initialie the BlockBlob STE object
+	dl.InitializeSTE()
 	return dl.BlockBlob.SetupPipeline()
+}
+
+// InitializeSTE : If STE is configured then init it.
+func (dl *Datalake) InitializeSTE() error {
+	dl.BlockBlob.InitializeSTE()
+	return nil
 }
 
 // TestPipeline : Validate the credentials specified in the auth config
@@ -221,11 +231,12 @@ func (dl *Datalake) Exists(name string) bool {
 // CreateFile : Create a new file in the filesystem/directory
 func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("Datalake::CreateFile : name %s", name)
-	accessControlList := getAccessControlList(mode)
+	//accessControlList := getAccessControlList(mode)
 	fileURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
 	_, err := fileURL.Create(context.Background(), azbfs.BlobFSHTTPHeaders{
 		ContentType: getContentType(name),
-	}, azbfs.BlobFSAccessControl{ACL: accessControlList})
+	})
+	//, azbfs.BlobFSAccessControl{ACL: accessControlList})
 
 	if err != nil {
 		log.Err("Datalake::CreateFile : Failed to create file %s (%s)", name, err.Error())
@@ -476,8 +487,8 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 }
 
 // ReadToFile : Download a file to a local file
-func (dl *Datalake) ReadToFile(name string, offset int64, count int64, fi *os.File) (err error) {
-	return dl.BlockBlob.ReadToFile(name, offset, count, fi)
+func (dl *Datalake) ReadToFile(name string, offset int64, count int64, fi *os.File, options ReadFileOptions) (err error) {
+	return dl.BlockBlob.ReadToFile(name, offset, count, fi, options)
 }
 
 // ReadBuffer : Download a specific range from a file to a buffer
@@ -491,8 +502,8 @@ func (dl *Datalake) ReadInBuffer(name string, offset int64, len int64, data []by
 }
 
 // WriteFromFile : Upload local file to file
-func (dl *Datalake) WriteFromFile(name string, metadata map[string]string, fi *os.File) (err error) {
-	return dl.BlockBlob.WriteFromFile(name, metadata, fi)
+func (dl *Datalake) WriteFromFile(name string, metadata map[string]string, fi *os.File, options WriteFileOptions) (err error) {
+	return dl.BlockBlob.WriteFromFile(name, metadata, fi, options)
 }
 
 // WriteFromBuffer : Upload from a buffer to a file
