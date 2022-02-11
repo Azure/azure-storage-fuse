@@ -25,6 +25,7 @@ components:
 
 # Libfuse configuration
 libfuse:
+  drive-letter: for windows drive letter to be used for mount point (ignore on linux)
   default-permission: 0777|0666|0644|0444 <default permissions to be presented for block blobs>
   attribute-expiration-sec: <time kernel can cache inode attributes (in sec)>
   entry-expiration-sec: <time kernel can cache directory listing attributes (in sec)>

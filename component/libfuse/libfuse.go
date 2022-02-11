@@ -53,6 +53,7 @@ import (
 type Libfuse struct {
 	internal.BaseComponent
 	mountPath           string
+	driveLetter			string
 	dirPermission       uint
 	filePermission      uint
 	readOnly            bool
@@ -77,6 +78,7 @@ type dirChildCache struct {
 // Structure defining your config parameters
 type LibfuseOptions struct {
 	mountPath               string
+	driveLetter				string `config:"drive-letter" yaml:"drive-letter,omitempty"`
 	DefaultPermission       uint32 `config:"default-permission" yaml:"default-permission,omitempty"`
 	AttributeExpiration     uint32 `config:"attribute-expiration-sec" yaml:"attribute-expiration-sec,omitempty"`
 	EntryExpiration         uint32 `config:"entry-expiration-sec" yaml:"entry-expiration-sec,omitempty"`

@@ -39,18 +39,28 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <linux/fs.h>
 #include <sys/types.h>
 #include <errno.h>
-#include <dlfcn.h>
 #include <fcntl.h>
 
+#if defined(__linux__)
+#include <linux/fs.h>
+#include <dlfcn.h>
 // Decide whether to add fuse2 or fuse3
 #ifdef __FUSE2__
 #include <fuse.h>
 #else
 #include <fuse3/fuse.h>
 #endif
+#else
+#include <windows.h>
+#include <time.h>
+#include <fuse.h>
+#include "winfsp.h"
+#endif
+
+
+
 
 // There are structs defined in fuse3 only so giving a placeholder for fuse2
 #ifdef __FUSE2__
@@ -76,24 +86,35 @@ typedef struct  fuse_conn_info          fuse_conn_info_t;
 typedef struct  fuse_config             fuse_config_t;
 typedef struct  fuse_args               fuse_args_t;
 typedef struct  fuse_file_info          fuse_file_info_t;
-typedef struct  statvfs                 statvfs_t;
-typedef struct  stat                    stat_t;
 typedef struct  timespec                timespec_t;
 typedef enum    fuse_readdir_flags      fuse_readdir_flags_t;
 typedef enum    fuse_fill_dir_flags     fuse_fill_dir_flags_t;
+
+#if defined(__linux__)
+typedef struct  statvfs                 statvfs_t;
+typedef struct  stat                    stat_t;
+#define fuse_mode_t                     mode_t
+#else
+typedef struct fuse_statvfs             statvfs_t;
+typedef struct fuse_stat                stat_t;
+
+typedef fuse_uid_t                      uid_t;
+typedef fuse_gid_t                      gid_t;
+typedef fuse_off_t                      off_t;
+#endif
 
 // LibFuse callback declaration here
 static int libfuse_statfs(const char *path, statvfs_t *stbuf);
 
 extern void libfuse_destroy(void *private_data);
 
-extern int libfuse_mkdir(char *path, mode_t mode);
+extern int libfuse_mkdir(char *path, fuse_mode_t mode);
 extern int libfuse_rmdir(char *path);
 
 extern int libfuse_opendir(char *path, fuse_file_info_t *fi);
 extern int libfuse_releasedir(char *path, fuse_file_info_t *fi);
 
-extern int libfuse_create(char *path, mode_t mode, fuse_file_info_t *fi);
+extern int libfuse_create(char *path, fuse_mode_t mode, fuse_file_info_t *fi);
 extern int libfuse_open(char *path, fuse_file_info_t *fi);
 extern int libfuse_read(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
 extern int libfuse_write(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
@@ -116,7 +137,7 @@ extern int libfuse2_getattr(char *path, stat_t *stbuf);
 extern int libfuse2_readdir(char *path, void *buf, fuse_fill_dir_t filler, off_t, fuse_file_info_t *);
 extern int libfuse2_truncate(char *path, off_t off);
 extern int libfuse2_rename(char *src, char *dst);
-extern int libfuse2_chmod(char *path, mode_t mode);
+extern int libfuse2_chmod(char *path, fuse_mode_t mode);
 extern int libfuse2_chown(char *path, uid_t uid, gid_t gid);
 extern int libfuse2_utimens(char *path, timespec_t tv[2]);
 #else
@@ -125,16 +146,18 @@ extern int libfuse_getattr(char *path, stat_t *stbuf, fuse_file_info_t *fi);
 extern int libfuse_readdir(char *path, void *buf, fuse_fill_dir_t filler, off_t, fuse_file_info_t *, fuse_readdir_flags_t);
 extern int libfuse_truncate(char *path, off_t off, fuse_file_info_t *fi);
 extern int libfuse_rename(char *src, char *dst, unsigned int flags);
-extern int libfuse_chmod(char *path, mode_t mode, fuse_file_info_t *fi);
+extern int libfuse_chmod(char *path, fuse_mode_t mode, fuse_file_info_t *fi);
 extern int libfuse_chown(char *path, uid_t uid, gid_t gid, fuse_file_info_t *fi);
+#if defined(__linux__)
 extern int libfuse_utimens(char *path, timespec_t tv[2], fuse_file_info_t *fi);
+#endif
 #endif
 
 
 // -------------------------------------------------------------------------------------------------------------
 // Methods not implemented by blobfuse2
 
-// extern int libfuse_mknod(char *path, mode_t mode, dev_t dev);
+// extern int libfuse_mknod(char *path, fuse_mode_t mode, dev_t dev);
 // extern int libfuse_link(char *from, char *to);
 // extern int libfuse_setxattr(char *path, char *name, char *value, size_t size, int flags);
 // extern int libfuse_getxattr(char *path, char *name, char *value, size_t size);
@@ -156,6 +179,12 @@ extern int libfuse_utimens(char *path, timespec_t tv[2], fuse_file_info_t *fi);
 // -------------------------------------------------------------------------------------------------------------
 
 
+#if !defined(__linux__)
+#define S_IFDIR  0040000
+#define S_IFLNK  0120000
+#define S_IFREG  0100000
+#endif
+
 
 // Method to populate the fuse structure with our callback methods
 static int populate_callbacks(fuse_operations_t *opt)
@@ -164,13 +193,13 @@ static int populate_callbacks(fuse_operations_t *opt)
 
     opt->statfs     = (int (*)(const char *, statvfs_t *))libfuse_statfs;
 
-    opt->mkdir      = (int (*)(const char *path, mode_t mode))libfuse_mkdir;
+    opt->mkdir      = (int (*)(const char *path, fuse_mode_t mode))libfuse_mkdir;
     opt->rmdir      = (int (*)(const char *path))libfuse_rmdir;
 
     opt->opendir    = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_opendir;
     opt->releasedir = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_releasedir;
 
-    opt->create     = (int (*)(const char *path, mode_t mode, fuse_file_info_t *fi))libfuse_create;
+    opt->create     = (int (*)(const char *path, fuse_mode_t mode, fuse_file_info_t *fi))libfuse_create;
     opt->open       = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_open;
     opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))libfuse_read;
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))libfuse_write;
@@ -192,7 +221,7 @@ static int populate_callbacks(fuse_operations_t *opt)
     opt->readdir    = (int (*)(const char *path, void *buf, fuse_fill_dir_t filler, off_t, fuse_file_info_t *))libfuse2_readdir;
     opt->truncate   = (int (*)(const char *path, off_t off))libfuse2_truncate;
     opt->rename     = (int (*)(const char *src, const char *dst))libfuse2_rename;
-    opt->chmod      = (int (*)(const char *path, mode_t mode))libfuse2_chmod;
+    opt->chmod      = (int (*)(const char *path, fuse_mode_t mode))libfuse2_chmod;
     opt->chown      = (int (*)(const char *path, uid_t uid, gid_t gid))libfuse2_chown;
     opt->utimens    = (int (*)(const char *path, const timespec_t tv[2]))libfuse2_utimens;
     #else
@@ -202,9 +231,11 @@ static int populate_callbacks(fuse_operations_t *opt)
                                fuse_readdir_flags_t))libfuse_readdir;
     opt->truncate   = (int (*)(const char *path, off_t off, fuse_file_info_t *fi))libfuse_truncate;
     opt->rename     = (int (*)(const char *src, const char *dst, unsigned int flags))libfuse_rename;
-    opt->chmod      = (int (*)(const char *path, mode_t mode, fuse_file_info_t *fi))libfuse_chmod;
+    opt->chmod      = (int (*)(const char *path, fuse_mode_t mode, fuse_file_info_t *fi))libfuse_chmod;
     opt->chown      = (int (*)(const char *path, uid_t uid, gid_t gid, fuse_file_info_t *fi))libfuse_chown;
+    #if defined(__linux__)
     opt->utimens    = (int (*)(const char *path, const timespec_t tv[2], fuse_file_info_t *fi))libfuse_utimens;
+    #endif
     #endif
 
     return 0;
@@ -214,9 +245,10 @@ static int populate_callbacks(fuse_operations_t *opt)
 typedef struct fuse_options
 {
     char    *mount_path;
+    char    *drive_letter;
     uid_t   uid;
     gid_t   gid;
-    mode_t  permissions;
+    fuse_mode_t  permissions;
     int     entry_expiry;
     int     attr_expiry;
     int     negative_expiry;
@@ -228,20 +260,38 @@ typedef struct fuse_options
 static fuse_options_t fuse_opts;
 static bool context_populated = false;
 
-// Main method to start fuse loop which will fork and send us callbacks
-static int start_fuse(fuse_args_t *args, fuse_operations_t *opt)
+// Method to init winfsp on windows platform
+static int init_fuse() 
 {
-    return fuse_main(args->argc, args->argv, opt, NULL);
+    #if !defined(__linux__)
+    return winfsp_init();
+    #else
+    return 0;
+    #endif
+}
+
+typedef struct fuse_main_data {
+    char* path;
+}fuse_main_data_t;
+
+// Main method to start fuse loop which will fork and send us callbacks
+static int start_fuse(fuse_args_t *args, fuse_operations_t *opt, fuse_main_data_t *data)
+{
+    return fuse_main(args->argc, args->argv, opt, data);
 }
 
 // This method is not declared in Go because we are just doing "/" statfs as dummy operation
-static int libfuse_statfs(const char *path, struct statvfs *stbuf)
+static int libfuse_statfs(const char *path, statvfs_t *stbuf)
 {
+    #if defined(__linux__)
     // return tmp path stats
     errno = 0;
     int res = statvfs("/", stbuf);
     if (res == -1)
         return -errno;
+    #else
+    winfsp_statvfs(path, stbuf);
+    #endif
 
     return 0;
 }
@@ -251,8 +301,14 @@ static void populate_uid_gid()
 {
     if (!context_populated)
     {
+        #if defined(__linux__)
         fuse_opts.uid = fuse_get_context()->uid;
         fuse_opts.gid = fuse_get_context()->gid;
+        #else
+        struct fuse_context *context = fuse_get_context();
+        fuse_opts.uid = context->uid;
+        fuse_opts.gid = context->gid;
+        #endif
         context_populated = true;
     }
 }
@@ -267,9 +323,15 @@ static int get_root_properties(stat_t *stbuf)
     stbuf->st_gid = fuse_opts.gid;
     stbuf->st_nlink = 2;
     stbuf->st_size = 4096;
+    #if defined(__linux__)
     stbuf->st_mtime = time(NULL);
     stbuf->st_atime = stbuf->st_mtime;
     stbuf->st_ctime = stbuf->st_mtime;
+    #else
+    stbuf->st_mtim.tv_sec = time(NULL);
+    stbuf->st_atim = stbuf->st_mtim;
+    stbuf->st_ctim = stbuf->st_mtim;
+    #endif
     return 0;
 }
 
@@ -287,5 +349,6 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
     #endif
     );
 }
+
 
 #endif //__LIBFUSE_H__

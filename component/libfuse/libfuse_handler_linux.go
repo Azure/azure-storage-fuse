@@ -1,4 +1,4 @@
-// +build fuse2
+// +build !fuse2
 
 /*
     _____           _____   _____   ____          ______  _____  ------
@@ -38,8 +38,8 @@ package libfuse
 // CFLAGS: compile time flags -D object file creation. D= Define
 // LFLAGS: loader flags link library -l binary file. l=link -ldl is for the extension to dynamically link
 
-// #cgo CFLAGS: -DFUSE_USE_VERSION=29 -D_FILE_OFFSET_BITS=64 -D__FUSE2__
-// #cgo LDFLAGS: -lfuse -ldl
+// #cgo CFLAGS: -DFUSE_USE_VERSION=35 -D_FILE_OFFSET_BITS=64
+// #cgo LDFLAGS: -lfuse3 -ldl
 // #include "libfuse_wrapper.h"
 import "C"
 import (
@@ -66,7 +66,6 @@ func trimFusePath(path *C.char) string {
 	if path == nil {
 		return ""
 	}
-
 	str := C.GoString(path)
 	if str != "" {
 		return str[1:]
@@ -114,8 +113,9 @@ func (lf *Libfuse) initFuse() error {
 	// Note: C strings are allocated in the heap using malloc. Calling C.free to release the mount path since it is no longer needed.
 	C.free(unsafe.Pointer(fuse_opts.mount_path))
 
-	log.Info("Libfuse::initFuse : Mounting with fuse2 library")
-	ret = C.start_fuse(&args, &operations)
+	root_dir := &C.fuse_main_data_t{}
+	log.Info("Libfuse::initFuse : Mounting with fuse3 library")
+	ret = C.start_fuse(&args, &operations, root_dir)
 	if ret != 0 {
 		log.Err("Libfuse::initFuse : failed to mount fuse")
 		return errors.New("failed to mount fuse")
@@ -176,10 +176,17 @@ func (lf *Libfuse) destroyFuse() error {
 	return nil
 }
 
-//export libfuse2_init
-func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
-	log.Trace("Libfuse::libfuse2_init : init")
+//export libfuse_init
+func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Pointer) {
+	log.Trace("Libfuse::libfuse_init : init")
 	C.populate_uid_gid()
+
+	// Populate connection information
+	// conn.want |= C.FUSE_CAP_NO_OPENDIR_SUPPORT
+	conn.want |= C.FUSE_CAP_PARALLEL_DIROPS
+	conn.want |= C.FUSE_CAP_AUTO_INVAL_DATA
+	conn.want |= C.FUSE_CAP_READDIRPLUS
+
 	return nil
 }
 
@@ -232,12 +239,12 @@ func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
 // Kernel will perform permission checking if `default_permissions` mount option was passed to `fuse_main()`
 // otherwise, perform necessary permission checking
 
-// libfuse2_getattr gets file attributes
-//export libfuse2_getattr
-func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
+// libfuse_getattr gets file attributes
+//export libfuse_getattr
+func libfuse_getattr(path *C.char, stbuf *C.stat_t, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	//log.Trace("Libfuse::libfuse2_getattr : %s", name)
+	//log.Trace("Libfuse::libfuse_getattr : %s", name)
 
 	// Return the default configuration for the root
 	if name == "" {
@@ -253,7 +260,7 @@ func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 	// Get attributes
 	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
 	if err != nil {
-		log.Err("Libfuse::libfuse2_getattr : Failed to get attributes of %s (%s)", name, err.Error())
+		log.Err("Libfuse::libfuse_getattr : Failed to get attributes of %s (%s)", name, err.Error())
 		return -C.ENOENT
 	}
 
@@ -327,17 +334,17 @@ func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
 	return 0
 }
 
-// libfuse2_readdir reads a directory
-//export libfuse2_readdir
-func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
+// libfuse_readdir reads a directory
+//export libfuse_readdir
+func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, off C.off_t, fi *C.fuse_file_info_t, flag C.fuse_readdir_flags_t) C.int {
 	id := uint64(fi.fh)
 	off_64 := uint64(off)
 
 	handle, ok := handlemap.Load(handlemap.HandleID(id))
 	if !ok {
-		log.Err("Libfuse::libfuse2_readdir : file handle error [failed to find id=%d]", id)
+		log.Err("Libfuse::libfuse_readdir : file handle error [failed to find id=%d]", id)
 	}
-	log.Trace("Libfuse::libfuse2_readdir : Path %s, handle: %d, offset %d", handle.Path, id, off_64)
+	//log.Trace("Libfuse::libfuse_readdir : Path %s, handle: %d, offset %d", handle.Path, id, off_64)
 
 	val, found := handle.GetValue("cache")
 	if !found {
@@ -355,7 +362,7 @@ func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, o
 		})
 
 		if err != nil {
-			log.Err("Libfuse::libfuse2_readdir : Path %s, handle: %d, offset %d. Error in retrieval", handle.Path, id, off_64)
+			log.Err("Libfuse::libfuse_readdir : Path %s, handle: %d, offset %d. Error in retrieval", handle.Path, id, off_64)
 			if os.IsNotExist(err) {
 				return C.int(C_ENOENT)
 			} else {
@@ -455,14 +462,13 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	log.Trace("Libfuse::libfuse_open : %s", name)
 	// TODO: Should this sit behind a user option? What if we change something to support these in the future?
 	// Mask out SYNC flags since write operation will fail
-	if fi.flags&C.O_SYNC != 0 || fi.flags&C.__O_DIRECT != 0 {
+	if fi.flags&C.O_SYNC != 0 {
 		log.Err("Libfuse::libfuse_open : Reset flags for open %s, fi.flags %X", name, fi.flags)
 		// Blobfuse2 does not support the SYNC flag. If a user application passes this flag on to blobfuse2
 		// and we open the file with this flag, subsequent write operations wlil fail with "Invalid argument" error.
 		// Mask them out here in the open call so that write works.
 		// Oracle RMAN is one such application that sends these flags during backup
 		fi.flags = fi.flags &^ C.O_SYNC
-		fi.flags = fi.flags &^ C.__O_DIRECT
 	}
 
 	handle, err := fuseFS.NextComponent().OpenFile(
@@ -490,8 +496,11 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 // libfuse_read reads data from an open file
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
+	name := trimFusePath(path)
+	name = common.NormalizeObjectName(name)
 	id := uint64(fi.fh)
 	offset := uint64(off)
+	//log.Trace("Libfuse::libfuse_read : %s, handle: %d, offset: %d, size: %d", name, id, offset, size)
 
 	handle, ok := handlemap.Load(handlemap.HandleID(id))
 	if !ok {
@@ -510,7 +519,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 		err = nil
 	}
 	if err != nil {
-		log.Err("Libfuse::libfuse_read : error reading file %s, handle: %d [%s]", handle.Path, id, err.Error())
+		log.Err("Libfuse::libfuse_read : error reading file %s, handle: %d [%s]", name, id, err.Error())
 		return -C.EIO
 	}
 
@@ -549,7 +558,6 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 //export libfuse_flush
 func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	id := uint64(fi.fh)
-
 	handle, ok := handlemap.Load(handlemap.HandleID(id))
 	if !ok {
 		log.Err("Libfuse::libfuse_flush : file handle error [failed to find id=%d]", id)
@@ -572,17 +580,16 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	return 0
 }
 
-// libfuse2_truncate changes the size of a file
-//export libfuse2_truncate
-func libfuse2_truncate(path *C.char, off C.off_t) C.int {
+// libfuse_truncate changes the size of a file
+//export libfuse_truncate
+func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-
-	log.Trace("Libfuse::libfuse2_truncate : %s size %d", name, off)
+	log.Trace("Libfuse::libfuse_truncate : %s size %d", name, off)
 
 	err := fuseFS.NextComponent().TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(off)})
 	if err != nil {
-		log.Err("Libfuse::libfuse2_truncate : error truncating file %s [%s]", name, err.Error())
+		log.Err("Libfuse::libfuse_truncate : error truncating file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
 		}
@@ -633,42 +640,52 @@ func libfuse_unlink(path *C.char) C.int {
 	return 0
 }
 
-// libfuse2_rename renames a file or directory
+// libfuse_rename renames a file or directory
 // https://man7.org/linux/man-pages/man2/rename.2.html
 // errors handled: EISDIR, ENOENT, ENOTDIR, ENOTEMPTY, EEXIST
 // TODO: handle EACCESS, EINVAL?
-//export libfuse2_rename
-func libfuse2_rename(src *C.char, dst *C.char) C.int {
+//export libfuse_rename
+func libfuse_rename(src *C.char, dst *C.char, flags C.uint) C.int {
 	srcPath := trimFusePath(src)
 	srcPath = common.NormalizeObjectName(srcPath)
 	dstPath := trimFusePath(dst)
 	dstPath = common.NormalizeObjectName(dstPath)
-	log.Trace("Libfuse::libfuse2_rename : %s -> %s", srcPath, dstPath)
+	log.Trace("Libfuse::libfuse_rename : %s -> %s", srcPath, dstPath)
 	// Note: When running other commands from the command line, a lot of them seemed to handle some cases like ENOENT themselves.
 	// Rename did not, so we manually check here.
 
+	// TODO: Support for RENAME_EXCHANGE
+	if flags&C.RENAME_EXCHANGE != 0 {
+		return -C.ENOTSUP
+	}
+
 	// ENOENT. Not covered: a directory component in dst does not exist
 	if srcPath == "" || dstPath == "" {
-		log.Err("Libfuse::libfuse2_rename : src: (%s) or dst: (%s) is an empty string", srcPath, dstPath)
+		log.Err("Libfuse::libfuse_rename : src: (%s) or dst: (%s) is an empty string", srcPath, dstPath)
 		return -C.ENOENT
 	}
 
 	srcAttr, srcErr := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: srcPath})
 	if os.IsNotExist(srcErr) {
-		log.Err("Libfuse::libfuse2_rename : Failed to get attributes of %s (%s)", srcPath, srcErr.Error())
+		log.Err("Libfuse::libfuse_rename : Failed to get attributes of %s (%s)", srcPath, srcErr.Error())
 		return -C.ENOENT
 	}
 	dstAttr, dstErr := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: dstPath})
 
+	// EEXIST
+	if flags&C.RENAME_NOREPLACE != 0 && (dstErr == nil || os.IsExist(dstErr)) {
+		return -C.EEXIST
+	}
+
 	// EISDIR
 	if (dstErr == nil || os.IsExist(dstErr)) && dstAttr.IsDir() && !srcAttr.IsDir() {
-		log.Err("Libfuse::libfuse2_rename : dst (%s) is an existing directory but src (%s) is not a directory", dstPath, srcPath)
+		log.Err("Libfuse::libfuse_rename : dst (%s) is an existing directory but src (%s) is not a directory", dstPath, srcPath)
 		return -C.EISDIR
 	}
 
 	// ENOTDIR
 	if (dstErr == nil || os.IsExist(dstErr)) && !dstAttr.IsDir() && srcAttr.IsDir() {
-		log.Err("Libfuse::libfuse2_rename : dst (%s) is an existing file but src (%s) is a directory", dstPath, srcPath)
+		log.Err("Libfuse::libfuse_rename : dst (%s) is an existing file but src (%s) is a directory", dstPath, srcPath)
 		return -C.ENOTDIR
 	}
 
@@ -683,13 +700,13 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 
 		err := fuseFS.NextComponent().RenameDir(internal.RenameDirOptions{Src: srcPath, Dst: dstPath})
 		if err != nil {
-			log.Err("Libfuse::libfuse2_rename : error renaming directory %s -> %s [%s]", srcPath, dstPath, err.Error())
+			log.Err("Libfuse::libfuse_rename : error renaming directory %s -> %s [%s]", srcPath, dstPath, err.Error())
 			return -C.EIO
 		}
 	} else {
 		err := fuseFS.NextComponent().RenameFile(internal.RenameFileOptions{Src: srcPath, Dst: dstPath})
 		if err != nil {
-			log.Err("Libfuse::libfuse2_rename : error renaming file %s -> %s [%s]", srcPath, dstPath, err.Error())
+			log.Err("Libfuse::libfuse_rename : error renaming file %s -> %s [%s]", srcPath, dstPath, err.Error())
 			return -C.EIO
 		}
 	}
@@ -783,12 +800,12 @@ func libfuse_fsyncdir(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.in
 	return 0
 }
 
-// libfuse2_chmod changes permission bits of a file
-//export libfuse2_chmod
-func libfuse2_chmod(path *C.char, mode C.mode_t) C.int {
+// libfuse_chmod changes permission bits of a file
+//export libfuse_chmod
+func libfuse_chmod(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse2_chmod : %s", name)
+	log.Trace("Libfuse::libfuse_chmod : %s", name)
 
 	err := fuseFS.NextComponent().Chmod(
 		internal.ChmodOptions{
@@ -796,7 +813,7 @@ func libfuse2_chmod(path *C.char, mode C.mode_t) C.int {
 			Mode: fs.FileMode(uint32(mode) & 0xffffffff),
 		})
 	if err != nil {
-		log.Err("Libfuse::libfuse2_chmod : error in chmod of %s [%s]", name, err.Error())
+		log.Err("Libfuse::libfuse_chmod : error in chmod of %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
 		}
@@ -806,22 +823,22 @@ func libfuse2_chmod(path *C.char, mode C.mode_t) C.int {
 	return 0
 }
 
-// libfuse2_chown changes the owner and group of a file
-//export libfuse2_chown
-func libfuse2_chown(path *C.char, uid C.uid_t, gid C.gid_t) C.int {
+// libfuse_chown changes the owner and group of a file
+//export libfuse_chown
+func libfuse_chown(path *C.char, uid C.uid_t, gid C.gid_t, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse2_chown : %s", name)
+	log.Trace("Libfuse::libfuse_chown : %s", name)
 	// TODO: Implement
 	return 0
 }
 
-// libfuse2_utimens changes the access and modification times of a file
-//export libfuse2_utimens
-func libfuse2_utimens(path *C.char, tv *C.timespec_t) C.int {
+// libfuse_utimens changes the access and modification times of a file
+//export libfuse_utimens
+func libfuse_utimens(path *C.char, tv *C.timespec_t, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse2_utimens : %s", name)
+	log.Trace("Libfuse::libfuse_utimens : %s", name)
 	// TODO: is the conversion from [2]timespec to *timespec ok?
 	// TODO: Implement
 	// For now this returns 0 to allow touch to work correctly

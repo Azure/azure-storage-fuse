@@ -46,7 +46,6 @@ import (
 	"path/filepath"
 	"runtime/pprof"
 	"strings"
-	"syscall"
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
@@ -276,7 +275,7 @@ var mountCmd = &cobra.Command{
 			}
 
 			ctx, _ := context.WithCancel(context.Background())
-			daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
+			registerSignalHandler(pipeline, ctx)
 			child, err := dmnCtx.Reborn()
 			if err != nil {
 				log.Err("Mount: error daemonizing application [%v]", err)
@@ -334,20 +333,6 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) {
 	}
 
 	log.Destroy()
-}
-
-func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
-	return func(sig os.Signal) error {
-		log.Crit("sigusrHandler: Signal %d received", sig)
-
-		var err error
-		if sig == syscall.SIGUSR1 {
-			log.Crit("sigusrHandler: SIGUSR1 received")
-			config.OnConfigChange()
-		}
-
-		return err
-	}
 }
 
 func init() {

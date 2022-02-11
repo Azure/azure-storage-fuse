@@ -7,7 +7,9 @@ blobfuse2.log
 blobfuse2.test
 azuretest.json
 blobfuse2
+blobfuse2.exe
 venv/
+.run/
 *.backup
 __debug_bin
 .env
