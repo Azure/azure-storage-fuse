@@ -48,7 +48,8 @@ import (
 )
 
 type VNextJson struct {
-	Blobfuse2 string `json:"blobfuse2"`
+	Blobfuse2        string              `json:"blobfuse2"`
+	SecurityWarnings map[string][]string `json:"securityWarnings"`
 }
 
 var disableVersionCheck bool
@@ -60,11 +61,7 @@ var rootCmd = &cobra.Command{
 	Version: common.Blobfuse2Version,
 	Run: func(cmd *cobra.Command, args []string) {
 		if !disableVersionCheck {
-			select {
-			//either wait till this routine completes or timeout if it exceeds 8 secs
-			case <-beginDetectNewVersion():
-			case <-time.After(time.Second * 8):
-			}
+			VersionCheck()
 		}
 	},
 }
@@ -112,11 +109,38 @@ func beginDetectNewVersion() chan interface{} {
 		if local.OlderThan(*remote) {
 			executablePathSegments := strings.Split(strings.Replace(os.Args[0], "\\", "/", -1), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
-			log.Info("beginDetectNewVersion: A newer version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remoteVersion)
-			fmt.Fprintf(stderr, "\n\t*** "+executableName+": A newer version %s is available. Kindly update to latest version for bug-fixes & new features. ***\n\n", remoteVersion)
+			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remoteVersion)
+			fmt.Fprintf(stderr, "*** "+executableName+": A new version (%s) is available. Kindly upgrade to latest version for bug-fixes & new features. ***\n", remoteVersion)
+
+			_, isPresent := vJson.SecurityWarnings[common.Blobfuse2Version]
+			if isPresent {
+				hasWarning := false
+				ctr := 1
+				for _, msg := range vJson.SecurityWarnings[common.Blobfuse2Version] {
+					msg = strings.TrimSpace(msg)
+					if len(msg) > 0 {
+						if !hasWarning {
+							fmt.Fprintf(stderr, "Following vulnerabilities were detected in your current version (%s):\n", common.Blobfuse2Version)
+							hasWarning = true
+						}
+						fmt.Fprintf(stderr, "%v. %s\n", ctr, msg)
+						ctr++
+					}
+				}
+			}
 		}
 	}()
 	return completed
+}
+
+func VersionCheck() error {
+	select {
+	//either wait till this routine completes or timeout if it exceeds 8 secs
+	case <-beginDetectNewVersion():
+	case <-time.After(8 * time.Second):
+		return fmt.Errorf("unable to obtain latest version information. please check your internet connection")
+	}
+	return nil
 }
 
 func Execute() error {
