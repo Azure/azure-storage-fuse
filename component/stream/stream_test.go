@@ -131,6 +131,13 @@ func getCachedBlock(suite *streamTestSuite, offset int64, fileKey string) *cache
 	return blk.(*cacheBlock)
 }
 
+// return the block from persistance cache
+func diskBlockExists(suite *streamTestSuite, offset int64, fileKey string) bool {
+	bk := blockKey{offset, fileKey}
+	blk := &cacheBlock{}
+	return suite.stream.streamCache.getBlockFromDisk(blk, bk)
+}
+
 // Concurrency helpers with wait group terminations ========================================
 func asyncReadInBuffer(suite *streamTestSuite, readInBufferOptions internal.ReadInBufferOptions) {
 	suite.stream.ReadInBuffer(readInBufferOptions)
@@ -655,9 +662,14 @@ func (suite *streamTestSuite) TestBlockPersistance() {
 	// we expect our first block to have been evicted
 	assertFileCached(suite, fileNames[0])
 	assertNumberOfCachedBlocks(suite, 1)
-	assertBlockCached(suite, 0, fileNames[0])
+	assertBlockNotCached(suite, 0, fileNames[0])
 	assertBlockCached(suite, 16*MB, fileNames[0])
 	assertNumberOfCachedFileBlocks(suite, 1, fileNames[0])
+
+	// block with offset 0 does not exists in cache we have checked so now
+	// we check it shall exists in disk
+	found := diskBlockExists(suite, 0, fileNames[0])
+	suite.assert.Equal(found, true)
 }
 
 func TestStreamTestSuite(t *testing.T) {
