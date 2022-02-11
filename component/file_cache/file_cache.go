@@ -70,6 +70,7 @@ type FileCache struct {
 	missedChmodList sync.Map
 	mountPath       string
 	allowOther      bool
+	directRead      bool
 
 	defaultPermission os.FileMode
 }
@@ -92,6 +93,7 @@ type FileCacheOptions struct {
 	CleanupOnStart  bool `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
 
 	EnablePolicyTrace bool `config:"policy-trace" yaml:"policy-trace,omitempty"`
+	DirectRead        bool `config:"direct-read" yaml:"direct-read,omitempty"`
 }
 
 const (
@@ -182,6 +184,7 @@ func (c *FileCache) Configure() error {
 	c.allowNonEmpty = conf.AllowNonEmpty
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
+	c.directRead = conf.DirectRead
 
 	c.tmpPath = conf.TmpPath
 	if c.tmpPath == "" {
@@ -257,6 +260,7 @@ func (c *FileCache) OnConfigChange() {
 	c.createEmptyFile = conf.CreateEmptyFile
 	c.cacheTimeout = conf.Timeout
 	c.policyTrace = conf.EnablePolicyTrace
+	c.directRead = conf.DirectRead
 	c.policy.UpdateConfig(c.GetPolicyConfig(conf))
 }
 
@@ -564,7 +568,10 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 
 	handle := handlemap.NewHandle(options.Name)
 	handle.SetFileObject(f)
-	handle.Flags.Set(handlemap.HandleFlagCached)
+
+	if fc.directRead {
+		handle.Flags.Set(handlemap.HandleFlagCached)
+	}
 
 	// If an empty file is created in storage then there is no need to upload if FlushFile is called immediatly after CreateFile.
 	if !fc.createEmptyFile {
@@ -822,7 +829,10 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		handle.Size = inf.Size()
 	}
 	handle.SetFileObject(f)
-	handle.Flags.Set(handlemap.HandleFlagCached)
+
+	if fc.directRead {
+		handle.Flags.Set(handlemap.HandleFlagCached)
+	}
 
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
 
