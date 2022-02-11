@@ -36,7 +36,11 @@ package stream
 import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
+	"fmt"
+	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
 	"github.com/bluele/gcache"
 )
@@ -58,14 +62,22 @@ type cacheFile struct {
 	fileBlockBuffer gcache.Cache // contains all block pointers stored for a given file: {blockKey(off1, fileKey3): cacheBlock1, blockKey(off1, fileKey3): cacheBlock2, ...}
 }
 type cache struct {
-	blocks           gcache.Cache          // blocks stored: {blockKey(off1, fileKey1): cacheBlock1, blockKey(off1, fileKey2): cacheBlock2, ...}
-	files            map[string]*cacheFile // current files stored and their respective blocks references/pointers currently stored: {fileName1: cacheFile, fileName2: cacheFile2, ....}
-	blockSize        int64
-	blocksPerFileKey int      // maximum number of blocks allowed to be stored for a file
-	maxBlocks        int      // maximum allowed configured number of blocks
-	evictedBlock     blockKey // if a block gets removed from our block entries/main cache we need to delete the block reference from its respective file buffer
-	evictionPolicy   common.EvictionPolicy
 	sync.RWMutex
+
+	evictedBlock   blockKey // if a block gets removed from our block entries/main cache we need to delete the block reference from its respective file buffer
+	evictionPolicy common.EvictionPolicy
+	blocks         gcache.Cache          // blocks stored: {blockKey(off1, fileKey1): cacheBlock1, blockKey(off1, fileKey2): cacheBlock2, ...}
+	files          map[string]*cacheFile // current files stored and their respective blocks references/pointers currently stored: {fileName1: cacheFile, fileName2: cacheFile2, ....}
+
+	blockSize        int64
+	blocksPerFileKey int // maximum number of blocks allowed to be stored for a file
+	maxBlocks        int // maximum allowed configured number of blocks
+
+	diskBlocks     gcache.Cache // blocks stored on disk when persistance is on
+	persistance    bool         // When block is evicted from memory shall be stored on disk for some more time
+	diskPath       string       // Location where persisted blocks will be stored
+	diskCacheMB    int64        // Size of disk cache to be used for persistance
+	diskTimeoutSec float64      // Timeout in seconds for the block persisted on disk
 }
 
 // on file handle closures decrement handles
@@ -119,19 +131,6 @@ func (c *cache) removeFileKey(fileKey string) {
 	delete(c.files, fileKey)
 }
 
-// remove file keys with a given prefix
-// func (c *cache) removeWithPrefix(prefix string) {
-// 	log.Trace("streamcache:: checking cached file keys within %s", prefix)
-// 	c.Lock()
-// 	defer c.Unlock()
-// 	for fileKey := range c.files {
-// 		if strings.HasPrefix(fileKey, prefix) {
-// 			c.files[fileKey].fileBlockBuffer.Purge()
-// 			delete(c.files, fileKey)
-// 		}
-// 	}
-// }
-
 // try to retrieve the block - return missing if it is not cached
 func (c *cache) getBlock(fileKey string, offset int64, fileSize int64) (*cacheBlock, bool) {
 	blockSize := c.blockSize
@@ -173,11 +172,18 @@ func (c *cache) getBlock(fileKey string, offset int64, fileSize int64) (*cacheBl
 			}
 			c.evictedBlock = blockKey{}
 		}
-		return newBlock, false
+
+		dataFetched := false
+		if c.persistance {
+			dataFetched = c.getBlockFromDisk(newBlock, blockKeyObj)
+		}
+
+		return newBlock, dataFetched
 	} else {
 		block.(*cacheBlock).RLock()
 		c.blocks.Get(blockKeyObj)
 	}
+
 	return block.(*cacheBlock), true
 }
 
@@ -189,6 +195,11 @@ func (c *cache) teardown() {
 		c.files[fileKey].fileBlockBuffer.Purge()
 		delete(c.files, fileKey)
 	}
+
+	// Cleanup block residing on disk path
+	if c.persistance {
+		c.wipeoutDiskCache()
+	}
 }
 
 func (c *cache) fileEvict(key, value interface{}) {
@@ -199,4 +210,105 @@ func (c *cache) filePurge(key, value interface{}) {
 	log.Trace("streamcache:: purging file key %s", key)
 	c.blocks.Remove(key)
 	c.evictedBlock = blockKey{}
+}
+
+// Using key construct a file name for persisted block
+func (c *cache) getLocalFilePath(key blockKey) string {
+	return filepath.Join(c.diskPath, key.fileKey+"__"+fmt.Sprintf("%d", key.offset)+"__")
+}
+
+// Persist this block on disk
+func (c *cache) persistBlockOnDisk(block *cacheBlock, key blockKey) {
+	localPath := c.getLocalFilePath(key)
+
+	log.Debug("streamcache::persistBlockOnDisk : Saving file %s offset %d to disk", key.fileKey, key.offset)
+
+	err := os.MkdirAll(filepath.Dir(localPath), os.FileMode(0775))
+	if err != nil {
+		log.Err("streamcache::persistBlockOnDisk : unable to create local directory %s [%s]", localPath, err.Error())
+		return
+	}
+
+	f, err := os.OpenFile(localPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0775)
+	if err != nil {
+		log.Err("streamcache::persistBlockOnDisk : Failed to create file for persisting block on disk %s (%s)", localPath, err.Error())
+		return
+	}
+	f.Write(block.data)
+	f.Close()
+
+	c.diskBlocks.Set(key, true)
+}
+
+// Load data for this block from disk
+func (c *cache) getBlockFromDisk(block *cacheBlock, key blockKey) bool {
+	localPath := c.getLocalFilePath(key)
+	info, err := os.Stat(localPath)
+
+	if err != nil {
+		return false
+	}
+
+	log.Debug("streamcache::getBlockFromDisk : Reading block for %s offset %d from disk", key.fileKey, key.offset)
+	if time.Since(info.ModTime()).Seconds() > c.diskTimeoutSec {
+		// File exists on local disk but disk cache timeout has elapsed
+		os.Remove(localPath)
+		c.diskBlocks.Remove(key)
+		return false
+	}
+
+	f, err := os.OpenFile(localPath, os.O_RDONLY, 0775)
+	if err != nil {
+		return false
+	}
+
+	f.Read(block.data)
+	f.Close()
+	os.Remove(localPath)
+
+	c.diskBlocks.Remove(key)
+
+	return true
+}
+
+// Remove this block from in-memory cache
+func (c *cache) evictBlock(key blockKey, block *cacheBlock) {
+	// clean the block data to not leak any memory
+	block.Lock()
+
+	if c.persistance {
+		c.persistBlockOnDisk(block, key)
+	}
+
+	block.data = nil
+	c.evictedBlock = key
+	block.Unlock()
+}
+
+// Remove this block from disk cache
+func (c *cache) evictDiskBlock(key blockKey, val bool) {
+	// clean the block data to not leak any memory
+	localPath := c.getLocalFilePath(key)
+	err := os.Remove(localPath)
+	if err != nil {
+		log.Err("streamcache::evictDiskBlock : Failed to delete file for persisted block %s (%s)", localPath, err.Error())
+	}
+
+	dirPath := filepath.Dir(localPath)
+	if dirPath != c.diskPath {
+		os.Remove(filepath.Dir(localPath))
+	}
+}
+
+func (c *cache) wipeoutDiskCache() {
+	log.Trace("streamcache::evictDiskBlock : Wipe out disk cache in progress")
+
+	dirents, err := os.ReadDir(c.diskPath)
+	if err != nil {
+		return
+	}
+
+	for _, entry := range dirents {
+		os.RemoveAll(filepath.Join(c.diskPath, entry.Name()))
+	}
 }

@@ -44,6 +44,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"os"
 	"strconv"
 	"strings"
 
@@ -67,11 +68,16 @@ type StreamOptions struct {
 	Policy            string `config:"policy" yaml:"policy,omitempty"`
 	CacheOnFileHandle bool   `config:"cache-on-file-handle" yaml:"cache-on-file-handle,omitempty"`
 	readOnly          bool   `config:"read-only"`
+	Persistance       bool   `config:"persistance"`
+	DiskPath          string `config:"disk-cache-path"`
+	DiskCacheSize     uint64 `config:"disk-size-mb"`
+	DiskTimeoutSec    uint64 `config:"disk-timeout-sec"`
 }
 
 const (
-	compName = "stream"
-	mb       = 1024 * 1024
+	compName              = "stream"
+	mb                    = 1024 * 1024
+	defaultDiskTimeoutSec = (1 * 60 * 60)
 )
 
 var _ internal.Component = &Stream{}
@@ -100,10 +106,12 @@ func (st *Stream) Start(ctx context.Context) error {
 
 func (st *Stream) evictBlock(key, value interface{}) {
 	// clean the block data to not leak any memory
-	value.(*cacheBlock).Lock()
-	value.(*cacheBlock).data = nil
-	st.streamCache.evictedBlock = key.(blockKey)
-	value.(*cacheBlock).Unlock()
+	st.streamCache.evictBlock(key.(blockKey), value.(*cacheBlock))
+}
+
+func (st *Stream) evictDiskBlock(key, value interface{}) {
+	// clean the block data to not leak any memory
+	st.streamCache.evictDiskBlock(key.(blockKey), value.(bool))
 }
 
 func (st *Stream) Configure() error {
@@ -149,6 +157,8 @@ func (st *Stream) Configure() error {
 		evictionPolicy.Parse(strings.ToLower(conf.Policy))
 
 		var bc gcache.Cache
+		var diskBlockCache gcache.Cache
+
 		switch evictionPolicy {
 		case common.EPolicy.LFU():
 			bc = gcache.New(maxBlocks).LFU().EvictedFunc(st.evictBlock).Build()
@@ -159,6 +169,30 @@ func (st *Stream) Configure() error {
 		}
 		log.Trace("Stream::Configure : cache eviction policy %s", evictionPolicy)
 
+		if conf.Persistance {
+			maxDiskBlocks := int(math.Floor(float64(conf.DiskCacheSize) / float64(conf.BlockSize)))
+			diskBlockCache = gcache.New(maxDiskBlocks).LRU().EvictedFunc(st.evictDiskBlock).Build()
+
+			if conf.DiskTimeoutSec == 0 {
+				conf.DiskTimeoutSec = defaultDiskTimeoutSec
+			}
+
+			if conf.DiskPath == "" {
+				log.Err("Stream::Configure : Config error [disk-cache-path not set]")
+				return fmt.Errorf("config error in %s error [disk-cache-path not set]", st.Name())
+			}
+
+			_, err = os.Stat(conf.DiskPath)
+			if os.IsNotExist(err) {
+				log.Err("Stream::Configure : Config error [disk-cache-path does not exist. attempting to create]")
+				err := os.Mkdir(conf.DiskPath, os.FileMode(0755))
+				if err != nil {
+					log.Err("Stream::Configure : Config error creating temp directory failed [%s]", err.Error())
+					return fmt.Errorf("failed to create temp directory for stream persistance[%s]", err.Error())
+				}
+			}
+		}
+
 		st.streamCache = &cache{
 			files:            make(map[string]*cacheFile),
 			blockSize:        int64(conf.BlockSize) * mb,
@@ -166,6 +200,11 @@ func (st *Stream) Configure() error {
 			blocksPerFileKey: conf.BlocksPerFile,
 			blocks:           bc,
 			evictionPolicy:   evictionPolicy,
+			persistance:      conf.Persistance,
+			diskPath:         conf.DiskPath,
+			diskCacheMB:      int64(conf.DiskCacheSize),
+			diskTimeoutSec:   float64(conf.DiskTimeoutSec),
+			diskBlocks:       diskBlockCache,
 		}
 	}
 	return nil
