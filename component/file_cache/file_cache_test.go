@@ -426,7 +426,7 @@ func (suite *fileCacheTestSuite) TestCreateFile() {
 	options := internal.CreateFileOptions{Name: path}
 	f, err := suite.fileCache.CreateFile(options)
 	suite.assert.Nil(err)
-	suite.assert.True(f.Dirty) // Handle should be dirty since it was not created in storage
+	suite.assert.True(f.Flags.IsSet(handlemap.HandleFlagDirty)) // Handle should be dirty since it was not created in storage
 
 	// Path should be added to the file cache
 	_, err = os.Stat(suite.cache_path + "/" + path)
@@ -444,7 +444,7 @@ func (suite *fileCacheTestSuite) TestCreateFileInDir() {
 	options := internal.CreateFileOptions{Name: path}
 	f, err := suite.fileCache.CreateFile(options)
 	suite.assert.Nil(err)
-	suite.assert.True(f.Dirty) // Handle should be dirty since it was not created in storage
+	suite.assert.True(f.Flags.IsSet(handlemap.HandleFlagDirty)) // Handle should be dirty since it was not created in storage
 
 	// Path should be added to the file cache, including directory
 	_, err = os.Stat(suite.cache_path + "/" + dir)
@@ -468,7 +468,7 @@ func (suite *fileCacheTestSuite) TestCreateFileCreateEmptyFile() {
 	options := internal.CreateFileOptions{Name: path}
 	f, err := suite.fileCache.CreateFile(options)
 	suite.assert.Nil(err)
-	suite.assert.False(f.Dirty) // Handle should not be dirty since it was written to storage
+	suite.assert.False(f.Flags.IsSet(handlemap.HandleFlagDirty)) // Handle should not be dirty since it was written to storage
 
 	// Path should be added to the file cache
 	_, err = os.Stat(suite.cache_path + "/" + path)
@@ -491,7 +491,7 @@ func (suite *fileCacheTestSuite) TestCreateFileInDirCreateEmptyFile() {
 	suite.fileCache.CreateDir(internal.CreateDirOptions{Name: dir, Mode: 0777})
 	f, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0777})
 	suite.assert.Nil(err)
-	suite.assert.False(f.Dirty) // Handle should be dirty since it was not created in storage
+	suite.assert.False(f.Flags.IsSet(handlemap.HandleFlagDirty)) // Handle should be dirty since it was not created in storage
 
 	// Path should be added to the file cache, including directory
 	_, err = os.Stat(suite.cache_path + "/" + dir)
@@ -594,7 +594,7 @@ func (suite *fileCacheTestSuite) TestOpenFileNotInCache() {
 	handle, err = suite.fileCache.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0777})
 	suite.assert.Nil(err)
 	suite.assert.EqualValues(path, handle.Path)
-	suite.assert.False(handle.Dirty)
+	suite.assert.False(handle.Flags.IsSet(handlemap.HandleFlagDirty))
 
 	// File should exist in cache
 	_, err = os.Stat(suite.cache_path + "/" + path)
@@ -614,7 +614,7 @@ func (suite *fileCacheTestSuite) TestOpenFileInCache() {
 	handle, err := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0777})
 	suite.assert.Nil(err)
 	suite.assert.EqualValues(path, handle.Path)
-	suite.assert.False(handle.Dirty)
+	suite.assert.False(handle.Flags.IsSet(handlemap.HandleFlagDirty))
 
 	// File should exist in cache
 	_, err = os.Stat(suite.cache_path + "/" + path)
@@ -810,7 +810,8 @@ func (suite *fileCacheTestSuite) TestWriteFile() {
 	file := "file"
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
 
-	handle.Dirty = false // Technically create file will mark it as dirty, we just want to check write file updates the dirty flag, so temporarily set this to false
+	
+	handle.Flags.Clear(handlemap.HandleFlagDirty) // Technically create file will mark it as dirty, we just want to check write file updates the dirty flag, so temporarily set this to false
 	testData := "test data"
 	data := []byte(testData)
 	length, err := suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
@@ -820,7 +821,7 @@ func (suite *fileCacheTestSuite) TestWriteFile() {
 	// Check that the local cache updated with data
 	d, _ := os.ReadFile(suite.cache_path + "/" + file)
 	suite.assert.EqualValues(data, d)
-	suite.assert.True(handle.Dirty)
+	suite.assert.True(handle.Flags.IsSet(handlemap.HandleFlagDirty))
 }
 
 func (suite *fileCacheTestSuite) TestWriteFileErrorBadFd() {
@@ -847,7 +848,7 @@ func (suite *fileCacheTestSuite) TestFlushFileEmpty() {
 	// Flush the Empty File
 	err = suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
 	suite.assert.Nil(err)
-	suite.assert.False(handle.Dirty)
+	suite.assert.False(handle.Flags.IsSet(handlemap.HandleFlagDirty))
 
 	// Path should be in fake storage
 	_, err = os.Stat(suite.fake_storage_path + "/" + file)
@@ -870,7 +871,7 @@ func (suite *fileCacheTestSuite) TestFlushFile() {
 	// Flush the Empty File
 	err = suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
 	suite.assert.Nil(err)
-	suite.assert.False(handle.Dirty)
+	suite.assert.False(handle.Flags.IsSet(handlemap.HandleFlagDirty))
 
 	// Path should be in fake storage
 	_, err = os.Stat(suite.fake_storage_path + "/" + file)
@@ -885,7 +886,7 @@ func (suite *fileCacheTestSuite) TestFlushFileErrorBadFd() {
 	// Setup
 	file := "file"
 	handle := handlemap.NewHandle(file)
-	handle.Dirty = true
+	handle.Flags.Set(handlemap.HandleFlagDirty)
 	err := suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
 	suite.assert.NotNil(err)
 	suite.assert.EqualValues(syscall.EBADF, err)

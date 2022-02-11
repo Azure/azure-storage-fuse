@@ -564,9 +564,12 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 
 	handle := handlemap.NewHandle(options.Name)
 	handle.SetFileObject(f)
+	handle.Flags.Set(handlemap.HandleFlagCached)
 
 	// If an empty file is created in storage then there is no need to upload if FlushFile is called immediatly after CreateFile.
-	handle.Dirty = !fc.createEmptyFile
+	if !fc.createEmptyFile {
+		handle.Flags.Set(handlemap.HandleFlagDirty)
+	}
 
 	return handle, nil
 }
@@ -819,6 +822,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		handle.Size = inf.Size()
 	}
 	handle.SetFileObject(f)
+	handle.Flags.Set(handlemap.HandleFlagCached)
 
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
 
@@ -831,7 +835,7 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
-	if options.Handle.Dirty {
+	if options.Handle.Flags.IsSet(handlemap.HandleFlagDirty) {
 		log.Info("FileCache::CloseFile : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
 		err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle})
 		if err != nil {
@@ -859,7 +863,7 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 	}
 
 	// If it is an fsync op then purge the file
-	if options.Handle.FSynced {
+	if options.Handle.Flags.IsSet(handlemap.HandleFlagFSynced) {
 		log.Trace("FileCache::CloseFile : fsync/sync op, purging %s", options.Handle.Path)
 
 		fc.fileLocks.Lock(options.Handle.Path)
@@ -934,7 +938,7 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 		return 0, syscall.EBADF
 	}
 
-	options.Handle.Dirty = true // Mark the handle dirty so the file is written back to storage on FlushFile.
+	options.Handle.Flags.Set(handlemap.HandleFlagDirty) // Mark the handle dirty so the file is written back to storage on FlushFile.
 
 	return f.WriteAt(options.Data, options.Offset)
 }
@@ -945,7 +949,8 @@ func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
 		log.Err("FileCache::SyncFile : %s failed", options.Handle.Path)
 		return err
 	}
-	options.Handle.FSynced = true
+
+	options.Handle.Flags.Set(handlemap.HandleFlagFSynced)
 	return err
 }
 
@@ -974,7 +979,7 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 	fc.policy.CacheValid(localPath)
 	// if our handle is dirty then that means we wrote to the file
-	if options.Handle.Dirty {
+	if options.Handle.Flags.IsSet(handlemap.HandleFlagDirty) {
 		f := options.Handle.GetFileObject()
 		if f == nil {
 			log.Err("FileCache::FlushFile : error [couldn't find fd in handle] %s", options.Handle.Path)
@@ -1004,7 +1009,7 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 
 		uploadHandle, err := os.Open(localPath)
 		if err != nil {
-			options.Handle.Dirty = false
+			options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
 			log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
 			return nil
 		}
@@ -1019,7 +1024,7 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 			log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
 			return err
 		}
-		options.Handle.Dirty = false
+		options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
 		uploadHandle.Close()
 
 		// If chmod was done on the file before it was uploaded to container then setting up mode would have been missed

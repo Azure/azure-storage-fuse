@@ -297,7 +297,6 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 	log.Trace("Libfuse::libfuse_opendir : %s", name)
 
 	handle := handlemap.NewHandle(name)
-	id := handlemap.Add(handle)
 
 	// For each handle created using opendir we create
 	// this structure here to hold currnet block of children to serve readdir
@@ -309,24 +308,21 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 		children: make([]*internal.ObjAttr, 0),
 	})
 
-	fi.fh = C.ulong(id)
+	handlemap.Add(handle)
+	fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
+
 	return 0
 }
 
 // libfuse_releasedir opens handle to given directory
 //export libfuse_releasedir
 func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
-	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
-
-	id := uint64(fi.fh)
-	log.Trace("Libfuse::libfuse_releasedir : %s, handle: %d", name, id)
-
-	handle, ok := handlemap.Load(handlemap.HandleID(id))
-	if !ok {
-		log.Err("Libfuse::libfuse_releasedir : file handle error [failed to find id=%d]", id)
-		return 0
+	if fi.fh == 0 {
+		return C.int(-C.EIO)
 	}
+	
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	log.Trace("Libfuse::libfuse_releasedir : %s, handle: %d", handle.Path, handle.ID)
 
 	handle.Cleanup()
 	handlemap.Delete(handle.ID)
@@ -336,20 +332,18 @@ func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
 // libfuse_readdir reads a directory
 //export libfuse_readdir
 func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, off C.off_t, fi *C.fuse_file_info_t, flag C.fuse_readdir_flags_t) C.int {
-	id := uint64(fi.fh)
-	off_64 := uint64(off)
-
-	handle, ok := handlemap.Load(handlemap.HandleID(id))
-	if !ok {
-		log.Err("Libfuse::libfuse_readdir : file handle error [failed to find id=%d]", id)
+	if fi.fh == 0 {
+		return C.int(-C.EIO)
 	}
-	//log.Trace("Libfuse::libfuse_readdir : Path %s, handle: %d, offset %d", handle.Path, id, off_64)
+	
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 
 	val, found := handle.GetValue("cache")
 	if !found {
 		return C.int(C_EIO)
 	}
 
+	off_64 := uint64(off)
 	cacheInfo := val.(*dirChildCache)
 	if off_64 == 0 ||
 		(off_64 >= cacheInfo.eIndex && cacheInfo.token != "") {
@@ -361,7 +355,7 @@ func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, of
 		})
 
 		if err != nil {
-			log.Err("Libfuse::libfuse_readdir : Path %s, handle: %d, offset %d. Error in retrieval", handle.Path, id, off_64)
+			log.Err("Libfuse::libfuse_readdir : Path %s, handle: %d, offset %d. Error in retrieval", handle.Path, handle.ID, off_64)
 			if os.IsNotExist(err) {
 				return C.int(C_ENOENT)
 			} else {
@@ -446,8 +440,8 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 		}
 	}
 
-	id := handlemap.Add(handle)
-	fi.fh = C.ulong(id)
+	handlemap.Add(handle)
+	fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
 
 	// TODO: Do we need to open the file here?
 	return 0
@@ -486,8 +480,8 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		}
 	}
 
-	id := handlemap.Add(handle)
-	fi.fh = C.ulong(id)
+	handlemap.Add(handle)
+	fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
 
 	return 0
 }
@@ -495,30 +489,33 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 // libfuse_read reads data from an open file
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
-	id := uint64(fi.fh)
+	if fi.fh == 0 {
+		return C.int(-C.EIO)
+	}
+	
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 	offset := uint64(off)
-	//log.Trace("Libfuse::libfuse_read : %s, handle: %d, offset: %d, size: %d", name, id, offset, size)
+	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
 
-	handle, ok := handlemap.Load(handlemap.HandleID(id))
-	if !ok {
-		log.Err("Libfuse::libfuse_read : file handle error [failed to find id=%d]", id)
-		return -C.EIO
+	var err error
+	var bytesRead int
+
+	if handle.Flags.IsSet(handlemap.HandleFlagCached) {
+		bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
+	} else {
+		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
+			internal.ReadInBufferOptions{
+				Handle: handle,
+				Offset: int64(offset),
+				Data:   data[:size],
+			})
 	}
 
-	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
-	bytesRead, err := fuseFS.NextComponent().ReadInBuffer(
-		internal.ReadInBufferOptions{
-			Handle: handle,
-			Offset: int64(offset),
-			Data:   data[:size],
-		})
 	if err == io.EOF {
 		err = nil
 	}
 	if err != nil {
-		log.Err("Libfuse::libfuse_read : error reading file %s, handle: %d [%s]", name, id, err.Error())
+		log.Err("Libfuse::libfuse_read : error reading file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		return -C.EIO
 	}
 
@@ -528,15 +525,13 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 // libfuse_write writes data to an open file
 //export libfuse_write
 func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	id := uint64(fi.fh)
-	offset := uint64(off)
-
-	handle, ok := handlemap.Load(handlemap.HandleID(id))
-	if !ok {
-		log.Err("Libfuse::libfuse_write : file handle error [failed to find id=%d]", id)
-		return -C.EIO
+	if fi.fh == 0 {
+		return C.int(-C.EIO)
 	}
+	
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 
+	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
 		internal.WriteFileOptions{
@@ -546,7 +541,7 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		})
 
 	if err != nil {
-		log.Err("Libfuse::libfuse_write : error writing file %s, handle: %d [%s]", handle.Path, id, err.Error())
+		log.Err("Libfuse::libfuse_write : error writing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		return -C.EIO
 	}
 
@@ -556,23 +551,21 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 // libfuse_flush possibly flushes cached data
 //export libfuse_flush
 func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
-	id := uint64(fi.fh)
-	handle, ok := handlemap.Load(handlemap.HandleID(id))
-	if !ok {
-		log.Err("Libfuse::libfuse_flush : file handle error [failed to find id=%d]", id)
-		return -C.EIO
+	if fi.fh == 0 {
+		return C.int(-C.EIO)
 	}
-
-	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, id)
+	
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
 
 	// If the file handle is not dirty, there is no need to flush
-	if !handle.Dirty {
+	if !handle.Flags.IsSet(handlemap.HandleFlagDirty) {
 		return 0
 	}
 
 	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 	if err != nil {
-		log.Err("Libfuse::libfuse_flush : error flushing file %s, handle: %d [%s]", handle.Path, id, err.Error())
+		log.Err("Libfuse::libfuse_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		return -C.EIO
 	}
 
@@ -601,18 +594,16 @@ func libfuse_truncate(path *C.char, off C.off_t, fi *C.fuse_file_info_t) C.int {
 // libfuse_release releases an open file
 //export libfuse_release
 func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
-	id := uint64(fi.fh)
-	handle, ok := handlemap.Load(handlemap.HandleID(id))
-	if !ok {
-		log.Err("Libfuse::libfuse_release : file handle error [failed to find id=%d]", id)
-		return -C.EIO
+	if fi.fh == 0 {
+		return C.int(-C.EIO)
 	}
-
-	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, id)
+	
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, handle.ID)
 
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
 	if err != nil {
-		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, id, err.Error())
+		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		return -C.EIO
 	}
 
@@ -757,16 +748,12 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 // libfuse_fsync synchronizes file contents
 //export libfuse_fsync
 func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
-	name := trimFusePath(path)
-	name = common.NormalizeObjectName(name)
-	id := uint64(fi.fh)
-	log.Trace("Libfuse::libfuse_fsync : %s, handle: %d", name, id)
-
-	handle, ok := handlemap.Load(handlemap.HandleID(id))
-	if !ok {
-		log.Err("Libfuse::libfuse_fsync : file handle error [failed to find id=%d]", id)
-		return -C.EIO
+	if fi.fh == 0 {
+		return C.int(-C.EIO)
 	}
+	
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	log.Trace("Libfuse::libfuse_fsync : %s, handle: %d", handle.Path, handle.ID)
 
 	options := internal.SyncFileOptions{Handle: handle}
 	// If the datasync parameter is non-zero, then only the user data should be flushed, not the metadata.
@@ -774,7 +761,7 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 
 	err := fuseFS.NextComponent().SyncFile(options)
 	if err != nil {
-		log.Err("Libfuse::libfuse_fsync : error syncing file %s [%s]", name, err.Error())
+		log.Err("Libfuse::libfuse_fsync : error syncing file %s [%s]", handle.Path, err.Error())
 		return -C.EIO
 	}
 	return 0

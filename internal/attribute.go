@@ -48,7 +48,7 @@ func (bm BitMap) IsSet(bit uint16) bool { return (bm & (1 << bit)) != 0 }
 func (bm *BitMap) Set(bit uint16) { *bm |= (1 << bit) }
 
 // Clear : Clear the given bit from bitmap
-func (bm BitMap) Clear(bit uint16) { bm &= ^(1 << bit) }
+func (bm *BitMap) Clear(bit uint16) { *bm &= ^(1 << bit) }
 
 func NewDirBitMap() BitMap {
 	bm := BitMap(0)

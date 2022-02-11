@@ -44,15 +44,33 @@ type HandleID uint64
 
 const InvalidHandleID HandleID = 0
 
+// Flags represented in BitMap for various flags in the handle
+const (
+	HandleFlagUnknown uint16 = iota
+	HandleFlagDirty
+	HandleFlagFSynced
+	HandleFlagCached
+)
+
+type FlagBitMap uint16
+
+// IsSet : Check whether the given bit is set or not
+func (bm FlagBitMap) IsSet(bit uint16) bool { return (bm & (1 << bit)) != 0 }
+
+// Set : Set the given bit in bitmap
+func (bm *FlagBitMap) Set(bit uint16) { *bm |= (1 << bit) }
+
+// Clear : Clear the given bit from bitmap
+func (bm *FlagBitMap) Clear(bit uint16) { *bm &= ^(1 << bit) }
+
 type Handle struct {
 	sync.RWMutex
-	ID      HandleID
-	Path    string // always holds path relative to mount dir
-	Dirty   bool
-	Size    int64 // Size of the file being handled here
-	FObj    *os.File
-	values  map[string]interface{}
-	FSynced bool
+	ID     HandleID
+	Path   string // always holds path relative to mount dir
+	Size   int64  // Size of the file being handled here
+	FObj   *os.File
+	Flags  FlagBitMap
+	values map[string]interface{}
 }
 
 func NewHandle(path string) *Handle {
@@ -60,6 +78,7 @@ func NewHandle(path string) *Handle {
 		ID:     InvalidHandleID,
 		Path:   path,
 		Size:   0,
+		Flags:  0,
 		values: make(map[string]interface{}),
 	}
 }
