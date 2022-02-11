@@ -635,6 +635,31 @@ func (suite *streamTestSuite) TestAsyncClose() {
 	}
 }
 
+// persistnace related UT
+func (suite *streamTestSuite) TestBlockPersistance() {
+	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 1\n  cache-size-mb: 16\n  policy: lru\n  persistance: true\n  disk-cache-path: ./\n  disk-size-mb: 32"
+	suite.setupTestHelper(config)
+
+	handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(0, false, int64(100*MB), 0, 0)
+
+	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
+	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
+	suite.stream.OpenFile(openFileOptions)
+	assertBlockCached(suite, 0, fileNames[0])
+
+	_, _, readInBufferOptions, _ = suite.getRequestOptions(0, false, int64(100*MB), 16*MB, 0)
+
+	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
+	suite.stream.ReadInBuffer(readInBufferOptions)
+
+	// we expect our first block to have been evicted
+	assertFileCached(suite, fileNames[0])
+	assertNumberOfCachedBlocks(suite, 1)
+	assertBlockCached(suite, 0, fileNames[0])
+	assertBlockCached(suite, 16*MB, fileNames[0])
+	assertNumberOfCachedFileBlocks(suite, 1, fileNames[0])
+}
+
 func TestStreamTestSuite(t *testing.T) {
 	suite.Run(t, new(streamTestSuite))
 }

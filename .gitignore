@@ -9,6 +9,8 @@ azuretest.json
 blobfuse2
 venv/
 *.backup
+*.diff
+config*.yaml
 __debug_bin
 .env
 test/manual_scripts/create1000.go
