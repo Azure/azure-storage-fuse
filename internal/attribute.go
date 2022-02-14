@@ -34,40 +34,29 @@
 package internal
 
 import (
+	"blobfuse2/common"
 	"os"
 	"time"
 )
 
-// BitMap : Generic BitMap to maintain flags
-type BitMap uint16
-
-// IsSet : Check whether the given bit is set or not
-func (bm BitMap) IsSet(bit uint16) bool { return (bm & (1 << bit)) != 0 }
-
-// Set : Set the given bit in bitmap
-func (bm *BitMap) Set(bit uint16) { *bm |= (1 << bit) }
-
-// Clear : Clear the given bit from bitmap
-func (bm *BitMap) Clear(bit uint16) { *bm &= ^(1 << bit) }
-
-func NewDirBitMap() BitMap {
-	bm := BitMap(0)
+func NewDirBitMap() common.BitMap16 {
+	bm := common.BitMap16(0)
 	bm.Set(PropFlagIsDir)
 	return bm
 }
 
-func NewSymlinkBitMap() BitMap {
-	bm := BitMap(0)
+func NewSymlinkBitMap() common.BitMap16 {
+	bm := common.BitMap16(0)
 	bm.Set(PropFlagSymlink)
 	return bm
 }
 
-func NewFileBitMap() BitMap {
-	bm := BitMap(0)
+func NewFileBitMap() common.BitMap16 {
+	bm := common.BitMap16(0)
 	return bm
 }
 
-// Flags represented in BitMap for various properties of the object
+// Flags represented in common.BitMap16 for various properties of the object
 const (
 	PropFlagUnknown uint16 = iota
 	PropFlagNotExists
@@ -80,15 +69,15 @@ const (
 
 // ObjAttr : Attributes of any file/directory
 type ObjAttr struct {
-	Path     string            // full path
-	Name     string            // base name of the path
-	Size     int64             // size of the file/directory
-	Mode     os.FileMode       // permissions in 0xxx format
 	Mtime    time.Time         // modified time
 	Atime    time.Time         // access time
 	Ctime    time.Time         // change time
 	Crtime   time.Time         // creation time
-	Flags    BitMap            // flags
+	Size     int64             // size of the file/directory
+	Mode     os.FileMode       // permissions in 0xxx format
+	Flags    common.BitMap16   // flags
+	Path     string            // full path
+	Name     string            // base name of the path
 	Metadata map[string]string // extra information to preseve
 }
 

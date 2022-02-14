@@ -34,6 +34,7 @@
 package handlemap
 
 import (
+	"blobfuse2/common"
 	"os"
 	"sync"
 
@@ -52,24 +53,13 @@ const (
 	HandleFlagCached
 )
 
-type FlagBitMap uint16
-
-// IsSet : Check whether the given bit is set or not
-func (bm FlagBitMap) IsSet(bit uint16) bool { return (bm & (1 << bit)) != 0 }
-
-// Set : Set the given bit in bitmap
-func (bm *FlagBitMap) Set(bit uint16) { *bm |= (1 << bit) }
-
-// Clear : Clear the given bit from bitmap
-func (bm *FlagBitMap) Clear(bit uint16) { *bm &= ^(1 << bit) }
-
 type Handle struct {
 	sync.RWMutex
-	ID     HandleID
-	Path   string // always holds path relative to mount dir
-	Size   int64  // Size of the file being handled here
 	FObj   *os.File
-	Flags  FlagBitMap
+	ID     HandleID
+	Size   int64 // Size of the file being handled here
+	Flags  common.BitMap16
+	Path   string // always holds path relative to mount dir
 	values map[string]interface{}
 }
 
