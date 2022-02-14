@@ -55,11 +55,26 @@ type attrCacheItem struct {
 }
 
 func newAttrCacheItem(attr *internal.ObjAttr, exists bool, cachedAt time.Time) *attrCacheItem {
-	return &attrCacheItem{
+	item := &attrCacheItem{
 		attr:     attr,
 		attrFlag: 0,
 		cachedAt: cachedAt,
 	}
+
+	item.attrFlag.Set(AttrFlagValid)
+	if exists {
+		item.attrFlag.Set(AttrFlagExists)
+	}
+
+	return item
+}
+
+func (value *attrCacheItem) valid() bool {
+	return value.attrFlag.IsSet(AttrFlagValid)
+}
+
+func (value *attrCacheItem) exists() bool {
+	return value.attrFlag.IsSet(AttrFlagExists)
 }
 
 func (value *attrCacheItem) markDeleted(deletedTime time.Time) {
@@ -79,7 +94,7 @@ func (value *attrCacheItem) getAttr() *internal.ObjAttr {
 }
 
 func (value *attrCacheItem) isDeleted() bool {
-	return !value.attrFlag.IsSet(AttrFlagExists)
+	return !value.exists()
 }
 
 func (value *attrCacheItem) setSize(size int64) {

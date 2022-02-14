@@ -365,7 +365,7 @@ func (ac *AttrCache) TruncateFile(options internal.TruncateFileOptions) error {
 
 		// no need to truncate the name of the file
 		value, found := ac.cacheMap[options.Name]
-		if found && value.attrFlag.IsSet(AttrFlagValid) && value.attrFlag.IsSet(AttrFlagExists) {
+		if found && value.valid() && value.exists() {
 			value.setSize(options.Size)
 		}
 	}
@@ -421,7 +421,7 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 	ac.cacheLock.RUnlock()
 
 	// Try to serve the request from the attribute cache
-	if found && value.attrFlag.IsSet(AttrFlagValid) && time.Since(value.cachedAt).Seconds() < float64(ac.cacheTimeout) {
+	if found && value.valid() && time.Since(value.cachedAt).Seconds() < float64(ac.cacheTimeout) {
 		if value.isDeleted() {
 			log.Debug("AttrCache::GetAttr : %s served from cache", options.Name)
 			// no entry if path does not exist
@@ -481,7 +481,7 @@ func (ac *AttrCache) Chmod(options internal.ChmodOptions) error {
 		defer ac.cacheLock.RUnlock()
 
 		value, found := ac.cacheMap[internal.TruncateDirName(options.Name)]
-		if found && value.attrFlag.IsSet(AttrFlagValid) && value.attrFlag.IsSet(AttrFlagExists) {
+		if found && value.valid() && value.exists() {
 			value.setMode(options.Mode)
 		}
 	}
