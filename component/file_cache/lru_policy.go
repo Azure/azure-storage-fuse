@@ -46,9 +46,9 @@ import (
 type lruNode struct {
 	next    *lruNode
 	prev    *lruNode
-	name    string
 	usage   int
 	deleted bool
+	name    string
 }
 
 type lruPolicy struct {

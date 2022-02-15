@@ -73,6 +73,18 @@ func NewHandle(path string) *Handle {
 	}
 }
 
+func (handle *Handle) Dirty() bool {
+	return handle.Flags.IsSet(HandleFlagDirty)
+}
+
+func (handle *Handle) Fsynced() bool {
+	return handle.Flags.IsSet(HandleFlagFSynced)
+}
+
+func (handle *Handle) Cached() bool {
+	return handle.Flags.IsSet(HandleFlagCached)
+}
+
 func (handle *Handle) GetFileObject() *os.File {
 	return handle.FObj
 }

@@ -845,7 +845,7 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
-	if options.Handle.Flags.IsSet(handlemap.HandleFlagDirty) {
+	if options.Handle.Dirty() {
 		log.Info("FileCache::CloseFile : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
 		err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle})
 		if err != nil {
@@ -873,7 +873,7 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 	}
 
 	// If it is an fsync op then purge the file
-	if options.Handle.Flags.IsSet(handlemap.HandleFlagFSynced) {
+	if options.Handle.Fsynced() {
 		log.Trace("FileCache::CloseFile : fsync/sync op, purging %s", options.Handle.Path)
 
 		fc.fileLocks.Lock(options.Handle.Path)
@@ -989,7 +989,7 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 	fc.policy.CacheValid(localPath)
 	// if our handle is dirty then that means we wrote to the file
-	if options.Handle.Flags.IsSet(handlemap.HandleFlagDirty) {
+	if options.Handle.Dirty() {
 		f := options.Handle.GetFileObject()
 		if f == nil {
 			log.Err("FileCache::FlushFile : error [couldn't find fd in handle] %s", options.Handle.Path)

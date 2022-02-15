@@ -500,7 +500,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	var err error
 	var bytesRead int
 
-	if handle.Flags.IsSet(handlemap.HandleFlagCached) {
+	if handle.Cached(){
 		bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
@@ -559,7 +559,7 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
 
 	// If the file handle is not dirty, there is no need to flush
-	if !handle.Flags.IsSet(handlemap.HandleFlagDirty) {
+	if !handle.Dirty() {
 		return 0
 	}
 
