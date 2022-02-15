@@ -101,8 +101,8 @@ azstorage:
 
 # Mount all configuration
 mountall:
-  # whitelist takes precedence over blacklist in case of conflicts
-  container-whitelist:
+  # allowlist takes precedence over denylist in case of conflicts
+  container-allowlist:
     - <list of containers to be mounted>
-  container-blacklist:
+  container-denylist:
     - <list of containers not to be mounted>

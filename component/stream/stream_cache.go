@@ -183,7 +183,6 @@ func (c *cache) getBlock(fileKey string, offset int64, fileSize int64) (*cacheBl
 		block.(*cacheBlock).RLock()
 		c.blocks.Get(blockKeyObj)
 	}
-
 	return block.(*cacheBlock), true
 }
 
