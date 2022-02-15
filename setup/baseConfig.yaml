@@ -30,7 +30,10 @@ libfuse:
   entry-expiration-sec: <time kernel can cache directory listing attributes (in sec)>
   negative-entry-expiration-sec: <time kernel can cache attributes of non existant paths (in sec)>
   fuse-trace: true|false <enable libfuse api trace logs for debugging>
+<<<<<<< HEAD
   extension: <physical path to extension library>
+=======
+>>>>>>> origin/main
  
   # Streaming configuration
 stream:
@@ -98,8 +101,15 @@ azstorage:
 
 # Mount all configuration
 mountall:
+<<<<<<< HEAD
   # whitelist takes precedence over blacklist in case of conflicts
   container-whitelist:
     - <list of containers to be mounted>
   container-blacklist:
+=======
+  # allowlist takes precedence over denylist in case of conflicts
+  container-allowlist:
+    - <list of containers to be mounted>
+  container-denylist:
+>>>>>>> origin/main
     - <list of containers not to be mounted>
