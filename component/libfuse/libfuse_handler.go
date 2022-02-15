@@ -186,7 +186,6 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	conn.want |= C.FUSE_CAP_AUTO_INVAL_DATA
 	conn.want |= C.FUSE_CAP_READDIRPLUS
 	conn.want |= C.FUSE_CAP_ASYNC_READ
-	conn.want |= C.FUSE_CAP_BIG_WRITES
 
 	conn.max_write = 4194304
 	conn.max_background = 128
