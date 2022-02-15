@@ -289,6 +289,7 @@ var mountCmd = &cobra.Command{
 			}
 		} else {
 			if options.CPUProfile != "" {
+				os.Remove(options.CPUProfile)
 				f, err := os.Create(options.CPUProfile)
 				if err != nil {
 					fmt.Printf("error opening file for cpuprofile [%s]", err)
@@ -301,6 +302,7 @@ var mountCmd = &cobra.Command{
 			}
 			runPipeline(pipeline, context.Background())
 			if options.MemProfile != "" {
+				os.Remove(options.MemProfile)
 				f, err := os.Create(options.MemProfile)
 				if err != nil {
 					fmt.Printf("error opening file for memprofile [%s]", err)
