@@ -326,15 +326,15 @@ func (az *AzStorage) ReadFile(options internal.ReadFileOptions) (data []byte, er
 	return az.storage.ReadBuffer(options.Handle.Path, 0, 0)
 }
 
-func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (len int, err error) {
+func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length int, err error) {
 	//log.Trace("AzStorage::ReadInBuffer : Read %s from %d offset", h.Path, offset)
 
 	if options.Offset > options.Handle.Size {
 		return 0, syscall.ERANGE
 	}
 
-	var dataLen int64 = int64(cap(options.Data))
-	if options.Handle.Size < (options.Offset + int64(cap(options.Data))) {
+	var dataLen int64 = int64(len(options.Data))
+	if options.Handle.Size < (options.Offset + int64(len(options.Data))) {
 		dataLen = options.Handle.Size - options.Offset
 	}
 
@@ -347,13 +347,18 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (len int
 		log.Err("AzStorage::ReadInBuffer : Failed to read %s (%s)", options.Handle.Path, err.Error())
 	}
 
-	len = int(dataLen)
+	length = int(dataLen)
 	return
 }
 
 func (az *AzStorage) WriteFile(options internal.WriteFileOptions) (int, error) {
-	err := az.storage.WriteFromBuffer(options.Handle.Path, nil, options.Data)
+	err := az.storage.Write(options.Handle.Path, options.Offset, int64(len(options.Data)), options.Data, options.FileOffsets)
 	return len(options.Data), err
+}
+
+func (az *AzStorage) GetFileBlockOffsets(options internal.GetFileBlockOffsetsOptions) (common.BlockOffsetList, bool, error) {
+	return az.storage.GetFileBlockOffsets(options.Name)
+
 }
 
 func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {

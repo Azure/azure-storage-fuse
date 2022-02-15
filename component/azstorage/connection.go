@@ -34,6 +34,7 @@
 package azstorage
 
 import (
+	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
 	"net/url"
@@ -111,6 +112,8 @@ type AzConnection interface {
 
 	WriteFromFile(name string, metadata map[string]string, fi *os.File) error
 	WriteFromBuffer(name string, metadata map[string]string, data []byte) error
+	Write(name string, offset int64, len int64, data []byte, FileOffsets common.BlockOffsetList) error
+	GetFileBlockOffsets(name string) (common.BlockOffsetList, bool, error)
 
 	ChangeMod(string, os.FileMode) error
 	ChangeOwner(string, int, int) error

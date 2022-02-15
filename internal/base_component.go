@@ -34,6 +34,7 @@
 package internal
 
 import (
+	"blobfuse2/common"
 	"blobfuse2/internal/handlemap"
 	"context"
 )
@@ -306,4 +307,11 @@ func (base *BaseComponent) InvalidateObject(name string) {
 	if base.next != nil {
 		base.next.InvalidateObject(name)
 	}
+}
+
+func (base *BaseComponent) GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (common.BlockOffsetList, bool, error) {
+	if base.next != nil {
+		base.next.InvalidateObject(name)
+	}
+	return common.BlockOffsetList{}, false, nil
 }

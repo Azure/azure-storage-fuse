@@ -38,8 +38,10 @@ import (
 	"blobfuse2/common/exectime"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -651,6 +653,88 @@ func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]string, da
 		return err
 	}
 
+	return nil
+}
+
+func (bb *BlockBlob) GetFileBlockOffsets(name string) (common.BlockOffsetList, bool, error) {
+	var blockOffset int64 = 0
+	var blockList common.BlockOffsetList
+	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	storageBlockList, _ := blobURL.GetBlockList(
+		context.Background(), azblob.BlockListCommitted, bb.blobAccCond.LeaseAccessConditions)
+	for _, block := range *&storageBlockList.CommittedBlocks {
+		blk := &common.Block{
+			Id:         block.Name,
+			StartIndex: int64(blockOffset),
+			EndIndex:   int64(blockOffset) + block.Size,
+			Size:       block.Size,
+		}
+		blockOffset += block.Size
+		blockList = append(blockList, blk)
+	}
+	return blockList, len(blockList) > 0, nil
+}
+
+// WriteFromBuffer : write data at given offset to a blob
+func (bb *BlockBlob) Write(name string, offset int64, length int64, data []byte, FileOffsets common.BlockOffsetList) error {
+	defer log.TimeTrack(time.Now(), "BlockBlob::Write", name)
+	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	multipleBlocks := true
+	var blockList common.BlockOffsetList
+	// if this is not 0 then we passed a cached block ID list
+	if len(FileOffsets) == 0 {
+		blockList, multipleBlocks, _ = bb.GetFileBlockOffsets(name)
+	}
+	// case 1: file consists of no blocks (small file)
+	if !multipleBlocks {
+		// get all the data
+		oldData, _ := bb.ReadBuffer(name, 0, 0)
+		// update the data with the new data
+		if int64(len(oldData)) >= offset+length {
+			copy(oldData[offset:], data)
+			// uplaod the data
+			bb.WriteFromBuffer(name, nil, oldData)
+		} else {
+			d := make([]byte, offset+length)
+			copy(d, oldData)
+			oldData = nil
+			copy(d[offset:], data)
+			// WriteFromBuffer should be able to handle the case where now the block is too big and gets split into multiple blocks
+			bb.WriteFromBuffer(name, nil, d)
+		}
+		// case 2: Given offset is within the size of the blob - and the blob consists of multiple blocks
+		// TODO: case 3: offset is ahead of blocks (appending)
+	} else {
+		modifiedBlockList, oldDataSize := blockList.FindBlocksToModify(offset, length)
+		// buffer that holds that pre-existing data in those blocks we're interested in
+		oldDataBuffer := make([]byte, oldDataSize)
+		// fetch the blocks that will be impacted by the new changes so we can overwrite them
+		bb.ReadInBuffer(name, modifiedBlockList[0].StartIndex, oldDataSize, oldDataBuffer)
+		blockOffset := offset - modifiedBlockList[0].StartIndex
+		copy(oldDataBuffer[blockOffset:], data)
+
+		for _, blk := range modifiedBlockList {
+			blk.Data = oldDataBuffer[blk.StartIndex:blk.EndIndex]
+			_, err := blobURL.StageBlock(context.Background(),
+				blk.Id, bytes.NewReader(blk.Data),
+				bb.blobAccCond.LeaseAccessConditions,
+				nil, bb.downloadOptions.ClientProvidedKeyOptions)
+			if err != nil {
+				fmt.Println("error: ", err)
+			}
+		}
+		var blockIDList []string
+		for _, blk := range blockList {
+			blockIDList = append(blockIDList, blk.Id)
+		}
+		_, err := blobURL.CommitBlockList(context.Background(),
+			blockIDList,
+			azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
+			nil, azblob.BlobAccessConditions{}, bb.Config.defaultTier, azblob.BlobTagsMap{}, bb.downloadOptions.ClientProvidedKeyOptions)
+		if err != nil {
+			fmt.Println("error: ", err)
+		}
+	}
 	return nil
 }
 

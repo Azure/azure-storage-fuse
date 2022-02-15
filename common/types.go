@@ -168,3 +168,30 @@ type LogConfig struct {
 	FileCount   uint64
 	TimeTracker bool
 }
+
+type Block struct {
+	Id         string
+	StartIndex int64
+	EndIndex   int64
+	Size       int64
+	Data       []byte
+}
+
+// list that holds blocks containing ids and corresponding offsets
+type BlockOffsetList []*Block
+
+func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (BlockOffsetList, int64) {
+	size := int64(0)
+	currentBlockOffset := int64(0)
+	var modBlockList BlockOffsetList
+	// TODO: change this to binary search (logn) for better perf
+	for _, blk := range bol {
+		if currentBlockOffset >= blk.StartIndex && currentBlockOffset <= blk.EndIndex && currentBlockOffset <= offset+length {
+			modBlockList = append(modBlockList, blk)
+			size += blk.Size
+			currentBlockOffset = blk.EndIndex
+		}
+		currentBlockOffset += blk.Size
+	}
+	return modBlockList, size
+}
