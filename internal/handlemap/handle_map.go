@@ -73,32 +73,39 @@ func NewHandle(path string) *Handle {
 	}
 }
 
+// Dirty : Handle is dirty or not
 func (handle *Handle) Dirty() bool {
 	return handle.Flags.IsSet(HandleFlagDirty)
 }
 
+// Fsynced : Handle is Fsynced or not
 func (handle *Handle) Fsynced() bool {
 	return handle.Flags.IsSet(HandleFlagFSynced)
 }
 
+// Cached : File is cached on local disk or not
 func (handle *Handle) Cached() bool {
 	return handle.Flags.IsSet(HandleFlagCached)
 }
 
+// GetFileObject : Get the OS.File handle stored within
 func (handle *Handle) GetFileObject() *os.File {
 	return handle.FObj
 }
 
+// SetFileObject : Store the OS.File handle
 func (handle *Handle) SetFileObject(f *os.File) {
 	handle.FObj = f
 }
 
+// SetValue : Store user defined parameter inside handle
 func (handle *Handle) SetValue(key string, value interface{}) {
 	handle.Lock()
 	handle.values[key] = value
 	handle.Unlock()
 }
 
+// GetValue : Retreive user defined parameter from handle
 func (handle *Handle) GetValue(key string) (interface{}, bool) {
 	handle.RLock()
 	val, ok := handle.values[key]
@@ -106,12 +113,14 @@ func (handle *Handle) GetValue(key string) (interface{}, bool) {
 	return val, ok
 }
 
+// RemoveValue : Delete user defined parameter from handle
 func (handle *Handle) RemoveValue(key string) {
 	handle.Lock()
 	delete(handle.values, key)
 	handle.Unlock()
 }
 
+// Cleanup : Delete all user defined parameter from handle
 func (handle *Handle) Cleanup() {
 	handle.Lock()
 	for key := range handle.values {
@@ -124,6 +133,7 @@ func (handle *Handle) Cleanup() {
 var defaultHandleMap sync.Map
 var nextHandleID = *atomic.NewUint64(uint64(0))
 
+// Add : Add the newly created handle to map and allocate a handle id
 func Add(handle *Handle) HandleID {
 	var ok = true
 	var key HandleID
@@ -135,10 +145,12 @@ func Add(handle *Handle) HandleID {
 	return key
 }
 
+// Delete : Remove handle object from map
 func Delete(key HandleID) {
 	defaultHandleMap.Delete(key)
 }
 
+// Load : Search the handle object based on its id
 func Load(key HandleID) (*Handle, bool) {
 	handleIF, ok := defaultHandleMap.Load(key)
 	if !ok {
