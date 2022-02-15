@@ -677,6 +677,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (common.BlockOffsetList, b
 
 // WriteFromBuffer : write data at given offset to a blob
 func (bb *BlockBlob) Write(name string, offset int64, length int64, data []byte, FileOffsets common.BlockOffsetList) error {
+	log.Trace("BlockBlob::Write : name %s", name)
 	defer log.TimeTrack(time.Now(), "BlockBlob::Write", name)
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	multipleBlocks := true
