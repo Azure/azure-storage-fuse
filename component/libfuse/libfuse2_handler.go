@@ -261,7 +261,7 @@ func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 	// Get attributes
 	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
 	if err != nil {
-		log.Err("Libfuse::libfuse2_getattr : Failed to get attributes of %s (%s)", name, err.Error())
+		//log.Err("Libfuse::libfuse2_getattr : Failed to get attributes of %s (%s)", name, err.Error())
 		return -C.ENOENT
 	}
 

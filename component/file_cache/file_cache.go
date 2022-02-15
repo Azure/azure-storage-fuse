@@ -36,7 +36,6 @@ package file_cache
 import (
 	"blobfuse2/common"
 	"blobfuse2/common/config"
-	"blobfuse2/common/exectime"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
 	"blobfuse2/internal/handlemap"
@@ -521,7 +520,7 @@ func (fc *FileCache) RenameDir(options internal.RenameDirOptions) error {
 
 // CreateFile: Create the file in local cache.
 func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
-	defer exectime.StatTimeCurrentBlock("FileCache::CreateFile")()
+	//defer exectime.StatTimeCurrentBlock("FileCache::CreateFile")()
 	log.Trace("FileCache::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
 
 	fc.fileLocks.Lock(options.Name)
@@ -920,7 +919,7 @@ func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) 
 
 // ReadInBuffer: Read the local file into a buffer
 func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	defer exectime.StatTimeCurrentBlock("FileCache::ReadInBuffer")()
+	//defer exectime.StatTimeCurrentBlock("FileCache::ReadInBuffer")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 	fc.policy.CacheValid(localPath)
@@ -936,7 +935,7 @@ func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, er
 
 // WriteFile: Write to the local file
 func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	defer exectime.StatTimeCurrentBlock("FileCache::WriteFile")()
+	//defer exectime.StatTimeCurrentBlock("FileCache::WriteFile")()
 
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
@@ -982,7 +981,7 @@ func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
 
 // FlushFile: Flush the local file to storage
 func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
-	defer exectime.StatTimeCurrentBlock("FileCache::FlushFile")()
+	//defer exectime.StatTimeCurrentBlock("FileCache::FlushFile")()
 	log.Trace("FileCache::FlushFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
