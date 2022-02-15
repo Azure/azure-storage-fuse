@@ -502,11 +502,11 @@ func (dl *Datalake) WriteFromBuffer(name string, metadata map[string]string, dat
 
 // Write : Write to a file at given offset
 func (dl *Datalake) Write(name string, offset int64, len int64, data []byte, FileOffsets common.BlockOffsetList) error {
-	return nil
+	return dl.BlockBlob.Write(name, offset, len, data, FileOffsets)
 }
 
 func (dl *Datalake) GetFileBlockOffsets(name string) (common.BlockOffsetList, bool, error) {
-	return common.BlockOffsetList{}, false, nil
+	return dl.BlockBlob.GetFileBlockOffsets(name)
 }
 
 // ChangeMod : Change mode of a path
