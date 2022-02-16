@@ -555,6 +555,8 @@ stages:
                   python3 --version
                 displayName: 'Installing Python'
 
+              # Adding '-preview' to pre-release versions. For example, 2.0.0-preview.1
+              # Also considering that the tag and version are same
               - script: |
                   python3 -c "import json; import requests; import sys;
                   if(len(sys.argv)!=3):
