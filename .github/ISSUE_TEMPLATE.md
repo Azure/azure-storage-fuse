@@ -7,7 +7,7 @@
 ### If relevant, please share your mount command.
 
 
-### What problem was encountered ?
+### What was the issue encountered?
 
 
 ### Have you found a mitigation/solution?
