@@ -14,6 +14,11 @@ parameters:
     type: boolean
     default: false
 
+  - name: update_version
+    displayName: 'Update Version'
+    type: boolean
+    default: true
+
 # Do not trigger this pipeline automatically
 trigger: none
 pr: none
@@ -527,3 +532,44 @@ stages:
                   changeLogType: 'commitBased'
                   isDraft: false
                   assetUploadMode: replace
+  - stage: UpdateLatestVersion
+    # dependsOn: ReleaseArtifact
+    # condition: succeeded('ReleaseArtifact')
+    jobs:
+      - job: UpdateVersion
+        pool:
+          vmImage: 'ubuntu-18.04'
+        variables:
+          - group: NightlyBlobFuse
+        
+        steps:
+          - checkout: none
+
+          - script: |
+              echo ${{ parameters.tag }}
+            displayName: 'Tag Name'
+
+          - ${{ if eq(parameters.update_version, true) }}:
+              - script: |
+                  sudo apt install python3
+                  python3 --version
+                displayName: 'Installing Python'
+
+              - script: |
+                  python3 -c "import json; import requests; import sys;
+                  url = sys.argv[1]
+                  version = sys.argv[2].replace('blobfuse2-', '')
+                  print('Version: ' + version)
+                  print('URL: ' + url[:8])
+                  if(len(version)==0):
+                      print('Incorrect Release Tag')
+                      sys.exit(1)
+                  dataDict = requests.get(url).json()
+                  dataDict['blobfuse2'] = version
+                  resp = requests.put(url, data=json.dumps(dataDict, indent=4), headers={'Content-Type': 'application/json', 'x-ms-blob-type': 'BlockBlob'})
+                  print('Status Code: ' + str(resp.status_code))
+                  sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('SUCCESS')" \
+                  $(LATEST_VERSION_SAS) ${{ parameters.tag }}
+                displayName: 'Updating version number'
+          
+            
