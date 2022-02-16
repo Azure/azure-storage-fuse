@@ -120,7 +120,7 @@ func beginDetectNewVersion() chan interface{} {
 					msg = strings.TrimSpace(msg)
 					if len(msg) > 0 {
 						if !hasWarning {
-							fmt.Fprintf(stderr, "Following vulnerabilities were detected in your current version (%s):\n", common.Blobfuse2Version)
+							fmt.Fprintf(stderr, "The following vulnerabilities were detected in your current version (%s):\n", common.Blobfuse2Version)
 							hasWarning = true
 						}
 						fmt.Fprintf(stderr, "%v. %s\n", ctr, msg)
