@@ -995,8 +995,14 @@ func (suite *fileCacheTestSuite) TestRenameFileNotInCache() {
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: src, Mode: 0777})
 	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
 
+	_, err := os.Stat(suite.cache_path + "/" + src)
+	for !os.IsNotExist(err) {
+		time.Sleep(time.Second)
+		_, err = os.Stat(suite.cache_path + "/" + src)
+	}
+
 	// Path should be in fake storage
-	_, err := os.Stat(suite.fake_storage_path + "/" + src)
+	_, err = os.Stat(suite.fake_storage_path + "/" + src)
 	suite.assert.True(err == nil || os.IsExist(err))
 
 	// RenameFile
@@ -1071,8 +1077,14 @@ func (suite *fileCacheTestSuite) TestTruncateFileNotInCache() {
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0777})
 	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
 
+	_, err := os.Stat(suite.cache_path + "/" + path)
+	for !os.IsNotExist(err) {
+		time.Sleep(time.Second)
+		_, err = os.Stat(suite.cache_path + "/" + path)
+	}
+
 	// Path should be in fake storage
-	_, err := os.Stat(suite.fake_storage_path + "/" + path)
+	_, err = os.Stat(suite.fake_storage_path + "/" + path)
 	suite.assert.True(err == nil || os.IsExist(err))
 
 	// Chmod
@@ -1140,8 +1152,14 @@ func (suite *fileCacheTestSuite) TestChmodNotInCache() {
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0777})
 	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
 
+	_, err := os.Stat(suite.cache_path + "/" + path)
+	for !os.IsNotExist(err) {
+		time.Sleep(time.Second)
+		_, err = os.Stat(suite.cache_path + "/" + path)
+	}
+
 	// Path should be in fake storage
-	_, err := os.Stat(suite.fake_storage_path + "/" + path)
+	_, err = os.Stat(suite.fake_storage_path + "/" + path)
 	suite.assert.True(err == nil || os.IsExist(err))
 
 	// Chmod
@@ -1226,8 +1244,14 @@ func (suite *fileCacheTestSuite) TestChownNotInCache() {
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0777})
 	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
 
+	_, err := os.Stat(suite.cache_path + "/" + path)
+	for !os.IsNotExist(err) {
+		time.Sleep(time.Second)
+		_, err = os.Stat(suite.cache_path + "/" + path)
+	}
+
 	// Path should be in fake storage
-	_, err := os.Stat(suite.fake_storage_path + "/" + path)
+	_, err = os.Stat(suite.fake_storage_path + "/" + path)
 	suite.assert.True(err == nil || os.IsExist(err))
 
 	// Chown
