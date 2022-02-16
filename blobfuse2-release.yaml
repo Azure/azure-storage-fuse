@@ -560,7 +560,6 @@ stages:
                   l = len(sys.argv)
                   print('Length: ' + str(l))
                   if(l!=3):
-                      print(sys.argv)
                       sys.exit(1)
                   url = sys.argv[1]
                   version = sys.argv[2].replace('blobfuse2-', '')
@@ -574,7 +573,7 @@ stages:
                   resp = requests.put(url, data=json.dumps(dataDict, indent=4), headers={'Content-Type': 'application/json', 'x-ms-blob-type': 'BlockBlob'})
                   print('Status Code: ' + str(resp.status_code))
                   sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('SUCCESS')" \
-                  $(LATEST_VERSION_SAS) ${{ parameters.tag }}
+                  '$(LATEST_VERSION_SAS)' '${{ parameters.tag }}'
                 displayName: 'Updating version number'
           
             
