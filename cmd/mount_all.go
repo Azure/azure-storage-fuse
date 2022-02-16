@@ -67,6 +67,7 @@ var mountAllCmd = &cobra.Command{
 	SuggestFor: []string{"mnta", "mout"},
 	Args:       cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		VersionCheck()
 
 		mountAllOpts.blobfuse2BinPath = os.Args[0]
 		options.MountPath = args[0]
@@ -270,6 +271,7 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 		// Now that we have mount path and config file for this container fire a mount command for this one
 		cliParams[1] = contMountPath
 		cliParams[2] = "--config-file=" + contConfigFile
+		cliParams = append(cliParams, "--disable-version-check=true")
 
 		fmt.Println("Mounting container :", container, "to path :", contMountPath)
 		cmd := exec.Command(mountAllOpts.blobfuse2BinPath, cliParams...)
