@@ -1,7 +1,7 @@
 ### Which version of the blobfuse was used ?
 
 
-### Which OS (please include version) are you using ?
+### Which OS distribution and version are you using?
 
 
 ### If relevant, please share your mount command.
