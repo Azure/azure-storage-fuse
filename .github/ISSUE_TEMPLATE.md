@@ -1,4 +1,4 @@
-### Which version of the blobfuse was used ?
+### Which version of blobfuse was used?
 
 
 ### Which OS distribution and version are you using?
