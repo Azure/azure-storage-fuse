@@ -10,7 +10,7 @@
 ### What problem was encountered ?
 
 
-### Have you found a mitigation/solution ?
+### Have you found a mitigation/solution?
 
 
 ### Kindly share logs if available.
