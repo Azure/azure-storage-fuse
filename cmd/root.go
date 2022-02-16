@@ -111,6 +111,7 @@ func beginDetectNewVersion() chan interface{} {
 			executableName := executablePathSegments[len(executablePathSegments)-1]
 			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remoteVersion)
 			fmt.Fprintf(stderr, "*** "+executableName+": A new version (%s) is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
+			log.Info("*** "+executableName+": A new version (%s) is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
 
 			_, isPresent := vJson.SecurityWarnings[common.Blobfuse2Version]
 			if isPresent {
@@ -121,9 +122,11 @@ func beginDetectNewVersion() chan interface{} {
 					if len(msg) > 0 {
 						if !hasWarning {
 							fmt.Fprintf(stderr, "The following vulnerabilities were detected in your current version (%s):\n", common.Blobfuse2Version)
+							log.Info("The following vulnerabilities were detected in your current version (%s):\n", common.Blobfuse2Version)
 							hasWarning = true
 						}
 						fmt.Fprintf(stderr, "%v. %s\n", ctr, msg)
+						log.Info("%v. %s\n", ctr, msg)
 						ctr++
 					}
 				}
