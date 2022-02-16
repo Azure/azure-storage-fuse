@@ -533,8 +533,8 @@ stages:
                   isDraft: false
                   assetUploadMode: replace
   - stage: UpdateLatestVersion
-    # dependsOn: ReleaseArtifact
-    # condition: succeeded('ReleaseArtifact')
+    dependsOn: ReleaseArtifact
+    condition: succeeded('ReleaseArtifact')
     jobs:
       - job: UpdateVersion
         pool:
@@ -572,5 +572,3 @@ stages:
                   sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('SUCCESS')" \
                   '$(LATEST_VERSION_SAS)' '${{ parameters.tag }}'
                 displayName: 'Updating version number'
-          
-            
