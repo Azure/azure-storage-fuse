@@ -557,6 +557,11 @@ stages:
 
               - script: |
                   python3 -c "import json; import requests; import sys;
+                  l = len(sys.argv)
+                  print('Length: ' + str(l))
+                  if(l!=3):
+                      print(sys.argv)
+                      sys.exit(1)
                   url = sys.argv[1]
                   version = sys.argv[2].replace('blobfuse2-', '')
                   print('Version: ' + version)
