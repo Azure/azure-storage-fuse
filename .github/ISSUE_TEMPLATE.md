@@ -13,7 +13,7 @@
 ### Have you found a mitigation/solution?
 
 
-### Kindly share logs if available.
+### Please share logs if available.
 
 
 
