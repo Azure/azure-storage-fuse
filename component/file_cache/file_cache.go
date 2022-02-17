@@ -64,7 +64,7 @@ type FileCache struct {
 
 	createEmptyFile bool
 	allowNonEmpty   bool
-	cacheTimeout    uint32
+	cacheTimeout    float64
 	cleanupOnStart  bool
 	policyTrace     bool
 	missedChmodList sync.Map
@@ -178,7 +178,7 @@ func (c *FileCache) Configure() error {
 	}
 
 	c.createEmptyFile = conf.CreateEmptyFile
-	c.cacheTimeout = conf.Timeout
+	c.cacheTimeout = float64(conf.Timeout)
 	c.allowNonEmpty = conf.AllowNonEmpty
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
@@ -241,7 +241,7 @@ func (c *FileCache) Configure() error {
 	}
 
 	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s",
-		c.createEmptyFile, c.cacheTimeout, c.tmpPath)
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath)
 
 	return nil
 }
@@ -255,7 +255,7 @@ func (c *FileCache) OnConfigChange() {
 	}
 
 	c.createEmptyFile = conf.CreateEmptyFile
-	c.cacheTimeout = conf.Timeout
+	c.cacheTimeout = float64(conf.Timeout)
 	c.policyTrace = conf.EnablePolicyTrace
 	c.policy.UpdateConfig(c.GetPolicyConfig(conf))
 }
@@ -276,7 +276,7 @@ func (c *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
 		maxEviction:   conf.MaxEviction,
 		highThreshold: float64(conf.HighThreshold),
 		lowThreshold:  float64(conf.LowThreshold),
-		cacheTimeout:  conf.Timeout,
+		cacheTimeout:  uint32(conf.Timeout),
 		maxSizeMB:     conf.MaxSizeMB,
 		fileLocks:     c.fileLocks,
 		policyTrace:   conf.EnablePolicyTrace,
@@ -644,14 +644,16 @@ func (fc *FileCache) isDownloadRequired(localPath string) (bool, bool) {
 		// The file needs to be downloaded if the cacheTimeout elapsed (check last change time and last modified time)
 		fileExists = true
 		stat := finfo.Sys().(*syscall.Stat_t)
+
 		// Deciding based on last modified time is not correct. Last modified time is based on the file was last written
 		// so if file was last written back to container 2 days back then even downloading it now shall represent the same date
 		// hence immediatly after download it will become invalid. It shall be based on when the file was last downloaded.
 		// We can rely on last change time because once file is downloaded we reset its last mod time (represent same time as
 		// container on the local disk by resetting last mod time of local disk with utimens)
 		// and hence last change time on local disk will then represent the download time.
-		if time.Now().Second()-int(stat.Mtim.Sec) > int(fc.cacheTimeout) &&
-			time.Now().Second()-int(stat.Ctim.Sec) > int(fc.cacheTimeout) {
+
+		if time.Since(finfo.ModTime()).Seconds() > fc.cacheTimeout &&
+			time.Since(time.Unix(stat.Ctim.Sec, stat.Ctim.Nsec)).Seconds() > fc.cacheTimeout {
 			log.Debug("FileCache::isDownloadRequired : %s not valid as per time checks", localPath)
 			downloadRequired = true
 		}
@@ -688,8 +690,33 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		// If the lock is held then we cannot update the file
 		f, err = os.OpenFile(localPath, os.O_WRONLY, options.Mode)
 		if err != nil {
-			log.Err("FileCache::OpenFile : Failed to open file %s in WR mode", localPath)
-			return nil, err
+			if os.IsPermission(err) {
+				// File is not having write permission, for re-download we need that permissions
+				log.Err("FileCache::OpenFile : %s failed to open in write mode", localPath)
+				f, err = os.OpenFile(localPath, os.O_RDONLY, os.FileMode(0666))
+				if err == nil {
+					// Able to open file in readonly mode then reset the permissions
+					err = f.Chmod(os.FileMode(0666))
+					if err != nil {
+						log.Err("FileCache::OpenFile : Failed to reset permissions for %s", localPath)
+						return nil, err
+					}
+					f.Close()
+
+					// Retry open in write mode now
+					f, err = os.OpenFile(localPath, os.O_WRONLY, options.Mode)
+					if err != nil {
+						log.Err("FileCache::OpenFile : Failed to re-open file in write mode %s", localPath)
+						return nil, err
+					}
+				} else {
+					log.Err("FileCache::OpenFile : Failed to open file in read mode %s", localPath)
+					return nil, err
+				}
+			} else {
+				log.Err("FileCache::OpenFile : Failed to open file %s in WR mode", localPath)
+				return nil, err
+			}
 		}
 
 		// Grab an exclusive lock to prevent anyone from touching the file while we write to it
