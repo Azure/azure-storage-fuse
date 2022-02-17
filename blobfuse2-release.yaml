@@ -543,6 +543,11 @@ stages:
               sudo ls -lRt $(Build.ArtifactStagingDirectory)
             displayName: 'List Signed Artifacts'
 
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: 'blobfuse2'
+            displayName: 'Publish Signed Artifacts'
+
           - ${{ if eq(parameters.post_release, true) }}:
               # add release tags & push to github
               - task: GithubRelease@1
