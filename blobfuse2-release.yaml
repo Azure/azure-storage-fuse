@@ -3,24 +3,24 @@ parameters:
     displayName: 'New Release Tag'
     type: string
     default: 'blobfuse2-'
+  
+  - name: unit_test
+    displayName: 'Execute Unit Tests'
+    type: boolean
+    default: false
 
   - name: post_release
     displayName: 'Post Release on Github'
     type: boolean
     default: false
 
-  - name: unit_test
-    displayName: 'Execute Unit Tests'
+  - name: draft
+    displayName: 'Post as Draft Release'
     type: boolean
     default: false
 
   - name: prerelease
     displayName: 'Post as PreRelease'
-    type: boolean
-    default: false
-  
-  - name: draft
-    displayName: 'Post as Draft Release'
     type: boolean
     default: false
 
