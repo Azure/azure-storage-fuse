@@ -542,8 +542,8 @@ stages:
                 ]
 
           - script: |
-              chmod u+x $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
-              chmod u+x $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
+              chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
+              chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
               rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/*.md
               mv $(Build.ArtifactStagingDirectory)/blobfuse2/* $(Build.ArtifactStagingDirectory)/
               rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/
