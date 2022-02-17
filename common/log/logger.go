@@ -221,9 +221,9 @@ func init() {
 		panic("Unable to create blobfuse2 temp directory for logs")
 	}
 
-	logObj, _ = NewLogger("default", common.LogConfig{
+	logObj, _ = NewLogger("syslog", common.LogConfig{
 		Level:       common.ELogLevel.LOG_DEBUG(),
-		FilePath:    workDir,
+		FilePath:    os.ExpandEnv(common.DefaultLogFilePath),
 		MaxFileSize: common.DefaultMaxLogFileSize,
 		FileCount:   common.DefaultLogFileCount,
 	})

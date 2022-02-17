@@ -36,7 +36,6 @@ package cmd
 import (
 	"blobfuse2/common"
 	"fmt"
-	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -49,11 +48,7 @@ var versionCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Printf("blobfuse2 version %s\n", common.Blobfuse2Version)
 		if check {
-			select {
-			case <-beginDetectNewVersion():
-			case <-time.After(8 * time.Second):
-				return fmt.Errorf("unable to obtain latest version information. please check your internet connection")
-			}
+			return VersionCheck()
 		}
 		return nil
 	},
