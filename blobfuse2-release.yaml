@@ -17,7 +17,7 @@ parameters:
   - name: update_version
     displayName: 'Update Version'
     type: boolean
-    default: true
+    default: false
 
 # Do not trigger this pipeline automatically
 trigger: none
