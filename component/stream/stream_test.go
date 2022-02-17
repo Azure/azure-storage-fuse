@@ -131,7 +131,7 @@ func getCachedBlock(suite *streamTestSuite, offset int64, fileKey string) *cache
 	return blk.(*cacheBlock)
 }
 
-// return the block from persistance cache
+// return the block from persistence cache
 func diskBlockExists(suite *streamTestSuite, offset int64, fileKey string) bool {
 	bk := blockKey{offset, fileKey}
 	blk := &cacheBlock{}
@@ -643,8 +643,8 @@ func (suite *streamTestSuite) TestAsyncClose() {
 }
 
 // persistnace related UT
-func (suite *streamTestSuite) TestBlockPersistance() {
-	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 1\n  cache-size-mb: 16\n  policy: lru\n  persistance: true\n  disk-cache-path: ./\n  disk-size-mb: 32"
+func (suite *streamTestSuite) TestBlockPersistence() {
+	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 1\n  cache-size-mb: 16\n  policy: lru\n  persistence: true\n  disk-cache-path: ./\n  disk-size-mb: 32"
 	suite.setupTestHelper(config)
 
 	handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(0, false, int64(100*MB), 0, 0)

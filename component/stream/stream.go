@@ -68,7 +68,7 @@ type StreamOptions struct {
 	Policy            string `config:"policy" yaml:"policy,omitempty"`
 	CacheOnFileHandle bool   `config:"cache-on-file-handle" yaml:"cache-on-file-handle,omitempty"`
 	readOnly          bool   `config:"read-only"`
-	Persistance       bool   `config:"persistance"`
+	Persistence       bool   `config:"persistence"`
 	DiskPath          string `config:"disk-cache-path"`
 	DiskCacheSize     uint64 `config:"disk-size-mb"`
 	DiskTimeoutSec    uint64 `config:"disk-timeout-sec"`
@@ -169,7 +169,7 @@ func (st *Stream) Configure() error {
 		}
 		log.Trace("Stream::Configure : cache eviction policy %s", evictionPolicy)
 
-		if conf.Persistance {
+		if conf.Persistence {
 			maxDiskBlocks := int(math.Floor(float64(conf.DiskCacheSize) / float64(conf.BlockSize)))
 			diskBlockCache = gcache.New(maxDiskBlocks).LRU().EvictedFunc(st.evictDiskBlock).Build()
 
@@ -184,11 +184,11 @@ func (st *Stream) Configure() error {
 
 			_, err = os.Stat(conf.DiskPath)
 			if os.IsNotExist(err) {
-				log.Err("Stream::Configure : Config error [disk-cache-path does not exist. attempting to create]")
+				log.Info("Stream::Configure : Config error [disk-cache-path does not exist. attempting to create]")
 				err := os.Mkdir(conf.DiskPath, os.FileMode(0755))
 				if err != nil {
 					log.Err("Stream::Configure : Config error creating temp directory failed [%s]", err.Error())
-					return fmt.Errorf("failed to create temp directory for stream persistance[%s]", err.Error())
+					return fmt.Errorf("failed to create temp directory for stream persistence[%s]", err.Error())
 				}
 			}
 		}
@@ -200,7 +200,7 @@ func (st *Stream) Configure() error {
 			blocksPerFileKey: conf.BlocksPerFile,
 			blocks:           bc,
 			evictionPolicy:   evictionPolicy,
-			persistance:      conf.Persistance,
+			persistence:      conf.Persistence,
 			diskPath:         conf.DiskPath,
 			diskCacheMB:      int64(conf.DiskCacheSize),
 			diskTimeoutSec:   float64(conf.DiskTimeoutSec),
