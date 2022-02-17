@@ -573,7 +573,7 @@ stages:
                   tag: ${{ parameters.tag }}
 
                   assets: |
-                    $(Build.ArtifactStagingDirectory)/signed/*
+                    $(Build.ArtifactStagingDirectory)/blobfuse2/*
                   changeLogCompareToRelease: 'lastFullRelease'
                   changeLogType: 'commitBased'
                   isDraft: false
