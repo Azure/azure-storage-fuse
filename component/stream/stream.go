@@ -77,7 +77,7 @@ type StreamOptions struct {
 const (
 	compName              = "stream"
 	mb                    = 1024 * 1024
-	defaultDiskTimeoutSec = (1 * 60 * 60)
+	defaultDiskTimeoutSec = (30 * 60)
 )
 
 var _ internal.Component = &Stream{}
