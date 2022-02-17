@@ -542,16 +542,18 @@ stages:
                 ]
 
           - script: |
-              sudo ls -lRt $(Build.ArtifactStagingDirectory)
-              md5sum $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
-              md5sum $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
-            displayName: 'List Signed Artifacts'
-
-          - script: |
               chmod u+x $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
               chmod u+x $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
-              rm -rf *.md
+              rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/*.md
+              mv $(Build.ArtifactStagingDirectory)/blobfuse2/* $(Build.ArtifactStagingDirectory)/
+              rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/
             displayName: 'Make Artifacts executable'
+
+          - script: |
+              sudo ls -lRt $(Build.ArtifactStagingDirectory)
+              md5sum $(Build.ArtifactStagingDirectory)/*.deb
+              md5sum $(Build.ArtifactStagingDirectory)/*.rpm
+            displayName: 'List Signed Artifacts'
 
           - task: PublishBuildArtifacts@1
             inputs:
@@ -573,7 +575,7 @@ stages:
                   tag: ${{ parameters.tag }}
 
                   assets: |
-                    $(Build.ArtifactStagingDirectory)/blobfuse2/*
+                    $(Build.ArtifactStagingDirectory)/*
                   changeLogCompareToRelease: 'lastFullRelease'
                   changeLogType: 'commitBased'
                   isDraft: false
