@@ -518,6 +518,8 @@ stages:
           
           - script: |
               sudo ls -lRt $(Build.ArtifactStagingDirectory)
+              md5sum *.deb
+              md5sum *.rpm
             displayName: 'List Artifacts'
           
           - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
@@ -541,11 +543,19 @@ stages:
 
           - script: |
               sudo ls -lRt $(Build.ArtifactStagingDirectory)
+              md5sum *.deb
+              md5sum *.rpm
             displayName: 'List Signed Artifacts'
+
+          - script: |
+              chmod u+x $binaries_root/*.rpm
+              chmod u+x $binaries_root/*.deb
+              rm -rf *.md
+            displayName: 'Make Artifacts executable'
 
           - task: PublishBuildArtifacts@1
             inputs:
-              artifactName: 'blobfuse2'
+              artifactName: 'signed'
             displayName: 'Publish Signed Artifacts'
 
           - ${{ if eq(parameters.post_release, true) }}:
@@ -563,7 +573,7 @@ stages:
                   tag: ${{ parameters.tag }}
 
                   assets: |
-                    $(Build.ArtifactStagingDirectory)/blobfuse2/packages/*
+                    $(Build.ArtifactStagingDirectory)/signed/*
                   changeLogCompareToRelease: 'lastFullRelease'
                   changeLogType: 'commitBased'
                   isDraft: false
