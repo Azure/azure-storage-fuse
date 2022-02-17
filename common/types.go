@@ -34,6 +34,7 @@
 package common
 
 import (
+	"crypto/rand"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -174,24 +175,41 @@ type Block struct {
 	StartIndex int64
 	EndIndex   int64
 	Size       int64
-	Data       []byte
 }
 
 // list that holds blocks containing ids and corresponding offsets
 type BlockOffsetList []*Block
 
-func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (BlockOffsetList, int64) {
+func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (BlockOffsetList, int64, bool) {
 	size := int64(0)
-	currentBlockOffset := int64(0)
+	currentBlockOffset := offset
 	var modBlockList BlockOffsetList
-	// TODO: change this to binary search (logn) for better perf
+	// TODO: chSange this to binary search (logn) for better perf
 	for _, blk := range bol {
 		if currentBlockOffset >= blk.StartIndex && currentBlockOffset <= blk.EndIndex && currentBlockOffset <= offset+length {
 			modBlockList = append(modBlockList, blk)
 			size += blk.Size
-			currentBlockOffset = blk.EndIndex
 		}
-		currentBlockOffset += blk.Size
+		currentBlockOffset = blk.EndIndex
 	}
-	return modBlockList, size
+	return modBlockList, size, offset+length >= bol[len(bol)-1].EndIndex
+}
+
+// A UUID representation compliant with specification in RFC 4122 document.
+type uuid [16]byte
+
+// NewUUID returns a new uuid using RFC 4122 algorithm.
+func NewUUID() (u uuid) {
+	u = uuid{}
+	// Set all bits to randomly (or pseudo-randomly) chosen values.
+	rand.Read(u[:])
+	u[8] = (u[8] | 0x40) & 0x7F // u.setVariant(ReservedRFC4122)
+
+	var version byte = 4
+	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
+	return
+}
+
+func (u uuid) Bytes() []byte {
+	return u[:]
 }
