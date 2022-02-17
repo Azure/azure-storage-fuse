@@ -14,6 +14,16 @@ parameters:
     type: boolean
     default: false
 
+  - name: prerelease
+    displayName: 'Post as PreRelease'
+    type: boolean
+    default: false
+  
+  - name: draft
+    displayName: 'Post as Draft Release'
+    type: boolean
+    default: false
+
 # Do not trigger this pipeline automatically
 trigger: none
 pr: none
@@ -578,6 +588,6 @@ stages:
                     $(Build.ArtifactStagingDirectory)/*
                   changeLogCompareToRelease: 'lastFullRelease'
                   changeLogType: 'commitBased'
-                  isDraft: false
-                  isPreRelease: true
+                  isDraft: ${{ parameters.draft }}
+                  isPreRelease: ${{ parameters.prerelease }}
                   assetUploadMode: replace
