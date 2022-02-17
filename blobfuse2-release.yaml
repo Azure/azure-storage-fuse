@@ -545,13 +545,9 @@ stages:
         steps:
           - checkout: none
 
-          - script: |
-              echo ${{ parameters.tag }}
-            displayName: 'Tag Name'
-
           - ${{ if eq(parameters.update_version, true) }}:
               - script: |
-                  sudo apt install python3
+                  sudo apt-get install python3 -y
                   python3 --version
                 displayName: 'Installing Python'
 
@@ -565,8 +561,8 @@ stages:
               # install blobfuse2
               - script: |
                   cd $(Build.ArtifactStagingDirectory)/blobfuse2
-                  echo `ls | grep ubuntu-18.04`
-                  sudo apt install ./`ls | grep ubuntu-18.04`
+                  ls | grep ubuntu-18.04
+                  sudo apt-get install ./`ls | grep ubuntu-18.04` -y
                   blobfuse2 version
                 displayName: 'Installing blobfuse2'
 
@@ -579,6 +575,7 @@ stages:
                       sys.exit(1)
                   url = sys.argv[1]
                   version = sys.argv[2].split(' ')[2]
+                  print('Version: ' + version)
                   if(len(version)==0):
                       print('Incorrect Release Tag')
                       sys.exit(1)
