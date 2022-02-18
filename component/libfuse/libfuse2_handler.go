@@ -193,11 +193,15 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 	log.Trace("Libfuse::libfuse2_init : init")
 	C.populate_uid_gid()
 
+	log.Info("Libfuse::libfuse2_init : Kernel Caps : %d", conn.capable)
+
 	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
+		log.Info("Libfuse::libfuse2_init : Enable Capability : FUSE_CAP_ASYNC_READ")
 		conn.want |= C.FUSE_CAP_ASYNC_READ
 	}
 
 	if (conn.capable & C.FUSE_CAP_BIG_WRITES) != 0 {
+		log.Info("Libfuse::libfuse2_init : Enable Capability : FUSE_CAP_BIG_WRITES")
 		conn.want |= C.FUSE_CAP_BIG_WRITES
 	}
 

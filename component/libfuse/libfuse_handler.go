@@ -193,27 +193,33 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	log.Trace("Libfuse::libfuse_init : init")
 	C.populate_uid_gid()
 
+	log.Info("Libfuse::libfuse_init : Kernel Caps : %d", conn.capable)
+
 	// Populate connection information
 	// conn.want |= C.FUSE_CAP_NO_OPENDIR_SUPPORT
 
 	// Allow fuse to perform parallel operations on a directory
 	if (conn.capable & C.FUSE_CAP_PARALLEL_DIROPS) != 0 {
+		log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_PARALLEL_DIROPS")
 		conn.want |= C.FUSE_CAP_PARALLEL_DIROPS
 	}
 
 	// Kernel shall invalidate the data in page cache if file size of LMT changes
 	if (conn.capable & C.FUSE_CAP_AUTO_INVAL_DATA) != 0 {
+		log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_AUTO_INVAL_DATA")
 		conn.want |= C.FUSE_CAP_AUTO_INVAL_DATA
 	}
 
 	// Enable read-dir plus where attributes of each file are returned back
 	// in the list call itself and fuse does not need to fire getAttr after list
 	if (conn.capable & C.FUSE_CAP_READDIRPLUS) != 0 {
+		log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_READDIRPLUS")
 		conn.want |= C.FUSE_CAP_READDIRPLUS
 	}
 
 	// Allow fuse to read a file in parallel on different offsets
 	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
+		log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_ASYNC_READ")
 		conn.want |= C.FUSE_CAP_ASYNC_READ
 	}
 
