@@ -213,10 +213,10 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	conn.want |= C.FUSE_CAP_SPLICE_WRITE
 
 	// Max background thread on the fuse layer for high parallelism
-	conn.max_background = 64
+	conn.max_background = 128
 
 	// While reading a file let kernel do readahed for better perf
-	conn.max_readahead = (2 * 1024 * 1024)
+	//conn.max_readahead = (2 * 1024 * 1024)
 
 	conn.max_write = (4 * 1024 * 1024)
 	conn.max_read =  (4 * 1024 * 1024)
