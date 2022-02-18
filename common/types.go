@@ -35,6 +35,7 @@ package common
 
 import (
 	"crypto/rand"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -187,29 +188,23 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (BlockOffset
 	// TODO: chSange this to binary search (logn) for better perf
 	for _, blk := range bol {
 		if currentBlockOffset >= blk.StartIndex && currentBlockOffset <= blk.EndIndex && currentBlockOffset <= offset+length {
+			fmt.Println(currentBlockOffset, blk.StartIndex)
 			modBlockList = append(modBlockList, blk)
 			size += blk.Size
+			currentBlockOffset = blk.EndIndex
 		}
-		currentBlockOffset = blk.EndIndex
 	}
 	return modBlockList, size, offset+length >= bol[len(bol)-1].EndIndex
 }
 
-// A UUID representation compliant with specification in RFC 4122 document.
-type uuid [16]byte
-
-// NewUUID returns a new uuid using RFC 4122 algorithm.
-func NewUUID() (u uuid) {
-	u = uuid{}
+// NewUUID returns a new uuid using RFC 4122 algorithm with the given length.
+func NewUUID(length int64) []byte {
+	u := make([]byte, length)
 	// Set all bits to randomly (or pseudo-randomly) chosen values.
 	rand.Read(u[:])
 	u[8] = (u[8] | 0x40) & 0x7F // u.setVariant(ReservedRFC4122)
 
 	var version byte = 4
 	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
-	return
-}
-
-func (u uuid) Bytes() []byte {
 	return u[:]
 }

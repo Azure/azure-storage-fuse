@@ -677,7 +677,10 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (common.BlockOffsetList, b
 	return blockList, len(blockList) > 0, nil
 }
 
-func (bb *BlockBlob) createNewBlocks(modBlockList common.BlockOffsetList, blockList common.BlockOffsetList, offset int64, length int64) (bool, int64) {
+func (bb *BlockBlob) createNewBlocks(modBlkList *common.BlockOffsetList, blkList *common.BlockOffsetList, offset int64, length int64, blockIdLength int64) (bool, int64, common.BlockOffsetList, common.BlockOffsetList) {
+	blockList := *blkList
+	modBlockList := *modBlkList
+
 	// BufferSize is the size of the buffer that will go beyond our current blob (appended)
 	var bufferSize int64
 	// counter will help us keep track of how many blocks we've created
@@ -698,31 +701,33 @@ func (bb *BlockBlob) createNewBlocks(modBlockList common.BlockOffsetList, blockL
 	for i := 0; i < int(bufferSize); i++ {
 		counter += 1
 		// create a new block if we hit our block size
-		if int64(i)%bb.Config.blockSize == 0 {
-			newBlockId := base64.StdEncoding.EncodeToString(common.NewUUID().Bytes())
-			modBlockList = append(modBlockList,
-				&common.Block{
-					Id:         newBlockId,
-					StartIndex: startIndex,
-					EndIndex:   startIndex + bb.Config.blockSize,
-					Size:       bb.Config.blockSize,
-				})
-			startIndex = startIndex + bb.Config.blockSize
+		if int64(i)%bb.Config.blockSize == 0 && i != 0 {
+			newBlockId := base64.StdEncoding.EncodeToString(common.NewUUID(blockIdLength))
+			newBlock := &common.Block{
+				Id:         newBlockId,
+				StartIndex: startIndex,
+				EndIndex:   startIndex + bb.Config.blockSize,
+				Size:       bb.Config.blockSize,
+			}
+			modBlockList = append(modBlockList, newBlock)
+			blockList = append(blockList, newBlock)
+			startIndex = newBlock.EndIndex
 			// reset the counter since it will help us to determine if there is leftovers at the end
 			counter = 0
 		}
 	}
 	if counter != 0 {
-		newBlockId := base64.StdEncoding.EncodeToString(common.NewUUID().Bytes())
-		modBlockList = append(modBlockList,
-			&common.Block{
-				Id:         newBlockId,
-				StartIndex: startIndex,
-				EndIndex:   startIndex + counter,
-				Size:       counter,
-			})
+		newBlockId := base64.StdEncoding.EncodeToString(common.NewUUID(blockIdLength))
+		newBlock := &common.Block{
+			Id:         newBlockId,
+			StartIndex: startIndex,
+			EndIndex:   startIndex + counter,
+			Size:       counter,
+		}
+		modBlockList = append(modBlockList, newBlock)
+		blockList = append(blockList, newBlock)
 	}
-	return appendOnly, bufferSize
+	return appendOnly, bufferSize, modBlockList, blockList
 }
 
 // Write : write data at given offset to a blob
@@ -730,14 +735,17 @@ func (bb *BlockBlob) Write(name string, offset int64, length int64, data []byte,
 	log.Trace("BlockBlob::Write : name %s", name)
 	defer log.TimeTrack(time.Now(), "BlockBlob::Write", name)
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+
 	multipleBlocks := true
 	newBufferSize := int64(0)
 	appendOnly := false
 	var blockList common.BlockOffsetList
+
 	// if this is not 0 then we passed a cached block ID list
 	if len(FileOffsets) == 0 {
 		blockList, multipleBlocks, _ = bb.GetFileBlockOffsets(name)
 	}
+
 	// case 1: file consists of no blocks (small file)
 	if !multipleBlocks {
 		// get all the data
@@ -758,28 +766,38 @@ func (bb *BlockBlob) Write(name string, offset int64, length int64, data []byte,
 		// case 2: Given offset is within the size of the blob - and the blob consists of multiple blocks
 		// TODO: case 3: offset is ahead of blocks (appending)
 	} else {
-
 		modifiedBlockList, oldDataSize, exceedsFileBlocks := blockList.FindBlocksToModify(offset, length)
 		if exceedsFileBlocks {
-			appendOnly, newBufferSize = bb.createNewBlocks(modifiedBlockList, blockList, offset, length)
+			// get length of blockID in order to generate a consistent size block ID so storage does not throw
+			existingBlockId, _ := base64.StdEncoding.DecodeString(blockList[0].Id)
+			blockIdLength := len(existingBlockId)
+			appendOnly, newBufferSize, modifiedBlockList, blockList = bb.createNewBlocks(&modifiedBlockList, &blockList, offset, length, int64(blockIdLength))
 		}
+
 		fmt.Println("BL ", blockList[len(blockList)-1])
 		fmt.Println("MBL ", modifiedBlockList[len(modifiedBlockList)-1])
 		if len(modifiedBlockList) > 0 {
+			fmt.Println("new storage ", newBufferSize)
 			// buffer that holds that pre-existing data in those blocks we're interested in
 			oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
 			if !appendOnly {
 				// fetch the blocks that will be impacted by the new changes so we can overwrite them
 				bb.ReadInBuffer(name, modifiedBlockList[0].StartIndex, oldDataSize, oldDataBuffer)
 			}
+
 			blockOffset := offset - modifiedBlockList[0].StartIndex
 			copy(oldDataBuffer[blockOffset:], data)
-
+			pointer := int64(0)
 			for _, blk := range modifiedBlockList {
+				if blk.Size == 31 {
+					fmt.Println(string(oldDataBuffer[pointer:blk.Size+pointer]), blk.Id, modifiedBlockList[0].Id, blockList[0].Id)
+				}
+
 				_, err := blobURL.StageBlock(context.Background(),
-					blk.Id, bytes.NewReader(oldDataBuffer[blk.StartIndex:blk.EndIndex]),
+					blk.Id, bytes.NewReader(oldDataBuffer[pointer:blk.Size+pointer]),
 					bb.blobAccCond.LeaseAccessConditions,
 					nil, bb.downloadOptions.ClientProvidedKeyOptions)
+				pointer = blk.Size + pointer
 				if err != nil {
 					fmt.Println("error: ", err)
 				}
