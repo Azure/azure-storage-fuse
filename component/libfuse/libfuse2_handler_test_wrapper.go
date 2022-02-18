@@ -411,7 +411,11 @@ func testFsync(suite *libfuseTestSuite) {
 	openOptions := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
 	suite.mock.EXPECT().OpenFile(openOptions).Return(handle, nil)
 	libfuse_open(path, info)
+
+	// libfuse component will return back handle in form of an integer value
+	// that needs to be converted back to a pointer to a handle object
 	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(info.fh)))
+	suite.assert.NotEqual(C.ulong(0), info.fh)
 
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(nil)
@@ -445,7 +449,11 @@ func testFsyncError(suite *libfuseTestSuite) {
 	openOptions := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
 	suite.mock.EXPECT().OpenFile(openOptions).Return(handle, nil)
 	libfuse_open(path, info)
+
+	// libfuse component will return back handle in form of an integer value
+	// that needs to be converted back to a pointer to a handle object
 	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(info.fh)))
+	suite.assert.NotEqual(C.ulong(0), info.fh)
 
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(errors.New("failed to sync file"))

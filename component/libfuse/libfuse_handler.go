@@ -55,6 +55,18 @@ import (
 	"unsafe"
 )
 
+/* --- IMPORTANT NOTE ---
+In below code lot of places we are doing this sort of conversions:
+		- fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
+		- handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+
+To open/create calls we need to return back a handle to libfuse which shall be an integer value
+As in blobfuse we maintain handle as an object, instead of returning back a running integer value as handle
+we are convering back the pointer to our handle object to an integer value and sending it to libfuse.
+When read/write/flush/close call comes libfuse will supply this handle value back to blobfuse.
+In those calls we will convert integer value back to a pointer and get our valid handle object back for that file.
+*/
+
 const (
 	C_ENOENT = int(-C.ENOENT)
 	C_EIO    = int(-C.EIO)
@@ -182,12 +194,24 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 
 	// Populate connection information
 	// conn.want |= C.FUSE_CAP_NO_OPENDIR_SUPPORT
+
+	// Allow fuse to perform parallel operations on a directory
 	conn.want |= C.FUSE_CAP_PARALLEL_DIROPS
+
+	// Kernel shall invalidate the data in page cache if file size of LMT changes
 	conn.want |= C.FUSE_CAP_AUTO_INVAL_DATA
+	
+	// Enable read-dir plus where attributes of each file are returned back 
+	// in the list call itself and fuse does not need to fire getAttr after list
 	conn.want |= C.FUSE_CAP_READDIRPLUS
+
+	// Allow fuse to read a file in parallel on different offsets
 	conn.want |= C.FUSE_CAP_ASYNC_READ
 
+	// Max background thread on the fuse layer for high parallelism
 	conn.max_background = 128
+
+	// While reading a file let kernel do readahed for better perf
 	conn.max_readahead = 4194304
 
 	return nil

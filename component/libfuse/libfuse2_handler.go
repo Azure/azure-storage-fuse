@@ -55,6 +55,18 @@ import (
 	"unsafe"
 )
 
+/* --- IMPORTANT NOTE ---
+In below code lot of places we are doing this sort of conversions:
+		- fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
+		- handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+
+To open/create calls we need to return back a handle to libfuse which shall be an integer value
+As in blobfuse we maintain handle as an object, instead of returning back a running integer value as handle
+we are convering back the pointer to our handle object to an integer value and sending it to libfuse.
+When read/write/flush/close call comes libfuse will supply this handle value back to blobfuse.
+In those calls we will convert integer value back to a pointer and get our valid handle object back for that file.
+*/
+
 const (
 	C_ENOENT = int(-C.ENOENT)
 	C_EIO    = int(-C.EIO)

@@ -585,10 +585,11 @@ func (suite *fileCacheTestSuite) TestOpenFileNotInCache() {
 
 	// loop until file does not exist - done due to async nature of eviction
 	_, err := os.Stat(suite.cache_path + "/" + path)
-	for !os.IsNotExist(err) {
+	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
 		time.Sleep(time.Second)
 		_, err = os.Stat(suite.cache_path + "/" + path)
 	}
+	suite.assert.True(os.IsNotExist(err))
 
 	// Download is required
 	handle, err = suite.fileCache.OpenFile(internal.OpenFileOptions{Name: path, Mode: 0777})
@@ -638,10 +639,11 @@ func (suite *fileCacheTestSuite) TestCloseFile() {
 
 	// loop until file does not exist - done due to async nature of eviction
 	_, err = os.Stat(suite.cache_path + "/" + path)
-	for !os.IsNotExist(err) {
+	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
 		time.Sleep(time.Second)
 		_, err = os.Stat(suite.cache_path + "/" + path)
 	}
+	suite.assert.True(os.IsNotExist(err))
 
 	suite.assert.False(suite.fileCache.policy.IsCached(path)) // File should be invalidated
 	// File should not be in cache
@@ -961,10 +963,11 @@ func (suite *fileCacheTestSuite) TestGetAttrCase4() {
 
 	// Wait untill file is evicted
 	_, err = os.Stat(suite.cache_path + "/" + file)
-	for !os.IsNotExist(err) {
+	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
 		time.Sleep(time.Second)
 		_, err = os.Stat(suite.cache_path + "/" + file)
 	}
+	suite.assert.True(os.IsNotExist(err))
 
 	// open the file in parallel and try getting the size of file while open is on going
 	go suite.fileCache.OpenFile(internal.OpenFileOptions{Name: file, Mode: 0666})
@@ -996,10 +999,11 @@ func (suite *fileCacheTestSuite) TestRenameFileNotInCache() {
 	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
 
 	_, err := os.Stat(suite.cache_path + "/" + src)
-	for !os.IsNotExist(err) {
+	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
 		time.Sleep(time.Second)
 		_, err = os.Stat(suite.cache_path + "/" + src)
 	}
+	suite.assert.True(os.IsNotExist(err))
 
 	// Path should be in fake storage
 	_, err = os.Stat(suite.fake_storage_path + "/" + src)
@@ -1078,10 +1082,11 @@ func (suite *fileCacheTestSuite) TestTruncateFileNotInCache() {
 	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
 
 	_, err := os.Stat(suite.cache_path + "/" + path)
-	for !os.IsNotExist(err) {
+	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
 		time.Sleep(time.Second)
 		_, err = os.Stat(suite.cache_path + "/" + path)
 	}
+	suite.assert.True(os.IsNotExist(err))
 
 	// Path should be in fake storage
 	_, err = os.Stat(suite.fake_storage_path + "/" + path)
@@ -1153,10 +1158,11 @@ func (suite *fileCacheTestSuite) TestChmodNotInCache() {
 	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
 
 	_, err := os.Stat(suite.cache_path + "/" + path)
-	for !os.IsNotExist(err) {
+	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
 		time.Sleep(time.Second)
 		_, err = os.Stat(suite.cache_path + "/" + path)
 	}
+	suite.assert.True(os.IsNotExist(err))
 
 	// Path should be in fake storage
 	_, err = os.Stat(suite.fake_storage_path + "/" + path)
@@ -1224,10 +1230,11 @@ func (suite *fileCacheTestSuite) TestChmodCase2() {
 
 	// loop until file does not exist - done due to async nature of eviction
 	_, err = os.Stat(suite.cache_path + "/" + path)
-	for !os.IsNotExist(err) {
+	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
 		time.Sleep(time.Second)
 		_, err = os.Stat(suite.cache_path + "/" + path)
 	}
+	suite.assert.True(os.IsNotExist(err))
 
 	// Get the attributes and now and check file mode is set correctly or not
 	attr, err := suite.fileCache.GetAttr(internal.GetAttrOptions{Name: path})
@@ -1245,10 +1252,11 @@ func (suite *fileCacheTestSuite) TestChownNotInCache() {
 	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
 
 	_, err := os.Stat(suite.cache_path + "/" + path)
-	for !os.IsNotExist(err) {
+	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
 		time.Sleep(time.Second)
 		_, err = os.Stat(suite.cache_path + "/" + path)
 	}
+	suite.assert.True(os.IsNotExist(err))
 
 	// Path should be in fake storage
 	_, err = os.Stat(suite.fake_storage_path + "/" + path)
@@ -1372,6 +1380,22 @@ func (suite *fileCacheTestSuite) TestCachePathSymlink() {
 	d, err := suite.fileCache.ReadFile(internal.ReadFileOptions{Handle: handle})
 	suite.assert.Nil(err)
 	suite.assert.EqualValues(data, d)
+}
+
+func (suite *fileCacheTestSuite) TestZZDirectRead() {
+	defer suite.cleanupTest()
+	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  direct-read: true\n  timeout: 0\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+
+	suite.setupTestHelper(configuration)
+
+	file := "file"
+	handle, err := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
+	suite.assert.Nil(err)
+	suite.assert.NotNil(handle)
+	suite.assert.True(handle.Cached())
+
+	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
 }
 
 // In order for 'go test' to run this suite, we need to create
