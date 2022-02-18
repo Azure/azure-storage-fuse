@@ -430,15 +430,8 @@ jobs:
             RHEL-7.5-new-curl:
               DistroVer: "RHEL-7.5"
               AgentName: "RHEL 7.5"
-              Description: "Red Hat Enterprise Linux 7.5 New Curl"
+              Description: "Red Hat Enterprise Linux 7.5"
               containerName: 'test-cnt-rhel-75'
-              hostedAgent: false
-
-            RHEL-7.5-old-curl:
-              DistroVer: "RHEL-7.5"
-              AgentName: "RHEL 7.5.2"
-              Description: "Red Hat Enterprise Linux 7.5 Old Curl"
-              containerName: 'test-cnt-rhel-75-test'
               hostedAgent: false
 
             RHEL-8.1:
