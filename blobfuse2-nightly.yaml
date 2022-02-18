@@ -427,7 +427,7 @@ jobs:
         timeoutInMinutes: 30
         strategy:
           matrix:
-            RHEL-7.5-new-curl:
+            RHEL-7.5:
               DistroVer: "RHEL-7.5"
               AgentName: "RHEL 7.5"
               Description: "Red Hat Enterprise Linux 7.5"
