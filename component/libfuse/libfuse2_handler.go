@@ -196,9 +196,9 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 	conn.want |= C.FUSE_CAP_ASYNC_READ
 	conn.want |= C.FUSE_CAP_BIG_WRITES
 
-	conn.max_write = 4194304
 	conn.max_background = 128
-	conn.max_readahead = 4194304
+	//conn.max_write = 4194304
+	//conn.max_readahead = 4194304
 
 	return nil
 }

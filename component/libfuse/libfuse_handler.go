@@ -163,7 +163,7 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	arguments = append(arguments, "blobfuse2",
 		C.GoString(opts.mount_path),
 		"-o", options,
-		"-f", "-ofsname=blobfuse2", "-okernel_cache", "-omax_read=4194304")
+		"-f", "-ofsname=blobfuse2", "-okernel_cache") // "-omax_read=4194304"
 
 	if opts.trace_enable {
 		arguments = append(arguments, "-d")
@@ -201,8 +201,8 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 
 	// Kernel shall invalidate the data in page cache if file size of LMT changes
 	conn.want |= C.FUSE_CAP_AUTO_INVAL_DATA
-	
-	// Enable read-dir plus where attributes of each file are returned back 
+
+	// Enable read-dir plus where attributes of each file are returned back
 	// in the list call itself and fuse does not need to fire getAttr after list
 	conn.want |= C.FUSE_CAP_READDIRPLUS
 
@@ -210,7 +210,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	conn.want |= C.FUSE_CAP_ASYNC_READ
 
 	// Let kernel cache the write data and send us in bigger blocks
-	conn.want |= C.FUSE_CAP_SPLICE_WRITE
+	//conn.want |= C.FUSE_CAP_SPLICE_WRITE
 
 	// Max background thread on the fuse layer for high parallelism
 	conn.max_background = 128
@@ -218,8 +218,8 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	// While reading a file let kernel do readahed for better perf
 	//conn.max_readahead = (2 * 1024 * 1024)
 
-	conn.max_write = (4 * 1024 * 1024)
-	conn.max_read =  (4 * 1024 * 1024)
+	//conn.max_write = (4 * 1024 * 1024)
+	//conn.max_read =  (4 * 1024 * 1024)
 
 	return nil
 }
