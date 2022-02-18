@@ -34,9 +34,10 @@ steps:
 
   # Check blobfuse2 is mounted or not    
   - script: |
-      sudo ps -aux | grep blobfuse2
-      sleep 3
-      sudo df | grep blobfuse2
+      ps -aux | grep blobfuse2
+      df
+      echo "-------------------------------------------------------------------"
+      df | grep blobfuse2
       exit $?
     displayName: 'HugeList: ${{ parameters.idstring }} Verify Mount'
     env:
@@ -56,10 +57,12 @@ steps:
   - script: |
       cat blobfuse2-logs.txt
     displayName: 'View Logs'
+    condition: always()
 
   - script: |
       > blobfuse2-logs.txt
     displayName: 'Clear Logs'
+    condition: always()
 
   # Never cleanup here on container otherwise we lose the huge data, just unmount and go
   - script: |
