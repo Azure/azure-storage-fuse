@@ -29,7 +29,7 @@ steps:
       mountStep: ${{ parameters.mountStep }}
 
   # Run End to End test
-  -   # Check blobfuse2 is mounted or not    
+  # Check blobfuse2 is mounted or not    
   - script: |
       df
       df | grep blobfuse2
