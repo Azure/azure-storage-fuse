@@ -163,7 +163,8 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	arguments = append(arguments, "blobfuse2",
 		C.GoString(opts.mount_path),
 		"-o", options,
-		"-f", "-ofsname=blobfuse2", "-okernel_cache")
+		"-f", "-ofsname=blobfuse2", "-okernel_cache", "-omax_read=4194304")
+
 	if opts.trace_enable {
 		arguments = append(arguments, "-d")
 	}
@@ -208,11 +209,17 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	// Allow fuse to read a file in parallel on different offsets
 	conn.want |= C.FUSE_CAP_ASYNC_READ
 
+	// Let kernel cache the write data and send us in bigger blocks
+	conn.want |= C.FUSE_CAP_SPLICE_WRITE
+
 	// Max background thread on the fuse layer for high parallelism
-	conn.max_background = 128
+	conn.max_background = 64
 
 	// While reading a file let kernel do readahed for better perf
-	conn.max_readahead = 4194304
+	conn.max_readahead = (2 * 1024 * 1024)
+
+	conn.max_write = (4 * 1024 * 1024)
+	conn.max_read =  (4 * 1024 * 1024)
 
 	return nil
 }
