@@ -38,7 +38,6 @@ steps:
       sudo df | grep blobfuse2
       exit $?
     displayName: 'HugeList: ${{ parameters.idstring }} Verify Mount'
-    continueOnError: false
     env:
       mount_dir: ${{ parameters.mount_dir }}
 

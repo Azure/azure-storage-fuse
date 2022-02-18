@@ -36,7 +36,6 @@ steps:
       sudo df | grep blobfuse2
       exit $?
     displayName: 'Verify Mount'
-    continueOnError: true
     env:
       mount_dir: ${{ parameters.mount_dir }}
 
