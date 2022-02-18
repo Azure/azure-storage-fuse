@@ -35,7 +35,6 @@ package common
 
 import (
 	"crypto/rand"
-	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -182,13 +181,13 @@ type Block struct {
 type BlockOffsetList []*Block
 
 func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (BlockOffsetList, int64, bool) {
+	// size of mod block list
 	size := int64(0)
 	currentBlockOffset := offset
 	var modBlockList BlockOffsetList
-	// TODO: chSange this to binary search (logn) for better perf
+	// TODO: change this to binary search (logn) for better perf
 	for _, blk := range bol {
 		if currentBlockOffset >= blk.StartIndex && currentBlockOffset <= blk.EndIndex && currentBlockOffset <= offset+length {
-			fmt.Println(currentBlockOffset, blk.StartIndex)
 			modBlockList = append(modBlockList, blk)
 			size += blk.Size
 			currentBlockOffset = blk.EndIndex
@@ -203,7 +202,6 @@ func NewUUID(length int64) []byte {
 	// Set all bits to randomly (or pseudo-randomly) chosen values.
 	rand.Read(u[:])
 	u[8] = (u[8] | 0x40) & 0x7F // u.setVariant(ReservedRFC4122)
-
 	var version byte = 4
 	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
 	return u[:]
