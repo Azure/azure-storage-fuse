@@ -34,9 +34,9 @@ steps:
 
   # Check blobfuse2 is mounted or not    
   - script: |
-      df
       sudo ps -aux | grep blobfuse2
-      ls -l ${mount_dir}
+      sudo df | grep blobfuse2
+      exit $?
     displayName: 'HugeList: ${{ parameters.idstring }} Verify Mount'
     continueOnError: false
     env:

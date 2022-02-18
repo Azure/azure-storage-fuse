@@ -193,12 +193,19 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 	log.Trace("Libfuse::libfuse2_init : init")
 	C.populate_uid_gid()
 
-	conn.want |= C.FUSE_CAP_ASYNC_READ
-	conn.want |= C.FUSE_CAP_BIG_WRITES
+	if (conn.capable & C.FUSE_CAP_ASYNC_READ) != 0 {
+		conn.want |= C.FUSE_CAP_ASYNC_READ
+	}
 
+	if (conn.capable & C.FUSE_CAP_BIG_WRITES) != 0 {
+		conn.want |= C.FUSE_CAP_BIG_WRITES
+	}
+
+	// Max background thread on the fuse layer for high parallelism
 	conn.max_background = 128
-	//conn.max_write = 4194304
-	//conn.max_readahead = 4194304
+
+	// While reading a file let kernel do readahed for better perf
+	conn.max_readahead = (4 * 1024 * 1024)
 
 	return nil
 }
