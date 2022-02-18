@@ -32,6 +32,7 @@ steps:
   # Check blobfuse2 is mounted or not    
   - script: |
       df
+      echo "-------------------------------------------------------------------"
       df | grep blobfuse2
       exit $?
     displayName: 'Verify Mount'

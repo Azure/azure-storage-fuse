@@ -130,8 +130,8 @@ stages:
             Debian-10.0:
               DistroVer: 'Debian10.0'
               AgentName: 'DEB 10.0'
-              fuselib: 'libfuse3-dev'
-              tags: 'fuse3'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
         pool:
           name: 'Blobfuse Pool'
           demands:

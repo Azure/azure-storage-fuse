@@ -535,8 +535,8 @@ jobs:
               Description: "Debian Linux 10.0 Gen 1"
               containerName: 'test-cnt-deb-10'
               hostedAgent: false
-              fuselib: 'libfuse3-dev'
-              tags: 'fuse3'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
         pool:
           name: 'Blobfuse Pool'
           demands:

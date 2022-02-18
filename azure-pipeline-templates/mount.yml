@@ -33,8 +33,7 @@ steps:
   # Check blobfuse2 is mounted or not    
   - script: |
       sudo ps -aux | grep blobfuse2
-      sudo df 
-    displayName: 'Verify Mount'
+    displayName: 'Print Process info'
     env:
       mount_dir: ${{ parameters.mount_dir }}
 
