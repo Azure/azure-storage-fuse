@@ -70,7 +70,8 @@ const compName = "attr_cache"
 
 // for now caching only first 1 mil files in a directory
 // caching more means increased memory usage of the process
-const maxFilesPerDir = 1000000
+const maxFilesPerDir = 1000000 // 1 million max files to be cached per directory
+const maxTotalFiles = 10000000 // 10 million max files overall to be cached
 
 //  Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AttrCache{}
@@ -268,6 +269,10 @@ func (ac *AttrCache) cacheAttributes(pathList []*internal.ObjAttr) {
 		currTime := time.Now()
 
 		for _, attr := range pathList {
+			if len(ac.cacheMap) > maxTotalFiles {
+				break
+			}
+
 			ac.cacheLock.Lock()
 			ac.cacheMap[internal.TruncateDirName(attr.Path)] = newAttrCacheItem(attr, true, currTime)
 			ac.cacheLock.Unlock()
@@ -365,7 +370,7 @@ func (ac *AttrCache) TruncateFile(options internal.TruncateFileOptions) error {
 
 		// no need to truncate the name of the file
 		value, found := ac.cacheMap[options.Name]
-		if found && value.valid && value.exists {
+		if found && value.valid() && value.exists() {
 			value.setSize(options.Size)
 		}
 	}
@@ -421,7 +426,7 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 	ac.cacheLock.RUnlock()
 
 	// Try to serve the request from the attribute cache
-	if found && value.valid && time.Since(value.cachedAt).Seconds() < float64(ac.cacheTimeout) {
+	if found && value.valid() && time.Since(value.cachedAt).Seconds() < float64(ac.cacheTimeout) {
 		if value.isDeleted() {
 			log.Debug("AttrCache::GetAttr : %s served from cache", options.Name)
 			// no entry if path does not exist
@@ -445,7 +450,9 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 
 	if err == nil {
 		// Retrieved attributes so cache them
-		ac.cacheMap[truncatedPath] = newAttrCacheItem(pathAttr, true, time.Now())
+		if len(ac.cacheMap) < maxTotalFiles {
+			ac.cacheMap[truncatedPath] = newAttrCacheItem(pathAttr, true, time.Now())
+		}
 	} else if err == syscall.ENOENT {
 		// Path does not exist so cache a no-entry item
 		ac.cacheMap[truncatedPath] = newAttrCacheItem(&internal.ObjAttr{}, false, time.Now())
@@ -481,7 +488,7 @@ func (ac *AttrCache) Chmod(options internal.ChmodOptions) error {
 		defer ac.cacheLock.RUnlock()
 
 		value, found := ac.cacheMap[internal.TruncateDirName(options.Name)]
-		if found && value.valid && value.exists {
+		if found && value.valid() && value.exists() {
 			value.setMode(options.Mode)
 		}
 	}
