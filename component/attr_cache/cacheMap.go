@@ -34,37 +34,58 @@
 package attr_cache
 
 import (
+	"blobfuse2/common"
 	"blobfuse2/internal"
 	"os"
 	"time"
 )
 
+// Flags represented in BitMap for various flags in the attr cahe item
+const (
+	AttrFlagUnknown uint16 = iota
+	AttrFlagExists
+	AttrFlagValid
+)
+
 // attrCacheItem : Structure of each item in attr cache
 type attrCacheItem struct {
 	attr     *internal.ObjAttr
-	exists   bool
-	valid    bool
 	cachedAt time.Time
+	attrFlag common.BitMap16
 }
 
 func newAttrCacheItem(attr *internal.ObjAttr, exists bool, cachedAt time.Time) *attrCacheItem {
-	return &attrCacheItem{
+	item := &attrCacheItem{
 		attr:     attr,
-		exists:   exists,
-		valid:    true,
+		attrFlag: 0,
 		cachedAt: cachedAt,
 	}
+
+	item.attrFlag.Set(AttrFlagValid)
+	if exists {
+		item.attrFlag.Set(AttrFlagExists)
+	}
+
+	return item
+}
+
+func (value *attrCacheItem) valid() bool {
+	return value.attrFlag.IsSet(AttrFlagValid)
+}
+
+func (value *attrCacheItem) exists() bool {
+	return value.attrFlag.IsSet(AttrFlagExists)
 }
 
 func (value *attrCacheItem) markDeleted(deletedTime time.Time) {
-	value.exists = false
-	value.valid = true
+	value.attrFlag.Clear(AttrFlagExists)
+	value.attrFlag.Set(AttrFlagValid)
 	value.cachedAt = deletedTime
 	value.attr = &internal.ObjAttr{}
 }
 
 func (value *attrCacheItem) invalidate() {
-	value.valid = false
+	value.attrFlag.Clear(AttrFlagValid)
 	value.attr = &internal.ObjAttr{}
 }
 
@@ -73,7 +94,7 @@ func (value *attrCacheItem) getAttr() *internal.ObjAttr {
 }
 
 func (value *attrCacheItem) isDeleted() bool {
-	return !value.exists
+	return !value.exists()
 }
 
 func (value *attrCacheItem) setSize(size int64) {

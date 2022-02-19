@@ -3,14 +3,24 @@ parameters:
     displayName: 'New Release Tag'
     type: string
     default: 'blobfuse2-'
+  
+  - name: unit_test
+    displayName: 'Execute Unit Tests'
+    type: boolean
+    default: false
 
   - name: post_release
     displayName: 'Post Release on Github'
     type: boolean
     default: false
 
-  - name: unit_test
-    displayName: 'Execute Unit Tests'
+  - name: draft
+    displayName: 'Post as Draft Release'
+    type: boolean
+    default: false
+
+  - name: prerelease
+    displayName: 'Post as PreRelease'
     type: boolean
     default: false
 
@@ -120,8 +130,8 @@ stages:
             Debian-10.0:
               DistroVer: 'Debian10.0'
               AgentName: 'DEB 10.0'
-              fuselib: 'libfuse3-dev'
-              tags: 'fuse3'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
         pool:
           name: 'Blobfuse Pool'
           demands:
@@ -219,6 +229,7 @@ stages:
             RHEL-7.8:
               DistroVer: 'RHEL-7.8'
               AgentName: 'RHEL 7.8'
+        
         pool:
           name: 'BlobFuse Pool'
           demands:
@@ -266,7 +277,6 @@ stages:
               rvm reload
               rvm reinstall 2.5
               rvm use 2.5 --default
-#              gem install fpm
             displayName: 'Installing dependencies'
           
           # generating binary
@@ -418,16 +428,19 @@ stages:
             SUSE-15G2:
               DistroVer: 'Suse-15Gen2'
               AgentName: 'SUSE 15 Blobfuse2-Release'
+        
         pool:
           name: 'Blobfuse Pool'
           demands:
             - Agent.Name -equals $(AgentName)
+        
         variables:
           - group: NightlyBlobFuse
           - name: root_dir
             value: '/usr/pipeline/workv2'
           - name: work_dir
             value: '/usr/pipeline/workv2/azure-storage-fuse'
+        
         steps:
           - checkout: none
           - script: |
@@ -436,15 +449,18 @@ stages:
               sudo chown -R `whoami` $(root_dir)
               chmod 777 $(root_dir)
             displayName: 'Create Directory Structure'
+          
           - script: |
               git clone https://github.com/Azure/azure-storage-fuse
             displayName: 'Checkout Code & List commits'
             workingDirectory: $(root_dir)
+          
           - script: |
               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
               git --no-pager log --since="12 hours ago" --stat
             displayName: 'List Commits'
             workingDirectory: $(work_dir)
+          
           - script: |
               curl -sSL https://rvm.io/mpapis.asc | gpg2 --import -
               curl -sSL https://rvm.io/pkuczynski.asc | gpg2 --import -
@@ -453,17 +469,20 @@ stages:
               yes | rvm requirements run
               rvm reload
             displayName: "Installing Dependencies"
+          
           - template: 'azure-pipeline-templates/build-release.yml'
             parameters:
               work_dir: $(work_dir)
               root_dir: $(root_dir)
               unit_test: ${{ parameters.unit_test }}
               tags: fuse3
+          
           - script: |
               mkdir -p pkgDir/usr/bin/
               cp azure-storage-fuse/blobfuse2 pkgDir/usr/bin/blobfuse2
             workingDirectory: $(root_dir)
             displayName: 'Accumulate pkg files'
+          
           - script: |
               sudo gem install fpm -v 1.14.1
               sudo zypper in rpmbuild
@@ -476,18 +495,23 @@ stages:
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
             displayName: 'Make Package'
+          
           - task: PublishBuildArtifacts@1
             inputs:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts'
+
   - stage: ReleaseArtifact
     dependsOn: BuildArtifact
     condition: succeeded('BuildArtifact')
     jobs:
       - job: ReleaseBlobfuse
         pool:
-          vmImage: 'ubuntu-18.04'
-        
+          vmImage: 'ubuntu-20.04'
+
+        variables:
+          - group: NightlyBlobFuse
+
         steps:
           - checkout: none
           
@@ -504,9 +528,51 @@ stages:
           
           - script: |
               sudo ls -lRt $(Build.ArtifactStagingDirectory)
+              md5sum $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
+              md5sum $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
             displayName: 'List Artifacts'
-          
+
           - ${{ if eq(parameters.post_release, true) }}:
+              # Send images for signing
+              - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
+                displayName: 'ESRP CodeSigning blobfuse2'
+                inputs:
+                  ConnectedServiceName: 'ESRP Code signing blobfuse'
+                  FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2'
+                  Pattern: '*.rpm, *.deb'
+                  signConfigType: inlineSignParams
+                  VerboseLogin: true
+                  inlineOperation: |
+                    [
+                      {
+                        "KeyCode" : $(ESRP_BLOBFUSE_KEY_CODE),
+                        "OperationCode" : "LinuxSign",
+                        "Parameters" : {},
+                        "ToolName" : "sign",
+                        "ToolVersion" : "1.0"
+                      }
+                    ]
+              # Validate signed images have md5sum changed
+              - script: |
+                  chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
+                  chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
+                  rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/*.md
+                  mv $(Build.ArtifactStagingDirectory)/blobfuse2/* $(Build.ArtifactStagingDirectory)/
+                  rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/
+                displayName: 'Make Artifacts executable'
+
+              - script: |
+                  sudo ls -lRt $(Build.ArtifactStagingDirectory)
+                  md5sum $(Build.ArtifactStagingDirectory)/*.deb
+                  md5sum $(Build.ArtifactStagingDirectory)/*.rpm
+                displayName: 'List Signed Artifacts'
+
+              # Push signed images to artifact directory
+              - task: PublishBuildArtifacts@1
+                inputs:
+                  artifactName: 'blobfuse2-signed'
+                displayName: 'Publish Signed Artifacts'
+
               # add release tags & push to github
               - task: GithubRelease@1
                 inputs:
@@ -521,9 +587,9 @@ stages:
                   tag: ${{ parameters.tag }}
 
                   assets: |
-                    $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
-                    $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
+                    $(Build.ArtifactStagingDirectory)/*
                   changeLogCompareToRelease: 'lastFullRelease'
                   changeLogType: 'commitBased'
-                  isDraft: false
+                  isDraft: ${{ parameters.draft }}
+                  isPreRelease: ${{ parameters.prerelease }}
                   assetUploadMode: replace

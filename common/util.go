@@ -217,3 +217,14 @@ func GetCurrentDistro() string {
 	distro := cfg.Section("").Key("PRETTY_NAME").String()
 	return distro
 }
+
+type BitMap16 uint16
+
+// IsSet : Check whether the given bit is set or not
+func (bm BitMap16) IsSet(bit uint16) bool { return (bm & (1 << bit)) != 0 }
+
+// Set : Set the given bit in bitmap
+func (bm *BitMap16) Set(bit uint16) { *bm |= (1 << bit) }
+
+// Clear : Clear the given bit from bitmap
+func (bm *BitMap16) Clear(bit uint16) { *bm &= ^(1 << bit) }
