@@ -73,11 +73,11 @@ type cache struct {
 	blocksPerFileKey int // maximum number of blocks allowed to be stored for a file
 	maxBlocks        int // maximum allowed configured number of blocks
 
-	diskBlocks     gcache.Cache // blocks stored on disk when persistence is on
-	persistence    bool         // When block is evicted from memory shall be stored on disk for some more time
-	diskPath       string       // Location where persisted blocks will be stored
-	diskCacheMB    int64        // Size of disk cache to be used for persistence
-	diskTimeoutSec float64      // Timeout in seconds for the block persisted on disk
+	diskBlocks      gcache.Cache // blocks stored on disk when persistence is on
+	diskPersistence bool         // When block is evicted from memory shall be stored on disk for some more time
+	diskPath        string       // Location where persisted blocks will be stored
+	diskCacheMB     int64        // Size of disk cache to be used for persistence
+	diskTimeoutSec  float64      // Timeout in seconds for the block persisted on disk
 }
 
 // on file handle closures decrement handles
@@ -174,7 +174,7 @@ func (c *cache) getBlock(fileKey string, offset int64, fileSize int64) (*cacheBl
 		}
 
 		dataFetched := false
-		if c.persistence {
+		if c.diskPersistence {
 			dataFetched = c.getBlockFromDisk(newBlock, blockKeyObj)
 		}
 
@@ -196,7 +196,7 @@ func (c *cache) teardown() {
 	}
 
 	// Cleanup block residing on disk path
-	if c.persistence {
+	if c.diskPersistence {
 		c.wipeoutDiskCache()
 	}
 }
@@ -275,7 +275,7 @@ func (c *cache) evictBlock(key blockKey, block *cacheBlock) {
 	// clean the block data to not leak any memory
 	block.Lock()
 
-	if c.persistence {
+	if c.diskPersistence {
 		c.persistBlockOnDisk(block, key)
 	}
 

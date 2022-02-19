@@ -68,7 +68,7 @@ type StreamOptions struct {
 	Policy            string `config:"policy" yaml:"policy,omitempty"`
 	CacheOnFileHandle bool   `config:"cache-on-file-handle" yaml:"cache-on-file-handle,omitempty"`
 	readOnly          bool   `config:"read-only"`
-	Persistence       bool   `config:"persistence"`
+	DiskPersistence   bool   `config:"disk-persistence"`
 	DiskPath          string `config:"disk-cache-path"`
 	DiskCacheSize     uint64 `config:"disk-size-mb"`
 	DiskTimeoutSec    uint64 `config:"disk-timeout-sec"`
@@ -169,7 +169,7 @@ func (st *Stream) Configure() error {
 		}
 		log.Trace("Stream::Configure : cache eviction policy %s", evictionPolicy)
 
-		if conf.Persistence {
+		if conf.DiskPersistence {
 			maxDiskBlocks := int(math.Floor(float64(conf.DiskCacheSize) / float64(conf.BlockSize)))
 			diskBlockCache = gcache.New(maxDiskBlocks).LRU().EvictedFunc(st.evictDiskBlock).Build()
 
@@ -200,7 +200,7 @@ func (st *Stream) Configure() error {
 			blocksPerFileKey: conf.BlocksPerFile,
 			blocks:           bc,
 			evictionPolicy:   evictionPolicy,
-			persistence:      conf.Persistence,
+			diskPersistence:  conf.DiskPersistence,
 			diskPath:         conf.DiskPath,
 			diskCacheMB:      int64(conf.DiskCacheSize),
 			diskTimeoutSec:   float64(conf.DiskTimeoutSec),

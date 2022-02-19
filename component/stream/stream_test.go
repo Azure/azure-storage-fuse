@@ -644,7 +644,7 @@ func (suite *streamTestSuite) TestAsyncClose() {
 
 // persistnace related UT
 func (suite *streamTestSuite) TestBlockPersistence() {
-	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 1\n  cache-size-mb: 16\n  policy: lru\n  persistence: true\n  disk-cache-path: ./\n  disk-size-mb: 32"
+	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 1\n  cache-size-mb: 16\n  policy: lru\n  disk-persistence: true\n  disk-cache-path: ./\n  disk-size-mb: 32"
 	suite.setupTestHelper(config)
 
 	handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(0, false, int64(100*MB), 0, 0)
