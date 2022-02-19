@@ -29,6 +29,14 @@ steps:
       mountStep: ${{ parameters.mountStep }}
 
   # Run End to End test
+  # Check blobfuse2 is mounted or not    
+  - script: |
+      df
+      echo "-------------------------------------------------------------------"
+      df | grep blobfuse2
+      exit $?
+    displayName: 'Verify Mount'
+
   - task: Go@0
     inputs:
       command: 'test'
@@ -43,7 +51,9 @@ steps:
   - script: |
       cat blobfuse2-logs.txt
     displayName: 'View Logs'
+    condition: always()
 
   - script: |
       > blobfuse2-logs.txt
     displayName: 'Clear Logs'
+    condition: always()
