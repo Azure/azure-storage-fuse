@@ -265,6 +265,9 @@ func (c *cache) getBlockFromDisk(block *cacheBlock, key blockKey) bool {
 	f.Close()
 	os.Remove(localPath)
 
+	// As this block is read and loaded into memory, we just purge it from disk
+	// as its in memory it will always be served from there and when its evicted
+	// it will be pushed back to disk, so safe to remove it from disk here.
 	c.diskBlocks.Remove(key)
 
 	return true

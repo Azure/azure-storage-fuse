@@ -661,12 +661,20 @@ func (suite *streamTestSuite) TestBlockPersistence() {
 
 	// we expect our first block to have been evicted
 	assertFileCached(suite, fileNames[0])
+
+	// Validate there is only one block cached in memory
 	assertNumberOfCachedBlocks(suite, 1)
+
+	// Validate original block at offset 0 is no more cached
 	assertBlockNotCached(suite, 0, fileNames[0])
+
+	// Validate latest block being read is cached in memory
 	assertBlockCached(suite, 16*MB, fileNames[0])
+
+	// Validate there is one disk block persisted
 	assertNumberOfCachedFileBlocks(suite, 1, fileNames[0])
 
-	// block with offset 0 does not exists in cache we have checked so now
+	// block with offset 0 does not exists in memory
 	// we check it shall exists in disk
 	found := diskBlockExists(suite, 0, fileNames[0])
 	suite.assert.Equal(found, true)
