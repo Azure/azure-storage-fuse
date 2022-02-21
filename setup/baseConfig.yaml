@@ -7,7 +7,7 @@ allow-other: true|false <allow other users to access the mounted directory - use
 
 # Logger configuration
 logging:
-  type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - base>
+  type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - syslog>
   level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug <log level. Default - log_warning>
   file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>
   max-file-size-mb: <maximum allowed size for each log file (in MB). Default - 512 MB>
