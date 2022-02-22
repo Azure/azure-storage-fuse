@@ -661,8 +661,12 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (common.BlockOffsetList, b
 	var blockOffset int64 = 0
 	var blockList common.BlockOffsetList
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	storageBlockList, _ := blobURL.GetBlockList(
+	storageBlockList, err := blobURL.GetBlockList(
 		context.Background(), azblob.BlockListCommitted, bb.blobAccCond.LeaseAccessConditions)
+	if err != nil {
+		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s ", name, err.Error())
+		return nil, false, err
+	}
 	for _, block := range *&storageBlockList.CommittedBlocks {
 		blk := &common.Block{
 			Id:         block.Name,
@@ -673,7 +677,20 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (common.BlockOffsetList, b
 		blockOffset += block.Size
 		blockList = append(blockList, blk)
 	}
+	// return block list of the blob, does the blob consist of blocks?, err
 	return blockList, len(blockList) > 0, nil
+}
+
+// create our definition of block
+func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.Block {
+	newBlockId := base64.StdEncoding.EncodeToString(common.NewUUID(blockIdLength))
+	newBlock := &common.Block{
+		Id:         newBlockId,
+		StartIndex: startIndex,
+		EndIndex:   startIndex + size,
+		Size:       size,
+	}
+	return newBlock
 }
 
 func (bb *BlockBlob) createNewBlocks(modBlockList common.BlockOffsetList, blockList common.BlockOffsetList, offset int64, length int64, blockIdLength int64) (bool, int64, common.BlockOffsetList, common.BlockOffsetList) {
@@ -698,13 +715,7 @@ func (bb *BlockBlob) createNewBlocks(modBlockList common.BlockOffsetList, blockL
 		counter += 1
 		// create a new block if we hit our block size
 		if int64(i)%bb.Config.blockSize == 0 && i != 0 {
-			newBlockId := base64.StdEncoding.EncodeToString(common.NewUUID(blockIdLength))
-			newBlock := &common.Block{
-				Id:         newBlockId,
-				StartIndex: startIndex,
-				EndIndex:   startIndex + bb.Config.blockSize,
-				Size:       bb.Config.blockSize,
-			}
+			newBlock := bb.createBlock(blockIdLength, startIndex, bb.Config.blockSize)
 			modBlockList = append(modBlockList, newBlock)
 			blockList = append(blockList, newBlock)
 			startIndex = newBlock.EndIndex
@@ -713,13 +724,7 @@ func (bb *BlockBlob) createNewBlocks(modBlockList common.BlockOffsetList, blockL
 		}
 	}
 	if counter != 0 {
-		newBlockId := base64.StdEncoding.EncodeToString(common.NewUUID(blockIdLength))
-		newBlock := &common.Block{
-			Id:         newBlockId,
-			StartIndex: startIndex,
-			EndIndex:   startIndex + counter,
-			Size:       counter,
-		}
+		newBlock := bb.createBlock(blockIdLength, startIndex, counter)
 		modBlockList = append(modBlockList, newBlock)
 		blockList = append(blockList, newBlock)
 	}
@@ -741,7 +746,13 @@ func (bb *BlockBlob) Write(name string, offset int64, length int64, data []byte,
 
 	// if this is not 0 then we passed a cached block ID list - from stream for example
 	if len(FileOffsets) == 0 {
-		blockList, multipleBlocks, _ = bb.GetFileBlockOffsets(name)
+		var err error
+		blockList, multipleBlocks, err = bb.GetFileBlockOffsets(name)
+		if err != nil {
+			return err
+		}
+	} else {
+		blockList = FileOffsets
 	}
 
 	// case 1: file consists of no blocks (small file)

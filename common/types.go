@@ -193,6 +193,7 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (BlockOffset
 			currentBlockOffset = blk.EndIndex
 		}
 	}
+	// return: block list subset affected, size of mod data, does the new data exceed current size?
 	return modBlockList, size, offset+length >= bol[len(bol)-1].EndIndex
 }
 
