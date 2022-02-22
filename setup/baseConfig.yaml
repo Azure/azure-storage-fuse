@@ -26,9 +26,9 @@ components:
 # Libfuse configuration
 libfuse:
   default-permission: 0777|0666|0644|0444 <default permissions to be presented for block blobs>
-  attribute-expiration-sec: <time kernel can cache inode attributes (in sec)>
-  entry-expiration-sec: <time kernel can cache directory listing attributes (in sec)>
-  negative-entry-expiration-sec: <time kernel can cache attributes of non existant paths (in sec)>
+  attribute-expiration-sec: <time kernel can cache inode attributes (in sec). Default - 120>
+  entry-expiration-sec: <time kernel can cache directory listing attributes (in sec). Default - 120>
+  negative-entry-expiration-sec: <time kernel can cache attributes of non existant paths (in sec). Default - 120>
   fuse-trace: true|false <enable libfuse api trace logs for debugging>
  
   # Streaming configuration

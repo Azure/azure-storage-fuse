@@ -264,6 +264,7 @@ func (c *FileCache) OnConfigChange() {
 }
 
 func (c *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
+	// A user provided value of 0 doesnt make sense for MaxEviction, HighThreshold or LowThreshold.
 	if conf.MaxEviction == 0 {
 		conf.MaxEviction = defaultMaxEviction
 	}

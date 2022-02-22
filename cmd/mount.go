@@ -105,6 +105,7 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 		}
 	}
 
+	// A user provided value of 0 doesnt make sense for MaxLogFileSize or LogFileCount.
 	if opt.Logging.MaxLogFileSize == 0 {
 		opt.Logging.MaxLogFileSize = common.DefaultMaxLogFileSize
 	}

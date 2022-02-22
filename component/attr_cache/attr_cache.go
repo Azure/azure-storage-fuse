@@ -61,9 +61,9 @@ type AttrCache struct {
 
 // Structure defining your config parameters
 type AttrCacheOptions struct {
-	Timeout       uint32 `config:"timeout-sec" yaml:"timeout-sec,omitempty"`
-	NoCacheOnList bool   `config:"no-cache-on-list" yaml:"no-cache-on-list,omitempty"`
-	NoSymlinks    bool   `config:"no-symlinks" yaml:"no-symlinks,omitempty"`
+	Timeout       *uint32 `config:"timeout-sec" yaml:"timeout-sec,omitempty"`
+	NoCacheOnList bool    `config:"no-cache-on-list" yaml:"no-cache-on-list,omitempty"`
+	NoSymlinks    bool    `config:"no-symlinks" yaml:"no-symlinks,omitempty"`
 }
 
 const compName = "attr_cache"
@@ -123,10 +123,10 @@ func (ac *AttrCache) Configure() error {
 		return fmt.Errorf("config error in %s [%s]", ac.Name(), err.Error())
 	}
 
-	if conf.Timeout != 0 {
-		ac.cacheTimeout = conf.Timeout
-	} else {
+	if conf.Timeout == nil {
 		ac.cacheTimeout = defaultAttrCacheTimeout
+	} else {
+		ac.cacheTimeout = *conf.Timeout
 	}
 
 	ac.cacheOnList = !conf.NoCacheOnList
@@ -521,7 +521,7 @@ func NewAttrCacheComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewAttrCacheComponent)
-	attrCacheTimeout := config.AddInt32Flag("attr-cache-timeout", int32(defaultAttrCacheTimeout), "attribute cache timeout")
+	attrCacheTimeout := config.AddUint32Flag("attr-cache-timeout", defaultAttrCacheTimeout, "attribute cache timeout")
 	config.BindPFlag(compName+".timeout-sec", attrCacheTimeout)
 	noSymlinks := config.AddBoolFlag("no-symlinks", false, "whether or not symlinks should be supported")
 	config.BindPFlag(compName+".no-symlinks", noSymlinks)
