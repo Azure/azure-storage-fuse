@@ -96,10 +96,11 @@ type FileCacheOptions struct {
 }
 
 const (
-	compName            = "file_cache"
-	defaultMaxEviction  = 5000
-	defaultMaxThreshold = 80
-	defaultMinThreshold = 60
+	compName                = "file_cache"
+	defaultMaxEviction      = 5000
+	defaultMaxThreshold     = 80
+	defaultMinThreshold     = 60
+	defaultFileCacheTimeout = 120
 )
 
 //  Verification to check satisfaction criteria with Component Interface
@@ -179,7 +180,11 @@ func (c *FileCache) Configure() error {
 	}
 
 	c.createEmptyFile = conf.CreateEmptyFile
-	c.cacheTimeout = conf.Timeout
+	if config.IsSet(compName + ".timeout-sec") {
+		c.cacheTimeout = conf.Timeout
+	} else {
+		c.cacheTimeout = defaultFileCacheTimeout
+	}
 	c.allowNonEmpty = conf.AllowNonEmpty
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
