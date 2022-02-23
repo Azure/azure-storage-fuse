@@ -24,6 +24,11 @@ parameters:
     type: boolean
     default: false
 
+  - name: update_version
+    displayName: 'Update Version'
+    type: boolean
+    default: false
+
 # Do not trigger this pipeline automatically
 trigger: none
 pr: none
@@ -593,3 +598,57 @@ stages:
                   isDraft: ${{ parameters.draft }}
                   isPreRelease: ${{ parameters.prerelease }}
                   assetUploadMode: replace
+  - stage: UpdateLatestVersion
+    dependsOn: ReleaseArtifact
+    condition: succeeded('ReleaseArtifact')
+    jobs:
+      - job: UpdateVersion
+        pool:
+          vmImage: 'ubuntu-18.04'
+        variables:
+          - group: NightlyBlobFuse
+        
+        steps:
+          - checkout: none
+
+          - ${{ if eq(parameters.update_version, true) }}:
+              - script: |
+                  sudo apt-get install python3 -y
+                  python3 --version
+                displayName: 'Installing Python'
+
+              # download artifacts that need to be published
+              - task: DownloadBuildArtifacts@0
+                displayName: 'Download Build Artifacts'
+                inputs:
+                  artifactName: 'blobfuse2'
+                  downloadPath: $(Build.ArtifactStagingDirectory)
+              
+              # install blobfuse2
+              - script: |
+                  cd $(Build.ArtifactStagingDirectory)/blobfuse2
+                  ls | grep ubuntu-18.04
+                  sudo apt-get install ./`ls | grep ubuntu-18.04` -y
+                  blobfuse2 version
+                displayName: 'Installing blobfuse2'
+
+              # Add '-preview' to pre-release versions. For example, 2.0.0-preview.1
+              # Also considering that the tag and version are same
+              - script: |
+                  python3 -c "import json; import requests; import sys;
+                  if(len(sys.argv)!=3):
+                      print('Less arguments')
+                      sys.exit(1)
+                  url = sys.argv[1]
+                  version = sys.argv[2].split(' ')[2]
+                  print('Version: ' + version)
+                  if(len(version)==0):
+                      print('Incorrect Release Tag')
+                      sys.exit(1)
+                  dataDict = requests.get(url).json()
+                  dataDict['blobfuse2'] = version
+                  resp = requests.put(url, data=json.dumps(dataDict, indent=4), headers={'Content-Type': 'application/json', 'x-ms-blob-type': 'BlockBlob'})
+                  print('Status Code: ' + str(resp.status_code))
+                  sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('SUCCESS')" \
+                  '$(LATEST_VERSION_SAS)' "`blobfuse2 version`"
+                displayName: 'Updating version number'
