@@ -309,9 +309,9 @@ func (base *BaseComponent) InvalidateObject(name string) {
 	}
 }
 
-func (base *BaseComponent) GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (common.BlockOffsetList, bool, error) {
+func (base *BaseComponent) GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error) {
 	if base.next != nil {
 		base.next.InvalidateObject(name)
 	}
-	return common.BlockOffsetList{}, false, nil
+	return &common.BlockOffsetList{}, nil
 }

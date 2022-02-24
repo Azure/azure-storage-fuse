@@ -178,23 +178,30 @@ type Block struct {
 }
 
 // list that holds blocks containing ids and corresponding offsets
-type BlockOffsetList []*Block
+type BlockOffsetList struct {
+	BlockOffsetList []*Block //blockId to offset mapping
+	SmallBlob       bool     // does it consist of blocks
+	Cached          bool     // is it cached?
+}
 
-func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (BlockOffsetList, int64, bool) {
+func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (*BlockOffsetList, int64, bool) {
 	// size of mod block list
 	size := int64(0)
 	currentBlockOffset := offset
-	var modBlockList BlockOffsetList
+	modBlockList := BlockOffsetList{}
 	// TODO: change this to binary search (logn) for better perf
-	for _, blk := range bol {
+	for _, blk := range bol.BlockOffsetList {
+		if blk.StartIndex > offset+length {
+			break
+		}
 		if currentBlockOffset >= blk.StartIndex && currentBlockOffset <= blk.EndIndex && currentBlockOffset <= offset+length {
-			modBlockList = append(modBlockList, blk)
-			size += blk.Size
+			modBlockList.BlockOffsetList = append(modBlockList.BlockOffsetList, blk)
 			currentBlockOffset = blk.EndIndex
+			size += blk.Size
 		}
 	}
 	// return: block list subset affected, size of mod data, does the new data exceed current size?
-	return modBlockList, size, offset+length >= bol[len(bol)-1].EndIndex
+	return &modBlockList, size, offset+length >= bol.BlockOffsetList[len(bol.BlockOffsetList)-1].EndIndex
 }
 
 // NewUUID returns a new uuid using RFC 4122 algorithm with the given length.

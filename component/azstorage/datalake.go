@@ -501,11 +501,11 @@ func (dl *Datalake) WriteFromBuffer(name string, metadata map[string]string, dat
 }
 
 // Write : Write to a file at given offset
-func (dl *Datalake) Write(name string, offset int64, len int64, data []byte, FileOffsets common.BlockOffsetList) error {
-	return dl.BlockBlob.Write(name, offset, len, data, FileOffsets)
+func (dl *Datalake) Write(name string, offset int64, len int64, data []byte, fileOffsets, modBlockList *common.BlockOffsetList) error {
+	return dl.BlockBlob.Write(name, offset, len, data, fileOffsets, modBlockList)
 }
 
-func (dl *Datalake) GetFileBlockOffsets(name string) (common.BlockOffsetList, bool, error) {
+func (dl *Datalake) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
 	return dl.BlockBlob.GetFileBlockOffsets(name)
 }
 

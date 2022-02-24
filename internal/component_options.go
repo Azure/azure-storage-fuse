@@ -111,10 +111,11 @@ type ReadInBufferOptions struct {
 }
 
 type WriteFileOptions struct {
-	Handle      *handlemap.Handle
-	Offset      int64
-	Data        []byte
-	FileOffsets common.BlockOffsetList
+	Handle       *handlemap.Handle
+	Offset       int64
+	Data         []byte
+	FileOffsets  *common.BlockOffsetList
+	ModBlockList *common.BlockOffsetList
 }
 
 type GetFileBlockOffsetsOptions struct {
