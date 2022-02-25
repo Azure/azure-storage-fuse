@@ -42,7 +42,6 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -679,14 +678,8 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		blockList.BlockOffsetList = append(blockList.BlockOffsetList, blk)
 	}
 	if blockOffset == 0 {
-		blockList.SmallBlob = true
+		blockList.SmallFile = true
 	}
-	// return block list of the blob, does the blob consist of blocks?, err
-	for _, v := range blockList.BlockOffsetList {
-		fmt.Println(v.StartIndex, v.EndIndex)
-
-	}
-
 	return &blockList, nil
 }
 
@@ -751,7 +744,6 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 	var dataBuffer *[]byte
 
 	// if this is not 0 then we passed a cached block ID list - from stream for example
-	// TODO: the case where our file offsets is of len 0 because blob doesn't have blocks
 	if !fileOffsets.Cached {
 		var err error
 		fileOffsets, err = bb.GetFileBlockOffsets(name)
@@ -761,10 +753,8 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 	}
 
 	// case 1: file consists of no blocks (small file)
-	if fileOffsets.SmallBlob {
+	if fileOffsets.SmallFile {
 		// get all the data
-		// TODO: create another method we already read in buffer and we just need to
-		// find related blocks, stage and commit
 		oldData, _ := bb.ReadBuffer(name, 0, 0)
 		// update the data with the new data
 		// if we're only overwriting existing data
@@ -774,7 +764,6 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 			// else appending and/or overwriting
 		} else {
 			// new data buffer with the size of old and new data
-			// TODO: stream might be passing the data buffer so we don't want to create this here
 			newDataBuffer := make([]byte, offset+length)
 			// copy the old data into it
 			// TODO: better way to do this?
@@ -820,6 +809,7 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 	return nil
 }
 
+// TODO: make a similar method facing stream that would enable us to write to cached blocks then stage and commit
 func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, blobURL azblob.BlockBlobURL, data []byte, modifiedBlockList, blockList *common.BlockOffsetList) error {
 	blockOffset := int64(0)
 	for _, blk := range modifiedBlockList.BlockOffsetList {

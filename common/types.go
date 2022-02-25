@@ -180,8 +180,27 @@ type Block struct {
 // list that holds blocks containing ids and corresponding offsets
 type BlockOffsetList struct {
 	BlockOffsetList []*Block //blockId to offset mapping
-	SmallBlob       bool     // does it consist of blocks
+	SmallFile       bool     // does it consist of blocks
 	Cached          bool     // is it cached?
+}
+
+func (bol BlockOffsetList) binarySearch(offset int64) (bool, int) {
+	lowerBound := 0
+	higherBound := len(bol.BlockOffsetList) - 1
+	for lowerBound <= higherBound {
+		middleIndex := (lowerBound + higherBound) / 2
+		// we found the starting block that changes are being applied to
+		if bol.BlockOffsetList[middleIndex].EndIndex > offset && bol.BlockOffsetList[middleIndex].StartIndex <= offset {
+			return true, middleIndex
+			// if the end index is smaller or equal then we need to increase our lower bound
+		} else if bol.BlockOffsetList[middleIndex].EndIndex <= offset {
+			lowerBound = middleIndex + 1
+			// if the start index is larger than the offset we need to decrease our upper bound
+		} else if bol.BlockOffsetList[middleIndex].StartIndex > offset {
+			higherBound = middleIndex - 1
+		}
+	}
+	return false, 0
 }
 
 func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (*BlockOffsetList, int64, bool) {
@@ -189,12 +208,16 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (*BlockOffse
 	size := int64(0)
 	currentBlockOffset := offset
 	modBlockList := BlockOffsetList{}
-	// TODO: change this to binary search (logn) for better perf
-	for _, blk := range bol.BlockOffsetList {
+	found, index := bol.binarySearch(offset)
+	if !found {
+		return &modBlockList, 0, true
+	}
+	// after the binary search just iterate to find the remaining blocks
+	for _, blk := range bol.BlockOffsetList[index:] {
 		if blk.StartIndex > offset+length {
 			break
 		}
-		if currentBlockOffset >= blk.StartIndex && currentBlockOffset <= blk.EndIndex && currentBlockOffset <= offset+length {
+		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
 			modBlockList.BlockOffsetList = append(modBlockList.BlockOffsetList, blk)
 			currentBlockOffset = blk.EndIndex
 			size += blk.Size
