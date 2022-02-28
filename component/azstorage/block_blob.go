@@ -743,7 +743,7 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 	appendOnly := false
 	var dataBuffer *[]byte
 
-	// if this is not 0 then we passed a cached block ID list - from stream for example
+	// when the file offset mapping is cached we don't need to make a get block list call
 	if !fileOffsets.Cached {
 		var err error
 		fileOffsets, err = bb.GetFileBlockOffsets(name)
