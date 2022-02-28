@@ -5,8 +5,8 @@
 // BLOBFUSE2 : This is the extension contract to be implemented to create and extension
 // callback_handlers.c is a sample code for the same
 
-// Use this command to build callback_handlers.c : "gcc -shared -o libgalactus.so -D_FILE_OFFSET_BITS=64 -fPIC galactus.c callback_handlers.c "
-// Use this command to build a static lib : gcc -Wall -fPIC -D_FILE_OFFSET_BITS=64 -DCMAKE_BUILD_TYPE=Debug -c *.c && ar -cvq libgalactus.a *.o
+// Use this command to build callback_handlers.c : "gcc -shared -o libextension.so -D_FILE_OFFSET_BITS=64 -fPIC extension.c callback_handlers.c "
+// Use this command to build a static lib : gcc -Wall -fPIC -D_FILE_OFFSET_BITS=64 -DCMAKE_BUILD_TYPE=Debug -c *.c && ar -cvq libextension.a *.o
 #include <stddef.h>
 #include <stdio.h>
 

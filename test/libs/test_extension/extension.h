@@ -1,18 +1,20 @@
 
-#ifndef __GALACTUS3_H__
-#define __GALACTUS3_H__
-// This is the extension contract to be implemented to create an extension (comptaible with fuse3)
+#ifndef __EXTENSION_H__
+#define __EXTENSION_H__
+// This is the extension contract to be implemented to create an extension
 
-// Use this command to build a extension .so : "gcc -shared -o libgalactus.so -D_FILE_OFFSET_BITS=64 -DCMAKE_BUILD_TYPE=Debug -fPIC *.c"
-// Use this command to build a static .lib : gcc -Wall -fPIC -D_FILE_OFFSET_BITS=64 -DCMAKE_BUILD_TYPE=Debug -c *.c && ar -cvq libgalactus.a *.o
+// Use this command to build a extension .so : "gcc -shared -o libextension.so -D_FILE_OFFSET_BITS=64 -DCMAKE_BUILD_TYPE=Debug -fPIC *.c"
+// Use this command to build a static .lib : gcc -Wall -fPIC -D_FILE_OFFSET_BITS=64 -DCMAKE_BUILD_TYPE=Debug -c *.c && ar -cvq libextension.a *.o
 #include <stddef.h>
 #include <stdio.h>
 
 
+// Declare that we're using version 2.9 of FUSE
+// 3.0 is not built-in to many distros yet.
 // This line must come before #include <fuse.h>.
 // Fuse3 is not supported yet
-#define FUSE_USE_VERSION 35
-#include <fuse3/fuse.h>
+#define FUSE_USE_VERSION 29
+#include <fuse.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -82,4 +84,4 @@ int register_storage_callbacks(struct fuse_operations *opts);
 }
 #endif
 
-#endif //__GALACTUS3_H__
+#endif //__EXTENSION_H__

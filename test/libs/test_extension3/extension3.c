@@ -3,7 +3,7 @@
 #include <syslog.h>
 #include <string.h>
 
-#include "galactus.h"
+#include "extension3.h"
 #include "callback_handler.h"
 
 #ifdef __cplusplus

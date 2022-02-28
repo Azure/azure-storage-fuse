@@ -3,17 +3,17 @@
 #include <syslog.h>
 #include <errno.h>
 #include <string.h>
-#include "galactus.h"
+#include "extension3.h"
 
 extern struct fuse_operations storage_callbacks;
 
-void *ext_init(struct fuse_conn_info *conn) 
+void *ext_init(struct fuse_conn_info *conn, struct fuse_config *cfg) 
 {
     syslog(LOG_DEBUG, "EXT : Fuse Init called back in Extension");
 
     // Callback storage endpoint for init
     if (storage_callbacks.init) {
-        if (NULL != storage_callbacks.init(conn)) {
+        if (NULL != storage_callbacks.init(conn, cfg)) {
             syslog(LOG_ERR, "EXT : Failed to init storage end point");
         }
     } else {
@@ -48,7 +48,7 @@ int ext_statfs(const char *path, struct statvfs *stbuf)
     return storage_callbacks.statfs(path, stbuf);
 }
 
-int ext_getattr(const char *path, struct stat *stbuf)
+int ext_getattr(const char *path, struct stat *stbuf, struct fuse_file_info *fi)
 {
     syslog(LOG_DEBUG, "EXT : Fuse getattr called back in Extension");
 
@@ -60,7 +60,7 @@ int ext_getattr(const char *path, struct stat *stbuf)
     }
 
     // Pass on the call to storage endpoint
-    return storage_callbacks.getattr(path, stbuf);
+    return storage_callbacks.getattr(path, stbuf, fi);
 }
 
 int ext_opendir(const char *path, struct fuse_file_info *fi)
@@ -79,12 +79,12 @@ int ext_releasedir(const char *path, struct fuse_file_info *fi)
     return storage_callbacks.releasedir(path, fi);
 }
 
-int ext_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *finfo)
+int ext_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *finfo, enum fuse_readdir_flags flag)
 {
     syslog(LOG_DEBUG, "EXT : Fuse readdir called back in Extension");
 
     // Pass on the call to storage endpoint
-    return storage_callbacks.readdir(path, buf, filler, offset, finfo);
+    return storage_callbacks.readdir(path, buf, filler, offset, finfo, flag);
 }
 
 int ext_mkdir(const char *path, mode_t mode)
@@ -143,12 +143,12 @@ int ext_flush(const char *path, struct fuse_file_info *fi)
     return storage_callbacks.flush(path, fi);
 }
 
-int ext_truncate(const char * path, off_t off)
+int ext_truncate(const char * path, off_t off, struct fuse_file_info *fi)
 {
     syslog(LOG_DEBUG, "EXT : Fuse truncate called back in Extension");
 
     // Pass on the call to storage endpoint
-    return storage_callbacks.truncate(path, off);
+    return storage_callbacks.truncate(path, off, fi);
 }
 
 int ext_release(const char *path, struct fuse_file_info * fi)
@@ -167,12 +167,12 @@ int ext_unlink(const char *path)
     return storage_callbacks.unlink(path); 
 }
 
-int ext_rename(const char *src, const char *dst)
+int ext_rename(const char *src, const char *dst, unsigned int flags)
 {
     syslog(LOG_DEBUG, "EXT : Fuse rename called back in Extension");
 
     // Pass on the call to storage endpoint
-    return storage_callbacks.rename(src, dst);    
+    return storage_callbacks.rename(src, dst, flags);    
 }
 
 int ext_symlink(const char *from, const char *to)
@@ -207,10 +207,10 @@ int ext_fsyncdir(const char *path, int flag, struct fuse_file_info *fi)
     return storage_callbacks.fsyncdir(path, flag, fi); 
 }
 
-int ext_chmod(const char *path, mode_t mode)
+int ext_chmod(const char *path, mode_t mode, struct fuse_file_info* fi)
 {
     syslog(LOG_DEBUG, "EXT : Fuse chmod called back in Extension");
 
     // Pass on the call to storage endpoint
-    return storage_callbacks.chmod(path, mode);    
+    return storage_callbacks.chmod(path, mode, fi);    
 }

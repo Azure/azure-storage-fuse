@@ -85,7 +85,7 @@ static int load_library(char* extension_path)
         return 2;
     }
 
-    // Going for handshake with galactus
+    // Going for handshake with extension
     #ifdef __FUSE2__
     const char* my_call_sign = "ola-amigo!!";
     const char* lib_call_sign = "ola-amigo!!!";
