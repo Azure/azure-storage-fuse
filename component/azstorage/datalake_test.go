@@ -856,7 +856,7 @@ func (s *datalakeTestSuite) TestReadFile() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
@@ -882,7 +882,7 @@ func (s *datalakeTestSuite) TestReadInBuffer() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 5)
@@ -899,7 +899,7 @@ func (s *datalakeTestSuite) TestReadInBufferLargeBuffer() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 1000) // Testing that passing in a super large buffer will still work
@@ -953,7 +953,7 @@ func (s *datalakeTestSuite) TestWriteFile() {
 
 	testData := "test data"
 	data := []byte(testData)
-	count, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	count, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 	s.assert.Nil(err)
 	s.assert.EqualValues(len(data), count)
 
@@ -973,7 +973,7 @@ func (s *datalakeTestSuite) TestTruncateFileSmaller() {
 	testData := "test data"
 	data := []byte(testData)
 	truncatedLength := 5
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 
 	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	s.assert.Nil(err)
@@ -995,7 +995,7 @@ func (s *datalakeTestSuite) TestTruncateFileEqual() {
 	testData := "test data"
 	data := []byte(testData)
 	truncatedLength := 9
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 
 	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	s.assert.Nil(err)
@@ -1017,7 +1017,7 @@ func (s *datalakeTestSuite) TestTruncateFileBigger() {
 	testData := "test data"
 	data := []byte(testData)
 	truncatedLength := 15
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 
 	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	s.assert.Nil(err)
@@ -1049,7 +1049,7 @@ func (s *datalakeTestSuite) TestCopyToFile() {
 	testData := "test data"
 	data := []byte(testData)
 	dataLen := len(data)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 	f, _ := ioutil.TempFile("", name+".tmp")
 	defer os.Remove(f.Name())
 
@@ -1197,7 +1197,7 @@ func (s *datalakeTestSuite) TestGetAttrFileSize() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 
 	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
@@ -1214,7 +1214,7 @@ func (s *datalakeTestSuite) TestGetAttrFileTime() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 
 	before, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
@@ -1222,7 +1222,7 @@ func (s *datalakeTestSuite) TestGetAttrFileTime() {
 
 	time.Sleep(time.Second * 3) // Wait 3 seconds and then modify the file again
 
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 	time.Sleep(time.Second * 1)
 
 	after, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
