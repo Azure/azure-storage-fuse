@@ -276,7 +276,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 syslog(LOG_WARNING, "File does not currently exist on the storage or cache, errno : %d", errno);
                 response.reset();
                 return -(ENOENT);
-            } else if (errno == 404) {
+            } else if (errno == 403) {
                 syslog(LOG_WARNING, "User does not have permission to access this resource, errno : %d", errno);
                 response.reset();
                 return -(EPERM);
