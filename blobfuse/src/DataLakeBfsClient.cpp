@@ -381,7 +381,7 @@ D_RETURN_CODE DataLakeBfsClient::IsDirectoryEmpty(std::string path)
         else if (errno == 400 || errno == 404 || errno == 403)
         {
             success = true;
-            syslog(LOG_WARNING, "adls list list_blobs_segmented indicates blob not found errno: %u", errno);
+            syslog(LOG_WARNING, "adls list list_blobs_segmented failed to list blobfs errno: %u", errno);
         }
         else
         {

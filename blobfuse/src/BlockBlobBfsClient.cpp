@@ -1016,7 +1016,7 @@ int BlockBlobBfsClient::ListAllItemsSegmented(
         else if (errno == 400 || errno == 404 || errno == 403)
         {
             success = true;
-            syslog(LOG_WARNING, "list_blobs_segmented indicates blob not found");
+            syslog(LOG_WARNING, "list_blobs_segmented failed to list blobs");
         }
         else
         {
