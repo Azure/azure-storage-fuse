@@ -39,6 +39,7 @@ import (
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
 	"blobfuse2/internal/handlemap"
+	"bytes"
 	"container/list"
 	"encoding/json"
 	"fmt"
@@ -61,6 +62,7 @@ type datalakeTestSuite struct {
 	az           *AzStorage
 	serviceUrl   azbfs.ServiceURL
 	containerUrl azbfs.FileSystemURL
+	bb           blockBlobTestSuite
 	config       string
 	container    string
 }
@@ -689,6 +691,280 @@ func (s *datalakeTestSuite) TestCreateFile() {
 	s.assert.Nil(err)
 	s.assert.NotNil(props)
 	s.assert.Empty(props.XMsProperties())
+}
+
+func (s *datalakeTestSuite) TestWriteSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	dataLen := len(data)
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	output := make([]byte, len(data))
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(testData, output)
+	f.Close()
+}
+
+func (s *datalakeTestSuite) TestOverwriteSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-replace-data"
+	data := []byte(testData)
+	dataLen := len(data)
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-newdata-data")
+	output := make([]byte, len(currentData))
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *datalakeTestSuite) TestOverwriteAndAppendToSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-data"
+	data := []byte(testData)
+
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-newdata")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *datalakeTestSuite) TestAppendToSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-data"
+	data := []byte(testData)
+
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("-newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-data-newdata")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+// This test is a regular blob (without blocks) and we're adding data that will cause it to create blocks
+func (s *datalakeTestSuite) TestAppendBlocksToSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-data"
+	data := []byte(testData)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 9 Bytes
+	_, err := uploadReaderAtToBlockBlob(
+		ctx, bytes.NewReader(data),
+		int64(len(data)),
+		9,
+		s.bb.containerUrl.NewBlockBlobURL(name),
+		azblob.UploadToBlockBlobOptions{
+			BlockSize: 8,
+		})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("-newdata-newdata-newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-data-newdata-newdata-newdata")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *datalakeTestSuite) TestOverwriteBlocks() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(
+		ctx,
+		bytes.NewReader(data),
+		int64(len(data)),
+		4,
+		s.bb.containerUrl.NewBlockBlobURL(name),
+		azblob.UploadToBlockBlobOptions{
+			BlockSize: 4,
+		})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("cake")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 16, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("testdatates1dat1cakedat2tes3dat3tes4dat4")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *datalakeTestSuite) TestOverwriteAndAppendBlocks() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(
+		ctx,
+		bytes.NewReader(data),
+		int64(len(data)),
+		4,
+		s.bb.containerUrl.NewBlockBlobURL(name),
+		azblob.UploadToBlockBlobOptions{
+			BlockSize: 4,
+		})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("43211234cake")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 32, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("testdatates1dat1tes2dat2tes3dat343211234cake")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *datalakeTestSuite) TestAppendBlocks() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx,
+		bytes.NewReader(data),
+		int64(len(data)),
+		4,
+		s.bb.containerUrl.NewBlockBlobURL(name),
+		azblob.UploadToBlockBlobOptions{
+			BlockSize: 4,
+		})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("43211234cake")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("43211234cakedat1tes2dat2tes3dat3tes4dat4")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
 }
 
 func (s *datalakeTestSuite) TestOpenFile() {

@@ -1320,7 +1320,7 @@ func (s *blockBlobTestSuite) TestAppendBlocksToSmallFile() {
 	data := []byte(testData)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 9 Bytes
-	_, err := uploadReaderAtToBlockBlob(context.Background(), bytes.NewReader(data), int64(len(data)), 9, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 9, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
 		BlockSize: 8,
 	})
 	s.assert.Nil(err)
@@ -1354,7 +1354,7 @@ func (s *blockBlobTestSuite) TestOverwriteBlocks() {
 	data := []byte(testData)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(context.Background(), bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
 		BlockSize: 4,
 	})
 	s.assert.Nil(err)
@@ -1388,7 +1388,7 @@ func (s *blockBlobTestSuite) TestOverwriteAndAppendBlocks() {
 	data := []byte(testData)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(context.Background(), bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
 		BlockSize: 4,
 	})
 	s.assert.Nil(err)
@@ -1421,7 +1421,7 @@ func (s *blockBlobTestSuite) TestAppendBlocks() {
 	data := []byte(testData)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(context.Background(), bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
 		BlockSize: 4,
 	})
 	s.assert.Nil(err)
