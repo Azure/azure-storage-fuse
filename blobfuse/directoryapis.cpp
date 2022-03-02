@@ -221,11 +221,12 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
                 AZS_DEBUGLOGV("#### So far %u items retreived in %u iterations.\n", total_count, iteration);
             
             }
-        }
-        else if (errno == 404)
-        {
+        } else if (errno == 404) {
             success = true;
             syslog(LOG_WARNING, "list_blobs indicates blob not found");
+        } else if (errno == 403) {
+            success = true;
+            syslog(LOG_WARNING, "list_blobs indicates permission error");
         }
         else
         {

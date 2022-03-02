@@ -1007,7 +1007,7 @@ int BlockBlobBfsClient::ListAllItemsSegmented(
                 results.emplace_back(response.m_items, skip_first);
             }
         }
-        else if (errno == 404)
+        else if (errno == 404 || errno == 403)
         {
             success = true;
             syslog(LOG_WARNING, "list_blobs_segmented indicates blob not found");
