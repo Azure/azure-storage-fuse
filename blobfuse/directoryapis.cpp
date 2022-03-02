@@ -234,7 +234,7 @@ int azs_readdir(const char *path, void *buf, fuse_fill_dir_t filler, off_t, stru
             success = false;
             syslog(LOG_WARNING, "list_blobs failed for the %d time with errno = %d.\n", failcount, errno);
         }
-    } while (((!continuation.empty()) || !success) && (failcount < 20));
+    } while (((!continuation.empty()) || !success) && (failcount < maxFailCount));
 
     local_list_results.clear();
     local_list_results.shrink_to_fit();

@@ -254,6 +254,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
 
         // though we want atmost 2 results set the count to high, we will exit as soon as we finf the file.
         int resultCount = 5000;
+        const int maxFailCount = 20;
         bool success = false;
         int failcount = 0;
         list_segmented_response response;
@@ -271,15 +272,15 @@ int azs_getattr(const char *path, struct stat *stbuf)
             continuation = response.m_next_marker;
              AZS_DEBUGLOGV("In azs_getattr list_segmented_item do loop blob prefix: %s continuation: %s", blobNameStr.c_str(),continuation.c_str());
             
-            if (errno == 404 )
-            {
+            if (errno == 404) {
                 syslog(LOG_WARNING, "File does not currently exist on the storage or cache, errno : %d", errno);
                 response.reset();
                 return -(ENOENT);
-            }
-
-            if (errno != 0)
-            {
+            } else if (errno == 404) {
+                syslog(LOG_WARNING, "User does not have permission to access this resource, errno : %d", errno);
+                response.reset();
+                return -(EPERM);
+            } else if (errno != 0) {
                 syslog(LOG_WARNING, "Failed to get info on %s, errno : %d",
                     blobNameStr.c_str(), errno);
                 success = false;
@@ -366,7 +367,7 @@ int azs_getattr(const char *path, struct stat *stbuf)
                     return 0;
                 }
             }
-        } while(!success && !continuation.empty() && failcount < 20);
+        } while(!success && !continuation.empty() && failcount < maxFailCount);
 
         if (errno > 0)
         {
@@ -465,6 +466,9 @@ int azs_getattr(const char *path, struct stat *stbuf)
                 // the correct error to the user.
                 syslog(LOG_WARNING, "File does not currently exist on the storage or cache");
                 return -(ENOENT);
+            } else if (errno == 403) {
+                syslog(LOG_WARNING, "Current user does not have permission to access this file");
+                return -(EPERM);
             }
             // If we received a different error, then let's fail with that error
             int storage_errno = errno;

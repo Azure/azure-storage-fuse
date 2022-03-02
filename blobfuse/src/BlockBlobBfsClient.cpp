@@ -672,6 +672,7 @@ D_RETURN_CODE BlockBlobBfsClient::IsDirectoryEmpty(std::string path)
     std::string continuation;
     bool success = false;
     int failcount = 0;
+   
     bool old_dir_blob_found = false;
     do
     {
@@ -703,15 +704,20 @@ D_RETURN_CODE BlockBlobBfsClient::IsDirectoryEmpty(std::string path)
                 }
             }
         }
+        else if (errno == 400 || errno == 404 || errno == 403)
+        {
+            success = true;
+            syslog(LOG_WARNING, "IsDirectoryEmpty : failed with error %u", errno);
+        }
         else
         {
             success = false;
-            failcount++; //TODO: use to set errno.
+            failcount++;
         }
         // If we get a continuation token, and the blob size on the first or so calls is still empty, the service could
         // actually have blobs in the container, but they just didn't send them in the request, but they have a
         // continuation token so it means they could have some.
-    } while ((!continuation.empty() || !success) && failcount < 20);
+    } while ((!continuation.empty() || !success) && failcount < maxFailCount);
 
     if (!success)
     {
@@ -1007,7 +1013,7 @@ int BlockBlobBfsClient::ListAllItemsSegmented(
                 results.emplace_back(response.m_items, skip_first);
             }
         }
-        else if (errno == 404 || errno == 403)
+        else if (errno == 400 || errno == 404 || errno == 403)
         {
             success = true;
             syslog(LOG_WARNING, "list_blobs_segmented indicates blob not found");
