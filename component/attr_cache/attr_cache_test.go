@@ -105,14 +105,14 @@ func addPathToCache(assert *assert.Assertions, attrCache *AttrCache, path string
 func assertDeleted(suite *attrCacheTestSuite, path string) {
 	suite.assert.Contains(suite.attrCache.cacheMap, path)
 	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr, &internal.ObjAttr{})
-	suite.assert.True(suite.attrCache.cacheMap[path].valid)
-	suite.assert.False(suite.attrCache.cacheMap[path].exists)
+	suite.assert.True(suite.attrCache.cacheMap[path].valid())
+	suite.assert.False(suite.attrCache.cacheMap[path].exists())
 }
 
 func assertInvalid(suite *attrCacheTestSuite, path string) {
 	suite.assert.Contains(suite.attrCache.cacheMap, path)
 	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr, &internal.ObjAttr{})
-	suite.assert.False(suite.attrCache.cacheMap[path].valid)
+	suite.assert.False(suite.attrCache.cacheMap[path].valid())
 }
 
 func assertUntouched(suite *attrCacheTestSuite, path string) {
@@ -120,8 +120,8 @@ func assertUntouched(suite *attrCacheTestSuite, path string) {
 	suite.assert.NotEqualValues(suite.attrCache.cacheMap[path].attr, &internal.ObjAttr{})
 	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Size, defaultSize)
 	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Mode, defaultMode)
-	suite.assert.True(suite.attrCache.cacheMap[path].valid)
-	suite.assert.True(suite.attrCache.cacheMap[path].exists)
+	suite.assert.True(suite.attrCache.cacheMap[path].valid())
+	suite.assert.True(suite.attrCache.cacheMap[path].exists())
 }
 
 // Directory structure
@@ -343,8 +343,8 @@ func (suite *attrCacheTestSuite) TestReadDirDoesNotExist() {
 				suite.assert.NotEqualValues(suite.attrCache.cacheMap[p.Path].attr, &internal.ObjAttr{})
 				suite.assert.EqualValues(suite.attrCache.cacheMap[p.Path].attr.Size, size) // new size should be set
 				suite.assert.EqualValues(suite.attrCache.cacheMap[p.Path].attr.Mode, mode) // new mode should be set
-				suite.assert.True(suite.attrCache.cacheMap[p.Path].valid)
-				suite.assert.True(suite.attrCache.cacheMap[p.Path].exists)
+				suite.assert.True(suite.attrCache.cacheMap[p.Path].valid())
+				suite.assert.True(suite.attrCache.cacheMap[p.Path].exists())
 			}
 		})
 	}
@@ -385,8 +385,8 @@ func (suite *attrCacheTestSuite) TestReadDirExists() {
 				suite.assert.NotEqualValues(suite.attrCache.cacheMap[pString].attr, &internal.ObjAttr{})
 				suite.assert.EqualValues(suite.attrCache.cacheMap[pString].attr.Size, size) // new size should be set
 				suite.assert.EqualValues(suite.attrCache.cacheMap[pString].attr.Mode, mode) // new mode should be set
-				suite.assert.True(suite.attrCache.cacheMap[pString].valid)
-				suite.assert.True(suite.attrCache.cacheMap[pString].exists)
+				suite.assert.True(suite.attrCache.cacheMap[pString].valid())
+				suite.assert.True(suite.attrCache.cacheMap[pString].exists())
 			}
 
 			// ab and ac paths should be untouched
@@ -755,8 +755,8 @@ func (suite *attrCacheTestSuite) TestTruncateFile() {
 	suite.assert.NotEqualValues(suite.attrCache.cacheMap[path].attr, &internal.ObjAttr{})
 	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Size, size) // new size should be set
 	suite.assert.EqualValues(suite.attrCache.cacheMap[path].attr.Mode, defaultMode)
-	suite.assert.True(suite.attrCache.cacheMap[path].valid)
-	suite.assert.True(suite.attrCache.cacheMap[path].exists)
+	suite.assert.True(suite.attrCache.cacheMap[path].valid())
+	suite.assert.True(suite.attrCache.cacheMap[path].exists())
 }
 
 // Tests CopyFromFile
@@ -953,8 +953,8 @@ func (suite *attrCacheTestSuite) TestGetAttrEnonetError() {
 			suite.assert.EqualValues(result, &internal.ObjAttr{})
 			suite.assert.Contains(suite.attrCache.cacheMap, truncatedPath)
 			suite.assert.EqualValues(suite.attrCache.cacheMap[truncatedPath].attr, &internal.ObjAttr{})
-			suite.assert.True(suite.attrCache.cacheMap[truncatedPath].valid)
-			suite.assert.False(suite.attrCache.cacheMap[truncatedPath].exists)
+			suite.assert.True(suite.attrCache.cacheMap[truncatedPath].valid())
+			suite.assert.False(suite.attrCache.cacheMap[truncatedPath].exists())
 			suite.assert.NotNil(suite.attrCache.cacheMap[truncatedPath].cachedAt)
 		})
 	}
@@ -1067,8 +1067,8 @@ func (suite *attrCacheTestSuite) TestChmod() {
 			suite.assert.NotEqualValues(suite.attrCache.cacheMap[truncatedPath].attr, &internal.ObjAttr{})
 			suite.assert.EqualValues(suite.attrCache.cacheMap[truncatedPath].attr.Size, defaultSize)
 			suite.assert.EqualValues(suite.attrCache.cacheMap[truncatedPath].attr.Mode, mode) // new mode should be set
-			suite.assert.True(suite.attrCache.cacheMap[truncatedPath].valid)
-			suite.assert.True(suite.attrCache.cacheMap[truncatedPath].exists)
+			suite.assert.True(suite.attrCache.cacheMap[truncatedPath].valid())
+			suite.assert.True(suite.attrCache.cacheMap[truncatedPath].exists())
 		})
 	}
 }

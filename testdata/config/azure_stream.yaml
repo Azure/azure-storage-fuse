@@ -2,6 +2,7 @@ read-only: true
 logging:
   level: log_debug
   file-path: "blobfuse2-logs.txt"
+  type: base
 
 components:
   - libfuse

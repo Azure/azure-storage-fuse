@@ -142,6 +142,7 @@ var generateConfigCmd = &cobra.Command{
 	SuggestFor: []string{"conv config", "convert config"},
 	Args:       cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		VersionCheck()
 		resetOptions()
 		// If we are only converting the config without mounting then we do not need the mount path and therefore the args length would be 0
 		if len(args) == 1 {
@@ -231,7 +232,7 @@ var generateConfigCmd = &cobra.Command{
 			buf := new(bytes.Buffer)
 			rootCmd.SetOut(buf)
 			rootCmd.SetErr(buf)
-			rootCmd.SetArgs([]string{"mount", mountPath, fmt.Sprintf("--config-file=%s", outputFilePath)})
+			rootCmd.SetArgs([]string{"mount", mountPath, fmt.Sprintf("--config-file=%s", outputFilePath), "--disable-version-check=true"})
 			err := rootCmd.Execute()
 			return err
 		}
