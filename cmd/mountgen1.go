@@ -42,6 +42,7 @@ import (
 	"blobfuse2/component/libfuse"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
@@ -131,10 +132,20 @@ var gen1Cmd = &cobra.Command{
 
 		// run the adlsgen1fuse binary
 		adlsgen1fuseCmd := exec.Command("adlsgen1fuse", gen1ConfigFilePath)
-		cliOut, err := adlsgen1fuseCmd.Output()
-		fmt.Println(string(cliOut))
+		stderr, err := adlsgen1fuseCmd.StderrPipe()
 		if err != nil {
+			log.Err(err.Error())
+		}
+		if err := adlsgen1fuseCmd.Start(); err != nil {
+			log.Err(err.Error())
+		}
+		data, err := ioutil.ReadAll(stderr)
+		if err != nil {
+			fmt.Println(err.Error())
+		}
+		if err := adlsgen1fuseCmd.Wait(); err != nil {
 			fmt.Printf("Unable to run adlsgen1fuse binary: %s\n", err.Error())
+			fmt.Printf("%s\n", string(data))
 		}
 	},
 }
