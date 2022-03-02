@@ -44,6 +44,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"runtime/pprof"
 	"strings"
 	"syscall"
@@ -288,25 +289,29 @@ var mountCmd = &cobra.Command{
 			}
 		} else {
 			if options.CPUProfile != "" {
+				os.Remove(options.CPUProfile)
 				f, err := os.Create(options.CPUProfile)
 				if err != nil {
 					fmt.Printf("error opening file for cpuprofile [%s]", err)
 				}
-				pprof.StartCPUProfile(f)
-				defer pprof.StopCPUProfile()
 				defer f.Close()
+				if err := pprof.StartCPUProfile(f); err != nil {
+					fmt.Printf("failed to start cpuprofile [%s]", err)
+				}
+				defer pprof.StopCPUProfile()
 			}
 			runPipeline(pipeline, context.Background())
 			if options.MemProfile != "" {
+				os.Remove(options.MemProfile)
 				f, err := os.Create(options.MemProfile)
 				if err != nil {
 					fmt.Printf("error opening file for memprofile [%s]", err)
 				}
-				pprof.WriteHeapProfile(f)
-				if err != nil {
+				defer f.Close()
+				runtime.GC()
+				if err = pprof.WriteHeapProfile(f); err != nil {
 					fmt.Printf("error memory profiling [%s]", err)
 				}
-				defer f.Close()
 			}
 		}
 

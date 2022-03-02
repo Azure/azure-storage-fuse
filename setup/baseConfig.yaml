@@ -7,7 +7,7 @@ allow-other: true|false <allow other users to access the mounted directory - use
 
 # Logger configuration
 logging:
-  type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - base>
+  type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - syslog>
   level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug <log level. Default - log_warning>
   file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>
   max-file-size-mb: <maximum allowed size for each log file (in MB). Default - 512 MB>
@@ -56,6 +56,7 @@ file_cache:
   allow-non-empty-temp: true|false <allow non empty temp directory at startup>
   cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
   policy-trace: true|false <generate eviction policy logs showing which files will expire soon>
+  direct-read: true|false <use the handle object to directly read from file cached on disk, instead of sending it to file-cache component>
 
 # Attribute cache related configuration
 attr_cache:
