@@ -158,19 +158,19 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		}
 	}
 
-	if config.IsSet(compName + ".entry-expiration-sec") {
+	if config.IsSet(compName+".entry-expiration-sec") || config.IsCLISet("entry-timeout") {
 		lf.entryExpiration = opt.EntryExpiration
 	} else {
 		lf.entryExpiration = defaultEntryExpiration
 	}
 
-	if config.IsSet(compName + ".attribute-expiration-sec") {
+	if config.IsSet(compName+".attribute-expiration-sec") || config.IsCLISet("attr-timeout") {
 		lf.attributeExpiration = opt.AttributeExpiration
 	} else {
 		lf.attributeExpiration = defaultAttrExpiration
 	}
 
-	if config.IsSet(compName + ".negative-entry-expiration-sec") {
+	if config.IsSet(compName+".negative-entry-expiration-sec") || config.IsCLISet("negative-timeout") {
 		lf.negativeTimeout = opt.NegativeEntryExpiration
 	} else {
 		lf.negativeTimeout = defaultNegativeEntryExpiration

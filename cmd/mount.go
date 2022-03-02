@@ -222,6 +222,18 @@ var mountCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		if !config.IsSet("config-file") {
+			options.ConfigFile = "config.yaml"
+		}
+
+		if !config.IsSet("logging.file-path") {
+			options.Logging.LogFilePath = common.DefaultLogFilePath
+		}
+
+		if !config.IsSet("logging.log-level") {
+			options.Logging.LogLevel = "LOG_WARNING"
+		}
+
 		err = options.validate(false)
 		if err != nil {
 			fmt.Printf("Mount: error invalid options [%v]", err)

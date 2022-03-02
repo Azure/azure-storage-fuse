@@ -216,22 +216,21 @@ func UnmarshalKey(key string, obj interface{}) error {
 	if err != nil {
 		return fmt.Errorf("config error: unmarshalling [%v]", err)
 	}
-	userOptions.envTree.MergeWithKey(key, obj, func(val interface{}) (interface{}, interface{}, bool) {
+	userOptions.envTree.MergeWithKey(key, obj, func(val interface{}) (interface{}, bool) {
 		envVar := val.(string)
 		res, ok := os.LookupEnv(envVar)
 		if ok {
-			return res, "", true
-		} else if res == "" {
-			return "", "", false
+			return res, true
+		} else {
+			return "", false
 		}
-		return "", "", false
 	})
-	userOptions.flagTree.MergeWithKey(key, obj, func(val interface{}) (interface{}, interface{}, bool) {
+	userOptions.flagTree.MergeWithKey(key, obj, func(val interface{}) (interface{}, bool) {
 		flag := val.(*pflag.Flag)
 		if flag.Changed {
-			return flag.Value.String(), flag.DefValue, true
+			return flag.Value.String(), true
 		} else {
-			return "", flag.DefValue, true
+			return "", false
 		}
 	})
 	return nil
@@ -244,22 +243,21 @@ func Unmarshal(obj interface{}) error {
 	if err != nil {
 		return fmt.Errorf("config error: unmarshalling [%v]", err)
 	}
-	userOptions.envTree.Merge(obj, func(val interface{}) (interface{}, interface{}, bool) {
+	userOptions.envTree.Merge(obj, func(val interface{}) (interface{}, bool) {
 		envVar := val.(string)
 		res, ok := os.LookupEnv(envVar)
 		if ok {
-			return res, "", true
-		} else if res == "" {
-			return "", "", false
+			return res, true
+		} else {
+			return "", false
 		}
-		return "", "", false
 	})
-	userOptions.flagTree.Merge(obj, func(val interface{}) (interface{}, interface{}, bool) {
+	userOptions.flagTree.Merge(obj, func(val interface{}) (interface{}, bool) {
 		flag := val.(*pflag.Flag)
 		if flag.Changed {
-			return flag.Value.String(), flag.DefValue, true
+			return flag.Value.String(), true
 		} else {
-			return "", flag.DefValue, true
+			return "", false
 		}
 	})
 
@@ -276,6 +274,10 @@ func SetBool(key string, val bool) {
 
 func IsSet(key string) bool {
 	return viper.IsSet(key)
+}
+
+func IsCLISet(key string) bool {
+	return userOptions.flags.Lookup(key) != nil && userOptions.flags.Lookup(key).Changed
 }
 
 //AttachToFlagSet is used to attach the flags in config to the cmd flags

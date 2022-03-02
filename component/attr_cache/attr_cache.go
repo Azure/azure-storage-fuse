@@ -123,7 +123,7 @@ func (ac *AttrCache) Configure() error {
 		return fmt.Errorf("config error in %s [%s]", ac.Name(), err.Error())
 	}
 
-	if config.IsSet(compName + ".timeout-sec") {
+	if config.IsSet(compName+".timeout-sec") || config.IsCLISet("attr-cache-timeout") {
 		ac.cacheTimeout = conf.Timeout
 	} else {
 		ac.cacheTimeout = defaultAttrCacheTimeout
