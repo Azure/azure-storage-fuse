@@ -7,11 +7,7 @@ allow-other: true|false <allow other users to access the mounted directory - use
 
 # Logger configuration
 logging:
-<<<<<<< HEAD
-  type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - base>
-=======
   type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - syslog>
->>>>>>> origin/main
   level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug <log level. Default - log_warning>
   file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>
   max-file-size-mb: <maximum allowed size for each log file (in MB). Default - 512 MB>
@@ -60,10 +56,7 @@ file_cache:
   allow-non-empty-temp: true|false <allow non empty temp directory at startup>
   cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
   policy-trace: true|false <generate eviction policy logs showing which files will expire soon>
-<<<<<<< HEAD
-=======
   direct-read: true|false <use the handle object to directly read from file cached on disk, instead of sending it to file-cache component>
->>>>>>> origin/main
 
 # Attribute cache related configuration
 attr_cache:
@@ -101,7 +94,6 @@ azstorage:
   https-proxy: ip-address:port <https proxy to be used for connection>
   sdk-trace: true|false <enable storage sdk logging>
   fail-unsupported-op: true|false <for block blob account return failure for unsupported operations like chmod and chown>
-<<<<<<< HEAD
   ste-enable: true|false <whether to enable STE for big file transfers>
   ste-min-file-size-mb: <minimum file size in MB. STE will kick in only for files above this size>
   ste-slice-pool-gb: <slice pool for the preconfigured buffers in STE>
@@ -109,21 +101,10 @@ azstorage:
   ste-max-file-count: <maximum number of files that STE can handle in parallel>
   ste-gc-percent: <gc percentage count to kick in for STE garbadge collection>
   
-
-# Mount all configuration
-mountall:
-  # whitelist takes precedence over blacklist in case of conflicts
-  container-whitelist:
-    - <list of containers to be mounted>
-  container-blacklist:
-=======
-
-
 # Mount all configuration
 mountall:
   # allowlist takes precedence over denylist in case of conflicts
   container-allowlist:
     - <list of containers to be mounted>
   container-denylist:
->>>>>>> origin/main
     - <list of containers not to be mounted>
