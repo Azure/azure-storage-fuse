@@ -51,7 +51,7 @@
 #endif
 
 // -------------------------------------------------------------------------------------------------------------
-// Extension loading and registeration methods
+// Extension loading and registration methods
 static  void        *extHandle = NULL;
 typedef int         (*callback_exchanger)(struct fuse_operations *opts);
 typedef const char* (*lib_validator)(const char* sign);
