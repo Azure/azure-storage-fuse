@@ -62,7 +62,6 @@ type datalakeTestSuite struct {
 	az           *AzStorage
 	serviceUrl   azbfs.ServiceURL
 	containerUrl azbfs.FileSystemURL
-	bb           blockBlobTestSuite
 	config       string
 	container    string
 }
@@ -824,7 +823,7 @@ func (s *datalakeTestSuite) TestAppendBlocksToSmallFile() {
 		ctx, bytes.NewReader(data),
 		int64(len(data)),
 		9,
-		s.bb.containerUrl.NewBlockBlobURL(name),
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name),
 		azblob.UploadToBlockBlobOptions{
 			BlockSize: 8,
 		})
@@ -864,7 +863,7 @@ func (s *datalakeTestSuite) TestOverwriteBlocks() {
 		bytes.NewReader(data),
 		int64(len(data)),
 		4,
-		s.bb.containerUrl.NewBlockBlobURL(name),
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name),
 		azblob.UploadToBlockBlobOptions{
 			BlockSize: 4,
 		})
@@ -904,7 +903,7 @@ func (s *datalakeTestSuite) TestOverwriteAndAppendBlocks() {
 		bytes.NewReader(data),
 		int64(len(data)),
 		4,
-		s.bb.containerUrl.NewBlockBlobURL(name),
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name),
 		azblob.UploadToBlockBlobOptions{
 			BlockSize: 4,
 		})
@@ -942,7 +941,7 @@ func (s *datalakeTestSuite) TestAppendBlocks() {
 		bytes.NewReader(data),
 		int64(len(data)),
 		4,
-		s.bb.containerUrl.NewBlockBlobURL(name),
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name),
 		azblob.UploadToBlockBlobOptions{
 			BlockSize: 4,
 		})

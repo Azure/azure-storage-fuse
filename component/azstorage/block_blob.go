@@ -835,7 +835,7 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, blobURL azblob.Bl
 		nil,
 		bb.blobAccCond,
 		bb.Config.defaultTier,
-		azblob.BlobTagsMap{},
+		nil, // datalake doesn't support tags here
 		bb.downloadOptions.ClientProvidedKeyOptions)
 	if err != nil {
 		log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to commit block list to blob %s (%s)", name, err.Error())
