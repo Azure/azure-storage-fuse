@@ -51,12 +51,12 @@ func (vSuite *versionTestSuite) TestVersionEquality() {
 	v2, _ := ParseVersion("10.0.0")
 	assert.Equal(v1.compare(*v2), 0)
 
-	v1, _ = ParseVersion("10.0.0~preview.1")
-	v2, _ = ParseVersion("10.0.0~preview.1")
+	v1, _ = ParseVersion("10.0.0-preview.1")
+	v2, _ = ParseVersion("10.0.0-preview.1")
 	assert.Equal(v1.compare(*v2), 0)
 
-	v1, _ = ParseVersion("10.0.0~beta.5")
-	v2, _ = ParseVersion("10.0.0~beta.5")
+	v1, _ = ParseVersion("10.0.0-beta.5")
+	v2, _ = ParseVersion("10.0.0-beta.5")
 	assert.Equal(v1.compare(*v2), 0)
 }
 
@@ -76,11 +76,11 @@ func (vSuite *versionTestSuite) TestVersionSuperiority() {
 	assert.Equal(v1.compare(*v2), 1)
 
 	v1, _ = ParseVersion("15.5.5")
-	v2, _ = ParseVersion("15.5.5~preview.3")
+	v2, _ = ParseVersion("15.5.5-preview.3")
 	assert.Equal(v1.compare(*v2), 1)
 
-	v1, _ = ParseVersion("15.5.5~preview.6")
-	v2, _ = ParseVersion("15.5.5~preview.3")
+	v1, _ = ParseVersion("15.5.5-preview.6")
+	v2, _ = ParseVersion("15.5.5-preview.3")
 	assert.Equal(v1.compare(*v2), 1)
 }
 
@@ -99,12 +99,12 @@ func (vSuite *versionTestSuite) TestVersionInferiority() {
 	v2, _ = ParseVersion("15.5.6")
 	assert.Equal(v1.compare(*v2), -1)
 
-	v1, _ = ParseVersion("15.5.5~preview.6")
+	v1, _ = ParseVersion("15.5.5-preview.6")
 	v2, _ = ParseVersion("15.5.5")
 	assert.Equal(v1.compare(*v2), -1)
 
-	v1, _ = ParseVersion("15.5.5~preview.3")
-	v2, _ = ParseVersion("15.5.5~preview.6")
+	v1, _ = ParseVersion("15.5.5-preview.3")
+	v2, _ = ParseVersion("15.5.5-preview.6")
 	assert.Equal(v1.compare(*v2), -1)
 }
 

@@ -231,15 +231,14 @@ func (dl *Datalake) Exists(name string) bool {
 // CreateFile : Create a new file in the filesystem/directory
 func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("Datalake::CreateFile : name %s", name)
-	//accessControlList := getAccessControlList(mode)
-	fileURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
-	_, err := fileURL.Create(context.Background(), azbfs.BlobFSHTTPHeaders{
-		ContentType: getContentType(name),
-	})
-	//, azbfs.BlobFSAccessControl{ACL: accessControlList})
-
+	err := dl.BlockBlob.CreateFile(name, mode)
 	if err != nil {
 		log.Err("Datalake::CreateFile : Failed to create file %s (%s)", name, err.Error())
+		return err
+	}
+	err = dl.ChangeMod(name, mode)
+	if err != nil {
+		log.Err("Datalake::CreateFile : Failed to set permissions on file %s (%s)", name, err.Error())
 		return err
 	}
 

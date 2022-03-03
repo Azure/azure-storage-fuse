@@ -26,7 +26,7 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 - CLI to mount Blobfuse2 with legacy Blobfuse config and CLI parameters (Refer to Migration guide for this)
 - Version check and upgrade prompting 
 - Option to mount a sub-directory from a container 
-- CLI to mount all containers (with a whitelist and blacklist) in a given storage account
+- CLI to mount all containers (with a allowlist and denylist) in a given storage account
 - CLI to list all blobfuse2 mount points
 - CLI to unmount one, multiple or all blobfuse2 mountpoints
 - Option to dump logs to syslog or a file on disk

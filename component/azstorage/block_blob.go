@@ -35,7 +35,6 @@ package azstorage
 
 import (
 	"blobfuse2/common"
-	"blobfuse2/common/exectime"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
 	"context"
@@ -537,7 +536,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 // ReadToFile : Download a blob to a local file
 func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.File, options ReadFileOptions) (err error) {
 	log.Trace("BlockBlob::ReadToFile : name %s, offset : %d, count %d", name, offset, count)
-	defer exectime.StatTimeCurrentBlock("BlockBlob::ReadToFile")()
+	//defer exectime.StatTimeCurrentBlock("BlockBlob::ReadToFile")()
 
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
 
@@ -628,7 +627,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 // WriteFromFile : Upload local file to blob
 func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *os.File, options WriteFileOptions) (err error) {
 	log.Trace("BlockBlob::WriteFromFile : name %s", name)
-	defer exectime.StatTimeCurrentBlock("WriteFromFile::WriteFromFile")()
+	//defer exectime.StatTimeCurrentBlock("WriteFromFile::WriteFromFile")()
 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 

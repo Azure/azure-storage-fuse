@@ -44,11 +44,11 @@ import (
 )
 
 type lruNode struct {
-	name    string
-	usage   int
-	deleted bool
 	next    *lruNode
 	prev    *lruNode
+	usage   int
+	deleted bool
+	name    string
 }
 
 type lruPolicy struct {
@@ -465,7 +465,10 @@ func (p *lruPolicy) deleteItem(name string) error {
 			p.CacheValid(name)
 			return err
 		} else {
-			os.Remove(name)
+			err = os.Remove(name)
+			if err != nil {
+				log.Err("lruPolicy::DeleteItem : Failed to delete local file %s", name)
+			}
 			syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
 			f.Close()
 			log.Debug("lruPolicy::DeleteItem : File %s deleted successfully", name)

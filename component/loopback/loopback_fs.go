@@ -291,7 +291,7 @@ func (lfs *LoopbackFS) WriteFile(options internal.WriteFileOptions) (int, error)
 		log.Err("LoopbackFS: CloseFile error [invalid file object]")
 		return 0, os.ErrInvalid
 	}
-	options.Handle.Dirty = true
+	options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 	return f.WriteAt(options.Data, options.Offset)
 }
 

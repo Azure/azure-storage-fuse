@@ -337,7 +337,7 @@ jobs:
           fi
 
           sleep 5
-          echo -e "\n\nlogging:\n  level:log_debug" >> $(BLOBFUSE2_CFG)
+          echo -e "\n\nlogging:\n  level:log_debug\n  type:base" >> $(BLOBFUSE2_CFG)
           sed -i 's/timeout:.*/timeout: 300/' $(BLOBFUSE2_CFG)
           sleep 5
 

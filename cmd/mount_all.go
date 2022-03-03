@@ -53,8 +53,8 @@ import (
 )
 
 type containerListingOptions struct {
-	WhiteList        []string `config:"container-whitelist"`
-	BlackList        []string `config:"container-blacklist"`
+	AllowList        []string `config:"container-allowlist"`
+	DenyList         []string `config:"container-denylist"`
 	blobfuse2BinPath string
 }
 
@@ -67,6 +67,7 @@ var mountAllCmd = &cobra.Command{
 	SuggestFor: []string{"mnta", "mout"},
 	Args:       cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {
+		VersionCheck()
 
 		mountAllOpts.blobfuse2BinPath = os.Args[0]
 		options.MountPath = args[0]
@@ -120,7 +121,7 @@ func processCommand() {
 	log.Crit("Starting Blobfuse2 Mount All: %s", common.Blobfuse2Version)
 	log.Crit("Logging level set to : %s", logLevel.String())
 
-	// Get whitelist/blacklist containers from the config
+	// Get allowlist/denylist containers from the config
 	err = config.UnmarshalKey("mountall", &mountAllOpts)
 	if err != nil {
 		fmt.Printf("MountAll : Failed to get container listing options (%s)\n", err.Error())
@@ -187,21 +188,21 @@ func getContainerList() []string {
 
 // FiterAllowedContainer : Filter which containers are allowed to be mounted
 func filterAllowedContainerList(containers []string) []string {
-	whiteListing := false
-	if len(mountAllOpts.WhiteList) > 0 {
-		whiteListing = true
+	allowListing := false
+	if len(mountAllOpts.AllowList) > 0 {
+		allowListing = true
 	}
 
 	// Convert the entire container list into a map
 	var filterContainer = make(map[string]bool)
 	for _, container := range containers {
-		filterContainer[container] = !whiteListing
+		filterContainer[container] = !allowListing
 	}
 
-	// Now based on whilte or black list mark the containers
-	if whiteListing {
+	// Now based on allow or deny list mark the containers
+	if allowListing {
 		// Only containers in this list shall be allowed
-		for _, container := range mountAllOpts.WhiteList {
+		for _, container := range mountAllOpts.AllowList {
 			_, found := filterContainer[container]
 			if found {
 				filterContainer[container] = true
@@ -209,7 +210,7 @@ func filterAllowedContainerList(containers []string) []string {
 		}
 	} else {
 		// Containers in this list shall not be allowed
-		for _, container := range mountAllOpts.BlackList {
+		for _, container := range mountAllOpts.DenyList {
 			_, found := filterContainer[container]
 			if found {
 				filterContainer[container] = false
@@ -270,6 +271,7 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 		// Now that we have mount path and config file for this container fire a mount command for this one
 		cliParams[1] = contMountPath
 		cliParams[2] = "--config-file=" + contConfigFile
+		cliParams = append(cliParams, "--disable-version-check=true")
 
 		fmt.Println("Mounting container :", container, "to path :", contMountPath)
 		cmd := exec.Command(mountAllOpts.blobfuse2BinPath, cliParams...)
