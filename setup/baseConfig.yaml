@@ -7,7 +7,7 @@ allow-other: true|false <allow other users to access the mounted directory - use
 
 # Logger configuration
 logging:
-  type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - base>
+  type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - syslog>
   level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug <log level. Default - log_warning>
   file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>
   max-file-size-mb: <maximum allowed size for each log file (in MB). Default - 512 MB>
@@ -39,6 +39,10 @@ stream:
   cache-size-mb: <total amount of memory that streaming can consume on the system. Default - 0 MB>
   policy: lfu|lru|arc <cache eviction policy for cached blocks. Default - arc>
   cache-on-file-handle: true|false <cache block per file handle instead of file-name. (better performance but increases memory consumption)>
+  disk-persistence: <persist blocks on disk when evicted from memory>
+  disk-cache-path: <path to perist evicted blocks>
+  disk-size-mb: <maximum disk space to be consumed by disk-persistence>
+  disk-timeout-sec: <number of seconds a persisted block is considered valid>
 
 # Disk cache related configuration  
 file_cache:

@@ -1,6 +1,7 @@
 logging:
   level: log_debug
   file-path: "blobfuse2-logs.txt"
+  type: base
 
 account-name: { NIGHTLY_STO_BLOB_ACC_NAME }
 container-name: { 0 }
