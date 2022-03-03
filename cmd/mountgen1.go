@@ -50,26 +50,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// type gen1Options struct {
-// 	MountPath  string
-// 	ConfigFile string
-
-// 	Components                  []string `config:"components"`
-// 	LogOptions                  `config:"logging"`
-// 	azstorage.AzStorageOptions  `config:"azstorage"`
-// 	libfuse.LibfuseOptions      `config:"libfuse"`
-// 	file_cache.FileCacheOptions `config:"file-cache"`
-// }
-
-// var gen1Opt gen1Options
-
 var AzStorageOpt azstorage.AzStorageOptions
 var LibFuseOpt libfuse.LibfuseOptions
 var FileCacheOpt file_cache.FileCacheOptions
 var requiredFreeSpace int
 var configFile string
-
-const gen1ConfigFilePath string = "/tmp/adlsgen1fuse.json"
+var generateJsonOnly bool
+var gen1ConfigFilePath string
 
 var gen1Cmd = &cobra.Command{
 	Use:        "mountgen1",
@@ -78,7 +65,7 @@ var gen1Cmd = &cobra.Command{
 	SuggestFor: []string{"mntgen1", "gen1 mount"},
 	Args:       cobra.ExactArgs(1),
 	Hidden:     true,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		options.MountPath = args[0]
 		options.ConfigFile = configFile
 		parseConfig()
@@ -86,19 +73,19 @@ var gen1Cmd = &cobra.Command{
 		err := config.Unmarshal(&options)
 		if err != nil {
 			fmt.Printf("Init error config unmarshall [%s]", err)
-			os.Exit(1)
+			return err
 		}
 
 		err = options.validate(false)
 		if err != nil {
 			fmt.Printf("mountgen1: error invalid options [%v]", err)
-			os.Exit(1)
+			return err
 		}
 
 		err = config.UnmarshalKey("azstorage", &AzStorageOpt)
 		if err != nil {
 			log.Err("mountgen1: AzStorage config error [invalid config attributes]")
-			os.Exit(1)
+			return err
 		}
 
 		// not checking ClientSecret since adlsgen1fuse will be reading secret from env variable (ADL_CLIENT_SECRET)
@@ -109,13 +96,13 @@ var gen1Cmd = &cobra.Command{
 		err = config.UnmarshalKey("libfuse", &LibFuseOpt)
 		if err != nil {
 			log.Err("mountgen1: Libfuse config error [invalid config attributes]")
-			os.Exit(1)
+			return err
 		}
 
 		err = config.UnmarshalKey("file_cache", &FileCacheOpt)
 		if err != nil {
 			log.Err("mountgen1: FileCache config error [invalid config attributes]")
-			os.Exit(1)
+			return err
 		}
 
 		var logLevel common.LogLevel
@@ -126,27 +113,18 @@ var gen1Cmd = &cobra.Command{
 
 		err = mountRustFuse()
 		if err != nil {
-			log.Err("Unable to mount Gen1: " + err.Error())
-			os.Exit(1)
+			fmt.Printf("Unable to mount Gen1: %s\n", err.Error())
+			return fmt.Errorf("unable to mount Gen1: %s", err.Error())
 		}
 
-		// run the adlsgen1fuse binary
-		adlsgen1fuseCmd := exec.Command("adlsgen1fuse", gen1ConfigFilePath)
-		stderr, err := adlsgen1fuseCmd.StderrPipe()
-		if err != nil {
-			log.Err(err.Error())
+		if !generateJsonOnly {
+			err = runAdlsBinary()
+			if err != nil {
+				return fmt.Errorf("unable to run adlsgen1fuse binary: %s", err.Error())
+			}
 		}
-		if err := adlsgen1fuseCmd.Start(); err != nil {
-			log.Err(err.Error())
-		}
-		data, err := ioutil.ReadAll(stderr)
-		if err != nil {
-			fmt.Println(err.Error())
-		}
-		if err := adlsgen1fuseCmd.Wait(); err != nil {
-			fmt.Printf("Unable to run adlsgen1fuse binary: %s\n", err.Error())
-			fmt.Printf("%s\n", string(data))
-		}
+
+		return nil
 	},
 }
 
@@ -228,6 +206,29 @@ func mountRustFuse() error {
 	return nil
 }
 
+// run the adlsgen1fuse binary
+func runAdlsBinary() error {
+	adlsgen1fuseCmd := exec.Command("adlsgen1fuse", gen1ConfigFilePath)
+	stderr, err := adlsgen1fuseCmd.StderrPipe()
+	if err != nil {
+		log.Err(err.Error())
+	}
+	if err := adlsgen1fuseCmd.Start(); err != nil {
+		log.Err(err.Error())
+	}
+	data, err := ioutil.ReadAll(stderr)
+	if err != nil {
+		log.Err(err.Error())
+	}
+	if err := adlsgen1fuseCmd.Wait(); err != nil {
+		fmt.Printf("Unable to run adlsgen1fuse binary: %s\n", err.Error())
+		fmt.Printf("%s\n", string(data))
+		return err
+	}
+
+	return nil
+}
+
 func init() {
 	rootCmd.AddCommand(gen1Cmd)
 
@@ -236,4 +237,7 @@ func init() {
 
 	gen1Cmd.Flags().IntVar(&requiredFreeSpace, "required-free-space-mb", 0, "Required free space in MB")
 
+	gen1Cmd.Flags().BoolVar(&generateJsonOnly, "generate-json-only", false, "Don't mount, only generate the JSON file needed for gen1 mount")
+
+	gen1Cmd.Flags().StringVar(&gen1ConfigFilePath, "output-file", "/tmp/adlsgen1fuse.json", "Output JSON file needed for gen1 mount")
 }

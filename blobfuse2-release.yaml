@@ -34,7 +34,6 @@ trigger: none
 pr: none
 
 stages:
-
   - stage: BuildArtifact
     jobs:
       # Ubuntu builds
