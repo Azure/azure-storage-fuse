@@ -222,6 +222,18 @@ func (suite *attrCacheTestSuite) TestConfig() {
 	suite.assert.Equal(suite.attrCache.noSymlinks, true)
 }
 
+func (suite *attrCacheTestSuite) TestConfigZero() {
+	defer suite.cleanupTest()
+	suite.cleanupTest() // clean up the default attr cache generated
+	config := "attr_cache:\n  timeout-sec: 0\n  no-cache-on-list: true\n  no-symlinks: true"
+	suite.setupTestHelper(config) // setup a new attr cache with a custom config (clean up will occur after the test as usual)
+
+	suite.assert.Equal(suite.attrCache.Name(), "attr_cache")
+	suite.assert.EqualValues(suite.attrCache.cacheTimeout, 0)
+	suite.assert.Equal(suite.attrCache.cacheOnList, false)
+	suite.assert.Equal(suite.attrCache.noSymlinks, true)
+}
+
 // Tests Create Directory
 func (suite *attrCacheTestSuite) TestCreateDir() {
 	defer suite.cleanupTest()
