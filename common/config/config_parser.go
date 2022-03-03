@@ -273,11 +273,18 @@ func SetBool(key string, val bool) {
 }
 
 func IsSet(key string) bool {
-	return viper.IsSet(key)
-}
-
-func IsCLISet(key string) bool {
-	return userOptions.flags.Lookup(key) != nil && userOptions.flags.Lookup(key).Changed
+	if viper.IsSet(key) {
+		return true
+	}
+	pieces := strings.Split(key, ".")
+	node := userOptions.flagTree.head
+	for _, s := range pieces {
+		node = node.children[s]
+		if node == nil {
+			return false
+		}
+	}
+	return node.value.(*pflag.Flag).Changed
 }
 
 //AttachToFlagSet is used to attach the flags in config to the cmd flags

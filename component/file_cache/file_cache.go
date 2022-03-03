@@ -1273,6 +1273,8 @@ func NewFileCacheComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewFileCacheComponent)
+	fileCacheTimeout := config.AddUint32Flag("file-cache-timeout", defaultFileCacheTimeout, "file cache timeout")
+	config.BindPFlag(compName+".timeout-sec", fileCacheTimeout)
 	tmpPathFlag := config.AddStringFlag("tmp-path", "", "Configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
 	config.BindPFlag(compName+".path", tmpPathFlag)
 	config.RegisterFlagCompletionFunc("tmp-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

@@ -123,7 +123,7 @@ func (ac *AttrCache) Configure() error {
 		return fmt.Errorf("config error in %s [%s]", ac.Name(), err.Error())
 	}
 
-	if config.IsSet(compName+".timeout-sec") || config.IsCLISet("attr-cache-timeout") {
+	if config.IsSet(compName + ".timeout-sec") {
 		ac.cacheTimeout = conf.Timeout
 	} else {
 		ac.cacheTimeout = defaultAttrCacheTimeout
@@ -521,7 +521,7 @@ func NewAttrCacheComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewAttrCacheComponent)
-	attrCacheTimeout := config.AddUint32Flag("attr-cache-timeout", 0, "attribute cache timeout")
+	attrCacheTimeout := config.AddUint32Flag("attr-cache-timeout", defaultAttrCacheTimeout, "attribute cache timeout")
 	config.BindPFlag(compName+".timeout-sec", attrCacheTimeout)
 	noSymlinks := config.AddBoolFlag("no-symlinks", false, "whether or not symlinks should be supported")
 	config.BindPFlag(compName+".no-symlinks", noSymlinks)
