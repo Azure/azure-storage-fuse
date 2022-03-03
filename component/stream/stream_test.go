@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2021 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -129,6 +129,13 @@ func getCachedBlock(suite *streamTestSuite, offset int64, fileKey string) *cache
 	bk := blockKey{offset, fileKey}
 	blk, _ := suite.stream.streamCache.blocks.Get(bk)
 	return blk.(*cacheBlock)
+}
+
+// return the block from persistence cache
+func diskBlockExists(suite *streamTestSuite, offset int64, fileKey string) bool {
+	bk := blockKey{offset, fileKey}
+	blk := &cacheBlock{}
+	return suite.stream.streamCache.getBlockFromDisk(blk, bk)
 }
 
 // Concurrency helpers with wait group terminations ========================================
@@ -633,6 +640,44 @@ func (suite *streamTestSuite) TestAsyncClose() {
 	for _, fk := range fileNames {
 		assertFileNotCached(suite, fk)
 	}
+}
+
+// persistnace related UT
+func (suite *streamTestSuite) TestBlockPersistence() {
+	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 1\n  cache-size-mb: 16\n  policy: lru\n  disk-persistence: true\n  disk-cache-path: ./\n  disk-size-mb: 32"
+	suite.setupTestHelper(config)
+
+	handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(0, false, int64(100*MB), 0, 0)
+
+	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
+	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
+	suite.stream.OpenFile(openFileOptions)
+	assertBlockCached(suite, 0, fileNames[0])
+
+	_, _, readInBufferOptions, _ = suite.getRequestOptions(0, false, int64(100*MB), 16*MB, 0)
+
+	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
+	suite.stream.ReadInBuffer(readInBufferOptions)
+
+	// we expect our first block to have been evicted
+	assertFileCached(suite, fileNames[0])
+
+	// Validate there is only one block cached in memory
+	assertNumberOfCachedBlocks(suite, 1)
+
+	// Validate original block at offset 0 is no more cached
+	assertBlockNotCached(suite, 0, fileNames[0])
+
+	// Validate latest block being read is cached in memory
+	assertBlockCached(suite, 16*MB, fileNames[0])
+
+	// Validate there is one disk block persisted
+	assertNumberOfCachedFileBlocks(suite, 1, fileNames[0])
+
+	// block with offset 0 does not exists in memory
+	// we check it shall exists in disk
+	found := diskBlockExists(suite, 0, fileNames[0])
+	suite.assert.Equal(found, true)
 }
 
 func TestStreamTestSuite(t *testing.T) {
