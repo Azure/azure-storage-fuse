@@ -622,7 +622,10 @@ stages:
   jobs:
   - job: ReleaseBlobfuse
     pool:
-      vmImage: 'ubuntu-18.04'
+      vmImage: 'ubuntu-20.04'
+
+    variables:
+      - group: NightlyBlobFuse
 
     steps:
       - checkout: none
@@ -639,14 +642,53 @@ stages:
       
       - script: |
           sudo ls -lRt $(Build.ArtifactStagingDirectory)
-        displayName: "List the artifacts"      
-      
+          md5sum $(Build.ArtifactStagingDirectory)/blobfuse/*.deb
+          md5sum $(Build.ArtifactStagingDirectory)/blobfuse/*.rpm
+        displayName: 'List Artifacts'      
       
       - ${{ if eq(parameters.post_release, true) }}:
+        # Send images for signing
+        - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
+          displayName: 'ESRP CodeSigning blobfuse'
+          inputs:
+            ConnectedServiceName: 'ESRP Code signing blobfuse'
+            FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse'
+            Pattern: '*.rpm, *.deb'
+            signConfigType: inlineSignParams
+            VerboseLogin: true
+            inlineOperation: |
+              [
+                {
+                  "KeyCode" : $(ESRP_BLOBFUSE_KEY_CODE),
+                  "OperationCode" : "LinuxSign",
+                  "Parameters" : {},
+                  "ToolName" : "sign",
+                  "ToolVersion" : "1.0"
+                }
+              ]
+
+        # Validate signed images have md5sum changed
+        - script: |
+            chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse/*.rpm
+            chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse/*.deb
+            rm -rf $(Build.ArtifactStagingDirectory)/blobfuse/*.md
+            mv $(Build.ArtifactStagingDirectory)/blobfuse/* $(Build.ArtifactStagingDirectory)/
+            rm -rf $(Build.ArtifactStagingDirectory)/blobfuse/
+          displayName: 'Make Artifacts executable'
+
+        - script: |
+            sudo ls -lRt $(Build.ArtifactStagingDirectory)
+            md5sum $(Build.ArtifactStagingDirectory)/*.deb
+            md5sum $(Build.ArtifactStagingDirectory)/*.rpm
+          displayName: 'List Signed Artifacts'
+
+        - task: PublishBuildArtifacts@1
+          inputs:
+            artifactName: 'blobfuse-signed'
+          displayName: 'Publish Signed Artifacts'
+
         - task: GitHubRelease@1
           inputs:
-            #gitHubConnection: 'vibhansa-msft-git'
-            #repositoryName: 'vibhansa-msft/azure-storage-fuse'
             gitHubConnection: 'blobfuse-git-rel'
             repositoryName: 'Azure/azure-storage-fuse'
             action: 'edit'
