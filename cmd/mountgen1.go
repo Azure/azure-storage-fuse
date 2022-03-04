@@ -50,13 +50,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var AzStorageOpt azstorage.AzStorageOptions
-var LibFuseOpt libfuse.LibfuseOptions
-var FileCacheOpt file_cache.FileCacheOptions
+var azStorageOpt azstorage.AzStorageOptions
+var libFuseOpt libfuse.LibfuseOptions
+var fileCacheOpt file_cache.FileCacheOptions
 var requiredFreeSpace int
 var configFile string
 var generateJsonOnly bool
 var gen1ConfigFilePath string
+
+func resetGenOneOptions() {
+	azStorageOpt = azstorage.AzStorageOptions{}
+	libFuseOpt = libfuse.LibfuseOptions{}
+	fileCacheOpt = file_cache.FileCacheOptions{}
+}
 
 var gen1Cmd = &cobra.Command{
 	Use:        "mountgen1",
@@ -66,6 +72,7 @@ var gen1Cmd = &cobra.Command{
 	Args:       cobra.ExactArgs(1),
 	Hidden:     true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		resetGenOneOptions()
 		options.MountPath = args[0]
 		options.ConfigFile = configFile
 		parseConfig()
@@ -82,24 +89,30 @@ var gen1Cmd = &cobra.Command{
 			return err
 		}
 
-		err = config.UnmarshalKey("azstorage", &AzStorageOpt)
+		err = config.UnmarshalKey("azstorage", &azStorageOpt)
 		if err != nil {
 			log.Err("mountgen1: AzStorage config error [invalid config attributes]")
 			return err
 		}
 
 		// not checking ClientSecret since adlsgen1fuse will be reading secret from env variable (ADL_CLIENT_SECRET)
-		if AzStorageOpt.AuthMode == "" && AzStorageOpt.ClientID != "" && AzStorageOpt.TenantID != "" {
-			AzStorageOpt.AuthMode = "spn"
+		if azStorageOpt.ClientID == "" || azStorageOpt.TenantID == "" || azStorageOpt.AccountName == "" {
+			fmt.Println("Unable to mount Gen1: clientId, tenantId or accountName can't be empty")
+			return fmt.Errorf("clientId, tenantId or accountName can't be empty")
 		}
 
-		err = config.UnmarshalKey("libfuse", &LibFuseOpt)
+		// changing authMode to spn since clientId and tenantId are not empty
+		if azStorageOpt.AuthMode == "" {
+			azStorageOpt.AuthMode = "spn"
+		}
+
+		err = config.UnmarshalKey("libfuse", &libFuseOpt)
 		if err != nil {
 			log.Err("mountgen1: Libfuse config error [invalid config attributes]")
 			return err
 		}
 
-		err = config.UnmarshalKey("file_cache", &FileCacheOpt)
+		err = config.UnmarshalKey("file_cache", &fileCacheOpt)
 		if err != nil {
 			log.Err("mountgen1: FileCache config error [invalid config attributes]")
 			return err
@@ -111,7 +124,7 @@ var gen1Cmd = &cobra.Command{
 			fmt.Println("error: invalid log level")
 		}
 
-		err = mountRustFuse()
+		err = generateAdlsJson()
 		if err != nil {
 			fmt.Printf("Unable to mount Gen1: %s\n", err.Error())
 			return fmt.Errorf("unable to mount Gen1: %s", err.Error())
@@ -129,16 +142,16 @@ var gen1Cmd = &cobra.Command{
 }
 
 // code to generate json file for rustfuse
-func mountRustFuse() error {
+func generateAdlsJson() error {
 	rustFuseMap := make(map[string]interface{})
-	if strings.ToLower(AzStorageOpt.AuthMode) == "spn" {
+	if strings.ToLower(azStorageOpt.AuthMode) == "spn" {
 		// adlsgen1fuse will be reading secret from env variable (ADL_CLIENT_SECRET) hence no reason to include this.
-		// rustFuseMap["clientsecret"] = AzStorageOpt.ClientSecret
+		// rustFuseMap["clientsecret"] = azStorageOpt.ClientSecret
 
-		rustFuseMap["clientid"] = AzStorageOpt.ClientID
-		rustFuseMap["tenantid"] = AzStorageOpt.TenantID
-		if AzStorageOpt.ActiveDirectoryEndpoint != "" {
-			rustFuseMap["authorityurl"] = AzStorageOpt.ActiveDirectoryEndpoint
+		rustFuseMap["clientid"] = azStorageOpt.ClientID
+		rustFuseMap["tenantid"] = azStorageOpt.TenantID
+		if azStorageOpt.ActiveDirectoryEndpoint != "" {
+			rustFuseMap["authorityurl"] = azStorageOpt.ActiveDirectoryEndpoint
 		} else {
 			rustFuseMap["authorityurl"] = "https://login.microsoftonline.com"
 		}
@@ -151,12 +164,12 @@ func mountRustFuse() error {
 
 	rustFuseMap["resourceurl"] = "https://datalake.azure.net/"
 
-	if LibFuseOpt.AttributeExpiration != 0 {
-		rustFuseMap["fuseattrtimeout"] = LibFuseOpt.AttributeExpiration
+	if libFuseOpt.AttributeExpiration != 0 {
+		rustFuseMap["fuseattrtimeout"] = libFuseOpt.AttributeExpiration
 	}
 
-	if LibFuseOpt.EntryExpiration != 0 {
-		rustFuseMap["fuseentrytimeout"] = LibFuseOpt.EntryExpiration
+	if libFuseOpt.EntryExpiration != 0 {
+		rustFuseMap["fuseentrytimeout"] = libFuseOpt.EntryExpiration
 	}
 
 	var allowOther bool
@@ -171,26 +184,26 @@ func mountRustFuse() error {
 		rustFuseMap["loglevel"] = strings.ToUpper(options.Logging.LogLevel)
 	}
 
-	if AzStorageOpt.MaxRetries != 0 {
-		rustFuseMap["retrycount"] = AzStorageOpt.MaxRetries
+	if azStorageOpt.MaxRetries != 0 {
+		rustFuseMap["retrycount"] = azStorageOpt.MaxRetries
 	}
 
-	if FileCacheOpt.MaxSizeMB != 1000 {
-		rustFuseMap["maxcachesizeinmb"] = FileCacheOpt.MaxSizeMB
+	if fileCacheOpt.MaxSizeMB != 1000 {
+		rustFuseMap["maxcachesizeinmb"] = fileCacheOpt.MaxSizeMB
 	}
 
 	if requiredFreeSpace != 0 {
 		rustFuseMap["requiredfreespaceinmb"] = requiredFreeSpace
 	}
 
-	if FileCacheOpt.TmpPath != "" {
-		rustFuseMap["cachedir"] = FileCacheOpt.TmpPath
+	if fileCacheOpt.TmpPath != "" {
+		rustFuseMap["cachedir"] = fileCacheOpt.TmpPath
 	}
 
-	if AzStorageOpt.Container != "" {
-		rustFuseMap["resourceid"] = "adl://" + AzStorageOpt.AccountName + ".azuredatalakestore.net/" + AzStorageOpt.Container + "/"
+	if azStorageOpt.Container != "" {
+		rustFuseMap["resourceid"] = "adl://" + azStorageOpt.AccountName + ".azuredatalakestore.net/" + azStorageOpt.Container + "/"
 	} else {
-		rustFuseMap["resourceid"] = "adl://" + AzStorageOpt.AccountName + ".azuredatalakestore.net/"
+		rustFuseMap["resourceid"] = "adl://" + azStorageOpt.AccountName + ".azuredatalakestore.net/"
 	}
 
 	rustFuseMap["mountdir"] = options.MountPath
