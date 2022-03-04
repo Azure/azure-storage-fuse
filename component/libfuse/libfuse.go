@@ -63,6 +63,7 @@ type Libfuse struct {
 	ownerUID            uint32
 	ownerGID            uint32
 	traceEnable         bool
+	extensionPath       string
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -84,6 +85,7 @@ type LibfuseOptions struct {
 	EnableFuseTrace         bool   `config:"fuse-trace" yaml:"fuse-trace,omitempty"`
 	allowOther              bool   `config:"allow-other"`
 	readOnly                bool   `config:"read-only"`
+	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
 }
 
 const compName = "libfuse"
@@ -144,6 +146,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.readOnly = opt.readOnly
 	lf.traceEnable = opt.EnableFuseTrace
 	lf.allowOther = opt.allowOther
+	lf.extensionPath = opt.ExtensionPath
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
