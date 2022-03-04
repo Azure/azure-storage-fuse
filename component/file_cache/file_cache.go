@@ -131,7 +131,7 @@ func (c *FileCache) Start(ctx context.Context) error {
 	}
 
 	if c.policy == nil {
-		return fmt.Errorf("FileCache::Start : No cache policy created")
+		return fmt.Errorf("config error in %s error [cache policy missing]", c.Name())
 	}
 
 	c.policy.StartPolicy()
