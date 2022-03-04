@@ -30,6 +30,7 @@ libfuse:
   entry-expiration-sec: <time kernel can cache directory listing attributes (in sec)>
   negative-entry-expiration-sec: <time kernel can cache attributes of non existant paths (in sec)>
   fuse-trace: true|false <enable libfuse api trace logs for debugging>
+  extension: <physical path to extension library>
  
   # Streaming configuration
 stream:

@@ -41,6 +41,7 @@ package libfuse
 // #cgo CFLAGS: -DFUSE_USE_VERSION=35 -D_FILE_OFFSET_BITS=64
 // #cgo LDFLAGS: -lfuse3 -ldl
 // #include "libfuse_wrapper.h"
+// #include "extension_handler.h"
 import "C"
 import (
 	"blobfuse2/common"
@@ -107,11 +108,52 @@ func (lf *Libfuse) convertConfig() *C.fuse_options_t {
 
 // initFuse initializes the fuse library by registering callbacks, parsing arguments and mounting the directory
 func (lf *Libfuse) initFuse() error {
-	log.Trace("Libfuse::initFuse : Initializing FUSE")
+	log.Trace("Libfuse::initFuse : Initializing FUSE3")
 
-	log.Trace("Libfuse::initFuse : Registering fuse callbacks")
 	operations := C.fuse_operations_t{}
-	C.populate_callbacks(&operations)
+
+	if lf.extensionPath != "" {
+		log.Trace("Libfuse::InitFuse : Going for extension mouting (%s)", lf.extensionPath)
+
+		// User has given an extension so we need to register it to fuse
+		//  and then register ourself to it
+		extensionPath := C.CString(lf.extensionPath)
+		defer C.free(unsafe.Pointer(extensionPath))
+
+		// Load the library
+		errc := C.load_library(extensionPath)
+		if errc != 0 {
+			log.Err("Libfuse::InitFuse : Failed to load extension err code %d", errc)
+			return errors.New("failed to load extension")
+		}
+		log.Trace("Libfuse::InitFuse : Extension loaded")
+
+		// Get extension callback table
+		errc = C.get_extension_callbacks(&operations)
+		if errc != 0 {
+			C.unload_library()
+			log.Err("Libfuse::InitFuse : Failed to get callback table from extnesion. error code %d", errc)
+			return errors.New("failed to get callback table from extension")
+		}
+		log.Trace("Libfuse::InitFuse : Extension callback retreived")
+
+		// Get our callback table
+		my_operations := C.fuse_operations_t{}
+		C.populate_callbacks(&my_operations)
+
+		// Send our callback table to the extension
+		errc = C.register_callback_to_extension(&my_operations)
+		if errc != 0 {
+			C.unload_library()
+			log.Err("Libfuse::InitFuse : Failed to register callback table to extnesion. error code %d", errc)
+			return errors.New("failed to register callback table to extnesion")
+		}
+		log.Trace("Libfuse::InitFuse : Callbacks registered to extension")
+	} else {
+		// Populate our methods to be registered to libfuse
+		log.Trace("Libfuse::initFuse : Registering fuse callbacks")
+		C.populate_callbacks(&operations)
+	}
 
 	log.Trace("Libfuse::initFuse : Populating fuse arguments")
 	fuse_opts := lf.convertConfig()
