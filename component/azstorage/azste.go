@@ -78,7 +78,7 @@ func (azste *AzSTE) Initialize(config AzSTEConfig) (err error) {
 
 	stecommon.AzcopyJobPlanFolder = config.partFilePath
 	logLevel = stecommon.ELogLevel.Info()
-	logger := stecommon.NewSysLogger(jobID, logLevel, "blobfuse2")
+	logger := stecommon.NewSysLogger(jobID, logLevel, "narasimha")
 	logger.OpenLog()
 
 	os.MkdirAll(stecommon.AzcopyJobPlanFolder, 0666)
@@ -96,9 +96,21 @@ func (azste *AzSTE) Initialize(config AzSTEConfig) (err error) {
 		stecommon.NewCacheLimiter(config.FileCountLimit),
 		logger)
 
+	stecommon.GetLifecycleMgr().E2EEnableAwaitAllowOpenFiles(false)
+
 	go func() {
 		time.Sleep(20 * time.Second)         // wait a little, so that our initial pool of buffers can get allocated without heaps of (unnecessary) GC activity
 		debug.SetGCPercent(config.GCPercent) // activate more aggressive/frequent GC than the default
+	}()
+
+	go func() {
+		for {
+			s, _ := azste.jobMgr.GetPerfInfo()
+			str := "[States: " + strings.Join(s, ", ") + "], "
+			log.Err(str)
+			time.Sleep(30 * time.Second)
+
+		}
 	}()
 
 	return nil
