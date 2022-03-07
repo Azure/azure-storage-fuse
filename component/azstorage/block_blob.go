@@ -762,15 +762,20 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 			dataBuffer = &oldData
 			// else appending and/or overwriting
 		} else {
-			// new data buffer with the size of old and new data
-			newDataBuffer := make([]byte, offset+length)
-			// copy the old data into it
-			// TODO: better way to do this?
-			copy(newDataBuffer, oldData)
-			oldData = nil
-			// overwrite with the new data we want to add
-			copy(newDataBuffer[offset:], data)
-			dataBuffer = &newDataBuffer
+			// if the file is not empty then we need to combine the data
+			if len(oldData) > 0 {
+				// new data buffer with the size of old and new data
+				newDataBuffer := make([]byte, offset+length)
+				// copy the old data into it
+				// TODO: better way to do this?
+				copy(newDataBuffer, oldData)
+				oldData = nil
+				// overwrite with the new data we want to add
+				copy(newDataBuffer[offset:], data)
+				dataBuffer = &newDataBuffer
+			} else {
+				dataBuffer = &data
+			}
 		}
 		// WriteFromBuffer should be able to handle the case where now the block is too big and gets split into multiple blocks
 		err := bb.WriteFromBuffer(name, nil, *dataBuffer)
