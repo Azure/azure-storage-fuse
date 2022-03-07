@@ -67,7 +67,7 @@ type Logger interface {
 func NewLogger(name string, config common.LogConfig) (Logger, error) {
 	timeTracker = config.TimeTracker
 
-	if name == "" || name == "default" || name == "base" {
+	if name == "base" {
 		baseLogger, err := newBaseLogger(LogFileConfig{
 			LogFile:      config.FilePath,
 			LogLevel:     config.Level,
@@ -81,7 +81,7 @@ func NewLogger(name string, config common.LogConfig) (Logger, error) {
 	} else if name == "silent" {
 		silentLogger := &SilentLogger{}
 		return silentLogger, nil
-	} else if name == "syslog" {
+	} else if name == "" || name == "default" || name == "syslog" {
 		sysLogger, err := newSysLogger(config.Level)
 		if err != nil {
 			return nil, err

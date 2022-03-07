@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2021 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -140,8 +140,6 @@ extern int libfuse_utimens(char *path, timespec_t tv[2], fuse_file_info_t *fi);
 // extern int libfuse_getxattr(char *path, char *name, char *value, size_t size);
 // extern int libfuse_listxattr(char* path, char *list, size_t size);
 // extern int libfuse_removexattr(char *path, char *name);
-// extern int libfuse_opendir(char *path, fuse_file_info_t *fi);
-// extern int libfuse_releasedir(char *path, fuse_file_info_t *fi);
 // extern int libfuse_access(char *path, int mask);
 // extern int libfuse_lock
 // extern int libfuse_bmap
