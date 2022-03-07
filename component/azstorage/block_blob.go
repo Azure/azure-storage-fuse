@@ -743,7 +743,7 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 	var dataBuffer *[]byte
 
 	// when the file offset mapping is cached we don't need to make a get block list call
-	if !fileOffsets.Cached {
+	if fileOffsets != nil && !fileOffsets.Cached {
 		var err error
 		fileOffsets, err = bb.GetFileBlockOffsets(name)
 		if err != nil {
@@ -752,7 +752,7 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 	}
 
 	// case 1: file consists of no blocks (small file)
-	if fileOffsets.SmallFile {
+	if fileOffsets != nil && fileOffsets.SmallFile {
 		// get all the data
 		oldData, _ := bb.ReadBuffer(name, 0, 0)
 		// update the data with the new data
