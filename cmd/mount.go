@@ -105,6 +105,7 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 		}
 	}
 
+	// A user provided value of 0 doesnt make sense for MaxLogFileSize or LogFileCount.
 	if opt.Logging.MaxLogFileSize == 0 {
 		opt.Logging.MaxLogFileSize = common.DefaultMaxLogFileSize
 	}
@@ -219,6 +220,18 @@ var mountCmd = &cobra.Command{
 		if err != nil {
 			fmt.Printf("Init error config unmarshall [%s]", err)
 			os.Exit(1)
+		}
+
+		if !config.IsSet("config-file") {
+			options.ConfigFile = "config.yaml"
+		}
+
+		if !config.IsSet("logging.file-path") {
+			options.Logging.LogFilePath = common.DefaultLogFilePath
+		}
+
+		if !config.IsSet("logging.log-level") {
+			options.Logging.LogLevel = "LOG_WARNING"
 		}
 
 		err = options.validate(false)
