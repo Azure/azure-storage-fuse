@@ -164,17 +164,17 @@ func (ep *EvictionPolicy) Parse(s string) error {
 
 type LogConfig struct {
 	Level       LogLevel
-	FilePath    string
 	MaxFileSize uint64
 	FileCount   uint64
+	FilePath    string
 	TimeTracker bool
 }
 
 type Block struct {
-	Id         string
 	StartIndex int64
 	EndIndex   int64
 	Size       int64
+	Id         string
 	Modified   bool
 }
 
