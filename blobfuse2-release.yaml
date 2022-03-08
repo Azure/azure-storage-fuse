@@ -636,15 +636,16 @@ stages:
               # Also considering that the tag and version are same
               - script: |
                   python3 -c "import json; import requests; import sys; from xml.dom import minidom;
-                  sasToken = sys.argv[1]
+                  sasUrl = sys.argv[1]
                   releaseVersion = sys.argv[2].split(' ')[2]
                   print('Release Version: ' + releaseVersion)
                   if(len(releaseVersion)==0):
                       print('Incorrect Release Version')
                       sys.exit(1)
                   # list latest version file in the container
-                  url = 'https://souravfusestorage.blob.core.windows.net/version-cnt'
-                  listUrl = url + '?restype=container&comp=list&prefix=latest/'
+                  containerUrl = sasUrl.split('?')[0]
+                  sasToken = sasUrl.split('?')[1]
+                  listUrl = containerUrl + '?restype=container&comp=list&prefix=latest/'
                   resp = requests.get(listUrl)
                   sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Listed latest version file')
                   listData = minidom.parseString(resp.content)
@@ -655,12 +656,12 @@ stages:
                   latestVersion = name[0].firstChild.data
                   print('Latest version file: ' + latestVersion)
                   # delete latest version file in the container
-                  deleteUrl = url + '/' + latestVersion + '?' + sasToken
+                  deleteUrl = containerUrl + '/' + latestVersion + '?' + sasToken
                   resp = requests.delete(deleteUrl)
                   sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Deleted latest version file')
                   # create release version file in the container
-                  createUrl = url + '/latest/' + releaseVersion + '.version?' + sasToken
+                  createUrl = containerUrl + '/latest/' + releaseVersion + '.version?' + sasToken
                   resp = requests.put(createUrl, headers={'x-ms-blob-type': 'BlockBlob'})
                   sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Created release version file')" \
-                  '$(LATEST_DIR_SAS_TOKEN)' "`blobfuse2 version`"
+                  '$(VERSION_CNT_SAS_URL)' "`blobfuse2 version`"
                 displayName: 'Updating version number'
