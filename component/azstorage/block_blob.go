@@ -737,7 +737,6 @@ func (bb *BlockBlob) createNewBlocks(modBlockList, blockList *common.BlockOffset
 func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileOffsets, modFileOffsets *common.BlockOffsetList) error {
 	defer log.TimeTrack(time.Now(), "BlockBlob::Write", name)
 	log.Trace("BlockBlob::Write : name %s offset %v", name, offset)
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	// tracks the case where our offset is great than our current file size (appending only - not modifying pre-existing data)
 	appendOnly := false
 	var dataBuffer *[]byte
@@ -768,8 +767,10 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 				newDataBuffer := make([]byte, offset+length)
 				// copy the old data into it
 				// TODO: better way to do this?
-				copy(newDataBuffer, oldData)
-				oldData = nil
+				if offset != 0 {
+					copy(newDataBuffer, oldData)
+					oldData = nil
+				}
 				// overwrite with the new data we want to add
 				copy(newDataBuffer[offset:], data)
 				dataBuffer = &newDataBuffer
@@ -806,7 +807,7 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 			// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
 			blockOffset := offset - modifiedBlockList.BlockOffsetList[0].StartIndex
 			copy(oldDataBuffer[blockOffset:], data)
-			err := bb.stageAndCommitModifiedBlocks(name, blobURL, oldDataBuffer, modifiedBlockList, fileOffsets)
+			err := bb.stageAndCommitModifiedBlocks(name, oldDataBuffer, modifiedBlockList, fileOffsets)
 			return err
 		}
 	}
@@ -814,7 +815,8 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 }
 
 // TODO: make a similar method facing stream that would enable us to write to cached blocks then stage and commit
-func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, blobURL azblob.BlockBlobURL, data []byte, modifiedBlockList, blockList *common.BlockOffsetList) error {
+func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, modifiedBlockList, blockList *common.BlockOffsetList) error {
+	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	blockOffset := int64(0)
 	for _, blk := range modifiedBlockList.BlockOffsetList {
 		_, err := blobURL.StageBlock(context.Background(),
