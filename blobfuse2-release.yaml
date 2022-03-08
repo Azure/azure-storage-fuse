@@ -662,5 +662,5 @@ stages:
                   createUrl = url + '/latest/' + releaseVersion + '.version?' + sasToken
                   resp = requests.put(createUrl, headers={'x-ms-blob-type': 'BlockBlob'})
                   sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Created release version file')" \
-                  '$(LATEST_VERSION_SAS_TOKEN)' "`blobfuse2 version`"
+                  '$(LATEST_DIR_SAS_TOKEN)' "`blobfuse2 version`"
                 displayName: 'Updating version number'

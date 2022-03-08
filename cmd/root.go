@@ -200,7 +200,7 @@ func VersionCheck() error {
 	select {
 	//either wait till this routine completes or timeout if it exceeds 8 secs
 	case <-beginDetectNewVersion():
-	case <-time.After(800 * time.Second):
+	case <-time.After(8 * time.Second):
 		return fmt.Errorf("unable to obtain latest version information. please check your internet connection")
 	}
 	return nil
