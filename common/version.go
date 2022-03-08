@@ -41,6 +41,8 @@ import (
 
 const Blobfuse2NextVersionURL = "https://blobfuse2.blob.core.windows.net/blobfuse2release/latestversion.json"
 
+const Blobfuse2ListContainerURL = "https://souravfusestorage.blob.core.windows.net/version-cnt?restype=container&comp=list&prefix="
+
 type Version struct {
 	segments []int64
 	preview  bool

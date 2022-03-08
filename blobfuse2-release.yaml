@@ -635,20 +635,32 @@ stages:
               # Add '-preview' to pre-release versions. For example, 2.0.0-preview.1
               # Also considering that the tag and version are same
               - script: |
-                  python3 -c "import json; import requests; import sys;
-                  if(len(sys.argv)!=3):
-                      print('Less arguments')
+                  python3 -c "import json; import requests; import sys; from xml.dom import minidom;
+                  sasToken = sys.argv[1]
+                  releaseVersion = sys.argv[2].split(' ')[2]
+                  print('Release Version: ' + releaseVersion)
+                  if(len(releaseVersion)==0):
+                      print('Incorrect Release Version')
                       sys.exit(1)
-                  url = sys.argv[1]
-                  version = sys.argv[2].split(' ')[2]
-                  print('Version: ' + version)
-                  if(len(version)==0):
-                      print('Incorrect Release Tag')
+                  # list latest version file in the container
+                  url = 'https://souravfusestorage.blob.core.windows.net/version-cnt'
+                  listUrl = url + '?restype=container&comp=list&prefix=latest/'
+                  resp = requests.get(listUrl)
+                  sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Listed latest version file')
+                  listData = minidom.parseString(resp.content)
+                  name = listData.getElementsByTagName('Name')
+                  if(len(name)!=1):
+                      print('Latest version file not present')
                       sys.exit(1)
-                  dataDict = requests.get(url).json()
-                  dataDict['blobfuse2'] = version
-                  resp = requests.put(url, data=json.dumps(dataDict, indent=4), headers={'Content-Type': 'application/json', 'x-ms-blob-type': 'BlockBlob'})
-                  print('Status Code: ' + str(resp.status_code))
-                  sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('SUCCESS')" \
-                  '$(LATEST_VERSION_SAS)' "`blobfuse2 version`"
+                  latestVersion = name[0].firstChild.data
+                  print('Latest version file: ' + latestVersion)
+                  # delete latest version file in the container
+                  deleteUrl = url + '/' + latestVersion + '?' + sasToken
+                  resp = requests.delete(deleteUrl)
+                  sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Deleted latest version file')
+                  # create release version file in the container
+                  createUrl = url + '/latest/' + releaseVersion + '.version?' + sasToken
+                  resp = requests.put(createUrl, headers={'x-ms-blob-type': 'BlockBlob'})
+                  sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Created release version file')" \
+                  '$(LATEST_VERSION_SAS_TOKEN)' "`blobfuse2 version`"
                 displayName: 'Updating version number'
