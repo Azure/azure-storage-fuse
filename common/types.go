@@ -175,6 +175,7 @@ type Block struct {
 	StartIndex int64
 	EndIndex   int64
 	Size       int64
+	Modified   bool
 }
 
 // list that holds blocks containing ids and corresponding offsets
@@ -218,6 +219,7 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (*BlockOffse
 			break
 		}
 		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
+			blk.Modified = true
 			modBlockList.BlockOffsetList = append(modBlockList.BlockOffsetList, blk)
 			currentBlockOffset = blk.EndIndex
 			size += blk.Size

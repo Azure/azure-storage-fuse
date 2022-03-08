@@ -41,6 +41,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -698,37 +699,16 @@ func (bb *BlockBlob) createNewBlocks(modBlockList, blockList *common.BlockOffset
 	prevIndex := blockList.BlockOffsetList[len(blockList.BlockOffsetList)-1].EndIndex
 	// BufferSize is the size of the buffer that will go beyond our current blob (appended)
 	var bufferSize int64
-	// counter will help us keep track of how many blocks we've created
-	counter := int64(0)
 	// appendOnly means there is no overlap at all with the blob - data only being appended
-	appendOnly := false
-	// if modBlockList is not of size 0 then we know that we're overwriting part of our current data - with new data also being appended to the end
-	if len(modBlockList.BlockOffsetList) != 0 {
-		bufferSize = length - (prevIndex - offset)
-		// only new data at the end basically offset => lastBlock.EndIndex
-	} else {
-		bufferSize = (offset + length) - prevIndex
-		appendOnly = true
-	}
-	// reset the offset to be the last index in the block list since we are adding new blocks
-	offset = prevIndex
-	startIndex := offset
-	for i := 0; i < int(bufferSize); i++ {
-		counter += 1
+	appendOnly := len(modBlockList.BlockOffsetList) == 0
+	for i := prevIndex; i < offset+length; i += bb.Config.blockSize {
 		// create a new block if we hit our block size
-		if int64(i)%bb.Config.blockSize == 0 && i != 0 {
-			newBlock := bb.createBlock(blockIdLength, startIndex, bb.Config.blockSize)
-			modBlockList.BlockOffsetList = append(modBlockList.BlockOffsetList, newBlock)
-			blockList.BlockOffsetList = append(blockList.BlockOffsetList, newBlock)
-			startIndex = newBlock.EndIndex
-			// reset the counter since it will help us to determine if there is leftovers at the end
-			counter = 0
-		}
-	}
-	if counter != 0 {
-		newBlock := bb.createBlock(blockIdLength, startIndex, counter)
+		blkSize := int64(math.Min(float64(bb.Config.blockSize), float64((offset+length)-i)))
+		newBlock := bb.createBlock(blockIdLength, i, blkSize)
 		modBlockList.BlockOffsetList = append(modBlockList.BlockOffsetList, newBlock)
 		blockList.BlockOffsetList = append(blockList.BlockOffsetList, newBlock)
+		// reset the counter since it will help us to determine if there is leftovers at the end
+		bufferSize += blkSize
 	}
 	return appendOnly, bufferSize
 }
