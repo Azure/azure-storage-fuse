@@ -564,9 +564,8 @@ stages:
               curl -sSL https://rvm.io/pkuczynski.asc | gpg --import -
               curl -L get.rvm.io | bash -s stable
               source ~/.rvm/scripts/rvm
+              yes | rvm requirements run
               rvm reload
-              rvm reinstall 2.5
-              rvm use 2.5 --default
             displayName: 'Installing dependencies'
           
           # generating binary
