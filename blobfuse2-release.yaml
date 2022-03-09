@@ -645,7 +645,7 @@ stages:
                   # list latest version file in the container
                   containerUrl = sasUrl.split('?')[0]
                   sasToken = sasUrl.split('?')[1]
-                  listUrl = containerUrl + '?restype=container&comp=list&prefix=latest/'
+                  listUrl = sasUrl + '&restype=container&comp=list&prefix=latest/'
                   resp = requests.get(listUrl)
                   sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Listed latest version file')
                   listData = minidom.parseString(resp.content)
@@ -660,7 +660,7 @@ stages:
                   resp = requests.delete(deleteUrl)
                   sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Deleted latest version file')
                   # create release version file in the container
-                  createUrl = containerUrl + '/latest/' + releaseVersion + '.version?' + sasToken
+                  createUrl = containerUrl + '/latest/' + releaseVersion + '?' + sasToken
                   resp = requests.put(createUrl, headers={'x-ms-blob-type': 'BlockBlob'})
                   sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Created release version file')" \
                   '$(VERSION_CNT_SAS_URL)' "`blobfuse2 version`"
