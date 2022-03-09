@@ -649,6 +649,63 @@ jobs:
                 script: |
                   sudo zypper -n install fuse3 fuse3-devel
                 displayName: 'Install fuse'
+      # ------------------------------------------------------------
+      # SUSE tests
+      - job: Set_6
+        timeoutInMinutes: 30
+        strategy:
+          matrix:
+            MARINER:
+              DistroVer: "Mari-1"
+              AgentName: "MARI 1"
+              Description: "CBL-Mariner Linux"
+              containerName: 'test-cnt-mari-1'
+
+        pool:
+          name: 'Blobfuse Pool'
+          demands:
+            - Agent.Name -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/home/vsts/workv2"
+          - name: WORK_DIR
+            value: "/home/vsts/workv2/go/src/azure-storage-fuse"
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: MOUNT_DIR
+            value: "/home/vsts/workv2/blob_mnt"
+          - name: TEMP_DIR
+            value: "/home/vsts/workv2/blobfuse2tmp"
+          - name: BLOBFUSE2_CFG
+            value: "/home/vsts/workv2/blobfuse2.yaml"
+          - name: BLOBFUSE2_ADLS_CFG
+            value: "/home/vsts/workv2/blobfuse2.adls.yaml"
+          - name: GOPATH
+            value: "/home/vsts/workv2/go"
+
+        # Distro Tests
+        steps:
+          - template: 'azure-pipeline-templates/distro-tests.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              temp_dir: $(TEMP_DIR)
+              mount_dir: $(MOUNT_DIR)
+              config_path: $(BLOBFUSE2_CFG)
+              container: $(containerName)
+              blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              adls_account_name: $(AZTEST_ADLS_ACC_NAME)
+              adls_account_key: $(AZTEST_ADLS_KEY)
+              distro_name: $(AgentName)
+              gopath: $(GOPATH)
+              installStep:
+                script: |
+                  sudo tdnf -n install fuse libfuse-dev
+                displayName: 'Install fuse'
+
 
   - ${{ if eq(parameters.msi_test, true) }}:
       # -----------------------------------------------------------
