@@ -519,6 +519,8 @@ stages:
             Mari-1:
               DistroVer: 'Mari-1'
               AgentName: 'MARI 1'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
         
         pool:
           name: 'BlobFuse Pool'

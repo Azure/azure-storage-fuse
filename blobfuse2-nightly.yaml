@@ -660,6 +660,8 @@ jobs:
               AgentName: "MARI 1"
               Description: "CBL-Mariner Linux"
               containerName: 'test-cnt-mari-1'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
 
         pool:
           name: 'Blobfuse Pool'
@@ -701,6 +703,8 @@ jobs:
               adls_account_key: $(AZTEST_ADLS_KEY)
               distro_name: $(AgentName)
               gopath: $(GOPATH)
+              tags: $(tags)
+              fuselib: $(fuselib)
               installStep:
                 script: |
                   sudo tdnf -n install fuse fuse-devel
