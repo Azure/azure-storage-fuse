@@ -703,7 +703,7 @@ jobs:
               gopath: $(GOPATH)
               installStep:
                 script: |
-                  sudo tdnf -n install fuse libfuse-dev
+                  sudo tdnf -n install fuse fuse-devel
                 displayName: 'Install fuse'
 
 
