@@ -39,9 +39,7 @@ import (
 	"strings"
 )
 
-const Blobfuse2NextVersionURL = "https://blobfuse2.blob.core.windows.net/blobfuse2release/latestversion.json"
-
-const Blobfuse2ListContainerURL = "https://souravfusestorage.blob.core.windows.net/version-cnt/"
+const Blobfuse2ListContainerURL = "https://blobfuse2.blob.core.windows.net/release/"
 
 const BlobFuse2WarningsURL = "https://github.com/Azure/azure-storage-fuse/wiki/9.-Security-Warnings"
 

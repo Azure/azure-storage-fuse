@@ -86,7 +86,7 @@ func beginDetectNewVersion() chan interface{} {
 			fmt.Fprintf(stderr, "*** "+executableName+": A new version is available. Consider upgrading to latest version for bug-fixes & new features. ***\n")
 			log.Info("*** " + executableName + ": A new version is available. Consider upgrading to latest version for bug-fixes & new features. ***\n")
 
-			warningsUrl := common.Blobfuse2ListContainerURL + "warnings/" + common.Blobfuse2Version
+			warningsUrl := common.Blobfuse2ListContainerURL + "securitywarnings/" + common.Blobfuse2Version
 			hasWarnings := checkVersionExists(warningsUrl)
 
 			if hasWarnings {
