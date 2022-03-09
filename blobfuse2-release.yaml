@@ -576,6 +576,7 @@ stages:
               work_dir: $(work_dir)
               root_dir: $(root_dir)
               unit_test: ${{ parameters.unit_test }}
+              tags: $(tags)
           
           # accumulating binary & necessary scripts for packaging
           - script: |
