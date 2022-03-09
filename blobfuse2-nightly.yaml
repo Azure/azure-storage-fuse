@@ -537,6 +537,14 @@ jobs:
               hostedAgent: false
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
+            Debian-11.0:
+              DistroVer: "Debian11.0"
+              AgentName: "DEB 11.0"
+              Description: "Debian Linux 11.0 Gen 2"
+              containerName: 'test-cnt-deb-11'
+              hostedAgent: false
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
         pool:
           name: 'Blobfuse Pool'
           demands:
