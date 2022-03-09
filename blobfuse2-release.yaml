@@ -494,8 +494,9 @@ stages:
             displayName: 'Accumulate pkg files'
           
           - script: |
+              sudo gem install fpm -v 1.14.1
               sudo zypper in rpmbuild
-              export PATH=$PATH:/usr/lib64/ruby/gems/2.6.0/gems/fpm-1.14.1/bin
+              export PATH=$PATH:/usr/lib64/ruby/gems/2.5.0/gems/fpm-1.14.1/bin
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" \
@@ -515,8 +516,8 @@ stages:
       - job: Set_6
         strategy:
           matrix:
-            Mari-1:
-              DistroVer: 'Mari-1'
+            Mariner:
+              DistroVer: 'Mariner'
               AgentName: 'MARI 1'
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
@@ -594,8 +595,8 @@ stages:
           
           # using fpm tool to generate package along with post-install scripts
           - script: |
-              source ~/.rvm/scripts/rvm
-              sudo gem install fpm -V
+              sudo gem install fpm -v 1.14.1
+              export PATH=$PATH:/usr/lib64/ruby/gems/2.6.0/gems/fpm-1.14.1/bin
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" \
