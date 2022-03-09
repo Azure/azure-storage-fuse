@@ -635,15 +635,12 @@ stages:
                 displayName: 'Installing blobfuse2'
 
               - script: |
-                  echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement
                   wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/`echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`/releaseVersionUpdate.py
-                  pwd
                   ls -l
                 displayName: 'Getting Python script'
                 workingDirectory: $(root_dir)
 
               - script: |
-                  pwd
                   python3 releaseVersionUpdate.py "$(VERSION_CNT_SAS_URL)" "`blobfuse2 version`"
                 displayName: 'Updating version number'
                 workingDirectory: $(root_dir)

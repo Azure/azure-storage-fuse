@@ -67,7 +67,7 @@ func checkVersionExists(versionUrl string) bool {
 		return false
 	}
 
-	return (resp.StatusCode >= 200 && resp.StatusCode <= 202)
+	return resp.StatusCode != 404
 }
 
 func beginDetectNewVersion() chan interface{} {
