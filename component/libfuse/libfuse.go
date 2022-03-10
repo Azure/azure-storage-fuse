@@ -199,7 +199,7 @@ func (lf *Libfuse) Configure() error {
 	err := config.UnmarshalKey(lf.Name(), &conf)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [invalid config attributes]")
-		return fmt.Errorf("Libfuse: config error [invalid config attributes]")
+		return fmt.Errorf("config error in %s [invalid config attributes]", lf.Name())
 	}
 	// Extract values from 'conf' and store them as you wish here
 
@@ -223,7 +223,7 @@ func (lf *Libfuse) Configure() error {
 	err = lf.Validate(&conf)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [invalid config settings]")
-		return fmt.Errorf("libfuse config error: invalid config settings")
+		return fmt.Errorf("config error in %s [invalid config settings]", lf.Name())
 	}
 
 	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d",

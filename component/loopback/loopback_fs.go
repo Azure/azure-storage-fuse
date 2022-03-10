@@ -73,13 +73,13 @@ func (lfs *LoopbackFS) Configure() error {
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {
 		log.Err("LoopbackFS: config error [invalid config attributes]")
-		return fmt.Errorf("LoopbackFS: config error [invalid config attributes]")
+		return fmt.Errorf("config error in %s [%s]", lfs.Name(), err)
 	}
 	if _, err := os.Stat(conf.Path); os.IsNotExist(err) {
 		err = os.MkdirAll(conf.Path, os.FileMode(0777))
 		if err != nil {
 			log.Err("LoopbackFS: config error [%s]", err)
-			return fmt.Errorf("LoopbackFS: config error [%s]", err)
+			return fmt.Errorf("config error in %s [%s]", lfs.Name(), err)
 		}
 		lfs.path = conf.Path
 	} else {
@@ -317,8 +317,7 @@ func (lfs *LoopbackFS) ReleaseFile(options internal.ReleaseFileOptions) error {
 	f := options.Handle.GetFileObject()
 	if f == nil {
 		log.Err("LoopbackFS: ReleaseFile error [file not open]")
-		return fmt.Errorf("LoopbackFS: %s file not open", options.Handle.Path)
-
+		return fmt.Errorf("LoopbackFS::ReleaseFile : %s file not open", options.Handle.Path)
 	}
 	return nil
 }

@@ -71,7 +71,7 @@ func NewPipeline(components []string) (*Pipeline, error) {
 
 			if !(comp.Priority() <= lastPriority) {
 				log.Err("Pipeline::NewPipeline : Invalid Component order [priority of %s higher than above components]", comp.Name())
-				return nil, fmt.Errorf("Pipeline::NewPipeline : Invalid component order")
+				return nil, fmt.Errorf("config error in Pipeline [component %s is out of order]", name)
 			} else {
 				lastPriority = comp.Priority()
 			}
@@ -80,7 +80,7 @@ func NewPipeline(components []string) (*Pipeline, error) {
 			comps = append(comps, comp)
 		} else {
 			log.Err("Pipeline: error [component %s not registered]", name)
-			return nil, fmt.Errorf("pipeline: error [component %s not registered]", name)
+			return nil, fmt.Errorf("config error in Pipeline [component %s not registered]", name)
 		}
 
 	}
