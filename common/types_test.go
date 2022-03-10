@@ -80,19 +80,18 @@ func (suite *typesTestSuite) TestFindBlocksToModify() {
 	bol := BlockOffsetList{
 		BlockList: blocksList,
 	}
-	modList, size, largerThanFile := bol.FindBlocksToModify(3, 7)
-	suite.assert.Equal(len(modList.BlockList), 3)
+	index, size, largerThanFile, _ := bol.FindBlocksToModify(3, 7)
+	suite.assert.Equal(index, 0)
 	suite.assert.Equal(size, int64(12))
 	suite.assert.Equal(largerThanFile, false)
 
-	modList, size, largerThanFile = bol.FindBlocksToModify(8, 10)
-	suite.assert.Equal(len(modList.BlockList), 1)
+	index, size, largerThanFile, _ = bol.FindBlocksToModify(8, 10)
+	suite.assert.Equal(index, 2)
 	suite.assert.Equal(size, int64(5))
 	suite.assert.Equal(largerThanFile, true)
 
-	modList, size, largerThanFile = bol.FindBlocksToModify(20, 20)
-	suite.assert.Equal(len(modList.BlockList), 0)
+	index, size, largerThanFile, appendOnly := bol.FindBlocksToModify(20, 20)
 	suite.assert.Equal(size, int64(0))
 	suite.assert.Equal(largerThanFile, true)
-
+	suite.assert.Equal(appendOnly, true)
 }

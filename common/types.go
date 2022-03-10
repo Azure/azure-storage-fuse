@@ -203,14 +203,14 @@ func (bol BlockOffsetList) binarySearch(offset int64) (bool, int) {
 	return false, 0
 }
 
-func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (*BlockOffsetList, int64, bool) {
+func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64, bool, bool) {
 	// size of mod block list
 	size := int64(0)
+	appendOnly := true
 	currentBlockOffset := offset
-	modBlockList := BlockOffsetList{}
 	found, index := bol.binarySearch(offset)
 	if !found {
-		return &modBlockList, 0, true
+		return 0, 0, true, appendOnly
 	}
 	// after the binary search just iterate to find the remaining blocks
 	for _, blk := range bol.BlockList[index:] {
@@ -218,14 +218,14 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (*BlockOffse
 			break
 		}
 		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
+			appendOnly = false
 			blk.Modified = true
-			modBlockList.BlockList = append(modBlockList.BlockList, blk)
 			currentBlockOffset = blk.EndIndex
 			size += blk.Size
 		}
 	}
 	// return: block list subset affected, size of mod data, does the new data exceed current size?
-	return &modBlockList, size, offset+length >= bol.BlockList[len(bol.BlockList)-1].EndIndex
+	return index, size, offset+length >= bol.BlockList[len(bol.BlockList)-1].EndIndex, appendOnly
 }
 
 // NewUUID returns a new uuid using RFC 4122 algorithm with the given length.

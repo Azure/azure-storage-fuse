@@ -688,26 +688,24 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 		StartIndex: startIndex,
 		EndIndex:   startIndex + size,
 		Size:       size,
+		Modified:   true,
 	}
 	return newBlock
 }
 
-func (bb *BlockBlob) createNewBlocks(modBlockList, blockList *common.BlockOffsetList, offset, length, blockIdLength int64) (bool, int64) {
+func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, length, blockIdLength int64) int64 {
 	prevIndex := blockList.BlockList[len(blockList.BlockList)-1].EndIndex
 	// BufferSize is the size of the buffer that will go beyond our current blob (appended)
 	var bufferSize int64
-	// appendOnly means there is no overlap at all with the blob - data only being appended
-	appendOnly := len(modBlockList.BlockList) == 0
 	for i := prevIndex; i < offset+length; i += bb.Config.blockSize {
 		// create a new block if we hit our block size
 		blkSize := int64(math.Min(float64(bb.Config.blockSize), float64((offset+length)-i)))
 		newBlock := bb.createBlock(blockIdLength, i, blkSize)
-		modBlockList.BlockList = append(modBlockList.BlockList, newBlock)
 		blockList.BlockList = append(blockList.BlockList, newBlock)
 		// reset the counter since it will help us to determine if there is leftovers at the end
 		bufferSize += blkSize
 	}
-	return appendOnly, bufferSize
+	return bufferSize
 }
 
 // Write : write data at given offset to a blob
@@ -715,7 +713,6 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 	defer log.TimeTrack(time.Now(), "BlockBlob::Write", name)
 	log.Trace("BlockBlob::Write : name %s offset %v", name, offset)
 	// tracks the case where our offset is great than our current file size (appending only - not modifying pre-existing data)
-	appendOnly := false
 	var dataBuffer *[]byte
 
 	// when the file offset mapping is cached we don't need to make a get block list call
@@ -764,7 +761,7 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 		// case 2: given offset is within the size of the blob - and the blob consists of multiple blocks
 		// case 3: new blocks need to be added
 	} else {
-		modifiedBlockList, oldDataSize, exceedsFileBlocks := fileOffsets.FindBlocksToModify(offset, length)
+		index, oldDataSize, exceedsFileBlocks, appendOnly := fileOffsets.FindBlocksToModify(offset, length)
 		// keeps track of how much new data will be appended to the end of the file (applicable only to case 3)
 		newBufferSize := int64(0)
 		// case 3?
@@ -772,19 +769,19 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 			// get length of blockID in order to generate a consistent size block ID so storage does not throw
 			existingBlockId, _ := base64.StdEncoding.DecodeString(fileOffsets.BlockList[0].Id)
 			blockIdLength := len(existingBlockId)
-			appendOnly, newBufferSize = bb.createNewBlocks(modifiedBlockList, fileOffsets, offset, length, int64(blockIdLength))
+			newBufferSize = bb.createNewBlocks(fileOffsets, offset, length, int64(blockIdLength))
 		}
-		if len(modifiedBlockList.BlockList) > 0 {
+		if !appendOnly {
 			// buffer that holds that pre-existing data in those blocks we're interested in
 			oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
 			if !appendOnly {
 				// fetch the blocks that will be impacted by the new changes so we can overwrite them
-				bb.ReadInBuffer(name, modifiedBlockList.BlockList[0].StartIndex, oldDataSize, oldDataBuffer)
+				bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
 			}
 			// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
-			blockOffset := offset - modifiedBlockList.BlockList[0].StartIndex
+			blockOffset := offset - fileOffsets.BlockList[index].StartIndex
 			copy(oldDataBuffer[blockOffset:], data)
-			err := bb.stageAndCommitModifiedBlocks(name, oldDataBuffer, modifiedBlockList, fileOffsets)
+			err := bb.stageAndCommitModifiedBlocks(name, oldDataBuffer, index, fileOffsets)
 			return err
 		}
 	}
@@ -792,25 +789,29 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 }
 
 // TODO: make a similar method facing stream that would enable us to write to cached blocks then stage and commit
-func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, modifiedBlockList, blockList *common.BlockOffsetList) error {
+func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, index int, offsetList *common.BlockOffsetList) error {
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	blockOffset := int64(0)
-	for _, blk := range modifiedBlockList.BlockList {
-		_, err := blobURL.StageBlock(context.Background(),
-			blk.Id,
-			bytes.NewReader(data[blockOffset:blk.Size+blockOffset]),
-			bb.blobAccCond.LeaseAccessConditions,
-			nil,
-			bb.downloadOptions.ClientProvidedKeyOptions)
-		if err != nil {
-			log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to stage to blob %s at block %v (%s)", name, blockOffset, err.Error())
-			return err
+	for _, blk := range offsetList.BlockList[index:] {
+		if blk.Modified {
+			_, err := blobURL.StageBlock(context.Background(),
+				blk.Id,
+				bytes.NewReader(data[blockOffset:blk.Size+blockOffset]),
+				bb.blobAccCond.LeaseAccessConditions,
+				nil,
+				bb.downloadOptions.ClientProvidedKeyOptions)
+			if err != nil {
+				log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to stage to blob %s at block %v (%s)", name, blockOffset, err.Error())
+				return err
+			}
+			blockOffset = blk.Size + blockOffset
+		} else {
+			break
 		}
-		blockOffset = blk.Size + blockOffset
 	}
 	var blockIDList []string
 	// TODO: we can probably clean up this for loop - move it to types method?
-	for _, blk := range blockList.BlockList {
+	for _, blk := range offsetList.BlockList {
 		blockIDList = append(blockIDList, blk.Id)
 	}
 	_, err := blobURL.CommitBlockList(context.Background(),
