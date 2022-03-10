@@ -650,8 +650,8 @@ jobs:
                   sudo zypper -n install fuse3 fuse3-devel
                 displayName: 'Install fuse'
       # ------------------------------------------------------------
-      # SUSE tests
-      - job: Set_7
+      # Mariner tests
+      - job: Set_6
         timeoutInMinutes: 30
         strategy:
           matrix:
@@ -714,7 +714,7 @@ jobs:
   - ${{ if eq(parameters.msi_test, true) }}:
       # -----------------------------------------------------------
       # Ubuntu-20.04 MSI tests
-      - job: Set_6
+      - job: Set_7
         timeoutInMinutes: 30
         strategy:
           matrix:
