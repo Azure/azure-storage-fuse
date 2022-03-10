@@ -83,15 +83,15 @@ var pipelineStarted bool
 
 func (opt *mountOptions) validate(skipEmptyMount bool) error {
 	if opt.MountPath == "" {
-		return fmt.Errorf("argument error: Mount path not provided")
+		return fmt.Errorf("argument error: mount path not provided")
 	}
 
 	if _, err := os.Stat(opt.MountPath); os.IsNotExist(err) {
-		return fmt.Errorf("argument error: Mount Directory does not exists")
+		return fmt.Errorf("argument error: mount directory does not exists")
 	} else if common.IsDirectoryMounted(opt.MountPath) {
-		return fmt.Errorf("argument error: Directory is already mounted")
+		return fmt.Errorf("argument error: directory is already mounted")
 	} else if !skipEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
-		return fmt.Errorf("argument error: Mount directory is not empty")
+		return fmt.Errorf("argument error: mount directory is not empty")
 	}
 
 	if err := common.ELogLevel.Parse(opt.Logging.LogLevel); err != nil {
