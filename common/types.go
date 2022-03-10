@@ -180,24 +180,23 @@ type Block struct {
 
 // list that holds blocks containing ids and corresponding offsets
 type BlockOffsetList struct {
-	BlockOffsetList []*Block //blockId to offset mapping
-	SmallFile       bool     // does it consist of blocks
-	Cached          bool     // is it cached?
+	BlockList []*Block //blockId to offset mapping
+	Cached    bool     // is it cached?
 }
 
 func (bol BlockOffsetList) binarySearch(offset int64) (bool, int) {
 	lowerBound := 0
-	higherBound := len(bol.BlockOffsetList) - 1
+	higherBound := len(bol.BlockList) - 1
 	for lowerBound <= higherBound {
 		middleIndex := (lowerBound + higherBound) / 2
 		// we found the starting block that changes are being applied to
-		if bol.BlockOffsetList[middleIndex].EndIndex > offset && bol.BlockOffsetList[middleIndex].StartIndex <= offset {
+		if bol.BlockList[middleIndex].EndIndex > offset && bol.BlockList[middleIndex].StartIndex <= offset {
 			return true, middleIndex
 			// if the end index is smaller or equal then we need to increase our lower bound
-		} else if bol.BlockOffsetList[middleIndex].EndIndex <= offset {
+		} else if bol.BlockList[middleIndex].EndIndex <= offset {
 			lowerBound = middleIndex + 1
 			// if the start index is larger than the offset we need to decrease our upper bound
-		} else if bol.BlockOffsetList[middleIndex].StartIndex > offset {
+		} else if bol.BlockList[middleIndex].StartIndex > offset {
 			higherBound = middleIndex - 1
 		}
 	}
@@ -214,19 +213,19 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (*BlockOffse
 		return &modBlockList, 0, true
 	}
 	// after the binary search just iterate to find the remaining blocks
-	for _, blk := range bol.BlockOffsetList[index:] {
+	for _, blk := range bol.BlockList[index:] {
 		if blk.StartIndex > offset+length {
 			break
 		}
 		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
 			blk.Modified = true
-			modBlockList.BlockOffsetList = append(modBlockList.BlockOffsetList, blk)
+			modBlockList.BlockList = append(modBlockList.BlockList, blk)
 			currentBlockOffset = blk.EndIndex
 			size += blk.Size
 		}
 	}
 	// return: block list subset affected, size of mod data, does the new data exceed current size?
-	return &modBlockList, size, offset+length >= bol.BlockOffsetList[len(bol.BlockOffsetList)-1].EndIndex
+	return &modBlockList, size, offset+length >= bol.BlockList[len(bol.BlockList)-1].EndIndex
 }
 
 // NewUUID returns a new uuid using RFC 4122 algorithm with the given length.

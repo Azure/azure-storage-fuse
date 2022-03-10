@@ -60,7 +60,7 @@ func (suite *typesTestSuite) TestBinarySearch() {
 		{StartIndex: 7, EndIndex: 12, Size: 5},
 	}
 	bol := BlockOffsetList{
-		BlockOffsetList: blocksList,
+		BlockList: blocksList,
 	}
 	found, startingIndex := bol.binarySearch(5)
 	suite.assert.Equal(found, true)
@@ -78,20 +78,20 @@ func (suite *typesTestSuite) TestFindBlocksToModify() {
 		{StartIndex: 7, EndIndex: 12, Size: 5},
 	}
 	bol := BlockOffsetList{
-		BlockOffsetList: blocksList,
+		BlockList: blocksList,
 	}
 	modList, size, largerThanFile := bol.FindBlocksToModify(3, 7)
-	suite.assert.Equal(len(modList.BlockOffsetList), 3)
+	suite.assert.Equal(len(modList.BlockList), 3)
 	suite.assert.Equal(size, int64(12))
 	suite.assert.Equal(largerThanFile, false)
 
 	modList, size, largerThanFile = bol.FindBlocksToModify(8, 10)
-	suite.assert.Equal(len(modList.BlockOffsetList), 1)
+	suite.assert.Equal(len(modList.BlockList), 1)
 	suite.assert.Equal(size, int64(5))
 	suite.assert.Equal(largerThanFile, true)
 
 	modList, size, largerThanFile = bol.FindBlocksToModify(20, 20)
-	suite.assert.Equal(len(modList.BlockOffsetList), 0)
+	suite.assert.Equal(len(modList.BlockList), 0)
 	suite.assert.Equal(size, int64(0))
 	suite.assert.Equal(largerThanFile, true)
 

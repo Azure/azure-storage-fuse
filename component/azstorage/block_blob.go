@@ -675,10 +675,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 			Size:       block.Size,
 		}
 		blockOffset += block.Size
-		blockList.BlockOffsetList = append(blockList.BlockOffsetList, blk)
-	}
-	if blockOffset == 0 {
-		blockList.SmallFile = true
+		blockList.BlockList = append(blockList.BlockList, blk)
 	}
 	return &blockList, nil
 }
@@ -696,17 +693,17 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 }
 
 func (bb *BlockBlob) createNewBlocks(modBlockList, blockList *common.BlockOffsetList, offset, length, blockIdLength int64) (bool, int64) {
-	prevIndex := blockList.BlockOffsetList[len(blockList.BlockOffsetList)-1].EndIndex
+	prevIndex := blockList.BlockList[len(blockList.BlockList)-1].EndIndex
 	// BufferSize is the size of the buffer that will go beyond our current blob (appended)
 	var bufferSize int64
 	// appendOnly means there is no overlap at all with the blob - data only being appended
-	appendOnly := len(modBlockList.BlockOffsetList) == 0
+	appendOnly := len(modBlockList.BlockList) == 0
 	for i := prevIndex; i < offset+length; i += bb.Config.blockSize {
 		// create a new block if we hit our block size
 		blkSize := int64(math.Min(float64(bb.Config.blockSize), float64((offset+length)-i)))
 		newBlock := bb.createBlock(blockIdLength, i, blkSize)
-		modBlockList.BlockOffsetList = append(modBlockList.BlockOffsetList, newBlock)
-		blockList.BlockOffsetList = append(blockList.BlockOffsetList, newBlock)
+		modBlockList.BlockList = append(modBlockList.BlockList, newBlock)
+		blockList.BlockList = append(blockList.BlockList, newBlock)
 		// reset the counter since it will help us to determine if there is leftovers at the end
 		bufferSize += blkSize
 	}
@@ -731,7 +728,7 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 	}
 
 	// case 1: file consists of no blocks (small file)
-	if fileOffsets != nil && fileOffsets.SmallFile {
+	if fileOffsets != nil && len(fileOffsets.BlockList) == 0 {
 		// get all the data
 		oldData, _ := bb.ReadBuffer(name, 0, 0)
 		// update the data with the new data
@@ -773,19 +770,19 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 		// case 3?
 		if exceedsFileBlocks {
 			// get length of blockID in order to generate a consistent size block ID so storage does not throw
-			existingBlockId, _ := base64.StdEncoding.DecodeString(fileOffsets.BlockOffsetList[0].Id)
+			existingBlockId, _ := base64.StdEncoding.DecodeString(fileOffsets.BlockList[0].Id)
 			blockIdLength := len(existingBlockId)
 			appendOnly, newBufferSize = bb.createNewBlocks(modifiedBlockList, fileOffsets, offset, length, int64(blockIdLength))
 		}
-		if len(modifiedBlockList.BlockOffsetList) > 0 {
+		if len(modifiedBlockList.BlockList) > 0 {
 			// buffer that holds that pre-existing data in those blocks we're interested in
 			oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
 			if !appendOnly {
 				// fetch the blocks that will be impacted by the new changes so we can overwrite them
-				bb.ReadInBuffer(name, modifiedBlockList.BlockOffsetList[0].StartIndex, oldDataSize, oldDataBuffer)
+				bb.ReadInBuffer(name, modifiedBlockList.BlockList[0].StartIndex, oldDataSize, oldDataBuffer)
 			}
 			// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
-			blockOffset := offset - modifiedBlockList.BlockOffsetList[0].StartIndex
+			blockOffset := offset - modifiedBlockList.BlockList[0].StartIndex
 			copy(oldDataBuffer[blockOffset:], data)
 			err := bb.stageAndCommitModifiedBlocks(name, oldDataBuffer, modifiedBlockList, fileOffsets)
 			return err
@@ -798,7 +795,7 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, modifiedBlockList, blockList *common.BlockOffsetList) error {
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	blockOffset := int64(0)
-	for _, blk := range modifiedBlockList.BlockOffsetList {
+	for _, blk := range modifiedBlockList.BlockList {
 		_, err := blobURL.StageBlock(context.Background(),
 			blk.Id,
 			bytes.NewReader(data[blockOffset:blk.Size+blockOffset]),
@@ -813,7 +810,7 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, modi
 	}
 	var blockIDList []string
 	// TODO: we can probably clean up this for loop - move it to types method?
-	for _, blk := range blockList.BlockOffsetList {
+	for _, blk := range blockList.BlockList {
 		blockIDList = append(blockIDList, blk.Id)
 	}
 	_, err := blobURL.CommitBlockList(context.Background(),
