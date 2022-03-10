@@ -16,21 +16,21 @@ sasToken = sasUrl.split('?')[1]
 # list latest version file in the container
 listUrl = sasUrl + '&restype=container&comp=list&prefix=latest/'
 resp = requests.get(listUrl)
-sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Listed latest version file')
+sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Listed latest version container')
 listData = minidom.parseString(resp.content)
 name = listData.getElementsByTagName('Name')
 if(len(name)!=1):
-    print('Latest version file not present')
+    print('Latest version container is empty')
     sys.exit(1)
 latestVersion = name[0].firstChild.data
-print('Latest version file: ' + latestVersion)
+print('Last release version: ' + latestVersion)
 
 # delete latest version file in the container
 deleteUrl = containerUrl + '/' + latestVersion + '?' + sasToken
 resp = requests.delete(deleteUrl)
-sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Deleted latest version file')
+sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Deleted last release file')
 
 # create release version file in the container
 createUrl = containerUrl + '/latest/' + releaseVersion + '?' + sasToken
 resp = requests.put(createUrl, headers={'x-ms-blob-type': 'BlockBlob'})
-sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Created release version file')
+sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Created new release version file')

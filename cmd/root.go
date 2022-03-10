@@ -36,7 +36,9 @@ package cmd
 import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
+	"encoding/xml"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -44,6 +46,16 @@ import (
 
 	"github.com/spf13/cobra"
 )
+
+type ContainerList struct {
+	XMLName xml.Name `xml:"EnumerationResults"`
+	Blobs   []Blob   `xml:"Blobs>Blob"`
+}
+
+type Blob struct {
+	XMLName xml.Name `xml:"Blob"`
+	Name    string   `xml:"Name"`
+}
 
 var disableVersionCheck bool
 
@@ -70,23 +82,67 @@ func checkVersionExists(versionUrl string) bool {
 	return resp.StatusCode != 404
 }
 
+func getRemoteVersion(req string) (string, error) {
+	resp, err := http.Get(req)
+	if err != nil {
+		log.Err("getRemoteVersion: error listing version file from container [%s]", err)
+		return "", err
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Err("getRemoteVersion: error reading body of response [%s]", err)
+		return "", err
+	}
+
+	var versionList ContainerList
+	err = xml.Unmarshal(body, &versionList)
+	if err != nil {
+		log.Err("getRemoteVersion: error unmarshalling xml response [%s]", err)
+		return "", err
+	}
+
+	if len(versionList.Blobs) != 1 {
+		return "", fmt.Errorf("the latest version container is empty")
+	}
+
+	versionName := strings.Split(versionList.Blobs[0].Name, "/")[1]
+	return versionName, nil
+}
+
 func beginDetectNewVersion() chan interface{} {
 	completed := make(chan interface{})
 	stderr := os.Stderr
 	go func() {
 		defer close(completed)
 
-		latestVersionUrl := common.Blobfuse2ListContainerURL + "latest/" + common.Blobfuse2Version
-		isLatestVersion := checkVersionExists(latestVersionUrl)
+		latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest/"
+		remoteVersion, err := getRemoteVersion(latestVersionUrl)
+		if err != nil {
+			log.Err("beginDetectNewVersion: error getting remote version [%s]", err)
+			return
+		}
 
-		if !isLatestVersion {
+		local, err := common.ParseVersion(common.Blobfuse2Version)
+		if err != nil {
+			log.Err("beginDetectNewVersion: error parsing Blobfuse2Version [%s]", err)
+			return
+		}
+
+		remote, err := common.ParseVersion(remoteVersion)
+		if err != nil {
+			log.Err("beginDetectNewVersion: error parsing remoteVersion [%s]", err)
+			return
+		}
+
+		if local.OlderThan(*remote) {
 			executablePathSegments := strings.Split(strings.Replace(os.Args[0], "\\", "/", -1), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
-			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s", common.Blobfuse2Version)
-			fmt.Fprintf(stderr, "*** "+executableName+": A new version is available. Consider upgrading to latest version for bug-fixes & new features. ***\n")
-			log.Info("*** " + executableName + ": A new version is available. Consider upgrading to latest version for bug-fixes & new features. ***\n")
+			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remoteVersion)
+			fmt.Fprintf(stderr, "*** "+executableName+": A new version (%s) is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
+			log.Info("*** "+executableName+": A new version (%s) is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
 
-			warningsUrl := common.Blobfuse2ListContainerURL + "securitywarnings/" + common.Blobfuse2Version
+			warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
 			hasWarnings := checkVersionExists(warningsUrl)
 
 			if hasWarnings {
