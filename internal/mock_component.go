@@ -41,6 +41,7 @@ import (
 	handlemap "blobfuse2/internal/handlemap"
 	context "context"
 	reflect "reflect"
+	common "blobfuse2/common"
 
 	gomock "github.com/golang/mock/gomock"
 )
@@ -306,6 +307,22 @@ func (m *MockComponent) InvalidateObject(arg0 string) {
 func (mr *MockComponentMockRecorder) InvalidateObject(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateObject", reflect.TypeOf((*MockComponent)(nil).InvalidateObject), arg0)
+}
+
+
+// GetFileBlockOffsets mocks base method.
+func (m *MockComponent) GetFileBlockOffsets(arg0 GetFileBlockOffsetsOptions)(*common.BlockOffsetList, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetFileBlockOffsets", arg0)
+	ret0, _ := ret[0].(*common.BlockOffsetList)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetFileBlockOffsets maps offsets to block ids.
+func (mr *MockComponentMockRecorder) GetFileBlockOffsets(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFileBlockOffsets", reflect.TypeOf((*MockComponent)(nil).GetFileBlockOffsets), arg0)
 }
 
 // IsDirEmpty mocks base method.
