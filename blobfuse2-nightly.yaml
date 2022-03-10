@@ -655,7 +655,7 @@ jobs:
         timeoutInMinutes: 30
         strategy:
           matrix:
-            MARINER:
+            Mariner:
               DistroVer: "Mari-1"
               AgentName: "MARI 1"
               Description: "CBL-Mariner Linux"
@@ -707,7 +707,7 @@ jobs:
               fuselib: $(fuselib)
               installStep:
                 script: |
-                  sudo tdnf -n install fuse fuse-devel
+                  sudo tdnf install fuse fuse-devel
                 displayName: 'Install fuse'
 
 
