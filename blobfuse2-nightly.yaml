@@ -651,7 +651,7 @@ jobs:
                 displayName: 'Install fuse'
       # ------------------------------------------------------------
       # SUSE tests
-      - job: Set_6
+      - job: Set_7
         timeoutInMinutes: 30
         strategy:
           matrix:
