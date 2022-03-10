@@ -226,11 +226,7 @@ var mountCmd = &cobra.Command{
 			options.ConfigFile = "config.yaml"
 		}
 
-		if !config.IsSet("logging.file-path") {
-			options.Logging.LogFilePath = common.DefaultLogFilePath
-		}
-
-		if !config.IsSet("logging.log-level") {
+		if !config.IsSet("logging.level") {
 			options.Logging.LogLevel = "LOG_WARNING"
 		}
 

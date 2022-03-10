@@ -34,6 +34,7 @@
 package azstorage
 
 import (
+	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"context"
 	"errors"
@@ -68,6 +69,24 @@ type AzSTE struct {
 	partNumLock sync.Mutex
 }
 
+// Convert blobfuse log level to STE log level
+func getSTELogLevel() stecommon.LogLevel {
+	switch log.GetLogLevel() {
+	case common.ELogLevel.LOG_CRIT():
+		return stecommon.ELogLevel.Fatal()
+	case common.ELogLevel.LOG_ERR():
+		return stecommon.ELogLevel.Error()
+	case common.ELogLevel.LOG_WARNING():
+		return stecommon.ELogLevel.Warning()
+	case common.ELogLevel.LOG_INFO():
+		return stecommon.ELogLevel.Info()
+	case common.ELogLevel.LOG_TRACE():
+		return stecommon.ELogLevel.Debug()
+	}
+
+	return stecommon.ELogLevel.Info()
+}
+
 // InitSTE : this initialize the STE lib and bring it to ready state for transfers
 func (azste *AzSTE) Initialize(config AzSTEConfig) (err error) {
 	jobID := stecommon.NewJobID()
@@ -77,8 +96,9 @@ func (azste *AzSTE) Initialize(config AzSTEConfig) (err error) {
 	var logLevel stecommon.LogLevel
 
 	stecommon.AzcopyJobPlanFolder = config.partFilePath
-	logLevel = stecommon.ELogLevel.Info()
-	logger := stecommon.NewSysLogger(jobID, logLevel, "narasimha")
+	logLevel = getSTELogLevel()
+
+	logger := stecommon.NewSysLogger(jobID, logLevel, "blobfuse2 (stelib)")
 	logger.OpenLog()
 
 	os.MkdirAll(stecommon.AzcopyJobPlanFolder, 0666)
@@ -86,7 +106,7 @@ func (azste *AzSTE) Initialize(config AzSTEConfig) (err error) {
 		jobID,
 		context.Background(),
 		stecommon.NewNullCpuMonitor(),
-		stecommon.ELogLevel.Error(),
+		logLevel,
 		"blobfuse2",
 		config.partFilePath,
 		&tuner,
@@ -109,7 +129,6 @@ func (azste *AzSTE) Initialize(config AzSTEConfig) (err error) {
 			str := "[States: " + strings.Join(s, ", ") + "], "
 			log.Err(str)
 			time.Sleep(30 * time.Second)
-
 		}
 	}()
 
@@ -196,7 +215,7 @@ func (azste *AzSTE) Upload(param UploadParam) error {
 		ForceIfReadOnly: false,
 		AutoDecompress:  false,
 		Priority:        stecommon.EJobPriority.Normal(),
-		LogLevel:        stecommon.ELogLevel.Debug(),
+		LogLevel:        getSTELogLevel(),
 		BlobAttributes: stecommon.BlobTransferAttributes{
 			BlobType:         stecommon.EBlobType.BlockBlob(),
 			BlockSizeInBytes: azste.getBlockSize(fi.Size(), param.blockSize),
@@ -296,7 +315,7 @@ func (azste *AzSTE) Download(options DownloadParam) error {
 		ForceIfReadOnly: false,
 		AutoDecompress:  false,
 		Priority:        stecommon.EJobPriority.Normal(),
-		LogLevel:        stecommon.ELogLevel.Debug(),
+		LogLevel:        getSTELogLevel(),
 		BlobAttributes: stecommon.BlobTransferAttributes{
 			BlobType:         stecommon.EBlobType.BlockBlob(),
 			BlockSizeInBytes: azste.getBlockSize(props.ContentLength(), options.blockSize),

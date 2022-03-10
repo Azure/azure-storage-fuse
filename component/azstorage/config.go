@@ -403,11 +403,7 @@ func ParseAndValidateSTEConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.steGCPercent = opt.STEGCPercent
 	}
 
-	if opt.STEMinFileSize == 0 {
-		az.stConfig.steMinFileSize = 100 * (1024 * 1024)
-	} else {
-		az.stConfig.steMinFileSize = opt.STEMinFileSize * (1024 * 1024)
-	}
+	az.stConfig.steMinFileSize = opt.STEMinFileSize * (1024 * 1024)
 
 	log.Info("ParseAndValidateSTEConfig : Enable: %d, SlicePool : %d, CacheLimit : %d, FileCount : %d, GCPercent : %d",
 		az.stConfig.steEnable, az.stConfig.steSlicePool, az.stConfig.steCacheLimit, az.stConfig.steFileCountLimit, az.stConfig.steGCPercent)
