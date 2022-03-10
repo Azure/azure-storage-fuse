@@ -179,7 +179,7 @@ func (st *Stream) Configure() error {
 
 			if conf.DiskPath == "" {
 				log.Err("Stream::Configure : Config error [disk-cache-path not set]")
-				return fmt.Errorf("config error in %s error [disk-cache-path not set]", st.Name())
+				return fmt.Errorf("config error in %s [disk-cache-path not set]", st.Name())
 			}
 
 			_, err = os.Stat(conf.DiskPath)
@@ -188,7 +188,7 @@ func (st *Stream) Configure() error {
 				err := os.Mkdir(conf.DiskPath, os.FileMode(0755))
 				if err != nil {
 					log.Err("Stream::Configure : Config error creating temp directory failed [%s]", err.Error())
-					return fmt.Errorf("failed to create temp directory for stream persistence[%s]", err.Error())
+					return fmt.Errorf("failed to create temp directory for stream persistence [%s]", err.Error())
 				}
 			}
 		}
