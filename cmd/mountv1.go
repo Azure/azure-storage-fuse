@@ -194,6 +194,15 @@ var generateConfigCmd = &cobra.Command{
 
 		// Set the endpoint if not explicitly provided
 		if bfv2StorageConfigOptions.Endpoint == "" {
+			accountName := bfv2StorageConfigOptions.AccountName
+			if accountName == "" {
+				res, ok := os.LookupEnv(azstorage.EnvAzStorageAccount)
+				if !ok {
+					return fmt.Errorf("invalid account name")
+				} else {
+					accountName = res
+				}
+			}
 			http := "https"
 			if bfv2StorageConfigOptions.UseHTTP {
 				http = "http"
@@ -206,7 +215,7 @@ var generateConfigCmd = &cobra.Command{
 			} else {
 				return fmt.Errorf("invalid account type")
 			}
-			bfv2StorageConfigOptions.Endpoint = fmt.Sprintf("%s://%s.%s.core.windows.net", http, bfv2StorageConfigOptions.AccountName, accountType)
+			bfv2StorageConfigOptions.Endpoint = fmt.Sprintf("%s://%s.%s.core.windows.net", http, accountName, accountType)
 		}
 
 		pConf := PipelineConfig{
