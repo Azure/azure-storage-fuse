@@ -250,13 +250,15 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 			handle.ID = handlemap.HandleID(nextHandleID.Inc())
 			fileKey = strconv.FormatUint((uint64(handle.ID)), 10)
 		}
-		st.fileKeyLocks.Lock(fileKey)
+
+		flock := st.fileKeyLocks.Get(fileKey)
+		flock.Lock()
 		st.streamCache.addFileKey(fileKey)
 		block, exists, _ := st.fetchBlock(fileKey, handle, 0)
 		// if it exists then we can just RUnlock since we didn't manipulate its data buffer
 		st.unlockBlock(block, exists)
 		st.streamCache.incrementHandles(fileKey)
-		st.fileKeyLocks.Unlock(fileKey)
+		flock.Unlock()
 	}
 	return handle, err
 }
