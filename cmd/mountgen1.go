@@ -124,14 +124,14 @@ var gen1Cmd = &cobra.Command{
 			fmt.Println("error: invalid log level")
 		}
 
-		err = generateAdlsJson()
+		err = generateAdlsGenOneJson()
 		if err != nil {
 			fmt.Printf("Unable to mount Gen1: %s\n", err.Error())
 			return fmt.Errorf("unable to mount Gen1: %s", err.Error())
 		}
 
 		if !generateJsonOnly {
-			err = runAdlsBinary()
+			err = runAdlsGenOneBinary()
 			if err != nil {
 				return fmt.Errorf("unable to run adlsgen1fuse binary: %s", err.Error())
 			}
@@ -142,7 +142,7 @@ var gen1Cmd = &cobra.Command{
 }
 
 // code to generate json file for rustfuse
-func generateAdlsJson() error {
+func generateAdlsGenOneJson() error {
 	rustFuseMap := make(map[string]interface{})
 	if strings.ToLower(azStorageOpt.AuthMode) == "spn" {
 		// adlsgen1fuse will be reading secret from env variable (ADL_CLIENT_SECRET) hence no reason to include this.
@@ -220,7 +220,7 @@ func generateAdlsJson() error {
 }
 
 // run the adlsgen1fuse binary
-func runAdlsBinary() error {
+func runAdlsGenOneBinary() error {
 	adlsgen1fuseCmd := exec.Command("adlsgen1fuse", gen1ConfigFilePath)
 	stderr, err := adlsgen1fuseCmd.StderrPipe()
 	if err != nil {
