@@ -83,6 +83,14 @@ var gen1Cmd = &cobra.Command{
 			return err
 		}
 
+		if !config.IsSet("logging.file-path") {
+			options.Logging.LogFilePath = common.DefaultLogFilePath
+		}
+
+		if !config.IsSet("logging.level") {
+			options.Logging.LogLevel = "LOG_WARNING"
+		}
+
 		err = options.validate(false)
 		if err != nil {
 			fmt.Printf("mountgen1: error invalid options [%v]", err)
@@ -126,14 +134,15 @@ var gen1Cmd = &cobra.Command{
 
 		err = generateAdlsGenOneJson()
 		if err != nil {
-			fmt.Printf("Unable to mount Gen1: %s\n", err.Error())
-			return fmt.Errorf("unable to mount Gen1: %s", err.Error())
+			fmt.Printf("Unable to mount Gen1: [%s]\n", err.Error())
+			return fmt.Errorf("unable to mount Gen1: [%s]", err.Error())
 		}
 
 		if !generateJsonOnly {
 			err = runAdlsGenOneBinary()
 			if err != nil {
-				return fmt.Errorf("unable to run adlsgen1fuse binary: %s", err.Error())
+				fmt.Printf("Unable to run adlsgen1fuse binary: [%s]\n", err.Error())
+				return fmt.Errorf("unable to run adlsgen1fuse binary: [%s]", err.Error())
 			}
 		}
 
@@ -225,13 +234,16 @@ func runAdlsGenOneBinary() error {
 	stderr, err := adlsgen1fuseCmd.StderrPipe()
 	if err != nil {
 		log.Err(err.Error())
+		return err
 	}
 	if err := adlsgen1fuseCmd.Start(); err != nil {
 		log.Err(err.Error())
+		return err
 	}
 	data, err := ioutil.ReadAll(stderr)
 	if err != nil {
 		log.Err(err.Error())
+		return err
 	}
 	if err := adlsgen1fuseCmd.Wait(); err != nil {
 		fmt.Printf("Unable to run adlsgen1fuse binary: %s\n", err.Error())
