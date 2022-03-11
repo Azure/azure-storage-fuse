@@ -47,7 +47,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type ContainerList struct {
+type VersionFilesList struct {
 	XMLName xml.Name `xml:"EnumerationResults"`
 	Blobs   []Blob   `xml:"Blobs>Blob"`
 }
@@ -95,7 +95,7 @@ func getRemoteVersion(req string) (string, error) {
 		return "", err
 	}
 
-	var versionList ContainerList
+	var versionList VersionFilesList
 	err = xml.Unmarshal(body, &versionList)
 	if err != nil {
 		log.Err("getRemoteVersion: error unmarshalling xml response [%s]", err)
@@ -103,7 +103,7 @@ func getRemoteVersion(req string) (string, error) {
 	}
 
 	if len(versionList.Blobs) != 1 {
-		return "", fmt.Errorf("the latest version container is empty")
+		return "", fmt.Errorf("latest version container should have exactly one file. Number of files present is %v", len(versionList.Blobs))
 	}
 
 	versionName := strings.Split(versionList.Blobs[0].Name, "/")[1]
@@ -119,7 +119,7 @@ func beginDetectNewVersion() chan interface{} {
 		latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest/"
 		remoteVersion, err := getRemoteVersion(latestVersionUrl)
 		if err != nil {
-			log.Err("beginDetectNewVersion: error getting remote version [%s]", err)
+			log.Err("beginDetectNewVersion: error getting latest version [%s]", err)
 			return
 		}
 
@@ -148,7 +148,7 @@ func beginDetectNewVersion() chan interface{} {
 			if hasWarnings {
 				warningsPage := common.BlobFuse2WarningsURL + "#" + strings.ReplaceAll(common.Blobfuse2Version, ".", "")
 				fmt.Fprintf(stderr, "Vist %s to see the list of vulnerabilities assosiated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
-				log.Info("Vist %s to see the list of vulnerabilities associated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
+				log.Warn("Vist %s to see the list of vulnerabilities associated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
 			}
 		}
 	}()

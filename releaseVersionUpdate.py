@@ -20,7 +20,7 @@ sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('Listed 
 listData = minidom.parseString(resp.content)
 name = listData.getElementsByTagName('Name')
 if(len(name)!=1):
-    print('Latest version container is empty')
+    print('Latest version container should have exactly one file. Number of files present is ' + str(len(name)))
     sys.exit(1)
 latestVersion = name[0].firstChild.data
 print('Last release version: ' + latestVersion)
