@@ -161,19 +161,19 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		}
 	}
 
-	if config.IsSet(compName + ".entry-expiration") {
+	if config.IsSet(compName + ".entry-expiration-sec") {
 		lf.entryExpiration = opt.EntryExpiration
 	} else {
 		lf.entryExpiration = defaultEntryExpiration
 	}
 
-	if config.IsSet(compName + ".attribute-expiration") {
+	if config.IsSet(compName + ".attribute-expiration-sec") {
 		lf.attributeExpiration = opt.AttributeExpiration
 	} else {
 		lf.attributeExpiration = defaultAttrExpiration
 	}
 
-	if config.IsSet(compName + ".negativeTimeout") {
+	if config.IsSet(compName + ".negative-entry-expiration-sec") {
 		lf.negativeTimeout = opt.NegativeEntryExpiration
 	} else {
 		lf.negativeTimeout = defaultNegativeEntryExpiration
@@ -199,7 +199,7 @@ func (lf *Libfuse) Configure() error {
 	err := config.UnmarshalKey(lf.Name(), &conf)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [invalid config attributes]")
-		return fmt.Errorf("Libfuse: config error [invalid config attributes]")
+		return fmt.Errorf("config error in %s [invalid config attributes]", lf.Name())
 	}
 	// Extract values from 'conf' and store them as you wish here
 
@@ -223,7 +223,7 @@ func (lf *Libfuse) Configure() error {
 	err = lf.Validate(&conf)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [invalid config settings]")
-		return fmt.Errorf("libfuse config error: invalid config settings")
+		return fmt.Errorf("config error in %s [invalid config settings]", lf.Name())
 	}
 
 	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d",

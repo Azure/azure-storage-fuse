@@ -1,6 +1,6 @@
-# Blobfuse Migration Guide from v1.X.X to v2.X.X
+# Blobfuse V2 Guide for mapping Options from v1.X.X to v2.X.X
 
-In this guide, we list the main changes you need to be aware of when migrating your workloads from blobfuse 1.X.X to blobfuse2 2.X.X.
+In this guide, we list the main changes you need to be aware of when using blobfuse2 2.X.X.
 
 <!-- Do we need an upgrade story? -->
 
