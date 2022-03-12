@@ -31,12 +31,6 @@ jobs:
     steps:
       - checkout: none
 
-      # Clone the repo
-      - script: |
-          git clone https://github.com/Azure/azure-storage-fuse
-        displayName: 'Checkout Code'
-        workingDirectory: $(ROOT_DIR)
-  
         # Prestart cleanup
       - script: |
           sudo fusermount -u $(MOUNT_DIR)
@@ -52,6 +46,12 @@ jobs:
           chmod 777 $(ROOT_DIR)
           mkdir -p $(ROOT_DIR)/go/src
         displayName: 'Create Directory Structure'
+  
+      # Clone the repo
+      - script: |
+          sudo git clone https://github.com/Azure/azure-storage-fuse
+        displayName: 'Checkout Code'
+        workingDirectory: $(ROOT_DIR)
 
       # Checkout the branch
       - script: |
