@@ -1,3 +1,15 @@
+schedules:
+  # Cron string < minute hour day-of-month month day-of-week>
+  #             * means all like '*' in day of month means everyday
+  # Run only on main branch
+  # 'always' controls whether to run only if there is a change or not
+  # Run this pipeline every 15:00 time
+  - cron: '0 15 * * *'
+    displayName: 'Daily midnight Blobfuse2 build'
+    branches:
+      include:
+        - main
+
 jobs:
   - job: Blobfuse2_Perf_Test
     timeoutInMinutes: 2800 # two day timeout
