@@ -47,13 +47,13 @@ jobs:
           mkdir -p $(ROOT_DIR)/go/src
         displayName: 'Create Directory Structure'
   
-      # Clone the repo
+      # Checkout the code  
       - script: |
-          sudo git clone https://github.com/Azure/azure-storage-fuse
+          git clone https://github.com/Azure/azure-storage-fuse
         displayName: 'Checkout Code'
-        workingDirectory: $(ROOT_DIR)
+        workingDirectory: $(ROOT_DIR)/go/src
 
-      # Checkout the branch
+      # Pull the branch
       - script: |
           git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
         displayName: 'Checkout Branch'
