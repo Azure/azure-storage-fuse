@@ -5,7 +5,7 @@ jobs:
         matrix:
           MSI_TEST:
             DistroVer: "Ubn20_PERF"
-            AgentName: "UBN20Perf"
+            AgentName: "UBN20-PERF"
             Description: "Blobfuse2 Perf Test"
 
       pool:
