@@ -83,13 +83,19 @@ jobs:
 
       - script:
         go run $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
-        python3 resnet50_classify.py --dataset-path='' --job-name=''
+        python3 resnet50_classify.py --dataset='($MOUNT_DIR)/data' --job='main'
       displayName: "Blobfuse2 ResNet50 on Main"
 
-      - script:
-        blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
-        python3 resnet50_classify.py --dataset-path='' --job-name=''
-      displayName: "Blobfuse2 ResNet50 Binary"
+    # - script: |
+    #     sudo fusermount -u ${MOUNT_DIR}
+    #     sudo kill -9 `pidof blobfuse2` || true
+    #   displayName: "Unmount Blobfuse2 Main Branch Run"
+
+    #   - script:
+    #     cd ~
+    #     blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
+    #     python3 resnet50_classify.py --data='($MOUNT_DIR)/data' --job-name='binary'
+    #   displayName: "Blobfuse2 ResNet50 Binary"
 
       # Cleanup
       - template: 'azure-pipeline-templates/cleanup.yml'
