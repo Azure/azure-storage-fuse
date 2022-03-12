@@ -82,8 +82,8 @@ jobs:
         continueOnError: false
 
       - script:
-        go run $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
-        python3 resnet50_classify.py --dataset='($MOUNT_DIR)/data' --job='main'
+          go run $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
+          python3 resnet50_classify.py --dataset='($MOUNT_DIR)/data' --job='main'
       displayName: "Blobfuse2 ResNet50 on Main"
 
     # - script: |
