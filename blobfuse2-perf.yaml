@@ -69,6 +69,7 @@ jobs:
           temp_dir: $(TEMP_DIR)
           gopath: $(GOPATH)
           container: $(containerName)
+          skip_ut: true
 
       - script: |
           cd $(WORK_DIR)
