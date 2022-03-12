@@ -97,7 +97,7 @@ jobs:
       - script:
           echo $(WORK_DIR)
           cd $(WORK_DIR)
-          ./blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
           python3 resnet50_classify.py --dataset='($MOUNT_DIR)/data' --job='main'
         displayName: "Blobfuse2 ResNet50 on Main"
 
