@@ -2,7 +2,6 @@ stages:
   - stage: BuildArtifact
     jobs:
       - job: Blobfuse2_Perf_Test
-          timeoutInMinutes: 2800 # two day timeout
           strategy:
             matrix:
               UBN20-RESNET50-PERF:
