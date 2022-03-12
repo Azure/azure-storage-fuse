@@ -1,6 +1,6 @@
 jobs:
   - job: Blobfuse2 Perf Test
-      timeoutInMinutes: 2880 # two day timeout
+      timeoutInDays: 2 # two day timeout
       strategy:
         matrix:
           MSI_TEST:
