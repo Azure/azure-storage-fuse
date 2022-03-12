@@ -48,7 +48,7 @@ else
 	echo "`date`: Restart : `./blobfuse2 --version`" >> ./restart2.log
 
 	# Send email that blobfuse2 has crashed
-	echo "Blobfuse2 Failure" | mail -s "Blobfuse2 Restart" -A ./restart2.log -a "From: longhaul@blobfuse.com" souravgupta@microsoft.com,vibhansa@microsoft.com
+	echo "Blobfuse2 Failure" | mail -s "Blobfuse2 Restart" -A ./restart2.log -a "From: longhaul@blobfuse.com" 
 	
 	cp /var/log/blobfuse2.log /home/vibhansa/blob_mnt2/
 	cp ./longhaul2.log  /home/vibhansa/blob_mnt2/
