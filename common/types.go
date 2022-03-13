@@ -184,6 +184,7 @@ type BlockOffsetList struct {
 	Cached    bool     // is it cached?
 }
 
+// return true if item found and index of the item
 func (bol BlockOffsetList) binarySearch(offset int64) (bool, int) {
 	lowerBound := 0
 	higherBound := len(bol.BlockList) - 1
@@ -203,6 +204,7 @@ func (bol BlockOffsetList) binarySearch(offset int64) (bool, int) {
 	return false, 0
 }
 
+// returns index of first mod block, size of mod data, does the new data exceed current size?, is it append only?
 func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64, bool, bool) {
 	// size of mod block list
 	size := int64(0)
@@ -224,7 +226,7 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64,
 			size += blk.Size
 		}
 	}
-	// return: block list subset affected, size of mod data, does the new data exceed current size?
+
 	return index, size, offset+length >= bol.BlockList[len(bol.BlockList)-1].EndIndex, appendOnly
 }
 

@@ -792,7 +792,9 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, index int, offsetList *common.BlockOffsetList) error {
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	blockOffset := int64(0)
-	for _, blk := range offsetList.BlockList[index:] {
+	var blockIDList []string
+	for _, blk := range offsetList.BlockList {
+		blockIDList = append(blockIDList, blk.Id)
 		if blk.Modified {
 			_, err := blobURL.StageBlock(context.Background(),
 				blk.Id,
@@ -808,11 +810,6 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, inde
 		} else {
 			break
 		}
-	}
-	var blockIDList []string
-	// TODO: we can probably clean up this for loop - move it to types method?
-	for _, blk := range offsetList.BlockList {
-		blockIDList = append(blockIDList, blk.Id)
 	}
 	_, err := blobURL.CommitBlockList(context.Background(),
 		blockIDList,
