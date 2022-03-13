@@ -86,6 +86,7 @@ jobs:
       - script: |
           cd $(WORK_DIR)
           $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=cont1 --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+          cat $(BLOBFUSE2_CFG)
         displayName: "Create Perf Config File"
         env:
           NIGHTLY_STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
