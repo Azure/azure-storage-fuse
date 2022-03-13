@@ -86,22 +86,17 @@ jobs:
       - script: |
           cd $(WORK_DIR)
           $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=cont1 --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
-        displayName: "Create Perf Config File"
+          cd $(WORK_DIR)
+          cat $(BLOBFUSE2_CFG)
+          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
+          python3 resnet50_classify.py --dataset='($MOUNT_DIR)/data' --job='main'
+        displayName: "Blobfuse2 ResNet50 on Main"
         env:
           NIGHTLY_STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
           NIGHTLY_STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
           ACCOUNT_TYPE: 'block'
           ACCOUNT_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
         continueOnError: false
-
-      - script:
-          echo $(WORK_DIR)
-          cd $(WORK_DIR)
-          cat $(BLOBFUSE2_CFG)
-          $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
-          python3 resnet50_classify.py --dataset='($MOUNT_DIR)/data' --job='main'
-          ls $(MOUNT_DIR)
-        displayName: "Blobfuse2 ResNet50 on Main"
 
         # Run End to End test
       # Check blobfuse2 is mounted or not    
