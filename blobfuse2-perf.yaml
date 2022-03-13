@@ -4,8 +4,8 @@ schedules:
   # Run only on main branch
   # 'always' controls whether to run only if there is a change or not
   # Run this pipeline every 15:00 time
-  - cron: '0 15 * * *'
-    displayName: 'Daily midnight Blobfuse2 build'
+  - cron: '0 15 * * 6'
+    displayName: 'Weekly Perf Blobfuse2 Perf Run'
     branches:
       include:
         - main
@@ -15,7 +15,7 @@ jobs:
     timeoutInMinutes: 2800 # two day timeout
     strategy:
       matrix:
-        UBN20-RESNET50-PERF:
+        Ubuntu-20:
           DistroVer: "Ubn20_PERF"
           AgentName: "UBN20-PERF"
           Description: "Blobfuse2 Perf Test"
