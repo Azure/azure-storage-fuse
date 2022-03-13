@@ -87,7 +87,7 @@ jobs:
           cd $(WORK_DIR)
           $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=cont1 --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
           $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
-          python3 resnet50_classify.py --dataset='($MOUNT_DIR)/data' --job='main'
+          python3 resnet50_classify.py --dataset='$(MOUNT_DIR)/data' --job='main'
         displayName: "Blobfuse2 ResNet50 on Main"
         env:
           NIGHTLY_STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
