@@ -102,6 +102,15 @@ jobs:
           ls $(MOUNT_DIR)
         displayName: "Blobfuse2 ResNet50 on Main"
 
+        # Run End to End test
+      # Check blobfuse2 is mounted or not    
+      - script: |
+          df
+          echo "-------------------------------------------------------------------"
+          df | grep blobfuse2
+          exit $?
+        displayName: 'Verify Mount'
+
     # - script: |
     #     sudo fusermount -u ${MOUNT_DIR}
     #     sudo kill -9 `pidof blobfuse2` || true
