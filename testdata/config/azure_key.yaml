@@ -1,4 +1,3 @@
-foreground: true
 logging:
   level: log_debug
   file-path: "blobfuse2-logs.txt"
