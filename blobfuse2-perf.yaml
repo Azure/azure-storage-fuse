@@ -118,10 +118,10 @@ jobs:
           ACCOUNT_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
         continueOnError: false
 
-    - script: |
-        sudo fusermount -u ${MOUNT_DIR}
-        sudo kill -9 `pidof blobfuse2` || true
-      displayName: "Unmount Blobfuse2 Main Branch Run"
+      - script: |
+          sudo fusermount -u ${MOUNT_DIR}
+          sudo kill -9 `pidof blobfuse2` || true
+        displayName: "Unmount Blobfuse2 Main Branch Run"
 
       # Cleanup
       - template: 'azure-pipeline-templates/cleanup.yml'
