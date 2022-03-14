@@ -68,7 +68,7 @@ func (suite *typesTestSuite) TestBinarySearch() {
 
 	found, startingIndex = bol.binarySearch(20)
 	suite.assert.Equal(found, false)
-	suite.assert.Equal(startingIndex, 0)
+	suite.assert.Equal(startingIndex, 3)
 }
 
 func (suite *typesTestSuite) TestFindBlocksToModify() {
