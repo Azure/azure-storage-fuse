@@ -771,19 +771,17 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 			blockIdLength := len(existingBlockId)
 			newBufferSize = bb.createNewBlocks(fileOffsets, offset, length, int64(blockIdLength))
 		}
+		// buffer that holds that pre-existing data in those blocks we're interested in
+		oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
 		if !appendOnly {
-			// buffer that holds that pre-existing data in those blocks we're interested in
-			oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
-			if !appendOnly {
-				// fetch the blocks that will be impacted by the new changes so we can overwrite them
-				bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
-			}
-			// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
-			blockOffset := offset - fileOffsets.BlockList[index].StartIndex
-			copy(oldDataBuffer[blockOffset:], data)
-			err := bb.stageAndCommitModifiedBlocks(name, oldDataBuffer, index, fileOffsets)
-			return err
+			// fetch the blocks that will be impacted by the new changes so we can overwrite them
+			bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
 		}
+		// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
+		blockOffset := offset - fileOffsets.BlockList[index].StartIndex
+		copy(oldDataBuffer[blockOffset:], data)
+		err := bb.stageAndCommitModifiedBlocks(name, oldDataBuffer, index, fileOffsets)
+		return err
 	}
 	return nil
 }

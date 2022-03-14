@@ -1445,6 +1445,39 @@ func (s *blockBlobTestSuite) TestAppendBlocks() {
 	f.Close()
 }
 
+func (s *blockBlobTestSuite) TestAppendOffsetLargerThanSize() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 4,
+	})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("43211234cake")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 45, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("testdatates1dat1tes2dat2tes3dat3tes4dat4\x00\x00\x00\x00\x0043211234cake")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
 func (s *blockBlobTestSuite) TestCopyToFileError() {
 	defer s.cleanupTest()
 	// Setup

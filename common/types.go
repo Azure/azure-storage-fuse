@@ -187,7 +187,8 @@ type BlockOffsetList struct {
 // return true if item found and index of the item
 func (bol BlockOffsetList) binarySearch(offset int64) (bool, int) {
 	lowerBound := 0
-	higherBound := len(bol.BlockList) - 1
+	size := len(bol.BlockList)
+	higherBound := size - 1
 	for lowerBound <= higherBound {
 		middleIndex := (lowerBound + higherBound) / 2
 		// we found the starting block that changes are being applied to
@@ -201,7 +202,8 @@ func (bol BlockOffsetList) binarySearch(offset int64) (bool, int) {
 			higherBound = middleIndex - 1
 		}
 	}
-	return false, 0
+	// return size as this would be where the new blocks start
+	return false, size
 }
 
 // returns index of first mod block, size of mod data, does the new data exceed current size?, is it append only?
@@ -212,7 +214,7 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64,
 	currentBlockOffset := offset
 	found, index := bol.binarySearch(offset)
 	if !found {
-		return 0, 0, true, appendOnly
+		return index, 0, true, appendOnly
 	}
 	// after the binary search just iterate to find the remaining blocks
 	for _, blk := range bol.BlockList[index:] {
