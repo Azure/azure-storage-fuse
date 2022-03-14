@@ -63,8 +63,6 @@ if __name__ == "__main__":
     sys.stdout.write('collecting images at time: {}\n'.format(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(tic))))
     # get list of files and split them in batches of 10k to be classified
     images = [os.path.join(dp, f) for dp, dn, filenames in os.walk(dataset_path) for f in filenames]
-    print(dataset_path)
-    print(len(images))
     image_subsets = list(chunks(images, 10000))
 
     # load each batch onto a thread
