@@ -37,8 +37,11 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
+	"bytes"
 	"context"
+	"encoding/base64"
 	"errors"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -650,6 +653,172 @@ func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]string, da
 		return err
 	}
 
+	return nil
+}
+
+// GetFileBlockOffsets: store blocks ids and corresponding offsets
+func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
+	var blockOffset int64 = 0
+	blockList := common.BlockOffsetList{}
+	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	storageBlockList, err := blobURL.GetBlockList(
+		context.Background(), azblob.BlockListCommitted, bb.blobAccCond.LeaseAccessConditions)
+	if err != nil {
+		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s ", name, err.Error())
+		return &common.BlockOffsetList{}, err
+	}
+	for _, block := range *&storageBlockList.CommittedBlocks {
+		blk := &common.Block{
+			Id:         block.Name,
+			StartIndex: int64(blockOffset),
+			EndIndex:   int64(blockOffset) + block.Size,
+			Size:       block.Size,
+		}
+		blockOffset += block.Size
+		blockList.BlockList = append(blockList.BlockList, blk)
+	}
+	return &blockList, nil
+}
+
+// create our definition of block
+func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.Block {
+	newBlockId := base64.StdEncoding.EncodeToString(common.NewUUID(blockIdLength))
+	newBlock := &common.Block{
+		Id:         newBlockId,
+		StartIndex: startIndex,
+		EndIndex:   startIndex + size,
+		Size:       size,
+		Modified:   true,
+	}
+	return newBlock
+}
+
+func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, length, blockIdLength int64) int64 {
+	prevIndex := blockList.BlockList[len(blockList.BlockList)-1].EndIndex
+	// BufferSize is the size of the buffer that will go beyond our current blob (appended)
+	var bufferSize int64
+	for i := prevIndex; i < offset+length; i += bb.Config.blockSize {
+		// create a new block if we hit our block size
+		blkSize := int64(math.Min(float64(bb.Config.blockSize), float64((offset+length)-i)))
+		newBlock := bb.createBlock(blockIdLength, i, blkSize)
+		blockList.BlockList = append(blockList.BlockList, newBlock)
+		// reset the counter since it will help us to determine if there is leftovers at the end
+		bufferSize += blkSize
+	}
+	return bufferSize
+}
+
+// Write : write data at given offset to a blob
+func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileOffsets, modFileOffsets *common.BlockOffsetList) error {
+	defer log.TimeTrack(time.Now(), "BlockBlob::Write", name)
+	log.Trace("BlockBlob::Write : name %s offset %v", name, offset)
+	// tracks the case where our offset is great than our current file size (appending only - not modifying pre-existing data)
+	var dataBuffer *[]byte
+
+	// when the file offset mapping is cached we don't need to make a get block list call
+	if fileOffsets != nil && !fileOffsets.Cached {
+		var err error
+		fileOffsets, err = bb.GetFileBlockOffsets(name)
+		if err != nil {
+			return err
+		}
+	}
+
+	// case 1: file consists of no blocks (small file)
+	if fileOffsets != nil && len(fileOffsets.BlockList) == 0 {
+		// get all the data
+		oldData, _ := bb.ReadBuffer(name, 0, 0)
+		// update the data with the new data
+		// if we're only overwriting existing data
+		if int64(len(oldData)) >= offset+length {
+			copy(oldData[offset:], data)
+			dataBuffer = &oldData
+			// else appending and/or overwriting
+		} else {
+			// if the file is not empty then we need to combine the data
+			if len(oldData) > 0 {
+				// new data buffer with the size of old and new data
+				newDataBuffer := make([]byte, offset+length)
+				// copy the old data into it
+				// TODO: better way to do this?
+				if offset != 0 {
+					copy(newDataBuffer, oldData)
+					oldData = nil
+				}
+				// overwrite with the new data we want to add
+				copy(newDataBuffer[offset:], data)
+				dataBuffer = &newDataBuffer
+			} else {
+				dataBuffer = &data
+			}
+		}
+		// WriteFromBuffer should be able to handle the case where now the block is too big and gets split into multiple blocks
+		err := bb.WriteFromBuffer(name, nil, *dataBuffer)
+		if err != nil {
+			log.Err("BlockBlob::Write : Failed to upload to blob %s ", name, err.Error())
+			return err
+		}
+		// case 2: given offset is within the size of the blob - and the blob consists of multiple blocks
+		// case 3: new blocks need to be added
+	} else {
+		index, oldDataSize, exceedsFileBlocks, appendOnly := fileOffsets.FindBlocksToModify(offset, length)
+		// keeps track of how much new data will be appended to the end of the file (applicable only to case 3)
+		newBufferSize := int64(0)
+		// case 3?
+		if exceedsFileBlocks {
+			// get length of blockID in order to generate a consistent size block ID so storage does not throw
+			existingBlockId, _ := base64.StdEncoding.DecodeString(fileOffsets.BlockList[0].Id)
+			blockIdLength := len(existingBlockId)
+			newBufferSize = bb.createNewBlocks(fileOffsets, offset, length, int64(blockIdLength))
+		}
+		// buffer that holds that pre-existing data in those blocks we're interested in
+		oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
+		if !appendOnly {
+			// fetch the blocks that will be impacted by the new changes so we can overwrite them
+			bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
+		}
+		// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
+		blockOffset := offset - fileOffsets.BlockList[index].StartIndex
+		copy(oldDataBuffer[blockOffset:], data)
+		err := bb.stageAndCommitModifiedBlocks(name, oldDataBuffer, index, fileOffsets)
+		return err
+	}
+	return nil
+}
+
+// TODO: make a similar method facing stream that would enable us to write to cached blocks then stage and commit
+func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, index int, offsetList *common.BlockOffsetList) error {
+	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	blockOffset := int64(0)
+	var blockIDList []string
+	for _, blk := range offsetList.BlockList {
+		blockIDList = append(blockIDList, blk.Id)
+		if blk.Modified {
+			_, err := blobURL.StageBlock(context.Background(),
+				blk.Id,
+				bytes.NewReader(data[blockOffset:blk.Size+blockOffset]),
+				bb.blobAccCond.LeaseAccessConditions,
+				nil,
+				bb.downloadOptions.ClientProvidedKeyOptions)
+			if err != nil {
+				log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to stage to blob %s at block %v (%s)", name, blockOffset, err.Error())
+				return err
+			}
+			blockOffset = blk.Size + blockOffset
+		}
+	}
+	_, err := blobURL.CommitBlockList(context.Background(),
+		blockIDList,
+		azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
+		nil,
+		bb.blobAccCond,
+		bb.Config.defaultTier,
+		nil, // datalake doesn't support tags here
+		bb.downloadOptions.ClientProvidedKeyOptions)
+	if err != nil {
+		log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to commit block list to blob %s (%s)", name, err.Error())
+		return err
+	}
 	return nil
 }
 

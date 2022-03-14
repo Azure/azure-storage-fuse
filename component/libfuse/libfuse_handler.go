@@ -625,9 +625,11 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
 	bytesWritten, err := fuseFS.NextComponent().WriteFile(
 		internal.WriteFileOptions{
-			Handle: handle,
-			Offset: int64(offset),
-			Data:   data[:size],
+			Handle:       handle,
+			Offset:       int64(offset),
+			Data:         data[:size],
+			FileOffsets:  &common.BlockOffsetList{},
+			ModBlockList: &common.BlockOffsetList{},
 		})
 
 	if err != nil {
