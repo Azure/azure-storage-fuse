@@ -807,8 +807,6 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, inde
 				return err
 			}
 			blockOffset = blk.Size + blockOffset
-		} else {
-			break
 		}
 	}
 	_, err := blobURL.CommitBlockList(context.Background(),
