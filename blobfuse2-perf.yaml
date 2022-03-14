@@ -110,13 +110,13 @@ jobs:
           sudo apt-get install fuse3
           blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
           python3 resnet50_classify.py --dataset='$(MOUNT_DIR)/data' --job='binary' --log=$(ROOT_DIR)/blobfuse2-perf.log
-      displayName: "Blobfuse2 ResNet50 Binary"
-      env:
-        NIGHTLY_STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
-        NIGHTLY_STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
-        ACCOUNT_TYPE: 'block'
-        ACCOUNT_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-      continueOnError: false
+        displayName: "Blobfuse2 ResNet50 Binary"
+        env:
+          NIGHTLY_STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
+          NIGHTLY_STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
+          ACCOUNT_TYPE: 'block'
+          ACCOUNT_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+        continueOnError: false
 
     - script: |
         sudo fusermount -u ${MOUNT_DIR}
