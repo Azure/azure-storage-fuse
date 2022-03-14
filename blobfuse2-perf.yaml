@@ -102,7 +102,7 @@ jobs:
     #   displayName: "Unmount Blobfuse2 Main Branch Run"
 
       - script:
-          cd $(ROOT_DIR)
+          cd $(WORK_DIR)
           $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=cont1 --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
           wget https://github.com/Azure/azure-storage-fuse/releases/download/blobfuse2-2.0.0-preview.1/blobfuse2-2.0.0-preview.1-ubuntu-20.04-x86-64.deb
           sudo dpkg -i $(ROOT_DIR)/blobfuse2-2.0.0-preview.1-ubuntu-20.04-x86-64.deb
