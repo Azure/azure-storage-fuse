@@ -135,8 +135,9 @@ type CopyToFileOptions struct {
 }
 
 type CopyFromFileOptions struct {
-	Name string
-	File *os.File
+	Name     string
+	File     *os.File
+	Metadata map[string]string
 }
 
 type FlushFileOptions struct {

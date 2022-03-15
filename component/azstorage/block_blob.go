@@ -667,7 +667,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s ", name, err.Error())
 		return &common.BlockOffsetList{}, err
 	}
-	for _, block := range *&storageBlockList.CommittedBlocks {
+	for _, block := range storageBlockList.CommittedBlocks {
 		blk := &common.Block{
 			Id:         block.Name,
 			StartIndex: int64(blockOffset),
@@ -709,7 +709,7 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 }
 
 // Write : write data at given offset to a blob
-func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileOffsets, modFileOffsets *common.BlockOffsetList) error {
+func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileOffsets, modFileOffsets *common.BlockOffsetList, metadata map[string]string) error {
 	defer log.TimeTrack(time.Now(), "BlockBlob::Write", name)
 	log.Trace("BlockBlob::Write : name %s offset %v", name, offset)
 	// tracks the case where our offset is great than our current file size (appending only - not modifying pre-existing data)
@@ -753,7 +753,7 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 			}
 		}
 		// WriteFromBuffer should be able to handle the case where now the block is too big and gets split into multiple blocks
-		err := bb.WriteFromBuffer(name, nil, *dataBuffer)
+		err := bb.WriteFromBuffer(name, metadata, *dataBuffer)
 		if err != nil {
 			log.Err("BlockBlob::Write : Failed to upload to blob %s ", name, err.Error())
 			return err

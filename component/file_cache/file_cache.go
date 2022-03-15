@@ -181,9 +181,9 @@ func (c *FileCache) Configure() error {
 
 	c.createEmptyFile = conf.CreateEmptyFile
 	if config.IsSet(compName + ".timeout-sec") {
-    c.cacheTimeout = float64(conf.Timeout)
+		c.cacheTimeout = float64(conf.Timeout)
 	} else {
-    c.cacheTimeout = float64(defaultFileCacheTimeout)
+		c.cacheTimeout = float64(defaultFileCacheTimeout)
 	}
 	c.allowNonEmpty = conf.AllowNonEmpty
 	c.cleanupOnStart = conf.CleanupOnStart
@@ -1058,8 +1058,9 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 
 		err = fc.NextComponent().CopyFromFile(
 			internal.CopyFromFileOptions{
-				Name: options.Handle.Path,
-				File: uploadHandle,
+				Name:     options.Handle.Path,
+				File:     uploadHandle,
+				Metadata: options.Handle.Metadata,
 			})
 		if err != nil {
 			uploadHandle.Close()
