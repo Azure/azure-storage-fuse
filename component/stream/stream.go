@@ -305,7 +305,6 @@ func (st *Stream) copyCachedBlock(fileKey string, handle *handlemap.Handle, offs
 }
 
 func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	// later on this fileKey can either be the path or handle
 	fileKey := st.getFileKey(options.Handle.Path, options.Handle.ID)
 	// if we're only streaming then avoid using the cache
 	if st.streamOnly {
@@ -317,6 +316,13 @@ func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error
 	}
 	st.streamCache.addFileKey(fileKey)
 	return st.copyCachedBlock(fileKey, options.Handle, options.Offset, options.Data)
+}
+
+func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
+	// if len(options.FileOffsets) == 0 {
+
+	// }
+	return st.NextComponent().WriteFile(options)
 }
 
 func (st *Stream) CloseFile(options internal.CloseFileOptions) error {

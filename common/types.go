@@ -34,6 +34,7 @@
 package common
 
 import (
+	"crypto/rand"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -163,8 +164,81 @@ func (ep *EvictionPolicy) Parse(s string) error {
 
 type LogConfig struct {
 	Level       LogLevel
-	FilePath    string
 	MaxFileSize uint64
 	FileCount   uint64
+	FilePath    string
 	TimeTracker bool
+}
+
+type Block struct {
+	StartIndex int64
+	EndIndex   int64
+	Size       int64
+	Id         string
+	Modified   bool
+}
+
+// list that holds blocks containing ids and corresponding offsets
+type BlockOffsetList struct {
+	BlockList []*Block //blockId to offset mapping
+	Cached    bool     // is it cached?
+}
+
+// return true if item found and index of the item
+func (bol BlockOffsetList) binarySearch(offset int64) (bool, int) {
+	lowerBound := 0
+	size := len(bol.BlockList)
+	higherBound := size - 1
+	for lowerBound <= higherBound {
+		middleIndex := (lowerBound + higherBound) / 2
+		// we found the starting block that changes are being applied to
+		if bol.BlockList[middleIndex].EndIndex > offset && bol.BlockList[middleIndex].StartIndex <= offset {
+			return true, middleIndex
+			// if the end index is smaller or equal then we need to increase our lower bound
+		} else if bol.BlockList[middleIndex].EndIndex <= offset {
+			lowerBound = middleIndex + 1
+			// if the start index is larger than the offset we need to decrease our upper bound
+		} else if bol.BlockList[middleIndex].StartIndex > offset {
+			higherBound = middleIndex - 1
+		}
+	}
+	// return size as this would be where the new blocks start
+	return false, size
+}
+
+// returns index of first mod block, size of mod data, does the new data exceed current size?, is it append only?
+func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64, bool, bool) {
+	// size of mod block list
+	size := int64(0)
+	appendOnly := true
+	currentBlockOffset := offset
+	found, index := bol.binarySearch(offset)
+	if !found {
+		return index, 0, true, appendOnly
+	}
+	// after the binary search just iterate to find the remaining blocks
+	for _, blk := range bol.BlockList[index:] {
+		if blk.StartIndex > offset+length {
+			break
+		}
+		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
+			appendOnly = false
+			blk.Modified = true
+			currentBlockOffset = blk.EndIndex
+			size += blk.Size
+		}
+	}
+
+	return index, size, offset+length >= bol.BlockList[len(bol.BlockList)-1].EndIndex, appendOnly
+}
+
+// NewUUID returns a new uuid using RFC 4122 algorithm with the given length.
+func NewUUID(length int64) []byte {
+	u := make([]byte, length)
+	// Set all bits to randomly (or pseudo-randomly) chosen values.
+	rand.Read(u[:])
+	u[8] = (u[8] | 0x40) & 0x7F // u.setVariant(ReservedRFC4122)
+	var version byte = 4
+	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
+	return u[:]
 }
