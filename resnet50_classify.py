@@ -80,10 +80,10 @@ if __name__ == "__main__":
     result[job_name]['images/second'] = len(images)/(toc-tic)
     
     with open(log_file_path, 'a+') as f:
-        if os.path.getsize(log_file) > 0:
+        if os.path.getsize(log_file_path) > 0:
             data = json.load(f)
             data.update(result)
             f.seek(0)
-            json.dump(data, file)
+            json.dump(data, f)
         else:
             json.dump(result, f, ensure_ascii=False)
