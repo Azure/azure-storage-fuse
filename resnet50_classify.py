@@ -63,7 +63,7 @@ if __name__ == "__main__":
     sys.stdout.write('collecting images at time: {}\n'.format(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(tic))))
     # get list of files and split them in batches of 10k to be classified
     images = [os.path.join(dp, f) for dp, dn, filenames in os.walk(dataset_path) for f in filenames]
-    image_subsets = list(chunks(images, 10000))
+    image_subsets = list(chunks(images[1:10], 10000))
 
     # load each batch onto a thread
     result = p.map(classify_images, image_subsets)
@@ -80,4 +80,10 @@ if __name__ == "__main__":
     result[job_name]['images/second'] = len(images)/(toc-tic)
     
     with open(log_file_path, 'a+') as f:
-        json.dump(result, f, ensure_ascii=False)
+        if os.path.getsize(log_file) > 0:
+            data = json.load(f)
+            data.update(result)
+            f.seek(0)
+            json.dump(data, file)
+        else:
+            json.dump(result, f, ensure_ascii=False)
