@@ -96,10 +96,11 @@ type FileCacheOptions struct {
 }
 
 const (
-	compName            = "file_cache"
-	defaultMaxEviction  = 5000
-	defaultMaxThreshold = 80
-	defaultMinThreshold = 60
+	compName                = "file_cache"
+	defaultMaxEviction      = 5000
+	defaultMaxThreshold     = 80
+	defaultMinThreshold     = 60
+	defaultFileCacheTimeout = 120
 )
 
 //  Verification to check satisfaction criteria with Component Interface
@@ -131,7 +132,7 @@ func (c *FileCache) Start(ctx context.Context) error {
 	}
 
 	if c.policy == nil {
-		return fmt.Errorf("FileCache::Start : No cache policy created")
+		return fmt.Errorf("config error in %s error [cache policy missing]", c.Name())
 	}
 
 	c.policy.StartPolicy()
@@ -179,7 +180,11 @@ func (c *FileCache) Configure() error {
 	}
 
 	c.createEmptyFile = conf.CreateEmptyFile
-	c.cacheTimeout = float64(conf.Timeout)
+	if config.IsSet(compName + ".timeout-sec") {
+    c.cacheTimeout = float64(conf.Timeout)
+	} else {
+    c.cacheTimeout = float64(defaultFileCacheTimeout)
+	}
 	c.allowNonEmpty = conf.AllowNonEmpty
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
@@ -264,6 +269,7 @@ func (c *FileCache) OnConfigChange() {
 }
 
 func (c *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
+	// A user provided value of 0 doesnt make sense for MaxEviction, HighThreshold or LowThreshold.
 	if conf.MaxEviction == 0 {
 		conf.MaxEviction = defaultMaxEviction
 	}
@@ -1294,6 +1300,8 @@ func NewFileCacheComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewFileCacheComponent)
+	fileCacheTimeout := config.AddUint32Flag("file-cache-timeout", defaultFileCacheTimeout, "file cache timeout")
+	config.BindPFlag(compName+".timeout-sec", fileCacheTimeout)
 	tmpPathFlag := config.AddStringFlag("tmp-path", "", "Configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
 	config.BindPFlag(compName+".path", tmpPathFlag)
 	config.RegisterFlagCompletionFunc("tmp-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

@@ -63,7 +63,10 @@ func IsDirectoryMounted(path string) bool {
 		if strings.TrimSpace(line) != "" {
 			mntPoint := strings.Split(line, " ")[1]
 			if path == mntPoint {
-				if strings.Index(line, " fuse.") > -1 {
+				// with earlier fuse driver ' fuse.' was searched in /etc/mtab
+				// however with libfuse entry does not have that signature
+				// if this path is already mounted using fuse then fail
+				if strings.Contains(line, "fuse") {
 					//fmt.Println(path, " is already mounted.")
 					return true
 				}

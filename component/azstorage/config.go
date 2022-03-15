@@ -336,7 +336,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		return errors.New("invalid auth mode")
 	}
 
-	// Retry plicy configuration
+	// Retry policy configuration
+	// A user provided value of 0 doesnt make sense for MaxRetries, MaxTimeout, BackoffTime, or MaxRetryDelay.
 	az.stConfig.maxRetries = 3
 	az.stConfig.maxTimeout = 3600
 	az.stConfig.backoffTime = 1
@@ -369,6 +370,7 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 	log.Trace("ParseAndReadDynamicConfig : Reparsing config")
 
 	// If block size and max concurrency is configured use those
+	// A user provided value of 0 doesnt make sense for BlockSize, or MaxConcurrency.
 	if opt.BlockSize != 0 {
 		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
 	}
