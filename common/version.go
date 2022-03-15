@@ -39,7 +39,9 @@ import (
 	"strings"
 )
 
-const Blobfuse2NextVersionURL = "https://blobfuse2.blob.core.windows.net/blobfuse2release/latestversion.json"
+const Blobfuse2ListContainerURL = "https://blobfuse2.blob.core.windows.net/release"
+
+const BlobFuse2WarningsURL = "https://github.com/Azure/azure-storage-fuse/wiki/9.-Security-Warnings"
 
 type Version struct {
 	segments []int64
@@ -49,7 +51,7 @@ type Version struct {
 
 // To keep the code simple, we assume we only use a simple subset of semantic versions.
 // Namely, the version is either a normal stable version, or a pre-release version with '-preview' attached.
-// Examples: 10.1.0, 11.2.0-preview
+// Examples: 10.1.0, 11.2.0-preview.1
 func ParseVersion(raw string) (*Version, error) {
 	const standardError = "invalid version string"
 

@@ -34,6 +34,7 @@
 package internal
 
 import (
+	"blobfuse2/common"
 	"blobfuse2/internal/handlemap"
 	"os"
 )
@@ -110,9 +111,15 @@ type ReadInBufferOptions struct {
 }
 
 type WriteFileOptions struct {
-	Handle *handlemap.Handle
-	Offset int64
-	Data   []byte
+	Handle       *handlemap.Handle
+	Offset       int64
+	Data         []byte
+	FileOffsets  *common.BlockOffsetList
+	ModBlockList *common.BlockOffsetList
+}
+
+type GetFileBlockOffsetsOptions struct {
+	Name string
 }
 
 type TruncateFileOptions struct {

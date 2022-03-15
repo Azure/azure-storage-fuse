@@ -352,8 +352,13 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 }
 
 func (az *AzStorage) WriteFile(options internal.WriteFileOptions) (int, error) {
-	err := az.storage.WriteFromBuffer(options.Handle.Path, nil, options.Data)
+	err := az.storage.Write(options.Handle.Path, options.Offset, int64(len(options.Data)), options.Data, options.FileOffsets, options.ModBlockList)
 	return len(options.Data), err
+}
+
+func (az *AzStorage) GetFileBlockOffsets(options internal.GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error) {
+	return az.storage.GetFileBlockOffsets(options.Name)
+
 }
 
 func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
