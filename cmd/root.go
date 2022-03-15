@@ -103,7 +103,7 @@ func getRemoteVersion(req string) (string, error) {
 	}
 
 	if len(versionList.Blobs) != 1 {
-		return "", fmt.Errorf("latest version container should have exactly one file. Number of files present is %v", len(versionList.Blobs))
+		return "", fmt.Errorf("unable to get latest version")
 	}
 
 	versionName := strings.Split(versionList.Blobs[0].Name, "/")[1]
