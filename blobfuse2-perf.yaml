@@ -108,6 +108,7 @@ jobs:
           sudo apt-get install -f
           sudo apt-get install fuse3
           blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
+          cd $(WORK_DIR)
           python3 resnet50_classify.py --dataset='$(MOUNT_DIR)/data' --job='binary' --log=$(ROOT_DIR)/blobfuse2-perf.log
         displayName: "Blobfuse2 ResNet50 Binary"
         continueOnError: false
