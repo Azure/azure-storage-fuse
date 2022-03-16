@@ -116,7 +116,7 @@ jobs:
           sleep 10
           ps -aux | grep blobfuse2
           rm -rf $(MOUNT_DIR)/*
-          go test -v -timeout=7200s test/e2e_tests -args -mnt-path=$(MOUNT_DIR)
+          go test -v -timeout=7200s test/e2e_tests -args -mnt-path=$(MOUNT_DIR) -tmp-dir=$(TEMP_DIR)
           sudo fusermount -u $(MOUNT_DIR) 
           sleep 5
         workingDirectory: $(WORK_DIR)
@@ -141,7 +141,7 @@ jobs:
           sleep 10
           ps -aux | grep blobfuse2
           rm -rf $(MOUNT_DIR)/*
-          go test -v -timeout=7200s test/e2e_tests -args -mnt-path=$(MOUNT_DIR) -adls=true
+          go test -v -timeout=7200s test/e2e_tests -args -mnt-path=$(MOUNT_DIR) -adls=true -tmp-dir=$(TEMP_DIR)
           ./blobfuse2 unmount all
           sleep 5
         workingDirectory: $(WORK_DIR)
@@ -169,7 +169,7 @@ jobs:
           sleep 10
           ps -aux | grep blobfuse2
           rm -rf $(MOUNT_DIR)/*
-          go test -v -timeout=7200s test/e2e_tests -args -mnt-path=$(MOUNT_DIR)
+          go test -v -timeout=7200s test/e2e_tests -args -mnt-path=$(MOUNT_DIR) -tmp-dir=$(TEMP_DIR)
           ./blobfuse2 unmount $(MOUNT_DIR)
           sleep 5
         workingDirectory: $(WORK_DIR)
