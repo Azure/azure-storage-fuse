@@ -69,6 +69,10 @@ attr_cache:
   no-cache-on-list: true|false <do not cache attributes during listing, to optimize performance>
   no-symlinks: true|false <to improve performance disable symlink support. symlinks will be treated like regular files.>
   
+# Loopback configuration
+loopbackfs:
+  path: <path to local directory>
+
 # Azure storage configuration
 azstorage:
   type: block|adls <type of storage account to be connected. Default - block>

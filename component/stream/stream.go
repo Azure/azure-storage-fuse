@@ -179,7 +179,7 @@ func (st *Stream) Configure() error {
 
 			if conf.DiskPath == "" {
 				log.Err("Stream::Configure : Config error [disk-cache-path not set]")
-				return fmt.Errorf("config error in %s error [disk-cache-path not set]", st.Name())
+				return fmt.Errorf("config error in %s [disk-cache-path not set]", st.Name())
 			}
 
 			_, err = os.Stat(conf.DiskPath)
@@ -188,7 +188,7 @@ func (st *Stream) Configure() error {
 				err := os.Mkdir(conf.DiskPath, os.FileMode(0755))
 				if err != nil {
 					log.Err("Stream::Configure : Config error creating temp directory failed [%s]", err.Error())
-					return fmt.Errorf("failed to create temp directory for stream persistence[%s]", err.Error())
+					return fmt.Errorf("failed to create temp directory for stream persistence [%s]", err.Error())
 				}
 			}
 		}
@@ -303,7 +303,6 @@ func (st *Stream) copyCachedBlock(fileKey string, handle *handlemap.Handle, offs
 }
 
 func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	// later on this fileKey can either be the path or handle
 	fileKey := st.getFileKey(options.Handle.Path, options.Handle.ID)
 	// if we're only streaming then avoid using the cache
 	if st.streamOnly {
@@ -315,6 +314,13 @@ func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error
 	}
 	st.streamCache.addFileKey(fileKey)
 	return st.copyCachedBlock(fileKey, options.Handle, options.Offset, options.Data)
+}
+
+func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
+	// if len(options.FileOffsets) == 0 {
+
+	// }
+	return st.NextComponent().WriteFile(options)
 }
 
 func (st *Stream) CloseFile(options internal.CloseFileOptions) error {

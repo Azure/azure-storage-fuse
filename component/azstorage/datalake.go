@@ -500,13 +500,37 @@ func (dl *Datalake) WriteFromBuffer(name string, metadata map[string]string, dat
 	return dl.BlockBlob.WriteFromBuffer(name, metadata, data)
 }
 
+// Write : Write to a file at given offset
+func (dl *Datalake) Write(name string, offset int64, len int64, data []byte, fileOffsets, modBlockList *common.BlockOffsetList) error {
+	return dl.BlockBlob.Write(name, offset, len, data, fileOffsets, modBlockList)
+}
+
+func (dl *Datalake) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
+	return dl.BlockBlob.GetFileBlockOffsets(name)
+}
+
 // ChangeMod : Change mode of a path
 func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 	log.Trace("Datalake::ChangeMod : Change mode of file %s to %s", name, mode)
 	fileURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
 
-	accessControlList := getAccessControlList(mode)
-	_, err := fileURL.SetAccessControl(context.Background(), azbfs.BlobFSAccessControl{ACL: accessControlList})
+	/*
+		// If we need to call the ACL set api then we need to get older acl string here
+		// and create new string with the username included in the string
+		// Keeping this code here so in future if its required we can get the string and manipulate
+
+		currPerm, err := fileURL.GetAccessControl(context.Background())
+		e := storeDatalakeErrToErr(err)
+		if e == ErrFileNotFound {
+			return syscall.ENOENT
+		} else if err != nil {
+			log.Err("Datalake::ChangeMod : Failed to get mode of file %s (%s)", name, err.Error())
+			return err
+		}
+	*/
+
+	newPerm := getACLPermissions(mode)
+	_, err := fileURL.SetAccessControl(context.Background(), azbfs.BlobFSAccessControl{Permissions: newPerm})
 	e := storeDatalakeErrToErr(err)
 	if e == ErrFileNotFound {
 		return syscall.ENOENT

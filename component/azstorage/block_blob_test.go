@@ -40,25 +40,125 @@ import (
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
 	"blobfuse2/internal/handlemap"
+	"bytes"
 	"container/list"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
 var ctx = context.Background()
+
+// A UUID representation compliant with specification in RFC 4122 document.
+type uuid [16]byte
+
+const reservedRFC4122 byte = 0x40
+
+func (u uuid) bytes() []byte {
+	return u[:]
+}
+
+// NewUUID returns a new uuid using RFC 4122 algorithm.
+func newUUID() (u uuid) {
+	u = uuid{}
+	// Set all bits to randomly (or pseudo-randomly) chosen values.
+	rand.Read(u[:])
+	u[8] = (u[8] | reservedRFC4122) & 0x7F // u.setVariant(ReservedRFC4122)
+
+	var version byte = 4
+	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
+	return
+}
+
+// uploadReaderAtToBlockBlob uploads a buffer in blocks to a block blob.
+func uploadReaderAtToBlockBlob(ctx context.Context, reader io.ReaderAt, readerSize, singleUploadSize int64,
+	blockBlobURL azblob.BlockBlobURL, o azblob.UploadToBlockBlobOptions) (azblob.CommonResponse, error) {
+	if o.BlockSize == 0 {
+		// If bufferSize > (BlockBlobMaxStageBlockBytes * BlockBlobMaxBlocks), then error
+		if readerSize > azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks {
+			return nil, errors.New("buffer is too large to upload to a block blob")
+		}
+		// If bufferSize <= singleUploadSize, then Upload should be used with just 1 I/O request
+		if readerSize <= singleUploadSize {
+			o.BlockSize = singleUploadSize // Default if unspecified
+		} else {
+			o.BlockSize = readerSize / azblob.BlockBlobMaxBlocks   // buffer / max blocks = block size to use all 50,000 blocks
+			if o.BlockSize < azblob.BlobDefaultDownloadBlockSize { // If the block size is smaller than 4MB, round up to 4MB
+				o.BlockSize = azblob.BlobDefaultDownloadBlockSize
+			}
+			// StageBlock will be called with blockSize blocks and a Parallelism of (BufferSize / BlockSize).
+		}
+	}
+
+	if readerSize <= singleUploadSize {
+		// If the size can fit in 1 Upload call, do it this way
+		var body io.ReadSeeker = io.NewSectionReader(reader, 0, readerSize)
+		if o.Progress != nil {
+			body = pipeline.NewRequestBodyProgress(body, o.Progress)
+		}
+		return blockBlobURL.Upload(ctx, body, o.BlobHTTPHeaders, o.Metadata, o.AccessConditions, o.BlobAccessTier, o.BlobTagsMap, o.ClientProvidedKeyOptions)
+	}
+
+	var numBlocks = uint16(((readerSize - 1) / o.BlockSize) + 1)
+
+	blockIDList := make([]string, numBlocks) // Base-64 encoded block IDs
+	progress := int64(0)
+	progressLock := &sync.Mutex{}
+
+	err := azblob.DoBatchTransfer(ctx, azblob.BatchTransferOptions{
+		OperationName: "uploadReaderAtToBlockBlob",
+		TransferSize:  readerSize,
+		ChunkSize:     o.BlockSize,
+		Parallelism:   o.Parallelism,
+		Operation: func(offset int64, count int64, ctx context.Context) error {
+			// This function is called once per block.
+			// It is passed this block's offset within the buffer and its count of bytes
+			// Prepare to read the proper block/section of the buffer
+			var body io.ReadSeeker = io.NewSectionReader(reader, offset, count)
+			blockNum := offset / o.BlockSize
+			if o.Progress != nil {
+				blockProgress := int64(0)
+				body = pipeline.NewRequestBodyProgress(body,
+					func(bytesTransferred int64) {
+						diff := bytesTransferred - blockProgress
+						blockProgress = bytesTransferred
+						progressLock.Lock() // 1 goroutine at a time gets a progress report
+						progress += diff
+						o.Progress(progress)
+						progressLock.Unlock()
+					})
+			}
+
+			// Block IDs are unique values to avoid issue if 2+ clients are uploading blocks
+			// at the same time causing PutBlockList to get a mix of blocks from all the clients.
+			blockIDList[blockNum] = base64.StdEncoding.EncodeToString(newUUID().bytes())
+			_, err := blockBlobURL.StageBlock(ctx, blockIDList[blockNum], body, o.AccessConditions.LeaseAccessConditions, nil, o.ClientProvidedKeyOptions)
+			return err
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	// All put blocks were successful, call Put Block List to finalize the blob
+	return blockBlobURL.CommitBlockList(ctx, blockIDList, o.BlobHTTPHeaders, o.Metadata, o.AccessConditions, o.BlobAccessTier, o.BlobTagsMap, o.ClientProvidedKeyOptions)
+}
 
 type blockBlobTestSuite struct {
 	suite.Suite
@@ -908,7 +1008,7 @@ func (s *blockBlobTestSuite) TestReadFile() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
@@ -934,7 +1034,7 @@ func (s *blockBlobTestSuite) TestReadInBuffer() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 5)
@@ -951,7 +1051,7 @@ func (s *blockBlobTestSuite) TestReadInBufferLargeBuffer() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
 	output := make([]byte, 1000) // Testing that passing in a super large buffer will still work
@@ -1005,7 +1105,7 @@ func (s *blockBlobTestSuite) TestWriteFile() {
 
 	testData := "test data"
 	data := []byte(testData)
-	count, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	count, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 	s.assert.Nil(err)
 	s.assert.EqualValues(len(data), count)
 
@@ -1025,7 +1125,7 @@ func (s *blockBlobTestSuite) TestTruncateFileSmaller() {
 	testData := "test data"
 	data := []byte(testData)
 	truncatedLength := 5
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 
 	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	s.assert.Nil(err)
@@ -1047,7 +1147,7 @@ func (s *blockBlobTestSuite) TestTruncateFileEqual() {
 	testData := "test data"
 	data := []byte(testData)
 	truncatedLength := 9
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 
 	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	s.assert.Nil(err)
@@ -1069,7 +1169,7 @@ func (s *blockBlobTestSuite) TestTruncateFileBigger() {
 	testData := "test data"
 	data := []byte(testData)
 	truncatedLength := 15
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 
 	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	s.assert.Nil(err)
@@ -1093,7 +1193,7 @@ func (s *blockBlobTestSuite) TestTruncateFileError() {
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
-func (s *blockBlobTestSuite) TestCopyToFile() {
+func (s *blockBlobTestSuite) TestWriteSmallFile() {
 	defer s.cleanupTest()
 	// Setup
 	name := generateFileName()
@@ -1101,11 +1201,12 @@ func (s *blockBlobTestSuite) TestCopyToFile() {
 	testData := "test data"
 	data := []byte(testData)
 	dataLen := len(data)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
 	f, _ := ioutil.TempFile("", name+".tmp")
 	defer os.Remove(f.Name())
 
-	err := s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
 	s.assert.Nil(err)
 
 	output := make([]byte, len(data))
@@ -1114,6 +1215,297 @@ func (s *blockBlobTestSuite) TestCopyToFile() {
 	s.assert.Nil(err)
 	s.assert.EqualValues(dataLen, len)
 	s.assert.EqualValues(testData, output)
+	f.Close()
+}
+
+func (s *blockBlobTestSuite) TestOverwriteSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-replace-data"
+	data := []byte(testData)
+	dataLen := len(data)
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-newdata-data")
+	output := make([]byte, len(currentData))
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *blockBlobTestSuite) TestOverwriteAndAppendToSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-data"
+	data := []byte(testData)
+
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-newdata")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *blockBlobTestSuite) TestAppendToSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-data"
+	data := []byte(testData)
+
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("-newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-data-newdata")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *blockBlobTestSuite) TestAppendOffsetLargerThanSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-data"
+	data := []byte(testData)
+
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 12, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-data\x00\x00\x00newdata")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+// This test is a regular blob (without blocks) and we're adding data that will cause it to create blocks
+func (s *blockBlobTestSuite) TestAppendBlocksToSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-data"
+	data := []byte(testData)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 9 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 9, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 8,
+	})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("-newdata-newdata-newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-data-newdata-newdata-newdata")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *blockBlobTestSuite) TestOverwriteBlocks() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 4,
+	})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("cake")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 16, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("testdatates1dat1cakedat2tes3dat3tes4dat4")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *blockBlobTestSuite) TestOverwriteAndAppendBlocks() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 4,
+	})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("43211234cake")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 32, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("testdatates1dat1tes2dat2tes3dat343211234cake")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *blockBlobTestSuite) TestAppendBlocks() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 4,
+	})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("43211234cake")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("43211234cakedat1tes2dat2tes3dat3tes4dat4")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *blockBlobTestSuite) TestAppendOffsetLargerThanSize() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 4,
+	})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("43211234cake")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 45, Data: newTestData, FileOffsets: &common.BlockOffsetList{}})
+	s.assert.Nil(err)
+
+	currentData := []byte("testdatates1dat1tes2dat2tes3dat3tes4dat4\x00\x00\x00\x00\x0043211234cake")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
 	f.Close()
 }
 
@@ -1251,7 +1643,7 @@ func (s *blockBlobTestSuite) TestGetAttrFileSize() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 
 	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
@@ -1268,7 +1660,7 @@ func (s *blockBlobTestSuite) TestGetAttrFileTime() {
 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 
 	before, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)
@@ -1276,7 +1668,7 @@ func (s *blockBlobTestSuite) TestGetAttrFileTime() {
 
 	time.Sleep(time.Second * 3) // Wait 3 seconds and then modify the file again
 
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data, FileOffsets: &common.BlockOffsetList{}})
 
 	after, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
 	s.assert.Nil(err)

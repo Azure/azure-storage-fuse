@@ -241,7 +241,7 @@ func (suite *generateConfigTestSuite) TestConfigFileProxy() {
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("httpProxy httpProxy\nhttpsProxy httpsProxy\n")
+	v1ConfigFile.WriteString("accountName myAccountName\nhttpProxy httpProxy\nhttpsProxy httpsProxy\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
@@ -264,7 +264,7 @@ func (suite *generateConfigTestSuite) TestConfigFileBlobEndpoint() {
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("blobEndpoint blobEndpoint\n")
+	v1ConfigFile.WriteString("accountName myAccountName\nblobEndpoint blobEndpoint\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
@@ -286,7 +286,7 @@ func (suite *generateConfigTestSuite) TestConfigFileAccountType() {
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("accountType adls\n")
+	v1ConfigFile.WriteString("accountName myAccountName\naccountType adls\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
@@ -299,7 +299,7 @@ func (suite *generateConfigTestSuite) TestConfigFileAccountType() {
 	config.UnmarshalKey("azstorage", &options)
 
 	suite.assert.EqualValues("adls", options.AccountType)
-	suite.assert.EqualValues("https://.dfs.core.windows.net", options.Endpoint)
+	suite.assert.EqualValues("https://myAccountName.dfs.core.windows.net", options.Endpoint)
 }
 
 func (suite *generateConfigTestSuite) TestConfigFileAuthMode() {
@@ -309,7 +309,7 @@ func (suite *generateConfigTestSuite) TestConfigFileAuthMode() {
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("authType Key\n")
+	v1ConfigFile.WriteString("accountName myAccountName\nauthType Key\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
@@ -331,7 +331,7 @@ func (suite *generateConfigTestSuite) TestConfigFileLogLevel() {
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("logLevel LOG_ERROR\n")
+	v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
@@ -353,7 +353,7 @@ func (suite *generateConfigTestSuite) TestConfigFileIgnoreCommentsNewLine() {
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("logLevel LOG_ERROR\n# accountName myAccountName\n")
+	v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR\n# accountName myAccountName\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
@@ -375,7 +375,7 @@ func (suite *generateConfigTestSuite) TestConfigFileIgnoreCommentsSameLine() {
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("logLevel LOG_ERROR #LOG_DEBUG\n")
+	v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR #LOG_DEBUG\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
@@ -397,7 +397,7 @@ func (suite *generateConfigTestSuite) TestConfigFileCaCertFileError() {
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("caCertFile caCertFile\n")
+	v1ConfigFile.WriteString("accountName myAccountName\ncaCertFile caCertFile\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.NotNil(err)
@@ -410,7 +410,7 @@ func (suite *generateConfigTestSuite) TestConfigFileDnsTypeError() {
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("dnsType dnsType\n")
+	v1ConfigFile.WriteString("accountName myAccountName\ndnsType dnsType\n")
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.NotNil(err)
@@ -423,7 +423,7 @@ func (suite *generateConfigTestSuite) TestConfigCLILogLevel() {
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v1ConfigFile.Name())
 	defer os.Remove(v2ConfigFile.Name())
-	v1ConfigFile.WriteString("logLevel LOG_ERROR\n")
+	v1ConfigFile.WriteString("accountName myAccountName\nlogLevel LOG_ERROR\n")
 	logLevel := "--log-level=LOG_DEBUG"
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", logLevel, fmt.Sprintf("--output-file=%s", v2ConfigFile.Name()), fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
@@ -441,13 +441,17 @@ func (suite *generateConfigTestSuite) TestConfigCLILogLevel() {
 func (suite *generateConfigTestSuite) TestCLIParamLogging() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
+
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	logLevel := "--log-level=LOG_DEBUG"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, logLevel)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, logLevel, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 
 	// Read the generated v2 config file
@@ -463,6 +467,10 @@ func (suite *generateConfigTestSuite) TestCLIParamLogging() {
 func (suite *generateConfigTestSuite) TestCLIParamFileCache() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -475,7 +483,7 @@ func (suite *generateConfigTestSuite) TestCLIParamFileCache() {
 	low := "--low-disk-threshold=40"
 	emptyDirCheck := "--empty-dir-check=false"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, maxEviction, high, low, emptyDirCheck)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, maxEviction, high, low, emptyDirCheck, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 
 	// Read the generated v2 config file
@@ -497,6 +505,9 @@ func (suite *generateConfigTestSuite) TestCLIParamFileCache() {
 func (suite *generateConfigTestSuite) TestAddStreamAndFileCache() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -506,7 +517,7 @@ func (suite *generateConfigTestSuite) TestAddStreamAndFileCache() {
 	timeout := "--file-cache-timeout-in-seconds=60"
 	useStreaming := "--streaming=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, useStreaming)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, useStreaming, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 
 	// Read the generated v2 config file
@@ -522,6 +533,9 @@ func (suite *generateConfigTestSuite) TestAddStreamAndFileCache() {
 func (suite *generateConfigTestSuite) TestComponentCorrectOrder() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -532,7 +546,7 @@ func (suite *generateConfigTestSuite) TestComponentCorrectOrder() {
 	useAttrCache := "--use-attr-cache"
 	streaming := "--streaming=false"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, useAttrCache, streaming)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, tmpPath, size, timeout, useAttrCache, streaming, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 
 	// Read the generated v2 config file
@@ -547,32 +561,41 @@ func (suite *generateConfigTestSuite) TestComponentCorrectOrder() {
 func (suite *generateConfigTestSuite) TestCLIParamFileCacheUploadModifiedOnlyError() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	modifiedOnly := "--upload-modified-only=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, modifiedOnly)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, modifiedOnly, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamFileCachePollTimeoutError() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	modifiedOnly := "--cache-poll-timeout-msec=60"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, modifiedOnly)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, modifiedOnly, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStreaming() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -582,7 +605,7 @@ func (suite *generateConfigTestSuite) TestCLIParamStreaming() {
 	blocksPerFile := "--max-blocks-per-file=10"
 	cacheSize := "--stream-cache-mb=40"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, streaming, blockSize, blocksPerFile, cacheSize)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, streaming, blockSize, blocksPerFile, cacheSize, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 
 	// Read the generated v2 config file
@@ -600,6 +623,9 @@ func (suite *generateConfigTestSuite) TestCLIParamStreaming() {
 func (suite *generateConfigTestSuite) TestCLIParamAttrCache() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -608,7 +634,7 @@ func (suite *generateConfigTestSuite) TestCLIParamAttrCache() {
 	cacheOnList := "--cache-on-list=true"
 	noSymlinks := "--no-symlinks=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, attrCache, cacheOnList, noSymlinks)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, attrCache, cacheOnList, noSymlinks, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 
 	// Read the generated v2 config file
@@ -625,6 +651,9 @@ func (suite *generateConfigTestSuite) TestCLIParamAttrCache() {
 func (suite *generateConfigTestSuite) TestCLIParamStorage() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
@@ -640,7 +669,7 @@ func (suite *generateConfigTestSuite) TestCLIParamStorage() {
 	httpProxy := "--http-proxy=httpProxy"
 	httpsProxy := "--https-proxy=httpsProxy"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, adls, https, container, concurrency, cancelListOnMount, maxRetry, maxRetryTimeout, retryDelayFactor, httpProxy, httpsProxy)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, adls, https, container, concurrency, cancelListOnMount, maxRetry, maxRetryTimeout, retryDelayFactor, httpProxy, httpsProxy, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 
 	// Read the generated v2 config file
@@ -665,64 +694,79 @@ func (suite *generateConfigTestSuite) TestCLIParamStorage() {
 func (suite *generateConfigTestSuite) TestCLIParamStorageCaCertFileError() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	caCertFile := "--ca-cert-file=path"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, caCertFile)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, caCertFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStorageContentTypeError() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	contentType := "--set-content-type=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, contentType)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, contentType, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStorageBackgroundDownloadError() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	download := "--background-download=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamStorageInvalidateOnSyncNoError() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	download := "--invalidate-on-sync=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamPreMountValidateNoError() {
 	defer suite.cleanupTest()
 	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
 	defer os.Remove(v2ConfigFile.Name())
 
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 	download := "--pre-mount-validate=true"
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download)
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
 	suite.assert.Nil(err)
 }

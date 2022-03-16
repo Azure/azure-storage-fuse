@@ -716,6 +716,8 @@ stages:
           vmImage: 'ubuntu-18.04'
         variables:
           - group: NightlyBlobFuse
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
         
         steps:
           - checkout: none
@@ -741,23 +743,14 @@ stages:
                   blobfuse2 version
                 displayName: 'Installing blobfuse2'
 
-              # Add '-preview' to pre-release versions. For example, 2.0.0-preview.1
-              # Also considering that the tag and version are same
               - script: |
-                  python3 -c "import json; import requests; import sys;
-                  if(len(sys.argv)!=3):
-                      print('Less arguments')
-                      sys.exit(1)
-                  url = sys.argv[1]
-                  version = sys.argv[2].split(' ')[2]
-                  print('Version: ' + version)
-                  if(len(version)==0):
-                      print('Incorrect Release Tag')
-                      sys.exit(1)
-                  dataDict = requests.get(url).json()
-                  dataDict['blobfuse2'] = version
-                  resp = requests.put(url, data=json.dumps(dataDict, indent=4), headers={'Content-Type': 'application/json', 'x-ms-blob-type': 'BlockBlob'})
-                  print('Status Code: ' + str(resp.status_code))
-                  sys.exit(1) if(resp.status_code<200 or resp.status_code>202) else print('SUCCESS')" \
-                  '$(LATEST_VERSION_SAS)' "`blobfuse2 version`"
+                  wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/`echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`/releaseVersionUpdate.py
+                  ls -l
+                displayName: 'Getting Python script'
+                workingDirectory: $(root_dir)
+
+              - script: |
+                  python3 releaseVersionUpdate.py "$(VERSION_CNT_SAS_URL)" "`blobfuse2 version`"
                 displayName: 'Updating version number'
+                workingDirectory: $(root_dir)
+
