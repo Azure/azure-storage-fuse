@@ -6,14 +6,15 @@ import json
 import argparse
 import sys
 import os
+import math
 
 def compare_numbers(job_one, job_two, metrics_list, log_file):
     f = open(log_file)
     data = json.load(f)
     for i in metrics_list:
-        metric_value = ((data[job_one][i]/data[job_two][i])*100)-100
+        metric_value = math.floor(((data[job_one][i]/data[job_two][i])*100)-100)
         if metric_value < 0:
-            sys.stdout.write('{} has regressed - there is a perf regression of {}\n'.format( i, metric_value))
+            sys.stdout.write('{} has regressed - there is a perf regression of {}%\n'.format( i, metric_value))
         if metric_value >= 0:
             sys.stdout.write('{} has a perf improvement of {}%\n'.format(i, metric_value))
     f.close()
