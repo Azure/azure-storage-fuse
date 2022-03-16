@@ -55,23 +55,21 @@ const (
 
 type Handle struct {
 	sync.RWMutex
-	FObj     *os.File
-	ID       HandleID
-	Size     int64 // Size of the file being handled here
-	Flags    common.BitMap16
-	Path     string // always holds path relative to mount dir
-	Metadata map[string]string
-	values   map[string]interface{}
+	FObj   *os.File
+	ID     HandleID
+	Size   int64 // Size of the file being handled here
+	Flags  common.BitMap16
+	Path   string // always holds path relative to mount dir
+	values map[string]interface{}
 }
 
 func NewHandle(path string) *Handle {
 	return &Handle{
-		ID:       InvalidHandleID,
-		Path:     path,
-		Size:     0,
-		Flags:    0,
-		Metadata: make(map[string]string),
-		values:   make(map[string]interface{}),
+		ID:     InvalidHandleID,
+		Path:   path,
+		Size:   0,
+		Flags:  0,
+		values: make(map[string]interface{}),
 	}
 }
 

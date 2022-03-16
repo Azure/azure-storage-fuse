@@ -212,6 +212,25 @@ func (suite *fileTestSuite) TestFileWriteSmall() {
 	suite.fileTestCleanup([]string{fileName})
 }
 
+func (suite *fileTestSuite) TestFileStaticWriteMetadata() {
+	fileName := "/write_metadata.txt"
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	suite.Equal(nil, err)
+	srcFile.Close()
+
+	// Set metadata
+	if suite.adlsTest {
+
+	} else {
+		azbl
+	}
+
+	err = ioutil.WriteFile(fileName, suite.minBuff, 0777)
+	suite.Equal(nil, err)
+
+	suite.fileTestCleanup([]string{fileName})
+}
+
 // # Read a small file
 func (suite *fileTestSuite) TestFileReadSmall() {
 	fileName := suite.testPath + "/small_write.txt"

@@ -116,6 +116,7 @@ type WriteFileOptions struct {
 	Data         []byte
 	FileOffsets  *common.BlockOffsetList
 	ModBlockList *common.BlockOffsetList
+	Metadata     map[string]string
 }
 
 type GetFileBlockOffsetsOptions struct {

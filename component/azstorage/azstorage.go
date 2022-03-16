@@ -300,7 +300,6 @@ func (az *AzStorage) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		return nil, syscall.EFAULT
 	}
 	handle.Size = int64(attr.Size)
-	handle.Metadata = attr.Metadata
 
 	return handle, nil
 }
@@ -353,7 +352,7 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 }
 
 func (az *AzStorage) WriteFile(options internal.WriteFileOptions) (int, error) {
-	err := az.storage.Write(options.Handle.Path, options.Offset, int64(len(options.Data)), options.Data, options.FileOffsets, options.ModBlockList, options.Handle.Metadata)
+	err := az.storage.Write(options.Handle.Path, options.Offset, int64(len(options.Data)), options.Data, options.FileOffsets, options.ModBlockList, options.Metadata)
 	return len(options.Data), err
 }
 

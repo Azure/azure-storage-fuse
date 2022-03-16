@@ -1058,9 +1058,8 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 
 		err = fc.NextComponent().CopyFromFile(
 			internal.CopyFromFileOptions{
-				Name:     options.Handle.Path,
-				File:     uploadHandle,
-				Metadata: options.Handle.Metadata,
+				Name: options.Handle.Path,
+				File: uploadHandle,
 			})
 		if err != nil {
 			uploadHandle.Close()
