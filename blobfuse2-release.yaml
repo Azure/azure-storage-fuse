@@ -48,10 +48,11 @@ stages:
               container_image: 'ubuntu-20.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
-            Ubuntu-22:
-              container_image: 'ubuntu-22.04'
-              fuselib: 'libfuse3-dev'
-              tags: 'fuse3'
+            # Ubn-22 is not supported by devops as of now  
+            #Ubuntu-22:
+            #  container_image: 'ubuntu-22.04'
+            #  fuselib: 'libfuse3-dev'
+            #  tags: 'fuse3'
         
         pool:
           vmImage: $(container_image)
