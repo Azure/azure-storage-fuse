@@ -1155,7 +1155,7 @@ func (s *datalakeTestSuite) TestRenameFileMetadataConservation() {
 	// Add srcMeta to source
 	srcMeta := make(azblob.Metadata)
 	srcMeta["foo"] = "bar"
-	source.CreateWithOptions(ctx, azbfs.CreateFileOptions{Metadata: srcMeta}) //, azbfs.BlobFSAccessControl{})
+	source.CreateWithOptions(ctx, azbfs.CreateFileOptions{Metadata: srcMeta}, azbfs.BlobFSAccessControl{})
 	dst := generateFileName()
 
 	err := s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
