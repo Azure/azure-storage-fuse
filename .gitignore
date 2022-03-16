@@ -7,6 +7,7 @@ blobfuse2.log
 blobfuse2.test
 azuretest.json
 blobfuse2
+adlsgen1fuse
 venv/
 *.backup
 __debug_bin
