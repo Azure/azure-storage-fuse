@@ -500,6 +500,15 @@ func (dl *Datalake) WriteFromBuffer(name string, metadata map[string]string, dat
 	return dl.BlockBlob.WriteFromBuffer(name, metadata, data)
 }
 
+// Write : Write to a file at given offset
+func (dl *Datalake) Write(name string, offset int64, len int64, data []byte, fileOffsets, modBlockList *common.BlockOffsetList) error {
+	return dl.BlockBlob.Write(name, offset, len, data, fileOffsets, modBlockList)
+}
+
+func (dl *Datalake) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
+	return dl.BlockBlob.GetFileBlockOffsets(name)
+}
+
 // ChangeMod : Change mode of a path
 func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 	log.Trace("Datalake::ChangeMod : Change mode of file %s to %s", name, mode)

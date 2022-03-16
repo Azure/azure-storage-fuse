@@ -36,7 +36,7 @@ package cmd
 import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
-	"encoding/json"
+	"encoding/xml"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -47,9 +47,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type VNextJson struct {
-	Blobfuse2        string              `json:"blobfuse2"`
-	SecurityWarnings map[string][]string `json:"securityWarnings"`
+type VersionFilesList struct {
+	XMLName xml.Name `xml:"EnumerationResults"`
+	Blobs   []Blob   `xml:"Blobs>Blob"`
+}
+
+type Blob struct {
+	XMLName xml.Name `xml:"Blob"`
+	Name    string   `xml:"Name"`
 }
 
 var disableVersionCheck bool
@@ -66,33 +71,57 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+// check if the version file exists in the container
+func checkVersionExists(versionUrl string) bool {
+	resp, err := http.Get(versionUrl)
+	if err != nil {
+		log.Err("checkVersionExists: error getting version file from container [%s]", err)
+		return false
+	}
+
+	return resp.StatusCode != 404
+}
+
+func getRemoteVersion(req string) (string, error) {
+	resp, err := http.Get(req)
+	if err != nil {
+		log.Err("getRemoteVersion: error listing version file from container [%s]", err)
+		return "", err
+	}
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.Err("getRemoteVersion: error reading body of response [%s]", err)
+		return "", err
+	}
+
+	var versionList VersionFilesList
+	err = xml.Unmarshal(body, &versionList)
+	if err != nil {
+		log.Err("getRemoteVersion: error unmarshalling xml response [%s]", err)
+		return "", err
+	}
+
+	if len(versionList.Blobs) != 1 {
+		return "", fmt.Errorf("unable to get latest version")
+	}
+
+	versionName := strings.Split(versionList.Blobs[0].Name, "/")[1]
+	return versionName, nil
+}
+
 func beginDetectNewVersion() chan interface{} {
 	completed := make(chan interface{})
 	stderr := os.Stderr
 	go func() {
 		defer close(completed)
-		resp, err := http.Get(common.Blobfuse2NextVersionURL)
+
+		latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest/"
+		remoteVersion, err := getRemoteVersion(latestVersionUrl)
 		if err != nil {
-			log.Err("beginDetectNewVersion: error getting version txt from container [%s]", err)
+			log.Err("beginDetectNewVersion: error getting latest version [%s]", err)
 			return
 		}
-
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.Err("beginDetectNewVersion: error reading body of txt result [%s]", err)
-			return
-		}
-
-		var vJson VNextJson
-		err = json.Unmarshal(body, &vJson)
-		if err != nil {
-			log.Err("beginDetectNewVersion: error unmarshalling VNextJson")
-			return
-		}
-
-		remoteVersion := vJson.Blobfuse2
-		//Pick only first line in case future modifications to the txt adds additional lines
-		remoteVersion = strings.Split(remoteVersion, "\n")[0]
 
 		local, err := common.ParseVersion(common.Blobfuse2Version)
 		if err != nil {
@@ -113,23 +142,13 @@ func beginDetectNewVersion() chan interface{} {
 			fmt.Fprintf(stderr, "*** "+executableName+": A new version (%s) is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
 			log.Info("*** "+executableName+": A new version (%s) is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
 
-			_, isPresent := vJson.SecurityWarnings[common.Blobfuse2Version]
-			if isPresent {
-				hasWarning := false
-				ctr := 1
-				for _, msg := range vJson.SecurityWarnings[common.Blobfuse2Version] {
-					msg = strings.TrimSpace(msg)
-					if len(msg) > 0 {
-						if !hasWarning {
-							fmt.Fprintf(stderr, "The following vulnerabilities were detected in your current version (%s):\n", common.Blobfuse2Version)
-							log.Info("The following vulnerabilities were detected in your current version (%s):\n", common.Blobfuse2Version)
-							hasWarning = true
-						}
-						fmt.Fprintf(stderr, "%v. %s\n", ctr, msg)
-						log.Info("%v. %s\n", ctr, msg)
-						ctr++
-					}
-				}
+			warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
+			hasWarnings := checkVersionExists(warningsUrl)
+
+			if hasWarnings {
+				warningsPage := common.BlobFuse2WarningsURL + "#" + strings.ReplaceAll(common.Blobfuse2Version, ".", "")
+				fmt.Fprintf(stderr, "Vist %s to see the list of vulnerabilities assosiated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
+				log.Warn("Vist %s to see the list of vulnerabilities associated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
 			}
 		}
 	}()
