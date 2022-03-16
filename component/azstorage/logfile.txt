@@ -1,8 +1,0 @@
-Wed Mar 16 11:39:09 IST 2022 : blobfuse2[310] : LOG_TRACE [datalake.go (141)]: Datalake::SetupPipeline : Setting up
-Wed Mar 16 11:39:09 IST 2022 : blobfuse2[310] : LOG_TRACE [datalake.go (126)]: Datalake::getCredential : Getting credential
-Wed Mar 16 11:39:09 IST 2022 : blobfuse2[310] : LOG_DEBUG [azauth.go (77)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
-Wed Mar 16 11:39:09 IST 2022 : blobfuse2[310] : LOG_TRACE [block_blob.go (142)]: BlockBlob::SetupPipeline : Setting up
-Wed Mar 16 11:39:09 IST 2022 : blobfuse2[310] : LOG_TRACE [block_blob.go (127)]: BlockBlob::getCredential : Getting credential
-Wed Mar 16 11:39:09 IST 2022 : blobfuse2[310] : LOG_DEBUG [azauth.go (77)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
-Wed Mar 16 11:39:09 IST 2022 : blobfuse2[310] : LOG_TRACE [datalake.go (184)]: Datalake::TestPipeline : Validating
-Wed Mar 16 11:39:10 IST 2022 : blobfuse2[310] : LOG_TRACE [block_blob.go (188)]: BlockBlob::TestPipeline : Validating
