@@ -119,9 +119,9 @@ jobs:
         displayName: "Perf Regression Test"
         continueOnError: false
 
-      - publish: $(ROOT_DIR)/blobfuse2-perf.log
-        artifact: Blobfuse2_performance_log.log
-        displayName: Publish Performance Log
+      - publish: $(ROOT_DIR)/blobfuse2-perf.json
+        artifact: Blobfuse2_performance_report
+        displayName: Publish Performance Report
 
       - script: |
           sudo fusermount -u ${MOUNT_DIR}

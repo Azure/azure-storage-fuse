@@ -27,7 +27,6 @@ file_cache:
   max-size-mb: 2048
   allow-non-empty-temp: true
   cleanup-on-start: true
-  direct-read: true
 
 attr_cache:
   timeout-sec: 3600

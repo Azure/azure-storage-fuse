@@ -46,7 +46,7 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--procs', default=32, help='number of parallel processes', required=False)
     parser.add_argument('-lf', 
                         '--log', 
-                        default="./blobfuse2-perf.log",
+                        default="./blobfuse2-perf.json",
                         help='path of log file', 
                         required=False)
     

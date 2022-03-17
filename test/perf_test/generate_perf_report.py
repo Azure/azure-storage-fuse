@@ -28,7 +28,7 @@ if __name__ == "__main__":
     parser.add_argument('-m','--metrics', nargs='+', help='metrics to compare from log file', required=True)
     parser.add_argument('-lf',
                         '--log',
-                        default="./blobfuse2-perf.log",
+                        default="./blobfuse2-perf.json",
                         help='path of log file', 
                         required=False)
     args = vars(parser.parse_args())
