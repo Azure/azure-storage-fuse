@@ -1,3 +1,5 @@
+// +build !unittest
+
 package e2e_tests
 
 import (
@@ -77,6 +79,8 @@ func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteF
 	suite.Equal(nil, err)
 }
 
+// -------------- Data Validation Tests -------------------
+
 // data validation for small sized files
 func (suite *dataValidationTestSuite) TestSmallFileData() {
 	fileName := "small_data.txt"
@@ -137,6 +141,7 @@ func (suite *dataValidationTestSuite) TestLargeFileData() {
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
 }
 
+// -------------- Main Method -------------------
 func TestDataValidationTestSuite(t *testing.T) {
 	initDataValidationFlags()
 	dataValidationTest := dataValidationTestSuite{
