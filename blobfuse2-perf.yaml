@@ -98,7 +98,7 @@ jobs:
       - script: |
           sudo fusermount -u ${MOUNT_DIR}
           sudo kill -9 `pidof blobfuse2` || true
-        displayName: "Unmount Blobfuse2 Main Branch Run"
+        displayName: "Unmount Blobfuse2 Binary Run"
 
       - script: |
           cd $(WORK_DIR)
@@ -126,7 +126,7 @@ jobs:
       - script: |
           sudo fusermount -u ${MOUNT_DIR}
           sudo kill -9 `pidof blobfuse2` || true
-        displayName: "Unmount Blobfuse2 Binary Run"
+        displayName: "Unmount Blobfuse2 Main Branch Run"
 
       # Cleanup
       - template: 'azure-pipeline-templates/cleanup.yml'

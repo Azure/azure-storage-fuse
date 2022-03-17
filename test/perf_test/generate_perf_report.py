@@ -9,7 +9,7 @@ import os
 import math
 
 def compare_numbers(job_one, job_two, metrics_list, log_file):
-    f = open(log_file_path, mode='r+')
+    f = open(log_file, mode='r+')
     data = json.load(f)
     result = {'performance_diff':{}}
     for i in metrics_list:
