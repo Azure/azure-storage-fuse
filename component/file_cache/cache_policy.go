@@ -140,7 +140,7 @@ func deleteFile(name string) error {
 		// File is not having delete permissions so change the mode and retry deletion
 		log.Warn("cachePolicy::deleteFile : failed to delete %s due to permission", name)
 
-		os.Chmod(name, os.FileMode(0666))
+		err = os.Chmod(name, os.FileMode(0666))
 		if err != nil {
 			log.Err("cachePolicy::deleteFile : %s failed to reset permissions", name)
 			return err
