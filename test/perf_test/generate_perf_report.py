@@ -16,12 +16,13 @@ def compare_numbers(job_one, job_two, metrics_list, log_file):
         metric_value = math.floor(((data[job_one][i]/data[job_two][i])*100)-100)
         if metric_value < 0:
             result['performance_diff'][i] = metric_value
-            data.update(result)
             sys.stdout.write('{} has regressed - there is a perf regression of {}%\n'.format(i, metric_value))
+            if metric_value < -3:
+                raise ValueError("large perf regression in {} detected of {}".format(i, metric_value))
         if metric_value >= 0:
             result['performance_diff'][i] = metric_value
-            data.update(result)
             sys.stdout.write('{} has a perf improvement of {}%\n'.format(i, metric_value))
+        data.update(result)
         f.seek(0)
         json.dump(data, f)
     f.close()
