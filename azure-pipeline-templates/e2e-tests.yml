@@ -40,7 +40,7 @@ steps:
   - task: Go@0
     inputs:
       command: 'test'
-      arguments: '-v -timeout=2h ./... -args -mnt-path=${{ parameters.mount_dir }} -adls=${{parameters.adls}} -clone=${{parameters.clone}} -tmp-dir=${{parameters.temp_dir}}'
+      arguments: '-v -timeout=2h ./... -args -mnt-path=${{ parameters.mount_dir }} -adls=${{parameters.adls}} -clone=${{parameters.clone}} -tmp-path=${{parameters.temp_dir}}'
       workingDirectory: ${{ parameters.working_dir }}/test/e2e_tests
     displayName: 'E2E Test: ${{ parameters.idstring }}'
     timeoutInMinutes: 120

@@ -147,7 +147,6 @@ func TestDataValidationTestSuite(t *testing.T) {
 
 	// Generate random test dir name where our End to End test run is contained
 	testDirName := getDataValidationTestDirName(10)
-	fmt.Println(testDirName)
 
 	// Create directory for testing the End to End test on mount path
 	dataValidationTest.testMntPath = dataValidationMntPathPtr + "/" + testDirName
@@ -193,5 +192,5 @@ func TestDataValidationTestSuite(t *testing.T) {
 func init() {
 	regDataValidationTestFlag(&dataValidationMntPathPtr, "mnt-path", "", "Mount Path of Container")
 	regDataValidationTestFlag(&dataValidationAdlsPtr, "adls", "", "Account is ADLS or not")
-	regDataValidationTestFlag(&dataValidationTempPathPtr, "tmp-path", "", "Mount Path of Container")
+	regDataValidationTestFlag(&dataValidationTempPathPtr, "tmp-path", "", "Cache dir path")
 }
