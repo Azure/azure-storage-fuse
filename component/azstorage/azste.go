@@ -245,11 +245,11 @@ func (azste *AzSTE) Upload(param UploadParam) error {
 	jobDone := false
 	var status stecommon.JobStatus
 
+	part, _ := azste.jobMgr.JobPartMgr(p)
 	for !jobDone {
-		part, _ := azste.jobMgr.JobPartMgr(p)
 		status = part.Plan().JobPartStatus()
 		jobDone = status.IsJobDone()
-		time.Sleep(time.Second * 1)
+		time.Sleep(time.Millisecond * 200)
 	}
 
 	if err := os.Remove(jppfn.GetJobPartPlanPath()); err != nil {
@@ -342,11 +342,12 @@ func (azste *AzSTE) Download(options DownloadParam) error {
 
 	jobDone := false
 	var status stecommon.JobStatus
+
+	part, _ := azste.jobMgr.JobPartMgr(p)
 	for !jobDone {
-		part, _ := azste.jobMgr.JobPartMgr(p)
 		status = part.Plan().JobPartStatus()
 		jobDone = status.IsJobDone()
-		time.Sleep(time.Second * 1)
+		time.Sleep(time.Millisecond * 200)
 	}
 
 	if err := os.Remove(jppfn.GetJobPartPlanPath()); err != nil {

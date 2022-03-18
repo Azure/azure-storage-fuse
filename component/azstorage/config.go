@@ -405,8 +405,8 @@ func ParseAndValidateSTEConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	az.stConfig.steMinFileSize = opt.STEMinFileSize * (1024 * 1024)
 
-	log.Info("ParseAndValidateSTEConfig : Enable: %d, SlicePool : %d, CacheLimit : %d, FileCount : %d, GCPercent : %d",
-		az.stConfig.steEnable, az.stConfig.steSlicePool, az.stConfig.steCacheLimit, az.stConfig.steFileCountLimit, az.stConfig.steGCPercent)
+	log.Info("ParseAndValidateSTEConfig : Enable: %d, SlicePool : %d, CacheLimit : %d, FileCount : %d, GCPercent : %d, MinFileSize: %d",
+		az.stConfig.steEnable, az.stConfig.steSlicePool, az.stConfig.steCacheLimit, az.stConfig.steFileCountLimit, az.stConfig.steGCPercent, az.stConfig.steMinFileSize)
 
 	return nil
 }
