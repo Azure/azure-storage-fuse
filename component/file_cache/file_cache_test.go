@@ -688,7 +688,7 @@ func (suite *fileCacheTestSuite) TestCloseFile() {
 func (suite *fileCacheTestSuite) TestCloseFileTimeout() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // teardown the default file cache generated
-	cacheTimeout := 1
+	cacheTimeout := 5
 	config := fmt.Sprintf("file_cache:\n  path: %s\n  timeout: %d\n\nloopbackfs:\n  path: %s",
 		suite.cache_path, cacheTimeout, suite.fake_storage_path)
 	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
@@ -711,7 +711,7 @@ func (suite *fileCacheTestSuite) TestCloseFileTimeout() {
 	suite.assert.True(err == nil || os.IsExist(err))
 
 	// Wait cacheTimeout
-	time.Sleep(time.Second * time.Duration(cacheTimeout*3))
+	time.Sleep(time.Second * time.Duration(cacheTimeout*2))
 
 	// File should not be in cache
 	_, err = os.Stat(suite.cache_path + "/" + path)
