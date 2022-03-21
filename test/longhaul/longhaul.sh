@@ -22,7 +22,7 @@ then
 		echo $mem " :: " $elap >> ./longhaul2.log
 	
 		rm -rf /home/vibhansa/blob_mnt2/stress	
-		rm -rf /home/vibhansa/blob_mnt2/myfie*
+		rm -rf /home/vibhansa/blob_mnt2/myfile*
 		#go test -timeout 120m -v ./test/stress_test/stress_test.go -args -mnt-path=/home/vibhansa/blob_mnt2 -quick=false 2&> ./stress.log
 		./test/longhaul/stresstest.sh
 		echo "`whoami` : `date` :: Ending stress test " >> ./longhaul2.log
