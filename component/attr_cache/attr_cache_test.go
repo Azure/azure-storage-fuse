@@ -92,7 +92,7 @@ func getPathAttr(path string, size int64, mode os.FileMode, metadata bool) *inte
 		Ctime:    time.Now(),
 		Crtime:   time.Now(),
 		Flags:    flags,
-		Metadata: make(map[string]string),
+		Metadata: nil,
 	}
 }
 
@@ -701,35 +701,55 @@ func (suite *attrCacheTestSuite) TestRenameFile() {
 }
 
 // Tests Write File
-func (suite *attrCacheTestSuite) TestWriteFile() {
+func (suite *attrCacheTestSuite) TestWriteFileError() {
 	defer suite.cleanupTest()
 	path := "a"
 	handle := handlemap.Handle{
 		Path: path,
 	}
 
-	options := internal.WriteFileOptions{Handle: &handle}
+	options := internal.WriteFileOptions{Handle: &handle, Metadata: nil}
 
 	// Error
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path}).Return(nil, nil)
 	suite.mock.EXPECT().WriteFile(options).Return(0, errors.New("Failed to write a file"))
 
 	_, err := suite.attrCache.WriteFile(options)
 	suite.assert.NotNil(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.Contains(suite.attrCache.cacheMap, path) // GetAttr call will add this to the cache
+}
 
+func (suite *attrCacheTestSuite) TestWriteFileDoesNotExist() {
+	defer suite.cleanupTest()
+	path := "a"
+	handle := handlemap.Handle{
+		Path: path,
+	}
+
+	options := internal.WriteFileOptions{Handle: &handle, Metadata: nil}
 	// Success
 	// Entry Does Not Already Exist
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path}).Return(nil, nil)
 	suite.mock.EXPECT().WriteFile(options).Return(0, nil)
 
-	_, err = suite.attrCache.WriteFile(options)
+	_, err := suite.attrCache.WriteFile(options)
 	suite.assert.Nil(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.Contains(suite.attrCache.cacheMap, path) // GetAttr call will add this to the cache
+}
 
+func (suite *attrCacheTestSuite) TestWriteFileExists() {
+	defer suite.cleanupTest()
+	path := "a"
+	handle := handlemap.Handle{
+		Path: path,
+	}
+
+	options := internal.WriteFileOptions{Handle: &handle, Metadata: nil}
 	// Entry Already Exists
-	addPathToCache(suite.assert, suite.attrCache, path, false)
+	addPathToCache(suite.assert, suite.attrCache, path, true)
 	suite.mock.EXPECT().WriteFile(options).Return(0, nil)
 
-	_, err = suite.attrCache.WriteFile(options)
+	_, err := suite.attrCache.WriteFile(options)
 	suite.assert.Nil(err)
 	assertInvalid(suite, path)
 }
@@ -772,32 +792,45 @@ func (suite *attrCacheTestSuite) TestTruncateFile() {
 }
 
 // Tests CopyFromFile
-func (suite *attrCacheTestSuite) TestCopyFromFile() {
+func (suite *attrCacheTestSuite) TestCopyFromFileError() {
 	defer suite.cleanupTest()
 	path := "a"
 
-	options := internal.CopyFromFileOptions{Name: path, File: nil}
-
+	options := internal.CopyFromFileOptions{Name: path, File: nil, Metadata: nil}
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path}).Return(nil, nil)
 	// Error
 	suite.mock.EXPECT().CopyFromFile(options).Return(errors.New("Failed to copy from file"))
 
 	err := suite.attrCache.CopyFromFile(options)
 	suite.assert.NotNil(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.Contains(suite.attrCache.cacheMap, path) // GetAttr call will add this to the cache
+}
 
+func (suite *attrCacheTestSuite) TestCopyFromFileDoesNotExist() {
+	defer suite.cleanupTest()
+	path := "a"
+
+	options := internal.CopyFromFileOptions{Name: path, File: nil, Metadata: nil}
 	// Success
 	// Entry Does Not Already Exist
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path}).Return(nil, nil)
 	suite.mock.EXPECT().CopyFromFile(options).Return(nil)
 
-	err = suite.attrCache.CopyFromFile(options)
+	err := suite.attrCache.CopyFromFile(options)
 	suite.assert.Nil(err)
-	suite.assert.NotContains(suite.attrCache.cacheMap, path)
+	suite.assert.Contains(suite.attrCache.cacheMap, path) // GetAttr call will add this to the cache
+}
 
+func (suite *attrCacheTestSuite) TestCopyFromFileExists() {
+	defer suite.cleanupTest()
+	path := "a"
+
+	options := internal.CopyFromFileOptions{Name: path, File: nil, Metadata: nil}
 	// Entry Already Exists
-	addPathToCache(suite.assert, suite.attrCache, path, false)
+	addPathToCache(suite.assert, suite.attrCache, path, true)
 	suite.mock.EXPECT().CopyFromFile(options).Return(nil)
 
-	err = suite.attrCache.CopyFromFile(options)
+	err := suite.attrCache.CopyFromFile(options)
 	suite.assert.Nil(err)
 	assertInvalid(suite, path)
 }

@@ -351,8 +351,13 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 func (ac *AttrCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 
 	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
-	attr, _ := ac.GetAttr(internal.GetAttrOptions{Name: options.Handle.Path})
-	options.Metadata = attr.Metadata
+	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Handle.Path})
+	if err != nil {
+		return 0, err
+	}
+	if attr != nil {
+		options.Metadata = attr.Metadata
+	}
 
 	size, err := ac.NextComponent().WriteFile(options)
 	if err == nil {
@@ -387,10 +392,15 @@ func (ac *AttrCache) CopyFromFile(options internal.CopyFromFileOptions) error {
 	log.Trace("AttrCache::CopyFromFile : %s", options.Name)
 
 	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
-	attr, _ := ac.GetAttr(internal.GetAttrOptions{Name: options.Name})
-	options.Metadata = attr.Metadata
+	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Name})
+	if err != nil {
+		return err
+	}
+	if attr != nil {
+		options.Metadata = attr.Metadata
+	}
 
-	err := ac.NextComponent().CopyFromFile(options)
+	err = ac.NextComponent().CopyFromFile(options)
 	if err == nil {
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
