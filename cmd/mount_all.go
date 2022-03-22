@@ -160,7 +160,7 @@ func getContainerList() []string {
 	azComponent.SetName("azstorage")
 	azComponent.SetNextComponent(nil)
 
-	// Configue AzStorage component
+	// Configure AzStorage component
 	err := azComponent.Configure()
 	if err != nil {
 		fmt.Printf("MountAll : Failed to configure AzureStorage object (%s)", err.Error())

@@ -144,7 +144,7 @@ func (az *AzStorage) configureAndTest() error {
 	return nil
 }
 
-// Start : Intialize the go-sdk pipeline here and test auth is working fine
+// Start : Initialize the go-sdk pipeline here and test auth is working fine
 func (az *AzStorage) Start(ctx context.Context) error {
 	log.Trace("AzStorage::Start : Starting component %s", az.Name())
 	// On mount block the ListBlob call for certain amount of time
@@ -181,7 +181,7 @@ func (az *AzStorage) DeleteDir(options internal.DeleteDirOptions) error {
 
 func formatListDirName(path string) string {
 	// If we check the root directory, make sure we pass "" instead of "/"
-	// If we arent checking the root directory, then we want to extend the directory name so List returns all children and does not include the path itself.
+	// If we aren't checking the root directory, then we want to extend the directory name so List returns all children and does not include the path itself.
 	if path == "/" {
 		path = ""
 	} else if path != "" {
@@ -231,7 +231,7 @@ func (az *AzStorage) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 		marker = new_marker
 		iteration++
 
-		log.Debug("AzStorage::ReadDir : So far retreived %d objects in %d iterations", len(blobList), iteration)
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
 		if new_marker == nil || *new_marker == "" {
 			break
 		}

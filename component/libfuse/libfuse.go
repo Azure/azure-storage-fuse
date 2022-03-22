@@ -72,7 +72,7 @@ type dirChildCache struct {
 	eIndex   uint64              // End index of current block of items
 	length   uint64              // Length of the children list
 	token    string              // Token to get next block of items from container
-	children []*internal.ObjAttr // Slice holding current block of childres
+	children []*internal.ObjAttr // Slice holding current block of children
 }
 
 // Structure defining your config parameters

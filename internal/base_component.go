@@ -39,7 +39,7 @@ import (
 	"context"
 )
 
-// BaseComponent : Base implementation of the component inteface
+// BaseComponent : Base implementation of the component interface
 type BaseComponent struct {
 	compName string
 	next     Component
