@@ -711,7 +711,7 @@ func (suite *attrCacheTestSuite) TestWriteFileError() {
 	options := internal.WriteFileOptions{Handle: &handle, Metadata: nil}
 
 	// Error
-	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path}).Return(nil, nil)
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path, RetrieveMetadata: true}).Return(nil, nil)
 	suite.mock.EXPECT().WriteFile(options).Return(0, errors.New("Failed to write a file"))
 
 	_, err := suite.attrCache.WriteFile(options)
@@ -729,7 +729,7 @@ func (suite *attrCacheTestSuite) TestWriteFileDoesNotExist() {
 	options := internal.WriteFileOptions{Handle: &handle, Metadata: nil}
 	// Success
 	// Entry Does Not Already Exist
-	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path}).Return(nil, nil)
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path, RetrieveMetadata: true}).Return(nil, nil)
 	suite.mock.EXPECT().WriteFile(options).Return(0, nil)
 
 	_, err := suite.attrCache.WriteFile(options)
@@ -797,7 +797,7 @@ func (suite *attrCacheTestSuite) TestCopyFromFileError() {
 	path := "a"
 
 	options := internal.CopyFromFileOptions{Name: path, File: nil, Metadata: nil}
-	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path}).Return(nil, nil)
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path, RetrieveMetadata: true}).Return(nil, nil)
 	// Error
 	suite.mock.EXPECT().CopyFromFile(options).Return(errors.New("Failed to copy from file"))
 
@@ -813,7 +813,7 @@ func (suite *attrCacheTestSuite) TestCopyFromFileDoesNotExist() {
 	options := internal.CopyFromFileOptions{Name: path, File: nil, Metadata: nil}
 	// Success
 	// Entry Does Not Already Exist
-	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path}).Return(nil, nil)
+	suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: path, RetrieveMetadata: true}).Return(nil, nil)
 	suite.mock.EXPECT().CopyFromFile(options).Return(nil)
 
 	err := suite.attrCache.CopyFromFile(options)

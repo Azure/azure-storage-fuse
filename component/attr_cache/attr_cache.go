@@ -351,7 +351,7 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 func (ac *AttrCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 
 	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
-	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Handle.Path})
+	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Handle.Path, RetrieveMetadata: true})
 	if err != nil {
 		return 0, err
 	}
@@ -392,7 +392,7 @@ func (ac *AttrCache) CopyFromFile(options internal.CopyFromFileOptions) error {
 	log.Trace("AttrCache::CopyFromFile : %s", options.Name)
 
 	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
-	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Name})
+	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Name, RetrieveMetadata: true})
 	if err != nil {
 		return err
 	}
@@ -453,7 +453,8 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 		} else {
 			// IsMetadataRetrieved is false in the case of ADLS List since the API does not support metadata.
 			// Once migration of ADLS list to blob endpoint is done (in future service versions), we can remove this.
-			if value.getAttr().IsMetadataRetrieved() || ac.noSymlinks {
+			// options.RetrieveMetadata is set by CopyFromFile and WriteFile which need metadata to ensure it is preserved.
+			if value.getAttr().IsMetadataRetrieved() || (ac.noSymlinks && !options.RetrieveMetadata) {
 				// path exists and we have all the metadata required or we do not care about metadata
 				log.Debug("AttrCache::GetAttr : %s served from cache", options.Name)
 				return value.getAttr(), nil

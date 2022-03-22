@@ -171,7 +171,8 @@ type ReadLinkOptions struct {
 }
 
 type GetAttrOptions struct {
-	Name string
+	Name             string
+	RetrieveMetadata bool
 }
 
 type SetAttrOptions struct {
