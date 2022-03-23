@@ -352,7 +352,7 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 }
 
 func (az *AzStorage) WriteFile(options internal.WriteFileOptions) (int, error) {
-	err := az.storage.Write(options.Handle.Path, options.Offset, int64(len(options.Data)), options.Data, options.FileOffsets, options.ModBlockList, options.Metadata)
+	err := az.storage.Write(options)
 	return len(options.Data), err
 }
 

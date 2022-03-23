@@ -40,6 +40,7 @@ import (
 	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -353,7 +354,10 @@ func (ac *AttrCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
 	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Handle.Path, RetrieveMetadata: true})
 	if err != nil {
-		return 0, err
+		// Ignore not exists errors - this can happen if createEmptyFile is set to false
+		if !(os.IsNotExist(err) || err == syscall.ENOENT) {
+			return 0, err
+		}
 	}
 	if attr != nil {
 		options.Metadata = attr.Metadata
@@ -394,7 +398,10 @@ func (ac *AttrCache) CopyFromFile(options internal.CopyFromFileOptions) error {
 	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
 	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Name, RetrieveMetadata: true})
 	if err != nil {
-		return err
+		// Ignore not exists errors - this can happen if createEmptyFile is set to false
+		if !(os.IsNotExist(err) || err == syscall.ENOENT) {
+			return err
+		}
 	}
 	if attr != nil {
 		options.Metadata = attr.Metadata
