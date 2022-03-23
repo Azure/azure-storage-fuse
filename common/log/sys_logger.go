@@ -90,8 +90,7 @@ func (l *SysLogger) init() error {
 		return errors.New("unable to create logger object")
 	}
 
-	//return nil
-	return NoSyslogService
+	return nil
 }
 
 // Convert our log levels to standard syslog levels
