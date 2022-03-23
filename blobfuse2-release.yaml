@@ -82,7 +82,8 @@ stages:
           - script: |
               sudo apt-get update --fix-missing
               sudo apt-get install ruby-dev build-essential $(fuselib) -y
-              sudo gem install fpm -V
+              sudo gem uninstall fpm -v 1.14.1
+              sudo gem install fpm -v 1.2.0
             displayName: "Installing Dependencies"
 
           # build blobfuse2 and generate binary
@@ -103,9 +104,9 @@ stages:
           # using fpm tool for packaging of our binary & performing post-install operations
           # for additional information about fpm refer https://fpm.readthedocs.io/en/v1.13.1/
           - script: |
-              fpm -s dir --exclude /usr/share/doc -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
+              fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" 
+              --description "An user-space filesystem for interacting with Azure Storage" --exclude usr/share
               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(container_image)-x86-64.deb
               cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -176,7 +177,8 @@ stages:
           - script: |
               sudo apt-get update --fix-missing
               sudo apt-get install ruby-dev build-essential $(fuselib) -y
-              sudo gem install fpm -V
+              sudo gem uninstall fpm -v 1.14.1
+              sudo gem install fpm -v 1.2.0
             displayName: "Installing Dependencies"
 
           # generating blobfuse2 binary
@@ -196,9 +198,9 @@ stages:
           
           # using fpm tool for building the install package
           - script: |
-              fpm -s dir --exclude /usr/share/doc -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
+              fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" 
+              --description "An user-space filesystem for interacting with Azure Storage" --exclude usr/share
               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.deb
               cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -291,10 +293,11 @@ stages:
           # using fpm tool to generate package along with post-install scripts
           - script: |
               source ~/.rvm/scripts/rvm
-              gem install fpm
-              fpm -s dir --exclude /usr/share/doc -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
+              gem uninstall fpm -v 1.14.1
+              gem install fpm -v 1.2.0
+              fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" 
+              --description "An user-space filesystem for interacting with Azure Storage" --exclude usr/share
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.rpm
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -362,7 +365,8 @@ stages:
               sudo yum install gcc gcc-c++ make gnutls-devel rpm-build -y
               sudo yum install fuse3-devel -y
               sudo yum install ruby-devel -y
-              sudo gem install fpm -V
+              sudo gem uninstall fpm -v 1.14.1
+              sudo gem install fpm -v 1.2.0
             displayName: "Installing Dependencies"
           
           # generating binaries
@@ -381,9 +385,9 @@ stages:
           
           # using fpm tool for packaging binaries & running post-install scripts
           - script: |
-              fpm -s dir --exclude /usr/share/doc -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
+              fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" 
+              --description "An user-space filesystem for interacting with Azure Storage" --exclude usr/share
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.rpm
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -459,12 +463,13 @@ stages:
             displayName: 'Accumulate pkg files'
           
           - script: |
-              sudo gem install fpm -v 1.14.1
+              sudo gem uninstall fpm -v 1.14.1
+              sudo gem install fpm -v 1.2.0
               sudo zypper in rpmbuild
-              export PATH=$PATH:/usr/lib64/ruby/gems/2.5.0/gems/fpm-1.14.1/bin
-              fpm -s dir --exclude /usr/share/doc -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
+              export PATH=$PATH:/usr/lib64/ruby/gems/2.5.0/gems/fpm-1.2.1/bin
+              fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" 
+              --description "An user-space filesystem for interacting with Azure Storage" --exclude usr/share
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.rpm
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -551,11 +556,12 @@ stages:
           
           # using fpm tool to generate package along with post-install scripts
           - script: |
-              sudo gem install fpm -v 1.14.1
-              export PATH=$PATH:/usr/lib64/ruby/gems/2.6.0/gems/fpm-1.14.1/bin
-              fpm -s dir --exclude /usr/share/doc -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
+              sudo gem uninstall fpm -v 1.14.1
+              sudo gem install fpm -v 1.2.0
+              export PATH=$PATH:/usr/lib64/ruby/gems/2.6.0/gems/fpm-1.2.1/bin
+              fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" 
+              --description "An user-space filesystem for interacting with Azure Storage" --exclude usr/share
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.rpm
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
