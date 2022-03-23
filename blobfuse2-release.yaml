@@ -82,7 +82,6 @@ stages:
           - script: |
               sudo apt-get update --fix-missing
               sudo apt-get install ruby-dev build-essential $(fuselib) -y
-              sudo gem uninstall fpm -v 1.14.1
               sudo gem install fpm -v 1.2.0
             displayName: "Installing Dependencies"
 
@@ -177,7 +176,6 @@ stages:
           - script: |
               sudo apt-get update --fix-missing
               sudo apt-get install ruby-dev build-essential $(fuselib) -y
-              sudo gem uninstall fpm -v 1.14.1
               sudo gem install fpm -v 1.2.0
             displayName: "Installing Dependencies"
 
@@ -293,7 +291,6 @@ stages:
           # using fpm tool to generate package along with post-install scripts
           - script: |
               source ~/.rvm/scripts/rvm
-              gem uninstall fpm -v 1.14.1
               gem install fpm -v 1.2.0
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
@@ -365,7 +362,6 @@ stages:
               sudo yum install gcc gcc-c++ make gnutls-devel rpm-build -y
               sudo yum install fuse3-devel -y
               sudo yum install ruby-devel -y
-              sudo gem uninstall fpm -v 1.14.1
               sudo gem install fpm -v 1.2.0
             displayName: "Installing Dependencies"
           
@@ -463,7 +459,6 @@ stages:
             displayName: 'Accumulate pkg files'
           
           - script: |
-              sudo gem uninstall fpm -v 1.14.1
               sudo gem install fpm -v 1.2.0
               sudo zypper in rpmbuild
               export PATH=$PATH:/usr/lib64/ruby/gems/2.5.0/gems/fpm-1.2.1/bin
@@ -556,7 +551,6 @@ stages:
           
           # using fpm tool to generate package along with post-install scripts
           - script: |
-              sudo gem uninstall fpm -v 1.14.1
               sudo gem install fpm -v 1.2.0
               export PATH=$PATH:/usr/lib64/ruby/gems/2.6.0/gems/fpm-1.2.1/bin
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
