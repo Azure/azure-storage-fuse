@@ -105,7 +105,7 @@ stages:
           - script: |
               fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
+              --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(container_image)-x86-64.deb
               cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -198,7 +198,7 @@ stages:
           - script: |
               fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
+              --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.deb
               cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -294,7 +294,7 @@ stages:
               gem install fpm
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
+              --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.rpm
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -383,7 +383,7 @@ stages:
           - script: |
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
+              --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.rpm
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -464,7 +464,7 @@ stages:
               export PATH=$PATH:/usr/lib64/ruby/gems/2.5.0/gems/fpm-1.14.1/bin
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
+              --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.rpm
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -555,7 +555,7 @@ stages:
               export PATH=$PATH:/usr/lib64/ruby/gems/2.6.0/gems/fpm-1.14.1/bin
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
+              --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.rpm
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
