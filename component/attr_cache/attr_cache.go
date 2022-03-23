@@ -147,7 +147,7 @@ func (ac *AttrCache) OnConfigChange() {
 
 // Helper Methods
 // deleteDirectory: recursively marks a directory deleted
-// The deleteDir method marks deleted instead of invalidating so that if a request came in for a non-existant previously cached
+// The deleteDir method marks deleted instead of invalidating so that if a request came in for a non-existent previously cached
 // file/dir we can directly serve that it is non-existent
 func (ac *AttrCache) deleteDirectory(path string, time time.Time) {
 	// Recursively delete the children of the path, then delete the path
@@ -293,7 +293,7 @@ func (ac *AttrCache) RenameDir(options internal.RenameDirOptions) error {
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
 		ac.deleteDirectory(options.Src, deletionTime)
-		// TLDR: Dst is guaranteed to be non-existant or empty.
+		// TLDR: Dst is guaranteed to be non-existent or empty.
 		// Note: We do not need to invalidate children of Dst due to the logic in our FUSE connector, see comments there,
 		// but it is always safer to double check than not.
 		ac.invalidateDirectory(options.Dst)

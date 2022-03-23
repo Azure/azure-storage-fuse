@@ -65,7 +65,7 @@ type lruPolicy struct {
 	closeSignal         chan int
 	closeSignalValidate chan int
 
-	// Channel to contain files that needs to be deleted immediatly
+	// Channel to contain files that needs to be deleted immediately
 	deleteEvent chan string
 
 	// Channel to contain files that are in use so push them up in lru list
@@ -281,7 +281,7 @@ func (p *lruPolicy) clearCache() {
 			p.deleteExpiredNodes()
 
 		case <-p.diskUsageMonitor:
-			// File cache timeout has not occured so just monitor the cache usage
+			// File cache timeout has not occurred so just monitor the cache usage
 			cleanupCount := 0
 			pUsage := getUsagePercentage(p.tmpPath, p.maxSizeMB)
 			if pUsage > p.highThreshold {

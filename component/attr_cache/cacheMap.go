@@ -40,7 +40,7 @@ import (
 	"time"
 )
 
-// Flags represented in BitMap for various flags in the attr cahe item
+// Flags represented in BitMap for various flags in the attr cache item
 const (
 	AttrFlagUnknown uint16 = iota
 	AttrFlagExists

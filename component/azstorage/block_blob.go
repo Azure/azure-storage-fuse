@@ -126,7 +126,7 @@ func (bb *BlockBlob) getCredential() azblob.Credential {
 
 	bb.Auth = getAzAuth(bb.Config.authConfig)
 	if bb.Auth == nil {
-		log.Err("BlockBlob::getCredential : Failed to retreive auth object")
+		log.Err("BlockBlob::getCredential : Failed to retrieve auth object")
 		return nil
 	}
 
@@ -377,7 +377,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 	return bb.RenameFile(source, target)
 }
 
-// GetAttr : Retreive attributes of the blob
+// GetAttr : Retrieve attributes of the blob
 func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("BlockBlob::GetAttr : name %s", name)
 
@@ -442,7 +442,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			Prefix:  listPath,
 			Details: bb.listDetails,
 		})
-	// Note: Since we make a list call with a prefix, we will not fail here for a non-existant directory.
+	// Note: Since we make a list call with a prefix, we will not fail here for a non-existent directory.
 	// The blob service will not validate for us whether or not the path exists.
 	// This is different from ADLS Gen2 behavior.
 	// APIs that may be affected include IsDirEmpty, ReadDir and StreamDir

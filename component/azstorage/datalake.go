@@ -125,7 +125,7 @@ func (dl *Datalake) getCredential() azbfs.Credential {
 
 	dl.Auth = getAzAuth(dl.Config.authConfig)
 	if dl.Auth == nil {
-		log.Err("Datalake::getCredential : Failed to retreive auth object")
+		log.Err("Datalake::getCredential : Failed to retrieve auth object")
 		return nil
 	}
 
@@ -348,7 +348,7 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 	return nil
 }
 
-// GetAttr : Retreive attributes of the path
+// GetAttr : Retrieve attributes of the path
 func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("Datalake::GetAttr : name %s", name)
 

@@ -52,7 +52,7 @@ type Tree struct {
 	head *TreeNode
 }
 
-//NewTree returns a new Tree object with the head initiliazed to a default root TreeNode
+//NewTree returns a new Tree object with the head initialized to a default root TreeNode
 func NewTree() *Tree {
 	return &Tree{
 		head: NewTreeNode("root"),
@@ -219,7 +219,7 @@ func parseValue(val string, toType reflect.Kind) interface{} {
 
 //MergeWithKey is used to merge the contained tree with the object (obj) that is passed in as parameter.
 //getValue parameter is a function that accepts the value stored in a TreeNode and performs any business logic and returns the value that has to be placed in the obj parameter
-//it must also return true|false based on which the value wil be set in the obj parameter.
+//it must also return true|false based on which the value will be set in the obj parameter.
 func (tree *Tree) MergeWithKey(key string, obj interface{}, getValue func(val interface{}) (res interface{}, ok bool)) {
 	subTree := tree.GetSubTree(key)
 	if subTree == nil {

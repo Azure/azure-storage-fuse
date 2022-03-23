@@ -181,9 +181,9 @@ func (c *FileCache) Configure() error {
 
 	c.createEmptyFile = conf.CreateEmptyFile
 	if config.IsSet(compName + ".timeout-sec") {
-    c.cacheTimeout = float64(conf.Timeout)
+		c.cacheTimeout = float64(conf.Timeout)
 	} else {
-    c.cacheTimeout = float64(defaultFileCacheTimeout)
+		c.cacheTimeout = float64(defaultFileCacheTimeout)
 	}
 	c.allowNonEmpty = conf.AllowNonEmpty
 	c.cleanupOnStart = conf.CleanupOnStart
@@ -269,7 +269,7 @@ func (c *FileCache) OnConfigChange() {
 }
 
 func (c *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
-	// A user provided value of 0 doesnt make sense for MaxEviction, HighThreshold or LowThreshold.
+	// A user provided value of 0 doesn't make sense for MaxEviction, HighThreshold or LowThreshold.
 	if conf.MaxEviction == 0 {
 		conf.MaxEviction = defaultMaxEviction
 	}
@@ -437,12 +437,12 @@ func (fc *FileCache) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 	return attrs, nil
 }
 
-// StreamDir : Add local files to the list retreived from storage container
+// StreamDir : Add local files to the list retrieved from storage container
 func (fc *FileCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
 	attrs, token, err := fc.NextComponent().StreamDir(options)
 
 	if token == "" {
-		// This is the last set of objects retreived from container so we need to add local files here
+		// This is the last set of objects retrieved from container so we need to add local files here
 		localPath := filepath.Join(fc.tmpPath, options.Name)
 		dirents, err := os.ReadDir(localPath)
 
@@ -453,7 +453,7 @@ func (fc *FileCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 				entryCachePath := filepath.Join(fc.tmpPath, entryPath)
 
 				info, err := os.Stat(entryCachePath) // Grab local cache attributes
-				// If local file is not locked then ony use its attributes otherwise rely on container attributes
+				// If local file is not locked then only use its attributes otherwise rely on container attributes
 				if err == nil && !info.IsDir() &&
 					!fc.fileLocks.Locked(entryPath) {
 
@@ -519,7 +519,7 @@ func (fc *FileCache) RenameDir(options internal.RenameDirOptions) error {
 	}
 
 	go fc.invalidateDirectory(options.Src)
-	// TLDR: Dst is guaranteed to be non-existant or empty.
+	// TLDR: Dst is guaranteed to be non-existent or empty.
 	// Note: We do not need to invalidate Dst due to the logic in our FUSE connector, see comments there.
 	return nil
 }
@@ -534,7 +534,7 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 
 	// createEmptyFile was added to optionally support immutable containers. If customers do not care about immutability they can set this to true.
 	if fc.createEmptyFile {
-		// We tried moving CreateFile to a seperate thread for better perf.
+		// We tried moving CreateFile to a separate thread for better perf.
 		// However, before it is created in storage, if GetAttr is called, the call will fail since the file
 		// does not exist in storage yet, failing the whole CreateFile sequence in FUSE.
 		_, err := fc.NextComponent().CreateFile(options)
@@ -578,7 +578,7 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 		handle.Flags.Set(handlemap.HandleFlagCached)
 	}
 
-	// If an empty file is created in storage then there is no need to upload if FlushFile is called immediatly after CreateFile.
+	// If an empty file is created in storage then there is no need to upload if FlushFile is called immediately after CreateFile.
 	if !fc.createEmptyFile {
 		handle.Flags.Set(handlemap.HandleFlagDirty)
 	}
@@ -662,7 +662,7 @@ func (fc *FileCache) isDownloadRequired(localPath string) (bool, bool) {
 
 		// Deciding based on last modified time is not correct. Last modified time is based on the file was last written
 		// so if file was last written back to container 2 days back then even downloading it now shall represent the same date
-		// hence immediatly after download it will become invalid. It shall be based on when the file was last downloaded.
+		// hence immediately after download it will become invalid. It shall be based on when the file was last downloaded.
 		// We can rely on last change time because once file is downloaded we reset its last mod time (represent same time as
 		// container on the local disk by resetting last mod time of local disk with utimens)
 		// and hence last change time on local disk will then represent the download time.
