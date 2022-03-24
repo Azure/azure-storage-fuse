@@ -135,6 +135,8 @@ func getUsagePercentage(path string, maxSize float64) float64 {
 
 // Delete a given file
 func deleteFile(name string) error {
+	log.Debug("cachePolicy::deleteFile : attempting to delete %s", name)
+
 	err := os.Remove(name)
 	if err != nil && os.IsPermission(err) {
 		// File is not having delete permissions so change the mode and retry deletion
