@@ -606,6 +606,7 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 			Data:         data[:size],
 			FileOffsets:  &common.BlockOffsetList{},
 			ModBlockList: &common.BlockOffsetList{},
+			Metadata:     nil,
 		})
 
 	if err != nil {

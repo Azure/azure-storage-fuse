@@ -317,9 +317,6 @@ func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error
 }
 
 func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
-	// if len(options.FileOffsets) == 0 {
-
-	// }
 	return st.NextComponent().WriteFile(options)
 }
 

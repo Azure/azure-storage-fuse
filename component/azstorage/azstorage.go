@@ -352,7 +352,7 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 }
 
 func (az *AzStorage) WriteFile(options internal.WriteFileOptions) (int, error) {
-	err := az.storage.Write(options.Handle.Path, options.Offset, int64(len(options.Data)), options.Data, options.FileOffsets, options.ModBlockList)
+	err := az.storage.Write(options)
 	return len(options.Data), err
 }
 
@@ -387,7 +387,7 @@ func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 		}
 	}
 
-	err = az.storage.WriteFromBuffer(options.Name, nil, data)
+	err = az.storage.WriteFromBuffer(options.Name, attr.Metadata, data)
 	if err != nil {
 		log.Err("AzStorage::TruncateFile : Failed to update file")
 		return err
@@ -403,7 +403,7 @@ func (az *AzStorage) CopyToFile(options internal.CopyToFileOptions) error {
 
 func (az *AzStorage) CopyFromFile(options internal.CopyFromFileOptions) error {
 	log.Trace("AzStorage::CopyFromFile : Upload file %s", options.Name)
-	return az.storage.WriteFromFile(options.Name, nil, options.File)
+	return az.storage.WriteFromFile(options.Name, options.Metadata, options.File)
 }
 
 // Symlink operations
