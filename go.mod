@@ -4,7 +4,7 @@ go 1.16
 
 require (
 	github.com/Azure/azure-pipeline-go v0.2.3
-	github.com/Azure/azure-storage-azcopy/v10 v10.13.1-0.20220209054353-7792f32c6e7c
+	github.com/Azure/azure-storage-azcopy/v10 v10.13.1-0.20220324102430-3d02ce747741
 	//github.com/Azure/azure-storage-blob-go v0.13.1-0.20210823171415-e7932f52ad61
 	github.com/Azure/azure-storage-blob-go v0.13.1-0.20210823171415-e7932f52ad61
 	github.com/Azure/go-autorest/autorest v0.11.18

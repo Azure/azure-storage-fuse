@@ -102,6 +102,7 @@ func (azste *AzSTE) Initialize(config AzSTEConfig) (err error) {
 	logger.OpenLog()
 
 	os.MkdirAll(stecommon.AzcopyJobPlanFolder, 0666)
+
 	azste.jobMgr = ste.NewJobMgr(ste.NewConcurrencySettings(math.MaxInt32, false),
 		jobID,
 		context.Background(),
@@ -114,7 +115,8 @@ func (azste *AzSTE) Initialize(config AzSTEConfig) (err error) {
 		stecommon.NewMultiSizeSlicePool(config.SlicePool),
 		stecommon.NewCacheLimiter(config.CacheLimit),
 		stecommon.NewCacheLimiter(config.FileCountLimit),
-		logger)
+		logger,
+		false)
 
 	stecommon.GetLifecycleMgr().E2EEnableAwaitAllowOpenFiles(false)
 
@@ -233,7 +235,8 @@ func (azste *AzSTE) Upload(param UploadParam) error {
 	jppfn := ste.JobPartPlanFileName(fmt.Sprintf(ste.JobPartPlanFileNameFormat, azste.jobMgr.JobID().String(), p, ste.DataSchemaVersion))
 	jppfn.Create(order)
 
-	azste.jobMgr.AddJobPart(order.PartNum, jppfn, nil, order.SourceRoot.SAS, order.DestinationRoot.SAS, true)
+	jobDoneCh := make(chan struct{})
+	azste.jobMgr.AddJobPart(order.PartNum, jppfn, nil, order.SourceRoot.SAS, order.DestinationRoot.SAS, true, jobDoneCh)
 
 	// Update jobPart Status with the status Manager
 	azste.jobMgr.SendJobPartCreatedMsg(ste.JobPartCreatedMsg{TotalTransfers: uint32(len(order.Transfers.List)),
@@ -242,15 +245,10 @@ func (azste *AzSTE) Upload(param UploadParam) error {
 		FileTransfers:        order.Transfers.FileTransferCount,
 		FolderTransfer:       order.Transfers.FolderTransferCount})
 
-	jobDone := false
+	<-jobDoneCh
 	var status stecommon.JobStatus
-
 	part, _ := azste.jobMgr.JobPartMgr(p)
-	for !jobDone {
-		status = part.Plan().JobPartStatus()
-		jobDone = status.IsJobDone()
-		time.Sleep(time.Millisecond * 200)
-	}
+	status = part.Plan().JobPartStatus()
 
 	if err := os.Remove(jppfn.GetJobPartPlanPath()); err != nil {
 		log.Info("AzSTE::Upload : Failed to remove job plan (%s)", err.Error())
@@ -331,7 +329,8 @@ func (azste *AzSTE) Download(options DownloadParam) error {
 	jppfn := ste.JobPartPlanFileName(fmt.Sprintf(ste.JobPartPlanFileNameFormat, azste.jobMgr.JobID().String(), p, ste.DataSchemaVersion))
 	jppfn.Create(order)
 
-	azste.jobMgr.AddJobPart(order.PartNum, jppfn, nil, order.SourceRoot.SAS, order.DestinationRoot.SAS, true)
+	jobDoneCh := make(chan struct{})
+	azste.jobMgr.AddJobPart(order.PartNum, jppfn, nil, order.SourceRoot.SAS, order.DestinationRoot.SAS, true, jobDoneCh)
 
 	// Update jobPart Status with the status Manager
 	azste.jobMgr.SendJobPartCreatedMsg(ste.JobPartCreatedMsg{TotalTransfers: uint32(len(order.Transfers.List)),
@@ -340,15 +339,10 @@ func (azste *AzSTE) Download(options DownloadParam) error {
 		FileTransfers:        order.Transfers.FileTransferCount,
 		FolderTransfer:       order.Transfers.FolderTransferCount})
 
-	jobDone := false
+	<-jobDoneCh
 	var status stecommon.JobStatus
-
 	part, _ := azste.jobMgr.JobPartMgr(p)
-	for !jobDone {
-		status = part.Plan().JobPartStatus()
-		jobDone = status.IsJobDone()
-		time.Sleep(time.Millisecond * 200)
-	}
+	status = part.Plan().JobPartStatus()
 
 	if err := os.Remove(jppfn.GetJobPartPlanPath()); err != nil {
 		log.Info("AzSTE::Download : Failed to remove job plan (%s)", err.Error())
