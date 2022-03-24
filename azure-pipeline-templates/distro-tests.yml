@@ -42,7 +42,7 @@ steps:
     displayName: 'Print Agent Info'
 
 
-  # Create directory strucutre and prepare to mount
+  # Create directory structure and prepare to mount
   - ${{ parameters.installStep }}
   - script: |
       sudo rm -rf $(ROOT_DIR)

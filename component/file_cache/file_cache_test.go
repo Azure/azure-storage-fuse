@@ -578,7 +578,7 @@ func (suite *fileCacheTestSuite) TestDeleteFile() {
 }
 
 // Case 2 Test cover when the file does not exist in storage but it exists in the local cache.
-// This can happen if createEmptyFile is false and the file hasnt been flushed yet.
+// This can happen if createEmptyFile is false and the file hasn't been flushed yet.
 func (suite *fileCacheTestSuite) TestDeleteFileCase2() {
 	defer suite.cleanupTest()
 	// Default is to not create empty files on create file to support immutable storage.
@@ -992,7 +992,7 @@ func (suite *fileCacheTestSuite) TestGetAttrCase4() {
 	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: createHandle})
 	suite.assert.Nil(err)
 
-	// Wait untill file is evicted
+	// Wait  file is evicted
 	_, err = os.Stat(suite.cache_path + "/" + file)
 	for i := 0; i < 10 && !os.IsNotExist(err); i++ {
 		time.Sleep(time.Second)
