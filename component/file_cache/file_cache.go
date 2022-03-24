@@ -323,13 +323,13 @@ func (fc *FileCache) invalidateDirectory(name string) error {
 			if !d.IsDir() {
 				fc.policy.CachePurge(path)
 			} else {
-				os.Remove(path)
+				deleteFile(path)
 			}
 		}
 		return nil
 	})
 
-	os.Remove(localPath)
+	deleteFile(localPath)
 	return nil
 }
 
@@ -636,7 +636,7 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	}
 
 	localPath := filepath.Join(fc.tmpPath, options.Name)
-	os.Remove(localPath)
+	deleteFile(localPath)
 	fc.policy.CachePurge(localPath)
 	return nil
 }
@@ -699,6 +699,14 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	fc.policy.CacheValid(localPath)
 
 	downloadRequired, fileExists := fc.isDownloadRequired(localPath)
+
+	if fileExists && flock.Count() > 0 {
+		// file exists in local cache and there is already an handle open for it
+		// In this case we can not redownload the file from container
+		log.Info("FileCache::OpenFile : Need to re-download %s, but skipping as handle is already open", options.Name)
+		downloadRequired = false
+	}
+
 	if downloadRequired {
 		log.Debug("FileCache::OpenFile : Need to re-download %s", options.Name)
 
@@ -828,19 +836,19 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 	flock := fc.fileLocks.Get(options.Handle.Path)
 	flock.Lock()
 	defer flock.Unlock()
-	flock.Dec()
 
 	err := f.Close()
 	if err != nil {
 		log.Err("FileCache::CloseFile : error closing file %s(%d) [%s]", options.Handle.Path, int(f.Fd()), err.Error())
 		return err
 	}
+	flock.Dec()
 
 	// If it is an fsync op then purge the file
 	if options.Handle.Fsynced() {
 		log.Trace("FileCache::CloseFile : fsync/sync op, purging %s", options.Handle.Path)
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
-		os.Remove(localPath)
+		deleteFile(localPath)
 		fc.policy.CachePurge(localPath)
 		return nil
 	}
@@ -974,10 +982,6 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		// Write to storage
 		// Create a new handle for the SDK to use to upload (read local file)
 		// The local handle can still be used for read and write.
-		flock := fc.fileLocks.Get(options.Handle.Path)
-		flock.Lock()
-		defer flock.Unlock()
-
 		uploadHandle, err := os.Open(localPath)
 		if err != nil {
 			options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
@@ -1110,12 +1114,19 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 	// stale content). We either need to remove dest file as well from cache or just run rename to replace the content.
 	err = os.Rename(localSrcPath, localDstPath)
 	if err != nil {
-		os.Remove(localDstPath)
+		err = deleteFile(localDstPath)
+		if err != nil {
+			log.Err("FileCache::RenameFile : %s failed to delete local file %s [%s]", localDstPath, err.Error())
+		}
 		fc.policy.CachePurge(localDstPath)
 		log.Err("FileCache::RenameFile : %s failed to rename local file [%s]", options.Src, err.Error())
 	}
 
-	os.Remove(localSrcPath)
+	err = deleteFile(localSrcPath)
+	if err != nil {
+		log.Err("FileCache::RenameFile : %s failed to delete local file %s [%s]", localSrcPath, err.Error())
+	}
+
 	fc.policy.CachePurge(localSrcPath)
 
 	return nil
