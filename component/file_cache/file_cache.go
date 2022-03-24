@@ -1113,22 +1113,27 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 	// we will be serving the wrong content (as we did not rename locally, we still be having older destination files with
 	// stale content). We either need to remove dest file as well from cache or just run rename to replace the content.
 	err = os.Rename(localSrcPath, localDstPath)
+	if err != nil && !os.IsNotExist(err) {
+		log.Err("FileCache::RenameFile : %s failed to rename local file %s [%s]", localSrcPath, err.Error())
+	}
+
 	if err != nil {
+		// If there was a problem in local rename then delete the destination file
+		// it might happen that dest file was already there and local rename failed
+		// so deleting local dest file ensures next open of that will get the updated file from container
 		err = deleteFile(localDstPath)
-		if err != nil {
+		if err != nil && !os.IsNotExist(err) {
 			log.Err("FileCache::RenameFile : %s failed to delete local file %s [%s]", localDstPath, err.Error())
 		}
 		fc.policy.CachePurge(localDstPath)
-		log.Err("FileCache::RenameFile : %s failed to rename local file [%s]", options.Src, err.Error())
 	}
 
 	err = deleteFile(localSrcPath)
-	if err != nil {
+	if err != nil && !os.IsNotExist(err) {
 		log.Err("FileCache::RenameFile : %s failed to delete local file %s [%s]", localSrcPath, err.Error())
 	}
 
 	fc.policy.CachePurge(localSrcPath)
-
 	return nil
 }
 
