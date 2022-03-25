@@ -34,9 +34,10 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 - CLI to check or update a parameter in the encrypted config
 
  ## Blobfuse2 performance compared to blobfuse(v1.x.x)
-- ResNet50 image classification job is 8-10% faster (tested with 1.3 million images)
 - 'git clone' operation is 25% faster (tested with vscode repo cloning)
-- 1-Billion files in a single directory can be listed (which v1.x does not support)
+- ResNet50 image classification job is 7-8% faster (tested with 1.3 million images)
+- Regular file uploads are 10% faster
+- Verified listing of 1-Billion files in a directory (which v1.x does not support)
 
 
 ## Download Blobfuse2
