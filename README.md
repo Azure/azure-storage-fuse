@@ -33,6 +33,13 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 - Support for config file encryption and mounting with an encrypted config file via a passphrase (CLI or environment variable) to decrypt the config file
 - CLI to check or update a parameter in the encrypted config
 
+ ## Blobfuse2 performance compared to blobfuse(v1.x.x)
+- 'git clone' operation is 25% faster (tested with vscode repo cloning)
+- ResNet50 image classification job is 7-8% faster (tested with 1.3 million images)
+- Regular file uploads are 10% faster
+- Verified listing of 1-Billion files in a directory (which v1.x does not support)
+
+
 ## Download Blobfuse2
 You can install Blobfuse2 by cloning this repository. In the workspace root execute `go build` to build the binary. 
 
