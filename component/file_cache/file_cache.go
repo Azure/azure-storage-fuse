@@ -323,13 +323,13 @@ func (fc *FileCache) invalidateDirectory(name string) error {
 			if !d.IsDir() {
 				fc.policy.CachePurge(path)
 			} else {
-				os.Remove(path)
+				deleteFile(path)
 			}
 		}
 		return nil
 	})
 
-	os.Remove(localPath)
+	deleteFile(localPath)
 	return nil
 }
 
@@ -529,8 +529,9 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	//defer exectime.StatTimeCurrentBlock("FileCache::CreateFile")()
 	log.Trace("FileCache::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
 
-	fc.fileLocks.Lock(options.Name)
-	defer fc.fileLocks.Unlock(options.Name)
+	flock := fc.fileLocks.Get(options.Name)
+	flock.Lock()
+	defer flock.Unlock()
 
 	// createEmptyFile was added to optionally support immutable containers. If customers do not care about immutability they can set this to true.
 	if fc.createEmptyFile {
@@ -565,11 +566,8 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 		fc.missedChmodList.LoadOrStore(options.Name, true)
 	}
 
-	err = syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB)
-	if err != nil {
-		log.Err("FileCache::CreateFile : error flocking %s [%s]", options.Name, err.Error())
-		return nil, err
-	}
+	// Increment the handle count in this lock item as there is one handle open for this now
+	flock.Inc()
 
 	handle := handlemap.NewHandle(options.Name)
 	handle.SetFileObject(f)
@@ -626,8 +624,9 @@ func (fc *FileCache) validateStorageError(path string, err error, method string,
 func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	log.Trace("FileCache::DeleteFile : name=%s", options.Name)
 
-	fc.fileLocks.Lock(options.Name)
-	defer fc.fileLocks.Unlock(options.Name)
+	flock := fc.fileLocks.Get(options.Name)
+	flock.Lock()
+	defer flock.Unlock()
 
 	err := fc.NextComponent().DeleteFile(options)
 	err = fc.validateStorageError(options.Name, err, "DeleteFile", false)
@@ -637,7 +636,7 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	}
 
 	localPath := filepath.Join(fc.tmpPath, options.Name)
-	os.Remove(localPath)
+	deleteFile(localPath)
 	fc.policy.CachePurge(localPath)
 	return nil
 }
@@ -693,88 +692,33 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	var f *os.File
 	var err error
 
-	fc.fileLocks.Lock(options.Name)
-	defer fc.fileLocks.Unlock(options.Name)
+	flock := fc.fileLocks.Get(options.Name)
+	flock.Lock()
+	defer flock.Unlock()
 
 	fc.policy.CacheValid(localPath)
 
 	downloadRequired, fileExists := fc.isDownloadRequired(localPath)
 
-	if fileExists && downloadRequired {
-		// If the file exists, check whether the file is free to be overwritten or not
-		// If the lock is held then we cannot update the file
-		f, err = os.OpenFile(localPath, os.O_WRONLY, options.Mode)
-		if err != nil {
-			if os.IsPermission(err) {
-				// File is not having write permission, for re-download we need that permissions
-				log.Err("FileCache::OpenFile : %s failed to open in write mode", localPath)
-				f, err = os.OpenFile(localPath, os.O_RDONLY, os.FileMode(0666))
-				if err == nil {
-					// Able to open file in readonly mode then reset the permissions
-					err = f.Chmod(os.FileMode(0666))
-					if err != nil {
-						log.Err("FileCache::OpenFile : Failed to reset permissions for %s", localPath)
-						return nil, err
-					}
-					f.Close()
-
-					// Retry open in write mode now
-					f, err = os.OpenFile(localPath, os.O_WRONLY, options.Mode)
-					if err != nil {
-						log.Err("FileCache::OpenFile : Failed to re-open file in write mode %s", localPath)
-						return nil, err
-					}
-				} else {
-					log.Err("FileCache::OpenFile : Failed to open file in read mode %s", localPath)
-					return nil, err
-				}
-			} else {
-				log.Err("FileCache::OpenFile : Failed to open file %s in WR mode", localPath)
-				return nil, err
-			}
-		}
-
-		// Grab an exclusive lock to prevent anyone from touching the file while we write to it
-		exLocked := false
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err != nil {
-			if err != syscall.EWOULDBLOCK && err != syscall.EAGAIN {
-				log.Err("FileCache::OpenFile : error flocking %s(%d) [%s]", localPath, int(f.Fd()), err.Error())
-				return nil, err
-			} else {
-				// This indicates that the file is already open, so we can skip the re-download here.
-				// This may happen if we decided to download based on cache timeouts but someone may be accessing the file.
-				log.Err("FileCache::OpenFile : error flocking %s(%d) [%s], proceeding with existing cached copy", localPath, int(f.Fd()), err.Error())
-				downloadRequired = false
-			}
-		} else {
-			exLocked = true
-		}
-
-		if exLocked {
-			// To prepare for re-download, delete the existing file.
-			if downloadRequired {
-				err = os.Remove(localPath)
-				if err != nil {
-					log.Err("FileCache::OpenFile : error removing %s [%s]", localPath, err.Error())
-				}
-			}
-
-			err = syscall.Flock(int(f.Fd()), syscall.LOCK_UN) // Unlock the exclusive lock
-			if err != nil {
-				log.Err("FileCache::OpenFile : error unlocking fd %s(%d) [%s]", localPath, int(f.Fd()), err.Error())
-				return nil, err
-			}
-		}
-		exLocked = false
-		f.Close()
+	if fileExists && flock.Count() > 0 {
+		// file exists in local cache and there is already an handle open for it
+		// In this case we can not redownload the file from container
+		log.Info("FileCache::OpenFile : Need to re-download %s, but skipping as handle is already open", options.Name)
+		downloadRequired = false
 	}
 
 	if downloadRequired {
 		log.Debug("FileCache::OpenFile : Need to re-download %s", options.Name)
 
-		// Create the file if if doesn't already exist.
-		if !fileExists {
+		if fileExists {
+			log.Debug("FileCache::OpenFile : Delete cached file %s", options.Name)
+
+			err := deleteFile(localPath)
+			if err != nil {
+				log.Err("FileCache::OpenFile : Failed to delete old file %s", options.Name)
+			}
+		} else {
+			// Create the file if if doesn't already exist.
 			err := os.MkdirAll(filepath.Dir(localPath), fc.defaultPermission)
 			if err != nil {
 				log.Err("FileCache::OpenFile : error creating directory structure for file %s [%s]", options.Name, err.Error())
@@ -791,6 +735,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 		attrReceived := false
 		fileSize := int64(0)
+
 		attr, err := fc.NextComponent().GetAttr(internal.GetAttrOptions{Name: options.Name})
 		if err != nil {
 			log.Err("FileCache::OpenFile : Failed to get attr of %s [%s]", options.Name, err.Error())
@@ -816,9 +761,6 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 		log.Debug("FileCache::OpenFile : Download of %s is complete", options.Name)
 		f.Close()
-
-		// TODO: GO SDK should have some way to return attr on download to file since they do that call anyway, this will save us an extra call.
-		// However this can only be done once ADLS accounts have migrated the Download API to the blob endpoint so we can get mode.
 
 		// After downloading the file, update the modified times and mode of the file.
 		fileMode := fc.defaultPermission
@@ -849,17 +791,15 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		return nil, err
 	}
 
-	err = syscall.Flock(int(f.Fd()), syscall.LOCK_SH|syscall.LOCK_NB)
-	if err != nil {
-		log.Err("FileCache::OpenFile : error flocking %s [%s]", options.Name, err.Error())
-		return nil, err
-	}
+	// Increment the handle count in this lock item as there is one handle open for this now
+	flock.Inc()
 
 	handle := handlemap.NewHandle(options.Name)
 	inf, err := f.Stat()
 	if err == nil {
 		handle.Size = inf.Size()
 	}
+
 	handle.SetFileObject(f)
 
 	if fc.directRead {
@@ -892,27 +832,23 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 		return syscall.EBADF
 	}
 
-	err := syscall.Flock(int(f.Fd()), syscall.LOCK_UN) // Unlock any locks held
-	if err != nil {
-		log.Err("FileCache::CloseFile : error unlocking fd %s(%d) [%s]", options.Handle.Path, int(f.Fd()), err.Error())
-		return err
-	}
+	// Reduce the open handle counter here as file is being closed now
+	flock := fc.fileLocks.Get(options.Handle.Path)
+	flock.Lock()
+	defer flock.Unlock()
 
-	err = f.Close()
+	err := f.Close()
 	if err != nil {
 		log.Err("FileCache::CloseFile : error closing file %s(%d) [%s]", options.Handle.Path, int(f.Fd()), err.Error())
 		return err
 	}
+	flock.Dec()
 
 	// If it is an fsync op then purge the file
 	if options.Handle.Fsynced() {
 		log.Trace("FileCache::CloseFile : fsync/sync op, purging %s", options.Handle.Path)
-
-		fc.fileLocks.Lock(options.Handle.Path)
-		defer fc.fileLocks.Unlock(options.Handle.Path)
-
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
-		os.Remove(localPath)
+		deleteFile(localPath)
 		fc.policy.CachePurge(localPath)
 		return nil
 	}
@@ -1046,9 +982,6 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		// Write to storage
 		// Create a new handle for the SDK to use to upload (read local file)
 		// The local handle can still be used for read and write.
-		fc.fileLocks.Lock(options.Handle.Path)
-		defer fc.fileLocks.Unlock(options.Handle.Path)
-
 		uploadHandle, err := os.Open(localPath)
 		if err != nil {
 			options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
@@ -1157,11 +1090,13 @@ func (fc *FileCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("FileCache::RenameFile : src=%s, dst=%s", options.Src, options.Dst)
 
-	fc.fileLocks.Lock(options.Src)
-	defer fc.fileLocks.Unlock(options.Src)
+	sflock := fc.fileLocks.Get(options.Src)
+	sflock.Lock()
+	defer sflock.Unlock()
 
-	fc.fileLocks.Lock(options.Dst)
-	defer fc.fileLocks.Unlock(options.Dst)
+	dflock := fc.fileLocks.Get(options.Dst)
+	dflock.Lock()
+	defer dflock.Unlock()
 
 	err := fc.NextComponent().RenameFile(options)
 	err = fc.validateStorageError(options.Src, err, "RenameFile", false)
@@ -1178,15 +1113,27 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 	// we will be serving the wrong content (as we did not rename locally, we still be having older destination files with
 	// stale content). We either need to remove dest file as well from cache or just run rename to replace the content.
 	err = os.Rename(localSrcPath, localDstPath)
-	if err != nil {
-		os.Remove(localDstPath)
-		fc.policy.CachePurge(localDstPath)
-		log.Err("FileCache::RenameFile : %s failed to rename local file [%s]", options.Src, err.Error())
+	if err != nil && !os.IsNotExist(err) {
+		log.Err("FileCache::RenameFile : %s failed to rename local file %s [%s]", localSrcPath, err.Error())
 	}
 
-	os.Remove(localSrcPath)
-	fc.policy.CachePurge(localSrcPath)
+	if err != nil {
+		// If there was a problem in local rename then delete the destination file
+		// it might happen that dest file was already there and local rename failed
+		// so deleting local dest file ensures next open of that will get the updated file from container
+		err = deleteFile(localDstPath)
+		if err != nil && !os.IsNotExist(err) {
+			log.Err("FileCache::RenameFile : %s failed to delete local file %s [%s]", localDstPath, err.Error())
+		}
+		fc.policy.CachePurge(localDstPath)
+	}
 
+	err = deleteFile(localSrcPath)
+	if err != nil && !os.IsNotExist(err) {
+		log.Err("FileCache::RenameFile : %s failed to delete local file %s [%s]", localSrcPath, err.Error())
+	}
+
+	fc.policy.CachePurge(localSrcPath)
 	return nil
 }
 
@@ -1194,8 +1141,9 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("FileCache::TruncateFile : name=%s, size=%d", options.Name, options.Size)
 
-	fc.fileLocks.Lock(options.Name)
-	defer fc.fileLocks.Unlock(options.Name)
+	flock := fc.fileLocks.Get(options.Name)
+	flock.Lock()
+	defer flock.Unlock()
 
 	err := fc.NextComponent().TruncateFile(options)
 	err = fc.validateStorageError(options.Name, err, "TruncateFile", true)
