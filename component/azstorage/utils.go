@@ -359,7 +359,7 @@ func parseMetadata(attr *internal.ObjAttr, metadata map[string]string) {
 
 //    ----------- Content-type handling  ---------------
 
-// ContentTypeMap : Store file extenstion to content-type mapping
+// ContentTypeMap : Store file extension to content-type mapping
 var ContentTypes = map[string]string{
 	".css":  "text/css",
 	".pdf":  "application/pdf",
@@ -417,7 +417,7 @@ var ContentTypes = map[string]string{
 	".dll": "application/x-msdownload",
 }
 
-// getContentType : Based on the file extention retreive the content type to be set
+// getContentType : Based on the file extension retrieve the content type to be set
 func getContentType(key string) string {
 	value, found := ContentTypes[filepath.Ext(key)]
 	if found {
@@ -434,7 +434,7 @@ func populateContentType(newSet string) error {
 	}
 
 	// We can simply append the new data to end of the map
-	// however there may be conflicting keys and henc we need to merge manually
+	// however there may be conflicting keys and hence we need to merge manually
 	//ContentTypeMap = append(ContentTypeMap, data)
 	for k, v := range data {
 		ContentTypes[k] = v

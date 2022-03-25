@@ -105,7 +105,7 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 		}
 	}
 
-	// A user provided value of 0 doesnt make sense for MaxLogFileSize or LogFileCount.
+	// A user provided value of 0 doesn't make sense for MaxLogFileSize or LogFileCount.
 	if opt.Logging.MaxLogFileSize == 0 {
 		opt.Logging.MaxLogFileSize = common.DefaultMaxLogFileSize
 	}
@@ -288,7 +288,7 @@ var mountCmd = &cobra.Command{
 		log.Crit("Logging level set to : %s", logLevel.String())
 		pipeline, err := internal.NewPipeline(options.Components)
 		if err != nil {
-			log.Err("Mount: error initiliazing new pipeline [%v]", err)
+			log.Err("Mount: error initializing new pipeline [%v]", err)
 			fmt.Println("failed to mount :", err)
 			Destroy(1)
 		}

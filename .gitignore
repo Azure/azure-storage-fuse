@@ -12,5 +12,9 @@ venv/
 *.backup
 __debug_bin
 .env
+*.prof
+cpplite/
+build/
+tools/
 test/manual_scripts/create1000.go
 test/manual_scripts/cachetest.go

@@ -39,7 +39,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -142,33 +141,24 @@ func (l *lfuPolicy) clearItemFromCache(path string) {
 		azPath = azPath[1:]
 	}
 
-	l.fileLocks.Lock(azPath)
-	defer l.fileLocks.Unlock(azPath)
+	flock := l.fileLocks.Get(azPath)
+	flock.Lock()
+	defer flock.Unlock()
 
-	f, err := os.OpenFile(path, os.O_RDWR, os.FileMode(0666))
+	// Check if there are any open handles to this file or not
+	if flock.Count() > 0 {
+		log.Err("lfuPolicy::clearItemFromCache : File in use %s", path)
+		l.CacheValid(path)
+		return
+	}
 
-	if err != nil {
-		if !os.IsNotExist(err) {
-			log.Err("lfuPolicy::clearCache : error opening cached file [%s]", err)
-		}
-	} else {
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-
-		if err == syscall.EWOULDBLOCK {
-			log.Err("lfuPolicy::clearCache : failed to acquire ex lock [%s]", path)
-			f.Close()
-			go rethrowOnUnblock(f, path, l.removeFiles)
-		} else {
-			os.Remove(path)
-			syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-			f.Close()
-
-			log.Debug("lfuPolicy::clearCache : File %s deleted successfully", path)
-
-			dirPath := filepath.Dir(path)
-			if dirPath != l.tmpPath {
-				os.Remove(filepath.Dir(path))
-			}
+	// There are no open handles for this file so its safe to remove this
+	err := deleteFile(path)
+	if err == nil {
+		// File was deleted so try clearing its parent directory
+		dirPath := filepath.Dir(path)
+		if dirPath != l.tmpPath {
+			os.Remove(dirPath)
 		}
 	}
 }

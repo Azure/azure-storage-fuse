@@ -39,7 +39,6 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -65,7 +64,7 @@ type lruPolicy struct {
 	closeSignal         chan int
 	closeSignalValidate chan int
 
-	// Channel to contain files that needs to be deleted immediatly
+	// Channel to contain files that needs to be deleted immediately
 	deleteEvent chan string
 
 	// Channel to contain files that are in use so push them up in lru list
@@ -281,7 +280,7 @@ func (p *lruPolicy) clearCache() {
 			p.deleteExpiredNodes()
 
 		case <-p.diskUsageMonitor:
-			// File cache timeout has not occured so just monitor the cache usage
+			// File cache timeout has not occurred so just monitor the cache usage
 			cleanupCount := 0
 			pUsage := getUsagePercentage(p.tmpPath, p.maxSizeMB)
 			if pUsage > p.highThreshold {
@@ -423,60 +422,24 @@ func (p *lruPolicy) deleteItem(name string) error {
 		azPath = azPath[1:]
 	}
 
-	p.fileLocks.Lock(azPath)
-	defer p.fileLocks.Unlock(azPath)
+	flock := p.fileLocks.Get(azPath)
+	flock.Lock()
+	defer flock.Unlock()
 
-	// opening a file in WRONLY mode means we are wiping out the contnets from cache
-	// this may lead to some corner case where files contents are wiped out while being served from cache
-	f, err := os.OpenFile(name, os.O_RDWR, os.FileMode(0666))
-	if err != nil {
-		if os.IsPermission(err) {
-			// File is not having write permission, for deletion we need that permissions
-			log.Err("lruPolicy::DeleteItem : %s failed to open in write mode", name)
+	// Check if there are any open handles to this file or not
+	if flock.Count() > 0 {
+		log.Warn("lruPolicy::DeleteItem : File in use %s", name)
+		p.CacheValid(name)
+		return nil
+	}
 
-			f, err = os.OpenFile(name, os.O_RDONLY, os.FileMode(0666))
-			if err != nil {
-				log.Err("lruPolicy::DeleteItem : %s failed to open in read mode as well", name)
-				return nil
-			} else {
-				err = f.Chmod(os.FileMode(0666))
-				f.Close()
-				if err != nil {
-					log.Err("lruPolicy::DeleteItem : %s failed to reset permissions", name)
-					return nil
-				}
-				// Deadlock here: At entry of this method file level lock is already acquired
-				// recursively calling same method again means in next iteration we will try to acquire the same
-				// lock again and it will result into deadlock. Hence instead of calling p.deleteItem() just post then
-				// name back to cleanup channel so that this function unlocks and returns gracefully and next call to
-				// this method handles the cleanup part.
-
-				//p.deleteItem(name)
-				p.deleteEvent <- name
-			}
-		} else if !os.IsNotExist(err) {
-			log.Err("lruPolicy::DeleteItem : error opening cached file %s [%s]", name, err)
-		}
-	} else {
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == syscall.EWOULDBLOCK {
-			f.Close()
-			log.Err("lruPolicy::DeleteItem : File in use %s, re-add", name)
-			p.CacheValid(name)
-			return err
-		} else {
-			err = os.Remove(name)
-			if err != nil {
-				log.Err("lruPolicy::DeleteItem : Failed to delete local file %s", name)
-			}
-			syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
-			f.Close()
-			log.Debug("lruPolicy::DeleteItem : File %s deleted successfully", name)
-
-			dirPath := filepath.Dir(name)
-			if dirPath != p.tmpPath {
-				os.Remove(dirPath)
-			}
+	// There are no open handles for this file so its safe to remove this
+	err := deleteFile(name)
+	if err == nil {
+		// File was deleted so try clearing its parent directory
+		dirPath := filepath.Dir(name)
+		if dirPath != p.tmpPath {
+			os.Remove(dirPath)
 		}
 	}
 

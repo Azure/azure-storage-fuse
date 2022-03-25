@@ -63,7 +63,7 @@ In below code lot of places we are doing this sort of conversions:
 
 To open/create calls we need to return back a handle to libfuse which shall be an integer value
 As in blobfuse we maintain handle as an object, instead of returning back a running integer value as handle
-we are convering back the pointer to our handle object to an integer value and sending it to libfuse.
+we are converting back the pointer to our handle object to an integer value and sending it to libfuse.
 When read/write/flush/close call comes libfuse will supply this handle value back to blobfuse.
 In those calls we will convert integer value back to a pointer and get our valid handle object back for that file.
 */
@@ -132,10 +132,10 @@ func (lf *Libfuse) initFuse() error {
 		errc = C.get_extension_callbacks(&operations)
 		if errc != 0 {
 			C.unload_library()
-			log.Err("Libfuse::InitFuse : Failed to get callback table from extnesion. error code %d", errc)
+			log.Err("Libfuse::InitFuse : Failed to get callback table from extension. error code %d", errc)
 			return errors.New("failed to get callback table from extension")
 		}
-		log.Trace("Libfuse::InitFuse : Extension callback retreived")
+		log.Trace("Libfuse::InitFuse : Extension callback retrieved")
 
 		// Get our callback table
 		my_operations := C.fuse_operations_t{}
@@ -145,8 +145,8 @@ func (lf *Libfuse) initFuse() error {
 		errc = C.register_callback_to_extension(&my_operations)
 		if errc != 0 {
 			C.unload_library()
-			log.Err("Libfuse::InitFuse : Failed to register callback table to extnesion. error code %d", errc)
-			return errors.New("failed to register callback table to extnesion")
+			log.Err("Libfuse::InitFuse : Failed to register callback table to extension. error code %d", errc)
+			return errors.New("failed to register callback table to extension")
 		}
 		log.Trace("Libfuse::InitFuse : Callbacks registered to extension")
 	} else {
@@ -389,7 +389,7 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 	handle := handlemap.NewHandle(name)
 
 	// For each handle created using opendir we create
-	// this structure here to hold currnet block of children to serve readdir
+	// this structure here to hold current block of children to serve readdir
 	handle.SetValue("cache", &dirChildCache{
 		sIndex:   0,
 		eIndex:   0,
@@ -630,6 +630,7 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 			Data:         data[:size],
 			FileOffsets:  &common.BlockOffsetList{},
 			ModBlockList: &common.BlockOffsetList{},
+			Metadata:     nil,
 		})
 
 	if err != nil {

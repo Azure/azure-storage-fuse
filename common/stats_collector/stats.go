@@ -69,7 +69,7 @@ type FileCacheStats struct {
 	lastCacheEviction uint64
 }
 
-// StorageStats : Stats for stroage layer
+// StorageStats : Stats for storage layer
 type StorageStats struct {
 	lck sync.RWMutex
 
@@ -87,7 +87,7 @@ type StorageStats struct {
 	upload   uint64
 }
 
-// GlobalStats : Stats for gloabal monitoring
+// GlobalStats : Stats for global monitoring
 type GlobalStats struct {
 	lck sync.RWMutex
 
@@ -98,6 +98,6 @@ type Stats struct {
 	fuse      FuseStats
 	attrCache AttrCacheStats
 	fileCache FileCacheStats
-	stroage   StorageStats
+	storage   StorageStats
 	common    GlobalStats
 }

@@ -112,14 +112,14 @@ func GetStorageStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if out_format == "yaml" || out_format == "yml" {
-		d, err := yaml.Marshal(&Blobfuse2Stats.stroage)
+		d, err := yaml.Marshal(&Blobfuse2Stats.storage)
 		if err != nil {
 			log.Fatalf("error: %v", err)
 		}
 		fmt.Fprintf(w, string(d))
 		return
 	}
-	json.NewEncoder(w).Encode(&Blobfuse2Stats.stroage)
+	json.NewEncoder(w).Encode(&Blobfuse2Stats.storage)
 }
 
 func GetCommonStats(w http.ResponseWriter, r *http.Request) {
@@ -165,7 +165,7 @@ func allocate() *Stats {
 	stats.fuse.lck = sync.RWMutex{}
 	stats.attrCache.lck = sync.RWMutex{}
 	stats.fileCache.lck = sync.RWMutex{}
-	stats.stroage.lck = sync.RWMutex{}
+	stats.storage.lck = sync.RWMutex{}
 	stats.common.lck = sync.RWMutex{}
 
 	return stats
