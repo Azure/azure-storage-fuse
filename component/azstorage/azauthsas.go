@@ -70,7 +70,7 @@ type azAuthBlobSAS struct {
 // GetCredential : Gets SAS based credentials for blob
 func (azsas *azAuthBlobSAS) getCredential() interface{} {
 	if azsas.config.SASKey == "" {
-		log.Err("azAuthBlobSAS::getCredential : SAS key for account is empty, cannot autheticate user")
+		log.Err("azAuthBlobSAS::getCredential : SAS key for account is empty, cannot authenticate user")
 		return nil
 	}
 
@@ -84,7 +84,7 @@ type azAuthBfsSAS struct {
 // GetCredential : Gets SAS based credentials for datralake
 func (azsas *azAuthBfsSAS) getCredential() interface{} {
 	if azsas.config.SASKey == "" {
-		log.Err("azAuthBfsSAS::getCredential : SAS key for account is empty, cannot autheticate user")
+		log.Err("azAuthBfsSAS::getCredential : SAS key for account is empty, cannot authenticate user")
 		return nil
 	}
 

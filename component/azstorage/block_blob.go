@@ -128,7 +128,7 @@ func (bb *BlockBlob) getCredential() azblob.Credential {
 
 	bb.Auth = getAzAuth(bb.Config.authConfig)
 	if bb.Auth == nil {
-		log.Err("BlockBlob::getCredential : Failed to retreive auth object")
+		log.Err("BlockBlob::getCredential : Failed to retrieve auth object")
 		return nil
 	}
 
@@ -390,7 +390,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 	return bb.RenameFile(source, target)
 }
 
-// GetAttr : Retreive attributes of the blob
+// GetAttr : Retrieve attributes of the blob
 func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("BlockBlob::GetAttr : name %s", name)
 
@@ -455,7 +455,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			Prefix:  listPath,
 			Details: bb.listDetails,
 		})
-	// Note: Since we make a list call with a prefix, we will not fail here for a non-existant directory.
+	// Note: Since we make a list call with a prefix, we will not fail here for a non-existent directory.
 	// The blob service will not validate for us whether or not the path exists.
 	// This is different from ADLS Gen2 behavior.
 	// APIs that may be affected include IsDirEmpty, ReadDir and StreamDir
@@ -718,7 +718,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s ", name, err.Error())
 		return &common.BlockOffsetList{}, err
 	}
-	for _, block := range *&storageBlockList.CommittedBlocks {
+	for _, block := range storageBlockList.CommittedBlocks {
 		blk := &common.Block{
 			Id:         block.Name,
 			StartIndex: int64(blockOffset),
@@ -760,12 +760,15 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 }
 
 // Write : write data at given offset to a blob
-func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileOffsets, modFileOffsets *common.BlockOffsetList) error {
-	defer log.TimeTrack(time.Now(), "BlockBlob::Write", name)
+func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
+	name := options.Handle.Path
+	offset := options.Offset
+	defer log.TimeTrack(time.Now(), "BlockBlob::Write", options.Handle.Path)
 	log.Trace("BlockBlob::Write : name %s offset %v", name, offset)
 	// tracks the case where our offset is great than our current file size (appending only - not modifying pre-existing data)
 	var dataBuffer *[]byte
 
+	fileOffsets := options.FileOffsets
 	// when the file offset mapping is cached we don't need to make a get block list call
 	if fileOffsets != nil && !fileOffsets.Cached {
 		var err error
@@ -775,6 +778,8 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 		}
 	}
 
+	length := int64(len(options.Data))
+	data := options.Data
 	// case 1: file consists of no blocks (small file)
 	if fileOffsets != nil && len(fileOffsets.BlockList) == 0 {
 		// get all the data
@@ -804,7 +809,7 @@ func (bb *BlockBlob) Write(name string, offset, length int64, data []byte, fileO
 			}
 		}
 		// WriteFromBuffer should be able to handle the case where now the block is too big and gets split into multiple blocks
-		err := bb.WriteFromBuffer(name, nil, *dataBuffer)
+		err := bb.WriteFromBuffer(name, options.Metadata, *dataBuffer)
 		if err != nil {
 			log.Err("BlockBlob::Write : Failed to upload to blob %s ", name, err.Error())
 			return err

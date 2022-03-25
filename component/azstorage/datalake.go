@@ -127,7 +127,7 @@ func (dl *Datalake) getCredential() azbfs.Credential {
 
 	dl.Auth = getAzAuth(dl.Config.authConfig)
 	if dl.Auth == nil {
-		log.Err("Datalake::getCredential : Failed to retreive auth object")
+		log.Err("Datalake::getCredential : Failed to retrieve auth object")
 		return nil
 	}
 
@@ -358,7 +358,7 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 	return nil
 }
 
-// GetAttr : Retreive attributes of the path
+// GetAttr : Retrieve attributes of the path
 func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("Datalake::GetAttr : name %s", name)
 
@@ -511,8 +511,8 @@ func (dl *Datalake) WriteFromBuffer(name string, metadata map[string]string, dat
 }
 
 // Write : Write to a file at given offset
-func (dl *Datalake) Write(name string, offset int64, len int64, data []byte, fileOffsets, modBlockList *common.BlockOffsetList) error {
-	return dl.BlockBlob.Write(name, offset, len, data, fileOffsets, modBlockList)
+func (dl *Datalake) Write(options internal.WriteFileOptions) error {
+	return dl.BlockBlob.Write(options)
 }
 
 func (dl *Datalake) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {

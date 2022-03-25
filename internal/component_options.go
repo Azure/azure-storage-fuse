@@ -116,6 +116,7 @@ type WriteFileOptions struct {
 	Data         []byte
 	FileOffsets  *common.BlockOffsetList
 	ModBlockList *common.BlockOffsetList
+	Metadata     map[string]string
 }
 
 type GetFileBlockOffsetsOptions struct {
@@ -136,9 +137,10 @@ type CopyToFileOptions struct {
 }
 
 type CopyFromFileOptions struct {
-	Name      string
 	File      *os.File
+	Name      string
 	LocalPath string
+	Metadata  map[string]string
 }
 
 type FlushFileOptions struct {
@@ -171,7 +173,8 @@ type ReadLinkOptions struct {
 }
 
 type GetAttrOptions struct {
-	Name string
+	Name             string
+	RetrieveMetadata bool
 }
 
 type SetAttrOptions struct {

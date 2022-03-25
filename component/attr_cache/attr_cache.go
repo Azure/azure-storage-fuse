@@ -40,6 +40,7 @@ import (
 	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -147,7 +148,7 @@ func (ac *AttrCache) OnConfigChange() {
 
 // Helper Methods
 // deleteDirectory: recursively marks a directory deleted
-// The deleteDir method marks deleted instead of invalidating so that if a request came in for a non-existant previously cached
+// The deleteDir method marks deleted instead of invalidating so that if a request came in for a non-existent previously cached
 // file/dir we can directly serve that it is non-existent
 func (ac *AttrCache) deleteDirectory(path string, time time.Time) {
 	// Recursively delete the children of the path, then delete the path
@@ -293,7 +294,7 @@ func (ac *AttrCache) RenameDir(options internal.RenameDirOptions) error {
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
 		ac.deleteDirectory(options.Src, deletionTime)
-		// TLDR: Dst is guaranteed to be non-existant or empty.
+		// TLDR: Dst is guaranteed to be non-existent or empty.
 		// Note: We do not need to invalidate children of Dst due to the logic in our FUSE connector, see comments there,
 		// but it is always safer to double check than not.
 		ac.invalidateDirectory(options.Dst)
@@ -349,6 +350,19 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 
 // WriteFile : Mark the file invalid
 func (ac *AttrCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+
+	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
+	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Handle.Path, RetrieveMetadata: true})
+	if err != nil {
+		// Ignore not exists errors - this can happen if createEmptyFile is set to false
+		if !(os.IsNotExist(err) || err == syscall.ENOENT) {
+			return 0, err
+		}
+	}
+	if attr != nil {
+		options.Metadata = attr.Metadata
+	}
+
 	size, err := ac.NextComponent().WriteFile(options)
 	if err == nil {
 		ac.cacheLock.RLock()
@@ -381,7 +395,19 @@ func (ac *AttrCache) TruncateFile(options internal.TruncateFileOptions) error {
 func (ac *AttrCache) CopyFromFile(options internal.CopyFromFileOptions) error {
 	log.Trace("AttrCache::CopyFromFile : %s", options.Name)
 
-	err := ac.NextComponent().CopyFromFile(options)
+	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
+	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Name, RetrieveMetadata: true})
+	if err != nil {
+		// Ignore not exists errors - this can happen if createEmptyFile is set to false
+		if !(os.IsNotExist(err) || err == syscall.ENOENT) {
+			return err
+		}
+	}
+	if attr != nil {
+		options.Metadata = attr.Metadata
+	}
+
+	err = ac.NextComponent().CopyFromFile(options)
 	if err == nil {
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
@@ -434,7 +460,8 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 		} else {
 			// IsMetadataRetrieved is false in the case of ADLS List since the API does not support metadata.
 			// Once migration of ADLS list to blob endpoint is done (in future service versions), we can remove this.
-			if value.getAttr().IsMetadataRetrieved() || ac.noSymlinks {
+			// options.RetrieveMetadata is set by CopyFromFile and WriteFile which need metadata to ensure it is preserved.
+			if value.getAttr().IsMetadataRetrieved() || (ac.noSymlinks && !options.RetrieveMetadata) {
 				// path exists and we have all the metadata required or we do not care about metadata
 				log.Debug("AttrCache::GetAttr : %s served from cache", options.Name)
 				return value.getAttr(), nil

@@ -35,51 +35,73 @@ package common
 
 import (
 	"sync"
-
-	"go.uber.org/atomic"
 )
 
+// Lock item for each file
 type LockMapItem struct {
-	sync.Mutex
-	locked atomic.Bool
+	handleCount uint32
+	exLocked    bool
+	mtx         sync.Mutex
 }
+
+// Map holding locks for all the files
 type LockMap struct {
 	locks sync.Map
 }
 
-func (l *LockMap) Lock(name string) {
-	lockIntf, _ := l.locks.LoadOrStore(name, &LockMapItem{})
-	lock := lockIntf.(*LockMapItem)
-	lock.Lock()
-	lock.locked.Store(true)
+func NewLockMap() *LockMap {
+	return &LockMap{}
 }
 
-func (l *LockMap) Unlock(name string) bool {
-	lockIntf, ok := l.locks.Load(name)
-	if ok {
-		lock := lockIntf.(*LockMapItem)
-		lock.locked.Store(false)
-		lock.Unlock()
-		return true
-	} else {
-		return false
-	}
+// Map level operations
+
+// Get the lock item based on file name, if item does not exists create it
+func (l *LockMap) Get(name string) *LockMapItem {
+	lockIntf, _ := l.locks.LoadOrStore(name, &LockMapItem{handleCount: 0, exLocked: false})
+	item := lockIntf.(*LockMapItem)
+	return item
 }
 
+// Delete item from file lock map
+func (l *LockMap) Delete(name string) {
+	l.locks.Delete(name)
+}
+
+// Check if this file is already exLocked or not
 func (l *LockMap) Locked(name string) bool {
 	lockIntf, ok := l.locks.Load(name)
 	if ok {
-		lock := lockIntf.(*LockMapItem)
-		return lock.locked.Load()
+		item := lockIntf.(*LockMapItem)
+		return item.exLocked
 	}
 
 	return false
 }
 
-func (l *LockMap) Delete(name string) {
-	l.locks.Delete(name)
+// Lock Item level operation
+// Lock this file exclusively
+func (l *LockMapItem) Lock() {
+	l.mtx.Lock()
+	l.exLocked = true
 }
 
-func NewLockMap() *LockMap {
-	return &LockMap{}
+// UnLock this file exclusively
+func (l *LockMapItem) Unlock() {
+	l.exLocked = false
+	l.mtx.Unlock()
+}
+
+// Increment the handle count
+func (l *LockMapItem) Inc() {
+	l.handleCount++
+}
+
+// Decrement the handle count
+func (l *LockMapItem) Dec() {
+	l.handleCount--
+}
+
+// Get the current handle count
+func (l *LockMapItem) Count() uint32 {
+	return l.handleCount
 }

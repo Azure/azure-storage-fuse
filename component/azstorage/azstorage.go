@@ -144,7 +144,7 @@ func (az *AzStorage) configureAndTest() error {
 	return nil
 }
 
-// Start : Intialize the go-sdk pipeline here and test auth is working fine
+// Start : Initialize the go-sdk pipeline here and test auth is working fine
 func (az *AzStorage) Start(ctx context.Context) error {
 	log.Trace("AzStorage::Start : Starting component %s", az.Name())
 	// On mount block the ListBlob call for certain amount of time
@@ -181,7 +181,7 @@ func (az *AzStorage) DeleteDir(options internal.DeleteDirOptions) error {
 
 func formatListDirName(path string) string {
 	// If we check the root directory, make sure we pass "" instead of "/"
-	// If we arent checking the root directory, then we want to extend the directory name so List returns all children and does not include the path itself.
+	// If we aren't checking the root directory, then we want to extend the directory name so List returns all children and does not include the path itself.
 	if path == "/" {
 		path = ""
 	} else if path != "" {
@@ -231,7 +231,7 @@ func (az *AzStorage) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 		marker = new_marker
 		iteration++
 
-		log.Debug("AzStorage::ReadDir : So far retreived %d objects in %d iterations", len(blobList), iteration)
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
 		if new_marker == nil || *new_marker == "" {
 			break
 		}
@@ -352,7 +352,7 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 }
 
 func (az *AzStorage) WriteFile(options internal.WriteFileOptions) (int, error) {
-	err := az.storage.Write(options.Handle.Path, options.Offset, int64(len(options.Data)), options.Data, options.FileOffsets, options.ModBlockList)
+	err := az.storage.Write(options)
 	return len(options.Data), err
 }
 
@@ -387,7 +387,7 @@ func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 		}
 	}
 
-	err = az.storage.WriteFromBuffer(options.Name, nil, data)
+	err = az.storage.WriteFromBuffer(options.Name, attr.Metadata, data)
 	if err != nil {
 		log.Err("AzStorage::TruncateFile : Failed to update file")
 		return err
@@ -403,7 +403,7 @@ func (az *AzStorage) CopyToFile(options internal.CopyToFileOptions) error {
 
 func (az *AzStorage) CopyFromFile(options internal.CopyFromFileOptions) error {
 	log.Trace("AzStorage::CopyFromFile : Upload file %s", options.Name)
-	return az.storage.WriteFromFile(options.Name, nil, options.File, WriteFileOptions{localPath: options.LocalPath})
+	return az.storage.WriteFromFile(options.Name, options.Metadata, options.File, WriteFileOptions{localPath: options.LocalPath})
 }
 
 // Symlink operations

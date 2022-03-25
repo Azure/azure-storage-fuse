@@ -55,7 +55,7 @@ type azAuthBlobKey struct {
 // GetCredential : Gets shared key based storage credentials for blob
 func (azkey *azAuthBlobKey) getCredential() interface{} {
 	if azkey.config.AccountKey == "" {
-		log.Err("azAuthBlobKey::getCredential : Shared key for account is empty, cannot autheticate user")
+		log.Err("azAuthBlobKey::getCredential : Shared key for account is empty, cannot authenticate user")
 		return nil
 	}
 
@@ -77,7 +77,7 @@ type azAuthBfsKey struct {
 // GetCredential : Gets shared key based storage credentials for datalake
 func (azkey *azAuthBfsKey) getCredential() interface{} {
 	if azkey.config.AccountKey == "" {
-		log.Err("azAuthBfsKey::getCredential : Shared key for account is empty, cannot autheticate user")
+		log.Err("azAuthBfsKey::getCredential : Shared key for account is empty, cannot authenticate user")
 		return nil
 	}
 

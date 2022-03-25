@@ -45,7 +45,7 @@ type Pipeline struct {
 	Header     Component
 }
 
-// NewComponent : Function that all components have to register to allow their instanciation
+// NewComponent : Function that all components have to register to allow their instantiation
 type NewComponent func() Component
 
 // Map holding all possible components along with their respective constructors

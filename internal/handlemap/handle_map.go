@@ -105,7 +105,7 @@ func (handle *Handle) SetValue(key string, value interface{}) {
 	handle.Unlock()
 }
 
-// GetValue : Retreive user defined parameter from handle
+// GetValue : Retrieve user defined parameter from handle
 func (handle *Handle) GetValue(key string) (interface{}, bool) {
 	handle.RLock()
 	val, ok := handle.values[key]
