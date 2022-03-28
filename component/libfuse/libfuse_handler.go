@@ -265,8 +265,24 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 		conn.want |= C.FUSE_CAP_ASYNC_READ
 	}
 
-	// Let kernel cache the write data and send us in bigger blocks
-	//conn.want |= C.FUSE_CAP_SPLICE_WRITE
+	
+	if (conn.capable & C.FUSE_CAP_SPLICE_WRITE) != 0 {
+		// While writing to fuse device let libfuse collate the data and write big chunks
+		log.Info("Libfuse::libfuse2_init : Enable Capability : FUSE_CAP_SPLICE_WRITE")
+		conn.want |= C.FUSE_CAP_SPLICE_WRITE
+	}
+
+	if (conn.capable & C.FUSE_CAP_WRITEBACK_CACHE) != 0 {
+		// Buffer write requests at libfuse and then hand it off to application
+		log.Info("Libfuse::libfuse2_init : Enable Capability : FUSE_CAP_WRITEBACK_CACHE")
+		conn.want |= C.FUSE_CAP_WRITEBACK_CACHE
+	}
+
+	if (conn.capable & C.FUSE_CAP_CACHE_SYMLINKS) != 0 {
+		// Let kernel cache the symlink targets
+		log.Info("Libfuse::libfuse2_init : Enable Capability : FUSE_CAP_CACHE_SYMLINKS")
+		conn.want |= C.FUSE_CAP_CACHE_SYMLINKS
+	}
 
 	// Max background thread on the fuse layer for high parallelism
 	conn.max_background = 128

@@ -205,6 +205,8 @@ static int populate_callbacks(fuse_operations_t *opt)
     opt->utimens    = (int (*)(const char *path, const timespec_t tv[2], fuse_file_info_t *fi))libfuse_utimens;
     #endif
 
+    opt->flag_nullpath_ok = 1;
+
     return 0;
 }
 

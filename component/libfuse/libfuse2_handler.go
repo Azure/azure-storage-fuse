@@ -247,6 +247,12 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 		conn.want |= C.FUSE_CAP_BIG_WRITES
 	}
 
+	if (conn.capable & C.FUSE_CAP_SPLICE_WRITE) != 0 {
+		// While writing to fuse device let libfuse collate the data and write big chunks
+		log.Info("Libfuse::libfuse2_init : Enable Capability : FUSE_CAP_SPLICE_WRITE")
+		conn.want |= C.FUSE_CAP_SPLICE_WRITE
+	}
+
 	// Max background thread on the fuse layer for high parallelism
 	conn.max_background = 128
 
