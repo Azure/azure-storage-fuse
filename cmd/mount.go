@@ -216,15 +216,17 @@ var mountCmd = &cobra.Command{
 		options.MountPath = args[0]
 		configFileExists := true
 
-		if !config.IsSet(options.ConfigFile) {
+		if options.ConfigFile == "" {
 			// Config file is not set in cli parameters
 			// Blobfuse2 defaults to config.yaml in current directory
 			// If the file does not exists then user might have configured required things in env variables
 			// Fall back to defaults and let components fail if all required env variables are not set.
-			_, err := os.Stat("config.yaml")
+			_, err := os.Stat(common.DefaultConfigFilePath)
 			if err != nil && os.IsNotExist(err) {
 				options.Components = common.DefaultPipeline
 				configFileExists = false
+			} else {
+				options.ConfigFile = common.DefaultConfigFilePath
 			}
 		}
 
@@ -389,8 +391,8 @@ func init() {
 	mountCmd.AddCommand(mountListCmd)
 	mountCmd.AddCommand(mountAllCmd)
 
-	mountCmd.PersistentFlags().StringVar(&options.ConfigFile, "config-file", "config.yaml",
-		"Configures the path for the file where the account credentials are provided. Default is config.yaml")
+	mountCmd.PersistentFlags().StringVar(&options.ConfigFile, "config-file", "",
+		"Configures the path for the file where the account credentials are provided. Default is config.yaml in current directory.")
 	mountCmd.MarkPersistentFlagFilename("config-file", "yaml")
 
 	mountCmd.PersistentFlags().BoolVar(&options.SecureConfig, "secure-config", false,
