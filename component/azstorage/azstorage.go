@@ -366,7 +366,7 @@ func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 
 	attr, err := az.GetAttr(internal.GetAttrOptions{Name: options.Name})
 	if err != nil {
-		log.Err("AzStorage::TruncateFile : Failed to get attributes of file %s (%s)", options.Name, err.Error())
+		log.Warn("AzStorage::TruncateFile : Failed to get attributes of file %s (%s)", options.Name, err.Error())
 		if err == syscall.ENOENT {
 			return err
 		}
