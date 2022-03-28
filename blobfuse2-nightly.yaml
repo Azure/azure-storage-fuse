@@ -888,7 +888,7 @@ jobs:
               sudo rm -rf [0-9]
             displayName: 'Clean Agent Directories'
             condition: always() 
- - job: Set_8
+  - job: Set_8
     timeoutInMinutes: 30
 
     strategy:
