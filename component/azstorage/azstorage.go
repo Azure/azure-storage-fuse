@@ -251,7 +251,7 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 		return new_list, "", err
 	}
 
-	log.Debug("AzStorage::StreamDir : Retreived %d objects with %s marker for Path %s", len(new_list), options.Token, path)
+	log.Debug("AzStorage::StreamDir : Retrieved %d objects with %s marker for Path %s", len(new_list), options.Token, path)
 
 	return new_list, *new_marker, nil
 }
