@@ -61,7 +61,7 @@ func (suite *dataValidationTestSuite) dataValidationTestCleanup(toRemove []strin
 	}
 }
 
-func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteFilePath string) {
+func (suite *dataValidationTestSuite) copyToMountDir(localFilePath string, remoteFilePath string) {
 	// copy to mounted directory
 	cpCmd := exec.Command("cp", localFilePath, remoteFilePath)
 	cliOut, err := cpCmd.Output()
@@ -70,10 +70,12 @@ func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteF
 
 	// delete the cache directory
 	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+}
 
+func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteFilePath string) {
 	// compare the local and mounted files
 	diffCmd := exec.Command("diff", localFilePath, remoteFilePath)
-	cliOut, err = diffCmd.Output()
+	cliOut, err := diffCmd.Output()
 	fmt.Println(string(cliOut))
 	suite.Equal(0, len(cliOut))
 	suite.Equal(nil, err)
@@ -96,6 +98,7 @@ func (suite *dataValidationTestSuite) TestSmallFileData() {
 	err = ioutil.WriteFile(localFilePath, suite.minBuff, 0777)
 	suite.Equal(nil, err)
 
+	suite.copyToMountDir(localFilePath, remoteFilePath)
 	suite.validateData(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
@@ -116,6 +119,7 @@ func (suite *dataValidationTestSuite) TestMediumFileData() {
 	err = ioutil.WriteFile(localFilePath, suite.medBuff, 0777)
 	suite.Equal(nil, err)
 
+	suite.copyToMountDir(localFilePath, remoteFilePath)
 	suite.validateData(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
@@ -136,7 +140,43 @@ func (suite *dataValidationTestSuite) TestLargeFileData() {
 	err = ioutil.WriteFile(localFilePath, suite.hugeBuff, 0777)
 	suite.Equal(nil, err)
 
+	suite.copyToMountDir(localFilePath, remoteFilePath)
 	suite.validateData(localFilePath, remoteFilePath)
+
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+}
+
+// negative test case for data validation where the local file is updated
+func (suite *dataValidationTestSuite) TestFileUpdate() {
+	fileName := "updated_data.txt"
+	localFilePath := suite.testLocalPath + "/" + fileName
+	remoteFilePath := suite.testMntPath + "/" + fileName
+
+	// create the file in local directory
+	srcFile, err := os.OpenFile(localFilePath, os.O_CREATE, 0777)
+	suite.Equal(nil, err)
+	srcFile.Close()
+
+	// write to file in the local directory
+	err = ioutil.WriteFile(localFilePath, suite.minBuff, 0777)
+	suite.Equal(nil, err)
+
+	// copy local file to mounted directory
+	suite.copyToMountDir(localFilePath, remoteFilePath)
+
+	// update local file
+	srcFile, err = os.OpenFile(localFilePath, os.O_APPEND|os.O_WRONLY, 0777)
+	suite.Equal(nil, err)
+	_, err = srcFile.WriteString("Added text")
+	srcFile.Close()
+	suite.Equal(nil, err)
+
+	// compare local file and mounted files
+	diffCmd := exec.Command("diff", localFilePath, remoteFilePath)
+	cliOut, err := diffCmd.Output()
+	fmt.Println(string(cliOut))
+	suite.NotEqual(0, len(cliOut))
+	suite.NotEqual(nil, err)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
 }
