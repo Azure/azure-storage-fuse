@@ -49,7 +49,7 @@ const (
 	Blobfuse2Version      = "2.0.0-preview.1"
 	FileSystemName        = "blobfuse2"
 
-	DefaultConfigFilePath = "$HOME/.blobfuse2/config.yaml"
+	DefaultConfigFilePath = "config.yaml"
 
 	MaxConcurrency     = 40
 	DefaultConcurrency = 20
@@ -62,6 +62,8 @@ const (
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFilePath = filepath.Join(DefaultWorkDir, "blobfuse2.log")
+var DefaultPipeline = []string{"libfuse", "file_cache", "attr_cache", "azstorage"}
+var DefaultStreamPipeline = []string{"libfuse", "stream", "attr_cache", "azstorage"}
 
 //LogLevel enum
 type LogLevel int

@@ -78,7 +78,7 @@ type ObjAttr struct {
 	Flags    common.BitMap16   // flags
 	Path     string            // full path
 	Name     string            // base name of the path
-	Metadata map[string]string // extra information to preseve
+	Metadata map[string]string // extra information to preserve
 }
 
 // IsDir : Test blob is a directory or not

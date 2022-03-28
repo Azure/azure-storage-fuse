@@ -37,6 +37,7 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"bytes"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -130,4 +131,33 @@ func getUsagePercentage(path string, maxSize float64) float64 {
 	log.Debug("cachePolicy::getUsagePercentage : current cache usage : %f%", usagePercent)
 
 	return usagePercent
+}
+
+// Delete a given file
+func deleteFile(name string) error {
+	log.Debug("cachePolicy::deleteFile : attempting to delete %s", name)
+
+	err := os.Remove(name)
+	if err != nil && os.IsPermission(err) {
+		// File is not having delete permissions so change the mode and retry deletion
+		log.Warn("cachePolicy::deleteFile : failed to delete %s due to permission", name)
+
+		err = os.Chmod(name, os.FileMode(0666))
+		if err != nil {
+			log.Err("cachePolicy::deleteFile : %s failed to reset permissions", name)
+			return err
+		}
+
+		err = os.Remove(name)
+	} else if err != nil && os.IsNotExist(err) {
+		log.Debug("cachePolicy::deleteFile : %s does not exist in local cache", name)
+		return nil
+	}
+
+	if err != nil {
+		log.Err("lruPolicy::DeleteItem : Failed to delete local file %s", name)
+		return err
+	}
+
+	return nil
 }

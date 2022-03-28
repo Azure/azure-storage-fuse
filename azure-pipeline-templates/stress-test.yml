@@ -22,7 +22,7 @@ parameters:
     type: string
 
 steps:
-  # Mount the cotainer
+  # Mount the container
   - template: 'mount.yml'
     parameters:
       working_dir: ${{ parameters.working_dir }}

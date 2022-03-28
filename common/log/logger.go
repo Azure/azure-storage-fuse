@@ -84,6 +84,11 @@ func NewLogger(name string, config common.LogConfig) (Logger, error) {
 	} else if name == "" || name == "default" || name == "syslog" {
 		sysLogger, err := newSysLogger(config.Level)
 		if err != nil {
+			if err == NoSyslogService {
+				// Syslog service does not exists on this system
+				// fallback to file based logging.
+				return NewLogger("base", config)
+			}
 			return nil, err
 		}
 		return sysLogger, nil

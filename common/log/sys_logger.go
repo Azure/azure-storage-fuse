@@ -48,6 +48,8 @@ type SysLogger struct {
 	logger *log.Logger
 }
 
+var NoSyslogService = errors.New("failed to create syslog object")
+
 func newSysLogger(lvl common.LogLevel) (*SysLogger, error) {
 	l := &SysLogger{level: lvl}
 	err := l.init()
@@ -65,7 +67,6 @@ func (l *SysLogger) SetLogLevel(level common.LogLevel) {
 	// Reset the log leve here
 	l.level = level
 	l.write(common.ELogLevel.LOG_CRIT().String(), "Log level reset to : %s", level.String())
-	return
 }
 
 func (l *SysLogger) GetType() string {
@@ -81,7 +82,7 @@ func (l *SysLogger) init() error {
 	logwriter, e := syslog.New(getSyslogLevel(l.level), "blobfuse2")
 
 	if e != nil {
-		return errors.New("failed to create syslog object")
+		return NoSyslogService
 	}
 
 	l.logger = log.New(logwriter, "", 0)

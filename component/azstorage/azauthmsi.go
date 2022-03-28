@@ -88,7 +88,7 @@ func (azmsi *azAuthBlobMSI) getCredential() interface{} {
 
 		// set the new token value
 		tc.SetToken(spt.Token().AccessToken)
-		log.Debug("azAuthBlobMSI::getCredential : MSI Token retreived %s (%d)", spt.Token().AccessToken, spt.Token().Expires())
+		log.Debug("azAuthBlobMSI::getCredential : MSI Token retrieved %s (%d)", spt.Token().AccessToken, spt.Token().Expires())
 
 		// Get the next token slightly before the current one expires
 		return time.Until(spt.Token().Expires()) - 10*time.Second
@@ -119,7 +119,7 @@ func (azmsi *azAuthBfsMSI) getCredential() interface{} {
 
 		// set the new token value
 		tc.SetToken(spt.Token().AccessToken)
-		log.Debug("azAuthBfsMSI::getCredential : MSI Token retreived %s (%d)", spt.Token().AccessToken, spt.Token().Expires())
+		log.Debug("azAuthBfsMSI::getCredential : MSI Token retrieved %s (%d)", spt.Token().AccessToken, spt.Token().Expires())
 
 		// Get the next token slightly before the current one expires
 		return time.Until(spt.Token().Expires()) - 10*time.Second

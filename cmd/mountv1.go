@@ -171,7 +171,7 @@ var generateConfigCmd = &cobra.Command{
 
 		}
 		bfv2ComponentsConfigOptions = append(bfv2ComponentsConfigOptions, "libfuse")
-		// get corresponding Blobfuse2 configurations from the cli parameters - these supercede the config options
+		// get corresponding Blobfuse2 configurations from the cli parameters - these supersede the config options
 		err := convertBfCliParameters(cmd.Flags())
 		if err != nil {
 			return err

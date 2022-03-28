@@ -105,7 +105,7 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 		}
 	}
 
-	// A user provided value of 0 doesnt make sense for MaxLogFileSize or LogFileCount.
+	// A user provided value of 0 doesn't make sense for MaxLogFileSize or LogFileCount.
 	if opt.Logging.MaxLogFileSize == 0 {
 		opt.Logging.MaxLogFileSize = common.DefaultMaxLogFileSize
 	}
@@ -214,7 +214,25 @@ var mountCmd = &cobra.Command{
 		cmd.Parent().Run(cmd.Parent(), args)
 
 		options.MountPath = args[0]
-		parseConfig()
+		configFileExists := true
+
+		if options.ConfigFile == "" {
+			// Config file is not set in cli parameters
+			// Blobfuse2 defaults to config.yaml in current directory
+			// If the file does not exists then user might have configured required things in env variables
+			// Fall back to defaults and let components fail if all required env variables are not set.
+			_, err := os.Stat(common.DefaultConfigFilePath)
+			if err != nil && os.IsNotExist(err) {
+				options.Components = common.DefaultPipeline
+				configFileExists = false
+			} else {
+				options.ConfigFile = common.DefaultConfigFilePath
+			}
+		}
+
+		if configFileExists {
+			parseConfig()
+		}
 
 		err := config.Unmarshal(&options)
 		if err != nil {
@@ -272,7 +290,7 @@ var mountCmd = &cobra.Command{
 		log.Crit("Logging level set to : %s", logLevel.String())
 		pipeline, err := internal.NewPipeline(options.Components)
 		if err != nil {
-			log.Err("Mount: error initiliazing new pipeline [%v]", err)
+			log.Err("Mount: error initializing new pipeline [%v]", err)
 			fmt.Println("failed to mount :", err)
 			Destroy(1)
 		}
@@ -373,8 +391,8 @@ func init() {
 	mountCmd.AddCommand(mountListCmd)
 	mountCmd.AddCommand(mountAllCmd)
 
-	mountCmd.PersistentFlags().StringVar(&options.ConfigFile, "config-file", "config.yaml",
-		"Configures the path for the file where the account credentials are provided. Default is config.yaml")
+	mountCmd.PersistentFlags().StringVar(&options.ConfigFile, "config-file", "",
+		"Configures the path for the file where the account credentials are provided. Default is config.yaml in current directory.")
 	mountCmd.MarkPersistentFlagFilename("config-file", "yaml")
 
 	mountCmd.PersistentFlags().BoolVar(&options.SecureConfig, "secure-config", false,
