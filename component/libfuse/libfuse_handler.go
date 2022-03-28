@@ -277,15 +277,6 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 		conn.want |= C.FUSE_CAP_WRITEBACK_CACHE
 	}
 
-	/*
-		// Not supported by fuse3
-		if (conn.capable & C.FUSE_CAP_CACHE_SYMLINKS) != 0 {
-			// Let kernel cache the symlink targets
-			log.Info("Libfuse::libfuse_init : Enable Capability : FUSE_CAP_CACHE_SYMLINKS")
-			conn.want |= C.FUSE_CAP_CACHE_SYMLINKS
-		}
-	*/
-
 	// Max background thread on the fuse layer for high parallelism
 	conn.max_background = 128
 
