@@ -893,7 +893,7 @@ jobs:
 
     strategy:
       matrix:
-        Ubuntu-18:
+        Ubuntu-18-CSI:
           imageName: 'ubuntu-18.04'
           containerName: 'test-cnt-ubn-18'
           adlsSas: $(UBUNTU-18-ADLS-SAS)
