@@ -19,4 +19,4 @@ jobs:
         with:
           check_filenames: true
           skip: ./.git,./.github/workflows/codespell.yml,.git,*.png,*.jpg,*.svg,*.sum,./vendor,go.sum,./NOTICE
-          ignore_words_list: "filetest"
+          ignore_words_list: "filetest,dum,varius"

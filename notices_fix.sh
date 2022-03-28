@@ -10,7 +10,7 @@
 
 
 # File to hold dependency list from go.sum file
-dependecny_list="./dependecies.lst"
+dependecny_list="./dependencies.lst"
 output_file="./NOTICE"
 
 # Function to create header for notices file
@@ -89,13 +89,13 @@ function try_differ_names()
 
     if [[ $? -ne 0 ]]
     then
-        # Try with .txt extnesion
+        # Try with .txt extension
         download_and_dump $line $lic_path.txt
     fi
 
     if [[ $? -ne 0 ]]
     then
-        # Try with .md extnesion
+        # Try with .md extension
         download_and_dump $line $lic_path.md
     fi
 
