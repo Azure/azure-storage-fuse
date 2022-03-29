@@ -588,11 +588,15 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 // libfuse_read reads data from an open file
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
+	/*if fi.fh == 0 {
 		return C.int(-C.EIO)
-	}
+	}*/
 
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	if handle.Cached() {
+		return C.native_read((C.int)(handle.UnixFD), buf, size, off)
+	}
+
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
 
@@ -600,8 +604,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	var bytesRead int
 
 	if handle.Cached() {
-		return C.native_read((C.int)(handle.UnixFD), buf, size, off)
-		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
+		bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
 			internal.ReadInBufferOptions{
