@@ -573,7 +573,8 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	var bytesRead int
 
 	if handle.Cached() {
-		bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
+		return C.native_read((C.int)(handle.UnixFD), buf, size, off)
+		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
 			internal.ReadInBufferOptions{

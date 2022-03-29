@@ -570,6 +570,7 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	flock.Inc()
 
 	handle := handlemap.NewHandle(options.Name)
+	handle.UnixFD = int(f.Fd())
 	handle.SetFileObject(f)
 
 	if fc.directRead {
@@ -800,6 +801,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		handle.Size = inf.Size()
 	}
 
+	handle.UnixFD = int(f.Fd())
 	handle.SetFileObject(f)
 
 	if fc.directRead {

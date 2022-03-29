@@ -44,6 +44,7 @@
 #include <errno.h>
 #include <dlfcn.h>
 #include <fcntl.h>
+#include <unistd.h>
 
 // Decide whether to add fuse2 or fuse3
 #ifdef __FUSE2__
@@ -204,7 +205,7 @@ static int populate_callbacks(fuse_operations_t *opt)
     opt->chown      = (int (*)(const char *path, uid_t uid, gid_t gid, fuse_file_info_t *fi))libfuse_chown;
     opt->utimens    = (int (*)(const char *path, const timespec_t tv[2], fuse_file_info_t *fi))libfuse_utimens;
     #endif
-    
+
     return 0;
 }
 
@@ -284,6 +285,26 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
         ,(fuse_fill_dir_flags_t) fill_dir_plus
     #endif
     );
+}
+
+static int native_read(int fd, char *buf, size_t size, off_t offset) 
+{
+    errno = 0;
+    int res = pread(fd, buf, size, offset);
+    if (res == -1)
+        res = -errno;
+
+    return res;
+}
+
+static int native_write(int fd, char *buf, size_t size, off_t offset) 
+{
+    errno = 0;
+    int res = pwrite(fd, buf, size, offset);
+    if (res == -1)
+        res = -errno;
+
+    return res;
 }
 
 #endif //__LIBFUSE_H__
