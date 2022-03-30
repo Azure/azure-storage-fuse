@@ -101,6 +101,7 @@ stages:
               cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
+              cp azure-storage-fuse/tools/postinstall.sh pkgDir/usr/share/blobfuse2/
               mkdir -p pkgDir/etc/rsyslog.d
               mkdir -p pkgDir/etc/logrotate.d
               cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
@@ -113,9 +114,7 @@ stages:
           - script: |
               fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
-              --before-install ./azure-storage-fuse/tools/preinstall.sh \
-              --after-install ./azure-storage-fuse/tools/postinstall.sh
+              --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(container_image)-x86-64.deb
               cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -205,6 +204,7 @@ stages:
               cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
+              cp azure-storage-fuse/tools/postinstall.sh pkgDir/usr/share/blobfuse2/
               mkdir -p pkgDir/etc/rsyslog.d
               mkdir -p pkgDir/etc/logrotate.d
               cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
@@ -216,9 +216,7 @@ stages:
           - script: |
               fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
-              --before-install ./azure-storage-fuse/tools/preinstall.sh \
-              --after-install ./azure-storage-fuse/tools/postinstall.sh
+              --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.deb
               cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -309,6 +307,7 @@ stages:
               cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
+              cp azure-storage-fuse/tools/postinstall.sh pkgDir/usr/share/blobfuse2/
               mkdir -p pkgDir/etc/rsyslog.d
               mkdir -p pkgDir/etc/logrotate.d
               cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
@@ -322,9 +321,7 @@ stages:
               gem install fpm
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
-              --before-install ./azure-storage-fuse/tools/preinstall.sh \
-              --after-install ./azure-storage-fuse/tools/postinstall.sh
+              --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.rpm
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -410,6 +407,7 @@ stages:
               cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
+              cp azure-storage-fuse/tools/postinstall.sh pkgDir/usr/share/blobfuse2/
               mkdir -p pkgDir/etc/rsyslog.d
               mkdir -p pkgDir/etc/logrotate.d
               cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
@@ -421,9 +419,7 @@ stages:
           - script: |
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
-              --before-install ./azure-storage-fuse/tools/preinstall.sh \
-              --after-install ./azure-storage-fuse/tools/postinstall.sh
+              --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.rpm
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -494,7 +490,16 @@ stages:
           
           - script: |
               mkdir -p pkgDir/usr/bin/
+              mkdir -p pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/blobfuse2 pkgDir/usr/bin/blobfuse2
+              cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
+              cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
+              cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
+              cp azure-storage-fuse/tools/postinstall.sh pkgDir/usr/share/blobfuse2/
+              mkdir -p pkgDir/etc/rsyslog.d
+              mkdir -p pkgDir/etc/logrotate.d
+              cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
+              cp azure-storage-fuse/setup/blobfuse2-logrotate pkgDir/etc/logrotate.d/blobfuse2
             workingDirectory: $(root_dir)
             displayName: 'Accumulate pkg files'
           
@@ -504,8 +509,7 @@ stages:
               export PATH=$PATH:/usr/lib64/ruby/gems/2.5.0/gems/fpm-1.14.1/bin
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
-              --after-install ./azure-storage-fuse/tools/postinstall.sh
+              --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.rpm
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
@@ -591,6 +595,7 @@ stages:
               cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
+              cp azure-storage-fuse/tools/postinstall.sh pkgDir/usr/share/blobfuse2/
               mkdir -p pkgDir/etc/rsyslog.d
               mkdir -p pkgDir/etc/logrotate.d
               cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
@@ -604,9 +609,7 @@ stages:
               export PATH=$PATH:/usr/lib64/ruby/gems/2.6.0/gems/fpm-1.14.1/bin
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
-              --before-install ./azure-storage-fuse/tools/preinstall.sh \
-              --after-install ./azure-storage-fuse/tools/postinstall.sh
+              --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.rpm
               cp ./blobfuse2*.rpm $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
