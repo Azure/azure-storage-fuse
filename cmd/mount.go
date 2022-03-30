@@ -42,6 +42,8 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -76,6 +78,9 @@ type mountOptions struct {
 	MemProfile        string     `config:"mem-profile"`
 	PassPhrase        string     `config:"passphrase"`
 	SecureConfig      bool       `config:"secure-config"`
+	DynamicProfiler   bool       `config:"dynamic-profile"`
+	ProfilerPort      int        `config:"profiler-port"`
+	ProfilerIP        string     `config:"profiler-ip"`
 }
 
 var options mountOptions
@@ -312,6 +317,27 @@ var mountCmd = &cobra.Command{
 			}
 			if child == nil {
 				defer dmnCtx.Release()
+				if options.DynamicProfiler {
+					go func() {
+						if options.ProfilerIP == "" {
+							// By default enable profiler on 127.0.0.1
+							options.ProfilerIP = "localhost"
+						}
+
+						if options.ProfilerPort == 0 {
+							// This is default go profiler port
+							options.ProfilerPort = 6060
+						}
+
+						connStr := fmt.Sprintf("%s:%d", options.ProfilerIP, options.ProfilerPort)
+						log.Info("Staring profiler on [%s]", connStr)
+
+						// To check dynamic profiling info http://<ip>:<port>/debug/pprof
+						// for e.g. for default config use http://localhost:6060/debug/pprof
+						http.ListenAndServe(connStr, nil)
+					}()
+				}
+
 				runPipeline(pipeline, ctx)
 			}
 		} else {

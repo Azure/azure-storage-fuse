@@ -566,9 +566,10 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	}*/
 
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
-	if handle.Cached() {
+	/*if handle.Cached() {
 		return C.native_read((C.int)(handle.UnixFD), buf, size, off)
 	}
+	*/
 
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
