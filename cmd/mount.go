@@ -334,7 +334,15 @@ var mountCmd = &cobra.Command{
 
 						// To check dynamic profiling info http://<ip>:<port>/debug/pprof
 						// for e.g. for default config use http://localhost:6060/debug/pprof
-						http.ListenAndServe(connStr, nil)
+						// Also CLI based profiler can be used
+						// e.g. go tool pprof http://localhost:6060/debug/pprof/heap
+						//      go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
+						//      go tool pprof http://localhost:6060/debug/pprof/block
+						//
+						err = http.ListenAndServe(connStr, nil)
+						if err != nil {
+							log.Err("Mount: Failed to start dynamic profiler [%s]", err.Error())
+						}
 					}()
 				}
 
