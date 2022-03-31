@@ -59,6 +59,9 @@ func IsDirectoryMounted(path string) bool {
 		return false
 	}
 
+	// removing trailing / from the path
+	path = strings.TrimRight(path, "/")
+
 	for _, line := range strings.Split(string(mntList), "\n") {
 		if strings.TrimSpace(line) != "" {
 			mntPoint := strings.Split(line, " ")[1]
