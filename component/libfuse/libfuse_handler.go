@@ -453,6 +453,13 @@ func libfuse_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, of
 			}
 		}
 
+		if off_64 == 0 {
+			flags := internal.NewDirBitMap()
+			flags.Set(internal.PropFlagModeDefault)
+			attrs = append(attrs, &internal.ObjAttr{Flags: flags, Name: "."})
+			attrs = append(attrs, &internal.ObjAttr{Flags: flags, Name: ".."})
+		}
+
 		cacheInfo.sIndex = off_64
 		cacheInfo.eIndex = off_64 + uint64(len(attrs))
 		cacheInfo.length = uint64(len(attrs))
