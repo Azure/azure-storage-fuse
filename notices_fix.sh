@@ -10,7 +10,7 @@
 
 
 # File to hold dependency list from go.sum file
-dependecny_list="./dependecies.lst"
+dependency_list="./dependencies.lst"
 output_file="./NOTICE"
 
 # Function to create header for notices file
@@ -89,13 +89,13 @@ function try_differ_names()
 
     if [[ $? -ne 0 ]]
     then
-        # Try with .txt extnesion
+        # Try with .txt extension
         download_and_dump $line $lic_path.txt
     fi
 
     if [[ $? -ne 0 ]]
     then
-        # Try with .md extnesion
+        # Try with .md extension
         download_and_dump $line $lic_path.md
     fi
 
@@ -310,7 +310,7 @@ function generate_notices
             fi
             echo -ne "." ;;
         esac
-    done < $dependecny_list
+    done < $dependency_list
 
     return $ret
 }
@@ -325,7 +325,7 @@ cd ./notice_tmp/
 
 # From go.sum file create unique list of dependencies we have
 echo "Searching for dependencies"
-cat ../go.sum | cut -d " " -f 1 | sort -u > $dependecny_list
+cat ../go.sum | cut -d " " -f 1 | sort -u > $dependency_list
 
 
 echo "Populating Notices"
@@ -358,7 +358,7 @@ dump_footer
 echo "Comparing missing dependencies"
 # Compare the input list and notice file for final consolidation
 grep ">>>" $output_file | cut -d " " -f 2 > notice.lst
-diff $dependecny_list notice.lst | grep -v "go-autorest" | grep -v "go.etcd.io"
+diff $dependency_list notice.lst | grep -v "go-autorest" | grep -v "go.etcd.io"
 
 # Delete the temp directory
 cp $output_file ../NOTICE

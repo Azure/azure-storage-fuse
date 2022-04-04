@@ -28,10 +28,3 @@ then
   sudo service rsyslog restart
   echo "Finished syslog configuration!"
 fi
-
-
-
-
-
-
-
