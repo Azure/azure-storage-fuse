@@ -53,31 +53,24 @@ const (
 	HandleFlagCached
 )
 
-type DataBuffer struct {
-	StartOffset int64
-	NextOffset  int64
-	Buff        []byte
-}
 type Handle struct {
 	sync.RWMutex
-	FObj      *os.File
-	ReadAhead *DataBuffer
-	ID        HandleID
-	Size      int64 // Size of the file being handled here
-	UnixFD    int
-	Flags     common.BitMap16
-	Path      string // always holds path relative to mount dir
-	values    map[string]interface{}
+	FObj   *os.File
+	ID     HandleID
+	Size   int64 // Size of the file being handled here
+	UnixFD int
+	Flags  common.BitMap16
+	Path   string // always holds path relative to mount dir
+	values map[string]interface{}
 }
 
 func NewHandle(path string) *Handle {
 	return &Handle{
-		ID:        InvalidHandleID,
-		Path:      path,
-		Size:      0,
-		Flags:     0,
-		values:    make(map[string]interface{}),
-		ReadAhead: nil,
+		ID:     InvalidHandleID,
+		Path:   path,
+		Size:   0,
+		Flags:  0,
+		values: make(map[string]interface{}),
 	}
 }
 
