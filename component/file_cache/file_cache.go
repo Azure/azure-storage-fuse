@@ -570,7 +570,7 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	flock.Inc()
 
 	handle := handlemap.NewHandle(options.Name)
-	handle.UnixFD = int(f.Fd())
+	handle.UnixFD = uint64(f.Fd())
 	handle.SetFileObject(f)
 
 	// If an empty file is created in storage then there is no need to upload if FlushFile is called immediately after CreateFile.
@@ -797,7 +797,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		handle.Size = inf.Size()
 	}
 
-	handle.UnixFD = int(f.Fd())
+	handle.UnixFD = uint64(f.Fd())
 	handle.SetFileObject(f)
 
 	if fc.directRead {

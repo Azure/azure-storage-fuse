@@ -58,7 +58,7 @@ type Handle struct {
 	FObj   *os.File
 	ID     HandleID
 	Size   int64 // Size of the file being handled here
-	UnixFD int
+	UnixFD uint64
 	Flags  common.BitMap16
 	Path   string // always holds path relative to mount dir
 	values map[string]interface{}
