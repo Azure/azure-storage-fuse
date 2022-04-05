@@ -70,7 +70,6 @@ type FileCache struct {
 	mountPath       string
 	allowOther      bool
 	directRead      bool
-	readAhead       bool
 
 	defaultPermission os.FileMode
 }
@@ -94,7 +93,6 @@ type FileCacheOptions struct {
 
 	EnablePolicyTrace bool `config:"policy-trace" yaml:"policy-trace,omitempty"`
 	DirectRead        bool `config:"direct-read" yaml:"direct-read,omitempty"`
-	ReadAhead         bool `config:"read-ahead" yaml:"read-ahead,omitempty"`
 }
 
 const (
@@ -103,8 +101,6 @@ const (
 	defaultMaxThreshold     = 80
 	defaultMinThreshold     = 60
 	defaultFileCacheTimeout = 120
-	defaultMinFileSize      = (1 * 1024)
-	defaultReadAheadSize    = (8 * 1024 * 1024)
 )
 
 //  Verification to check satisfaction criteria with Component Interface
@@ -193,7 +189,6 @@ func (c *FileCache) Configure() error {
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
 	c.directRead = conf.DirectRead
-	c.readAhead = conf.ReadAhead
 
 	c.tmpPath = conf.TmpPath
 	if c.tmpPath == "" {
@@ -270,7 +265,6 @@ func (c *FileCache) OnConfigChange() {
 	c.cacheTimeout = float64(conf.Timeout)
 	c.policyTrace = conf.EnablePolicyTrace
 	c.directRead = conf.DirectRead
-	c.readAhead = conf.ReadAhead
 	c.policy.UpdateConfig(c.GetPolicyConfig(conf))
 }
 
@@ -810,26 +804,6 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		handle.Flags.Set(handlemap.HandleFlagCached)
 	}
 
-	// If read-ahead is enable and file size is bigger then 1mb start read-ahead flow
-	if fc.readAhead && handle.Size > defaultMinFileSize {
-		handle.ReadAhead = &handlemap.DataBuffer{}
-
-		if handle.Size > defaultReadAheadSize {
-			handle.ReadAhead.Buff = make([]byte, defaultReadAheadSize)
-		} else {
-			handle.ReadAhead.Buff = make([]byte, handle.Size)
-		}
-
-		bytesRead, err := f.ReadAt(handle.ReadAhead.Buff, 0)
-		if err != nil && err != io.EOF {
-			log.Err("FileCache::OpenFile : Failed to read ahead for %s [%s]", options.Name, err.Error())
-			handle.ReadAhead = nil
-		} else {
-			handle.ReadAhead.StartOffset = 0
-			handle.ReadAhead.NextOffset = int64(bytesRead)
-		}
-	}
-
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
 
 	return handle, nil
@@ -915,58 +889,16 @@ func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, er
 	//defer exectime.StatTimeCurrentBlock("FileCache::ReadInBuffer")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 
-	/*
-		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
-		fc.policy.CacheValid(localPath)
+	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
+	fc.policy.CacheValid(localPath)
 
-		f := options.Handle.GetFileObject()
-		if f == nil {
-			log.Err("FileCache::ReadInBuffer : error [couldn't find fd in handle] %s", options.Handle.Path)
-			return 0, syscall.EBADF
-		}
-	*/
-
-	if options.Handle.ReadAhead != nil {
-		if options.Offset >= options.Handle.ReadAhead.StartOffset &&
-			options.Offset < options.Handle.ReadAhead.NextOffset {
-
-			// Try to copy data from available prefetched buffer
-			copied := copy(options.Data, options.Handle.ReadAhead.Buff[options.Offset-options.Handle.ReadAhead.StartOffset:])
-			if copied <= 0 {
-				// for some reason copy from prefetched buffer failed
-				// shall never reach to this stage
-				return 0, fmt.Errorf("failed to copy data")
-			} else {
-				// it may happen that we have consumed all of prefetched buffer
-				// in that case lets prefetch the next block
-				eOffset := options.Offset + int64(copied)
-				if options.Handle.Size > eOffset &&
-					options.Handle.ReadAhead.NextOffset <= eOffset {
-
-					// There is still data left in the file to prefetch
-					n, err := options.Handle.GetFileObject().ReadAt(options.Handle.ReadAhead.Buff[0:], options.Handle.ReadAhead.NextOffset)
-					if err != nil && err != io.EOF {
-						options.Handle.ReadAhead.Buff = nil
-						options.Handle.ReadAhead = nil
-						log.Err("FileCache::ReadInBuffer : Failed to preftech data for %s [%s]", options.Handle.Path, err.Error())
-					} else {
-						options.Handle.ReadAhead.StartOffset = options.Handle.ReadAhead.NextOffset
-						options.Handle.ReadAhead.NextOffset = options.Handle.ReadAhead.StartOffset + int64(n)
-					}
-				}
-			}
-			return copied, nil
-		} else {
-			// Read-Ahead is enable but offset is outside the cached buffer
-			// This might be case of random reads in file and hence readahead will not be useful in this case
-			// So lets disable the read-ahead for this handle
-			options.Handle.ReadAhead.Buff = nil
-			options.Handle.ReadAhead = nil
-			log.Err("FileCache::ReadInBuffer : Disable read-ahead for %s, handle %d", options.Handle.Path, options.Handle.ID)
-		}
+	f := options.Handle.GetFileObject()
+	if f == nil {
+		log.Err("FileCache::ReadInBuffer : error [couldn't find fd in handle] %s", options.Handle.Path)
+		return 0, syscall.EBADF
 	}
 
-	return options.Handle.GetFileObject().ReadAt(options.Data, options.Offset)
+	return f.ReadAt(options.Data, options.Offset)
 }
 
 // WriteFile: Write to the local file
@@ -986,7 +918,6 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 
 	// Mark the handle dirty so the file is written back to storage on FlushFile.
 	options.Handle.Flags.Set(handlemap.HandleFlagDirty)
-
 	return f.WriteAt(options.Data, options.Offset)
 }
 
