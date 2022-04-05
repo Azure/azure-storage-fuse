@@ -328,7 +328,7 @@ static int native_read(char *path, char *buf, size_t size, off_t offset, fuse_fi
         if (res == -1)
             res = -errno;
             
-        blobfuse_cache_update(path);
+        //blobfuse_cache_update(path);
         return res;
     } 
 
@@ -344,7 +344,7 @@ static int native_write(char *path, char *buf, size_t size, off_t offset, fuse_f
         if (res == -1)
             res = -errno;
 
-        blobfuse_cache_update(path);
+        //blobfuse_cache_update(path);
         return res;
     } 
 
