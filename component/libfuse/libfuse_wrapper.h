@@ -131,6 +131,9 @@ extern int libfuse_chown(char *path, uid_t uid, gid_t gid, fuse_file_info_t *fi)
 extern int libfuse_utimens(char *path, timespec_t tv[2], fuse_file_info_t *fi);
 #endif
 
+static int native_read(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
+static int native_write(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
+
 
 // -------------------------------------------------------------------------------------------------------------
 // Methods not implemented by blobfuse2
@@ -171,8 +174,14 @@ static int populate_callbacks(fuse_operations_t *opt)
 
     opt->create     = (int (*)(const char *path, mode_t mode, fuse_file_info_t *fi))libfuse_create;
     opt->open       = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_open;
+    #if 0
     opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))libfuse_read;
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))libfuse_write;
+    #else
+    opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))native_read;
+    opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))native_write;
+    #endif
+
     opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_flush;
     opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_release;
 
@@ -287,24 +296,56 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
     );
 }
 
-static int native_read(int fd, char *buf, size_t size, off_t offset) 
-{
-    errno = 0;
-    int res = pread(fd, buf, size, offset);
-    if (res == -1)
-        res = -errno;
+typedef struct {
+    uint64_t        fd;
+    uint64_t       obj;
+} file_handle_t;
 
-    return res;
+static file_handle_t* allocate_new_file_handle(uint64_t fd, uint64_t obj)
+{
+    file_handle_t* fobj = (file_handle_t*)malloc(sizeof(file_handle_t));
+    if (fobj) {
+        fobj->fd = fd;
+        fobj->obj = obj;
+    }
+    return fobj;
 }
 
-static int native_write(int fd, char *buf, size_t size, off_t offset) 
+static void release_new_file_handle(file_handle_t* fobj)
 {
-    errno = 0;
-    int res = pwrite(fd, buf, size, offset);
-    if (res == -1)
-        res = -errno;
+    if (fobj) {
+        free(fobj);
+    }
+}
 
-    return res;
+static int native_read(char *path, char *buf, size_t size, off_t offset, fuse_file_info_t *fi)
+{
+    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
+    if (handle_obj->fd != 0) {
+        errno = 0;
+        int res = pread(handle_obj->fd, buf, size, offset);
+        if (res == -1)
+            res = -errno;
+
+        return res;
+    } 
+
+    return libfuse_read(path, buf, size, offset, fi);
+}
+
+static int native_write(char *path, char *buf, size_t size, off_t offset, fuse_file_info_t *fi)
+{
+    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
+    if (handle_obj->fd != 0) {
+        errno = 0;
+        int res = pwrite(handle_obj->fd, buf, size, offset);
+        if (res == -1)
+            res = -errno;
+
+        return res;
+    } 
+
+    return libfuse_write(path, buf, size, offset, fi);
 }
 
 #endif //__LIBFUSE_H__

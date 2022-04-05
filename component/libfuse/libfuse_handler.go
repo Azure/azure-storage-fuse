@@ -421,6 +421,7 @@ func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+
 	log.Trace("Libfuse::libfuse_releasedir : %s, handle: %d", handle.Path, handle.ID)
 
 	handle.Cleanup()
@@ -540,8 +541,9 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
-
+	//fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
+	ret_val := C.allocate_new_file_handle(0, C.ulong(uintptr(unsafe.Pointer(handle))))
+	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 	// TODO: Do we need to open the file here?
 	return 0
 }
@@ -580,22 +582,22 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
+	//fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
+	ret_val := C.allocate_new_file_handle(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))))
+	if !handle.Cached() {
+		ret_val.fd = 0
+	}
 
+	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 	return 0
 }
 
 // libfuse_read reads data from an open file
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	/*if fi.fh == 0 {
-		return C.int(-C.EIO)
-	}*/
-
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
-	/*if handle.Cached() {
-		return C.native_read((C.int)(handle.UnixFD), buf, size, off)
-	}*/
+	//handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
@@ -603,16 +605,12 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	var err error
 	var bytesRead int
 
-	if handle.Cached() {
-		bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
-	} else {
-		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
-			internal.ReadInBufferOptions{
-				Handle: handle,
-				Offset: int64(offset),
-				Data:   data[:size],
-			})
-	}
+	bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
+		internal.ReadInBufferOptions{
+			Handle: handle,
+			Offset: int64(offset),
+			Data:   data[:size],
+		})
 
 	if err == io.EOF {
 		err = nil
@@ -632,7 +630,9 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		return C.int(-C.EIO)
 	}
 
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	//handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
@@ -661,7 +661,9 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 		return C.int(-C.EIO)
 	}
 
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	//handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
 
 	// If the file handle is not dirty, there is no need to flush
@@ -704,7 +706,10 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 		return C.int(-C.EIO)
 	}
 
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	//handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
+
 	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, handle.ID)
 
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
@@ -714,6 +719,7 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Delete(handle.ID)
+	C.release_new_file_handle((*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh))))
 	return 0
 }
 
@@ -858,7 +864,9 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 		return C.int(-C.EIO)
 	}
 
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	//handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse_fsync : %s, handle: %d", handle.Path, handle.ID)
 
 	options := internal.SyncFileOptions{Handle: handle}
