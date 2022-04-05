@@ -1301,6 +1301,13 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 	return nil
 }
 
+func (fc *FileCache) FileUsed(name string) error {
+	// Update the owner and group of the file in the local cache
+	localPath := filepath.Join(fc.tmpPath, name)
+	fc.policy.CacheValid(localPath)
+	return nil
+}
+
 // ------------------------- Factory -------------------------------------------
 
 // Pipeline will call this method to create your object, initialize your variables here

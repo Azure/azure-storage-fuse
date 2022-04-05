@@ -315,3 +315,10 @@ func (base *BaseComponent) GetFileBlockOffsets(options GetFileBlockOffsetsOption
 	}
 	return &common.BlockOffsetList{}, nil
 }
+
+func (base *BaseComponent) FileUsed(name string) error {
+	if base.next != nil {
+		base.next.FileUsed(name)
+	}
+	return nil
+}

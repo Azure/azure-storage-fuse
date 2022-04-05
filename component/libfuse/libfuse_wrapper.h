@@ -131,6 +131,7 @@ extern int libfuse_chown(char *path, uid_t uid, gid_t gid, fuse_file_info_t *fi)
 extern int libfuse_utimens(char *path, timespec_t tv[2], fuse_file_info_t *fi);
 #endif
 
+extern int blobfuse_cache_update(char* path);
 static int native_read(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
 static int native_write(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
 
@@ -326,7 +327,8 @@ static int native_read(char *path, char *buf, size_t size, off_t offset, fuse_fi
         int res = pread(handle_obj->fd, buf, size, offset);
         if (res == -1)
             res = -errno;
-
+            
+        blobfuse_cache_update(path);
         return res;
     } 
 
@@ -342,6 +344,7 @@ static int native_write(char *path, char *buf, size_t size, off_t offset, fuse_f
         if (res == -1)
             res = -errno;
 
+        blobfuse_cache_update(path);
         return res;
     } 
 

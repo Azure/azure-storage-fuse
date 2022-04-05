@@ -904,3 +904,12 @@ func libfuse2_utimens(path *C.char, tv *C.timespec_t) C.int {
 	// For now this returns 0 to allow touch to work correctly
 	return 0
 }
+
+// blobfuse_cache_update refresh the file-cache policy for this file
+//export blobfuse_cache_update
+func blobfuse_cache_update(path *C.char) C.int {
+	name := trimFusePath(path)
+	name = common.NormalizeObjectName(name)
+	go fuseFS.NextComponent().FileUsed(name)
+	return 0
+}
