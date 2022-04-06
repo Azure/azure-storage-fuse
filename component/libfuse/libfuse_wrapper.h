@@ -132,8 +132,8 @@ extern int libfuse_utimens(char *path, timespec_t tv[2], fuse_file_info_t *fi);
 #endif
 
 extern int blobfuse_cache_update(char* path);
-static int native_read(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
-static int native_write(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
+static int native_read_file(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
+static int native_write_file(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
 
 
 // -------------------------------------------------------------------------------------------------------------
@@ -179,8 +179,8 @@ static int populate_callbacks(fuse_operations_t *opt)
     opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))libfuse_read;
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))libfuse_write;
     #else
-    opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))native_read;
-    opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))native_write;
+    opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))native_read_file;
+    opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))native_write_file;
     #endif
 
     opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_flush;
@@ -297,58 +297,149 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
     );
 }
 
+
+// To enable / disable read ahead logic just use this macro
+//#define LIBFUSE_ENABLE_READ_AHEAD
+
+#if defined(LIBFUSE_ENABLE_READ_AHEAD)
+#define READ_AHEAD_MIN_FILE_SIZE (1 * 1024 * 1024)
+#define READ_AHEAD_BUFF_SIZE (8 * 1024 * 1024)
+#endif
 typedef struct {
     uint64_t        fd;
-    uint64_t       obj;
+    uint64_t        obj;
+    #if defined(LIBFUSE_ENABLE_READ_AHEAD)
+    uint64_t        buff_soffset;
+    uint64_t        buff_eoffset;
+    char*           buff;
+    #endif
 } file_handle_t;
 
-static file_handle_t* allocate_new_file_handle(uint64_t fd, uint64_t obj)
+
+// allocate_native_file_object : Allocate a native C-struct to hold handle map object and unix FD
+static file_handle_t* allocate_native_file_object(uint64_t fd, uint64_t obj, uint64_t file_size)
 {
     file_handle_t* fobj = (file_handle_t*)malloc(sizeof(file_handle_t));
     if (fobj) {
+        memset(fobj, sizeof(file_handle_t), 0);
+
         fobj->fd = fd;
         fobj->obj = obj;
+                
+        #if defined(LIBFUSE_ENABLE_READ_AHEAD)
+        // For very small files no point in doing read ahead
+        if (file_size > READ_AHEAD_MIN_FILE_SIZE) {
+            // If file size is bigger then buff_size then allocate read ahead buffer of X size
+            // else allocate buffer of file size itself.
+            uint64_t buff_size = (file_size > READ_AHEAD_BUFF_SIZE) ? READ_AHEAD_BUFF_SIZE : file_size;
+            fobj->buff = (char*)malloc(sizeof(char) * buff_size);
+
+            // Read first N bytes from the file and keep them ready to serve
+            int read = pread(fd, fobj->buff, buff_size, 0);
+            fobj->buff_soffset = 0;
+            fobj->buff_eoffset = read - 1;
+        }
+        #endif
     }
+
     return fobj;
 }
 
-static void release_new_file_handle(file_handle_t* fobj)
+// release_native_file_object : Relase the native C-struct for handle 
+static void release_native_file_object(file_handle_t* fobj)
 {
     if (fobj) {
+        #if defined(LIBFUSE_ENABLE_READ_AHEAD)
+        if (fobj->buff) {
+            free (fobj->buff);
+        }
+        #endif
+
         free(fobj);
     }
 }
 
-static int native_read(char *path, char *buf, size_t size, off_t offset, fuse_file_info_t *fi)
+// native_pread :  Do pread on file directly wihtout involving any Go code
+static int native_pread(char *path, char *buf, size_t size, off_t offset, file_handle_t* handle_obj)
 {
-    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
-    if (handle_obj->fd != 0) {
-        errno = 0;
-        int res = pread(handle_obj->fd, buf, size, offset);
-        if (res == -1)
-            res = -errno;
-            
-        //blobfuse_cache_update(path);
-        return res;
-    } 
-
-    return libfuse_read(path, buf, size, offset, fi);
+    errno = 0;
+    int res = pread(handle_obj->fd, buf, size, offset);
+    if (res == -1)
+        res = -errno;
+        
+    //blobfuse_cache_update(path);
+    return res;
 }
 
-static int native_write(char *path, char *buf, size_t size, off_t offset, fuse_file_info_t *fi)
+// native_read_file : Read callback to decide whether to natively read or punt call to Go code
+static int native_read_file(char *path, char *buf, size_t size, off_t offset, fuse_file_info_t *fi)
 {
     file_handle_t* handle_obj = (file_handle_t*)fi->fh;
-    if (handle_obj->fd != 0) {
-        errno = 0;
-        int res = pwrite(handle_obj->fd, buf, size, offset);
-        if (res == -1)
-            res = -errno;
+    
+    if (handle_obj->fd == 0) {
+        return libfuse_read(path, buf, size, offset, fi);
+    }
 
-        //blobfuse_cache_update(path);
-        return res;
-    } 
+    #if !defined(LIBFUSE_ENABLE_READ_AHEAD)
+    return native_pread(path, buf, size, offset, handle_obj);
+    #else
 
-    return libfuse_write(path, buf, size, offset, fi);
+    // If file is small then we do not read-ahead so directly read from file
+    if (!handle_obj->buff) {
+        return native_pread(path, buf, size, offset, handle_obj);
+    }
+
+    FILE *fp = fopen("blobfuse2_nat.log", "a");
+    fprintf(fp, "Native Read for %s, offset %ld, len %ld\n", path, offset, size);
+    fflush(fp);
+
+    if (offset < handle_obj->buff_soffset ||
+        offset > handle_obj->buff_eoffset) 
+    {
+        fprintf(fp, "Native Read : Reload buffer for %s, offset %ld, len %ld\n", path, offset, size);
+        fflush(fp);
+
+        int read = pread(handle_obj->fd, handle_obj->buff, READ_AHEAD_BUFF_SIZE, offset);
+        handle_obj->buff_soffset = offset;
+        handle_obj->buff_eoffset = offset + read - 1;
+        fprintf(fp, "Native Read : Reload buffer for %s, offset %ld, len %ld, read %d\n", path, offset, size, read);
+        fflush(fp);
+    }
+
+    fprintf(fp, "Native Read : Copying data for %s, offset %ld, size %ld, soffset %ld, eoffset %ld\n", 
+        path, offset, size, handle_obj->buff_soffset, handle_obj->buff_eoffset);
+    fflush(fp);
+
+    int len = ((offset + size) > (handle_obj->buff_eoffset + 1)) ? 
+                    (handle_obj->buff_eoffset - offset) + 1: 
+                    size;
+
+    fprintf(fp, "Native Read : Copying data for %s, offset %ld, len %d\n", path, offset, len);
+    fflush(fp);
+
+    memcpy(buf, handle_obj->buff + (offset - handle_obj->buff_soffset), len);
+    if (fp) 
+        fclose(fp);
+
+    return len;
+    #endif
+}
+
+// native_write_file : Write callback to decide whether to natively write or punt call to Go code
+static int native_write_file(char *path, char *buf, size_t size, off_t offset, fuse_file_info_t *fi)
+{
+    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
+    if (handle_obj->fd == 0) {
+        return libfuse_write(path, buf, size, offset, fi);
+    }
+
+    errno = 0;
+    int res = pwrite(handle_obj->fd, buf, size, offset);
+    if (res == -1)
+        res = -errno;
+
+    //blobfuse_cache_update(path);
+    return res;
 }
 
 #endif //__LIBFUSE_H__

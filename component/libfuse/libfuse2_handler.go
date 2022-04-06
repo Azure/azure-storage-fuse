@@ -514,7 +514,7 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	handlemap.Add(handle)
 	//fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
 	//fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
-	ret_val := C.allocate_new_file_handle(0, C.ulong(uintptr(unsafe.Pointer(handle))))
+	ret_val := C.allocate_native_file_object(0, C.ulong(uintptr(unsafe.Pointer(handle))), 0)
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 	// TODO: Do we need to open the file here?
 	return 0
@@ -556,7 +556,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	handlemap.Add(handle)
 	//fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
-	ret_val := C.allocate_new_file_handle(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))))
+	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
 	if !handle.Cached() {
 		ret_val.fd = 0
 	}
@@ -689,7 +689,7 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Delete(handle.ID)
-	C.release_new_file_handle((*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh))))
+	C.release_native_file_object((*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh))))
 	return 0
 }
 
