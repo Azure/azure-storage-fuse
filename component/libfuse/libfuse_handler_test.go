@@ -41,6 +41,11 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
+type fileHandle struct {
+	fd  uint64
+	obj uint64
+}
+
 // Tests the default configuration of libfuse
 func (suite *libfuseTestSuite) TestDefault() {
 	defer suite.cleanupTest()

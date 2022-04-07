@@ -65,11 +65,6 @@ type libfuseTestSuite struct {
 }
 
 // Open and create call returns this kind of object
-type fileHandle struct {
-	fd  uint64
-	obj uint64
-}
-
 var emptyConfig = ""
 var defaultSize = int64(0)
 var defaultMode = 0777
