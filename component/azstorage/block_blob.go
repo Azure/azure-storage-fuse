@@ -612,7 +612,6 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 	blockSize := bb.Config.blockSize
 	// if the block size is not set then we configure it based on file size
 	if !config.IsSet(compName + ".block-size-mb") {
-		fmt.Println("not here")
 		// get the size of the file
 		stat, err := fi.Stat()
 		if err != nil {
