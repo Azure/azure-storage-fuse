@@ -42,7 +42,6 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"math"
 	"net/url"
 	"os"
@@ -635,7 +634,6 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 			}
 		}
 	}
-	fmt.Println(blockSize)
 	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
 		BlockSize:      blockSize,
 		Parallelism:    bb.Config.maxConcurrency,
