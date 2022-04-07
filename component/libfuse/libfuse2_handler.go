@@ -389,10 +389,6 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 // libfuse_releasedir opens handle to given directory
 //export libfuse_releasedir
 func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
-	}
-
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 	log.Trace("Libfuse::libfuse_releasedir : %s, handle: %d", handle.Path, handle.ID)
 
@@ -404,10 +400,6 @@ func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
 // libfuse2_readdir reads a directory
 //export libfuse2_readdir
 func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
-	}
-
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 	val, found := handle.GetValue("cache")
 	if !found {
@@ -512,11 +504,12 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	//fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
-	//fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
 	ret_val := C.allocate_native_file_object(0, C.ulong(uintptr(unsafe.Pointer(handle))), 0)
+	if !handle.Cached() {
+		ret_val.fd = 0
+	}
+
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
-	// TODO: Do we need to open the file here?
 	return 0
 }
 
@@ -555,7 +548,6 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	//fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
 	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
 	if !handle.Cached() {
 		ret_val.fd = 0
@@ -568,7 +560,6 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 // libfuse_read reads data from an open file
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	//handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
@@ -599,7 +590,6 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 // libfuse_write writes data to an open file
 //export libfuse_write
 func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	//handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
@@ -626,11 +616,6 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 // libfuse_flush possibly flushes cached data
 //export libfuse_flush
 func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
-	}
-
-	//handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
@@ -673,11 +658,6 @@ func libfuse2_truncate(path *C.char, off C.off_t) C.int {
 // libfuse_release releases an open file
 //export libfuse_release
 func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
-	}
-
-	//handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, handle.ID)
@@ -824,7 +804,6 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 		return C.int(-C.EIO)
 	}
 
-	//handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse_fsync : %s, handle: %d", handle.Path, handle.ID)
