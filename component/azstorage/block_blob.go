@@ -35,12 +35,14 @@ package azstorage
 
 import (
 	"blobfuse2/common"
+	"blobfuse2/common/config"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
 	"bytes"
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"math"
 	"net/url"
 	"os"
@@ -606,10 +608,37 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 	//defer exectime.StatTimeCurrentBlock("WriteFromFile::WriteFromFile")()
 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
+	blockSize := bb.Config.blockSize
+	// if the block size is not set then we configure it based on file size
+	if !config.IsSet(compName + ".block-size-mb") {
+		fmt.Println("not here")
+		// get the size of the file
+		stat, err := fi.Stat()
+		if err != nil {
+			log.Err("BlockBlob::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
+			return err
+		}
+		fileSize := stat.Size()
+		// If bufferSize > (BlockBlobMaxStageBlockBytes * BlockBlobMaxBlocks), then error
+		if fileSize > azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks {
+			err = errors.New("buffer is too large to upload to a block blob")
+			log.Err("BlockBlob::WriteFromFile : buffer is too large to upload to a block blob %s", name)
+			return err
+		}
+		// If bufferSize <= BlockBlobMaxUploadBlobBytes, then Upload should be used with just 1 I/O request
+		if fileSize <= azblob.BlockBlobMaxUploadBlobBytes {
+			blockSize = azblob.BlockBlobMaxUploadBlobBytes // Default if unspecified
+		} else {
+			blockSize = fileSize / azblob.BlockBlobMaxBlocks     // buffer / max blocks = block size to use all 50,000 blocks
+			if blockSize < azblob.BlobDefaultDownloadBlockSize { // If the block size is smaller than 4MB, round up to 4MB
+				blockSize = azblob.BlobDefaultDownloadBlockSize
+			}
+		}
+	}
+	fmt.Println(blockSize)
 	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
-		BlockSize:      bb.Config.blockSize,
+		BlockSize:      blockSize,
 		Parallelism:    bb.Config.maxConcurrency,
 		Metadata:       metadata,
 		BlobAccessTier: bb.Config.defaultTier,
