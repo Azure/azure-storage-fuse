@@ -69,7 +69,7 @@ type FileCache struct {
 	missedChmodList sync.Map
 	mountPath       string
 	allowOther      bool
-	offloadRead     bool
+	offloadIO       bool
 
 	defaultPermission os.FileMode
 }
@@ -92,7 +92,7 @@ type FileCacheOptions struct {
 	CleanupOnStart  bool `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
 
 	EnablePolicyTrace bool `config:"policy-trace" yaml:"policy-trace,omitempty"`
-	OffloadRead       bool `config:"offload-read" yaml:"offload-read,omitempty"`
+	OffloadIO         bool `config:"offload-io" yaml:"offload-io,omitempty"`
 }
 
 const (
@@ -188,7 +188,7 @@ func (c *FileCache) Configure() error {
 	c.allowNonEmpty = conf.AllowNonEmpty
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
-	c.offloadRead = conf.OffloadRead
+	c.offloadIO = conf.OffloadIO
 
 	c.tmpPath = conf.TmpPath
 	if c.tmpPath == "" {
@@ -264,7 +264,7 @@ func (c *FileCache) OnConfigChange() {
 	c.createEmptyFile = conf.CreateEmptyFile
 	c.cacheTimeout = float64(conf.Timeout)
 	c.policyTrace = conf.EnablePolicyTrace
-	c.offloadRead = conf.OffloadRead
+	c.offloadIO = conf.OffloadIO
 	c.policy.UpdateConfig(c.GetPolicyConfig(conf))
 }
 
@@ -572,7 +572,7 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	handle := handlemap.NewHandle(options.Name)
 	handle.UnixFD = uint64(f.Fd())
 
-	if !fc.offloadRead {
+	if !fc.offloadIO {
 		handle.Flags.Set(handlemap.HandleFlagCached)
 	}
 
@@ -805,7 +805,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	handle.UnixFD = uint64(f.Fd())
 	handle.SetFileObject(f)
 
-	if !fc.offloadRead {
+	if !fc.offloadIO {
 		handle.Flags.Set(handlemap.HandleFlagCached)
 	}
 

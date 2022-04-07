@@ -1413,7 +1413,7 @@ func (suite *fileCacheTestSuite) TestCachePathSymlink() {
 	suite.assert.EqualValues(data, d)
 }
 
-func (suite *fileCacheTestSuite) TestZZOffloadRead() {
+func (suite *fileCacheTestSuite) TestZZOffloadIO() {
 	defer suite.cleanupTest()
 	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  timeout: 0\n\nloopbackfs:\n  path: %s",
 		suite.cache_path, suite.fake_storage_path)
