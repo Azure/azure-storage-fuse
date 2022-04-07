@@ -61,7 +61,7 @@ file_cache:
   allow-non-empty-temp: true|false <allow non empty temp directory at startup>
   cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
   policy-trace: true|false <generate eviction policy logs showing which files will expire soon>
-  direct-read: true|false <use the handle object to directly read from file cached on disk, instead of sending it to file-cache component>
+  offload-read: true|false <let libufse call directly read/write the file for better perf. Set true to make read/write call reach file-cache component>
 
 # Attribute cache related configuration
 attr_cache:
