@@ -64,6 +64,11 @@ type libfuseTestSuite struct {
 	mock     *internal.MockComponent
 }
 
+type fileHandle struct {
+	fd  uint64
+	obj uint64
+}
+
 // Open and create call returns this kind of object
 var emptyConfig = ""
 var defaultSize = int64(0)

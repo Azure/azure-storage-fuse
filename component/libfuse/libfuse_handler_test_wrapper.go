@@ -64,6 +64,11 @@ type libfuseTestSuite struct {
 	mock     *internal.MockComponent
 }
 
+type fileHandle struct {
+	fd  uint64
+	obj uint64
+}
+
 var emptyConfig = ""
 var defaultSize = int64(0)
 var defaultMode = 0777
