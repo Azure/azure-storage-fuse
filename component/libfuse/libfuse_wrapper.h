@@ -175,10 +175,13 @@ static int populate_callbacks(fuse_operations_t *opt)
 
     opt->create     = (int (*)(const char *path, mode_t mode, fuse_file_info_t *fi))libfuse_create;
     opt->open       = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_open;
+
     #if 0
+    // Enable this to forward read/write calls to pipeline directly
     opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))libfuse_read;
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))libfuse_write;
     #else
+    // These are methods declared in C to do read/write operation directly on file for better performance
     opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))native_read_file;
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))native_write_file;
     #endif
@@ -316,7 +319,7 @@ static file_handle_t* allocate_native_file_object(uint64_t fd, uint64_t obj, uin
     return fobj;
 }
 
-// release_native_file_object : Relase the native C-struct for handle 
+// release_native_file_object : Release the native C-struct for handle 
 static void release_native_file_object(file_handle_t* fobj)
 {
     if (fobj) {
@@ -324,7 +327,7 @@ static void release_native_file_object(file_handle_t* fobj)
     }
 }
 
-// native_pread :  Do pread on file directly wihtout involving any Go code
+// native_pread :  Do pread on file directly without involving any Go code
 static int native_pread(char *path, char *buf, size_t size, off_t offset, file_handle_t* handle_obj)
 {
     errno = 0;
@@ -336,7 +339,7 @@ static int native_pread(char *path, char *buf, size_t size, off_t offset, file_h
     return res;
 }
 
-// native_pwrite :  Do pwrite on file directly wihtout involving any Go code
+// native_pwrite :  Do pwrite on file directly without involving any Go code
 static int native_pwrite(char *path, char *buf, size_t size, off_t offset, file_handle_t* handle_obj)
 {
     errno = 0;
