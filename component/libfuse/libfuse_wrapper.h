@@ -301,9 +301,11 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
 }
 
 
+#define CACHE_UPDATE_COUNTER 1000
 typedef struct {
     uint64_t        fd;
     uint64_t        obj;
+    uint32_t        cnt;
 } file_handle_t;
 
 
@@ -314,6 +316,7 @@ static file_handle_t* allocate_native_file_object(uint64_t fd, uint64_t obj, uin
     if (fobj) {
         fobj->fd = fd;
         fobj->obj = obj;
+        fobj->cnt = 0;
     }
 
     return fobj;
@@ -335,7 +338,12 @@ static int native_pread(char *path, char *buf, size_t size, off_t offset, file_h
     if (res == -1)
         res = -errno;
         
-    //blobfuse_cache_update(path);
+    handle_obj->cnt++;
+    if (handle_obj->cnt >= CACHE_UPDATE_COUNTER) {
+        blobfuse_cache_update(path);
+        handle_obj->cnt = 0;
+    }
+
     return res;
 }
 
@@ -347,7 +355,12 @@ static int native_pwrite(char *path, char *buf, size_t size, off_t offset, file_
     if (res == -1)
         res = -errno;
 
-    //blobfuse_cache_update(path);
+    handle_obj->cnt++;
+    if (handle_obj->cnt >= CACHE_UPDATE_COUNTER) {
+        blobfuse_cache_update(path);
+        handle_obj->cnt = 0;
+    }
+    
     return res;
 }
 
