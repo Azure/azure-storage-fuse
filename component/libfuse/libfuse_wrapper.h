@@ -314,7 +314,7 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
 // Flags used for read-ahead logic
 #define H_FLAG_BLOCKRA      (1 << 1)
 #define RA_BLOCK_SIZE       (8 * 1024 * 1024)
-#define RA_MIN_FILE_SIZE    (1 * 1024 * 1024)
+#define RA_MIN_FILE_SIZE    (500 * 1024)
 #define RA_RANDOM_READ_THRESHOLD    (5)
 #endif
 
@@ -478,7 +478,8 @@ static int native_read_file(char *path, char *buf, size_t size, off_t offset, fu
                 goto skip_read_ahead;
             } else {
                 // This is the first read on this file so allocate the readahead buffer
-                handle_obj->buff = (char*)malloc(sizeof(char) * RA_BLOCK_SIZE);
+                uint64_t alloc_size = (handle_obj->size > RA_BLOCK_SIZE) ? RA_BLOCK_SIZE : handle_obj->size;
+                handle_obj->buff = (char*)malloc(sizeof(char) * alloc_size);
             }
         }
 
