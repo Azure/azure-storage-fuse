@@ -343,7 +343,7 @@ static file_handle_t* allocate_native_file_object(uint64_t fd, uint64_t obj, uin
     // Called on open / create calls from libfuse component
     file_handle_t* fobj = (file_handle_t*)malloc(sizeof(file_handle_t));
     if (fobj) {
-        memset(fobj, sizeof(file_handle_t), 0);
+        memset(fobj, 0, sizeof(file_handle_t));
         fobj->fd = fd;
         fobj->obj = obj;
         fobj->size = file_size;
@@ -365,8 +365,6 @@ static void release_native_file_object(fuse_file_info_t* fi)
         }
         #endif
         free(handle_obj);
-
-        fi->fh = 0;
     }
 }
 
