@@ -64,6 +64,7 @@ type Libfuse struct {
 	ownerGID            uint32
 	traceEnable         bool
 	extensionPath       string
+	lsFlags             common.BitMap16
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -123,6 +124,9 @@ func (lf *Libfuse) SetNextComponent(nc internal.Component) {
 //  this shall not block the call otherwise pipeline will not start
 func (lf *Libfuse) Start(ctx context.Context) error {
 	log.Trace("Libfuse::Start : Starting component %s", lf.Name())
+
+	lf.lsFlags = internal.NewDirBitMap()
+	lf.lsFlags.Set(internal.PropFlagModeDefault)
 
 	// This marks the global fuse object so shall be the first statement
 	fuseFS = lf
