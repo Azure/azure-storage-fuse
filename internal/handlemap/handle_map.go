@@ -51,6 +51,7 @@ const (
 	HandleFlagDirty
 	HandleFlagFSynced
 	HandleFlagCached
+	HandleFlagNativeSync
 )
 
 type Handle struct {
@@ -87,6 +88,11 @@ func (handle *Handle) Fsynced() bool {
 // Cached : File is cached on local disk or not
 func (handle *Handle) Cached() bool {
 	return handle.Flags.IsSet(HandleFlagCached)
+}
+
+// NativeSynced : Handle is dirty but synced by native C code
+func (handle *Handle) NativeSynced() bool {
+	return handle.Flags.IsSet(HandleFlagNativeSync)
 }
 
 // GetFileObject : Get the OS.File handle stored within

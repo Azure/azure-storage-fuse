@@ -575,6 +575,7 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	if !fc.offloadIO {
 		handle.Flags.Set(handlemap.HandleFlagCached)
 	}
+	log.Info("FileCache::CreateFile : file=%s, fd=%d", options.Name, f.Fd())
 
 	handle.SetFileObject(f)
 
@@ -820,7 +821,7 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
-	if options.Handle.Dirty() {
+	if options.Handle.Dirty() || options.Handle.NativeSynced() {
 		log.Info("FileCache::CloseFile : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
 		err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle})
 		if err != nil {
@@ -921,9 +922,13 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 		return 0, syscall.EBADF
 	}
 
-	// Mark the handle dirty so the file is written back to storage on FlushFile.
-	options.Handle.Flags.Set(handlemap.HandleFlagDirty)
-	return f.WriteAt(options.Data, options.Offset)
+	bytesWritten, err := f.WriteAt(options.Data, options.Offset)
+	if err == nil {
+		// Mark the handle dirty so the file is written back to storage on FlushFile.
+		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
+	}
+
+	return bytesWritten, err
 }
 
 func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
@@ -970,18 +975,8 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		}
 
 		// Flush all data to disk that has been buffered by the kernel.
-		// We cannot close the incoming handle since the user called flush, note close and flush can be called on the same handle multiple times.
-		// To ensure the data is flushed to disk before writing to storage, we duplicate the handle and close that handle.
-		dupFd, err := syscall.Dup(int(f.Fd()))
-		if err != nil {
-			log.Err("FileCache::FlushFile : error [couldn't duplicate the fd] %s", options.Handle.Path)
-			return syscall.EIO
-		}
-
-		err = syscall.Close(dupFd)
-		if err != nil {
-			log.Err("FileCache::FlushFile : error [unable to close duplicate fd] %s", options.Handle.Path)
-			return syscall.EIO
+		if !options.Handle.NativeSynced() {
+			f.Sync()
 		}
 
 		// Write to storage
@@ -989,7 +984,6 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		// The local handle can still be used for read and write.
 		uploadHandle, err := os.Open(localPath)
 		if err != nil {
-			options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
 			log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
 			return nil
 		}
@@ -999,13 +993,15 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 				Name: options.Handle.Path,
 				File: uploadHandle,
 			})
+
+		uploadHandle.Close()
 		if err != nil {
-			uploadHandle.Close()
 			log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
 			return err
 		}
+
 		options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
-		uploadHandle.Close()
+		options.Handle.Flags.Clear(handlemap.HandleFlagNativeSync)
 
 		// If chmod was done on the file before it was uploaded to container then setting up mode would have been missed
 		// Such file names are added to this map and here post upload we try to set the mode correctly

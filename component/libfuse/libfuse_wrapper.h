@@ -134,7 +134,8 @@ extern int libfuse_utimens(char *path, timespec_t tv[2], fuse_file_info_t *fi);
 extern int blobfuse_cache_update(char* path);
 static int native_read_file(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
 static int native_write_file(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
-
+static int native_flush_file(char *path, fuse_file_info_t *fi);
+static int native_close_file(char *path, fuse_file_info_t *fi);
 
 // -------------------------------------------------------------------------------------------------------------
 // Methods not implemented by blobfuse2
@@ -180,14 +181,15 @@ static int populate_callbacks(fuse_operations_t *opt)
     // Enable this to forward read/write calls to pipeline directly
     opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))libfuse_read;
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))libfuse_write;
+    opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_flush;
+    opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_release;
     #else
     // These are methods declared in C to do read/write operation directly on file for better performance
     opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))native_read_file;
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))native_write_file;
+    opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))native_flush_file;
+    opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))native_close_file;
     #endif
-
-    opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_flush;
-    opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_release;
 
     opt->unlink     = (int (*)(const char *path))libfuse_unlink;
 
@@ -306,6 +308,7 @@ typedef struct {
     uint64_t        fd;
     uint64_t        obj;
     uint32_t        cnt;
+    uint32_t        dirty;
 } file_handle_t;
 
 
@@ -314,9 +317,9 @@ static file_handle_t* allocate_native_file_object(uint64_t fd, uint64_t obj, uin
 {
     file_handle_t* fobj = (file_handle_t*)malloc(sizeof(file_handle_t));
     if (fobj) {
+        memset(fobj, sizeof(file_handle_t), 0);
         fobj->fd = fd;
         fobj->obj = obj;
-        fobj->cnt = 0;
     }
 
     return fobj;
@@ -339,7 +342,7 @@ static int native_pread(char *path, char *buf, size_t size, off_t offset, file_h
         res = -errno;
         
     handle_obj->cnt++;
-    if (handle_obj->cnt >= CACHE_UPDATE_COUNTER) {
+    if (!(handle_obj->cnt % CACHE_UPDATE_COUNTER)) {
         blobfuse_cache_update(path);
         handle_obj->cnt = 0;
     }
@@ -355,12 +358,13 @@ static int native_pwrite(char *path, char *buf, size_t size, off_t offset, file_
     if (res == -1)
         res = -errno;
 
+    handle_obj->dirty = 1;
     handle_obj->cnt++;
-    if (handle_obj->cnt >= CACHE_UPDATE_COUNTER) {
+    if (!(handle_obj->cnt % CACHE_UPDATE_COUNTER)) {
         blobfuse_cache_update(path);
         handle_obj->cnt = 0;
     }
-    
+
     return res;
 }
 
@@ -385,6 +389,32 @@ static int native_write_file(char *path, char *buf, size_t size, off_t offset, f
     }
 
     return native_pwrite(path, buf, size, offset, handle_obj);
+}
+
+
+static int native_flush_file(char *path, fuse_file_info_t *fi)
+{
+    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
+    if (handle_obj->fd != 0 && handle_obj->dirty) {
+        fsync(handle_obj->fd);
+    }
+
+    int ret = libfuse_flush(path, fi);
+    if (ret == 0) {
+        handle_obj->dirty = 0;
+    }
+
+    return ret;
+}
+
+static int native_close_file(char *path, fuse_file_info_t *fi)
+{
+    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
+    if (handle_obj->fd != 0 && handle_obj->dirty) {
+        fsync(handle_obj->fd);
+    }
+
+    return libfuse_release(path, fi);
 }
 
 #endif //__LIBFUSE_H__
