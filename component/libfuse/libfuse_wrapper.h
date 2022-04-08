@@ -510,7 +510,7 @@ static int native_write_file(char *path, char *buf, size_t size, off_t offset, f
     }
     
     #ifdef ENABLE_READ_AHEAD
-    // Any write operation happens then we immediatly disable the read-ahead on this file
+    // Any write operation happens then we immediately disable the read-ahead on this file
     // This is because any write on file may invalidate the cached buffer (offset overlap with write and buffer)
     handle_obj->flags |= H_FLAG_BLOCKRA;
     #endif
