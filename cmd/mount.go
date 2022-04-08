@@ -47,6 +47,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 	"syscall"
@@ -317,6 +318,7 @@ var mountCmd = &cobra.Command{
 			}
 			if child == nil {
 				defer dmnCtx.Release()
+				setGOConfig()
 				go startDynamicProfiler()
 				runPipeline(pipeline, ctx)
 			}
@@ -334,6 +336,7 @@ var mountCmd = &cobra.Command{
 				defer pprof.StopCPUProfile()
 			}
 
+			setGOConfig()
 			go startDynamicProfiler()
 
 			runPipeline(pipeline, context.Background())
@@ -389,6 +392,18 @@ func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.Sign
 
 		return err
 	}
+}
+
+func setGOConfig() {
+	// Ensure we always have more than 1 OS thread running goroutines, since there are issues with having just 1.
+	isOnlyOne := runtime.GOMAXPROCS(0) == 1
+	if isOnlyOne {
+		runtime.GOMAXPROCS(2)
+	}
+
+	// Golang's default behaviour is to GC when new objects = (100% of) total of objects surviving previous GC.
+	// Set it to lower level so that memory if freed up early
+	debug.SetGCPercent(70)
 }
 
 func startDynamicProfiler() {
