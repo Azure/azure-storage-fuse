@@ -525,7 +525,7 @@ static int native_flush_file(char *path, fuse_file_info_t *fi)
     file_handle_t* handle_obj = (file_handle_t*)fi->fh;
     if (handle_obj->fd != 0 && handle_obj->dirty) {
         // Sync / Flush the file to disk here so file-cache dont need to do this
-        fsync(handle_obj->fd);
+        close(dup(handle_obj->fd));
     }
 
     int ret = libfuse_flush(path, fi);
@@ -543,7 +543,7 @@ static int native_close_file(char *path, fuse_file_info_t *fi)
     file_handle_t* handle_obj = (file_handle_t*)fi->fh;
     if (handle_obj->fd != 0 && handle_obj->dirty) {
         // if file is not yet flushed dump file to disk and file-cache will take care of uploading it
-        fsync(handle_obj->fd);
+        close(dup(handle_obj->fd));
     }
 
     return libfuse_release(path, fi);
