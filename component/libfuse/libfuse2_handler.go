@@ -680,7 +680,7 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Delete(handle.ID)
-	C.release_native_file_object((*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh))))
+	C.release_native_file_object(fi)
 	return 0
 }
 
