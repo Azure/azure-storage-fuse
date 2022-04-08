@@ -53,6 +53,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"syscall"
 	"unsafe"
 )
 
@@ -923,4 +924,35 @@ func libfuse_utimens(path *C.char, tv *C.timespec_t, fi *C.fuse_file_info_t) C.i
 	// TODO: Implement
 	// For now this returns 0 to allow touch to work correctly
 	return 0
+}
+
+// libfuse_getxattr retrieves the value of an extended attribute of a file
+//export libfuse_getxattr
+func libfuse_getxattr(path *C.char, attr *C.char, value *C.char, size C.size_t) C.int {
+	name := trimFusePath(path)
+	name = common.NormalizeObjectName(name)
+
+	xattr := C.GoString(attr)
+	log.Trace("Libfuse::libfuse_getxattr : %s, attr: %s", name, xattr)
+
+	v, _, err := fuseFS.NextComponent().GetXAttr(internal.GetXAttrOptions{Name: name, Attr: xattr})
+	if err != nil {
+		log.Err("Libfuse::libfuse_getxattr : error reading extended attribute %s [%s]", name, err.Error())
+		if os.IsNotExist(err) {
+			return -C.ENOENT
+		} else if err == syscall.ENODATA {
+			return -C.ENODATA
+		}
+		return -C.EIO
+	}
+	if size == 0 {
+		return C.int(len(v) + 1)
+	} else if size < C.ulong(len(v)+1) {
+		return -C.ERANGE
+	} else {
+		data := (*[1 << 30]byte)(unsafe.Pointer(value))
+		copy(data[:size-1], v)
+		data[len(v)] = 0
+		return C.int(len(v) + 1)
+	}
 }

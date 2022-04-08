@@ -488,6 +488,65 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 	return pathAttr, err
 }
 
+// GetXAttr : Try to serve the request from the attribute cache, otherwise cache attributes of the path returned by next component
+func (ac *AttrCache) GetXAttr(options internal.GetXAttrOptions) (string, *internal.ObjAttr, error) {
+	log.Trace("AttrCache::GetXAttr : %s", options.Name)
+	truncatedPath := internal.TruncateDirName(options.Name)
+
+	ac.cacheLock.RLock()
+	value, found := ac.cacheMap[truncatedPath]
+	ac.cacheLock.RUnlock()
+
+	// Try to serve the request from the attribute cache
+	if found && value.valid() && time.Since(value.cachedAt).Seconds() < float64(ac.cacheTimeout) {
+		if value.isDeleted() {
+			log.Debug("AttrCache::GetXAttr : %s served from cache", options.Name)
+			// no entry if path does not exist
+			return "", &internal.ObjAttr{}, syscall.ENOENT
+		} else {
+			// IsMetadataRetrieved is false in the case of ADLS List since the API does not support metadata.
+			// Once migration of ADLS list to blob endpoint is done (in future service versions), we can remove this.
+			if value.getAttr().IsMetadataRetrieved() {
+				// path exists and we have all the metadata required
+
+				// Extended attributes are specified as namespace.attribute
+				// For metadata, the attribute will be of the form "user.meta-key"
+				if strings.HasPrefix(options.Attr, internal.MetadataXAttrPrefix) {
+					log.Debug("AttrCache::GetXAttr : %s served from cache", options.Name)
+					xValue, found := value.getAttr().Metadata[strings.TrimPrefix(options.Attr, internal.MetadataXAttrPrefix)]
+					if !found {
+						log.Err("AttrCache::GetXAttr : Failed to find extended attribute %s for %s", options.Name, options.Name)
+						return "", value.getAttr(), syscall.ENODATA
+					} else {
+						return xValue, value.getAttr(), nil
+					}
+				} else {
+					log.Err("AttrCache::GetXAttr : Failed to find extended attribute %s for %s", options.Name, options.Name)
+					return "", value.getAttr(), syscall.ENODATA
+				}
+			}
+		}
+	}
+
+	// Get the attributes from next component and cache them
+	xValue, pathAttr, err := ac.NextComponent().GetXAttr(options)
+
+	ac.cacheLock.Lock()
+	defer ac.cacheLock.Unlock()
+
+	if err == nil {
+		// Retrieved attributes so cache them
+		if len(ac.cacheMap) < maxTotalFiles {
+			ac.cacheMap[truncatedPath] = newAttrCacheItem(pathAttr, true, time.Now())
+		}
+	} else if err == syscall.ENOENT {
+		// Path does not exist so cache a no-entry item
+		ac.cacheMap[truncatedPath] = newAttrCacheItem(&internal.ObjAttr{}, false, time.Now())
+	}
+
+	return xValue, pathAttr, err
+}
+
 // CreateLink : Mark the link and target invalid
 func (ac *AttrCache) CreateLink(options internal.CreateLinkOptions) error {
 	log.Trace("AttrCache::CreateLink : Create symlink %s -> %s", options.Name, options.Target)

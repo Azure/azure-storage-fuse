@@ -424,6 +424,11 @@ func (az *AzStorage) GetAttr(options internal.GetAttrOptions) (attr *internal.Ob
 	return az.storage.GetAttr(options.Name)
 }
 
+func (az *AzStorage) GetXAttr(options internal.GetXAttrOptions) (value string, attr *internal.ObjAttr, err error) {
+	//log.Trace("AzStorage::GetAttr : Get attributes of file %s", name)
+	return az.storage.GetXAttr(options)
+}
+
 func (az *AzStorage) Chmod(options internal.ChmodOptions) error {
 	log.Trace("AzStorage::Chmod : Change mod of file %s", options.Name)
 	return az.storage.ChangeMod(options.Name, options.Mode)

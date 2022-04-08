@@ -67,6 +67,10 @@ const (
 	PropFlagModeDefault // TODO: Does this sound better as ModeDefault or DefaultMode? The getter would be IsModeDefault or IsDefaultMode
 )
 
+const (
+	MetadataXAttrPrefix = "user.meta-"
+)
+
 // ObjAttr : Attributes of any file/directory
 type ObjAttr struct {
 	Mtime    time.Time         // modified time

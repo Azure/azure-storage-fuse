@@ -129,6 +129,8 @@ type Component interface {
 	GetAttr(GetAttrOptions) (*ObjAttr, error)
 	SetAttr(SetAttrOptions) error
 
+	GetXAttr(GetXAttrOptions) (string, *ObjAttr, error)
+
 	Chmod(ChmodOptions) error
 	Chown(ChownOptions) error
 	//InvalidateObject: function used to clear any inode information relating to a particular fs object

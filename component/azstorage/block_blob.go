@@ -413,6 +413,29 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	return attr, nil
 }
 
+func (bb *BlockBlob) GetXAttr(options internal.GetXAttrOptions) (value string, attr *internal.ObjAttr, err error) {
+	log.Trace("BlockBlob::GetXAttr : name %s, attr: %s", options.Name, options.Attr)
+
+	// Extended attributes are specified as namespace.attribute
+	// For metadata, the attribute will be of the form "user.meta-key"
+	if strings.HasPrefix(options.Attr, internal.MetadataXAttrPrefix) {
+		attr, err = bb.GetAttr(options.Name)
+		if err != nil {
+			log.Err("BlockBlob::GetXAttr : Failed to get blob properties for %s (%s)", options.Name, err.Error())
+			return "", attr, err
+		}
+		value, found := attr.Metadata[strings.TrimPrefix(options.Attr, internal.MetadataXAttrPrefix)]
+		if !found {
+			log.Err("BlockBlob::GetXAttr : Failed to find extended attribute %s for %s", options.Name, options.Name)
+			return "", attr, syscall.ENODATA
+		} else {
+			return value, attr, nil
+		}
+	}
+	log.Err("BlockBlob::GetXAttr : Failed to find extended attribute %s for %s", options.Name, options.Name)
+	return "", attr, syscall.ENODATA
+}
+
 // List : Get a list of blobs matching the given prefix
 // This fetches the list using a marker so the caller code should handle marker logic
 // If count=0 - fetch max entries

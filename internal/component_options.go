@@ -180,6 +180,11 @@ type SetAttrOptions struct {
 	Attr *ObjAttr
 }
 
+type GetXAttrOptions struct {
+	Name string
+	Attr string
+}
+
 type ChmodOptions struct {
 	Name string
 	Mode os.FileMode

@@ -108,6 +108,8 @@ extern int libfuse_readlink(char *path, char *buf, size_t size);
 extern int libfuse_fsync(char *path, int, fuse_file_info_t *fi);
 extern int libfuse_fsyncdir(char *path, int, fuse_file_info_t *);
 
+extern int libfuse_getxattr(char *path, char *name, char *value, size_t size);
+
 // chmod, chown and utimens are lib version specific so defined later
 
 #ifdef __FUSE2__
@@ -182,6 +184,8 @@ static int populate_callbacks(fuse_operations_t *opt)
 
     opt->fsync      = (int (*)(const char *path, int, fuse_file_info_t *fi))libfuse_fsync;
     opt->fsyncdir   = (int (*)(const char *path, int, fuse_file_info_t *))libfuse_fsyncdir;
+
+    opt->getxattr = (int (*)(const char *path, const char *name, char *value, size_t size))libfuse_getxattr;
 
 
     #ifdef __FUSE2__

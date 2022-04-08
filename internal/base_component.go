@@ -289,6 +289,13 @@ func (base *BaseComponent) SetAttr(options SetAttrOptions) error {
 	return nil
 }
 
+func (base *BaseComponent) GetXAttr(options GetXAttrOptions) (string, *ObjAttr, error) {
+	if base.next != nil {
+		return base.next.GetXAttr(options)
+	}
+	return "", &ObjAttr{}, nil
+}
+
 func (base *BaseComponent) Chmod(options ChmodOptions) error {
 	if base.next != nil {
 		return base.next.Chmod(options)
