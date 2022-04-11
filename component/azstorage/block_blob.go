@@ -72,6 +72,10 @@ type BlockBlob struct {
 // Verify that BlockBlob implements AzConnection interface
 var _ AzConnection = &BlockBlob{}
 
+const (
+	MaxBlocks = azblob.BlockBlobMaxStageBlockBytes * azblob.BlockBlobMaxBlocks
+)
+
 func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 	bb.Config = cfg
 
@@ -619,7 +623,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		}
 		fileSize := stat.Size()
 		// If bufferSize > (BlockBlobMaxStageBlockBytes * BlockBlobMaxBlocks), then error
-		if fileSize > azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks {
+		if fileSize > MaxBlocks {
 			err = errors.New("buffer is too large to upload to a block blob")
 			log.Err("BlockBlob::WriteFromFile : buffer is too large to upload to a block blob %s", name)
 			return err
