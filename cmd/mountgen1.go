@@ -65,12 +65,13 @@ func resetGenOneOptions() {
 }
 
 var gen1Cmd = &cobra.Command{
-	Use:        "mountgen1",
-	Short:      "Mounts Azure Storage ADLS Gen 1 account using SPN auth",
-	Long:       "Mounts Azure Storage ADLS Gen 1 account using SPN auth",
-	SuggestFor: []string{"mntgen1", "gen1 mount"},
-	Args:       cobra.ExactArgs(1),
-	Hidden:     true,
+	Use:               "mountgen1",
+	Short:             "Mounts Azure Storage ADLS Gen 1 account using SPN auth",
+	Long:              "Mounts Azure Storage ADLS Gen 1 account using SPN auth",
+	SuggestFor:        []string{"mntgen1", "gen1 mount"},
+	Args:              cobra.ExactArgs(1),
+	Hidden:            true,
+	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		resetGenOneOptions()
 		options.MountPath = args[0]
