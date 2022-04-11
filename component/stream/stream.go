@@ -300,7 +300,9 @@ func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
 func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	st.NextComponent().CloseFile(options)
-	st.streamCache.removeCachedHandle(options.Handle)
+	if !st.streamOnly {
+		st.streamCache.removeCachedHandle(options.Handle)
+	}
 	return nil
 }
 
