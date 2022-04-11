@@ -428,6 +428,10 @@ func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, o
 			}
 		}
 
+		if off_64 == 0 {
+			attrs = append([]*internal.ObjAttr{{Flags: fuseFS.lsFlags, Name: "."}, {Flags: fuseFS.lsFlags, Name: ".."}}, attrs...)
+		}
+
 		cacheInfo.sIndex = off_64
 		cacheInfo.eIndex = off_64 + uint64(len(attrs))
 		cacheInfo.length = uint64(len(attrs))
