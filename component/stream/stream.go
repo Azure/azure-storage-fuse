@@ -45,7 +45,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/bluele/gcache"
@@ -55,23 +54,20 @@ import (
 
 type Stream struct {
 	internal.BaseComponent
-	streamCache       *cache
-	streamOnly        bool // parameter used to check if its pure streaming
-	fileKeyLocks      *common.LockMap
-	cacheOnFileHandle bool // much better option for prefetching
+	streamCache *cache
+	streamOnly  bool // parameter used to check if its pure streaming
 }
 
 type StreamOptions struct {
-	BlockSize         uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	BlocksPerFile     int    `config:"blocks-per-file" yaml:"blocks-per-file,omitempty"`
-	StreamCacheSize   uint64 `config:"cache-size-mb" yaml:"cache-size-mb,omitempty"`
-	Policy            string `config:"policy" yaml:"policy,omitempty"`
-	CacheOnFileHandle bool   `config:"cache-on-file-handle" yaml:"cache-on-file-handle,omitempty"`
-	readOnly          bool   `config:"read-only"`
-	DiskPersistence   bool   `config:"disk-persistence"`
-	DiskPath          string `config:"disk-cache-path"`
-	DiskCacheSize     uint64 `config:"disk-size-mb"`
-	DiskTimeoutSec    uint64 `config:"disk-timeout-sec"`
+	BlockSize       uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	BlocksPerFile   int    `config:"blocks-per-file" yaml:"blocks-per-file,omitempty"`
+	StreamCacheSize uint64 `config:"cache-size-mb" yaml:"cache-size-mb,omitempty"`
+	Policy          string `config:"policy" yaml:"policy,omitempty"`
+	readOnly        bool   `config:"read-only"`
+	DiskPersistence bool   `config:"disk-persistence"`
+	DiskPath        string `config:"disk-cache-path"`
+	DiskCacheSize   uint64 `config:"disk-size-mb"`
+	DiskTimeoutSec  uint64 `config:"disk-timeout-sec"`
 }
 
 const (
@@ -144,12 +140,11 @@ func (st *Stream) Configure() error {
 
 		// In the future when we can write streams we will allow only caching on file names for that case
 		// Since if we enable write mode on handle caching it can cause issues when writing to a blob on the same block
-		if !conf.readOnly && conf.CacheOnFileHandle {
+		if !conf.readOnly {
 			log.Err("Stream::Configure : config error, handle level caching is available for read-only mode")
 			return errors.New("handle level caching is available for read-only mode")
 		}
 
-		st.cacheOnFileHandle = conf.CacheOnFileHandle
 		maxBlocks := int(math.Floor(float64(conf.StreamCacheSize) / float64(conf.BlockSize)))
 
 		// default eviction policy is LRU
@@ -194,7 +189,6 @@ func (st *Stream) Configure() error {
 		}
 
 		st.streamCache = &cache{
-			files:            make(map[string]*cacheFile),
 			blockSize:        int64(conf.BlockSize) * mb,
 			maxBlocks:        maxBlocks,
 			blocksPerFileKey: conf.BlocksPerFile,
@@ -219,13 +213,6 @@ func (st *Stream) Stop() error {
 	return nil
 }
 
-func (st *Stream) getFileKey(fileName string, handleID handlemap.HandleID) string {
-	if st.cacheOnFileHandle {
-		return strconv.FormatUint((uint64(handleID)), 10)
-	}
-	return fileName
-}
-
 func (st *Stream) unlockBlock(block *cacheBlock, exists bool) {
 	if exists {
 		block.RUnlock()
@@ -245,26 +232,16 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 		handle = handlemap.NewHandle(options.Name)
 	}
 	if !st.streamOnly {
-		fileKey := options.Name
-		if st.cacheOnFileHandle {
-			handle.ID = handlemap.HandleID(nextHandleID.Inc())
-			fileKey = strconv.FormatUint((uint64(handle.ID)), 10)
-		}
-
-		flock := st.fileKeyLocks.Get(fileKey)
-		flock.Lock()
-		st.streamCache.addFileKey(fileKey)
-		block, exists, _ := st.fetchBlock(fileKey, handle, 0)
+		st.streamCache.addHandleCache(handle)
+		block, exists, _ := st.fetchBlock(handle, 0)
 		// if it exists then we can just RUnlock since we didn't manipulate its data buffer
 		st.unlockBlock(block, exists)
-		st.streamCache.incrementHandles(fileKey)
-		flock.Unlock()
 	}
 	return handle, err
 }
 
-func (st *Stream) fetchBlock(fileKey string, handle *handlemap.Handle, offset int64) (*cacheBlock, bool, error) {
-	block, exists := st.streamCache.getBlock(fileKey, offset, handle.Size)
+func (st *Stream) fetchBlock(handle *handlemap.Handle, offset int64) (*cacheBlock, bool, error) {
+	block, exists := st.streamCache.getBlock(handle, offset)
 	if !exists {
 		// if the block does not exist fetch it from the next component
 		options := internal.ReadInBufferOptions{
@@ -280,7 +257,7 @@ func (st *Stream) fetchBlock(fileKey string, handle *handlemap.Handle, offset in
 	return block, exists, nil
 }
 
-func (st *Stream) copyCachedBlock(fileKey string, handle *handlemap.Handle, offset int64, data []byte) (int, error) {
+func (st *Stream) copyCachedBlock(handle *handlemap.Handle, offset int64, data []byte) (int, error) {
 	dataLeft := int64(len(data))
 	// counter to track how much we have copied into our request buffer thus far
 	dataRead := 0
@@ -289,10 +266,10 @@ func (st *Stream) copyCachedBlock(fileKey string, handle *handlemap.Handle, offs
 		// round all offsets to the specific blocksize offsets
 		cachedBlockStartIndex := (offset - (offset % st.streamCache.blockSize))
 		// Lock on requested block and fileName to ensure it is not being rerequested or manipulated
-		block, exists, err := st.fetchBlock(fileKey, handle, cachedBlockStartIndex)
+		block, exists, err := st.fetchBlock(handle, cachedBlockStartIndex)
 		if err != nil {
 			st.unlockBlock(block, exists)
-			log.Err("Stream::ReadInBuffer : failed to download block of %s with offset %d: [%s]", fileKey, block.startIndex, err.Error())
+			log.Err("Stream::ReadInBuffer : failed to download block of %s with offset %d: [%s]", handle.Path, block.startIndex, err.Error())
 			return dataRead, err
 		}
 		dataCopied := int64(copy(data[dataRead:], block.data[offset-cachedBlockStartIndex:]))
@@ -305,7 +282,6 @@ func (st *Stream) copyCachedBlock(fileKey string, handle *handlemap.Handle, offs
 }
 
 func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	fileKey := st.getFileKey(options.Handle.Path, options.Handle.ID)
 	// if we're only streaming then avoid using the cache
 	if st.streamOnly {
 		data, err := st.NextComponent().ReadInBuffer(options)
@@ -314,8 +290,7 @@ func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error
 		}
 		return data, err
 	}
-	st.streamCache.addFileKey(fileKey)
-	return st.copyCachedBlock(fileKey, options.Handle, options.Offset, options.Data)
+	return st.copyCachedBlock(options.Handle, options.Offset, options.Data)
 }
 
 func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
@@ -325,14 +300,7 @@ func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
 func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	st.NextComponent().CloseFile(options)
-	if !st.streamOnly {
-		fileKey := st.getFileKey(options.Handle.Path, options.Handle.ID)
-		remainingHandles := st.streamCache.decrementHandles(fileKey)
-		if remainingHandles <= 0 {
-			st.streamCache.removeFileKey(fileKey)
-
-		}
-	}
+	st.streamCache.removeCachedHandle(options.Handle)
 	return nil
 }
 
@@ -343,7 +311,6 @@ func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
 func NewStreamComponent() internal.Component {
 	comp := &Stream{}
 	comp.SetName(compName)
-	comp.fileKeyLocks = common.NewLockMap()
 	return comp
 }
 

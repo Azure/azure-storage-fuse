@@ -6,7 +6,6 @@
    |     |  |      |     | |     | |     |     |       | |       |
    | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
 
-
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
    Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
@@ -46,7 +45,6 @@ import (
 	"sync"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/bluele/gcache"
 	"github.com/golang/mock/gomock"
@@ -125,15 +123,15 @@ func getBlockData(suite *streamTestSuite, size int) *[]byte {
 }
 
 // return the block
-func getCachedBlock(suite *streamTestSuite, offset int64, fileKey string) *cacheBlock {
-	bk := blockKey{offset, fileKey}
+func getCachedBlock(suite *streamTestSuite, offset int64, handle *handlemap.Handle) *cacheBlock {
+	bk := blockKey{offset, handle}
 	blk, _ := suite.stream.streamCache.blocks.Get(bk)
 	return blk.(*cacheBlock)
 }
 
 // return the block from persistence cache
-func diskBlockExists(suite *streamTestSuite, offset int64, fileKey string) bool {
-	bk := blockKey{offset, fileKey}
+func diskBlockExists(suite *streamTestSuite, offset int64, handle *handlemap.Handle) bool {
+	bk := blockKey{offset, handle}
 	blk := &cacheBlock{}
 	return suite.stream.streamCache.getBlockFromDisk(blk, bk)
 }
@@ -157,51 +155,29 @@ func asyncCloseFile(suite *streamTestSuite, closeFileOptions internal.CloseFileO
 // Assertion helpers  ========================================================================
 
 //assert that the block is cached
-func assertBlockCached(suite *streamTestSuite, offset int64, fileKey string) {
-	bk := blockKey{offset, fileKey}
-	_, err := suite.stream.streamCache.files[fileKey].fileBlockBuffer.Get(bk)
+func assertBlockCached(suite *streamTestSuite, offset int64, handle *handlemap.Handle) {
+	bk := blockKey{offset, handle}
+	_, err := handle.DataBuffer.Get(bk)
 	suite.assert.NoError(err)
 	_, err = suite.stream.streamCache.blocks.Get(bk)
 	suite.assert.NoError(err)
 }
 
 //assert the block is not cached and KeyNotFoundError is thrown
-func assertBlockNotCached(suite *streamTestSuite, offset int64, fileKey string) {
-	bk := blockKey{offset, fileKey}
-	_, err := suite.stream.streamCache.files[fileKey].fileBlockBuffer.Get(bk)
+func assertBlockNotCached(suite *streamTestSuite, offset int64, handle *handlemap.Handle) {
+	bk := blockKey{offset, handle}
+	_, err := handle.DataBuffer.Get(bk)
 	suite.assert.EqualError(err, gcache.KeyNotFoundError.Error())
 	_, err = suite.stream.streamCache.blocks.Get(bk)
 	suite.assert.EqualError(err, gcache.KeyNotFoundError.Error())
-}
-
-func assertFileCached(suite *streamTestSuite, fileKey string) {
-	_, ok := suite.stream.streamCache.files[fileKey]
-	suite.assert.Equal(true, ok)
-}
-
-func assertFileNotCached(suite *streamTestSuite, fileKey string) {
-	_, ok := suite.stream.streamCache.files[fileKey]
-	suite.assert.Equal(false, ok)
-	for _, blk := range suite.stream.streamCache.blocks.Keys(false) {
-		suite.assert.NotEqual(fileKey, blk.(blockKey).fileKey)
-	}
 }
 
 func assertNumberOfCachedBlocks(suite *streamTestSuite, numOfBlocks int) {
 	suite.assert.Equal(numOfBlocks, suite.stream.streamCache.blocks.Len(false))
 }
 
-func assertNumberOfCachedFileBlocks(suite *streamTestSuite, numOfBlocks int, fileKey string) {
-	suite.assert.Equal(numOfBlocks, suite.stream.streamCache.files[fileKey].fileBlockBuffer.Len(false))
-}
-
-func assertCacheEmpty(suite *streamTestSuite) {
-	assertNumberOfCachedBlocks(suite, 0)
-	suite.assert.Equal(0, len(suite.stream.streamCache.files))
-}
-
-func assertNumberOfHandles(suite *streamTestSuite, fileKey string, handles int) {
-	suite.assert.Equal(handles, suite.stream.streamCache.files[fileKey].openHandles)
+func assertNumberOfCachedFileBlocks(suite *streamTestSuite, numOfBlocks int, handle *handlemap.Handle) {
+	suite.assert.Equal(numOfBlocks, handle.DataBuffer.Len(false))
 }
 
 // ====================================== End of helper methods =================================
@@ -275,8 +251,8 @@ func (suite *streamTestSuite) TestCacheOnOpenFile() {
 	suite.stream.OpenFile(openFileOptions)
 
 	assertNumberOfCachedBlocks(suite, 1)
-	assertBlockCached(suite, 0, fileNames[0])
-	assertNumberOfCachedFileBlocks(suite, 1, fileNames[0])
+	assertBlockCached(suite, 0, handle)
+	assertNumberOfCachedFileBlocks(suite, 1, handle)
 }
 
 // If open file returns error ensure nothing is cached and error is returned
@@ -291,30 +267,30 @@ func (suite *streamTestSuite) TestCacheOnOpenFileError() {
 	_, err := suite.stream.OpenFile(openFileOptions)
 
 	suite.assert.Equal(err, syscall.ENOENT)
-	assertCacheEmpty(suite)
 }
 
 // When we evict/remove all blocks of a given file the file should be no longer referenced in the cache
 func (suite *streamTestSuite) TestFileKeyEviction() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
+	var handleList []*handlemap.Handle
 	// our config only fits one block - therefore with every open we purge the previous file cached
 	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 1\n  cache-size-mb: 16\n  policy: lru"
 	suite.setupTestHelper(config)
 
 	for i := range []int{0, 1} {
 		handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(i, false, int64(100*MB), 0, 0)
+		handleList = append(handleList, handle)
 		suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 		suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
 		suite.stream.OpenFile(openFileOptions)
-		assertBlockCached(suite, 0, fileNames[i])
+		assertBlockCached(suite, 0, handle)
 	}
 
 	// since our configuration limits us to have one cached file at a time we expect to not have the first file key anymore
-	assertFileNotCached(suite, fileNames[0])
-	assertBlockCached(suite, 0, fileNames[1])
+	assertBlockCached(suite, 0, handleList[1])
 	assertNumberOfCachedBlocks(suite, 1)
-	assertNumberOfCachedFileBlocks(suite, 1, fileNames[1])
+	assertNumberOfCachedFileBlocks(suite, 1, handleList[1])
 }
 
 func (suite *streamTestSuite) TestBlockEviction() {
@@ -328,19 +304,17 @@ func (suite *streamTestSuite) TestBlockEviction() {
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
 	suite.stream.OpenFile(openFileOptions)
-	assertBlockCached(suite, 0, fileNames[0])
+	assertBlockCached(suite, 0, handle)
 
-	_, _, readInBufferOptions, _ = suite.getRequestOptions(0, false, int64(100*MB), 16*MB, 0)
-
+	readInBufferOptions = internal.ReadInBufferOptions{Handle: handle, Offset: 16 * MB, Data: readInBufferOptions.Data}
 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
 	suite.stream.ReadInBuffer(readInBufferOptions)
 
 	// we expect our first block to have been evicted
-	assertFileCached(suite, fileNames[0])
 	assertNumberOfCachedBlocks(suite, 1)
-	assertBlockNotCached(suite, 0, fileNames[0])
-	assertBlockCached(suite, 16*MB, fileNames[0])
-	assertNumberOfCachedFileBlocks(suite, 1, fileNames[0])
+	assertBlockNotCached(suite, 0, handle)
+	assertBlockCached(suite, 16*MB, handle)
+	assertNumberOfCachedFileBlocks(suite, 1, handle)
 }
 
 // Test handle tracking by opening/closing a file multiple times
@@ -359,14 +333,10 @@ func (suite *streamTestSuite) TestHandles() {
 	suite.mock.EXPECT().CloseFile(closeFileOptions).Return(nil)
 	suite.stream.CloseFile(closeFileOptions)
 
+	// we expect to call read in buffer again since we cleaned the cache after the file was closed
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
 	suite.stream.OpenFile(openFileOptions)
-
-	//ReadInBuffer won't be called since the block is cached
-	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
-	suite.stream.OpenFile(openFileOptions)
-	assertNumberOfHandles(suite, fileNames[0], 2)
 }
 
 func (suite *streamTestSuite) TestBlocksPerFileLargerThanCacheSize() {
@@ -382,21 +352,18 @@ func (suite *streamTestSuite) TestBlocksPerFileLargerThanCacheSize() {
 	assertNumberOfCachedBlocks(suite, 1)
 
 	for _, off := range []int64{16, 32} {
-		_, _, readInBufferOptions, _ = suite.getRequestOptions(0, false, int64(100*MB), off*MB, 0)
+		readInBufferOptions = internal.ReadInBufferOptions{Handle: handle, Offset: off * MB, Data: readInBufferOptions.Data}
 		suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
 		suite.stream.ReadInBuffer(readInBufferOptions)
-		assertFileCached(suite, fileNames[0])
 		assertNumberOfCachedBlocks(suite, 1)
-		assertNumberOfCachedFileBlocks(suite, 1, fileNames[0])
+		assertNumberOfCachedFileBlocks(suite, 1, handle)
 	}
-	for i, fk := range fileNames {
+	for i := range fileNames {
 		handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(i, false, int64(100*MB), 0, 0)
 		suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 		suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
 		suite.stream.OpenFile(openFileOptions)
-		assertFileCached(suite, fk)
 		assertNumberOfCachedBlocks(suite, 1)
-		suite.assert.Equal(len(suite.stream.streamCache.files), 1)
 	}
 }
 
@@ -412,23 +379,21 @@ func (suite *streamTestSuite) TestBlockDataOverlap() {
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
 	suite.stream.OpenFile(openFileOptions)
-	assertBlockCached(suite, 0, fileNames[0])
+	assertBlockCached(suite, 0, handle)
 
 	// options of our request from the stream component
-	_, _, userReadInBufferOptions, _ := suite.getRequestOptions(0, true, int64(100*MB), 1*MB, 17*MB)
+	userReadInBufferOptions := internal.ReadInBufferOptions{Handle: handle, Offset: 1 * MB, Data: readInBufferOptions.Data}
 	// options the stream component should request for the second block
-	_, _, streamMissingBlockReadInBufferOptions, _ := suite.getRequestOptions(0, false, int64(100*MB), 16*MB, 0)
-
+	streamMissingBlockReadInBufferOptions := internal.ReadInBufferOptions{Handle: handle, Offset: 16 * MB, Data: readInBufferOptions.Data}
 	suite.mock.EXPECT().ReadInBuffer(streamMissingBlockReadInBufferOptions).Return(int(16*MB), nil)
 	suite.stream.ReadInBuffer(userReadInBufferOptions)
 
 	// we expect 0-16MB, and 16MB-32MB be cached since our second request is at offset 1MB
 
-	assertFileCached(suite, fileNames[0])
 	assertNumberOfCachedBlocks(suite, 2)
-	assertBlockCached(suite, 0, fileNames[0])
-	assertBlockCached(suite, 16*MB, fileNames[0])
-	assertNumberOfCachedFileBlocks(suite, 2, fileNames[0])
+	assertBlockCached(suite, 0, handle)
+	assertBlockCached(suite, 16*MB, handle)
+	assertNumberOfCachedFileBlocks(suite, 2, handle)
 }
 
 func (suite *streamTestSuite) TestFileSmallerThanBlockSize() {
@@ -445,8 +410,8 @@ func (suite *streamTestSuite) TestFileSmallerThanBlockSize() {
 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(15*MB), nil)
 	suite.stream.OpenFile(openFileOptions)
 
-	assertBlockCached(suite, 0, fileNames[0])
-	blk := getCachedBlock(suite, 0, fileNames[0])
+	assertBlockCached(suite, 0, handle)
+	blk := getCachedBlock(suite, 0, handle)
 	suite.assert.Equal(int64(15*MB), blk.endIndex)
 
 	// TODO: case2: file size changed in next component without stream being updated and therefore we get EOF
@@ -466,8 +431,8 @@ func (suite *streamTestSuite) TestEmptyFile() {
 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(0), nil)
 	suite.stream.OpenFile(openFileOptions)
 
-	assertBlockCached(suite, 0, fileNames[0])
-	blk := getCachedBlock(suite, 0, fileNames[0])
+	assertBlockCached(suite, 0, handle)
+	blk := getCachedBlock(suite, 0, handle)
 	suite.assert.Equal(int64(0), blk.endIndex)
 }
 
@@ -478,18 +443,17 @@ func (suite *streamTestSuite) TestCachePurge() {
 	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 4\n  cache-size-mb: 64\n  policy: lru"
 	suite.setupTestHelper(config)
 
-	for i, fk := range fileNames {
+	for i := range fileNames {
 		handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(i, false, int64(100*MB), 0, 0)
 
 		suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 		suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
 		suite.stream.OpenFile(openFileOptions)
-		assertFileCached(suite, fk)
-		assertBlockCached(suite, 0, fk)
+		assertBlockCached(suite, 0, handle)
 	}
 
 	suite.stream.Stop()
-	assertCacheEmpty(suite)
+	assertNumberOfCachedBlocks(suite, 0)
 }
 
 // Data sanity check
@@ -515,8 +479,8 @@ func (suite *streamTestSuite) TestCachedData() {
 			suite.stream.ReadInBuffer(readInBufferOptions)
 		}
 
-		assertBlockCached(suite, off*MB, fileNames[0])
-		block := getCachedBlock(suite, off*MB, fileNames[0])
+		assertBlockCached(suite, off*MB, handle)
+		block := getCachedBlock(suite, off*MB, handle)
 		block.data = data[off*MB : off*MB+suite.stream.streamCache.blockSize]
 
 	}
@@ -533,152 +497,147 @@ func (suite *streamTestSuite) TestCachedData() {
 
 }
 
-// This test does a data sanity check in the case where concurrent read is happening and causes evicitons
-func (suite *streamTestSuite) TestAsyncReadAndEviction() {
-	defer suite.cleanupTest()
-	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  blocks-per-file: 4\n  cache-size-mb: 8\n  policy: lru"
-	suite.setupTestHelper(config)
+// // This test does a data sanity check in the case where concurrent read is happening and causes evicitons
+// func (suite *streamTestSuite) TestAsyncReadAndEviction() {
+// 	defer suite.cleanupTest()
+// 	suite.cleanupTest()
+// 	config := "stream:\n  block-size-mb: 4\n  blocks-per-file: 4\n  cache-size-mb: 8\n  policy: lru"
+// 	suite.setupTestHelper(config)
 
-	var blockOneDataBuffer *[]byte
-	var blockTwoDataBuffer *[]byte
-	var readInBufferOptions internal.ReadInBufferOptions
+// 	var blockOneDataBuffer *[]byte
+// 	var blockTwoDataBuffer *[]byte
+// 	var readInBufferOptions internal.ReadInBufferOptions
+// 	var handleList []*handlemap.Handle
 
-	// Even though our file size is 16MB below we only check against 8MB of the data (we check against two blocks)
-	data := *getBlockData(suite, 8*MB)
-	for _, off := range []int64{0, 4} {
-		handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(0, false, int64(16*MB), off*MB, 0)
-		if off == 0 {
-			suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
-			suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
-			suite.stream.OpenFile(openFileOptions)
-		} else {
-			suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
-			suite.stream.ReadInBuffer(readInBufferOptions)
-		}
+// 	// Even though our file size is 16MB below we only check against 8MB of the data (we check against two blocks)
+// 	data := *getBlockData(suite, 8*MB)
+// 	for _, off := range []int64{0, 4} {
+// 		handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(0, false, int64(16*MB), off*MB, 0)
+// 		handleList = append(handleList, handle)
+// 		if off == 0 {
+// 			suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
+// 			suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
+// 			suite.stream.OpenFile(openFileOptions)
+// 		} else {
+// 			suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
+// 			suite.stream.ReadInBuffer(readInBufferOptions)
+// 		}
 
-		assertBlockCached(suite, off*MB, fileNames[0])
-		block := getCachedBlock(suite, off*MB, fileNames[0])
-		block.data = data[off*MB : off*MB+suite.stream.streamCache.blockSize]
-	}
-	// test concurrent data access to the same file
-	// call 1: data within a cached block
-	_, _, readInBufferOptions, blockOneDataBuffer = suite.getRequestOptions(0, true, int64(16*MB), int64(2*MB), int64(3*MB))
-	suite.stream.ReadInBuffer(readInBufferOptions)
-	wg.Add(2)
+// 		assertBlockCached(suite, off*MB, handle)
+// 		block := getCachedBlock(suite, off*MB, handle)
+// 		block.data = data[off*MB : off*MB+suite.stream.streamCache.blockSize]
+// 	}
+// 	// test concurrent data access to the same file
+// 	// call 1: data within a cached block
+// 	_, _, readInBufferOptions, blockOneDataBuffer = suite.getRequestOptions(0, true, int64(16*MB), int64(2*MB), int64(3*MB))
+// 	suite.stream.ReadInBuffer(readInBufferOptions)
+// 	wg.Add(2)
 
-	// call 2: data cached within two blocks
-	_, _, readInBufferOptions, blockTwoDataBuffer = suite.getRequestOptions(0, true, int64(16*MB), int64(3*MB), int64(6*MB))
-	go asyncReadInBuffer(suite, readInBufferOptions)
-	// wait a little so we can guarantee block offset 0 is evicted
-	time.Sleep(2 * time.Second)
+// 	// call 2: data cached within two blocks
+// 	_, _, readInBufferOptions, blockTwoDataBuffer = suite.getRequestOptions(0, true, int64(16*MB), int64(3*MB), int64(6*MB))
+// 	go asyncReadInBuffer(suite, readInBufferOptions)
+// 	// wait a little so we can guarantee block offset 0 is evicted
+// 	time.Sleep(2 * time.Second)
 
-	// call 3: get missing block causing an eviction to block 1 with offset 0 - this ensures our data from block 1 is still copied correctly
-	_, _, readInBufferOptions, _ = suite.getRequestOptions(0, false, int64(16*MB), int64(12*MB), 0)
-	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
-	go asyncReadInBuffer(suite, readInBufferOptions)
-	wg.Wait()
+// 	// call 3: get missing block causing an eviction to block 1 with offset 0 - this ensures our data from block 1 is still copied correctly
+// 	_, _, readInBufferOptions, _ = suite.getRequestOptions(0, false, int64(16*MB), int64(12*MB), 0)
+// 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
+// 	go asyncReadInBuffer(suite, readInBufferOptions)
+// 	wg.Wait()
 
-	// assert data within first block is correct
-	suite.assert.Equal(data[2*MB:3*MB], *blockOneDataBuffer)
-	// assert data between two blocks is correct
-	suite.assert.Equal(data[3*MB:6*MB], *blockTwoDataBuffer)
-	// assert we did in fact evict the first block and have added the third block
-	assertBlockNotCached(suite, 0, fileNames[0])
-	assertBlockCached(suite, 12*MB, fileNames[0])
-}
+// 	// assert data within first block is correct
+// 	suite.assert.Equal(data[2*MB:3*MB], *blockOneDataBuffer)
+// 	// assert data between two blocks is correct
+// 	suite.assert.Equal(data[3*MB:6*MB], *blockTwoDataBuffer)
+// 	// assert we did in fact evict the first block and have added the third block
+// 	assertBlockNotCached(suite, 0, handleList[0])
+// 	assertBlockCached(suite, 12*MB, handleList[0])
+// }
 
-// This tests concurrent open and ensuring the number of handles and cached blocks is handled correctly
-func (suite *streamTestSuite) TestAsyncOpen() {
-	defer suite.cleanupTest()
-	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 4\n  cache-size-mb: 64\n  policy: lru"
-	suite.setupTestHelper(config)
+// // This tests concurrent open and ensuring the number of handles and cached blocks is handled correctly
+// func (suite *streamTestSuite) TestAsyncOpen() {
+// 	defer suite.cleanupTest()
+// 	suite.cleanupTest()
+// 	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 4\n  cache-size-mb: 64\n  policy: lru"
+// 	suite.setupTestHelper(config)
+// 	var handleList []*handlemap.Handle
 
-	// Open four files concurrently - each doing a readInBuffer call to store the first block
-	for i := range fileNames {
-		handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(i, false, int64(100*MB), 0, 0)
-		suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
-		suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
-		wg.Add(1)
-		go asyncOpenFile(suite, openFileOptions)
-	}
-	wg.Wait()
+// 	// Open four files concurrently - each doing a readInBuffer call to store the first block
+// 	for i := range fileNames {
+// 		handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(i, false, int64(100*MB), 0, 0)
+// 		handleList = append(handleList, handle)
+// 		suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
+// 		suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
+// 		wg.Add(1)
+// 		go asyncOpenFile(suite, openFileOptions)
+// 	}
+// 	wg.Wait()
 
-	assertNumberOfCachedBlocks(suite, 4)
-	for _, fk := range fileNames {
-		assertBlockCached(suite, 0, fk)
-		assertFileCached(suite, fk)
-		assertNumberOfCachedFileBlocks(suite, 1, fk)
-	}
-}
+// 	assertNumberOfCachedBlocks(suite, 4)
+// 	for _, handle := range handleList {
+// 		assertBlockCached(suite, 0, handle)
+// 		assertNumberOfCachedFileBlocks(suite, 1, handle)
+// 	}
+// }
 
-func (suite *streamTestSuite) TestAsyncClose() {
-	defer suite.cleanupTest()
-	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 4\n  cache-size-mb: 64\n  policy: lru"
-	suite.setupTestHelper(config)
-	for i := range fileNames {
-		handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(i, false, int64(100*MB), 0, 0)
-		suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
-		suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
-		wg.Add(1)
-		go asyncOpenFile(suite, openFileOptions)
-	}
-	wg.Wait()
+// func (suite *streamTestSuite) TestAsyncClose() {
+// 	defer suite.cleanupTest()
+// 	suite.cleanupTest()
+// 	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 4\n  cache-size-mb: 64\n  policy: lru"
+// 	suite.setupTestHelper(config)
+// 	for i := range fileNames {
+// 		handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(i, false, int64(100*MB), 0, 0)
+// 		suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
+// 		suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
+// 		wg.Add(1)
+// 		go asyncOpenFile(suite, openFileOptions)
+// 	}
+// 	wg.Wait()
 
-	for i := range fileNames {
-		handle, _, _, _ := suite.getRequestOptions(i, false, int64(100*MB), 0, 0)
-		closeFileOptions := internal.CloseFileOptions{Handle: handle}
-		suite.mock.EXPECT().CloseFile(closeFileOptions).Return(nil)
-		wg.Add(1)
-		go asyncCloseFile(suite, closeFileOptions)
-	}
-	wg.Wait()
+// 	for i := range fileNames {
+// 		handle, _, _, _ := suite.getRequestOptions(i, false, int64(100*MB), 0, 0)
+// 		closeFileOptions := internal.CloseFileOptions{Handle: handle}
+// 		suite.mock.EXPECT().CloseFile(closeFileOptions).Return(nil)
+// 		wg.Add(1)
+// 		go asyncCloseFile(suite, closeFileOptions)
+// 	}
+// 	wg.Wait()
+// }
 
-	assertCacheEmpty(suite)
-	for _, fk := range fileNames {
-		assertFileNotCached(suite, fk)
-	}
-}
+// // persistnace related UT
+// func (suite *streamTestSuite) TestBlockPersistence() {
+// 	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 1\n  cache-size-mb: 16\n  policy: lru\n  disk-persistence: true\n  disk-cache-path: ./\n  disk-size-mb: 32"
+// 	suite.setupTestHelper(config)
 
-// persistnace related UT
-func (suite *streamTestSuite) TestBlockPersistence() {
-	config := "stream:\n  block-size-mb: 16\n  blocks-per-file: 1\n  cache-size-mb: 16\n  policy: lru\n  disk-persistence: true\n  disk-cache-path: ./\n  disk-size-mb: 32"
-	suite.setupTestHelper(config)
+// 	handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(0, false, int64(100*MB), 0, 0)
 
-	handle, openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(0, false, int64(100*MB), 0, 0)
+// 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
+// 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
+// 	suite.stream.OpenFile(openFileOptions)
+// 	assertBlockCached(suite, 0, handle)
 
-	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
-	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
-	suite.stream.OpenFile(openFileOptions)
-	assertBlockCached(suite, 0, fileNames[0])
+// 	_, _, readInBufferOptions, _ = suite.getRequestOptions(0, false, int64(100*MB), 16*MB, 0)
 
-	_, _, readInBufferOptions, _ = suite.getRequestOptions(0, false, int64(100*MB), 16*MB, 0)
+// 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
+// 	suite.stream.ReadInBuffer(readInBufferOptions)
 
-	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.streamCache.blockSize), nil)
-	suite.stream.ReadInBuffer(readInBufferOptions)
+// 	// Validate there is only one block cached in memory
+// 	assertNumberOfCachedBlocks(suite, 1)
 
-	// we expect our first block to have been evicted
-	assertFileCached(suite, fileNames[0])
+// 	// Validate original block at offset 0 is no more cached
+// 	assertBlockNotCached(suite, 0, handle)
 
-	// Validate there is only one block cached in memory
-	assertNumberOfCachedBlocks(suite, 1)
+// 	// Validate latest block being read is cached in memory
+// 	assertBlockCached(suite, 16*MB, handle)
 
-	// Validate original block at offset 0 is no more cached
-	assertBlockNotCached(suite, 0, fileNames[0])
+// 	// Validate there is one disk block persisted
+// 	assertNumberOfCachedFileBlocks(suite, 1, handle)
 
-	// Validate latest block being read is cached in memory
-	assertBlockCached(suite, 16*MB, fileNames[0])
-
-	// Validate there is one disk block persisted
-	assertNumberOfCachedFileBlocks(suite, 1, fileNames[0])
-
-	// block with offset 0 does not exists in memory
-	// we check it shall exists in disk
-	found := diskBlockExists(suite, 0, fileNames[0])
-	suite.assert.Equal(found, true)
-}
+// 	// block with offset 0 does not exists in memory
+// 	// we check it shall exists in disk
+// 	found := diskBlockExists(suite, 0, handle)
+// 	suite.assert.Equal(found, true)
+// }
 
 func TestStreamTestSuite(t *testing.T) {
 	suite.Run(t, new(streamTestSuite))

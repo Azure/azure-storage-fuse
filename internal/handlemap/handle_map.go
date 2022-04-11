@@ -38,6 +38,7 @@ import (
 	"os"
 	"sync"
 
+	"github.com/bluele/gcache"
 	"go.uber.org/atomic"
 )
 
@@ -55,12 +56,13 @@ const (
 
 type Handle struct {
 	sync.RWMutex
-	FObj   *os.File
-	ID     HandleID
-	Size   int64 // Size of the file being handled here
-	Flags  common.BitMap16
-	Path   string // always holds path relative to mount dir
-	values map[string]interface{}
+	FObj       *os.File
+	ID         HandleID
+	Size       int64 // Size of the file being handled here
+	Flags      common.BitMap16
+	Path       string // always holds path relative to mount dir
+	values     map[string]interface{}
+	DataBuffer gcache.Cache
 }
 
 func NewHandle(path string) *Handle {

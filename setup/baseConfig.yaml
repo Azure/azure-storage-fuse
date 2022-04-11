@@ -39,7 +39,6 @@ stream:
   blocks-per-file: <maximum number of blocks, per file, that can be cached at any given time. Default - 0>
   cache-size-mb: <total amount of memory that streaming can consume on the system. Default - 0 MB>
   policy: lfu|lru|arc <cache eviction policy for cached blocks. Default - arc>
-  cache-on-file-handle: true|false <cache block per file handle instead of file-name. (better performance but increases memory consumption)>
   disk-persistence: <persist blocks on disk when evicted from memory>
   disk-cache-path: <path to perist evicted blocks>
   disk-size-mb: <maximum disk space to be consumed by disk-persistence>
