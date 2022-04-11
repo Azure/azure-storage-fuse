@@ -153,7 +153,7 @@ func (suite *mountSuite) TestConfigFileNotProvided() {
 	blobfuseUnmount(suite, "nothing to unmount")
 }
 
-// mount faliure test using environment variables for mounting
+// mount failure test using environment variables for mounting
 func (suite *mountSuite) TestEnvVarMount() {
 	tempDir := filepath.Join(mntDir, "..", "tempdir")
 	os.Mkdir(tempDir, 0777)
