@@ -190,6 +190,8 @@ static int populate_callbacks(fuse_operations_t *opt)
     opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))native_flush_file;
     opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))native_close_file;
     #endif
+    opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_flush;
+    opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_release;
 
     opt->unlink     = (int (*)(const char *path))libfuse_unlink;
 
@@ -516,7 +518,8 @@ static int native_write_file(char *path, char *buf, size_t size, off_t offset, f
     handle_obj->flags |= H_FLAG_BLOCKRA;
     #endif
 
-    return native_pwrite(path, buf, size, offset, handle_obj);
+    return libfuse_write(path, buf, size, offset, fi);
+    //return native_pwrite(path, buf, size, offset, handle_obj);
 }
 
 // native_flush_file : Flush the file natively and call flush up in the pipeline to upload this file

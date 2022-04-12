@@ -508,7 +508,7 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	if !handle.Cached() {
 		ret_val.fd = 0
 	}
-
+	log.Trace("Libfuse::libfuse_create : %s, handle %d", name, handle.ID)
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 	return 0
 }
@@ -552,7 +552,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	if !handle.Cached() {
 		ret_val.fd = 0
 	}
-
+	log.Trace("Libfuse::libfuse_open : %s, handle %d", name, handle.ID)
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 	return 0
 }
