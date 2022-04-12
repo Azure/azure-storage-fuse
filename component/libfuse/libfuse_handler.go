@@ -653,7 +653,6 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	// If the file handle is not dirty, there is no need to flush
 	if fileHandle.dirty != 0 {
 		handle.Flags.Set(handlemap.HandleFlagDirty)
-		handle.Flags.Set(handlemap.HandleFlagNativeSync)
 	}
 
 	if !handle.Dirty() {
@@ -699,7 +698,6 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	// If the file handle is dirty then file-cache needs to flush this file
 	if fileHandle.dirty != 0 {
 		handle.Flags.Set(handlemap.HandleFlagDirty)
-		handle.Flags.Set(handlemap.HandleFlagNativeSync)
 	}
 
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
