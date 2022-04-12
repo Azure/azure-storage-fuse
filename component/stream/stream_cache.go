@@ -179,7 +179,7 @@ func (c *cache) filePurge(key, value interface{}) {
 
 // Using key construct a file name for persisted block
 func (c *cache) getLocalFilePath(key blockKey) string {
-	return filepath.Join(c.diskPath, key.handle.FObj.Name()+"__"+fmt.Sprintf("%d", key.offset)+"__")
+	return filepath.Join(c.diskPath, key.handle.Path+"__"+fmt.Sprintf("%d", key.offset)+"__")
 }
 
 // Persist this block on disk
