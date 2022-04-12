@@ -181,7 +181,7 @@ static int populate_callbacks(fuse_operations_t *opt)
     opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))native_read_file;
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))native_write_file;
     opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))native_flush_file;
-    opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))native_close_file;
+    opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_release;
 
     opt->unlink     = (int (*)(const char *path))libfuse_unlink;
 
@@ -400,14 +400,6 @@ static int native_flush_file(char *path, fuse_file_info_t *fi)
 
     return ret;
 }
-
-// native_close_file : Flush the file natively and call close up in the pipeline to upload this file
-static int native_close_file(char *path, fuse_file_info_t *fi)
-{
-    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
-    return libfuse_release(path, fi);
-}
-
 
 
 #ifdef ENABLE_READ_AHEAD

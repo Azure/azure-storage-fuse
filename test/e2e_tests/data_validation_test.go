@@ -68,9 +68,6 @@ func (suite *dataValidationTestSuite) copyToMountDir(localFilePath string, remot
 	fmt.Println(string(cliOut))
 	suite.Equal(nil, err)
 
-	// Sometimes these copy/diff calls fire async-close call and we may see some data corruption
-	time.Sleep(2 * time.Second)
-
 	// delete the cache directory
 	suite.dataValidationTestCleanup([]string{suite.testCachePath})
 }
