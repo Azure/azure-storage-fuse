@@ -47,8 +47,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/bluele/gcache"
 	"github.com/pbnjay/memory"
+	"github.com/tasherif-msft/gcache"
 	"go.uber.org/atomic"
 )
 

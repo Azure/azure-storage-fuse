@@ -38,7 +38,7 @@ import (
 	"os"
 	"sync"
 
-	"github.com/bluele/gcache"
+	"github.com/tasherif-msft/gcache"
 	"go.uber.org/atomic"
 )
 

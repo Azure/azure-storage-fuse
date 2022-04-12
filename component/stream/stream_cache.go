@@ -43,7 +43,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bluele/gcache"
+	"github.com/tasherif-msft/gcache"
 )
 
 type blockKey struct {

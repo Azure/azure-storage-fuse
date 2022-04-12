@@ -47,10 +47,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bluele/gcache"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
+	"github.com/tasherif-msft/gcache"
 )
 
 type streamTestSuite struct {
