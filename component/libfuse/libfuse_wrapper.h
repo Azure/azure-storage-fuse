@@ -187,8 +187,8 @@ static int populate_callbacks(fuse_operations_t *opt)
     // These are methods declared in C to do read/write operation directly on file for better performance
     opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))native_read_file;
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))native_write_file;
-    opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))native_flush_file;
-    opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))native_close_file;
+    //opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))native_flush_file;
+    //opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))native_close_file;
     #endif
     opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_flush;
     opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_release;
@@ -370,6 +370,7 @@ static void release_native_file_object(fuse_file_info_t* fi)
     }
 }
 
+#define NO_CACHE_REFRESH
 // native_pread :  Do pread on file directly without involving any Go code
 static int native_pread(char *path, char *buf, size_t size, off_t offset, file_handle_t* handle_obj)
 {
@@ -379,12 +380,14 @@ static int native_pread(char *path, char *buf, size_t size, off_t offset, file_h
         res = -errno;
         
     // Increment the operation counter
+    #ifndef NO_CACHE_REFRESH
     handle_obj->cnt++;
     if (!(handle_obj->cnt % CACHE_UPDATE_COUNTER)) {
         // Time to send a call up to update the cache
         blobfuse_cache_update(path);
         handle_obj->cnt = 0;
     }
+    #endif
 
     return res;
 }
@@ -399,12 +402,15 @@ static int native_pwrite(char *path, char *buf, size_t size, off_t offset, file_
 
     // Increment the operation counter and mark a write was done on this handle
     handle_obj->dirty = 1;
+
+    #ifndef NO_CACHE_REFRESH
     handle_obj->cnt++;
     if (!(handle_obj->cnt % CACHE_UPDATE_COUNTER)) {
         // Time to send a call up to update the cache
         blobfuse_cache_update(path);
         handle_obj->cnt = 0;
     }
+    #endif
 
     return res;
 }
@@ -508,9 +514,11 @@ static int native_write_file(char *path, char *buf, size_t size, off_t offset, f
 {
     file_handle_t* handle_obj = (file_handle_t*)fi->fh;
     
+    /*
     if (handle_obj->fd == 0) {
         return libfuse_write(path, buf, size, offset, fi);
     }
+    */
     
     #ifdef ENABLE_READ_AHEAD
     // Any write operation happens then we immediately disable the read-ahead on this file
