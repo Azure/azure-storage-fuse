@@ -906,7 +906,8 @@ func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, er
 		return 0, syscall.EBADF
 	}
 
-	return f.ReadAt(options.Data, options.Offset)
+	return syscall.Pread(int(options.Handle.UnixFD), options.Data, options.Offset)
+	//return f.ReadAt(options.Data, options.Offset)
 }
 
 // WriteFile: Write to the local file
@@ -925,7 +926,8 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 		return 0, syscall.EBADF
 	}
 
-	bytesWritten, err := f.WriteAt(options.Data, options.Offset)
+	bytesWritten, err := syscall.Pwrite(int(options.Handle.UnixFD), options.Data, options.Offset)
+	//bytesWritten, err := f.WriteAt(options.Data, options.Offset)
 	if err == nil {
 		// Mark the handle dirty so the file is written back to storage on FlushFile.
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)

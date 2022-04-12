@@ -433,7 +433,7 @@ static int read_ahead_handler(char *path, char *buf, size_t size, off_t offset, 
         : If file is read randomly first and then sequentially then we assume it will be random read and disable the read-ahead
     */
 
-    if ((offset == 0  && handle_obj->buff_end == 0) || 
+    if ((handle_obj->buff_start == 0  && handle_obj->buff_end == 0) || 
         offset < handle_obj->buff_start ||
         offset >= handle_obj->buff_end)
     {
@@ -448,6 +448,13 @@ static int read_ahead_handler(char *path, char *buf, size_t size, off_t offset, 
     if (new_read) {
         // We need to refresh the data from file
         int read = native_pread(path, handle_obj->buff, RA_BLOCK_SIZE, offset, handle_obj);
+        FILE *fp = fopen("blobfuse2_nat.log", "a");
+        if (fp) {
+            fprintf(fp, "File %s, Offset %ld, size %ld, new read %d\n",
+                path, offset, size, read);
+            fclose(fp);
+        }
+
         if (read <= 0) {
             // Error or EOF reached to just return 0 now
             return read;
@@ -462,7 +469,22 @@ static int read_ahead_handler(char *path, char *buf, size_t size, off_t offset, 
     int left = (handle_obj->buff_end - offset);
     int copy = (size > left) ? left : size;
     
+    FILE *fp = fopen("blobfuse2_nat.log", "a");
+    if (fp) {
+        fprintf(fp, "File %s, Offset %ld, size %ld, buff start %ld, buff end %ld, start %d, left %d, copy %d\n",
+           path, offset, size, handle_obj->buff_start, handle_obj->buff_end, start, left, copy);
+        fclose(fp);
+    }
+
     memcpy(buf, (handle_obj->buff + start), copy);
+    
+    if (copy < size) {
+        // Less then request data was copied so read from next offset again
+        // We need to handle this here because if we return less then size fuse is not asking from
+        // correct offset in next read, it just goes to offset + size only.
+        copy += read_ahead_handler(path, (buf + copy), (size - copy), (offset + copy), handle_obj);
+    }
+
     return copy;
 }
 #endif
