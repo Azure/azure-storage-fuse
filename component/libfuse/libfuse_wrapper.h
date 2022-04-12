@@ -384,6 +384,7 @@ static int native_pread(char *path, char *buf, size_t size, off_t offset, file_h
         res = -errno;
         
     // Increment the operation counter
+    #if 0
     #ifndef NO_CACHE_REFRESH
     handle_obj->cnt++;
     if (!(handle_obj->cnt % CACHE_UPDATE_COUNTER)) {
@@ -391,6 +392,7 @@ static int native_pread(char *path, char *buf, size_t size, off_t offset, file_h
         blobfuse_cache_update(path);
         handle_obj->cnt = 0;
     }
+    #endif
     #endif
 
     return res;
