@@ -306,7 +306,8 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
 
 // ---------   Native READ-WRITE and READ-AHEAD logic here ---------------------
 // Use this macro to enable-disable read-ahead logic
-#define ENABLE_READ_AHEAD 
+//#define ENABLE_READ_AHEAD 
+//#define NO_CACHE_REFRESH
 
 // Every read-write operation is counted and after N operations send a call up to update cache policy
 #define CACHE_UPDATE_COUNTER 10000
@@ -333,7 +334,10 @@ typedef struct {
     char*           buff;               // Buffer to hold the read-ahead data
     #endif
     
+    #ifndef NO_CACHE_REFRESH
     uint16_t       cnt;                 // Number of read-write operations done on this handle
+    #endif
+
     uint8_t        dirty;               // A write operation was performed on this handle
     uint8_t        flags;               // Flags to store other info on the handle
 } file_handle_t;
@@ -370,7 +374,7 @@ static void release_native_file_object(fuse_file_info_t* fi)
     }
 }
 
-#define NO_CACHE_REFRESH
+
 // native_pread :  Do pread on file directly without involving any Go code
 static int native_pread(char *path, char *buf, size_t size, off_t offset, file_handle_t* handle_obj)
 {
@@ -536,11 +540,9 @@ static int native_write_file(char *path, char *buf, size_t size, off_t offset, f
 {
     file_handle_t* handle_obj = (file_handle_t*)fi->fh;
     
-    /*
     if (handle_obj->fd == 0) {
         return libfuse_write(path, buf, size, offset, fi);
     }
-    */
     
     #ifdef ENABLE_READ_AHEAD
     // Any write operation happens then we immediately disable the read-ahead on this file
@@ -548,8 +550,7 @@ static int native_write_file(char *path, char *buf, size_t size, off_t offset, f
     handle_obj->flags |= H_FLAG_BLOCKRA;
     #endif
 
-    return libfuse_write(path, buf, size, offset, fi);
-    //return native_pwrite(path, buf, size, offset, handle_obj);
+    return native_pwrite(path, buf, size, offset, handle_obj);
 }
 
 // native_flush_file : Flush the file natively and call flush up in the pipeline to upload this file
