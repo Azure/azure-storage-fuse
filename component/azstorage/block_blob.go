@@ -35,7 +35,6 @@ package azstorage
 
 import (
 	"blobfuse2/common"
-	"blobfuse2/common/config"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
 	"bytes"
@@ -614,7 +613,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
 	blockSize := bb.Config.blockSize
 	// if the block size is not set then we configure it based on file size
-	if !config.IsSet(compName + ".block-size-mb") {
+	if bb.Config.blockSize == 0 {
 		// get the size of the file
 		stat, err := fi.Stat()
 		if err != nil {
@@ -724,12 +723,16 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 }
 
 func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, length, blockIdLength int64) int64 {
+	blockSize := bb.Config.blockSize
 	prevIndex := blockList.BlockList[len(blockList.BlockList)-1].EndIndex
+	if blockSize == 0 {
+		blockSize = (16 * 1024 * 1024)
+	}
 	// BufferSize is the size of the buffer that will go beyond our current blob (appended)
 	var bufferSize int64
-	for i := prevIndex; i < offset+length; i += bb.Config.blockSize {
+	for i := prevIndex; i < offset+length; i += blockSize {
 		// create a new block if we hit our block size
-		blkSize := int64(math.Min(float64(bb.Config.blockSize), float64((offset+length)-i)))
+		blkSize := int64(math.Min(float64(blockSize), float64((offset+length)-i)))
 		newBlock := bb.createBlock(blockIdLength, i, blkSize)
 		blockList.BlockList = append(blockList.BlockList, newBlock)
 		// reset the counter since it will help us to determine if there is leftovers at the end
