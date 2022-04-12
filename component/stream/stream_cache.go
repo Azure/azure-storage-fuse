@@ -100,9 +100,10 @@ func (c *cache) addHandleCache(handle *handlemap.Handle) {
 func (c *cache) getBlock(handle *handlemap.Handle, offset int64) (*cacheBlock, bool) {
 	blockSize := c.blockSize
 	blockKeyObj := blockKey{handle: handle, offset: offset}
+	c.Lock()
+	defer c.Unlock()
 	// this adds a cache hit to the file buffer if the block exists then down we're doing a cache hit on the block cache as well
 	block, err := handle.DataBuffer.Get(blockKeyObj)
-
 	// block was not found - create a new block, append it to cache and return it
 	if err == gcache.KeyNotFoundError {
 		if (offset + blockSize) > handle.Size {
@@ -114,9 +115,7 @@ func (c *cache) getBlock(handle *handlemap.Handle, offset int64) (*cacheBlock, b
 			data:       make([]byte, blockSize),
 			last:       (offset + blockSize) >= handle.Size,
 		}
-		// lock because we will be changing the block since its data buffer is currently empty
 		newBlock.Lock()
-
 		// if we hit the max num of blocks stored for a given file then set it on the file enteries/buffer first
 		// this would get it evicted on the file buffer level and the respective block from the block cache and avoid double evicting
 		// this calls filePurgeOrEvict callback which will trigger the block cache to delete the corresponding block
@@ -132,7 +131,6 @@ func (c *cache) getBlock(handle *handlemap.Handle, offset int64) (*cacheBlock, b
 			// TODO: we can add a cache timeout in the future
 			c.evictedBlock = blockKey{}
 		}
-
 		dataFetched := false
 		if c.diskPersistence {
 			dataFetched = c.getBlockFromDisk(newBlock, blockKeyObj)
@@ -181,7 +179,7 @@ func (c *cache) filePurge(key, value interface{}) {
 
 // Using key construct a file name for persisted block
 func (c *cache) getLocalFilePath(key blockKey) string {
-	return filepath.Join(c.diskPath, key.handle.Path+"__"+fmt.Sprintf("%d", key.offset)+"__")
+	return filepath.Join(c.diskPath, key.handle.FObj.Name()+"__"+fmt.Sprintf("%d", key.offset)+"__")
 }
 
 // Persist this block on disk
