@@ -3,6 +3,7 @@
 package mount_test
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
 	"os"
@@ -11,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -153,8 +155,8 @@ func (suite *mountSuite) TestConfigFileNotProvided() {
 	blobfuseUnmount(suite, "nothing to unmount")
 }
 
-// mount failure test using environment variables for mounting
-func (suite *mountSuite) TestEnvVarMount() {
+// mount failure test where config file is not provided and environment variables have incorrect credentials
+func (suite *mountSuite) TestEnvVarMountFailure() {
 	tempDir := filepath.Join(mntDir, "..", "tempdir")
 	os.Mkdir(tempDir, 0777)
 
@@ -180,6 +182,48 @@ func (suite *mountSuite) TestEnvVarMount() {
 	os.Unsetenv("AZURE_STORAGE_BLOB_ENDPOINT")
 
 	os.RemoveAll(tempDir)
+}
+
+// mount test using environment variables for mounting
+func (suite *mountSuite) TestEnvVarMount() {
+	// read config file
+	configData, err := os.ReadFile(configFile)
+	suite.Equal(nil, err)
+
+	viper.SetConfigType("yaml")
+	viper.ReadConfig(bytes.NewBuffer(configData))
+
+	// create environment variables
+	os.Setenv("AZURE_STORAGE_ACCOUNT", viper.GetString("azstorage.account-name"))
+	os.Setenv("AZURE_STORAGE_ACCESS_KEY", viper.GetString("azstorage.account-key"))
+	os.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", viper.GetString("azstorage.endpoint"))
+	os.Setenv("AZURE_STORAGE_ACCOUNT_CONTAINER", viper.GetString("azstorage.container"))
+	os.Setenv("AZURE_STORAGE_ACCOUNT_TYPE", viper.GetString("azstorage.type"))
+
+	tempFile := viper.GetString("file_cache.path")
+
+	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--tmp-path="+tempFile)
+	cliOut, err := mountCmd.Output()
+	fmt.Println(string(cliOut))
+	suite.Equal(0, len(cliOut))
+	suite.Equal(nil, err)
+
+	// wait for mount
+	time.Sleep(10 * time.Second)
+
+	// list blobfuse mounted directories
+	cliOut = listBlobfuseMounts(suite)
+	suite.NotEqual(0, len(cliOut))
+	suite.Contains(string(cliOut), mntDir)
+
+	// unmount
+	blobfuseUnmount(suite, mntDir)
+
+	os.Unsetenv("AZURE_STORAGE_ACCOUNT")
+	os.Unsetenv("AZURE_STORAGE_ACCESS_KEY")
+	os.Unsetenv("AZURE_STORAGE_BLOB_ENDPOINT")
+	os.Unsetenv("AZURE_STORAGE_ACCOUNT_CONTAINER")
+	os.Unsetenv("AZURE_STORAGE_ACCOUNT_TYPE")
 }
 
 func TestMountSuite(t *testing.T) {
