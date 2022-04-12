@@ -177,21 +177,11 @@ static int populate_callbacks(fuse_operations_t *opt)
     opt->create     = (int (*)(const char *path, mode_t mode, fuse_file_info_t *fi))libfuse_create;
     opt->open       = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_open;
 
-    #if 0
-    // Enable this to forward read/write calls to pipeline directly
-    opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))libfuse_read;
-    opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))libfuse_write;
-    opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_flush;
-    opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_release;
-    #else
     // These are methods declared in C to do read/write operation directly on file for better performance
     opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))native_read_file;
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))native_write_file;
-    //opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))native_flush_file;
-    //opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))native_close_file;
-    #endif
-    opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_flush;
-    opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_release;
+    opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))native_flush_file;
+    opt->release    = (int (*)(const char *path, fuse_file_info_t *fi))native_close_file;
 
     opt->unlink     = (int (*)(const char *path))libfuse_unlink;
 
@@ -305,41 +295,16 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
 }
 
 // ---------   Native READ-WRITE and READ-AHEAD logic here ---------------------
-// Use this macro to enable-disable read-ahead logic
-//#define ENABLE_READ_AHEAD 
-//#define NO_CACHE_REFRESH
-
 // Every read-write operation is counted and after N operations send a call up to update cache policy
-#define CACHE_UPDATE_COUNTER 10000
+#define CACHE_UPDATE_COUNTER 1000
 
-
-#ifdef ENABLE_READ_AHEAD
-// Flags used for read-ahead logic
-#define H_FLAG_BLOCKRA      (1 << 1)
-#define RA_BLOCK_SIZE       (8 * 1024 * 1024)
-#define RA_MIN_FILE_SIZE    (500 * 1024)
-#define RA_RANDOM_READ_THRESHOLD    (5)
-#endif
 
 // Structure that describes file-handle object returned back to libfuse
 typedef struct {
-    uint64_t        fd;                 // Unix FD for this file
-    uint64_t        obj;                // Handlemap.Handle object representing this handle
-    uint64_t        size;               // Size of the file when it was downloaded
-
-    #ifdef ENABLE_READ_AHEAD
-    int64_t         random_reads;       // Number of random reads done on this file
-    uint64_t        buff_start;         // Start offset of the read-ahead buffer
-    uint64_t        buff_end;           // End offset of the read-ahead buffer
-    char*           buff;               // Buffer to hold the read-ahead data
-    #endif
-    
-    #ifndef NO_CACHE_REFRESH
+    uint64_t       fd;                  // Unix FD for this file
+    uint64_t       obj;                 // Handlemap.Handle object representing this handle
     uint16_t       cnt;                 // Number of read-write operations done on this handle
-    #endif
-
     uint8_t        dirty;               // A write operation was performed on this handle
-    uint8_t        flags;               // Flags to store other info on the handle
 } file_handle_t;
 
 
@@ -352,7 +317,6 @@ static file_handle_t* allocate_native_file_object(uint64_t fd, uint64_t obj, uin
         memset(fobj, 0, sizeof(file_handle_t));
         fobj->fd = fd;
         fobj->obj = obj;
-        fobj->size = file_size;
     }
 
     return fobj;
@@ -363,13 +327,7 @@ static void release_native_file_object(fuse_file_info_t* fi)
 {
     // Called on close operation from libfuse component
     file_handle_t* handle_obj = (file_handle_t*)fi->fh;
-
     if (handle_obj) {
-        #ifdef ENABLE_READ_AHEAD
-        if (handle_obj->buff) {
-            free(handle_obj->buff);
-        }
-        #endif
         free(handle_obj);
     }
 }
@@ -383,18 +341,6 @@ static int native_pread(char *path, char *buf, size_t size, off_t offset, file_h
     if (res == -1)
         res = -errno;
         
-    // Increment the operation counter
-    #if 0
-    #ifndef NO_CACHE_REFRESH
-    handle_obj->cnt++;
-    if (!(handle_obj->cnt % CACHE_UPDATE_COUNTER)) {
-        // Time to send a call up to update the cache
-        blobfuse_cache_update(path);
-        handle_obj->cnt = 0;
-    }
-    #endif
-    #endif
-
     return res;
 }
 
@@ -408,18 +354,61 @@ static int native_pwrite(char *path, char *buf, size_t size, off_t offset, file_
 
     // Increment the operation counter and mark a write was done on this handle
     handle_obj->dirty = 1;
-
-    #ifndef NO_CACHE_REFRESH
     handle_obj->cnt++;
     if (!(handle_obj->cnt % CACHE_UPDATE_COUNTER)) {
         // Time to send a call up to update the cache
         blobfuse_cache_update(path);
         handle_obj->cnt = 0;
     }
-    #endif
 
     return res;
 }
+
+// native_read_file : Read callback to decide whether to natively read or punt call to Go code
+static int native_read_file(char *path, char *buf, size_t size, off_t offset, fuse_file_info_t *fi)
+{
+    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
+    
+    if (handle_obj->fd == 0) {
+        return libfuse_read(path, buf, size, offset, fi);
+    }
+
+    return native_pread(path, buf, size, offset, handle_obj);
+}
+
+// native_write_file : Write callback to decide whether to natively write or punt call to Go code
+static int native_write_file(char *path, char *buf, size_t size, off_t offset, fuse_file_info_t *fi)
+{
+    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
+    
+    if (handle_obj->fd == 0) {
+        return libfuse_write(path, buf, size, offset, fi);
+    }
+    
+    return native_pwrite(path, buf, size, offset, handle_obj);
+}
+
+// native_flush_file : Flush the file natively and call flush up in the pipeline to upload this file
+static int native_flush_file(char *path, fuse_file_info_t *fi)
+{
+    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
+    int ret = libfuse_flush(path, fi);
+    if (ret == 0) {
+        // As file is flushed and uploaded, reset the dirty bit here
+        handle_obj->dirty = 0;
+    }
+
+    return ret;
+}
+
+// native_close_file : Flush the file natively and call close up in the pipeline to upload this file
+static int native_close_file(char *path, fuse_file_info_t *fi)
+{
+    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
+    return libfuse_release(path, fi);
+}
+
+
 
 #ifdef ENABLE_READ_AHEAD
 // read_ahead_handler : Method to serve read call from read-ahead buffer if possible
@@ -494,86 +483,6 @@ static int read_ahead_handler(char *path, char *buf, size_t size, off_t offset, 
     return copy;
 }
 #endif
-
-// native_read_file : Read callback to decide whether to natively read or punt call to Go code
-static int native_read_file(char *path, char *buf, size_t size, off_t offset, fuse_file_info_t *fi)
-{
-    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
-    
-    if (handle_obj->fd == 0) {
-        return libfuse_read(path, buf, size, offset, fi);
-    }
-
-    #ifdef ENABLE_READ_AHEAD
-    if (!(handle_obj->flags & H_FLAG_BLOCKRA)) {
-        // Read ahead is not blocked so far on this handle
-        if (handle_obj->buff == NULL) {
-            if (handle_obj->size <= RA_MIN_FILE_SIZE) {
-                // File is too small to apply read-ahead
-                handle_obj->flags |= H_FLAG_BLOCKRA;
-                goto skip_read_ahead;
-            } else {
-                // This is the first read on this file so allocate the readahead buffer
-                uint64_t alloc_size = (handle_obj->size > RA_BLOCK_SIZE) ? RA_BLOCK_SIZE : handle_obj->size;
-                handle_obj->buff = (char*)malloc(sizeof(char) * alloc_size);
-            }
-        }
-
-        if (handle_obj->random_reads > RA_RANDOM_READ_THRESHOLD) {
-            // Too many random reads have hit on this handle so disable read ahead
-            handle_obj->flags |= H_FLAG_BLOCKRA;
-            goto skip_read_ahead;
-        }
-
-        if (handle_obj->buff) {
-            // Serve this request from read-ahead buffer
-            return read_ahead_handler(path, buf, size, offset, handle_obj);
-        }
-    }
-    #endif
-    
-skip_read_ahead:    
-    // Can't serve the request in native code, push call up in the pipeline
-    return native_pread(path, buf, size, offset, handle_obj);
-}
-
-// native_write_file : Write callback to decide whether to natively write or punt call to Go code
-static int native_write_file(char *path, char *buf, size_t size, off_t offset, fuse_file_info_t *fi)
-{
-    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
-    
-    if (handle_obj->fd == 0) {
-        return libfuse_write(path, buf, size, offset, fi);
-    }
-    
-    #ifdef ENABLE_READ_AHEAD
-    // Any write operation happens then we immediately disable the read-ahead on this file
-    // This is because any write on file may invalidate the cached buffer (offset overlap with write and buffer)
-    handle_obj->flags |= H_FLAG_BLOCKRA;
-    #endif
-
-    return native_pwrite(path, buf, size, offset, handle_obj);
-}
-
-// native_flush_file : Flush the file natively and call flush up in the pipeline to upload this file
-static int native_flush_file(char *path, fuse_file_info_t *fi)
-{
-    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
-    int ret = libfuse_flush(path, fi);
-    if (ret == 0) {
-        // As file is flushed and uploaded, reset the dirty bit here
-        handle_obj->dirty = 0;
-    }
-
-    return ret;
-}
-
-// native_close_file : Flush the file natively and call close up in the pipeline to upload this file
-static int native_close_file(char *path, fuse_file_info_t *fi)
-{
-    file_handle_t* handle_obj = (file_handle_t*)fi->fh;
-    return libfuse_release(path, fi);
-}
 // ---------------------------------------------------------------------------------
 
 #endif //__LIBFUSE_H__
