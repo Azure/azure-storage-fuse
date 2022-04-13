@@ -263,7 +263,7 @@ func (s *blockBlobTestSuite) TestDefault() {
 	s.assert.Equal(EAuthType.KEY(), s.az.stConfig.authConfig.AuthMode)
 	s.assert.Equal(s.container, s.az.stConfig.container)
 	s.assert.Empty(s.az.stConfig.prefixPath)
-	s.assert.EqualValues(16*1024*1024, s.az.stConfig.blockSize)
+	s.assert.EqualValues(0, s.az.stConfig.blockSize)
 	s.assert.EqualValues(32, s.az.stConfig.maxConcurrency)
 	s.assert.EqualValues(AccessTiers["none"], s.az.stConfig.defaultTier)
 	s.assert.EqualValues(0, s.az.stConfig.cancelListForSeconds)
