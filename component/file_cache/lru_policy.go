@@ -35,7 +35,6 @@ package file_cache
 
 import (
 	"blobfuse2/common/log"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -439,7 +438,8 @@ func (p *lruPolicy) deleteItem(name string) error {
 		// File was deleted so try clearing its parent directory
 		dirPath := filepath.Dir(name)
 		if dirPath != p.tmpPath {
-			os.Remove(dirPath)
+			// TODO: Delete directories up the path recursively that are "safe to delete". Ensure there is no race between this code and code that creates directories (like OpenFile)
+			// This might require something like hierarchical locking.
 		}
 	}
 
