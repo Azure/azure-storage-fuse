@@ -380,6 +380,9 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 
 	// If block size and max concurrency is configured use those
 	// A user provided value of 0 doesn't make sense for BlockSize, or MaxConcurrency.
+	if opt.BlockSize != 0 {
+		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
+	}
 
 	if opt.MaxConcurrency != 0 {
 		az.stConfig.maxConcurrency = opt.MaxConcurrency
