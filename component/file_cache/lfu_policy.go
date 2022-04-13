@@ -158,7 +158,8 @@ func (l *lfuPolicy) clearItemFromCache(path string) {
 		// File was deleted so try clearing its parent directory
 		dirPath := filepath.Dir(path)
 		if dirPath != l.tmpPath {
-			os.Remove(dirPath)
+			// TODO: Delete directories up the path recursively that are "safe to delete". Ensure there is no race between this code and code that creates directories (like OpenFile)
+			// This might require something like hierarchical locking.
 		}
 	}
 }
