@@ -40,6 +40,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/JeffreyRichter/enum/enum"
 )
 
@@ -232,6 +233,14 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		opt.AccountType = "block"
 	}
 
+	if opt.BlockSize != 0 {
+		if opt.BlockSize > azblob.BlockBlobMaxStageBlockBytes {
+			log.Err("block size is too large. Block size has to be smaller than %s Bytes", azblob.BlockBlobMaxStageBlockBytes)
+			return errors.New("block size is too large")
+		}
+		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
+	}
+
 	var accountType AccountType
 	accountType.Parse(opt.AccountType)
 	az.stConfig.authConfig.AccountType = accountType
@@ -371,9 +380,6 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 
 	// If block size and max concurrency is configured use those
 	// A user provided value of 0 doesn't make sense for BlockSize, or MaxConcurrency.
-	if opt.BlockSize != 0 {
-		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
-	}
 
 	if opt.MaxConcurrency != 0 {
 		az.stConfig.maxConcurrency = opt.MaxConcurrency

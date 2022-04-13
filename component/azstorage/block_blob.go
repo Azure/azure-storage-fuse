@@ -72,7 +72,7 @@ type BlockBlob struct {
 var _ AzConnection = &BlockBlob{}
 
 const (
-	MaxBlocks = azblob.BlockBlobMaxStageBlockBytes * azblob.BlockBlobMaxBlocks
+	MaxBlocksSize = azblob.BlockBlobMaxStageBlockBytes * azblob.BlockBlobMaxBlocks
 )
 
 func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
@@ -604,6 +604,30 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 	return nil
 }
 
+func (bb *BlockBlob) calculateBlockSize(name string, fi *os.File) (blockSize int64, err error) {
+	// get the size of the file
+	stat, err := fi.Stat()
+	if err != nil {
+		log.Err("BlockBlob::calculateBlockSize : Failed to get file size %s (%s)", name, err.Error())
+	}
+	fileSize := stat.Size()
+	// If bufferSize > (BlockBlobMaxStageBlockBytes * BlockBlobMaxBlocks), then error
+	if fileSize > MaxBlocksSize {
+		err = errors.New("buffer is too large to upload to a block blob")
+		log.Err("BlockBlob::calculateBlockSize : buffer is too large to upload to a block blob %s", name)
+	}
+	// If bufferSize <= BlockBlobMaxUploadBlobBytes, then Upload should be used with just 1 I/O request
+	if fileSize <= azblob.BlockBlobMaxUploadBlobBytes {
+		blockSize = azblob.BlockBlobMaxUploadBlobBytes // Default if unspecified
+	} else {
+		blockSize = fileSize / azblob.BlockBlobMaxBlocks     // buffer / max blocks = block size to use all 50,000 blocks
+		if blockSize < azblob.BlobDefaultDownloadBlockSize { // If the block size is smaller than 4MB, round up to 4MB
+			blockSize = azblob.BlobDefaultDownloadBlockSize
+		}
+	}
+	return blockSize, err
+}
+
 // WriteFromFile : Upload local file to blob
 func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *os.File) (err error) {
 	log.Trace("BlockBlob::WriteFromFile : name %s", name)
@@ -613,28 +637,10 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
 	blockSize := bb.Config.blockSize
 	// if the block size is not set then we configure it based on file size
-	if bb.Config.blockSize == 0 {
-		// get the size of the file
-		stat, err := fi.Stat()
+	if blockSize == 0 {
+		blockSize, err = bb.calculateBlockSize(name, fi)
 		if err != nil {
-			log.Err("BlockBlob::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
 			return err
-		}
-		fileSize := stat.Size()
-		// If bufferSize > (BlockBlobMaxStageBlockBytes * BlockBlobMaxBlocks), then error
-		if fileSize > MaxBlocks {
-			err = errors.New("buffer is too large to upload to a block blob")
-			log.Err("BlockBlob::WriteFromFile : buffer is too large to upload to a block blob %s", name)
-			return err
-		}
-		// If bufferSize <= BlockBlobMaxUploadBlobBytes, then Upload should be used with just 1 I/O request
-		if fileSize <= azblob.BlockBlobMaxUploadBlobBytes {
-			blockSize = azblob.BlockBlobMaxUploadBlobBytes // Default if unspecified
-		} else {
-			blockSize = fileSize / azblob.BlockBlobMaxBlocks     // buffer / max blocks = block size to use all 50,000 blocks
-			if blockSize < azblob.BlobDefaultDownloadBlockSize { // If the block size is smaller than 4MB, round up to 4MB
-				blockSize = azblob.BlobDefaultDownloadBlockSize
-			}
 		}
 	}
 	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
