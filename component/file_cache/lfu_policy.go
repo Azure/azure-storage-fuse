@@ -157,8 +157,10 @@ func (l *lfuPolicy) clearItemFromCache(path string) {
 	if err == nil {
 		// File was deleted so try clearing its parent directory
 		dirPath := filepath.Dir(path)
-		if dirPath != l.tmpPath {
-			os.Remove(dirPath)
+		for ; dirPath != l.tmpPath; dirPath = filepath.Dir(dirPath) {
+			if err = os.Remove(dirPath); err != nil {
+				break
+			}
 		}
 	}
 }

@@ -438,8 +438,10 @@ func (p *lruPolicy) deleteItem(name string) error {
 	if err == nil {
 		// File was deleted so try clearing its parent directory
 		dirPath := filepath.Dir(name)
-		if dirPath != p.tmpPath {
-			os.Remove(dirPath)
+		for ; dirPath != p.tmpPath; dirPath = filepath.Dir(dirPath) {
+			if err = os.Remove(dirPath); err != nil {
+				break
+			}
 		}
 	}
 
