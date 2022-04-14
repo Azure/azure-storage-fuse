@@ -199,9 +199,10 @@ jobs:
           distro_name: $(imageName)
 
       - template: 'azure-pipeline-templates/invalid-command-tests.yml'
+        parameters:
           working_dir: $(WORK_DIR)
           mount_dir: $(MOUNT_DIR)
-          
+
       - template: azure-pipeline-templates/cleanup.yml
         parameters:
           working_dir: $(WORK_DIR)
