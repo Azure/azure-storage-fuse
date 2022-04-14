@@ -894,6 +894,9 @@ func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) 
 func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::ReadInBuffer")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
+
+	// Read and write opertaions are very frequent so updating cache policy for every read is a costly operation
+	// Update cache policy every 1K operations (includes both read and write) instead
 	options.Handle.OptCnt++
 	if (options.Handle.OptCnt % 1000) == 0 {
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
@@ -913,6 +916,9 @@ func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, er
 func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::WriteFile")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
+
+	// Read and write opertaions are very frequent so updating cache policy for every read is a costly operation
+	// Update cache policy every 1K operations (includes both read and write) instead
 	options.Handle.OptCnt++
 	if (options.Handle.OptCnt % 1000) == 0 {
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
