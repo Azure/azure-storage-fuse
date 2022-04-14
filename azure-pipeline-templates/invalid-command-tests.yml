@@ -6,15 +6,12 @@ parameters:
 
 steps:
   - script: |
-      (
-        ${working_dir}/blobfuse2 mount ${mount_dir} --invalid-param
-      )
-      if [ $? = 2 ]
-      then
+      ${working_dir}/blobfuse2 mount ${mount_dir} --invalid-param &
+      if [ $? = 2 ]; then
         exit 0
       fi
     displayName: 'Invalid Mount'
-    continueOnError: true
+    continueOnError: false
     env:
       working_dir: ${{ parameters.working_dir }}
       mount_dir: ${{ parameters.mount_dir }}
