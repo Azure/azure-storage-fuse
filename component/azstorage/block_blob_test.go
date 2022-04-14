@@ -170,12 +170,12 @@ type blockBlobTestSuite struct {
 	container    string
 }
 
-func newTestAzStorage(configuration string) *AzStorage {
+func newTestAzStorage(configuration string) (*AzStorage, error) {
 	config.ReadConfigFromReader(strings.NewReader(configuration))
 	az := NewazstorageComponent()
-	az.Configure()
+	err := az.Configure()
 
-	return az.(*AzStorage)
+	return az.(*AzStorage), err
 }
 
 func (s *blockBlobTestSuite) SetupTest() {
@@ -223,7 +223,7 @@ func (s *blockBlobTestSuite) setupTestHelper(configuration string, container str
 
 	s.assert = assert.New(s.T())
 
-	s.az = newTestAzStorage(configuration)
+	s.az, _ = newTestAzStorage(configuration)
 	s.az.Start(ctx) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
 	// We could create the container before but that requires rewriting the code to new up a service client.
 
@@ -244,6 +244,13 @@ func (s *blockBlobTestSuite) tearDownTestHelper(delete bool) {
 func (s *blockBlobTestSuite) cleanupTest() {
 	s.tearDownTestHelper(true)
 	log.Destroy()
+}
+
+func (s *blockBlobTestSuite) TestInvalidBlockSize() {
+	configuration := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  block-size-mb: 5000\n account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	_, err := newTestAzStorage(configuration)
+	s.assert.NotNil(err)
 }
 
 func (s *blockBlobTestSuite) TestDefault() {

@@ -111,7 +111,7 @@ func (s *datalakeTestSuite) setupTestHelper(configuration string, container stri
 
 	s.assert = assert.New(s.T())
 
-	s.az = newTestAzStorage(configuration)
+	s.az, _ = newTestAzStorage(configuration)
 	s.az.Start(ctx) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
 	// We could create the container before but that requires rewriting the code to new up a service client.
 
