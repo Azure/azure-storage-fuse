@@ -54,15 +54,19 @@ const (
 	HandleFlagCached
 )
 
+type Cache struct {
+	DataBuffer gcache.Cache
+}
+
 type Handle struct {
 	sync.RWMutex
-	FObj       *os.File
-	ID         HandleID
-	Size       int64 // Size of the file being handled here
-	Flags      common.BitMap16
-	Path       string // always holds path relative to mount dir
-	values     map[string]interface{}
-	DataBuffer gcache.Cache
+	FObj     *os.File
+	ID       HandleID
+	Size     int64 // Size of the file being handled here
+	Flags    common.BitMap16
+	Path     string // always holds path relative to mount dir
+	values   map[string]interface{}
+	CacheObj *Cache
 }
 
 func NewHandle(path string) *Handle {

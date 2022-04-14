@@ -58,10 +58,6 @@ type cacheBlock struct {
 	last       bool // last block in the file?
 }
 
-type cacheFile struct {
-	openHandles     int
-	fileBlockBuffer gcache.Cache // contains all block pointers stored for a given file: {blockKey(off1, fileKey3): cacheBlock1, blockKey(off1, fileKey3): cacheBlock2, ...}
-}
 type cache struct {
 	sync.RWMutex
 
@@ -93,7 +89,10 @@ func (c *cache) addHandleCache(handle *handlemap.Handle) {
 	default:
 		fc = gcache.New(c.blocksPerFileKey).ARC().EvictedFunc(c.fileEvict).PurgeVisitorFunc(c.filePurge).Build()
 	}
-	handle.DataBuffer = fc
+	cacheObj := handlemap.Cache{
+		DataBuffer: fc,
+	}
+	handle.CacheObj = &cacheObj
 }
 
 // try to retrieve the block - return missing if it is not cached
@@ -103,7 +102,7 @@ func (c *cache) getBlock(handle *handlemap.Handle, offset int64) (*cacheBlock, b
 	c.Lock()
 	defer c.Unlock()
 	// this adds a cache hit to the file buffer if the block exists then down we're doing a cache hit on the block cache as well
-	block, err := handle.DataBuffer.Get(blockKeyObj)
+	block, err := handle.CacheObj.DataBuffer.Get(blockKeyObj)
 	// block was not found - create a new block, append it to cache and return it
 	if err == gcache.KeyNotFoundError {
 		if (offset + blockSize) > handle.Size {
@@ -119,14 +118,14 @@ func (c *cache) getBlock(handle *handlemap.Handle, offset int64) (*cacheBlock, b
 		// if we hit the max num of blocks stored for a given file then set it on the file enteries/buffer first
 		// this would get it evicted on the file buffer level and the respective block from the block cache and avoid double evicting
 		// this calls filePurgeOrEvict callback which will trigger the block cache to delete the corresponding block
-		handle.DataBuffer.Set(blockKeyObj, newBlock)
+		handle.CacheObj.DataBuffer.Set(blockKeyObj, newBlock)
 		// clear the evicted block entry since it was already removed from its file buffer
 		c.evictedBlock = blockKey{}
 		c.blocks.Set(blockKeyObj, newBlock)
 		// if a block was evicted in the process then we have to remove it from its file buffer as well
 		if c.evictedBlock != (blockKey{}) {
 			// get the evicted block file key and remove it from that file key's buffer
-			c.evictedBlock.handle.DataBuffer.Remove(c.evictedBlock)
+			c.evictedBlock.handle.CacheObj.DataBuffer.Remove(c.evictedBlock)
 			// if this was the last block stored for this file then we can remove the entry from our map
 			// TODO: we can add a cache timeout in the future
 			c.evictedBlock = blockKey{}
@@ -150,7 +149,7 @@ func (c *cache) teardown() {
 	for _, block := range c.blocks.Keys(false) {
 		bk := block.(blockKey)
 		c.blocks.Remove(bk)
-		c.evictedBlock.handle.DataBuffer.Remove(c.evictedBlock)
+		c.evictedBlock.handle.CacheObj.DataBuffer.Remove(c.evictedBlock)
 		c.evictedBlock = blockKey{}
 	}
 	// Cleanup block residing on disk path
@@ -164,7 +163,7 @@ func (c *cache) removeCachedHandle(handle *handlemap.Handle) {
 	defer c.Unlock()
 	// remove all blocks stored for the file key
 	// the purge walker callback will happen which will walk through all the block refs for this file and remove it from the main block cache
-	handle.DataBuffer.Purge()
+	handle.CacheObj.DataBuffer.Purge()
 }
 
 func (c *cache) fileEvict(key, value interface{}) {

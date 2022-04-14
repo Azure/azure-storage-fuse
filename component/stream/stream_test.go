@@ -157,7 +157,7 @@ func asyncCloseFile(suite *streamTestSuite, closeFileOptions internal.CloseFileO
 //assert that the block is cached
 func assertBlockCached(suite *streamTestSuite, offset int64, handle *handlemap.Handle) {
 	bk := blockKey{offset, handle}
-	_, err := handle.DataBuffer.Get(bk)
+	_, err := handle.CacheObj.DataBuffer.Get(bk)
 	suite.assert.NoError(err)
 	_, err = suite.stream.streamCache.blocks.Get(bk)
 	suite.assert.NoError(err)
@@ -166,7 +166,7 @@ func assertBlockCached(suite *streamTestSuite, offset int64, handle *handlemap.H
 //assert the block is not cached and KeyNotFoundError is thrown
 func assertBlockNotCached(suite *streamTestSuite, offset int64, handle *handlemap.Handle) {
 	bk := blockKey{offset, handle}
-	_, err := handle.DataBuffer.Get(bk)
+	_, err := handle.CacheObj.DataBuffer.Get(bk)
 	suite.assert.EqualError(err, gcache.KeyNotFoundError.Error())
 	_, err = suite.stream.streamCache.blocks.Get(bk)
 	suite.assert.EqualError(err, gcache.KeyNotFoundError.Error())
@@ -177,7 +177,7 @@ func assertNumberOfCachedBlocks(suite *streamTestSuite, numOfBlocks int) {
 }
 
 func assertNumberOfCachedFileBlocks(suite *streamTestSuite, numOfBlocks int, handle *handlemap.Handle) {
-	suite.assert.Equal(numOfBlocks, handle.DataBuffer.Len(false))
+	suite.assert.Equal(numOfBlocks, handle.CacheObj.DataBuffer.Len(false))
 }
 
 // ====================================== End of helper methods =================================
