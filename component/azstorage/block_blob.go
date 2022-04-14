@@ -71,6 +71,10 @@ type BlockBlob struct {
 // Verify that BlockBlob implements AzConnection interface
 var _ AzConnection = &BlockBlob{}
 
+const (
+	MaxBlocksSize = azblob.BlockBlobMaxStageBlockBytes * azblob.BlockBlobMaxBlocks
+)
+
 func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 	bb.Config = cfg
 
@@ -600,16 +604,47 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 	return nil
 }
 
+func (bb *BlockBlob) calculateBlockSize(name string, fi *os.File) (blockSize int64, err error) {
+	// get the size of the file
+	stat, err := fi.Stat()
+	if err != nil {
+		log.Err("BlockBlob::calculateBlockSize : Failed to get file size %s (%s)", name, err.Error())
+	}
+	fileSize := stat.Size()
+	// If bufferSize > (BlockBlobMaxStageBlockBytes * BlockBlobMaxBlocks), then error
+	if fileSize > MaxBlocksSize {
+		err = errors.New("buffer is too large to upload to a block blob")
+		log.Err("BlockBlob::calculateBlockSize : buffer is too large to upload to a block blob %s", name)
+	}
+	// If bufferSize <= BlockBlobMaxUploadBlobBytes, then Upload should be used with just 1 I/O request
+	if fileSize <= azblob.BlockBlobMaxUploadBlobBytes {
+		blockSize = azblob.BlockBlobMaxUploadBlobBytes // Default if unspecified
+	} else {
+		blockSize = fileSize / azblob.BlockBlobMaxBlocks     // buffer / max blocks = block size to use all 50,000 blocks
+		if blockSize < azblob.BlobDefaultDownloadBlockSize { // If the block size is smaller than 4MB, round up to 4MB
+			blockSize = azblob.BlobDefaultDownloadBlockSize
+		}
+	}
+	return blockSize, err
+}
+
 // WriteFromFile : Upload local file to blob
 func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *os.File) (err error) {
 	log.Trace("BlockBlob::WriteFromFile : name %s", name)
 	//defer exectime.StatTimeCurrentBlock("WriteFromFile::WriteFromFile")()
 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
+	blockSize := bb.Config.blockSize
+	// if the block size is not set then we configure it based on file size
+	if blockSize == 0 {
+		blockSize, err = bb.calculateBlockSize(name, fi)
+		if err != nil {
+			return err
+		}
+	}
 	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
-		BlockSize:      bb.Config.blockSize,
+		BlockSize:      blockSize,
 		Parallelism:    bb.Config.maxConcurrency,
 		Metadata:       metadata,
 		BlobAccessTier: bb.Config.defaultTier,
@@ -694,12 +729,16 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 }
 
 func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, length, blockIdLength int64) int64 {
+	blockSize := bb.Config.blockSize
 	prevIndex := blockList.BlockList[len(blockList.BlockList)-1].EndIndex
+	if blockSize == 0 {
+		blockSize = (16 * 1024 * 1024)
+	}
 	// BufferSize is the size of the buffer that will go beyond our current blob (appended)
 	var bufferSize int64
-	for i := prevIndex; i < offset+length; i += bb.Config.blockSize {
+	for i := prevIndex; i < offset+length; i += blockSize {
 		// create a new block if we hit our block size
-		blkSize := int64(math.Min(float64(bb.Config.blockSize), float64((offset+length)-i)))
+		blkSize := int64(math.Min(float64(blockSize), float64((offset+length)-i)))
 		newBlock := bb.createBlock(blockIdLength, i, blkSize)
 		blockList.BlockList = append(blockList.BlockList, newBlock)
 		// reset the counter since it will help us to determine if there is leftovers at the end
