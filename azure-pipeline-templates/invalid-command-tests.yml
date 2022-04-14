@@ -6,8 +6,13 @@ parameters:
 
 steps:
   - script: |
-      ${working_dir}/blobfuse2 mount ${mount_dir} --invalid-param
-      echo $?
+      (
+        ${working_dir}/blobfuse2 mount ${mount_dir} --invalid-param
+      )
+      if [ $? = 2 ]
+      then
+        exit 0
+      fi
     displayName: 'Invalid Mount'
     continueOnError: true
     env:
