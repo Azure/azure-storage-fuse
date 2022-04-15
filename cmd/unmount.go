@@ -44,11 +44,12 @@ import (
 )
 
 var unmountCmd = &cobra.Command{
-	Use:        "unmount <mount path>",
-	Short:      "Unmount Blobfuse2",
-	Long:       "Unmount Blobfuse2",
-	SuggestFor: []string{"unmount", "unmnt"},
-	Args:       cobra.ExactArgs(1),
+	Use:               "unmount <mount path>",
+	Short:             "Unmount Blobfuse2",
+	Long:              "Unmount Blobfuse2",
+	SuggestFor:        []string{"unmount", "unmnt"},
+	Args:              cobra.ExactArgs(1),
+	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cmd.Parent().Run(cmd.Parent(), args)
 
