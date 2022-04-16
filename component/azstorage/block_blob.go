@@ -135,6 +135,10 @@ func (bb *BlockBlob) getCredential() azblob.Credential {
 	}
 
 	cred := bb.Auth.getCredential()
+	if cred == nil {
+		log.Err("BlockBlob::getCredential : Failed to get credential")
+		return nil
+	}
 
 	return cred.(azblob.Credential)
 }
