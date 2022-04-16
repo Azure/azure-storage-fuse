@@ -31,7 +31,6 @@
    SOFTWARE
 */
 
-
 package cmd
 
 import (
@@ -54,12 +53,13 @@ var opts configGenOptions
 var templatesDir = "testdata/config/"
 
 var generateTestConfig = &cobra.Command{
-	Use:        "gen-test-config",
-	Short:      "Generate config file for testing given an output path.",
-	Long:       "Generate config file for testing given an output path.",
-	SuggestFor: []string{"conv test config", "convert test config"},
-	Hidden:     true,
-	Args:       cobra.ExactArgs(0),
+	Use:               "gen-test-config",
+	Short:             "Generate config file for testing given an output path.",
+	Long:              "Generate config file for testing given an output path.",
+	SuggestFor:        []string{"conv test config", "convert test config"},
+	Hidden:            true,
+	Args:              cobra.ExactArgs(0),
+	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		templateConfig, err := ioutil.ReadFile(templatesDir + opts.configFilePath)
 		if err != nil {

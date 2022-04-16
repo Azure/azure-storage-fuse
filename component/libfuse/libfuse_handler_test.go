@@ -129,7 +129,7 @@ func (suite *libfuseTestSuite) TestOpen() {
 }
 
 func (suite *libfuseTestSuite) TestOpenSyncFlag() {
-	testOpenSyncFlag(suite)
+	testOpenSyncDirectFlag(suite)
 }
 
 func (suite *libfuseTestSuite) TestOpenNotExists() {

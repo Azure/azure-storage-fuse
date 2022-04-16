@@ -218,21 +218,22 @@ func testOpen(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), err)
 }
 
-func testOpenSyncFlag(suite *libfuseTestSuite) {
+func testOpenSyncDirectFlag(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
 	mode := fs.FileMode(fuseFS.filePermission)
-	flags := C.O_RDWR & C.O_SYNC & 0xffffffff
+	flags := C.O_RDWR & C.O_SYNC & C.__O_DIRECT & 0xffffffff
 	info := &C.fuse_file_info_t{}
-	info.flags = C.O_RDWR & C.O_SYNC
+	info.flags = C.O_RDWR & C.O_SYNC & C.__O_DIRECT
 	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
 	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
 
 	err := libfuse_open(path, info)
 	suite.assert.Equal(C.int(0), err)
 	suite.assert.Equal(C.int(0), info.flags&C.O_SYNC)
+	suite.assert.Equal(C.int(0), info.flags&C.__O_DIRECT)
 }
 
 func testOpenNotExists(suite *libfuseTestSuite) {

@@ -60,10 +60,11 @@ type Blob struct {
 var disableVersionCheck bool
 
 var rootCmd = &cobra.Command{
-	Use:     "blobfuse2",
-	Short:   "Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage.",
-	Long:    "Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the fuse protocol to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs.",
-	Version: common.Blobfuse2Version,
+	Use:               "blobfuse2",
+	Short:             "Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage.",
+	Long:              "Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the fuse protocol to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs.",
+	Version:           common.Blobfuse2Version,
+	FlagErrorHandling: cobra.ExitOnError,
 	Run: func(cmd *cobra.Command, args []string) {
 		if !disableVersionCheck {
 			VersionCheck()

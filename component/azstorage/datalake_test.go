@@ -111,7 +111,7 @@ func (s *datalakeTestSuite) setupTestHelper(configuration string, container stri
 
 	s.assert = assert.New(s.T())
 
-	s.az = newTestAzStorage(configuration)
+	s.az, _ = newTestAzStorage(configuration)
 	s.az.Start(ctx) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
 	// We could create the container before but that requires rewriting the code to new up a service client.
 
@@ -151,7 +151,7 @@ func (s *datalakeTestSuite) TestDefault() {
 	s.assert.Equal(EAuthType.KEY(), s.az.stConfig.authConfig.AuthMode)
 	s.assert.Equal(s.container, s.az.stConfig.container)
 	s.assert.Empty(s.az.stConfig.prefixPath)
-	s.assert.EqualValues(16*1024*1024, s.az.stConfig.blockSize)
+	s.assert.EqualValues(0, s.az.stConfig.blockSize)
 	s.assert.EqualValues(32, s.az.stConfig.maxConcurrency)
 	s.assert.EqualValues(AccessTiers["none"], s.az.stConfig.defaultTier)
 	s.assert.EqualValues(0, s.az.stConfig.cancelListForSeconds)
