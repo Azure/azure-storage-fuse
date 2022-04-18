@@ -570,6 +570,7 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	flock.Inc()
 
 	handle := handlemap.NewHandle(options.Name)
+	handle.UnixFD = uint64(f.Fd())
 	handle.SetFileObject(f)
 
 	if fc.directRead {
@@ -800,6 +801,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		handle.Size = inf.Size()
 	}
 
+	handle.UnixFD = uint64(f.Fd())
 	handle.SetFileObject(f)
 
 	if fc.directRead {
@@ -889,36 +891,32 @@ func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) 
 // ReadInBuffer: Read the local file into a buffer
 func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::ReadInBuffer")()
-	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
-	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
-	fc.policy.CacheValid(localPath)
 
-	f := options.Handle.GetFileObject()
-	if f == nil {
-		log.Err("FileCache::ReadInBuffer : error [couldn't find fd in handle] %s", options.Handle.Path)
-		return 0, syscall.EBADF
+	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
+	options.Handle.OptCnt++
+	if (options.Handle.OptCnt % 1000) == 0 {
+		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
+		fc.policy.CacheValid(localPath)
 	}
 
-	return f.ReadAt(options.Data, options.Offset)
+	return syscall.Pread(options.Handle.FD(), options.Data, options.Offset)
 }
 
 // WriteFile: Write to the local file
 func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::WriteFile")()
 
-	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
-	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
-	fc.policy.CacheValid(localPath)
+	// Mark the handle dirty so the file is written back to storage on FlushFile.
+	options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 
-	f := options.Handle.GetFileObject()
-	if f == nil {
-		log.Err("FileCache::WriteFile : error [couldn't find fd in handle] %s", options.Handle.Path)
-		return 0, syscall.EBADF
+	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
+	options.Handle.OptCnt++
+	if (options.Handle.OptCnt % 1000) == 0 {
+		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
+		fc.policy.CacheValid(localPath)
 	}
 
-	options.Handle.Flags.Set(handlemap.HandleFlagDirty) // Mark the handle dirty so the file is written back to storage on FlushFile.
-
-	return f.WriteAt(options.Data, options.Offset)
+	return syscall.Pwrite(options.Handle.FD(), options.Data, options.Offset)
 }
 
 func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
