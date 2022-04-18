@@ -710,12 +710,13 @@ func (suite *fileCacheTestSuite) TestCloseFileTimeout() {
 	_, err = os.Stat(suite.fake_storage_path + "/" + path)
 	suite.assert.True(err == nil || os.IsExist(err))
 
-	// Wait cacheTimeout
-	time.Sleep(time.Second * time.Duration(cacheTimeout*2))
-
-	// File should not be in cache
+	// loop until file does not exist - done due to async nature of eviction
 	_, err = os.Stat(suite.cache_path + "/" + path)
-	suite.assert.True(os.IsNotExist(err))
+	for i := 0; i < (cacheTimeout*2) && !os.IsNotExist(err); i++ {
+		time.Sleep(time.Second)
+		_, err = os.Stat(suite.cache_path + "/" + path)
+	}
+
 	// File should be in storage
 	_, err = os.Stat(suite.fake_storage_path + "/" + path)
 	suite.assert.True(err == nil || os.IsExist(err))
