@@ -668,7 +668,9 @@ namespace azure {  namespace storage_lite {
                     const auto range = std::min(chunk_size, length - offset);
                     auto single_download = std::async(std::launch::async, [originalEtag, offset, range, this, &destPath, &container, &blob](){
                             // Note, keep std::ios_base::in to prevent truncating of the file.
-                            std::ofstream output(destPath.c_str(), std::ios_base::out |  std::ios_base::in);
+                            std::ofstream output(destPath.c_str(), std::ofstream::binary | std::ofstream::out);
+                            
+                            #if 0
                             output.seekp(offset);
                             auto chunk = m_blobClient->get_chunk_to_stream_sync(container, blob, offset, range, output);
                             output.close();
@@ -690,6 +692,44 @@ namespace azure {  namespace storage_lite {
                                 return unknown_error;
                             }
                             return 0;
+                            #else
+                            int ret_code = 0;                            
+                            unsigned long long remaining = range, bytes_to_read = 0, current_offset = offset;
+
+                            while(remaining > 0) {
+                                bytes_to_read = (remaining > (DOWNLOAD_CHUNK_SIZE * 2)) ? DOWNLOAD_CHUNK_SIZE : remaining;
+                                output.seekp(current_offset);
+
+                                auto chunk = m_blobClient->get_chunk_to_stream_sync(container, blob, current_offset, bytes_to_read, output);
+                                if(!chunk.success())
+                                {
+                                    // Looks like the blob has been replaced by smaller one - ask user to retry.
+                                    if (constants::code_request_range_not_satisfiable == chunk.error().code) {
+                                        ret_code = EAGAIN;
+                                        goto return_retcode;
+                                    }
+                                    return std::stoi(chunk.error().code);
+                                }
+                                // The etag has been changed - ask user to retry.
+                                if (originalEtag != chunk.response().etag) {
+                                    ret_code = EAGAIN;
+                                    goto return_retcode;
+                                }
+                                // Check for any writing errors.
+                                if (!output) {
+                                    logger::log(log_level::error, "get_chunk_to_stream_async failure in download_blob_to_file.  container = %s, blob = %s, destPath = %s, offset = %llu, range = %llu.", container.c_str(), blob.c_str(), destPath.c_str(), offset, range);
+                                    ret_code = unknown_error;
+                                    goto return_retcode;
+                                }
+                                current_offset += bytes_to_read;
+                                remaining -= bytes_to_read;
+                            }
+
+                            return_retcode:
+                                output.close();
+                                return ret_code;
+
+                            #endif
                         });
                     task_list.push_back(std::move(single_download));
                 }
