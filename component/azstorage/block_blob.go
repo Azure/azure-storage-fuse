@@ -628,9 +628,14 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 			// Block size is smaller then 16MB then consider 16MB as default
 			blockSize = azblob.BlobDefaultDownloadBlockSize
 		} else {
-			// Round it off to next multiple of 8, to avoid round offs
-			// If file size is not divisble by 50K then there will be some data left so expand for that
-			blockSize = (blockSize + 7) & int64(-8)
+			if (blockSize * azblob.BlockBlobMaxBlocks) < fileSize {
+				// blockSize * 50K leaves some bytes in files as fileSize is not divisble by
+				blockSize++
+			}
+
+			if (blockSize & (-8)) != 0 {
+				blockSize = (blockSize + 7) & (-8)
+			}
 
 			if blockSize > azblob.BlockBlobMaxStageBlockBytes {
 				// After rounding off the blockSize has become bigger then max allowed blocks.

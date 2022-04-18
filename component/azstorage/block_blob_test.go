@@ -1749,10 +1749,10 @@ func (s *blockBlobTestSuite) TestXBlockSize() {
 	s.assert.Nil(err)
 	s.assert.EqualValues(block, int64(10737424))
 
-	// For filesize 1TB expected blocksize is 21990232  (1TB/50000 ~= rounded off to next multiple of 8)
+	// For filesize 1TB expected blocksize is 21990240  (1TB/50000 ~= rounded off to next multiple of 8)
 	block, err = bb.calculateBlockSize(name, (1 * 1024 * 1024 * 1024 * 1024))
 	s.assert.Nil(err)
-	s.assert.EqualValues(block, int64(21990232))
+	s.assert.EqualValues(block, int64(21990240))
 
 	// For filesize 100TB expected blocksize is 2199023256  (100TB/50000 ~= rounded off to next multiple of 8)
 	block, err = bb.calculateBlockSize(name, (100 * 1024 * 1024 * 1024 * 1024))
@@ -1772,7 +1772,7 @@ func (s *blockBlobTestSuite) TestXBlockSize() {
 	// For Filesize created using dd for 1TB size
 	block, err = bb.calculateBlockSize(name, int64(1099511627776))
 	s.assert.Nil(err)
-	s.assert.EqualValues(block, int64(21990232))
+	s.assert.EqualValues(block, int64(21990240))
 
 	// Boundary condition 5 bytes less then max expected file size
 	block, err = bb.calculateBlockSize(name, (azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks)-5)
