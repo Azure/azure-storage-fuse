@@ -618,7 +618,7 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 
 	// If bufferSize <= BlockBlobMaxUploadBlobBytes, then Upload should be used with just 1 I/O request
 	if fileSize <= azblob.BlockBlobMaxUploadBlobBytes {
-		// Files upto 256MB can be uploaded as a single block
+		// Files up to 256MB can be uploaded as a single block
 		blockSize = azblob.BlockBlobMaxUploadBlobBytes
 	} else {
 		// buffer / max blocks = block size to use all 50,000 blocks
