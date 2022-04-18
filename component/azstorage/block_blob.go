@@ -648,7 +648,8 @@ func (bb *BlockBlob) calculateBlockSize(name string, fi *os.File) (blockSize int
 		}
 	}
 
-	return blockSize, err
+	log.Info("BlockBlob::calculateBlockSize : %s size %lu, blockSize %lu", name, fileSize, blockSize)
+	return blockSize, nil
 }
 
 // WriteFromFile : Upload local file to blob
