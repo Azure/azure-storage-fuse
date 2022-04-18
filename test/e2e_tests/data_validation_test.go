@@ -141,6 +141,7 @@ func (suite *dataValidationTestSuite) TestLargeFileData() {
 	suite.Equal(nil, err)
 
 	suite.copyToMountDir(localFilePath, remoteFilePath)
+	time.Sleep(2 * time.Second)
 	suite.validateData(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
