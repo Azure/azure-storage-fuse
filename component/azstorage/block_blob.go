@@ -608,15 +608,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 	return nil
 }
 
-func (bb *BlockBlob) calculateBlockSize(name string, fi *os.File) (blockSize int64, err error) {
-	// get the size of the file
-	stat, err := fi.Stat()
-	if err != nil {
-		log.Err("BlockBlob::calculateBlockSize : Failed to get file size %s (%s)", name, err.Error())
-		return 0, err
-	}
-
-	fileSize := stat.Size()
+func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize int64, err error) {
 	// If bufferSize > (BlockBlobMaxStageBlockBytes * BlockBlobMaxBlocks), then error
 	if fileSize > MaxBlocksSize {
 		log.Err("BlockBlob::calculateBlockSize : buffer is too large to upload to a block blob %s", name)
@@ -639,6 +631,7 @@ func (bb *BlockBlob) calculateBlockSize(name string, fi *os.File) (blockSize int
 			// Round it off to next multiple of 8, to avoid round offs
 			// If file size is not divisble by 50K then there will be some data left so expand for that
 			blockSize = (blockSize + 7) & int64(-8)
+
 			if blockSize > azblob.BlockBlobMaxStageBlockBytes {
 				// After rounding off the blockSize has become bigger then max allowed blocks.
 				log.Err("BlockBlob::calculateBlockSize : blockSize exceeds max allowed block size for %s", name)
@@ -659,10 +652,19 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
+
 	blockSize := bb.Config.blockSize
 	// if the block size is not set then we configure it based on file size
 	if blockSize == 0 {
-		blockSize, err = bb.calculateBlockSize(name, fi)
+		// get the size of the file
+		stat, err := fi.Stat()
+		if err != nil {
+			log.Err("BlockBlob::calculateBlockSize : Failed to get file size %s (%s)", name, err.Error())
+			return err
+		}
+
+		// based on file-size calculate block size
+		blockSize, err = bb.calculateBlockSize(name, stat.Size())
 		if err != nil {
 			return err
 		}
