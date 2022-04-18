@@ -1769,6 +1769,11 @@ func (s *blockBlobTestSuite) TestXBlockSize() {
 	s.assert.Nil(err)
 	s.assert.EqualValues(block, int64(azblob.BlockBlobMaxStageBlockBytes)) // 4194304000
 
+	// For Filesize created using dd for 1TB size
+	block, err = bb.calculateBlockSize(name, int64(1099511627776))
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, int64(21990232))
+
 	// Boundary condition 5 bytes less then max expected file size
 	block, err = bb.calculateBlockSize(name, (azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks)-5)
 	s.assert.Nil(err)
