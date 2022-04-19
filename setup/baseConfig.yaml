@@ -35,10 +35,9 @@ libfuse:
   # Streaming configuration
 stream:
   # If block-size-mb, blocks-per-file or cache-size-mb are 0, the stream component will not cache blocks. 
-  block-size-mb: <size of each block to be cached in memory while streaming (in MB). Default - 0 MB>
-  blocks-per-file: <maximum number of blocks, per file, that can be cached at any given time. Default - 0>
+  block-size-mb: <for read only mode - size of each block to be cached in memory while streaming (in MB). Default - 0 MB>
+  handle-buffer-size-mb: <capacity of cached data for per file handle. Default - 0>
   cache-size-mb: <total amount of memory that streaming can consume on the system. Default - 0 MB>
-  policy: lfu|lru|arc <cache eviction policy for cached blocks. Default - arc>
   disk-persistence: <persist blocks on disk when evicted from memory>
   disk-cache-path: <path to perist evicted blocks>
   disk-size-mb: <maximum disk space to be consumed by disk-persistence>

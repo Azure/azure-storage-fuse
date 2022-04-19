@@ -44,10 +44,8 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 	"sync"
 
-	"github.com/bluele/gcache"
 	"github.com/pbnjay/memory"
 	"go.uber.org/atomic"
 )
@@ -62,7 +60,6 @@ type StreamOptions struct {
 	BlockSize         uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	BufferSizePerFile uint64 `config:"blocks-per-file" yaml:"blocks-per-file,omitempty"`
 	CacheSize         uint64 `config:"cache-size-mb" yaml:"cache-size-mb,omitempty"`
-	Policy            string `config:"policy" yaml:"policy,omitempty"`
 	readOnly          bool   `config:"read-only"`
 	DiskPersistence   bool   `config:"disk-persistence"`
 	DiskPath          string `config:"disk-cache-path"`
@@ -79,11 +76,10 @@ type cache struct {
 	bufferSizePerHandle uint64 // maximum number of blocks allowed to be stored for a file
 	cacheSize           uint64 // maximum allowed configured number of blocks
 
-	diskBlocks      gcache.Cache // blocks stored on disk when persistence is on
-	diskPersistence bool         // When block is evicted from memory shall be stored on disk for some more time
-	diskPath        string       // Location where persisted blocks will be stored
-	diskCacheMB     int64        // Size of disk cache to be used for persistence
-	diskTimeoutSec  float64      // Timeout in seconds for the block persisted on disk
+	diskPersistence bool    // When block is evicted from memory shall be stored on disk for some more time
+	diskPath        string  // Location where persisted blocks will be stored
+	diskCacheMB     int64   // Size of disk cache to be used for persistence
+	diskTimeoutSec  float64 // Timeout in seconds for the block persisted on disk
 }
 
 const (
@@ -150,14 +146,7 @@ func (st *Stream) Configure() error {
 			log.Err("Stream::Configure : config error, handle level caching is available for read-only mode")
 			return errors.New("handle level caching is available for read-only mode")
 		}
-		// default eviction policy is LRU
-		var evictionPolicy common.EvictionPolicy
-		evictionPolicy.Parse(strings.ToLower(conf.Policy))
-
 		bc := handlemap.NewLRUCache(conf.DiskPersistence, conf.DiskPath, int64(conf.CacheSize), int64(conf.DiskCacheSize))
-		var diskBlockCache gcache.Cache
-
-		log.Trace("Stream::Configure : cache eviction policy %s", evictionPolicy)
 
 		if conf.DiskPersistence {
 			if conf.DiskTimeoutSec == 0 {
@@ -184,12 +173,10 @@ func (st *Stream) Configure() error {
 			blockSize:           int64(conf.BlockSize) * mb,
 			bufferSizePerHandle: conf.BufferSizePerFile,
 			blocks:              bc,
-			evictionPolicy:      evictionPolicy,
 			diskPersistence:     conf.DiskPersistence,
 			diskPath:            conf.DiskPath,
 			diskCacheMB:         int64(conf.DiskCacheSize),
 			diskTimeoutSec:      float64(conf.DiskTimeoutSec),
-			diskBlocks:          diskBlockCache,
 		}
 	}
 	return nil
@@ -244,14 +231,14 @@ func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*handlemap.C
 		if (offset + blockSize) > handle.Size {
 			blockSize = handle.Size - offset
 		}
-		newBlock := &handlemap.CacheBlock{
+		block = &handlemap.CacheBlock{
 			StartIndex: offset,
 			EndIndex:   offset + blockSize,
 			Data:       make([]byte, blockSize),
 			Last:       (offset + blockSize) >= handle.Size,
 		}
-		newBlock.Lock()
-		st.cache.blocks.Put(blockKeyObj, newBlock, handle, true)
+		block.Lock()
+		st.cache.blocks.Put(blockKeyObj, block, handle, true)
 		// if the block does not exist fetch it from the next component
 		options := internal.ReadInBufferOptions{
 			Handle: handle,
@@ -262,7 +249,7 @@ func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*handlemap.C
 		if err != nil && err != io.EOF {
 			return nil, false, err
 		}
-		return newBlock, false, nil
+		return block, false, nil
 	} else {
 		return block, true, nil
 	}

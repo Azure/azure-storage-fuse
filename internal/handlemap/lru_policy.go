@@ -18,30 +18,16 @@ type CacheBlock struct {
 	StartIndex int64
 	EndIndex   int64
 	Data       []byte
-	Last       bool // last block in the file?
+	Last       bool //last block in the file?
 }
 
 type DiskBlock struct {
 	StartIndex int64
 	EndIndex   int64
-	Path       string
+	Path       string //disk path to the block
 }
 
-//LRUCache definition for Least Recently Used Cache implementation.
-type LRUCache struct {
-	Capacity        int64                      //defines a cache object of the specified capacity.
-	List            *list.List                 //DoublyLinkedList for backing the cache value.
-	Elements        map[BlockKey]*list.Element //blockKey: KeyPair
-	Occupied        int64
-	DiskPersistence bool
-	DiskCapacity    int64
-	DiskList        *list.List
-	DiskElements    map[BlockKey]*list.Element //blockKey: DiskBlock
-	DiskPath        string
-	DiskOccupied    int64
-}
-
-//KeyPair: defines the cache structure to be stored in LRUCache
+//Key Pair: the list node containing both block key and cache block values
 type KeyPair struct {
 	key   BlockKey
 	value *CacheBlock
@@ -50,6 +36,20 @@ type KeyPair struct {
 type DiskKeyPair struct {
 	key   BlockKey
 	value *DiskBlock
+}
+
+//LRUCache definition for Least Recently Used Cache implementation
+type LRUCache struct {
+	Capacity        int64
+	List            *list.List                 //DoublyLinkedList: node1->node2.... node:=Key Pair
+	Elements        map[BlockKey]*list.Element //blockKey:Key Pair
+	Occupied        int64
+	DiskPersistence bool
+	DiskCapacity    int64
+	DiskList        *list.List                 //DoublyLinkedList: node1->node2.... node:=Disk Key Pair
+	DiskElements    map[BlockKey]*list.Element //blockKey:Disk Key Pair
+	DiskPath        string
+	DiskOccupied    int64
 }
 
 //NewLRUCache: creates a new LRUCache object with the defined capacity
@@ -70,30 +70,38 @@ func NewLRUCache(diskPresistence bool, diskPath string, capacity, diskCapacity i
 	}
 }
 
-// get file name on disk
+//get file name on disk
 func (cache *LRUCache) getLocalFilePath(bk BlockKey) string {
 	return filepath.Join(cache.DiskPath, bk.Handle.Path+"__"+fmt.Sprintf("%d", bk.StartIndex)+"__")
 }
 
-// get file/block from disk
-func (cache *LRUCache) GetFromDisk(bk BlockKey, block *CacheBlock) (found bool) {
+//get file/block from disk
+func (cache *LRUCache) GetFromDisk(bk BlockKey, handle *Handle) (*CacheBlock, bool) {
 	if node, ok := cache.DiskElements[bk]; ok {
-		diskBlock := node.Value.(*list.Element).Value.(*DiskKeyPair).value
+		//get the disk block
+		diskKeyPair := node.Value.(*list.Element).Value.(DiskKeyPair)
+		cb := &CacheBlock{
+			StartIndex: diskKeyPair.value.StartIndex,
+			EndIndex:   diskKeyPair.value.EndIndex,
+			Data:       make([]byte, diskKeyPair.value.EndIndex-diskKeyPair.value.StartIndex),
+			Last:       diskKeyPair.value.EndIndex >= handle.Size,
+		}
 		cache.DiskList.MoveToFront(node)
-		f, _ := os.OpenFile(diskBlock.Path, os.O_RDONLY, 0775)
-		f.Write(block.Data)
+		f, _ := os.OpenFile(diskKeyPair.value.Path, os.O_RDONLY, 0775)
+		//write to cache block (moving data to L1 cache)
+		f.Read(cb.Data)
 		f.Close()
-		return true
+		return cb, true
 	}
-	return false
+	return &CacheBlock{}, false
 }
 
-// put block on disk, given cache block and handle
-func (cache *LRUCache) PutOnDisk(bk BlockKey, block *CacheBlock) {
+//put block on disk, given cache block and handle
+func (cache *LRUCache) PutOnDisk(bk BlockKey, cb *CacheBlock) {
 	if cache.DiskOccupied >= cache.DiskCapacity {
-		// find LRU disk block
-		block := cache.DiskList.Back().Value.(*list.Element).Value.(*DiskKeyPair)
-		cache.RemoveFromDisk(block)
+		//find LRU disk diskKeyPair
+		bk := cache.DiskList.Back().Value.(*list.Element).Value.(*DiskKeyPair).key
+		cache.RemoveFromDisk(bk)
 	}
 	// create local path for the new disk block
 	localPath := cache.getLocalFilePath(bk)
@@ -101,14 +109,14 @@ func (cache *LRUCache) PutOnDisk(bk BlockKey, block *CacheBlock) {
 		Value: DiskKeyPair{
 			key: bk,
 			value: &DiskBlock{
-				StartIndex: block.StartIndex,
-				EndIndex:   block.EndIndex,
+				StartIndex: cb.StartIndex,
+				EndIndex:   cb.EndIndex,
 				Path:       localPath,
 			},
 		},
 	}
 	pointer := cache.DiskList.PushFront(node)
-	cache.DiskOccupied += (block.EndIndex - block.StartIndex)
+	cache.DiskOccupied += (cb.EndIndex - cb.StartIndex)
 	cache.DiskElements[bk] = pointer
 
 	os.MkdirAll(filepath.Dir(localPath), os.FileMode(0775))
@@ -117,57 +125,59 @@ func (cache *LRUCache) PutOnDisk(bk BlockKey, block *CacheBlock) {
 	f.Close()
 }
 
+//purge disk cache
 func (cache *LRUCache) PurgeDisk() {
 	for _, value := range cache.DiskElements {
-		cache.RemoveFromDisk(value.Value.(*list.Element).Value.(*DiskKeyPair))
+		cache.RemoveFromDisk(value.Value.(*list.Element).Value.(*DiskKeyPair).key)
 	}
 }
 
-func (cache *LRUCache) RemoveFromDisk(pair *DiskKeyPair) {
+//remove block from disk
+func (cache *LRUCache) RemoveFromDisk(bk BlockKey) {
 	// clean the block data to not leak any memory
-	localPath := cache.getLocalFilePath(pair.key)
+	localPath := cache.getLocalFilePath(bk)
 	os.Remove(localPath)
 	dirPath := filepath.Dir(localPath)
 	if dirPath != cache.DiskPath {
 		os.Remove(filepath.Dir(localPath))
 	}
-	if node, ok := cache.Elements[pair.key]; ok {
+	if node, ok := cache.Elements[bk]; ok {
 		cache.DiskOccupied -= (node.Value.(*CacheBlock).EndIndex - node.Value.(*CacheBlock).StartIndex)
-		delete(cache.DiskElements, pair.key)
+		delete(cache.DiskElements, bk)
 		cache.List.Remove(node)
 	}
 }
 
-// STILL WORK TO DO: MOVING THE DISK CACHE HIT TO THE MEM CACHE
-//Get: returns the cache value stored for the key, also moves the list pointer to front of the list
-func (cache *LRUCache) Get(key BlockKey, handle *Handle, handleProvided bool) (*CacheBlock, bool) {
+//Get: returns the cache value stored for the key, cache hits the handle and moves the list pointer to front of the list
+func (cache *LRUCache) Get(bk BlockKey, handle *Handle, handleProvided bool) (*CacheBlock, bool) {
+	var found bool
+	var cb *CacheBlock
+	//if handle is provided then we're still looking for the block
 	if handleProvided {
-		if node, ok := cache.Elements[key]; ok {
-			value := node.Value.(*list.Element).Value.(KeyPair).value
+		// check L1 cache for block
+		if node, ok := cache.Elements[bk]; ok {
+			cb = node.Value.(*list.Element).Value.(KeyPair).value
 			cache.List.MoveToFront(node)
+			//cache hit the handle
 			if handleProvided {
-				handle.CacheObj.DataBuffer.Get(key, &Handle{}, false)
+				handle.CacheObj.DataBuffer.Get(bk, &Handle{}, false)
 			}
-			return value, true
+			found = true
 		} else {
-			if node, ok := cache.DiskElements[key]; ok {
-				diskBlock := node.Value.(*list.Element).Value.(DiskKeyPair).value
-				newBlock := &CacheBlock{
-					StartIndex: diskBlock.StartIndex,
-					EndIndex:   diskBlock.EndIndex,
-					Data:       make([]byte, diskBlock.EndIndex-diskBlock.StartIndex),
-					Last:       diskBlock.EndIndex >= handle.Size,
-				}
-				cache.DiskList.MoveToFront(node)
-				f, _ := os.OpenFile(diskBlock.Path, os.O_RDONLY, 0775)
-				f.Write(newBlock.Data)
-				f.Close()
-				return newBlock, true
+			//block was not found in L1 cache - look on disk
+			cb, found = cache.GetFromDisk(bk, handle)
+			if found {
+				//bring back to L1
+				cache.Put(bk, cb, handle, true)
+				//remove from L2
+				cache.RemoveFromDisk(bk)
 			}
 		}
-		return &CacheBlock{}, false
+		//block not found
+		return cb, found
 	} else {
-		if node, ok := cache.Elements[key]; ok {
+		//handle is not provided therefore we just want to do a cache hit on the handle cache
+		if node, ok := cache.Elements[bk]; ok {
 			cache.List.MoveToFront(node)
 		}
 		return nil, true
@@ -175,11 +185,10 @@ func (cache *LRUCache) Get(key BlockKey, handle *Handle, handleProvided bool) (*
 }
 
 //Put: Inserts the key,value pair in LRUCache.
-//If list capacity is full, entry at the last index of the list is deleted before insertion.
 func (cache *LRUCache) Put(key BlockKey, value *CacheBlock, handle *Handle, handleProvided bool) {
 	if cache.Occupied >= cache.Capacity {
 		pair := cache.List.Back().Value.(*list.Element).Value.(KeyPair)
-		cache.Remove(pair.key, true, cache.DiskPersistence)
+		cache.Remove(pair.key, handleProvided, cache.DiskPersistence)
 	}
 	node := &list.Element{
 		Value: KeyPair{
@@ -202,24 +211,25 @@ func (cache *LRUCache) Print() {
 }
 
 //Keys: returns all the keys present in LRUCache
-func (cache *LRUCache) Keys() []interface{} {
-	var keys []interface{}
+func (cache *LRUCache) Keys() []BlockKey {
+	var keys []BlockKey
 	for k := range cache.Elements {
 		keys = append(keys, k)
 	}
 	return keys
 }
 
-func (cache *LRUCache) RecentlyUsed() interface{} {
+func (cache *LRUCache) RecentlyUsed() *CacheBlock {
 	return cache.List.Front().Value.(*list.Element).Value.(KeyPair).value
 }
 
 //Remove: removes the entry for the respective key
 func (cache *LRUCache) Remove(key BlockKey, handleProvided, presistOnDisk bool) {
-	// get the keyPair associated with the blockKey
+	// get the key Pair associated with the blockKey
 	if node, ok := cache.Elements[key]; ok {
 		// remove from capacity
 		cache.Occupied -= node.Value.(KeyPair).value.EndIndex - node.Value.(KeyPair).value.StartIndex
+		//if handle is not provided then we're on the handle cache we can just remove it from cache
 		if handleProvided {
 			// put block on disk if we want to presist it
 			if presistOnDisk {
@@ -237,18 +247,19 @@ func (cache *LRUCache) Remove(key BlockKey, handleProvided, presistOnDisk bool) 
 
 //Purge: clears LRUCache
 func (cache *LRUCache) Purge() {
-	for _, block := range cache.Keys() {
-		cache.Remove(block.(BlockKey), true, false)
+	for _, bk := range cache.Keys() {
+		cache.Remove(bk, true, false)
 	}
 	cache.Capacity = 0
 	cache.Elements = nil
 	cache.List = nil
+	cache.PurgeDisk()
 }
 
 //Purge: clears handle LRUCache
 func (cache *LRUCache) PurgeHandle(handle *Handle) {
-	for _, key := range handle.CacheObj.DataBuffer.Keys() {
-		cache.Remove(key.(BlockKey), true, false)
+	for _, bk := range handle.CacheObj.DataBuffer.Keys() {
+		//we don't want to presist on disk when purging a handle's blocks
+		cache.Remove(bk, true, false)
 	}
-	handle.CacheObj.DataBuffer.Purge()
 }
