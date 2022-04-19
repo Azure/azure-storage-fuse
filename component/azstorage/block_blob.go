@@ -622,18 +622,12 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 		blockSize = azblob.BlockBlobMaxUploadBlobBytes
 	} else {
 		// buffer / max blocks = block size to use all 50,000 blocks
-		blockSize = fileSize / azblob.BlockBlobMaxBlocks
+		blockSize = int64(math.Ceil(float64(fileSize) / azblob.BlockBlobMaxBlocks))
 
 		if blockSize < azblob.BlobDefaultDownloadBlockSize {
 			// Block size is smaller then 16MB then consider 16MB as default
 			blockSize = azblob.BlobDefaultDownloadBlockSize
 		} else {
-			if (blockSize * azblob.BlockBlobMaxBlocks) < fileSize {
-				// If fileSize is not divisble by 50K then there will be some bytes left
-				// as blockSize is rounded to integer value, in that case bump up the blockSize
-				blockSize++
-			}
-
 			if (blockSize & (-8)) != 0 {
 				// EXTRA : round off the block size to next higher multiple of 8.
 				// No reason to do so just the odd numbers in block size will not be good on server end is assumption
