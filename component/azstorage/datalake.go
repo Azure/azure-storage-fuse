@@ -505,6 +505,11 @@ func (dl *Datalake) Write(options internal.WriteFileOptions) error {
 	return dl.BlockBlob.Write(options)
 }
 
+// Truncate : truncate data at given offset
+func (dl *Datalake) Truncate(options internal.TruncateFileOptions) error {
+	return dl.BlockBlob.Truncate(options)
+}
+
 func (dl *Datalake) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
 	return dl.BlockBlob.GetFileBlockOffsets(name)
 }

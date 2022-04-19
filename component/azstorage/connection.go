@@ -114,6 +114,7 @@ type AzConnection interface {
 	WriteFromBuffer(name string, metadata map[string]string, data []byte) error
 	Write(options internal.WriteFileOptions) error
 	GetFileBlockOffsets(name string) (*common.BlockOffsetList, error)
+	Truncate(options internal.TruncateFileOptions) error
 
 	ChangeMod(string, os.FileMode) error
 	ChangeOwner(string, int, int) error

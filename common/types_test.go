@@ -90,8 +90,27 @@ func (suite *typesTestSuite) TestFindBlocksToModify() {
 	suite.assert.Equal(size, int64(5))
 	suite.assert.Equal(largerThanFile, true)
 
-	index, size, largerThanFile, appendOnly := bol.FindBlocksToModify(20, 20)
+	_, size, largerThanFile, appendOnly := bol.FindBlocksToModify(20, 20)
 	suite.assert.Equal(size, int64(0))
 	suite.assert.Equal(largerThanFile, true)
 	suite.assert.Equal(appendOnly, true)
+}
+
+func (suite *typesTestSuite) TestFindBlocksToTruncate() {
+	blocksList := []*Block{
+		{StartIndex: 0, EndIndex: 4, Size: 4},
+		{StartIndex: 4, EndIndex: 7, Size: 3},
+		{StartIndex: 7, EndIndex: 12, Size: 5},
+	}
+	bol := BlockOffsetList{
+		BlockList: blocksList,
+	}
+	index, _, _, _ := bol.FindBlocksToModify(2, 0)
+	suite.assert.Equal(index, 0)
+
+	index, _, _, _ = bol.FindBlocksToModify(5, 0)
+	suite.assert.Equal(index, 1)
+
+	index, _, _, _ = bol.FindBlocksToModify(11, 0)
+	suite.assert.Equal(index, 2)
 }

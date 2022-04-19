@@ -747,6 +747,84 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 	return bufferSize
 }
 
+// Truncate : truncate data at given offset to a blob
+func (bb *BlockBlob) Truncate(options internal.TruncateFileOptions) error {
+	defer log.TimeTrack(time.Now(), "BlockBlob::Write", options.Name)
+	log.Trace("BlockBlob::Truncate : name %s size %v", options.Name, options.Size)
+
+	fileOffsets, err := bb.GetFileBlockOffsets(options.Name)
+	if err != nil {
+		return err
+	}
+
+	// case 1: file consists of no blocks (small file)
+	if fileOffsets != nil && len(fileOffsets.BlockList) == 0 {
+		// get all the data and truncate it to the new size
+		oldData, err := bb.ReadBuffer(options.Name, 0, 0)
+		if err != nil {
+			log.Err("BlockBlob::Truncate : Failed to read from blob %s ", options.Name, err.Error())
+			return err
+		}
+		oldData = oldData[:options.Size]
+
+		// write the truncated data
+		err = bb.WriteFromBuffer(options.Name, options.Metadata, oldData)
+		if err != nil {
+			log.Err("BlockBlob::Truncate : Failed to upload to blob %s ", options.Name, err.Error())
+			return err
+		}
+		// case 2: given offset is within the size of the blob - and the blob consists of multiple blocks
+	} else {
+		index, _, _, _ := fileOffsets.FindBlocksToModify(options.Size, 0)
+		// buffer that holds preexisting data of block we want to truncate
+		truncatedBlockSize := options.Size - fileOffsets.BlockList[index].StartIndex
+		dataBuffer := make([]byte, truncatedBlockSize)
+		bb.ReadInBuffer(options.Name, fileOffsets.BlockList[index].StartIndex, truncatedBlockSize, dataBuffer)
+
+		// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
+		err := bb.stageAndCommitTruncatedBlocks(options.Name, dataBuffer, index, fileOffsets)
+		return err
+	}
+	return nil
+}
+
+func (bb *BlockBlob) stageAndCommitTruncatedBlocks(name string, data []byte, index int, offsetList *common.BlockOffsetList) error {
+	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	blockOffset := int64(0)
+	var blockIDList []string
+	for i, blk := range offsetList.BlockList {
+		// Keep appending until we hit the index block
+		blockIDList = append(blockIDList, blk.Id)
+		// update the index block
+		if i == index {
+			_, err := blobURL.StageBlock(context.Background(),
+				blk.Id,
+				bytes.NewReader(data),
+				bb.blobAccCond.LeaseAccessConditions,
+				nil,
+				bb.downloadOptions.ClientProvidedKeyOptions)
+			if err != nil {
+				log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to stage to blob %s at block %v (%s)", name, blockOffset, err.Error())
+				return err
+			}
+			break
+		}
+	}
+	_, err := blobURL.CommitBlockList(context.Background(),
+		blockIDList,
+		azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
+		nil,
+		bb.blobAccCond,
+		bb.Config.defaultTier,
+		nil, // datalake doesn't support tags here
+		bb.downloadOptions.ClientProvidedKeyOptions)
+	if err != nil {
+		log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to commit block list to blob %s (%s)", name, err.Error())
+		return err
+	}
+	return nil
+}
+
 // Write : write data at given offset to a blob
 func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 	name := options.Handle.Path

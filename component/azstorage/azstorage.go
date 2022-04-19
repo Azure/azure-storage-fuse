@@ -41,7 +41,6 @@ import (
 	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
-	"math"
 	"syscall"
 	"time"
 
@@ -367,30 +366,50 @@ func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 	attr, err := az.GetAttr(internal.GetAttrOptions{Name: options.Name})
 	if err != nil {
 		log.Err("AzStorage::TruncateFile : Failed to get attributes of file %s (%s)", options.Name, err.Error())
+		// TODO : Why do we only return on not exists?
 		if err == syscall.ENOENT {
 			return err
 		}
 	}
 
-	if attr != nil && attr.Size == options.Size {
-		// File is already of the given size so no point in doing read/write from storage
+	options.Metadata = attr.Metadata
+	if options.Size == attr.Size {
+		// File is already the correct size. No need to read/write from storage.
 		return nil
 	}
-
-	data := make([]byte, options.Size)
-	if options.Size != 0 && attr != nil {
-		size := math.Min(float64(attr.Size), float64(options.Size))
-		err := az.storage.ReadInBuffer(options.Name, 0, int64(size), data)
+	if options.Size == 0 {
+		// File needs to be truncated to 0 length
+		err = az.storage.WriteFromBuffer(options.Name, options.Metadata, make([]byte, options.Size))
 		if err != nil {
-			log.Err("AzStorage::TruncateFile : Failed to get file data")
+			log.Err("AzStorage::TruncateFile : Failed to truncate file %s to 0 length (%s)", options.Name, err.Error())
 			return err
 		}
 	}
-
-	err = az.storage.WriteFromBuffer(options.Name, attr.Metadata, data)
-	if err != nil {
-		log.Err("AzStorage::TruncateFile : Failed to update file")
-		return err
+	if options.Size > attr.Size {
+		// File needs to be extended to options.Size. Use Write
+		extendedSize := options.Size - attr.Size
+		err := az.storage.Write(internal.WriteFileOptions{
+			Handle: &handlemap.Handle{
+				Path: options.Name,
+				Size: attr.Size,
+			},
+			Offset:      attr.Size,
+			Data:        make([]byte, extendedSize),
+			FileOffsets: &common.BlockOffsetList{},
+			Metadata:    attr.Metadata,
+		})
+		if err != nil {
+			log.Err("AzStorage::TruncateFile : Failed to extend file %s to %d length (%s)", options.Name, options.Size, err.Error())
+			return err
+		}
+	}
+	if options.Size < attr.Size {
+		// File needs to be truncated to options.Size
+		err := az.storage.Truncate(options)
+		if err != nil {
+			log.Err("AzStorage::TruncateFile : Failed to truncate file %s to %d length (%s)", options.Name, options.Size, err.Error())
+			return err
+		}
 	}
 
 	return nil

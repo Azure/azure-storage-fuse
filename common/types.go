@@ -231,7 +231,8 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64,
 		}
 	}
 
-	return index, size, offset+length >= bol.BlockList[len(bol.BlockList)-1].EndIndex, appendOnly
+	exceedsFileBlocks := offset+length >= bol.BlockList[len(bol.BlockList)-1].EndIndex
+	return index, size, exceedsFileBlocks, appendOnly
 }
 
 // NewUUID returns a new uuid using RFC 4122 algorithm with the given length.
