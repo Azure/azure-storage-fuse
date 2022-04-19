@@ -629,11 +629,14 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 			blockSize = azblob.BlobDefaultDownloadBlockSize
 		} else {
 			if (blockSize * azblob.BlockBlobMaxBlocks) < fileSize {
-				// blockSize * 50K leaves some bytes in files as fileSize is not divisble by
+				// If fileSize is not divisble by 50K then there will be some bytes left
+				// as blockSize is rounded to integer value, in that case bump up the blockSize
 				blockSize++
 			}
 
 			if (blockSize & (-8)) != 0 {
+				// EXTRA : round off the block size to next higher multiple of 8.
+				// No reason to do so just the odd numbers in block size will not be good on server end is assumption
 				blockSize = (blockSize + 7) & (-8)
 			}
 
