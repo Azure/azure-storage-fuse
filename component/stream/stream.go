@@ -43,9 +43,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/bluele/gcache"
 	"github.com/pbnjay/memory"
@@ -54,20 +54,36 @@ import (
 
 type Stream struct {
 	internal.BaseComponent
-	streamCache *cache
-	streamOnly  bool // parameter used to check if its pure streaming
+	cache      *cache
+	streamOnly bool // parameter used to check if its pure streaming
 }
 
 type StreamOptions struct {
-	BlockSize       uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	BlocksPerFile   int    `config:"blocks-per-file" yaml:"blocks-per-file,omitempty"`
-	StreamCacheSize uint64 `config:"cache-size-mb" yaml:"cache-size-mb,omitempty"`
-	Policy          string `config:"policy" yaml:"policy,omitempty"`
-	readOnly        bool   `config:"read-only"`
-	DiskPersistence bool   `config:"disk-persistence"`
-	DiskPath        string `config:"disk-cache-path"`
-	DiskCacheSize   uint64 `config:"disk-size-mb"`
-	DiskTimeoutSec  uint64 `config:"disk-timeout-sec"`
+	BlockSize         uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	BufferSizePerFile uint64 `config:"blocks-per-file" yaml:"blocks-per-file,omitempty"`
+	CacheSize         uint64 `config:"cache-size-mb" yaml:"cache-size-mb,omitempty"`
+	Policy            string `config:"policy" yaml:"policy,omitempty"`
+	readOnly          bool   `config:"read-only"`
+	DiskPersistence   bool   `config:"disk-persistence"`
+	DiskPath          string `config:"disk-cache-path"`
+	DiskCacheSize     uint64 `config:"disk-size-mb"`
+	DiskTimeoutSec    uint64 `config:"disk-timeout-sec"`
+}
+
+type cache struct {
+	sync.RWMutex
+
+	evictionPolicy      common.EvictionPolicy
+	blocks              handlemap.LRUCache // blocks stored: {blockKey(off1, fileKey1): cacheBlock1, blockKey(off1, fileKey2): cacheBlock2, ...}
+	blockSize           int64
+	bufferSizePerHandle uint64 // maximum number of blocks allowed to be stored for a file
+	cacheSize           uint64 // maximum allowed configured number of blocks
+
+	diskBlocks      gcache.Cache // blocks stored on disk when persistence is on
+	diskPersistence bool         // When block is evicted from memory shall be stored on disk for some more time
+	diskPath        string       // Location where persisted blocks will be stored
+	diskCacheMB     int64        // Size of disk cache to be used for persistence
+	diskTimeoutSec  float64      // Timeout in seconds for the block persisted on disk
 }
 
 const (
@@ -100,16 +116,6 @@ func (st *Stream) Start(ctx context.Context) error {
 	return nil
 }
 
-func (st *Stream) evictBlock(key, value interface{}) {
-	// clean the block data to not leak any memory
-	st.streamCache.evictBlock(key.(blockKey), value.(*cacheBlock))
-}
-
-func (st *Stream) evictDiskBlock(key, value interface{}) {
-	// clean the block data to not leak any memory
-	st.streamCache.evictDiskBlock(key.(blockKey), value.(bool))
-}
-
 func (st *Stream) Configure() error {
 	log.Trace("Stream::Configure : %s", st.Name())
 	conf := StreamOptions{}
@@ -130,10 +136,10 @@ func (st *Stream) Configure() error {
 		return errors.New("stream component is available only for read-only mount")
 	}
 
-	if conf.BlocksPerFile <= 0 || conf.BlockSize <= 0 || conf.StreamCacheSize <= 0 || conf.StreamCacheSize < conf.BlockSize {
+	if conf.BufferSizePerFile <= 0 || conf.BlockSize <= 0 || conf.CacheSize <= 0 || conf.CacheSize < conf.BlockSize {
 		st.streamOnly = true
 	} else {
-		if uint64(conf.StreamCacheSize*mb) > memory.FreeMemory() {
+		if uint64(conf.CacheSize*mb) > memory.FreeMemory() {
 			log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
 			return errors.New("not enough free memory for provided stream configuration")
 		}
@@ -144,30 +150,16 @@ func (st *Stream) Configure() error {
 			log.Err("Stream::Configure : config error, handle level caching is available for read-only mode")
 			return errors.New("handle level caching is available for read-only mode")
 		}
-
-		maxBlocks := int(math.Floor(float64(conf.StreamCacheSize) / float64(conf.BlockSize)))
-
 		// default eviction policy is LRU
 		var evictionPolicy common.EvictionPolicy
 		evictionPolicy.Parse(strings.ToLower(conf.Policy))
 
-		var bc gcache.Cache
+		bc := handlemap.NewLRUCache(conf.DiskPersistence, conf.DiskPath, int64(conf.CacheSize), int64(conf.DiskCacheSize))
 		var diskBlockCache gcache.Cache
 
-		switch evictionPolicy {
-		case common.EPolicy.LFU():
-			bc = gcache.New(maxBlocks).LFU().EvictedFunc(st.evictBlock).Build()
-		case common.EPolicy.ARC():
-			bc = gcache.New(maxBlocks).ARC().EvictedFunc(st.evictBlock).Build()
-		default:
-			bc = gcache.New(maxBlocks).LRU().EvictedFunc(st.evictBlock).Build()
-		}
 		log.Trace("Stream::Configure : cache eviction policy %s", evictionPolicy)
 
 		if conf.DiskPersistence {
-			maxDiskBlocks := int(math.Floor(float64(conf.DiskCacheSize) / float64(conf.BlockSize)))
-			diskBlockCache = gcache.New(maxDiskBlocks).LRU().EvictedFunc(st.evictDiskBlock).Build()
-
 			if conf.DiskTimeoutSec == 0 {
 				conf.DiskTimeoutSec = defaultDiskTimeoutSec
 			}
@@ -188,17 +180,16 @@ func (st *Stream) Configure() error {
 			}
 		}
 
-		st.streamCache = &cache{
-			blockSize:        int64(conf.BlockSize) * mb,
-			maxBlocks:        maxBlocks,
-			blocksPerFileKey: conf.BlocksPerFile,
-			blocks:           bc,
-			evictionPolicy:   evictionPolicy,
-			diskPersistence:  conf.DiskPersistence,
-			diskPath:         conf.DiskPath,
-			diskCacheMB:      int64(conf.DiskCacheSize),
-			diskTimeoutSec:   float64(conf.DiskTimeoutSec),
-			diskBlocks:       diskBlockCache,
+		st.cache = &cache{
+			blockSize:           int64(conf.BlockSize) * mb,
+			bufferSizePerHandle: conf.BufferSizePerFile,
+			blocks:              bc,
+			evictionPolicy:      evictionPolicy,
+			diskPersistence:     conf.DiskPersistence,
+			diskPath:            conf.DiskPath,
+			diskCacheMB:         int64(conf.DiskCacheSize),
+			diskTimeoutSec:      float64(conf.DiskTimeoutSec),
+			diskBlocks:          diskBlockCache,
 		}
 	}
 	return nil
@@ -208,12 +199,14 @@ func (st *Stream) Configure() error {
 func (st *Stream) Stop() error {
 	log.Trace("Stopping component : %s", st.Name())
 	if !st.streamOnly {
-		st.streamCache.teardown()
+		st.cache.Lock()
+		defer st.cache.Unlock()
+		st.cache.blocks.Purge()
 	}
 	return nil
 }
 
-func (st *Stream) unlockBlock(block *cacheBlock, exists bool) {
+func (st *Stream) unlockBlock(block *handlemap.CacheBlock, exists bool) {
 	if exists {
 		block.RUnlock()
 	} else {
@@ -232,29 +225,47 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 		handle = handlemap.NewHandle(options.Name)
 	}
 	if !st.streamOnly {
-		st.streamCache.addHandleCache(handle)
-		block, exists, _ := st.fetchBlock(handle, 0)
+		cacheObj := handlemap.Cache{
+			DataBuffer: handlemap.NewLRUCache(false, "", int64(st.cache.bufferSizePerHandle), 0),
+		}
+		handle.CacheObj = &cacheObj
+		block, exists, _ := st.getBlock(handle, 0)
 		// if it exists then we can just RUnlock since we didn't manipulate its data buffer
 		st.unlockBlock(block, exists)
 	}
 	return handle, err
 }
 
-func (st *Stream) fetchBlock(handle *handlemap.Handle, offset int64) (*cacheBlock, bool, error) {
-	block, exists := st.streamCache.getBlock(handle, offset)
-	if !exists {
+func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*handlemap.CacheBlock, bool, error) {
+	blockSize := st.cache.blockSize
+	blockKeyObj := handlemap.BlockKey{Handle: handle, StartIndex: offset}
+	block, found := st.cache.blocks.Get(blockKeyObj, handle, true)
+	if !found {
+		if (offset + blockSize) > handle.Size {
+			blockSize = handle.Size - offset
+		}
+		newBlock := &handlemap.CacheBlock{
+			StartIndex: offset,
+			EndIndex:   offset + blockSize,
+			Data:       make([]byte, blockSize),
+			Last:       (offset + blockSize) >= handle.Size,
+		}
+		newBlock.Lock()
+		st.cache.blocks.Put(blockKeyObj, newBlock, handle, true)
 		// if the block does not exist fetch it from the next component
 		options := internal.ReadInBufferOptions{
 			Handle: handle,
-			Offset: block.startIndex,
-			Data:   block.data,
+			Offset: block.StartIndex,
+			Data:   block.Data,
 		}
 		_, err := st.NextComponent().ReadInBuffer(options)
 		if err != nil && err != io.EOF {
-			return nil, exists, err
+			return nil, false, err
 		}
+		return newBlock, false, nil
+	} else {
+		return block, true, nil
 	}
-	return block, exists, nil
 }
 
 func (st *Stream) copyCachedBlock(handle *handlemap.Handle, offset int64, data []byte) (int, error) {
@@ -264,15 +275,15 @@ func (st *Stream) copyCachedBlock(handle *handlemap.Handle, offset int64, data [
 	// covers the case if we get a call that is bigger than the file size
 	for dataLeft > 0 && offset < handle.Size {
 		// round all offsets to the specific blocksize offsets
-		cachedBlockStartIndex := (offset - (offset % st.streamCache.blockSize))
+		cachedBlockStartIndex := (offset - (offset % st.cache.blockSize))
 		// Lock on requested block and fileName to ensure it is not being rerequested or manipulated
-		block, exists, err := st.fetchBlock(handle, cachedBlockStartIndex)
+		block, exists, err := st.getBlock(handle, cachedBlockStartIndex)
 		if err != nil {
 			st.unlockBlock(block, exists)
-			log.Err("Stream::ReadInBuffer : failed to download block of %s with offset %d: [%s]", handle.Path, block.startIndex, err.Error())
+			log.Err("Stream::ReadInBuffer : failed to download block of %s with offset %d: [%s]", handle.Path, block.StartIndex, err.Error())
 			return dataRead, err
 		}
-		dataCopied := int64(copy(data[dataRead:], block.data[offset-cachedBlockStartIndex:]))
+		dataCopied := int64(copy(data[dataRead:], block.Data[offset-cachedBlockStartIndex:]))
 		st.unlockBlock(block, exists)
 		dataLeft -= dataCopied
 		offset += dataCopied
@@ -301,7 +312,9 @@ func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	st.NextComponent().CloseFile(options)
 	if !st.streamOnly {
-		st.streamCache.removeCachedHandle(options.Handle)
+		st.cache.Lock()
+		defer st.cache.Unlock()
+		st.cache.blocks.PurgeHandle(options.Handle)
 	}
 	return nil
 }

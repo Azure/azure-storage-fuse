@@ -38,7 +38,6 @@ import (
 	"os"
 	"sync"
 
-	"github.com/bluele/gcache"
 	"go.uber.org/atomic"
 )
 
@@ -55,7 +54,7 @@ const (
 )
 
 type Cache struct {
-	DataBuffer gcache.Cache
+	DataBuffer LRUCache
 }
 
 type Handle struct {
