@@ -58,13 +58,12 @@ type Stream struct {
 
 type StreamOptions struct {
 	BlockSize         uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	BufferSizePerFile uint64 `config:"blocks-per-file" yaml:"blocks-per-file,omitempty"`
+	BufferSizePerFile uint64 `config:"handle-buffer-size-mb" yaml:"handle-buffer-size-mb,omitempty"`
 	CacheSize         uint64 `config:"cache-size-mb" yaml:"cache-size-mb,omitempty"`
 	readOnly          bool   `config:"read-only"`
 	DiskPersistence   bool   `config:"disk-persistence"`
 	DiskPath          string `config:"disk-cache-path"`
 	DiskCacheSize     uint64 `config:"disk-size-mb"`
-	DiskTimeoutSec    uint64 `config:"disk-timeout-sec"`
 }
 
 type cache struct {
@@ -149,10 +148,6 @@ func (st *Stream) Configure() error {
 		bc := handlemap.NewLRUCache(conf.DiskPersistence, conf.DiskPath, int64(conf.CacheSize), int64(conf.DiskCacheSize))
 
 		if conf.DiskPersistence {
-			if conf.DiskTimeoutSec == 0 {
-				conf.DiskTimeoutSec = defaultDiskTimeoutSec
-			}
-
 			if conf.DiskPath == "" {
 				log.Err("Stream::Configure : Config error [disk-cache-path not set]")
 				return fmt.Errorf("config error in %s [disk-cache-path not set]", st.Name())
@@ -176,7 +171,6 @@ func (st *Stream) Configure() error {
 			diskPersistence:     conf.DiskPersistence,
 			diskPath:            conf.DiskPath,
 			diskCacheMB:         int64(conf.DiskCacheSize),
-			diskTimeoutSec:      float64(conf.DiskTimeoutSec),
 		}
 	}
 	return nil

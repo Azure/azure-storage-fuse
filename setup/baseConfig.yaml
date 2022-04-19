@@ -41,7 +41,6 @@ stream:
   disk-persistence: <persist blocks on disk when evicted from memory>
   disk-cache-path: <path to perist evicted blocks>
   disk-size-mb: <maximum disk space to be consumed by disk-persistence>
-  disk-timeout-sec: <number of seconds a persisted block is considered valid>
 
 # Disk cache related configuration  
 file_cache:
