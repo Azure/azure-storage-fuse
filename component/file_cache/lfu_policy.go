@@ -153,6 +153,10 @@ func (l *lfuPolicy) clearItemFromCache(path string) {
 
 	// There are no open handles for this file so its safe to remove this
 	deleteFile(path)
+
+	// File was deleted so try clearing its parent directory
+	// TODO: Delete directories up the path recursively that are "safe to delete". Ensure there is no race between this code and code that creates directories (like OpenFile)
+	// This might require something like hierarchical locking.
 }
 
 func (l *lfuPolicy) clearCache() {

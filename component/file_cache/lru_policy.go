@@ -433,6 +433,10 @@ func (p *lruPolicy) deleteItem(name string) error {
 
 	// There are no open handles for this file so its safe to remove this
 	deleteFile(name)
+	// File was deleted so try clearing its parent directory
+	// TODO: Delete directories up the path recursively that are "safe to delete". Ensure there is no race between this code and code that creates directories (like OpenFile)
+	// This might require something like hierarchical locking.
+
 	return nil
 }
 
