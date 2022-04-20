@@ -54,7 +54,8 @@ const (
 )
 
 type Cache struct {
-	DataBuffer LRUCache
+	sync.RWMutex
+	DataBuffer *LRUCache
 }
 
 type Handle struct {

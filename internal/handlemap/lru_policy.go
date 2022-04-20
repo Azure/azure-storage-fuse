@@ -40,6 +40,7 @@ type DiskKeyPair struct {
 
 //LRUCache definition for Least Recently Used Cache implementation
 type LRUCache struct {
+	sync.RWMutex
 	Capacity        int64
 	List            *list.List                 //DoublyLinkedList: node1->node2.... node:=Key Pair
 	Elements        map[BlockKey]*list.Element //blockKey:Key Pair
@@ -53,12 +54,12 @@ type LRUCache struct {
 }
 
 //NewLRUCache: creates a new LRUCache object with the defined capacity
-func NewLRUCache(diskPresistence bool, diskPath string, capacity, diskCapacity int64) LRUCache {
+func NewLRUCache(diskPresistence bool, diskPath string, capacity, diskCapacity int64) *LRUCache {
 	var diskElements map[BlockKey]*list.Element = nil
 	if diskPresistence {
 		diskElements = make(map[BlockKey]*list.Element)
 	}
-	return LRUCache{
+	return &LRUCache{
 		Capacity:        capacity,
 		List:            new(list.List),
 		Elements:        make(map[BlockKey]*list.Element),
@@ -121,7 +122,7 @@ func (cache *LRUCache) PutOnDisk(bk BlockKey, cb *CacheBlock) {
 
 	os.MkdirAll(filepath.Dir(localPath), os.FileMode(0775))
 	f, _ := os.OpenFile(localPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0775)
-	f.Write(node.Value.(*CacheBlock).Data)
+	f.Write(cb.Data)
 	f.Close()
 }
 
@@ -142,7 +143,7 @@ func (cache *LRUCache) RemoveFromDisk(bk BlockKey) {
 		os.Remove(filepath.Dir(localPath))
 	}
 	if node, ok := cache.Elements[bk]; ok {
-		cache.DiskOccupied -= (node.Value.(*CacheBlock).EndIndex - node.Value.(*CacheBlock).StartIndex)
+		cache.DiskOccupied -= (node.Value.(*list.Element).Value.(KeyPair).value.EndIndex - node.Value.(*list.Element).Value.(KeyPair).value.StartIndex)
 		delete(cache.DiskElements, bk)
 		cache.List.Remove(node)
 	}
@@ -197,7 +198,7 @@ func (cache *LRUCache) Put(key BlockKey, value *CacheBlock, handle *Handle, hand
 		},
 	}
 	pointer := cache.List.PushFront(node)
-	cache.Occupied += (node.Value.(*CacheBlock).EndIndex - node.Value.(*CacheBlock).StartIndex)
+	cache.Occupied += (node.Value.(KeyPair).value.EndIndex - node.Value.(KeyPair).value.StartIndex)
 	cache.Elements[key] = pointer
 	if handleProvided {
 		handle.CacheObj.DataBuffer.Put(key, value, &Handle{}, false)
@@ -228,14 +229,14 @@ func (cache *LRUCache) Remove(key BlockKey, handleProvided, presistOnDisk bool) 
 	// get the key Pair associated with the blockKey
 	if node, ok := cache.Elements[key]; ok {
 		// remove from capacity
-		cache.Occupied -= node.Value.(KeyPair).value.EndIndex - node.Value.(KeyPair).value.StartIndex
+		cache.Occupied -= node.Value.(*list.Element).Value.(KeyPair).value.EndIndex - node.Value.(*list.Element).Value.(KeyPair).value.StartIndex
 		//if handle is not provided then we're on the handle cache we can just remove it from cache
 		if handleProvided {
 			// put block on disk if we want to presist it
 			if presistOnDisk {
 				cache.PutOnDisk(key, node.Value.(*list.Element).Value.(KeyPair).value)
 			}
-			node.Value.(*CacheBlock).Data = nil
+			node.Value.(*list.Element).Value.(KeyPair).value.Data = nil
 		}
 		delete(cache.Elements, key)
 		cache.List.Remove(node)

@@ -30,7 +30,7 @@
 //    SOFTWARE
 // */
 
-// package stream
+package stream
 
 // import (
 // 	"blobfuse2/common"
@@ -123,10 +123,10 @@
 // }
 
 // // return the block
-// func getCachedBlock(suite *streamTestSuite, offset int64, handle *handlemap.Handle) *cacheBlock {
-// 	bk := blockKey{offset, handle}
-// 	blk, _ := suite.stream.cache.blocks.Get(bk)
-// 	return blk.(*cacheBlock)
+// func getCachedBlock(suite *streamTestSuite, offset int64, handle *handlemap.Handle) *handlemap.CacheBlock {
+// 	bk := handlemap.BlockKey{offset, handle}
+// 	blk, _ := suite.stream.cache.blocks.Get(bk, handle, true)
+// 	return blk.(*handlemap.CacheBlock)
 // }
 
 // // return the block from persistence cache
