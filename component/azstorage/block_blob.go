@@ -608,28 +608,43 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 	return nil
 }
 
-func (bb *BlockBlob) calculateBlockSize(name string, fi *os.File) (blockSize int64, err error) {
-	// get the size of the file
-	stat, err := fi.Stat()
-	if err != nil {
-		log.Err("BlockBlob::calculateBlockSize : Failed to get file size %s (%s)", name, err.Error())
-	}
-	fileSize := stat.Size()
+func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize int64, err error) {
 	// If bufferSize > (BlockBlobMaxStageBlockBytes * BlockBlobMaxBlocks), then error
 	if fileSize > MaxBlocksSize {
-		err = errors.New("buffer is too large to upload to a block blob")
 		log.Err("BlockBlob::calculateBlockSize : buffer is too large to upload to a block blob %s", name)
+		err = errors.New("buffer is too large to upload to a block blob")
+		return 0, err
 	}
+
 	// If bufferSize <= BlockBlobMaxUploadBlobBytes, then Upload should be used with just 1 I/O request
 	if fileSize <= azblob.BlockBlobMaxUploadBlobBytes {
-		blockSize = azblob.BlockBlobMaxUploadBlobBytes // Default if unspecified
+		// Files up to 256MB can be uploaded as a single block
+		blockSize = azblob.BlockBlobMaxUploadBlobBytes
 	} else {
-		blockSize = fileSize / azblob.BlockBlobMaxBlocks     // buffer / max blocks = block size to use all 50,000 blocks
-		if blockSize < azblob.BlobDefaultDownloadBlockSize { // If the block size is smaller than 4MB, round up to 4MB
+		// buffer / max blocks = block size to use all 50,000 blocks
+		blockSize = int64(math.Ceil(float64(fileSize) / azblob.BlockBlobMaxBlocks))
+
+		if blockSize < azblob.BlobDefaultDownloadBlockSize {
+			// Block size is smaller then 16MB then consider 16MB as default
 			blockSize = azblob.BlobDefaultDownloadBlockSize
+		} else {
+			if (blockSize & (-8)) != 0 {
+				// EXTRA : round off the block size to next higher multiple of 8.
+				// No reason to do so just the odd numbers in block size will not be good on server end is assumption
+				blockSize = (blockSize + 7) & (-8)
+			}
+
+			if blockSize > azblob.BlockBlobMaxStageBlockBytes {
+				// After rounding off the blockSize has become bigger then max allowed blocks.
+				log.Err("BlockBlob::calculateBlockSize : blockSize exceeds max allowed block size for %s", name)
+				err = errors.New("block-size is too large to upload to a block blob")
+				return 0, err
+			}
 		}
 	}
-	return blockSize, err
+
+	log.Info("BlockBlob::calculateBlockSize : %s size %lu, blockSize %lu", name, fileSize, blockSize)
+	return blockSize, nil
 }
 
 // WriteFromFile : Upload local file to blob
@@ -639,14 +654,24 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
+
 	blockSize := bb.Config.blockSize
 	// if the block size is not set then we configure it based on file size
 	if blockSize == 0 {
-		blockSize, err = bb.calculateBlockSize(name, fi)
+		// get the size of the file
+		stat, err := fi.Stat()
+		if err != nil {
+			log.Err("BlockBlob::calculateBlockSize : Failed to get file size %s (%s)", name, err.Error())
+			return err
+		}
+
+		// based on file-size calculate block size
+		blockSize, err = bb.calculateBlockSize(name, stat.Size())
 		if err != nil {
 			return err
 		}
 	}
+
 	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
 		BlockSize:      blockSize,
 		Parallelism:    bb.Config.maxConcurrency,

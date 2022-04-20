@@ -56,9 +56,8 @@ type LogFileConfig struct {
 }
 
 type BaseLogger struct {
-	channel     chan (string)
-	workerDone  sync.WaitGroup
-	channelLock sync.RWMutex
+	channel    chan (string)
+	workerDone sync.WaitGroup
 
 	logger        *log.Logger
 	logFileHandle io.WriteCloser
@@ -225,9 +224,7 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...interface{}) {
 		filepath.Base(fn), ln,
 		msg)
 
-	l.channelLock.Lock()
 	l.channel <- msg
-	l.channelLock.Unlock()
 }
 
 // logDumper : logEvent just enqueues an event in the channel, this thread dumps that log to the file
