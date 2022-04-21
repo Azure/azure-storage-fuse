@@ -141,6 +141,12 @@ func (l *lfuPolicy) clearItemFromCache(path string) {
 	}
 
 	flock := l.fileLocks.Get(azPath)
+	if l.fileLocks.Locked(azPath) {
+		log.Warn("lfuPolicy::DeleteItem : File in under download %s", azPath)
+		l.CacheValid(path)
+		return
+	}
+
 	flock.Lock()
 	defer flock.Unlock()
 

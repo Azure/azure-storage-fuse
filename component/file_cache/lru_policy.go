@@ -421,6 +421,12 @@ func (p *lruPolicy) deleteItem(name string) error {
 	}
 
 	flock := p.fileLocks.Get(azPath)
+	if p.fileLocks.Locked(azPath) {
+		log.Warn("lruPolicy::DeleteItem : File in under download %s", azPath)
+		p.CacheValid(name)
+		return nil
+	}
+
 	flock.Lock()
 	defer flock.Unlock()
 
