@@ -668,7 +668,7 @@ namespace azure {  namespace storage_lite {
                     const auto range = std::min(chunk_size, length - offset);
                     auto single_download = std::async(std::launch::async, [originalEtag, offset, range, this, &destPath, &container, &blob](){
                             // Note, keep std::ios_base::in to prevent truncating of the file.
-                            std::ofstream output(destPath.c_str(), std::ofstream::binary | std::ofstream::out);
+                            std::ofstream output(destPath.c_str(), std::ofstream::binary | std::ofstream::out | std::ofstream::in);
                             
                             #if 0
                             output.seekp(offset);
@@ -721,8 +721,8 @@ namespace azure {  namespace storage_lite {
                                     ret_code = unknown_error;
                                     goto return_retcode;
                                 }
-                                current_offset += bytes_to_read;
-                                remaining -= bytes_to_read;
+                                current_offset += chunk.response().size;
+                                remaining -= chunk.response().size;
                             }
 
                             return_retcode:
