@@ -43,7 +43,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
+	"sync/atomic"
 
 	"github.com/pbnjay/memory"
 )
@@ -57,24 +57,15 @@ type Stream struct {
 type StreamOptions struct {
 	BlockSize         uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	BufferSizePerFile uint64 `config:"handle-buffer-size-mb" yaml:"handle-buffer-size-mb,omitempty"`
-	CacheSize         uint64 `config:"cache-size-mb" yaml:"cache-size-mb,omitempty"`
+	HandleLimit       uint64 `config:"handle-limit" yaml:"handle-limit,omitempty"`
 	readOnly          bool   `config:"read-only"`
-	DiskPersistence   bool   `config:"disk-persistence"`
-	DiskPath          string `config:"disk-cache-path"`
-	DiskCacheSize     uint64 `config:"disk-size-mb"`
 }
 
 type cache struct {
-	evictionPolicy      common.EvictionPolicy
-	blocks              *handlemap.LRUCache // blocks stored: {blockKey(off1, fileKey1): cacheBlock1, blockKey(off1, fileKey2): cacheBlock2, ...}
 	blockSize           int64
 	bufferSizePerHandle uint64 // maximum number of blocks allowed to be stored for a file
-	cacheSize           uint64 // maximum allowed configured number of blocks
-
-	diskPersistence bool    // When block is evicted from memory shall be stored on disk for some more time
-	diskPath        string  // Location where persisted blocks will be stored
-	diskCacheMB     int64   // Size of disk cache to be used for persistence
-	diskTimeoutSec  float64 // Timeout in seconds for the block persisted on disk
+	handleLimit         int32
+	openHandles         int32
 }
 
 const (
@@ -126,10 +117,10 @@ func (st *Stream) Configure() error {
 		return errors.New("stream component is available only for read-only mount")
 	}
 
-	if conf.BufferSizePerFile <= 0 || conf.BlockSize <= 0 || conf.CacheSize <= 0 || conf.CacheSize < conf.BlockSize {
+	if conf.BufferSizePerFile <= 0 || conf.BlockSize <= 0 || conf.HandleLimit <= 0 {
 		st.streamOnly = true
 	} else {
-		if uint64(conf.CacheSize*mb) > memory.FreeMemory() {
+		if uint64((conf.BufferSizePerFile*conf.HandleLimit)*mb) > memory.FreeMemory() {
 			log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
 			return errors.New("not enough free memory for provided stream configuration")
 		}
@@ -137,32 +128,12 @@ func (st *Stream) Configure() error {
 			log.Err("Stream::Configure : config error, handle level caching is available for read-only mode")
 			return errors.New("handle level caching is available for read-only mode")
 		}
-		bc := handlemap.NewLRUCache(conf.DiskPersistence, conf.DiskPath, int64(conf.CacheSize), int64(conf.DiskCacheSize))
-		if conf.DiskPersistence {
-			if conf.DiskPath == "" {
-				log.Err("Stream::Configure : Config error [disk-cache-path not set]")
-				return fmt.Errorf("config error in %s [disk-cache-path not set]", st.Name())
-			}
-
-			_, err = os.Stat(conf.DiskPath)
-			if os.IsNotExist(err) {
-				log.Info("Stream::Configure : Config error [disk-cache-path does not exist. attempting to create]")
-				err := os.Mkdir(conf.DiskPath, os.FileMode(0755))
-				if err != nil {
-					log.Err("Stream::Configure : Config error creating temp directory failed [%s]", err.Error())
-					return fmt.Errorf("failed to create temp directory for stream persistence [%s]", err.Error())
-				}
-			}
-		}
-
-		st.cache = &cache{
-			blockSize:           int64(conf.BlockSize) * mb,
-			bufferSizePerHandle: conf.BufferSizePerFile * mb,
-			blocks:              bc,
-			diskPersistence:     conf.DiskPersistence,
-			diskPath:            conf.DiskPath,
-			diskCacheMB:         int64(conf.DiskCacheSize),
-		}
+	}
+	st.cache = &cache{
+		blockSize:           int64(conf.BlockSize) * mb,
+		bufferSizePerHandle: conf.BufferSizePerFile * mb,
+		handleLimit:         int32(conf.HandleLimit),
+		openHandles:         0,
 	}
 	return nil
 }
@@ -170,18 +141,15 @@ func (st *Stream) Configure() error {
 // Stop : Stop the component functionality and kill all threads started
 func (st *Stream) Stop() error {
 	log.Trace("Stopping component : %s", st.Name())
-	if !st.streamOnly {
-		st.cache.blocks.Purge()
-	}
 	return nil
 }
 
-func (st *Stream) unlockBlock(block *handlemap.CacheBlock, exists bool) {
-	// if exists {
-	// 	block.RUnlock()
-	// } else {
-	// 	block.Unlock()
-	// }
+func (st *Stream) unlockBlock(block *common.CacheBlock, exists bool) {
+	if exists {
+		block.RUnlock()
+	} else {
+		block.Unlock()
+	}
 	return
 }
 
@@ -196,8 +164,13 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 		handle = handlemap.NewHandle(options.Name)
 	}
 	if !st.streamOnly {
+		if st.cache.openHandles >= st.cache.handleLimit {
+			log.Err("Stream::OpenFile : error %s [%s]", options.Name, err.Error())
+			return nil, errors.New("limit exceeded")
+		}
+		atomic.AddInt32(&st.cache.openHandles, 1)
 		cacheObj := handlemap.Cache{
-			DataBuffer: handlemap.NewLRUCache(false, "", int64(st.cache.bufferSizePerHandle), 0),
+			DataBuffer: common.NewLRUCache(int64(st.cache.bufferSizePerHandle)),
 		}
 		handle.CacheObj = &cacheObj
 		block, exists, _ := st.getBlock(handle, 0)
@@ -207,22 +180,24 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 	return handle, err
 }
 
-func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*handlemap.CacheBlock, bool, error) {
+func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*common.CacheBlock, bool, error) {
 	blockSize := st.cache.blockSize
-	blockKeyObj := handlemap.BlockKey{Handle: handle, StartIndex: offset}
-	block, found := st.cache.blocks.Get(blockKeyObj, handle, true)
+	blockKeyObj := offset
+	handle.CacheObj.Lock()
+	block, found := handle.CacheObj.DataBuffer.Get(blockKeyObj)
 	if !found {
 		if (offset + blockSize) > handle.Size {
 			blockSize = handle.Size - offset
 		}
-		block = &handlemap.CacheBlock{
+		block = &common.CacheBlock{
 			StartIndex: offset,
 			EndIndex:   offset + blockSize,
 			Data:       make([]byte, blockSize),
 			Last:       (offset + blockSize) >= handle.Size,
 		}
-		// block.Lock()
-		st.cache.blocks.Put(blockKeyObj, block, handle, true)
+		block.Lock()
+		handle.CacheObj.DataBuffer.Put(blockKeyObj, block)
+		handle.CacheObj.Unlock()
 		// if the block does not exist fetch it from the next component
 		options := internal.ReadInBufferOptions{
 			Handle: handle,
@@ -235,6 +210,7 @@ func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*handlemap.C
 		}
 		return block, false, nil
 	} else {
+		handle.CacheObj.Unlock()
 		return block, true, nil
 	}
 }
@@ -283,7 +259,10 @@ func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	st.NextComponent().CloseFile(options)
 	if !st.streamOnly {
-		st.cache.blocks.PurgeHandle(options.Handle)
+		options.Handle.CacheObj.Lock()
+		defer options.Handle.CacheObj.Unlock()
+		options.Handle.CacheObj.DataBuffer.Purge()
+		atomic.AddInt32(&st.cache.openHandles, -1)
 	}
 	return nil
 }
