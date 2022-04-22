@@ -212,7 +212,7 @@ func validateData(fileName string, fileSize string, suite *dataValidationTestSui
 	// write to file in the local directory
 	var fileBuff []byte
 	if fileSize == "huge" {
-		fileBuff = make([]byte, (2000 * 1024 * 1024))
+		fileBuff = make([]byte, (1000 * 1024 * 1024))
 	} else if fileSize == "large" {
 		fileBuff = make([]byte, (500 * 1024 * 1024))
 	} else if fileSize == "medium" {
