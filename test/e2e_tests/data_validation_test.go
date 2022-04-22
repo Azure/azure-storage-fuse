@@ -10,6 +10,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,6 +21,8 @@ import (
 var dataValidationMntPathPtr string
 var dataValidationTempPathPtr string
 var dataValidationAdlsPtr string
+
+var wg sync.WaitGroup
 
 type dataValidationTestSuite struct {
 	suite.Suite
@@ -67,9 +71,6 @@ func (suite *dataValidationTestSuite) copyToMountDir(localFilePath string, remot
 	cliOut, err := cpCmd.Output()
 	fmt.Println(string(cliOut))
 	suite.Equal(nil, err)
-
-	// delete the cache directory
-	suite.dataValidationTestCleanup([]string{suite.testCachePath})
 }
 
 func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteFilePath string) {
@@ -99,6 +100,10 @@ func (suite *dataValidationTestSuite) TestSmallFileData() {
 	suite.Equal(nil, err)
 
 	suite.copyToMountDir(localFilePath, remoteFilePath)
+
+	// delete the cache directory
+	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+
 	suite.validateData(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
@@ -120,6 +125,10 @@ func (suite *dataValidationTestSuite) TestMediumFileData() {
 	suite.Equal(nil, err)
 
 	suite.copyToMountDir(localFilePath, remoteFilePath)
+
+	// delete the cache directory
+	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+
 	suite.validateData(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
@@ -141,6 +150,10 @@ func (suite *dataValidationTestSuite) TestLargeFileData() {
 	suite.Equal(nil, err)
 
 	suite.copyToMountDir(localFilePath, remoteFilePath)
+
+	// delete the cache directory
+	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+
 	suite.validateData(localFilePath, remoteFilePath)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
@@ -164,6 +177,9 @@ func (suite *dataValidationTestSuite) TestFileUpdate() {
 	// copy local file to mounted directory
 	suite.copyToMountDir(localFilePath, remoteFilePath)
 
+	// delete the cache directory
+	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+
 	// update local file
 	srcFile, err = os.OpenFile(localFilePath, os.O_APPEND|os.O_WRONLY, 0777)
 	suite.Equal(nil, err)
@@ -179,6 +195,77 @@ func (suite *dataValidationTestSuite) TestFileUpdate() {
 	suite.NotEqual(nil, err)
 
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
+}
+
+func validateData(fileName string, fileSize string, suite *dataValidationTestSuite) {
+	defer wg.Done()
+
+	localFilePath := suite.testLocalPath + "/" + fileName
+	remoteFilePath := suite.testMntPath + "/" + fileName
+	fmt.Println("Local file path: " + localFilePath)
+
+	// create the file in local directory
+	srcFile, err := os.OpenFile(localFilePath, os.O_CREATE, 0777)
+	suite.Equal(nil, err)
+	srcFile.Close()
+
+	// write to file in the local directory
+	var fileBuff []byte
+	if fileSize == "large" {
+		fileBuff = make([]byte, (500 * 1024 * 1024))
+	} else if fileSize == "medium" {
+		fileBuff = make([]byte, (10 * 1024 * 1024))
+	} else {
+		fileBuff = make([]byte, 1024)
+	}
+	rand.Read(fileBuff)
+	err = ioutil.WriteFile(localFilePath, fileBuff, 0777)
+	suite.Equal(nil, err)
+
+	suite.copyToMountDir(localFilePath, remoteFilePath)
+	suite.dataValidationTestCleanup([]string{suite.testCachePath + "/" + fileName})
+	suite.validateData(localFilePath, remoteFilePath)
+
+	suite.dataValidationTestCleanup([]string{localFilePath, suite.testCachePath + "/" + fileName})
+}
+
+func (suite *dataValidationTestSuite) TestMultipleSmallFiles() {
+	for i := 1; i <= 100; i++ {
+		wg.Add(1)
+
+		fileName := "small_data_" + strconv.Itoa(i) + ".txt"
+		go validateData(fileName, "small", suite)
+	}
+
+	wg.Wait()
+
+	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+}
+
+func (suite *dataValidationTestSuite) TestMultipleMediumFiles() {
+	for i := 1; i <= 20; i++ {
+		wg.Add(1)
+
+		fileName := "medium_data_" + strconv.Itoa(i) + ".txt"
+		go validateData(fileName, "medium", suite)
+	}
+
+	wg.Wait()
+
+	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+}
+
+func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
+	for i := 1; i <= 5; i++ {
+		wg.Add(1)
+
+		fileName := "large_data_" + strconv.Itoa(i) + ".txt"
+		go validateData(fileName, "large", suite)
+	}
+
+	wg.Wait()
+
+	suite.dataValidationTestCleanup([]string{suite.testCachePath})
 }
 
 // -------------- Main Method -------------------
