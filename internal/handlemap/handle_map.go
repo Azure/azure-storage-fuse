@@ -101,6 +101,11 @@ func (handle *Handle) SetFileObject(f *os.File) {
 	handle.FObj = f
 }
 
+// FD : Get Unix file descriptor
+func (handle *Handle) FD() int {
+	return int(handle.UnixFD)
+}
+
 // SetValue : Store user defined parameter inside handle
 func (handle *Handle) SetValue(key string, value interface{}) {
 	handle.Lock()

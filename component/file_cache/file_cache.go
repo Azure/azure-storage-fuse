@@ -101,6 +101,7 @@ const (
 	defaultMaxThreshold     = 80
 	defaultMinThreshold     = 60
 	defaultFileCacheTimeout = 120
+	defaultCacheUpdateCount = 1000
 )
 
 //  Verification to check satisfaction criteria with Component Interface
@@ -804,13 +805,12 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	}
 
 	handle.UnixFD = uint64(f.Fd())
-	handle.SetFileObject(f)
-
 	if !fc.offloadIO {
 		handle.Flags.Set(handlemap.HandleFlagCached)
 	}
 
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
+	handle.SetFileObject(f)
 
 	return handle, nil
 }
@@ -894,44 +894,49 @@ func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) 
 func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::ReadInBuffer")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
-
-	// Read and write operations are very frequent so updating cache policy for every read is a costly operation
-	// Update cache policy every 1K operations (includes both read and write) instead
-	options.Handle.OptCnt++
-	if (options.Handle.OptCnt % 1000) == 0 {
-		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
-		fc.policy.CacheValid(localPath)
-	}
-
 	f := options.Handle.GetFileObject()
 	if f == nil {
 		log.Err("FileCache::ReadInBuffer : error [couldn't find fd in handle] %s", options.Handle.Path)
 		return 0, syscall.EBADF
 	}
 
-	return f.ReadAt(options.Data, options.Offset)
+	// Read and write operations are very frequent so updating cache policy for every read is a costly operation
+	// Update cache policy every 1K operations (includes both read and write) instead
+	options.Handle.OptCnt++
+	if (options.Handle.OptCnt % defaultCacheUpdateCount) == 0 {
+		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
+		fc.policy.CacheValid(localPath)
+	}
+
+	// Removing f.ReadAt as it involves lot of house keeping and then calls syscall.Pread
+	// Instead we will call syscall directly for better perf
+	//return f.ReadAt(options.Data, options.Offset)
+	return syscall.Pread(options.Handle.FD(), options.Data, options.Offset)
 }
 
 // WriteFile: Write to the local file
 func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::WriteFile")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
-
-	// Read and write operations are very frequent so updating cache policy for every read is a costly operation
-	// Update cache policy every 1K operations (includes both read and write) instead
-	options.Handle.OptCnt++
-	if (options.Handle.OptCnt % 1000) == 0 {
-		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
-		fc.policy.CacheValid(localPath)
-	}
-
 	f := options.Handle.GetFileObject()
 	if f == nil {
 		log.Err("FileCache::WriteFile : error [couldn't find fd in handle] %s", options.Handle.Path)
 		return 0, syscall.EBADF
 	}
 
-	bytesWritten, err := f.WriteAt(options.Data, options.Offset)
+	// Read and write operations are very frequent so updating cache policy for every read is a costly operation
+	// Update cache policy every 1K operations (includes both read and write) instead
+	options.Handle.OptCnt++
+	if (options.Handle.OptCnt % defaultCacheUpdateCount) == 0 {
+		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
+		fc.policy.CacheValid(localPath)
+	}
+
+	// Removing f.WriteAt as it involves lot of house keeping and then calls syscall.Pwrite
+	// Instead we will call syscall directly for better perf
+	//bytesWritten,err := f.WriteAt(options.Data, options.Offset)
+	bytesWritten, err := syscall.Pwrite(options.Handle.FD(), options.Data, options.Offset)
+
 	if err == nil {
 		// Mark the handle dirty so the file is written back to storage on FlushFile.
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
