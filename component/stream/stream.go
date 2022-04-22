@@ -165,8 +165,9 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 	}
 	if !st.streamOnly {
 		if st.cache.openHandles >= st.cache.handleLimit {
+			err = errors.New("handle limit exceeded")
 			log.Err("Stream::OpenFile : error %s [%s]", options.Name, err.Error())
-			return nil, errors.New("limit exceeded")
+			return handle, err
 		}
 		atomic.AddInt32(&st.cache.openHandles, 1)
 		cacheObj := handlemap.Cache{
