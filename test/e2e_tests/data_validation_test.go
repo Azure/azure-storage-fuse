@@ -197,7 +197,7 @@ func (suite *dataValidationTestSuite) TestFileUpdate() {
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
 }
 
-func validateData(fileName string, fileSize string, suite *dataValidationTestSuite) {
+func validateMultipleFilesData(fileName string, fileSize string, suite *dataValidationTestSuite) {
 	defer wg.Done()
 
 	localFilePath := suite.testLocalPath + "/" + fileName
@@ -236,7 +236,7 @@ func (suite *dataValidationTestSuite) TestMultipleSmallFiles() {
 		wg.Add(1)
 
 		fileName := "small_data_" + strconv.Itoa(i) + ".txt"
-		go validateData(fileName, "small", suite)
+		go validateMultipleFilesData(fileName, "small", suite)
 	}
 
 	wg.Wait()
@@ -249,7 +249,7 @@ func (suite *dataValidationTestSuite) TestMultipleMediumFiles() {
 		wg.Add(1)
 
 		fileName := "medium_data_" + strconv.Itoa(i) + ".txt"
-		go validateData(fileName, "medium", suite)
+		go validateMultipleFilesData(fileName, "medium", suite)
 	}
 
 	wg.Wait()
@@ -262,7 +262,7 @@ func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
 		wg.Add(1)
 
 		fileName := "large_data_" + strconv.Itoa(i) + ".txt"
-		go validateData(fileName, "large", suite)
+		go validateMultipleFilesData(fileName, "large", suite)
 	}
 
 	wg.Wait()
@@ -275,7 +275,7 @@ func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
 		wg.Add(1)
 
 		fileName := "huge_data_" + strconv.Itoa(i) + ".txt"
-		go validateData(fileName, "huge", suite)
+		go validateMultipleFilesData(fileName, "huge", suite)
 	}
 
 	wg.Wait()
