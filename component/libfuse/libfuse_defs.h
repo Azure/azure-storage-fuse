@@ -135,7 +135,7 @@ extern int libfuse_chown(char *path, uid_t uid, gid_t gid, fuse_file_info_t *fi)
 extern int libfuse_utimens(char *path, timespec_t tv[2], fuse_file_info_t *fi);
 #endif
 
-// Methods that needs handling in the CGo wrapper for better perfomance
+// Methods that needs handling in the CGo wrapper for better performance
 extern int blobfuse_cache_update(char* path);
 static int native_read_file(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
 static int native_write_file(char *path, char *buf, size_t size, off_t, fuse_file_info_t *fi);
