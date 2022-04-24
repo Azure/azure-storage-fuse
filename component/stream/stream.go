@@ -141,6 +141,18 @@ func (st *Stream) Configure() error {
 // Stop : Stop the component functionality and kill all threads started
 func (st *Stream) Stop() error {
 	log.Trace("Stopping component : %s", st.Name())
+	handleMap := handlemap.GetHandles()
+	handles := map[string]interface{}{}
+	handleMap.Range(func(key, value interface{}) bool {
+		handles[fmt.Sprint(key)] = value
+		return true
+	})
+	for _, v := range handles {
+		handle := v.(*handlemap.Handle)
+		handle.CacheObj.Lock()
+		handle.CacheObj.DataBuffer.Purge()
+		handle.CacheObj.Unlock()
+	}
 	return nil
 }
 

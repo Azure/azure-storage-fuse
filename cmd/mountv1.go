@@ -387,10 +387,10 @@ func convertBfCliParameters(flags *pflag.FlagSet) error {
 				bfv2StreamConfigOptions.BlockSize = bfConfCliOptions.blockSize
 			}
 			if flags.Lookup("max-blocks-per-file").Changed {
-				bfv2StreamConfigOptions.BufferSizePerFile = uint64(bfConfCliOptions.maxBlocksPerFile * int(bfConfCliOptions.blockSize))
+				bfv2StreamConfigOptions.BufferSizePerFile = uint64(bfConfCliOptions.maxBlocksPerFile)
 			}
 			if flags.Lookup("stream-cache-mb").Changed {
-				// bfv2StreamConfigOptions.CacheSize = bfConfCliOptions.streamCacheSize
+				bfv2StreamConfigOptions.HandleLimit = bfConfCliOptions.streamCacheSize / bfv2StreamConfigOptions.BufferSizePerFile
 			}
 		} else {
 			useStream = false

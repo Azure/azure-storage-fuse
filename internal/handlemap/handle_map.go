@@ -156,6 +156,11 @@ func Delete(key HandleID) {
 	defaultHandleMap.Delete(key)
 }
 
+// GetHandles : Get map of handles stored
+func GetHandles() sync.Map {
+	return defaultHandleMap
+}
+
 // Load : Search the handle object based on its id
 func Load(key HandleID) (*Handle, bool) {
 	handleIF, ok := defaultHandleMap.Load(key)
