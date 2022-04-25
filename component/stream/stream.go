@@ -142,17 +142,13 @@ func (st *Stream) Configure() error {
 func (st *Stream) Stop() error {
 	log.Trace("Stopping component : %s", st.Name())
 	handleMap := handlemap.GetHandles()
-	handles := map[string]interface{}{}
 	handleMap.Range(func(key, value interface{}) bool {
-		handles[fmt.Sprint(key)] = value
+		handle := value.(*handlemap.Handle)
+		handle.CacheObj.Lock()
+		handle.CacheObj.Purge()
+		handle.CacheObj.Unlock()
 		return true
 	})
-	for _, v := range handles {
-		handle := v.(*handlemap.Handle)
-		handle.CacheObj.Lock()
-		handle.CacheObj.DataBuffer.Purge()
-		handle.CacheObj.Unlock()
-	}
 	return nil
 }
 
@@ -182,10 +178,7 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 			return handle, err
 		}
 		atomic.AddInt32(&st.cache.openHandles, 1)
-		cacheObj := handlemap.Cache{
-			DataBuffer: common.NewLRUCache(int64(st.cache.bufferSizePerHandle)),
-		}
-		handle.CacheObj = &cacheObj
+		handlemap.CreateCacheObject(int64(st.cache.bufferSizePerHandle), handle)
 		block, exists, _ := st.getBlock(handle, 0)
 		// if it exists then we can just RUnlock since we didn't manipulate its data buffer
 		st.unlockBlock(block, exists)
@@ -197,7 +190,7 @@ func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*common.Cach
 	blockSize := st.cache.blockSize
 	blockKeyObj := offset
 	handle.CacheObj.Lock()
-	block, found := handle.CacheObj.DataBuffer.Get(blockKeyObj)
+	block, found := handle.CacheObj.Get(blockKeyObj)
 	if !found {
 		if (offset + blockSize) > handle.Size {
 			blockSize = handle.Size - offset
@@ -209,7 +202,7 @@ func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*common.Cach
 			Last:       (offset + blockSize) >= handle.Size,
 		}
 		block.Lock()
-		handle.CacheObj.DataBuffer.Put(blockKeyObj, block)
+		handle.CacheObj.Put(blockKeyObj, block)
 		handle.CacheObj.Unlock()
 		// if the block does not exist fetch it from the next component
 		options := internal.ReadInBufferOptions{
@@ -274,7 +267,7 @@ func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
 	if !st.streamOnly {
 		options.Handle.CacheObj.Lock()
 		defer options.Handle.CacheObj.Unlock()
-		options.Handle.CacheObj.DataBuffer.Purge()
+		options.Handle.CacheObj.Purge()
 		atomic.AddInt32(&st.cache.openHandles, -1)
 	}
 	return nil
