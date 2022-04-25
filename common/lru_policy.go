@@ -43,10 +43,9 @@ func (cache *LRUCache) Get(bk int64) (*CacheBlock, bool) {
 	found := false
 	var cb *CacheBlock
 	if node, ok := cache.Elements[bk]; ok {
-		cb = node.Value.(*list.Element).Value.(KeyPair).value
+		cb = getKeyPair(node).value
 		cache.List.MoveToFront(node)
 		found = true
-		cb.RLock()
 	}
 	return cb, found
 }
@@ -54,7 +53,7 @@ func (cache *LRUCache) Get(bk int64) (*CacheBlock, bool) {
 //Put: Inserts the key,value pair in LRUCache.
 func (cache *LRUCache) Put(key int64, value *CacheBlock) {
 	if cache.Occupied >= cache.Capacity {
-		pair := cache.List.Back().Value.(*list.Element).Value.(KeyPair)
+		pair := getKeyPair(cache.List.Back())
 		cache.Remove(pair.key)
 	}
 	node := &list.Element{
@@ -70,7 +69,7 @@ func (cache *LRUCache) Put(key int64, value *CacheBlock) {
 
 func (cache *LRUCache) Print() {
 	for _, value := range cache.Elements {
-		fmt.Printf("Key:%+v,Value:%+v\n", value.Value.(*list.Element).Value.(KeyPair).value.StartIndex, value.Value.(*list.Element).Value.(KeyPair).value.EndIndex)
+		fmt.Printf("Key:%+v,Value:%+v\n", getKeyPair(value).value.StartIndex, getKeyPair(value).value.EndIndex)
 	}
 }
 
@@ -84,19 +83,20 @@ func (cache *LRUCache) Keys() []int64 {
 }
 
 func (cache *LRUCache) RecentlyUsed() *CacheBlock {
-	return cache.List.Front().Value.(*list.Element).Value.(KeyPair).value
+	return getKeyPair(cache.List.Front()).value
 }
 
 //Remove: removes the entry for the respective key
 func (cache *LRUCache) Remove(key int64) {
 	// get the keyPair associated with the blockKey
 	if node, ok := cache.Elements[key]; ok {
-		node.Value.(*list.Element).Value.(KeyPair).value.Lock()
-		defer node.Value.(*list.Element).Value.(KeyPair).value.Unlock()
+		nodeKeyPair := getKeyPair(node)
+		nodeKeyPair.value.Lock()
+		defer nodeKeyPair.value.Unlock()
 		// remove from capacity
-		cache.Occupied -= node.Value.(*list.Element).Value.(KeyPair).value.EndIndex - node.Value.(*list.Element).Value.(KeyPair).value.StartIndex
+		cache.Occupied -= nodeKeyPair.value.EndIndex - nodeKeyPair.value.StartIndex
 		//if handle is not provided then we're on the handle cache we can just remove it from cache
-		node.Value.(*list.Element).Value.(KeyPair).value.Data = nil
+		nodeKeyPair.value.Data = nil
 		delete(cache.Elements, key)
 		cache.List.Remove(node)
 	}
@@ -110,4 +110,9 @@ func (cache *LRUCache) Purge() {
 	cache.Capacity = 0
 	cache.Elements = nil
 	cache.List = nil
+}
+
+func getKeyPair(node *list.Element) KeyPair {
+	//uncast the keypair
+	return node.Value.(*list.Element).Value.(KeyPair)
 }

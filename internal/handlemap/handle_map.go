@@ -54,8 +54,8 @@ const (
 )
 
 type Cache struct {
+	*common.LRUCache
 	sync.RWMutex
-	DataBuffer *common.LRUCache
 }
 
 type Handle struct {
@@ -66,7 +66,7 @@ type Handle struct {
 	Flags    common.BitMap16
 	Path     string // always holds path relative to mount dir
 	values   map[string]interface{}
-	CacheObj *Cache
+	CacheObj Cache
 }
 
 func NewHandle(path string) *Handle {
@@ -154,6 +154,13 @@ func Add(handle *Handle) HandleID {
 // Delete : Remove handle object from map
 func Delete(key HandleID) {
 	defaultHandleMap.Delete(key)
+}
+
+func CreateCacheObject(capacity int64, handle *Handle) {
+	handle.CacheObj = Cache{
+		common.NewLRUCache(capacity),
+		sync.RWMutex{},
+	}
 }
 
 // GetHandles : Get map of handles stored
