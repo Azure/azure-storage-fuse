@@ -81,12 +81,14 @@ static int native_pread(char *path, char *buf, size_t size, off_t offset, file_h
     if (res == -1)
         res = -errno;
     
+    #if 0
     handle_obj->cnt++;
     if (!(handle_obj->cnt % CACHE_UPDATE_COUNTER)) {
         // Time to send a call up to update the cache
         blobfuse_cache_update(path);
         handle_obj->cnt = 0;
     }   
+    #endif
     
     return res;
 }
