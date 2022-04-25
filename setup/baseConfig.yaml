@@ -38,6 +38,7 @@ stream:
   block-size-mb: <for read only mode - size of each block to be cached in memory while streaming (in MB). Default - 0 MB>
   handle-limit: <total amount of memory that streaming can consume on the system. Default - 0 MB>
   handle-buffer-size-mb: <capacity of cached data for per file handle. Default - 0>
+  dirty-buffer-threshold-mb: <capacity of cached data for per file handle. Default - 0>
 
 # Disk cache related configuration
 file_cache:

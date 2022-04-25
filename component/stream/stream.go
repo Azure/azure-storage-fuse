@@ -50,7 +50,7 @@ import (
 
 type Stream struct {
 	internal.BaseComponent
-	cache      *cache
+	cache      StreamConnection
 	streamOnly bool // parameter used to check if its pure streaming
 }
 
@@ -59,13 +59,6 @@ type StreamOptions struct {
 	BufferSizePerFile uint64 `config:"handle-buffer-size-mb" yaml:"handle-buffer-size-mb,omitempty"`
 	HandleLimit       uint64 `config:"handle-limit" yaml:"handle-limit,omitempty"`
 	readOnly          bool   `config:"read-only"`
-}
-
-type cache struct {
-	blockSize           int64
-	bufferSizePerHandle uint64 // maximum number of blocks allowed to be stored for a file
-	handleLimit         int32
-	openHandles         int32
 }
 
 const (
@@ -105,36 +98,21 @@ func (st *Stream) Configure() error {
 		log.Err("Stream::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("config error in %s [%s]", st.Name(), err.Error())
 	}
-
 	err = config.UnmarshalKey("read-only", &conf.readOnly)
 	if err != nil {
 		log.Err("Stream::Configure : config error [unable to obtain read-only]")
 		return fmt.Errorf("config error in %s [%s]", st.Name(), err.Error())
 	}
-
+	if uint64((conf.BufferSizePerFile*conf.HandleLimit)*mb) > memory.FreeMemory() {
+		log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
+		return errors.New("not enough free memory for provided stream configuration")
+	}
 	if !conf.readOnly {
-		log.Err("Stream::Configure : config error, Stream component is available for read-only mode")
-		return errors.New("stream component is available only for read-only mount")
+		log.Err("Stream::Configure : config error, handle level caching is available for read-only mode")
+		return errors.New("handle level caching is available for read-only mode")
 	}
 
-	if conf.BufferSizePerFile <= 0 || conf.BlockSize <= 0 || conf.HandleLimit <= 0 {
-		st.streamOnly = true
-	} else {
-		if uint64((conf.BufferSizePerFile*conf.HandleLimit)*mb) > memory.FreeMemory() {
-			log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
-			return errors.New("not enough free memory for provided stream configuration")
-		}
-		if !conf.readOnly {
-			log.Err("Stream::Configure : config error, handle level caching is available for read-only mode")
-			return errors.New("handle level caching is available for read-only mode")
-		}
-	}
-	st.cache = &cache{
-		blockSize:           int64(conf.BlockSize) * mb,
-		bufferSizePerHandle: conf.BufferSizePerFile * mb,
-		handleLimit:         int32(conf.HandleLimit),
-		openHandles:         0,
-	}
+	st.cache = NewStreamConnection(conf)
 	return nil
 }
 
