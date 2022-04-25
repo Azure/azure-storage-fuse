@@ -144,9 +144,11 @@ func (st *Stream) Stop() error {
 	handleMap := handlemap.GetHandles()
 	handleMap.Range(func(key, value interface{}) bool {
 		handle := value.(*handlemap.Handle)
-		handle.CacheObj.Lock()
-		handle.CacheObj.Purge()
-		handle.CacheObj.Unlock()
+		if handle.CacheObj != (handlemap.Cache{}) {
+			handle.CacheObj.Lock()
+			handle.CacheObj.Purge()
+			handle.CacheObj.Unlock()
+		}
 		return true
 	})
 	return nil
