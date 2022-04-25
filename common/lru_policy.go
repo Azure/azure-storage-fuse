@@ -46,7 +46,6 @@ func (cache *LRUCache) Get(bk int64) (*CacheBlock, bool) {
 		cb = node.Value.(*list.Element).Value.(KeyPair).value
 		cache.List.MoveToFront(node)
 		found = true
-		cb.RLock()
 	}
 	return cb, found
 }

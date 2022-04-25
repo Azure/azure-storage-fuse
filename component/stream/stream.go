@@ -216,6 +216,7 @@ func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*common.Cach
 		}
 		return block, false, nil
 	} else {
+		block.RLock()
 		handle.CacheObj.Unlock()
 		return block, true, nil
 	}
