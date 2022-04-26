@@ -45,7 +45,7 @@ steps:
     displayName: 'E2E Test: ${{ parameters.idstring }}'
     timeoutInMinutes: 120
     continueOnError: false
-    condition: or(eq(parameters.distro_name, 'ubuntu-18.04'), eq(parameters.distro_name, 'ubuntu-20.04'))
+    condition: or(eq(${{ parameters.distro_name }}, 'ubuntu-18.04'), eq(${{ parameters.distro_name }}, 'ubuntu-20.04'))
     env:
       mount_dir: ${{ parameters.mount_dir }}
 
@@ -57,7 +57,7 @@ steps:
     displayName: 'E2E Test: ${{ parameters.idstring }}'
     timeoutInMinutes: 120
     continueOnError: false
-    condition: and(ne(parameters.distro_name, 'ubuntu-18.04'), ne(parameters.distro_name, 'ubuntu-20.04'))
+    condition: and(ne(${{ parameters.distro_name }}, 'ubuntu-18.04'), ne(${{ parameters.distro_name }}, 'ubuntu-20.04'))
     env:
       mount_dir: ${{ parameters.mount_dir }}
 
