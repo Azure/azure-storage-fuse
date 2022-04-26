@@ -71,7 +71,9 @@ func (suite *dataValidationTestSuite) copyToMountDir(localFilePath string, remot
 	// copy to mounted directory
 	cpCmd := exec.Command("cp", localFilePath, remoteFilePath)
 	cliOut, err := cpCmd.Output()
-	fmt.Println(string(cliOut))
+	if len(cliOut) != 0 {
+		fmt.Println(string(cliOut))
+	}
 	suite.Equal(nil, err)
 }
 
@@ -79,7 +81,9 @@ func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteF
 	// compare the local and mounted files
 	diffCmd := exec.Command("diff", localFilePath, remoteFilePath)
 	cliOut, err := diffCmd.Output()
-	fmt.Println(string(cliOut))
+	if len(cliOut) != 0 {
+		fmt.Println(string(cliOut))
+	}
 	suite.Equal(0, len(cliOut))
 	suite.Equal(nil, err)
 }
