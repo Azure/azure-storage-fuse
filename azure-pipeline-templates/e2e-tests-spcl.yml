@@ -24,7 +24,7 @@ parameters:
     type: string
   - name: quick_test
     type: boolean
-    default: "false"
+    default: "true"
 
 steps:    
   - script: |

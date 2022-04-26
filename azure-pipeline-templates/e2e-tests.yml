@@ -18,7 +18,7 @@ parameters:
     default: "false"
   - name: quick_test
     type: boolean
-    default: "false"
+    default: "true"
 
 steps:
 

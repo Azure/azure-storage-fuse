@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -220,7 +221,7 @@ func validateMultipleFilesData(fileName string, fileSize string, suite *dataVali
 	if fileSize == "huge" {
 		fileBuff = make([]byte, (2000 * 1024 * 1024))
 	} else if fileSize == "large" {
-		if quickTest == "true" {
+		if strings.ToLower(quickTest) == "true" {
 			fileBuff = make([]byte, (100 * 1024 * 1024))
 		} else {
 			fileBuff = make([]byte, (500 * 1024 * 1024))
@@ -281,7 +282,7 @@ func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
 }
 
 func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
-	if quickTest == "true" {
+	if strings.ToLower(quickTest) == "true" {
 		fmt.Println("Quick test is enabled. Skipping this test case")
 		return
 	}

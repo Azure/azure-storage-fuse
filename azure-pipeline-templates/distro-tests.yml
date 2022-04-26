@@ -33,7 +33,7 @@ parameters:
     default: "libfuse3-dev"
   - name: quick_test
     type: boolean
-    default: "false"
+    default: "true"
 
 steps:
   - checkout: none

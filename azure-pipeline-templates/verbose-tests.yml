@@ -53,7 +53,7 @@ parameters:
     type: string
   - name: quick_test
     type: boolean
-    default: "false"
+    default: "true"
 
 #--------------------------------------- Setup: End to end tests with different Storage configurations ------------------------------------------
 # Create key credential config file if we need to test it
