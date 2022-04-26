@@ -212,7 +212,7 @@ func validateMultipleFilesData(fileName string, fileSize string, suite *dataVali
 	// write to file in the local directory
 	var fileBuff []byte
 	if fileSize == "huge" {
-		fileBuff = make([]byte, (1000 * 1024 * 1024))
+		fileBuff = make([]byte, (2000 * 1024 * 1024))
 	} else if fileSize == "large" {
 		fileBuff = make([]byte, (500 * 1024 * 1024))
 	} else if fileSize == "medium" {
@@ -271,7 +271,7 @@ func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
 }
 
 func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
-	for i := 1; i <= 3; i++ {
+	for i := 1; i <= 2; i++ {
 		wg.Add(1)
 
 		fileName := "huge_data_" + strconv.Itoa(i) + ".txt"
