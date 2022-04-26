@@ -36,7 +36,7 @@
 #define __NATIVE_FILE_IO_H__
 
 // Every read-write operation is counted and after N operations send a call up to update cache policy
-#define CACHE_UPDATE_COUNTER 1000
+#define CACHE_UPDATE_COUNTER 100
 
 
 // Structure that describes file-handle object returned back to libfuse

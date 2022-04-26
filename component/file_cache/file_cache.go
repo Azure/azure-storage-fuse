@@ -101,7 +101,7 @@ const (
 	defaultMaxThreshold     = 80
 	defaultMinThreshold     = 60
 	defaultFileCacheTimeout = 120
-	defaultCacheUpdateCount = 1000
+	defaultCacheUpdateCount = 100
 )
 
 //  Verification to check satisfaction criteria with Component Interface
