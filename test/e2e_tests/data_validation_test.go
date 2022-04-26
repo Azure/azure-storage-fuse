@@ -21,6 +21,7 @@ import (
 var dataValidationMntPathPtr string
 var dataValidationTempPathPtr string
 var dataValidationAdlsPtr string
+var quickTest string
 
 var wg sync.WaitGroup
 
@@ -49,6 +50,7 @@ func initDataValidationFlags() {
 	dataValidationMntPathPtr = getDataValidationTestFlag("mnt-path")
 	dataValidationAdlsPtr = getDataValidationTestFlag("adls")
 	dataValidationTempPathPtr = getDataValidationTestFlag("tmp-path")
+	quickTest = getDataValidationTestFlag("quick-test")
 }
 
 func getDataValidationTestDirName(n int) string {
@@ -214,7 +216,11 @@ func validateMultipleFilesData(fileName string, fileSize string, suite *dataVali
 	if fileSize == "huge" {
 		fileBuff = make([]byte, (2000 * 1024 * 1024))
 	} else if fileSize == "large" {
-		fileBuff = make([]byte, (500 * 1024 * 1024))
+		if quickTest == "true" {
+			fileBuff = make([]byte, (100 * 1024 * 1024))
+		} else {
+			fileBuff = make([]byte, (500 * 1024 * 1024))
+		}
 	} else if fileSize == "medium" {
 		fileBuff = make([]byte, (10 * 1024 * 1024))
 	} else {
@@ -245,7 +251,7 @@ func (suite *dataValidationTestSuite) TestMultipleSmallFiles() {
 }
 
 func (suite *dataValidationTestSuite) TestMultipleMediumFiles() {
-	for i := 1; i <= 20; i++ {
+	for i := 1; i <= 50; i++ {
 		wg.Add(1)
 
 		fileName := "medium_data_" + strconv.Itoa(i) + ".txt"
@@ -271,6 +277,11 @@ func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
 }
 
 func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
+	if quickTest == "true" {
+		fmt.Println("Quick test is enabled. Skipping this test case")
+		return
+	}
+
 	for i := 1; i <= 2; i++ {
 		wg.Add(1)
 
@@ -340,4 +351,5 @@ func init() {
 	regDataValidationTestFlag(&dataValidationMntPathPtr, "mnt-path", "", "Mount Path of Container")
 	regDataValidationTestFlag(&dataValidationAdlsPtr, "adls", "", "Account is ADLS or not")
 	regDataValidationTestFlag(&dataValidationTempPathPtr, "tmp-path", "", "Cache dir path")
+	regDataValidationTestFlag(&quickTest, "quick-test", "true", "Run quick tests")
 }

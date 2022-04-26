@@ -40,11 +40,24 @@ steps:
   - task: Go@0
     inputs:
       command: 'test'
-      arguments: '-v -timeout=2h ./... -args -mnt-path=${{ parameters.mount_dir }} -adls=${{parameters.adls}} -clone=${{parameters.clone}} -tmp-path=${{parameters.temp_dir}}'
+      arguments: '-v -timeout=2h ./... -args -mnt-path=${{ parameters.mount_dir }} -adls=${{parameters.adls}} -clone=${{parameters.clone}} -tmp-path=${{parameters.temp_dir}} -quick-test=false'
       workingDirectory: ${{ parameters.working_dir }}/test/e2e_tests
     displayName: 'E2E Test: ${{ parameters.idstring }}'
     timeoutInMinutes: 120
     continueOnError: false
+    condition: or(eq(variables.distro_name, 'ubuntu-18.04'), eq(variables.distro_name, 'ubuntu-20.04'))
+    env:
+      mount_dir: ${{ parameters.mount_dir }}
+
+  - task: Go@0
+    inputs:
+      command: 'test'
+      arguments: '-v -timeout=2h ./... -args -mnt-path=${{ parameters.mount_dir }} -adls=${{parameters.adls}} -clone=${{parameters.clone}} -tmp-path=${{parameters.temp_dir}} -quick-test=true'
+      workingDirectory: ${{ parameters.working_dir }}/test/e2e_tests
+    displayName: 'E2E Test: ${{ parameters.idstring }}'
+    timeoutInMinutes: 120
+    continueOnError: false
+    condition: and(ne(variables.distro_name, 'ubuntu-18.04'), ne(variables.distro_name, 'ubuntu-20.04'))
     env:
       mount_dir: ${{ parameters.mount_dir }}
 
