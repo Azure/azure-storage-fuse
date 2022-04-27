@@ -239,7 +239,7 @@ func validateMultipleFilesData(fileName string, fileSize string, suite *dataVali
 	suite.dataValidationTestCleanup([]string{suite.testCachePath + "/" + fileName})
 	suite.validateData(localFilePath, remoteFilePath)
 
-	suite.dataValidationTestCleanup([]string{localFilePath, suite.testCachePath + "/" + fileName})
+	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath + "/" + fileName})
 }
 
 func (suite *dataValidationTestSuite) TestMultipleSmallFiles() {
