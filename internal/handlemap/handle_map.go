@@ -55,7 +55,6 @@ const (
 
 type Cache struct {
 	*common.LRUCache
-	sync.RWMutex
 }
 
 type Handle struct {
@@ -66,16 +65,17 @@ type Handle struct {
 	Flags    common.BitMap16
 	Path     string // always holds path relative to mount dir
 	values   map[string]interface{}
-	CacheObj Cache
+	CacheObj *Cache
 }
 
 func NewHandle(path string) *Handle {
 	return &Handle{
-		ID:     InvalidHandleID,
-		Path:   path,
-		Size:   0,
-		Flags:  0,
-		values: make(map[string]interface{}),
+		ID:       InvalidHandleID,
+		Path:     path,
+		Size:     0,
+		Flags:    0,
+		values:   make(map[string]interface{}),
+		CacheObj: nil,
 	}
 }
 
@@ -157,9 +157,8 @@ func Delete(key HandleID) {
 }
 
 func CreateCacheObject(capacity int64, handle *Handle) {
-	handle.CacheObj = Cache{
+	handle.CacheObj = &Cache{
 		common.NewLRUCache(capacity),
-		sync.RWMutex{},
 	}
 }
 
