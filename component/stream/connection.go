@@ -1,5 +1,10 @@
 package stream
 
+import (
+	"blobfuse2/internal"
+	"blobfuse2/internal/handlemap"
+)
+
 type StreamConfig struct {
 	blockSize           int64
 	bufferSizePerHandle uint64 // maximum number of blocks allowed to be stored for a file
@@ -8,7 +13,12 @@ type StreamConfig struct {
 }
 
 type StreamConnection interface {
-	Configure(cfg StreamConfig) error
+	Configure(cfg StreamOptions) error
+	ReadInBuffer(internal.ReadInBufferOptions) (int, error)
+	OpenFile(internal.OpenFileOptions) (*handlemap.Handle, error)
+	Write(options internal.WriteFileOptions) error
+	CloseFile(internal.CloseFileOptions) error
+	Stop() error
 	// CreateFile(name string, mode os.FileMode) error
 	// CreateDirectory(name string) error
 	// CreateLink(source string, target string) error
@@ -26,7 +36,6 @@ type StreamConnection interface {
 
 	// ReadToFile(name string, offset int64, count int64, fi *os.File) error
 	// ReadBuffer(name string, offset int64, len int64) ([]byte, error)
-	// ReadInBuffer(name string, offset int64, len int64, data []byte) error
 
 	// WriteFromFile(name string, metadata map[string]string, fi *os.File) error
 	// WriteFromBuffer(name string, metadata map[string]string, data []byte) error
@@ -38,9 +47,15 @@ type StreamConnection interface {
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object
-func NewStreamConnection(cfg StreamOptions) StreamConnection {
+func NewStreamConnection(cfg StreamOptions, stream *Stream) StreamConnection {
 	if cfg.readOnly {
-		return &ReadCache{}
+		r := ReadCache{}
+		r.Stream = stream
+		r.Configure(cfg)
+		return &r
 	}
-	return &ReadWriteCache{}
+	rw := ReadWriteCache{}
+	rw.Stream = stream
+	rw.Configure(cfg)
+	return &rw
 }

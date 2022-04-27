@@ -38,6 +38,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 
 	"github.com/JeffreyRichter/enum/enum"
 )
@@ -173,11 +174,13 @@ type LogConfig struct {
 }
 
 type Block struct {
+	sync.RWMutex
 	StartIndex int64
 	EndIndex   int64
-	Size       int64
+	Data       []byte
+	Dirty      bool
+	Last       bool //last block in the file?
 	Id         string
-	Modified   bool
 }
 
 // list that holds blocks containing ids and corresponding offsets
@@ -209,6 +212,26 @@ func (bol BlockOffsetList) binarySearch(offset int64) (bool, int) {
 }
 
 // returns index of first mod block, size of mod data, does the new data exceed current size?, is it append only?
+func (bol BlockOffsetList) FindBlocksToRead(offset, length int64) ([]*Block, bool) {
+	// size of mod block list
+	currentBlockOffset := offset
+	var blocks []*Block
+	found, index := bol.binarySearch(offset)
+	if !found {
+		return blocks, false
+	}
+	for _, blk := range bol.BlockList[index:] {
+		if blk.StartIndex > offset+length {
+			break
+		}
+		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
+			blocks = append(blocks, blk)
+		}
+	}
+	return blocks, true
+}
+
+// returns index of first mod block, size of mod data, does the new data exceed current size?, is it append only?
 func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64, bool, bool) {
 	// size of mod block list
 	size := int64(0)
@@ -225,9 +248,9 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64,
 		}
 		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
 			appendOnly = false
-			blk.Modified = true
+			blk.Dirty = true
 			currentBlockOffset = blk.EndIndex
-			size += blk.Size
+			size += (blk.EndIndex - blk.StartIndex)
 		}
 	}
 

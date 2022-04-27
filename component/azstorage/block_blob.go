@@ -672,7 +672,6 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 			Id:         block.Name,
 			StartIndex: int64(blockOffset),
 			EndIndex:   int64(blockOffset) + block.Size,
-			Size:       block.Size,
 		}
 		blockOffset += block.Size
 		blockList.BlockList = append(blockList.BlockList, blk)
@@ -687,8 +686,7 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 		Id:         newBlockId,
 		StartIndex: startIndex,
 		EndIndex:   startIndex + size,
-		Size:       size,
-		Modified:   true,
+		Dirty:      true,
 	}
 	return newBlock
 }
@@ -798,10 +796,10 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, inde
 	var blockIDList []string
 	for _, blk := range offsetList.BlockList {
 		blockIDList = append(blockIDList, blk.Id)
-		if blk.Modified {
+		if blk.Dirty {
 			_, err := blobURL.StageBlock(context.Background(),
 				blk.Id,
-				bytes.NewReader(data[blockOffset:blk.Size+blockOffset]),
+				bytes.NewReader(data[blockOffset:(blk.EndIndex-blk.StartIndex)+blockOffset]),
 				bb.blobAccCond.LeaseAccessConditions,
 				nil,
 				bb.downloadOptions.ClientProvidedKeyOptions)
@@ -809,7 +807,7 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, inde
 				log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to stage to blob %s at block %v (%s)", name, blockOffset, err.Error())
 				return err
 			}
-			blockOffset = blk.Size + blockOffset
+			blockOffset = (blk.EndIndex - blk.StartIndex) + blockOffset
 		}
 	}
 	_, err := blobURL.CommitBlockList(context.Background(),

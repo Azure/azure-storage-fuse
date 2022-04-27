@@ -42,8 +42,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
-	"sync/atomic"
 
 	"github.com/pbnjay/memory"
 )
@@ -112,24 +110,14 @@ func (st *Stream) Configure() error {
 		return errors.New("handle level caching is available for read-only mode")
 	}
 
-	st.cache = NewStreamConnection(conf)
+	st.cache = NewStreamConnection(conf, st)
 	return nil
 }
 
 // Stop : Stop the component functionality and kill all threads started
 func (st *Stream) Stop() error {
 	log.Trace("Stopping component : %s", st.Name())
-	handleMap := handlemap.GetHandles()
-	handleMap.Range(func(key, value interface{}) bool {
-		handle := value.(*handlemap.Handle)
-		if handle.CacheObj != (handlemap.Cache{}) {
-			handle.CacheObj.Lock()
-			handle.CacheObj.Purge()
-			handle.CacheObj.Unlock()
-		}
-		return true
-	})
-	return nil
+	return st.cache.Stop()
 }
 
 func (st *Stream) unlockBlock(block *common.CacheBlock, exists bool) {
@@ -151,107 +139,16 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 	if handle == nil {
 		handle = handlemap.NewHandle(options.Name)
 	}
-	if !st.streamOnly {
-		if st.cache.openHandles >= st.cache.handleLimit {
-			err = errors.New("handle limit exceeded")
-			log.Err("Stream::OpenFile : error %s [%s]", options.Name, err.Error())
-			return handle, err
-		}
-		atomic.AddInt32(&st.cache.openHandles, 1)
-		handlemap.CreateCacheObject(int64(st.cache.bufferSizePerHandle), handle)
-		block, exists, _ := st.getBlock(handle, 0)
-		// if it exists then we can just RUnlock since we didn't manipulate its data buffer
-		st.unlockBlock(block, exists)
-	}
-	return handle, err
-}
-
-func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*common.CacheBlock, bool, error) {
-	blockSize := st.cache.blockSize
-	blockKeyObj := offset
-	handle.CacheObj.Lock()
-	block, found := handle.CacheObj.Get(blockKeyObj)
-	if !found {
-		if (offset + blockSize) > handle.Size {
-			blockSize = handle.Size - offset
-		}
-		block = &common.CacheBlock{
-			StartIndex: offset,
-			EndIndex:   offset + blockSize,
-			Data:       make([]byte, blockSize),
-			Last:       (offset + blockSize) >= handle.Size,
-		}
-		block.Lock()
-		handle.CacheObj.Put(blockKeyObj, block)
-		handle.CacheObj.Unlock()
-		// if the block does not exist fetch it from the next component
-		options := internal.ReadInBufferOptions{
-			Handle: handle,
-			Offset: block.StartIndex,
-			Data:   block.Data,
-		}
-		_, err := st.NextComponent().ReadInBuffer(options)
-		if err != nil && err != io.EOF {
-			return nil, false, err
-		}
-		return block, false, nil
-	} else {
-		block.RLock()
-		handle.CacheObj.Unlock()
-		return block, true, nil
-	}
-}
-
-func (st *Stream) copyCachedBlock(handle *handlemap.Handle, offset int64, data []byte) (int, error) {
-	dataLeft := int64(len(data))
-	// counter to track how much we have copied into our request buffer thus far
-	dataRead := 0
-	// covers the case if we get a call that is bigger than the file size
-	for dataLeft > 0 && offset < handle.Size {
-		// round all offsets to the specific blocksize offsets
-		cachedBlockStartIndex := (offset - (offset % st.cache.blockSize))
-		// Lock on requested block and fileName to ensure it is not being rerequested or manipulated
-		block, exists, err := st.getBlock(handle, cachedBlockStartIndex)
-		if err != nil {
-			st.unlockBlock(block, exists)
-			log.Err("Stream::ReadInBuffer : failed to download block of %s with offset %d: [%s]", handle.Path, block.StartIndex, err.Error())
-			return dataRead, err
-		}
-		dataCopied := int64(copy(data[dataRead:], block.Data[offset-cachedBlockStartIndex:]))
-		st.unlockBlock(block, exists)
-		dataLeft -= dataCopied
-		offset += dataCopied
-		dataRead += int(dataCopied)
-	}
-	return dataRead, nil
+	return st.cache.OpenFile(options)
 }
 
 func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	// if we're only streaming then avoid using the cache
-	if st.streamOnly {
-		data, err := st.NextComponent().ReadInBuffer(options)
-		if err != nil && err != io.EOF {
-			log.Err("Stream::ReadInBuffer : error failed to download requested data for %s: [%s]", options.Handle.Path, err.Error())
-		}
-		return data, err
-	}
-	return st.copyCachedBlock(options.Handle, options.Offset, options.Data)
-}
-
-func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
-	return st.NextComponent().WriteFile(options)
+	return st.cache.ReadInBuffer(options)
 }
 
 func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
-	st.NextComponent().CloseFile(options)
-	if !st.streamOnly {
-		options.Handle.CacheObj.Lock()
-		defer options.Handle.CacheObj.Unlock()
-		options.Handle.CacheObj.Purge()
-		atomic.AddInt32(&st.cache.openHandles, -1)
-	}
-	return nil
+	return st.cache.CloseFile(options)
 }
 
 // ------------------------- Factory -------------------------------------------

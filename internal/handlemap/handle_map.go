@@ -55,6 +55,7 @@ const (
 
 type Cache struct {
 	*common.LRUCache
+	*common.BlockOffsetList
 	sync.RWMutex
 }
 
@@ -159,6 +160,7 @@ func Delete(key HandleID) {
 func CreateCacheObject(capacity int64, handle *Handle) {
 	handle.CacheObj = Cache{
 		common.NewLRUCache(capacity),
+		&common.BlockOffsetList{},
 		sync.RWMutex{},
 	}
 }

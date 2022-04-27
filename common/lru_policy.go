@@ -6,18 +6,10 @@ import (
 	"sync"
 )
 
-type CacheBlock struct {
-	sync.RWMutex
-	StartIndex int64
-	EndIndex   int64
-	Data       []byte
-	Last       bool //last block in the file?
-}
-
 //KeyPair: the list node containing both block key and cache block values
 type KeyPair struct {
 	key   int64
-	value *CacheBlock
+	value *Block
 }
 
 //LRUCache definition for Least Recently Used Cache implementation
@@ -39,9 +31,9 @@ func NewLRUCache(capacity int64) *LRUCache {
 }
 
 //Get: returns the cache value stored for the key, cache hits the handle and moves the list pointer to front of the list
-func (cache *LRUCache) Get(bk int64) (*CacheBlock, bool) {
+func (cache *LRUCache) Get(bk int64) (*Block, bool) {
 	found := false
-	var cb *CacheBlock
+	var cb *Block
 	if node, ok := cache.Elements[bk]; ok {
 		cb = getKeyPair(node).value
 		cache.List.MoveToFront(node)
@@ -51,7 +43,7 @@ func (cache *LRUCache) Get(bk int64) (*CacheBlock, bool) {
 }
 
 //Put: Inserts the key,value pair in LRUCache.
-func (cache *LRUCache) Put(key int64, value *CacheBlock) {
+func (cache *LRUCache) Put(key int64, value *Block) {
 	if cache.Occupied >= cache.Capacity {
 		pair := getKeyPair(cache.List.Back())
 		cache.Remove(pair.key)
@@ -82,7 +74,7 @@ func (cache *LRUCache) Keys() []int64 {
 	return keys
 }
 
-func (cache *LRUCache) RecentlyUsed() *CacheBlock {
+func (cache *LRUCache) RecentlyUsed() *Block {
 	return getKeyPair(cache.List.Front()).value
 }
 
