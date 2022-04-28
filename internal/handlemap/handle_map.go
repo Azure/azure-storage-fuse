@@ -35,6 +35,7 @@ package handlemap
 
 import (
 	"blobfuse2/common"
+	"blobfuse2/common/cache_policy"
 	"os"
 	"sync"
 
@@ -54,7 +55,7 @@ const (
 )
 
 type Cache struct {
-	*common.LRUCache
+	*cache_policy.LRUCache
 }
 
 type Handle struct {
@@ -158,7 +159,7 @@ func Delete(key HandleID) {
 
 func CreateCacheObject(capacity int64, handle *Handle) {
 	handle.CacheObj = &Cache{
-		common.NewLRUCache(capacity),
+		cache_policy.NewLRUCache(capacity),
 	}
 }
 

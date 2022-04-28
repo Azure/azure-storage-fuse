@@ -34,7 +34,7 @@
 package stream
 
 import (
-	"blobfuse2/common"
+	"blobfuse2/common/cache_policy"
 	"blobfuse2/common/config"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
@@ -154,7 +154,7 @@ func (st *Stream) Stop() error {
 	return nil
 }
 
-func (st *Stream) unlockBlock(block *common.CacheBlock, exists bool) {
+func (st *Stream) unlockBlock(block *cache_policy.CacheBlock, exists bool) {
 	if exists {
 		block.RUnlock()
 	} else {
@@ -188,7 +188,7 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 	return handle, err
 }
 
-func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*common.CacheBlock, bool, error) {
+func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*cache_policy.CacheBlock, bool, error) {
 	blockSize := st.cache.blockSize
 	blockKeyObj := offset
 	handle.CacheObj.Lock()
@@ -197,7 +197,7 @@ func (st *Stream) getBlock(handle *handlemap.Handle, offset int64) (*common.Cach
 		if (offset + blockSize) > handle.Size {
 			blockSize = handle.Size - offset
 		}
-		block = &common.CacheBlock{
+		block = &cache_policy.CacheBlock{
 			StartIndex: offset,
 			EndIndex:   offset + blockSize,
 			Data:       make([]byte, blockSize),

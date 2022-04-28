@@ -1,8 +1,8 @@
-package common
+package cache_policy
 
 import (
+	"blobfuse2/common/log"
 	"container/list"
-	"fmt"
 	"sync"
 )
 
@@ -69,7 +69,7 @@ func (cache *LRUCache) Put(key int64, value *CacheBlock) {
 
 func (cache *LRUCache) Print() {
 	for _, value := range cache.Elements {
-		fmt.Printf("Key:%+v,Value:%+v\n", getKeyPair(value).value.StartIndex, getKeyPair(value).value.EndIndex)
+		log.Debug("Key:%+v,Value:%+v\n", getKeyPair(value).value.StartIndex, getKeyPair(value).value.EndIndex)
 	}
 }
 
