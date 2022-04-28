@@ -78,7 +78,7 @@ static int populate_callbacks(fuse_operations_t *opt)
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))native_write_file;
     opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))native_flush_file;
     #else
-    opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))libufse_read;
+    opt->read       = (int (*)(const char *path, char *buf, size_t, off_t, fuse_file_info_t *))libfuse_read;
     opt->write      = (int (*)(const char *path, const char *buf, size_t, off_t, fuse_file_info_t *))libfuse_write;
     opt->flush      = (int (*)(const char *path, fuse_file_info_t *fi))libfuse_flush;
     #endif

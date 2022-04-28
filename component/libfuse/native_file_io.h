@@ -117,7 +117,10 @@ static int native_pwrite(char *path, char *buf, size_t size, off_t offset, file_
 static int native_read_file(char *path, char *buf, size_t size, off_t offset, fuse_file_info_t *fi)
 {
     file_handle_t* handle_obj = (file_handle_t*)fi->fh;
-    
+    #if 0
+    return libfuse_read(path, buf, size, offset, fi);
+    #endif
+
     if (handle_obj->fd == 0) {
         return libfuse_read(path, buf, size, offset, fi);
     }
@@ -129,7 +132,10 @@ static int native_read_file(char *path, char *buf, size_t size, off_t offset, fu
 static int native_write_file(char *path, char *buf, size_t size, off_t offset, fuse_file_info_t *fi)
 {
     file_handle_t* handle_obj = (file_handle_t*)fi->fh;
-    
+    #if 0
+    return libfuse_write(path, buf, size, offset, fi);
+    #endif
+
     if (handle_obj->fd == 0) {
         return libfuse_write(path, buf, size, offset, fi);
     }
