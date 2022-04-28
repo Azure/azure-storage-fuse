@@ -35,6 +35,7 @@ package handlemap
 
 import (
 	"blobfuse2/common"
+	"blobfuse2/common/cache_policy"
 	"os"
 	"sync"
 
@@ -54,9 +55,13 @@ const (
 )
 
 type Cache struct {
+<<<<<<< HEAD
 	*common.LRUCache
 	*common.BlockOffsetList
 	sync.RWMutex
+=======
+	*cache_policy.LRUCache
+>>>>>>> cache-policy
 }
 
 type Handle struct {
@@ -67,16 +72,17 @@ type Handle struct {
 	Flags    common.BitMap16
 	Path     string // always holds path relative to mount dir
 	values   map[string]interface{}
-	CacheObj Cache
+	CacheObj *Cache
 }
 
 func NewHandle(path string) *Handle {
 	return &Handle{
-		ID:     InvalidHandleID,
-		Path:   path,
-		Size:   0,
-		Flags:  0,
-		values: make(map[string]interface{}),
+		ID:       InvalidHandleID,
+		Path:     path,
+		Size:     0,
+		Flags:    0,
+		values:   make(map[string]interface{}),
+		CacheObj: nil,
 	}
 }
 
@@ -158,10 +164,9 @@ func Delete(key HandleID) {
 }
 
 func CreateCacheObject(capacity int64, handle *Handle) {
-	handle.CacheObj = Cache{
-		common.NewLRUCache(capacity),
+	handle.CacheObj = &Cache{
+		cache_policy.NewLRUCache(capacity),
 		&common.BlockOffsetList{},
-		sync.RWMutex{},
 	}
 }
 

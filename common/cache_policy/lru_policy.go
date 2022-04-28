@@ -1,15 +1,16 @@
-package common
+package cache_policy
 
 import (
+	"blobfuse2/common"
+	"blobfuse2/common/log"
 	"container/list"
-	"fmt"
 	"sync"
 )
 
 //KeyPair: the list node containing both block key and cache block values
 type KeyPair struct {
 	key   int64
-	value *Block
+	value *common.Block
 }
 
 //LRUCache definition for Least Recently Used Cache implementation
@@ -31,9 +32,9 @@ func NewLRUCache(capacity int64) *LRUCache {
 }
 
 //Get: returns the cache value stored for the key, cache hits the handle and moves the list pointer to front of the list
-func (cache *LRUCache) Get(bk int64) (*Block, bool) {
+func (cache *LRUCache) Get(bk int64) (*common.Block, bool) {
 	found := false
-	var cb *Block
+	var cb *common.Block
 	if node, ok := cache.Elements[bk]; ok {
 		cb = getKeyPair(node).value
 		cache.List.MoveToFront(node)
@@ -43,7 +44,7 @@ func (cache *LRUCache) Get(bk int64) (*Block, bool) {
 }
 
 //Put: Inserts the key,value pair in LRUCache.
-func (cache *LRUCache) Put(key int64, value *Block) {
+func (cache *LRUCache) Put(key int64, value *common.Block) {
 	if cache.Occupied >= cache.Capacity {
 		pair := getKeyPair(cache.List.Back())
 		cache.Remove(pair.key)
@@ -61,7 +62,7 @@ func (cache *LRUCache) Put(key int64, value *Block) {
 
 func (cache *LRUCache) Print() {
 	for _, value := range cache.Elements {
-		fmt.Printf("Key:%+v,Value:%+v\n", getKeyPair(value).value.StartIndex, getKeyPair(value).value.EndIndex)
+		log.Debug("Key:%+v,Value:%+v\n", getKeyPair(value).value.StartIndex, getKeyPair(value).value.EndIndex)
 	}
 }
 
@@ -74,7 +75,7 @@ func (cache *LRUCache) Keys() []int64 {
 	return keys
 }
 
-func (cache *LRUCache) RecentlyUsed() *Block {
+func (cache *LRUCache) RecentlyUsed() *common.Block {
 	return getKeyPair(cache.List.Front()).value
 }
 
