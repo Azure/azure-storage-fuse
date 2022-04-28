@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -23,8 +22,6 @@ var dataValidationMntPathPtr string
 var dataValidationTempPathPtr string
 var dataValidationAdlsPtr string
 var quickTest string
-
-var wg sync.WaitGroup
 
 type dataValidationTestSuite struct {
 	suite.Suite
@@ -204,81 +201,84 @@ func (suite *dataValidationTestSuite) TestFileUpdate() {
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
 }
 
-func validateMultipleFilesData(fileName string, fileSize string, suite *dataValidationTestSuite) {
-	defer wg.Done()
+func validateMultipleFilesData(jobs <-chan int, results chan<- int, fileSize string, suite *dataValidationTestSuite) {
+	for i := range jobs {
+		fileName := fileSize + strconv.Itoa(i) + ".txt"
+		localFilePath := suite.testLocalPath + "/" + fileName
+		remoteFilePath := suite.testMntPath + "/" + fileName
+		fmt.Println("Local file path: " + localFilePath)
 
-	localFilePath := suite.testLocalPath + "/" + fileName
-	remoteFilePath := suite.testMntPath + "/" + fileName
-	fmt.Println("Local file path: " + localFilePath)
+		// create the file in local directory
+		srcFile, err := os.OpenFile(localFilePath, os.O_CREATE, 0777)
+		suite.Equal(nil, err)
+		srcFile.Close()
 
-	// create the file in local directory
-	srcFile, err := os.OpenFile(localFilePath, os.O_CREATE, 0777)
-	suite.Equal(nil, err)
-	srcFile.Close()
-
-	// write to file in the local directory
-	var fileBuff []byte
-	if fileSize == "huge" {
-		fileBuff = make([]byte, (1000 * 1024 * 1024))
-	} else if fileSize == "large" {
-		if strings.ToLower(quickTest) == "true" {
-			fileBuff = make([]byte, (100 * 1024 * 1024))
+		// write to file in the local directory
+		var fileBuff []byte
+		if fileSize == "huge" {
+			fileBuff = make([]byte, (2000 * 1024 * 1024))
+		} else if fileSize == "large" {
+			if strings.ToLower(quickTest) == "true" {
+				fileBuff = make([]byte, (100 * 1024 * 1024))
+			} else {
+				fileBuff = make([]byte, (500 * 1024 * 1024))
+			}
+		} else if fileSize == "medium" {
+			fileBuff = make([]byte, (10 * 1024 * 1024))
 		} else {
-			fileBuff = make([]byte, (500 * 1024 * 1024))
+			fileBuff = make([]byte, 1024)
 		}
-	} else if fileSize == "medium" {
-		fileBuff = make([]byte, (10 * 1024 * 1024))
-	} else {
-		fileBuff = make([]byte, 1024)
+		rand.Read(fileBuff)
+		err = ioutil.WriteFile(localFilePath, fileBuff, 0777)
+		suite.Equal(nil, err)
+
+		suite.copyToMountDir(localFilePath, remoteFilePath)
+		suite.dataValidationTestCleanup([]string{suite.testCachePath + "/" + fileName})
+		suite.validateData(localFilePath, remoteFilePath)
+
+		suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath + "/" + fileName})
+
+		results <- 1
 	}
-	rand.Read(fileBuff)
-	err = ioutil.WriteFile(localFilePath, fileBuff, 0777)
-	suite.Equal(nil, err)
+}
 
-	suite.copyToMountDir(localFilePath, remoteFilePath)
-	suite.dataValidationTestCleanup([]string{suite.testCachePath + "/" + fileName})
-	suite.validateData(localFilePath, remoteFilePath)
+func createThreadPool(noOfFiles int, noOfWorkers int, fileSize string, suite *dataValidationTestSuite) {
+	jobs := make(chan int, noOfFiles)
+	results := make(chan int, noOfFiles)
 
-	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath + "/" + fileName})
+	for i := 1; i <= noOfWorkers; i++ {
+		go validateMultipleFilesData(jobs, results, fileSize, suite)
+	}
+
+	for i := 1; i <= noOfFiles; i++ {
+		jobs <- i
+	}
+	close(jobs)
+
+	for i := 1; i <= noOfFiles; i++ {
+		<-results
+	}
+	close(results)
+
+	suite.dataValidationTestCleanup([]string{suite.testCachePath})
 }
 
 func (suite *dataValidationTestSuite) TestMultipleSmallFiles() {
-	for i := 1; i <= 100; i++ {
-		wg.Add(1)
-
-		fileName := "small_data_" + strconv.Itoa(i) + ".txt"
-		go validateMultipleFilesData(fileName, "small", suite)
-	}
-
-	wg.Wait()
-
-	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+	noOfFiles := 100
+	noOfWorkers := 10
+	createThreadPool(noOfFiles, noOfWorkers, "small", suite)
 }
 
 func (suite *dataValidationTestSuite) TestMultipleMediumFiles() {
-	for i := 1; i <= 50; i++ {
-		wg.Add(1)
-
-		fileName := "medium_data_" + strconv.Itoa(i) + ".txt"
-		go validateMultipleFilesData(fileName, "medium", suite)
-	}
-
-	wg.Wait()
-
-	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+	noOfFiles := 50
+	noOfWorkers := 5
+	createThreadPool(noOfFiles, noOfWorkers, "medium", suite)
 }
 
 func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
-	for i := 1; i <= 4; i++ {
-		wg.Add(1)
-
-		fileName := "large_data_" + strconv.Itoa(i) + ".txt"
-		go validateMultipleFilesData(fileName, "large", suite)
-	}
-
-	wg.Wait()
-
-	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+	noOfFiles := 4
+	noOfWorkers := 2
+	createThreadPool(noOfFiles, noOfWorkers, "large", suite)
 }
 
 func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
@@ -287,16 +287,9 @@ func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
 		return
 	}
 
-	for i := 1; i <= 2; i++ {
-		wg.Add(1)
-
-		fileName := "huge_data_" + strconv.Itoa(i) + ".txt"
-		go validateMultipleFilesData(fileName, "huge", suite)
-	}
-
-	wg.Wait()
-
-	suite.dataValidationTestCleanup([]string{suite.testCachePath})
+	noOfFiles := 2
+	noOfWorkers := 2
+	createThreadPool(noOfFiles, noOfWorkers, "huge", suite)
 }
 
 // -------------- Main Method -------------------
