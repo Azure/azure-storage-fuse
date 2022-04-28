@@ -34,7 +34,7 @@
 package stream
 
 import (
-	"blobfuse2/common/cache_policy"
+	"blobfuse2/common"
 	"blobfuse2/common/config"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
@@ -120,7 +120,7 @@ func (st *Stream) Stop() error {
 	return st.cache.Stop()
 }
 
-func (st *Stream) unlockBlock(block *cache_policy.CacheBlock, exists bool) {
+func (st *Stream) unlockBlock(block *common.Block, exists bool) {
 	if exists {
 		block.RUnlock()
 	} else {

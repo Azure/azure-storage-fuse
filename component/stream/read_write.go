@@ -150,7 +150,7 @@ func (rw *ReadWriteCache) Stop() error {
 	handleMap := handlemap.GetHandles()
 	handleMap.Range(func(key, value interface{}) bool {
 		handle := value.(*handlemap.Handle)
-		if handle.CacheObj != (handlemap.Cache{}) {
+		if handle.CacheObj != nil {
 			handle.CacheObj.Lock()
 			handle.CacheObj.Purge()
 			handle.CacheObj.Unlock()

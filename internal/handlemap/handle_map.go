@@ -55,13 +55,8 @@ const (
 )
 
 type Cache struct {
-<<<<<<< HEAD
-	*common.LRUCache
-	*common.BlockOffsetList
-	sync.RWMutex
-=======
 	*cache_policy.LRUCache
->>>>>>> cache-policy
+	*common.BlockOffsetList
 }
 
 type Handle struct {

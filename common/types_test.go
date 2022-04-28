@@ -55,9 +55,9 @@ func TestGenerateConfig(t *testing.T) {
 
 func (suite *typesTestSuite) TestBinarySearch() {
 	blocksList := []*Block{
-		{StartIndex: 0, EndIndex: 4, Size: 4},
-		{StartIndex: 4, EndIndex: 7, Size: 3},
-		{StartIndex: 7, EndIndex: 12, Size: 5},
+		{StartIndex: 0, EndIndex: 4},
+		{StartIndex: 4, EndIndex: 7},
+		{StartIndex: 7, EndIndex: 12},
 	}
 	bol := BlockOffsetList{
 		BlockList: blocksList,
@@ -73,9 +73,9 @@ func (suite *typesTestSuite) TestBinarySearch() {
 
 func (suite *typesTestSuite) TestFindBlocksToModify() {
 	blocksList := []*Block{
-		{StartIndex: 0, EndIndex: 4, Size: 4},
-		{StartIndex: 4, EndIndex: 7, Size: 3},
-		{StartIndex: 7, EndIndex: 12, Size: 5},
+		{StartIndex: 0, EndIndex: 4},
+		{StartIndex: 4, EndIndex: 7},
+		{StartIndex: 7, EndIndex: 12},
 	}
 	bol := BlockOffsetList{
 		BlockList: blocksList,
