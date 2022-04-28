@@ -35,6 +35,7 @@ package handlemap
 
 import (
 	"blobfuse2/common"
+	"blobfuse2/common/cache_policy"
 	"os"
 	"sync"
 
@@ -53,23 +54,29 @@ const (
 	HandleFlagCached
 )
 
+type Cache struct {
+	*cache_policy.LRUCache
+}
+
 type Handle struct {
 	sync.RWMutex
-	FObj   *os.File
-	ID     HandleID
-	Size   int64 // Size of the file being handled here
-	Flags  common.BitMap16
-	Path   string // always holds path relative to mount dir
-	values map[string]interface{}
+	FObj     *os.File
+	ID       HandleID
+	Size     int64 // Size of the file being handled here
+	Flags    common.BitMap16
+	Path     string // always holds path relative to mount dir
+	values   map[string]interface{}
+	CacheObj *Cache
 }
 
 func NewHandle(path string) *Handle {
 	return &Handle{
-		ID:     InvalidHandleID,
-		Path:   path,
-		Size:   0,
-		Flags:  0,
-		values: make(map[string]interface{}),
+		ID:       InvalidHandleID,
+		Path:     path,
+		Size:     0,
+		Flags:    0,
+		values:   make(map[string]interface{}),
+		CacheObj: nil,
 	}
 }
 
@@ -148,6 +155,17 @@ func Add(handle *Handle) HandleID {
 // Delete : Remove handle object from map
 func Delete(key HandleID) {
 	defaultHandleMap.Delete(key)
+}
+
+func CreateCacheObject(capacity int64, handle *Handle) {
+	handle.CacheObj = &Cache{
+		cache_policy.NewLRUCache(capacity),
+	}
+}
+
+// GetHandles : Get map of handles stored
+func GetHandles() sync.Map {
+	return defaultHandleMap
 }
 
 // Load : Search the handle object based on its id
