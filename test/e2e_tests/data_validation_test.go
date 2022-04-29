@@ -164,7 +164,7 @@ func (suite *dataValidationTestSuite) TestLargeFileData() {
 }
 
 // negative test case for data validation where the local file is updated
-func (suite *dataValidationTestSuite) TestFileUpdate() {
+func (suite *dataValidationTestSuite) TestDataValidationNegative() {
 	fileName := "updated_data.txt"
 	localFilePath := suite.testLocalPath + "/" + fileName
 	remoteFilePath := suite.testMntPath + "/" + fileName
@@ -194,6 +194,7 @@ func (suite *dataValidationTestSuite) TestFileUpdate() {
 	// compare local file and mounted files
 	diffCmd := exec.Command("diff", localFilePath, remoteFilePath)
 	cliOut, err := diffCmd.Output()
+	fmt.Println("Negative test case where files should differ")
 	fmt.Println(string(cliOut))
 	suite.NotEqual(0, len(cliOut))
 	suite.NotEqual(nil, err)
@@ -214,22 +215,28 @@ func validateMultipleFilesData(jobs <-chan int, results chan<- int, fileSize str
 		srcFile.Close()
 
 		// write to file in the local directory
-		var fileBuff []byte
+		var blockSize string = "1M"
+		var blockCounts string
 		if fileSize == "huge" {
-			fileBuff = make([]byte, (2000 * 1024 * 1024))
+			blockCounts = "2000"
 		} else if fileSize == "large" {
 			if strings.ToLower(quickTest) == "true" {
-				fileBuff = make([]byte, (100 * 1024 * 1024))
+				blockCounts = "100"
 			} else {
-				fileBuff = make([]byte, (500 * 1024 * 1024))
+				blockCounts = "500"
 			}
 		} else if fileSize == "medium" {
-			fileBuff = make([]byte, (10 * 1024 * 1024))
+			blockCounts = "10"
 		} else {
-			fileBuff = make([]byte, 1024)
+			blockSize = "1K"
+			blockCounts = "1"
 		}
-		rand.Read(fileBuff)
-		err = ioutil.WriteFile(localFilePath, fileBuff, 0777)
+
+		ddCmd := exec.Command("dd", "if=/dev/random", "of="+localFilePath, "bs="+blockSize, "count="+blockCounts)
+		cliOut, err := ddCmd.Output()
+		if len(cliOut) != 0 {
+			fmt.Println(string(cliOut))
+		}
 		suite.Equal(nil, err)
 
 		suite.copyToMountDir(localFilePath, remoteFilePath)
