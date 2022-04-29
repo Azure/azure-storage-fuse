@@ -201,7 +201,7 @@ func (suite *dataValidationTestSuite) TestDataValidationNegative() {
 	suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath})
 }
 
-func validateMultipleFilesData(jobs <-chan int, results chan<- int, fileSize string, suite *dataValidationTestSuite) {
+func validateMultipleFilesData(jobs <-chan int, results chan<- string, fileSize string, suite *dataValidationTestSuite) {
 	for i := range jobs {
 		fileName := fileSize + strconv.Itoa(i) + ".txt"
 		localFilePath := suite.testLocalPath + "/" + fileName
@@ -233,15 +233,15 @@ func validateMultipleFilesData(jobs <-chan int, results chan<- int, fileSize str
 		suite.dataValidationTestCleanup([]string{suite.testCachePath + "/" + fileName})
 		suite.validateData(localFilePath, remoteFilePath)
 
-		suite.dataValidationTestCleanup([]string{localFilePath, remoteFilePath, suite.testCachePath + "/" + fileName})
+		suite.dataValidationTestCleanup([]string{localFilePath, suite.testCachePath + "/" + fileName})
 
-		results <- 1
+		results <- remoteFilePath
 	}
 }
 
 func createThreadPool(noOfFiles int, noOfWorkers int, fileSize string, suite *dataValidationTestSuite) {
 	jobs := make(chan int, noOfFiles)
-	results := make(chan int, noOfFiles)
+	results := make(chan string, noOfFiles)
 
 	for i := 1; i <= noOfWorkers; i++ {
 		go validateMultipleFilesData(jobs, results, fileSize, suite)
@@ -253,7 +253,8 @@ func createThreadPool(noOfFiles int, noOfWorkers int, fileSize string, suite *da
 	close(jobs)
 
 	for i := 1; i <= noOfFiles; i++ {
-		<-results
+		filePath := <-results
+		os.Remove(filePath)
 	}
 	close(results)
 

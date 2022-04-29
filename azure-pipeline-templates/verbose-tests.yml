@@ -180,6 +180,7 @@ steps:
       account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} LFU policy"
       distro_name: ${{ parameters.distro_name }}
+      quick_test: ${{ parameters.quick_test }}
 
   - template: e2e-tests-spcl.yml
     parameters:
@@ -195,6 +196,7 @@ steps:
       account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} LRU policy no timeout"
       distro_name: ${{ parameters.distro_name }}
+      quick_test: ${{ parameters.quick_test }}
 
   - template: e2e-tests-spcl.yml
     parameters:
@@ -210,6 +212,7 @@ steps:
       account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} LRU policy create empty"
       distro_name: ${{ parameters.distro_name }}
+      quick_test: ${{ parameters.quick_test }}
 
 
 #--------------------------------------- Setup: End to end tests with different File Cache configurations ------------------------------------------
