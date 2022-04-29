@@ -23,15 +23,14 @@ var dataValidationTempPathPtr string
 var dataValidationAdlsPtr string
 var quickTest string
 
+var minBuff, medBuff, largeBuff, hugeBuff []byte
+
 type dataValidationTestSuite struct {
 	suite.Suite
 	testMntPath   string
 	testLocalPath string
 	testCachePath string
 	adlsTest      bool
-	minBuff       []byte
-	medBuff       []byte
-	hugeBuff      []byte
 }
 
 func regDataValidationTestFlag(p *string, name string, value string, usage string) {
@@ -100,7 +99,7 @@ func (suite *dataValidationTestSuite) TestSmallFileData() {
 	srcFile.Close()
 
 	// write to file in the local directory
-	err = ioutil.WriteFile(localFilePath, suite.minBuff, 0777)
+	err = ioutil.WriteFile(localFilePath, minBuff, 0777)
 	suite.Equal(nil, err)
 
 	suite.copyToMountDir(localFilePath, remoteFilePath)
@@ -125,7 +124,7 @@ func (suite *dataValidationTestSuite) TestMediumFileData() {
 	srcFile.Close()
 
 	// write to file in the local directory
-	err = ioutil.WriteFile(localFilePath, suite.medBuff, 0777)
+	err = ioutil.WriteFile(localFilePath, medBuff, 0777)
 	suite.Equal(nil, err)
 
 	suite.copyToMountDir(localFilePath, remoteFilePath)
@@ -150,7 +149,7 @@ func (suite *dataValidationTestSuite) TestLargeFileData() {
 	srcFile.Close()
 
 	// write to file in the local directory
-	err = ioutil.WriteFile(localFilePath, suite.hugeBuff, 0777)
+	err = ioutil.WriteFile(localFilePath, largeBuff, 0777)
 	suite.Equal(nil, err)
 
 	suite.copyToMountDir(localFilePath, remoteFilePath)
@@ -175,7 +174,7 @@ func (suite *dataValidationTestSuite) TestDataValidationNegative() {
 	srcFile.Close()
 
 	// write to file in the local directory
-	err = ioutil.WriteFile(localFilePath, suite.minBuff, 0777)
+	err = ioutil.WriteFile(localFilePath, minBuff, 0777)
 	suite.Equal(nil, err)
 
 	// copy local file to mounted directory
@@ -215,27 +214,18 @@ func validateMultipleFilesData(jobs <-chan int, results chan<- int, fileSize str
 		srcFile.Close()
 
 		// write to file in the local directory
-		var blockSize string = "1M"
-		var blockCounts string
 		if fileSize == "huge" {
-			blockCounts = "2000"
+			err = ioutil.WriteFile(localFilePath, hugeBuff, 0777)
 		} else if fileSize == "large" {
 			if strings.ToLower(quickTest) == "true" {
-				blockCounts = "100"
+				err = ioutil.WriteFile(localFilePath, hugeBuff, 0777)
 			} else {
-				blockCounts = "500"
+				err = ioutil.WriteFile(localFilePath, largeBuff, 0777)
 			}
 		} else if fileSize == "medium" {
-			blockCounts = "10"
+			err = ioutil.WriteFile(localFilePath, medBuff, 0777)
 		} else {
-			blockSize = "1K"
-			blockCounts = "1"
-		}
-
-		ddCmd := exec.Command("dd", "if=/dev/random", "of="+localFilePath, "bs="+blockSize, "count="+blockCounts)
-		cliOut, err := ddCmd.Output()
-		if len(cliOut) != 0 {
-			fmt.Println(string(cliOut))
+			err = ioutil.WriteFile(localFilePath, minBuff, 0777)
 		}
 		suite.Equal(nil, err)
 
@@ -271,19 +261,19 @@ func createThreadPool(noOfFiles int, noOfWorkers int, fileSize string, suite *da
 }
 
 func (suite *dataValidationTestSuite) TestMultipleSmallFiles() {
-	noOfFiles := 100
+	noOfFiles := 50
 	noOfWorkers := 10
 	createThreadPool(noOfFiles, noOfWorkers, "small", suite)
 }
 
 func (suite *dataValidationTestSuite) TestMultipleMediumFiles() {
-	noOfFiles := 50
+	noOfFiles := 25
 	noOfWorkers := 5
 	createThreadPool(noOfFiles, noOfWorkers, "medium", suite)
 }
 
 func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
-	noOfFiles := 4
+	noOfFiles := 5
 	noOfWorkers := 2
 	createThreadPool(noOfFiles, noOfWorkers, "large", suite)
 }
@@ -302,10 +292,15 @@ func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
 // -------------- Main Method -------------------
 func TestDataValidationTestSuite(t *testing.T) {
 	initDataValidationFlags()
-	dataValidationTest := dataValidationTestSuite{
-		minBuff:  make([]byte, 1024),
-		medBuff:  make([]byte, (10 * 1024 * 1024)),
-		hugeBuff: make([]byte, (500 * 1024 * 1024)),
+	dataValidationTest := dataValidationTestSuite{}
+
+	minBuff = make([]byte, 1024)
+	medBuff = make([]byte, (10 * 1024 * 1024))
+	largeBuff = make([]byte, (500 * 1024 * 1024))
+	if strings.ToLower(quickTest) == "true" {
+		hugeBuff = make([]byte, (100 * 1024 * 1024))
+	} else {
+		hugeBuff = make([]byte, (2000 * 1024 * 1024))
 	}
 
 	// Generate random test dir name where our End to End test run is contained
@@ -341,9 +336,10 @@ func TestDataValidationTestSuite(t *testing.T) {
 	if err != nil {
 		t.Error("Failed to create test directory")
 	}
-	rand.Read(dataValidationTest.minBuff)
-	rand.Read(dataValidationTest.medBuff)
-	rand.Read(dataValidationTest.hugeBuff)
+	rand.Read(minBuff)
+	rand.Read(medBuff)
+	rand.Read(largeBuff)
+	rand.Read(hugeBuff)
 
 	// Run the actual End to End test
 	suite.Run(t, &dataValidationTest)
