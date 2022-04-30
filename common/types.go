@@ -187,6 +187,7 @@ type Block struct {
 type BlockOffsetList struct {
 	BlockList []*Block //blockId to offset mapping
 	Cached    bool     // is it cached?
+	SmallFile bool
 }
 
 // return true if item found and index of the item

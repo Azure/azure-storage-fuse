@@ -37,6 +37,7 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
+	"blobfuse2/internal/handlemap"
 	"context"
 	"errors"
 	"net/url"
@@ -503,6 +504,10 @@ func (dl *Datalake) WriteFromBuffer(name string, metadata map[string]string, dat
 // Write : Write to a file at given offset
 func (dl *Datalake) Write(options internal.WriteFileOptions) error {
 	return dl.BlockBlob.Write(options)
+}
+
+func (dl *Datalake) StageAndCommit(handle *handlemap.Handle) error {
+	return dl.BlockBlob.StageAndCommit(handle)
 }
 
 func (dl *Datalake) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {

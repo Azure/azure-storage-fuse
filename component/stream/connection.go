@@ -16,7 +16,7 @@ type StreamConnection interface {
 	Configure(cfg StreamOptions) error
 	ReadInBuffer(internal.ReadInBufferOptions) (int, error)
 	OpenFile(internal.OpenFileOptions) (*handlemap.Handle, error)
-	Write(options internal.WriteFileOptions) error
+	WriteFile(options internal.WriteFileOptions) (int, error)
 	CloseFile(internal.CloseFileOptions) error
 	Stop() error
 	// CreateFile(name string, mode os.FileMode) error

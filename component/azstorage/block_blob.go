@@ -37,6 +37,7 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
+	"blobfuse2/internal/handlemap"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -676,6 +677,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		blockOffset += block.Size
 		blockList.BlockList = append(blockList.BlockList, blk)
 	}
+	blockList.SmallFile = len(blockList.BlockList) == 0
 	return &blockList, nil
 }
 
@@ -728,7 +730,7 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 	length := int64(len(options.Data))
 	data := options.Data
 	// case 1: file consists of no blocks (small file)
-	if fileOffsets != nil && len(fileOffsets.BlockList) == 0 {
+	if fileOffsets != nil && fileOffsets.SmallFile {
 		// get all the data
 		oldData, _ := bb.ReadBuffer(name, 0, 0)
 		// update the data with the new data
@@ -783,14 +785,14 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
 		blockOffset := offset - fileOffsets.BlockList[index].StartIndex
 		copy(oldDataBuffer[blockOffset:], data)
-		err := bb.stageAndCommitModifiedBlocks(name, oldDataBuffer, index, fileOffsets)
+		err := bb.stageAndCommitModifiedBlocks(name, oldDataBuffer, fileOffsets)
 		return err
 	}
 	return nil
 }
 
 // TODO: make a similar method facing stream that would enable us to write to cached blocks then stage and commit
-func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, index int, offsetList *common.BlockOffsetList) error {
+func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offsetList *common.BlockOffsetList) error {
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	blockOffset := int64(0)
 	var blockIDList []string
@@ -820,6 +822,40 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, inde
 		bb.downloadOptions.ClientProvidedKeyOptions)
 	if err != nil {
 		log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to commit block list to blob %s (%s)", name, err.Error())
+		return err
+	}
+	return nil
+}
+
+func (bb *BlockBlob) StageAndCommit(handle *handlemap.Handle) error {
+	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, handle.Path))
+	var blockIDList []string
+	for _, blk := range handle.CacheObj.BlockList {
+		blockIDList = append(blockIDList, blk.Id)
+		if blk.Dirty {
+			_, err := blobURL.StageBlock(context.Background(),
+				blk.Id,
+				bytes.NewReader(blk.Data),
+				bb.blobAccCond.LeaseAccessConditions,
+				nil,
+				bb.downloadOptions.ClientProvidedKeyOptions)
+			if err != nil {
+				log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to stage to blob %s at block %v (%s)", handle.Path, blk.StartIndex, err.Error())
+				return err
+			}
+			blk.Dirty = false
+		}
+	}
+	_, err := blobURL.CommitBlockList(context.Background(),
+		blockIDList,
+		azblob.BlobHTTPHeaders{ContentType: getContentType(handle.Path)},
+		nil,
+		bb.blobAccCond,
+		bb.Config.defaultTier,
+		nil, // datalake doesn't support tags here
+		bb.downloadOptions.ClientProvidedKeyOptions)
+	if err != nil {
+		log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to commit block list to blob %s (%s)", handle.Path, err.Error())
 		return err
 	}
 	return nil

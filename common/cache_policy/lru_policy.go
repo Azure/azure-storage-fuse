@@ -4,6 +4,7 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"container/list"
+	"fmt"
 	"sync"
 )
 
@@ -43,11 +44,30 @@ func (cache *LRUCache) Get(bk int64) (*common.Block, bool) {
 	return cb, found
 }
 
-//Put: Inserts the key,value pair in LRUCache.
-func (cache *LRUCache) Put(key int64, value *common.Block) {
+// return true if eviction happened, return false otherwise
+func (cache *LRUCache) findCleanBlockToEvict() bool {
+	node := cache.List.Back()
+	pair := getKeyPair(node)
+	for i := 0; i < cache.List.Len(); i++ {
+		if !pair.value.Dirty {
+			fmt.Println("somehow not dirty")
+			cache.Remove(pair.key)
+			return false
+		} else {
+			node = node.Next()
+		}
+	}
+	fmt.Println("something dirty")
+	return true
+}
+
+//Put: Inserts the key,value pair in LRUCache. Return false if failed.
+func (cache *LRUCache) Put(key int64, value *common.Block) bool {
 	if cache.Occupied >= cache.Capacity {
-		pair := getKeyPair(cache.List.Back())
-		cache.Remove(pair.key)
+		cacheFull := cache.findCleanBlockToEvict()
+		if cacheFull {
+			return false
+		}
 	}
 	node := &list.Element{
 		Value: KeyPair{
@@ -58,6 +78,7 @@ func (cache *LRUCache) Put(key int64, value *common.Block) {
 	pointer := cache.List.PushFront(node)
 	cache.Occupied += (node.Value.(KeyPair).value.EndIndex - node.Value.(KeyPair).value.StartIndex)
 	cache.Elements[key] = pointer
+	return true
 }
 
 func (cache *LRUCache) Print() {

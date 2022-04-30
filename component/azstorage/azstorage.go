@@ -434,6 +434,11 @@ func (az *AzStorage) Chown(options internal.ChownOptions) error {
 	return az.storage.ChangeOwner(options.Name, options.Owner, options.Group)
 }
 
+func (az *AzStorage) FlushFile(options internal.FlushFileOptions) error {
+	log.Trace("AzStorage::FlushFile : Flush file %s", options.Handle.Path)
+	return az.storage.StageAndCommit(options.Handle)
+}
+
 // TODO : Below methods are pending to be implemented
 // SetAttr(string, internal.ObjAttr) error
 // UnlinkFile(string) error

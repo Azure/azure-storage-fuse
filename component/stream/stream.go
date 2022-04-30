@@ -105,11 +105,6 @@ func (st *Stream) Configure() error {
 		log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
 		return errors.New("not enough free memory for provided stream configuration")
 	}
-	if !conf.readOnly {
-		log.Err("Stream::Configure : config error, handle level caching is available for read-only mode")
-		return errors.New("handle level caching is available for read-only mode")
-	}
-
 	st.cache = NewStreamConnection(conf, st)
 	return nil
 }
@@ -144,6 +139,10 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 
 func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	return st.cache.ReadInBuffer(options)
+}
+
+func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
+	return st.cache.WriteFile(options)
 }
 
 func (st *Stream) CloseFile(options internal.CloseFileOptions) error {

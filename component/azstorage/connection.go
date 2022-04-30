@@ -37,6 +37,7 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
+	"blobfuse2/internal/handlemap"
 	"net/url"
 	"os"
 
@@ -117,6 +118,7 @@ type AzConnection interface {
 
 	ChangeMod(string, os.FileMode) error
 	ChangeOwner(string, int, int) error
+	StageAndCommit(handle *handlemap.Handle) error
 
 	NewCredentialKey(_, _ string) error
 }
