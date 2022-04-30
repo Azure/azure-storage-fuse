@@ -42,12 +42,13 @@ import (
 )
 
 var generateCmd = &cobra.Command{
-	Use:        "generate [component name]",
-	Hidden:     true,
-	Short:      "Generate a new component for Blobfuse2",
-	Long:       "Generate a new component for Blobfuse2",
-	SuggestFor: []string{"gen", "gener"},
-	Args:       cobra.ExactArgs(1),
+	Use:               "generate [component name]",
+	Hidden:            true,
+	Short:             "Generate a new component for Blobfuse2",
+	Long:              "Generate a new component for Blobfuse2",
+	SuggestFor:        []string{"gen", "gener"},
+	Args:              cobra.ExactArgs(1),
+	FlagErrorHandling: cobra.ExitOnError,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Parent().Run(cmd.Parent(), args)
 

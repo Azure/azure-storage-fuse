@@ -221,6 +221,14 @@ steps:
   - script: cat ${{ parameters.config }}
     displayName: Print config file
 
+  - template: mount-test.yml
+    parameters:
+      working_dir: ${{ parameters.working_dir }}
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      config: ${{ parameters.config }}
+      idstring: ${{ parameters.service }} Mount Test
+
   - template: stress-test.yml
     parameters:
       working_dir: ${{ parameters.working_dir }}

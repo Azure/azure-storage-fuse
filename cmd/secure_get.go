@@ -44,11 +44,12 @@ import (
 )
 
 var getKeyCmd = &cobra.Command{
-	Use:        "get",
-	Short:      "Get value of requested config parameter from your encrypted config file",
-	Long:       "Get value of requested config parameter from your encrypted config file",
-	SuggestFor: []string{"g", "get"},
-	Example:    "blobfuse2 secure get --config-file=config.yaml --passphrase=PASSPHRASE --key=logging.log_level",
+	Use:               "get",
+	Short:             "Get value of requested config parameter from your encrypted config file",
+	Long:              "Get value of requested config parameter from your encrypted config file",
+	SuggestFor:        []string{"g", "get"},
+	Example:           "blobfuse2 secure get --config-file=config.yaml --passphrase=PASSPHRASE --key=logging.log_level",
+	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		validateOptions()
 

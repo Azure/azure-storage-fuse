@@ -170,12 +170,12 @@ type blockBlobTestSuite struct {
 	container    string
 }
 
-func newTestAzStorage(configuration string) *AzStorage {
+func newTestAzStorage(configuration string) (*AzStorage, error) {
 	config.ReadConfigFromReader(strings.NewReader(configuration))
 	az := NewazstorageComponent()
-	az.Configure()
+	err := az.Configure()
 
-	return az.(*AzStorage)
+	return az.(*AzStorage), err
 }
 
 func (s *blockBlobTestSuite) SetupTest() {
@@ -223,7 +223,7 @@ func (s *blockBlobTestSuite) setupTestHelper(configuration string, container str
 
 	s.assert = assert.New(s.T())
 
-	s.az = newTestAzStorage(configuration)
+	s.az, _ = newTestAzStorage(configuration)
 	s.az.Start(ctx) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
 	// We could create the container before but that requires rewriting the code to new up a service client.
 
@@ -246,6 +246,13 @@ func (s *blockBlobTestSuite) cleanupTest() {
 	log.Destroy()
 }
 
+func (s *blockBlobTestSuite) TestInvalidBlockSize() {
+	configuration := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  block-size-mb: 5000\n account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	_, err := newTestAzStorage(configuration)
+	s.assert.NotNil(err)
+}
+
 func (s *blockBlobTestSuite) TestDefault() {
 	defer s.cleanupTest()
 	s.assert.Equal(storageTestConfigurationParameters.BlockAccount, s.az.stConfig.authConfig.AccountName)
@@ -263,7 +270,7 @@ func (s *blockBlobTestSuite) TestDefault() {
 	s.assert.Equal(EAuthType.KEY(), s.az.stConfig.authConfig.AuthMode)
 	s.assert.Equal(s.container, s.az.stConfig.container)
 	s.assert.Empty(s.az.stConfig.prefixPath)
-	s.assert.EqualValues(16*1024*1024, s.az.stConfig.blockSize)
+	s.assert.EqualValues(0, s.az.stConfig.blockSize)
 	s.assert.EqualValues(32, s.az.stConfig.maxConcurrency)
 	s.assert.EqualValues(AccessTiers["none"], s.az.stConfig.defaultTier)
 	s.assert.EqualValues(0, s.az.stConfig.cancelListForSeconds)
@@ -1708,6 +1715,94 @@ func (s *blockBlobTestSuite) TestChown() {
 	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: 6, Group: 5})
 	s.assert.NotNil(err)
 	s.assert.EqualValues(syscall.ENOTSUP, err)
+}
+
+func (s *blockBlobTestSuite) TestXBlockSize() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+
+	bb := BlockBlob{}
+
+	// For filesize 0 expected blocksize is 256MB
+	block, err := bb.calculateBlockSize(name, 0)
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, azblob.BlockBlobMaxUploadBlobBytes)
+
+	// For filesize 100MB expected blocksize is 256MB
+	block, err = bb.calculateBlockSize(name, (100 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, azblob.BlockBlobMaxUploadBlobBytes)
+
+	// For filesize 500MB expected blocksize is 4MB
+	block, err = bb.calculateBlockSize(name, (500 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, azblob.BlobDefaultDownloadBlockSize)
+
+	// For filesize 1GB expected blocksize is 4MB
+	block, err = bb.calculateBlockSize(name, (1 * 1024 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, azblob.BlobDefaultDownloadBlockSize)
+
+	// For filesize 500GB expected blocksize is 10737424
+	block, err = bb.calculateBlockSize(name, (500 * 1024 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, int64(10737424))
+
+	// For filesize 1TB expected blocksize is 21990240  (1TB/50000 ~= rounded off to next multiple of 8)
+	block, err = bb.calculateBlockSize(name, (1 * 1024 * 1024 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, int64(21990240))
+
+	// For filesize 100TB expected blocksize is 2199023256  (100TB/50000 ~= rounded off to next multiple of 8)
+	block, err = bb.calculateBlockSize(name, (100 * 1024 * 1024 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, int64(2199023256))
+
+	// For filesize 190TB expected blocksize is 4178144192  (190TB/50000 ~= rounded off to next multiple of 8)
+	block, err = bb.calculateBlockSize(name, (190 * 1024 * 1024 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, int64(4178144192))
+
+	// Boundary condition which is exactly max size supported by sdk
+	block, err = bb.calculateBlockSize(name, (azblob.BlockBlobMaxStageBlockBytes * azblob.BlockBlobMaxBlocks))
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, int64(azblob.BlockBlobMaxStageBlockBytes)) // 4194304000
+
+	// For Filesize created using dd for 1TB size
+	block, err = bb.calculateBlockSize(name, int64(1099511627776))
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, int64(21990240))
+
+	// Boundary condition 5 bytes less then max expected file size
+	block, err = bb.calculateBlockSize(name, (azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks)-5)
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, int64(azblob.BlockBlobMaxStageBlockBytes))
+
+	// Boundary condition 1 bytes more then max expected file size
+	block, err = bb.calculateBlockSize(name, (azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks)+1)
+	s.assert.NotNil(err)
+	s.assert.EqualValues(block, 0)
+
+	// Boundary condition 5 bytes more then max expected file size
+	block, err = bb.calculateBlockSize(name, (azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks)+5)
+	s.assert.NotNil(err)
+	s.assert.EqualValues(block, 0)
+
+	// Boundary condition file size one block short of file blocks
+	block, err = bb.calculateBlockSize(name, (azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks)-azblob.BlockBlobMaxStageBlockBytes)
+	s.assert.Nil(err)
+	s.assert.EqualValues(block, 4194220120)
+
+	// Boundary condition one byte more then max block size
+	block, err = bb.calculateBlockSize(name, (4194304001 * azblob.BlockBlobMaxBlocks))
+	s.assert.NotNil(err)
+	s.assert.EqualValues(block, 0)
+
+	// For filesize 200TB, error is expected as max 190TB only supported
+	block, err = bb.calculateBlockSize(name, (200 * 1024 * 1024 * 1024 * 1024))
+	s.assert.NotNil(err)
+	s.assert.EqualValues(block, 0)
 }
 
 // func (s *blockBlobTestSuite) TestRAGRS() {

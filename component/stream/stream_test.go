@@ -34,6 +34,7 @@ package stream
 
 // import (
 // 	"blobfuse2/common"
+// 	"blobfuse2/common/cache_policy"
 // 	"blobfuse2/common/config"
 // 	"blobfuse2/common/log"
 // 	"blobfuse2/internal"
@@ -122,7 +123,7 @@ package stream
 // }
 
 // // return the block
-// func getCachedBlock(suite *streamTestSuite, offset int64, handle *handlemap.Handle) *common.CacheBlock {
+// func getCachedBlock(suite *streamTestSuite, offset int64, handle *handlemap.Handle) *cache_policy.CacheBlock {
 // 	bk := offset
 // 	blk, _ := handle.CacheObj.Get(bk)
 // 	return blk

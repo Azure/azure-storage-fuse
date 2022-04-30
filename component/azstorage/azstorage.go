@@ -452,7 +452,7 @@ func NewazstorageComponent() internal.Component {
 	// Init the component with default config
 	az := &AzStorage{
 		stConfig: AzStorageConfig{
-			blockSize:      (16 * 1024 * 1024),
+			blockSize:      0,
 			maxConcurrency: 32,
 			defaultTier:    getAccessTierType("none"),
 			authConfig: azAuthConfig{

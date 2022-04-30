@@ -428,6 +428,10 @@ func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, o
 			}
 		}
 
+		if off_64 == 0 {
+			attrs = append([]*internal.ObjAttr{{Flags: fuseFS.lsFlags, Name: "."}, {Flags: fuseFS.lsFlags, Name: ".."}}, attrs...)
+		}
+
 		cacheInfo.sIndex = off_64
 		cacheInfo.eIndex = off_64 + uint64(len(attrs))
 		cacheInfo.length = uint64(len(attrs))
@@ -519,10 +523,10 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	name = common.NormalizeObjectName(name)
 	log.Trace("Libfuse::libfuse_open : %s", name)
 	// TODO: Should this sit behind a user option? What if we change something to support these in the future?
-	// Mask out SYNC flags since write operation will fail
+	// Mask out SYNC and DIRECT flags since write operation will fail
 	if fi.flags&C.O_SYNC != 0 || fi.flags&C.__O_DIRECT != 0 {
 		log.Err("Libfuse::libfuse_open : Reset flags for open %s, fi.flags %X", name, fi.flags)
-		// Blobfuse2 does not support the SYNC flag. If a user application passes this flag on to blobfuse2
+		// Blobfuse2 does not support the SYNC or DIRECT flag. If a user application passes this flag on to blobfuse2
 		// and we open the file with this flag, subsequent write operations wlil fail with "Invalid argument" error.
 		// Mask them out here in the open call so that write works.
 		// Oracle RMAN is one such application that sends these flags during backup

@@ -40,6 +40,7 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/JeffreyRichter/enum/enum"
 )
 
@@ -230,6 +231,14 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	// Validate account type property
 	if opt.AccountType == "" {
 		opt.AccountType = "block"
+	}
+
+	if opt.BlockSize != 0 {
+		if opt.BlockSize > azblob.BlockBlobMaxStageBlockBytes {
+			log.Err("block size is too large. Block size has to be smaller than %s Bytes", azblob.BlockBlobMaxStageBlockBytes)
+			return errors.New("block size is too large")
+		}
+		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
 	}
 
 	var accountType AccountType

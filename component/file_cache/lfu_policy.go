@@ -36,7 +36,6 @@ package file_cache
 import (
 	"blobfuse2/common/log"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -153,14 +152,11 @@ func (l *lfuPolicy) clearItemFromCache(path string) {
 	}
 
 	// There are no open handles for this file so its safe to remove this
-	err := deleteFile(path)
-	if err == nil {
-		// File was deleted so try clearing its parent directory
-		dirPath := filepath.Dir(path)
-		if dirPath != l.tmpPath {
-			os.Remove(dirPath)
-		}
-	}
+	deleteFile(path)
+
+	// File was deleted so try clearing its parent directory
+	// TODO: Delete directories up the path recursively that are "safe to delete". Ensure there is no race between this code and code that creates directories (like OpenFile)
+	// This might require something like hierarchical locking.
 }
 
 func (l *lfuPolicy) clearCache() {
