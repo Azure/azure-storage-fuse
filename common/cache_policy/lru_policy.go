@@ -48,7 +48,7 @@ func (cache *LRUCache) findCleanBlockToEvict() bool {
 	node := cache.List.Back()
 	pair := getKeyPair(node)
 	for i := 0; i < cache.List.Len(); i++ {
-		if !pair.value.Dirty {
+		if !pair.value.Dirty() {
 			cache.Remove(pair.key)
 			return false
 		}

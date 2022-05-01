@@ -741,7 +741,10 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		blockOffset += block.Size
 		blockList.BlockList = append(blockList.BlockList, blk)
 	}
-	blockList.SmallFile = len(blockList.BlockList) == 0
+	// if nothing is in the block list then its a small file
+	if len(blockList.BlockList) == 0 {
+		blockList.Flags.Set(common.SmallFile)
+	}
 	return &blockList, nil
 }
 
@@ -752,8 +755,8 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 		Id:         newBlockId,
 		StartIndex: startIndex,
 		EndIndex:   startIndex + size,
-		Dirty:      true,
 	}
+	newBlock.Flags.Set(common.DirtyBlock)
 	return newBlock
 }
 
@@ -787,7 +790,7 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 
 	fileOffsets := options.FileOffsets
 	// when the file offset mapping is cached we don't need to make a get block list call
-	if fileOffsets != nil && !fileOffsets.Cached {
+	if fileOffsets != nil && !fileOffsets.Cached() {
 		var err error
 		fileOffsets, err = bb.GetFileBlockOffsets(name)
 		if err != nil {
@@ -798,7 +801,7 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 	length := int64(len(options.Data))
 	data := options.Data
 	// case 1: file consists of no blocks (small file)
-	if fileOffsets != nil && fileOffsets.SmallFile {
+	if fileOffsets != nil && fileOffsets.SmallFile() {
 		// get all the data
 		oldData, _ := bb.ReadBuffer(name, 0, 0)
 		// update the data with the new data
@@ -866,7 +869,7 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 	var blockIDList []string
 	for _, blk := range offsetList.BlockList {
 		blockIDList = append(blockIDList, blk.Id)
-		if blk.Dirty {
+		if blk.Dirty() {
 			_, err := blobURL.StageBlock(context.Background(),
 				blk.Id,
 				bytes.NewReader(data[blockOffset:(blk.EndIndex-blk.StartIndex)+blockOffset]),
@@ -897,7 +900,7 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 
 func (bb *BlockBlob) StageAndCommit(handle *handlemap.Handle) error {
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, handle.Path))
-	if handle.CacheObj.SmallFile {
+	if handle.CacheObj.SmallFile() {
 		err := bb.WriteFromBuffer(handle.Path, nil, handle.CacheObj.BlockList[0].Data)
 		if err != nil {
 			log.Err("BlockBlob::StageAndCommit : Failed to upload small blob %s ", handle.Path, err.Error())
@@ -908,7 +911,7 @@ func (bb *BlockBlob) StageAndCommit(handle *handlemap.Handle) error {
 	var blockIDList []string
 	for _, blk := range handle.CacheObj.BlockList {
 		blockIDList = append(blockIDList, blk.Id)
-		if blk.Dirty {
+		if blk.Dirty() {
 			_, err := blobURL.StageBlock(context.Background(),
 				blk.Id,
 				bytes.NewReader(blk.Data),
@@ -919,7 +922,7 @@ func (bb *BlockBlob) StageAndCommit(handle *handlemap.Handle) error {
 				log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to stage to blob %s at block %v (%s)", handle.Path, blk.StartIndex, err.Error())
 				return err
 			}
-			blk.Dirty = false
+			blk.Flags.Clear(common.DirtyBlock)
 		}
 	}
 	_, err := blobURL.CommitBlockList(context.Background(),

@@ -173,21 +173,52 @@ type LogConfig struct {
 	TimeTracker bool
 }
 
+// Flags represented in BitMap for various flags in the handle
+const (
+	BlockFlagUnknown uint16 = iota
+	DirtyBlock
+	LastBlock
+)
+
 type Block struct {
 	sync.RWMutex
 	StartIndex int64
 	EndIndex   int64
-	Data       []byte
-	Dirty      bool
-	Last       bool //last block in the file?
+	Flags      BitMap16
 	Id         string
+	Data       []byte
 }
+
+// Dirty : Handle is dirty or not
+func (block *Block) Dirty() bool {
+	return block.Flags.IsSet(DirtyBlock)
+}
+
+// Dirty : Handle is dirty or not
+func (block *Block) IsLast() bool {
+	return block.Flags.IsSet(LastBlock)
+}
+
+const (
+	BolFlagUnknown uint16 = iota
+	Cached
+	SmallFile
+)
 
 // list that holds blocks containing ids and corresponding offsets
 type BlockOffsetList struct {
 	BlockList []*Block //blockId to offset mapping
-	Cached    bool     // is it cached?
-	SmallFile bool
+	Flags     BitMap16
+}
+
+// Dirty : Handle is dirty or not
+func (bol *BlockOffsetList) Cached() bool {
+	return bol.Flags.IsSet(Cached)
+}
+
+// Dirty : Handle is dirty or not
+func (bol *BlockOffsetList) SmallFile() bool {
+	return bol.Flags.IsSet(SmallFile)
 }
 
 // return true if item found and index of the item
@@ -249,7 +280,7 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64,
 		}
 		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
 			appendOnly = false
-			blk.Dirty = true
+			blk.Flags.Set(DirtyBlock)
 			currentBlockOffset = blk.EndIndex
 			size += (blk.EndIndex - blk.StartIndex)
 		}

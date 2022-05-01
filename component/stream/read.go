@@ -94,7 +94,9 @@ func (r *ReadCache) getBlock(handle *handlemap.Handle, offset int64) (*common.Bl
 			StartIndex: offset,
 			EndIndex:   offset + blockSize,
 			Data:       make([]byte, blockSize),
-			Last:       (offset + blockSize) >= handle.Size,
+		}
+		if (offset + blockSize) >= handle.Size {
+			block.Flags.Set(common.LastBlock)
 		}
 		block.Lock()
 		handle.CacheObj.Put(blockKeyObj, block)

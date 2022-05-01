@@ -54,10 +54,10 @@ func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap
 			Name: handle.Path,
 		}
 		offsets, _ := rw.NextComponent().GetFileBlockOffsets(opts)
-		offsets.Cached = true
+		offsets.Flags.Set(common.Cached)
 		handle.CacheObj.BlockOffsetList = offsets
 		// if its a small file then download the file in its entirety if there is memory available, otherwise stream only
-		if handle.CacheObj.SmallFile {
+		if handle.CacheObj.SmallFile() {
 			if uint64(handle.Size*mb) > memory.FreeMemory() {
 				handle.CacheObj.StreamOnly = true
 				return handle, err
@@ -164,7 +164,7 @@ func (rw *ReadWriteCache) getBlock(handle *handlemap.Handle, offset int64, block
 
 func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64, data []byte, write bool) (int, error) {
 	// if it's not a small file then we look the blocks it consistts of
-	if !handle.CacheObj.SmallFile {
+	if !handle.CacheObj.SmallFile() {
 		blocks, found := handle.CacheObj.FindBlocksToRead(offset, int64(len(data)))
 		if !found {
 			return 0, errors.New("block does not exist")
@@ -182,7 +182,7 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 			}
 			if write {
 				dataCopied = int64(copy(block.Data[offset-blocks[blk_index].StartIndex:], data[dataRead:]))
-				block.Dirty = true
+				block.Flags.Set(common.DirtyBlock)
 			} else {
 				dataCopied = int64(copy(data[dataRead:], block.Data[offset-blocks[blk_index].StartIndex:]))
 			}
@@ -203,7 +203,7 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 		}
 		if write {
 			_ = int64(copy(block.Data[offset:], data))
-			block.Dirty = true
+			block.Flags.Set(common.DirtyBlock)
 		} else {
 			_ = int64(copy(data, block.Data[offset:]))
 		}
