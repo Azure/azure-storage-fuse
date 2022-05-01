@@ -4,7 +4,6 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"container/list"
-	"fmt"
 	"sync"
 )
 
@@ -50,14 +49,11 @@ func (cache *LRUCache) findCleanBlockToEvict() bool {
 	pair := getKeyPair(node)
 	for i := 0; i < cache.List.Len(); i++ {
 		if !pair.value.Dirty {
-			fmt.Println("somehow not dirty")
 			cache.Remove(pair.key)
 			return false
-		} else {
-			node = node.Next()
 		}
+		node = node.Next()
 	}
-	fmt.Println("something dirty")
 	return true
 }
 

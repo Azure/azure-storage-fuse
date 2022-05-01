@@ -42,6 +42,7 @@ func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap
 		handle = handlemap.NewHandle(options.Name)
 	}
 	if !rw.streamOnly {
+		// if we hit handle limit then stream only on this new handle
 		if rw.cachedHandles >= rw.handleLimit {
 			log.Trace("Stream::OpenFile : file handle limit exceeded - switch handle to stream only mode %s [%s]", options.Name, handle.ID)
 			handle.CacheObj.StreamOnly = true
@@ -52,9 +53,25 @@ func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap
 		opts := internal.GetFileBlockOffsetsOptions{
 			Name: handle.Path,
 		}
-		offsets, _ := rw.GetFileBlockOffsets(opts)
+		offsets, _ := rw.NextComponent().GetFileBlockOffsets(opts)
 		offsets.Cached = true
 		handle.CacheObj.BlockOffsetList = offsets
+		// if its a small file then download the file in its entirety if there is memory available, otherwise stream only
+		if handle.CacheObj.SmallFile {
+			if uint64(handle.Size*mb) > memory.FreeMemory() {
+				handle.CacheObj.StreamOnly = true
+				return handle, err
+			}
+			block, _, err := rw.getBlock(handle, 0, &common.Block{StartIndex: 0, EndIndex: handle.Size})
+			if err != nil {
+				log.Err("Stream::OpenFile : error downloading small file %s [%s]", options.Name, err.Error())
+				rw.unlockBlock(block, false)
+				return handle, err
+			}
+			// our handle will consist of a single block locally for simpler logic
+			handle.CacheObj.BlockList = append(handle.CacheObj.BlockList, block)
+			rw.unlockBlock(block, false)
+		}
 	}
 	return handle, err
 }
@@ -79,8 +96,7 @@ func (rw *ReadWriteCache) WriteFile(options internal.WriteFileOptions) (int, err
 		}
 		return data, err
 	}
-	data, err := rw.readWriteBlocks(options.Handle, options.Offset, options.Data, true)
-	return data, err
+	return rw.readWriteBlocks(options.Handle, options.Offset, options.Data, true)
 }
 
 func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
@@ -102,7 +118,7 @@ func (rw *ReadWriteCache) Stop() error {
 	handleMap := handlemap.GetHandles()
 	handleMap.Range(func(key, value interface{}) bool {
 		handle := value.(*handlemap.Handle)
-		if handle.CacheObj != nil {
+		if handle.CacheObj != nil && !handle.CacheObj.StreamOnly {
 			handle.CacheObj.Lock()
 			handle.CacheObj.Purge()
 			handle.CacheObj.Unlock()
@@ -147,8 +163,9 @@ func (rw *ReadWriteCache) getBlock(handle *handlemap.Handle, offset int64, block
 }
 
 func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64, data []byte, write bool) (int, error) {
-	if !handle.CacheObj.BlockOffsetList.SmallFile {
-		blocks, found := handle.CacheObj.BlockOffsetList.FindBlocksToRead(offset, int64(len(data)))
+	// if it's not a small file then we look the blocks it consistts of
+	if !handle.CacheObj.SmallFile {
+		blocks, found := handle.CacheObj.FindBlocksToRead(offset, int64(len(data)))
 		if !found {
 			return 0, errors.New("block does not exist")
 		}
@@ -177,21 +194,20 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 		}
 		return dataRead, nil
 	} else {
-		if uint64(handle.Size*mb) > memory.FreeMemory() {
-			handle.CacheObj.StreamOnly = true
-		} else {
-			block, exists, err := rw.getBlock(handle, 0, &common.Block{StartIndex: 0, EndIndex: handle.Size})
-			if err != nil {
-				rw.unlockBlock(block, exists)
-				log.Err("Stream::ReadInBuffer : failed to download block of %s with offset %d: [%s]", handle.Path, block.StartIndex, err.Error())
-			}
-			if write {
-				_ = int64(copy(block.Data[offset:], data))
-				block.Dirty = true
-			} else {
-				_ = int64(copy(data, block.Data[offset:]))
-			}
+		// we know a small, i.e., file consists of a single block
+		// small files don't have delayed flushes
+		block, exists, err := rw.getBlock(handle, 0, handle.CacheObj.BlockList[0])
+		if err != nil {
+			rw.unlockBlock(block, exists)
+			log.Err("Stream::ReadInBuffer : failed to retrieve small file %s block with offset %d: [%s]", handle.Path, block.StartIndex, err.Error())
 		}
-		return 0, nil
+		if write {
+			_ = int64(copy(block.Data[offset:], data))
+			block.Dirty = true
+		} else {
+			_ = int64(copy(data, block.Data[offset:]))
+		}
+		rw.unlockBlock(block, exists)
 	}
+	return len(data), nil
 }

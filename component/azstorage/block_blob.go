@@ -897,6 +897,14 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 
 func (bb *BlockBlob) StageAndCommit(handle *handlemap.Handle) error {
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, handle.Path))
+	if handle.CacheObj.SmallFile {
+		err := bb.WriteFromBuffer(handle.Path, nil, handle.CacheObj.BlockList[0].Data)
+		if err != nil {
+			log.Err("BlockBlob::StageAndCommit : Failed to upload small blob %s ", handle.Path, err.Error())
+			return err
+		}
+		return nil
+	}
 	var blockIDList []string
 	for _, blk := range handle.CacheObj.BlockList {
 		blockIDList = append(blockIDList, blk.Id)
