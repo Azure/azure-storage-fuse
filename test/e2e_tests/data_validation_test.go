@@ -262,19 +262,19 @@ func createThreadPool(noOfFiles int, noOfWorkers int, fileSize string, suite *da
 }
 
 func (suite *dataValidationTestSuite) TestMultipleSmallFiles() {
-	noOfFiles := 20
-	noOfWorkers := 5
+	noOfFiles := 16
+	noOfWorkers := 4
 	createThreadPool(noOfFiles, noOfWorkers, "small", suite)
 }
 
 func (suite *dataValidationTestSuite) TestMultipleMediumFiles() {
-	noOfFiles := 10
-	noOfWorkers := 5
+	noOfFiles := 8
+	noOfWorkers := 4
 	createThreadPool(noOfFiles, noOfWorkers, "medium", suite)
 }
 
 func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
-	noOfFiles := 5
+	noOfFiles := 4
 	noOfWorkers := 2
 	createThreadPool(noOfFiles, noOfWorkers, "large", suite)
 }
@@ -301,7 +301,7 @@ func TestDataValidationTestSuite(t *testing.T) {
 	if strings.ToLower(quickTest) == "true" {
 		hugeBuff = make([]byte, (100 * 1024 * 1024))
 	} else {
-		hugeBuff = make([]byte, (1000 * 1024 * 1024))
+		hugeBuff = make([]byte, (750 * 1024 * 1024))
 	}
 
 	// Generate random test dir name where our End to End test run is contained
