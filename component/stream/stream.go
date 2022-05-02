@@ -150,6 +150,10 @@ func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
 	return st.cache.CloseFile(options)
 }
 
+func (st *Stream) TruncateFile(options internal.TruncateFileOptions) error {
+	return st.cache.TruncateFile(options)
+}
+
 // ------------------------- Factory -------------------------------------------
 
 // Pipeline will call this method to create your object, initialize your variables here

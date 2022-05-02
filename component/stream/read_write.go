@@ -128,6 +128,27 @@ func (rw *ReadWriteCache) Stop() error {
 	return nil
 }
 
+func (rw *ReadWriteCache) TruncateFile(options internal.TruncateFileOptions) error {
+	handleMap := handlemap.GetHandles()
+	handleMap.Range(func(key, value interface{}) bool {
+		handle := value.(*handlemap.Handle)
+		if handle.CacheObj != nil && !handle.CacheObj.StreamOnly {
+			if handle.Path == options.Name {
+				handle.CacheObj.Lock()
+				if handle.Size < options.Size {
+					rw.shrinkFile(handle, options.Size)
+				} else if handle.Size > options.Size {
+					rw.expandFile(handle, options.Size)
+				}
+				handle.CacheObj.Unlock()
+			}
+		}
+
+		return true
+	})
+	return nil
+}
+
 func (rw *ReadWriteCache) getBlock(handle *handlemap.Handle, offset int64, block *common.Block) (*common.Block, bool, error) {
 	blockKeyObj := offset
 	handle.CacheObj.Lock()
@@ -210,4 +231,12 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 		rw.unlockBlock(block, exists)
 	}
 	return len(data), nil
+}
+
+func (rw *ReadWriteCache) expandFile(handle *handlemap.Handle, size int64) error {
+	return nil
+}
+
+func (rw *ReadWriteCache) shrinkFile(handle *handlemap.Handle, size int64) error {
+	return nil
 }

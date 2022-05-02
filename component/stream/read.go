@@ -171,3 +171,8 @@ func (r *ReadCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	// This is not currently supported for a flat namespace account
 	return 0, syscall.ENOTSUP
 }
+
+func (r *ReadCache) TruncateFile(options internal.TruncateFileOptions) error {
+	// This is not currently supported for a flat namespace account
+	return syscall.ENOTSUP
+}

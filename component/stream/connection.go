@@ -18,6 +18,7 @@ type StreamConnection interface {
 	OpenFile(internal.OpenFileOptions) (*handlemap.Handle, error)
 	WriteFile(options internal.WriteFileOptions) (int, error)
 	CloseFile(internal.CloseFileOptions) error
+	TruncateFile(internal.TruncateFileOptions) error
 	Stop() error
 	// CreateFile(name string, mode os.FileMode) error
 	// CreateDirectory(name string) error
