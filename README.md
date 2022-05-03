@@ -92,7 +92,7 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
     - Alternatively accountName and accountKey can be specified by the following environment values instead: AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_ACCESS_KEY. 
 - Account Name & SAS (`authType SAS`)
     - Requires the accountName, containerName and sasToken specified in the config file or command line.
-    - Alternatively accountName can be specified by the environment values AZURE_STORAGE_ACCOUNT
+    - Alternatively accountName and sasToken can be specified by the following environment values instead: AZURE_STORAGE_ACCOUNT, AZURE_STORAGE_SAS_TOKEN.
 - Managed Identity (`authType MSI`)
     - Single assigned identity:
         - No extra parameters needed.
@@ -101,11 +101,16 @@ For more information, see the [wiki](https://github.com/Azure/azure-storage-fuse
             - Client ID (Use this if you are using a custom Managed Identity endpoint)
             - Object ID
             - Resource ID
+        - Client ID can be specified in the config file by the key 'identityClientId' or as the environment value AZURE_STORAGE_IDENTITY_CLIENT_ID
+        - Object ID can be specified in the config file by the key 'identityObjectId' or as the environment value AZURE_STORAGE_IDENTITY_OBJECT_ID 
+        - Resource ID can be specified in the config file by the key 'identityResourceId' or as the environment value AZURE_STORAGE_IDENTITY_RESOURCE_ID 
     - Add Storage Blob Data Contributor roles to this identity in the Storage account.
+    - MSI_ENDPOINT environment value can be used to specify a custom AAD endpoint to authenticate against
+    - MSI_SECRET environment value can be used to specify a custom secret for an alternate managed identity endpoint. 
 - Service Principal Name (`authType SPN`)
     - Requires servicePrincipalClientId, servicePrincipalTenantId, servicePrincipalClientSecret specified in the config file.    
-    - Alternatively servicePrincipalClientSecret can be specified by the environment value AZURE_STORAGE_SPN_CLIENT_SECRET 
-    - AZURE_STORAGE_AAD_ENDPOINT`environment value can be used to specify a custom AAD endpoint to authenticate against
+    - Alternatively servicePrincipalClientId, servicePrincipalTenantId and servicePrincipalClientSecret can be specified by the following environment values instead: AZURE_STORAGE_SPN_CLIENT_ID, AZURE_STORAGE_SPN_TENANT_ID, AZURE_STORAGE_SPN_CLIENT_SECRET 
+    - AZURE_STORAGE_AAD_ENDPOINT environment value can be used to specify a custom AAD endpoint to authenticate against
     - Add Storage Blob Data Contributor roles to this identity in the Storage account.
 
 ### Environment variables
