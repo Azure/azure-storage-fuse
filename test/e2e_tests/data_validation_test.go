@@ -285,16 +285,16 @@ func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
 	createThreadPool(noOfFiles, noOfWorkers, "large", suite)
 }
 
-// func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
-// 	if strings.ToLower(quickTest) == "true" {
-// 		fmt.Println("Quick test is enabled. Skipping this test case")
-// 		return
-// 	}
+func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
+	if strings.ToLower(quickTest) == "true" {
+		fmt.Println("Quick test is enabled. Skipping this test case")
+		return
+	}
 
-// 	noOfFiles := 2
-// 	noOfWorkers := 2
-// 	createThreadPool(noOfFiles, noOfWorkers, "huge", suite)
-// }
+	noOfFiles := 2
+	noOfWorkers := 2
+	createThreadPool(noOfFiles, noOfWorkers, "huge", suite)
+}
 
 // -------------- Main Method -------------------
 func TestDataValidationTestSuite(t *testing.T) {
