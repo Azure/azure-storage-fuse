@@ -264,6 +264,11 @@ func createThreadPool(noOfFiles int, noOfWorkers int, fileSize string, suite *da
 }
 
 func (suite *dataValidationTestSuite) TestMultipleSmallFiles() {
+	if strings.Contains(strings.ToUpper(distro), "RHEL") {
+		fmt.Println("Skipping this test case for RHEL")
+		return
+	}
+
 	noOfFiles := 16
 	noOfWorkers := 4
 	createThreadPool(noOfFiles, noOfWorkers, "small", suite)
