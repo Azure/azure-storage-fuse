@@ -22,6 +22,7 @@ var dataValidationMntPathPtr string
 var dataValidationTempPathPtr string
 var dataValidationAdlsPtr string
 var quickTest string
+var distroName string
 
 var minBuff, medBuff, largeBuff, hugeBuff []byte
 
@@ -48,6 +49,7 @@ func initDataValidationFlags() {
 	dataValidationAdlsPtr = getDataValidationTestFlag("adls")
 	dataValidationTempPathPtr = getDataValidationTestFlag("tmp-path")
 	quickTest = getDataValidationTestFlag("quick-test")
+	distroName = getDataValidationTestFlag("distro-name")
 }
 
 func getDataValidationTestDirName(n int) string {
@@ -279,20 +281,21 @@ func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
 	createThreadPool(noOfFiles, noOfWorkers, "large", suite)
 }
 
-func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
-	if strings.ToLower(quickTest) == "true" {
-		fmt.Println("Quick test is enabled. Skipping this test case")
-		return
-	}
+// func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
+// 	if strings.ToLower(quickTest) == "true" {
+// 		fmt.Println("Quick test is enabled. Skipping this test case")
+// 		return
+// 	}
 
-	noOfFiles := 2
-	noOfWorkers := 2
-	createThreadPool(noOfFiles, noOfWorkers, "huge", suite)
-}
+// 	noOfFiles := 2
+// 	noOfWorkers := 2
+// 	createThreadPool(noOfFiles, noOfWorkers, "huge", suite)
+// }
 
 // -------------- Main Method -------------------
 func TestDataValidationTestSuite(t *testing.T) {
 	initDataValidationFlags()
+	fmt.Println("Distro Name: " + distroName)
 	dataValidationTest := dataValidationTestSuite{}
 
 	minBuff = make([]byte, 1024)
@@ -354,4 +357,5 @@ func init() {
 	regDataValidationTestFlag(&dataValidationAdlsPtr, "adls", "", "Account is ADLS or not")
 	regDataValidationTestFlag(&dataValidationTempPathPtr, "tmp-path", "", "Cache dir path")
 	regDataValidationTestFlag(&quickTest, "quick-test", "true", "Run quick tests")
+	regDataValidationTestFlag(&distroName, "distro-name", "", "Name of the distro")
 }
