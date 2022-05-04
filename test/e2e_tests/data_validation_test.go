@@ -264,22 +264,33 @@ func createThreadPool(noOfFiles int, noOfWorkers int, fileSize string, suite *da
 }
 
 func (suite *dataValidationTestSuite) TestMultipleSmallFiles() {
+	if strings.ToUpper(distro) == "RHEL 8.1" {
+		fmt.Println("Skipping this test case for RHEL 8.1")
+		return
+	}
+
 	noOfFiles := 16
 	noOfWorkers := 4
 	createThreadPool(noOfFiles, noOfWorkers, "small", suite)
 }
 
 func (suite *dataValidationTestSuite) TestMultipleMediumFiles() {
+	if strings.ToUpper(distro) == "RHEL 8.1" {
+		fmt.Println("Skipping this test case for RHEL 8.1")
+		return
+	}
+
 	noOfFiles := 8
 	noOfWorkers := 4
 	createThreadPool(noOfFiles, noOfWorkers, "medium", suite)
 }
 
 func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
-	if strings.Contains(strings.ToUpper(distro), "RHEL") {
-		fmt.Println("Skipping this test case for RHEL")
+	if strings.ToUpper(distro) == "RHEL 8.1" {
+		fmt.Println("Skipping this test case for RHEL 8.1")
 		return
 	}
+
 	noOfFiles := 4
 	noOfWorkers := 2
 	createThreadPool(noOfFiles, noOfWorkers, "large", suite)
