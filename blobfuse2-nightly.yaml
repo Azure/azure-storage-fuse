@@ -429,8 +429,7 @@ jobs:
             temp_dir: $(TEMP_DIR)
         - script: |
             kill -9 $(pgrep mitmdump)
-            cat proxy_logs.txt
-          displayName: 'Kill Proxy & Print Proxy Logs'
+          displayName: 'Kill Proxy'
 
   # End of Ubuntu tests
   # ----------------------------------------------------------------------------------------
