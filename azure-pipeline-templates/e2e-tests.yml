@@ -51,10 +51,10 @@ steps:
     env:
       mount_dir: ${{ parameters.mount_dir }}
 
-  # - script: |
-  #     cat blobfuse2-logs.txt
-  #   displayName: 'View Logs'
-  #   condition: always()
+  - script: |
+      tail -n 200 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: always()
 
   - script: |
       > blobfuse2-logs.txt
