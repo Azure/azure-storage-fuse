@@ -972,14 +972,14 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 
 func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) error {
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	// if bol.SmallFile() {
-	// 	err := bb.WriteFromBuffer(name, nil, bol.BlockList[0].Data)
-	// 	if err != nil {
-	// 		log.Err("BlockBlob::StageAndCommit : Failed to upload small blob %s ", name, err.Error())
-	// 		return err
-	// 	}
-	// 	return nil
-	// }
+	if bol.SmallFile() {
+		err := bb.WriteFromBuffer(name, nil, bol.BlockList[0].Data)
+		if err != nil {
+			log.Err("BlockBlob::StageAndCommit : Failed to upload small blob %s ", name, err.Error())
+			return err
+		}
+		return nil
+	}
 	var blockIDList []string
 	var data []byte
 	for _, blk := range bol.BlockList {
