@@ -168,7 +168,9 @@ func (s *datalakeTestSuite) TestListContainers() {
 	num := 10
 	prefix := generateContainerName()
 	for i := 0; i < num; i++ {
-		s.serviceUrl.NewFileSystemURL(prefix + fmt.Sprint(i)).Create(ctx)
+		f := s.serviceUrl.NewFileSystemURL(prefix + fmt.Sprint(i))
+		f.Create(ctx)
+		defer f.Delete(ctx)
 	}
 
 	containers, err := s.az.ListContainers()
@@ -183,14 +185,6 @@ func (s *datalakeTestSuite) TestListContainers() {
 		}
 	}
 	s.assert.EqualValues(num, count)
-
-	// Cleanup
-	r, _ := s.serviceUrl.ListFilesystemsSegment(ctx, nil)
-	for _, c := range r.Filesystems {
-		if strings.HasPrefix(*c.Name, prefix) {
-			s.serviceUrl.NewFileSystemURL(*c.Name).Delete(ctx)
-		}
-	}
 }
 
 // TODO : ListContainersHuge: Maybe this is overkill?
