@@ -41,7 +41,6 @@ import (
 	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
-	"math"
 	"syscall"
 	"time"
 
@@ -363,37 +362,7 @@ func (az *AzStorage) GetFileBlockOffsets(options internal.GetFileBlockOffsetsOpt
 
 func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("AzStorage::TruncateFile : %s to %d bytes", options.Name, options.Size)
-
-	attr, err := az.GetAttr(internal.GetAttrOptions{Name: options.Name})
-	if err != nil {
-		log.Err("AzStorage::TruncateFile : Failed to get attributes of file %s (%s)", options.Name, err.Error())
-		if err == syscall.ENOENT {
-			return err
-		}
-	}
-
-	if attr != nil && attr.Size == options.Size {
-		// File is already of the given size so no point in doing read/write from storage
-		return nil
-	}
-
-	data := make([]byte, options.Size)
-	if options.Size != 0 && attr != nil {
-		size := math.Min(float64(attr.Size), float64(options.Size))
-		err := az.storage.ReadInBuffer(options.Name, 0, int64(size), data)
-		if err != nil {
-			log.Err("AzStorage::TruncateFile : Failed to get file data")
-			return err
-		}
-	}
-
-	err = az.storage.WriteFromBuffer(options.Name, attr.Metadata, data)
-	if err != nil {
-		log.Err("AzStorage::TruncateFile : Failed to update file")
-		return err
-	}
-
-	return nil
+	return az.storage.TruncateFile(options.Name, options.Size)
 }
 
 func (az *AzStorage) CopyToFile(options internal.CopyToFileOptions) error {
@@ -436,7 +405,7 @@ func (az *AzStorage) Chown(options internal.ChownOptions) error {
 
 func (az *AzStorage) FlushFile(options internal.FlushFileOptions) error {
 	log.Trace("AzStorage::FlushFile : Flush file %s", options.Handle.Path)
-	return az.storage.StageAndCommit(options.Handle)
+	return az.storage.StageAndCommit(options.Handle.Path, options.Handle.CacheObj.BlockOffsetList)
 }
 
 // TODO : Below methods are pending to be implemented

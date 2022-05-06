@@ -178,6 +178,7 @@ const (
 	BlockFlagUnknown uint16 = iota
 	DirtyBlock
 	LastBlock
+	TruncatedBlock
 )
 
 type Block struct {
@@ -197,6 +198,11 @@ func (block *Block) Dirty() bool {
 // Dirty : Handle is dirty or not
 func (block *Block) IsLast() bool {
 	return block.Flags.IsSet(LastBlock)
+}
+
+// Dirty : Handle is dirty or not
+func (block *Block) Truncated() bool {
+	return block.Flags.IsSet(TruncatedBlock)
 }
 
 const (
@@ -222,7 +228,7 @@ func (bol *BlockOffsetList) SmallFile() bool {
 }
 
 // return true if item found and index of the item
-func (bol BlockOffsetList) binarySearch(offset int64) (bool, int) {
+func (bol BlockOffsetList) BinarySearch(offset int64) (bool, int) {
 	lowerBound := 0
 	size := len(bol.BlockList)
 	higherBound := size - 1
@@ -248,7 +254,7 @@ func (bol BlockOffsetList) FindBlocksToRead(offset, length int64) ([]*Block, boo
 	// size of mod block list
 	currentBlockOffset := offset
 	var blocks []*Block
-	found, index := bol.binarySearch(offset)
+	found, index := bol.BinarySearch(offset)
 	if !found {
 		return blocks, false
 	}
@@ -269,7 +275,7 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64,
 	size := int64(0)
 	appendOnly := true
 	currentBlockOffset := offset
-	found, index := bol.binarySearch(offset)
+	found, index := bol.BinarySearch(offset)
 	if !found {
 		return index, 0, true, appendOnly
 	}
@@ -289,8 +295,8 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64,
 	return index, size, offset+length >= bol.BlockList[len(bol.BlockList)-1].EndIndex, appendOnly
 }
 
-// NewUUID returns a new uuid using RFC 4122 algorithm with the given length.
-func NewUUID(length int64) []byte {
+// NewUUIDWithLength returns a new uuid using RFC 4122 algorithm with the given length.
+func NewUUIDWithLength(length int64) []byte {
 	u := make([]byte, length)
 	// Set all bits to randomly (or pseudo-randomly) chosen values.
 	rand.Read(u[:])
@@ -298,4 +304,25 @@ func NewUUID(length int64) []byte {
 	var version byte = 4
 	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
 	return u[:]
+}
+
+// A UUID representation compliant with specification in RFC 4122 document.
+type uuid [16]byte
+
+const reservedRFC4122 byte = 0x40
+
+func (u uuid) Bytes() []byte {
+	return u[:]
+}
+
+// NewUUID returns a new uuid using RFC 4122 algorithm.
+func NewUUID() (u uuid) {
+	u = uuid{}
+	// Set all bits to randomly (or pseudo-randomly) chosen values.
+	rand.Read(u[:])
+	u[8] = (u[8] | reservedRFC4122) & 0x7F // u.setVariant(ReservedRFC4122)
+
+	var version byte = 4
+	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
+	return
 }

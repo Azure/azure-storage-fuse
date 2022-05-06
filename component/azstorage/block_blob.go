@@ -37,7 +37,6 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -741,27 +740,29 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		blockOffset += block.Size
 		blockList.BlockList = append(blockList.BlockList, blk)
 	}
-	// if nothing is in the block list then its a small file
+	// if block list empty its a small file
 	if len(blockList.BlockList) == 0 {
 		blockList.Flags.Set(common.SmallFile)
 	}
 	return &blockList, nil
 }
 
-// create our definition of block
 func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.Block {
-	newBlockId := base64.StdEncoding.EncodeToString(common.NewUUID(blockIdLength))
+	newBlockId := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(blockIdLength))
 	newBlock := &common.Block{
 		Id:         newBlockId,
 		StartIndex: startIndex,
 		EndIndex:   startIndex + size,
 	}
+	newBlock.Flags.Set(common.TruncatedBlock)
 	newBlock.Flags.Set(common.DirtyBlock)
 	return newBlock
 }
 
-func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, length, blockIdLength int64) int64 {
+// create new blocks based on the offset and total length we're adding to the file
+func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, length int64) int64 {
 	blockSize := bb.Config.blockSize
+	blockIdLength := bb.getBlockIdLength(blockList.BlockList[0].Id)
 	prevIndex := blockList.BlockList[len(blockList.BlockList)-1].EndIndex
 	if blockSize == 0 {
 		blockSize = (16 * 1024 * 1024)
@@ -769,14 +770,88 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 	// BufferSize is the size of the buffer that will go beyond our current blob (appended)
 	var bufferSize int64
 	for i := prevIndex; i < offset+length; i += blockSize {
-		// create a new block if we hit our block size
 		blkSize := int64(math.Min(float64(blockSize), float64((offset+length)-i)))
 		newBlock := bb.createBlock(blockIdLength, i, blkSize)
 		blockList.BlockList = append(blockList.BlockList, newBlock)
-		// reset the counter since it will help us to determine if there is leftovers at the end
+		// reset the counter to determine if there are leftovers at the end
 		bufferSize += blkSize
 	}
 	return bufferSize
+}
+
+func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64, name string) *common.BlockOffsetList {
+	_, index := blockList.BinarySearch(size)
+	// if the start index is equal to new size - block should be removed - move one index back
+	if blockList.BlockList[index].StartIndex == size {
+		index = index - 1
+	}
+	// if the file we're shrinking is in the middle of a block then shrink that block
+	if blockList.BlockList[index].EndIndex > size {
+		blk := blockList.BlockList[index]
+		blk.EndIndex = size
+		blk.Data = make([]byte, blk.EndIndex-blk.StartIndex)
+		blk.Flags.Set(common.DirtyBlock)
+		bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data)
+	}
+	blockList.BlockList = blockList.BlockList[:index+1]
+	return blockList
+}
+
+// get length of blockID in order to generate a consistent size block ID so storage does not throw
+func (bb *BlockBlob) getBlockIdLength(id string) int64 {
+	existingBlockId, _ := base64.StdEncoding.DecodeString(id)
+	return int64(len(existingBlockId))
+}
+
+func (bb *BlockBlob) TruncateFile(name string, size int64) error {
+	log.Trace("AzStorage::TruncateFile : name=%s, size=%d", name, size)
+	attr, err := bb.GetAttr(name)
+	if size == 0 || attr.Size == 0 {
+		err := bb.WriteFromBuffer(name, nil, make([]byte, size))
+		if err != nil {
+			log.Err("AzStorage::TruncateFile : Failed to set the %s to 0 bytes (%s)", name, err.Error())
+		}
+		return err
+	}
+	if err != nil {
+		log.Err("AzStorage::TruncateFile : Failed to get attributes of file %s (%s)", name, err.Error())
+		if err == syscall.ENOENT {
+			return err
+		}
+	}
+	bol, err := bb.GetFileBlockOffsets(name)
+	if err != nil {
+		log.Err("AzStorage::TruncateFile : Failed to get block list of file %s (%s)", name, err.Error())
+		return err
+	}
+	if !bol.SmallFile() {
+		if size > attr.Size {
+			bb.createNewBlocks(bol, bol.BlockList[len(bol.BlockList)-1].EndIndex, size-attr.Size)
+		} else if size < attr.Size {
+			bol = bb.removeBlocks(bol, size, name)
+		}
+		bb.StageAndCommit(name, bol)
+	} else {
+		data, _ := bb.ReadBuffer(name, 0, 0)
+		if size > attr.Size {
+			blk := &common.Block{
+				StartIndex: 0,
+				EndIndex:   attr.Size,
+				Data:       data,
+				Id:         base64.StdEncoding.EncodeToString(common.NewUUID().Bytes()),
+			}
+			blk.Flags.Set(common.DirtyBlock)
+			bol.Flags.Clear(common.SmallFile)
+
+			bol.BlockList = append(bol.BlockList, blk)
+			bb.createNewBlocks(bol, bol.BlockList[len(bol.BlockList)-1].EndIndex, size-attr.Size)
+		} else if size < attr.Size {
+			data = data[0:size]
+			return bb.WriteFromBuffer(name, nil, data)
+		}
+		bb.StageAndCommit(name, bol)
+	}
+	return nil
 }
 
 // Write : write data at given offset to a blob
@@ -842,10 +917,7 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		newBufferSize := int64(0)
 		// case 3?
 		if exceedsFileBlocks {
-			// get length of blockID in order to generate a consistent size block ID so storage does not throw
-			existingBlockId, _ := base64.StdEncoding.DecodeString(fileOffsets.BlockList[0].Id)
-			blockIdLength := len(existingBlockId)
-			newBufferSize = bb.createNewBlocks(fileOffsets, offset, length, int64(blockIdLength))
+			newBufferSize = bb.createNewBlocks(fileOffsets, offset, length)
 		}
 		// buffer that holds that pre-existing data in those blocks we're interested in
 		oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
@@ -898,28 +970,34 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 	return nil
 }
 
-func (bb *BlockBlob) StageAndCommit(handle *handlemap.Handle) error {
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, handle.Path))
-	if handle.CacheObj.SmallFile() {
-		err := bb.WriteFromBuffer(handle.Path, nil, handle.CacheObj.BlockList[0].Data)
-		if err != nil {
-			log.Err("BlockBlob::StageAndCommit : Failed to upload small blob %s ", handle.Path, err.Error())
-			return err
-		}
-		return nil
-	}
+func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) error {
+	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	// if bol.SmallFile() {
+	// 	err := bb.WriteFromBuffer(name, nil, bol.BlockList[0].Data)
+	// 	if err != nil {
+	// 		log.Err("BlockBlob::StageAndCommit : Failed to upload small blob %s ", name, err.Error())
+	// 		return err
+	// 	}
+	// 	return nil
+	// }
 	var blockIDList []string
-	for _, blk := range handle.CacheObj.BlockList {
+	var data []byte
+	for _, blk := range bol.BlockList {
 		blockIDList = append(blockIDList, blk.Id)
+		if blk.Truncated() {
+			data = make([]byte, blk.EndIndex-blk.StartIndex)
+		} else {
+			data = blk.Data
+		}
 		if blk.Dirty() {
 			_, err := blobURL.StageBlock(context.Background(),
 				blk.Id,
-				bytes.NewReader(blk.Data),
+				bytes.NewReader(data),
 				bb.blobAccCond.LeaseAccessConditions,
 				nil,
 				bb.downloadOptions.ClientProvidedKeyOptions)
 			if err != nil {
-				log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to stage to blob %s at block %v (%s)", handle.Path, blk.StartIndex, err.Error())
+				log.Err("BlockBlob::StageAndCommit : Failed to stage to blob %s at block %v (%s)", name, blk.StartIndex, err.Error())
 				return err
 			}
 			blk.Flags.Clear(common.DirtyBlock)
@@ -927,14 +1005,14 @@ func (bb *BlockBlob) StageAndCommit(handle *handlemap.Handle) error {
 	}
 	_, err := blobURL.CommitBlockList(context.Background(),
 		blockIDList,
-		azblob.BlobHTTPHeaders{ContentType: getContentType(handle.Path)},
+		azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
 		nil,
 		bb.blobAccCond,
 		bb.Config.defaultTier,
 		nil, // datalake doesn't support tags here
 		bb.downloadOptions.ClientProvidedKeyOptions)
 	if err != nil {
-		log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to commit block list to blob %s (%s)", handle.Path, err.Error())
+		log.Err("BlockBlob::StageAndCommit : Failed to commit block list to blob %s (%s)", name, err.Error())
 		return err
 	}
 	return nil

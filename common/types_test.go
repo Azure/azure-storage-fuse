@@ -62,11 +62,11 @@ func (suite *typesTestSuite) TestBinarySearch() {
 	bol := BlockOffsetList{
 		BlockList: blocksList,
 	}
-	found, startingIndex := bol.binarySearch(5)
+	found, startingIndex := bol.BinarySearch(5)
 	suite.assert.Equal(found, true)
 	suite.assert.Equal(startingIndex, 1)
 
-	found, startingIndex = bol.binarySearch(20)
+	found, startingIndex = bol.BinarySearch(20)
 	suite.assert.Equal(found, false)
 	suite.assert.Equal(startingIndex, 3)
 }

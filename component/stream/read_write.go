@@ -129,6 +129,7 @@ func (rw *ReadWriteCache) Stop() error {
 }
 
 func (rw *ReadWriteCache) TruncateFile(options internal.TruncateFileOptions) error {
+	rw.NextComponent().TruncateFile(options)
 	handleMap := handlemap.GetHandles()
 	handleMap.Range(func(key, value interface{}) bool {
 		handle := value.(*handlemap.Handle)
