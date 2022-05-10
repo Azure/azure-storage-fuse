@@ -225,10 +225,7 @@ func (rw *ReadWriteCache) getBlock(handle *handlemap.Handle, offset int64, block
 
 func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64, data []byte, write bool) (int, error) {
 	// if it's not a small file then we look the blocks it consistts of
-	blocks, found := handle.CacheObj.FindBlocksToRead(offset, int64(len(data)))
-	if !found {
-		return 0, errors.New("block does not exist")
-	}
+	blocks, _ := handle.CacheObj.FindBlocksToRead(offset, int64(len(data)))
 	dataLeft := int64(len(data))
 	dataRead, blk_index, dataCopied := 0, 0, int64(0)
 	for dataLeft > 0 {
@@ -251,12 +248,7 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 			dataRead += int(dataCopied)
 			blk_index += 1
 			//if appending to file
-		} else {
-			// can't be read
-			if !write {
-				err := errors.New("out of bound read")
-				return 0, err
-			}
+		} else if write {
 			lastBlock := handle.CacheObj.BlockList[len(handle.CacheObj.BlockList)-1]
 			if (lastBlock.EndIndex-lastBlock.StartIndex)+((offset-lastBlock.EndIndex)+dataLeft) <= rw.blockSize {
 				_, exists, err := rw.getBlock(handle, lastBlock.StartIndex, lastBlock)
@@ -264,6 +256,10 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 					rw.unlockBlock(lastBlock, exists)
 					log.Err("Stream::ReadInBuffer : failed to download block of %s with offset %d: [%s]", handle.Path, lastBlock.StartIndex, err.Error())
 					return dataRead, err
+				}
+				if offset-lastBlock.EndIndex > 0 {
+					truncated := make([]byte, offset-lastBlock.EndIndex)
+					lastBlock.Data = append(lastBlock.Data, truncated...)
 				}
 				lastBlock.Data = append(lastBlock.Data, data[dataRead:]...)
 				lastBlock.EndIndex += dataLeft
@@ -281,6 +277,8 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 			}
 			dataCopied = int64(copy(blk.Data[offset-blocks[blk_index].StartIndex:], data[dataRead:]))
 			dataRead += int(dataCopied)
+			return dataRead, nil
+		} else {
 			return dataRead, nil
 		}
 	}

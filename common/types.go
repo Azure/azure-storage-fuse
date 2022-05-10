@@ -253,6 +253,7 @@ func (bol BlockOffsetList) FindBlocksToRead(offset, length int64) ([]*Block, boo
 		}
 		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
 			blocks = append(blocks, blk)
+			currentBlockOffset = blk.EndIndex
 		}
 	}
 	return blocks, true
