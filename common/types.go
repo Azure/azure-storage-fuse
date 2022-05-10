@@ -35,6 +35,7 @@ package common
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -177,7 +178,6 @@ type LogConfig struct {
 const (
 	BlockFlagUnknown uint16 = iota
 	DirtyBlock
-	LastBlock
 	TruncatedBlock
 )
 
@@ -195,19 +195,13 @@ func (block *Block) Dirty() bool {
 	return block.Flags.IsSet(DirtyBlock)
 }
 
-// Dirty : Handle is dirty or not
-func (block *Block) IsLast() bool {
-	return block.Flags.IsSet(LastBlock)
-}
-
-// Dirty : Handle is dirty or not
+// Truncated : block created on a truncate operation
 func (block *Block) Truncated() bool {
 	return block.Flags.IsSet(TruncatedBlock)
 }
 
 const (
 	BolFlagUnknown uint16 = iota
-	Cached
 	SmallFile
 )
 
@@ -215,11 +209,6 @@ const (
 type BlockOffsetList struct {
 	BlockList []*Block //blockId to offset mapping
 	Flags     BitMap16
-}
-
-// Dirty : Handle is dirty or not
-func (bol *BlockOffsetList) Cached() bool {
-	return bol.Flags.IsSet(Cached)
 }
 
 // Dirty : Handle is dirty or not
@@ -325,4 +314,9 @@ func NewUUID() (u uuid) {
 	var version byte = 4
 	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
 	return
+}
+
+func GetIdLength(id string) int64 {
+	existingBlockId, _ := base64.StdEncoding.DecodeString(id)
+	return int64(len(existingBlockId))
 }

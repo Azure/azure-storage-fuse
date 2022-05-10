@@ -762,7 +762,7 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 // create new blocks based on the offset and total length we're adding to the file
 func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, length int64) int64 {
 	blockSize := bb.Config.blockSize
-	blockIdLength := bb.getBlockIdLength(blockList.BlockList[0].Id)
+	blockIdLength := common.GetIdLength(blockList.BlockList[0].Id)
 	prevIndex := blockList.BlockList[len(blockList.BlockList)-1].EndIndex
 	if blockSize == 0 {
 		blockSize = (16 * 1024 * 1024)
@@ -795,12 +795,6 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 	}
 	blockList.BlockList = blockList.BlockList[:index+1]
 	return blockList
-}
-
-// get length of blockID in order to generate a consistent size block ID so storage does not throw
-func (bb *BlockBlob) getBlockIdLength(id string) int64 {
-	existingBlockId, _ := base64.StdEncoding.DecodeString(id)
-	return int64(len(existingBlockId))
 }
 
 func (bb *BlockBlob) TruncateFile(name string, size int64) error {
@@ -862,21 +856,15 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 	log.Trace("BlockBlob::Write : name %s offset %v", name, offset)
 	// tracks the case where our offset is great than our current file size (appending only - not modifying pre-existing data)
 	var dataBuffer *[]byte
-
-	fileOffsets := options.FileOffsets
 	// when the file offset mapping is cached we don't need to make a get block list call
-	if fileOffsets != nil && !fileOffsets.Cached() {
-		var err error
-		fileOffsets, err = bb.GetFileBlockOffsets(name)
-		if err != nil {
-			return err
-		}
+	fileOffsets, err := bb.GetFileBlockOffsets(name)
+	if err != nil {
+		return err
 	}
-
 	length := int64(len(options.Data))
 	data := options.Data
 	// case 1: file consists of no blocks (small file)
-	if fileOffsets != nil && fileOffsets.SmallFile() {
+	if fileOffsets.SmallFile() {
 		// get all the data
 		oldData, _ := bb.ReadBuffer(name, 0, 0)
 		// update the data with the new data
@@ -972,16 +960,9 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 
 func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) error {
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	if bol.SmallFile() {
-		err := bb.WriteFromBuffer(name, nil, bol.BlockList[0].Data)
-		if err != nil {
-			log.Err("BlockBlob::StageAndCommit : Failed to upload small blob %s ", name, err.Error())
-			return err
-		}
-		return nil
-	}
 	var blockIDList []string
 	var data []byte
+	staged := false
 	for _, blk := range bol.BlockList {
 		blockIDList = append(blockIDList, blk.Id)
 		if blk.Truncated() {
@@ -1000,20 +981,23 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 				log.Err("BlockBlob::StageAndCommit : Failed to stage to blob %s at block %v (%s)", name, blk.StartIndex, err.Error())
 				return err
 			}
+			staged = true
 			blk.Flags.Clear(common.DirtyBlock)
 		}
 	}
-	_, err := blobURL.CommitBlockList(context.Background(),
-		blockIDList,
-		azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
-		nil,
-		bb.blobAccCond,
-		bb.Config.defaultTier,
-		nil, // datalake doesn't support tags here
-		bb.downloadOptions.ClientProvidedKeyOptions)
-	if err != nil {
-		log.Err("BlockBlob::StageAndCommit : Failed to commit block list to blob %s (%s)", name, err.Error())
-		return err
+	if staged {
+		_, err := blobURL.CommitBlockList(context.Background(),
+			blockIDList,
+			azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
+			nil,
+			bb.blobAccCond,
+			bb.Config.defaultTier,
+			nil, // datalake doesn't support tags here
+			bb.downloadOptions.ClientProvidedKeyOptions)
+		if err != nil {
+			log.Err("BlockBlob::StageAndCommit : Failed to commit block list to blob %s (%s)", name, err.Error())
+			return err
+		}
 	}
 	return nil
 }

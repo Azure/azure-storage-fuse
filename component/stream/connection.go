@@ -20,7 +20,7 @@ type StreamConnection interface {
 	CloseFile(internal.CloseFileOptions) error
 	TruncateFile(internal.TruncateFileOptions) error
 	Stop() error
-	// CreateFile(name string, mode os.FileMode) error
+	// CreateFile(name string, mode os.FileMode) error //TODO TEST THIS
 	// CreateDirectory(name string) error
 	// CreateLink(source string, target string) error
 
