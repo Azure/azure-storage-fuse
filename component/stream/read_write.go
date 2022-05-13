@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"strings"
 	"sync/atomic"
 
 	"github.com/pbnjay/memory"
@@ -40,7 +41,11 @@ func (rw *ReadWriteCache) CreateFile(options internal.CreateFileOptions) (*handl
 		log.Err("Stream::CreateFile : error failed to create file %s: [%s]", options.Name, err.Error())
 	}
 	if !rw.streamOnly {
-		handlemap.CreateCacheObject(int64(rw.bufferSizePerHandle), handle)
+		err = rw.createHandleCache(handle)
+		if err != nil {
+			log.Err("Stream::OpenFile : error opening file %s [%s]", options.Name, err.Error())
+			return handle, err
+		}
 	}
 	return handle, nil
 }
@@ -63,6 +68,7 @@ func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap
 }
 
 func (rw *ReadWriteCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+	log.Trace("Stream::ReadInBuffer : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
 	// if we're not in stream only mode and our handle is stream only - check if memory cleared up
 	if !rw.streamOnly && options.Handle.CacheObj.StreamOnly {
 		err := rw.createHandleCache(options.Handle)
@@ -78,11 +84,14 @@ func (rw *ReadWriteCache) ReadInBuffer(options internal.ReadInBufferOptions) (in
 		}
 		return data, err
 	}
+	if atomic.LoadInt64(&options.Handle.Size) == 0 {
+		return 0, nil
+	}
 	return rw.readWriteBlocks(options.Handle, options.Offset, options.Data, false)
 }
 
 func (rw *ReadWriteCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	log.Trace("Stream::WriteFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	log.Trace("Stream::WriteFile : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
 	if !rw.streamOnly && options.Handle.CacheObj.StreamOnly {
 		err := rw.createHandleCache(options.Handle)
 		if err != nil {
@@ -100,36 +109,6 @@ func (rw *ReadWriteCache) WriteFile(options internal.WriteFileOptions) (int, err
 	return rw.readWriteBlocks(options.Handle, options.Offset, options.Data, true)
 }
 
-func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
-	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
-	rw.NextComponent().CloseFile(options)
-	if !rw.streamOnly && !options.Handle.CacheObj.StreamOnly {
-		options.Handle.CacheObj.Lock()
-		defer options.Handle.CacheObj.Unlock()
-		rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: options.Handle})
-		options.Handle.CacheObj.Purge()
-		atomic.AddInt32(&rw.cachedHandles, -1)
-	}
-	return nil
-}
-
-// Stop : Stop the component functionality and kill all threads started
-func (rw *ReadWriteCache) Stop() error {
-	log.Trace("Stopping component : %s", rw.Name())
-	handleMap := handlemap.GetHandles()
-	handleMap.Range(func(key, value interface{}) bool {
-		handle := value.(*handlemap.Handle)
-		if handle.CacheObj != nil && !handle.CacheObj.StreamOnly {
-			handle.CacheObj.Lock()
-			handle.CacheObj.Purge()
-			atomic.AddInt32(&rw.cachedHandles, -1)
-			handle.CacheObj.Unlock()
-		}
-		return true
-	})
-	return nil
-}
-
 func (rw *ReadWriteCache) TruncateFile(options internal.TruncateFileOptions) error {
 	if !rw.streamOnly {
 		handleMap := handlemap.GetHandles()
@@ -140,6 +119,8 @@ func (rw *ReadWriteCache) TruncateFile(options internal.TruncateFileOptions) err
 					handle.CacheObj.Lock()
 					rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 					handle.CacheObj.Purge()
+					atomic.StoreInt64(&handle.Size, options.Size)
+					handle.CacheObj.StreamOnly = true
 					atomic.AddInt32(&rw.cachedHandles, -1)
 					handle.CacheObj.Unlock()
 				}
@@ -155,13 +136,149 @@ func (rw *ReadWriteCache) TruncateFile(options internal.TruncateFileOptions) err
 	return nil
 }
 
+func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
+	log.Trace("Stream::RenameFile : name=%s", options.Src)
+	handleMap := handlemap.GetHandles()
+	handleMap.Range(func(key, value interface{}) bool {
+		handle := value.(*handlemap.Handle)
+		if handle.CacheObj != nil && !handle.CacheObj.StreamOnly {
+			if handle.Path == options.Src {
+				log.Trace("Stream::RenameFile : found matching handle handle=%d", handle)
+				handle.CacheObj.Lock()
+				rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
+				handle.CacheObj.Purge()
+				handle.CacheObj.StreamOnly = true
+				atomic.AddInt32(&rw.cachedHandles, -1)
+				handle.CacheObj.Unlock()
+			}
+		}
+		return true
+	})
+	err := rw.NextComponent().RenameFile(options)
+	if err != nil {
+		log.Err("Stream::RenameFile : error renaming file %s [%s]", options.Src, err.Error())
+		return err
+	}
+	return nil
+}
+
+func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
+	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	rw.NextComponent().CloseFile(options)
+	if !rw.streamOnly && !options.Handle.CacheObj.StreamOnly {
+		options.Handle.CacheObj.Lock()
+		defer options.Handle.CacheObj.Unlock()
+		rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: options.Handle})
+		options.Handle.CacheObj.Purge()
+		options.Handle.CacheObj.StreamOnly = true
+		atomic.AddInt32(&rw.cachedHandles, -1)
+	}
+	return nil
+}
+
+func (rw *ReadWriteCache) DeleteFile(options internal.DeleteFileOptions) error {
+	log.Trace("Stream::DeleteFile : name=%s", options.Name)
+	handleMap := handlemap.GetHandles()
+	handleMap.Range(func(key, value interface{}) bool {
+		handle := value.(*handlemap.Handle)
+		if handle.CacheObj != nil && !handle.CacheObj.StreamOnly {
+			if handle.Path == options.Name {
+				log.Trace("Stream::DeleteFile : found matching handle=%d", handle)
+				handle.CacheObj.Lock()
+				handle.CacheObj.Purge()
+				handle.CacheObj.StreamOnly = true
+				atomic.AddInt32(&rw.cachedHandles, -1)
+				handle.CacheObj.Unlock()
+			}
+		}
+		return true
+	})
+	err := rw.NextComponent().DeleteFile(options)
+	if err != nil {
+		log.Err("Stream::DeleteFile : error deleting file %s [%s]", options.Name, err.Error())
+		return err
+	}
+	return nil
+}
+
+func (rw *ReadWriteCache) DeleteDirectory(options internal.DeleteDirOptions) error {
+	log.Trace("Stream::DeleteDirectory : name=%s", options.Name)
+	handleMap := handlemap.GetHandles()
+	handleMap.Range(func(key, value interface{}) bool {
+		handle := value.(*handlemap.Handle)
+		if handle.CacheObj != nil && !handle.CacheObj.StreamOnly {
+			if strings.HasPrefix(handle.Path, options.Name) {
+				log.Trace("Stream::DeleteDir : found matching handle %d", handle.Path)
+				handle.CacheObj.Lock()
+				handle.CacheObj.Purge()
+				handle.CacheObj.StreamOnly = true
+				atomic.AddInt32(&rw.cachedHandles, -1)
+				handle.CacheObj.Unlock()
+			}
+		}
+		return true
+	})
+	err := rw.NextComponent().DeleteDir(options)
+	if err != nil {
+		log.Err("Stream::DeleteDirectory : error deleting directory %s [%s]", options.Name, err.Error())
+		return err
+	}
+	return nil
+}
+
+func (rw *ReadWriteCache) RenameDirectory(options internal.RenameDirOptions) error {
+	log.Trace("Stream::RenameDirectory : name=%s", options.Src)
+	handleMap := handlemap.GetHandles()
+	handleMap.Range(func(key, value interface{}) bool {
+		handle := value.(*handlemap.Handle)
+		if handle.CacheObj != nil && !handle.CacheObj.StreamOnly {
+			if strings.HasPrefix(handle.Path, options.Src) {
+				handle.CacheObj.Lock()
+				rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
+				handle.CacheObj.Purge()
+				handle.CacheObj.StreamOnly = true
+				atomic.AddInt32(&rw.cachedHandles, -1)
+				handle.CacheObj.Unlock()
+			}
+		}
+		return true
+	})
+	err := rw.NextComponent().RenameDir(options)
+	if err != nil {
+		log.Err("Stream::RenameDirectory : error renaming directory %s [%s]", options.Src, err.Error())
+		return err
+	}
+	return nil
+}
+
+// Stop : Stop the component functionality and kill all threads started
+func (rw *ReadWriteCache) Stop() error {
+	log.Trace("Stopping component : %s", rw.Name())
+	handleMap := handlemap.GetHandles()
+	handleMap.Range(func(key, value interface{}) bool {
+		handle := value.(*handlemap.Handle)
+		if handle.CacheObj != nil && !handle.CacheObj.StreamOnly {
+			handle.CacheObj.Lock()
+			handle.CacheObj.Purge()
+			handle.CacheObj.StreamOnly = true
+			atomic.AddInt32(&rw.cachedHandles, -1)
+			handle.CacheObj.Unlock()
+		}
+		return true
+	})
+	return nil
+}
+
 func (rw *ReadWriteCache) createHandleCache(handle *handlemap.Handle) error {
+
+	handlemap.CreateCacheObject(int64(rw.bufferSizePerHandle), handle)
+	handle.CacheObj.Lock()
+	defer handle.CacheObj.Unlock()
 	// if we hit handle limit then stream only on this new handle
-	if rw.cachedHandles >= rw.handleLimit {
+	if atomic.LoadInt32(&rw.cachedHandles) >= rw.handleLimit {
 		handle.CacheObj.StreamOnly = true
 		return nil
 	}
-	handlemap.CreateCacheObject(int64(rw.bufferSizePerHandle), handle)
 	opts := internal.GetFileBlockOffsetsOptions{
 		Name: handle.Path,
 	}
@@ -169,11 +286,11 @@ func (rw *ReadWriteCache) createHandleCache(handle *handlemap.Handle) error {
 	handle.CacheObj.BlockOffsetList = offsets
 	// if its a small file then download the file in its entirety if there is memory available, otherwise stream only
 	if handle.CacheObj.SmallFile() {
-		if uint64(handle.Size*mb) > memory.FreeMemory() {
+		if uint64(atomic.LoadInt64(&handle.Size)*mb) > memory.FreeMemory() {
 			handle.CacheObj.StreamOnly = true
 			return nil
 		}
-		block, _, err := rw.getBlock(handle, 0, &common.Block{StartIndex: 0, EndIndex: handle.Size})
+		block, _, err := rw.getBlock(handle, &common.Block{StartIndex: 0, EndIndex: handle.Size})
 		block.Id = base64.StdEncoding.EncodeToString(common.NewUUID().Bytes())
 		if err != nil {
 			rw.unlockBlock(block, false)
@@ -182,58 +299,72 @@ func (rw *ReadWriteCache) createHandleCache(handle *handlemap.Handle) error {
 		atomic.AddInt32(&rw.cachedHandles, 1)
 		// our handle will consist of a single block locally for simpler logic
 		handle.CacheObj.BlockList = append(handle.CacheObj.BlockList, block)
+		handle.CacheObj.BlockIdLength = common.GetIdLength(block.Id)
 		rw.unlockBlock(block, false)
-	} else {
-		atomic.AddInt32(&rw.cachedHandles, 1)
+		return nil
+	}
+	atomic.AddInt32(&rw.cachedHandles, 1)
+	return nil
+}
+
+func (rw *ReadWriteCache) putBlock(handle *handlemap.Handle, block *common.Block) error {
+	ok := handle.CacheObj.Put(block.StartIndex, block)
+	// if the cache is full and we couldn't evict - we need to do a flush
+	if !ok {
+		rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
+		ok = handle.CacheObj.Put(block.StartIndex, block)
+		if !ok {
+			return errors.New("flushed and still unable to put block in cache")
+		}
 	}
 	return nil
 }
 
-func (rw *ReadWriteCache) getBlock(handle *handlemap.Handle, offset int64, block *common.Block) (*common.Block, bool, error) {
-	blockKeyObj := offset
-	handle.CacheObj.Lock()
-	cached_block, found := handle.CacheObj.Get(blockKeyObj)
+func (rw *ReadWriteCache) getBlock(handle *handlemap.Handle, block *common.Block) (*common.Block, bool, error) {
+	cached_block, found := handle.CacheObj.Get(block.StartIndex)
 	if !found {
 		block.Lock()
 		block.Data = make([]byte, block.EndIndex-block.StartIndex)
-		ok := handle.CacheObj.Put(blockKeyObj, block)
-		// if the cache is full and we couldn't evict - we need to do a flush
-		if !ok {
-			rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
-			ok = handle.CacheObj.Put(blockKeyObj, block)
-			if !ok {
-				return block, false, errors.New("flushed and still unable to put block in cache")
-			}
+		err := rw.putBlock(handle, block)
+		if err != nil {
+			return block, false, err
 		}
-		handle.CacheObj.Unlock()
 		options := internal.ReadInBufferOptions{
 			Handle: handle,
 			Offset: block.StartIndex,
 			Data:   block.Data,
 		}
-		_, err := rw.NextComponent().ReadInBuffer(options)
-		if err != nil && err != io.EOF {
-			return nil, false, err
+		// check if its a create operation
+		if len(block.Data) != 0 {
+			_, err = rw.NextComponent().ReadInBuffer(options)
+			if err != nil && err != io.EOF {
+				return nil, false, err
+			}
 		}
 		return block, false, nil
 	} else {
 		cached_block.RLock()
-		handle.CacheObj.Unlock()
 		return block, true, nil
 	}
 }
 
 func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64, data []byte, write bool) (int, error) {
+	handle.CacheObj.Lock()
+	defer handle.CacheObj.Unlock()
 	// if it's not a small file then we look the blocks it consistts of
-	blocks, _ := handle.CacheObj.FindBlocksToRead(offset, int64(len(data)))
+	blocks, found := handle.CacheObj.FindBlocks(offset, int64(len(data)))
+	if !found && !write {
+		return 0, nil
+	}
 	dataLeft := int64(len(data))
 	dataRead, blk_index, dataCopied := 0, 0, int64(0)
+	lastBlock := handle.CacheObj.BlockList[len(handle.CacheObj.BlockList)-1]
 	for dataLeft > 0 {
-		if offset < handle.Size {
-			block, exists, err := rw.getBlock(handle, blocks[blk_index].StartIndex, blocks[blk_index])
+		if offset < int64(lastBlock.EndIndex) {
+			block, exists, err := rw.getBlock(handle, blocks[blk_index])
 			if err != nil {
 				rw.unlockBlock(block, exists)
-				log.Err("Stream::ReadInBuffer : failed to download block of %s with offset %d: [%s]", handle.Path, block.StartIndex, err.Error())
+				err := errors.New("could not retrieve required block")
 				return dataRead, err
 			}
 			if write {
@@ -249,38 +380,44 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 			blk_index += 1
 			//if appending to file
 		} else if write {
-			lastBlock := handle.CacheObj.BlockList[len(handle.CacheObj.BlockList)-1]
-			if (lastBlock.EndIndex-lastBlock.StartIndex)+((offset-lastBlock.EndIndex)+dataLeft) <= rw.blockSize {
-				_, exists, err := rw.getBlock(handle, lastBlock.StartIndex, lastBlock)
+			emptyByteLength := offset - lastBlock.EndIndex
+			// if the data to append + our last block existing data do not exceed block size - just append to last block
+			if (lastBlock.EndIndex-lastBlock.StartIndex)+(emptyByteLength+dataLeft) <= rw.blockSize {
+				_, exists, err := rw.getBlock(handle, lastBlock)
 				if err != nil {
 					rw.unlockBlock(lastBlock, exists)
 					log.Err("Stream::ReadInBuffer : failed to download block of %s with offset %d: [%s]", handle.Path, lastBlock.StartIndex, err.Error())
 					return dataRead, err
 				}
-				if offset-lastBlock.EndIndex > 0 {
-					truncated := make([]byte, offset-lastBlock.EndIndex)
+				// if no overwrites and pure append - then we need to create an empty buffer in between
+				if emptyByteLength > 0 {
+					truncated := make([]byte, emptyByteLength)
 					lastBlock.Data = append(lastBlock.Data, truncated...)
 				}
 				lastBlock.Data = append(lastBlock.Data, data[dataRead:]...)
-				lastBlock.EndIndex += dataLeft
+				lastBlock.EndIndex += dataLeft + emptyByteLength
 				lastBlock.Flags.Set(common.DirtyBlock)
+				atomic.StoreInt64(&handle.Size, lastBlock.EndIndex)
 				rw.unlockBlock(lastBlock, exists)
 				dataRead += int(dataLeft)
+				rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 				return dataRead, nil
 			}
-			blockIdLength := common.GetIdLength(lastBlock.Id)
 			blk := &common.Block{
 				StartIndex: lastBlock.EndIndex,
-				EndIndex:   lastBlock.EndIndex + dataLeft,
-				Data:       make([]byte, dataLeft),
-				Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(blockIdLength)),
+				EndIndex:   lastBlock.EndIndex + dataLeft + emptyByteLength,
+				Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(handle.CacheObj.BlockIdLength)),
 			}
+			blk.Data = make([]byte, blk.EndIndex-blk.StartIndex)
 			dataCopied = int64(copy(blk.Data[offset-blocks[blk_index].StartIndex:], data[dataRead:]))
+			handle.CacheObj.BlockList = append(handle.CacheObj.BlockList, blk)
+			rw.putBlock(handle, blk)
+			atomic.StoreInt64(&handle.Size, blk.EndIndex)
 			dataRead += int(dataCopied)
-			return dataRead, nil
-		} else {
+			rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 			return dataRead, nil
 		}
+		return dataRead, nil
 	}
 	return dataRead, nil
 }

@@ -731,6 +731,12 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s ", name, err.Error())
 		return &common.BlockOffsetList{}, err
 	}
+	// if block list empty its a small file
+	if len(blockList.BlockList) == 0 {
+		blockList.Flags.Set(common.SmallFile)
+		return &blockList, nil
+	}
+	blockList.BlockIdLength = common.GetIdLength(blockList.BlockList[0].Id)
 	for _, block := range storageBlockList.CommittedBlocks {
 		blk := &common.Block{
 			Id:         block.Name,
@@ -739,10 +745,6 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		}
 		blockOffset += block.Size
 		blockList.BlockList = append(blockList.BlockList, blk)
-	}
-	// if block list empty its a small file
-	if len(blockList.BlockList) == 0 {
-		blockList.Flags.Set(common.SmallFile)
 	}
 	return &blockList, nil
 }
@@ -762,7 +764,6 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 // create new blocks based on the offset and total length we're adding to the file
 func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, length int64) int64 {
 	blockSize := bb.Config.blockSize
-	blockIdLength := common.GetIdLength(blockList.BlockList[0].Id)
 	prevIndex := blockList.BlockList[len(blockList.BlockList)-1].EndIndex
 	if blockSize == 0 {
 		blockSize = (16 * 1024 * 1024)
@@ -771,7 +772,7 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 	var bufferSize int64
 	for i := prevIndex; i < offset+length; i += blockSize {
 		blkSize := int64(math.Min(float64(blockSize), float64((offset+length)-i)))
-		newBlock := bb.createBlock(blockIdLength, i, blkSize)
+		newBlock := bb.createBlock(blockList.BlockIdLength, i, blkSize)
 		blockList.BlockList = append(blockList.BlockList, newBlock)
 		// reset the counter to determine if there are leftovers at the end
 		bufferSize += blkSize
@@ -838,6 +839,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 			bol.Flags.Clear(common.SmallFile)
 
 			bol.BlockList = append(bol.BlockList, blk)
+			bol.BlockIdLength = common.GetIdLength(blk.Id)
 			bb.createNewBlocks(bol, bol.BlockList[len(bol.BlockList)-1].EndIndex, size-attr.Size)
 		} else if size < attr.Size {
 			data = data[0:size]

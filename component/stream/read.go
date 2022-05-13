@@ -165,11 +165,31 @@ func (r *ReadCache) CloseFile(options internal.CloseFileOptions) error {
 }
 
 func (r *ReadCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	// This is not currently supported for a flat namespace account
 	return 0, syscall.ENOTSUP
 }
 
 func (r *ReadCache) TruncateFile(options internal.TruncateFileOptions) error {
-	// This is not currently supported for a flat namespace account
 	return syscall.ENOTSUP
+}
+
+func (r *ReadCache) RenameFile(options internal.RenameFileOptions) error {
+	return syscall.ENOTSUP
+
+}
+
+func (r *ReadCache) DeleteFile(options internal.DeleteFileOptions) error {
+	return syscall.ENOTSUP
+
+}
+func (r *ReadCache) DeleteDirectory(options internal.DeleteDirOptions) error {
+	return syscall.ENOTSUP
+
+}
+func (r *ReadCache) RenameDirectory(options internal.RenameDirOptions) error {
+	return syscall.ENOTSUP
+
+}
+func (r *ReadCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
+	return nil, syscall.ENOTSUP
+
 }

@@ -41,6 +41,7 @@ import (
 	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -328,12 +329,12 @@ func (az *AzStorage) ReadFile(options internal.ReadFileOptions) (data []byte, er
 func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length int, err error) {
 	//log.Trace("AzStorage::ReadInBuffer : Read %s from %d offset", h.Path, offset)
 
-	if options.Offset > options.Handle.Size {
+	if options.Offset > atomic.LoadInt64(&options.Handle.Size) {
 		return 0, syscall.ERANGE
 	}
 
 	var dataLen int64 = int64(len(options.Data))
-	if options.Handle.Size < (options.Offset + int64(len(options.Data))) {
+	if atomic.LoadInt64(&options.Handle.Size) < (options.Offset + int64(len(options.Data))) {
 		dataLen = options.Handle.Size - options.Offset
 	}
 

@@ -124,6 +124,10 @@ func (st *Stream) unlockBlock(block *common.Block, exists bool) {
 	return
 }
 
+func (st *Stream) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
+	return st.cache.CreateFile(options)
+}
+
 func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("Stream::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
 	handle, err := st.NextComponent().OpenFile(options)
@@ -150,8 +154,20 @@ func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
 	return st.cache.CloseFile(options)
 }
 
-func (st *Stream) TruncateFile(options internal.TruncateFileOptions) error {
-	return st.cache.TruncateFile(options)
+func (st *Stream) DeleteFile(options internal.DeleteFileOptions) error {
+	return st.cache.DeleteFile(options)
+}
+
+func (st *Stream) RenameFile(options internal.RenameFileOptions) error {
+	return st.cache.RenameFile(options)
+}
+
+func (st *Stream) DeleteDir(options internal.DeleteDirOptions) error {
+	return st.cache.DeleteDirectory(options)
+}
+
+func (st *Stream) RenameDir(options internal.RenameDirOptions) error {
+	return st.cache.RenameDirectory(options)
 }
 
 // ------------------------- Factory -------------------------------------------

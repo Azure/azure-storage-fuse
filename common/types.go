@@ -207,8 +207,9 @@ const (
 
 // list that holds blocks containing ids and corresponding offsets
 type BlockOffsetList struct {
-	BlockList []*Block //blockId to offset mapping
-	Flags     BitMap16
+	BlockList     []*Block //blockId to offset mapping
+	Flags         BitMap16
+	BlockIdLength int64
 }
 
 // Dirty : Handle is dirty or not
@@ -239,7 +240,7 @@ func (bol BlockOffsetList) BinarySearch(offset int64) (bool, int) {
 }
 
 // returns index of first mod block, size of mod data, does the new data exceed current size?, is it append only?
-func (bol BlockOffsetList) FindBlocksToRead(offset, length int64) ([]*Block, bool) {
+func (bol BlockOffsetList) FindBlocks(offset, length int64) ([]*Block, bool) {
 	// size of mod block list
 	currentBlockOffset := offset
 	var blocks []*Block
