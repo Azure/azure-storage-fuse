@@ -714,6 +714,10 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 	srcPath = common.NormalizeObjectName(srcPath)
 	dstPath := trimFusePath(dst)
 	dstPath = common.NormalizeObjectName(dstPath)
+	if strings.Contains(dstPath, ".fuse_hidden") {
+		log.Trace("Libfuse::libfuse_rename removing file in dir : %s", srcPath)
+		return libfuse_unlink(src)
+	}
 	log.Trace("Libfuse::libfuse2_rename : %s -> %s", srcPath, dstPath)
 	// Note: When running other commands from the command line, a lot of them seemed to handle some cases like ENOENT themselves.
 	// Rename did not, so we manually check here.
