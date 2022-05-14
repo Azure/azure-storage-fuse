@@ -286,6 +286,15 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64,
 	return index, size, offset+length >= bol.BlockList[len(bol.BlockList)-1].EndIndex, appendOnly
 }
 
+// A UUID representation compliant with specification in RFC 4122 document.
+type uuid [16]byte
+
+const reservedRFC4122 byte = 0x40
+
+func (u uuid) Bytes() []byte {
+	return u[:]
+}
+
 // NewUUIDWithLength returns a new uuid using RFC 4122 algorithm with the given length.
 func NewUUIDWithLength(length int64) []byte {
 	u := make([]byte, length)
@@ -294,15 +303,6 @@ func NewUUIDWithLength(length int64) []byte {
 	u[8] = (u[8] | 0x40) & 0x7F // u.setVariant(ReservedRFC4122)
 	var version byte = 4
 	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
-	return u[:]
-}
-
-// A UUID representation compliant with specification in RFC 4122 document.
-type uuid [16]byte
-
-const reservedRFC4122 byte = 0x40
-
-func (u uuid) Bytes() []byte {
 	return u[:]
 }
 

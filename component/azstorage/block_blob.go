@@ -756,6 +756,7 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 		StartIndex: startIndex,
 		EndIndex:   startIndex + size,
 	}
+	// mark truncated since it is a new empty block
 	newBlock.Flags.Set(common.TruncatedBlock)
 	newBlock.Flags.Set(common.DirtyBlock)
 	return newBlock
