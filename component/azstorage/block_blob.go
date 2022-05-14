@@ -799,24 +799,24 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 }
 
 func (bb *BlockBlob) TruncateFile(name string, size int64) error {
-	log.Trace("AzStorage::TruncateFile : name=%s, size=%d", name, size)
+	log.Trace("BlockBlob::TruncateFile : name=%s, size=%d", name, size)
 	attr, err := bb.GetAttr(name)
-	if size == 0 || attr.Size == 0 {
-		err := bb.WriteFromBuffer(name, nil, make([]byte, size))
-		if err != nil {
-			log.Err("AzStorage::TruncateFile : Failed to set the %s to 0 bytes (%s)", name, err.Error())
-		}
-		return err
-	}
 	if err != nil {
-		log.Err("AzStorage::TruncateFile : Failed to get attributes of file %s (%s)", name, err.Error())
+		log.Err("BlockBlob::TruncateFile : Failed to get attributes of file %s (%s)", name, err.Error())
 		if err == syscall.ENOENT {
 			return err
 		}
 	}
+	if size == 0 || attr.Size == 0 {
+		err := bb.WriteFromBuffer(name, nil, make([]byte, size))
+		if err != nil {
+			log.Err("BlockBlob::TruncateFile : Failed to set the %s to 0 bytes (%s)", name, err.Error())
+		}
+		return err
+	}
 	bol, err := bb.GetFileBlockOffsets(name)
 	if err != nil {
-		log.Err("AzStorage::TruncateFile : Failed to get block list of file %s (%s)", name, err.Error())
+		log.Err("BlockBlob::TruncateFile : Failed to get block list of file %s (%s)", name, err.Error())
 		return err
 	}
 	if !bol.SmallFile() {
