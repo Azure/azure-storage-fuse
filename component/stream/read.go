@@ -13,21 +13,16 @@ import (
 type ReadCache struct {
 	*Stream
 	StreamConnection
-	blockSize           int64
-	bufferSizePerHandle uint64 // maximum number of blocks allowed to be stored for a file
-	handleLimit         int32
-	cachedHandles       int32
-	streamOnly          bool
 }
 
 func (r *ReadCache) Configure(conf StreamOptions) error {
 	if conf.BufferSizePerFile <= 0 || conf.BlockSize <= 0 || conf.HandleLimit <= 0 {
-		r.streamOnly = true
+		r.StreamOnly = true
 	}
-	r.blockSize = int64(conf.BlockSize) * mb
-	r.bufferSizePerHandle = conf.BufferSizePerFile
-	r.handleLimit = int32(conf.HandleLimit)
-	r.cachedHandles = 0
+	r.BlockSize = int64(conf.BlockSize) * mb
+	r.BufferSizePerHandle = conf.BufferSizePerFile * mb
+	r.HandleLimit = int32(conf.HandleLimit)
+	r.CachedHandles = 0
 	return nil
 }
 
@@ -66,14 +61,14 @@ func (r *ReadCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handl
 	if handle == nil {
 		handle = handlemap.NewHandle(options.Name)
 	}
-	if !r.streamOnly {
-		if r.cachedHandles >= r.handleLimit {
+	if !r.StreamOnly {
+		if r.CachedHandles >= r.HandleLimit {
 			log.Trace("Stream::OpenFile : file handle limit exceeded - switch handle to stream only mode %s [%s]", options.Name, handle.ID)
 			handle.CacheObj.StreamOnly = true
 			return handle, nil
 		}
-		atomic.AddInt32(&r.cachedHandles, 1)
-		handlemap.CreateCacheObject(int64(r.bufferSizePerHandle), handle)
+		atomic.AddInt32(&r.CachedHandles, 1)
+		handlemap.CreateCacheObject(int64(r.BufferSizePerHandle), handle)
 		block, exists, _ := r.getBlock(handle, 0)
 		// if it exists then we can just RUnlock since we didn't manipulate its data buffer
 		r.unlockBlock(block, exists)
@@ -82,7 +77,7 @@ func (r *ReadCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handl
 }
 
 func (r *ReadCache) getBlock(handle *handlemap.Handle, offset int64) (*common.Block, bool, error) {
-	blockSize := r.blockSize
+	blockSize := r.BlockSize
 	blockKeyObj := offset
 	handle.CacheObj.Lock()
 	block, found := handle.CacheObj.Get(blockKeyObj)
@@ -123,7 +118,7 @@ func (r *ReadCache) copyCachedBlock(handle *handlemap.Handle, offset int64, data
 	// covers the case if we get a call that is bigger than the file size
 	for dataLeft > 0 && offset < handle.Size {
 		// round all offsets to the specific blocksize offsets
-		cachedBlockStartIndex := (offset - (offset % r.blockSize))
+		cachedBlockStartIndex := (offset - (offset % r.BlockSize))
 		// Lock on requested block and fileName to ensure it is not being rerequested or manipulated
 		block, exists, err := r.getBlock(handle, cachedBlockStartIndex)
 		if err != nil {
@@ -142,7 +137,7 @@ func (r *ReadCache) copyCachedBlock(handle *handlemap.Handle, offset int64, data
 
 func (r *ReadCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	// if we're only streaming then avoid using the cache
-	if r.streamOnly || options.Handle.CacheObj.StreamOnly {
+	if r.StreamOnly || options.Handle.CacheObj.StreamOnly {
 		data, err := r.NextComponent().ReadInBuffer(options)
 		if err != nil && err != io.EOF {
 			log.Err("Stream::ReadInBuffer : error failed to download requested data for %s: [%s]", options.Handle.Path, err.Error())
@@ -155,11 +150,11 @@ func (r *ReadCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, err
 func (r *ReadCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	r.NextComponent().CloseFile(options)
-	if !r.streamOnly && !options.Handle.CacheObj.StreamOnly {
+	if !r.StreamOnly && !options.Handle.CacheObj.StreamOnly {
 		options.Handle.CacheObj.Lock()
 		defer options.Handle.CacheObj.Unlock()
 		options.Handle.CacheObj.Purge()
-		atomic.AddInt32(&r.cachedHandles, -1)
+		atomic.AddInt32(&r.CachedHandles, -1)
 	}
 	return nil
 }

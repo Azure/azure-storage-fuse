@@ -48,8 +48,12 @@ import (
 
 type Stream struct {
 	internal.BaseComponent
-	cache      StreamConnection
-	streamOnly bool // parameter used to check if its pure streaming
+	cache               StreamConnection
+	BlockSize           int64
+	BufferSizePerHandle uint64 // maximum number of blocks allowed to be stored for a file
+	HandleLimit         int32
+	CachedHandles       int32
+	StreamOnly          bool // parameter used to check if its pure streaming
 }
 
 type StreamOptions struct {
@@ -130,14 +134,6 @@ func (st *Stream) CreateFile(options internal.CreateFileOptions) (*handlemap.Han
 
 func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("Stream::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
-	handle, err := st.NextComponent().OpenFile(options)
-	if err != nil {
-		log.Err("Stream::OpenFile : error %s [%s]", options.Name, err.Error())
-		return handle, err
-	}
-	if handle == nil {
-		handle = handlemap.NewHandle(options.Name)
-	}
 	return st.cache.OpenFile(options)
 }
 

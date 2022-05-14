@@ -17,21 +17,16 @@ import (
 type ReadWriteCache struct {
 	*Stream
 	StreamConnection
-	blockSize           int64
-	bufferSizePerHandle uint64 // maximum number of blocks allowed to be stored for a file
-	handleLimit         int32
-	cachedHandles       int32
-	streamOnly          bool
 }
 
 func (rw *ReadWriteCache) Configure(conf StreamOptions) error {
 	if conf.BufferSizePerFile <= 0 || conf.BlockSize <= 0 || conf.HandleLimit <= 0 {
-		rw.streamOnly = true
+		rw.StreamOnly = true
 	}
-	rw.blockSize = int64(conf.BlockSize) * mb
-	rw.bufferSizePerHandle = conf.BufferSizePerFile
-	rw.handleLimit = int32(conf.HandleLimit)
-	rw.cachedHandles = 0
+	rw.BlockSize = int64(conf.BlockSize) * mb
+	rw.BufferSizePerHandle = conf.BufferSizePerFile * mb
+	rw.HandleLimit = int32(conf.HandleLimit)
+	rw.CachedHandles = 0
 	return nil
 }
 
@@ -40,7 +35,7 @@ func (rw *ReadWriteCache) CreateFile(options internal.CreateFileOptions) (*handl
 	if err != nil {
 		log.Err("Stream::CreateFile : error failed to create file %s: [%s]", options.Name, err.Error())
 	}
-	if !rw.streamOnly {
+	if !rw.StreamOnly {
 		err = rw.createHandleCache(handle)
 		if err != nil {
 			log.Err("Stream::OpenFile : error opening file %s [%s]", options.Name, err.Error())
@@ -57,7 +52,7 @@ func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap
 		log.Err("Stream::OpenFile : error %s [%s]", options.Name, err.Error())
 		return handle, err
 	}
-	if !rw.streamOnly {
+	if !rw.StreamOnly {
 		err = rw.createHandleCache(handle)
 		if err != nil {
 			log.Err("Stream::OpenFile : error opening file %s [%s]", options.Name, err.Error())
@@ -70,14 +65,14 @@ func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap
 func (rw *ReadWriteCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	log.Trace("Stream::ReadInBuffer : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
 	// if we're not in stream only mode and our handle is stream only - check if memory cleared up
-	if !rw.streamOnly && options.Handle.CacheObj.StreamOnly {
+	if !rw.StreamOnly && options.Handle.CacheObj.StreamOnly {
 		err := rw.createHandleCache(options.Handle)
 		if err != nil {
 			log.Err("Stream::ReadInBuffer : error reading file %s [%s]", options.Handle.Path, err.Error())
 			return 0, err
 		}
 	}
-	if rw.streamOnly || options.Handle.CacheObj.StreamOnly {
+	if rw.StreamOnly || options.Handle.CacheObj.StreamOnly {
 		data, err := rw.NextComponent().ReadInBuffer(options)
 		if err != nil && err != io.EOF {
 			log.Err("Stream::ReadInBuffer : error failed to download requested data for %s: [%s]", options.Handle.Path, err.Error())
@@ -92,14 +87,14 @@ func (rw *ReadWriteCache) ReadInBuffer(options internal.ReadInBufferOptions) (in
 
 func (rw *ReadWriteCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	log.Trace("Stream::WriteFile : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
-	if !rw.streamOnly && options.Handle.CacheObj.StreamOnly {
+	if !rw.StreamOnly && options.Handle.CacheObj.StreamOnly {
 		err := rw.createHandleCache(options.Handle)
 		if err != nil {
 			log.Err("Stream::ReadInBuffer : error reading file %s [%s]", options.Handle.Path, err.Error())
 			return 0, err
 		}
 	}
-	if rw.streamOnly || options.Handle.CacheObj.StreamOnly {
+	if rw.StreamOnly || options.Handle.CacheObj.StreamOnly {
 		data, err := rw.NextComponent().WriteFile(options)
 		if err != nil && err != io.EOF {
 			log.Err("Stream::WriteFile : error failed to write data for %s: [%s]", options.Handle.Path, err.Error())
@@ -110,7 +105,7 @@ func (rw *ReadWriteCache) WriteFile(options internal.WriteFileOptions) (int, err
 }
 
 func (rw *ReadWriteCache) TruncateFile(options internal.TruncateFileOptions) error {
-	if !rw.streamOnly {
+	if !rw.StreamOnly {
 		handleMap := handlemap.GetHandles()
 		handleMap.Range(func(key, value interface{}) bool {
 			handle := value.(*handlemap.Handle)
@@ -121,7 +116,7 @@ func (rw *ReadWriteCache) TruncateFile(options internal.TruncateFileOptions) err
 					handle.CacheObj.Purge()
 					atomic.StoreInt64(&handle.Size, options.Size)
 					handle.CacheObj.StreamOnly = true
-					atomic.AddInt32(&rw.cachedHandles, -1)
+					atomic.AddInt32(&rw.CachedHandles, -1)
 					handle.CacheObj.Unlock()
 				}
 			}
@@ -148,7 +143,7 @@ func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
 				rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 				handle.CacheObj.Purge()
 				handle.CacheObj.StreamOnly = true
-				atomic.AddInt32(&rw.cachedHandles, -1)
+				atomic.AddInt32(&rw.CachedHandles, -1)
 				handle.CacheObj.Unlock()
 			}
 		}
@@ -165,13 +160,13 @@ func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
 func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	rw.NextComponent().CloseFile(options)
-	if !rw.streamOnly && !options.Handle.CacheObj.StreamOnly {
+	if !rw.StreamOnly && !options.Handle.CacheObj.StreamOnly {
 		options.Handle.CacheObj.Lock()
 		defer options.Handle.CacheObj.Unlock()
 		rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: options.Handle})
 		options.Handle.CacheObj.Purge()
 		options.Handle.CacheObj.StreamOnly = true
-		atomic.AddInt32(&rw.cachedHandles, -1)
+		atomic.AddInt32(&rw.CachedHandles, -1)
 	}
 	return nil
 }
@@ -187,7 +182,7 @@ func (rw *ReadWriteCache) DeleteFile(options internal.DeleteFileOptions) error {
 				handle.CacheObj.Lock()
 				handle.CacheObj.Purge()
 				handle.CacheObj.StreamOnly = true
-				atomic.AddInt32(&rw.cachedHandles, -1)
+				atomic.AddInt32(&rw.CachedHandles, -1)
 				handle.CacheObj.Unlock()
 			}
 		}
@@ -212,7 +207,7 @@ func (rw *ReadWriteCache) DeleteDirectory(options internal.DeleteDirOptions) err
 				handle.CacheObj.Lock()
 				handle.CacheObj.Purge()
 				handle.CacheObj.StreamOnly = true
-				atomic.AddInt32(&rw.cachedHandles, -1)
+				atomic.AddInt32(&rw.CachedHandles, -1)
 				handle.CacheObj.Unlock()
 			}
 		}
@@ -237,7 +232,7 @@ func (rw *ReadWriteCache) RenameDirectory(options internal.RenameDirOptions) err
 				rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 				handle.CacheObj.Purge()
 				handle.CacheObj.StreamOnly = true
-				atomic.AddInt32(&rw.cachedHandles, -1)
+				atomic.AddInt32(&rw.CachedHandles, -1)
 				handle.CacheObj.Unlock()
 			}
 		}
@@ -261,7 +256,7 @@ func (rw *ReadWriteCache) Stop() error {
 			handle.CacheObj.Lock()
 			handle.CacheObj.Purge()
 			handle.CacheObj.StreamOnly = true
-			atomic.AddInt32(&rw.cachedHandles, -1)
+			atomic.AddInt32(&rw.CachedHandles, -1)
 			handle.CacheObj.Unlock()
 		}
 		return true
@@ -271,11 +266,11 @@ func (rw *ReadWriteCache) Stop() error {
 
 func (rw *ReadWriteCache) createHandleCache(handle *handlemap.Handle) error {
 
-	handlemap.CreateCacheObject(int64(rw.bufferSizePerHandle), handle)
+	handlemap.CreateCacheObject(int64(rw.BufferSizePerHandle), handle)
 	handle.CacheObj.Lock()
 	defer handle.CacheObj.Unlock()
 	// if we hit handle limit then stream only on this new handle
-	if atomic.LoadInt32(&rw.cachedHandles) >= rw.handleLimit {
+	if atomic.LoadInt32(&rw.CachedHandles) >= rw.HandleLimit {
 		handle.CacheObj.StreamOnly = true
 		return nil
 	}
@@ -296,14 +291,14 @@ func (rw *ReadWriteCache) createHandleCache(handle *handlemap.Handle) error {
 			rw.unlockBlock(block, false)
 			return err
 		}
-		atomic.AddInt32(&rw.cachedHandles, 1)
+		atomic.AddInt32(&rw.CachedHandles, 1)
 		// our handle will consist of a single block locally for simpler logic
 		handle.CacheObj.BlockList = append(handle.CacheObj.BlockList, block)
 		handle.CacheObj.BlockIdLength = common.GetIdLength(block.Id)
 		rw.unlockBlock(block, false)
 		return nil
 	}
-	atomic.AddInt32(&rw.cachedHandles, 1)
+	atomic.AddInt32(&rw.CachedHandles, 1)
 	return nil
 }
 
@@ -382,7 +377,7 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 		} else if write {
 			emptyByteLength := offset - lastBlock.EndIndex
 			// if the data to append + our last block existing data do not exceed block size - just append to last block
-			if (lastBlock.EndIndex-lastBlock.StartIndex)+(emptyByteLength+dataLeft) <= rw.blockSize {
+			if (lastBlock.EndIndex-lastBlock.StartIndex)+(emptyByteLength+dataLeft) <= rw.BlockSize {
 				_, exists, err := rw.getBlock(handle, lastBlock)
 				if err != nil {
 					rw.unlockBlock(lastBlock, exists)
