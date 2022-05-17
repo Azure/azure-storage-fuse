@@ -128,7 +128,7 @@ func getUsagePercentage(path string, maxSize float64) float64 {
 
 	currSize := getUsage(path)
 	usagePercent := (currSize / float64(maxSize)) * 100
-	log.Debug("cachePolicy::getUsagePercentage : current cache usage : %f%", usagePercent)
+	log.Debug("cachePolicy::getUsagePercentage : current cache usage : %f%%", usagePercent)
 
 	return usagePercent
 }

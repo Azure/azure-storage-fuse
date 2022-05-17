@@ -247,6 +247,7 @@ func (s *blockBlobTestSuite) cleanupTest() {
 }
 
 func (s *blockBlobTestSuite) TestInvalidBlockSize() {
+	defer s.cleanupTest()
 	configuration := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  block-size-mb: 5000\n account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
 		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
 	_, err := newTestAzStorage(configuration)
@@ -306,7 +307,9 @@ func (s *blockBlobTestSuite) TestListContainers() {
 	num := 10
 	prefix := generateContainerName()
 	for i := 0; i < num; i++ {
-		s.serviceUrl.NewContainerURL(prefix+fmt.Sprint(i)).Create(ctx, nil, azblob.PublicAccessNone)
+		c := s.serviceUrl.NewContainerURL(prefix + fmt.Sprint(i))
+		c.Create(ctx, nil, azblob.PublicAccessNone)
+		defer c.Delete(ctx, azblob.ContainerAccessConditions{})
 	}
 
 	containers, err := s.az.ListContainers()
@@ -321,12 +324,6 @@ func (s *blockBlobTestSuite) TestListContainers() {
 		}
 	}
 	s.assert.EqualValues(num, count)
-
-	// Cleanup
-	r, _ := s.serviceUrl.ListContainersSegment(ctx, azblob.Marker{}, azblob.ListContainersSegmentOptions{Prefix: prefix})
-	for _, c := range r.ContainerItems {
-		s.serviceUrl.NewContainerURL(c.Name).Delete(ctx, azblob.ContainerAccessConditions{})
-	}
 }
 
 // TODO : ListContainersHuge: Maybe this is overkill?
