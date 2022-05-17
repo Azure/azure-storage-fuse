@@ -38,6 +38,7 @@ import (
 	"blobfuse2/common/config"
 	"blobfuse2/common/exectime"
 	"blobfuse2/common/log"
+	"blobfuse2/common/stats_monitor"
 	"blobfuse2/internal"
 	"context"
 	"fmt"
@@ -80,6 +81,7 @@ type mountOptions struct {
 
 var options mountOptions
 var pipelineStarted bool
+var enableMonitoring bool
 
 func (opt *mountOptions) validate(skipEmptyMount bool) error {
 	if opt.MountPath == "" {
@@ -340,6 +342,19 @@ var mountCmd = &cobra.Command{
 				if err = pprof.WriteHeapProfile(f); err != nil {
 					fmt.Printf("error memory profiling [%s]", err)
 				}
+			}
+		}
+
+		err = config.UnmarshalKey("enable-monitoring", &enableMonitoring)
+		if err != nil {
+			log.Debug("Unable to unmarshal enable-monitoring key from config: " + err.Error())
+			enableMonitoring = false
+		}
+
+		if enableMonitoring {
+			err = stats_monitor.GenerateMonitorConfig(options.MountPath)
+			if err != nil {
+				log.Debug("Mount: Failed to generate config for stats monitor [%v]", err)
 			}
 		}
 

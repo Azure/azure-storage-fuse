@@ -32,3 +32,44 @@
 */
 
 package stats_monitor
+
+import (
+	"blobfuse2/common"
+	"blobfuse2/common/config"
+	"blobfuse2/common/log"
+	"blobfuse2/component/file_cache"
+	"encoding/json"
+	"os"
+)
+
+type StatsOptions struct {
+	MountPath    string                      `json:"mount_dir"`
+	FileCacheOpt file_cache.FileCacheOptions `json:"file_cache"`
+}
+
+func GenerateMonitorConfig(mountPath string) error {
+	var statsOpt StatsOptions = StatsOptions{}
+	statsOpt.MountPath = mountPath
+	err := config.UnmarshalKey("file_cache", &statsOpt.FileCacheOpt)
+	if err != nil {
+		log.Err("stats_monitor: FileCache config error [invalid config attributes]")
+		return err
+	}
+
+	cfgFile, err := json.MarshalIndent(statsOpt, "", "\t")
+	if err != nil {
+		log.Err("stats_monitor: Failed to marshal file cache options")
+		return err
+	}
+
+	workDir := os.ExpandEnv(common.DefaultWorkDir)
+	_ = os.MkdirAll(workDir, os.ModeDir|os.FileMode(0777))
+
+	err = os.WriteFile(os.ExpandEnv(common.StatsConfigFilePath), cfgFile, 0755)
+	if err != nil {
+		log.Err("stats_monitor: Failed to write the config to the file, %s", common.StatsConfigFilePath)
+		return err
+	}
+
+	return nil
+}

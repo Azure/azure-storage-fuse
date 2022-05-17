@@ -62,6 +62,7 @@ const (
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFilePath = filepath.Join(DefaultWorkDir, "blobfuse2.log")
+var StatsConfigFilePath = filepath.Join(DefaultWorkDir, "stats_monitor.cfg")
 var DefaultPipeline = []string{"libfuse", "file_cache", "attr_cache", "azstorage"}
 var DefaultStreamPipeline = []string{"libfuse", "stream", "attr_cache", "azstorage"}
 
