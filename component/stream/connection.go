@@ -25,9 +25,6 @@ type StreamConnection interface {
 	CloseFile(internal.CloseFileOptions) error
 	TruncateFile(internal.TruncateFileOptions) error
 	Stop() error
-
-	// ChangeMod(string, os.FileMode) error
-	// ChangeOwner(string, int, int) error
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object

@@ -795,6 +795,7 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 		blk.Flags.Set(common.DirtyBlock)
 		bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data)
 	}
+
 	blockList.BlockList = blockList.BlockList[:index+1]
 	return blockList
 }
@@ -832,7 +833,11 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 			return err
 		}
 	} else {
-		data, _ := bb.ReadBuffer(name, 0, 0)
+		data, err := bb.ReadBuffer(name, 0, 0)
+		if err != nil {
+			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
+			return err
+		}
 		if size > attr.Size {
 			blk := &common.Block{
 				StartIndex: 0,

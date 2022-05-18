@@ -133,7 +133,6 @@ func (st *Stream) CreateFile(options internal.CreateFileOptions) (*handlemap.Han
 }
 
 func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
-	log.Trace("Stream::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
 	return st.cache.OpenFile(options)
 }
 
@@ -146,7 +145,6 @@ func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
 }
 
 func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
-	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	return st.cache.CloseFile(options)
 }
 
