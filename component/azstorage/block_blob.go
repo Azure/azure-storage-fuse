@@ -800,7 +800,7 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 }
 
 func (bb *BlockBlob) TruncateFile(name string, size int64) error {
-	log.Trace("BlockBlob::TruncateFile : name=%s, size=%d", name, size)
+	// log.Trace("BlockBlob::TruncateFile : name=%s, size=%d", name, size)
 	attr, err := bb.GetAttr(name)
 	if err != nil {
 		log.Err("BlockBlob::TruncateFile : Failed to get attributes of file %s (%s)", name, err.Error())
@@ -826,7 +826,11 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 		} else if size < attr.Size {
 			bol = bb.removeBlocks(bol, size, name)
 		}
-		bb.StageAndCommit(name, bol)
+		err = bb.StageAndCommit(name, bol)
+		if err != nil {
+			log.Err("BlockBlob::TruncateFile : Failed to truncate file %s", name, err.Error())
+			return err
+		}
 	} else {
 		data, _ := bb.ReadBuffer(name, 0, 0)
 		if size > attr.Size {
@@ -846,7 +850,11 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 			data = data[0:size]
 			return bb.WriteFromBuffer(name, nil, data)
 		}
-		bb.StageAndCommit(name, bol)
+		err = bb.StageAndCommit(name, bol)
+		if err != nil {
+			log.Err("BlockBlob::TruncateFile : Failed to truncate file %s", name, err.Error())
+			return err
+		}
 	}
 	return nil
 }
@@ -981,7 +989,7 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 				nil,
 				bb.downloadOptions.ClientProvidedKeyOptions)
 			if err != nil {
-				log.Err("BlockBlob::StageAndCommit : Failed to stage to blob %s at block %v (%s)", name, blk.StartIndex, err.Error())
+				log.Err("BlockBlob::StageAndCommit : Failed to stage to blob %s with ID %s at block %v (%s)", name, blk.Id, blk.StartIndex, err.Error())
 				return err
 			}
 			staged = true
