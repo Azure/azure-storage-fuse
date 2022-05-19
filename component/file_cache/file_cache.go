@@ -69,7 +69,7 @@ type FileCache struct {
 	missedChmodList sync.Map
 	mountPath       string
 	allowOther      bool
-	directRead      bool
+	offloadIO       bool
 
 	defaultPermission os.FileMode
 }
@@ -92,7 +92,7 @@ type FileCacheOptions struct {
 	CleanupOnStart  bool `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
 
 	EnablePolicyTrace bool `config:"policy-trace" yaml:"policy-trace,omitempty"`
-	DirectRead        bool `config:"direct-read" yaml:"direct-read,omitempty"`
+	OffloadIO         bool `config:"offload-io" yaml:"offload-io,omitempty"`
 }
 
 const (
@@ -101,6 +101,7 @@ const (
 	defaultMaxThreshold     = 80
 	defaultMinThreshold     = 60
 	defaultFileCacheTimeout = 120
+	defaultCacheUpdateCount = 100
 )
 
 //  Verification to check satisfaction criteria with Component Interface
@@ -188,7 +189,7 @@ func (c *FileCache) Configure() error {
 	c.allowNonEmpty = conf.AllowNonEmpty
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
-	c.directRead = conf.DirectRead
+	c.offloadIO = conf.OffloadIO
 
 	c.tmpPath = conf.TmpPath
 	if c.tmpPath == "" {
@@ -264,7 +265,7 @@ func (c *FileCache) OnConfigChange() {
 	c.createEmptyFile = conf.CreateEmptyFile
 	c.cacheTimeout = float64(conf.Timeout)
 	c.policyTrace = conf.EnablePolicyTrace
-	c.directRead = conf.DirectRead
+	c.offloadIO = conf.OffloadIO
 	c.policy.UpdateConfig(c.GetPolicyConfig(conf))
 }
 
@@ -570,11 +571,14 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	flock.Inc()
 
 	handle := handlemap.NewHandle(options.Name)
-	handle.SetFileObject(f)
+	handle.UnixFD = uint64(f.Fd())
 
-	if fc.directRead {
+	if !fc.offloadIO {
 		handle.Flags.Set(handlemap.HandleFlagCached)
 	}
+	log.Info("FileCache::CreateFile : file=%s, fd=%d", options.Name, f.Fd())
+
+	handle.SetFileObject(f)
 
 	// If an empty file is created in storage then there is no need to upload if FlushFile is called immediately after CreateFile.
 	if !fc.createEmptyFile {
@@ -800,13 +804,13 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		handle.Size = inf.Size()
 	}
 
-	handle.SetFileObject(f)
-
-	if fc.directRead {
+	handle.UnixFD = uint64(f.Fd())
+	if !fc.offloadIO {
 		handle.Flags.Set(handlemap.HandleFlagCached)
 	}
 
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
+	handle.SetFileObject(f)
 
 	return handle, nil
 }
@@ -890,35 +894,55 @@ func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) 
 func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::ReadInBuffer")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
-	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
-	fc.policy.CacheValid(localPath)
-
 	f := options.Handle.GetFileObject()
 	if f == nil {
 		log.Err("FileCache::ReadInBuffer : error [couldn't find fd in handle] %s", options.Handle.Path)
 		return 0, syscall.EBADF
 	}
 
+	// Read and write operations are very frequent so updating cache policy for every read is a costly operation
+	// Update cache policy every 1K operations (includes both read and write) instead
+	options.Handle.OptCnt++
+	if (options.Handle.OptCnt % defaultCacheUpdateCount) == 0 {
+		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
+		fc.policy.CacheValid(localPath)
+	}
+
+	// Removing f.ReadAt as it involves lot of house keeping and then calls syscall.Pread
+	// Instead we will call syscall directly for better perf
 	return f.ReadAt(options.Data, options.Offset)
+	//return syscall.Pread(options.Handle.FD(), options.Data, options.Offset)
 }
 
 // WriteFile: Write to the local file
 func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::WriteFile")()
-
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
-	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
-	fc.policy.CacheValid(localPath)
-
 	f := options.Handle.GetFileObject()
 	if f == nil {
 		log.Err("FileCache::WriteFile : error [couldn't find fd in handle] %s", options.Handle.Path)
 		return 0, syscall.EBADF
 	}
 
-	options.Handle.Flags.Set(handlemap.HandleFlagDirty) // Mark the handle dirty so the file is written back to storage on FlushFile.
+	// Read and write operations are very frequent so updating cache policy for every read is a costly operation
+	// Update cache policy every 1K operations (includes both read and write) instead
+	options.Handle.OptCnt++
+	if (options.Handle.OptCnt % defaultCacheUpdateCount) == 0 {
+		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
+		fc.policy.CacheValid(localPath)
+	}
 
-	return f.WriteAt(options.Data, options.Offset)
+	// Removing f.WriteAt as it involves lot of house keeping and then calls syscall.Pwrite
+	// Instead we will call syscall directly for better perf
+	bytesWritten, err := f.WriteAt(options.Data, options.Offset)
+	//bytesWritten, err := syscall.Pwrite(options.Handle.FD(), options.Data, options.Offset)
+
+	if err == nil {
+		// Mark the handle dirty so the file is written back to storage on FlushFile.
+		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
+	}
+
+	return bytesWritten, err
 }
 
 func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
@@ -967,6 +991,7 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		// Flush all data to disk that has been buffered by the kernel.
 		// We cannot close the incoming handle since the user called flush, note close and flush can be called on the same handle multiple times.
 		// To ensure the data is flushed to disk before writing to storage, we duplicate the handle and close that handle.
+		// f.fsync() is another option but dup+close does it quickly compared to sync
 		dupFd, err := syscall.Dup(int(f.Fd()))
 		if err != nil {
 			log.Err("FileCache::FlushFile : error [couldn't duplicate the fd] %s", options.Handle.Path)
@@ -984,7 +1009,6 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		// The local handle can still be used for read and write.
 		uploadHandle, err := os.Open(localPath)
 		if err != nil {
-			options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
 			log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
 			return nil
 		}
@@ -994,13 +1018,14 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 				Name: options.Handle.Path,
 				File: uploadHandle,
 			})
+
+		uploadHandle.Close()
 		if err != nil {
-			uploadHandle.Close()
 			log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
 			return err
 		}
+
 		options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
-		uploadHandle.Close()
 
 		// If chmod was done on the file before it was uploaded to container then setting up mode would have been missed
 		// Such file names are added to this map and here post upload we try to set the mode correctly
@@ -1229,6 +1254,13 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 		}
 	}
 
+	return nil
+}
+
+func (fc *FileCache) FileUsed(name string) error {
+	// Update the owner and group of the file in the local cache
+	localPath := filepath.Join(fc.tmpPath, name)
+	fc.policy.CacheValid(localPath)
 	return nil
 }
 

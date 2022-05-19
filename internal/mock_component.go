@@ -38,10 +38,10 @@
 package internal
 
 import (
+	common "blobfuse2/common"
 	handlemap "blobfuse2/internal/handlemap"
 	context "context"
 	reflect "reflect"
-	common "blobfuse2/common"
 
 	gomock "github.com/golang/mock/gomock"
 )
@@ -309,9 +309,8 @@ func (mr *MockComponentMockRecorder) InvalidateObject(arg0 interface{}) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateObject", reflect.TypeOf((*MockComponent)(nil).InvalidateObject), arg0)
 }
 
-
 // GetFileBlockOffsets mocks base method.
-func (m *MockComponent) GetFileBlockOffsets(arg0 GetFileBlockOffsetsOptions)(*common.BlockOffsetList, error) {
+func (m *MockComponent) GetFileBlockOffsets(arg0 GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetFileBlockOffsets", arg0)
 	ret0, _ := ret[0].(*common.BlockOffsetList)
@@ -628,4 +627,18 @@ func (m *MockComponent) WriteFile(arg0 WriteFileOptions) (int, error) {
 func (mr *MockComponentMockRecorder) WriteFile(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "WriteFile", reflect.TypeOf((*MockComponent)(nil).WriteFile), arg0)
+}
+
+// FileUsed mocks base method.
+func (m *MockComponent) FileUsed(arg0 string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "FileUsed", arg0)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// FileUsed indicates an expected call to FileUsed.
+func (mr *MockComponentMockRecorder) FileUsed(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FileUsed", reflect.TypeOf((*MockComponent)(nil).FileUsed), arg0)
 }

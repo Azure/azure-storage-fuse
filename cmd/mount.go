@@ -42,9 +42,12 @@ import (
 	"context"
 	"fmt"
 	"io/ioutil"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"strings"
 	"syscall"
@@ -76,6 +79,9 @@ type mountOptions struct {
 	MemProfile        string     `config:"mem-profile"`
 	PassPhrase        string     `config:"passphrase"`
 	SecureConfig      bool       `config:"secure-config"`
+	DynamicProfiler   bool       `config:"dynamic-profile"`
+	ProfilerPort      int        `config:"profiler-port"`
+	ProfilerIP        string     `config:"profiler-ip"`
 }
 
 var options mountOptions
@@ -313,6 +319,8 @@ var mountCmd = &cobra.Command{
 			}
 			if child == nil {
 				defer dmnCtx.Release()
+				setGOConfig()
+				go startDynamicProfiler()
 				runPipeline(pipeline, ctx)
 			}
 		} else {
@@ -328,6 +336,10 @@ var mountCmd = &cobra.Command{
 				}
 				defer pprof.StopCPUProfile()
 			}
+
+			setGOConfig()
+			go startDynamicProfiler()
+
 			runPipeline(pipeline, context.Background())
 			if options.MemProfile != "" {
 				os.Remove(options.MemProfile)
@@ -381,6 +393,51 @@ func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.Sign
 
 		return err
 	}
+}
+
+func setGOConfig() {
+	// Ensure we always have more than 1 OS thread running goroutines, since there are issues with having just 1.
+	isOnlyOne := runtime.GOMAXPROCS(0) == 1
+	if isOnlyOne {
+		runtime.GOMAXPROCS(2)
+	}
+
+	// Golang's default behaviour is to GC when new objects = (100% of) total of objects surviving previous GC.
+	// Set it to lower level so that memory if freed up early
+	debug.SetGCPercent(70)
+}
+
+func startDynamicProfiler() {
+	if !options.DynamicProfiler {
+		return
+	}
+
+	if options.ProfilerIP == "" {
+		// By default enable profiler on 127.0.0.1
+		options.ProfilerIP = "localhost"
+	}
+
+	if options.ProfilerPort == 0 {
+		// This is default go profiler port
+		options.ProfilerPort = 6060
+	}
+
+	connStr := fmt.Sprintf("%s:%d", options.ProfilerIP, options.ProfilerPort)
+	log.Info("startDynamicProfiler : Staring profiler on [%s]", connStr)
+
+	// To check dynamic profiling info http://<ip>:<port>/debug/pprof
+	// for e.g. for default config use http://localhost:6060/debug/pprof
+	// Also CLI based profiler can be used
+	// e.g. go tool pprof http://localhost:6060/debug/pprof/heap
+	//      go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
+	//      go tool pprof http://localhost:6060/debug/pprof/block
+	//
+	err := http.ListenAndServe(connStr, nil)
+	if err != nil {
+		log.Err("startDynamicProfiler : Failed to start dynamic profiler [%s]", err.Error())
+	}
+
+	return
 }
 
 func init() {
