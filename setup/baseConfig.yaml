@@ -1,9 +1,16 @@
 # NOTE : All true|false config are set to 'false' by default
+
 # Daemon configuration
 foreground: true|false <run blobfuse2 in foreground or background>
+
 # Common configurations
 read-only: true|false <mount in read only mode - used for Streaming and FUSE>
 allow-other: true|false <allow other users to access the mounted directory - used for FUSE and File Cache>
+
+# Dynamic profiler related configuration. This helps to root-cause high memory/cpu usage related issues.
+dynamic-profile: true|false <allows to turn on dynamic profiler for cpu/memory usage monitoring. Only for debugging, shall not be used in production>
+profiler-port: <port number for dynamic-profiler to listen for REST calls. Default - 6060>
+profiler-ip: <IP address for dynamic-profiler to listen for REST calls. Default - localhost>
 
 # Logger configuration
 logging:
