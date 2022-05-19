@@ -31,6 +31,7 @@ func (rw *ReadWriteCache) Configure(conf StreamOptions) error {
 }
 
 func (rw *ReadWriteCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
+	log.Trace("Stream::CreateFile : name=%s, mode=%s", options.Name, options.Mode)
 	handle, err := rw.NextComponent().CreateFile(options)
 	if err != nil {
 		log.Err("Stream::CreateFile : error failed to create file %s: [%s]", options.Name, err.Error())
@@ -46,6 +47,7 @@ func (rw *ReadWriteCache) CreateFile(options internal.CreateFileOptions) (*handl
 }
 
 func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
+	log.Trace("Stream::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
 	handle, err := rw.NextComponent().OpenFile(options)
 	if err != nil {
 		log.Err("Stream::OpenFile : error failed to open file %s [%s]", options.Name, err.Error())
@@ -115,7 +117,7 @@ func (rw *ReadWriteCache) WriteFile(options internal.WriteFileOptions) (int, err
 }
 
 func (rw *ReadWriteCache) TruncateFile(options internal.TruncateFileOptions) error {
-	// log.Trace("Stream::ReadWrite::TruncateFile : name=%s, size=%d", options.Name, options.Size)
+	log.Trace("Stream::TruncateFile : name=%s, size=%d", options.Name, options.Size)
 	var err error
 	if !rw.StreamOnly {
 		handleMap := handlemap.GetHandles()
@@ -145,7 +147,7 @@ func (rw *ReadWriteCache) TruncateFile(options internal.TruncateFileOptions) err
 }
 
 func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
-	log.Trace("Stream::ReadWrite::RenameFile : name=%s", options.Src)
+	log.Trace("Stream::RenameFile : name=%s", options.Src)
 	var err error
 	handleMap := handlemap.GetHandles()
 	handleMap.Range(func(key, value interface{}) bool {
@@ -173,7 +175,7 @@ func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
 }
 
 func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
-	// log.Trace("Stream::ReadWrite::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	if !rw.StreamOnly && !options.Handle.CacheObj.StreamOnly {
 		err := rw.purge(options.Handle, -1, true)
 		if err != nil {
@@ -189,7 +191,7 @@ func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
 }
 
 func (rw *ReadWriteCache) DeleteFile(options internal.DeleteFileOptions) error {
-	log.Trace("Stream::ReadWrite::DeleteFile : name=%s", options.Name)
+	log.Trace("Stream::DeleteFile : name=%s", options.Name)
 	handleMap := handlemap.GetHandles()
 	handleMap.Range(func(key, value interface{}) bool {
 		handle := value.(*handlemap.Handle)
@@ -206,14 +208,14 @@ func (rw *ReadWriteCache) DeleteFile(options internal.DeleteFileOptions) error {
 	})
 	err := rw.NextComponent().DeleteFile(options)
 	if err != nil {
-		log.Err("Stream::ReadWrite::DeleteFile : error deleting file %s [%s]", options.Name, err.Error())
+		log.Err("Stream::DeleteFile : error deleting file %s [%s]", options.Name, err.Error())
 		return err
 	}
 	return nil
 }
 
 func (rw *ReadWriteCache) DeleteDirectory(options internal.DeleteDirOptions) error {
-	log.Trace("Stream::ReadWrite::DeleteDirectory : name=%s", options.Name)
+	log.Trace("Stream::DeleteDirectory : name=%s", options.Name)
 	handleMap := handlemap.GetHandles()
 	handleMap.Range(func(key, value interface{}) bool {
 		handle := value.(*handlemap.Handle)
@@ -230,14 +232,14 @@ func (rw *ReadWriteCache) DeleteDirectory(options internal.DeleteDirOptions) err
 	})
 	err := rw.NextComponent().DeleteDir(options)
 	if err != nil {
-		log.Err("Stream::ReadWrite::DeleteDirectory : error deleting directory %s [%s]", options.Name, err.Error())
+		log.Err("Stream::DeleteDirectory : error deleting directory %s [%s]", options.Name, err.Error())
 		return err
 	}
 	return nil
 }
 
 func (rw *ReadWriteCache) RenameDirectory(options internal.RenameDirOptions) error {
-	log.Trace("Stream::ReadWrite::RenameDirectory : name=%s", options.Src)
+	log.Trace("Stream::RenameDirectory : name=%s", options.Src)
 	var err error
 	handleMap := handlemap.GetHandles()
 	handleMap.Range(func(key, value interface{}) bool {
@@ -258,7 +260,7 @@ func (rw *ReadWriteCache) RenameDirectory(options internal.RenameDirOptions) err
 	}
 	err = rw.NextComponent().RenameDir(options)
 	if err != nil {
-		log.Err("Stream::ReadWrite::RenameDirectory : error renaming directory %s [%s]", options.Src, err.Error())
+		log.Err("Stream::RenameDirectory : error renaming directory %s [%s]", options.Src, err.Error())
 		return err
 	}
 	return nil
