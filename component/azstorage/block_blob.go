@@ -531,6 +531,29 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	return blobList, listBlob.NextMarker.Val, nil
 }
 
+// track the progress of uploads and downloads of blobs
+func trackProgress(name string, bytesTransferred int64, progressMap map[string]ProgressData, op string) {
+	var divCtr int
+	if strings.ToLower(op) == "download" {
+		divCtr = 5120 // 16kB * 5120 = 80 MB per download is tracked
+	} else {
+		divCtr = 3072 // 32 * 3072 = 96 MB per upload is tracked
+	}
+
+	data, isPresent := progressMap[name]
+	if !isPresent {
+		progressMap[name] = ProgressData{ctr: 1, bytesTransferred: bytesTransferred}
+	} else {
+		data.ctr += 1
+		data.bytesTransferred = bytesTransferred
+		progressMap[name] = data
+	}
+
+	if progressMap[name].ctr%int64(divCtr) == 1 {
+		log.Debug("%v %v: Blob = %v, Bytes transferred = %v", op, progressMap[name].ctr, name, bytesTransferred)
+	}
+}
+
 // ReadToFile : Download a blob to a local file
 func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.File) (err error) {
 	log.Trace("BlockBlob::ReadToFile : name %s, offset : %d, count %d", name, offset, count)
@@ -538,8 +561,20 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
 
+	bb.downloadOptions.Progress = func(bytesTransferred int64) {
+		trackProgress(name, bytesTransferred, progressDownloadMap, "download")
+	}
+
 	defer log.TimeTrack(time.Now(), "BlockBlob::ReadToFile", name)
 	err = azblob.DownloadBlobToFile(context.Background(), blobURL, offset, count, fi, bb.downloadOptions)
+
+	if data, isPresent := progressDownloadMap[name]; isPresent && err == nil {
+		if data.ctr%5120 != 1 {
+			log.Debug("download %v: Blob = %v, Bytes transferred = %v", data.ctr, name, data.bytesTransferred)
+		}
+	}
+	log.Debug("%v: %v", name, progressDownloadMap[name])
+	delete(progressDownloadMap, name)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -570,7 +605,19 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 	}
 
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	bb.downloadOptions.Progress = func(bytesTransferred int64) {
+		trackProgress(name, bytesTransferred, progressDownloadMap, "download")
+	}
+
 	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, buff, bb.downloadOptions)
+
+	if data, isPresent := progressDownloadMap[name]; isPresent && err == nil {
+		if data.ctr%5120 != 1 {
+			log.Debug("download %v: Blob = %v, Bytes transferred = %v", data.ctr, name, data.bytesTransferred)
+		}
+	}
+	log.Debug("%v: %v", name, progressDownloadMap[name])
+	delete(progressDownloadMap, name)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -591,7 +638,19 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
 	log.Trace("BlockBlob::ReadInBuffer : name %s", name)
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	bb.downloadOptions.Progress = func(bytesTransferred int64) {
+		trackProgress(name, bytesTransferred, progressDownloadMap, "download")
+	}
+
 	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, data, bb.downloadOptions)
+
+	if data, isPresent := progressDownloadMap[name]; isPresent && err == nil {
+		if data.ctr%5120 != 1 {
+			log.Debug("download %v: Blob = %v, Bytes transferred = %v", data.ctr, name, data.bytesTransferred)
+		}
+	}
+	log.Debug("%v: %v", name, progressDownloadMap[name])
+	delete(progressDownloadMap, name)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -677,10 +736,21 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		Parallelism:    bb.Config.maxConcurrency,
 		Metadata:       metadata,
 		BlobAccessTier: bb.Config.defaultTier,
+		Progress: func(bytesTransferred int64) {
+			trackProgress(name, bytesTransferred, progressUploadMap, "upload")
+		},
 		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
 			ContentType: getContentType(name),
 		},
 	})
+
+	if data, isPresent := progressUploadMap[name]; isPresent && err == nil {
+		if data.ctr%3072 != 1 {
+			log.Debug("upload %v: Blob = %v, Bytes transferred = %v", data.ctr, name, data.bytesTransferred)
+		}
+	}
+	log.Debug("%v: %v", name, progressUploadMap[name])
+	delete(progressUploadMap, name)
 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
@@ -707,10 +777,21 @@ func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]string, da
 		Parallelism:    bb.Config.maxConcurrency,
 		Metadata:       metadata,
 		BlobAccessTier: bb.Config.defaultTier,
+		Progress: func(bytesTransferred int64) {
+			trackProgress(name, bytesTransferred, progressUploadMap, "upload")
+		},
 		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
 			ContentType: getContentType(name),
 		},
 	})
+
+	if data, isPresent := progressUploadMap[name]; isPresent && err == nil {
+		if data.ctr%3072 != 1 {
+			log.Debug("upload %v: Blob = %v, Bytes transferred = %v", data.ctr, name, data.bytesTransferred)
+		}
+	}
+	log.Debug("%v: %v", name, progressUploadMap[name])
+	delete(progressUploadMap, name)
 
 	if err != nil {
 		log.Err("BlockBlob::WriteFromBuffer : Failed to upload blob %s (%s)", name, err.Error())
