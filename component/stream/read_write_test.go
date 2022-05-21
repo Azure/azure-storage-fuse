@@ -228,15 +228,22 @@ func (suite *streamTestSuite) TestLargeFileEviction() {
 	writeFileOptions.Offset = 2
 	suite.stream.WriteFile(writeFileOptions)
 
-	// writeFileOptions.Offset = 2*MB + 4
-	// suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Return(nil)
+	writeFileOptions.Offset = 2*MB + 4
 
-	// suite.stream.WriteFile(writeFileOptions)
+	// when we get the first flush - it means we're clearing out our cache
+	callbackFunc := func(options internal.FlushFileOptions) {
+		block1.Flags.Clear(common.DirtyBlock)
+		block2.Flags.Clear(common.DirtyBlock)
+	}
+	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Do(callbackFunc).Return(nil)
+	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Return(nil)
 
-	// assertBlockCached(suite, 0, handle)
-	// assertBlockCached(suite, 2*MB, handle)
-	// assertBlockNotCached(suite, 1*MB, handle)
-	// assertNumberOfCachedFileBlocks(suite, 2, handle)
+	suite.stream.WriteFile(writeFileOptions)
+
+	assertBlockCached(suite, 0, handle)
+	assertBlockCached(suite, 2*MB, handle)
+	assertBlockNotCached(suite, 1*MB, handle)
+	assertNumberOfCachedFileBlocks(suite, 2, handle)
 
 }
 
