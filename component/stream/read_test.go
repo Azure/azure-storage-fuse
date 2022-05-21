@@ -72,9 +72,7 @@ const MB = 1024 * 1024
 func newTestStream(next internal.Component, configuration string, ro bool) *Stream {
 	config.ReadConfigFromReader(strings.NewReader(configuration))
 	// we must be in read-only mode for read stream
-	if ro {
-		config.SetBool("read-only", true)
-	}
+	config.SetBool("read-only", ro)
 	stream := NewStreamComponent()
 	stream.SetNextComponent(next)
 	stream.Configure()
@@ -158,6 +156,14 @@ func assertBlockCached(suite *streamTestSuite, offset int64, handle *handlemap.H
 func assertBlockNotCached(suite *streamTestSuite, offset int64, handle *handlemap.Handle) {
 	_, found := handle.CacheObj.Get(offset)
 	suite.assert.Equal(found, false)
+}
+
+func assertHandleNotStreamOnly(suite *streamTestSuite, handle *handlemap.Handle) {
+	suite.assert.Equal(handle.CacheObj.StreamOnly, false)
+}
+
+func assertHandleStreamOnly(suite *streamTestSuite, handle *handlemap.Handle) {
+	suite.assert.Equal(handle.CacheObj.StreamOnly, true)
 }
 
 func assertNumberOfCachedFileBlocks(suite *streamTestSuite, numOfBlocks int, handle *handlemap.Handle) {
@@ -547,25 +553,6 @@ func (suite *streamTestSuite) TestAsyncClose() {
 		go asyncCloseFile(suite, closeFileOptions)
 	}
 	wg.Wait()
-}
-
-func (suite *streamTestSuite) TestWriteConfig() {
-	defer suite.cleanupTest()
-	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
-	suite.setupTestHelper(config, true)
-
-	suite.assert.Equal("stream", suite.stream.Name())
-	suite.assert.Equal(16*MB, int(suite.stream.BufferSizePerHandle))
-	suite.assert.Equal(4, int(suite.stream.HandleLimit))
-	suite.assert.EqualValues(false, suite.stream.StreamOnly)
-	suite.assert.EqualValues(4*MB, suite.stream.BlockSize)
-
-	// assert streaming is on if any of the values is 0
-	suite.cleanupTest()
-	config = "stream:\n  block-size-mb: 0\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
-	suite.setupTestHelper(config, false)
-	suite.assert.EqualValues(true, suite.stream.StreamOnly)
 }
 
 func TestStreamTestSuite(t *testing.T) {

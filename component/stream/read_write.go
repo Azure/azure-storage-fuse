@@ -320,7 +320,7 @@ func (rw *ReadWriteCache) createHandleCache(handle *handlemap.Handle) error {
 	handle.CacheObj.BlockOffsetList = offsets
 	// if its a small file then download the file in its entirety if there is memory available, otherwise stream only
 	if handle.CacheObj.SmallFile() {
-		if uint64(atomic.LoadInt64(&handle.Size)*mb) > memory.FreeMemory() {
+		if uint64(atomic.LoadInt64(&handle.Size)) > memory.FreeMemory() {
 			handle.CacheObj.StreamOnly = true
 			return nil
 		}
@@ -333,6 +333,8 @@ func (rw *ReadWriteCache) createHandleCache(handle *handlemap.Handle) error {
 		// our handle will consist of a single block locally for simpler logic
 		handle.CacheObj.BlockList = append(handle.CacheObj.BlockList, block)
 		handle.CacheObj.BlockIdLength = common.GetIdLength(block.Id)
+		// now consists of a block - clear the flag
+		handle.CacheObj.Flags.Clear(common.SmallFile)
 		return nil
 	}
 	atomic.AddInt32(&rw.CachedHandles, 1)
