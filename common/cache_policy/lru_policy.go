@@ -52,7 +52,7 @@ func (cache *LRUCache) findCleanBlockToEvict() bool {
 			cache.Remove(pair.key)
 			return false
 		}
-		node = node.Next()
+		node = node.Prev()
 	}
 	return true
 }

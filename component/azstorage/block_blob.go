@@ -736,7 +736,6 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		blockList.Flags.Set(common.SmallFile)
 		return &blockList, nil
 	}
-	blockList.BlockIdLength = common.GetIdLength(blockList.BlockList[0].Id)
 	for _, block := range storageBlockList.CommittedBlocks {
 		blk := &common.Block{
 			Id:         block.Name,
@@ -746,6 +745,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		blockOffset += block.Size
 		blockList.BlockList = append(blockList.BlockList, blk)
 	}
+	blockList.BlockIdLength = common.GetIdLength(blockList.BlockList[0].Id)
 	return &blockList, nil
 }
 

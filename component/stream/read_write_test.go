@@ -175,8 +175,69 @@ func (suite *streamTestSuite) TestWriteToSmallFileEviction() {
 	assertHandleNotStreamOnly(suite, handle)
 }
 
-// test small file that does not fit
-func (suite *streamTestSuite) TestReadLargeFileEviction() {
+// get block 1, get block 2, mod block 2, mod block 1, create new block - expect block 2 to be removed
+func (suite *streamTestSuite) TestLargeFileEviction() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := "stream:\n  block-size-mb: 1\n  handle-buffer-size-mb: 2\n  handle-limit: 2\n"
+	suite.setupTestHelper(config, false)
+
+	handle := &handlemap.Handle{Size: int64(4 * MB), Path: fileNames[0]}
+	getFileBlockOffsetsOptions := internal.GetFileBlockOffsetsOptions{Name: fileNames[0]}
+	// file consists of two blocks
+	block1 := &common.Block{StartIndex: 0, EndIndex: 1 * MB}
+	block2 := &common.Block{StartIndex: 1 * MB, EndIndex: 2 * MB}
+	bol := &common.BlockOffsetList{
+		BlockList:     []*common.Block{block1, block2},
+		BlockIdLength: 10,
+	}
+	readInBufferOptions := internal.ReadInBufferOptions{
+		Handle: handle,
+		Offset: 0,
+		Data:   make([]byte, 1*MB),
+	}
+	openFileOptions := internal.OpenFileOptions{Name: fileNames[0], Flags: os.O_RDONLY, Mode: os.FileMode(0777)}
+	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
+	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
+	suite.stream.OpenFile(openFileOptions)
+
+	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(len(readInBufferOptions.Data), nil)
+	suite.stream.ReadInBuffer(readInBufferOptions)
+
+	assertBlockCached(suite, 0, handle)
+	assertNumberOfCachedFileBlocks(suite, 1, handle)
+
+	readInBufferOptions = internal.ReadInBufferOptions{
+		Handle: handle,
+		Offset: 1 * MB,
+		Data:   make([]byte, 1*MB),
+	}
+
+	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(len(readInBufferOptions.Data), nil)
+	suite.stream.ReadInBuffer(readInBufferOptions)
+
+	assertBlockCached(suite, 1*MB, handle)
+	assertNumberOfCachedFileBlocks(suite, 2, handle)
+
+	writeFileOptions := internal.WriteFileOptions{
+		Handle: handle,
+		Offset: 1*MB + 2,
+		Data:   make([]byte, 2),
+	}
+	suite.stream.WriteFile(writeFileOptions)
+	writeFileOptions.Offset = 2
+	suite.stream.WriteFile(writeFileOptions)
+
+	// writeFileOptions.Offset = 2*MB + 4
+	// suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Return(nil)
+
+	// suite.stream.WriteFile(writeFileOptions)
+
+	// assertBlockCached(suite, 0, handle)
+	// assertBlockCached(suite, 2*MB, handle)
+	// assertBlockNotCached(suite, 1*MB, handle)
+	// assertNumberOfCachedFileBlocks(suite, 2, handle)
+
 }
 
 // test small file that does not fit
