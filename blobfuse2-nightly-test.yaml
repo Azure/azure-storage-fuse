@@ -44,7 +44,8 @@ jobs:
         matrix:
           RHEL-7:
             DistroVer: "RHEL-7"
-            AgentName: "blobfuse-rhel7"
+            AgentName: "RHEL 7"
+            ImageName: "blobfuse-rhel7"
             Description: "Red Hat Enterprise Linux 7"
             containerName: 'test-cnt-rhel-75'
             hostedAgent: false
@@ -86,6 +87,7 @@ jobs:
 
       pool:
         name: "blobfuse-rhel-pool"
+        vmImage: $(ImageName)
         # demands:
           # - Agent.Image -equals $(AgentName)
 
