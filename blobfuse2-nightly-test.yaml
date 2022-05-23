@@ -1,0 +1,131 @@
+# Blobfuse2 Nightly Build Pipeline
+
+schedules:
+  # Cron string < minute hour day-of-month month day-of-week>
+  #             * means all, for example '*' in day of month means everyday
+  # Run only on main branch
+  # 'always' controls whether to run only if there is a change or not
+  # Run this pipeline every 15:00 time
+  - cron: '0 15 * * *'
+    displayName: 'Daily midnight Blobfuse2 build'
+    branches:
+      include:
+        - main
+
+parameters:
+  - name: exhaustive_test
+    displayName: 'Exhaustive test'
+    type: boolean
+    default: true
+  
+  - name: proxy_test
+    displayName: 'Proxy test'
+    type: boolean
+    default: true
+
+  - name: msi_test
+    displayName: 'MSI test'
+    type: boolean
+    default: true
+
+  - name: quick_stress
+    displayName: 'Quick Stress'
+    type: boolean
+    default: true
+
+jobs:
+
+# TODO: Add Ubuntu tests
+
+  - ${{ if eq(parameters.exhaustive_test, true) }}:
+    - job: RHEL_Tests
+          timeoutInMinutes: 30
+          strategy:
+            matrix:
+              RHEL-7:
+                DistroVer: "RHEL-7"
+                AgentName: "blobfuse-rhel7"
+                Description: "Red Hat Enterprise Linux 7"
+                containerName: 'test-cnt-rhel-75'
+                hostedAgent: false
+
+              # RHEL-8.1:
+              #   DistroVer: "RHEL-8.1"
+              #   AgentName: "RHEL 8.1"
+              #   Description: "Red Hat Enterprise Linux 8.1"
+              #   containerName: 'test-cnt-rhel-81'
+              #   hostedAgent: false
+
+              # RHEL-8.2:
+              #   DistroVer: "RHEL-8.2"
+              #   AgentName: "RHEL 8.2"
+              #   Description: "Red Hat Enterprise Linux 8.2"
+              #   containerName: 'test-cnt-rhel-82'
+              #   hostedAgent: false
+
+              # CentOS-7.0:
+              #   DistroVer: "CentOS-7.0"
+              #   AgentName: "COS 7.0"
+              #   Description: "CentOS Linux 7.0"
+              #   containerName: 'test-cnt-cent-7'
+              #   hostedAgent: false
+
+              # CentOS-8.0:
+              #   DistroVer: "CentOS-8.0"
+              #   AgentName: "COS 8.0"
+              #   Description: "CentOS Linux 8.0"
+              #   containerName: 'test-cnt-cent-8'
+              #   hostedAgent: false
+
+              # Oracle-8.1:
+              #   DistroVer: "Oracle-8.1"
+              #   AgentName: "ORA 8.1"
+              #   Description: "Oracle Linux 8.1 Gen 2"
+              #   containerName: 'test-cnt-ora-81'
+              #   hostedAgent: false
+
+          pool:
+            name: "blobfuse-rhel-pool"
+            demands:
+              - Agent.Name -equals $(AgentName)
+
+          variables:
+            - group: NightlyBlobFuse
+            - name: ROOT_DIR
+              value: "/usr/pipeline/workv2"
+            - name: WORK_DIR
+              value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+            - name: skipComponentGovernanceDetection
+              value: true
+
+            - name: MOUNT_DIR
+              value: "/usr/pipeline/workv2/blob_mnt"
+            - name: TEMP_DIR
+              value: "/usr/pipeline/workv2/temp"
+            - name: BLOBFUSE2_CFG
+              value: "/usr/pipeline/workv2/blobfuse2.yaml"
+            - name: BLOBFUSE2_ADLS_CFG
+              value: "/home/vsts/workv2/blobfuse2.adls.yaml"
+            - name: GOPATH
+              value: "/usr/pipeline/workv2/go"
+
+          steps:
+            - template: 'azure-pipeline-templates/distro-tests.yml'
+              parameters:
+                working_dir: $(WORK_DIR)
+                root_dir: $(ROOT_DIR)
+                temp_dir: $(TEMP_DIR)
+                mount_dir: $(MOUNT_DIR)
+                config_path: $(BLOBFUSE2_CFG)
+                container: $(containerName)
+                blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+                blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+                adls_account_name: $(AZTEST_ADLS_ACC_NAME)
+                adls_account_key: $(AZTEST_ADLS_KEY)
+                distro_name: $(AgentName)
+                gopath: $(GOPATH)
+                installStep:
+                  script: |
+                    sudo yum update -y
+                    sudo yum install git fuse3 fuse3-devel python36 -y
+                  displayName: 'Install fuse'
