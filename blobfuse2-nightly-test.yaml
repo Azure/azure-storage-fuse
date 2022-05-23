@@ -87,9 +87,8 @@ jobs:
 
       pool:
         name: "blobfuse-rhel-pool"
-        vmImage: $(ImageName)
-        # demands:
-          # - Agent.Image -equals $(AgentName)
+        demands:
+          - ImageOverride -equals $(ImageName)
 
       variables:
         - group: NightlyBlobFuse
