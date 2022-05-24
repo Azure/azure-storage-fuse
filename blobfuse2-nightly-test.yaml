@@ -43,11 +43,12 @@ jobs:
       strategy:
         matrix:
           RHEL-7.5:
-              DistroVer: "RHEL-7.5"
-              AgentName: "RHEL 7.5"
-              Description: "Red Hat Enterprise Linux 7.5"
-              containerName: 'test-cnt-rhel-75'
-              hostedAgent: false
+            DistroVer: "RHEL-7.5"
+            AgentName: "RHEL 7.5"
+            ImageName: "blobfuse-rhel75"
+            Description: "Red Hat Enterprise Linux 7.5"
+            containerName: 'test-cnt-rhel-75'
+            hostedAgent: false
 
               # RHEL-8.1:
               #   DistroVer: "RHEL-8.1"
