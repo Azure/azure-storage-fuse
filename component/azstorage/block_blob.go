@@ -983,6 +983,7 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 		blockIDList = append(blockIDList, blk.Id)
 		if blk.Truncated() {
 			data = make([]byte, blk.EndIndex-blk.StartIndex)
+			blk.Flags.Clear(common.TruncatedBlock)
 		} else {
 			data = blk.Data
 		}

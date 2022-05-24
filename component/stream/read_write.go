@@ -423,6 +423,7 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 				}
 				lastBlock.Data = append(lastBlock.Data, data[dataRead:]...)
 				lastBlock.EndIndex += dataLeft + emptyByteLength
+				handle.CacheObj.Occupied += dataLeft + emptyByteLength
 				lastBlock.Flags.Set(common.DirtyBlock)
 				atomic.StoreInt64(&handle.Size, lastBlock.EndIndex)
 				dataRead += int(dataLeft)
@@ -449,8 +450,9 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 			dataRead += int(dataCopied)
 			err = rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 			return dataRead, err
+		} else {
+			return dataRead, nil
 		}
-		return dataRead, nil
 	}
 	return dataRead, nil
 }
