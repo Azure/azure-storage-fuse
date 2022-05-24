@@ -50,47 +50,11 @@ jobs:
             containerName: 'test-cnt-rhel-75'
             hostedAgent: true
 
-              # RHEL-8.1:
-              #   DistroVer: "RHEL-8.1"
-              #   AgentName: "RHEL 8.1"
-              #   Description: "Red Hat Enterprise Linux 8.1"
-              #   containerName: 'test-cnt-rhel-81'
-              #   hostedAgent: false
-
-              # RHEL-8.2:
-              #   DistroVer: "RHEL-8.2"
-              #   AgentName: "RHEL 8.2"
-              #   Description: "Red Hat Enterprise Linux 8.2"
-              #   containerName: 'test-cnt-rhel-82'
-              #   hostedAgent: false
-
-              # CentOS-7.0:
-              #   DistroVer: "CentOS-7.0"
-              #   AgentName: "COS 7.0"
-              #   Description: "CentOS Linux 7.0"
-              #   containerName: 'test-cnt-cent-7'
-              #   hostedAgent: false
-
-              # CentOS-8.0:
-              #   DistroVer: "CentOS-8.0"
-              #   AgentName: "COS 8.0"
-              #   Description: "CentOS Linux 8.0"
-              #   containerName: 'test-cnt-cent-8'
-              #   hostedAgent: false
-
-              # Oracle-8.1:
-              #   DistroVer: "Oracle-8.1"
-              #   AgentName: "ORA 8.1"
-              #   Description: "Oracle Linux 8.1 Gen 2"
-              #   containerName: 'test-cnt-ora-81'
-              #   hostedAgent: false
-
       pool:
         name: "blobfuse-rhel-pool"
         vmImage: $(imageName)
         demands:
           - ImageOverride -equals $(ImageName)
-          - Agent.Name -equals $(AgentName)
 
       steps:
         - script: |
