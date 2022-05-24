@@ -48,7 +48,7 @@ jobs:
             ImageName: "blobfuse-rhel7"
             Description: "Red Hat Enterprise Linux 7.5"
             containerName: 'test-cnt-rhel-75'
-            hostedAgent: false
+            hostedAgent: true
 
               # RHEL-8.1:
               #   DistroVer: "RHEL-8.1"
