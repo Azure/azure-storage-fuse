@@ -21,10 +21,7 @@ jobs:
         - Agent.Name -equals RHEL 7.5
 
     steps:
+      - checkout: none
       - script: |
           echo "Hello World"
         displayName: 'Test'
-      installStep:
-        script: |
-          sudo yum update -y
-        displayName: 'Update'
