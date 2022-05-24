@@ -42,13 +42,12 @@ jobs:
       timeoutInMinutes: 30
       strategy:
         matrix:
-          RHEL-7:
-            DistroVer: "RHEL-7"
-            AgentName: "RHEL 7"
-            ImageName: "blobfuse-rhel7"
-            Description: "Red Hat Enterprise Linux 7"
-            containerName: 'test-cnt-rhel-75'
-            hostedAgent: false
+          RHEL-7.5:
+              DistroVer: "RHEL-7.5"
+              AgentName: "RHEL 7.5"
+              Description: "Red Hat Enterprise Linux 7.5"
+              containerName: 'test-cnt-rhel-75'
+              hostedAgent: false
 
               # RHEL-8.1:
               #   DistroVer: "RHEL-8.1"
