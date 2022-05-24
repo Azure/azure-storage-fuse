@@ -57,6 +57,7 @@ jobs:
           - ImageOverride -equals $(ImageName)
 
       steps:
+        - checkout: none
         - script: |
             echo "Hello World"
           displayName: 'Test'
