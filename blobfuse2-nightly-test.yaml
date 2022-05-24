@@ -38,7 +38,7 @@ jobs:
 # TODO: Add Ubuntu tests
 
   - ${{ if eq(parameters.exhaustive_test, true) }}:
-    - job: RHEL_Tests
+    - job: Set_1
       timeoutInMinutes: 30
       strategy:
         matrix:
@@ -87,6 +87,7 @@ jobs:
 
       pool:
         name: "blobfuse-rhel-pool"
+        vmImage: $(imageName)
         demands:
           - ImageOverride -equals $(ImageName)
           - Agent.Name -equals $(AgentName)
