@@ -18,7 +18,7 @@ jobs:
     pool:
       name: "BlobFuse pool"
       demands:
-        - Agent.Name -equals "RHEL 7.5"
+        - Agent.Name -equals RHEL 7.5
 
     steps:
       - script: |
