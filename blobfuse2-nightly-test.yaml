@@ -86,9 +86,10 @@ jobs:
               #   hostedAgent: false
 
       pool:
-        name: blobfuse-rhel-pool
+        name: "blobfuse-rhel-pool"
         demands:
           - ImageOverride -equals $(ImageName)
+          - Agent.Name -equals $(AgentName)
 
       steps:
         - script: |
