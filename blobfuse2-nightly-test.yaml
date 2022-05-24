@@ -16,9 +16,9 @@ jobs:
 
   - job: Set_1
     pool:
-      name: "BlobFuse pool"
-      demands:
-        - Agent.Name -equals RHEL 7.5
+      name: "blobfuse-rhel-pool"
+      # demands:
+      #   - Agent.Name -equals RHEL 7.5
 
     steps:
       - checkout: none
