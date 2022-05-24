@@ -45,7 +45,7 @@ jobs:
           RHEL-7.5:
             DistroVer: "RHEL-7.5"
             AgentName: "RHEL 7.5"
-            ImageName: "blobfuse-rhel75"
+            ImageName: "blobfuse-rhel7"
             Description: "Red Hat Enterprise Linux 7.5"
             containerName: 'test-cnt-rhel-75'
             hostedAgent: false
