@@ -92,9 +92,9 @@ jobs:
 
       steps:
         - script: |
-          echo "Hello World"
-        displayName: 'Test'
-        condition: always()
+            echo "Hello World"
+          displayName: 'Test'
+          condition: always()
 
       # variables:
       #   - group: NightlyBlobFuse
