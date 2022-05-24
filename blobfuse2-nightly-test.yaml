@@ -24,7 +24,7 @@ jobs:
       - script: |
           echo "Hello World"
         displayName: 'Test'
-        installStep:
-          script: |
-            sudo yum update -y
-          displayName: 'Update'
+      installStep:
+        script: |
+          sudo yum update -y
+        displayName: 'Update'
