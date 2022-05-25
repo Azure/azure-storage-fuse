@@ -173,6 +173,7 @@ jobs:
           sas_credential_config: $(BLOBFUSE2_SAS_CFG)
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
           distro_name: $(imageName)
+          quick_test: false
 
       - template: 'azure-pipeline-templates/verbose-tests.yml'
         parameters:
@@ -202,6 +203,7 @@ jobs:
           sas_credential_config: $(BLOBFUSE2_SAS_CFG)
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
           distro_name: $(imageName)
+          quick_test: false
 
       - template: azure-pipeline-templates/cleanup.yml
         parameters:
@@ -427,8 +429,7 @@ jobs:
             temp_dir: $(TEMP_DIR)
         - script: |
             kill -9 $(pgrep mitmdump)
-            cat proxy_logs.txt
-          displayName: 'Kill Proxy & Print Proxy Logs'
+          displayName: 'Kill Proxy'
 
   # End of Ubuntu tests
   # ----------------------------------------------------------------------------------------

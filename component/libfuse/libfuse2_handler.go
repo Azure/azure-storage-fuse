@@ -53,6 +53,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"syscall"
 	"unsafe"
 )
 
@@ -247,6 +248,12 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 		conn.want |= C.FUSE_CAP_BIG_WRITES
 	}
 
+	if (conn.capable & C.FUSE_CAP_SPLICE_WRITE) != 0 {
+		// While writing to fuse device let libfuse collate the data and write big chunks
+		log.Info("Libfuse::libfuse2_init : Enable Capability : FUSE_CAP_SPLICE_WRITE")
+		conn.want |= C.FUSE_CAP_SPLICE_WRITE
+	}
+
 	// Max background thread on the fuse layer for high parallelism
 	conn.max_background = 128
 
@@ -383,10 +390,6 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 // libfuse_releasedir opens handle to given directory
 //export libfuse_releasedir
 func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
-	}
-
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 	log.Trace("Libfuse::libfuse_releasedir : %s, handle: %d", handle.Path, handle.ID)
 
@@ -398,10 +401,6 @@ func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
 // libfuse2_readdir reads a directory
 //export libfuse2_readdir
 func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
-	}
-
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 	val, found := handle.GetValue("cache")
 	if !found {
@@ -510,9 +509,12 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
-
-	// TODO: Do we need to open the file here?
+	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), 0)
+	if !handle.Cached() {
+		ret_val.fd = 0
+	}
+	log.Trace("Libfuse::libfuse_create : %s, handle %d", name, handle.ID)
+	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 	return 0
 }
 
@@ -551,19 +553,21 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Add(handle)
-	fi.fh = C.ulong(uintptr(unsafe.Pointer(handle)))
-
+	ret_val := C.allocate_native_file_object(C.ulong(handle.UnixFD), C.ulong(uintptr(unsafe.Pointer(handle))), C.ulong(handle.Size))
+	if !handle.Cached() {
+		ret_val.fd = 0
+	}
+	log.Trace("Libfuse::libfuse_open : %s, handle %d", name, handle.ID)
+	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 	return 0
 }
 
 // libfuse_read reads data from an open file
 //export libfuse_read
 func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
-	}
+	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
 
@@ -571,7 +575,8 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	var bytesRead int
 
 	if handle.Cached() {
-		bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
+		bytesRead, err = syscall.Pread(handle.FD(), data[:size], int64(offset))
+		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
 	} else {
 		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
 			internal.ReadInBufferOptions{
@@ -595,11 +600,8 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 // libfuse_write writes data to an open file
 //export libfuse_write
 func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
-	}
-
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
 	offset := uint64(off)
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
@@ -622,14 +624,16 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 // libfuse_flush possibly flushes cached data
 //export libfuse_flush
 func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
-	}
+	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
 	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
 
 	// If the file handle is not dirty, there is no need to flush
+	if fileHandle.dirty != 0 {
+		handle.Flags.Set(handlemap.HandleFlagDirty)
+	}
+
 	if !handle.Dirty() {
 		return 0
 	}
@@ -666,12 +670,14 @@ func libfuse2_truncate(path *C.char, off C.off_t) C.int {
 // libfuse_release releases an open file
 //export libfuse_release
 func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
-	if fi.fh == 0 {
-		return C.int(-C.EIO)
-	}
-
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, handle.ID)
+
+	// If the file handle is dirty then file-cache needs to flush this file
+	if fileHandle.dirty != 0 {
+		handle.Flags.Set(handlemap.HandleFlagDirty)
+	}
 
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
 	if err != nil {
@@ -680,6 +686,7 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 
 	handlemap.Delete(handle.ID)
+	C.release_native_file_object(fi)
 	return 0
 }
 
@@ -814,7 +821,8 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 		return C.int(-C.EIO)
 	}
 
-	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
+	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse_fsync : %s, handle: %d", handle.Path, handle.ID)
 
 	options := internal.SyncFileOptions{Handle: handle}
@@ -890,5 +898,14 @@ func libfuse2_utimens(path *C.char, tv *C.timespec_t) C.int {
 	// TODO: is the conversion from [2]timespec to *timespec ok?
 	// TODO: Implement
 	// For now this returns 0 to allow touch to work correctly
+	return 0
+}
+
+// blobfuse_cache_update refresh the file-cache policy for this file
+//export blobfuse_cache_update
+func blobfuse_cache_update(path *C.char) C.int {
+	name := trimFusePath(path)
+	name = common.NormalizeObjectName(name)
+	go fuseFS.NextComponent().FileUsed(name)
 	return 0
 }

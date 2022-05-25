@@ -315,3 +315,10 @@ func (base *BaseComponent) InvalidateObject(name string) {
 		base.next.InvalidateObject(name)
 	}
 }
+
+func (base *BaseComponent) FileUsed(name string) error {
+	if base.next != nil {
+		base.next.FileUsed(name)
+	}
+	return nil
+}

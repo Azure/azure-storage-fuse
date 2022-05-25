@@ -64,6 +64,12 @@ type libfuseTestSuite struct {
 	mock     *internal.MockComponent
 }
 
+type fileHandle struct {
+	fd  uint64
+	obj uint64
+}
+
+// Open and create call returns this kind of object
 var emptyConfig = ""
 var defaultSize = int64(0)
 var defaultMode = 0777
@@ -412,11 +418,12 @@ func testFsync(suite *libfuseTestSuite) {
 	openOptions := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
 	suite.mock.EXPECT().OpenFile(openOptions).Return(handle, nil)
 	libfuse_open(path, info)
+	suite.assert.NotEqual(C.ulong(0), info.fh)
 
 	// libfuse component will return back handle in form of an integer value
 	// that needs to be converted back to a pointer to a handle object
-	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(info.fh)))
-	suite.assert.NotEqual(C.ulong(0), info.fh)
+	fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
+	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fobj.obj)))
 
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(nil)
@@ -447,14 +454,16 @@ func testFsyncError(suite *libfuseTestSuite) {
 	info := &C.fuse_file_info_t{}
 	info.flags = C.O_RDWR
 	handle := &handlemap.Handle{}
+
 	openOptions := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
 	suite.mock.EXPECT().OpenFile(openOptions).Return(handle, nil)
 	libfuse_open(path, info)
+	suite.assert.NotEqual(C.ulong(0), info.fh)
 
 	// libfuse component will return back handle in form of an integer value
 	// that needs to be converted back to a pointer to a handle object
-	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(info.fh)))
-	suite.assert.NotEqual(C.ulong(0), info.fh)
+	fobj := (*fileHandle)(unsafe.Pointer(uintptr(info.fh)))
+	handle = (*handlemap.Handle)(unsafe.Pointer(uintptr(fobj.obj)))
 
 	options := internal.SyncFileOptions{Handle: handle}
 	suite.mock.EXPECT().SyncFile(options).Return(errors.New("failed to sync file"))

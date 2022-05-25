@@ -49,11 +49,12 @@ const InvalidHandleID HandleID = 0
 // Flags represented in BitMap for various flags in the handle
 const (
 	HandleFlagUnknown uint16 = iota
-	HandleFlagDirty
-	HandleFlagFSynced
-	HandleFlagCached
+	HandleFlagDirty          // File has been modified with write operation or is a new file
+	HandleFlagFSynced        // User has called fsync on the file explicitly
+	HandleFlagCached         // File is cached in the local system by blobfuse2
 )
 
+// Structure to hold in memory cache for streaming layer
 type Cache struct {
 	*cache_policy.LRUCache
 	*common.BlockOffsetList
@@ -62,13 +63,15 @@ type Cache struct {
 
 type Handle struct {
 	sync.RWMutex
-	FObj     *os.File
-	ID       HandleID
-	Size     int64 // Size of the file being handled here
-	Flags    common.BitMap16
-	Path     string // always holds path relative to mount dir
-	values   map[string]interface{}
-	CacheObj *Cache
+	FObj     *os.File               // File object being represented by this handle
+	CacheObj *Cache                 // Streaming layer cache for this handle
+	ID       HandleID               // Blobfuse assigned unique ID to this handle
+	Size     int64                  // Size of the file being handled here
+	UnixFD   uint64                 // Unix FD created by create/open syscall
+	OptCnt   uint64                 // Number of operations done on this file
+	Flags    common.BitMap16        // Various states of the file
+	Path     string                 // Always holds path relative to mount dir
+	values   map[string]interface{} // Map to hold other info if application wants to store
 }
 
 func NewHandle(path string) *Handle {
@@ -77,6 +80,7 @@ func NewHandle(path string) *Handle {
 		Path:     path,
 		Size:     0,
 		Flags:    0,
+		OptCnt:   0,
 		values:   make(map[string]interface{}),
 		CacheObj: nil,
 	}
@@ -105,6 +109,11 @@ func (handle *Handle) GetFileObject() *os.File {
 // SetFileObject : Store the OS.File handle
 func (handle *Handle) SetFileObject(f *os.File) {
 	handle.FObj = f
+}
+
+// FD : Get Unix file descriptor
+func (handle *Handle) FD() int {
+	return int(handle.UnixFD)
 }
 
 // SetValue : Store user defined parameter inside handle

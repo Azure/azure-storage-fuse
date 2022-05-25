@@ -22,6 +22,9 @@ parameters:
   - name: account_endpoint
   - name: distro_name
     type: string
+  - name: quick_test
+    type: boolean
+    default: "true"
 
 steps:    
   - script: |
@@ -47,6 +50,7 @@ steps:
       adls: ${{ parameters.adls }}
       idstring: '${{ parameters.idstring }}'
       distro_name: ${{ parameters.distro_name }}
+      quick_test: ${{ parameters.quick_test }}
       mountStep:
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(System.DefaultWorkingDirectory)
