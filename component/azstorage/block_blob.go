@@ -196,7 +196,7 @@ func (bb *BlockBlob) TestPipeline() error {
 		azblob.ListBlobsSegmentOptions{MaxResults: 2})
 
 	if err != nil {
-		log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error)
+		log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error())
 		return err
 	}
 

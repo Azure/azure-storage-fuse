@@ -191,7 +191,7 @@ func (dl *Datalake) TestPipeline() error {
 		})
 
 	if err != nil {
-		log.Err("Datalake::TestPipeline : Failed to validate account with given auth %s", err.Error)
+		log.Err("Datalake::TestPipeline : Failed to validate account with given auth %s", err.Error())
 		return err
 	}
 
