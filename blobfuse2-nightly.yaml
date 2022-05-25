@@ -893,5 +893,4 @@ jobs:
               cd /`pwd | cut -d '/' -f 2,3,4,5`
               sudo rm -rf [0-9]
             displayName: 'Clean Agent Directories'
-<<<<<<< HEAD
             condition: always() 
