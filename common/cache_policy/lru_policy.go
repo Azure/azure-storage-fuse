@@ -59,8 +59,8 @@ func (cache *LRUCache) Resize(bk, newEndIndex int64) bool {
 //Put: Inserts the key,value pair in LRUCache. Return false if failed.
 func (cache *LRUCache) Put(key int64, value *common.Block) bool {
 	if cache.Occupied >= cache.Capacity {
-		cacheFull := cache.findCleanBlockToEvict()
-		if cacheFull {
+		dirtyCache := cache.evict()
+		if dirtyCache {
 			return false
 		}
 	}
@@ -131,7 +131,7 @@ func getKeyPair(node *list.Element) KeyPair {
 }
 
 // return true if no eviction happened/cache full, return false otherwise
-func (cache *LRUCache) findCleanBlockToEvict() bool {
+func (cache *LRUCache) evict() bool {
 	node := cache.List.Back()
 	pair := getKeyPair(node)
 	for i := 0; i < cache.List.Len(); i++ {

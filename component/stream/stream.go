@@ -34,7 +34,6 @@
 package stream
 
 import (
-	"blobfuse2/common"
 	"blobfuse2/common/config"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
@@ -117,15 +116,6 @@ func (st *Stream) Configure() error {
 func (st *Stream) Stop() error {
 	log.Trace("Stopping component : %s", st.Name())
 	return st.cache.Stop()
-}
-
-func (st *Stream) unlockBlock(block *common.Block, exists bool) {
-	if exists {
-		block.RUnlock()
-	} else {
-		block.Unlock()
-	}
-	return
 }
 
 func (st *Stream) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {

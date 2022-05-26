@@ -5,13 +5,6 @@ import (
 	"blobfuse2/internal/handlemap"
 )
 
-type StreamConfig struct {
-	blockSize           int64
-	bufferSizePerHandle uint64 // maximum number of blocks allowed to be stored for a file
-	handleLimit         int32
-	openHandles         int32
-}
-
 type StreamConnection interface {
 	RenameDirectory(options internal.RenameDirOptions) error
 	DeleteDirectory(options internal.DeleteDirOptions) error

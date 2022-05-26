@@ -48,7 +48,6 @@ func (r *ReadCache) unlockBlock(block *common.Block, exists bool) {
 	} else {
 		block.Unlock()
 	}
-	return
 }
 
 func (r *ReadCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
