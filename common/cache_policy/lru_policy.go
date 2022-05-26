@@ -43,18 +43,17 @@ func (cache *LRUCache) Get(bk int64) (*common.Block, bool) {
 	return cb, found
 }
 
-// return true if eviction happened, return false otherwise
-func (cache *LRUCache) findCleanBlockToEvict() bool {
-	node := cache.List.Back()
-	pair := getKeyPair(node)
-	for i := 0; i < cache.List.Len(); i++ {
-		if !pair.value.Dirty() {
-			cache.Remove(pair.key)
-			return false
-		}
-		node = node.Prev()
+//Resize: resizes a cached block and adjusts occupied size
+func (cache *LRUCache) Resize(bk, newEndIndex int64) bool {
+	var cb *common.Block
+	if node, ok := cache.Elements[bk]; ok {
+		cb = getKeyPair(node).value
+		sizeDiff := newEndIndex - cb.EndIndex
+		cache.Occupied += sizeDiff
+		cb.EndIndex = newEndIndex
+		return true
 	}
-	return true
+	return false
 }
 
 //Put: Inserts the key,value pair in LRUCache. Return false if failed.
@@ -96,6 +95,10 @@ func (cache *LRUCache) RecentlyUsed() *common.Block {
 	return getKeyPair(cache.List.Front()).value
 }
 
+func (cache *LRUCache) LeastRecentlyUsed() *common.Block {
+	return getKeyPair(cache.List.Back()).value
+}
+
 //Remove: removes the entry for the respective key
 func (cache *LRUCache) Remove(key int64) {
 	// get the keyPair associated with the blockKey
@@ -125,4 +128,22 @@ func (cache *LRUCache) Purge() {
 func getKeyPair(node *list.Element) KeyPair {
 	//uncast the keypair
 	return node.Value.(*list.Element).Value.(KeyPair)
+}
+
+// return true if eviction happened, return false otherwise
+func (cache *LRUCache) findCleanBlockToEvict() bool {
+	node := cache.List.Back()
+	pair := getKeyPair(node)
+	for i := 0; i < cache.List.Len(); i++ {
+		if !pair.value.Dirty() {
+			cache.Remove(pair.key)
+			return false
+		}
+		node = node.Prev()
+		if node == nil {
+			return true
+		}
+		pair = getKeyPair(node)
+	}
+	return true
 }
