@@ -39,16 +39,24 @@ import (
 	"blobfuse2/common/log"
 	"blobfuse2/component/file_cache"
 	"encoding/json"
+	"io/ioutil"
 	"os"
 )
 
 type StatsOptions struct {
 	MountPath    string                      `json:"mount_dir"`
 	FileCacheOpt file_cache.FileCacheOptions `json:"file_cache"`
+	AzStorageOpt StatsAzStorageOptions       `json:"azstorage"`
 }
 
-func GenerateMonitorConfig(mountPath string) error {
-	var statsOpt StatsOptions = StatsOptions{}
+type StatsAzStorageOptions struct {
+	AccountType string `config:"type" yaml:"type,omitempty"`
+	AccountName string `config:"account-name" yaml:"account-name,omitempty"`
+	Endpoint    string `config:"endpoint" yaml:"endpoint,omitempty"`
+	Container   string `config:"container" yaml:"container,omitempty"`
+}
+
+func parseStatsConfig(statsOpt *StatsOptions, mountPath string) error {
 	statsOpt.MountPath = mountPath
 	err := config.UnmarshalKey("file_cache", &statsOpt.FileCacheOpt)
 	if err != nil {
@@ -56,18 +64,87 @@ func GenerateMonitorConfig(mountPath string) error {
 		return err
 	}
 
-	cfgFile, err := json.MarshalIndent(statsOpt, "", "\t")
+	err = config.UnmarshalKey("azstorage", &statsOpt.AzStorageOpt)
+	if err != nil {
+		log.Err("stats_monitor: Unable to unmarshal container")
+		return err
+	}
+
+	return nil
+}
+
+// read the stats config file and store it in json list
+func getConfigData(configFile string, statsOptList *[]StatsOptions) error {
+	configData, err := ioutil.ReadFile(configFile)
+	if err != nil {
+		log.Err("stats_monitor: Unable to read stats config file %s", configFile)
+		return err
+	}
+
+	if err = json.Unmarshal(configData, statsOptList); err != nil {
+		log.Err("stats_monitor: Unable to unmarshal stats config file %s", configFile)
+		return err
+	}
+
+	return nil
+}
+
+// check whether the file exists
+func FileExists(filePath string) bool {
+	_, err := os.Stat(filePath)
+	return (err == nil)
+}
+
+// add the config of new mount to the stats config file. If already present, just update it
+func addMountConfig(statsOptList *[]StatsOptions, statsOpt *StatsOptions) {
+	var isPresent bool = false
+
+	for i, opt := range *statsOptList {
+		if opt.AzStorageOpt.Container == statsOpt.AzStorageOpt.Container && opt.AzStorageOpt.Endpoint == statsOpt.AzStorageOpt.Endpoint {
+			(*statsOptList)[i] = *statsOpt
+			isPresent = true
+			break
+		}
+	}
+	if !isPresent {
+		*statsOptList = append(*statsOptList, *statsOpt)
+	}
+	log.Trace("Number of mounts to monitor = %d", len(*statsOptList))
+}
+
+func GenerateMonitorConfig(mountPath string) error {
+	var statsOpt StatsOptions = StatsOptions{}
+	var statsOptList []StatsOptions
+	var statsConfigFile string = os.ExpandEnv(common.StatsConfigFilePath)
+
+	workDir := os.ExpandEnv(common.DefaultWorkDir)
+	_ = os.MkdirAll(workDir, os.ModeDir|os.FileMode(0777))
+
+	err := parseStatsConfig(&statsOpt, mountPath)
+	if err != nil {
+		return err
+	}
+
+	if FileExists(statsConfigFile) {
+		err = getConfigData(statsConfigFile, &statsOptList)
+		if err != nil {
+			return err
+		}
+	} else {
+		statsOptList = make([]StatsOptions, 0)
+	}
+
+	addMountConfig(&statsOptList, &statsOpt)
+
+	cfgFile, err := json.MarshalIndent(statsOptList, "", "\t")
 	if err != nil {
 		log.Err("stats_monitor: Failed to marshal file cache options")
 		return err
 	}
 
-	workDir := os.ExpandEnv(common.DefaultWorkDir)
-	_ = os.MkdirAll(workDir, os.ModeDir|os.FileMode(0777))
-
-	err = os.WriteFile(os.ExpandEnv(common.StatsConfigFilePath), cfgFile, 0755)
+	err = ioutil.WriteFile(statsConfigFile, cfgFile, 0755)
 	if err != nil {
-		log.Err("stats_monitor: Failed to write the config to the file, %s", common.StatsConfigFilePath)
+		log.Err("stats_monitor: Failed to write the config to the file, %s", statsConfigFile)
 		return err
 	}
 
