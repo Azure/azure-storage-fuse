@@ -809,6 +809,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 			return err
 		}
 	}
+	//TODO: the resize might be very big - need to allocate in chunks
 	if size == 0 || attr.Size == 0 {
 		err := bb.WriteFromBuffer(name, nil, make([]byte, size))
 		if err != nil {
@@ -821,6 +822,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 		log.Err("BlockBlob::TruncateFile : Failed to get block list of file %s (%s)", name, err.Error())
 		return err
 	}
+	// if the file consists of blocks
 	if !bol.SmallFile() {
 		if size > attr.Size {
 			bb.createNewBlocks(bol, bol.BlockList[len(bol.BlockList)-1].EndIndex, size-attr.Size)
@@ -833,12 +835,14 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 			return err
 		}
 	} else {
+		// if its a small file (no blocks)
 		data, err := bb.ReadBuffer(name, 0, 0)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 			return err
 		}
 		if size > attr.Size {
+			// if expanding - convert the file to blocks
 			blk := &common.Block{
 				StartIndex: 0,
 				EndIndex:   attr.Size,
@@ -852,6 +856,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 			bol.BlockIdLength = common.GetIdLength(blk.Id)
 			bb.createNewBlocks(bol, bol.BlockList[len(bol.BlockList)-1].EndIndex, size-attr.Size)
 		} else if size < attr.Size {
+			// if shrinking just adjust the size
 			data = data[0:size]
 			return bb.WriteFromBuffer(name, nil, data)
 		}

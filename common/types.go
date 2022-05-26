@@ -174,7 +174,7 @@ type LogConfig struct {
 	TimeTracker bool
 }
 
-// Flags represented in BitMap for various flags in the handle
+// Flags for blocks
 const (
 	BlockFlagUnknown uint16 = iota
 	DirtyBlock
@@ -200,6 +200,7 @@ func (block *Block) Truncated() bool {
 	return block.Flags.IsSet(TruncatedBlock)
 }
 
+// Flags for block offset list
 const (
 	BolFlagUnknown uint16 = iota
 	SmallFile
