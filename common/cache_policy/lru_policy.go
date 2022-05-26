@@ -130,7 +130,7 @@ func getKeyPair(node *list.Element) KeyPair {
 	return node.Value.(*list.Element).Value.(KeyPair)
 }
 
-// return true if eviction happened, return false otherwise
+// return true if no eviction happened/cache full, return false otherwise
 func (cache *LRUCache) findCleanBlockToEvict() bool {
 	node := cache.List.Back()
 	pair := getKeyPair(node)

@@ -422,8 +422,8 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 					lastBlock.Data = append(lastBlock.Data, truncated...)
 				}
 				lastBlock.Data = append(lastBlock.Data, data[dataRead:]...)
-				lastBlock.EndIndex += dataLeft + emptyByteLength
-				handle.CacheObj.Occupied += dataLeft + emptyByteLength
+				newLastBlockEndIndex := lastBlock.EndIndex + dataLeft + emptyByteLength
+				handle.CacheObj.Resize(lastBlock.StartIndex, newLastBlockEndIndex)
 				lastBlock.Flags.Set(common.DirtyBlock)
 				atomic.StoreInt64(&handle.Size, lastBlock.EndIndex)
 				dataRead += int(dataLeft)
