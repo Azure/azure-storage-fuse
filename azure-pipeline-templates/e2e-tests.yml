@@ -59,7 +59,8 @@ steps:
     inputs:
       pathToPublish: blobfuse2-logs.txt
       artifactName: ${{ parameters.artifact_name }}
-
+    condition: always()
+    
   - script: |
       tail -n 200 blobfuse2-logs.txt
     displayName: 'View Logs'
