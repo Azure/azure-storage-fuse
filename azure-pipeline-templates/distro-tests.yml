@@ -112,6 +112,7 @@ steps:
       idstring: 'Distro BlockBlob with Key Credentials'
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
+      artifact_name: '${{ parameters.distro_name }}_block_key.txt'
       mountStep:
         script: |
           ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_path }}
@@ -157,6 +158,7 @@ steps:
       idstring: 'Distro ADLS with Key Credentials'
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
+      artifact_name: '${{ parameters.distro_name }}_adls_key.txt'
       mountStep:
         script: |
           ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_path }}

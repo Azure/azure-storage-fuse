@@ -323,6 +323,7 @@ jobs:
             idstring: 'BlockBlob with Proxy and Key Credentials'
             distro_name: $(imageName)
             adls: false
+            artifact_name: 'blockblob_proxy_key.txt'
             mountStep:
               script: |
                 $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
@@ -354,6 +355,7 @@ jobs:
             idstring: 'ADLS with Proxy and Key Credentials'
             distro_name: $(imageName)
             adls: true
+            artifact_name: 'adls_proxy_key.txt'
             mountStep:
               script: |
                 $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_ADLS_CFG) --default-working-dir=$(WORK_DIR)

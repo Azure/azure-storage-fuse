@@ -19,6 +19,8 @@ parameters:
   - name: quick_test
     type: boolean
     default: "true"
+  - name: artifact_name
+    type: string
 
 steps:
 
@@ -50,6 +52,13 @@ steps:
     continueOnError: false
     env:
       mount_dir: ${{ parameters.mount_dir }}
+
+  # Publish build artifacts
+  # Publish build artifacts to Azure Pipelines or a Windows file share
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: blobfuse2-logs.txt
+      artifactName: ${{ parameters.artifact_name }}
 
   - script: |
       tail -n 200 blobfuse2-logs.txt
