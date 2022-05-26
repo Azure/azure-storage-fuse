@@ -313,6 +313,37 @@ func (suite *streamTestSuite) TestHandles() {
 	suite.stream.OpenFile(openFileOptions)
 }
 
+func (suite *streamTestSuite) TestStreamOnlyHandleLimit() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 16\n  handle-limit: 1\n"
+	suite.setupTestHelper(config, true)
+	handle1 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
+	handle2 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
+	handle3 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
+
+	openFileOptions, readInBufferOptions, _ := suite.getRequestOptions(0, handle1, false, int64(100*MB), 0, 0)
+	closeFileOptions := internal.CloseFileOptions{Handle: handle1}
+	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle1, nil)
+	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.BlockSize), nil)
+	suite.stream.OpenFile(openFileOptions)
+	assertHandleNotStreamOnly(suite, handle1)
+
+	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle2, nil)
+	suite.stream.OpenFile(openFileOptions)
+	assertHandleStreamOnly(suite, handle2)
+
+	suite.mock.EXPECT().CloseFile(closeFileOptions).Return(nil)
+	suite.stream.CloseFile(closeFileOptions)
+
+	// we expect to call read in buffer again since we cleaned the cache after the file was closed
+	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle3, nil)
+	readInBufferOptions.Handle = handle3
+	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.BlockSize), nil)
+	suite.stream.OpenFile(openFileOptions)
+	assertHandleNotStreamOnly(suite, handle3)
+}
+
 // Get data that spans two blocks - we expect to have two blocks stored at the end
 func (suite *streamTestSuite) TestBlockDataOverlap() {
 	defer suite.cleanupTest()

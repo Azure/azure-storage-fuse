@@ -61,14 +61,18 @@ func (r *ReadCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handl
 		handle = handlemap.NewHandle(options.Name)
 	}
 	if !r.StreamOnly {
+		handlemap.CreateCacheObject(int64(r.BufferSizePerHandle), handle)
 		if r.CachedHandles >= r.HandleLimit {
 			log.Trace("Stream::OpenFile : file handle limit exceeded - switch handle to stream only mode %s [%s]", options.Name, handle.ID)
 			handle.CacheObj.StreamOnly = true
 			return handle, nil
 		}
 		atomic.AddInt32(&r.CachedHandles, 1)
-		handlemap.CreateCacheObject(int64(r.BufferSizePerHandle), handle)
-		block, exists, _ := r.getBlock(handle, 0)
+		block, exists, err := r.getBlock(handle, 0)
+		if err != nil {
+			log.Err("Stream::OpenFile : error failed to get block on open %s [%s]", options.Name, err.Error())
+			return handle, err
+		}
 		// if it exists then we can just RUnlock since we didn't manipulate its data buffer
 		r.unlockBlock(block, exists)
 	}
@@ -153,6 +157,7 @@ func (r *ReadCache) CloseFile(options internal.CloseFileOptions) error {
 		options.Handle.CacheObj.Lock()
 		defer options.Handle.CacheObj.Unlock()
 		options.Handle.CacheObj.Purge()
+		options.Handle.CacheObj.StreamOnly = true
 		atomic.AddInt32(&r.CachedHandles, -1)
 	}
 	return nil

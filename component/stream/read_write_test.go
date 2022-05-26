@@ -396,6 +396,23 @@ func (suite *streamTestSuite) TestStreamOnlyHandle() {
 	assertHandleNotStreamOnly(suite, handle2)
 }
 
+// func (suite *streamTestSuite) TestCreateFile() {
+// 	defer suite.cleanupTest()
+// 	suite.cleanupTest()
+// 	// set handle limit to 1
+// 	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 64\n  handle-limit: 1\n"
+// 	suite.setupTestHelper(config, false)
+
+// 	handle1 := &handlemap.Handle{Size: int64(2 * MB), Path: fileNames[0]}
+// 	getFileBlockOffsetsOptions := internal.GetFileBlockOffsetsOptions{Name: fileNames[0]}
+// 	openFileOptions := internal.OpenFileOptions{Name: fileNames[0], Flags: os.O_RDONLY, Mode: os.FileMode(0777)}
+// 	bol := &common.BlockOffsetList{
+// 		BlockList: []*common.Block{{StartIndex: 0, EndIndex: 1 * MB}, {StartIndex: 1, EndIndex: 2 * MB}},
+// 	}
+
+// 	suite.mock.EXPECT().CreateFile(openFileOptions).Return(handle1, nil)
+// }
+
 func TestWriteStreamTestSuite(t *testing.T) {
 	suite.Run(t, new(streamTestSuite))
 }
