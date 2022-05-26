@@ -396,40 +396,6 @@ func (suite *streamTestSuite) TestStreamOnlyHandle() {
 	assertHandleNotStreamOnly(suite, handle2)
 }
 
-func (suite *streamTestSuite) TestMultipleBlocksCachedAndEviction() {
-}
-
-// test small file that does not fit
-func (suite *streamTestSuite) TestReadDataOverlap() {
-}
-
-func (suite *streamTestSuite) TestWriteToSmallFile() {
-}
-
-func (suite *streamTestSuite) TestWriteToLargeFile() {
-}
-
-func (suite *streamTestSuite) TestCreateFile() {
-}
-
-func (suite *streamTestSuite) TestWriteEviction() {
-}
-
-func (suite *streamTestSuite) TestWriteFlush() {
-}
-
-func (suite *streamTestSuite) TestTruncateSmallFile() {
-}
-
-func (suite *streamTestSuite) TestTruncateLargeFile() {
-}
-
-func (suite *streamTestSuite) TestAppendToSmallFile() {
-}
-
-func (suite *streamTestSuite) TestAppendToLargeFile() {
-}
-
 func TestWriteStreamTestSuite(t *testing.T) {
 	suite.Run(t, new(streamTestSuite))
 }
