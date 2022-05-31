@@ -532,6 +532,7 @@ func libfuse_statfs(path *C.char, buf *C.statvfs_t) C.int {
 		return -C.EIO
 	}
 	C.populate_statfs(path, buf)
+	// if populated then we need to overwrite root attributes
 	if populated {
 		(*buf).f_frsize = C.ulong(attr.Frsize)
 		(*buf).f_blocks = C.ulong(attr.Blocks)
