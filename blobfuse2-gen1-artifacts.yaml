@@ -43,7 +43,8 @@ stages:
               sudo apt-get install pkg-config clang-9 -y
               curl https://sh.rustup.rs -sSf | sh -s -- -y
               rustup install nightly
-              rustup default nightly && rustup update
+              rustup install nightly-2021-09-01
+              rustup default nightly-2021-09-01-x86_64-unknown-linux-gnu
               sudo apt install llvm
               llvm-config --prefix
             displayName: "Rust Setup"
@@ -63,7 +64,7 @@ stages:
           # Build adlsgen1fuse binary
           - script: |
               cd call-datasetfuse-gen1
-              { echo 'cargo-features = ["edition2021"]'; cat Cargo.toml; } > Cargo_new.toml
+              { cat Cargo.toml; } > Cargo_new.toml
               mv Cargo_new.toml Cargo.toml
               cat Cargo.toml
               cargo build --release
