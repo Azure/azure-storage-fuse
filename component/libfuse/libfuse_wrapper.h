@@ -132,7 +132,7 @@ static int populate_statfs(const char *path, struct statvfs *stbuf)
 {
     // return tmp path stats
     errno = 0;
-    int res = statvfs("/home/tamer/dev/mnt/file_cache", stbuf);
+    int res = statvfs("/", stbuf);
     if (res == -1)
         return -errno;
 
