@@ -37,6 +37,7 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/internal/handlemap"
 	"context"
+	"syscall"
 )
 
 // BaseComponent : Base implementation of the component interface
@@ -321,4 +322,11 @@ func (base *BaseComponent) FileUsed(name string) error {
 		base.next.FileUsed(name)
 	}
 	return nil
+}
+
+func (base *BaseComponent) StatFs() (*syscall.Statfs_t, bool, error) {
+	if base.next != nil {
+		return base.next.StatFs()
+	}
+	return nil, false, nil
 }

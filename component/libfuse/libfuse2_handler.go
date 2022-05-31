@@ -342,6 +342,28 @@ func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 	return 0
 }
 
+// File Operations
+//export libfuse_statfs
+func libfuse_statfs(path *C.char, buf *C.statvfs_t) C.int {
+	name := trimFusePath(path)
+	name = common.NormalizeObjectName(name)
+	log.Trace("Libfuse::libfuse_statfs : %s", name)
+
+	attr, populated, err := fuseFS.NextComponent().StatFs()
+	if err != nil {
+		log.Err("Libfuse::libfuse_statfs: Failed to get stats %s (%s)", name, err.Error())
+		return -C.EIO
+	}
+	C.populate_statfs(path, buf)
+	if populated {
+		(*buf).f_frsize = C.ulong(attr.Frsize)
+		(*buf).f_blocks = C.ulong(attr.Blocks)
+		(*buf).f_bavail = C.ulong(attr.Bavail)
+		(*buf).f_bfree = C.ulong(attr.Bfree)
+	}
+	return 0
+}
+
 // Directory Operations
 
 // libfuse_mkdir creates a directory

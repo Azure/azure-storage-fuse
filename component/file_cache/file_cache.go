@@ -70,6 +70,7 @@ type FileCache struct {
 	mountPath       string
 	allowOther      bool
 	offloadIO       bool
+	cacheSize       float64
 
 	defaultPermission os.FileMode
 }
@@ -102,6 +103,7 @@ const (
 	defaultMinThreshold     = 60
 	defaultFileCacheTimeout = 120
 	defaultCacheUpdateCount = 100
+	MB                      = 1024 * 1024
 )
 
 //  Verification to check satisfaction criteria with Component Interface
@@ -190,6 +192,7 @@ func (c *FileCache) Configure() error {
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
+	c.cacheSize = conf.MaxSizeMB
 
 	c.tmpPath = conf.TmpPath
 	if c.tmpPath == "" {
@@ -266,7 +269,22 @@ func (c *FileCache) OnConfigChange() {
 	c.cacheTimeout = float64(conf.Timeout)
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
+	c.cacheSize = conf.MaxSizeMB
 	c.policy.UpdateConfig(c.GetPolicyConfig(conf))
+}
+
+func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
+	// cache_size = f_blocks * f_frsize/1024
+	// cache_size - used = f_frsize * f_bavail/1024
+	// cache_size - used = vfs.f_bfree * vfs.f_frsize / 1024
+	usage := getUsage(c.tmpPath)
+	available := (uint64(c.cacheSize*MB) - uint64(usage*MB))
+	statfs := &syscall.Statfs_t{}
+	statfs.Frsize = 4096
+	statfs.Blocks = uint64(c.cacheSize*MB) / uint64(statfs.Frsize)
+	statfs.Bavail = available / uint64(statfs.Frsize)
+	statfs.Bfree = available / uint64(statfs.Frsize)
+	return statfs, true, nil
 }
 
 func (c *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {

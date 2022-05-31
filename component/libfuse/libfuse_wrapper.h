@@ -61,7 +61,7 @@ static int populate_callbacks(fuse_operations_t *opt)
 {
     opt->destroy    = (void (*)(void *))libfuse_destroy;
 
-    opt->statfs     = (int (*)(const char *, statvfs_t *))libfuse_statfs;
+    opt->statfs     = (int (*)(const char *path, statvfs_t *stbuf))libfuse_statfs;
 
     opt->mkdir      = (int (*)(const char *path, mode_t mode))libfuse_mkdir;
     opt->rmdir      = (int (*)(const char *path))libfuse_rmdir;
@@ -128,11 +128,11 @@ static int start_fuse(fuse_args_t *args, fuse_operations_t *opt)
 }
 
 // This method is not declared in Go because we are just doing "/" statfs as dummy operation
-static int libfuse_statfs(const char *path, struct statvfs *stbuf)
+static int populate_statfs(const char *path, struct statvfs *stbuf)
 {
     // return tmp path stats
     errno = 0;
-    int res = statvfs("/", stbuf);
+    int res = statvfs("/home/tamer/dev/mnt/file_cache", stbuf);
     if (res == -1)
         return -errno;
 

@@ -42,6 +42,7 @@ import (
 	handlemap "blobfuse2/internal/handlemap"
 	context "context"
 	reflect "reflect"
+	"syscall"
 
 	gomock "github.com/golang/mock/gomock"
 )
@@ -364,6 +365,22 @@ func (m *MockComponent) NextComponent() Component {
 func (mr *MockComponentMockRecorder) NextComponent() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NextComponent", reflect.TypeOf((*MockComponent)(nil).NextComponent))
+}
+
+// Get stats of blobfuse mount.
+func (m *MockComponent) StatFs() (*syscall.Statfs_t, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "StatFs")
+	ret0, _ := ret[0].(*syscall.Statfs_t)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// Get stats of blobfuse mount.
+func (mr *MockComponentMockRecorder) StatFs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StatFs", reflect.TypeOf((*MockComponent)(nil).StatFs))
 }
 
 // OpenDir mocks base method.
