@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -277,14 +278,16 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	// cache_size = f_blocks * f_frsize/1024
 	// cache_size - used = f_frsize * f_bavail/1024
 	// cache_size - used = vfs.f_bfree * vfs.f_frsize / 1024
-	usage := getUsage(c.tmpPath)
-	cacheSize := uint64(c.maxCacheSize * MB)
-	available := cacheSize - uint64(usage*MB)
+	usage := getUsage(c.tmpPath) * MB
+	cacheSize := c.maxCacheSize * MB
+	available := cacheSize - usage
 	statfs := &syscall.Statfs_t{}
+
 	statfs.Frsize = 4096
-	statfs.Blocks = cacheSize / uint64(statfs.Frsize)
-	statfs.Bavail = available / uint64(statfs.Frsize)
+	statfs.Blocks = uint64(cacheSize) / uint64(statfs.Frsize)
+	statfs.Bavail = uint64(math.Max(0, available)) / uint64(statfs.Frsize)
 	statfs.Bfree = statfs.Bavail
+
 	return statfs, true, nil
 }
 
