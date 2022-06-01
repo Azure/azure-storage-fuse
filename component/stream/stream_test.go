@@ -382,7 +382,7 @@ func (suite *streamTestSuite) TestEmptyFile() {
 func (suite *streamTestSuite) TestCachePurge() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 64\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
 	suite.setupTestHelper(config)
 	handle_1 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 	handle_2 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[1]}
@@ -526,7 +526,7 @@ func (suite *streamTestSuite) TestAsyncOpen() {
 func (suite *streamTestSuite) TestAsyncClose() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 64\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
 	suite.setupTestHelper(config)
 	handle_1 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 	handle_2 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[1]}
