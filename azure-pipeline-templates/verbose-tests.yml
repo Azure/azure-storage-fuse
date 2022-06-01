@@ -69,6 +69,7 @@ steps:
       NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
       NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
       ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
     condition: ${{ parameters.test_key_credential }}
     continueOnError: false
       
@@ -85,6 +86,7 @@ steps:
       NIGHTLY_STO_ACC_SAS: ${{ parameters.account_sas }}
       ACCOUNT_TYPE: ${{ parameters.account_type }}
       ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
     condition: ${{ parameters.test_sas_credential }}
     continueOnError: false
       
@@ -103,6 +105,7 @@ steps:
       NIGHTLY_SPN_CLIENT_SECRET: ${{ parameters.client_secret }}
       ACCOUNT_TYPE: ${{ parameters.account_type }}
       ACCOUNT_ENDPOINT: ${{ parameters.spn_account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
     condition: ${{ parameters.test_spn_credential }}
     continueOnError: false
       
@@ -236,6 +239,7 @@ steps:
       NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
       ACCOUNT_TYPE: ${{ parameters.account_type }}
       ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
   - script: cat ${{ parameters.config }}
@@ -275,6 +279,7 @@ steps:
       NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
       ACCOUNT_TYPE: ${{ parameters.account_type }}
       ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
   - script: cat ${{ parameters.config }}

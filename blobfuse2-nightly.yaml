@@ -314,6 +314,7 @@ jobs:
             NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
             ACCOUNT_TYPE: 'block'
             ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+            VERBOSE_LOG: ${{ parameters.verbose_log }}
           continueOnError: false
 
         - script:
@@ -349,6 +350,7 @@ jobs:
             NIGHTLY_STO_ACC_KEY: $(AZTEST_ADLS_KEY)
             ACCOUNT_TYPE: 'adls'
             ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+            VERBOSE_LOG: ${{ parameters.verbose_log }}
           continueOnError: false
 
         - script:
@@ -383,6 +385,7 @@ jobs:
             NIGHTLY_STO_BLOB_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
             NIGHTLY_STO_ACC_SAS: $(NIGHTLY_STO_ACC_SAS)
             ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+            VERBOSE_LOG: ${{ parameters.verbose_log }}
           continueOnError: false
 
         - script:
@@ -413,6 +416,7 @@ jobs:
             NIGHTLY_SPN_TENANT_ID: $(AZTEST_TENANT)
             NIGHTLY_SPN_CLIENT_SECRET: $(AZTEST_SECRET)
             ACCOUNT_ENDPOINT: 'https://$(AZTEST_BLOCK_ACC_NAME).blob.core.windows.net'
+            VERBOSE_LOG: ${{ parameters.verbose_log }}
           continueOnError: false
             
         - script:
@@ -845,6 +849,7 @@ jobs:
               NIGHTLY_MSI_APP_ID: $(AZTEST_APP_ID)
               ACCOUNT_TYPE: 'block'
               ACCOUNT_ENDPOINT: 'https://$(AZTEST_BLOCK_ACC_NAME).blob.core.windows.net'
+              VERBOSE_LOG: ${{ parameters.verbose_log }}
             continueOnError: false
 
           - script:
@@ -875,6 +880,7 @@ jobs:
               NIGHTLY_MSI_APP_ID: $(AZTEST_APP_ID)
               ACCOUNT_TYPE: 'adls'
               ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+              VERBOSE_LOG: ${{ parameters.verbose_log }}
             continueOnError: false
 
           - script:

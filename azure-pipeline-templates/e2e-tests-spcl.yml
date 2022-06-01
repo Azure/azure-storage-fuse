@@ -38,6 +38,7 @@ steps:
       NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
       ACCOUNT_TYPE: ${{ parameters.account_type }}
       ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
   - script:
