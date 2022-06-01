@@ -43,8 +43,8 @@ stages:
               sudo apt-get install pkg-config clang-9 -y
               curl https://sh.rustup.rs -sSf | sh -s -- -y
               rustup install nightly
-              rustup install nightly-2021-12-01
-              rustup default nightly-2021-12-01-x86_64-unknown-linux-gnu
+              rustup install nightly-2021-09-01
+              rustup default nightly-2021-09-01-x86_64-unknown-linux-gnu
               sudo apt install llvm
               llvm-config --prefix
             displayName: "Rust Setup"
