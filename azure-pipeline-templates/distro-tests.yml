@@ -34,6 +34,8 @@ parameters:
   - name: quick_test
     type: boolean
     default: "true"
+  - name: verbose_log
+    type: boolean
 
 steps:
   - checkout: none
@@ -113,6 +115,7 @@ steps:
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
       artifact_name: '${{ parameters.distro_name }}_block_key.txt'
+      verbose_log: ${{ parameters.verbose_log }}
       mountStep:
         script: |
           ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_path }}
@@ -159,6 +162,7 @@ steps:
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
       artifact_name: '${{ parameters.distro_name }}_adls_key.txt'
+      verbose_log: ${{ parameters.verbose_log }}
       mountStep:
         script: |
           ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_path }}

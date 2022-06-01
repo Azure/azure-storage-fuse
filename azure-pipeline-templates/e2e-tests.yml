@@ -21,6 +21,8 @@ parameters:
     default: "true"
   - name: artifact_name
     type: string
+  - name: verbose_log
+    type: boolean
 
 steps:
 
@@ -59,7 +61,7 @@ steps:
     inputs:
       pathToPublish: blobfuse2-logs.txt
       artifactName: ${{ parameters.artifact_name }}
-    condition: always()
+    condition: ${{ parameters.verbose_log }}
     
   - script: |
       tail -n 200 blobfuse2-logs.txt

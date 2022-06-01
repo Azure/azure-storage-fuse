@@ -41,6 +41,11 @@ parameters:
     displayName: 'Quick Stress'
     type: boolean
     default: true
+  
+  - name: verbose_log
+    displayName: 'Verbose Log'
+    type: boolean
+    default: false
 
 jobs:
   # Ubuntu based test suite
@@ -174,6 +179,7 @@ jobs:
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
           distro_name: $(imageName)
           quick_test: false
+          verbose_log: ${{ parameters.verbose_log }}
 
       - template: 'azure-pipeline-templates/verbose-tests.yml'
         parameters:
@@ -204,6 +210,7 @@ jobs:
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
           distro_name: $(imageName)
           quick_test: false
+          verbose_log: ${{ parameters.verbose_log }}
 
       - template: azure-pipeline-templates/cleanup.yml
         parameters:
@@ -324,6 +331,7 @@ jobs:
             distro_name: $(imageName)
             adls: false
             artifact_name: 'blockblob_proxy_key.txt'
+            verbose_log: ${{ parameters.verbose_log }}
             mountStep:
               script: |
                 $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
@@ -356,6 +364,7 @@ jobs:
             distro_name: $(imageName)
             adls: true
             artifact_name: 'adls_proxy_key.txt'
+            verbose_log: ${{ parameters.verbose_log }}
             mountStep:
               script: |
                 $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_ADLS_CFG) --default-working-dir=$(WORK_DIR)
@@ -531,6 +540,7 @@ jobs:
                   sudo yum update -y
                   sudo yum install git fuse3 fuse3-devel python36 -y
                 displayName: 'Install fuse'
+              verbose_log: ${{ parameters.verbose_log }}
 
       # ------------------------------------------------------------
       # Debian tests
@@ -609,6 +619,7 @@ jobs:
                   sudo apt-get update --fix-missing
                   sudo apt-get install $(fuselib) -y
                 displayName: 'Install libfuse'
+              verbose_log: ${{ parameters.verbose_log }}
 
       # ------------------------------------------------------------
       # SUSE tests
@@ -666,6 +677,7 @@ jobs:
                 script: |
                   sudo zypper -n install fuse3 fuse3-devel
                 displayName: 'Install fuse'
+              verbose_log: ${{ parameters.verbose_log }}
       # ------------------------------------------------------------
       # Mariner tests
       - job: Set_6
@@ -726,6 +738,7 @@ jobs:
                 script: |
                   sudo tdnf install fuse fuse-devel
                 displayName: 'Install fuse'
+              verbose_log: ${{ parameters.verbose_log }}
 
 
   - ${{ if eq(parameters.msi_test, true) }}:

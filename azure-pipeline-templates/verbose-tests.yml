@@ -54,6 +54,8 @@ parameters:
   - name: quick_test
     type: boolean
     default: "true"
+  - name: verbose_log
+    type: boolean
 
 #--------------------------------------- Setup: End to end tests with different Storage configurations ------------------------------------------
 # Create key credential config file if we need to test it
@@ -121,6 +123,7 @@ steps:
         clone: "true"
         quick_test: ${{ parameters.quick_test }}
         artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_key.txt'
+        verbose_log: ${{ parameters.verbose_log }}
         mountStep:
           script: >
             ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }}
@@ -140,6 +143,7 @@ steps:
         distro_name: ${{ parameters.distro_name }}
         quick_test: ${{ parameters.quick_test }}
         artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_sas.txt'
+        verbose_log: ${{ parameters.verbose_log }}
         mountStep:
           script: >
             ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.sas_credential_config }}
@@ -159,6 +163,7 @@ steps:
         distro_name: ${{ parameters.distro_name }}
         quick_test: ${{ parameters.quick_test }}
         artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_spn.txt'
+        verbose_log: ${{ parameters.verbose_log }}
         mountStep:
           script: >
             ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.spn_credential_config }}
@@ -184,6 +189,7 @@ steps:
       idstring: "${{ parameters.service }} LFU policy"
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
+      verbose_log: ${{ parameters.verbose_log }}
 
   - template: e2e-tests-spcl.yml
     parameters:
@@ -200,6 +206,7 @@ steps:
       idstring: "${{ parameters.service }} LRU policy no timeout"
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
+      verbose_log: ${{ parameters.verbose_log }}
 
   - template: e2e-tests-spcl.yml
     parameters:
@@ -216,6 +223,7 @@ steps:
       idstring: "${{ parameters.service }} LRU policy create empty"
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
+      verbose_log: ${{ parameters.verbose_log }}
 
 
 #--------------------------------------- Setup: End to end tests with different File Cache configurations ------------------------------------------
