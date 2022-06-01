@@ -70,22 +70,23 @@ var fileNames [4]string = [4]string{"file1", "file2"}
 const MB = 1024 * 1024
 
 // Helper methods for setup and getting options/data ========================================
-func newTestStream(next internal.Component, configuration string) *Stream {
+func newTestStream(next internal.Component, configuration string) (*Stream, error) {
 	config.ReadConfigFromReader(strings.NewReader(configuration))
 	// we must be in read-only mode for read stream
 	config.SetBool("read-only", true)
 	stream := NewStreamComponent()
 	stream.SetNextComponent(next)
-	stream.Configure()
-
-	return stream.(*Stream)
+	err := stream.Configure()
+	return stream.(*Stream), err
 }
 
 func (suite *streamTestSuite) setupTestHelper(config string) {
+	var err error
 	suite.assert = assert.New(suite.T())
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mock = internal.NewMockComponent(suite.mockCtrl)
-	suite.stream = newTestStream(suite.mock, config)
+	suite.stream, err = newTestStream(suite.mock, config)
+	suite.assert.Equal(err, nil)
 	suite.stream.Start(context.Background())
 }
 
