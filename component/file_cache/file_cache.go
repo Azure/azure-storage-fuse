@@ -286,8 +286,11 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	usage := getUsage(c.tmpPath) * MB
 	available := cacheSize - usage
 	statfs := &syscall.Statfs_t{}
-
-	statfs.Frsize = 4096
+	err := syscall.Statfs("/", statfs)
+	if err != nil {
+		log.Debug("FileCache::StatFs : statfs err [%s].", err.Error())
+		return nil, false, err
+	}
 	statfs.Blocks = uint64(cacheSize) / uint64(statfs.Frsize)
 	statfs.Bavail = uint64(math.Max(0, available)) / uint64(statfs.Frsize)
 	statfs.Bfree = statfs.Bavail

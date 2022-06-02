@@ -354,14 +354,22 @@ func libfuse_statfs(path *C.char, buf *C.statvfs_t) C.int {
 		log.Err("Libfuse::libfuse_statfs: Failed to get stats %s (%s)", name, err.Error())
 		return -C.EIO
 	}
-	C.populate_statfs(path, buf)
+
 	// if populated then we need to overwrite root attributes
 	if populated {
+		(*buf).f_bsize = C.ulong(attr.Bsize)
 		(*buf).f_frsize = C.ulong(attr.Frsize)
 		(*buf).f_blocks = C.ulong(attr.Blocks)
 		(*buf).f_bavail = C.ulong(attr.Bavail)
 		(*buf).f_bfree = C.ulong(attr.Bfree)
+		(*buf).f_files = C.ulong(attr.Files)
+		(*buf).f_ffree = C.ulong(attr.Ffree)
+		(*buf).f_flag = C.ulong(attr.Flags)
+		return 0
 	}
+
+	C.populate_statfs(path, buf)
+
 	return 0
 }
 
