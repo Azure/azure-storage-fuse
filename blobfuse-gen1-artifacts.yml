@@ -31,23 +31,23 @@ stages:
       - checkout: none
 
       # Install all dependencies
-      - script: |
-          sudo apt-get update --fix-missing
-          sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
-          sudo apt-get install libfuse-dev -y
-        displayName: "Basic Tools Setup"
+      # - script: |
+      #     sudo apt-get update --fix-missing
+      #     sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+      #     sudo apt-get install libfuse-dev -y
+      #   displayName: "Basic Tools Setup"
 
-      - script: |
-          sudo apt update
-          sudo apt upgrade
-          sudo apt-get install pkg-config clang-9 -y
-          curl https://sh.rustup.rs -sSf | sh -s -- -y
-          rustup install nightly
-          rustup install nightly-2021-09-01 ​ 
-          rustup default nightly-2021-09-01-x86_64-unknown-linux-gnu
-          sudo apt install llvm
-          llvm-config --prefix
-        displayName: "Rust Setup"
+      # - script: |
+      #     sudo apt update
+      #     sudo apt upgrade
+      #     sudo apt-get install pkg-config clang-9 -y
+      #     curl https://sh.rustup.rs -sSf | sh -s -- -y
+      #     rustup install nightly
+      #     rustup install nightly-2021-09-01 ​ 
+      #     rustup default nightly-2021-09-01-x86_64-unknown-linux-gnu
+      #     sudo apt install llvm
+      #     llvm-config --prefix
+      #   displayName: "Rust Setup"
 
       - script: |
           git clone https://$(DEVOPS_UNAME):$(DEVOPS_PWD)@dev.azure.com/azstorage/_git/BlobFuse-ADLSGen1
@@ -58,10 +58,10 @@ stages:
       # Just keeping it here for future in case we need to go for a branch
       
       # Checkout branch
-      #- script: |
-      #    git checkout narven/json_parsing
-      #  displayName: "Checkout Branch"
-      #  workingDirectory: $(ROOT_DIR)
+      - script: |
+          git checkout binaryAdd
+        displayName: "Checkout Branch"
+        workingDirectory: $(ROOT_DIR)
 
       # List commits consumed for this build
       - script: |
@@ -71,17 +71,22 @@ stages:
         workingDirectory: $(ROOT_DIR)
 
       # Build adlsgen1fuse binary
-      - script: |
-          cd call-datasetfuse-gen1
-          { echo 'cargo-features = ["edition2021"]'; cat Cargo.toml; } > Cargo_new.toml
-          mv Cargo_new.toml Cargo.toml
-          cargo build --release
-        displayName: "Build the binary"
-        workingDirectory: $(ROOT_DIR)
+      # - script: |
+      #     cd call-datasetfuse-gen1
+      #     { echo 'cargo-features = ["edition2021"]'; cat Cargo.toml; } > Cargo_new.toml
+      #     mv Cargo_new.toml Cargo.toml
+      #     cargo build --release
+      #   displayName: "Build the binary"
+      #   workingDirectory: $(ROOT_DIR)
       
-      - script: |
-          cd call-datasetfuse-gen1
-          cp ../target/release/call-gen1datasetfuse $(Build.ArtifactStagingDirectory)/adlsgen1fuse
+      # - script: |
+      #     cd call-datasetfuse-gen1
+      #     cp ../target/release/call-gen1datasetfuse $(Build.ArtifactStagingDirectory)/adlsgen1fuse
+      #   displayName: "Copy Artifact"
+      #   workingDirectory: $(ROOT_DIR)
+
+        - script: |
+          cp adlsgen1fuse $(Build.ArtifactStagingDirectory)/adlsgen1fuse
         displayName: "Copy Artifact"
         workingDirectory: $(ROOT_DIR)
       
