@@ -19,6 +19,10 @@ parameters:
   - name: quick_test
     type: boolean
     default: "true"
+  - name: artifact_name
+    type: string
+  - name: verbose_log
+    type: boolean
 
 steps:
 
@@ -51,6 +55,14 @@ steps:
     env:
       mount_dir: ${{ parameters.mount_dir }}
 
+  # Publish build artifacts
+  # Publish build artifacts to Azure Pipelines or a Windows file share
+  - task: PublishBuildArtifacts@1
+    inputs:
+      pathToPublish: blobfuse2-logs.txt
+      artifactName: ${{ parameters.artifact_name }}
+    condition: ${{ parameters.verbose_log }}
+    
   - script: |
       tail -n 200 blobfuse2-logs.txt
     displayName: 'View Logs'
