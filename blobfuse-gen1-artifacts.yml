@@ -85,7 +85,7 @@ stages:
       #   displayName: "Copy Artifact"
       #   workingDirectory: $(ROOT_DIR)
 
-        - script: |
+      - script: |
           cp adlsgen1fuse $(Build.ArtifactStagingDirectory)/adlsgen1fuse
         displayName: "Copy Artifact"
         workingDirectory: $(ROOT_DIR)
