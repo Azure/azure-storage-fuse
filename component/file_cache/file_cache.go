@@ -279,19 +279,19 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	// cache_size - used = f_frsize * f_bavail/1024
 	// cache_size - used = vfs.f_bfree * vfs.f_frsize / 1024
 	// if cache size is set to 0 then we have the root mount usage
-	cacheSize := c.maxCacheSize * MB
-	if cacheSize == 0 {
+	maxCacheSize := c.maxCacheSize * MB
+	if maxCacheSize == 0 {
 		return nil, false, nil
 	}
 	usage := getUsage(c.tmpPath) * MB
-	available := cacheSize - usage
+	available := maxCacheSize - usage
 	statfs := &syscall.Statfs_t{}
 	err := syscall.Statfs("/", statfs)
 	if err != nil {
 		log.Debug("FileCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
 	}
-	statfs.Blocks = uint64(cacheSize) / uint64(statfs.Frsize)
+	statfs.Blocks = uint64(maxCacheSize) / uint64(statfs.Frsize)
 	statfs.Bavail = uint64(math.Max(0, available)) / uint64(statfs.Frsize)
 	statfs.Bfree = statfs.Bavail
 
