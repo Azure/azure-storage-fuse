@@ -117,6 +117,8 @@ type AzConnection interface {
 
 	ChangeMod(string, os.FileMode) error
 	ChangeOwner(string, int, int) error
+	TruncateFile(string, int64) error
+	StageAndCommit(name string, bol *common.BlockOffsetList) error
 
 	NewCredentialKey(_, _ string) error
 }

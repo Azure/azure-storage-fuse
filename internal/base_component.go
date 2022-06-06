@@ -283,6 +283,13 @@ func (base *BaseComponent) GetAttr(options GetAttrOptions) (*ObjAttr, error) {
 	return &ObjAttr{}, nil
 }
 
+func (base *BaseComponent) GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error) {
+	if base.next != nil {
+		return base.next.GetFileBlockOffsets(options)
+	}
+	return &common.BlockOffsetList{}, nil
+}
+
 func (base *BaseComponent) SetAttr(options SetAttrOptions) error {
 	if base.next != nil {
 		return base.next.SetAttr(options)
@@ -308,13 +315,6 @@ func (base *BaseComponent) InvalidateObject(name string) {
 	if base.next != nil {
 		base.next.InvalidateObject(name)
 	}
-}
-
-func (base *BaseComponent) GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error) {
-	if base.next != nil {
-		base.next.InvalidateObject(name)
-	}
-	return &common.BlockOffsetList{}, nil
 }
 
 func (base *BaseComponent) FileUsed(name string) error {
