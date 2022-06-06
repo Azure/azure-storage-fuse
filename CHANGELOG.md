@@ -26,6 +26,7 @@
 - Fixed a bug where mounting to an already mounted path would not fail 
 - Fixed a bug where newly created datalake files > 256MB would fail to upload
 - Fixed a bug that caused parameters explicitly set to 0 to be the default value
+- Fixed a bug where `df` command showed root stats rather than Blobfuse mount file cache stats
 
 ## 2.0.0-preview.1 (2022-02-14)
 - First Release
