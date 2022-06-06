@@ -25,6 +25,8 @@ parameters:
   - name: quick_test
     type: boolean
     default: "true"
+  - name: verbose_log
+    type: boolean
 
 steps:    
   - script: |
@@ -36,6 +38,7 @@ steps:
       NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
       ACCOUNT_TYPE: ${{ parameters.account_type }}
       ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
     continueOnError: false
 
   - script:
@@ -51,6 +54,8 @@ steps:
       idstring: '${{ parameters.idstring }}'
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
+      artifact_name: '${{ parameters.distro_name }}_${{ parameters.idstring }}.txt'
+      verbose_log: ${{ parameters.verbose_log }}
       mountStep:
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(System.DefaultWorkingDirectory)
