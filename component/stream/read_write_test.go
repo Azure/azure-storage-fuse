@@ -66,7 +66,7 @@ func (suite *streamTestSuite) TestWriteConfig() {
 func (suite *streamTestSuite) TestCacheSmallFileOnOpen() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 64\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 32\n  handle-limit: 4\n"
 	suite.setupTestHelper(config, false)
 
 	// make small file very large to confirm it would be stream only
@@ -110,7 +110,7 @@ func (suite *streamTestSuite) TestCacheSmallFileOnOpen() {
 func (suite *streamTestSuite) TestOpenLargeFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 64\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 32\n  handle-limit: 4\n"
 	suite.setupTestHelper(config, false)
 
 	handle := &handlemap.Handle{Size: int64(4 * MB), Path: fileNames[0]}
@@ -135,7 +135,7 @@ func (suite *streamTestSuite) TestStreamOnly() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
 	// set handle limit to 1
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 64\n  handle-limit: 1\n"
+	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 32\n  handle-limit: 1\n"
 	suite.setupTestHelper(config, false)
 
 	handle := &handlemap.Handle{Size: int64(4 * MB), Path: fileNames[0]}
@@ -171,7 +171,7 @@ func (suite *streamTestSuite) TestReadLargeFileBlocks() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
 	// set handle limit to 1
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 64\n  handle-limit: 1\n"
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 32\n  handle-limit: 1\n"
 	suite.setupTestHelper(config, false)
 
 	handle1 := &handlemap.Handle{Size: int64(2 * MB), Path: fileNames[0]}
@@ -216,7 +216,7 @@ func (suite *streamTestSuite) TestReadLargeFileBlocks() {
 func (suite *streamTestSuite) TestPurgeOnClose() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 64\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 32\n  handle-limit: 4\n"
 	suite.setupTestHelper(config, false)
 
 	handle := &handlemap.Handle{Size: int64(1), Path: fileNames[0]}
@@ -376,7 +376,7 @@ func (suite *streamTestSuite) TestStreamOnlyHandle() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
 	// set handle limit to 1
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 64\n  handle-limit: 1\n"
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 32\n  handle-limit: 1\n"
 	suite.setupTestHelper(config, false)
 
 	handle1 := &handlemap.Handle{Size: int64(2 * MB), Path: fileNames[0]}
@@ -433,7 +433,7 @@ func (suite *streamTestSuite) TestCreateFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
 	// set handle limit to 1
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 64\n  handle-limit: 1\n"
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 32\n  handle-limit: 1\n"
 	suite.setupTestHelper(config, false)
 
 	handle1 := &handlemap.Handle{Size: 0, Path: fileNames[0]}

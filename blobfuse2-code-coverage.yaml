@@ -104,6 +104,7 @@ jobs:
           NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
           ACCOUNT_TYPE: 'block'
           ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+          VERBOSE_LOG: false
         displayName: 'Create Config File - Block Blob'
         workingDirectory: $(WORK_DIR)
         continueOnError: false
@@ -130,6 +131,7 @@ jobs:
           NIGHTLY_STO_ACC_KEY:  $(AZTEST_ADLS_KEY)
           ACCOUNT_TYPE: 'adls'
           ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+          VERBOSE_LOG: false
         displayName: 'Create Config File - ADLS'
         continueOnError: false
 
@@ -158,6 +160,7 @@ jobs:
           NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
           ACCOUNT_TYPE: 'block'
           ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+          VERBOSE_LOG: false
         displayName: 'Create Config File - LFU'
         continueOnError: false
       
@@ -187,6 +190,7 @@ jobs:
           NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
           ACCOUNT_TYPE: 'block'
           ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+          VERBOSE_LOG: false
         continueOnError: false
       
       # Streaming test preparation
@@ -230,6 +234,7 @@ jobs:
           NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
           ACCOUNT_TYPE: 'block'
           ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+          VERBOSE_LOG: false
 
       # Component generation code coverage
       - script: |
