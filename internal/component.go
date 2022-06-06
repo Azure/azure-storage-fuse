@@ -37,6 +37,7 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/internal/handlemap"
 	"context"
+	"syscall"
 )
 
 type ComponentPriority int
@@ -136,4 +137,5 @@ type Component interface {
 	GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error)
 
 	FileUsed(name string) error
+	StatFs() (*syscall.Statfs_t, bool, error)
 }
