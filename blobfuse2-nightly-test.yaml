@@ -14,14 +14,41 @@ schedules:
 
 jobs:
 
+  # RHEL Tests
   - job: Set_1
+    strategy:
+      matrix:
+        RHEL-7.9:
+          DistroVer: "RHEL-7.9"
+          Description: "Red Hat Enterprise Linux 7.9"
+          ImageName: "blobfuse-rhel7_9"
+          containerName: "test-cnt-rhel-7.9"
+        # RHEL-8:
+        #   DistroVer: "RHEL-8"
+        #   Description: "Red Hat Enterprise Linux 8"
+        #   ImageName: "blobfuse-rhel8"
+        #   containerName: "test-cnt-rhel-8"
+
     pool:
       name: "blobfuse-rhel-pool"
-      # demands:
-      #   - Agent.Name -equals RHEL 7.5
+      demands:
+        - Agent.Name -equals $(ImageName)
 
     steps:
-      - checkout: none
+      - checkout: self
+
+      # Get the host details on which these test are running
+      - script: |
+          echo $(Description)
+          hostnamectl
+        displayName: 'Print Agent Info'
+        
+      # Go tool installer
+      - task: GoTool@0
+      inputs:
+        version: '1.16.2'
+      displayName: "Install Go Version"
+
       - script: |
           echo "Hello World"
         displayName: 'Test'
