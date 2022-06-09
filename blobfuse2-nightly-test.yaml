@@ -12,8 +12,36 @@ schedules:
       include:
         - main
 
-jobs:
+parameters:
+  # - name: exhaustive_test
+  #   # Quick test or an exhaustive test
+  #   displayName: 'Exhaustive test'
+  #   type: boolean
+  #   default: true
+  
+  # - name: proxy_test
+  # # Proxy tests
+  #   displayName: 'Proxy test'
+  #   type: boolean
+  #   default: true
 
+  # - name: msi_test
+  #   # MSI auth based test suites to be run or not
+  #   displayName: 'MSI test'
+  #   type: boolean
+  #   default: true
+
+  # - name: quick_stress
+  #   displayName: 'Quick Stress'
+  #   type: boolean
+  #   default: true
+  
+  - name: verbose_log
+    displayName: 'Verbose Log'
+    type: boolean
+    default: false
+
+jobs:
   # RHEL Tests
   - job: Set_1
     strategy:
@@ -21,18 +49,37 @@ jobs:
         RHEL-7.9:
           DistroVer: "RHEL-7.9"
           Description: "Red Hat Enterprise Linux 7.9"
-          ImageName: "blobfuse-rhel7_9"
-          containerName: "test-cnt-rhel-7.9"
+          AgentName: "blobfuse-rhel7_9"
+          ContainerName: "test-cnt-rhel-7.9"
         # RHEL-8:
         #   DistroVer: "RHEL-8"
         #   Description: "Red Hat Enterprise Linux 8"
-        #   ImageName: "blobfuse-rhel8"
+        #   AgentName: "blobfuse-rhel8"
         #   containerName: "test-cnt-rhel-8"
 
     pool:
       name: "blobfuse-rhel-pool"
       demands:
-        - Agent.Name -equals $(ImageName)
+        - Agent.Name -equals $(AgentName)
+
+    variables:
+      - group: NightlyBlobFuse
+      - name: ROOT_DIR
+        value: "/usr/pipeline/workv2"
+      - name: WORK_DIR
+        value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+      - name: skipComponentGovernanceDetection
+        value: true
+      - name: MOUNT_DIR
+        value: "/usr/pipeline/workv2/blob_mnt"
+      - name: TEMP_DIR
+        value: "/usr/pipeline/workv2/temp"
+      - name: BLOBFUSE2_CFG
+        value: "/usr/pipeline/workv2/blobfuse2.yaml"
+      - name: BLOBFUSE2_ADLS_CFG
+        value: "/home/vsts/workv2/blobfuse2.adls.yaml"
+      - name: GOPATH
+        value: "/usr/pipeline/workv2/go"
 
     steps:
       - checkout: none
@@ -52,3 +99,24 @@ jobs:
       - script: |
           echo "Hello World"
         displayName: 'Test'
+
+      - template: 'azure-pipeline-templates/distro-tests.yml'
+          parameters:
+            working_dir: $(WORK_DIR)
+            root_dir: $(ROOT_DIR)
+            temp_dir: $(TEMP_DIR)
+            mount_dir: $(MOUNT_DIR)
+            config_path: $(BLOBFUSE2_CFG)
+            container: $(ContainerName)
+            blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+            blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+            adls_account_name: $(AZTEST_ADLS_ACC_NAME)
+            adls_account_key: $(AZTEST_ADLS_KEY)
+            distro_name: $(AgentName)
+            gopath: $(GOPATH)
+            installStep:
+              script: |
+                sudo yum update -y
+                sudo yum install git fuse3 fuse3-devel python36 -y
+              displayName: 'Install fuse'
+            verbose_log: ${{ parameters.verbose_log }}
