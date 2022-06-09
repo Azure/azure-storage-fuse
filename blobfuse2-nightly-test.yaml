@@ -42,12 +42,12 @@ jobs:
           echo $(Description)
           hostnamectl
         displayName: 'Print Agent Info'
-        
+
       # Go tool installer
       - task: GoTool@0
-      inputs:
-        version: '1.16.2'
-      displayName: "Install Go Version"
+        inputs:
+          version: '1.16.2'
+        displayName: "Install Go Version"
 
       - script: |
           echo "Hello World"
