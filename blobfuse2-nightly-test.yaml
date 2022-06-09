@@ -35,7 +35,7 @@ jobs:
         - Agent.Name -equals $(ImageName)
 
     steps:
-      - checkout: self
+      - checkout: none
 
       # Get the host details on which these test are running
       - script: |
