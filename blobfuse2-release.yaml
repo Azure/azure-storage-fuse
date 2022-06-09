@@ -667,7 +667,7 @@ stages:
                   inlineOperation: |
                     [
                       {
-                        "KeyCode" : $(ESRP_BLOBFUSE_KEY_CODE),
+                        "KeyCode" : "$(ESRP_BLOBFUSE_KEY_CODE)",
                         "OperationCode" : "LinuxSign",
                         "Parameters" : {},
                         "ToolName" : "sign",
