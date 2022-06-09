@@ -82,12 +82,6 @@ jobs:
         value: "/usr/pipeline/workv2/go"
 
     steps:
-      # Get the host details on which these test are running
-      - script: |
-          echo $(Description)
-          hostnamectl
-        displayName: 'Print Agent Info'
-
       # Go tool installer
       - task: GoTool@0
         inputs:
