@@ -101,22 +101,22 @@ jobs:
         displayName: 'Test'
 
       - template: 'azure-pipeline-templates/distro-tests.yml'
-          parameters:
-            working_dir: $(WORK_DIR)
-            root_dir: $(ROOT_DIR)
-            temp_dir: $(TEMP_DIR)
-            mount_dir: $(MOUNT_DIR)
-            config_path: $(BLOBFUSE2_CFG)
-            container: $(ContainerName)
-            blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-            blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-            adls_account_name: $(AZTEST_ADLS_ACC_NAME)
-            adls_account_key: $(AZTEST_ADLS_KEY)
-            distro_name: $(AgentName)
-            gopath: $(GOPATH)
-            installStep:
-              script: |
-                sudo yum update -y
-                sudo yum install git fuse3 fuse3-devel python36 -y
-              displayName: 'Install fuse'
-            verbose_log: ${{ parameters.verbose_log }}
+        parameters:
+          working_dir: $(WORK_DIR)
+          root_dir: $(ROOT_DIR)
+          temp_dir: $(TEMP_DIR)
+          mount_dir: $(MOUNT_DIR)
+          config_path: $(BLOBFUSE2_CFG)
+          container: $(ContainerName)
+          blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+          blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+          adls_account_name: $(AZTEST_ADLS_ACC_NAME)
+          adls_account_key: $(AZTEST_ADLS_KEY)
+          distro_name: $(AgentName)
+          gopath: $(GOPATH)
+          installStep:
+            script: |
+              sudo yum update -y
+              sudo yum install git fuse3 fuse3-devel python36 -y
+            displayName: 'Install fuse'
+          verbose_log: ${{ parameters.verbose_log }}
