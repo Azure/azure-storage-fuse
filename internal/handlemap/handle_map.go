@@ -57,6 +57,8 @@ const (
 // Structure to hold in memory cache for streaming layer
 type Cache struct {
 	*cache_policy.LRUCache
+	*common.BlockOffsetList
+	StreamOnly bool
 }
 
 type Handle struct {
@@ -169,6 +171,8 @@ func Delete(key HandleID) {
 func CreateCacheObject(capacity int64, handle *Handle) {
 	handle.CacheObj = &Cache{
 		cache_policy.NewLRUCache(capacity),
+		&common.BlockOffsetList{},
+		false,
 	}
 }
 

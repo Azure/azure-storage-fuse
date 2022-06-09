@@ -36,3 +36,4 @@ azstorage:
   container: { 0 }
   tier: hot
   block-list-on-mount-sec: 7
+  sdk-trace: { VERBOSE_LOG }

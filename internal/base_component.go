@@ -37,6 +37,7 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/internal/handlemap"
 	"context"
+	"syscall"
 )
 
 // BaseComponent : Base implementation of the component interface
@@ -282,6 +283,13 @@ func (base *BaseComponent) GetAttr(options GetAttrOptions) (*ObjAttr, error) {
 	return &ObjAttr{}, nil
 }
 
+func (base *BaseComponent) GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error) {
+	if base.next != nil {
+		return base.next.GetFileBlockOffsets(options)
+	}
+	return &common.BlockOffsetList{}, nil
+}
+
 func (base *BaseComponent) SetAttr(options SetAttrOptions) error {
 	if base.next != nil {
 		return base.next.SetAttr(options)
@@ -309,16 +317,16 @@ func (base *BaseComponent) InvalidateObject(name string) {
 	}
 }
 
-func (base *BaseComponent) GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error) {
-	if base.next != nil {
-		base.next.InvalidateObject(name)
-	}
-	return &common.BlockOffsetList{}, nil
-}
-
 func (base *BaseComponent) FileUsed(name string) error {
 	if base.next != nil {
 		base.next.FileUsed(name)
 	}
 	return nil
+}
+
+func (base *BaseComponent) StatFs() (*syscall.Statfs_t, bool, error) {
+	if base.next != nil {
+		return base.next.StatFs()
+	}
+	return nil, false, nil
 }

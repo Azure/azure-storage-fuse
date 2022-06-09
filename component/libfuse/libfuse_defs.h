@@ -88,7 +88,7 @@ typedef struct fuse_options
 
 
 // LibFuse callback declaration here
-static int libfuse_statfs(const char *path, statvfs_t *stbuf);
+extern int libfuse_statfs(char *path, statvfs_t *stbuf);
 
 extern void libfuse_destroy(void *private_data);
 

@@ -43,6 +43,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
@@ -70,6 +71,7 @@ type FileCache struct {
 	mountPath       string
 	allowOther      bool
 	offloadIO       bool
+	maxCacheSize    float64
 
 	defaultPermission os.FileMode
 }
@@ -102,6 +104,7 @@ const (
 	defaultMinThreshold     = 60
 	defaultFileCacheTimeout = 120
 	defaultCacheUpdateCount = 100
+	MB                      = 1024 * 1024
 )
 
 //  Verification to check satisfaction criteria with Component Interface
@@ -190,6 +193,7 @@ func (c *FileCache) Configure() error {
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
+	c.maxCacheSize = conf.MaxSizeMB
 
 	c.tmpPath = conf.TmpPath
 	if c.tmpPath == "" {
@@ -266,7 +270,32 @@ func (c *FileCache) OnConfigChange() {
 	c.cacheTimeout = float64(conf.Timeout)
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
+	c.maxCacheSize = conf.MaxSizeMB
 	c.policy.UpdateConfig(c.GetPolicyConfig(conf))
+}
+
+func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
+	// cache_size = f_blocks * f_frsize/1024
+	// cache_size - used = f_frsize * f_bavail/1024
+	// cache_size - used = vfs.f_bfree * vfs.f_frsize / 1024
+	// if cache size is set to 0 then we have the root mount usage
+	maxCacheSize := c.maxCacheSize * MB
+	if maxCacheSize == 0 {
+		return nil, false, nil
+	}
+	usage := getUsage(c.tmpPath) * MB
+	available := maxCacheSize - usage
+	statfs := &syscall.Statfs_t{}
+	err := syscall.Statfs("/", statfs)
+	if err != nil {
+		log.Debug("FileCache::StatFs : statfs err [%s].", err.Error())
+		return nil, false, err
+	}
+	statfs.Blocks = uint64(maxCacheSize) / uint64(statfs.Frsize)
+	statfs.Bavail = uint64(math.Max(0, available)) / uint64(statfs.Frsize)
+	statfs.Bfree = statfs.Bavail
+
+	return statfs, true, nil
 }
 
 func (c *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {

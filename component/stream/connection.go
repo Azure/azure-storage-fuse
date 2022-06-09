@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2021 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -31,67 +31,38 @@
    SOFTWARE
 */
 
-package common
+package stream
 
 import (
-	"testing"
-
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/suite"
+	"blobfuse2/internal"
+	"blobfuse2/internal/handlemap"
 )
 
-type typesTestSuite struct {
-	suite.Suite
-	assert *assert.Assertions
+type StreamConnection interface {
+	RenameDirectory(options internal.RenameDirOptions) error
+	DeleteDirectory(options internal.DeleteDirOptions) error
+	RenameFile(options internal.RenameFileOptions) error
+	DeleteFile(options internal.DeleteFileOptions) error
+	CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) //TODO TEST THIS
+	Configure(cfg StreamOptions) error
+	ReadInBuffer(internal.ReadInBufferOptions) (int, error)
+	OpenFile(internal.OpenFileOptions) (*handlemap.Handle, error)
+	WriteFile(options internal.WriteFileOptions) (int, error)
+	CloseFile(internal.CloseFileOptions) error
+	TruncateFile(internal.TruncateFileOptions) error
+	Stop() error
 }
 
-func (suite *typesTestSuite) SetupTest() {
-	suite.assert = assert.New(suite.T())
-}
-
-func TestGenerateConfig(t *testing.T) {
-	suite.Run(t, new(typesTestSuite))
-}
-
-func (suite *typesTestSuite) TestBinarySearch() {
-	blocksList := []*Block{
-		{StartIndex: 0, EndIndex: 4},
-		{StartIndex: 4, EndIndex: 7},
-		{StartIndex: 7, EndIndex: 12},
+// NewAzStorageConnection : Based on account type create respective AzConnection Object
+func NewStreamConnection(cfg StreamOptions, stream *Stream) StreamConnection {
+	if cfg.readOnly {
+		r := ReadCache{}
+		r.Stream = stream
+		r.Configure(cfg)
+		return &r
 	}
-	bol := BlockOffsetList{
-		BlockList: blocksList,
-	}
-	found, startingIndex := bol.BinarySearch(5)
-	suite.assert.Equal(found, true)
-	suite.assert.Equal(startingIndex, 1)
-
-	found, startingIndex = bol.BinarySearch(20)
-	suite.assert.Equal(found, false)
-	suite.assert.Equal(startingIndex, 3)
-}
-
-func (suite *typesTestSuite) TestFindBlocksToModify() {
-	blocksList := []*Block{
-		{StartIndex: 0, EndIndex: 4},
-		{StartIndex: 4, EndIndex: 7},
-		{StartIndex: 7, EndIndex: 12},
-	}
-	bol := BlockOffsetList{
-		BlockList: blocksList,
-	}
-	index, size, largerThanFile, _ := bol.FindBlocksToModify(3, 7)
-	suite.assert.Equal(index, 0)
-	suite.assert.Equal(size, int64(12))
-	suite.assert.Equal(largerThanFile, false)
-
-	index, size, largerThanFile, _ = bol.FindBlocksToModify(8, 10)
-	suite.assert.Equal(index, 2)
-	suite.assert.Equal(size, int64(5))
-	suite.assert.Equal(largerThanFile, true)
-
-	index, size, largerThanFile, appendOnly := bol.FindBlocksToModify(20, 20)
-	suite.assert.Equal(size, int64(0))
-	suite.assert.Equal(largerThanFile, true)
-	suite.assert.Equal(appendOnly, true)
+	rw := ReadWriteCache{}
+	rw.Stream = stream
+	rw.Configure(cfg)
+	return &rw
 }

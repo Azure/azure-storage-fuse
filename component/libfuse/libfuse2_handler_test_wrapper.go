@@ -119,6 +119,21 @@ func testMkDir(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), err)
 }
 
+func testStatFs(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	path := C.CString("/")
+	defer C.free(unsafe.Pointer(path))
+	suite.mock.EXPECT().StatFs().Return(&syscall.Statfs_t{Frsize: 1,
+		Blocks: 2, Bavail: 3, Bfree: 4}, true, nil)
+	buf := &C.statvfs_t{}
+	libfuse_statfs(path, buf)
+
+	suite.assert.Equal(int(buf.f_frsize), 1)
+	suite.assert.Equal(int(buf.f_blocks), 2)
+	suite.assert.Equal(int(buf.f_bavail), 3)
+	suite.assert.Equal(int(buf.f_bfree), 4)
+}
+
 func testMkDirError(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	name := "path"
