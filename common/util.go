@@ -45,6 +45,7 @@ import (
 	"os/user"
 	"strconv"
 	"strings"
+	"sync"
 
 	"gopkg.in/ini.v1"
 )
@@ -234,3 +235,15 @@ func (bm *BitMap16) Set(bit uint16) { *bm |= (1 << bit) }
 
 // Clear : Clear the given bit from bitmap
 func (bm *BitMap16) Clear(bit uint16) { *bm &= ^(1 << bit) }
+
+type KeyedMutex struct {
+	mutexes sync.Map // Zero value is empty and ready for use
+}
+
+func (m *KeyedMutex) Lock(key string) func() {
+	value, _ := m.mutexes.LoadOrStore(key, &sync.Mutex{})
+	mtx := value.(*sync.Mutex)
+	mtx.Lock()
+
+	return func() { mtx.Unlock() }
+}

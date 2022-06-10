@@ -66,6 +66,7 @@ type BlockBlob struct {
 	blobCPKOpt      azblob.ClientProvidedKeyOptions
 	downloadOptions azblob.DownloadFromBlobOptions
 	listDetails     azblob.BlobListingDetails
+	blockLocks      common.KeyedMutex
 }
 
 // Verify that BlockBlob implements AzConnection interface
@@ -745,6 +746,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		blockOffset += block.Size
 		blockList.BlockList = append(blockList.BlockList, blk)
 	}
+	// blockList.Etag = storageBlockList.ETag()
 	blockList.BlockIdLength = common.GetIdLength(blockList.BlockList[0].Id)
 	return &blockList, nil
 }
@@ -980,6 +982,9 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 }
 
 func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) error {
+	// lock on the blob name so that no stage and commit race condition occur causing failure
+	unlock := bb.blockLocks.Lock(name)
+	defer unlock()
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	var blockIDList []string
 	var data []byte
@@ -1013,6 +1018,7 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 			azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
 			nil,
 			bb.blobAccCond,
+			// azblob.BlobAccessConditions{ModifiedAccessConditions: azblob.ModifiedAccessConditions{IfMatch: bol.Etag}},
 			bb.Config.defaultTier,
 			nil, // datalake doesn't support tags here
 			bb.downloadOptions.ClientProvidedKeyOptions)
@@ -1020,6 +1026,8 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 			log.Err("BlockBlob::StageAndCommit : Failed to commit block list to blob %s (%s)", name, err.Error())
 			return err
 		}
+		// update the etag
+		// bol.Etag = resp.ETag()
 	}
 	return nil
 }
