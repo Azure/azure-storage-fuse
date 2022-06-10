@@ -785,7 +785,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		}
 
 		if !attrReceived || fileSize > 0 {
-			if fileSize > fc.cacheFileSize {
+			if fc.cacheFileSize > 0 && fileSize > fc.cacheFileSize {
 				log.Info("FileCache::OpenFile : File size is bigger so not downloading %s", options.Name)
 				f.Close()
 				os.Remove(localPath)
