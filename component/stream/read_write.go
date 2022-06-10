@@ -86,6 +86,12 @@ func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap
 		log.Err("Stream::OpenFile : error failed to open file %s [%s]", options.Name, err.Error())
 		return handle, err
 	}
+
+	// File is handled by file-cache, just return from here
+	if handle.Cached() {
+		return handle, nil
+	}
+
 	if !rw.StreamOnly {
 		err = rw.createHandleCache(handle)
 		if err != nil {

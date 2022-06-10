@@ -72,6 +72,7 @@ type FileCache struct {
 	allowOther      bool
 	offloadIO       bool
 	maxCacheSize    float64
+	cacheFileSize   int64
 
 	defaultPermission os.FileMode
 }
@@ -93,8 +94,9 @@ type FileCacheOptions struct {
 	AllowNonEmpty   bool `config:"allow-non-empty-temp" yaml:"allow-non-empty-temp,omitempty"`
 	CleanupOnStart  bool `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
 
-	EnablePolicyTrace bool `config:"policy-trace" yaml:"policy-trace,omitempty"`
-	OffloadIO         bool `config:"offload-io" yaml:"offload-io,omitempty"`
+	EnablePolicyTrace bool  `config:"policy-trace" yaml:"policy-trace,omitempty"`
+	OffloadIO         bool  `config:"offload-io" yaml:"offload-io,omitempty"`
+	CacheFileSizeMB   int64 `config:"cache-file-size-mb" yaml:"cache-file-size-mb,omitempty"`
 }
 
 const (
@@ -194,6 +196,7 @@ func (c *FileCache) Configure() error {
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
 	c.maxCacheSize = conf.MaxSizeMB
+	c.cacheFileSize = conf.CacheFileSizeMB * MB
 
 	c.tmpPath = conf.TmpPath
 	if c.tmpPath == "" {
@@ -271,6 +274,7 @@ func (c *FileCache) OnConfigChange() {
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
 	c.maxCacheSize = conf.MaxSizeMB
+	c.cacheFileSize = conf.CacheFileSizeMB * MB
 	c.policy.UpdateConfig(c.GetPolicyConfig(conf))
 }
 
@@ -279,18 +283,21 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	// cache_size - used = f_frsize * f_bavail/1024
 	// cache_size - used = vfs.f_bfree * vfs.f_frsize / 1024
 	// if cache size is set to 0 then we have the root mount usage
+
 	maxCacheSize := c.maxCacheSize * MB
 	if maxCacheSize == 0 {
 		return nil, false, nil
 	}
 	usage := getUsage(c.tmpPath) * MB
 	available := maxCacheSize - usage
+
 	statfs := &syscall.Statfs_t{}
 	err := syscall.Statfs("/", statfs)
 	if err != nil {
 		log.Debug("FileCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
 	}
+
 	statfs.Blocks = uint64(maxCacheSize) / uint64(statfs.Frsize)
 	statfs.Bavail = uint64(math.Max(0, available)) / uint64(statfs.Frsize)
 	statfs.Bfree = statfs.Bavail
@@ -778,6 +785,13 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		}
 
 		if !attrReceived || fileSize > 0 {
+			if fileSize > fc.cacheFileSize {
+				log.Info("FileCache::OpenFile : File size is bigger so not downloading %s", options.Name)
+				f.Close()
+				os.Remove(localPath)
+				return fc.NextComponent().OpenFile(options)
+			}
+
 			// Download/Copy the file from storage to the local file.
 			err = fc.NextComponent().CopyToFile(
 				internal.CopyToFileOptions{
@@ -848,6 +862,11 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("FileCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 
+	// File is not being handled by file-cache so just forward the calls
+	if !options.Handle.Cached() {
+		fc.NextComponent().CloseFile(options)
+	}
+
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
 	if options.Handle.Dirty() {
@@ -893,6 +912,12 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 // ReadFile: Read the local file
 func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) {
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
+
+	// File is not being handled by file-cache so just forward the calls
+	if !options.Handle.Cached() {
+		fc.NextComponent().ReadFile(options)
+	}
+
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 	fc.policy.CacheValid(localPath)
 
@@ -922,6 +947,12 @@ func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) 
 // ReadInBuffer: Read the local file into a buffer
 func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::ReadInBuffer")()
+
+	// File is not being handled by file-cache so just forward the calls
+	if !options.Handle.Cached() {
+		fc.NextComponent().ReadInBuffer(options)
+	}
+
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 	f := options.Handle.GetFileObject()
 	if f == nil {
@@ -946,6 +977,12 @@ func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, er
 // WriteFile: Write to the local file
 func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::WriteFile")()
+
+	// File is not being handled by file-cache so just forward the calls
+	if !options.Handle.Cached() {
+		fc.NextComponent().WriteFile(options)
+	}
+
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 	f := options.Handle.GetFileObject()
 	if f == nil {
@@ -1005,6 +1042,11 @@ func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
 func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 	//defer exectime.StatTimeCurrentBlock("FileCache::FlushFile")()
 	log.Trace("FileCache::FlushFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+
+	// File is not being handled by file-cache so just forward the calls
+	if !options.Handle.Cached() {
+		fc.NextComponent().FlushFile(options)
+	}
 
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
