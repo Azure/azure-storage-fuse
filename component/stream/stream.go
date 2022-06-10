@@ -127,14 +127,29 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 }
 
 func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+	// File is handled by file-cache, just forward the calls
+	if options.Handle.Cached() {
+		st.NextComponent().ReadInBuffer(options)
+	}
+
 	return st.cache.ReadInBuffer(options)
 }
 
 func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
+	// File is handled by file-cache, just forward the calls
+	if options.Handle.Cached() {
+		st.NextComponent().WriteFile(options)
+	}
+
 	return st.cache.WriteFile(options)
 }
 
 func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
+	// File is handled by file-cache, just forward the calls
+	if options.Handle.Cached() {
+		st.NextComponent().CloseFile(options)
+	}
+
 	return st.cache.CloseFile(options)
 }
 

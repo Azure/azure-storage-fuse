@@ -90,6 +90,12 @@ func (r *ReadCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handl
 		log.Err("Stream::OpenFile : error %s [%s]", options.Name, err.Error())
 		return handle, err
 	}
+
+	// File is handled by file-cache, just return from here
+	if handle.Cached() {
+		return handle, nil
+	}
+
 	if handle == nil {
 		handle = handlemap.NewHandle(options.Name)
 	}
