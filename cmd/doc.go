@@ -47,9 +47,10 @@ var docCmdInput = struct {
 
 // docCmd represents the doc command
 var docCmd = &cobra.Command{
-	Use:   "doc",
-	Short: "Generates documentation for the tool in Markdown format",
-	Long:  "Generates documentation for the tool in Markdown format, and stores them in the designated location",
+	Use:    "doc",
+	Hidden: true,
+	Short:  "Generates documentation for the tool in Markdown format",
+	Long:   "Generates documentation for the tool in Markdown format, and stores them in the designated location",
 	Run: func(cmd *cobra.Command, args []string) {
 		// verify the output location
 		f, err := os.Stat(docCmdInput.outputLocation)
