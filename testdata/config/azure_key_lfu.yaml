@@ -5,6 +5,7 @@ logging:
 
 components:
   - libfuse
+  - stream
   - file_cache
   - attr_cache
   - azstorage
@@ -14,6 +15,11 @@ libfuse:
   entry-expiration-sec: 0
   negative-entry-expiration-sec: 0
 
+stream:
+  block-size-mb: 1
+  blocks-per-file: 1
+  cache-size-mb: 2
+  
 file_cache:
   path: { 1 }
   policy: lfu
