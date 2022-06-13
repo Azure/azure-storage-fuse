@@ -39,10 +39,7 @@ import (
 	"blobfuse2/internal"
 	"blobfuse2/internal/handlemap"
 	"context"
-	"errors"
 	"fmt"
-
-	"github.com/pbnjay/memory"
 )
 
 type Stream struct {
@@ -104,10 +101,10 @@ func (st *Stream) Configure() error {
 		log.Err("Stream::Configure : config error [unable to obtain read-only]")
 		return fmt.Errorf("config error in %s [%s]", st.Name(), err.Error())
 	}
-	if uint64((conf.BufferSizePerFile*conf.HandleLimit)*mb) > memory.FreeMemory() {
-		log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
-		return errors.New("not enough free memory for provided stream configuration")
-	}
+	// if uint64((conf.BufferSizePerFile*conf.HandleLimit)*mb) > memory.FreeMemory() {
+	// 	log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
+	// 	return errors.New("not enough free memory for provided stream configuration")
+	// }
 	st.cache = NewStreamConnection(conf, st)
 	return nil
 }
