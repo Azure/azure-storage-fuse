@@ -70,7 +70,6 @@ type FileCache struct {
 	missedChmodList sync.Map
 	mountPath       string
 	allowOther      bool
-	offloadIO       bool
 	maxCacheSize    float64
 	cacheFileSize   int64
 
@@ -95,7 +94,6 @@ type FileCacheOptions struct {
 	CleanupOnStart  bool `config:"cleanup-on-start" yaml:"cleanup-on-start,omitempty"`
 
 	EnablePolicyTrace bool  `config:"policy-trace" yaml:"policy-trace,omitempty"`
-	OffloadIO         bool  `config:"offload-io" yaml:"offload-io,omitempty"`
 	CacheFileSizeMB   int64 `config:"cache-file-size-mb" yaml:"cache-file-size-mb,omitempty"`
 }
 
@@ -194,7 +192,6 @@ func (c *FileCache) Configure() error {
 	c.allowNonEmpty = conf.AllowNonEmpty
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
-	c.offloadIO = conf.OffloadIO
 	c.maxCacheSize = conf.MaxSizeMB
 	c.cacheFileSize = conf.CacheFileSizeMB * MB
 
@@ -272,7 +269,6 @@ func (c *FileCache) OnConfigChange() {
 	c.createEmptyFile = conf.CreateEmptyFile
 	c.cacheTimeout = float64(conf.Timeout)
 	c.policyTrace = conf.EnablePolicyTrace
-	c.offloadIO = conf.OffloadIO
 	c.maxCacheSize = conf.MaxSizeMB
 	c.cacheFileSize = conf.CacheFileSizeMB * MB
 	c.policy.UpdateConfig(c.GetPolicyConfig(conf))
@@ -608,10 +604,8 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 
 	handle := handlemap.NewHandle(options.Name)
 	handle.UnixFD = uint64(f.Fd())
+	handle.Flags.Set(handlemap.HandleFlagCached)
 
-	if !fc.offloadIO {
-		handle.Flags.Set(handlemap.HandleFlagCached)
-	}
 	log.Info("FileCache::CreateFile : file=%s, fd=%d", options.Name, f.Fd())
 
 	handle.SetFileObject(f)
@@ -848,9 +842,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	}
 
 	handle.UnixFD = uint64(f.Fd())
-	if !fc.offloadIO {
-		handle.Flags.Set(handlemap.HandleFlagCached)
-	}
+	handle.Flags.Set(handlemap.HandleFlagCached)
 
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
 	handle.SetFileObject(f)
