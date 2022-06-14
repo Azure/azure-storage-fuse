@@ -155,9 +155,11 @@ jobs:
           version: '1.16.2'
         displayName: "Install Go Version"
 
-      - script: echo Hello!
+      - script: |
+          sudo sed -i -e "s|mirrorlist=|#mirrorlist=|g" /etc/yum.repos.d/CentOS-*
+          sudo sed -i -e "s|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g" /etc/yum.repos.d/CentOS-*
         condition: eq(variables['AgentName'], 'blobfuse-centos8')
-        displayName: "Conditional print"
+        displayName: "Update OS mirrors"
 
       - template: 'azure-pipeline-templates/distro-tests.yml'
         parameters:
