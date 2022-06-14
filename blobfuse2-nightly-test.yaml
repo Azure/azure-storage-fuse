@@ -88,10 +88,6 @@ jobs:
           version: '1.16.2'
         displayName: "Install Go Version"
 
-      - script: echo Hello!
-        condition: eq('$(AgentName)', "blobfuse-rhel8")
-        displayName: "Conditional print"
-
       - template: 'azure-pipeline-templates/distro-tests.yml'
         parameters:
           working_dir: $(WORK_DIR)
@@ -158,6 +154,10 @@ jobs:
         inputs:
           version: '1.16.2'
         displayName: "Install Go Version"
+
+      - script: echo Hello!
+        condition: eq('$(AgentName)', 'blobfuse-centos8')
+        displayName: "Conditional print"
 
       - template: 'azure-pipeline-templates/distro-tests.yml'
         parameters:
