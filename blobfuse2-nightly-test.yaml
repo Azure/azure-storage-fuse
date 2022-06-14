@@ -89,7 +89,7 @@ jobs:
         displayName: "Install Go Version"
 
       - script: echo Hello!
-        condition: eq('${{ parameters.AgentName }}', "blobfuse-rhel8")
+        condition: eq('$(AgentName)', "blobfuse-rhel8")
 
       - template: 'azure-pipeline-templates/distro-tests.yml'
         parameters:
