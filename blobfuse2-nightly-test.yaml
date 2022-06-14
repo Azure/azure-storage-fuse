@@ -51,11 +51,11 @@ jobs:
           Description: "Red Hat Enterprise Linux 7.9"
           AgentName: "blobfuse-rhel7_9"
           ContainerName: "test-cnt-rhel-7.9"
-        # RHEL-8:
-        #   DistroVer: "RHEL-8"
-        #   Description: "Red Hat Enterprise Linux 8"
-        #   AgentName: "blobfuse-rhel8"
-        #   containerName: "test-cnt-rhel-8"
+        RHEL-8:
+          DistroVer: "RHEL-8"
+          Description: "Red Hat Enterprise Linux 8"
+          AgentName: "blobfuse-rhel8"
+          containerName: "test-cnt-rhel-8"
 
     pool:
       name: "blobfuse-rhel-pool"
