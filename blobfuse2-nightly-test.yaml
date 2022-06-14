@@ -156,7 +156,7 @@ jobs:
         displayName: "Install Go Version"
 
       - script: echo Hello!
-        condition: eq($(AgentName), 'blobfuse-centos8')
+        condition: eq(variables['AgentName'], 'blobfuse-centos8')
         displayName: "Conditional print"
 
       - template: 'azure-pipeline-templates/distro-tests.yml'
