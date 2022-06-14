@@ -171,7 +171,7 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
-              sudo yum update -y --fix-missing
+              sudo yum update -y
               sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
@@ -314,7 +314,7 @@ jobs:
           installStep:
             script: |
               sudo apt-get update --fix-missing
-              sudo apt-get install $(fuselib) -y
+              sudo apt-get install gcc gcc-c++ make git $(fuselib) python36 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
 
