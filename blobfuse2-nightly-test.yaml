@@ -179,6 +179,12 @@ jobs:
             script: |
               sudo yum update -y --skip-broken
               sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y --nobest --allowerasing
+            condition: eq(variables['AgentName'], 'blobfuse-centos8')
+            displayName: 'Install fuse'
+            script: |
+              sudo yum update -y --skip-broken
+              sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y --allowerasing
+            condition: eq(variables['AgentName'], 'blobfuse-centos7')
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
 
