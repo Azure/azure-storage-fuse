@@ -90,6 +90,7 @@ jobs:
 
       - script: echo Hello!
         condition: eq('$(AgentName)', "blobfuse-rhel8")
+        displayName: "Conditional print"
 
       - template: 'azure-pipeline-templates/distro-tests.yml'
         parameters:
