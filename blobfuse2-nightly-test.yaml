@@ -104,9 +104,8 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
-              sudo yum clean all
-              sudo yum update -y
-              sudo yum install git fuse3 fuse3-devel python36 -y
+              sudo yum update -y --fix-missing
+              sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
 
@@ -172,9 +171,8 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
-              sudo yum clean all
-              sudo yum update -y
-              sudo yum install git fuse3 fuse3-devel python36 -y
+              sudo yum update -y --fix-missing
+              sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
 
@@ -235,9 +233,8 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
-              sudo yum clean all
-              sudo yum update -y
-              sudo yum install git fuse3 fuse3-devel python36 -y
+              sudo yum update -y --fix-missing
+              sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
 
