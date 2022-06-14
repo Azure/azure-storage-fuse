@@ -88,6 +88,9 @@ jobs:
           version: '1.16.2'
         displayName: "Install Go Version"
 
+      - script: echo Hello!
+        condition: eq('${{ parameters.AgentName }}', "blobfuse-rhel8")
+
       - template: 'azure-pipeline-templates/distro-tests.yml'
         parameters:
           working_dir: $(WORK_DIR)
@@ -104,7 +107,7 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
-              sudo yum update -y --fix-missing
+              sudo yum update -y
               sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
@@ -233,7 +236,7 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
-              sudo yum update -y --fix-missing
+              sudo yum update -y
               sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
