@@ -325,10 +325,9 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
-              whoami
-              groups
               sudo apt-get update --fix-missing -y
-              sudo apt-get install build-essential git $(fuselib) python3 -y
+              sudo apt-get install $(fuselib) -y
+              sudo apt-get install build-essential git python3 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
 
