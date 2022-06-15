@@ -324,7 +324,7 @@ jobs:
           installStep:
             script: |
               sudo apt-get update --fix-missing
-              sudo apt-get install gcc gcc-c++ make git $(fuselib) python36 -y
+              sudo apt-get install build-essential git $(fuselib) python3 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
 
