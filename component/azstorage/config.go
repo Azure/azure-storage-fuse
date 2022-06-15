@@ -324,7 +324,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		if opt.SaSKey == "" {
 			return errors.New("SAS key not provided")
 		}
-		az.stConfig.authConfig.SASKey = opt.SaSKey
+		az.stConfig.authConfig.SASKey = sanitizeSASKey(opt.SaSKey)
 	case EAuthType.MSI():
 		az.stConfig.authConfig.AuthMode = EAuthType.MSI()
 		if opt.ApplicationID == "" && opt.ResourceID == "" {
@@ -404,7 +404,8 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		}
 
 		oldSas := az.stConfig.authConfig.SASKey
-		az.stConfig.authConfig.SASKey = opt.SaSKey
+		az.stConfig.authConfig.SASKey = sanitizeSASKey(opt.SaSKey)
+
 		if reload {
 			log.Info("ParseAndReadDynamicConfig : SAS Key updated")
 
