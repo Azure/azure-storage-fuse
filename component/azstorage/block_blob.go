@@ -193,7 +193,9 @@ func (bb *BlockBlob) TestPipeline() error {
 
 	marker := (azblob.Marker{})
 	listBlob, err := bb.Container.ListBlobsHierarchySegment(context.Background(), marker, "/",
-		azblob.ListBlobsSegmentOptions{MaxResults: 2})
+		azblob.ListBlobsSegmentOptions{MaxResults: 2,
+			Prefix: bb.Config.prefixPath,
+		})
 
 	if err != nil {
 		log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error)

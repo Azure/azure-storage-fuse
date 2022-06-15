@@ -563,3 +563,15 @@ func split(prefixPath string, path string) string {
 	}
 	return filepath.Join(paths...)
 }
+
+func sanitizeSASKey(key string) string {
+	if key == "" {
+		return key
+	}
+
+	if key[0] != '?' {
+		return ("?" + key)
+	}
+
+	return key
+}
