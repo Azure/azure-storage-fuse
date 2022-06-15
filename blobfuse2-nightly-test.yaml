@@ -453,6 +453,6 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
-              sudo tdnf install gcc glibc-devel make git fuse fuse-devel python36 -y
+              sudo tdnf install build-essential git fuse fuse-devel python36 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
