@@ -104,8 +104,10 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
+              sudo dnf install git fuse3 fuse3-devel
               sudo yum update -y --skip-broken
-              sudo yum install build-essentials git fuse3 fuse3-devel python36 -y
+              sudo yum groupinstall "Development Tools"
+              sudo yum install python36 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
 
