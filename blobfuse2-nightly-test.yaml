@@ -326,9 +326,11 @@ jobs:
           installStep:
             script: |
               whoami
+              groups
               sudo apt-get update --fix-missing -y
               sudo apt-get install build-essential git $(fuselib) python3 -y
             displayName: 'Install fuse'
+            runAsRoot: true
           verbose_log: ${{ parameters.verbose_log }}
 
   # SUSE Tests
