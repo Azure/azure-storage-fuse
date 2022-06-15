@@ -105,8 +105,8 @@ jobs:
           installStep:
             script: |
               sudo yum update -y
-              sudo yum install git fuse fuse3 fuse3-devel
-              sudo yum groupinstall "Development Tools"
+              sudo yum install git fuse fuse3 fuse3-devel -y
+              sudo yum groupinstall "Development Tools" -y
               sudo yum install python36 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
