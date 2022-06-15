@@ -101,7 +101,7 @@ jobs:
           adls_account_name: $(AZTEST_ADLS_ACC_NAME)
           adls_account_key: $(AZTEST_ADLS_KEY)
           distro_name: $(AgentName)
-          gopath: $(GOPATH)
+          gopath: $(GOPATH) 
           installStep:
             script: |
               sudo dnf install git fuse fuse3 fuse3-devel
@@ -325,6 +325,7 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
+              whoami
               sudo apt-get update --fix-missing
               sudo apt-get install build-essential git $(fuselib) python3 -y
             displayName: 'Install fuse'
