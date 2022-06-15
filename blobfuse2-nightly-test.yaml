@@ -179,7 +179,7 @@ jobs:
             script: |
               sudo yum update -y --skip-broken
               if [ $AgentName == "blobfuse-centos8" ]; then
-                sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y --nobest --allowerasing
+                sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y --nobest --allowerasing --skip-broken
               else
                 sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y
               fi
