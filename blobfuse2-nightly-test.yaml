@@ -104,7 +104,7 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
-              sudo dnf install git fuse3 fuse3-devel
+              sudo dnf install git fuse fuse3 fuse3-devel
               sudo yum update -y --skip-broken
               sudo yum groupinstall "Development Tools"
               sudo yum install python36 -y
