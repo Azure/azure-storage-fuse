@@ -273,7 +273,7 @@ jobs:
           Description: "Debian 11"
           AgentName: "blobfuse-debian11"
           ContainerName: "test-cnt-deb-11"
-          fuselib: 'libfuse3-dev'
+          fuselib: 'fuse3 libfuse3-dev'
           tags: 'fuse3'
 
     pool:
@@ -327,7 +327,7 @@ jobs:
             script: |
               sudo rm /etc/apt/sources.list.d/azure.list
               sudo apt-get update --fix-missing -y
-              sudo apt-get install $(fuselib) -y
+              sudo apt-get install fuse $(fuselib) -y
               sudo apt-get install build-essential git python3 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}

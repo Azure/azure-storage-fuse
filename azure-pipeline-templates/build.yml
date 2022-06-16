@@ -28,7 +28,7 @@ parameters:
     default: "null"    
   - name: fuselib
     type: string
-    default: "libfuse3-dev"
+    default: "fuse fuse3 libfuse3-dev"
 
 steps:
   # Package manager installs for libfuse
