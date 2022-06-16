@@ -104,7 +104,6 @@ jobs:
           gopath: $(GOPATH) 
           installStep:
             script: |
-              sudo rm /etc/apt/sources.list.d/azure.list
               sudo yum update -y
               sudo yum install git fuse fuse3 fuse3-devel -y
               sudo yum groupinstall "Development Tools" -y
@@ -326,7 +325,7 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
-              sudo find /etc/apt -name '*.list' -exec grep -i 'https://packages.microsoft.com' {} \; -print
+              sudo rm /etc/apt/sources.list.d/azure.list
               sudo apt-get update --fix-missing -y
               sudo apt-get install $(fuselib) -y
               sudo apt-get install build-essential git python3 -y
