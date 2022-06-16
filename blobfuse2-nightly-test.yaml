@@ -325,7 +325,7 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
-              sudo cat /etc/apt/sources.list
+              sudo find /etc/apt -name '*.list' -exec grep -i 'https://packages.microsoft.com' {} \; -print
               sudo apt-get update --fix-missing -y
               sudo apt-get install $(fuselib) -y
               sudo apt-get install build-essential git python3 -y
