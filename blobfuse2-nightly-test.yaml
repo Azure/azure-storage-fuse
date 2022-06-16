@@ -325,6 +325,7 @@ jobs:
           gopath: $(GOPATH)
           installStep:
             script: |
+              sudo cat /etc/apt/soures.list
               sudo apt-get update --fix-missing -y
               sudo apt-get install $(fuselib) -y
               sudo apt-get install build-essential git python3 -y
