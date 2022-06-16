@@ -259,14 +259,14 @@ jobs:
           Description: "Debian 9"
           AgentName: "blobfuse-debian9"
           ContainerName: "test-cnt-deb-9"
-          fuselib: 'libfuse-dev'
+          fuselib: 'fuse libfuse-dev'
           tags: 'fuse2'
         Debian-10.0:
           DistroVer: "Debian10.0"
           Description: "Debian 10"
           AgentName: "blobfuse-debian10"
           ContainerName: "test-cnt-deb-10"
-          fuselib: 'libfuse-dev'
+          fuselib: 'fuse libfuse-dev'
           tags: 'fuse2'
         Debian-11.0:
           DistroVer: "Debian11.0"
@@ -327,7 +327,7 @@ jobs:
             script: |
               sudo rm /etc/apt/sources.list.d/azure.list
               sudo apt-get update --fix-missing -y
-              sudo apt-get install fuse $(fuselib) -y
+              sudo apt-get install $(fuselib) -y
               sudo apt-get install build-essential git python3 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
