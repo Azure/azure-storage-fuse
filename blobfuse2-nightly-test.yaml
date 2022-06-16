@@ -25,11 +25,11 @@ parameters:
   #   type: boolean
   #   default: true
 
-  # - name: msi_test
-  #   # MSI auth based test suites to be run or not
-  #   displayName: 'MSI test'
-  #   type: boolean
-  #   default: true
+  - name: msi_test
+    # MSI auth based test suites to be run or not
+    displayName: 'MSI test'
+    type: boolean
+    default: true
 
   # - name: quick_stress
   #   displayName: 'Quick Stress'
@@ -457,3 +457,173 @@ jobs:
               sudo tdnf install build-essential git fuse fuse-devel python36 -y
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
+
+  - ${{ if eq(parameters.msi_test, true) }}:
+      # -----------------------------------------------------------
+      # Ubuntu-20.04 MSI tests
+      - job: Set_7
+        timeoutInMinutes: 30
+        strategy:
+          matrix:
+            MSI_TEST:
+              DistroVer: "Ubn20_MSI"
+              AgentName: "blobfuse-ubuntu20"
+              Description: "Ubuntu 20 MSI Test"
+
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: ROOT_DIR
+            value: "/home/vsts/workv2/"
+          - name: WORK_DIR
+            value: "/home/vsts/workv2/go/src/azure-storage-fuse"
+          - name: skipComponentGovernanceDetection
+            value: true
+          - name: MOUNT_DIR
+            value: "/home/vsts/workv2/blob_mnt"
+          - name: TEMP_DIR
+            value: "/home/vsts/workv2/blobfuse2tmp"
+          - name: BLOBFUSE2_CFG
+            value: "/home/vibhansa/myblobv2.msi.yaml"
+          - name: BLOBFUSE2_CFG_ADLS
+            value: "/home/vibhansa/myblobv2.msi.adls.yaml"
+          - name: GOPATH
+            value: "/home/vsts/workv2/go"
+          - name: containerName
+            value: "test-cnt-ubn-20-msi"
+
+        steps:
+          - checkout: none
+
+          # Print the agent info 
+          - script: |
+              echo $(Description)
+              hostnamectl
+            displayName: 'Print Agent Info'
+          
+          # Install libfuse
+          - script: |
+              sudo apt-get install libfuse3-dev fuse3 -y -o Dpkg::Options::="--force-confnew"
+              sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
+            displayName: 'Install Fuse'
+
+          # Prestart cleanup
+          - script: |
+              sudo fusermount -u $(MOUNT_DIR)
+              sudo kill -9 `pidof blobfuse2`
+              sudo rm -rf $(ROOT_DIR)
+            displayName: 'PreBuild Cleanup'
+
+          # Create directory structure
+          - script: |
+              sudo rm -rf $(ROOT_DIR)
+              sudo mkdir -p $(ROOT_DIR)
+              sudo chown -R `whoami` $(ROOT_DIR)
+              chmod 777 $(ROOT_DIR)
+              mkdir -p $(ROOT_DIR)/go/src
+            displayName: 'Create Directory Structure'
+
+          # Checkout the code  
+          - script: |
+              git clone https://github.com/Azure/azure-storage-fuse
+            displayName: 'Checkout Code'
+            workingDirectory: $(ROOT_DIR)/go/src
+
+          # Pull the branch
+          - script: |
+              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+            displayName: 'Checkout Branch'
+            workingDirectory: $(WORK_DIR)
+
+          # Build the code
+          - template: 'azure-pipeline-templates/build.yml'
+            parameters:
+              working_directory: $(WORK_DIR)
+              root_dir: $(ROOT_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              hostedAgent: false
+              gopath: $(GOPATH)
+              container: $(containerName)
+              skip_msi: "false"
+          
+          # BlockBlob MSI Test
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_msi.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+            displayName: "Create MSI Config File"
+            env:
+              NIGHTLY_STO_BLOB_ACC_NAME: $(AZTEST_BLOCK_ACC_NAME) 
+              NIGHTLY_MSI_APP_ID: $(AZTEST_APP_ID)
+              ACCOUNT_TYPE: 'block'
+              ACCOUNT_ENDPOINT: 'https://$(AZTEST_BLOCK_ACC_NAME).blob.core.windows.net'
+              VERBOSE_LOG: ${{ parameters.verbose_log }}
+            continueOnError: false
+
+          - script:
+              cat $(BLOBFUSE2_CFG)
+            displayName: "Print config file"
+
+          # Mount the cntainer and run basic tests
+          - template: 'azure-pipeline-templates/verify-auth.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              idstring: 'BlockBlob MSI'
+              distro_name: $(AgentName)
+              mountStep:
+                script: |
+                  $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
+                displayName: 'AuthVerify MSI: Mount Container'
+                continueOnError: false
+
+          # ADLS MSI Test
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_msi.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+            displayName: "Create MSI Config File"
+            env:
+              NIGHTLY_STO_BLOB_ACC_NAME: $(AZTEST_ADLS_ACC_NAME) 
+              NIGHTLY_MSI_APP_ID: $(AZTEST_APP_ID)
+              ACCOUNT_TYPE: 'adls'
+              ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+              VERBOSE_LOG: ${{ parameters.verbose_log }}
+            continueOnError: false
+
+          - script:
+              cat $(BLOBFUSE2_CFG)
+            displayName: "Print config file"
+
+          # Mount the cntainer and run basic tests
+          - template: 'azure-pipeline-templates/verify-auth.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              idstring: 'ADLS MSI'
+              distro_name: $(AgentName)
+              mountStep:
+                script: |
+                  $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
+                displayName: 'AuthVerify MSI: Mount Container'
+                continueOnError: false
+
+          # Cleanup
+          - template: 'azure-pipeline-templates/cleanup.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+          
+          - script: |
+              sudo rm -rf ${ROOT_DIR}
+              pwd
+              cd /`pwd | cut -d '/' -f 2,3,4,5`
+              sudo rm -rf [0-9]
+            displayName: 'Clean Agent Directories'
+            condition: always() 
