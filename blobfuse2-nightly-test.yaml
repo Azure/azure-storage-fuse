@@ -104,6 +104,7 @@ jobs:
           gopath: $(GOPATH) 
           installStep:
             script: |
+              sudo rm /etc/apt/sources.list.d/azure.list
               sudo yum update -y
               sudo yum install git fuse fuse3 fuse3-devel -y
               sudo yum groupinstall "Development Tools" -y
