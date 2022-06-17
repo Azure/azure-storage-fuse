@@ -56,7 +56,7 @@ jobs:
           DistroVer: "RHEL-7.9"
           Description: "Red Hat Enterprise Linux 7.9"
           AgentName: "blobfuse-rhel7_9"
-          ContainerName: "test-cnt-rhel-7.9"
+          ContainerName: "test-cnt-rhel-79"
           tags: 'fuse3'
         RHEL-8:
           DistroVer: "RHEL-8"
@@ -123,7 +123,11 @@ jobs:
               sudo yum update -y
               sudo yum install git make cmake gcc gcc-c++ fuse fuse3-libs fuse3-devel fuse3 -y
               sudo yum groupinstall "Development Tools" -y
-              sudo yum install rh-python36 -y
+              if [ $(AgentName) == "blobfuse-rhel8" ]; then
+                sudo yum install python36 -y
+              else
+                sudo yum install rh-python36 -y
+              fi
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
 
