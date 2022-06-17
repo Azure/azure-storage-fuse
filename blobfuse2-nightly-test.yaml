@@ -392,7 +392,7 @@ jobs:
             script: |
               sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse3 
               wget https://rpmfind.net/linux/opensuse/distribution/leap/15.2/repo/oss/x86_64/fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm
-              sudo zypper -n install fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm
+              sudo zypper -n install fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm --no-gpg-checks 
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
 
@@ -468,7 +468,7 @@ jobs:
         timeoutInMinutes: 30
         strategy:
           matrix:
-            MSI_TEST:
+            Ubuntu20-MSI:
               DistroVer: "Ubn20_MSI"
               AgentName: "blobfuse-ubuntu20"
               Description: "Ubuntu 20 MSI Test"
