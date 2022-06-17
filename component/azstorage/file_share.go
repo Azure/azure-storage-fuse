@@ -38,15 +38,18 @@ import (
 	"blobfuse2/internal"
 	"os"
 
-	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
+	"github.com/Azure/azure-storage-file-go/azfile"
 )
 
-type FileShare struct { // unsure of struct properties
+type FileShare struct {
 	AzStorageConnection
-	Auth       azAuth
-	Service    azbfs.ServiceURL
-	Filesystem azbfs.FileSystemURL
-	BlockBlob  BlockBlob
+	Auth      azAuth
+	Service   azfile.ServiceURL
+	Container azfile.ShareURL
+	// blobAccCond     azblob.BlobAccessConditions
+	// blobCPKOpt      azblob.ClientProvidedKeyOptions
+	// downloadOptions azblob.DownloadFromBlobOptions
+	// listDetails     azblob.BlobListingDetails
 }
 
 func (fs *FileShare) Configure(cfg AzStorageConfig) error
