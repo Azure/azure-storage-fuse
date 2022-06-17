@@ -97,13 +97,9 @@ jobs:
         displayName: "Install Go Version"
 
       - script: |
-          sudo touch /etc/yum.repos.d/centos.repo
           if [ $(AgentName) == "blobfuse-rhel7_5" ]; then
+            sudo touch /etc/yum.repos.d/centos.repo
             sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
-          elif [ $(AgentName) == "blobfuse-rhel8_1" ]; then
-            sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/8/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-Official" > /etc/yum.repos.d/centos.repo'
-          else
-            sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/8/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-Official" > /etc/yum.repos.d/centos.repo'
           fi
         displayName: "Update OS mirrors"
 
