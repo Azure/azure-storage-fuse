@@ -52,101 +52,101 @@ type FileShare struct {
 	// listDetails     azblob.BlobListingDetails
 }
 
-func (fs *FileShare) Configure(cfg AzStorageConfig) error { 
+func (fs *FileShare) Configure(cfg AzStorageConfig) error {
 	return nil
 }
-func (fs *FileShare) UpdateConfig(cfg AzStorageConfig) error { 
-	return nil
-}
-
-func (fs *FileShare) SetupPipeline() error { 
-	return nil
-}
-func (fs *FileShare) TestPipeline() error { 
+func (fs *FileShare) UpdateConfig(cfg AzStorageConfig) error {
 	return nil
 }
 
-func (fs *FileShare) ListContainers() ([]string, error) { 
+func (fs *FileShare) SetupPipeline() error {
+	return nil
+}
+func (fs *FileShare) TestPipeline() error {
+	return nil
+}
+
+func (fs *FileShare) ListContainers() ([]string, error) {
 	return nil, nil
 }
 
 // This is just for test, shall not be used otherwise
-func (fs *FileShare) SetPrefixPath(string) error { 
+func (fs *FileShare) SetPrefixPath(string) error {
 	return nil
 }
 
-func (fs *FileShare) Exists(name string) bool { 
+func (fs *FileShare) Exists(name string) bool {
+	return false
+}
+func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
 	return nil
 }
-func (fs *FileShare) CreateFile(name string, mode os.FileMode) error { 
+func (fs *FileShare) CreateDirectory(name string) error {
 	return nil
 }
-func (fs *FileShare) CreateDirectory(name string) error { 
-	return nil
-}
-func (fs *FileShare) CreateLink(source string, target string) error { 
-	return nil
-}
-
-func (fs *FileShare) DeleteFile(name string) error { 
-	return nil
-}
-func (fs *FileShare) DeleteDirectory(name string) error { 
+func (fs *FileShare) CreateLink(source string, target string) error {
 	return nil
 }
 
-func (fs *FileShare) RenameFile(string, string) error { 
+func (fs *FileShare) DeleteFile(name string) error {
 	return nil
 }
-func (fs *FileShare) RenameDirectory(string, string) error { 
+func (fs *FileShare) DeleteDirectory(name string) error {
 	return nil
 }
 
-func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) { 
+func (fs *FileShare) RenameFile(string, string) error {
+	return nil
+}
+func (fs *FileShare) RenameDirectory(string, string) error {
+	return nil
+}
+
+func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	return nil, nil
 }
 
 // Standard operations to be supported by any account type
-func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error) { 
+func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error) {
 	return nil, nil, nil
 }
 
-func (fs *FileShare) ReadToFile(name string, offset int64, count int64, fi *os.File) error { 
+func (fs *FileShare) ReadToFile(name string, offset int64, count int64, fi *os.File) error {
 	return nil
 }
-func (fs *FileShare) ReadBuffer(name string, offset int64, len int64) ([]byte, error) { 
+func (fs *FileShare) ReadBuffer(name string, offset int64, len int64) ([]byte, error) {
 	return nil, nil
 }
-func (fs *FileShare) ReadInBuffer(name string, offset int64, len int64, data []byte) error { 
+func (fs *FileShare) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
 	return nil
 }
 
-func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *os.File) error { 
+func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *os.File) error {
 	return nil
 }
-func (fs *FileShare) WriteFromBuffer(name string, metadata map[string]string, data []byte) error { 
+func (fs *FileShare) WriteFromBuffer(name string, metadata map[string]string, data []byte) error {
 	return nil
 }
-func (fs *FileShare) Write(options internal.WriteFileOptions) error { 
+func (fs *FileShare) Write(options internal.WriteFileOptions) error {
 	return nil
 }
-func (fs *FileShare) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) { 
+func (fs *FileShare) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
 	return nil, nil
 }
 
-func (fs *FileShare) ChangeMod(string, os.FileMode) error { 
+func (fs *FileShare) ChangeMod(string, os.FileMode) error {
 	return nil
 }
-func (fs *FileShare) ChangeOwner(string, int, int) error { 
+func (fs *FileShare) ChangeOwner(string, int, int) error {
 	return nil
 }
-func (fs *FileShare) TruncateFile(string, int64) error { 
+func (fs *FileShare) TruncateFile(string, int64) error {
 	return nil
 }
-func (fs *FileShare) StageAndCommit(name string, bol *common.BlockOffsetList) error { 
+func (fs *FileShare) StageAndCommit(name string, bol *common.BlockOffsetList) error {
 	return nil
 }
 
-func (fs *FileShare) NewCredentialKey(_, _ string) error { 
+func (fs *FileShare) NewCredentialKey(_, _ string) error {
 	return nil
 }
