@@ -489,9 +489,9 @@ jobs:
           - name: TEMP_DIR
             value: "/home/vsts/workv2/blobfuse2tmp"
           - name: BLOBFUSE2_CFG
-            value: "/home/vibhansa/myblobv2.msi.yaml"
+            value: "/home/vsts/workv2//myblobv2.msi.yaml"
           - name: BLOBFUSE2_CFG_ADLS
-            value: "/home/vibhansa/myblobv2.msi.adls.yaml"
+            value: "/home/vsts/workv2/myblobv2.msi.adls.yaml"
           - name: GOPATH
             value: "/home/vsts/workv2/go"
           - name: containerName
