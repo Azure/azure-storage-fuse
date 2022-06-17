@@ -333,7 +333,7 @@ jobs:
       # Doc generation tests
       - script: |
           ./blobfuse2.test -test.v -test.coverprofile=doc.cov doc
-          if [ $? -eq 0 ]; then
+          if [ $? -ne 0 ]; then
             exit 1
           fi
         workingDirectory: $(WORK_DIR)
