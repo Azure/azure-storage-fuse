@@ -46,12 +46,12 @@ jobs:
   - job: Set_1
     strategy:
       matrix:
-        RHEL-7.3:
-          DistroVer: "RHEL-7.3"
-          Description: "Red Hat Enterprise Linux 7.3"
-          AgentName: "blobfuse-rhel7_3"
-          ContainerName: "test-cnt-rhel-7.3"
-          tags: 'fuse2'
+        RHEL-7.5:
+          DistroVer: "RHEL-7.5"
+          Description: "Red Hat Enterprise Linux 7.5"
+          AgentName: "blobfuse-rhel7_5"
+          ContainerName: "test-cnt-rhel-75"
+          tags: 'fuse3'
         RHEL-7.9:
           DistroVer: "RHEL-7.9"
           Description: "Red Hat Enterprise Linux 7.9"
