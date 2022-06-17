@@ -324,11 +324,6 @@ func (rw *ReadWriteCache) Stop() error {
 			return true
 		})
 	}
-	err := rw.NextComponent().Stop()
-	if err != nil {
-		log.Err("Stream::Stop : error stopping %s ", err.Error())
-		return err
-	}
 	return nil
 }
 
