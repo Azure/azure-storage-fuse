@@ -105,7 +105,7 @@ jobs:
           installStep:
             script: |
               sudo yum update -y
-              sudo yum install git fuse fuse3 fuse3-devel -y
+              sudo yum install git make cmake gcc gcc-c++ fuse fuse3 fuse3-devel -y
               sudo yum groupinstall "Development Tools" -y
               sudo yum install python36 -y
             displayName: 'Install fuse'
