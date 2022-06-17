@@ -507,7 +507,7 @@ jobs:
           
           # Install libfuse
           - script: |
-              sudo apt-get install libfuse3-dev fuse3 -y -o Dpkg::Options::="--force-confnew"
+              sudo apt-get install make cmake gcc g++ libfuse3-dev fuse3 -y -o Dpkg::Options::="--force-confnew"
               sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
             displayName: 'Install Fuse'
 
