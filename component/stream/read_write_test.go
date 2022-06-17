@@ -283,7 +283,6 @@ func (suite *streamTestSuite) TestWriteToSmallFileEviction() {
 		Offset: 1 * MB,
 		Data:   make([]byte, 1*MB),
 	}
-	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Return(nil)
 	suite.stream.WriteFile(writeFileOptions)
 
 	assertBlockNotCached(suite, 0, handle)
@@ -360,7 +359,6 @@ func (suite *streamTestSuite) TestLargeFileEviction() {
 		block2.Flags.Clear(common.DirtyBlock)
 	}
 	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Do(callbackFunc).Return(nil)
-	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Return(nil)
 
 	suite.stream.WriteFile(writeFileOptions)
 
