@@ -106,7 +106,7 @@ jobs:
             script: |
               sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
               sudo yum update -y
-              sudo yum install git make cmake gcc gcc-c++ fuse fuse3 fuse3-devel -y
+              sudo yum install git make cmake gcc gcc-c++ fuse fuse3-libs fuse3-devel fuse3 -y
               sudo yum groupinstall "Development Tools" -y
               sudo yum install python36 -y
             displayName: 'Install fuse'
