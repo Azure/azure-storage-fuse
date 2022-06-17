@@ -983,8 +983,9 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 
 func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) error {
 	// lock on the blob name so that no stage and commit race condition occur causing failure
-	unlock := bb.blockLocks.Lock(name)
-	defer unlock()
+	blobMtx := bb.blockLocks.GetLock(name)
+	blobMtx.Lock()
+	defer blobMtx.Unlock()
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	var blockIDList []string
 	var data []byte
