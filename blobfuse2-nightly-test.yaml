@@ -122,7 +122,7 @@ jobs:
             script: |
               sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
               sudo yum update -y
-              sudo yum --enablerepo=epel install git fuse fuse3-libs fuse3-devel fuse3 -y
+              sudo yum install git fuse fuse3-libs fuse3-devel fuse3 -y --nobest --allowerasing
               sudo yum groupinstall "Development Tools" -y
               if [ $(AgentName) == "blobfuse-rhel7_5" ]; then
                 sudo yum install rh-python36 -y
