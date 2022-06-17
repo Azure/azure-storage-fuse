@@ -45,7 +45,7 @@ type FileShare struct {
 	AzStorageConnection
 	Auth      azAuth
 	Service   azfile.ServiceURL
-	Container azfile.ShareURL
+	Share azfile.ShareURL
 	// blobAccCond     azblob.BlobAccessConditions
 	// blobCPKOpt      azblob.ClientProvidedKeyOptions
 	// downloadOptions azblob.DownloadFromBlobOptions
