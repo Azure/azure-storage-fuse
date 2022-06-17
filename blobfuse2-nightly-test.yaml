@@ -46,16 +46,24 @@ jobs:
   - job: Set_1
     strategy:
       matrix:
+        RHEL-7.3:
+          DistroVer: "RHEL-7.3"
+          Description: "Red Hat Enterprise Linux 7.3"
+          AgentName: "blobfuse-rhel7_3"
+          ContainerName: "test-cnt-rhel-7.3"
+          tags: 'fuse2'
         RHEL-7.9:
           DistroVer: "RHEL-7.9"
           Description: "Red Hat Enterprise Linux 7.9"
           AgentName: "blobfuse-rhel7_9"
           ContainerName: "test-cnt-rhel-7.9"
+          tags: 'fuse3'
         RHEL-8:
           DistroVer: "RHEL-8"
           Description: "Red Hat Enterprise Linux 8"
           AgentName: "blobfuse-rhel8"
           containerName: "test-cnt-rhel-8"
+          tags: 'fuse3'
 
     pool:
       name: "blobfuse-rhel-pool"
@@ -101,7 +109,8 @@ jobs:
           adls_account_name: $(AZTEST_ADLS_ACC_NAME)
           adls_account_key: $(AZTEST_ADLS_KEY)
           distro_name: $(AgentName)
-          gopath: $(GOPATH) 
+          gopath: $(GOPATH)
+          tags: $(tags) 
           installStep:
             script: |
               sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
