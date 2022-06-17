@@ -37,7 +37,6 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"bytes"
-	"fmt"
 	"os"
 	"os/exec"
 	"strconv"
@@ -101,7 +100,6 @@ func getUsage(path string) float64 {
 	}
 	// some OS's use "," instead of "." that will not work for float parsing - replace it
 	size = strings.Replace(size, ",", ".", 1)
-	fmt.Println(size)
 	parsed, err := strconv.ParseFloat(size[:len(size)-1], 64)
 	if err != nil {
 		log.Err("cachePolicy::getCacheUsage : error parsing folder size [%s]", err.Error())
