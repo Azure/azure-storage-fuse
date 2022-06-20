@@ -13,11 +13,11 @@ schedules:
         - main
 
 parameters:
-  # - name: exhaustive_test
-  #   # Quick test or an exhaustive test
-  #   displayName: 'Exhaustive test'
-  #   type: boolean
-  #   default: true
+  - name: exhaustive_test
+    # Quick test or an exhaustive test
+    displayName: 'Exhaustive test'
+    type: boolean
+    default: true
   
   - name: proxy_test
   # Proxy tests
@@ -31,10 +31,10 @@ parameters:
     type: boolean
     default: true
 
-  # - name: quick_stress
-  #   displayName: 'Quick Stress'
-  #   type: boolean
-  #   default: true
+  - name: quick_stress
+    displayName: 'Quick Stress'
+    type: boolean
+    default: true
   
   - name: verbose_log
     displayName: 'Verbose Log'
