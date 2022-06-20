@@ -43,35 +43,38 @@ parameters:
 
 jobs:
   # Ubuntu Tests
-  - job: Set_1
+- job: Set_1
     timeoutInMinutes: 300
+
     strategy:
       matrix:
         Ubuntu-18:
-          AgentName: "blobfuse-ubuntu18"
+          imageName: 'ubuntu-18.04'
           containerName: 'test-cnt-ubn-18'
           adlsSas: $(UBUNTU-18-ADLS-SAS)
+          hostedAgent: true
           stressParallel: 3
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
         Ubuntu-20:
-          AgentName: "blobfuse-ubuntu20"
+          imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
           adlsSas: $(UBUNTU-20-ADLS-SAS)
+          hostedAgent: true
           stressParallel: 1
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
-        Ubuntu-22:
-          AgentName: "blobfuse-ubuntu22"
-          containerName: 'test-cnt-ubn-22'
-          adlsSas: $(UBUNTU-20-ADLS-SAS)
-          stressParallel: 1
-          fuselib: 'libfuse3-dev'
-          tags: 'fuse3'
+        # Ubn-22 is not supported by devops as of now  
+        #Ubuntu-22:
+        #  imageName: 'ubuntu-22.04'
+        #  containerName: 'test-cnt-ubn-22'
+        #  adlsSas: $(UBUNTU-20-ADLS-SAS)
+        #  hostedAgent: true
+        #  stressParallel: 1
+        #  fuselib: 'libfuse3-dev'
+        #  tags: 'fuse3'
     pool:
-      name: "blobfuse-ubuntu-pool"
-      demands:
-        - ImageOverride -equals $(AgentName)
+      vmImage: $(imageName)
 
     variables:
       - group: NightlyBlobFuse
@@ -118,8 +121,8 @@ jobs:
         workingDirectory: $(WORK_DIR)
 
       - script: |
-          sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-          sudo apt-get install make cmake gcc g++ $(fuselib) -y -o Dpkg::Options::="--force-confnew"
+          sudo apt-get update --fix-missing
+          sudo apt-get install $(fuselib) -y
         displayName: 'Install libfuse'
 
       # -------------------------------------------------------
@@ -168,7 +171,7 @@ jobs:
           test_spn_credential: true
           sas_credential_config: $(BLOBFUSE2_SAS_CFG)
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
-          distro_name: $(AgentName)
+          distro_name: $(imageName)
           quick_test: false
           verbose_log: ${{ parameters.verbose_log }}
 
@@ -199,7 +202,7 @@ jobs:
           test_spn_credential: true
           sas_credential_config: $(BLOBFUSE2_SAS_CFG)
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
-          distro_name: $(AgentName)
+          distro_name: $(imageName)
           quick_test: false
           verbose_log: ${{ parameters.verbose_log }}
 
@@ -210,20 +213,19 @@ jobs:
           temp_dir: $(TEMP_DIR)
 
   - ${{ if eq(parameters.proxy_test, true) }}:
-      # Proxy tests
+      # -----------------------------------------------------------
+      # Ubuntu-20.04 Proxy tests
     - job: Set_2
       timeoutInMinutes: 300
       strategy:
         matrix:
           ubuntu-20-proxy:
-            AgentName: "blobfuse-ubuntu20"
+            imageName: 'ubuntu-20.04'
             containerName: 'test-cnt-ubn-18-proxy'
             hostedAgent: true
             stressParallel: 3
       pool:
-        name: "blobfuse-ubuntu-pool"
-        demands:
-          - ImageOverride -equals $(AgentName)
+        vmImage: $(imageName)
 
       variables:
         - group: NightlyBlobFuse
@@ -321,7 +323,7 @@ jobs:
             mount_dir: $(MOUNT_DIR)
             temp_dir: $(TEMP_DIR)
             idstring: 'BlockBlob with Proxy and Key Credentials'
-            distro_name: $(AgentName)
+            distro_name: $(imageName)
             adls: false
             artifact_name: 'blockblob_proxy_key.txt'
             verbose_log: ${{ parameters.verbose_log }}
@@ -355,7 +357,7 @@ jobs:
             mount_dir: $(MOUNT_DIR)
             temp_dir: $(TEMP_DIR)
             idstring: 'ADLS with Proxy and Key Credentials'
-            distro_name: $(AgentName)
+            distro_name: $(imageName)
             adls: true
             artifact_name: 'adls_proxy_key.txt'
             verbose_log: ${{ parameters.verbose_log }}
@@ -390,7 +392,7 @@ jobs:
             mount_dir: $(MOUNT_DIR)
             temp_dir: $(TEMP_DIR)
             idstring: 'Block SAS'
-            distro_name: $(AgentName)
+            distro_name: $(imageName)
             mountStep:
               script: |
                 $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
@@ -421,7 +423,7 @@ jobs:
             mount_dir: $(MOUNT_DIR)
             temp_dir: $(TEMP_DIR)
             idstring: 'Block SPN'
-            distro_name: $(AgentName)
+            distro_name: $(imageName)
             mountStep:
               script: |
                 $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
@@ -887,7 +889,7 @@ jobs:
         timeoutInMinutes: 60
         strategy:
           matrix:
-            Ubuntu20-MSI:
+            Ubuntu-20-MSI:
               DistroVer: "Ubn20_MSI"
               AgentName: "blobfuse-ubuntu20"
               Description: "Ubuntu 20 MSI Test"
