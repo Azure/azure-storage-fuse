@@ -43,7 +43,7 @@ parameters:
 
 jobs:
   # Ubuntu Tests
-- job: Set_1
+  - job: Set_1
     timeoutInMinutes: 300
 
     strategy:
