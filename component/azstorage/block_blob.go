@@ -49,6 +49,8 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-pipeline-go/pipeline"
+	"github.com/Azure/azure-storage-azcopy/v10/ste"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 )
 
@@ -143,6 +145,22 @@ func (bb *BlockBlob) getCredential() azblob.Credential {
 	return cred.(azblob.Credential)
 }
 
+// NewPipeline creates a Pipeline using the specified credentials and options.
+func NewPipeline(c azblob.Credential, o azblob.PipelineOptions, ro ste.XferRetryOptions) pipeline.Pipeline {
+	// Closest to API goes first; closest to the wire goes last
+	f := []pipeline.Factory{
+		azblob.NewTelemetryPolicyFactory(o.Telemetry),
+		azblob.NewUniqueRequestIDPolicyFactory(),
+		ste.NewBlobXferRetryPolicyFactory(ro),
+	}
+
+	f = append(f,
+		azblob.NewRequestLogPolicyFactory(o.RequestLog),
+		pipeline.MethodFactoryMarker()) // indicates at what stage in the pipeline the method factory is invoked
+
+	return pipeline.NewPipeline(f, pipeline.Options{HTTPSender: o.HTTPSender, Log: o.Log})
+}
+
 // SetupPipeline : Based on the config setup the ***URLs
 func (bb *BlockBlob) SetupPipeline() error {
 	log.Trace("BlockBlob::SetupPipeline : Setting up")
@@ -156,7 +174,8 @@ func (bb *BlockBlob) SetupPipeline() error {
 	}
 
 	// Create a new pipeline
-	bb.Pipeline = azblob.NewPipeline(cred, getAzBlobPipelineOptions(bb.Config))
+	options, retryOptions := getAzBlobPipelineOptions(bb.Config)
+	bb.Pipeline = NewPipeline(cred, options, retryOptions)
 	if bb.Pipeline == nil {
 		log.Err("BlockBlob::SetupPipeline : Failed to create pipeline object")
 		return errors.New("failed to create pipeline object")
@@ -971,7 +990,8 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 		bb.blobAccCond,
 		bb.Config.defaultTier,
 		nil, // datalake doesn't support tags here
-		bb.downloadOptions.ClientProvidedKeyOptions)
+		bb.downloadOptions.ClientProvidedKeyOptions,
+		azblob.ImmutabilityPolicyOptions{})
 	if err != nil {
 		log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to commit block list to blob %s (%s)", name, err.Error())
 		return err
@@ -1015,7 +1035,8 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 			bb.blobAccCond,
 			bb.Config.defaultTier,
 			nil, // datalake doesn't support tags here
-			bb.downloadOptions.ClientProvidedKeyOptions)
+			bb.downloadOptions.ClientProvidedKeyOptions,
+			azblob.ImmutabilityPolicyOptions{})
 		if err != nil {
 			log.Err("BlockBlob::StageAndCommit : Failed to commit block list to blob %s (%s)", name, err.Error())
 			return err
