@@ -117,6 +117,7 @@ jobs:
           NIGHTLY_STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
           ACCOUNT_TYPE: 'block'
           ACCOUNT_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+          VERBOSE_LOG: false
         continueOnError: false
 
       - script: |

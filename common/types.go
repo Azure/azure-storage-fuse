@@ -35,9 +35,11 @@ package common
 
 import (
 	"crypto/rand"
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sync"
 
 	"github.com/JeffreyRichter/enum/enum"
 )
@@ -173,22 +175,52 @@ type LogConfig struct {
 	TimeTracker bool
 }
 
+// Flags for blocks
+const (
+	BlockFlagUnknown uint16 = iota
+	DirtyBlock
+	TruncatedBlock
+)
+
 type Block struct {
+	sync.RWMutex
 	StartIndex int64
 	EndIndex   int64
-	Size       int64
+	Flags      BitMap16
 	Id         string
-	Modified   bool
+	Data       []byte
 }
+
+// Dirty : Handle is dirty or not
+func (block *Block) Dirty() bool {
+	return block.Flags.IsSet(DirtyBlock)
+}
+
+// Truncated : block created on a truncate operation
+func (block *Block) Truncated() bool {
+	return block.Flags.IsSet(TruncatedBlock)
+}
+
+// Flags for block offset list
+const (
+	BolFlagUnknown uint16 = iota
+	SmallFile
+)
 
 // list that holds blocks containing ids and corresponding offsets
 type BlockOffsetList struct {
-	BlockList []*Block //blockId to offset mapping
-	Cached    bool     // is it cached?
+	BlockList     []*Block //blockId to offset mapping
+	Flags         BitMap16
+	BlockIdLength int64
+}
+
+// Dirty : Handle is dirty or not
+func (bol *BlockOffsetList) SmallFile() bool {
+	return bol.Flags.IsSet(SmallFile)
 }
 
 // return true if item found and index of the item
-func (bol BlockOffsetList) binarySearch(offset int64) (bool, int) {
+func (bol BlockOffsetList) BinarySearch(offset int64) (bool, int) {
 	lowerBound := 0
 	size := len(bol.BlockList)
 	higherBound := size - 1
@@ -210,12 +242,33 @@ func (bol BlockOffsetList) binarySearch(offset int64) (bool, int) {
 }
 
 // returns index of first mod block, size of mod data, does the new data exceed current size?, is it append only?
+func (bol BlockOffsetList) FindBlocks(offset, length int64) ([]*Block, bool) {
+	// size of mod block list
+	currentBlockOffset := offset
+	var blocks []*Block
+	found, index := bol.BinarySearch(offset)
+	if !found {
+		return blocks, false
+	}
+	for _, blk := range bol.BlockList[index:] {
+		if blk.StartIndex > offset+length {
+			break
+		}
+		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
+			blocks = append(blocks, blk)
+			currentBlockOffset = blk.EndIndex
+		}
+	}
+	return blocks, true
+}
+
+// returns index of first mod block, size of mod data, does the new data exceed current size?, is it append only?
 func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64, bool, bool) {
 	// size of mod block list
 	size := int64(0)
 	appendOnly := true
 	currentBlockOffset := offset
-	found, index := bol.binarySearch(offset)
+	found, index := bol.BinarySearch(offset)
 	if !found {
 		return index, 0, true, appendOnly
 	}
@@ -226,17 +279,26 @@ func (bol BlockOffsetList) FindBlocksToModify(offset, length int64) (int, int64,
 		}
 		if currentBlockOffset >= blk.StartIndex && currentBlockOffset < blk.EndIndex && currentBlockOffset <= offset+length {
 			appendOnly = false
-			blk.Modified = true
+			blk.Flags.Set(DirtyBlock)
 			currentBlockOffset = blk.EndIndex
-			size += blk.Size
+			size += (blk.EndIndex - blk.StartIndex)
 		}
 	}
 
 	return index, size, offset+length >= bol.BlockList[len(bol.BlockList)-1].EndIndex, appendOnly
 }
 
-// NewUUID returns a new uuid using RFC 4122 algorithm with the given length.
-func NewUUID(length int64) []byte {
+// A UUID representation compliant with specification in RFC 4122 document.
+type uuid [16]byte
+
+const reservedRFC4122 byte = 0x40
+
+func (u uuid) Bytes() []byte {
+	return u[:]
+}
+
+// NewUUIDWithLength returns a new uuid using RFC 4122 algorithm with the given length.
+func NewUUIDWithLength(length int64) []byte {
 	u := make([]byte, length)
 	// Set all bits to randomly (or pseudo-randomly) chosen values.
 	rand.Read(u[:])
@@ -244,4 +306,21 @@ func NewUUID(length int64) []byte {
 	var version byte = 4
 	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
 	return u[:]
+}
+
+// NewUUID returns a new uuid using RFC 4122 algorithm.
+func NewUUID() (u uuid) {
+	u = uuid{}
+	// Set all bits to randomly (or pseudo-randomly) chosen values.
+	rand.Read(u[:])
+	u[8] = (u[8] | reservedRFC4122) & 0x7F // u.setVariant(ReservedRFC4122)
+
+	var version byte = 4
+	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
+	return
+}
+
+func GetIdLength(id string) int64 {
+	existingBlockId, _ := base64.StdEncoding.DecodeString(id)
+	return int64(len(existingBlockId))
 }

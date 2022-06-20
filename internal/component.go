@@ -37,6 +37,7 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/internal/handlemap"
 	"context"
+	"syscall"
 )
 
 type ComponentPriority int
@@ -134,4 +135,7 @@ type Component interface {
 	//InvalidateObject: function used to clear any inode information relating to a particular fs object
 	InvalidateObject(string) // TODO: What does this do? Why do we need it if its a noop?
 	GetFileBlockOffsets(options GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error)
+
+	FileUsed(name string) error
+	StatFs() (*syscall.Statfs_t, bool, error)
 }

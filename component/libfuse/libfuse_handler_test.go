@@ -218,6 +218,10 @@ func (suite *libfuseTestSuite) TestChmodNotExists() {
 	testChmodNotExists(suite)
 }
 
+func (suite *libfuseTestSuite) TestStatFs() {
+	testStatFs(suite)
+}
+
 func (suite *libfuseTestSuite) TestChmodError() {
 	testChmodError(suite)
 }

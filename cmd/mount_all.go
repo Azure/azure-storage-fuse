@@ -272,7 +272,6 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 		// Now that we have mount path and config file for this container fire a mount command for this one
 		cliParams[1] = contMountPath
 		cliParams[2] = "--config-file=" + contConfigFile
-		// cliParams = append(cliParams, "--disable-version-check=true")
 
 		fmt.Println("Mounting container :", container, "to path :", contMountPath)
 		cmd := exec.Command(mountAllOpts.blobfuse2BinPath, cliParams...)
