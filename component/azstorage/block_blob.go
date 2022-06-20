@@ -146,7 +146,7 @@ func (bb *BlockBlob) getCredential() azblob.Credential {
 }
 
 // NewPipeline creates a Pipeline using the specified credentials and options.
-func NewPipeline(c azblob.Credential, o azblob.PipelineOptions, ro ste.XferRetryOptions) pipeline.Pipeline {
+func NewBlobPipeline(c azblob.Credential, o azblob.PipelineOptions, ro ste.XferRetryOptions) pipeline.Pipeline {
 	// Closest to API goes first; closest to the wire goes last
 	f := []pipeline.Factory{
 		azblob.NewTelemetryPolicyFactory(o.Telemetry),
@@ -155,8 +155,11 @@ func NewPipeline(c azblob.Credential, o azblob.PipelineOptions, ro ste.XferRetry
 	}
 	f = append(f, c)
 	f = append(f,
-		azblob.NewRequestLogPolicyFactory(o.RequestLog),
-		pipeline.MethodFactoryMarker()) // indicates at what stage in the pipeline the method factory is invoked
+		pipeline.MethodFactoryMarker(), // indicates at what stage in the pipeline the method factory is invoked
+		ste.NewRequestLogPolicyFactory(ste.RequestLogOptions{
+			LogWarningIfTryOverThreshold: o.RequestLog.LogWarningIfTryOverThreshold,
+			SyslogDisabled:               o.RequestLog.SyslogDisabled,
+		}))
 
 	return pipeline.NewPipeline(f, pipeline.Options{HTTPSender: o.HTTPSender, Log: o.Log})
 }
@@ -175,7 +178,7 @@ func (bb *BlockBlob) SetupPipeline() error {
 
 	// Create a new pipeline
 	options, retryOptions := getAzBlobPipelineOptions(bb.Config)
-	bb.Pipeline = NewPipeline(cred, options, retryOptions)
+	bb.Pipeline = NewBlobPipeline(cred, options, retryOptions)
 	if bb.Pipeline == nil {
 		log.Err("BlockBlob::SetupPipeline : Failed to create pipeline object")
 		return errors.New("failed to create pipeline object")
