@@ -153,7 +153,7 @@ func NewPipeline(c azblob.Credential, o azblob.PipelineOptions, ro ste.XferRetry
 		azblob.NewUniqueRequestIDPolicyFactory(),
 		ste.NewBlobXferRetryPolicyFactory(ro),
 	}
-
+	f = append(f, c)
 	f = append(f,
 		azblob.NewRequestLogPolicyFactory(o.RequestLog),
 		pipeline.MethodFactoryMarker()) // indicates at what stage in the pipeline the method factory is invoked
