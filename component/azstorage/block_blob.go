@@ -41,12 +41,10 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
-	"fmt"
 	"math"
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -533,37 +531,11 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	return blobList, listBlob.NextMarker.Val, nil
 }
 
-// track the progress of uploads and downloads of blobs
-func trackProgress(name string, bytesTransferred int64, accountName string, container string, progressMap map[string]ProgressData, op string) {
-	var divCtr int
-	if strings.ToLower(op) == "download" {
-		divCtr = 5120 // 16kB * 5120 = 80 MB per download is tracked
-	} else {
-		divCtr = 3072 // 32kB * 3072 = 96 MB per upload is tracked
-	}
-
-	data, isPresent := progressMap[name]
-	if !isPresent {
-		progressMap[name] = ProgressData{ctr: 1, bytesTransferred: bytesTransferred}
-	} else {
-		data.ctr += 1
-		data.bytesTransferred = bytesTransferred
-		progressMap[name] = data
-	}
-
-	if progressMap[name].ctr%int64(divCtr) == 1 {
-		transferred := strconv.FormatInt(bytesTransferred, 10) + " bytes"
-		if progressMap[name].ctr != 1 {
-			transferred = strconv.FormatInt((int64)(math.Round((float64)(bytesTransferred/(1024.0*1024.0)))), 10) + " MB"
-		}
-
-		fileName := "/home/sourav/.blobfuse2/progress_" + accountName + "_" + container + ".log"
-		fileHandle, _ := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-		fmt.Fprintf(fileHandle, "%s: %v blob = %v, Bytes transferred = %s\n", time.Now().Format("2006-January-02 15:04:05"), op, name, transferred)
-		fileHandle.Close()
-
-		// log.Debug("%v, %v", accountName, container)
-		// log.Debug("%v: Blob = %v, Bytes transferred = %.2f MB", op, name, (float64)(bytesTransferred/(1024.0*1024.0)))
+// track the progress of downloads of blobs
+func trackDownload(name string, bytesTransferred int64, count int64, downloadPtr *int64) {
+	if bytesTransferred >= (*downloadPtr)*100*1024*1024 || bytesTransferred == count {
+		(*downloadPtr)++
+		log.Debug("download: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
 	}
 }
 
@@ -574,26 +546,15 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
 
+	var downloadPtr *int64 = new(int64)
+	*downloadPtr = 1
+
 	bb.downloadOptions.Progress = func(bytesTransferred int64) {
-		trackProgress(name, bytesTransferred, bb.AzStorageConnection.Config.authConfig.AccountName, bb.AzStorageConnection.Config.container, progressDownloadMap, "download")
+		trackDownload(name, bytesTransferred, count, downloadPtr)
 	}
 
 	defer log.TimeTrack(time.Now(), "BlockBlob::ReadToFile", name)
 	err = azblob.DownloadBlobToFile(context.Background(), blobURL, offset, count, fi, bb.downloadOptions)
-
-	if data, isPresent := progressDownloadMap[name]; isPresent && err == nil {
-		if data.ctr%5120 != 1 {
-			// log.Debug("download %v: Blob = %v, Bytes transferred = %v", data.ctr, name, data.bytesTransferred)
-
-			transferred := strconv.FormatInt((int64)(math.Round((float64)(data.bytesTransferred/(1024.0*1024.0)))), 10) + " MB"
-			fileName := "/home/sourav/.blobfuse2/progress_" + bb.AzStorageConnection.Config.authConfig.AccountName + "_" + bb.AzStorageConnection.Config.container + ".log"
-			fileHandle, _ := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-			fmt.Fprintf(fileHandle, "%s: download blob = %v, Bytes transferred = %s\n", time.Now().Format("2006-January-02 15:04:05"), name, transferred)
-			fileHandle.Close()
-		}
-	}
-	log.Debug("%v: %v", name, progressDownloadMap[name])
-	delete(progressDownloadMap, name)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -603,6 +564,8 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 			log.Err("BlockBlob::ReadToFile : Failed to download blob %s (%s)", name, err.Error())
 			return err
 		}
+	} else {
+		log.Debug("download complete of blob %v", name)
 	}
 
 	return nil
@@ -624,19 +587,7 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 	}
 
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	bb.downloadOptions.Progress = func(bytesTransferred int64) {
-		trackProgress(name, bytesTransferred, bb.AzStorageConnection.Config.authConfig.AccountName, bb.AzStorageConnection.Config.container, progressDownloadMap, "download")
-	}
-
 	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, buff, bb.downloadOptions)
-
-	if data, isPresent := progressDownloadMap[name]; isPresent && err == nil {
-		if data.ctr%5120 != 1 {
-			log.Debug("download %v: Blob = %v, Bytes transferred = %v", data.ctr, name, data.bytesTransferred)
-		}
-	}
-	log.Debug("%v: %v", name, progressDownloadMap[name])
-	delete(progressDownloadMap, name)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -657,19 +608,7 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
 	log.Trace("BlockBlob::ReadInBuffer : name %s", name)
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	bb.downloadOptions.Progress = func(bytesTransferred int64) {
-		trackProgress(name, bytesTransferred, bb.AzStorageConnection.Config.authConfig.AccountName, bb.AzStorageConnection.Config.container, progressDownloadMap, "download")
-	}
-
 	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, data, bb.downloadOptions)
-
-	if data, isPresent := progressDownloadMap[name]; isPresent && err == nil {
-		if data.ctr%5120 != 1 {
-			log.Debug("download %v: Blob = %v, Bytes transferred = %v", data.ctr, name, data.bytesTransferred)
-		}
-	}
-	log.Debug("%v: %v", name, progressDownloadMap[name])
-	delete(progressDownloadMap, name)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -725,6 +664,13 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 	return blockSize, nil
 }
 
+func trackUpload(name string, bytesTransferred int64, uploadPtr *int64) {
+	if bytesTransferred >= (*uploadPtr)*100*1024*1024 {
+		(*uploadPtr)++
+		log.Debug("upload: Blob = %v, Bytes transferred = %v", name, bytesTransferred)
+	}
+}
+
 // WriteFromFile : Upload local file to blob
 func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *os.File) (err error) {
 	log.Trace("BlockBlob::WriteFromFile : name %s", name)
@@ -750,26 +696,21 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		}
 	}
 
+	var uploadPtr *int64 = new(int64)
+	*uploadPtr = 1
+
 	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
 		BlockSize:      blockSize,
 		Parallelism:    bb.Config.maxConcurrency,
 		Metadata:       metadata,
 		BlobAccessTier: bb.Config.defaultTier,
 		Progress: func(bytesTransferred int64) {
-			trackProgress(name, bytesTransferred, bb.AzStorageConnection.Config.authConfig.AccountName, bb.AzStorageConnection.Config.container, progressUploadMap, "upload")
+			trackUpload(name, bytesTransferred, uploadPtr)
 		},
 		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
 			ContentType: getContentType(name),
 		},
 	})
-
-	if data, isPresent := progressUploadMap[name]; isPresent && err == nil {
-		if data.ctr%3072 != 1 {
-			log.Debug("upload %v: Blob = %v, Bytes transferred = %v", data.ctr, name, data.bytesTransferred)
-		}
-	}
-	log.Debug("%v: %v", name, progressUploadMap[name])
-	delete(progressUploadMap, name)
 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
@@ -780,6 +721,8 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 			log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s (%s)", name, err.Error())
 		}
 		return err
+	} else {
+		log.Debug("upload complete of blob %v", name)
 	}
 
 	return nil
@@ -796,21 +739,10 @@ func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]string, da
 		Parallelism:    bb.Config.maxConcurrency,
 		Metadata:       metadata,
 		BlobAccessTier: bb.Config.defaultTier,
-		Progress: func(bytesTransferred int64) {
-			trackProgress(name, bytesTransferred, bb.AzStorageConnection.Config.authConfig.AccountName, bb.AzStorageConnection.Config.container, progressUploadMap, "upload")
-		},
 		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
 			ContentType: getContentType(name),
 		},
 	})
-
-	if data, isPresent := progressUploadMap[name]; isPresent && err == nil {
-		if data.ctr%3072 != 1 {
-			log.Debug("upload %v: Blob = %v, Bytes transferred = %v", data.ctr, name, data.bytesTransferred)
-		}
-	}
-	log.Debug("%v: %v", name, progressUploadMap[name])
-	delete(progressUploadMap, name)
 
 	if err != nil {
 		log.Err("BlockBlob::WriteFromBuffer : Failed to upload blob %s (%s)", name, err.Error())
