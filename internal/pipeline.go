@@ -45,15 +45,30 @@ type Pipeline struct {
 	Header     Component
 }
 
+// CurrentPipeline : holds the current pipeline configured by user
+var currentPipeline []string
+
 // NewComponent : Function that all components have to register to allow their instantiation
 type NewComponent func() Component
 
 // Map holding all possible components along with their respective constructors
 var registeredComponents map[string]NewComponent
 
+func IsComponentPlugged(name string) bool {
+	for _, component := range currentPipeline {
+		if component == name {
+			return true
+		}
+	}
+
+	return false
+}
+
 // NewPipeline : Using a list of strings holding name of components, create and configure the component objects
 func NewPipeline(components []string) (*Pipeline, error) {
 	comps := make([]Component, 0)
+	currentPipeline = components
+
 	lastPriority := EComponentPriority.Producer()
 	for _, name := range components {
 		//  Search component exists in our registered map or not

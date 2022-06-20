@@ -74,6 +74,7 @@ type FileCache struct {
 	cacheFileSize   int64
 
 	defaultPermission os.FileMode
+	streamPlugged     bool
 }
 
 // Structure defining your config parameters
@@ -105,6 +106,7 @@ const (
 	defaultFileCacheTimeout = 120
 	defaultCacheUpdateCount = 100
 	MB                      = 1024 * 1024
+	maxCacheLimitPercent    = 90
 )
 
 //  Verification to check satisfaction criteria with Component Interface
@@ -251,6 +253,8 @@ func (c *FileCache) Configure() error {
 		log.Err("FileCache::Configure : failed to create cache eviction policy")
 		return fmt.Errorf("config error in %s [%s]", c.Name(), "failed to create cache policy")
 	}
+
+	c.streamPlugged = internal.IsComponentPlugged("stream")
 
 	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s",
 		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath)
@@ -718,6 +722,36 @@ func (fc *FileCache) isDownloadRequired(localPath string) (bool, bool) {
 	return downloadRequired, fileExists
 }
 
+// cacheFile: Decide this file shall be cached or not
+func (fc *FileCache) cacheFile(fileSize int64) bool {
+	if !fc.streamPlugged {
+		// Stream component is not part of current pipeline so cache everything
+		return true
+	}
+
+	// Disk cache size is limited by user then additional checks
+	if fc.maxCacheSize > 0 {
+		if fileSize > fc.cacheFileSize {
+			// This file is bigger then configured cache size
+			return false
+		}
+
+		currSize := getUsage(fc.tmpPath)
+		usagePercent := (currSize / float64(fc.maxCacheSize)) * 100
+		if usagePercent > maxCacheLimitPercent {
+			// Current cache usage is already 90% then dont cache the file
+			return false
+		}
+
+		if (fc.maxCacheSize - currSize) < float64((fileSize / 1024 / 1024)) { // size comparision in MB
+			// If file can not fit in available disk space then do not cache
+			return false
+		}
+	}
+
+	return true
+}
+
 // OpenFile: Makes the file available in the local cache for further file operations.
 func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("FileCache::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
@@ -779,8 +813,8 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		}
 
 		if !attrReceived || fileSize > 0 {
-			if fc.cacheFileSize > 0 && fileSize > fc.cacheFileSize {
-				log.Info("FileCache::OpenFile : File size is bigger so not downloading %s", options.Name)
+			if !fc.cacheFile(fileSize) {
+				log.Info("FileCache::OpenFile : Decided not to cache %s", options.Name)
 				f.Close()
 				os.Remove(localPath)
 				return fc.NextComponent().OpenFile(options)
@@ -942,7 +976,7 @@ func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, er
 
 	// File is not being handled by file-cache so just forward the calls
 	if !options.Handle.Cached() {
-		fc.NextComponent().ReadInBuffer(options)
+		return fc.NextComponent().ReadInBuffer(options)
 	}
 
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
@@ -972,7 +1006,7 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 
 	// File is not being handled by file-cache so just forward the calls
 	if !options.Handle.Cached() {
-		fc.NextComponent().WriteFile(options)
+		return fc.NextComponent().WriteFile(options)
 	}
 
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
@@ -1037,7 +1071,7 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 
 	// File is not being handled by file-cache so just forward the calls
 	if !options.Handle.Cached() {
-		fc.NextComponent().FlushFile(options)
+		return fc.NextComponent().FlushFile(options)
 	}
 
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
