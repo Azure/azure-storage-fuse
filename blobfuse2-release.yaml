@@ -339,7 +339,7 @@ stages:
               AgentName: 'blobfuse-centos7'
         
         pool:
-          name: 'BlobFuse Pool'
+          name: 'blobfuse-centos-pool'
           demands:
             - Agent.Name -equals $(AgentName)
         
@@ -700,7 +700,7 @@ stages:
               AgentName: 'blobfuse-suse15'
         
         pool:
-          name: 'Blobfuse Pool'
+          name: 'blobfuse-suse-pool'
           demands:
             - ImageOverride -equals $(AgentName)
         
