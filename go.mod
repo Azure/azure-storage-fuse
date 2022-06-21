@@ -6,6 +6,7 @@ require (
 	github.com/Azure/azure-pipeline-go v0.2.3
 	github.com/Azure/azure-storage-azcopy/v10 v10.13.1-0.20211218014522-24209b81028e
 	github.com/Azure/azure-storage-blob-go v0.13.1-0.20210823171415-e7932f52ad61
+	github.com/Azure/azure-storage-file-go v0.6.1-0.20201111053559-3c1754dc00a5
 	github.com/Azure/go-autorest/autorest v0.11.18
 	github.com/Azure/go-autorest/autorest/adal v0.9.14
 	github.com/JeffreyRichter/enum v0.0.0-20180725232043-2567042f9cda
