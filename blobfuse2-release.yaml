@@ -438,7 +438,7 @@ stages:
               AgentName: 'blobfuse-rhel8_1'
             RHEL-8.2:
               DistroVer: 'RHEL-8.2'
-              AgentName: 'RHEL 8.2'
+              AgentName: 'blobfuse-rhel8_2'
         pool:
           name: 'blobfuse-rhel-pool'
           demands:
