@@ -89,6 +89,8 @@ func getAzAuth(config azAuthConfig) azAuth {
 		return getAzAuthBlob(config)
 	} else if EAccountType.ADLS() == config.AccountType {
 		return getAzAuthBfs(config)
+	} else if EAccountType.FILE() == config.AccountType {
+		return getAzAuthFile(config)
 	}
 	return nil
 }
@@ -154,6 +156,10 @@ func getAzAuthBfs(config azAuthConfig) azAuth {
 	} else {
 		log.Crit("azAuth::getAzAuthBfs : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
 	}
+	return nil
+}
+
+func getAzAuthFile(config azAuthConfig) azAuth {
 	return nil
 }
 

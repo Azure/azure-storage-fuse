@@ -98,6 +98,10 @@ func (AccountType) ADLS() AccountType {
 	return AccountType(2)
 }
 
+func (AccountType) FILE() AccountType {
+	return AccountType(3)
+}
+
 func (f AccountType) String() string {
 	return enum.StringInt(f, reflect.TypeOf(f))
 }
