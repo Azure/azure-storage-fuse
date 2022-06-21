@@ -805,6 +805,18 @@ stages:
         steps:
           - checkout: none
           
+          - script: |
+              sudo yum install git gcc patch readline readline-devel zlib zlib-devel libffi-devel \
+               openssl-devel make bzip2 autoconf automake libtool bison sqlite-devel -y
+              sudo yum install fuse fuse-devel -y
+              curl -sSL https://rvm.io/mpapis.asc | gpg --import -
+              curl -sSL https://rvm.io/pkuczynski.asc | gpg --import -
+              curl -L get.rvm.io | bash -s stable
+              source ~/.rvm/scripts/rvm
+              yes | rvm requirements run
+              rvm reload
+            displayName: 'Installing dependencies'
+          
           # clearing out remnants from past builds
           - script: |
               sudo rm -rf $(root_dir)
@@ -824,19 +836,6 @@ stages:
               git --no-pager log --since="12 hours ago" --stat
             displayName: 'List Commits'
             workingDirectory: $(work_dir)
-          
-          # installing dependencies for building & packaging blobfuse
-          - script: |
-              sudo yum install gcc patch readline readline-devel zlib zlib-devel libffi-devel \
-               openssl-devel make bzip2 autoconf automake libtool bison sqlite-devel -y
-              sudo yum install fuse fuse-devel -y
-              curl -sSL https://rvm.io/mpapis.asc | gpg --import -
-              curl -sSL https://rvm.io/pkuczynski.asc | gpg --import -
-              curl -L get.rvm.io | bash -s stable
-              source ~/.rvm/scripts/rvm
-              yes | rvm requirements run
-              rvm reload
-            displayName: 'Installing dependencies'
           
           # generating binary
           - template: 'azure-pipeline-templates/build-release.yml'
