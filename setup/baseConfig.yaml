@@ -76,7 +76,7 @@ loopbackfs:
 
 # Azure storage configuration
 azstorage:
-  type: block|adls <type of storage account to be connected. Default - block>
+  type: block|adls|file <type of storage account to be connected. Default - block>
   use-http: true|false <use http instead of https for storage connection>
   account-name: <name of the storage account>
   endpoint: <storage account endpoint (example - https://account-name.blob.core.windows.net)>
