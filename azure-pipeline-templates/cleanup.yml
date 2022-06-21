@@ -9,6 +9,7 @@ parameters:
 steps:
   - script: |
       sudo fusermount -u ${mount_dir}
+      sudo fusermount3 -u ${mount_dir}
       sudo kill -9 `pidof blobfuse2` || true
       rm -rf ${mount_dir}/*
       rm -rf ${temp_dir}/*
