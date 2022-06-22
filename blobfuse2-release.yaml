@@ -272,7 +272,7 @@ stages:
               source ~/.rvm/scripts/rvm
               rvm reload
               rvm install 2.5
-              rvm use 2.5. --default
+              rvm use 2.5 --default
             displayName: 'Installing dependencies'
           
           # clearing out remnants from past builds
