@@ -824,7 +824,7 @@ stages:
           
           - script: |
               sudo yum install git build-essential gcc patch readline readline-devel zlib zlib-devel libffi-devel \
-               openssl-devel make bzip2 autoconf automake libtool bison sqlite-devel -y
+               openssl-devel make bzip2 autoconf automake libtool bison sqlite-devel rubygems -y
               sudo yum install fuse fuse-devel -y
               curl -sSL https://rvm.io/mpapis.asc | gpg --import -
               curl -sSL https://rvm.io/pkuczynski.asc | gpg --import -
