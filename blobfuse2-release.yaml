@@ -163,9 +163,8 @@ stages:
           
           # installing dependencies for compiling blobfuse2
           - script: |
-              sudo rm /etc/apt/sources.list.d/azure.list
-              sudo apt-get update --fix-missing
-              sudo apt-get install git ruby-dev build-essential $(fuselib) -y
+              sudo apt-get update --fix-missing -y
+              sudo apt-get install git build-essential $(fuselib) -y
               sudo gem install fpm -V
             displayName: "Installing Dependencies"
           
