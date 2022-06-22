@@ -271,7 +271,7 @@ stages:
               curl -L get.rvm.io | bash -s stable
               source ~/.rvm/scripts/rvm
               rvm reload
-              rvm reinstall 2.5
+              rvm install 2.5
               rvm use 2.5. --default
             displayName: 'Installing dependencies'
           
