@@ -68,6 +68,8 @@ var StatsConfigFilePath = filepath.Join(DefaultWorkDir, "stats_monitor.cfg")
 var DefaultPipeline = []string{"libfuse", "file_cache", "attr_cache", "azstorage"}
 var DefaultStreamPipeline = []string{"libfuse", "stream", "attr_cache", "azstorage"}
 
+var EnableMonitoring = false
+
 //LogLevel enum
 type LogLevel int
 

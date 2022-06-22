@@ -87,7 +87,6 @@ type mountOptions struct {
 
 var options mountOptions
 var pipelineStarted bool
-var enableMonitoring bool
 
 func (opt *mountOptions) validate(skipEmptyMount bool) error {
 	if opt.MountPath == "" {
@@ -282,6 +281,12 @@ var mountCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		err = config.UnmarshalKey("enable-monitoring", &common.EnableMonitoring)
+		if err != nil {
+			log.Debug("Unable to unmarshal enable-monitoring key from config: " + err.Error())
+			common.EnableMonitoring = false
+		}
+
 		if options.Debug {
 			f, err := os.OpenFile(filepath.Join(options.DebugPath, "times.log"), os.O_CREATE|os.O_APPEND|os.O_RDWR, os.FileMode(0755))
 			if err != nil {
@@ -357,13 +362,7 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
-		err = config.UnmarshalKey("enable-monitoring", &enableMonitoring)
-		if err != nil {
-			log.Debug("Unable to unmarshal enable-monitoring key from config: " + err.Error())
-			enableMonitoring = false
-		}
-
-		if enableMonitoring {
+		if common.EnableMonitoring {
 			err = stats_monitor.GenerateMonitorConfig(options.MountPath)
 			if err != nil {
 				log.Debug("Mount: Failed to generate config for stats monitor [%v]", err)

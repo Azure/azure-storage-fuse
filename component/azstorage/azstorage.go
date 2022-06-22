@@ -37,6 +37,7 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/common/config"
 	"blobfuse2/common/log"
+	"blobfuse2/common/stats_monitor"
 	"blobfuse2/internal"
 	"blobfuse2/internal/handlemap"
 	"context"
@@ -61,6 +62,8 @@ const compName = "azstorage"
 
 //Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AzStorage{}
+
+var AzStatsCollector *stats_monitor.StatsCollector
 
 func (az *AzStorage) Name() string {
 	return az.BaseComponent.Name()
@@ -95,6 +98,14 @@ func (az *AzStorage) Configure() error {
 	if err != nil {
 		log.Err("AzStorage::Configure : Failed to validate storage account (%s)", err.Error())
 		return err
+	}
+
+	if common.EnableMonitoring {
+		AzStatsCollector, err = stats_monitor.NewStatsCollector()
+		if err != nil {
+			log.Err("AzStorage::Configure : Failed to set up stats collector (%s)", err.Error())
+			return err
+		}
 	}
 
 	return nil

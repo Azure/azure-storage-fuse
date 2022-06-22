@@ -45,6 +45,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -536,6 +537,9 @@ func trackDownload(name string, bytesTransferred int64, count int64, downloadPtr
 	if bytesTransferred >= (*downloadPtr)*100*1024*1024 || bytesTransferred == count {
 		(*downloadPtr)++
 		log.Debug("download: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
+		stats := AzStorageStats{Operation: "download", Blob: name, Progress: "Bytes transferred = " + strconv.FormatInt(bytesTransferred, 10) + ", Size = " + strconv.FormatInt(count, 10)}
+		log.Debug("Stats: %v", stats)
+		AzStatsCollector.AddStats(stats)
 	}
 }
 
@@ -549,8 +553,10 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 	var downloadPtr *int64 = new(int64)
 	*downloadPtr = 1
 
-	bb.downloadOptions.Progress = func(bytesTransferred int64) {
-		trackDownload(name, bytesTransferred, count, downloadPtr)
+	if common.EnableMonitoring {
+		bb.downloadOptions.Progress = func(bytesTransferred int64) {
+			trackDownload(name, bytesTransferred, count, downloadPtr)
+		}
 	}
 
 	defer log.TimeTrack(time.Now(), "BlockBlob::ReadToFile", name)
@@ -668,6 +674,9 @@ func trackUpload(name string, bytesTransferred int64, uploadPtr *int64) {
 	if bytesTransferred >= (*uploadPtr)*100*1024*1024 {
 		(*uploadPtr)++
 		log.Debug("upload: Blob = %v, Bytes transferred = %v", name, bytesTransferred)
+		stats := AzStorageStats{Operation: "upload", Blob: name, Progress: "Bytes transferred = " + strconv.FormatInt(bytesTransferred, 10)}
+		log.Debug("Stats: %v", stats)
+		AzStatsCollector.AddStats(stats)
 	}
 }
 
@@ -699,18 +708,22 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 	var uploadPtr *int64 = new(int64)
 	*uploadPtr = 1
 
-	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
+	uploadOptions := azblob.UploadToBlockBlobOptions{
 		BlockSize:      blockSize,
 		Parallelism:    bb.Config.maxConcurrency,
 		Metadata:       metadata,
 		BlobAccessTier: bb.Config.defaultTier,
-		Progress: func(bytesTransferred int64) {
-			trackUpload(name, bytesTransferred, uploadPtr)
-		},
 		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
 			ContentType: getContentType(name),
 		},
-	})
+	}
+	if common.EnableMonitoring {
+		uploadOptions.Progress = func(bytesTransferred int64) {
+			trackUpload(name, bytesTransferred, uploadPtr)
+		}
+	}
+
+	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, uploadOptions)
 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
