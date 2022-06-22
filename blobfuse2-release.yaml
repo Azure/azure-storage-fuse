@@ -780,7 +780,7 @@ stages:
             displayName: 'Accumulate pkg files'
           
           - script: |
-              sudo zypper in -n rpmbuild
+              sudo zypper in -n rpm-build
               sudo gem install fpm -v 1.14.1
               export PATH=$PATH:/usr/lib64/ruby/gems/2.5.0/gems/fpm-1.14.1/bin
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
