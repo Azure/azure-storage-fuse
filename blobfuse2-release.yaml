@@ -629,6 +629,14 @@ stages:
         steps:
           - checkout: none
           
+          # installing dependencies for building blobfuse
+          - script: |
+              sudo yum install git gcc gcc-c++ make gnutls-devel rpm-build -y
+              sudo yum install fuse3-devel -y
+              sudo yum install ruby-devel -y
+              sudo gem install fpm -V
+            displayName: "Installing Dependencies"
+          
           # clearing out remnants from past builds
           - script: |
               sudo rm -rf $(root_dir)
@@ -648,14 +656,6 @@ stages:
               git --no-pager log --since="12 hours ago" --stat
             displayName: 'List Commits'
             workingDirectory: $(work_dir)
-          
-          # installing dependencies for building blobfuse
-          - script: |
-              sudo yum install gcc gcc-c++ make gnutls-devel rpm-build -y
-              sudo yum install fuse3-devel -y
-              sudo yum install ruby-devel -y
-              sudo gem install fpm -V
-            displayName: "Installing Dependencies"
           
           # generating binaries
           - template: 'azure-pipeline-templates/build-release.yml'
@@ -717,6 +717,19 @@ stages:
         
         steps:
           - checkout: none
+          
+          - script: |
+              sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse3 
+              wget https://rpmfind.net/linux/opensuse/distribution/leap/15.2/repo/oss/x86_64/fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm
+              sudo zypper -n --no-gpg-checks install fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm  
+              curl -sSL https://rvm.io/mpapis.asc | gpg2 --import -
+              curl -sSL https://rvm.io/pkuczynski.asc | gpg2 --import -
+              curl -L get.rvm.io | bash -s stable
+              source ~/.rvm/scripts/rvm
+              yes | rvm requirements run
+              rvm reload
+            displayName: "Installing Dependencies"
+
           - script: |
               sudo rm -rf $(root_dir)
               sudo mkdir -p $(root_dir)
