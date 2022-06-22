@@ -272,6 +272,7 @@ stages:
               rvm reload
               rvm install 2.5.8
               rvm use 2.5.8 --default
+              sudo cat /home/cloudtest/.rvm/log/*_ruby-2.5.8/package_install_ruby_zlib-devel_openssl-devel.log
             displayName: 'Installing dependencies'
           
           # clearing out remnants from past builds
