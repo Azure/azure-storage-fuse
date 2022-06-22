@@ -165,7 +165,7 @@ stages:
           - script: |
               sudo apt-get update --fix-missing -y
               sudo apt-get install git build-essential $(fuselib) -y
-              sudo apt-get install ruby-dev -y
+              sudo apt-get install ruby-full -y
               sudo gem install fpm -V
             displayName: "Installing Dependencies"
           
