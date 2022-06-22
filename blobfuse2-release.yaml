@@ -262,7 +262,7 @@ stages:
           # installing dependencies for building & packaging blobfuse
           - script: |
               sudo yum install git gcc-c++ patch readline readline-devel zlib zlib-devel libffi-devel \
-               openssl-devel make bzip2 autoconf automake libtool bison sqlite-devel -y
+               openssl-devel make bzip2 autoconf automake libtool bison sqlite-devel -y --skip-broken
               sudo yum install fuse3-devel -y
               curl -sSL https://rvm.io/mpapis.asc | gpg2 --import -
               curl -sSL https://rvm.io/pkuczynski.asc | gpg2 --import -
@@ -781,7 +781,7 @@ stages:
           
           - script: |
               sudo gem install fpm -v 1.14.1
-              sudo zypper in rpmbuild
+              sudo zypper in -n rpmbuild
               export PATH=$PATH:/usr/lib64/ruby/gems/2.5.0/gems/fpm-1.14.1/bin
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
@@ -823,6 +823,7 @@ stages:
           - checkout: none
           
           - script: |
+              sudo tdnf install build-essential
               sudo yum install git gcc patch readline readline-devel zlib zlib-devel libffi-devel \
                openssl-devel make bzip2 autoconf automake libtool bison sqlite-devel -y
               sudo yum install fuse fuse-devel -y
