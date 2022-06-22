@@ -265,6 +265,7 @@ stages:
               sudo yum install git gcc-c++ patch readline readline-devel zlib zlib-devel libffi-devel \
                openssl-devel make bzip2 libyaml-devel autoconf automake libtool bison sqlite-devel rpm-build -y --skip-broken
               sudo yum install fuse3-devel -y
+              sudo yum downgrade libselinux libsepol
               curl -sSL https://rvm.io/mpapis.asc | gpg2 --import -
               curl -sSL https://rvm.io/pkuczynski.asc | gpg2 --import -
               curl -L get.rvm.io | bash -s stable
