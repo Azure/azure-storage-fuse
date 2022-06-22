@@ -131,6 +131,95 @@ stages:
       - job: Set_2
         strategy:
           matrix:
+            Debian-9.0:
+              DistroVer: 'Debian9.0'
+              AgentName: 'DEB 9.0'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
+        pool:
+          name: 'Blobfuse Pool'
+          demands:
+            - Agent.Name -equals $(AgentName)
+        
+        variables:
+          - group: NightlyBlobFuse
+          - name: root_dir
+            value: '/home/vsts/workv2'
+          - name: work_dir
+            value: "/home/vsts/workv2/azure-storage-fuse"
+        
+        steps:
+          - checkout: none
+          
+          # clearing out remnants from past build sessions
+          - script: |
+              sudo rm -rf $(root_dir)
+              sudo mkdir -p $(root_dir)
+              sudo chown -R `whoami` $(root_dir)
+              chmod 777 $(root_dir)
+            displayName: 'Create Directory Structure'
+          
+          - script: |
+              git clone https://github.com/Azure/azure-storage-fuse
+            displayName: 'Checkout Code & List commits'
+            workingDirectory: $(root_dir)
+          
+          # listing commits from last 12hrs
+          - script: |
+              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+              git --no-pager log --since="12 hours ago" --stat
+            displayName: 'List Commits'
+            workingDirectory: $(work_dir)
+          
+          # installing dependencies for compiling blobfuse2
+          - script: |
+              sudo apt-get update --fix-missing
+              sudo apt-get install ruby-dev build-essential $(fuselib) -y
+              sudo gem install fpm -V
+            displayName: "Installing Dependencies"
+          # generating blobfuse2 binary
+          - template: 'azure-pipeline-templates/build-release.yml'
+            parameters:
+              work_dir: $(work_dir)
+              root_dir: $(root_dir)
+              unit_test: ${{ parameters.unit_test }}
+              tags: $(tags)
+              
+          # accumulating necessary binary & additional scripts to be packaged
+          - script: |
+              mkdir -p pkgDir/usr/bin/
+              mkdir -p pkgDir/usr/share/blobfuse2/
+              cp azure-storage-fuse/blobfuse2 pkgDir/usr/bin/blobfuse2
+              cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
+              cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
+              cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
+              cp azure-storage-fuse/tools/postinstall.sh pkgDir/usr/share/blobfuse2/
+              mkdir -p pkgDir/etc/rsyslog.d
+              mkdir -p pkgDir/etc/logrotate.d
+              cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
+              cp azure-storage-fuse/setup/blobfuse2-logrotate pkgDir/etc/logrotate.d/blobfuse2
+            workingDirectory: $(root_dir)
+            displayName: 'Accumulate pkg files'
+          
+          # using fpm tool for building the install package
+          - script: |
+              fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
+              --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
+              --description "An user-space filesystem for interacting with Azure Storage" 
+              mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(DistroVer)-x86-64.deb
+              cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
+            workingDirectory: $(root_dir)
+            displayName: 'Make Package'
+          
+          # publishing artifacts
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: 'blobfuse2'
+            displayName: 'Publish Artifacts'
+      
+      - job: Set_3
+        strategy:
+          matrix:
             # Debian-9.0:
             #   DistroVer: 'Debian9.0'
             #   AgentName: 'blobfuse-debian9'
@@ -231,7 +320,7 @@ stages:
       
       # Debian builds end here
       # RHEL 7.x builds begin here
-      - job: Set_3
+      - job: Set_4
         strategy:
           matrix:
             RHEL-7.5:
@@ -255,10 +344,6 @@ stages:
         
         steps:
           - checkout: none
-          # - script: |
-          #     sudo touch /etc/yum.repos.d/centos.repo
-          #     sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
-          #   displayName: "Update OS mirrors"
           
           # installing dependencies for building & packaging blobfuse
           - script: |
@@ -337,7 +422,7 @@ stages:
             displayName: 'Publish Artifacts'
       # RHEL 7.x builds end here
       # Centos 7.x builds begin here
-      - job: Set_4
+      - job: Set_5
         strategy:
           matrix:
             CentOS-7.0:
@@ -436,7 +521,7 @@ stages:
       
       # Centos 7.x builds end here
       # RHEL builds begin here
-      - job: Set_5
+      - job: Set_6
         strategy:
           matrix:
             RHEL-8.1:
@@ -525,7 +610,8 @@ stages:
             inputs:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts'
-      - job: Set_6
+
+      - job: Set_7
         strategy:
           matrix:
             CentOS-8.0:
@@ -611,7 +697,8 @@ stages:
             inputs:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts'
-      - job: Set_7
+
+      - job: Set_8
         strategy:
           matrix:
             Oracle-8.1:
@@ -698,7 +785,8 @@ stages:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts'
       # RHEL builds end here.
-      - job: Set_8
+
+      - job: Set_9
         strategy:
           matrix:
             SUSE-15G2:
@@ -799,7 +887,7 @@ stages:
 
       # SUSE builds end here
       # CBL Mariner 1 builds begin here
-      - job: Set_9
+      - job: Set_10
         strategy:
           matrix:
             Mariner:
