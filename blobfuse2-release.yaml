@@ -263,7 +263,7 @@ stages:
           # installing dependencies for building & packaging blobfuse
           - script: |
               sudo yum install git gcc-c++ patch readline readline-devel zlib zlib-devel libffi-devel \
-               openssl-devel make bzip2 autoconf automake libtool bison sqlite-devel rpm-build -y --skip-broken
+               openssl-devel make bzip2 libyaml-devel autoconf automake libtool bison sqlite-devel rpm-build -y --skip-broken
               sudo yum install fuse3-devel -y
               curl -sSL https://rvm.io/mpapis.asc | gpg2 --import -
               curl -sSL https://rvm.io/pkuczynski.asc | gpg2 --import -
@@ -272,7 +272,6 @@ stages:
               rvm reload
               rvm install 2.5.8
               rvm use 2.5.8 --default
-              sudo cat /home/cloudtest/.rvm/log/1655925364_ruby-2.5.8/package_install_ruby_zlib-devel_openssl-devel.log
             displayName: 'Installing dependencies'
           
           # clearing out remnants from past builds
