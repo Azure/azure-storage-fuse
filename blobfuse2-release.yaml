@@ -719,7 +719,7 @@ stages:
           - checkout: none
           
           - script: |
-              sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse3 
+              sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse3 rpm-build
               wget https://rpmfind.net/linux/opensuse/distribution/leap/15.2/repo/oss/x86_64/fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm
               sudo zypper -n --no-gpg-checks install fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm  
               curl -sSL https://rvm.io/mpapis.asc | gpg2 --import -
@@ -780,7 +780,6 @@ stages:
             displayName: 'Accumulate pkg files'
           
           - script: |
-              sudo zypper in -n rpm-build
               sudo gem install fpm -v 1.14.1
               export PATH=$PATH:/usr/lib64/ruby/gems/2.5.0/gems/fpm-1.14.1/bin
               fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
