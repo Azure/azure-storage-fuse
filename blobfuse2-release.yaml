@@ -827,7 +827,8 @@ stages:
               sudo yum install git build-essential gcc patch readline readline-devel zlib zlib-devel libffi-devel \
                openssl-devel make bzip2 autoconf automake libtool bison sqlite-devel -y
               sudo yum install fuse fuse-devel -y
-              sudo yum install ruby-devel -y
+              sudo tdnf repolist
+              sudo tdnf install -y ruby-devel
               curl -sSL https://rvm.io/mpapis.asc | gpg --import -
               curl -sSL https://rvm.io/pkuczynski.asc | gpg --import -
               curl -L get.rvm.io | bash -s stable
