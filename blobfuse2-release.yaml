@@ -265,15 +265,14 @@ stages:
               sudo yum install git gcc-c++ patch readline readline-devel zlib zlib-devel libffi-devel \
                openssl-devel make bzip2 libyaml-devel autoconf automake libtool bison sqlite-devel rpm-build -y --skip-broken
               sudo yum install fuse3-devel -y
-              sudo yum downgrade libselinux libsepol
+              sudo yum install ruby-devel -y
               curl -sSL https://rvm.io/mpapis.asc | gpg2 --import -
               curl -sSL https://rvm.io/pkuczynski.asc | gpg2 --import -
               curl -L get.rvm.io | bash -s stable
               source ~/.rvm/scripts/rvm
               rvm reload
-              rvm install 2.5.8
-              rvm use 2.5.8 --default
-              sudo cat /home/cloudtest/.rvm/log/*_ruby-2.5.8/package_install_ruby_zlib-devel_openssl-devel.log
+              rvm reinstall 2.5
+              rvm use 2.5. --default
             displayName: 'Installing dependencies'
           
           # clearing out remnants from past builds
