@@ -181,6 +181,7 @@ func (suite *streamTestSuite) TestStreamOnlyTruncateFile() {
 	suite.assert.Equal(suite.stream.StreamOnly, true)
 }
 
+// ============================================================================ read tests ====================================================
 // test small file caching
 func (suite *streamTestSuite) TestCacheSmallFileOnOpen() {
 	defer suite.cleanupTest()
@@ -565,6 +566,64 @@ func (suite *streamTestSuite) TestCreateFile() {
 	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
 	suite.stream.CreateFile(createFileoptions)
 	assertHandleNotStreamOnly(suite, handle1)
+}
+
+func (suite *streamTestSuite) TestTruncateFile() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	// set handle limit to 1
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 32\n  handle-limit: 1\n"
+	suite.setupTestHelper(config, false)
+
+	handle1 := &handlemap.Handle{Size: 1, Path: fileNames[0]}
+	truncateFileOptions := internal.TruncateFileOptions{Name: handle1.Path}
+
+	suite.mock.EXPECT().TruncateFile(truncateFileOptions).Return(nil)
+	suite.stream.TruncateFile(truncateFileOptions)
+	suite.assert.Equal(suite.stream.StreamOnly, false)
+}
+
+func (suite *streamTestSuite) TestRenameFile() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	// set handle limit to 1
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 32\n  handle-limit: 1\n"
+	suite.setupTestHelper(config, false)
+
+	handle1 := &handlemap.Handle{Size: 0, Path: fileNames[0]}
+	renameFileOptions := internal.RenameFileOptions{Src: handle1.Path, Dst: handle1.Path + "new"}
+
+	suite.mock.EXPECT().RenameFile(renameFileOptions).Return(nil)
+	suite.stream.RenameFile(renameFileOptions)
+	suite.assert.Equal(suite.stream.StreamOnly, false)
+}
+
+func (suite *streamTestSuite) TestRenameDirectory() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	// set handle limit to 1
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 32\n  handle-limit: 1\n"
+	suite.setupTestHelper(config, false)
+
+	renameDirOptions := internal.RenameDirOptions{Src: "/test/path", Dst: "/test/path_new"}
+
+	suite.mock.EXPECT().RenameDir(renameDirOptions).Return(nil)
+	suite.stream.RenameDir(renameDirOptions)
+	suite.assert.Equal(suite.stream.StreamOnly, false)
+}
+
+func (suite *streamTestSuite) TestDeleteDirectory() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	// set handle limit to 1
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 32\n  handle-limit: 1\n"
+	suite.setupTestHelper(config, false)
+
+	deleteDirOptions := internal.DeleteDirOptions{Name: "/test/path"}
+
+	suite.mock.EXPECT().DeleteDir(deleteDirOptions).Return(nil)
+	suite.stream.DeleteDir(deleteDirOptions)
+	suite.assert.Equal(suite.stream.StreamOnly, false)
 }
 
 // func (suite *streamTestSuite) TestFlushFile() {
