@@ -187,7 +187,8 @@ stages:
             workingDirectory: $(root_dir)/blobfuse2-temp
 
           - script: |
-              sudo dpkg -i *.deb
+              sudo dpkg --info blobfuse2*.deb
+              sudo apt-get install blobfuse2*.deb
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
 
