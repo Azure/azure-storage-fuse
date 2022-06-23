@@ -40,18 +40,18 @@ stages:
         strategy:
           matrix:
             Ubuntu-18:
-              container_image: 'ubuntu-18.04'
+              vmImage: 'ubuntu-18.04'
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
               container: 'test-cnt-ubn-18'
             Ubuntu-20:
-              container_image: 'ubuntu-20.04'
+              vmImage: 'ubuntu-20.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
               container: 'test-cnt-ubn-20'
         
         pool:
-          vmImage: $(container_image)
+          vmImage: $(vmImage)
 
         variables:
           - group: NightlyBlobFuse
@@ -64,7 +64,7 @@ stages:
           - checkout: none
           - script: |
               git clone https://github.com/Azure/azure-storage-fuse
-            displayName: 'Checkout Code & List commits'
+            displayName: 'Checkout Code'
             workingDirectory: $(root_dir)
           
           # list commits from past 12hrs
@@ -126,10 +126,68 @@ stages:
             workingDirectory: $(root_dir)
             displayName: 'Make rpm Package'
           
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: 'blobfuse2-temp'
+            displayName: 'Publish Artifacts' 
+  # BuildArtifacts end here
+
+  - stage: TestArtifacts
+    dependsOn: BuildArtifacts
+    condition: succeeded('BuildArtifacts')
+    jobs:
+      - job: Set_1
+        strategy:
+          matrix:
+            Ubuntu-18:
+              vmImage: 'ubuntu-18.04'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
+              container: 'test-cnt-ubn-18'
+            Ubuntu-20:
+              vmImage: 'ubuntu-20.04'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              container: 'test-cnt-ubn-20'
+        
+        pool:
+          vmImage: $(vmImage)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
+          - name: work_dir
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+        
+        steps:
+          - checkout: none
+
+          - task: GoTool@0
+            inputs:
+              version: '1.16.2'
+            displayName: "GoTool Setup"
+
+          - script: |
+              git clone https://github.com/Azure/azure-storage-fuse
+            displayName: 'Checkout Code'
+            workingDirectory: $(root_dir)
+
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Build Artifacts'
+            inputs:
+              artifactName: 'blobfuse2-temp'
+              downloadPath: $(root_dir)
+              itemPattern: ./blobfuse2*-$(tags)-*.deb
+
+          - script: |
+              for f in blobfuse2*fuse2*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
+            displayName: 'Rename Package'
+            workingDirectory: $(root_dir)
+
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
             inputs:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts' 
-  # Build Artifacts end here
-  # - stage: TestArtifacts
