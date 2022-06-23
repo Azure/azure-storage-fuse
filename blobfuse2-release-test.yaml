@@ -228,7 +228,24 @@ stages:
             displayName: 'Print Blob Config File'
 
           - script: |
-              blobfuse2 gen-test-config --config-file=$(root_dir)/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=~/fusetmpcache --output-file=$(root_dir)/adls_config.yaml
+              blobfuse2 mount $(root_dir)/fusetmp --config-file= $(root_dir)/blob_config.yaml
+            workingDirectory: $(root_dir)
+            displayName: 'Mount Blob'
+
+          - script: |
+              df
+              echo "-------------------------------------------------------------------"
+              df | grep blobfuse2
+              exit $?
+            displayName: 'Verify Mount'
+
+          - script: |
+              blobfuse2 unmount $(root_dir)/fusetmp
+            workingDirectory: $(root_dir)
+            displayName: 'Unmount Blob'
+
+          - script: |
+              blobfuse2 gen-test-config --config-file=$(root_dir)/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=$(root_dir)/fusetmpcache --output-file=$(root_dir)/adls_config.yaml
             displayName: 'Create ADLS Config File'
             workingDirectory: $(root_dir)
             env:
