@@ -207,14 +207,14 @@ stages:
             workingDirectory: $(root_dir)
 
           - script: |
-              blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=${{ parameters.container }} --temp-path=~/fusetmpcache --output-file=blob_config.yaml
+              blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(container) --temp-path=~/fusetmpcache --output-file=blob_config.yaml
             displayName: 'Create Blob Config File'
             workingDirectory: $(root_dir)
             env:
-              NIGHTLY_STO_ACC_NAME: ${{ parameters.blob_account_name }}
-              NIGHTLY_STO_ACC_KEY: ${{ parameters.blob_account_key }}
+              NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
               ACCOUNT_TYPE: 'block'
-              ACCOUNT_ENDPOINT: 'https://${{ parameters.blob_account_name }}.blob.core.windows.net'
+              ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
             continueOnError: false
 
           - script: |
@@ -223,14 +223,14 @@ stages:
             displayName: 'Print Blob Config File'
 
           - script: |
-              blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=${{ parameters.container }} --temp-path=~/fusetmpcache --output-file=adls_config.yaml
+              blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(container) --temp-path=~/fusetmpcache --output-file=adls_config.yaml
             displayName: 'Create ADLS Config File'
             workingDirectory: $(root_dir)
             env:
-              NIGHTLY_STO_ACC_NAME: ${{ parameters.adls_account_name }}
-              NIGHTLY_STO_ACC_KEY: ${{ parameters.adls_account_key }}
+              NIGHTLY_STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
+              NIGHTLY_STO_ACC_KEY: $(AZTEST_ADLS_KEY)
               ACCOUNT_TYPE: 'adls'
-              ACCOUNT_ENDPOINT: 'https://${{ parameters.adls_account_name }}.dfs.core.windows.net'
+              ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
             continueOnError: false
 
           - script: |
