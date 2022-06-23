@@ -212,7 +212,7 @@ stages:
             workingDirectory: $(root_dir)
 
           - script: |
-              blobfuse2 gen-test-config --config-file=$(root_dir)/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=~/fusetmpcache --output-file=$(root_dir)/blob_config.yaml
+              blobfuse2 gen-test-config --config-file=$(root_dir)/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=$(root_dir)/fusetmpcache --output-file=$(root_dir)/blob_config.yaml
             displayName: 'Create Blob Config File'
             workingDirectory: $(root_dir)
             env:
