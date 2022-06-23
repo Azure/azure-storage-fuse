@@ -132,4 +132,4 @@ stages:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts' 
   # Build Artifacts end here
-  - stage: TestArtifacts
+  # - stage: TestArtifacts
