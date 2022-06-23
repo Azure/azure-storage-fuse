@@ -195,7 +195,48 @@ stages:
           - script: |
               blobfuse2 version
             displayName: 'Check Version'
-            workingDirectory: $(Build.ArtifactStagingDirectory)
+
+          - script: |
+              blobfuse2 --help
+            displayName: 'Check Help'
+
+          - script: |
+              mkdir fusetmp
+              mkdir fusetmpcache
+            displayName: 'Prepare Blobfuse Directories'
+            workingDirectory: $(root_dir)
+
+          - script: |
+              blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=${{ parameters.container }} --temp-path=~/fusetmpcache --output-file=blob_config.yaml
+            displayName: 'Create Blob Config File'
+            workingDirectory: $(root_dir)
+            env:
+              NIGHTLY_STO_ACC_NAME: ${{ parameters.blob_account_name }}
+              NIGHTLY_STO_ACC_KEY: ${{ parameters.blob_account_key }}
+              ACCOUNT_TYPE: 'block'
+              ACCOUNT_ENDPOINT: 'https://${{ parameters.blob_account_name }}.blob.core.windows.net'
+            continueOnError: false
+
+          - script: |
+              cat blob_config.yaml
+            workingDirectory: $(root_dir)
+            displayName: 'Print Blob Config File'
+
+          - script: |
+              blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=${{ parameters.container }} --temp-path=~/fusetmpcache --output-file=adls_config.yaml
+            displayName: 'Create ADLS Config File'
+            workingDirectory: $(root_dir)
+            env:
+              NIGHTLY_STO_ACC_NAME: ${{ parameters.adls_account_name }}
+              NIGHTLY_STO_ACC_KEY: ${{ parameters.adls_account_key }}
+              ACCOUNT_TYPE: 'adls'
+              ACCOUNT_ENDPOINT: 'https://${{ parameters.adls_account_name }}.dfs.core.windows.net'
+            continueOnError: false
+
+          - script: |
+              cat adls_config.yaml
+            workingDirectory: $(root_dir)
+            displayName: 'Print ADLS Config File'
 
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
