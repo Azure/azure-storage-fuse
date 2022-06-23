@@ -173,6 +173,11 @@ stages:
             displayName: 'Checkout Code'
             workingDirectory: $(root_dir)
 
+          - script: |
+              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+            displayName: 'Checkout Branch'
+            workingDirectory: $(root_dir)/azure-storage-fuse
+
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Build Artifacts'
             inputs:
