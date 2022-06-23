@@ -181,10 +181,20 @@ stages:
               itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.deb
 
           - script: |
-              for f in ./blobfuse2-temp/blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
-              cp ./blobfuse2-temp/blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
+              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
-            workingDirectory: $(root_dir)
+            workingDirectory: $(root_dir)/blobfuse2-temp
+
+          - script: |
+              sudo dpkg -i *.deb
+            displayName: 'Install Package'
+            workingDirectory: $(Build.ArtifactStagingDirectory)
+
+          - script: |
+              blobfuse2 version
+            displayName: 'Check Version'
+            workingDirectory: $(Build.ArtifactStagingDirectory)
 
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
