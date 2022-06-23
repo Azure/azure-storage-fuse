@@ -228,7 +228,7 @@ stages:
             displayName: 'Print Blob Config File'
 
           - script: |
-              blobfuse2 mount $(root_dir)/fusetmp --config-file= $(root_dir)/blob_config.yaml
+              blobfuse2 mount $(root_dir)/fusetmp --config-file=$(root_dir)/blob_config.yaml
             workingDirectory: $(root_dir)
             displayName: 'Mount Blob'
 
