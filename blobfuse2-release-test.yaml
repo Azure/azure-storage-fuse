@@ -178,6 +178,7 @@ stages:
             inputs:
               artifactName: 'blobfuse2-temp'
               downloadPath: $(root_dir)
+              itemPattern: blobfuse2-temp/blobfuse2*fuse2*.deb
 
           - script: |
               for f in blobfuse2*fuse2*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
