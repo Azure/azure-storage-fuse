@@ -181,7 +181,7 @@ stages:
               itemPattern: blobfuse2-temp/blobfuse2*fuse2*.deb
 
           - script: |
-              for f in blobfuse2*fuse2*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              for f in ./blobfuse2*fuse2*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
               cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)
