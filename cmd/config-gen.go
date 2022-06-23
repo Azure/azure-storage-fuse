@@ -65,7 +65,7 @@ var generateTestConfig = &cobra.Command{
 		var templateConfig []byte
 		var err error
 		if strings.Contains(opts.configFilePath, templatesDir) {
-			templateConfig, err = ioutil.ReadFile(templatesDir + opts.configFilePath)
+			templateConfig, err = ioutil.ReadFile(opts.configFilePath)
 		} else {
 			templateConfig, err = ioutil.ReadFile(templatesDir + opts.configFilePath)
 		}
