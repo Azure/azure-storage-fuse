@@ -916,7 +916,7 @@ stages:
                openssl-devel make bzip2 autoconf automake libtool bison sqlite-devel -y
               sudo yum install fuse fuse-devel -y
               sudo tdnf repolist
-              sudo tdnf install -y ruby ruby-devel
+              sudo tdnf install -y ruby ruby-devel rpm-build
               curl -sSL https://rvm.io/mpapis.asc | gpg --import -
               curl -sSL https://rvm.io/pkuczynski.asc | gpg --import -
               curl -L get.rvm.io | bash -s stable
@@ -926,7 +926,7 @@ stages:
               wget https://rubygems.org/rubygems/rubygems-1.5.0.tgz
               tar -zxvf rubygems-1.5.0.tgz
               cd rubygems-1.5.0
-              ruby setup.rb
+              sudo ruby setup.rb
               sudo gem install fpm -v 1.14.1
               export PATH=$PATH:/usr/lib64/ruby/gems/2.6.0/gems/fpm-1.14.1/bin
 
