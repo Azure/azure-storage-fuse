@@ -43,10 +43,12 @@ stages:
               container_image: 'ubuntu-18.04'
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
+              container: 'test-cnt-ubn-18'
             Ubuntu-20:
               container_image: 'ubuntu-20.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
+              container: 'test-cnt-ubn-20'
         
         pool:
           vmImage: $(container_image)
@@ -86,6 +88,7 @@ stages:
               root_dir: $(root_dir)
               unit_test: ${{ parameters.unit_test }}
               tags: $(tags)
+              container: $(container)
 
           # place the generated binary files & any additional files in appropriate locations
           - script: |

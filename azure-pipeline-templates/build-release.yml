@@ -9,6 +9,8 @@ parameters:
   - name: tags
     type: string
     default: "null"
+  - name: container
+    type: string
 
 steps:
   # Installing Go tool
