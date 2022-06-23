@@ -245,6 +245,18 @@ stages:
             displayName: 'Unmount Blob'
 
           - script: |
+              tail -n 200 blobfuse2-logs.txt
+            displayName: 'View Logs'
+            workingDirectory: $(root_dir)
+            condition: always()
+
+          - script: |
+              > blobfuse2-logs.txt
+            displayName: 'Clear Logs'
+            workingDirectory: $(root_dir)
+            condition: always()
+
+          - script: |
               blobfuse2 gen-test-config --config-file=$(root_dir)/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=$(root_dir)/fusetmpcache --output-file=$(root_dir)/adls_config.yaml
             displayName: 'Create ADLS Config File'
             workingDirectory: $(root_dir)
