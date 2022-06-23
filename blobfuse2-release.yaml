@@ -971,7 +971,7 @@ stages:
           
           # using fpm tool to generate package along with post-install scripts
           - script: |
-              wget https://rubygems.org/rubygems/rubygems-3.3.16.tgz
+              wget https://rubygems.org/rubygems/rubygems--1.5.0.tgz
               tar -zxvf rubygems-1.5.0.tgz
               cd rubygems-1.5.0
               ruby setup.rb
