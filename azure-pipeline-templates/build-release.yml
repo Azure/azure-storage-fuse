@@ -71,7 +71,7 @@ steps:
           cat $cnfFile
         displayName: "Create AzureTest Config"
         continueOnError: false
-        workingDirectory: ${{ parameters.working_directory }}
+        workingDirectory: ${{ parameters.work_dir }}
 
       - task: Go@0
         inputs:
