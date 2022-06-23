@@ -927,9 +927,8 @@ stages:
               tar -zxvf rubygems-1.5.0.tgz
               cd rubygems-1.5.0
               sudo ruby setup.rb
-              sudo gem install fpm -v 1.14.1
-              export PATH=$PATH:/usr/lib64/ruby/gems/2.6.0/gems/fpm-1.14.1/bin
               gem update --system
+              sudo gem install fpm -v 1.14.1
             displayName: 'Installing dependencies'
           
           # clearing out remnants from past builds
