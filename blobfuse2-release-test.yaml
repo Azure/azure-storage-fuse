@@ -205,7 +205,7 @@ stages:
           - script: |
               sudo dpkg --info blobfuse2*.deb
               sudo dpkg -i blobfuse2*.deb
-              sudo apt-get install $(fuse-version) -y
+              sudo apt-get install $(fuse-version) build-essential -y
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
 
