@@ -232,7 +232,6 @@ stages:
               NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
               ACCOUNT_TYPE: 'block'
               ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-              VERBOSE_LOG: true
             continueOnError: false
 
           - script: |
@@ -260,7 +259,7 @@ stages:
           - task: Go@0
             inputs:
               command: 'test'
-              arguments: '-v -timeout=2h ./... -args -mnt-path=$(mount_dir) -adls=false -clone=true -tmp-path=$(temp_dir) -quick-test=true -distro-name="$(vmImage)"'
+              arguments: '-v -timeout=2h ./... -args -mnt-path=$(mount_dir) -adls=false -clone=true -tmp-path=$(temp_dir) -quick-test=false -distro-name="$(vmImage)"'
               workingDirectory: $(work_dir)/test/e2e_tests
             displayName: 'E2E Test: Block Blob'
             timeoutInMinutes: 120
@@ -272,18 +271,6 @@ stages:
             displayName: 'Unmount Blob'
 
           - script: |
-              cat blobfuse2-logs.txt
-            displayName: 'View Logs'
-            workingDirectory: $(root_dir)
-            condition: always()
-
-          - script: |
-              > blobfuse2-logs.txt
-            displayName: 'Clear Logs'
-            workingDirectory: $(root_dir)
-            condition: always()
-
-          - script: |
               blobfuse2 gen-test-config --config-file=$(root_dir)/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=$(root_dir)/fusetmpcache --output-file=$(root_dir)/adls_config.yaml
             displayName: 'Create ADLS Config File'
             workingDirectory: $(root_dir)
@@ -291,14 +278,44 @@ stages:
               NIGHTLY_STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
               NIGHTLY_STO_ACC_KEY: $(AZTEST_ADLS_KEY)
               ACCOUNT_TYPE: 'adls'
-              ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'              
-              VERBOSE_LOG: true
+              ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
             continueOnError: false
 
           - script: |
               cat adls_config.yaml
             workingDirectory: $(root_dir)
             displayName: 'Print ADLS Config File'
+            
+            - script: |
+              blobfuse2 mount $(mount_dir) --config-file=$(root_dir)/adls_config.yaml
+            workingDirectory: $(root_dir)
+            displayName: 'Mount ADLS'
+            
+            # Wait for some time to let the container come up
+          - script: |
+              sleep 10s
+            displayName: 'Waiting for Mount'
+
+          - script: |
+              df
+              echo "-------------------------------------------------------------------"
+              df | grep blobfuse2
+              exit $?
+            displayName: 'Verify Mount'
+
+          - task: Go@0
+            inputs:
+              command: 'test'
+              arguments: '-v -timeout=2h ./... -args -mnt-path=$(mount_dir) -adls=true -clone=true -tmp-path=$(temp_dir) -quick-test=false -distro-name="$(vmImage)"'
+              workingDirectory: $(work_dir)/test/e2e_tests
+            displayName: 'E2E Test: ADLS'
+            timeoutInMinutes: 120
+            continueOnError: false
+
+          - script: |
+              blobfuse2 unmount $(mount_dir)
+            workingDirectory: $(root_dir)
+            displayName: 'Unmount ADLS'
 
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
