@@ -198,8 +198,9 @@ stages:
               itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.deb
 
           - script: |
-              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
-              cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
+              cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
+              # for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              # cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-temp
 
