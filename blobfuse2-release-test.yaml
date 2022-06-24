@@ -220,6 +220,7 @@ stages:
               NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
               ACCOUNT_TYPE: 'block'
               ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+              VERBOSE_LOG: true
             continueOnError: false
 
           - script: |
@@ -264,7 +265,8 @@ stages:
               NIGHTLY_STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
               NIGHTLY_STO_ACC_KEY: $(AZTEST_ADLS_KEY)
               ACCOUNT_TYPE: 'adls'
-              ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+              ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'              
+              VERBOSE_LOG: true
             continueOnError: false
 
           - script: |
