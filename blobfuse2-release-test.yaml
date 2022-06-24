@@ -142,10 +142,12 @@ stages:
             Ubuntu-18:
               vmImage: 'ubuntu-18.04'
               fuselib: 'libfuse-dev'
+              fuse-version: 'fuse'
               tags: 'fuse2'
               container: 'test-cnt-ubn-18'
             Ubuntu-20:
               vmImage: 'ubuntu-20.04'
+              fuse-version: 'fuse3'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
               container: 'test-cnt-ubn-20'
@@ -162,6 +164,11 @@ stages:
         
         steps:
           - checkout: none
+
+          - script: |
+              sudo apt-get install $(fuse-version)
+            displayName: 'Install Dependencies'
+            workingDirectory: $(root_dir)
 
           - task: GoTool@0
             inputs:
