@@ -166,7 +166,7 @@ stages:
           - checkout: none
 
           - script: |
-              sudo apt-get install $(fuse-version)
+              sudo apt-get install $(fuselib)
             displayName: 'Install Dependencies'
             workingDirectory: $(root_dir)
 
@@ -213,8 +213,6 @@ stages:
             displayName: 'Check Help'
 
           - script: |
-              sudo chown -R `whoami` $(root_dir)
-              chmod 777 $(root_dir)
               mkdir fusetmp
               mkdir fusetmpcache
             displayName: 'Prepare Blobfuse Directories'
