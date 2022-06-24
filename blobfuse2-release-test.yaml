@@ -286,7 +286,7 @@ stages:
             workingDirectory: $(root_dir)
             displayName: 'Print ADLS Config File'
             
-            - script: |
+          - script: |
               blobfuse2 mount $(mount_dir) --config-file=$(root_dir)/adls_config.yaml
             workingDirectory: $(root_dir)
             displayName: 'Mount ADLS'
