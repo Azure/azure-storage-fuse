@@ -235,6 +235,18 @@ stages:
             displayName: 'Print Blob Config File'
 
           - script: |
+              cat blobfuse2-logs.txt
+            displayName: 'View Logs'
+            workingDirectory: $(root_dir)
+            condition: always()
+
+          - script: |
+              > blobfuse2-logs.txt
+            displayName: 'Clear Logs'
+            workingDirectory: $(root_dir)
+            condition: always()
+
+          - script: |
               blobfuse2 mount $(root_dir)/fusetmp --config-file=$(root_dir)/blob_config.yaml
             workingDirectory: $(root_dir)
             displayName: 'Mount Blob'
