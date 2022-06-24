@@ -240,12 +240,12 @@ stages:
             workingDirectory: $(root_dir)
             displayName: 'Mount Blob'
 
-          - script: |
-              df
-              echo "-------------------------------------------------------------------"
-              df | grep blobfuse2
-              exit $?
-            displayName: 'Verify Mount'
+          # - script: |
+          #     df
+          #     echo "-------------------------------------------------------------------"
+          #     df | grep blobfuse2
+          #     exit $?
+          #   displayName: 'Verify Mount'
 
           - script: |
               blobfuse2 unmount $(root_dir)/fusetmp
