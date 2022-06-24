@@ -165,6 +165,11 @@ stages:
             value: '$(System.DefaultWorkingDirectory)'
           - name: work_dir
             value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          - name: mount_dir
+            value: '$(System.DefaultWorkingDirectory)'/fusetmp
+          - name: temp_dir
+            value: '$(System.DefaultWorkingDirectory)'/fusetmpcache
+
         
         steps:
           - checkout: none
@@ -213,13 +218,13 @@ stages:
             displayName: 'Check Help'
 
           - script: |
-              mkdir fusetmp
-              mkdir fusetmpcache
+              mkdir -p $(mount_dir)
+              mkdir -p $(temp_dir)
             displayName: 'Prepare Blobfuse Directories'
             workingDirectory: $(root_dir)
 
           - script: |
-              blobfuse2 gen-test-config --config-file=$(root_dir)/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=$(root_dir)/fusetmpcache --output-file=$(root_dir)/blob_config.yaml
+              blobfuse2 gen-test-config --config-file=$(root_dir)/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=$(temp_dir) --output-file=$(root_dir)/block_blob_config.yaml
             displayName: 'Create Blob Config File'
             workingDirectory: $(root_dir)
             env:
@@ -233,12 +238,12 @@ stages:
           - script: |
               cat blob_config.yaml
             workingDirectory: $(root_dir)
-            displayName: 'Print Blob Config File'
+            displayName: 'Print Block Blob Config File'
 
           - script: |
-              blobfuse2 mount $(root_dir)/fusetmp --config-file=$(root_dir)/blob_config.yaml
+              blobfuse2 mount $(mount_dir) --config-file=$(root_dir)/block_blob_config.yaml
             workingDirectory: $(root_dir)
-            displayName: 'Mount Blob'
+            displayName: 'Mount Block Blob'
             
             # Wait for some time to let the container come up
           - script: |
@@ -251,6 +256,15 @@ stages:
               df | grep blobfuse2
               exit $?
             displayName: 'Verify Mount'
+
+          - task: Go@0
+            inputs:
+              command: 'test'
+              arguments: '-v -timeout=2h ./... -args -mnt-path=$(mount_dir) -adls=false -clone=true -tmp-path=$(temp_dir) -quick-test=true -distro-name="$(vmImage)"'
+              workingDirectory: ${{ parameters.working_dir }}/test/e2e_tests
+            displayName: 'E2E Test: Block Blob'
+            timeoutInMinutes: 120
+            continueOnError: false
 
           - script: |
               blobfuse2 unmount $(root_dir)/fusetmp
