@@ -140,12 +140,14 @@ stages:
         strategy:
           matrix:
             Ubuntu-18:
+              agentName: "blobfuse-ubuntu18"
               vmImage: 'ubuntu-18.04'
               fuselib: 'libfuse-dev'
               fuse-version: 'fuse'
               tags: 'fuse2'
               container: 'test-cnt-ubn-18'
             Ubuntu-20:
+              agentName: "blobfuse-ubuntu20"
               vmImage: 'ubuntu-20.04'
               fuse-version: 'fuse3'
               fuselib: 'libfuse3-dev'
@@ -153,7 +155,9 @@ stages:
               container: 'test-cnt-ubn-20'
         
         pool:
-          vmImage: $(vmImage)
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(agentName)
 
         variables:
           - group: NightlyBlobFuse
