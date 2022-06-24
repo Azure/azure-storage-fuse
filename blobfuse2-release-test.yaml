@@ -141,14 +141,14 @@ stages:
           matrix:
             Ubuntu-18:
               agentName: "blobfuse-ubuntu18"
-              vmImage: 'ubuntu-18.04'
+              vmImage: 'Ubuntu-18.04'
               fuselib: 'libfuse-dev'
               fuse-version: 'fuse'
               tags: 'fuse2'
               container: 'test-cnt-ubn-18'
             Ubuntu-20:
               agentName: "blobfuse-ubuntu20"
-              vmImage: 'ubuntu-20.04'
+              vmImage: 'Ubuntu-20.04'
               fuse-version: 'fuse3'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
@@ -209,113 +209,13 @@ stages:
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
 
-          - script: |
-              blobfuse2 version
-            displayName: 'Check Version'
-
-          - script: |
-              blobfuse2 --help
-            displayName: 'Check Help'
-
-          - script: |
-              mkdir -p $(mount_dir)
-              mkdir -p $(temp_dir)
-            displayName: 'Prepare Blobfuse Directories'
-            workingDirectory: $(root_dir)
-
-          - script: |
-              blobfuse2 gen-test-config --config-file=$(root_dir)/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=$(temp_dir) --output-file=$(root_dir)/block_blob_config.yaml
-            displayName: 'Create Blob Config File'
-            workingDirectory: $(root_dir)
-            env:
-              NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-              NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-              ACCOUNT_TYPE: 'block'
-              ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-            continueOnError: false
-
-          - script: |
-              cat block_blob_config.yaml
-            workingDirectory: $(root_dir)
-            displayName: 'Print Block Blob Config File'
-
-          - script: |
-              blobfuse2 mount $(mount_dir) --config-file=$(root_dir)/block_blob_config.yaml
-            workingDirectory: $(root_dir)
-            displayName: 'Mount Block Blob'
-            
-            # Wait for some time to let the container come up
-          - script: |
-              sleep 10s
-            displayName: 'Waiting for Mount'
-
-          - script: |
-              df
-              echo "-------------------------------------------------------------------"
-              df | grep blobfuse2
-              exit $?
-            displayName: 'Verify Mount'
-
-          - task: Go@0
-            inputs:
-              command: 'test'
-              arguments: '-v -timeout=2h ./... -args -mnt-path=$(mount_dir) -adls=false -clone=true -tmp-path=$(temp_dir) -quick-test=false -distro-name="$(vmImage)"'
-              workingDirectory: $(work_dir)/test/e2e_tests
-            displayName: 'E2E Test: Block Blob'
-            timeoutInMinutes: 120
-            continueOnError: false
-
-          - script: |
-              blobfuse2 unmount $(mount_dir)
-            workingDirectory: $(root_dir)
-            displayName: 'Unmount Blob'
-
-          - script: |
-              blobfuse2 gen-test-config --config-file=$(root_dir)/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=$(container) --temp-path=$(root_dir)/fusetmpcache --output-file=$(root_dir)/adls_config.yaml
-            displayName: 'Create ADLS Config File'
-            workingDirectory: $(root_dir)
-            env:
-              NIGHTLY_STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
-              NIGHTLY_STO_ACC_KEY: $(AZTEST_ADLS_KEY)
-              ACCOUNT_TYPE: 'adls'
-              ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
-            continueOnError: false
-
-          - script: |
-              cat adls_config.yaml
-            workingDirectory: $(root_dir)
-            displayName: 'Print ADLS Config File'
-            
-          - script: |
-              blobfuse2 mount $(mount_dir) --config-file=$(root_dir)/adls_config.yaml
-            workingDirectory: $(root_dir)
-            displayName: 'Mount ADLS'
-            
-            # Wait for some time to let the container come up
-          - script: |
-              sleep 10s
-            displayName: 'Waiting for Mount'
-
-          - script: |
-              df
-              echo "-------------------------------------------------------------------"
-              df | grep blobfuse2
-              exit $?
-            displayName: 'Verify Mount'
-
-          - task: Go@0
-            inputs:
-              command: 'test'
-              arguments: '-v -timeout=2h ./... -args -mnt-path=$(mount_dir) -adls=true -clone=true -tmp-path=$(temp_dir) -quick-test=false -distro-name="$(vmImage)"'
-              workingDirectory: $(work_dir)/test/e2e_tests
-            displayName: 'E2E Test: ADLS'
-            timeoutInMinutes: 120
-            continueOnError: false
-
-          - script: |
-              blobfuse2 unmount $(mount_dir)
-            workingDirectory: $(root_dir)
-            displayName: 'Unmount ADLS'
+          - template: 'release-distro-tests.yml'
+            parameters:
+              root_dir: $(root_dir)
+              work_dir: $(work_dir)
+              mount_dir: $(mount_dir)
+              temp_dir: $(temp_dir)
+              container: $(container)
 
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
