@@ -23,7 +23,6 @@ steps:
       mkdir -p ${{ parameters.mount_dir }}
       mkdir -p ${{ parameters.temp_dir }}
     displayName: 'Prepare Blobfuse Directories'
-    workingDirectory: $${{ parameters.root_dir }}
 
   - script: |
       blobfuse2 gen-test-config --config-file=$${{ parameters.root_dir }}/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=$${{ parameters.root_dir }}/block_blob_config.yaml
