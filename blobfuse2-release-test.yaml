@@ -236,7 +236,7 @@ stages:
             continueOnError: false
 
           - script: |
-              cat blob_config.yaml
+              cat block_blob_config.yaml
             workingDirectory: $(root_dir)
             displayName: 'Print Block Blob Config File'
 
