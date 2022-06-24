@@ -166,7 +166,7 @@ stages:
           - checkout: none
 
           - script: |
-              sudo apt-get install $(fuselib)
+              sudo apt-get install $(fuselib) build-essential -y 
             displayName: 'Install Dependencies'
             workingDirectory: $(root_dir)
 
