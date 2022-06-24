@@ -213,6 +213,8 @@ stages:
             displayName: 'Check Help'
 
           - script: |
+              sudo chown -R `whoami` $(root_dir)
+              chmod 777 $(root_dir)
               mkdir fusetmp
               mkdir fusetmpcache
             displayName: 'Prepare Blobfuse Directories'
