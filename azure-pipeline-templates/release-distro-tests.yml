@@ -39,7 +39,7 @@ steps:
     displayName: 'Print Block Blob Config File'
 
   - script: |
-      blobfuse2 mount ${{ parameters.mount_dir }} --config-file=$${{ parameters.root_dir }}/block_blob_config.yaml
+      blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.root_dir }}/block_blob_config.yaml
     displayName: 'Mount Block Blob'
     
     # Wait for some time to let the container come up
@@ -68,7 +68,7 @@ steps:
     displayName: 'Unmount Blob'
 
   - script: |
-      blobfuse2 gen-test-config --config-file=${{ parameters.root_dir }}/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=$${{ parameters.temp_dir }} --output-file=${{ parameters.root_dir }}/adls_config.yaml
+      blobfuse2 gen-test-config --config-file=${{ parameters.root_dir }}/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.root_dir }}/adls_config.yaml
     displayName: 'Create ADLS Config File'
     env:
       NIGHTLY_STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
@@ -82,7 +82,7 @@ steps:
     displayName: 'Print ADLS Config File'
     
   - script: |
-      blobfuse2 mount ${{ parameters.mount_dir }} --config-file=$${{ parameters.root_dir }}/adls_config.yaml
+      blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.root_dir }}/adls_config.yaml
     displayName: 'Mount ADLS'
     
     # Wait for some time to let the container come up
