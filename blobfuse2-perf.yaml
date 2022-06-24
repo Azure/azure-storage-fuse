@@ -45,7 +45,7 @@ jobs:
 
         # Prestart cleanup
       - script: |
-          sudo fusermount -u $(MOUNT_DIR)
+          sudo fusermount3 -u $(MOUNT_DIR)
           sudo kill -9 `pidof blobfuse2`
           sudo rm -rf $(ROOT_DIR)
         displayName: 'PreBuild Cleanup'
@@ -102,7 +102,7 @@ jobs:
         continueOnError: false
 
       - script: |
-          sudo fusermount -u ${MOUNT_DIR}
+          sudo fusermount3 -u ${MOUNT_DIR}
           sudo kill -9 `pidof blobfuse2` || true
         displayName: "Unmount Blobfuse2 Binary Run"
 
@@ -131,7 +131,7 @@ jobs:
         displayName: Publish Performance Report
 
       - script: |
-          sudo fusermount -u ${MOUNT_DIR}
+          sudo fusermount3 -u ${MOUNT_DIR}
           sudo kill -9 `pidof blobfuse2` || true
         displayName: "Unmount Blobfuse2 Main Branch Run"
 
