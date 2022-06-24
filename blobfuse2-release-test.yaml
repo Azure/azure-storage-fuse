@@ -312,7 +312,7 @@ stages:
               fuselib: 'libfuse-dev'
               fuse-version: 'fuse'
               tags: 'fuse2'
-              container: 'test-cnt-deb-1-'
+              container: 'test-cnt-deb-10'
             Debian-11.0:
               agentName: "blobfuse-debian11"
               vmImage: 'Debian-11.0'
@@ -344,6 +344,11 @@ stages:
             inputs:
               version: '1.16.2'
             displayName: "GoTool Setup"
+
+          - script: |
+              sudo apt-get update -y
+              sudo apt-get install git -y
+            displayName: 'Install Git'
 
           - script: |
               git clone https://github.com/Azure/azure-storage-fuse
