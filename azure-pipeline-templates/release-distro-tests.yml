@@ -27,7 +27,6 @@ steps:
   - script: |
       blobfuse2 gen-test-config --config-file=$${{ parameters.root_dir }}/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=$${{ parameters.root_dir }}/block_blob_config.yaml
     displayName: 'Create Blob Config File'
-    workingDirectory: $${{ parameters.root_dir }}
     env:
       NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
       NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
@@ -37,12 +36,10 @@ steps:
 
   - script: |
       cat block_blob_config.yaml
-    workingDirectory: $${{ parameters.root_dir }}
     displayName: 'Print Block Blob Config File'
 
   - script: |
       blobfuse2 mount ${{ parameters.mount_dir }} --config-file=$${{ parameters.root_dir }}/block_blob_config.yaml
-    workingDirectory: $${{ parameters.root_dir }}
     displayName: 'Mount Block Blob'
     
     # Wait for some time to let the container come up
@@ -68,13 +65,11 @@ steps:
 
   - script: |
       blobfuse2 unmount ${{ parameters.mount_dir }}
-    workingDirectory: $${{ parameters.root_dir }}
     displayName: 'Unmount Blob'
 
   - script: |
-      blobfuse2 gen-test-config --config-file=$${{ parameters.root_dir }}/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=$${{ parameters.root_dir }}/fusetmpcache --output-file=$${{ parameters.root_dir }}/adls_config.yaml
+      blobfuse2 gen-test-config --config-file=$${{ parameters.root_dir }}/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=$${{ parameters.temp_dir }} --output-file=$${{ parameters.root_dir }}/adls_config.yaml
     displayName: 'Create ADLS Config File'
-    workingDirectory: $${{ parameters.root_dir }}
     env:
       NIGHTLY_STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
       NIGHTLY_STO_ACC_KEY: $(AZTEST_ADLS_KEY)
@@ -84,12 +79,10 @@ steps:
 
   - script: |
       cat adls_config.yaml
-    workingDirectory: $${{ parameters.root_dir }}
     displayName: 'Print ADLS Config File'
     
   - script: |
       blobfuse2 mount ${{ parameters.mount_dir }} --config-file=$${{ parameters.root_dir }}/adls_config.yaml
-    workingDirectory: $${{ parameters.root_dir }}
     displayName: 'Mount ADLS'
     
     # Wait for some time to let the container come up
@@ -115,5 +108,4 @@ steps:
 
   - script: |
       blobfuse2 unmount ${{ parameters.mount_dir }}
-    workingDirectory: $${{ parameters.root_dir }}
     displayName: 'Unmount ADLS'
