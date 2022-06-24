@@ -261,13 +261,13 @@ stages:
             inputs:
               command: 'test'
               arguments: '-v -timeout=2h ./... -args -mnt-path=$(mount_dir) -adls=false -clone=true -tmp-path=$(temp_dir) -quick-test=true -distro-name="$(vmImage)"'
-              workingDirectory: ${{ parameters.working_dir }}/test/e2e_tests
+              workingDirectory: $(work_dir)/test/e2e_tests
             displayName: 'E2E Test: Block Blob'
             timeoutInMinutes: 120
             continueOnError: false
 
           - script: |
-              blobfuse2 unmount $(root_dir)/fusetmp
+              blobfuse2 unmount $(mount_dir)
             workingDirectory: $(root_dir)
             displayName: 'Unmount Blob'
 
