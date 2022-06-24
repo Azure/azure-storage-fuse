@@ -246,7 +246,7 @@ stages:
             displayName: 'Unmount Blob'
 
           - script: |
-              tail -n 200 blobfuse2-logs.txt
+              cat blobfuse2-logs.txt
             displayName: 'View Logs'
             workingDirectory: $(root_dir)
             condition: always()
