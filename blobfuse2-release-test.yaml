@@ -169,12 +169,6 @@ stages:
         steps:
           - checkout: none
 
-          - script: |
-              sudo apt-get update --fix-missing
-              sudo apt-get install $(fuselib) build-essential -y 
-            displayName: 'Install Dependencies'
-            workingDirectory: $(root_dir)
-
           - task: GoTool@0
             inputs:
               version: '1.16.2'
@@ -198,9 +192,8 @@ stages:
               itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.deb
 
           - script: |
-              cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
-              # for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
-              # cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
+              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-temp
 
