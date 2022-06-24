@@ -260,6 +260,7 @@ stages:
             displayName: "GoTool Setup"
 
           - script: |
+              sudo rm -rf $(root_dir)/azure-storage-fuse
               git clone https://github.com/Azure/azure-storage-fuse
             displayName: 'Checkout Code'
             workingDirectory: $(root_dir)
@@ -351,7 +352,6 @@ stages:
             displayName: 'Install Git'
 
           - script: |
-              sudo rm -rf $(root_dir)/azure-storage-fuse
               git clone https://github.com/Azure/azure-storage-fuse
             displayName: 'Checkout Code'
             workingDirectory: $(root_dir)
