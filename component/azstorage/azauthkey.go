@@ -38,6 +38,7 @@ import (
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/azure-storage-file-go/azfile"
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
@@ -84,6 +85,28 @@ func (azkey *azAuthBfsKey) getCredential() interface{} {
 	credential := azbfs.NewSharedKeyCredential(
 		azkey.config.AccountName,
 		azkey.config.AccountKey)
+
+	return credential
+}
+
+type azAuthFileKey struct {
+	azAuthKey
+}
+
+// GetCredential : Gets shared key based storage credentials for datalake
+func (azkey *azAuthFileKey) getCredential() interface{} {
+	if azkey.config.AccountKey == "" {
+		log.Err("azAuthFileKey::getCredential : Shared key for account is empty, cannot authenticate user")
+		return nil
+	}
+
+	credential, err := azfile.NewSharedKeyCredential(
+		azkey.config.AccountName,
+		azkey.config.AccountKey)
+	if err != nil {
+		log.Err("azAuthFileKey::getCredential : Failed to create shared key credentials")
+		return nil
+	}
 
 	return credential
 }

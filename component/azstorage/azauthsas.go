@@ -39,6 +39,7 @@ import (
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/azure-storage-file-go/azfile"
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
@@ -89,4 +90,18 @@ func (azsas *azAuthBfsSAS) getCredential() interface{} {
 	}
 
 	return azbfs.NewAnonymousCredential()
+}
+
+type azAuthFileSAS struct {
+	azAuthSAS
+}
+
+// GetCredential : Gets SAS based credentials for blob
+func (azsas *azAuthFileSAS) getCredential() interface{} {
+	if azsas.config.SASKey == "" {
+		log.Err("azAuthFileSAS::getCredential : SAS key for account is empty, cannot authenticate user")
+		return nil
+	}
+
+	return azfile.NewAnonymousCredential()
 }
