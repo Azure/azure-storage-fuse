@@ -775,6 +775,7 @@ func (suite *fileCacheTestSuite) TestReadFileErrorBadFd() {
 	// Setup
 	file := "file"
 	handle := handlemap.NewHandle(file)
+	handle.Flags.Set(handlemap.HandleFlagCached)
 	data, err := suite.fileCache.ReadFile(internal.ReadFileOptions{Handle: handle})
 	suite.assert.NotNil(err)
 	suite.assert.EqualValues(syscall.EBADF, err)
@@ -836,6 +837,7 @@ func (suite *fileCacheTestSuite) TestReadInBufferErrorBadFd() {
 	// Setup
 	file := "file"
 	handle := handlemap.NewHandle(file)
+	handle.Flags.Set(handlemap.HandleFlagCached)
 	length, err := suite.fileCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: handle})
 	suite.assert.NotNil(err)
 	suite.assert.EqualValues(syscall.EBADF, err)
@@ -866,6 +868,7 @@ func (suite *fileCacheTestSuite) TestWriteFileErrorBadFd() {
 	// Setup
 	file := "file"
 	handle := handlemap.NewHandle(file)
+	handle.Flags.Set(handlemap.HandleFlagCached)
 	len, err := suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle})
 	suite.assert.NotNil(err)
 	suite.assert.EqualValues(syscall.EBADF, err)
@@ -923,6 +926,7 @@ func (suite *fileCacheTestSuite) TestFlushFileErrorBadFd() {
 	// Setup
 	file := "file"
 	handle := handlemap.NewHandle(file)
+	handle.Flags.Set(handlemap.HandleFlagCached)
 	handle.Flags.Set(handlemap.HandleFlagDirty)
 	err := suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
 	suite.assert.NotNil(err)
