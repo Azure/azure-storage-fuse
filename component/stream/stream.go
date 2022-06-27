@@ -166,6 +166,10 @@ func (st *Stream) RenameDir(options internal.RenameDirOptions) error {
 	return st.cache.RenameDirectory(options)
 }
 
+func (st *Stream) TruncateFile(options internal.TruncateFileOptions) error {
+	return st.cache.TruncateFile(options)
+}
+
 // ------------------------- Factory -------------------------------------------
 
 // Pipeline will call this method to create your object, initialize your variables here
