@@ -479,7 +479,7 @@ stages:
 
           - script: |
               sudo rpm -qi blobfuse2*.rpm
-              sudo apt-get install $(fuse-version) build-essential -y
+              sudo yum install $(fuse-version) build-essential -y
               sudo rpm -i blobfuse2*.rpm
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
