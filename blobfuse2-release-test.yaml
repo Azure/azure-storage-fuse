@@ -692,7 +692,6 @@ stages:
             SUSE-15:
               agentName: "blobfuse-suse15"
               vmImage: 'SUSE-15Gen2'
-              fuselib: 'fuse fuse3-devel'
               fuse-version: 'fuse3'
               tags: 'fuse3'
               container: "test-cnt-suse-15"
@@ -751,7 +750,7 @@ stages:
 
           - script: |
               sudo rpm -qip blobfuse2*.rpm
-              sudo zypper -n install make cmake gcc gcc-c++ fuse3 
+              sudo zypper -n install make cmake gcc gcc-c++ fuse fuse3 
               wget https://rpmfind.net/linux/opensuse/distribution/leap/15.2/repo/oss/x86_64/fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm
               sudo zypper -n --no-gpg-checks install fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm
               sudo rpm -i blobfuse2*.rpm
@@ -778,7 +777,6 @@ stages:
             Mariner:
               agentName: "blobfuse-mariner"
               vmImage: 'Mariner'
-              fuselib: 'fuse fuse-devel'
               fuse-version: 'fuse2'
               tags: 'fuse2'
               container: "test-cnt-mari-1"
@@ -837,8 +835,7 @@ stages:
 
           - script: |
               sudo rpm -qip blobfuse2*.rpm
-              sudo yum install gcc gcc-c++ make -y
-              sudo yum install fuse $(fuse-version) -y --nobest --allowerasing
+              sudo tdnf install build-essential fuse fuse-devel -y
               sudo rpm -i blobfuse2*.rpm
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
