@@ -544,7 +544,7 @@ stages:
           - script: |
               sudo sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
               sudo sed -i 's|baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
-            condition: eq(variables['vmImage'], 'blobfuse-centos8')
+            condition: eq(variables['agentName'], 'blobfuse-centos8')
             displayName: "Update OS mirrors"
 
           - script: |
@@ -578,7 +578,7 @@ stages:
           - script: |
               sudo rpm -qip blobfuse2*.rpm
               sudo yum install gcc gcc-c++ make -y
-              if [ $(vmImage) == "blobfuse-centos8" ]; then
+              if [ $(agentName) == "blobfuse-centos8" ]; then
                 sudo yum install fuse $(fuse-version) -y --nobest --allowerasing
               else
                 sudo yum install $(fuse-version) -y
