@@ -413,14 +413,14 @@ stages:
             RHEL-8.1:
               agentName: "blobfuse-rhel8_1"
               vmImage: 'RHEL-8.1'
-              fuselib: 'fuse3-devel'
+              fuselib: 'fuse fuse3-libs fuse3-devel'
               fuse-version: 'fuse3'
               tags: 'fuse3'
               container: 'test-cnt-rhel-81'
             RHEL-8.2:
               agentName: "blobfuse-rhel8_2"
               vmImage: 'RHEL-8.2'
-              fuselib: 'fuse3-devel'
+              fuselib: 'fuse fuse3-libs fuse3-devel'
               fuse-version: 'fuse3'
               tags: 'fuse3'
               container: 'test-cnt-rhel-82'
@@ -480,7 +480,7 @@ stages:
           - script: |
               sudo rpm -qip blobfuse2*.rpm
               sudo yum groupinstall "Development Tools" -y
-              sudo yum install $(fuse-version) -y
+              sudo yum install $(fuse-version) -y --allowerasing
               sudo rpm -i blobfuse2*.rpm
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
