@@ -478,7 +478,7 @@ stages:
             workingDirectory: $(root_dir)/blobfuse2-temp
 
           - script: |
-              sudo rpm -qi blobfuse2*.rpm
+              sudo rpm -qip blobfuse2*.rpm
               sudo yum groupinstall "Development Tools" -y
               sudo yum install $(fuse-version) -y
               sudo rpm -i blobfuse2*.rpm

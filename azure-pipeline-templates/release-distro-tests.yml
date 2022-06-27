@@ -70,6 +70,16 @@ steps:
     displayName: 'Unmount Blob'
 
   - script: |
+      tail -n 200 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: always()
+
+  - script: |
+      > blobfuse2-logs.txt
+    displayName: 'Clear Logs'
+    condition: always()
+
+  - script: |
       blobfuse2 gen-test-config --config-file=${{ parameters.root_dir }}/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.root_dir }}/adls_config.yaml
     displayName: 'Create ADLS Config File'
     env:
@@ -111,3 +121,13 @@ steps:
   - script: |
       blobfuse2 unmount ${{ parameters.mount_dir }}
     displayName: 'Unmount ADLS'
+
+  - script: |
+      tail -n 200 blobfuse2-logs.txt
+    displayName: 'View Logs'
+    condition: always()
+
+  - script: |
+      > blobfuse2-logs.txt
+    displayName: 'Clear Logs'
+    condition: always()
