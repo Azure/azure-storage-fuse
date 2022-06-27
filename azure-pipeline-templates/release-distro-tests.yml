@@ -20,6 +20,8 @@ steps:
     displayName: 'Check Help'
 
   - script: |
+      sudo rm -rf ${{ parameters.mount_dir }}
+      sudo rm -rf ${{ parameters.temp_dir }}
       mkdir -p ${{ parameters.mount_dir }}
       mkdir -p ${{ parameters.temp_dir }}
     displayName: 'Prepare Blobfuse Directories'
