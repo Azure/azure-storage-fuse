@@ -607,7 +607,7 @@ stages:
             Oracle-8.1:
               agentName: "blobfuse-oracle81"
               vmImage: 'Oracle-8.1'
-              fuselib: 'fuse fuse3-devel'
+              fuselib: 'fuse3 fuse3-devel'
               fuse-version: 'fuse3'
               tags: 'fuse3'
               container: "test-cnt-ora-81"
