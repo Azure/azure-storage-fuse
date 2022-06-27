@@ -498,3 +498,105 @@ stages:
             inputs:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts'
+
+      - job: Set_5
+        strategy:
+          matrix:
+            CentOS-7.9:
+              agentName: "blobfuse-centos7"
+              vmImage: 'CentOS-7.0'
+              fuselib: 'fuse fuse3-devel'
+              fuse-version: 'fuse3'
+              tags: 'fuse3'
+              container: 'test-cnt-cent-7'
+            CentOS-8.5:
+              agentName: "blobfuse-centos8"
+              vmImage: 'CentOS-8.0'
+              fuselib: 'fuse fuse3-devel'
+              fuse-version: 'fuse3'
+              tags: 'fuse3'
+              container: 'test-cnt-cent-8'
+        
+        pool:
+          name: "blobfuse-centos-pool"
+          demands:
+            - ImageOverride -equals $(agentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
+          - name: work_dir
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          - name: mount_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmp'
+          - name: temp_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmpcache'
+
+        steps:
+          - checkout: none
+
+          - task: GoTool@0
+            inputs:
+              version: '1.16.2'
+            displayName: "GoTool Setup"
+
+          - script: |
+              sudo sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
+              sudo sed -i 's|baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
+            condition: eq(variables['vmImage'], 'blobfuse-centos8')
+            displayName: "Update OS mirrors"
+
+          - script: |
+              sudo yum update -y
+              sudo yum install git -y
+            displayName: 'Install Git'
+
+          - script: |
+              git clone https://github.com/Azure/azure-storage-fuse
+            displayName: 'Checkout Code'
+            workingDirectory: $(root_dir)
+
+          - script: |
+              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+            displayName: 'Checkout Branch'
+            workingDirectory: $(root_dir)/azure-storage-fuse
+
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Build Artifacts'
+            inputs:
+              artifactName: 'blobfuse2-temp'
+              downloadPath: $(root_dir)
+              itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.rpm
+
+          - script: |
+              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
+            displayName: 'Rename Package'
+            workingDirectory: $(root_dir)/blobfuse2-temp
+
+          - script: |
+              sudo rpm -qip blobfuse2*.rpm
+              sudo yum groupinstall gcc gcc-c++ make -y
+              if [ $(vmImage) == "blobfuse-centos8" ]; then
+                sudo yum install fuse $(fuse-version) -y --nobest --allowerasing
+              else
+                sudo yum install $(fuse-version) -y
+              fi
+              sudo rpm -i blobfuse2*.rpm
+            displayName: 'Install Package'
+            workingDirectory: $(Build.ArtifactStagingDirectory)
+
+          - template: 'azure-pipeline-templates/release-distro-tests.yml'
+            parameters:
+              root_dir: $(root_dir)
+              work_dir: $(work_dir)
+              mount_dir: $(mount_dir)
+              temp_dir: $(temp_dir)
+              container: $(container)
+
+          # publishing the artifacts generated
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: 'blobfuse2'
+            displayName: 'Publish Artifacts'
