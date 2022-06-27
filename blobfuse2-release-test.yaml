@@ -505,14 +505,12 @@ stages:
             CentOS-7.9:
               agentName: "blobfuse-centos7"
               vmImage: 'CentOS-7.0'
-              fuselib: 'fuse fuse3-devel'
               fuse-version: 'fuse3'
               tags: 'fuse3'
               container: 'test-cnt-cent-7'
             CentOS-8.5:
               agentName: "blobfuse-centos8"
               vmImage: 'CentOS-8.0'
-              fuselib: 'fuse fuse3-devel'
               fuse-version: 'fuse3'
               tags: 'fuse3'
               container: 'test-cnt-cent-8'
@@ -579,9 +577,9 @@ stages:
               sudo rpm -qip blobfuse2*.rpm
               sudo yum install gcc gcc-c++ make -y
               if [ $(agentName) == "blobfuse-centos8" ]; then
-                sudo yum install fuse $(fuse-version) -y --nobest --allowerasing
+                sudo yum install fuse fuse3 fuse3-devel -y --nobest --allowerasing
               else
-                sudo yum install $(fuse-version) -y
+                sudo yum install fuse fuse3 fuse3-devel -y
               fi
               sudo rpm -i blobfuse2*.rpm
             displayName: 'Install Package'
