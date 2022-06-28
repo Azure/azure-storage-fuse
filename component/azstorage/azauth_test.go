@@ -51,14 +51,19 @@ type storageTestConfiguration struct {
 	// Get the mount path from command line argument
 	BlockAccount       string `json:"block-acct"`
 	AdlsAccount        string `json:"adls-acct"`
+	FileAccount        string `json:"file-acct"`
 	BlockContainer     string `json:"block-cont"`
 	AdlsContainer      string `json:"adls-cont"`
+	FileContainer      string `json:"file-cont"`
 	BlockContainerHuge string `json:"block-cont-huge"`
 	AdlsContainerHuge  string `json:"adls-cont-huge"`
+	FileContainerHuge  string `json:"file-cont-huge"`
 	BlockKey           string `json:"block-key"`
 	AdlsKey            string `json:"adls-key"`
+	FileKey            string `json:"file-key"`
 	BlockSas           string `json:"block-sas"`
 	AdlsSas            string `json:"adls-sas"`
+	FileSas            string `json:"file-sas"`
 	MsiAppId           string `json:"msi-appid"`
 	MsiResId           string `json:"msi-resid"`
 	SpnClientId        string `json:"spn-client"`
@@ -196,6 +201,37 @@ func (suite *authTestSuite) TestHttpAdlsSharedKey() {
 	suite.validateStorageTest("TestHttpAdlsSharedKey", stgConfig)
 }
 
+func (suite *authTestSuite) TestFileSharedKey() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.FileContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.KEY(),
+			AccountType: EAccountType.FILE(),
+			AccountName: storageTestConfigurationParameters.FileAccount,
+			AccountKey:  storageTestConfigurationParameters.FileKey,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.FileAccount, EAccountType.FILE()),
+		},
+	}
+	suite.validateStorageTest("TestFileSharedKey", stgConfig)
+}
+
+func (suite *authTestSuite) TestHttpFileSharedKey() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.FileContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.KEY(),
+			AccountType: EAccountType.FILE(),
+			AccountName: storageTestConfigurationParameters.FileAccount,
+			AccountKey:  storageTestConfigurationParameters.FileKey,
+			UseHTTP:     true,
+			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.FileAccount, EAccountType.FILE()),
+		},
+	}
+	suite.validateStorageTest("TestHttpFileSharedKey", stgConfig)
+}
+
 func (suite *authTestSuite) TestBlockSasKey() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{
@@ -256,6 +292,37 @@ func (suite *authTestSuite) TestHttpAdlsSasKey() {
 		},
 	}
 	suite.validateStorageTest("TestHttpAdlsSasKey", stgConfig)
+}
+
+func (suite *authTestSuite) TestFileSasKey() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.FileContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.FILE(),
+			AccountName: storageTestConfigurationParameters.FileAccount,
+			SASKey:      storageTestConfigurationParameters.FileSas,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.FileAccount, EAccountType.FILE()),
+		},
+	}
+	suite.validateStorageTest("TestFileSasKey", stgConfig)
+}
+
+func (suite *authTestSuite) TestHttpFileSasKey() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.FileContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.FILE(),
+			AccountName: storageTestConfigurationParameters.FileAccount,
+			SASKey:      storageTestConfigurationParameters.FileSas,
+			UseHTTP:     true,
+			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.FileAccount, EAccountType.FILE()),
+		},
+	}
+	suite.validateStorageTest("TestHttpFileSasKey", stgConfig)
 }
 
 func (suite *authTestSuite) TestBlockMsiAppId() {
