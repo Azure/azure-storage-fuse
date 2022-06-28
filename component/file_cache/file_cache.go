@@ -76,6 +76,11 @@ type FileCache struct {
 	defaultPermission os.FileMode
 }
 
+type FileCacheStats struct {
+	stats internal.Stats
+	blob  string
+}
+
 // Structure defining your config parameters
 type FileCacheOptions struct {
 	// e.g. var1 uint32 `config:"var1"`
@@ -857,6 +862,8 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
 	handle.SetFileObject(f)
 
+	addFileCacheStats("OpenFile", options.Name)
+
 	return handle, nil
 }
 
@@ -1300,6 +1307,13 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 	}
 
 	return nil
+}
+
+func addFileCacheStats(op string, blobName string) {
+	if common.EnableMonitoring {
+		fs := FileCacheStats{stats: internal.Stats{ComponentName: "file_cache", Operation: op}, blob: blobName}
+		FileCacheStatsCollector.AddStats(fs)
+	}
 }
 
 func (fc *FileCache) FileUsed(name string) error {

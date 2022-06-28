@@ -15,9 +15,9 @@ type StatsCollector struct {
 }
 
 type Stats struct {
-	componentName string
-	operation     string
-	value         map[string]string
+	ComponentName string
+	Operation     string
+	Value         map[string]string
 }
 
 func NewStatsCollector(componentName string, reader ChannelReader) (*StatsCollector, error) {
