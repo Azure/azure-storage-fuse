@@ -939,7 +939,6 @@ func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, er
 
 	// Removing f.ReadAt as it involves lot of house keeping and then calls syscall.Pread
 	// Instead we will call syscall directly for better perf
-	// return f.ReadAt(options.Data, options.Offset)
 	return syscall.Pread(options.Handle.FD(), options.Data, options.Offset)
 }
 
@@ -963,7 +962,6 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 
 	// Removing f.WriteAt as it involves lot of house keeping and then calls syscall.Pwrite
 	// Instead we will call syscall directly for better perf
-	// bytesWritten, err := f.WriteAt(options.Data, options.Offset)
 	bytesWritten, err := syscall.Pwrite(options.Handle.FD(), options.Data, options.Offset)
 
 	if err == nil {
