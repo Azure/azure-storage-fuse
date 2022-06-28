@@ -110,6 +110,8 @@ const (
 //  Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &FileCache{}
 
+var FileCacheStatsCollector *internal.StatsCollector
+
 func (c *FileCache) Name() string {
 	return compName
 }
@@ -255,7 +257,21 @@ func (c *FileCache) Configure() error {
 	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s",
 		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath)
 
+	if common.EnableMonitoring {
+		FileCacheStatsCollector, err = internal.NewStatsCollector("file_cache", FileCacheReader)
+		if err != nil {
+			log.Err("FileCache::Configure : Failed to set up stats collector (%s)", err.Error())
+			// return err
+		} else {
+			FileCacheStatsCollector.Init()
+		}
+	}
+
 	return nil
+}
+
+func FileCacheReader() {
+
 }
 
 // OnConfigChange : If component has registered, on config file change this method is called
