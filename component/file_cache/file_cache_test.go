@@ -689,7 +689,7 @@ func (suite *fileCacheTestSuite) TestCloseFileTimeout() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // teardown the default file cache generated
 	cacheTimeout := 5
-	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout: %d\n\nloopbackfs:\n  path: %s",
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: %d\n\nloopbackfs:\n  path: %s",
 		suite.cache_path, cacheTimeout, suite.fake_storage_path)
 	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
 
