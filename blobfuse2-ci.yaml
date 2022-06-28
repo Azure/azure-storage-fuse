@@ -63,12 +63,16 @@ jobs:
         echo "{" > $cnfFile
         echo "\"block-acct\"": "\"$(AZTEST_BLOCK_ACC_NAME)\"", >> $cnfFile
         echo "\"adls-acct\"": "\"$(AZTEST_ADLS_ACC_NAME)\"", >> $cnfFile
+        echo "\"file-acct\"": "\"$(AZTEST_FILE_ACC_NAME)\"", >> $cnfFile
         echo "\"block-cont\"": "\"$(containerName)\"", >> $cnfFile
         echo "\"adls-cont\"": "\"$(containerName)\"", >> $cnfFile
+        cho "\"file-cont\"": "\"$(containerName)\"", >> $cnfFile
         echo "\"block-key\"": "\"$(AZTEST_BLOCK_KEY)\"", >> $cnfFile
         echo "\"adls-key\"": "\"$(AZTEST_ADLS_KEY)\"", >> $cnfFile
+        echo "\"file-key\"": "\"$(AZTEST_FILE_KEY)\"", >> $cnfFile
         echo "\"block-sas\"": "\"$(AZTEST_BLOCK_SAS)\"", >> $cnfFile
         echo "\"adls-sas\"": "\"$(AZTEST_ADLS_SAS)\"", >> $cnfFile
+        echo "\"file-sas\"": "\"$(AZTEST_FILE_SAS)\"", >> $cnfFile
         echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
         echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
         echo "\"spn-client\"": "\"$(AZTEST_CLIENT)\"", >> $cnfFile
