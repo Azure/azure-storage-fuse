@@ -136,6 +136,8 @@ func generateEndpoint(useHttp bool, accountName string, accountType AccountType)
 		endpoint += ".dfs."
 	} else if accountType == EAccountType.BLOCK() {
 		endpoint += ".blob."
+	} else if accountType == EAccountType.FILE() {
+		endpoint += ".file."
 	}
 	endpoint += "core.windows.net/"
 	return endpoint

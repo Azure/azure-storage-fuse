@@ -35,7 +35,11 @@ package azstorage
 
 import (
 	"blobfuse2/common"
+	"blobfuse2/common/log"
 	"blobfuse2/internal"
+	"context"
+	"errors"
+	"net/url"
 	"os"
 
 	"github.com/Azure/azure-storage-file-go/azfile"
@@ -43,26 +47,105 @@ import (
 
 type FileShare struct {
 	AzStorageConnection
-	Auth      azAuth
-	Service   azfile.ServiceURL
-	Share azfile.ShareURL
-	// blobAccCond     azblob.BlobAccessConditions
-	// blobCPKOpt      azblob.ClientProvidedKeyOptions
-	// downloadOptions azblob.DownloadFromBlobOptions
-	// listDetails     azblob.BlobListingDetails
+	Auth    azAuth
+	Service azfile.ServiceURL
+	Share   azfile.ShareURL
 }
 
 func (fs *FileShare) Configure(cfg AzStorageConfig) error {
-	return nil
-}
-func (fs *FileShare) UpdateConfig(cfg AzStorageConfig) error {
+	fs.Config = cfg
+
 	return nil
 }
 
-func (fs *FileShare) SetupPipeline() error {
+// For dynamic config update the config here
+func (fs *FileShare) UpdateConfig(cfg AzStorageConfig) error {
+	fs.Config.blockSize = cfg.blockSize
+	fs.Config.maxConcurrency = cfg.maxConcurrency
+	fs.Config.defaultTier = cfg.defaultTier
+	fs.Config.ignoreAccessModifiers = cfg.ignoreAccessModifiers
 	return nil
 }
+
+// getCredential : Create the credential object
+func (fs *FileShare) getCredential() azfile.Credential {
+	log.Trace("FileShare::getCredential : Getting credential")
+
+	fs.Auth = getAzAuth(fs.Config.authConfig)
+	if fs.Auth == nil {
+		log.Err("FileShare::getCredential : Failed to retrieve auth object")
+		return nil
+	}
+
+	cred := fs.Auth.getCredential()
+	if cred == nil {
+		log.Err("FileShare::getCredential : Failed to get credential")
+		return nil
+	}
+
+	return cred.(azfile.Credential)
+}
+
+// SetupPipeline : Based on the config setup the ***URLs
+func (fs *FileShare) SetupPipeline() error {
+	log.Trace("Fileshare::SetupPipeline : Setting up")
+	var err error
+
+	// Get the credential
+	cred := fs.getCredential()
+	if cred == nil {
+		log.Err("FileShare::SetupPipeline : Failed to get credential")
+		return errors.New("failed to get credential")
+	}
+
+	// Create a new pipeline
+	fs.Pipeline = azfile.NewPipeline(cred, getAzFilePipelineOptions(fs.Config)) // need to modify utils.go?
+	if fs.Pipeline == nil {
+		log.Err("FileShare::SetupPipeline : Failed to create pipeline object")
+		return errors.New("failed to create pipeline object")
+	}
+
+	// Get the endpoint url from the credential
+	fs.Endpoint, err = url.Parse(fs.Auth.getEndpoint())
+	if err != nil {
+		log.Err("BlockBlob::SetupPipeline : Failed to form base end point url (%s)", err.Error())
+		return errors.New("failed to form base end point url")
+	}
+
+	// Create the service url
+	fs.Service = azfile.NewServiceURL(*fs.Endpoint, fs.Pipeline)
+
+	// Create the container url
+	fs.Share = fs.Service.NewShareURL(fs.Config.container)
+
+	return nil
+}
+
+// TestPipeline : Validate the credentials specified in the auth config
 func (fs *FileShare) TestPipeline() error {
+	log.Trace("FileShare::TestPipeline : Validating")
+
+	if fs.Config.mountAllContainers {
+		return nil
+	}
+
+	if fs.Share.String() == "" {
+		log.Err("FileShare::TestPipeline : Container URL is not built, check your credentials")
+		return nil
+	}
+
+	marker := (azfile.Marker{})
+	listBlob, err := fs.Share.NewRootDirectoryURL().ListFilesAndDirectoriesSegment(context.Background(), marker,
+		azfile.ListFilesAndDirectoriesOptions{MaxResults: 2})
+
+	if err != nil {
+		log.Err("FileShare::TestPipeline : Failed to validate account with given auth %s", err.Error)
+		return err
+	}
+
+	if listBlob == nil {
+		log.Info("FileShare::TestPipeline : Container is empty")
+	}
 	return nil
 }
 
