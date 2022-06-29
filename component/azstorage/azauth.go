@@ -160,6 +160,22 @@ func getAzAuthBfs(config azAuthConfig) azAuth {
 }
 
 func getAzAuthFile(config azAuthConfig) azAuth {
+	base := azAuthBase{config: config}
+	if config.AuthMode == EAuthType.KEY() {
+		return &azAuthFileKey{
+			azAuthKey{
+				azAuthBase: base,
+			},
+		}
+	} else if config.AuthMode == EAuthType.SAS() {
+		return &azAuthFileSAS{
+			azAuthSAS{
+				azAuthBase: base,
+			},
+		}
+	} else {
+		log.Crit("azAuth::getAzAuthBfs : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
+	}
 	return nil
 }
 

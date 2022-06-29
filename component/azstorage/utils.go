@@ -49,10 +49,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
-
 	"github.com/Azure/azure-pipeline-go/pipeline"
+	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/azure-storage-file-go/azfile"
 )
 
 //    ----------- Helper to create pipeline options ---------------
@@ -153,6 +153,45 @@ func getAzBfsPipelineOptions(conf AzStorageConfig) azbfs.PipelineOptions {
 			Retry:      retryOptions,
 			Telemetry:  telemetryOptions,
 			HTTPSender: newBlobfuse2HTTPClientFactory(pipelineHTTPClient),
+		}
+	}
+}
+
+// getAzFilePipelineOptions : Create pipeline options based on the config
+func getAzFilePipelineOptions(conf AzStorageConfig) azfile.PipelineOptions {
+	retryOptions := azfile.RetryOptions{
+		Policy:        azfile.RetryPolicyExponential,                   // Use exponential backoff as opposed to linear
+		MaxTries:      conf.maxRetries,                                 // Try at most 3 times to perform the operation (set to 1 to disable retries)
+		TryTimeout:    time.Second * time.Duration(conf.maxTimeout),    // Maximum time allowed for any single try
+		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)
+		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
+	}
+	telemetryOptions := azfile.TelemetryOptions{
+		Value: UserAgent + " (" + common.GetCurrentDistro() + ")",
+	}
+
+	requestLogOptions := azfile.RequestLogOptions{
+		// TODO: We can potentially consider making LogWarningIfTryOverThreshold a user settable option. For now lets use the default
+	}
+	logOptions := getLogOptions(conf.sdkTrace)
+	if conf.proxyAddress == "" {
+		// If we did not set a proxy address in our config then use default settings
+		return azfile.PipelineOptions{
+			Log:        logOptions,
+			RequestLog: requestLogOptions,
+			// Set RetryOptions to control how HTTP request are retried when retryable failures occur
+			Retry:     retryOptions,
+			Telemetry: telemetryOptions,
+		}
+	} else {
+		// Else create custom HTTPClient to pass to the factory in order to set our proxy
+		// While creating new pipeline we need to provide the retry policy
+		return azfile.PipelineOptions{
+			Log:        logOptions,
+			RequestLog: requestLogOptions,
+			// Set RetryOptions to control how HTTP request are retried when retryable failures occur
+			Retry:     retryOptions,
+			Telemetry: telemetryOptions,
 		}
 	}
 }
