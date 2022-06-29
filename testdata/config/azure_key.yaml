@@ -13,7 +13,6 @@ libfuse:
   attribute-expiration-sec: 0
   entry-expiration-sec: 0
   negative-entry-expiration-sec: 0
-  fuse-trace: { VERBOSE_LOG }
 
 file_cache:
   path: { 1 }
