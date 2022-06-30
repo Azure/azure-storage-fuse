@@ -743,7 +743,7 @@ func (fc *FileCache) cacheFile(fileSize int64) bool {
 			return false
 		}
 
-		if (fc.maxCacheSize - currSize) < float64((fileSize / 1024 / 1024)) { // size comparision in MB
+		if (fc.maxCacheSize - currSize) < float64((fileSize / 1024 / 1024)) { // size comparison in MB
 			// If file can not fit in available disk space then do not cache
 			return false
 		}
