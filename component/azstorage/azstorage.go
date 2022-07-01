@@ -37,7 +37,6 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/common/config"
 	"blobfuse2/common/log"
-	"blobfuse2/common/stats_monitor"
 	"blobfuse2/internal"
 	"blobfuse2/internal/handlemap"
 	"context"
@@ -58,12 +57,17 @@ type AzStorage struct {
 	listBlocked bool
 }
 
+type AzStorageStats struct {
+	Stats internal.Stats
+	Blob  string
+}
+
 const compName = "azstorage"
 
 //Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AzStorage{}
 
-var AzStatsCollector *stats_monitor.StatsCollector
+var AzStatsCollector *internal.StatsCollector
 
 func (az *AzStorage) Name() string {
 	return az.BaseComponent.Name()
@@ -101,10 +105,12 @@ func (az *AzStorage) Configure() error {
 	}
 
 	if common.EnableMonitoring {
-		AzStatsCollector, err = stats_monitor.NewStatsCollector()
+		AzStatsCollector, err = internal.NewStatsCollector("AzStorage", nil)
 		if err != nil {
 			log.Err("AzStorage::Configure : Failed to set up stats collector (%s)", err.Error())
-			return err
+			// return err
+		} else {
+			AzStatsCollector.Init()
 		}
 	}
 
@@ -418,6 +424,12 @@ func (az *AzStorage) Chown(options internal.ChownOptions) error {
 func (az *AzStorage) FlushFile(options internal.FlushFileOptions) error {
 	log.Trace("AzStorage::FlushFile : Flush file %s", options.Handle.Path)
 	return az.storage.StageAndCommit(options.Handle.Path, options.Handle.CacheObj.BlockOffsetList)
+}
+
+func addAzStorageStats(stats AzStorageStats) {
+	if common.EnableMonitoring {
+		AzStatsCollector.AddStats(stats)
+	}
 }
 
 // TODO : Below methods are pending to be implemented

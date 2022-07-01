@@ -316,6 +316,14 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	statfs.Bavail = uint64(math.Max(0, available)) / uint64(statfs.Frsize)
 	statfs.Bfree = statfs.Bavail
 
+	if common.EnableMonitoring {
+		fs := FileCacheStats{stats: internal.Stats{ComponentName: "file_cache", Operation: "StatFs"}}
+		fs.stats.Value = make(map[string]int64)
+		fs.stats.Value["size"] = int64(maxCacheSize)
+		fs.stats.Value["usage"] = int64(usage)
+		FileCacheStatsCollector.AddStats(fs)
+	}
+
 	return statfs, true, nil
 }
 
@@ -692,6 +700,8 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	localPath := filepath.Join(fc.tmpPath, options.Name)
 	deleteFile(localPath)
 	fc.policy.CachePurge(localPath)
+
+	addFileCacheStats("DeleteFile", options.Name)
 	return nil
 }
 
@@ -834,6 +844,8 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		if err != nil {
 			log.Err("FileCache::OpenFile : Failed to change times of file %s [%s]", options.Name, err.Error())
 		}
+
+		addFileCacheStats("OpenFile", options.Name)
 	} else {
 		log.Debug("FileCache::OpenFile : %s will be served from cache", options.Name)
 	}
@@ -861,8 +873,6 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
 	handle.SetFileObject(f)
-
-	addFileCacheStats("OpenFile", options.Name)
 
 	return handle, nil
 }
@@ -992,6 +1002,8 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	if err == nil {
 		// Mark the handle dirty so the file is written back to storage on FlushFile.
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
+
+		addFileCacheStats("WriteFile", f.Name())
 	}
 
 	return bytesWritten, err
@@ -1244,6 +1256,13 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 		}
 	}
 
+	if common.EnableMonitoring {
+		fs := FileCacheStats{stats: internal.Stats{ComponentName: "file_cache", Operation: "TruncateFile"}, blob: options.Name}
+		fs.stats.Value = make(map[string]int64)
+		fs.stats.Value["size"] = options.Size
+		FileCacheStatsCollector.AddStats(fs)
+	}
+
 	return nil
 }
 
@@ -1278,6 +1297,8 @@ func (fc *FileCache) Chmod(options internal.ChmodOptions) error {
 		}
 	}
 
+	addFileCacheStats("Chmod", options.Name)
+
 	return nil
 }
 
@@ -1305,6 +1326,8 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 			return err
 		}
 	}
+
+	addFileCacheStats("Chown", options.Name)
 
 	return nil
 }

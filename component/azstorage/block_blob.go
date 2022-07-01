@@ -45,7 +45,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -537,9 +536,11 @@ func trackDownload(name string, bytesTransferred int64, count int64, downloadPtr
 	if bytesTransferred >= (*downloadPtr)*100*1024*1024 || bytesTransferred == count {
 		(*downloadPtr)++
 		log.Debug("download: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
-		stats := AzStorageStats{Operation: "download", Blob: name, Progress: "Bytes transferred = " + strconv.FormatInt(bytesTransferred, 10) + ", Size = " + strconv.FormatInt(count, 10)}
-		log.Debug("Stats: %v", stats)
-		AzStatsCollector.AddStats(stats)
+		azStats := AzStorageStats{Stats: internal.Stats{ComponentName: "AzStorage", Operation: "DownloadProgress"}, Blob: name}
+		azStats.Stats.Value = make(map[string]int64)
+		azStats.Stats.Value["Bytes Transferred"] = bytesTransferred
+		azStats.Stats.Value["Size"] = count
+		addAzStorageStats(azStats)
 	}
 }
 
@@ -674,9 +675,10 @@ func trackUpload(name string, bytesTransferred int64, uploadPtr *int64) {
 	if bytesTransferred >= (*uploadPtr)*100*1024*1024 {
 		(*uploadPtr)++
 		log.Debug("upload: Blob = %v, Bytes transferred = %v", name, bytesTransferred)
-		stats := AzStorageStats{Operation: "upload", Blob: name, Progress: "Bytes transferred = " + strconv.FormatInt(bytesTransferred, 10)}
-		log.Debug("Stats: %v", stats)
-		AzStatsCollector.AddStats(stats)
+		azStats := AzStorageStats{Stats: internal.Stats{ComponentName: "AzStorage", Operation: "UploadProgress"}, Blob: name}
+		azStats.Stats.Value = make(map[string]int64)
+		azStats.Stats.Value["Bytes Transferred"] = bytesTransferred
+		addAzStorageStats(azStats)
 	}
 }
 

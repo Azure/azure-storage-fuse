@@ -17,8 +17,15 @@ type StatsCollector struct {
 type Stats struct {
 	ComponentName string
 	Operation     string
-	Value         map[string]string
+	Value         map[string]int64
 }
+
+// func OpenMemoryMappedFiles(fileName string) ([]byte, error) {
+// 	f, err := os.Create(fileName)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// }
 
 func NewStatsCollector(componentName string, reader ChannelReader) (*StatsCollector, error) {
 	sc := &StatsCollector{componentName: componentName}
@@ -47,6 +54,6 @@ func (sc *StatsCollector) statsDumper() {
 	defer sc.workerDone.Done()
 
 	for st := range sc.channel {
-		log.Debug("%v stats: %v", sc.componentName, st)
+		log.Debug("StatsManager::StatsDumper : %v stats: %v", sc.componentName, st)
 	}
 }

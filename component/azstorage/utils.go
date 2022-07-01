@@ -55,12 +55,6 @@ import (
 	"github.com/Azure/azure-storage-blob-go/azblob"
 )
 
-type AzStorageStats struct {
-	Operation string
-	Blob      string
-	Progress  string
-}
-
 //    ----------- Helper to create pipeline options ---------------
 
 const (
