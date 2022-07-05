@@ -41,6 +41,9 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"path/filepath"
+	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-file-go/azfile"
 )
@@ -149,87 +152,178 @@ func (fs *FileShare) TestPipeline() error {
 	return nil
 }
 
+// TODOOOOOOOOOOOOOOOOO**********
 func (fs *FileShare) ListContainers() ([]string, error) {
-	return nil, nil
+	return nil, syscall.ENOTSUP
 }
 
 // This is just for test, shall not be used otherwise
 func (fs *FileShare) SetPrefixPath(string) error {
-	return nil
+	return syscall.ENOTSUP
 }
 
+// TODOOOOOOOOOOOOOOOOO**********
 func (fs *FileShare) Exists(name string) bool {
 	return false
 }
 func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) CreateDirectory(name string) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) CreateLink(source string, target string) error {
-	return nil
+	return syscall.ENOTSUP
 }
 
 func (fs *FileShare) DeleteFile(name string) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) DeleteDirectory(name string) error {
-	return nil
+	return syscall.ENOTSUP
 }
 
 func (fs *FileShare) RenameFile(string, string) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) RenameDirectory(string, string) error {
-	return nil
+	return syscall.ENOTSUP
 }
 
+// TODOOOOOOOOOOOOOOOOO**********
 func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) {
-	return nil, nil
+	return nil, syscall.ENOTSUP
 }
 
-// Standard operations to be supported by any account type
+// List : Get a list of blobs matching the given prefix
+// This fetches the list using a marker so the caller code should handle marker logic
+// If count=0 - fetch max entries
 func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error) {
-	return nil, nil, nil
+	log.Trace("FileShare::List : prefix %s, marker %s", prefix, func(marker *string) string {
+		if marker != nil {
+			return *marker
+		} else {
+			return ""
+		}
+	}(marker))
+
+	fileList := make([]*internal.ObjAttr, 0)
+
+	if count == 0 {
+		count = common.MaxDirListCount
+	}
+
+	listPath := filepath.Join(fs.Config.prefixPath, prefix)
+
+	// Get a result segment starting with the file indicated by the current Marker.
+	var listFile *azfile.ListFilesAndDirectoriesSegmentResponse
+	var err error
+	if listPath != "" {
+		listFile, err = fs.Share.NewDirectoryURL(listPath).ListFilesAndDirectoriesSegment(context.Background(), azfile.Marker{Val: marker},
+			azfile.ListFilesAndDirectoriesOptions{MaxResults: count})
+	} else {
+		if (prefix != "" && prefix[len(prefix)-1] == '/') || (prefix == "" && fs.Config.prefixPath != "") {
+			listPath += "/"
+		}
+		listFile, err = fs.Share.NewRootDirectoryURL().ListFilesAndDirectoriesSegment(context.Background(), azfile.Marker{Val: marker},
+			azfile.ListFilesAndDirectoriesOptions{MaxResults: count})
+	}
+
+	if err != nil {
+		log.Err("File::List : Failed to list the container with the prefix %s", err.Error)
+		return fileList, nil, err
+	}
+
+	// Process the files returned in this result segment (if the segment is empty, the loop body won't execute)
+	for _, fileInfo := range listFile.FileItems {
+		attr := &internal.ObjAttr{
+			Path: split(fs.Config.prefixPath, fileInfo.Name),
+			Name: filepath.Base(fileInfo.Name),
+			Size: fileInfo.Properties.ContentLength,
+			Mode: 0,
+			// Azure file SDK supports 2019.02.02 but time and metadata are only supported by 2020.x.x onwards
+			// TODO: support times when Azure SDK is updated
+			Mtime:  time.Now(),
+			Atime:  time.Now(),
+			Ctime:  time.Now(),
+			Crtime: time.Now(),
+			Flags:  internal.NewFileBitMap(),
+		}
+
+		// parseMetadata(attr, fileInfo.Metadata)
+		// attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+		attr.Flags.Set(internal.PropFlagModeDefault)
+		fileList = append(fileList, attr)
+
+		if attr.IsDir() {
+			attr.Size = 4096
+		}
+	}
+
+	for _, dirInfo := range listFile.DirectoryItems {
+		attr := &internal.ObjAttr{
+			Path: split(fs.Config.prefixPath, dirInfo.Name),
+			Name: filepath.Base(dirInfo.Name),
+			// Size: dirInfo.Properties.ContentLength,
+			Mode: os.ModeDir,
+			// Azure file SDK supports 2019.02.02 but time, metadata, and dir size are only supported by 2020.x.x onwards
+			// TODO: support times when Azure SDK is updated
+			Mtime:  time.Now(),
+			Atime:  time.Now(),
+			Ctime:  time.Now(),
+			Crtime: time.Now(),
+			Flags:  internal.NewDirBitMap(),
+		}
+
+		// parseMetadata(attr, dirInfo.Metadata)
+		// attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+		attr.Flags.Set(internal.PropFlagModeDefault)
+		fileList = append(fileList, attr)
+
+		if attr.IsDir() {
+			attr.Size = 4096
+		}
+	}
+
+	return fileList, listFile.NextMarker.Val, nil
 }
 
 func (fs *FileShare) ReadToFile(name string, offset int64, count int64, fi *os.File) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) ReadBuffer(name string, offset int64, len int64) ([]byte, error) {
-	return nil, nil
+	return nil, syscall.ENOTSUP
 }
 func (fs *FileShare) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
-	return nil
+	return syscall.ENOTSUP
 }
 
 func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *os.File) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) WriteFromBuffer(name string, metadata map[string]string, data []byte) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) Write(options internal.WriteFileOptions) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
-	return nil, nil
+	return nil, syscall.ENOTSUP
 }
 
 func (fs *FileShare) ChangeMod(string, os.FileMode) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) ChangeOwner(string, int, int) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) TruncateFile(string, int64) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) StageAndCommit(name string, bol *common.BlockOffsetList) error {
-	return nil
+	return syscall.ENOTSUP
 }
 
 func (fs *FileShare) NewCredentialKey(_, _ string) error {
-	return nil
+	return syscall.ENOTSUP
 }
