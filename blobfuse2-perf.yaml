@@ -43,6 +43,17 @@ jobs:
     steps:
       - checkout: none
 
+      - script: |
+          echo $(Description)
+          hostnamectl
+        displayName: 'Print Agent Info'
+      
+      # Install libfuse
+      - script: |          
+          sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
+          sudo apt-get install make cmake gcc g++ -y -o Dpkg::Options::="--force-confnew"
+        displayName: 'Install C libraries'
+
         # Prestart cleanup
       - script: |
           sudo fusermount3 -u $(MOUNT_DIR)
