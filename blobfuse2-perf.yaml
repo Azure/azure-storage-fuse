@@ -126,6 +126,11 @@ jobs:
         continueOnError: false
 
       - script: |
+          cat $(WORK_DIR)/blobfuse2-logs.txt
+        displayName: "View Logs"
+        condition: always()
+
+      - script: |
           sudo fusermount3 -u ${MOUNT_DIR}
           sudo kill -9 `pidof blobfuse2` || true
         displayName: "Unmount Blobfuse2 Binary Run"
