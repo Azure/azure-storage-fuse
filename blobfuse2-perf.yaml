@@ -36,7 +36,7 @@ jobs:
       - name: GOPATH
         value: "/home/vsts/workv2/go"
       - name: ROOT_DIR
-        value: "/home/vsts/workv2/"
+        value: "/home/vsts/workv2"
       - name: WORK_DIR
         value: "/home/vsts/workv2/go/src/azure-storage-fuse"
 
