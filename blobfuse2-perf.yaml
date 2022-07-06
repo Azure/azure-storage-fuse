@@ -96,7 +96,7 @@ jobs:
 
       - script: |
           cd $(ROOT_DIR)
-          pip install numpy tensorflow
+          pip install numpy tensorflow pillow
         displayName: "Install Python Dependencies"
         continueOnError: false
 
