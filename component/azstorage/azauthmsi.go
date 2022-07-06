@@ -55,10 +55,11 @@ type azAuthMSI struct {
 func (azmsi *azAuthMSI) fetchToken() (*adal.ServicePrincipalToken, error) {
 	// Resource string is fixed and has no relation with any of the user inputs
 	// This is not the resource URL, rather a way to identify the resource type and tenant
-	resource := azure.PublicCloud.ResourceIdentifiers.Datalake
-	if azmsi.config.AccountType == azmsi.config.AccountType.BLOCK() {
-		resource = azure.PublicCloud.ResourceIdentifiers.Storage
-	}
+	// There are two options in the structure datalake and storage but datalake is not populated
+	// and does not work in all types of clouds (US, German, China etc).
+	// resource := azure.PublicCloud.ResourceIdentifiers.Datalake
+	resource := azure.PublicCloud.ResourceIdentifiers.Storage
+
 	log.Info("AzAuthMSI::fetchToken : Resource : %s", resource)
 
 	spt, err := adal.NewServicePrincipalTokenFromManagedIdentity(resource, &adal.ManagedIdentityOptions{
