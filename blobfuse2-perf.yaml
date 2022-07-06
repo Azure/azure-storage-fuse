@@ -122,7 +122,7 @@ jobs:
           blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
           sleep 10s
           cd $(WORK_DIR)
-          python3 $(WORK_DIR)/test/perf_test/resnet50_classify.py --dataset='$(MOUNT_DIR)/data' --job='binary' --log=$(ROOT_DIR)/blobfuse2-perf.json --procs=8
+          python3 $(WORK_DIR)/test/perf_test/resnet50_classify.py --dataset='$(MOUNT_DIR)/data' --job='binary' --log=$(ROOT_DIR)/blobfuse2-perf.json
         displayName: "Blobfuse2 ResNet50 Binary"
         continueOnError: false
 
@@ -134,7 +134,7 @@ jobs:
       - script: |
           cd $(WORK_DIR)
           $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
-          python3 $(WORK_DIR)/test/perf_test/resnet50_classify.py --dataset='$(MOUNT_DIR)/data' --job='main' --log=$(ROOT_DIR)/blobfuse2-perf.json --procs=8
+          python3 $(WORK_DIR)/test/perf_test/resnet50_classify.py --dataset='$(MOUNT_DIR)/data' --job='main' --log=$(ROOT_DIR)/blobfuse2-perf.json
         displayName: "Blobfuse2 ResNet50 on Main"
         continueOnError: false
 
