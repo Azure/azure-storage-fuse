@@ -42,6 +42,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -152,9 +153,26 @@ func (fs *FileShare) TestPipeline() error {
 	return nil
 }
 
-// TODOOOOOOOOOOOOOOOOO**********
 func (fs *FileShare) ListContainers() ([]string, error) {
-	return nil, syscall.ENOTSUP
+	log.Trace("FileShare::ListContainers : Listing containers")
+	cntList := make([]string, 0)
+
+	marker := azfile.Marker{}
+	for marker.NotDone() {
+		resp, err := fs.Service.ListSharesSegment(context.Background(), marker, azfile.ListSharesOptions{})
+		if err != nil {
+			log.Err("FileShare::ListContainers : Failed to get container list")
+			return cntList, err
+		}
+
+		for _, v := range resp.ShareItems {
+			cntList = append(cntList, v.Name)
+		}
+
+		marker = resp.NextMarker
+	}
+
+	return cntList, nil
 }
 
 // This is just for test, shall not be used otherwise
@@ -162,10 +180,14 @@ func (fs *FileShare) SetPrefixPath(string) error {
 	return syscall.ENOTSUP
 }
 
-// TODOOOOOOOOOOOOOOOOO**********
 func (fs *FileShare) Exists(name string) bool {
-	return false
+	log.Trace("FileShare::Exists : name %s", name)
+	if _, err := fs.GetAttr(name); err == syscall.ENOENT {
+		return false
+	}
+	return true
 }
+
 func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
 	return syscall.ENOTSUP
 }
@@ -190,9 +212,70 @@ func (fs *FileShare) RenameDirectory(string, string) error {
 	return syscall.ENOTSUP
 }
 
-// TODOOOOOOOOOOOOOOOOO**********
+// GetAttr : Retrieve attributes of a file or directory
 func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) {
-	return nil, syscall.ENOTSUP
+	log.Trace("FileShare::GetAttr : name %s", name)
+
+	path := filepath.Join(fs.Config.prefixPath, name)
+	splitPath := strings.Split(path, "/")
+	splitPath = splitPath[:len(splitPath)-1]
+	joinedPath := strings.Join(splitPath, "/")
+
+	fileURL := fs.Share.NewDirectoryURL(joinedPath).NewFileURL(filepath.Base(name))
+	log.Trace("FileShare::GetAttr : getting fileeeeeeeeeeee properties for %s, %s, %s", fs.Config.prefixPath, name, fileURL)
+	prop, err := fileURL.GetProperties(context.Background())
+
+	if err == nil { // file
+		attr = &internal.ObjAttr{
+			Path:   name, // We don't need to strip the prefixPath here since we pass the input name
+			Name:   filepath.Base(name),
+			Size:   prop.ContentLength(),
+			Mode:   0,
+			Mtime:  prop.LastModified(),
+			Atime:  prop.LastModified(),
+			Ctime:  prop.LastModified(),
+			Crtime: prop.LastModified(),
+			Flags:  internal.NewFileBitMap(),
+		}
+		parseMetadata(attr, prop.NewMetadata())
+		attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+		attr.Flags.Set(internal.PropFlagModeDefault)
+
+		return attr, nil
+	} else { // directory
+		dirURL := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, name))
+		log.Trace("FileShare::GetAttr : getting directoryyyyyyyyyyyyyy properties for %s, %s, %s", fs.Config.prefixPath, name, dirURL)
+		prop, err := dirURL.GetProperties(context.Background())
+
+		if err == nil {
+			attr = &internal.ObjAttr{
+				Path:   name,
+				Name:   filepath.Base(name),
+				Size:   4096,
+				Mode:   0,
+				Mtime:  prop.LastModified(),
+				Atime:  prop.LastModified(),
+				Ctime:  prop.LastModified(),
+				Crtime: prop.LastModified(),
+				Flags:  internal.NewDirBitMap(),
+			}
+			parseMetadata(attr, prop.NewMetadata())
+			attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+			attr.Flags.Set(internal.PropFlagModeDefault)
+
+			return attr, nil
+		} else { // error
+			e := storeFileErrToErr(err)
+			if e == ErrFileNotFound {
+				return attr, syscall.ENOENT
+			} else {
+				log.Err("FileShare::GetAttr : Failed to get file/directory properties for %s (%s)", name, err.Error())
+				return attr, err
+			}
+		}
+
+	}
+
 }
 
 // List : Get a list of blobs matching the given prefix
@@ -264,7 +347,7 @@ func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*intern
 		attr := &internal.ObjAttr{
 			Path: split(fs.Config.prefixPath, dirInfo.Name),
 			Name: filepath.Base(dirInfo.Name),
-			// Size: dirInfo.Properties.ContentLength,
+			Size: 4096,
 			Mode: os.ModeDir,
 			// Azure file SDK supports 2019.02.02 but time, metadata, and dir size are only supported by 2020.x.x onwards
 			// TODO: support times when Azure SDK is updated
