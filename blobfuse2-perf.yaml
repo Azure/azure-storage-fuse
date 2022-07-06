@@ -102,7 +102,7 @@ jobs:
 
       - script: |
           cd $(ROOT_DIR)
-          wget https://github.com/Azure/azure-storage-fuse/releases/download/blobfuse2-2.0.0-preview.2/blobfuse2-2.0.0-preview.2-ubuntu-20.04-x86-64.deb
+          wget https://github.com/Azure/azure-storage-fuse/releases/download/blobfuse2-2.0.0-preview2/blobfuse2-2.0.0-preview.2-ubuntu-20.04-x86-64.deb
           sudo dpkg -i $(ROOT_DIR)/blobfuse2-2.0.0-preview.2-ubuntu-20.04-x86-64.deb
           sudo apt-get install -f
           sudo apt-get install fuse3
