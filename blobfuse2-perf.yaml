@@ -17,13 +17,13 @@ jobs:
       matrix:
         Ubuntu-20:
           DistroVer: "Ubn20_PERF"
-          AgentName: "UBN20-PERF"
+          AgentName: "blobfuse-ubuntu20"
           Description: "Blobfuse2 Perf Test"
 
     pool:
-      name: "Blobfuse Pool"
+      name: "blobfuse-perf-pool"
       demands:
-        - Agent.Name -equals $(AgentName)
+        - ImageOverride -equals $(AgentName)
 
     variables:
       - group: NightlyBlobFuse
@@ -91,8 +91,8 @@ jobs:
 
       - script: |
           cd $(ROOT_DIR)
-          wget https://github.com/Azure/azure-storage-fuse/releases/download/blobfuse2-2.0.0-preview.1/blobfuse2-2.0.0-preview.1-ubuntu-20.04-x86-64.deb
-          sudo dpkg -i $(ROOT_DIR)/blobfuse2-2.0.0-preview.1-ubuntu-20.04-x86-64.deb
+          wget https://github.com/Azure/azure-storage-fuse/releases/download/blobfuse2-2.0.0-preview.2/blobfuse2-2.0.0-preview.2-ubuntu-20.04-x86-64.deb
+          sudo dpkg -i $(ROOT_DIR)/blobfuse2-2.0.0-preview.2-ubuntu-20.04-x86-64.deb
           sudo apt-get install -f
           sudo apt-get install fuse3
           blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
