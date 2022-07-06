@@ -32,7 +32,7 @@ jobs:
       - name: TEMP_DIR
         value: "/home/vsts/workv2/blobfuse2tmp"
       - name: BLOBFUSE2_CFG
-        value: "/home/tamer/blobfuse2.yaml"
+        value: "$(System.DefaultWorkingDirectory)/blobfuse2.yaml"
       - name: GOPATH
         value: "/home/vsts/workv2/go"
       - name: ROOT_DIR
