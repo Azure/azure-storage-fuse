@@ -46,6 +46,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -316,13 +317,13 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	statfs.Bavail = uint64(math.Max(0, available)) / uint64(statfs.Frsize)
 	statfs.Bfree = statfs.Bavail
 
-	if common.EnableMonitoring {
-		fs := FileCacheStats{stats: internal.Stats{ComponentName: "file_cache", Operation: "StatFs"}}
-		fs.stats.Value = make(map[string]int64)
-		fs.stats.Value["size"] = int64(maxCacheSize)
-		fs.stats.Value["usage"] = int64(usage)
-		FileCacheStatsCollector.AddStats(fs)
-	}
+	// if common.EnableMonitoring {
+	// 	fs := FileCacheStats{stats: internal.Stats{ComponentName: "file_cache", Operation: "StatFs"}}
+	// 	fs.stats.Value = make(map[string]string)
+	// 	fs.stats.Value["Size"] = strconv.FormatInt(int64(maxCacheSize), 10)
+	// 	fs.stats.Value["Usage"] = strconv.FormatInt(int64(usage), 10)
+	// 	FileCacheStatsCollector.AddStats(fs)
+	// }
 
 	return statfs, true, nil
 }
@@ -701,7 +702,7 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	deleteFile(localPath)
 	fc.policy.CachePurge(localPath)
 
-	addFileCacheStats("DeleteFile", options.Name)
+	addFileCacheStats("DeleteFile", options.Name, true, nil)
 	return nil
 }
 
@@ -845,7 +846,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			log.Err("FileCache::OpenFile : Failed to change times of file %s [%s]", options.Name, err.Error())
 		}
 
-		addFileCacheStats("OpenFile", options.Name)
+		addFileCacheStats("OpenFile", options.Name, true, nil)
 	} else {
 		log.Debug("FileCache::OpenFile : %s will be served from cache", options.Name)
 	}
@@ -1003,7 +1004,7 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 		// Mark the handle dirty so the file is written back to storage on FlushFile.
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 
-		addFileCacheStats("WriteFile", f.Name())
+		addFileCacheStats("WriteFile", f.Name(), true, nil)
 	}
 
 	return bytesWritten, err
@@ -1256,12 +1257,7 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 		}
 	}
 
-	if common.EnableMonitoring {
-		fs := FileCacheStats{stats: internal.Stats{ComponentName: "file_cache", Operation: "TruncateFile"}, blob: options.Name}
-		fs.stats.Value = make(map[string]int64)
-		fs.stats.Value["size"] = options.Size
-		FileCacheStatsCollector.AddStats(fs)
-	}
+	addFileCacheStats("TruncateFile", options.Name, true, map[string]string{"Size": strconv.FormatInt(options.Size, 10)})
 
 	return nil
 }
@@ -1297,7 +1293,7 @@ func (fc *FileCache) Chmod(options internal.ChmodOptions) error {
 		}
 	}
 
-	addFileCacheStats("Chmod", options.Name)
+	addFileCacheStats("Chmod", options.Name, true, nil)
 
 	return nil
 }
@@ -1327,15 +1323,18 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 		}
 	}
 
-	addFileCacheStats("Chown", options.Name)
+	addFileCacheStats("Chown", options.Name, true, nil)
 
 	return nil
 }
 
-func addFileCacheStats(op string, blobName string) {
+func addFileCacheStats(op string, blobName string, isEvent bool, mp map[string]string) {
 	if common.EnableMonitoring {
 		fs := FileCacheStats{stats: internal.Stats{ComponentName: "file_cache", Operation: op}, blob: blobName}
-		FileCacheStatsCollector.AddStats(fs)
+		if mp != nil {
+			fs.stats.Value = mp
+		}
+		FileCacheStatsCollector.AddStats(internal.ChannelMsg{IsEvent: isEvent, CompStats: fs})
 	}
 }
 

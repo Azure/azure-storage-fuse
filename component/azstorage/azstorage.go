@@ -41,6 +41,7 @@ import (
 	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -58,8 +59,8 @@ type AzStorage struct {
 }
 
 type AzStorageStats struct {
-	Stats internal.Stats
-	Blob  string
+	stats internal.Stats
+	blob  string
 }
 
 const compName = "azstorage"
@@ -187,13 +188,25 @@ func (az *AzStorage) ListContainers() ([]string, error) {
 func (az *AzStorage) CreateDir(options internal.CreateDirOptions) error {
 	log.Trace("AzStorage::CreateDir : %s", options.Name)
 
-	return az.storage.CreateDirectory(internal.TruncateDirName(options.Name))
+	err := az.storage.CreateDirectory(internal.TruncateDirName(options.Name))
+
+	if err == nil {
+		createStatsObj("CreateDir", options.Name, true, nil)
+	}
+
+	return err
 }
 
 func (az *AzStorage) DeleteDir(options internal.DeleteDirOptions) error {
 	log.Trace("AzStorage::DeleteDir : %s", options.Name)
 
-	return az.storage.DeleteDirectory(internal.TruncateDirName(options.Name))
+	err := az.storage.DeleteDirectory(internal.TruncateDirName(options.Name))
+
+	if err == nil {
+		createStatsObj("DeleteDir", options.Name, true, nil)
+	}
+
+	return err
 }
 
 func formatListDirName(path string) string {
@@ -278,7 +291,12 @@ func (az *AzStorage) RenameDir(options internal.RenameDirOptions) error {
 	options.Src = internal.TruncateDirName(options.Src)
 	options.Dst = internal.TruncateDirName(options.Dst)
 
-	return az.storage.RenameDirectory(options.Src, options.Dst)
+	err := az.storage.RenameDirectory(options.Src, options.Dst)
+
+	if err == nil {
+		createStatsObj("RenameDir", options.Src, true, map[string]string{"Dest": options.Dst})
+	}
+	return err
 }
 
 // File operations
@@ -297,6 +315,8 @@ func (az *AzStorage) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	if err != nil {
 		return nil, err
 	}
+
+	createStatsObj("CreateFile", options.Name, true, nil)
 
 	return handle, nil
 }
@@ -329,13 +349,24 @@ func (az *AzStorage) CloseFile(options internal.CloseFileOptions) error {
 func (az *AzStorage) DeleteFile(options internal.DeleteFileOptions) error {
 	log.Trace("AzStorage::DeleteFile : %s", options.Name)
 
-	return az.storage.DeleteFile(options.Name)
+	err := az.storage.DeleteFile(options.Name)
+
+	if err == nil {
+		createStatsObj("DeleteFile", options.Name, true, nil)
+	}
+
+	return err
 }
 
 func (az *AzStorage) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("AzStorage::RenameFile : %s to %s", options.Src, options.Dst)
 
-	return az.storage.RenameFile(options.Src, options.Dst)
+	err := az.storage.RenameFile(options.Src, options.Dst)
+
+	if err == nil {
+		createStatsObj("RenameFile", options.Src, true, map[string]string{"Dest": options.Dst})
+	}
+	return err
 }
 
 func (az *AzStorage) ReadFile(options internal.ReadFileOptions) (data []byte, err error) {
@@ -380,7 +411,12 @@ func (az *AzStorage) GetFileBlockOffsets(options internal.GetFileBlockOffsetsOpt
 
 func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("AzStorage::TruncateFile : %s to %d bytes", options.Name, options.Size)
-	return az.storage.TruncateFile(options.Name, options.Size)
+	err := az.storage.TruncateFile(options.Name, options.Size)
+
+	if err == nil {
+		createStatsObj("TruncateFile", options.Name, true, map[string]string{"Size": strconv.FormatInt(options.Size, 10)})
+	}
+	return err
 }
 
 func (az *AzStorage) CopyToFile(options internal.CopyToFileOptions) error {
@@ -396,7 +432,13 @@ func (az *AzStorage) CopyFromFile(options internal.CopyFromFileOptions) error {
 // Symlink operations
 func (az *AzStorage) CreateLink(options internal.CreateLinkOptions) error {
 	log.Trace("AzStorage::CreateLink : Create symlink %s -> %s", options.Name, options.Target)
-	return az.storage.CreateLink(options.Name, options.Target)
+	err := az.storage.CreateLink(options.Name, options.Target)
+
+	if err == nil {
+		createStatsObj("CreateLink", options.Name, true, map[string]string{"Target": options.Target})
+	}
+
+	return err
 }
 
 func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) {
@@ -426,9 +468,14 @@ func (az *AzStorage) FlushFile(options internal.FlushFileOptions) error {
 	return az.storage.StageAndCommit(options.Handle.Path, options.Handle.CacheObj.BlockOffsetList)
 }
 
-func addAzStorageStats(stats AzStorageStats) {
+func createStatsObj(op string, blobName string, isEvent bool, mp map[string]string) {
 	if common.EnableMonitoring {
-		AzStatsCollector.AddStats(stats)
+		az := AzStorageStats{stats: internal.Stats{ComponentName: "azstorage", Operation: op}, blob: blobName}
+		if mp != nil {
+			az.stats.Value = mp
+		}
+		// addAzStorageStats(az)
+		AzStatsCollector.AddStats(internal.ChannelMsg{IsEvent: isEvent, CompStats: az})
 	}
 }
 
