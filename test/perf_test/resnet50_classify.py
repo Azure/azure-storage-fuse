@@ -56,7 +56,7 @@ if __name__ == "__main__":
     dataset_path = args['dataset']
     log_file_path = args['log']
     job_name = args['job']
-    procs = args['procs']
+    procs = int(args['procs'])
     p = Pool(processes=procs)
     tic = time.time()
 
