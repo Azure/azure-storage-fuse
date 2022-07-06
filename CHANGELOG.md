@@ -5,6 +5,8 @@
 **Bug Fixes**
 - Fixed a bug in parsing output of disk utilization summary
 - Fixed a bug in parsing SAS token not having '?' as first character
+- Fixed a bug in append file flow resolving data corruption
+- Fixed a bug in MSI auth to send correct resource string
 ## 2.0.0-preview.2 (2022-05-31)
 **Performance Improvements**
 - fio: Outperforms blobfuse by 10% in sequential reads
