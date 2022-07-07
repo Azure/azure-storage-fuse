@@ -1658,12 +1658,12 @@ jobs:
 
         # Install all dependencies
         - script: |
-           sudo zypper -n update git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libboost*devel libgcrypt-devel rpm-build go
+            sudo zypper -n update git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libboost*devel libgcrypt-devel rpm-build go
          displayName: "Basic Tools Setup"
 
         # Install libfuse
         - script: |
-           sudo zypper -n update fuse-devel fuse
+            sudo zypper -n update fuse-devel fuse
          displayName: "libFuse Setup"
 
         # Prebuild cleanup
