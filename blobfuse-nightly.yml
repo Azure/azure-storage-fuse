@@ -1066,7 +1066,7 @@ jobs:
         matrix:
           RHEL-7.5-new-curl:
             DistroVer: "RHEL-7.5"
-            AgentName : "blobfuse-rhel7_9"
+            AgentName : "blobfuse-rhel7_5"
             Description: "Red Hat Enterprise Linux 7.5"
             containerName: 'test-cnt-rhel-75'
             PoolName: "blobfuse-rhel-pool"
