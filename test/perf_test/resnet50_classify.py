@@ -52,6 +52,9 @@ if __name__ == "__main__":
     
     args = vars(parser.parse_args())
     
+    # Preload the ResNet50 model
+    resnet50.ResNet50(weights='imagenet')
+    
     # create a pool of 32 threads
     dataset_path = args['dataset']
     log_file_path = args['log']
