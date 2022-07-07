@@ -1,3 +1,10 @@
+## 2.0.0-preview.3 (WIP)
+**Features**
+- Added support for directory level SAS while mounting a subdirectory
+
+**Bug Fixes**
+- Fixed a bug in parsing output of disk utilization summary
+- Fixed a bug in parsing SAS token not having '?' as first character
 ## 2.0.0-preview.2 (2022-05-31)
 **Performance Improvements**
 - fio: Outperforms blobfuse by 10% in sequential reads

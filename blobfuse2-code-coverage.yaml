@@ -336,6 +336,16 @@ jobs:
         displayName: "CLI : Remount test"
         timeoutInMinutes: 2
 
+      # Doc generation tests
+      - script: |
+          ./blobfuse2.test -test.v -test.coverprofile=doc.cov doc
+          if [ $? -ne 0 ]; then
+            exit 1
+          fi
+        workingDirectory: $(WORK_DIR)
+        displayName: "CLI : doc generation"
+        timeoutInMinutes: 2
+
       # Simulate config change
       - script: |
           rm -rf $(MOUNT_DIR)/*

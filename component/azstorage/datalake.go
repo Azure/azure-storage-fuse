@@ -182,10 +182,10 @@ func (dl *Datalake) TestPipeline() error {
 		return nil
 	}
 
-	var maxResults int32
-	maxResults = 2
+	maxResults := int32(2)
 	listPath, err := dl.Filesystem.ListPaths(context.Background(),
 		azbfs.ListPathsFilesystemOptions{
+			Path:       &dl.Config.prefixPath,
 			Recursive:  false,
 			MaxResults: &maxResults,
 		})
