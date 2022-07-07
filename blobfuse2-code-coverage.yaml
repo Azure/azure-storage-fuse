@@ -377,4 +377,18 @@ jobs:
           artifactName: 'Blobfuse2 Coverage $(tags)'
         displayName: 'Publish Artifacts for blobfuse2 code coverage'
         condition: succeeded()
+
+      # Overall code coverage check
+      - script: |
+          chmod 777 ./test/scripts/coveragecheck.sh
+          ./test/scripts/coveragecheck.sh
+        workingDirectory: $(WORK_DIR)
+        displayName: "Overall coverage check"
+
+      # File level code coverage check
+      - script: |
+          ./test/scripts/coveragecheck.sh file
+        workingDirectory: $(WORK_DIR)
+        displayName: "File level coverage check"
+        condition: always()
   
