@@ -1430,13 +1430,13 @@ jobs:
         matrix:
           MSI_Test:
             DistroVer: "Ubn20_MSI"
-            AgentName : "MSITestUBN20"
+            AgentName : "blobfuse-ubuntu20"
             Description: "MSI Test - 2"
 
       pool:
-        name: "Blobfuse Pool"
+        name: "blobfuse-ubuntu-pool"
         demands:
-        - Agent.Name -equals $(AgentName)
+          - ImageOverride -equals $(AgentName)
 
       variables:
       - group: NightlyBlobFuse
