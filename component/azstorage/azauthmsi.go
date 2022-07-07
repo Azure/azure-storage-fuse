@@ -59,7 +59,9 @@ func (azmsi *azAuthMSI) fetchToken() (*adal.ServicePrincipalToken, error) {
 	// and does not work in all types of clouds (US, German, China etc).
 	// resource := azure.PublicCloud.ResourceIdentifiers.Datalake
 	resource := azure.PublicCloud.ResourceIdentifiers.Storage
-
+	if azmsi.config.AuthResource != "" {
+		resource = azmsi.config.AuthResource
+	}
 	log.Info("AzAuthMSI::fetchToken : Resource : %s", resource)
 
 	spt, err := adal.NewServicePrincipalTokenFromManagedIdentity(resource, &adal.ManagedIdentityOptions{

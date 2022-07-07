@@ -130,6 +130,10 @@ func (dl *Datalake) getCredential() azbfs.Credential {
 	}
 
 	cred := dl.Auth.getCredential()
+	if cred == nil {
+		log.Err("Datalake::getCredential : Failed to get credential")
+		return nil
+	}
 
 	return cred.(azbfs.Credential)
 }
