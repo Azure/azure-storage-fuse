@@ -1066,42 +1066,42 @@ jobs:
         matrix:
           RHEL-7.5-new-curl:
             DistroVer: "RHEL-7.5"
-            AgentName : "RHEL 7.5"
+            AgentName : "blobfuse-rhel7_9"
             Description: "Red Hat Enterprise Linux 7.5"
             containerName: 'test-cnt-rhel-75'
             PoolName: "blobfuse-rhel-pool"
 
           RHEL-8.1:
             DistroVer: "RHEL-8.1"
-            AgentName: "RHEL 8.1"
+            AgentName: "blobfuse-rhel8_1"
             Description: "Red Hat Enterprise Linux 8.1"
             containerName: 'test-cnt-rhel-81'
             PoolName: "blobfuse-rhel-pool"
 
           RHEL-8.2:
             DistroVer: "RHEL-8.2"
-            AgentName: "RHEL 8.2"
+            AgentName: "blobfuse-rhel8_2"
             Description: "Red Hat Enterprise Linux 8.2"
             containerName: 'test-cnt-rhel-82'
             PoolName: "blobfuse-rhel-pool"
 
           CentOS-7.0:
             DistroVer: "CentOS-7.0"
-            AgentName: "COS 7.0"
+            AgentName: "blobfuse-centos7"
             Description: "CentOS Linux 7.0"
             containerName: 'test-cnt-cent-7'
             PoolName: "blobfuse-centos-pool"
 
           CentOS-8.0:
             DistroVer: "CentOS-8.0"
-            AgentName: "COS 8.0"
+            AgentName: "blobfuse-centos8"
             Description: "CentOS Linux 8.0"
             containerName: 'test-cnt-cent-8'
             PoolName: "blobfuse-centos-pool"
 
           Oracle-8.1:
             DistroVer: "Oracle-8.1"
-            AgentName: "ORA 8.1"
+            AgentName: "blobfuse-oracle81"
             Description: "Oracle Linux 8.1 Gen 2"
             containerName: 'test-cnt-ora-81'
             PoolName: "blobfuse-oracle-pool"
