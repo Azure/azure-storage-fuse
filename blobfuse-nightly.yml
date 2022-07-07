@@ -1601,14 +1601,14 @@ jobs:
         matrix:
           Proxy_Test:
             DistroVer: "Ubuntu-20P"
-            AgentName : "UBN20Proxy"
+            AgentName : "blobfuse-ubuntu20"
             Description: "Blobfuse : Proxy"
             containerName: 'ubn-20-proxy'
 
       pool:
-        name: "Blobfuse Pool"
+        name: "blobfuse-ubuntu-pool"
         demands:
-        - Agent.Name -equals $(AgentName)
+          - ImageOverride -equals $(AgentName)
 
       variables:
       - group: NightlyBlobFuse
