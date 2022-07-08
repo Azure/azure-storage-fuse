@@ -5,6 +5,9 @@ BlobFuse is an open source project developed to provide a virtual filesystem bac
 
 Blobfuse is stable, and is ***supported by Microsoft*** provided that it is used within its limits documented here. Blobfuse supports both reads and writes however, it does guarantee continuous sync on data written to storage using other APIs or other mounts of blobfuse. For data integrity it is recommended that multiple sources do not modify the same blob. Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/requests/questions.
 
+### If you would like to access next generation blobfuse, please refer to [blobfuse2](https://github.com/Azure/azure-storage-fuse/tree/main). Preview binaries are available [here](https://github.com/Azure/azure-storage-fuse/releases/tag/blobfuse2-2.0.0-preview2)
+### We will continue to respond to issues on legacy blobfuse. However no more feature requests will be taken up. 
+
 ## Features
 - Mount a Blob storage container on Linux
 - Basic file system operations such as mkdir, opendir, readdir, rmdir, open, read, create, write, close, unlink, truncate, stat, rename
