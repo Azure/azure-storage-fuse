@@ -40,6 +40,7 @@ import (
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest/adal"
+	"github.com/Azure/go-autorest/autorest/azure"
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
@@ -52,8 +53,18 @@ type azAuthMSI struct {
 
 // fetchToken : Generates a token based on the config
 func (azmsi *azAuthMSI) fetchToken() (*adal.ServicePrincipalToken, error) {
-	resourceURL := azmsi.getEndpoint()
-	spt, err := adal.NewServicePrincipalTokenFromManagedIdentity(resourceURL, &adal.ManagedIdentityOptions{
+	// Resource string is fixed and has no relation with any of the user inputs
+	// This is not the resource URL, rather a way to identify the resource type and tenant
+	// There are two options in the structure datalake and storage but datalake is not populated
+	// and does not work in all types of clouds (US, German, China etc).
+	// resource := azure.PublicCloud.ResourceIdentifiers.Datalake
+	resource := azure.PublicCloud.ResourceIdentifiers.Storage
+	if azmsi.config.AuthResource != "" {
+		resource = azmsi.config.AuthResource
+	}
+	log.Info("AzAuthMSI::fetchToken : Resource : %s", resource)
+
+	spt, err := adal.NewServicePrincipalTokenFromManagedIdentity(resource, &adal.ManagedIdentityOptions{
 		ClientID:           azmsi.config.ApplicationID,
 		IdentityResourceID: azmsi.config.ResourceID,
 	}, func(token adal.Token) error { return nil })
