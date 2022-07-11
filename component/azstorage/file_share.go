@@ -287,7 +287,7 @@ func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		return attr, syscall.ENOENT
 	}
 	// error
-	log.Err("FileShare::GetAttr : Failed to get file/directory properties for %s (%s)", name, err.Error())
+	log.Err("FileShare::GetAttr : Failed to get file/directory properties for %s (%s)", name, fileerr.Error())
 	return attr, fileerr
 }
 
