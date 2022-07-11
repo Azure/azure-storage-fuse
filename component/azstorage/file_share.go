@@ -194,6 +194,7 @@ func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
 func (fs *FileShare) CreateDirectory(name string) error {
 	return syscall.ENOTSUP
 }
+
 func (fs *FileShare) CreateLink(source string, target string) error {
 	return syscall.ENOTSUP
 }
@@ -216,16 +217,25 @@ func (fs *FileShare) RenameDirectory(string, string) error {
 func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("FileShare::GetAttr : name %s", name)
 
+	// retrieve DirectoryURL of file/directory path (everything except file name)
+	// covers case where name param includes subdirectories and not just the file name
 	path := filepath.Join(fs.Config.prefixPath, name)
 	splitPath := strings.Split(path, "/")
 	splitPath = splitPath[:len(splitPath)-1]
 	joinedPath := strings.Join(splitPath, "/")
 
 	fileURL := fs.Share.NewDirectoryURL(joinedPath).NewFileURL(filepath.Base(name))
-	log.Trace("FileShare::GetAttr : getting fileeeeeeeeeeee properties for %s, %s, %s", fs.Config.prefixPath, name, fileURL)
-	prop, err := fileURL.GetProperties(context.Background())
+	prop, fileerr := fileURL.GetProperties(context.Background())
 
-	if err == nil { // file
+	if fileerr == nil { // file
+		ctime, err := time.Parse(time.RFC1123, prop.FileChangeTime())
+		if err != nil {
+			ctime = prop.LastModified()
+		}
+		crtime, err := time.Parse(time.RFC1123, prop.FileCreationTime())
+		if err != nil {
+			crtime = prop.LastModified()
+		}
 		attr = &internal.ObjAttr{
 			Path:   name, // We don't need to strip the prefixPath here since we pass the input name
 			Name:   filepath.Base(name),
@@ -233,8 +243,8 @@ func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 			Mode:   0,
 			Mtime:  prop.LastModified(),
 			Atime:  prop.LastModified(),
-			Ctime:  prop.LastModified(),
-			Crtime: prop.LastModified(),
+			Ctime:  ctime,
+			Crtime: crtime,
 			Flags:  internal.NewFileBitMap(),
 		}
 		parseMetadata(attr, prop.NewMetadata())
@@ -242,12 +252,19 @@ func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		attr.Flags.Set(internal.PropFlagModeDefault)
 
 		return attr, nil
-	} else { // directory
+	} else if storeFileErrToErr(fileerr) == ErrFileNotFound { // directory
 		dirURL := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, name))
-		log.Trace("FileShare::GetAttr : getting directoryyyyyyyyyyyyyy properties for %s, %s, %s", fs.Config.prefixPath, name, dirURL)
-		prop, err := dirURL.GetProperties(context.Background())
+		prop, direrr := dirURL.GetProperties(context.Background())
 
-		if err == nil {
+		if direrr == nil {
+			ctime, err := time.Parse(time.RFC1123, prop.FileChangeTime())
+			if err != nil {
+				ctime = prop.LastModified()
+			}
+			crtime, err := time.Parse(time.RFC1123, prop.FileCreationTime())
+			if err != nil {
+				crtime = prop.LastModified()
+			}
 			attr = &internal.ObjAttr{
 				Path:   name,
 				Name:   filepath.Base(name),
@@ -255,8 +272,8 @@ func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 				Mode:   0,
 				Mtime:  prop.LastModified(),
 				Atime:  prop.LastModified(),
-				Ctime:  prop.LastModified(),
-				Crtime: prop.LastModified(),
+				Ctime:  ctime,
+				Crtime: crtime,
 				Flags:  internal.NewDirBitMap(),
 			}
 			parseMetadata(attr, prop.NewMetadata())
@@ -264,21 +281,15 @@ func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 			attr.Flags.Set(internal.PropFlagModeDefault)
 
 			return attr, nil
-		} else { // error
-			e := storeFileErrToErr(err)
-			if e == ErrFileNotFound {
-				return attr, syscall.ENOENT
-			} else {
-				log.Err("FileShare::GetAttr : Failed to get file/directory properties for %s (%s)", name, err.Error())
-				return attr, err
-			}
 		}
-
+		return attr, syscall.ENOENT
 	}
-
+	// error
+	log.Err("FileShare::GetAttr : Failed to get file/directory properties for %s (%s)", name, err.Error())
+	return attr, fileerr
 }
 
-// List : Get a list of blobs matching the given prefix
+// List : Get a list of files/directories matching the given prefix
 // This fetches the list using a marker so the caller code should handle marker logic
 // If count=0 - fetch max entries
 func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error) {
@@ -298,19 +309,8 @@ func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*intern
 
 	listPath := filepath.Join(fs.Config.prefixPath, prefix)
 
-	// Get a result segment starting with the file indicated by the current Marker.
-	var listFile *azfile.ListFilesAndDirectoriesSegmentResponse
-	var err error
-	if listPath != "" {
-		listFile, err = fs.Share.NewDirectoryURL(listPath).ListFilesAndDirectoriesSegment(context.Background(), azfile.Marker{Val: marker},
-			azfile.ListFilesAndDirectoriesOptions{MaxResults: count})
-	} else {
-		if (prefix != "" && prefix[len(prefix)-1] == '/') || (prefix == "" && fs.Config.prefixPath != "") {
-			listPath += "/"
-		}
-		listFile, err = fs.Share.NewRootDirectoryURL().ListFilesAndDirectoriesSegment(context.Background(), azfile.Marker{Val: marker},
-			azfile.ListFilesAndDirectoriesOptions{MaxResults: count})
-	}
+	listFile, err := fs.Share.NewDirectoryURL(listPath).ListFilesAndDirectoriesSegment(context.Background(), azfile.Marker{Val: marker},
+		azfile.ListFilesAndDirectoriesOptions{MaxResults: count})
 
 	if err != nil {
 		log.Err("File::List : Failed to list the container with the prefix %s", err.Error)
@@ -333,8 +333,6 @@ func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*intern
 			Flags:  internal.NewFileBitMap(),
 		}
 
-		// parseMetadata(attr, fileInfo.Metadata)
-		// attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 		attr.Flags.Set(internal.PropFlagModeDefault)
 		fileList = append(fileList, attr)
 
@@ -358,14 +356,8 @@ func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*intern
 			Flags:  internal.NewDirBitMap(),
 		}
 
-		// parseMetadata(attr, dirInfo.Metadata)
-		// attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 		attr.Flags.Set(internal.PropFlagModeDefault)
 		fileList = append(fileList, attr)
-
-		if attr.IsDir() {
-			attr.Size = 4096
-		}
 	}
 
 	return fileList, listFile.NextMarker.Val, nil

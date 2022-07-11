@@ -354,13 +354,13 @@ func storeDatalakeErrToErr(err error) uint16 {
 	return ErrNoErr
 }
 
-// Convert datalake storage error to common errors
+// Convert file storage error to common errors
 func storeFileErrToErr(err error) uint16 {
 	if serr, ok := err.(azfile.StorageError); ok {
 		switch serr.ServiceCode() {
-		case azfile.ServiceCodeShareAlreadyExists:
+		case azfile.ServiceCodeResourceAlreadyExists:
 			return ErrFileAlreadyExists
-		case azfile.ServiceCodeShareNotFound:
+		case azfile.ServiceCodeResourceNotFound:
 			return ErrFileNotFound
 		default:
 			return ErrUnknown
