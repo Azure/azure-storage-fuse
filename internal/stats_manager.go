@@ -2,6 +2,7 @@ package internal
 
 import (
 	"blobfuse2/common/log"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sync"
@@ -18,14 +19,15 @@ type StatsCollector struct {
 }
 
 type Stats struct {
-	ComponentName string
-	Operation     string
-	Value         map[string]string
+	ComponentName string            `json:"componentName"`
+	Operation     string            `json:"operation"`
+	Blob          string            `json:"blob"`
+	Value         map[string]string `json:"value"`
 }
 
 type ChannelMsg struct {
 	IsEvent   bool
-	CompStats interface{}
+	CompStats Stats
 }
 
 var pipeFile = "/home/sourav/monitorPipe"
@@ -73,12 +75,20 @@ func (sc *StatsCollector) statsDumper() {
 	for st := range sc.channel {
 		log.Debug("StatsManager::StatsDumper : %v stats: %v", sc.componentName, st)
 		if st.IsEvent {
+			msg, err := json.Marshal(st.CompStats)
+			if err != nil {
+				log.Err("StatsManager::StatsDumper : Unable to marshal [%v]", err)
+			}
+
+			log.Debug("StatsManager::StatsDumper : stats: %v", string(msg))
+
 			mu.Lock()
-			_, err = f.WriteString(fmt.Sprintf("%v\n", st))
+			_, err = f.WriteString(fmt.Sprintf("%v\n", string(msg)))
 			if err != nil {
 				log.Err("StatsManager::StatsDumper : Unable to write to pipe [%v]", err)
 			}
 			mu.Unlock()
+
 		} else {
 			// TODO : accumulate component level stats
 		}

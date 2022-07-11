@@ -77,10 +77,10 @@ type FileCache struct {
 	defaultPermission os.FileMode
 }
 
-type FileCacheStats struct {
-	stats internal.Stats
-	blob  string
-}
+// type FileCacheStats struct {
+// 	stats internal.Stats
+// 	blob  string
+// }
 
 // Structure defining your config parameters
 type FileCacheOptions struct {
@@ -846,7 +846,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			log.Err("FileCache::OpenFile : Failed to change times of file %s [%s]", options.Name, err.Error())
 		}
 
-		addFileCacheStats("OpenFile", options.Name, true, nil)
+		// addFileCacheStats("OpenFile", options.Name, true, nil)
 	} else {
 		log.Debug("FileCache::OpenFile : %s will be served from cache", options.Name)
 	}
@@ -874,6 +874,8 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
 	handle.SetFileObject(f)
+
+	addFileCacheStats("OpenFile", options.Name, true, map[string]string{"Mode": options.Mode.String()})
 
 	return handle, nil
 }
@@ -1293,7 +1295,7 @@ func (fc *FileCache) Chmod(options internal.ChmodOptions) error {
 		}
 	}
 
-	addFileCacheStats("Chmod", options.Name, true, nil)
+	addFileCacheStats("Chmod", options.Name, true, map[string]string{"Mode": options.Mode.String()})
 
 	return nil
 }
@@ -1323,16 +1325,16 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 		}
 	}
 
-	addFileCacheStats("Chown", options.Name, true, nil)
+	addFileCacheStats("Chown", options.Name, true, map[string]string{"Owner": strconv.Itoa(options.Owner), "Group": strconv.Itoa(options.Group)})
 
 	return nil
 }
 
 func addFileCacheStats(op string, blobName string, isEvent bool, mp map[string]string) {
 	if common.EnableMonitoring {
-		fs := FileCacheStats{stats: internal.Stats{ComponentName: "file_cache", Operation: op}, blob: blobName}
+		fs := internal.Stats{ComponentName: "file_cache", Operation: op, Blob: blobName}
 		if mp != nil {
-			fs.stats.Value = mp
+			fs.Value = mp
 		}
 		FileCacheStatsCollector.AddStats(internal.ChannelMsg{IsEvent: isEvent, CompStats: fs})
 	}

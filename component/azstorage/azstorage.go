@@ -58,10 +58,10 @@ type AzStorage struct {
 	listBlocked bool
 }
 
-type AzStorageStats struct {
-	stats internal.Stats
-	blob  string
-}
+// type AzStorageStats struct {
+// 	stats internal.Stats
+// 	blob  string
+// }
 
 const compName = "azstorage"
 
@@ -191,7 +191,7 @@ func (az *AzStorage) CreateDir(options internal.CreateDirOptions) error {
 	err := az.storage.CreateDirectory(internal.TruncateDirName(options.Name))
 
 	if err == nil {
-		createStatsObj("CreateDir", options.Name, true, nil)
+		createStatsObj("CreateDir", options.Name, true, map[string]string{"Mode": options.Mode.String()})
 	}
 
 	return err
@@ -283,6 +283,8 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	log.Debug("AzStorage::StreamDir : Retrieved %d objects with %s marker for Path %s", len(new_list), options.Token, path)
 
+	createStatsObj("StreamDir", path, true, map[string]string{"Count": strconv.Itoa(len(new_list))})
+
 	return new_list, *new_marker, nil
 }
 
@@ -316,7 +318,7 @@ func (az *AzStorage) CreateFile(options internal.CreateFileOptions) (*handlemap.
 		return nil, err
 	}
 
-	createStatsObj("CreateFile", options.Name, true, nil)
+	createStatsObj("CreateFile", options.Name, true, map[string]string{"Mode": options.Mode.String()})
 
 	return handle, nil
 }
@@ -455,12 +457,23 @@ func (az *AzStorage) GetAttr(options internal.GetAttrOptions) (attr *internal.Ob
 
 func (az *AzStorage) Chmod(options internal.ChmodOptions) error {
 	log.Trace("AzStorage::Chmod : Change mod of file %s", options.Name)
-	return az.storage.ChangeMod(options.Name, options.Mode)
+	err := az.storage.ChangeMod(options.Name, options.Mode)
+
+	if err == nil {
+		createStatsObj("Chmod", options.Name, true, map[string]string{"Mode": options.Mode.String()})
+	}
+
+	return err
 }
 
 func (az *AzStorage) Chown(options internal.ChownOptions) error {
 	log.Trace("AzStorage::Chown : Change ownership of file %s to %d-%d", options.Name, options.Owner, options.Group)
-	return az.storage.ChangeOwner(options.Name, options.Owner, options.Group)
+	err := az.storage.ChangeOwner(options.Name, options.Owner, options.Group)
+	if err == nil {
+		createStatsObj("Chown", options.Name, true, map[string]string{"Owner": strconv.Itoa(options.Owner), "Group": strconv.Itoa(options.Group)})
+	}
+
+	return err
 }
 
 func (az *AzStorage) FlushFile(options internal.FlushFileOptions) error {
@@ -470,9 +483,9 @@ func (az *AzStorage) FlushFile(options internal.FlushFileOptions) error {
 
 func createStatsObj(op string, blobName string, isEvent bool, mp map[string]string) {
 	if common.EnableMonitoring {
-		az := AzStorageStats{stats: internal.Stats{ComponentName: "azstorage", Operation: op}, blob: blobName}
+		az := internal.Stats{ComponentName: "azstorage", Operation: op, Blob: blobName}
 		if mp != nil {
-			az.stats.Value = mp
+			az.Value = mp
 		}
 		// addAzStorageStats(az)
 		AzStatsCollector.AddStats(internal.ChannelMsg{IsEvent: isEvent, CompStats: az})
