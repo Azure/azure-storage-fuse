@@ -176,8 +176,10 @@ func (fs *FileShare) ListContainers() ([]string, error) {
 }
 
 // This is just for test, shall not be used otherwise
-func (fs *FileShare) SetPrefixPath(string) error {
-	return syscall.ENOTSUP
+func (fs *FileShare) SetPrefixPath(path string) error {
+	log.Trace("FileShare::SetPrefixPath : path %s", path)
+	fs.Config.prefixPath = path
+	return nil
 }
 
 func (fs *FileShare) Exists(name string) bool {
