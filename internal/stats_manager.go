@@ -72,6 +72,8 @@ func (sc *StatsCollector) statsDumper() {
 	}
 	defer f.Close()
 
+	log.Info("StatsManager::StatsDumper : opened pipe file")
+
 	for st := range sc.channel {
 		log.Debug("StatsManager::StatsDumper : %v stats: %v", sc.componentName, st)
 		if st.IsEvent {

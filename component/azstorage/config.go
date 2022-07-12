@@ -162,6 +162,7 @@ type AzStorageOptions struct {
 	HttpsProxyAddress       string `config:"https-proxy" yaml:"https-proxy,omitempty"`
 	SdkTrace                bool   `config:"sdk-trace" yaml:"sdk-trace,omitempty"`
 	FailUnsupportedOp       bool   `config:"fail-unsupported-op" yaml:"fail-unsupported-op,omitempty"`
+	AuthResourceString      string `config:"auth-resource" yaml:"auth-resource,omitempty"`
 }
 
 //  RegisterEnvVariables : Register environment varilables
@@ -324,7 +325,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		if opt.SaSKey == "" {
 			return errors.New("SAS key not provided")
 		}
-		az.stConfig.authConfig.SASKey = opt.SaSKey
+		az.stConfig.authConfig.SASKey = sanitizeSASKey(opt.SaSKey)
 	case EAuthType.MSI():
 		az.stConfig.authConfig.AuthMode = EAuthType.MSI()
 		if opt.ApplicationID == "" && opt.ResourceID == "" {
@@ -332,6 +333,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
 		az.stConfig.authConfig.ResourceID = opt.ResourceID
+
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
 		if opt.ClientID == "" || opt.ClientSecret == "" || opt.TenantID == "" {
@@ -344,6 +346,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		log.Err("ParseAndValidateConfig : Invalid auth mode %s", opt.AuthMode)
 		return errors.New("invalid auth mode")
 	}
+	az.stConfig.authConfig.AuthResource = opt.AuthResourceString
 
 	// Retry policy configuration
 	// A user provided value of 0 doesn't make sense for MaxRetries, MaxTimeout, BackoffTime, or MaxRetryDelay.
@@ -404,7 +407,8 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		}
 
 		oldSas := az.stConfig.authConfig.SASKey
-		az.stConfig.authConfig.SASKey = opt.SaSKey
+		az.stConfig.authConfig.SASKey = sanitizeSASKey(opt.SaSKey)
+
 		if reload {
 			log.Info("ParseAndReadDynamicConfig : SAS Key updated")
 

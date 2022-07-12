@@ -130,6 +130,10 @@ func (dl *Datalake) getCredential() azbfs.Credential {
 	}
 
 	cred := dl.Auth.getCredential()
+	if cred == nil {
+		log.Err("Datalake::getCredential : Failed to get credential")
+		return nil
+	}
 
 	return cred.(azbfs.Credential)
 }
@@ -182,10 +186,10 @@ func (dl *Datalake) TestPipeline() error {
 		return nil
 	}
 
-	var maxResults int32
-	maxResults = 2
+	maxResults := int32(2)
 	listPath, err := dl.Filesystem.ListPaths(context.Background(),
 		azbfs.ListPathsFilesystemOptions{
+			Path:       &dl.Config.prefixPath,
 			Recursive:  false,
 			MaxResults: &maxResults,
 		})

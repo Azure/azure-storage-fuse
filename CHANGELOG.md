@@ -1,3 +1,13 @@
+## 2.0.0-preview.3 (WIP)
+**Features**
+- Added support for directory level SAS while mounting a subdirectory
+
+**Bug Fixes**
+- Fixed a bug in parsing output of disk utilization summary
+- Fixed a bug in parsing SAS token not having '?' as first character
+- Fixed a bug in append file flow resolving data corruption
+- Fixed a bug in MSI auth to send correct resource string
+- Fixed a bug in OAuth token parsing when expires_on denotes numbers of seconds
 ## 2.0.0-preview.2 (2022-05-31)
 **Performance Improvements**
 - fio: Outperforms blobfuse by 10% in sequential reads

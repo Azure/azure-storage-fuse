@@ -689,7 +689,7 @@ func (suite *fileCacheTestSuite) TestCloseFileTimeout() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // teardown the default file cache generated
 	cacheTimeout := 5
-	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout: %d\n\nloopbackfs:\n  path: %s",
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: %d\n\nloopbackfs:\n  path: %s",
 		suite.cache_path, cacheTimeout, suite.fake_storage_path)
 	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
 
@@ -1378,7 +1378,7 @@ func (suite *fileCacheTestSuite) TestChownCase2() {
 func (suite *fileCacheTestSuite) TestZZMountPathConflict() {
 	defer suite.cleanupTest()
 	cacheTimeout := 1
-	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout: %d\n\nloopbackfs:\n  path: %s",
+	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: %d\n\nloopbackfs:\n  path: %s",
 		suite.cache_path, cacheTimeout, suite.fake_storage_path)
 
 	fileCache := NewFileCacheComponent()
@@ -1420,7 +1420,7 @@ func (suite *fileCacheTestSuite) TestCachePathSymlink() {
 
 func (suite *fileCacheTestSuite) TestZZOffloadIO() {
 	defer suite.cleanupTest()
-	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  timeout: 0\n\nloopbackfs:\n  path: %s",
+	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  timeout-sec: 0\n\nloopbackfs:\n  path: %s",
 		suite.cache_path, suite.fake_storage_path)
 
 	suite.setupTestHelper(configuration)
