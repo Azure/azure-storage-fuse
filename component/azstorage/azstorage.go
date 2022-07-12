@@ -243,6 +243,17 @@ func (az *AzStorage) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
 	log.Trace("AzStorage::StreamDir : Path %s, offset %d, count %d", options.Name, options.Offset, options.Count)
 
+	if az.listBlocked {
+		diff := time.Since(az.startTime)
+		if diff.Seconds() > float64(az.stConfig.cancelListForSeconds) {
+			az.listBlocked = false
+			log.Info("AzStorage::StreamDir : Unblocked List API")
+		} else {
+			log.Info("AzStorage::StreamDir : Blocked List API for %d more seconds", int(az.stConfig.cancelListForSeconds)-int(diff.Seconds()))
+			return make([]*internal.ObjAttr, 0), "", nil
+		}
+	}
+
 	path := formatListDirName(options.Name)
 
 	new_list, new_marker, err := az.storage.List(path, &options.Token, options.Count)
