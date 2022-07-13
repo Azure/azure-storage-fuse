@@ -444,7 +444,28 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 
 // WriteFromBuffer : Upload from a buffer to a file
 func (fs *FileShare) WriteFromBuffer(name string, metadata map[string]string, data []byte) error {
-	return syscall.ENOTSUP
+	log.Trace("FileShare::WriteFromBuffer : name %s", name)
+
+	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
+
+	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
+
+	defer log.TimeTrack(time.Now(), "FileShare::WriteFromBuffer", name)
+	err := azfile.UploadBufferToAzureFile(context.Background(), data, fileURL, azfile.UploadToAzureFileOptions{
+		RangeSize:   fs.Config.blockSize,
+		Parallelism: fs.Config.maxConcurrency,
+		Metadata:    metadata,
+		FileHTTPHeaders: azfile.FileHTTPHeaders{
+			ContentType: getContentType(name),
+		},
+	})
+
+	if err != nil {
+		log.Err("FileShare::WriteFromBuffer : Failed to upload blob %s (%s)", name, err.Error())
+		return err
+	}
+
+	return nil
 }
 
 func (fs *FileShare) Write(options internal.WriteFileOptions) error {
