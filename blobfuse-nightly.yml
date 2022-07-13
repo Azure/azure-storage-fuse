@@ -1148,7 +1148,7 @@ jobs:
             sudo yum install cmake3 -y
             sudo ln -sf /usr/bin/cmake3 /usr/bin/cmake
           displayName: "CMake version"
-          condition: eq(variables['AgentName'], 'blobfuse-centos7')
+          condition: or(eq(variables['AgentName'], 'blobfuse-centos7'),eq(variables['AgentName'], 'blobfuse-rhel7_5'))
 
         # Install libfuse
         - script: |
