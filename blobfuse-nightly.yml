@@ -1146,7 +1146,11 @@ jobs:
 
         - script: |
             sudo yum install rh-python36 -y
-            sudo ln -s /opt/rh/rh-python36/root/usr/bin/python /usr/bin/python3.6
+            sudo ln -sf /opt/rh/rh-python36/root/usr/bin/python /usr/bin/python3.6
+            sudo subscription-manager repos --enable rhel-*-optional-rpms \
+                           --enable rhel-*-extras-rpms \
+                           --enable rhel-ha-for-rhel-*-server-rpms
+            sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
           displayName: "Python3 setup"
           condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
 
