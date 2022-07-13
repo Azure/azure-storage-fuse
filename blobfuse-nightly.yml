@@ -1145,6 +1145,11 @@ jobs:
           displayName: "Basic Tools Setup"
 
         - script: |
+            sudo yum install rh-python36 -y
+          displayName: "Python3 setup"
+          condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
+
+        - script: |
             sudo yum install cmake3 -y
             sudo ln -sf /usr/bin/cmake3 /usr/bin/cmake
           displayName: "CMake version"
