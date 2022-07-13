@@ -41,6 +41,10 @@ import (
 	"errors"
 	"net/url"
 	"os"
+	"path/filepath"
+	"strings"
+	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-file-go/azfile"
 )
@@ -150,86 +154,253 @@ func (fs *FileShare) TestPipeline() error {
 }
 
 func (fs *FileShare) ListContainers() ([]string, error) {
-	return nil, nil
+	log.Trace("FileShare::ListContainers : Listing containers")
+	cntList := make([]string, 0)
+
+	marker := azfile.Marker{}
+	for marker.NotDone() {
+		resp, err := fs.Service.ListSharesSegment(context.Background(), marker, azfile.ListSharesOptions{})
+		if err != nil {
+			log.Err("FileShare::ListContainers : Failed to get container list")
+			return cntList, err
+		}
+
+		for _, v := range resp.ShareItems {
+			cntList = append(cntList, v.Name)
+		}
+
+		marker = resp.NextMarker
+	}
+
+	return cntList, nil
 }
 
 // This is just for test, shall not be used otherwise
-func (fs *FileShare) SetPrefixPath(string) error {
+func (fs *FileShare) SetPrefixPath(path string) error {
+	log.Trace("FileShare::SetPrefixPath : path %s", path)
+	fs.Config.prefixPath = path
 	return nil
 }
 
 func (fs *FileShare) Exists(name string) bool {
-	return false
+	log.Trace("FileShare::Exists : name %s", name)
+	if _, err := fs.GetAttr(name); err == syscall.ENOENT {
+		return false
+	}
+	return true
 }
+
 func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) CreateDirectory(name string) error {
-	return nil
+	return syscall.ENOTSUP
 }
+
 func (fs *FileShare) CreateLink(source string, target string) error {
-	return nil
+	return syscall.ENOTSUP
 }
 
 func (fs *FileShare) DeleteFile(name string) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) DeleteDirectory(name string) error {
-	return nil
+	return syscall.ENOTSUP
 }
 
 func (fs *FileShare) RenameFile(string, string) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) RenameDirectory(string, string) error {
-	return nil
+	return syscall.ENOTSUP
 }
 
+// GetAttr : Retrieve attributes of a file or directory
 func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) {
-	return nil, nil
+	log.Trace("FileShare::GetAttr : name %s", name)
+
+	// retrieve DirectoryURL of file/directory path (everything except file name)
+	// covers case where name param includes subdirectories and not just the file name
+	path := filepath.Join(fs.Config.prefixPath, name)
+	splitPath := strings.Split(path, "/")
+	splitPath = splitPath[:len(splitPath)-1]
+	joinedPath := strings.Join(splitPath, "/")
+
+	fileURL := fs.Share.NewDirectoryURL(joinedPath).NewFileURL(filepath.Base(name))
+	prop, fileerr := fileURL.GetProperties(context.Background())
+
+	if fileerr == nil { // file
+		ctime, err := time.Parse(time.RFC1123, prop.FileChangeTime())
+		if err != nil {
+			ctime = prop.LastModified()
+		}
+		crtime, err := time.Parse(time.RFC1123, prop.FileCreationTime())
+		if err != nil {
+			crtime = prop.LastModified()
+		}
+		attr = &internal.ObjAttr{
+			Path:   name, // We don't need to strip the prefixPath here since we pass the input name
+			Name:   filepath.Base(name),
+			Size:   prop.ContentLength(),
+			Mode:   0,
+			Mtime:  prop.LastModified(),
+			Atime:  prop.LastModified(),
+			Ctime:  ctime,
+			Crtime: crtime,
+			Flags:  internal.NewFileBitMap(),
+		}
+		parseMetadata(attr, prop.NewMetadata())
+		attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+		attr.Flags.Set(internal.PropFlagModeDefault)
+
+		return attr, nil
+	} else if storeFileErrToErr(fileerr) == ErrFileNotFound { // directory
+		dirURL := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, name))
+		prop, direrr := dirURL.GetProperties(context.Background())
+
+		if direrr == nil {
+			ctime, err := time.Parse(time.RFC1123, prop.FileChangeTime())
+			if err != nil {
+				ctime = prop.LastModified()
+			}
+			crtime, err := time.Parse(time.RFC1123, prop.FileCreationTime())
+			if err != nil {
+				crtime = prop.LastModified()
+			}
+			attr = &internal.ObjAttr{
+				Path:   name,
+				Name:   filepath.Base(name),
+				Size:   4096,
+				Mode:   0,
+				Mtime:  prop.LastModified(),
+				Atime:  prop.LastModified(),
+				Ctime:  ctime,
+				Crtime: crtime,
+				Flags:  internal.NewDirBitMap(),
+			}
+			parseMetadata(attr, prop.NewMetadata())
+			attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+			attr.Flags.Set(internal.PropFlagModeDefault)
+
+			return attr, nil
+		}
+		return attr, syscall.ENOENT
+	}
+	// error
+	log.Err("FileShare::GetAttr : Failed to get file/directory properties for %s (%s)", name, fileerr.Error())
+	return attr, fileerr
 }
 
-// Standard operations to be supported by any account type
+// List : Get a list of files/directories matching the given prefix
+// This fetches the list using a marker so the caller code should handle marker logic
+// If count=0 - fetch max entries
 func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*internal.ObjAttr, *string, error) {
-	return nil, nil, nil
+	log.Trace("FileShare::List : prefix %s, marker %s", prefix, func(marker *string) string {
+		if marker != nil {
+			return *marker
+		} else {
+			return ""
+		}
+	}(marker))
+
+	fileList := make([]*internal.ObjAttr, 0)
+
+	if count == 0 {
+		count = common.MaxDirListCount
+	}
+
+	listPath := filepath.Join(fs.Config.prefixPath, prefix)
+
+	listFile, err := fs.Share.NewDirectoryURL(listPath).ListFilesAndDirectoriesSegment(context.Background(), azfile.Marker{Val: marker},
+		azfile.ListFilesAndDirectoriesOptions{MaxResults: count})
+
+	if err != nil {
+		log.Err("File::List : Failed to list the container with the prefix %s", err.Error)
+		return fileList, nil, err
+	}
+
+	// Process the files returned in this result segment (if the segment is empty, the loop body won't execute)
+	for _, fileInfo := range listFile.FileItems {
+		attr := &internal.ObjAttr{
+			Path: split(fs.Config.prefixPath, fileInfo.Name),
+			Name: filepath.Base(fileInfo.Name),
+			Size: fileInfo.Properties.ContentLength,
+			Mode: 0,
+			// Azure file SDK supports 2019.02.02 but time and metadata are only supported by 2020.x.x onwards
+			// TODO: support times when Azure SDK is updated
+			Mtime:  time.Now(),
+			Atime:  time.Now(),
+			Ctime:  time.Now(),
+			Crtime: time.Now(),
+			Flags:  internal.NewFileBitMap(),
+		}
+
+		attr.Flags.Set(internal.PropFlagModeDefault)
+		fileList = append(fileList, attr)
+
+		if attr.IsDir() {
+			attr.Size = 4096
+		}
+	}
+
+	for _, dirInfo := range listFile.DirectoryItems {
+		attr := &internal.ObjAttr{
+			Path: split(fs.Config.prefixPath, dirInfo.Name),
+			Name: filepath.Base(dirInfo.Name),
+			Size: 4096,
+			Mode: os.ModeDir,
+			// Azure file SDK supports 2019.02.02 but time, metadata, and dir size are only supported by 2020.x.x onwards
+			// TODO: support times when Azure SDK is updated
+			Mtime:  time.Now(),
+			Atime:  time.Now(),
+			Ctime:  time.Now(),
+			Crtime: time.Now(),
+			Flags:  internal.NewDirBitMap(),
+		}
+
+		attr.Flags.Set(internal.PropFlagModeDefault)
+		fileList = append(fileList, attr)
+	}
+
+	return fileList, listFile.NextMarker.Val, nil
 }
 
 func (fs *FileShare) ReadToFile(name string, offset int64, count int64, fi *os.File) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) ReadBuffer(name string, offset int64, len int64) ([]byte, error) {
-	return nil, nil
+	return nil, syscall.ENOTSUP
 }
 func (fs *FileShare) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
-	return nil
+	return syscall.ENOTSUP
 }
 
 func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *os.File) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) WriteFromBuffer(name string, metadata map[string]string, data []byte) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) Write(options internal.WriteFileOptions) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
-	return nil, nil
+	return nil, syscall.ENOTSUP
 }
 
 func (fs *FileShare) ChangeMod(string, os.FileMode) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) ChangeOwner(string, int, int) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) TruncateFile(string, int64) error {
-	return nil
+	return syscall.ENOTSUP
 }
 func (fs *FileShare) StageAndCommit(name string, bol *common.BlockOffsetList) error {
-	return nil
+	return syscall.ENOTSUP
 }
 
 func (fs *FileShare) NewCredentialKey(_, _ string) error {
-	return nil
+	return syscall.ENOTSUP
 }

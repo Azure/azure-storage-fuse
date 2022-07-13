@@ -354,6 +354,21 @@ func storeDatalakeErrToErr(err error) uint16 {
 	return ErrNoErr
 }
 
+// Convert file storage error to common errors
+func storeFileErrToErr(err error) uint16 {
+	if serr, ok := err.(azfile.StorageError); ok {
+		switch serr.ServiceCode() {
+		case azfile.ServiceCodeResourceAlreadyExists:
+			return ErrFileAlreadyExists
+		case azfile.ServiceCodeResourceNotFound:
+			return ErrFileNotFound
+		default:
+			return ErrUnknown
+		}
+	}
+	return ErrNoErr
+}
+
 //    ----------- Metadata handling  ---------------
 // Converts datalake properties to a metadata map
 func newMetadata(properties string) map[string]string {
