@@ -190,27 +190,95 @@ func (fs *FileShare) Exists(name string) bool {
 	return true
 }
 
+// CreateFile : Create a new file in the share/virtual directory
 func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
-	return syscall.ENOTSUP
+	log.Trace("FileShare::CreateFile : name %s", name)
+	var data []byte
+	return fs.WriteFromBuffer(filepath.Base(name), nil, data)
 }
+
 func (fs *FileShare) CreateDirectory(name string) error {
 	return syscall.ENOTSUP
 }
 
+// CreateLink : Create a symlink in the share/virtual directory
 func (fs *FileShare) CreateLink(source string, target string) error {
-	return syscall.ENOTSUP
+	log.Trace("FileShare::CreateLink : %s -> %s", source, target)
+	data := []byte(target)
+	metadata := make(azfile.Metadata)
+	metadata[symlinkKey] = "true"
+	return fs.WriteFromBuffer(source, metadata, data)
 }
 
-func (fs *FileShare) DeleteFile(name string) error {
-	return syscall.ENOTSUP
+// DeleteFile : Delete a file in the share/virtual directory
+func (fs *FileShare) DeleteFile(name string) (err error) {
+	log.Trace("FileShare::DeleteFile : name %s", name)
+
+	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
+
+	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	_, err = fileURL.Delete(context.Background())
+	if err != nil {
+		serr := storeFileErrToErr(err)
+		if serr == ErrFileNotFound {
+			log.Err("FileShare::DeleteFile : %s does not exist", name)
+			return syscall.ENOENT
+		} else {
+			log.Err("FileShare::DeleteFile : Failed to delete blob %s (%s)", name, err.Error())
+			return err
+		}
+	}
+
+	return nil
 }
+
 func (fs *FileShare) DeleteDirectory(name string) error {
 	return syscall.ENOTSUP
 }
 
-func (fs *FileShare) RenameFile(string, string) error {
-	return syscall.ENOTSUP
+// RenameFile : Rename the file
+func (fs *FileShare) RenameFile(source string, target string) error {
+	log.Trace("FileShare::RenameFile : %s -> %s", source, target)
+
+	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, source))
+
+	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	newFile := fs.Share.NewDirectoryURL(dirPath).NewFileURL(target)
+
+	prop, err := fileURL.GetProperties(context.Background())
+	if err != nil {
+		serr := storeFileErrToErr(err)
+		if serr == ErrFileNotFound {
+			log.Err("FileShare::RenameFile : %s does not exist", source)
+			return syscall.ENOENT
+		} else {
+			log.Err("FileShare::RenameFile : Failed to get file properties for %s (%s)", source, err.Error())
+			return err
+		}
+	}
+
+	startCopy, err := newFile.StartCopy(context.Background(), fileURL.URL(), prop.NewMetadata())
+
+	if err != nil {
+		log.Err("FileShare::RenameFile : Failed to start copy of file %s (%s)", source, err.Error())
+		return err
+	}
+
+	copyStatus := startCopy.CopyStatus()
+	for copyStatus == azfile.CopyStatusPending {
+		time.Sleep(time.Second * 1)
+		prop, err = newFile.GetProperties(context.Background())
+		if err != nil {
+			log.Err("FileShare::RenameFile : CopyStats : Failed to get blob properties for %s (%s)", source, err.Error())
+		}
+		copyStatus = prop.CopyStatus()
+	}
+	log.Trace("FileShare::RenameFile : %s -> %s done", source, target)
+
+	// Copy of the file is done so now delete the older file
+	return fs.DeleteFile(source)
 }
+
 func (fs *FileShare) RenameDirectory(string, string) error {
 	return syscall.ENOTSUP
 }
@@ -219,14 +287,9 @@ func (fs *FileShare) RenameDirectory(string, string) error {
 func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("FileShare::GetAttr : name %s", name)
 
-	// retrieve DirectoryURL of file/directory path (everything except file name)
-	// covers case where name param includes subdirectories and not just the file name
-	path := filepath.Join(fs.Config.prefixPath, name)
-	splitPath := strings.Split(path, "/")
-	splitPath = splitPath[:len(splitPath)-1]
-	joinedPath := strings.Join(splitPath, "/")
+	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
 
-	fileURL := fs.Share.NewDirectoryURL(joinedPath).NewFileURL(filepath.Base(name))
+	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
 	prop, fileerr := fileURL.GetProperties(context.Background())
 
 	if fileerr == nil { // file
@@ -378,12 +441,16 @@ func (fs *FileShare) ReadInBuffer(name string, offset int64, len int64, data []b
 func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *os.File) error {
 	return syscall.ENOTSUP
 }
+
+// WriteFromBuffer : Upload from a buffer to a file
 func (fs *FileShare) WriteFromBuffer(name string, metadata map[string]string, data []byte) error {
 	return syscall.ENOTSUP
 }
+
 func (fs *FileShare) Write(options internal.WriteFileOptions) error {
 	return syscall.ENOTSUP
 }
+
 func (fs *FileShare) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
 	return nil, syscall.ENOTSUP
 }
@@ -403,4 +470,21 @@ func (fs *FileShare) StageAndCommit(name string, bol *common.BlockOffsetList) er
 
 func (fs *FileShare) NewCredentialKey(_, _ string) error {
 	return syscall.ENOTSUP
+}
+
+// separates directory/directories and file name of a given file/directory path
+// covers case where name param includes subdirectories and not just the file name
+func getFileAndDirFromPath(completePath string) (fileName string, dirPath string) {
+	if completePath == "" {
+		return "", ""
+	}
+
+	splitPath := strings.Split(completePath, "/")
+
+	dirArray := splitPath[:len(splitPath)-1]
+	dirPath = strings.Join(dirArray, "/") // doesn't end with "/"
+
+	fileName = splitPath[len(splitPath)-1]
+
+	return fileName, dirPath
 }
