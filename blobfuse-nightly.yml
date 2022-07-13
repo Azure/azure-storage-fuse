@@ -1818,13 +1818,9 @@ jobs:
         value: true
 
       - name: MOUNT_DIR
-        value: "/home/vibhansa/blob_mnt"
+        value: "/home/vsts/work/blob_mnt"
       - name: TEMP_DIR
         value: "/mnt/blobfusetmp"
-      - name: BLOBFUSE_CFG_FILE
-        value: "/home/vibhansa/myblob.cfg.msi"
-      - name: BLOBFUSE_CFG_FILE_ADLS
-        value: "/home/vibhansa/myblob.cfg.msi.adls"
       
       steps:
         - checkout: none
@@ -1904,6 +1900,11 @@ jobs:
             sudo chown -R `whoami` $(TEMP_DIR)
             chmod 777 $(TEMP_DIR)
           displayName: "Create Directories"
+
+        - task: DownloadSecureFile@1
+          name: BLOBFUSE_CFG_FILE # The name with which to reference the secure file's path on the agent, like $(mySecureFile.secureFilePath)
+          inputs:
+            secureFile: 'myblob.cfg.msi'
         
         # Mount a directory for feature test (Block) and run it
         - script:  |
@@ -1911,7 +1912,7 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE)
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE.secureFilePath)
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
 
@@ -1933,12 +1934,17 @@ jobs:
           continueOnError: true
           workingDirectory: $(ROOT_DIR)
 
+        - task: DownloadSecureFile@1
+          name: BLOBFUSE_CFG_FILE_ADLS # The name with which to reference the secure file's path on the agent, like $(mySecureFile.secureFilePath)
+          inputs:
+            secureFile: 'myblob.cfg.msi.adls'
+
         # List the blobs to verify that the login went successful
         - script:  |
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE_ADLS) --use-adls=true
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE_ADLS.secureFilePath) --use-adls=true
             df
             sudo ps -aux | grep blobfuse
             mkdir $(MOUNT_DIR)/MSITestADLS
