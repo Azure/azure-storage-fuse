@@ -1902,9 +1902,10 @@ jobs:
           displayName: "Create Directories"
 
         - task: DownloadSecureFile@1
-          name: BLOBFUSE_CFG_FILE # The name with which to reference the secure file's path on the agent, like $(mySecureFile.secureFilePath)
+          name: blockConfig # The name with which to reference the secure file's path on the agent, like $(mySecureFile.secureFilePath)
           inputs:
             secureFile: 'myblob.cfg.msi'
+          displayName: "Download block config"
         
         # Mount a directory for feature test (Block) and run it
         - script:  |
@@ -1912,7 +1913,7 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE.secureFilePath)
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(blockConfig.secureFilePath)
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
 
@@ -1935,16 +1936,17 @@ jobs:
           workingDirectory: $(ROOT_DIR)
 
         - task: DownloadSecureFile@1
-          name: BLOBFUSE_CFG_FILE_ADLS # The name with which to reference the secure file's path on the agent, like $(mySecureFile.secureFilePath)
+          name: adlsConfig # The name with which to reference the secure file's path on the agent, like $(mySecureFile.secureFilePath)
           inputs:
             secureFile: 'myblob.cfg.msi.adls'
+          displayName: "Download adls config"
 
         # List the blobs to verify that the login went successful
         - script:  |
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE_ADLS.secureFilePath) --use-adls=true
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(adlsConfig.secureFilePath) --use-adls=true
             df
             sudo ps -aux | grep blobfuse
             mkdir $(MOUNT_DIR)/MSITestADLS
