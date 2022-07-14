@@ -1914,7 +1914,7 @@ jobs:
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(blockConfig.secureFilePath)
-            sleep 5
+            sleep 10s
             sudo tail -n 50 /var/log/syslog
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
