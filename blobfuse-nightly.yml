@@ -1145,8 +1145,7 @@ jobs:
           displayName: "Basic Tools Setup"
 
         - script: |
-            sudo yum install rh-python36 -y
-            sudo ln -sf /opt/rh/rh-python36/root/usr/bin/python /usr/bin/python3
+            sudo yum install python3 -y
           displayName: "Python3 setup"
           condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
 
