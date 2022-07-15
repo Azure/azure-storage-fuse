@@ -1141,18 +1141,8 @@ jobs:
         # Install all dependencies
         - script: |
             sudo yum update -y
-            sudo yum install git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libgcrypt-devel rpm-build golang libarchive -y --skip-broken
+            sudo yum install git tar make cmake3 gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libgcrypt-devel rpm-build golang libarchive -y --skip-broken
           displayName: "Basic Tools Setup"
-
-        # - script: |
-        #     sudo yum install python3-devel -y
-        #   displayName: "Python3 setup"
-        #   condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
-
-        - script: |
-            sudo yum install epel-release cmake3 -y
-          displayName: "CMake version"
-          condition: or(eq(variables['AgentName'], 'blobfuse-centos7'),eq(variables['AgentName'], 'blobfuse-rhel7_5'))
 
         # Install libfuse
         - script: |
