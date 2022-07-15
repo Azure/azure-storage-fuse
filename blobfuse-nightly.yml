@@ -1145,7 +1145,7 @@ jobs:
           displayName: "Basic Tools Setup"
 
         - script: |
-            sudo yum install python3 -y
+            sudo yum install python3-devel -y
           displayName: "Python3 setup"
           condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
 
