@@ -1820,6 +1820,8 @@ jobs:
         value: "/home/vsts/work/myblob.cfg.msi"
       - name: BLOBFUSE_CFG_FILE_ADLS
         value: "/home/vsts/work/myblob.cfg.msi.adls"
+      - name: containerName
+        value: "test-cnt-ubn-20-msi"
       
       steps:
         - checkout: none
