@@ -2051,8 +2051,6 @@ jobs:
 
         # Checkout code
         - script: |
-            echo "HTTP  : " $http_proxy
-            echo "HTTPS : " $https_proxy
             git clone https://github.com/Azure/azure-storage-fuse
           displayName: "Checkout code"
           workingDirectory: $(WORK_DIR)
@@ -2118,6 +2116,9 @@ jobs:
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
+          env:
+            http_proxy: "http://127.0.0.1:8080/"
+            https_proxy: "http://127.0.0.1:8080/"
 
         - script: | 
             sudo rm -rf $(MOUNT_DIR)/*  
