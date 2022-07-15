@@ -2056,12 +2056,6 @@ jobs:
             https_proxy: "http://10.1.22.4:8080/"
             no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
 
-        # Prebuild cleanup
-        - script: |
-            sudo fusermount -u $(MOUNT_DIR)
-            sudo kill -9 `pidof blobfuse`
-          displayName: "Prebuild cleanup"
-
         # Checkout code
         - script: |
             sudo mkdir -p $(WORK_DIR)
