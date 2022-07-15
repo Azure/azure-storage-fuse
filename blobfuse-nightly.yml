@@ -2028,7 +2028,6 @@ jobs:
             sudo update-ca-certificates
             export https_proxy="127.0.0.1:8080"
             export http_proxy="127.0.0.1:8080"
-            export no_proxy="localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
           displayName: 'Configure Proxy'
 
         # Install all dependencies
@@ -2135,7 +2134,6 @@ jobs:
             sudo rm -rf $(TEMP_DIR)/
             sudo rm -rf $(MOUNT_DIR)
             sudo rm -rf $(BLOBFUSE_CFG_FILE)
-            sudo rm -rf $(WORK_DIR)
           workingDirectory: $(ROOT_DIR)
           displayName: 'Cleanup Directories'
           timeoutInMinutes: 5
