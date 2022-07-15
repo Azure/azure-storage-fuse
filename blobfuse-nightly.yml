@@ -1146,7 +1146,7 @@ jobs:
 
         - script: |
             sudo yum install rh-python36 -y
-            sudo ln -sf /opt/rh/rh-python36/root/usr/bin/python /usr/bin/python3.6
+            sudo ln -sf /opt/rh/rh-python36/root/usr/bin/python /usr/bin/python3
           displayName: "Python3 setup"
           condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
 
@@ -1922,7 +1922,6 @@ jobs:
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE)
             sleep 10s
-            sudo tail -n 50 /var/log/syslog
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
 
@@ -1962,6 +1961,7 @@ jobs:
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE_ADLS) --use-adls=true
+            sleep 10s
             df
             sudo ps -aux | grep blobfuse
             mkdir $(MOUNT_DIR)/MSITestADLS
