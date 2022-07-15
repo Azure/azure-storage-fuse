@@ -1147,10 +1147,6 @@ jobs:
         - script: |
             sudo yum install rh-python36 -y
             sudo ln -sf /opt/rh/rh-python36/root/usr/bin/python /usr/bin/python3.6
-            sudo subscription-manager repos --enable rhel-7-optional-rpms \
-                                            --enable rhel-7-extras-rpms \
-                                            --enable rhel-ha-for-rhel-7-server-rpms
-            sudo yum install https://dl.fedoraproject.org/pub/epel/epel-release-latest-7.noarch.rpm
           displayName: "Python3 setup"
           condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
 
@@ -1816,11 +1812,14 @@ jobs:
         value: "/home/vsts/work/azure-storage-fuse"
       - name: skipComponentGovernanceDetection
         value: true
-
       - name: MOUNT_DIR
         value: "/home/vsts/work/blob_mnt"
       - name: TEMP_DIR
         value: "/mnt/blobfusetmp"
+      - name: BLOBFUSE_CFG_FILE
+        value: "/home/vsts/work/myblob.cfg.msi"
+      - name: BLOBFUSE_CFG_FILE_ADLS
+        value: "/home/vsts/work/myblob.cfg.msi.adls"
       
       steps:
         - checkout: none
@@ -1901,11 +1900,17 @@ jobs:
             chmod 777 $(TEMP_DIR)
           displayName: "Create Directories"
 
-        - task: DownloadSecureFile@1
-          name: blockConfig # The name with which to reference the secure file's path on the agent, like $(mySecureFile.secureFilePath)
-          inputs:
-            secureFile: 'myblob.cfg.msi'
-          displayName: "Download block config"
+        - script: |
+            sudo touch $(BLOBFUSE_CFG_FILE)
+            sudo chown -R `whoami` $(BLOBFUSE_CFG_FILE)
+            chmod 777 $(BLOBFUSE_CFG_FILE)
+            echo "accountName " $(AZTEST_BLOCK_ACC_NAME) > $(BLOBFUSE_CFG_FILE)
+            echo "identityClientId " $(AZTEST_APP_ID) >> $(BLOBFUSE_CFG_FILE)
+            echo "authType MSI" >> $(BLOBFUSE_CFG_FILE)
+            echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_FILE)
+            cat $(BLOBFUSE_CFG_FILE)
+            echo "Account : " $(AZTEST_BLOCK_ACC_NAME)
+          displayName: "Create config file"
         
         # Mount a directory for feature test (Block) and run it
         - script:  |
@@ -1913,7 +1918,7 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(blockConfig.secureFilePath)
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE)
             sleep 10s
             sudo tail -n 50 /var/log/syslog
           workingDirectory: $(ROOT_DIR)
@@ -1937,18 +1942,24 @@ jobs:
           continueOnError: true
           workingDirectory: $(ROOT_DIR)
 
-        - task: DownloadSecureFile@1
-          name: adlsConfig # The name with which to reference the secure file's path on the agent, like $(mySecureFile.secureFilePath)
-          inputs:
-            secureFile: 'myblob.cfg.msi.adls'
-          displayName: "Download adls config"
+        - script: |
+            sudo touch $(BLOBFUSE_CFG_FILE_ADLS)
+            sudo chown -R `whoami` $(BLOBFUSE_CFG_FILE_ADLS)
+            chmod 777 $(BLOBFUSE_CFG_FILE_ADLS)
+            echo "accountName " $(AZTEST_ADLS_ACC_NAME) > $(BLOBFUSE_CFG_FILE_ADLS)
+            echo "identityClientId " $(AZTEST_APP_ID) >> $(BLOBFUSE_CFG_FILE_ADLS)
+            echo "authType MSI" >> $(BLOBFUSE_CFG_FILE)
+            echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_FILE_ADLS)
+            cat $(BLOBFUSE_CFG_FILE_ADLS)
+            echo "Account : " $(AZTEST_ADLS_ACC_NAME)
+          displayName: "Create config file"
 
         # List the blobs to verify that the login went successful
         - script:  |
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(adlsConfig.secureFilePath) --use-adls=true
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE_ADLS) --use-adls=true
             df
             sudo ps -aux | grep blobfuse
             mkdir $(MOUNT_DIR)/MSITestADLS
