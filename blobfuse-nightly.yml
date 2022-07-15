@@ -2016,10 +2016,28 @@ jobs:
           displayName: "Print Agent Info"
 
         - script: |
-            export http_proxy="http://10.1.22.4:8080/"
-            export https_proxy="http://10.1.22.4:8080/"
+            sudo apt-get update --fix-missing
+            sudo apt remove mitmproxy
+            sudo apt-get install python3-setuptools
+            sudo apt install python3-pip
+            sudo pip3 install mitmproxy
+            mitmdump -w proxy_logs.txt &
+          displayName: 'Install & Start Proxy'
+
+        - script: |
+            sudo mkdir /usr/local/share/ca-certificates/extra
+            sudo cp ~/.mitmproxy/mitmproxy-ca-cert.cer /usr/local/share/ca-certificates/extra/mitmproxy-ca-cert.crt
+            sudo update-ca-certificates
+            export https_proxy="127.0.0.1:8080"
+            export http_proxy="127.0.0.1:8080"
             export no_proxy="localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
-          displayName: "Setup Proxy"          
+          displayName: 'Configure Proxy'
+
+        # - script: |
+        #     export http_proxy="http://10.1.22.4:8080/"
+        #     export https_proxy="http://10.1.22.4:8080/"
+        #     export no_proxy="localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
+        #   displayName: "Setup Proxy"          
 
         # Install all dependencies
         - script: |
