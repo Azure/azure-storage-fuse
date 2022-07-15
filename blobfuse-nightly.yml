@@ -1150,8 +1150,7 @@ jobs:
           condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
 
         - script: |
-            sudo yum install cmake3 -y
-            sudo ln -sf /usr/bin/cmake3 /usr/bin/cmake
+            sudo yum install epel-release cmake3 -y
           displayName: "CMake version"
           condition: or(eq(variables['AgentName'], 'blobfuse-centos7'),eq(variables['AgentName'], 'blobfuse-rhel7_5'))
 
