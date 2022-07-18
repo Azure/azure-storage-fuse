@@ -54,12 +54,10 @@ type FileShare struct {
 	Auth    azAuth
 	Service azfile.ServiceURL
 	Share   azfile.ShareURL
-	Size    int64
 }
 
 func (fs *FileShare) Configure(cfg AzStorageConfig) error {
 	fs.Config = cfg
-	fs.Size = 1073741824 // TODO: make user setable
 
 	return nil
 }
@@ -201,7 +199,7 @@ func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
 
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
 
-	_, err := fileURL.Create(context.Background(), fs.Size, azfile.FileHTTPHeaders{
+	_, err := fileURL.Create(context.Background(), 4398046511104, azfile.FileHTTPHeaders{
 		ContentType: getContentType(name),
 	},
 		nil)
@@ -273,7 +271,7 @@ func (fs *FileShare) DeleteDirectory(name string) (err error) {
 			log.Err("FileShare::DeleteDirectory : %s does not exist", name)
 			return syscall.ENOENT
 		} else {
-			log.Err("FileShare::DeleteDirectory : Failed to delete file %s (%s)", name, err.Error())
+			log.Err("FileShare::DeleteDirectory : Failed to delete directory %s (%s)", name, err.Error())
 			return err
 		}
 	}
@@ -281,14 +279,15 @@ func (fs *FileShare) DeleteDirectory(name string) (err error) {
 	return nil
 }
 
-// RenameFile : Rename the file
+// RenameFile : Rename a file
 func (fs *FileShare) RenameFile(source string, target string) error {
 	log.Trace("FileShare::RenameFile : %s -> %s", source, target)
 
-	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, source))
+	srcFileName, srcDirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, source))
+	tgtFileName, tgtDirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, target)) // need if renaming file indirectly through RenameDirectory(), where dir rather than filename needs to be changed
 
-	srcFileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
-	tgtFileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(target)
+	srcFileURL := fs.Share.NewDirectoryURL(srcDirPath).NewFileURL(srcFileName)
+	tgtFileURL := fs.Share.NewDirectoryURL(tgtDirPath).NewFileURL(tgtFileName)
 
 	prop, err := srcFileURL.GetProperties(context.Background())
 	if err != nil {
@@ -324,14 +323,16 @@ func (fs *FileShare) RenameFile(source string, target string) error {
 	return fs.DeleteFile(source)
 }
 
+// RenameDirectory : Rename a directory
 func (fs *FileShare) RenameDirectory(source string, target string) error {
 	log.Trace("FileShare::RenameDirectory : %s -> %s", source, target)
 
+	fs.CreateDirectory(target)
+
 	for marker := (azfile.Marker{}); marker.NotDone(); {
-		listFile, err := fs.Share.NewRootDirectoryURL().ListFilesAndDirectoriesSegment(context.Background(), marker,
+		listFile, err := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, source)).ListFilesAndDirectoriesSegment(context.Background(), marker,
 			azfile.ListFilesAndDirectoriesOptions{
 				MaxResults: common.MaxDirListCount,
-				Prefix:     filepath.Join(fs.Config.prefixPath, source) + "/",
 			})
 		if err != nil {
 			log.Err("FileShare::RenameDirectory : Failed to get list of files %s", err.Error)
@@ -339,19 +340,25 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 		}
 		marker = listFile.NextMarker
 
-		// Process the filess returned in this result segment (if the segment is empty, the loop body won't execute)
+		// Process the files returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, fileInfo := range listFile.FileItems {
-			srcPath := split(fs.Config.prefixPath, fileInfo.Name)
-			fs.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
+			err = fs.RenameFile(filepath.Join(source, fileInfo.Name), filepath.Join(target, fileInfo.Name))
+			if err != nil {
+				log.Err("FileShare::RenameDirectory : Failed to move files to new directory %s", err.Error)
+				return err
+			}
 		}
 
 		for _, dirInfo := range listFile.DirectoryItems {
-			srcPath := split(fs.Config.prefixPath, dirInfo.Name)
-			fs.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
+			err = fs.RenameDirectory(filepath.Join(source, dirInfo.Name), filepath.Join(target, dirInfo.Name))
+			if err != nil {
+				log.Err("FileShare::RenameDirectory : Failed to move subdirectories to new directory  %s", err.Error)
+				return err
+			}
 		}
 	}
 
-	return fs.RenameFile(source, target) // calls RenameFile for the directory; says the src directory doesn't exist (because it's not a file!)
+	return fs.DeleteDirectory(source)
 }
 
 // GetAttr : Retrieve attributes of a file or directory
@@ -580,16 +587,7 @@ func getFileAndDirFromPath(completePath string) (fileName string, dirPath string
 	dirArray := splitPath[:len(splitPath)-1]
 	dirPath = strings.Join(dirArray, "/") // doesn't end with "/"
 
-	fileName = filepath.Base(completePath) // splitPath[len(splitPath)-1]
+	fileName = filepath.Base(completePath)
 
 	return fileName, dirPath
 }
-
-/* 3 cases
-1. dirPath/file
-2. dirPath/dir
-3. dirPath/dir/
-
-only call when file
-for dir, just join str
-*/
