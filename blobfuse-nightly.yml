@@ -1149,7 +1149,7 @@ jobs:
             wget https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-x86_64.sh
             sudo mv cmake-*.sh /opt
             sudo chmod +x /opt/cmake-*.sh
-            sudo bash ./opt/cmake-*.sh
+            sudo bash /opt/cmake-*.sh
             sudo ln -sf /opt/cmake-*.sh/bin/* /usr/local/bin
           displayName: "Python3 and CMake setup"
           condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
