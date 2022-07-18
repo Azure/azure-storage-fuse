@@ -1146,11 +1146,10 @@ jobs:
 
         - script: |
             sudo yum install python3-devel -y
-            wget https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-x86_64.sh
-            sudo mv cmake-*.sh /opt
-            sudo chmod +x /opt/cmake-*.sh
-            sudo bash /opt/cmake-*.sh
-            sudo ln -sf /opt/cmake-*.sh/bin/* /usr/local/bin
+            wget https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-x86_64.sh -O cmake.sh
+            sudo mv cmake.sh /opt
+            sudo chmod +x /opt/cmake.sh
+            sudo sh /opt/cmake.sh --prefix=/usr/ --exclude-subdir
           displayName: "Python3 and CMake setup"
           condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
 
