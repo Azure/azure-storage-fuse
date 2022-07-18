@@ -191,7 +191,7 @@ func (fs *FileShare) Exists(name string) bool {
 	return true
 }
 
-// CreateFile : Create a new file in the share/virtual directory
+// CreateFile : Create a new file in the share/directory
 func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("FileShare::CreateFile : name %s", name)
 
