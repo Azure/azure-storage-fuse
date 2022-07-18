@@ -1146,14 +1146,19 @@ jobs:
 
         - script: |
             sudo yum install python3-devel -y
-          displayName: "Python3 setup"
+            wget https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-x86_64.sh
+            sudo mv cmake-*.sh /opt
+            sudo chmod +x /opt/cmake-*.sh
+            sudo bash ./opt/cmake-*.sh
+            sudo ln -sf /opt/cmake-*.sh/bin/* /usr/local/bin
+          displayName: "Python3 and CMake setup"
           condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
 
         - script: |
             sudo yum install cmake3 -y
             sudo ln -sf /usr/bin/cmake3 /usr/bin/cmake
           displayName: "CMake version"
-          condition: or(eq(variables['AgentName'], 'blobfuse-centos7'),eq(variables['AgentName'], 'blobfuse-rhel7_5'))
+          condition: eq(variables['AgentName'], 'blobfuse-centos7')
 
         # Install libfuse
         - script: |
