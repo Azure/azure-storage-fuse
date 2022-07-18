@@ -1138,6 +1138,12 @@ jobs:
             hostnamectl
           displayName: "Print Agent Info"
 
+        # Go tool installer
+        - task: GoTool@0
+          inputs:
+            version: '1.16.2'
+          displayName: "Install Go Version"
+
         # Install all dependencies
         - script: |
             sudo yum update -y
