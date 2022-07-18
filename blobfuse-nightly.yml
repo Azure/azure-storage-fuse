@@ -1238,8 +1238,6 @@ jobs:
         - script:  |
             curl --version
             sudo fusermount -u $(MOUNT_DIR)
-            sudo kill -9 `pidof ./build/blobfuse`
-            sudo kill -9 `pidof fusermount`
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
