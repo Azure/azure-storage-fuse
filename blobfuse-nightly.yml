@@ -1151,6 +1151,7 @@ jobs:
 
         - script: |
             sudo yum install cmake3 -y
+            sudo ln -sf /usr/bin/cmake3 /usr/bin/cmake
           displayName: "CMake version"
           condition: or(eq(variables['AgentName'], 'blobfuse-centos7'),eq(variables['AgentName'], 'blobfuse-rhel7_5'))
 
