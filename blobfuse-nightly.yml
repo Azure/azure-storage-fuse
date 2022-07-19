@@ -973,7 +973,7 @@ jobs:
           condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
 
         - script: |
-            wget https://curl.se/download/curl-7.67.0.tar.gz
+            wget https://curl.se/download/curl-7.67.0.tar.gz --no-check-certificate
             tar -xf curl-7.67.0.tar.gz
             cd curl-7.67.0
             ./configure --prefix=$HOME/curl
