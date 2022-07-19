@@ -1064,6 +1064,7 @@ jobs:
                 make install
                 export PATH=$HOME/curl/bin:$PATH
                 . ~/.bash_profile
+                cd -
             fi
             curl --version
             sudo fusermount -u $(MOUNT_DIR)
