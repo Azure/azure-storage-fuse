@@ -25,7 +25,11 @@ parameters:
   displayName: 'Proxy Test'
   type: boolean
   default: false
-
+- name: mariner_test
+  displayName: 'Mariner Test'
+  type: boolean
+  default: false
+  
 
 # List of jobs to run in parallel
 jobs:
@@ -1623,6 +1627,7 @@ jobs:
           displayName: 'Clean Agent Directories'
           condition: always()
 
+  - ${{ if eq(parameters.mariner_test, true) }}:  
     - job: Set_6
       timeoutInMinutes: 30
       strategy:
@@ -1673,7 +1678,7 @@ jobs:
         # Install all dependencies
         - script: |
             sudo tdnf update -y
-            sudo tdnf install git wget tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libgcrypt-devel rpm-build golang libarchive -y
+            sudo tdnf install git make cmake gcc gcc-c++ g++ curl-devel gnutls-devel libuuid boost-devel libgcrypt-devel rpm-build golang -y
           displayName: "Basic Tools Setup"
 
         - script: |
