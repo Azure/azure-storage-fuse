@@ -866,205 +866,18 @@ jobs:
 
 
   - ${{ if eq(parameters.exhaustive_test, true) }}:
-    # Other then Ubuntu just run the feature_test
-    - job: Set_2
-      timeoutInMinutes: 30
-      strategy:
-        matrix:
-          RHEL-7.5-old-curl:
-            DistroVer: "RHEL-7.5"
-            AgentName : "RHEL 7.5.2"
-            Description: "Red Hat Enterprise Linux 7.5 Old Curl"
-            containerName: 'test-cnt-rhel-75-test'
-
-      pool:
-        name: "Blobfuse Pool"
-        demands:
-        - Agent.Name -equals $(AgentName)
-
-      variables:
-      - group: NightlyBlobFuse
-      - name: WORK_DIR
-        value: "/usr/pipeline/blobfuse"
-      - name: ROOT_DIR
-        value: "/usr/pipeline/blobfuse/azure-storage-fuse"
-      - name: skipComponentGovernanceDetection
-        value: true
-
-      - name: MOUNT_DIR
-        value: "/usr/pipeline/blob_mnt"
-      - name: TEMP_DIR
-        value: "/usr/pipeline/temp"
-      - name: BLOBFUSE_CFG_FILE
-        value: "/usr/pipeline/blobfuse/azure-storage-fuse/test/blobfuse.cfg"
-      
-      steps:
-        # DevOps checks for a specific git version and it fails on some distros
-        # so instead of pipeline checking out the code, do it manually
-        - checkout: none
-
-        # Install all dependencies
-        - script: |
-            echo $(Description)
-            hostnamectl
-          displayName: "Print Agent Info"
-
-        # Install all dependencies
-        - script: |
-            sudo yum update -y
-            sudo yum install git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libgcrypt-devel rpm-build golang -y
-          displayName: "Basic Tools Setup"
-
-        # Install libfuse
-        - script: |
-            sudo yum install fuse fuse-devel -y
-          displayName: "libFuse Setup"
-
-        # Prebuild cleanup
-        - script: |
-            sudo rm -rf $(WORK_DIR)
-          displayName: "Prebuild cleanup"
-
-        # Checkout code
-        - script: |
-            sudo mkdir -p $(WORK_DIR)
-            sudo chown -R `whoami` $(WORK_DIR)
-            chmod 777 $(WORK_DIR)
-          displayName: "Create Directory structure"
-
-        # Checkout code
-        - script: |
-            git clone https://github.com/Azure/azure-storage-fuse
-          displayName: "Checkout code"
-          workingDirectory: $(WORK_DIR)
-
-        # Checkout branch
-        - script: |
-            echo $(Build.SourceBranch)
-            echo "Going for checkout of " `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`  
-            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
-          displayName: "Checkout Branch"
-          workingDirectory: $(ROOT_DIR)
-
-        # List commits consumed for this build
-        - script: |
-            echo "Below commits were done in last 12 hours : " `date` 
-            git --no-pager log --since="12 hours ago" --stat
-          displayName: "List Commits"
-          workingDirectory: $(ROOT_DIR)
-
-        # Build the blobFuse binary
-        - script: |
-            sudo chmod +x build.sh
-            . ./build.sh
-          displayName: "Build BlobFuse"
-          workingDirectory: $(ROOT_DIR)
-
-        # Test the binary just to make sure it was built fine
-        - script: |
-            ./build/blobfuse --version
-          displayName: "Test the binary"
-          workingDirectory: $(ROOT_DIR)
-
-        # Add the test work here
-        # Create directory structures for the basic testing
-        - script: |
-            sudo mkdir $(MOUNT_DIR)
-            sudo chown -R `whoami` $(MOUNT_DIR)
-            chmod 777 $(MOUNT_DIR)
-            sudo mkdir $(TEMP_DIR)
-            sudo chown -R `whoami` $(TEMP_DIR)
-            chmod 777 $(TEMP_DIR)
-          displayName: "Create Directories"
-        
-        # --- Create config files for testing
-        - script: |
-            sudo touch $(BLOBFUSE_CFG_FILE)
-            sudo chown -R `whoami` $(BLOBFUSE_CFG_FILE)
-            chmod 777 $(BLOBFUSE_CFG_FILE)
-            echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG_FILE)
-            echo "accountKey " $(NIGHTLY_STO_ACC_KEY) >> $(BLOBFUSE_CFG_FILE)
-            echo "authType Key" >> $(BLOBFUSE_CFG_FILE)
-            echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_FILE)
-            cat $(BLOBFUSE_CFG_FILE)
-            echo "Account : " $(NIGHTLY_STO_ACC_NAME)
-          displayName: "Create config file"
-
-        # Mount a directory for feature test (Block) and run it
-        - script:  |
-            curl --version
-            sudo fusermount -u $(MOUNT_DIR)
-            sudo kill -9 `pidof ./build/blobfuse`
-            sudo kill -9 `pidof fusermount`
-            sudo rm -rf $(MOUNT_DIR)/*
-            sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
-          workingDirectory: $(ROOT_DIR)
-          displayName: "Mount Blobfuse"
-
-        - script: | 
-            sudo rm -rf $(MOUNT_DIR)/*  
-            cd test
-            go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
-          workingDirectory: $(ROOT_DIR)
-          displayName: TEST - ADLS FeatureTest
-          timeoutInMinutes: 20
-
-        - script:  |
-            rm -rf $(MOUNT_DIR)/*
-            sudo fusermount -u $(MOUNT_DIR)
-          workingDirectory: $(ROOT_DIR)
-          displayName: 'Unmount blobfuse'
-          timeoutInMinutes: 5
-          condition: always()
-
-        # --- Negative testing for auth failure post fork
-        - script: |
-            sudo touch $(BLOBFUSE_CFG_FILE)
-            sudo chown -R `whoami` $(BLOBFUSE_CFG_FILE)
-            chmod 777 $(BLOBFUSE_CFG_FILE)
-            echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG_FILE)
-            echo "accountKey " $(NIGHTLY_STO_ACC_KEY) "abc" >> $(BLOBFUSE_CFG_FILE)
-            echo "authType Key" >> $(BLOBFUSE_CFG_FILE)
-            echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_FILE)
-            cat $(BLOBFUSE_CFG_FILE)
-            echo "Account : " $(NIGHTLY_STO_ACC_NAME)
-          displayName: "Create config file - Negative"
-          # condition: or(eq(variables.containerName, 'test-cnt-rhel-75-test'), eq(variables.containerName, 'test-cnt-rhel-82'))
-
-        # Mount a directory for feature test (Block) and run it
-        # This mount is bound to fail so to ignore the exit code of the blobfuse use '|| :' to redirect output to null
-        # with this output will come on screen but the piepline task will not fail due to exit(1) by blobfuse
-        - script:  |
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true 2>&1 || :
-          workingDirectory: $(ROOT_DIR)
-          displayName: "Mount Blobfuse - Negative"
-          # condition: or(eq(variables.containerName, 'test-cnt-rhel-75-test'), eq(variables.containerName, 'test-cnt-rhel-82'))
-
-        - script:  |
-            rm -rf $(MOUNT_DIR)/*
-            sudo fusermount -u $(MOUNT_DIR)
-            sudo rm -rf $(TEMP_DIR)/
-            sudo rm -rf $(MOUNT_DIR)
-            sudo rm -rf $(BLOBFUSE_CFG_FILE)
-            sudo rm -rf $(WORK_DIR)
-          workingDirectory: $(ROOT_DIR)
-          displayName: 'Cleanup Directories'
-          timeoutInMinutes: 5
-          condition: always()
-
-        - script: |
-            pwd
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-          displayName: 'Clean Agent Directories'
-          condition: always()
-          
     - job: Set_3
       timeoutInMinutes: 30
       strategy:
         matrix:
           RHEL-7.5-new-curl:
+            DistroVer: "RHEL-7.5"
+            AgentName : "blobfuse-rhel7_5"
+            Description: "Red Hat Enterprise Linux 7.5 New Curl"
+            containerName: 'test-cnt-rhel-75-test'
+            PoolName: "blobfuse-rhel-pool"
+
+          RHEL-7.5-old-curl:
             DistroVer: "RHEL-7.5"
             AgentName : "blobfuse-rhel7_5"
             Description: "Red Hat Enterprise Linux 7.5"
@@ -1158,6 +971,19 @@ jobs:
             sudo sh /opt/cmake.sh --prefix=/usr/ --exclude-subdir
           displayName: "Python3 and CMake setup"
           condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
+
+        - script: |
+            wget https://curl.se/download/curl-7.67.0.tar.gz
+            tar -xf curl-7.67.0.tar.gz
+            cd curl-7.67.0
+            ./configure --prefix=$HOME/curl
+            make
+            make install
+            export PATH=$HOME/curl/bin:$PATH
+            . ~/.bash_profile
+            curl --version
+          displayName: "Install New Curl"
+          condition: eq(variables['Description'], 'Red Hat Enterprise Linux 7.5 New Curl')
 
         - script: |
             sudo yum install cmake3 -y
