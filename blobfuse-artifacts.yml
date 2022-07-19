@@ -498,12 +498,12 @@ stages:
 
         # Install all dependencies
         - script: |
-            sudo zypper -n update git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libboost*devel libgcrypt-devel rpm-build
+            sudo zypper -n install git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libboost*devel libgcrypt-devel rpm-build
           displayName: "Basic Tools Setup"
 
         # Install libfuse
         - script: | 
-            sudo zypper -n update fuse-devel
+            sudo zypper -n install fuse-devel
           displayName: "libFuse Setup"
 
         # Prebuild cleanup
