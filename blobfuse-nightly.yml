@@ -1678,23 +1678,8 @@ jobs:
         # Install all dependencies
         - script: |
             sudo tdnf update -y
-            sudo tdnf install git make cmake gcc gcc-c++ g++ curl-devel gnutls-devel libuuid boost-devel libgcrypt-devel rpm-build golang -y
+            sudo tdnf install git make cmake gcc gcc-c++ g++ curl-devel gnutls-devel libuuid boost-devel libgcrypt-devel rpm-build golang libuuid-devel uuid-c++ uuid-c++-devel python3-devel -y
           displayName: "Basic Tools Setup"
-
-        - script: |
-            sudo tdnf install python3-devel -y
-            wget https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-x86_64.sh -O cmake.sh
-            sudo mv cmake.sh /opt
-            sudo chmod +x /opt/cmake.sh
-            sudo sh /opt/cmake.sh --prefix=/usr/ --exclude-subdir
-          displayName: "Python3 and CMake setup"
-          condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
-
-        - script: |
-            sudo tdnf install cmake3 -y
-            sudo ln -sf /usr/bin/cmake3 /usr/bin/cmake
-          displayName: "CMake version"
-          condition: eq(variables['AgentName'], 'blobfuse-centos7')
 
         # Install libfuse
         - script: |
