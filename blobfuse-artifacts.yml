@@ -497,15 +497,14 @@ stages:
           displayName: "Print Agent Info"
 
         # Install all dependencies
-        #- script: |
-        #    #sudo zypper in <>
-        #    sudo zypper -n update git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libboost*devel libgcrypt-devel rpm-build
-        #  displayName: "Basic Tools Setup"
+        - script: |
+           sudo zypper -n update git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libboost*devel libgcrypt-devel rpm-build
+         displayName: "Basic Tools Setup"
 
         # Install libfuse
-        #- script: |
-        #    sudo zypper -n update fuse-devel
-        #  displayName: "libFuse Setup"
+        - script: |
+           sudo zypper -n update fuse-devel
+         displayName: "libFuse Setup"
 
         # Prebuild cleanup
         - script: |
