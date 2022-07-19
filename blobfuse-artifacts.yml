@@ -487,17 +487,17 @@ stages:
         matrix:
           RHEL-7.8:
             DistroVer: "RHEL-7.8"
-            AgentName : "RHEL 7.8"
+            AgentName : "blobfuse-rhel7_8"
             Description: "Red Hat Enterprise Linux 7.8"
           RHEL-7.5:
             DistroVer: "RHEL-7.5"
-            AgentName : "RHEL 7.5"
+            AgentName : "blobfuse-rhel7_5"
             Description: "Red Hat Enterprise Linux 7.5"
 
       pool:
-        name: "Blobfuse Pool"
+        name: "blobfuse-rhel-pool"
         demands:
-        - Agent.Name -equals $(AgentName)
+        - Image.Name -equals $(AgentName)
 
       variables:
       - name: WORK_DIR
@@ -522,6 +522,15 @@ stages:
         - script: |
             sudo yum install git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libgcrypt-devel rpm-build -y
           displayName: "Basic Tools Setup"
+
+        - script: |
+            sudo yum install python3-devel -y
+            wget https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-x86_64.sh -O cmake.sh
+            sudo mv cmake.sh /opt
+            sudo chmod +x /opt/cmake.sh
+            sudo sh /opt/cmake.sh --prefix=/usr/ --exclude-subdir
+          displayName: "Python3 and CMake setup"
+          condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
 
         # Install libfuse
         - script: |
