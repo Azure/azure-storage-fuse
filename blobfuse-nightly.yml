@@ -1055,7 +1055,7 @@ jobs:
 
         # Mount a directory for feature test (Block) and run it
         - script:  |
-            if [ "$(Description)"" == "Red Hat Enterprise Linux 7.5 New Curl" ]; then
+            if [ "$(Description)" == "Red Hat Enterprise Linux 7.5 New Curl" ]; then
                 wget https://curl.se/download/curl-7.67.0.tar.gz --no-check-certificate
                 tar -xf curl-7.67.0.tar.gz
                 cd curl-7.67.0
