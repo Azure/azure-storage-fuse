@@ -973,19 +973,6 @@ jobs:
           condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
 
         - script: |
-            wget https://curl.se/download/curl-7.67.0.tar.gz --no-check-certificate
-            tar -xf curl-7.67.0.tar.gz
-            cd curl-7.67.0
-            ./configure --prefix=$HOME/curl
-            make
-            make install
-            export PATH=$HOME/curl/bin:$PATH
-            . ~/.bash_profile
-            curl --version
-          displayName: "Install New Curl"
-          condition: eq(variables['Description'], 'Red Hat Enterprise Linux 7.5 New Curl')
-
-        - script: |
             sudo yum install cmake3 -y
             sudo ln -sf /usr/bin/cmake3 /usr/bin/cmake
           displayName: "CMake version"
@@ -1068,6 +1055,16 @@ jobs:
 
         # Mount a directory for feature test (Block) and run it
         - script:  |
+            if [ $(Description) == "Red Hat Enterprise Linux 7.5 New Curl" ]; then
+                wget https://curl.se/download/curl-7.67.0.tar.gz --no-check-certificate
+                tar -xf curl-7.67.0.tar.gz
+                cd curl-7.67.0
+                ./configure --prefix=$HOME/curl
+                make
+                make install
+                export PATH=$HOME/curl/bin:$PATH
+                . ~/.bash_profile
+            fi
             curl --version
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
