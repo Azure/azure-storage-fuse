@@ -28,7 +28,7 @@ Possible causes are:
 
 **4. fusermount: mount failed: Operation not permitted (CentOS)**
 
-fusermount is a priviliged operation on CentOS by default. You may work around this changing the permissions of the fusermount operation:
+fusermount is a privileged operation on CentOS by default. You may work around this changing the permissions of the fusermount operation:
 
     chown root /usr/bin/fusermount
     chmod u+s /usr/bin/fusermount
@@ -122,7 +122,7 @@ OR
 
 1) Add "Blobfuse2" and "fuse" to the PRUNEFS
 
-It wont harm to do both.
+It won't harm to do both.
 
 Below are the steps to automate this at pod creation:
 
@@ -197,7 +197,7 @@ umount -l does a lazy unmount meaning it will unmount automatically when the mou
 **6. Blobfuse2 mounts but not functioning at all** 
 
 https://github.com/Azure/azure-storage-fuse/issues/803
-There are cases where anti-malware / anti-virus softwares block the fuse functionality and in such case though mount command is successful and Blobfuse2 binary is running, the fuse functionality will not work. One way to identify that you are hitting this issue is turn on the debug logs and mount Blobfuse2. If you do not see any logs coming from Blobfuse2 and potentially you have run into this issue. Stop the anti-virus software and try again.
+There are cases where anti-malware / anti-virus software block the fuse functionality and in such case though mount command is successful and Blobfuse2 binary is running, the fuse functionality will not work. One way to identify that you are hitting this issue is turn on the debug logs and mount Blobfuse2. If you do not see any logs coming from Blobfuse2 and potentially you have run into this issue. Stop the anti-virus software and try again.
 In such cases we have seen mounting through /etc/fstab works, because that executes mount command before the anti-malware software kicks in.
 
 # Problems with build
