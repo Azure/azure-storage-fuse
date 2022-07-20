@@ -256,7 +256,11 @@ int azs_rmdir(const char *path)
     mntPath = mntPathString.c_str();
 
     AZS_DEBUGLOGV("Attempting to delete local cache directory %s.\n", mntPath);
-    remove(mntPath); // This will fail if the cache is not empty, which is fine, as in this case it will also fail later, after the server-side check.
+    int ret_code = remove(mntPath); // This will fail if the cache is not empty, which is fine, as in this case it will also fail later, after the server-side check.
+    if (ret_code != 0 && errno == ENOTEMPTY) {
+        AZS_DEBUGLOGV("Local cache directory is not empty %s.\n", mntPath);
+        return -ENOTEMPTY;
+    }
 
     if(!storage_client->DeleteDirectory(pathString.substr(1)))
     {
