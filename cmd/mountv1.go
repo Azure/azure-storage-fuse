@@ -361,6 +361,11 @@ func convertBfConfigParameter(flags *pflag.FlagSet, configParameterKey string, c
 		bfv2StorageConfigOptions.ClientSecret = configParameterValue
 	case "servicePrincipalTenantId":
 		bfv2StorageConfigOptions.TenantID = configParameterValue
+
+	case "msiEndpoint":
+		// msiEndpoint is not supported config in V2, this needs to be given as MSI_ENDPOINT env variable
+		return nil
+
 	default:
 		return fmt.Errorf("failed to parse configuration file. the configuration parameter `%s` is not supported in Blobfuse2", configParameterKey)
 	}

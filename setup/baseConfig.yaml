@@ -103,6 +103,7 @@ azstorage:
   https-proxy: ip-address:port <https proxy to be used for connection>
   sdk-trace: true|false <enable storage sdk logging>
   fail-unsupported-op: true|false <for block blob account return failure for unsupported operations like chmod and chown>
+  auth-resource: <resource string to be used during OAuth token retrieval>
 
 
 # Mount all configuration

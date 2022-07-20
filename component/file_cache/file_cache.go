@@ -519,29 +519,33 @@ func (fc *FileCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	// If the directory does not exist locally then call the next component
 	localPath := filepath.Join(fc.tmpPath, options.Name)
 	f, err := os.Open(localPath)
-	if os.IsNotExist(err) {
+	if err == nil {
+		log.Debug("FileCache::IsDirEmpty : %s found in local cache", options.Name)
+
+		// Check local cache directory is empty or not
+		path, err := f.Readdirnames(1)
+
+		// If the local directory has a path in it, it is likely due to !createEmptyFile.
+		if err == nil && !fc.createEmptyFile && len(path) > 0 {
+			log.Debug("FileCache::IsDirEmpty : %s had a subpath in the local cache", options.Name)
+			return false
+		}
+
+		// If there are files in local cache then dont allow deletion of directory
+		if err != io.EOF {
+			// Local directory is not empty fail the call
+			log.Debug("FileCache::IsDirEmpty : %s was not empty in local cache", options.Name)
+			return false
+		}
+	} else if os.IsNotExist(err) {
+		// Not found in local cache so check with container
 		log.Debug("FileCache::IsDirEmpty : %s not found in local cache", options.Name)
-		return fc.NextComponent().IsDirEmpty(options)
+	} else {
+		// Unknown error, check with container
+		log.Err("FileCache::IsDirEmpty : %s failed while checking local cache (%s)", options.Name, err.Error())
 	}
 
-	if err != nil {
-		log.Err("FileCache::IsDirEmpty : error opening directory %s [%s]", options.Name, err.Error())
-		return false
-	}
-
-	// The file cache policy handles deleting locally empty directories in the cache
-	// If the directory exists locally and is empty, it was probably recently emptied and we can trust this result.
-	path, err := f.Readdirnames(1)
-	if err == io.EOF {
-		log.Debug("FileCache::IsDirEmpty : %s was empty in local cache", options.Name)
-		return true
-	}
-	// If the local directory has a path in it, it is likely due to !createEmptyFile.
-	if err == nil && !fc.createEmptyFile && len(path) > 0 {
-		log.Debug("FileCache::IsDirEmpty : %s had a subpath in the local cache", options.Name)
-		return false
-	}
-
+	log.Debug("FileCache::IsDirEmpty : %s checking with container", options.Name)
 	return fc.NextComponent().IsDirEmpty(options)
 }
 

@@ -61,7 +61,8 @@ type azAuthConfig struct {
 	ClientSecret            string
 	ActiveDirectoryEndpoint string
 
-	Endpoint string
+	Endpoint     string
+	AuthResource string
 }
 
 // azAuth : Interface to define a generic authentication type
