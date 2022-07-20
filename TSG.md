@@ -47,7 +47,7 @@ FUSE allows mounting filesystem in user space, and is only accessible by the use
 You try to unmount the blob storage, but the recommended command is not found. Whilst `umount` may work instead, fusermount is the recommended method, so install the fuse package, for example on Ubuntu 20+:
     
     sudo apt install fuse3
-please note the fuse version is dependent on the linux distrubtion you're using. Refer to fuse version for your distro [here](https://github.com/Azure/azure-storage-fuse/tree/main#blobfuse2---a-microsoft-supported-azure-storage-fuse-driver)
+please note the fuse version (2 or 3) is dependent on the linux distrubtion you're using. Refer to fuse version for your distro.
 
 **7. Hangs while mounting to private link storage account**
 
