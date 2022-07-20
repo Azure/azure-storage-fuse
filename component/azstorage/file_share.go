@@ -143,7 +143,7 @@ func (fs *FileShare) TestPipeline() error {
 		azfile.ListFilesAndDirectoriesOptions{MaxResults: 2})
 
 	if err != nil {
-		log.Err("FileShare::TestPipeline : Failed to validate account with given auth %s", err.Error)
+		log.Err("FileShare::TestPipeline : Failed to validate account with given auth %s", err.Error())
 		return err
 	}
 
@@ -161,7 +161,7 @@ func (fs *FileShare) ListContainers() ([]string, error) {
 	for marker.NotDone() {
 		resp, err := fs.Service.ListSharesSegment(context.Background(), marker, azfile.ListSharesOptions{})
 		if err != nil {
-			log.Err("FileShare::ListContainers : Failed to get container list")
+			log.Err("FileShare::ListContainers : Failed to get container list %s", err.Error())
 			return cntList, err
 		}
 
@@ -205,9 +205,10 @@ func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
 		nil)
 
 	if err != nil {
-		log.Err("FileShare::CreateFile : Failed to create file %s", name)
+		log.Err("FileShare::CreateFile : Failed to create file %s %s", name, err.Error())
 		return err
 	}
+
 	return nil
 }
 
@@ -222,7 +223,7 @@ func (fs *FileShare) CreateDirectory(name string) error {
 	_, err := dirURL.Create(context.Background(), metadata, azfile.SMBProperties{})
 
 	if err != nil {
-		log.Err("FileShare::CreateDirectory : Failed to create directory %s", name)
+		log.Err("FileShare::CreateDirectory : Failed to create directory %s %s", name, err.Error())
 		return err
 	}
 	return nil
@@ -248,7 +249,7 @@ func (fs *FileShare) DeleteFile(name string) (err error) {
 	if err != nil {
 		serr := storeFileErrToErr(err)
 		if serr == ErrFileNotFound {
-			log.Err("FileShare::DeleteFile : %s does not exist", name)
+			log.Err("FileShare::DeleteFile : %s does not exist %s", name, err.Error())
 			return syscall.ENOENT
 		} else {
 			log.Err("FileShare::DeleteFile : Failed to delete file %s (%s)", name, err.Error())
@@ -335,7 +336,7 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 				MaxResults: common.MaxDirListCount,
 			})
 		if err != nil {
-			log.Err("FileShare::RenameDirectory : Failed to get list of files %s", err.Error)
+			log.Err("FileShare::RenameDirectory : Failed to get list of files %s", err.Error())
 			return err
 		}
 		marker = listFile.NextMarker
@@ -344,7 +345,7 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 		for _, fileInfo := range listFile.FileItems {
 			err = fs.RenameFile(filepath.Join(source, fileInfo.Name), filepath.Join(target, fileInfo.Name))
 			if err != nil {
-				log.Err("FileShare::RenameDirectory : Failed to move files to new directory %s", err.Error)
+				log.Err("FileShare::RenameDirectory : Failed to move files to new directory %s", err.Error())
 				return err
 			}
 		}
@@ -352,7 +353,7 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 		for _, dirInfo := range listFile.DirectoryItems {
 			err = fs.RenameDirectory(filepath.Join(source, dirInfo.Name), filepath.Join(target, dirInfo.Name))
 			if err != nil {
-				log.Err("FileShare::RenameDirectory : Failed to move subdirectories to new directory  %s", err.Error)
+				log.Err("FileShare::RenameDirectory : Failed to move subdirectories to new directory  %s", err.Error())
 				return err
 			}
 		}
@@ -456,7 +457,7 @@ func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*intern
 		azfile.ListFilesAndDirectoriesOptions{MaxResults: count})
 
 	if err != nil {
-		log.Err("File::List : Failed to list the container with the prefix %s", err.Error)
+		log.Err("File::List : Failed to list the container with the prefix %s", err.Error())
 		return fileList, nil, err
 	}
 
