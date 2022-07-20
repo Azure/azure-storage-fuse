@@ -4,7 +4,7 @@
 Please ensure logging is turned on DEBUG mode when trying to reproduce an issue.
 This can help in many instances understand what the underlying issue is.
 
-A useful setting in your configuration file to utilize when debugging is `sdk-trace: true` under the azstorager component. This will log all outgoing REST calls.
+A useful setting in your configuration file to utilize when debugging is `sdk-trace: true` under the azstorage component. This will log all outgoing REST calls.
 
 **1. Error: fusermount: failed to open /etc/fuse.conf: Permission denied**
 
@@ -22,9 +22,11 @@ Possible causes are:
 - Use of HTTP while 'Secure Transfer (HTTPS)' is enabled on a Storage account
 - Enabled VNET Security rule that blocks VM from connecting to the Storage account. Ensure you can connect to your Storage account using AzCopy or Azure CLI
 - DNS issues/timeouts - add the Storage account resolution to /etc/hosts to bypass the DNS lookup
+- If using a proxy endpoint - ensure that you use the correct transfer protocol HTTP vs HTTPS
 
 **3. For MSI or SPN auth, Http Status Code = 403 in the response. Authorization error**
-- Verify your storage account Access roles. Make sure you have both Contributor and Storage Blob Contributor roles for the MSI or SPN identity..
+- Verify your storage account Access roles. Make sure you have both Contributor and Storage Blob Contributor roles for the MSI or SPN identity.
+- In the case of a private AAD endpoint (private MSI endpoitns) ensure that your env variables are configured correctly.
 
 **4. fusermount: mount failed: Operation not permitted (CentOS)**
 
@@ -37,7 +39,7 @@ fusermount is a privileged operation on CentOS by default. You may work around t
 
 FUSE allows mounting filesystem in user space, and is only accessible by the user mounting it. For instance, if you have mounted using root, but you are trying to access it with another user, you will fail to do so. In order to workaround this, you can use the non-secure, fuse option '--allow-other'.
 
-    sudo Blobfuse2 mount /home/myuser/mount_dir/ --config-file=config.yaml --allow-other
+    sudo blobfuse2 mount /home/myuser/mount_dir/ --config-file=config.yaml --allow-other
 
 
 **6. fusermount: command not found**
@@ -199,6 +201,11 @@ umount -l does a lazy unmount meaning it will unmount automatically when the mou
 https://github.com/Azure/azure-storage-fuse/issues/803
 There are cases where anti-malware / anti-virus software block the fuse functionality and in such case though mount command is successful and Blobfuse2 binary is running, the fuse functionality will not work. One way to identify that you are hitting this issue is turn on the debug logs and mount Blobfuse2. If you do not see any logs coming from Blobfuse2 and potentially you have run into this issue. Stop the anti-virus software and try again.
 In such cases we have seen mounting through /etc/fstab works, because that executes mount command before the anti-malware software kicks in.
+
+**7. file cache temp directory not empty**
+
+To ensure that you don't have leftover files in your file cache temp dir, unmount rather than killing
+Blobfuse2. If Blobfuse2 is killed without unmounting you can also set `cleanup-on-start` in your config file on the next mount to clear the temp dir. 
 
 # Problems with build
 Make sure you have correctly setup your GO dev environment. Ensure you have installed fuse3/2 for example:
