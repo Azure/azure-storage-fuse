@@ -325,6 +325,10 @@ int DataLakeBfsClient::Exists(const std::string directoryPath)
 bool DataLakeBfsClient::DeleteDirectory(const std::string directoryPath)
 {
     errno = 0;
+    if (IsDirectoryEmpty(directoryPath) == D_NOTEMPTY) {
+        return false;
+    }
+
     m_adls_client->delete_directory(configurations.containerName, directoryPath);
     if(errno != 0)
     {
