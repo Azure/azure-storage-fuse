@@ -98,10 +98,6 @@ stages:
             DistroVer: "Debian9.0"
             AgentName : "DEB 9.0"
             Description: "Debian Linux 9.0"
-          Debian-10.0:
-            DistroVer: "Debian10.0"
-            AgentName : "DEB 10.0"
-            Description: "Debian Linux 10.0 Gen 1"
 
       pool:
         name: "Blobfuse Pool"
@@ -190,50 +186,152 @@ stages:
           displayName: 'Clean Agent Directories'
           condition: always()
 
+    - job: Set_3
+      strategy:
+        matrix:
+          Debian-10.0:
+            DistroVer: "Debian10.0"
+            AgentName : "blobfuse-debian10"
+            Description: "Debian Linux 10.0 Gen 1"
+
+      pool:
+        name: "blobfuse-debian-pool"
+        demands:
+        - ImageOverride -equals $(AgentName)
+      
+      variables:
+        - name: WORK_DIR
+          value: "/usr/pipeline/blobfuse"
+        - name: ROOT_DIR
+          value: "/usr/pipeline/blobfuse/azure-storage-fuse"
+        - name: skipComponentGovernanceDetection
+          value: true
+
+      steps:
+        # Install all dependencies
+        # DevOps checks for a specific git version and it fails on some distros
+        # so instead of pipeline checking out the code, do it manually
+        - checkout: none
+
+        - script: |
+            sudo apt-get update --fix-missing
+            sudo apt-get install git pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ -y
+          displayName: "Basic Tools Setup"
+
+        # Install libfuse
+        - script: |
+            sudo apt-get install libfuse-dev -y
+          displayName: "libFuse Setup"
+
+        # Create directory
+        - script: |
+            sudo rm -rf $(WORK_DIR)
+            sudo mkdir -p $(WORK_DIR)
+            sudo chmod 777 $(WORK_DIR)
+          displayName: "Create directory"
+
+        # Checkout code
+        - script: |
+            git clone https://github.com/Azure/azure-storage-fuse
+          displayName: "Checkout code"
+          workingDirectory: $(WORK_DIR)
+
+        # List commits consumed for this build
+        - script: |
+            echo "Below commits were done in last 12 hours : " `date` 
+            git --no-pager log --since="12 hours ago" --stat
+          displayName: "List Commits"
+          workingDirectory: $(ROOT_DIR)
+
+        # Build the blobFuse binary
+        - script: |
+            sudo chmod +x build.sh
+            . ./build.sh
+          displayName: "Build BlobFuse"
+          workingDirectory: $(ROOT_DIR)
+
+        # Test the binary just to make sure it was built fine
+        - script: |
+            ./build/blobfuse --version
+          displayName: "Test the binary"
+          workingDirectory: $(ROOT_DIR)
+
+        # Copy binaries required for the package
+        - script: |
+            cd ./build/
+            make package
+            mv ./blobfuse-*.*.*-Linux.deb ./`./blobfuse -v | tr ' ' '-'`-$(DistroVer)-x86_64.deb
+            cp ./blobfuse-*.*.*.deb  $(Build.ArtifactStagingDirectory)/
+            cd ..
+          displayName: "Build Artifacts"
+          workingDirectory: $(ROOT_DIR)
+
+        # Publish the Artifacts
+        - task: PublishBuildArtifacts@1
+          inputs:
+            artifactName: 'blobfuse'
+          displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
+          condition: succeeded()
+
+        - script: |
+            sudo rm -rf $(WORK_DIR)
+            pwd
+            cd /`pwd | cut -d '/' -f 2,3,4,5`
+            sudo rm -rf [0-9]
+          displayName: 'Clean Agent Directories'
+          condition: always()
+
   # -------    Debain Pipelines end here ------------------
   - ${{ if eq(parameters.fast_run, false) }}:
-    - job: Set_3
+    - job: Set_4
       strategy:
         matrix:
           CentOS-7.0:
             DistroVer: "CentOS-7.0"
-            AgentName: "COS 7.0"
+            AgentName: "blobfuse-centos7"
             Description: "CentOS Linux 7.0"
+            PoolName: "blobfuse-centos-pool"
             
           CentOS-8.0:
             DistroVer: "CentOS-8.0"
-            AgentName: "COS 8.0"
+            AgentName: "blobfuse-centos8"
             Description: "CentOS Linux 8.0"
+            PoolName: "blobfuse-centos-pool"
 
           Oracle-8.1:
             DistroVer: "Oracle-8.1"
-            AgentName: "ORA 8.1"
+            AgentName: "blobfuse-oracle81"
             Description: "Oracle Linux 8.1 Gen 2"
+            PoolName: "blobfuse-oracle-pool"
 
           RHEL-7.5:
             DistroVer: "RHEL-7.5"
-            AgentName : "RHEL 7.5"
+            AgentName : "blobfuse-rhel7_5"
             Description: "Red Hat Enterprise Linux 7.5"
+            PoolName: "blobfuse-rhel-pool"
 
           RHEL-7.8:
             DistroVer: "RHEL-7.8"
-            AgentName : "RHEL 7.8"
+            AgentName : "blobfuse-rhel7_8"
             Description: "Red Hat Enterprise Linux 7.8"
+            PoolName: "blobfuse-rhel-pool"
 
           RHEL-8.1:
             DistroVer: "RHEL-8.1"
-            AgentName: "RHEL 8.1"
+            AgentName: "blobfuse-rhel8_1"
             Description: "Red Hat Enterprise Linux 8.1"
+            PoolName: "blobfuse-rhel-pool"
 
           RHEL-8.2:
             DistroVer: "RHEL-8.2"
-            AgentName: "RHEL 8.2"
+            AgentName: "blobfuse-rhel8_2"
             Description: "Red Hat Enterprise Linux 8.2"
+            PoolName: "blobfuse-rhel-pool"
 
       pool:
-        name: "Blobfuse Pool"
+        name: $(PoolName)
         demands:
-        - Agent.Name -equals $(AgentName)
+        - ImageOverride -equals $(AgentName)
 
       variables:
       - name: WORK_DIR
@@ -256,8 +354,23 @@ stages:
 
         # Install all dependencies
         - script: |
-            sudo yum install git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libgcrypt-devel rpm-build -y
+            sudo yum install git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libgcrypt-devel rpm-build libarchive -y
           displayName: "Basic Tools Setup"
+
+        - script: |
+            sudo yum install python3-devel -y
+            wget https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-x86_64.sh -O cmake.sh
+            sudo mv cmake.sh /opt
+            sudo chmod +x /opt/cmake.sh
+            sudo sh /opt/cmake.sh --prefix=/usr/ --exclude-subdir
+          displayName: "Python3 and CMake setup"
+          condition: or(eq(variables['AgentName'], 'blobfuse-rhel7_5'),eq(variables['AgentName'], 'blobfuse-rhel7_8'))
+
+        - script: |
+            sudo yum install cmake3 -y
+            sudo ln -sf /usr/bin/cmake3 /usr/bin/cmake
+          displayName: "CMake version"
+          condition: eq(variables['AgentName'], 'blobfuse-centos7')
 
         # Install libfuse
         - script: |
@@ -351,18 +464,18 @@ stages:
 
   # -------    RHEL Pipelines end here ------------------
   - ${{ if eq(parameters.fast_run, false) }}:
-    - job: Set_4
+    - job: Set_5
       strategy:
         matrix:
           SUSE-15G2:
             DistroVer: "Suse-15Gen2"
-            AgentName : "SUSE 15G2"
+            AgentName : "blobfuse-suse15"
             Description: "SUSE Ent Linux 15-SP1-Gen2"
 
       pool:
-        name: "Blobfuse Pool"
+        name: "blobfuse-suse-pool"
         demands:
-        - Agent.Name -equals $(AgentName)
+        - ImageOverride -equals $(AgentName)
 
       variables:
       - name: WORK_DIR
@@ -384,15 +497,14 @@ stages:
           displayName: "Print Agent Info"
 
         # Install all dependencies
-        #- script: |
-        #    #sudo zypper in <>
-        #    sudo zypper -n update git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libboost*devel libgcrypt-devel rpm-build
-        #  displayName: "Basic Tools Setup"
+        - script: |
+            sudo zypper -n install git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libboost*devel libgcrypt-devel rpm-build
+          displayName: "Basic Tools Setup"
 
         # Install libfuse
-        #- script: |
-        #    sudo zypper -n update fuse-devel
-        #  displayName: "libFuse Setup"
+        - script: | 
+            sudo zypper -n install fuse-devel
+          displayName: "libFuse Setup"
 
         # Prebuild cleanup
         - script: |
@@ -487,17 +599,17 @@ stages:
         matrix:
           RHEL-7.8:
             DistroVer: "RHEL-7.8"
-            AgentName : "RHEL 7.8"
+            AgentName : "blobfuse-rhel7_8"
             Description: "Red Hat Enterprise Linux 7.8"
           RHEL-7.5:
             DistroVer: "RHEL-7.5"
-            AgentName : "RHEL 7.5"
+            AgentName : "blobfuse-rhel7_5"
             Description: "Red Hat Enterprise Linux 7.5"
 
       pool:
-        name: "Blobfuse Pool"
+        name: "blobfuse-rhel-pool"
         demands:
-        - Agent.Name -equals $(AgentName)
+        - Image.Name -equals $(AgentName)
 
       variables:
       - name: WORK_DIR
@@ -522,6 +634,15 @@ stages:
         - script: |
             sudo yum install git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libgcrypt-devel rpm-build -y
           displayName: "Basic Tools Setup"
+
+        - script: |
+            sudo yum install python3-devel -y
+            wget https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-x86_64.sh -O cmake.sh
+            sudo mv cmake.sh /opt
+            sudo chmod +x /opt/cmake.sh
+            sudo sh /opt/cmake.sh --prefix=/usr/ --exclude-subdir
+          displayName: "Python3 and CMake setup"
+          condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
 
         # Install libfuse
         - script: |
