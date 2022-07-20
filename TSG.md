@@ -2,7 +2,7 @@
 **Logging**
 
 Please ensure logging is turned on DEBUG mode when trying to reproduce an issue.
-This can help in many instances understand what the underlying issue is.
+This can help in many instances to understand what the underlying issue is.
 
 A useful setting in your configuration file to utilize when debugging is `sdk-trace: true` under the azstorage component. This will log all outgoing REST calls.
 
@@ -47,6 +47,7 @@ FUSE allows mounting filesystem in user space, and is only accessible by the use
 You try to unmount the blob storage, but the recommended command is not found. Whilst `umount` may work instead, fusermount is the recommended method, so install the fuse package, for example on Ubuntu 20+:
     
     sudo apt install fuse3
+please note the fuse version is dependent on the linux distrubtion you're using. Refer to fuse version for your distro [here](https://github.com/Azure/azure-storage-fuse/tree/main#blobfuse2---a-microsoft-supported-azure-storage-fuse-driver)
 
 **7. Hangs while mounting to private link storage account**
 
@@ -80,7 +81,6 @@ a) DNS has Root Hits only – In this case is the best to have a forwarder confi
 
 b) DNS Forwarders to another DNS Server (not Azure Provided DNS) – In this case you need to create a conditional forwarder to original PaaS domain zone (i.e. Storage you should configure blob.core.windows.net conditional forwarder to 168.63.129.16). Keep in mind using that approach will make all DNS requests to storage account with or without private endpoint to be resolved by Azure Provided DNS. By having multiple Custom DNS Serves in Azure will help to get better high availability for requests coming from On-Prem.
 
-``` yum install fuse ```
 
 **8. Blobfuse2 killed by OOM**
 
