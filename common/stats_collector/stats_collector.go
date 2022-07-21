@@ -62,7 +62,11 @@ func GetFuseStats(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, string(d))
 		return
 	}
-	json.NewEncoder(w).Encode(&Blobfuse2Stats.fuse)
+
+	err := json.NewEncoder(w).Encode(&Blobfuse2Stats.fuse)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
 
 }
 
@@ -81,7 +85,11 @@ func GetAttrCacheStats(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, string(d))
 		return
 	}
-	json.NewEncoder(w).Encode(&Blobfuse2Stats.attrCache)
+
+	err := json.NewEncoder(w).Encode(&Blobfuse2Stats.attrCache)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
 
 }
 
@@ -100,7 +108,11 @@ func GetFileCacheStats(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, string(d))
 		return
 	}
-	json.NewEncoder(w).Encode(&Blobfuse2Stats.fileCache)
+
+	err := json.NewEncoder(w).Encode(&Blobfuse2Stats.fileCache)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
 
 }
 
@@ -119,7 +131,11 @@ func GetStorageStats(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, string(d))
 		return
 	}
-	json.NewEncoder(w).Encode(&Blobfuse2Stats.storage)
+
+	err := json.NewEncoder(w).Encode(&Blobfuse2Stats.storage)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
 }
 
 func GetCommonStats(w http.ResponseWriter, r *http.Request) {
@@ -137,7 +153,11 @@ func GetCommonStats(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, string(d))
 		return
 	}
-	json.NewEncoder(w).Encode(&Blobfuse2Stats.common)
+
+	err := json.NewEncoder(w).Encode(&Blobfuse2Stats.common)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
 }
 
 func GetStats(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +175,11 @@ func GetStats(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, string(d))
 		return
 	}
-	json.NewEncoder(w).Encode(&Blobfuse2Stats)
+
+	err := json.NewEncoder(w).Encode(&Blobfuse2Stats)
+	if err != nil {
+		log.Fatalf("error: %v", err)
+	}
 }
 
 func allocate() *Stats {

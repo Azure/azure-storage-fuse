@@ -46,8 +46,6 @@ type BaseComponent struct {
 	next     Component
 }
 
-const name = "BaseComponent"
-
 var _ Component = &BaseComponent{}
 
 ////////////////////////////////////////

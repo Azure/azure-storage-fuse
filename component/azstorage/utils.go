@@ -493,30 +493,6 @@ func getACLPermissions(mode os.FileMode) string {
 	return sb.String()
 }
 
-// Called by x method
-func getAccessControlList(mode os.FileMode) string {
-	// The format for the value x-ms-acl is user::rwx,group::rwx,mask::rwx,other::rwx
-	// Since fuse has no way to expose mask to the user, we only are concerned about
-	// user, group and other.
-	var sb strings.Builder
-	sb.WriteString("user::")
-	writePermission(&sb, mode&(1<<8) != 0, 'r')
-	writePermission(&sb, mode&(1<<7) != 0, 'w')
-	writePermission(&sb, mode&(1<<6) != 0, 'x')
-
-	sb.WriteString(",group::")
-	writePermission(&sb, mode&(1<<5) != 0, 'r')
-	writePermission(&sb, mode&(1<<4) != 0, 'w')
-	writePermission(&sb, mode&(1<<3) != 0, 'x')
-
-	sb.WriteString(",other::")
-	writePermission(&sb, mode&(1<<2) != 0, 'r')
-	writePermission(&sb, mode&(1<<1) != 0, 'w')
-	writePermission(&sb, mode&(1<<0) != 0, 'x')
-
-	return sb.String()
-}
-
 func writePermission(sb *strings.Builder, permitted bool, permission rune) {
 	if permitted {
 		sb.WriteRune(permission)

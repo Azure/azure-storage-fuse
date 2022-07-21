@@ -42,7 +42,8 @@ package libfuse
 // #cgo LDFLAGS: -lfuse3 -ldl
 // #include "libfuse_wrapper.h"
 // #include "extension_handler.h"
-import "C"
+import "C" //nolint
+
 import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
