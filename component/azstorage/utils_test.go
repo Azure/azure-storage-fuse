@@ -31,7 +31,6 @@
    SOFTWARE
 */
 
-
 package azstorage
 
 import (

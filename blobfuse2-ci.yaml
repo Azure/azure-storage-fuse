@@ -92,7 +92,8 @@ jobs:
         curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
         $(go env GOPATH)/bin/golangci-lint --version
         $(go env GOPATH)/bin/golangci-lint run
-      displayName: 'Code Linting'
+      condition: always()
+      failOnStderr: true
       workingDirectory: ./
 
     # Copyright checks
@@ -102,10 +103,17 @@ jobs:
             exit 1
         fi 
       displayName: 'Copyright check'
-      condition: always() 
+      condition: always()
+      failOnStderr: true
       workingDirectory: ./
 
-
+    # Go code formatting checks
+    - script: |
+        gofmt -s -l -d . | tee >&2
+      displayName: 'Go Format Check'
+      condition: always()
+      failOnStderr: true
+      workingDirectory: ./
 
     # Running unit tests for fuse3 on ubn-20
     - task: Go@0
