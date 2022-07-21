@@ -97,7 +97,10 @@ jobs:
 
     # Copyright checks
     - script: |
-        grep -L -r --include \*.go "`date +%Y` Microsoft Corporation" ./ | grep -v test/ | grep -v main_test.go
+        result=$(grep -L -r --include \*.go "`date +%Y` Microsoft Corporation" ./ | wc -l)
+        if [ $result -ne 0 ]; then
+            exit 1
+        fi 
       displayName: 'Copyright check'
       condition: always() 
       workingDirectory: ./
