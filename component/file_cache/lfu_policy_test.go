@@ -129,6 +129,14 @@ func (suite *lfuPolicyTestSuite) TestCacheValidNew() {
 	suite.assert.EqualValues(2, node.frequency) // the get will promote the node
 }
 
+func (suite *lfuPolicyTestSuite) TestClearItemFromCache() {
+	defer suite.cleanupTest()
+	f, _ := os.Create(cache_path + "/test")
+	suite.policy.clearItemFromCache(f.Name())
+	_, attr := os.Stat(f.Name())
+	suite.assert.NotEqual(nil, attr.Error())
+}
+
 func (suite *lfuPolicyTestSuite) TestCacheValidExisting() {
 	defer suite.cleanupTest()
 	suite.policy.CacheValid("temp")

@@ -444,6 +444,12 @@ func (suite *fileCacheTestSuite) TestStreamDirCase2() {
 	suite.assert.EqualValues(file3, dir[3].Path)
 }
 
+func (suite *fileCacheTestSuite) TestFileUsed() {
+	defer suite.cleanupTest()
+	suite.fileCache.FileUsed("temp")
+	suite.fileCache.policy.IsCached("temp")
+}
+
 // File cache does not have CreateDir Method implemented hence results are undefined here
 func (suite *fileCacheTestSuite) TestIsDirEmpty() {
 	defer suite.cleanupTest()
