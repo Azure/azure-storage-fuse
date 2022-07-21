@@ -158,7 +158,7 @@ func (lfs *LoopbackFS) ReadDir(options internal.ReadDirOptions) ([]*internal.Obj
 	return attrList, nil
 }
 
-// TODO: we can make it more intricate by generating a token and splitting streamed dir mimicing storage
+// TODO: we can make it more intricate by generating a token and splitting streamed dir mimicking storage
 func (lfs *LoopbackFS) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
 	if options.Token == "na" {
 		return nil, "", nil
