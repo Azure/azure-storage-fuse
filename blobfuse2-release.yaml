@@ -49,6 +49,11 @@ stages:
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
               container: 'test-cnt-ubn-20'
+            Ubuntu-22:
+              vmImage: 'ubuntu-22.04'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              container: 'test-cnt-ubn-22'
         
         pool:
           vmImage: $(vmImage)
