@@ -317,7 +317,7 @@ func (base *BaseComponent) InvalidateObject(name string) {
 
 func (base *BaseComponent) FileUsed(name string) error {
 	if base.next != nil {
-		base.next.FileUsed(name)
+		return base.next.FileUsed(name)
 	}
 	return nil
 }

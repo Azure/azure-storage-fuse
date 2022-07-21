@@ -81,7 +81,11 @@ func (suite *authTestSuite) SetupTest() {
 		FileCount:   10,
 		Level:       common.ELogLevel.LOG_DEBUG(),
 	}
-	log.SetDefaultLogger("base", cfg)
+	err := log.SetDefaultLogger("base", cfg)
+	if err != nil {
+		fmt.Println("Unable to set default logger")
+		os.Exit(1)
+	}
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -360,7 +364,7 @@ func (suite *authTestSuite) TestAdlsSpn() {
 }
 
 func (suite *authTestSuite) cleanupTest() {
-	log.Destroy()
+	_ = log.Destroy()
 }
 
 func TestAuthTestSuite(t *testing.T) {

@@ -1,0 +1,325 @@
+Thu Jul 21 15:24:29 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:24:29 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:24:29 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:24:29 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:29 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:29 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:24:29 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:24:30 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:31 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:24:31 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:24:31 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:24:31 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:31 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:31 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:24:31 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:24:31 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:31 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:24:31 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:24:31 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:24:32 IST 2022 : blobfuse2[28003] : LOG_ERR [azauthspn.go (130)]: azAuthBfsSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 390ebe2e-5946-4782-a111-a64950f71c00\r\nCorrelation ID: 1ec664ec-c7fe-4647-a5de-5ddbc129881a\r\nTimestamp: 2022-07-21 09:54:32Z","error_codes":[7000215],"timestamp":"2022-07-21 09:54:32Z","trace_id":"390ebe2e-5946-4782-a111-a64950f71c00","correlation_id":"1ec664ec-c7fe-4647-a5de-5ddbc129881a","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:24:32 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:32 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:32 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:24:32 IST 2022 : blobfuse2[28003] : LOG_ERR [azauthspn.go (98)]: azAuthBlobSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 2a83756d-7792-41b5-9f0b-d62048121600\r\nCorrelation ID: 3608a0d8-76b2-42bb-b910-9f8b63872052\r\nTimestamp: 2022-07-21 09:54:32Z","error_codes":[7000215],"timestamp":"2022-07-21 09:54:32Z","trace_id":"2a83756d-7792-41b5-9f0b-d62048121600","correlation_id":"3608a0d8-76b2-42bb-b910-9f8b63872052","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:24:32 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:24:32 IST 2022 : blobfuse2[28003] : LOG_ERR [datalake.go (198)]: Datalake::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06220)
+Thu Jul 21 15:24:32 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:32 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:32 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:24:32 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:32 IST 2022 : blobfuse2[28003] : LOG_ERR [azauthspn.go (130)]: azAuthBfsSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 1611daa7-145c-44a8-8962-f5af91ae1a00\r\nCorrelation ID: 963728d7-6dc8-40b3-ac35-7e2a9a8900c1\r\nTimestamp: 2022-07-21 09:54:32Z","error_codes":[7000215],"timestamp":"2022-07-21 09:54:32Z","trace_id":"1611daa7-145c-44a8-8962-f5af91ae1a00","correlation_id":"963728d7-6dc8-40b3-ac35-7e2a9a8900c1","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_ERR [azauthspn.go (98)]: azAuthBlobSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 5d7a78b4-6efb-4aaa-b601-c0ed86171e00\r\nCorrelation ID: 165d7fa3-5056-4078-86fa-d0461b16d702\r\nTimestamp: 2022-07-21 09:54:33Z","error_codes":[7000215],"timestamp":"2022-07-21 09:54:33Z","trace_id":"5d7a78b4-6efb-4aaa-b601-c0ed86171e00","correlation_id":"165d7fa3-5056-4078-86fa-d0461b16d702","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_ERR [block_blob.go (202)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06220)
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: http, Endpoint: http://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_ERR [datalake.go (198)]: Datalake::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06220)
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: http, Endpoint: http://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:24:33 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28003] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28003] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:24:34 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_ERR [azauthspn.go (130)]: azAuthBfsSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: fbe6b5a6-1c0c-47c9-a748-b8e130822000\r\nCorrelation ID: 588427bb-3ceb-486e-b847-7bd0abf288a5\r\nTimestamp: 2022-07-21 09:54:35Z","error_codes":[7000215],"timestamp":"2022-07-21 09:54:35Z","trace_id":"fbe6b5a6-1c0c-47c9-a748-b8e130822000","correlation_id":"588427bb-3ceb-486e-b847-7bd0abf288a5","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:35 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_ERR [azauthspn.go (98)]: azAuthBlobSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 87325922-49b8-40f1-a583-3dd962352200\r\nCorrelation ID: c85f493d-0bf9-45dc-b117-5a831b4903f6\r\nTimestamp: 2022-07-21 09:54:35Z","error_codes":[7000215],"timestamp":"2022-07-21 09:54:35Z","trace_id":"87325922-49b8-40f1-a583-3dd962352200","correlation_id":"c85f493d-0bf9-45dc-b117-5a831b4903f6","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_ERR [datalake.go (198)]: Datalake::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06220)
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_ERR [azauthspn.go (130)]: azAuthBfsSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 688becea-996f-403d-852b-2f289cd51d00\r\nCorrelation ID: c26ee140-fa19-49a7-ac54-d52ff79890ad\r\nTimestamp: 2022-07-21 09:54:36Z","error_codes":[7000215],"timestamp":"2022-07-21 09:54:36Z","trace_id":"688becea-996f-403d-852b-2f289cd51d00","correlation_id":"c26ee140-fa19-49a7-ac54-d52ff79890ad","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_ERR [azauthspn.go (98)]: azAuthBlobSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: ba8c77f6-d46a-4583-9b12-0f7f20cb2000\r\nCorrelation ID: 2b88ac7c-51ce-4e18-a766-ba8628e03865\r\nTimestamp: 2022-07-21 09:54:36Z","error_codes":[7000215],"timestamp":"2022-07-21 09:54:36Z","trace_id":"ba8c77f6-d46a-4583-9b12-0f7f20cb2000","correlation_id":"2b88ac7c-51ce-4e18-a766-ba8628e03865","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_ERR [block_blob.go (202)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06220)
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: http, Endpoint: http://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_ERR [datalake.go (198)]: Datalake::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06220)
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: http, Endpoint: http://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:24:36 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:24:37 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:24:37 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:24:37 IST 2022 : blobfuse2[28092] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:24:37 IST 2022 : blobfuse2[28092] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:17 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_ERR [azauthspn.go (130)]: azAuthBfsSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 074040a2-e116-4ee4-971f-6e44d6e21d00\r\nCorrelation ID: 6cc293eb-7c30-45ca-b8d4-f23b8f377808\r\nTimestamp: 2022-07-21 09:55:18Z","error_codes":[7000215],"timestamp":"2022-07-21 09:55:18Z","trace_id":"074040a2-e116-4ee4-971f-6e44d6e21d00","correlation_id":"6cc293eb-7c30-45ca-b8d4-f23b8f377808","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_ERR [azauthspn.go (98)]: azAuthBlobSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: c8b8e7e1-7312-4336-9ccb-abc810a11e00\r\nCorrelation ID: 927fbf5d-64bc-4407-abdc-e933b65b30a7\r\nTimestamp: 2022-07-21 09:55:18Z","error_codes":[7000215],"timestamp":"2022-07-21 09:55:18Z","trace_id":"c8b8e7e1-7312-4336-9ccb-abc810a11e00","correlation_id":"927fbf5d-64bc-4407-abdc-e933b65b30a7","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_ERR [datalake.go (198)]: Datalake::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06280)
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_ERR [azauthspn.go (130)]: azAuthBfsSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: e4180364-042c-4739-bc6b-c992e2be1d00\r\nCorrelation ID: d508145a-e1a2-408e-bad3-7b7f0b2d3fd4\r\nTimestamp: 2022-07-21 09:55:18Z","error_codes":[7000215],"timestamp":"2022-07-21 09:55:18Z","trace_id":"e4180364-042c-4739-bc6b-c992e2be1d00","correlation_id":"d508145a-e1a2-408e-bad3-7b7f0b2d3fd4","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_ERR [azauthspn.go (98)]: azAuthBlobSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 15baf2c3-8452-436b-a0ce-54c005b11c00\r\nCorrelation ID: c60f8d00-cfc8-4d70-b61b-f563f8596149\r\nTimestamp: 2022-07-21 09:55:18Z","error_codes":[7000215],"timestamp":"2022-07-21 09:55:18Z","trace_id":"15baf2c3-8452-436b-a0ce-54c005b11c00","correlation_id":"c60f8d00-cfc8-4d70-b61b-f563f8596149","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:25:18 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_ERR [block_blob.go (202)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06280)
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: http, Endpoint: http://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_ERR [datalake.go (198)]: Datalake::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06280)
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: http, Endpoint: http://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:19 IST 2022 : blobfuse2[29253] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:22 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_ERR [azauthspn.go (130)]: azAuthBfsSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 98cf815a-fc80-4b79-a300-853e32091e00\r\nCorrelation ID: 933fc950-eea2-4dad-bbad-cffc98dbea4c\r\nTimestamp: 2022-07-21 09:55:23Z","error_codes":[7000215],"timestamp":"2022-07-21 09:55:23Z","trace_id":"98cf815a-fc80-4b79-a300-853e32091e00","correlation_id":"933fc950-eea2-4dad-bbad-cffc98dbea4c","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_ERR [azauthspn.go (98)]: azAuthBlobSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 98cf815a-fc80-4b79-a300-853e34091e00\r\nCorrelation ID: 45089d2f-45f9-4c8f-88dc-be886669fcd4\r\nTimestamp: 2022-07-21 09:55:23Z","error_codes":[7000215],"timestamp":"2022-07-21 09:55:23Z","trace_id":"98cf815a-fc80-4b79-a300-853e34091e00","correlation_id":"45089d2f-45f9-4c8f-88dc-be886669fcd4","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_ERR [datalake.go (198)]: Datalake::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06280)
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_ERR [azauthspn.go (130)]: azAuthBfsSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 5d7a78b4-6efb-4aaa-b601-c0ed201a1e00\r\nCorrelation ID: 62bdc848-481b-4760-88e9-15f03a1e7160\r\nTimestamp: 2022-07-21 09:55:23Z","error_codes":[7000215],"timestamp":"2022-07-21 09:55:23Z","trace_id":"5d7a78b4-6efb-4aaa-b601-c0ed201a1e00","correlation_id":"62bdc848-481b-4760-88e9-15f03a1e7160","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:23 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_ERR [azauthspn.go (98)]: azAuthBlobSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 5d7a78b4-6efb-4aaa-b601-c0ed251a1e00\r\nCorrelation ID: f5d57515-f92e-4318-9fdb-08084889cda4\r\nTimestamp: 2022-07-21 09:55:24Z","error_codes":[7000215],"timestamp":"2022-07-21 09:55:24Z","trace_id":"5d7a78b4-6efb-4aaa-b601-c0ed251a1e00","correlation_id":"f5d57515-f92e-4318-9fdb-08084889cda4","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_ERR [block_blob.go (202)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06280)
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: http, Endpoint: http://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_ERR [datalake.go (198)]: Datalake::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06280)
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: http, Endpoint: http://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:24 IST 2022 : blobfuse2[29370] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:27 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:27 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:27 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:27 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:27 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:27 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:27 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:27 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: https, Endpoint: https://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_ERR [azauthspn.go (130)]: azAuthBfsSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 58a00d1b-1750-40bb-ab2f-ed24b3d21f00\r\nCorrelation ID: f263c3c1-3f01-4122-bda8-2b4ce3031a84\r\nTimestamp: 2022-07-21 09:55:28Z","error_codes":[7000215],"timestamp":"2022-07-21 09:55:28Z","trace_id":"58a00d1b-1750-40bb-ab2f-ed24b3d21f00","correlation_id":"f263c3c1-3f01-4122-bda8-2b4ce3031a84","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:28 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_ERR [azauthspn.go (98)]: azAuthBlobSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: e15295b7-0b14-4164-b1e0-75cac2571b00\r\nCorrelation ID: 16c47399-ee8a-40be-b337-a7caf65fdcf5\r\nTimestamp: 2022-07-21 09:55:28Z","error_codes":[7000215],"timestamp":"2022-07-21 09:55:28Z","trace_id":"e15295b7-0b14-4164-b1e0-75cac2571b00","correlation_id":"16c47399-ee8a-40be-b337-a7caf65fdcf5","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_ERR [datalake.go (198)]: Datalake::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06280)
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_ERR [azauthspn.go (130)]: azAuthBfsSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: e15295b7-0b14-4164-b1e0-75cac5571b00\r\nCorrelation ID: 6cb73e81-2d41-4140-a5b1-2cdecde59c4b\r\nTimestamp: 2022-07-21 09:55:29Z","error_codes":[7000215],"timestamp":"2022-07-21 09:55:29Z","trace_id":"e15295b7-0b14-4164-b1e0-75cac5571b00","correlation_id":"6cb73e81-2d41-4140-a5b1-2cdecde59c4b","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_ERR [azauthspn.go (98)]: azAuthBlobSPN::getCredential : Failed to refresh SPN token (adal: Refresh request failed. Status Code = '401'. Response body: {"error":"invalid_client","error_description":"AADSTS7000215: Invalid client secret provided. Ensure the secret being sent in the request is the client secret value, not the client secret ID, for a secret added to app '68390a19-a643-458b-b726-408abf67b4fc'.\r\nTrace ID: 87325922-49b8-40f1-a583-3dd95b382200\r\nCorrelation ID: 04acd360-d753-4572-846d-4986e57875f9\r\nTimestamp: 2022-07-21 09:55:29Z","error_codes":[7000215],"timestamp":"2022-07-21 09:55:29Z","trace_id":"87325922-49b8-40f1-a583-3dd95b382200","correlation_id":"04acd360-d753-4572-846d-4986e57875f9","error_uri":"https://login.microsoftonline.com/error?code=7000215"} Endpoint https://login.microsoftonline.com/72f988bf-86f1-41af-91ab-2d7cd011db47/oauth2/token?api-version=1.0)
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_ERR [block_blob.go (202)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06280)
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: http, Endpoint: http://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:29 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_ERR [datalake.go (198)]: Datalake::TestPipeline : Failed to validate account with given auth %!s(func() string=0xa06280)
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (143)]: Datalake::SetupPipeline : Setting up
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (124)]: Datalake::getCredential : Getting credential
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: ADLS, Protocol: http, Endpoint: http://vikasfusename.dfs.core.windows.net/
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfusename, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfusename.blob.core.windows.net/
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_TRACE [datalake.go (178)]: Datalake::TestPipeline : Validating
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (149)]: BlockBlob::SetupPipeline : Setting up
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (130)]: BlockBlob::getCredential : Getting credential
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_DEBUG [azauth.go (78)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: http, Endpoint: http://vikasfuseblob.blob.core.windows.net/
+Thu Jul 21 15:25:30 IST 2022 : blobfuse2[29469] : LOG_TRACE [block_blob.go (184)]: BlockBlob::TestPipeline : Validating

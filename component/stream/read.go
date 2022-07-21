@@ -185,7 +185,7 @@ func (r *ReadCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, err
 
 func (r *ReadCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
-	r.NextComponent().CloseFile(options)
+	_ = r.NextComponent().CloseFile(options)
 	if !r.StreamOnly && !options.Handle.CacheObj.StreamOnly {
 		options.Handle.CacheObj.Lock()
 		defer options.Handle.CacheObj.Unlock()

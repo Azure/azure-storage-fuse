@@ -132,14 +132,21 @@ func (c *FileCache) Start(ctx context.Context) error {
 	log.Trace("Starting component : %s", c.Name())
 
 	if c.cleanupOnStart {
-		c.TempCacheCleanup()
+		err := c.TempCacheCleanup()
+		if err != nil {
+			return fmt.Errorf("error in %s error [fail to cleanup temp cache]", c.Name())
+		}
 	}
 
 	if c.policy == nil {
 		return fmt.Errorf("config error in %s error [cache policy missing]", c.Name())
 	}
 
-	c.policy.StartPolicy()
+	err := c.policy.StartPolicy()
+	if err != nil {
+		return fmt.Errorf("config error in %s error [fail to start policy]", c.Name())
+	}
+
 	return nil
 }
 
@@ -147,8 +154,8 @@ func (c *FileCache) Start(ctx context.Context) error {
 func (c *FileCache) Stop() error {
 	log.Trace("Stopping component : %s", c.Name())
 
-	c.policy.ShutdownPolicy()
-	c.TempCacheCleanup()
+	_ = c.policy.ShutdownPolicy()
+	_ = c.TempCacheCleanup()
 
 	return nil
 }
@@ -271,7 +278,7 @@ func (c *FileCache) OnConfigChange() {
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
 	c.maxCacheSize = conf.MaxSizeMB
-	c.policy.UpdateConfig(c.GetPolicyConfig(conf))
+	_ = c.policy.UpdateConfig(c.GetPolicyConfig(conf))
 }
 
 func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {

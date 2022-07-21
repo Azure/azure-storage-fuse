@@ -69,10 +69,10 @@ var defaultSize = int64(0)
 var defaultMode = 0777
 
 func newTestAttrCache(next internal.Component, configuration string) *AttrCache {
-	config.ReadConfigFromReader(strings.NewReader(configuration))
+	_ = config.ReadConfigFromReader(strings.NewReader(configuration))
 	attrCache := NewAttrCacheComponent()
 	attrCache.SetNextComponent(next)
-	attrCache.Configure()
+	_ = attrCache.Configure()
 
 	return attrCache.(*AttrCache)
 }
@@ -192,11 +192,11 @@ func (suite *attrCacheTestSuite) setupTestHelper(config string) {
 	suite.mockCtrl = gomock.NewController(suite.T())
 	suite.mock = internal.NewMockComponent(suite.mockCtrl)
 	suite.attrCache = newTestAttrCache(suite.mock, config)
-	suite.attrCache.Start(context.Background())
+	_ = suite.attrCache.Start(context.Background())
 }
 
 func (suite *attrCacheTestSuite) cleanupTest() {
-	suite.attrCache.Stop()
+	_ = suite.attrCache.Stop()
 	suite.mockCtrl.Finish()
 }
 
@@ -850,8 +850,8 @@ func (suite *attrCacheTestSuite) TestGetAttrExistsDeleted() {
 			// delete directory a and file ac
 			suite.mock.EXPECT().DeleteDir(gomock.Any()).Return(nil)
 			suite.mock.EXPECT().DeleteFile(gomock.Any()).Return(nil)
-			suite.attrCache.DeleteDir(internal.DeleteDirOptions{Name: "a"})
-			suite.attrCache.DeleteFile(internal.DeleteFileOptions{Name: "ac"})
+			_ = suite.attrCache.DeleteDir(internal.DeleteDirOptions{Name: "a"})
+			_ = suite.attrCache.DeleteFile(internal.DeleteFileOptions{Name: "ac"})
 
 			options := internal.GetAttrOptions{Name: path}
 			// no call to mock component since attributes are accessible

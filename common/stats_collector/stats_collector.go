@@ -39,7 +39,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 
 	"gopkg.in/yaml.v3"
 )
@@ -63,7 +62,7 @@ func GetFuseStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := json.NewEncoder(w).Encode(&Blobfuse2Stats.fuse)
+	err := json.NewEncoder(w).Encode(Blobfuse2Stats.fuse)
 	if err != nil {
 		log.Fatalf("error: %v", err)
 	}
@@ -186,12 +185,6 @@ func allocate() *Stats {
 	var stats *Stats
 
 	stats = &Stats{}
-	stats.fuse.lck = sync.RWMutex{}
-	stats.attrCache.lck = sync.RWMutex{}
-	stats.fileCache.lck = sync.RWMutex{}
-	stats.storage.lck = sync.RWMutex{}
-	stats.common.lck = sync.RWMutex{}
-
 	return stats
 }
 
