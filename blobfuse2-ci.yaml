@@ -90,8 +90,8 @@ jobs:
     # Code lint checks (Static-analysis)
     - script: |
         curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
-        golangci-lint --version
-        golangci-lint run
+        $(go env GOPATH)/bin/golangci-lint --version
+        $(go env GOPATH)/bin/golangci-lint run
       displayName: 'Code Linting'
       workingDirectory: ./
 
