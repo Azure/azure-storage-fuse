@@ -391,6 +391,59 @@ func (suite *fileCacheTestSuite) TestReadDirError() {
 	suite.assert.Empty(dir)
 }
 
+func (suite *fileCacheTestSuite) TestStreamDirCase1() {
+	defer suite.cleanupTest()
+	// Setup
+	name := "dir"
+	subdir := filepath.Join(name, "subdir")
+	file1 := filepath.Join(name, "file1")
+	file2 := filepath.Join(name, "file2")
+	file3 := filepath.Join(name, "file3")
+	// Create files directly in "fake_storage"
+	suite.loopback.CreateDir(internal.CreateDirOptions{Name: name, Mode: 0777})
+	suite.loopback.CreateDir(internal.CreateDirOptions{Name: subdir, Mode: 0777})
+	suite.loopback.CreateFile(internal.CreateFileOptions{Name: file1})
+	suite.loopback.CreateFile(internal.CreateFileOptions{Name: file2})
+	suite.loopback.CreateFile(internal.CreateFileOptions{Name: file3})
+
+	// Read the Directory
+	dir, _, err := suite.fileCache.StreamDir(internal.StreamDirOptions{Name: name})
+	suite.assert.Nil(err)
+	suite.assert.NotEmpty(dir)
+	suite.assert.EqualValues(4, len(dir))
+	suite.assert.EqualValues(file1, dir[0].Path)
+	suite.assert.EqualValues(file2, dir[1].Path)
+	suite.assert.EqualValues(file3, dir[2].Path)
+	suite.assert.EqualValues(subdir, dir[3].Path)
+}
+
+//TODO: case3 requires more thought due to the way loopback fs is designed, specifically getAttr and streamDir
+func (suite *fileCacheTestSuite) TestStreamDirCase2() {
+	defer suite.cleanupTest()
+	// Setup
+	name := "dir"
+	subdir := filepath.Join(name, "subdir")
+	file1 := filepath.Join(name, "file1")
+	file2 := filepath.Join(name, "file2")
+	file3 := filepath.Join(name, "file3")
+	suite.fileCache.CreateDir(internal.CreateDirOptions{Name: name, Mode: 0777})
+	suite.fileCache.CreateDir(internal.CreateDirOptions{Name: subdir, Mode: 0777})
+	// By default createEmptyFile is false, so we will not create these files in storage until they are closed.
+	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file1, Mode: 0777})
+	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file2, Mode: 0777})
+	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file3, Mode: 0777})
+
+	// Read the Directory
+	dir, _, err := suite.fileCache.StreamDir(internal.StreamDirOptions{Name: name})
+	suite.assert.Nil(err)
+	suite.assert.NotEmpty(dir)
+	suite.assert.EqualValues(4, len(dir))
+	suite.assert.EqualValues(subdir, dir[0].Path)
+	suite.assert.EqualValues(file1, dir[1].Path)
+	suite.assert.EqualValues(file2, dir[2].Path)
+	suite.assert.EqualValues(file3, dir[3].Path)
+}
+
 // File cache does not have CreateDir Method implemented hence results are undefined here
 func (suite *fileCacheTestSuite) TestIsDirEmpty() {
 	defer suite.cleanupTest()
