@@ -95,6 +95,15 @@ jobs:
       displayName: 'Code Linting'
       workingDirectory: ./
 
+    # Copyright checks
+    - script: |
+        grep -L -r --include \*.go "`date +%Y` Microsoft Corporation" ./ | grep -v test/ | grep -v main_test.go
+      displayName: 'Copyright check'
+      condition: always() 
+      workingDirectory: ./
+
+
+
     # Running unit tests for fuse3 on ubn-20
     - task: Go@0
       inputs:
