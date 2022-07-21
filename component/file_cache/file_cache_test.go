@@ -1434,6 +1434,26 @@ func (suite *fileCacheTestSuite) TestZZOffloadIO() {
 	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
 }
 
+func (suite *fileCacheTestSuite) TestStatFS() {
+	defer suite.cleanupTest()
+	cacheTimeout := 5
+	maxSizeMb := 2
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  max-size-mb: %d\n  offload-io: true\n  timeout-sec: %d\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, maxSizeMb, cacheTimeout, suite.fake_storage_path)
+	os.Mkdir(suite.cache_path, 0777)
+	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
+
+	file := "file"
+	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
+	data := make([]byte, 1024*1024)
+	suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
+	stat, ret, err := suite.fileCache.StatFs()
+	suite.assert.Equal(ret, true)
+	suite.assert.Equal(err, nil)
+	suite.assert.NotEqual(stat, &syscall.Statfs_t{})
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestFileCacheTestSuite(t *testing.T) {

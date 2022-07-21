@@ -86,12 +86,7 @@ func (suite *cachePolicyTestSuite) TestGetUsagePercentage() {
 func (suite *cachePolicyTestSuite) TestDeleteFile() {
 	defer suite.cleanupTest()
 	f, _ := os.Create(cache_path + "/test")
-	data := make([]byte, 1024*1024)
-	f.Write(data)
-	os.Chmod(f.Name(), 0444)
-	result := deleteFile(f.Name())
-	suite.assert.Equal(nil, result)
-	result = deleteFile(f.Name() + "not_exist")
+	result := deleteFile(f.Name() + "not_exist")
 	suite.assert.Equal(nil, result)
 }
 
