@@ -341,7 +341,7 @@ func (suite *streamTestSuite) TestStreamOnlyHandleLimit() {
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle3, nil)
 	readInBufferOptions.Handle = handle3
 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(int(suite.stream.BlockSize), nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 	assertHandleNotStreamOnly(suite, handle3)
 }
 

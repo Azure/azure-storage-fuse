@@ -135,7 +135,7 @@ func (suite *mountSuite) TestMountDirNotExists() {
 // mount failure test where the mount directory is not empty
 func (suite *mountSuite) TestMountDirNotEmpty() {
 	tempDir := filepath.Join(mntDir, "tempdir")
-	os.Mkdir(tempDir, 0777)
+	_ = os.Mkdir(tempDir, 0777)
 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--config-file="+configFile)
 	cliOut, err := mountCmd.Output()
 	fmt.Println(string(cliOut))

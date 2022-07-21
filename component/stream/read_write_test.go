@@ -74,7 +74,7 @@ func (suite *streamTestSuite) TestStreamOnlyOpenFile() {
 	openFileOptions := internal.OpenFileOptions{Name: fileNames[0], Flags: os.O_RDONLY, Mode: os.FileMode(0777)}
 
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle1, nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 	suite.assert.Equal(suite.stream.StreamOnly, true)
 }
 
@@ -89,7 +89,7 @@ func (suite *streamTestSuite) TestStreamOnlyCloseFile() {
 	closeFileOptions := internal.CloseFileOptions{Handle: handle1}
 
 	suite.mock.EXPECT().CloseFile(closeFileOptions).Return(nil)
-	suite.stream.CloseFile(closeFileOptions)
+	_ = suite.stream.CloseFile(closeFileOptions)
 	suite.assert.Equal(suite.stream.StreamOnly, true)
 }
 
@@ -200,7 +200,7 @@ func (suite *streamTestSuite) TestCacheSmallFileOnOpen() {
 
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 
 	assertBlockNotCached(suite, 0, handle)
 	assertNumberOfCachedFileBlocks(suite, 0, handle)
@@ -219,7 +219,7 @@ func (suite *streamTestSuite) TestCacheSmallFileOnOpen() {
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(len(readInBufferOptions.Data), nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 
 	assertBlockCached(suite, 0, handle)
 	assertNumberOfCachedFileBlocks(suite, 1, handle)
@@ -243,7 +243,7 @@ func (suite *streamTestSuite) TestOpenLargeFile() {
 
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 
 	assertBlockNotCached(suite, 0, handle)
 	assertNumberOfCachedFileBlocks(suite, 0, handle)
@@ -267,7 +267,7 @@ func (suite *streamTestSuite) TestStreamOnly() {
 
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 	assertHandleNotStreamOnly(suite, handle)
 
 	// create new handle
@@ -279,7 +279,7 @@ func (suite *streamTestSuite) TestStreamOnly() {
 	}
 
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 
 	assertBlockNotCached(suite, 0, handle)
 	assertNumberOfCachedFileBlocks(suite, 0, handle)
@@ -303,7 +303,7 @@ func (suite *streamTestSuite) TestReadLargeFileBlocks() {
 
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle1, nil)
 	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 
 	assertBlockNotCached(suite, 0, handle1)
 	assertNumberOfCachedFileBlocks(suite, 0, handle1)
@@ -326,7 +326,7 @@ func (suite *streamTestSuite) TestReadLargeFileBlocks() {
 		Offset: 1 * MB,
 		Data:   make([]byte, 1*MB)}).Return(len(readInBufferOptions.Data), nil)
 
-	suite.stream.ReadInBuffer(readInBufferOptions)
+	_, _ = suite.stream.ReadInBuffer(readInBufferOptions)
 
 	assertBlockCached(suite, 0, handle1)
 	assertBlockCached(suite, 1*MB, handle1)
@@ -355,7 +355,7 @@ func (suite *streamTestSuite) TestPurgeOnClose() {
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(len(readInBufferOptions.Data), nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 
 	assertBlockCached(suite, 0, handle)
 	assertNumberOfCachedFileBlocks(suite, 1, handle)
@@ -363,7 +363,7 @@ func (suite *streamTestSuite) TestPurgeOnClose() {
 
 	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Return(nil)
 	suite.mock.EXPECT().CloseFile(internal.CloseFileOptions{Handle: handle}).Return(nil)
-	suite.stream.CloseFile(internal.CloseFileOptions{Handle: handle})
+	_ = suite.stream.CloseFile(internal.CloseFileOptions{Handle: handle})
 	assertBlockNotCached(suite, 0, handle)
 }
 
@@ -393,7 +393,7 @@ func (suite *streamTestSuite) TestWriteToSmallFileEviction() {
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(len(readInBufferOptions.Data), nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 	assertBlockCached(suite, 0, handle)
 	assertNumberOfCachedFileBlocks(suite, 1, handle)
 
@@ -437,10 +437,10 @@ func (suite *streamTestSuite) TestLargeFileEviction() {
 
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
 	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 
 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(len(readInBufferOptions.Data), nil)
-	suite.stream.ReadInBuffer(readInBufferOptions)
+	_, _ = suite.stream.ReadInBuffer(readInBufferOptions)
 
 	assertBlockCached(suite, 0, handle)
 	assertNumberOfCachedFileBlocks(suite, 1, handle)
@@ -453,7 +453,7 @@ func (suite *streamTestSuite) TestLargeFileEviction() {
 	}
 
 	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(len(readInBufferOptions.Data), nil)
-	suite.stream.ReadInBuffer(readInBufferOptions)
+	_, _ = suite.stream.ReadInBuffer(readInBufferOptions)
 
 	assertBlockCached(suite, 1*MB, handle)
 	assertNumberOfCachedFileBlocks(suite, 2, handle)
@@ -480,7 +480,7 @@ func (suite *streamTestSuite) TestLargeFileEviction() {
 	}
 	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Do(callbackFunc).Return(nil)
 
-	suite.stream.WriteFile(writeFileOptions)
+	_, _ = suite.stream.WriteFile(writeFileOptions)
 
 	assertBlockCached(suite, 0, handle)
 	assertBlockCached(suite, 2*MB, handle)
@@ -506,7 +506,7 @@ func (suite *streamTestSuite) TestStreamOnlyHandle() {
 
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle1, nil)
 	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 
 	assertBlockNotCached(suite, 0, handle1)
 	assertNumberOfCachedFileBlocks(suite, 0, handle1)
@@ -515,7 +515,7 @@ func (suite *streamTestSuite) TestStreamOnlyHandle() {
 	handle2 := &handlemap.Handle{Size: int64(2 * MB), Path: fileNames[0]}
 	openFileOptions = internal.OpenFileOptions{Name: fileNames[0], Flags: os.O_RDONLY, Mode: os.FileMode(0777)}
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle2, nil)
-	suite.stream.OpenFile(openFileOptions)
+	_, _ = suite.stream.OpenFile(openFileOptions)
 
 	assertBlockNotCached(suite, 0, handle2)
 	assertNumberOfCachedFileBlocks(suite, 0, handle2)
@@ -526,7 +526,7 @@ func (suite *streamTestSuite) TestStreamOnlyHandle() {
 	closeFileOptions := internal.CloseFileOptions{Handle: handle1}
 	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle1}).Return(nil)
 	suite.mock.EXPECT().CloseFile(closeFileOptions).Return(nil)
-	suite.stream.CloseFile(closeFileOptions)
+	_ = suite.stream.CloseFile(closeFileOptions)
 
 	// get block for second handle and confirm it gets cached
 	readInBufferOptions := internal.ReadInBufferOptions{
@@ -540,7 +540,7 @@ func (suite *streamTestSuite) TestStreamOnlyHandle() {
 		Handle: handle2,
 		Offset: 0,
 		Data:   make([]byte, 1*MB)}).Return(len(readInBufferOptions.Data), nil)
-	suite.stream.ReadInBuffer(readInBufferOptions)
+	_, _ = suite.stream.ReadInBuffer(readInBufferOptions)
 
 	assertBlockCached(suite, 0, handle2)
 	assertNumberOfCachedFileBlocks(suite, 1, handle2)

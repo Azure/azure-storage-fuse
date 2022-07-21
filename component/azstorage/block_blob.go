@@ -314,7 +314,10 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlob.Segment.BlobItems {
-			bb.DeleteFile(split(bb.Config.prefixPath, blobInfo.Name))
+			err = bb.DeleteFile(split(bb.Config.prefixPath, blobInfo.Name))
+			if err != nil {
+				log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s (%s)", blobInfo.Name, err.Error)
+			}
 		}
 	}
 	return bb.DeleteFile(name)
@@ -381,7 +384,10 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlob.Segment.BlobItems {
 			srcPath := split(bb.Config.prefixPath, blobInfo.Name)
-			bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
+			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
+			if err != nil {
+				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s (%s)", source, err.Error)
+			}
 		}
 	}
 
@@ -797,7 +803,12 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 		blk.EndIndex = size
 		blk.Data = make([]byte, blk.EndIndex-blk.StartIndex)
 		blk.Flags.Set(common.DirtyBlock)
-		bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data)
+
+		err := bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data)
+		if err != nil {
+			log.Err("BlockBlob::removeBlocks : Failed to remove blocks %s (%s)", name, err.Error())
+		}
+
 	}
 
 	blockList.BlockList = blockList.BlockList[:index+1]
@@ -936,7 +947,10 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
 		if !appendOnly {
 			// fetch the blocks that will be impacted by the new changes so we can overwrite them
-			bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
+			err = bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
+			if err != nil {
+				log.Err("BlockBlob::Write : Failed to read data in buffer %s (%s)", name, err.Error())
+			}
 		}
 		// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
 		blockOffset := offset - fileOffsets.BlockList[index].StartIndex
