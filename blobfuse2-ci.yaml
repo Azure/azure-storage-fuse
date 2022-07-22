@@ -94,8 +94,10 @@ jobs:
         $(go env GOPATH)/bin/golangci-lint run --tests=false --skip-dirs test,common/stats_collector,common/stats_monitor --max-issues-per-linter=0 > lint.log
         result=$(cat lint.log | wc -l)
         if [ $result -ne 0 ]; then
+          echo "No issues are found in SA"
           exit 1
         else
+          echo "Below issues are found in SA"
           cat lint.log
         fi 
       displayName: 'Static Analysis (Lint)'
