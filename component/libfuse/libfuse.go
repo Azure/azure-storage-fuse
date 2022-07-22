@@ -132,7 +132,11 @@ func (lf *Libfuse) Start(ctx context.Context) error {
 	fuseFS = lf
 
 	// This starts the libfuse process and hence shall always be the last statement
-	lf.initFuse()
+	err := lf.initFuse()
+	if err != nil {
+		log.Err("Libfuse::Start : Failed to init fuse [%s]", err.Error())
+		return err
+	}
 
 	return nil
 }
@@ -140,7 +144,7 @@ func (lf *Libfuse) Start(ctx context.Context) error {
 // Stop : Stop the component functionality and kill all threads started
 func (lf *Libfuse) Stop() error {
 	log.Trace("Libfuse::Stop : Stopping component %s", lf.Name())
-	lf.destroyFuse()
+	_ = lf.destroyFuse()
 	return nil
 }
 

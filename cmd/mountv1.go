@@ -145,7 +145,7 @@ var generateConfigCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		VersionCheck()
+		_ = VersionCheck()
 		resetOptions()
 		// If we are only converting the config without mounting then we do not need the mount path and therefore the args length would be 0
 		if len(args) == 1 {
@@ -210,7 +210,8 @@ var generateConfigCmd = &cobra.Command{
 			if bfv2StorageConfigOptions.UseHTTP {
 				http = "http"
 			}
-			var accountType = ""
+
+			accountType := ""
 			if bfv2StorageConfigOptions.AccountType == "" || bfv2StorageConfigOptions.AccountType == "blob" {
 				accountType = "blob"
 			} else if bfv2StorageConfigOptions.AccountType == "adls" {
@@ -377,7 +378,7 @@ func convertBfCliParameters(flags *pflag.FlagSet) error {
 	if flags.Lookup("set-content-type").Changed || flags.Lookup("ca-cert-file").Changed || flags.Lookup("basic-remount-check").Changed || flags.Lookup(
 		"background-download").Changed || flags.Lookup("cache-poll-timeout-msec").Changed || flags.Lookup("upload-modified-only").Changed {
 		logWriter, _ := syslog.New(syslog.LOG_WARNING, "")
-		logWriter.Warning("one or more unsupported v1 parameters [set-content-type, ca-cert-file, basic-remount-check, background-download, cache-poll-timeout-msec, upload-modified-only] have been passed, ignoring and proceeding to mount")
+		_ = logWriter.Warning("one or more unsupported v1 parameters [set-content-type, ca-cert-file, basic-remount-check, background-download, cache-poll-timeout-msec, upload-modified-only] have been passed, ignoring and proceeding to mount")
 	}
 
 	bfv2LoggingConfigOptions.Type = "syslog"
