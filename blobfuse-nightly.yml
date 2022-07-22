@@ -26,7 +26,6 @@ parameters:
   type: boolean
   default: false
 
-
 # List of jobs to run in parallel
 jobs:
   - ${{ if true }}:
@@ -49,6 +48,10 @@ jobs:
               imageName: 'ubuntu-20.04' 
               containerName: 'test-cnt-ubn-20'
               quickTestDir: 'ubn20'
+            Ubuntu-22:
+              imageName: 'ubuntu-22.04' 
+              containerName: 'test-cnt-ubn-22'
+              quickTestDir: 'ubn22'
 
           ${{ if eq(parameters.exhaustive_test, false) }}:
             Ubuntu-18:
@@ -866,57 +869,63 @@ jobs:
 
 
   - ${{ if eq(parameters.exhaustive_test, true) }}:
-    # Other then Ubuntu just run the feature_test
     - job: Set_2
       timeoutInMinutes: 30
       strategy:
         matrix:
           RHEL-7.5-new-curl:
             DistroVer: "RHEL-7.5"
-            AgentName : "RHEL 7.5"
+            AgentName : "blobfuse-rhel7_5"
             Description: "Red Hat Enterprise Linux 7.5 New Curl"
-            containerName: 'test-cnt-rhel-75'
+            containerName: 'test-cnt-rhel-75-test'
+            PoolName: "blobfuse-rhel-pool"
 
           RHEL-7.5-old-curl:
             DistroVer: "RHEL-7.5"
-            AgentName : "RHEL 7.5.2"
-            Description: "Red Hat Enterprise Linux 7.5 Old Curl"
-            containerName: 'test-cnt-rhel-75-test'
-            
+            AgentName : "blobfuse-rhel7_5"
+            Description: "Red Hat Enterprise Linux 7.5"
+            containerName: 'test-cnt-rhel-75'
+            PoolName: "blobfuse-rhel-pool"
+
           RHEL-8.1:
             DistroVer: "RHEL-8.1"
-            AgentName: "RHEL 8.1"
+            AgentName: "blobfuse-rhel8_1"
             Description: "Red Hat Enterprise Linux 8.1"
             containerName: 'test-cnt-rhel-81'
+            PoolName: "blobfuse-rhel-pool"
 
           RHEL-8.2:
             DistroVer: "RHEL-8.2"
-            AgentName: "RHEL 8.2"
+            AgentName: "blobfuse-rhel8_2"
             Description: "Red Hat Enterprise Linux 8.2"
             containerName: 'test-cnt-rhel-82'
+            PoolName: "blobfuse-rhel-pool"
 
           CentOS-7.0:
             DistroVer: "CentOS-7.0"
-            AgentName: "COS 7.0"
+            AgentName: "blobfuse-centos7"
             Description: "CentOS Linux 7.0"
             containerName: 'test-cnt-cent-7'
+            PoolName: "blobfuse-centos-pool"
 
           CentOS-8.0:
             DistroVer: "CentOS-8.0"
-            AgentName: "COS 8.0"
+            AgentName: "blobfuse-centos8"
             Description: "CentOS Linux 8.0"
             containerName: 'test-cnt-cent-8'
+            PoolName: "blobfuse-centos-pool"
 
           Oracle-8.1:
             DistroVer: "Oracle-8.1"
-            AgentName: "ORA 8.1"
+            AgentName: "blobfuse-oracle81"
             Description: "Oracle Linux 8.1 Gen 2"
             containerName: 'test-cnt-ora-81'
+            PoolName: "blobfuse-oracle-pool"
 
       pool:
-        name: "Blobfuse Pool"
+        name: $(PoolName)
         demands:
-        - Agent.Name -equals $(AgentName)
+          - ImageOverride -equals $(AgentName)
 
       variables:
       - group: NightlyBlobFuse
@@ -945,11 +954,32 @@ jobs:
             hostnamectl
           displayName: "Print Agent Info"
 
+        # Go tool installer
+        - task: GoTool@0
+          inputs:
+            version: '1.16.2'
+          displayName: "Install Go Version"
+
         # Install all dependencies
         - script: |
             sudo yum update -y
-            sudo yum install git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libgcrypt-devel rpm-build golang -y
+            sudo yum install git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libgcrypt-devel rpm-build golang libarchive -y --skip-broken
           displayName: "Basic Tools Setup"
+
+        - script: |
+            sudo yum install python3-devel -y
+            wget https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-x86_64.sh -O cmake.sh
+            sudo mv cmake.sh /opt
+            sudo chmod +x /opt/cmake.sh
+            sudo sh /opt/cmake.sh --prefix=/usr/ --exclude-subdir
+          displayName: "Python3 and CMake setup"
+          condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
+
+        - script: |
+            sudo yum install cmake3 -y
+            sudo ln -sf /usr/bin/cmake3 /usr/bin/cmake
+          displayName: "CMake version"
+          condition: eq(variables['AgentName'], 'blobfuse-centos7')
 
         # Install libfuse
         - script: |
@@ -1028,10 +1058,19 @@ jobs:
 
         # Mount a directory for feature test (Block) and run it
         - script:  |
+            if [ "$(Description)" == "Red Hat Enterprise Linux 7.5 New Curl" ]; then
+                wget https://curl.se/download/curl-7.67.0.tar.gz --no-check-certificate
+                tar -xf curl-7.67.0.tar.gz
+                cd curl-7.67.0
+                ./configure --prefix=$HOME/curl
+                make
+                make install
+                export PATH=$HOME/curl/bin:$PATH
+                . ~/.bash_profile
+                cd -
+            fi
             curl --version
             sudo fusermount -u $(MOUNT_DIR)
-            sudo kill -9 `pidof ./build/blobfuse`
-            sudo kill -9 `pidof fusermount`
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
@@ -1105,11 +1144,6 @@ jobs:
             AgentName : "DEB 9.0"
             Description: "Debian Linux 9.0"
             containerName: 'test-cnt-deb-9'
-          Debian-10.0:
-            DistroVer: "Debian10.0"
-            AgentName : "DEB 10.0"
-            Description: "Debian Linux 10.0 Gen 1"
-            containerName: 'test-cnt-deb-10'
 
       pool:
         name: "Blobfuse Pool"
@@ -1266,16 +1300,21 @@ jobs:
       timeoutInMinutes: 30
       strategy:
         matrix:
-          SUSE-15G2:
-            DistroVer: "Suse-15Gen2"
-            AgentName : "SUSE 15G2"
-            Description: "SUSE Ent Linux 15-SP1-Gen2"
-            containerName: 'test-cnt-suse-15'
+          # Debian-9.0:
+          #   DistroVer: "Debian9.0"
+          #   AgentName : "DEB 9.0"
+          #   Description: "Debian Linux 9.0"
+          #   containerName: 'test-cnt-deb-9'
+          Debian-10.0:
+            DistroVer: "Debian10.0"
+            AgentName : "blobfuse-debian10"
+            Description: "Debian Linux 10.0 Gen 1"
+            containerName: 'test-cnt-deb-10'
 
       pool:
-        name: "Blobfuse Pool"
+        name: "blobfuse-debian-pool"
         demands:
-        - Agent.Name -equals $(AgentName)
+          - ImageOverride -equals $(AgentName)
 
       variables:
       - group: NightlyBlobFuse
@@ -1303,14 +1342,15 @@ jobs:
           displayName: "Print Agent Info"
 
         # Install all dependencies
-        #- script: |
-        #    sudo zypper -n update git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libboost*devel libgcrypt-devel rpm-build go
-        #  displayName: "Basic Tools Setup"
+        - script: |
+            sudo apt-get update --fix-missing
+            sudo apt-get install git pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ golang -y
+          displayName: "Basic Tools Setup"
 
         # Install libfuse
-        #- script: |
-        #    sudo zypper -n update fuse-devel fuse
-        #  displayName: "libFuse Setup"
+        - script: |
+            sudo apt-get install libfuse-dev fuse -y
+          displayName: "libFuse Setup"
 
         # Prebuild cleanup
         - script: |
@@ -1422,21 +1462,20 @@ jobs:
           displayName: 'Clean Agent Directories'
           condition: always()
 
-
-  - ${{ if eq(parameters.msi_test, true) }}:
-    - job: Set_6
-      timeoutInMinutes: 60
+    - job: Set_5
+      timeoutInMinutes: 30
       strategy:
         matrix:
-          MSI_Test:
-            DistroVer: "Ubn20_MSI"
-            AgentName : "MSITestUBN20"
-            Description: "MSI Test - 2"
+          SUSE-15G2:
+            DistroVer: "Suse-15Gen2"
+            AgentName : "blobfuse-suse15"
+            Description: "SUSE Ent Linux 15-SP1-Gen2"
+            containerName: 'test-cnt-suse-15'
 
       pool:
-        name: "Blobfuse Pool"
+        name: "blobfuse-suse-pool"
         demands:
-        - Agent.Name -equals $(AgentName)
+          - ImageOverride -equals $(AgentName)
 
       variables:
       - group: NightlyBlobFuse
@@ -1448,13 +1487,174 @@ jobs:
         value: true
 
       - name: MOUNT_DIR
-        value: "/home/vibhansa/blob_mnt"
+        value: "/home/vsts/work/blob_mnt"
       - name: TEMP_DIR
         value: "/mnt/blobfusetmp"
       - name: BLOBFUSE_CFG_FILE
-        value: "/home/vibhansa/myblob.cfg.msi"
+        value: "/home/vsts/blobfuse.cfg"
+      
+      steps:
+        - checkout: none
+
+        # Install all dependencies
+        - script: |
+            echo $(Description)
+            hostnamectl
+          displayName: "Print Agent Info"
+
+        # Install all dependencies
+        - script: |
+            sudo zypper -n install git tar make cmake gcc gcc-c++ curl-devel gnutls-devel libuuid-devel boost-devel libboost*devel libgcrypt-devel rpm-build go
+          displayName: "Basic Tools Setup"
+
+        # Install libfuse
+        - script: |
+            sudo zypper -n install fuse-devel fuse
+          displayName: "libFuse Setup"
+
+        # Prebuild cleanup
+        - script: |
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo kill -9 `pidof blobfuse`
+            sudo rm -rf $(WORK_DIR)
+          displayName: "Prebuild cleanup"
+
+        # Checkout code
+        - script: |
+            sudo mkdir -p $(WORK_DIR)
+            sudo chown -R `whoami` $(WORK_DIR)
+            chmod 777 $(WORK_DIR)
+          displayName: "Create Directory structure"
+
+        # Checkout code
+        - script: |
+            git clone https://github.com/Azure/azure-storage-fuse
+          displayName: "Checkout code"
+          workingDirectory: $(WORK_DIR)
+
+        # Checkout branch
+        - script: |
+            echo $(Build.SourceBranch)
+            echo "Going for checkout of " `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`  
+            git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
+          displayName: "Checkout Branch"
+          workingDirectory: $(ROOT_DIR)
+
+        # List commits consumed for this build
+        - script: |
+            echo "Below commits were done in last 12 hours : " `date` 
+            git --no-pager log --since="12 hours ago" --stat
+          displayName: "List Commits"
+          workingDirectory: $(ROOT_DIR)
+
+        # Build the blobFuse binary
+        - script: |
+            sudo chmod +x build.sh
+            . ./build.sh
+          displayName: "Build BlobFuse"
+          workingDirectory: $(ROOT_DIR)
+
+        # Test the binary just to make sure it was built fine
+        - script: |
+            ./build/blobfuse --version
+          displayName: "Test the binary"
+          workingDirectory: $(ROOT_DIR)
+
+        # Add the test work here
+        # Create directory structures for the basic testing
+        - script: |
+            sudo mkdir $(MOUNT_DIR)
+            sudo chown -R `whoami` $(MOUNT_DIR)
+            chmod 777 $(MOUNT_DIR)
+            sudo mkdir $(TEMP_DIR)
+            sudo chown -R `whoami` $(TEMP_DIR)
+            chmod 777 $(TEMP_DIR)
+          displayName: "Create Directories"
+        
+        # --- Create config files for testing
+        - script: |
+            sudo touch $(BLOBFUSE_CFG_FILE)
+            sudo chown -R `whoami` $(BLOBFUSE_CFG_FILE)
+            chmod 777 $(BLOBFUSE_CFG_FILE)
+            echo "accountName " $(NIGHTLY_STO_ACC_NAME) > $(BLOBFUSE_CFG_FILE)
+            echo "accountKey " $(NIGHTLY_STO_ACC_KEY) >> $(BLOBFUSE_CFG_FILE)
+            echo "authType Key" >> $(BLOBFUSE_CFG_FILE)
+            echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_FILE)
+            cat $(BLOBFUSE_CFG_FILE)
+            echo "Account : " $(NIGHTLY_STO_ACC_NAME)
+          displayName: "Create config file"
+
+        # Mount a directory for feature test (Block) and run it
+        - script:  |
+            curl --version
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo rm -rf $(TEMP_DIR)/*
+            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+          workingDirectory: $(ROOT_DIR)
+          displayName: "Mount Blobfuse"
+
+        - script: | 
+            sudo rm -rf $(MOUNT_DIR)/*  
+            cd test
+            go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+          workingDirectory: $(ROOT_DIR)
+          displayName: TEST - ADLS FeatureTest
+          timeoutInMinutes: 20
+
+        - script:  |
+            sudo rm -rf $(MOUNT_DIR)/*
+            sudo fusermount -u $(MOUNT_DIR)
+            sudo kill -9 `pidof blobfuse`
+            sudo rm -rf $(TEMP_DIR)/
+            sudo rm -rf $(MOUNT_DIR)
+            sudo rm -rf $(BLOBFUSE_CFG_FILE)
+            sudo rm -rf $(WORK_DIR)
+          workingDirectory: $(ROOT_DIR)
+          displayName: 'Cleanup Directories'
+          timeoutInMinutes: 5
+          condition: always()
+
+        - script: |
+            pwd
+            cd /`pwd | cut -d '/' -f 2,3,4,5`
+            sudo rm -rf [0-9]
+          displayName: 'Clean Agent Directories'
+          condition: always()
+
+  - ${{ if eq(parameters.msi_test, true) }}:
+    - job: Set_6
+      timeoutInMinutes: 60
+      strategy:
+        matrix:
+          MSI_Test:
+            DistroVer: "Ubn20_MSI"
+            AgentName : "blobfuse-ubuntu20"
+            Description: "MSI Test - 2"
+
+      pool:
+        name: "blobfuse-ubuntu-pool"
+        demands:
+          - ImageOverride -equals $(AgentName)
+
+      variables:
+      - group: NightlyBlobFuse
+      - name: WORK_DIR
+        value: "/home/vsts/work/"
+      - name: ROOT_DIR
+        value: "/home/vsts/work/azure-storage-fuse"
+      - name: skipComponentGovernanceDetection
+        value: true
+      - name: MOUNT_DIR
+        value: "/home/vsts/work/blob_mnt"
+      - name: TEMP_DIR
+        value: "/mnt/blobfusetmp"
+      - name: BLOBFUSE_CFG_FILE
+        value: "/home/vsts/work/myblob.cfg.msi"
       - name: BLOBFUSE_CFG_FILE_ADLS
-        value: "/home/vibhansa/myblob.cfg.msi.adls"
+        value: "/home/vsts/work/myblob.cfg.msi.adls"
+      - name: containerName
+        value: "test-cnt-ubn-20-msi"
       
       steps:
         - checkout: none
@@ -1534,6 +1734,18 @@ jobs:
             sudo chown -R `whoami` $(TEMP_DIR)
             chmod 777 $(TEMP_DIR)
           displayName: "Create Directories"
+
+        - script: |
+            sudo touch $(BLOBFUSE_CFG_FILE)
+            sudo chown -R `whoami` $(BLOBFUSE_CFG_FILE)
+            chmod 777 $(BLOBFUSE_CFG_FILE)
+            echo "accountName " $(AZTEST_BLOCK_ACC_NAME) > $(BLOBFUSE_CFG_FILE)
+            echo "identityClientId " $(AZTEST_APP_ID) >> $(BLOBFUSE_CFG_FILE)
+            echo "authType MSI" >> $(BLOBFUSE_CFG_FILE)
+            echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_FILE)
+            cat $(BLOBFUSE_CFG_FILE)
+            echo "Account : " $(AZTEST_BLOCK_ACC_NAME)
+          displayName: "Create config file"
         
         # Mount a directory for feature test (Block) and run it
         - script:  |
@@ -1542,6 +1754,7 @@ jobs:
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE)
+            sleep 10s
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
 
@@ -1563,12 +1776,25 @@ jobs:
           continueOnError: true
           workingDirectory: $(ROOT_DIR)
 
+        - script: |
+            sudo touch $(BLOBFUSE_CFG_FILE_ADLS)
+            sudo chown -R `whoami` $(BLOBFUSE_CFG_FILE_ADLS)
+            chmod 777 $(BLOBFUSE_CFG_FILE_ADLS)
+            echo "accountName " $(AZTEST_ADLS_ACC_NAME) > $(BLOBFUSE_CFG_FILE_ADLS)
+            echo "identityClientId " $(AZTEST_APP_ID) >> $(BLOBFUSE_CFG_FILE_ADLS)
+            echo "authType MSI" >> $(BLOBFUSE_CFG_FILE)
+            echo "containerName " $(containerName) >> $(BLOBFUSE_CFG_FILE_ADLS)
+            cat $(BLOBFUSE_CFG_FILE_ADLS)
+            echo "Account : " $(AZTEST_ADLS_ACC_NAME)
+          displayName: "Create config file"
+
         # List the blobs to verify that the login went successful
         - script:  |
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE_ADLS) --use-adls=true
+            sleep 10s
             df
             sudo ps -aux | grep blobfuse
             mkdir $(MOUNT_DIR)/MSITestADLS
@@ -1593,7 +1819,7 @@ jobs:
             sudo rm -rf $(TEMP_DIR)/*
           displayName: 'Clean Agent Directories'
           condition: always()
-    
+
   - ${{ if eq(parameters.proxy_test, true) }}:    
     - job: Set_7
       timeoutInMinutes: 60
@@ -1601,14 +1827,12 @@ jobs:
         matrix:
           Proxy_Test:
             DistroVer: "Ubuntu-20P"
-            AgentName : "UBN20Proxy"
+            imageName : "ubuntu-20.04"
             Description: "Blobfuse : Proxy"
             containerName: 'ubn-20-proxy'
 
       pool:
-        name: "Blobfuse Pool"
-        demands:
-        - Agent.Name -equals $(AgentName)
+        vmImage: $(imageName)
 
       variables:
       - group: NightlyBlobFuse
@@ -1636,36 +1860,32 @@ jobs:
           displayName: "Print Agent Info"
 
         - script: |
-            export http_proxy="http://10.1.22.4:8080/"
-            export https_proxy="http://10.1.22.4:8080/"
-            export no_proxy="localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
-          displayName: "Setup Proxy"          
+            sudo apt-get update --fix-missing
+            sudo apt remove mitmproxy
+            sudo apt-get install python3-setuptools
+            sudo apt install python3-pip
+            sudo pip3 install mitmproxy
+            mitmdump -w proxy_logs.txt &
+          displayName: 'Install & Start Proxy'
+
+        - script: |
+            sudo mkdir /usr/local/share/ca-certificates/extra
+            sudo cp ~/.mitmproxy/mitmproxy-ca-cert.cer /usr/local/share/ca-certificates/extra/mitmproxy-ca-cert.crt
+            sudo update-ca-certificates
+            export https_proxy="127.0.0.1:8080"
+            export http_proxy="127.0.0.1:8080"
+          displayName: 'Configure Proxy'
 
         # Install all dependencies
         - script: |
             sudo apt-get update --fix-missing
             sudo apt-get install pkg-config cmake libcurl4-gnutls-dev libgnutls28-dev uuid-dev libgcrypt20-dev libboost-all-dev gcc g++ golang -y
           displayName: "Basic Tools Setup"
-          env:
-            http_proxy: "http://10.1.22.4:8080/"
-            https_proxy: "http://10.1.22.4:8080/"
-            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
 
         # Install libfuse
         - script: |
             sudo apt-get install libfuse-dev fuse -y
           displayName: "libFuse Setup"
-          env:
-            http_proxy: "http://10.1.22.4:8080/"
-            https_proxy: "http://10.1.22.4:8080/"
-            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
-
-        # Prebuild cleanup
-        - script: |
-            sudo fusermount -u $(MOUNT_DIR)
-            sudo kill -9 `pidof blobfuse`
-            sudo rm -rf $(WORK_DIR)
-          displayName: "Prebuild cleanup"
 
         # Checkout code
         - script: |
@@ -1676,15 +1896,9 @@ jobs:
 
         # Checkout code
         - script: |
-            echo "HTTP  : " $http_proxy
-            echo "HTTPS : " $https_proxy
             git clone https://github.com/Azure/azure-storage-fuse
           displayName: "Checkout code"
           workingDirectory: $(WORK_DIR)
-          env:
-            http_proxy: "http://10.1.22.4:8080/"
-            https_proxy: "http://10.1.22.4:8080/"
-            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
 
         # Checkout branch
         - script: |
@@ -1693,10 +1907,6 @@ jobs:
             git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`   
           displayName: "Checkout Branch"
           workingDirectory: $(ROOT_DIR)
-          env:
-            http_proxy: "http://10.1.22.4:8080/"
-            https_proxy: "http://10.1.22.4:8080/"
-            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
 
         # List commits consumed for this build
         - script: |
@@ -1704,12 +1914,6 @@ jobs:
             git --no-pager log --since="12 hours ago" --stat
           displayName: "List Commits"
           workingDirectory: $(ROOT_DIR)
-          env:
-            http_proxy: "http://10.1.22.4:8080/"
-            https_proxy: "http://10.1.22.4:8080/"
-            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
-
-          
 
         # Build the blobFuse binary
         - script: |
@@ -1758,10 +1962,8 @@ jobs:
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
           env:
-            http_proxy: "http://10.1.22.4:8080/"
-            https_proxy: "http://10.1.22.4:8080/"
-            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
-
+            http_proxy: "http://127.0.0.1:8080/"
+            https_proxy: "http://127.0.0.1:8080/"
 
         - script: | 
             sudo rm -rf $(MOUNT_DIR)/*  
@@ -1770,11 +1972,6 @@ jobs:
           workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
           timeoutInMinutes: 20
-          env:
-            http_proxy: "http://10.1.22.4:8080/"
-            https_proxy: "http://10.1.22.4:8080/"
-            no_proxy: "localhost,http://10.1.22.4, 10.1.23.0/24, 10.1.22.0/24"
-
 
         - script:  |
             sudo rm -rf $(MOUNT_DIR)/*
@@ -1783,7 +1980,6 @@ jobs:
             sudo rm -rf $(TEMP_DIR)/
             sudo rm -rf $(MOUNT_DIR)
             sudo rm -rf $(BLOBFUSE_CFG_FILE)
-            sudo rm -rf $(WORK_DIR)
           workingDirectory: $(ROOT_DIR)
           displayName: 'Cleanup Directories'
           timeoutInMinutes: 5
