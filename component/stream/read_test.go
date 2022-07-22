@@ -75,7 +75,7 @@ func newTestStream(next internal.Component, configuration string, ro bool) (*Str
 	config.SetBool("read-only", ro)
 	stream := NewStreamComponent()
 	stream.SetNextComponent(next)
-	err := stream.Configure()
+	err := stream.Configure(true)
 	return stream.(*Stream), err
 }
 

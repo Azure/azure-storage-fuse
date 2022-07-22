@@ -67,7 +67,7 @@ type fileCacheTestSuite struct {
 
 func newLoopbackFS() internal.Component {
 	loopback := loopback.NewLoopbackFSComponent()
-	loopback.Configure()
+	loopback.Configure(true)
 
 	return loopback
 }
@@ -76,7 +76,7 @@ func newTestFileCache(next internal.Component) *FileCache {
 
 	fileCache := NewFileCacheComponent()
 	fileCache.SetNextComponent(next)
-	err := fileCache.Configure()
+	err := fileCache.Configure(true)
 	if err != nil {
 		panic("Unable to configure file cache.")
 	}
@@ -1384,7 +1384,7 @@ func (suite *fileCacheTestSuite) TestZZMountPathConflict() {
 	fileCache := NewFileCacheComponent()
 	config.ReadConfigFromReader(strings.NewReader(configuration))
 	config.Set("mount-path", suite.cache_path)
-	err := fileCache.Configure()
+	err := fileCache.Configure(true)
 	suite.assert.NotNil(err)
 	suite.assert.Contains(err.Error(), "[tmp-path is same as mount path]")
 }

@@ -173,7 +173,7 @@ type blockBlobTestSuite struct {
 func newTestAzStorage(configuration string) (*AzStorage, error) {
 	config.ReadConfigFromReader(strings.NewReader(configuration))
 	az := NewazstorageComponent()
-	err := az.Configure()
+	err := az.Configure(true)
 
 	return az.(*AzStorage), err
 }

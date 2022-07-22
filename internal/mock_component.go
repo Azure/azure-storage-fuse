@@ -129,17 +129,17 @@ func (mr *MockComponentMockRecorder) CloseFile(arg0 interface{}) *gomock.Call {
 }
 
 // Configure mocks base method.
-func (m *MockComponent) Configure() error {
+func (m *MockComponent) Configure(arg0 bool) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Configure")
+	ret := m.ctrl.Call(m, "Configure", arg0)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Configure indicates an expected call of Configure.
-func (mr *MockComponentMockRecorder) Configure() *gomock.Call {
+func (mr *MockComponentMockRecorder) Configure(arg0 interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Configure", reflect.TypeOf((*MockComponent)(nil).Configure))
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Configure", reflect.TypeOf((*MockComponent)(nil).Configure), arg0)
 }
 
 // CopyFromFile mocks base method.

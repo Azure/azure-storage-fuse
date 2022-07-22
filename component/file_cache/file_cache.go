@@ -173,7 +173,7 @@ func (c *FileCache) TempCacheCleanup() error {
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //  Return failure if any config is not valid to exit the process
-func (c *FileCache) Configure() error {
+func (c *FileCache) Configure(_ bool) error {
 	log.Trace("FileCache::Configure : %s", c.Name())
 
 	conf := FileCacheOptions{}

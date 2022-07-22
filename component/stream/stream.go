@@ -91,7 +91,7 @@ func (st *Stream) Start(ctx context.Context) error {
 	return nil
 }
 
-func (st *Stream) Configure() error {
+func (st *Stream) Configure(_ bool) error {
 	log.Trace("Stream::Configure : %s", st.Name())
 	conf := StreamOptions{}
 	err := config.UnmarshalKey(compName, &conf)

@@ -62,7 +62,7 @@ func (base *BaseComponent) SetName(name string) {
 	base.compName = name
 }
 
-func (base *BaseComponent) Configure() error {
+func (base *BaseComponent) Configure(validateCredentials bool) error {
 	return nil
 }
 
