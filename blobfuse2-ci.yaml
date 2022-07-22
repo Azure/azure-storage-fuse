@@ -98,6 +98,7 @@ jobs:
         else
           cat lint.log
         fi 
+      displayName: 'Static Analysis (Lint)'
       condition: always()
       failOnStderr: true
       workingDirectory: ./
