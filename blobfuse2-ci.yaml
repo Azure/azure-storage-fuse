@@ -112,7 +112,9 @@ jobs:
     - script: |
         result=$(grep -L -r --include \*.go "`date +%Y` Microsoft Corporation" ./ | wc -l)
         if [ $result -ne 0 ]; then
-            exit 1
+          exit 1
+        else  
+          echo "Copyright statements are upto date"
         fi 
       displayName: 'Copyright check'
       condition: always()
@@ -134,6 +136,8 @@ jobs:
         if [ $result -ne 0 ]; then
           echo "Notices needs a fix. Run ./notices_fix.sh and commit NOTICE file."
           exit 1
+        else
+          echo "Notices are upto date."
         fi 
       displayName: 'Notice file check'
       condition: always()
