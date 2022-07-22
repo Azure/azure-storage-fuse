@@ -1,6 +1,7 @@
 ## 2.0.0-preview.3 (WIP)
 **Features**
 - Added support for directory level SAS while mounting a subdirectory
+- Added support for displaying mount space utilization based on file cache consumption (for example when doing `df`)
 
 **Bug Fixes**
 - Fixed a bug in parsing output of disk utilization summary

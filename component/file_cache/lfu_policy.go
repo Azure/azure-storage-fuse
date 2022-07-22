@@ -35,7 +35,6 @@ package file_cache
 
 import (
 	"blobfuse2/common/log"
-	"os"
 	"strings"
 	"sync"
 	"time"
@@ -179,13 +178,6 @@ func (l *lfuPolicy) clearCache() {
 		}
 	}
 
-}
-
-func rethrowOnUnblock(f *os.File, path string, throwChan chan string) {
-	log.Trace("lfuPolicy::rethrowOnUnblock : %s", path)
-
-	log.Debug("lfuPolicy::rethrowOnUnblock : ex lock acquired [%s]", path)
-	throwChan <- path
 }
 
 func NewLFUPolicy(cfg cachePolicyConfig) cachePolicy {
