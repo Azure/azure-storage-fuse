@@ -409,7 +409,6 @@ func (lfs *LoopbackFS) Chown(options internal.ChownOptions) error {
 }
 
 func (lfs *LoopbackFS) InvalidateObject(_ string) {
-	return
 }
 
 func NewLoopbackFSComponent() internal.Component {

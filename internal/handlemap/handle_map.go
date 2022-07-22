@@ -177,8 +177,8 @@ func CreateCacheObject(capacity int64, handle *Handle) {
 }
 
 // GetHandles : Get map of handles stored
-func GetHandles() sync.Map {
-	return defaultHandleMap
+func GetHandles() *sync.Map {
+	return &defaultHandleMap
 }
 
 // Load : Search the handle object based on its id

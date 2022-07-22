@@ -426,7 +426,7 @@ func getContentType(key string) string {
 	return "application/octet-stream"
 }
 
-func populateContentType(newSet string) error {
+func populateContentType(newSet string) error { //nolint
 	var data map[string]string
 	if err := json.Unmarshal([]byte(newSet), &data); err != nil {
 		log.Err("Failed to parse config file : %s (%s)", newSet, err.Error())

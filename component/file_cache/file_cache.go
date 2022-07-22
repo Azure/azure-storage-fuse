@@ -341,33 +341,37 @@ func isLocalDirEmpty(path string) bool {
 }
 
 // invalidateDirectory: Recursively invalidates a directory in the file cache.
-func (fc *FileCache) invalidateDirectory(name string) error {
+func (fc *FileCache) invalidateDirectory(name string) {
 	log.Trace("FileCache::invalidateDirectory : %s", name)
 
 	localPath := filepath.Join(fc.tmpPath, name)
 	_, err := os.Stat(localPath)
 	if os.IsNotExist(err) {
 		log.Info("FileCache::invalidateDirectory : %s does not exist in local cache.", name)
-		return nil
+		return
 	} else if err != nil {
 		log.Debug("FileCache::invalidateDirectory : %s stat err [%s].", name, err.Error())
-		return err
+		return
 	}
 	// TODO : wouldn't this cause a race condition? a thread might get the lock before we purge - and the file would be non-existent
-	filepath.WalkDir(localPath, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(localPath, func(path string, d fs.DirEntry, err error) error {
 		if err == nil && d != nil {
 			log.Debug("FileCache::invalidateDirectory : %s (%d) getting removed from cache", path, d.IsDir())
 			if !d.IsDir() {
 				fc.policy.CachePurge(path)
 			} else {
-				deleteFile(path)
+				_ = deleteFile(path)
 			}
 		}
 		return nil
 	})
 
-	deleteFile(localPath)
-	return nil
+	if err != nil {
+		log.Debug("FileCache::invalidateDirectory : Failed to iterate directory %s [%s].", localPath, err.Error())
+		return
+	}
+
+	_ = deleteFile(localPath)
 }
 
 // Note: The primary purpose of the file cache is to keep track of files that are opened by the user.
@@ -680,7 +684,11 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	}
 
 	localPath := filepath.Join(fc.tmpPath, options.Name)
-	deleteFile(localPath)
+	err = deleteFile(localPath)
+	if err != nil && !os.IsNotExist(err) {
+		log.Err("FileCache::DeleteFile : failed to delete local file %s [%s]", localPath, err.Error())
+	}
+
 	fc.policy.CachePurge(localPath)
 	return nil
 }
@@ -758,7 +766,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			log.Debug("FileCache::OpenFile : Delete cached file %s", options.Name)
 
 			err := deleteFile(localPath)
-			if err != nil {
+			if err != nil && !os.IsNotExist(err) {
 				log.Err("FileCache::OpenFile : Failed to delete old file %s", options.Name)
 			}
 		} else {
@@ -863,7 +871,7 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 
 	if options.Handle.Dirty() {
 		log.Info("FileCache::CloseFile : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
-		err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle})
+		err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle}) //nolint
 		if err != nil {
 			log.Err("FileCache::CloseFile : failed to flush file %s", options.Handle.Path)
 			return err
@@ -892,7 +900,12 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 	if options.Handle.Fsynced() {
 		log.Trace("FileCache::CloseFile : fsync/sync op, purging %s", options.Handle.Path)
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
-		deleteFile(localPath)
+
+		err = deleteFile(localPath)
+		if err != nil && !os.IsNotExist(err) {
+			log.Err("FileCache::CloseFile : failed to delete local file %s [%s]", localPath, err.Error())
+		}
+
 		fc.policy.CachePurge(localPath)
 		return nil
 	}
@@ -1190,6 +1203,7 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 		if err != nil && !os.IsNotExist(err) {
 			log.Err("FileCache::RenameFile : %s failed to delete local file %s [%s]", localDstPath, err.Error())
 		}
+
 		fc.policy.CachePurge(localDstPath)
 	}
 
