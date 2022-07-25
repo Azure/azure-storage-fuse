@@ -75,7 +75,7 @@ func (az *AzStorage) SetNextComponent(c internal.Component) {
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-func (az *AzStorage) Configure(validateCredentials bool) error {
+func (az *AzStorage) Configure(isParent bool) error {
 	log.Trace("AzStorage::Configure : %s", az.Name())
 
 	conf := AzStorageOptions{}
@@ -91,7 +91,7 @@ func (az *AzStorage) Configure(validateCredentials bool) error {
 		return fmt.Errorf("config error in %s [%s]", az.Name(), err.Error())
 	}
 
-	err = az.configureAndTest(validateCredentials)
+	err = az.configureAndTest(isParent)
 	if err != nil {
 		log.Err("AzStorage::Configure : Failed to validate storage account (%s)", err.Error())
 		return err
@@ -124,7 +124,7 @@ func (az *AzStorage) OnConfigChange() {
 	az.storage.UpdateConfig(az.stConfig)
 }
 
-func (az *AzStorage) configureAndTest(validateCredentials bool) error {
+func (az *AzStorage) configureAndTest(isParent bool) error {
 	az.storage = NewAzStorageConnection(az.stConfig)
 
 	err := az.storage.SetupPipeline()
@@ -135,7 +135,7 @@ func (az *AzStorage) configureAndTest(validateCredentials bool) error {
 
 	az.storage.SetPrefixPath(az.stConfig.prefixPath)
 
-	if validateCredentials {
+	if isParent {
 		err = az.storage.TestPipeline()
 		if err != nil {
 			log.Err("AzStorage::configureAndTest : Failed to validate credentials (%s)", err.Error())
