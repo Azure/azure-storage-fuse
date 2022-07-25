@@ -30,6 +30,7 @@ else
             if [ $? -ne 1 ]
             then
                 echo $result  > __temp__
+                echo -n >> __temp__
                 echo "/*" >> __temp__
                 cat LICENSE >> __temp__
                 echo -e "*/" >> __temp__
