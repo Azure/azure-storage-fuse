@@ -114,7 +114,7 @@ jobs:
         if [ $result -ne 0 ]; then
           exit 1
         else  
-          echo "Copyright statements are upto date"
+          echo "Copyright statements are up to date"
         fi 
       displayName: 'Copyright check'
       condition: always()
@@ -137,7 +137,7 @@ jobs:
           echo "Notices needs a fix. Run ./notices_fix.sh and commit NOTICE file."
           exit 1
         else
-          echo "Notices are upto date."
+          echo "Notices are up to date."
         fi 
       displayName: 'Notice file check'
       condition: always()
