@@ -158,6 +158,43 @@ func (lfs *LoopbackFS) ReadDir(options internal.ReadDirOptions) ([]*internal.Obj
 	return attrList, nil
 }
 
+// TODO: we can make it more intricate by generating a token and splitting streamed dir mimicking storage
+func (lfs *LoopbackFS) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
+	if options.Token == "na" {
+		return nil, "", nil
+	}
+	log.Trace("LoopbackFS::StreamDir : name=%s", options.Name)
+	attrList := make([]*internal.ObjAttr, 0)
+	path := filepath.Join(lfs.path, options.Name)
+
+	log.Debug("LoopbackFS: StreamDir requested for %s", path)
+	files, err := ioutil.ReadDir(path)
+	if err != nil {
+		log.Err("LoopbackFS: StreamDir error[%s]", err)
+		return nil, "", err
+	}
+	log.Debug("LoopbackFS: StreamDir on %s returned %d items", path, len(files))
+
+	for _, file := range files {
+		attr := &internal.ObjAttr{
+			Path:  filepath.Join(options.Name, file.Name()),
+			Name:  file.Name(),
+			Size:  file.Size(),
+			Mode:  file.Mode(),
+			Mtime: file.ModTime(),
+		}
+		attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+		attr.Flags.Set(internal.PropFlagModeDefault)
+
+		if file.IsDir() {
+			attr.Flags.Set(internal.PropFlagIsDir)
+		}
+
+		attrList = append(attrList, attr)
+	}
+	return attrList, "", nil
+}
+
 func (lfs *LoopbackFS) RenameDir(options internal.RenameDirOptions) error {
 	log.Trace("LoopbackFS::RenameDir : %s -> %s", options.Src, options.Dst)
 	oldPath := filepath.Join(lfs.path, options.Src)

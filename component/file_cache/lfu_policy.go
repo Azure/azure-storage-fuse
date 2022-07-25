@@ -35,7 +35,6 @@ package file_cache
 
 import (
 	"blobfuse2/common/log"
-	"os"
 	"strings"
 	"sync"
 	"time"
