@@ -135,6 +135,7 @@ func (az *AzStorage) configureAndTest(isParent bool) error {
 
 	az.storage.SetPrefixPath(az.stConfig.prefixPath)
 
+	// The daemon runs all pipeline Configure code twice. isParent allows us to only validate credentials in parent mode, preventing a second unnecessary REST call.
 	if isParent {
 		err = az.storage.TestPipeline()
 		if err != nil {
