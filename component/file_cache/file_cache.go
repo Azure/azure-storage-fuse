@@ -46,7 +46,6 @@ import (
 	"math"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -263,21 +262,10 @@ func (c *FileCache) Configure() error {
 	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s",
 		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath)
 
-	if common.EnableMonitoring {
-		FileCacheStatsCollector, err = internal.NewStatsCollector("file_cache", FileCacheReader)
-		if err != nil {
-			log.Err("FileCache::Configure : Failed to set up stats collector (%s)", err.Error())
-			// return err
-		} else {
-			FileCacheStatsCollector.Init()
-		}
-	}
+	// create stats collector for file cache
+	FileCacheStatsCollector = internal.NewStatsCollector(c.Name(), nil)
 
 	return nil
-}
-
-func FileCacheReader() {
-
 }
 
 // OnConfigChange : If component has registered, on config file change this method is called
@@ -702,7 +690,8 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	deleteFile(localPath)
 	fc.policy.CachePurge(localPath)
 
-	addFileCacheStats("DeleteFile", options.Name, true, nil)
+	// addFileCacheStats("DeleteFile", options.Name, true, nil)
+	FileCacheStatsCollector.AddStats(fc.Name(), "DeleteFile", options.Name, true, nil)
 	return nil
 }
 
@@ -875,7 +864,8 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
 	handle.SetFileObject(f)
 
-	addFileCacheStats("OpenFile", options.Name, true, map[string]string{"Mode": options.Mode.String()})
+	// addFileCacheStats("OpenFile", options.Name, true, map[string]interface{}{"Mode": options.Mode.String()})
+	FileCacheStatsCollector.AddStats(fc.Name(), "OpenFile", options.Name, true, map[string]interface{}{"Mode": options.Mode.String()})
 
 	return handle, nil
 }
@@ -1004,7 +994,9 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 		// Mark the handle dirty so the file is written back to storage on FlushFile.
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 
-		addFileCacheStats("WriteFile", f.Name(), true, nil)
+		// addFileCacheStats("WriteFile", f.Name(), true, nil)
+		FileCacheStatsCollector.AddStats(fc.Name(), "WriteFile", f.Name(), true, nil)
+
 	} else {
 		log.Err("FileCache::WriteFile : failed to write %s (%s)", options.Handle.Path, err.Error())
 	}
@@ -1259,7 +1251,8 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 		}
 	}
 
-	addFileCacheStats("TruncateFile", options.Name, true, map[string]string{"Size": strconv.FormatInt(options.Size, 10)})
+	// addFileCacheStats("TruncateFile", options.Name, true, map[string]interface{}{"Size": strconv.FormatInt(options.Size, 10)})
+	FileCacheStatsCollector.AddStats(fc.Name(), "TruncateFile", options.Name, true, map[string]interface{}{"Size": options.Size})
 
 	return nil
 }
@@ -1295,7 +1288,8 @@ func (fc *FileCache) Chmod(options internal.ChmodOptions) error {
 		}
 	}
 
-	addFileCacheStats("Chmod", options.Name, true, map[string]string{"Mode": options.Mode.String()})
+	// addFileCacheStats("Chmod", options.Name, true, map[string]interface{}{"Mode": options.Mode.String()})
+	FileCacheStatsCollector.AddStats(fc.Name(), "Chmod", options.Name, true, map[string]interface{}{"Mode": options.Mode.String()})
 
 	return nil
 }
@@ -1325,20 +1319,21 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 		}
 	}
 
-	addFileCacheStats("Chown", options.Name, true, map[string]string{"Owner": strconv.Itoa(options.Owner), "Group": strconv.Itoa(options.Group)})
+	// addFileCacheStats("Chown", options.Name, true, map[string]interface{}{"Owner": strconv.Itoa(options.Owner), "Group": strconv.Itoa(options.Group)})
+	FileCacheStatsCollector.AddStats(fc.Name(), "Chown", options.Name, true, map[string]interface{}{"Owner": options.Owner, "Group": options.Group})
 
 	return nil
 }
 
-func addFileCacheStats(op string, blobName string, isEvent bool, mp map[string]string) {
-	if common.EnableMonitoring {
-		fs := internal.Stats{ComponentName: "file_cache", Operation: op, Blob: blobName}
-		if mp != nil {
-			fs.Value = mp
-		}
-		FileCacheStatsCollector.AddStats(internal.ChannelMsg{IsEvent: isEvent, CompStats: fs})
-	}
-}
+// func addFileCacheStats(op string, path string, isEvent bool, mp map[string]interface{}) {
+// 	if common.EnableMonitoring {
+// 		fs := internal.Stats{ComponentName: "file_cache", Operation: op, Path: path}
+// 		if mp != nil {
+// 			fs.Value = mp
+// 		}
+// 		FileCacheStatsCollector.AddStats(internal.ChannelMsg{IsEvent: isEvent, CompStats: fs})
+// 	}
+// }
 
 func (fc *FileCache) FileUsed(name string) error {
 	// Update the owner and group of the file in the local cache

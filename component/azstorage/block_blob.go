@@ -45,7 +45,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -539,14 +538,17 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 func trackDownload(name string, bytesTransferred int64, count int64, downloadPtr *int64) {
 	if bytesTransferred >= (*downloadPtr)*100*1024*1024 || bytesTransferred == count {
 		(*downloadPtr)++
-		log.Debug("download: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
+		log.Debug("BlockBlob::trackDownload : Download: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
 		// azStats := AzStorageStats{stats: internal.Stats{ComponentName: "AzStorage", IsEvent: true, Operation: "DownloadProgress"}, blob: name}
 		// azStats.stats.Value = make(map[string]string)
 		// azStats.stats.Value["Bytes Transferred"] = strconv.FormatInt(bytesTransferred, 10)
 		// azStats.stats.Value["Size"] = strconv.FormatInt(count, 10)
 		// addAzStorageStats(azStats)
 
-		createStatsObj("DownloadProgress", name, true, map[string]string{"Bytes Transferred": strconv.FormatInt(bytesTransferred, 10), "Size": strconv.FormatInt(count, 10)})
+		// createStatsObj("DownloadProgress", name, true, map[string]interface{}{"Bytes Transferred": strconv.FormatInt(bytesTransferred, 10), "Size": strconv.FormatInt(count, 10)})
+
+		// send the download progress as an event
+		AzStatsCollector.AddStats(compName, "DownloadProgress", name, true, map[string]interface{}{"Bytes Transferred": bytesTransferred, "Size": count})
 	}
 }
 
@@ -578,7 +580,10 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 			return err
 		}
 	} else {
-		log.Debug("download complete of blob %v", name)
+		log.Debug("BlockBlob::ReadToFile : Download complete of blob %v", name)
+
+		// store total bytes downloaded
+		AzStatsCollector.AddStats(compName, internal.Increment, "", false, map[string]interface{}{internal.BytesDownloaded: count})
 	}
 
 	return nil
@@ -680,13 +685,16 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 func trackUpload(name string, bytesTransferred int64, uploadPtr *int64) {
 	if bytesTransferred >= (*uploadPtr)*100*1024*1024 {
 		(*uploadPtr)++
-		log.Debug("upload: Blob = %v, Bytes transferred = %v", name, bytesTransferred)
+		log.Debug("BlockBlob::trackUpload : Upload: Blob = %v, Bytes transferred = %v", name, bytesTransferred)
 		// azStats := AzStorageStats{stats: internal.Stats{ComponentName: "AzStorage", IsEvent: true, Operation: "UploadProgress"}, blob: name}
 		// azStats.stats.Value = make(map[string]string)
 		// azStats.stats.Value["Bytes Transferred"] = strconv.FormatInt(bytesTransferred, 10)
 		// addAzStorageStats(azStats)
 
-		createStatsObj("UploadProgress", name, true, map[string]string{"Bytes Transferred": strconv.FormatInt(bytesTransferred, 10)})
+		// createStatsObj("UploadProgress", name, true, map[string]interface{}{"Bytes Transferred": strconv.FormatInt(bytesTransferred, 10)})
+
+		// send upload progress as event
+		AzStatsCollector.AddStats(compName, "UploadProgress", name, true, map[string]interface{}{"Bytes Transferred": bytesTransferred})
 	}
 }
 
@@ -697,6 +705,10 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
+
+	var uploadPtr *int64 = new(int64)
+	*uploadPtr = 1
+	var fileSize int64 = 0
 
 	blockSize := bb.Config.blockSize
 	// if the block size is not set then we configure it based on file size
@@ -709,14 +721,12 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		}
 
 		// based on file-size calculate block size
-		blockSize, err = bb.calculateBlockSize(name, stat.Size())
+		fileSize = stat.Size()
+		blockSize, err = bb.calculateBlockSize(name, fileSize)
 		if err != nil {
 			return err
 		}
 	}
-
-	var uploadPtr *int64 = new(int64)
-	*uploadPtr = 1
 
 	uploadOptions := azblob.UploadToBlockBlobOptions{
 		BlockSize:      blockSize,
@@ -745,7 +755,10 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		}
 		return err
 	} else {
-		log.Debug("upload complete of blob %v", name)
+		log.Debug("BlockBlob::WriteFromFile : Upload complete of blob %v", name)
+
+		// store total bytes uploaded
+		AzStatsCollector.AddStats(compName, internal.Increment, "", false, map[string]interface{}{internal.BytesUploaded: fileSize})
 	}
 
 	return nil
