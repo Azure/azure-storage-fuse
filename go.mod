@@ -1,4 +1,4 @@
-module blobfuse2
+module github.com/Azure/azure-storage-fuse/blobfuse2
 
 go 1.16
 

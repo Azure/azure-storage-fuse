@@ -34,11 +34,12 @@
 package azstorage
 
 import (
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
 	"errors"
 	"reflect"
 	"strings"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/config"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/JeffreyRichter/enum/enum"

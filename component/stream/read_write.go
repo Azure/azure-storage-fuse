@@ -34,14 +34,15 @@
 package stream
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"encoding/base64"
 	"errors"
 	"io"
 	"sync/atomic"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/internal"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/internal/handlemap"
 
 	"github.com/pbnjay/memory"
 )

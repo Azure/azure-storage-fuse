@@ -34,12 +34,13 @@
 package file_cache
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"io/fs"
 	"math"
 	"os"
 	"testing"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"

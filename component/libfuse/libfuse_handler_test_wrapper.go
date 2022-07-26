@@ -40,16 +40,17 @@ package libfuse
 // #include "libfuse_wrapper.h"
 import "C"
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"errors"
 	"io/fs"
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/config"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/internal"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/internal/handlemap"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"

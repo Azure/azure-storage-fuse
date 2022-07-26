@@ -34,13 +34,14 @@
 package cmd
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"

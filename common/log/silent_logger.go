@@ -34,8 +34,9 @@
 package log
 
 import (
-	"blobfuse2/common"
 	"log"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
 )
 
 type SilentLogger struct {

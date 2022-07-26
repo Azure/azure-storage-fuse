@@ -34,9 +34,10 @@
 package cache_policy
 
 import (
-	"blobfuse2/common"
 	"container/list"
 	"testing"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"

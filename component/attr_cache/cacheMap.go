@@ -34,10 +34,11 @@
 package attr_cache
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/internal"
 	"os"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/internal"
 )
 
 // Flags represented in BitMap for various flags in the attr cache item

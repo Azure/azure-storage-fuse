@@ -34,13 +34,14 @@
 package cmd
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/config"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
 
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"

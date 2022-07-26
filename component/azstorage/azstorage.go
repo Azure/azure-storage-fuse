@@ -34,16 +34,17 @@
 package azstorage
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/config"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/internal"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/internal/handlemap"
 
 	"github.com/spf13/cobra"
 )

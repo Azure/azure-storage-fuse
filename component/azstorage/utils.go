@@ -34,9 +34,6 @@
 package azstorage
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -48,6 +45,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/internal"
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
 

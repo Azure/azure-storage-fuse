@@ -34,7 +34,7 @@
 package azstorage
 
 import (
-	"blobfuse2/common/log"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
 	"github.com/Azure/azure-storage-blob-go/azblob"

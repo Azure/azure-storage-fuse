@@ -35,13 +35,14 @@
 package azstorage
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"

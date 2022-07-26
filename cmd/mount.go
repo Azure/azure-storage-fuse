@@ -34,11 +34,6 @@
 package cmd
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/exectime"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -51,6 +46,12 @@ import (
 	"runtime/pprof"
 	"strings"
 	"syscall"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/config"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/exectime"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/internal"
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"

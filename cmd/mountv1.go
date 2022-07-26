@@ -34,11 +34,6 @@
 package cmd
 
 import (
-	"blobfuse2/component/attr_cache"
-	"blobfuse2/component/azstorage"
-	"blobfuse2/component/file_cache"
-	"blobfuse2/component/libfuse"
-	"blobfuse2/component/stream"
 	"bufio"
 	"bytes"
 	"errors"
@@ -49,6 +44,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/component/attr_cache"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/component/azstorage"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/component/file_cache"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/component/libfuse"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/component/stream"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"

@@ -34,10 +34,11 @@
 package handlemap
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/cache_policy"
 	"os"
 	"sync"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/cache_policy"
 
 	"go.uber.org/atomic"
 )

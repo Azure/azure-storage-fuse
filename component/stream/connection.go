@@ -34,8 +34,8 @@
 package stream
 
 import (
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/internal"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/internal/handlemap"
 )
 
 type StreamConnection interface {

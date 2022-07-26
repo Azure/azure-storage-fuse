@@ -34,13 +34,6 @@
 package cmd
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/component/attr_cache"
-	"blobfuse2/component/azstorage"
-	"blobfuse2/component/file_cache"
-	"blobfuse2/component/stream"
 	"bytes"
 	"fmt"
 	"io/ioutil"
@@ -48,6 +41,14 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/config"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/component/attr_cache"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/component/azstorage"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/component/file_cache"
+	"github.com/Azure/azure-storage-fuse/blobfuse2/component/stream"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
