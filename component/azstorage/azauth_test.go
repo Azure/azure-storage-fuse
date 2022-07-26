@@ -53,12 +53,19 @@ type storageTestConfiguration struct {
 	AdlsAccount        string `json:"adls-acct"`
 	BlockContainer     string `json:"block-cont"`
 	AdlsContainer      string `json:"adls-cont"`
+	AdlsDirectory      string `json:"adls-dir"`
 	BlockContainerHuge string `json:"block-cont-huge"`
 	AdlsContainerHuge  string `json:"adls-cont-huge"`
 	BlockKey           string `json:"block-key"`
 	AdlsKey            string `json:"adls-key"`
 	BlockSas           string `json:"block-sas"`
+	BlockContSasUbn18  string `json:"block-cont-sas-ubn-18"`
+	BlockContSasUbn20  string `json:"block-cont-sas-ubn-20"`
 	AdlsSas            string `json:"adls-sas"`
+	AdlsContSasUbn18   string `json:"adls-cont-sas-ubn-18"`
+	AdlsContSasUbn20   string `json:"adls-cont-sas-ubn-20"`
+	AdlsDirSasUbn18    string `json:"adls-dir-sas-ubn-18"`
+	AdlsDirSasUbn20    string `json:"adls-dir-sas-ubn-20"`
 	MsiAppId           string `json:"msi-appid"`
 	MsiResId           string `json:"msi-resid"`
 	SpnClientId        string `json:"spn-client"`
@@ -357,6 +364,56 @@ func (suite *authTestSuite) TestHttpBlockSasKey() {
 	suite.validateStorageTest("TestHttpBlockSasKey", stgConfig)
 }
 
+func (suite *authTestSuite) TestBlockContSasKey() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+	sas := ""
+	if storageTestConfigurationParameters.BlockContainer == "test-cnt-ubn-18" {
+		sas = storageTestConfigurationParameters.BlockContSasUbn18
+	} else if storageTestConfigurationParameters.BlockContainer == "test-cnt-ubn-20" {
+		sas = storageTestConfigurationParameters.BlockContSasUbn20
+	} else {
+		assert.Fail("TestBlockContSasKey : Unknown Container for Sas Test")
+	}
+
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			SASKey:      sas,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	suite.validateStorageTest("TestBlockContSasKey", stgConfig)
+}
+
+func (suite *authTestSuite) TestHttpBlockContSasKey() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+	sas := ""
+	if storageTestConfigurationParameters.BlockContainer == "test-cnt-ubn-18" {
+		sas = storageTestConfigurationParameters.BlockContSasUbn18
+	} else if storageTestConfigurationParameters.BlockContainer == "test-cnt-ubn-20" {
+		sas = storageTestConfigurationParameters.BlockContSasUbn20
+	} else {
+		assert.Fail("TestHttpBlockContSasKey : Unknown Container for Sas Test")
+	}
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			SASKey:      sas,
+			UseHTTP:     true,
+			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	suite.validateStorageTest("TestHttpBlockContSasKey", stgConfig)
+}
+
 func (suite *authTestSuite) TestBlockSasKeySetOption() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{
@@ -438,6 +495,106 @@ func (suite *authTestSuite) TestHttpAdlsSasKey() {
 	suite.validateStorageTest("TestHttpAdlsSasKey", stgConfig)
 }
 
+func (suite *authTestSuite) TestAdlsContSasKey() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+	sas := ""
+	if storageTestConfigurationParameters.AdlsContainer == "test-cnt-ubn-18" {
+		sas = storageTestConfigurationParameters.AdlsContSasUbn18
+	} else if storageTestConfigurationParameters.AdlsContainer == "test-cnt-ubn-20" {
+		sas = storageTestConfigurationParameters.AdlsContSasUbn20
+	} else {
+		assert.Fail("TestHttpBlockContSasKey : Unknown Container for Sas Test")
+	}
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.AdlsContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			SASKey:      sas,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+	suite.validateStorageTest("TestAdlsContSasKey", stgConfig)
+}
+
+func (suite *authTestSuite) TestHttpAdlsContSasKey() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+	sas := ""
+	if storageTestConfigurationParameters.AdlsContainer == "test-cnt-ubn-18" {
+		sas = storageTestConfigurationParameters.AdlsContSasUbn18
+	} else if storageTestConfigurationParameters.AdlsContainer == "test-cnt-ubn-20" {
+		sas = storageTestConfigurationParameters.AdlsContSasUbn20
+	} else {
+		assert.Fail("TestHttpBlockContSasKey : Unknown Container for Sas Test")
+	}
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.AdlsContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			SASKey:      sas,
+			UseHTTP:     true,
+			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+	suite.validateStorageTest("TestHttpAdlsContSasKey", stgConfig)
+}
+
+func (suite *authTestSuite) TestAdlsDirSasKey() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+	sas := ""
+	if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-18" {
+		sas = storageTestConfigurationParameters.AdlsDirSasUbn18
+	} else if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-20" {
+		sas = storageTestConfigurationParameters.AdlsDirSasUbn20
+	} else {
+		assert.Fail("TestAdlsDirSasKey : Unknown Directory for Sas Test")
+	}
+	stgConfig := AzStorageConfig{
+		container:  storageTestConfigurationParameters.AdlsContainer,
+		prefixPath: storageTestConfigurationParameters.AdlsDirectory,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			SASKey:      sas,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+	suite.validateStorageTest("TestAdlsDirSasKey", stgConfig)
+}
+
+func (suite *authTestSuite) TestHttpAdlsDirSasKey() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+	sas := ""
+	if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-18" {
+		sas = storageTestConfigurationParameters.AdlsDirSasUbn18
+	} else if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-20" {
+		sas = storageTestConfigurationParameters.AdlsDirSasUbn20
+	} else {
+		assert.Fail("TestHttpAdlsDirSasKey : Unknown Directory for Sas Test")
+	}
+	stgConfig := AzStorageConfig{
+		container:  storageTestConfigurationParameters.AdlsContainer,
+		prefixPath: storageTestConfigurationParameters.AdlsDirectory,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			SASKey:      sas,
+			UseHTTP:     true,
+			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+	suite.validateStorageTest("TestHttpAdlsDirSasKey", stgConfig)
+}
+
 func (suite *authTestSuite) TestAdlsSasKeySetOption() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{
@@ -500,7 +657,7 @@ func (suite *authTestSuite) TestBlockMsiResId() {
 }
 
 // Can't use HTTP requests with MSI/SPN credentials
-func (suite *authTestSuite) TestAdlskMsiAppId() {
+func (suite *authTestSuite) TestAdlsMsiAppId() {
 	defer suite.cleanupTest()
 	if !storageTestConfigurationParameters.SkipMsi {
 		stgConfig := AzStorageConfig{
@@ -513,7 +670,7 @@ func (suite *authTestSuite) TestAdlskMsiAppId() {
 				Endpoint:      generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
 			},
 		}
-		suite.validateStorageTest("TestAdlskMsiAppId", stgConfig)
+		suite.validateStorageTest("TestAdlsMsiAppId", stgConfig)
 	}
 }
 
