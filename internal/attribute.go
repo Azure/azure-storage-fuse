@@ -37,7 +37,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
 func NewDirBitMap() common.BitMap16 {

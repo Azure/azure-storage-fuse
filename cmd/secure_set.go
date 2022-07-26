@@ -39,7 +39,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

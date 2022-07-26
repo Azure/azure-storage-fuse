@@ -38,8 +38,8 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common/config"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/JeffreyRichter/enum/enum"

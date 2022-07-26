@@ -37,8 +37,8 @@ import (
 	"context"
 	"syscall"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 type ComponentPriority int

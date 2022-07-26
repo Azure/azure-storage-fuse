@@ -9,6 +9,6 @@ echo "" >> $loader_file
 echo "import (" >> $loader_file
 
 for i in $(find . -type d | grep "component/" | cut -c 3- | sort -u); do # Not recommended, will break on whitespace
-    echo "    _ \"github.com/Azure/azure-storage-fuse/blobfuse2/$i\"" >> $loader_file
+    echo "    _ \"github.com/Azure/azure-storage-fuse/v2/$i\"" >> $loader_file
 done
 echo ")"  >> $loader_file

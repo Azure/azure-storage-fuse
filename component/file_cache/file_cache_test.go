@@ -44,12 +44,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common/config"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/component/loopback"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/internal"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"

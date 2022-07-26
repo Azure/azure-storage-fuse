@@ -40,7 +40,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"

@@ -36,7 +36,7 @@ package test
 import (
 	"sync"
 
-	statc "github.com/Azure/azure-storage-fuse/blobfuse2/common/stats_collector"
+	statc "github.com/Azure/azure-storage-fuse/v2/common/stats_collector"
 )
 
 func main() {

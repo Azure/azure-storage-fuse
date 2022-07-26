@@ -37,7 +37,7 @@ import (
 	"io/fs"
 	"testing"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 
 	"github.com/stretchr/testify/suite"
 )

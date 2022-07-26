@@ -37,8 +37,8 @@ import (
 	"os"
 	"sync"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common/cache_policy"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/cache_policy"
 
 	"go.uber.org/atomic"
 )

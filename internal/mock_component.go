@@ -38,8 +38,8 @@
 package internal
 
 import (
-	common "github.com/Azure/azure-storage-fuse/blobfuse2/common"
-	handlemap "github.com/Azure/azure-storage-fuse/blobfuse2/internal/handlemap"
+	common "github.com/Azure/azure-storage-fuse/v2/common"
+	handlemap "github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	context "context"
 	reflect "reflect"
 	"syscall"

@@ -43,10 +43,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common/config"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/internal"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 //LoopbackFS component Config specifications:

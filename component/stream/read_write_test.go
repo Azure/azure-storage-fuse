@@ -37,9 +37,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/internal"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/stretchr/testify/suite"
 )

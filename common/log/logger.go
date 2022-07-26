@@ -39,7 +39,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
 // Logger : Interface to define a generic Logger. Implement this to create your new logging lib

@@ -37,7 +37,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 // Pipeline: Base pipeline structure holding list of components deployed along with the head of pipeline

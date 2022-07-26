@@ -41,7 +41,7 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
 type SysLogger struct {

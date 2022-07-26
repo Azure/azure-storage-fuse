@@ -45,11 +45,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/component/attr_cache"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/component/azstorage"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/component/file_cache"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/component/libfuse"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/component/stream"
+	"github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
+	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
+	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
+	"github.com/Azure/azure-storage-fuse/v2/component/libfuse"
+	"github.com/Azure/azure-storage-fuse/v2/component/stream"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"

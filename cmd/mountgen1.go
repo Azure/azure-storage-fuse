@@ -41,12 +41,12 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common/config"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/common/log"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/component/azstorage"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/component/file_cache"
-	"github.com/Azure/azure-storage-fuse/blobfuse2/component/libfuse"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
+	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
+	"github.com/Azure/azure-storage-fuse/v2/component/libfuse"
 
 	"github.com/spf13/cobra"
 )
