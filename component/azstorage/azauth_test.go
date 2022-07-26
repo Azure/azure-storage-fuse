@@ -335,6 +335,34 @@ func (suite *authTestSuite) TestHttpBlockSasKey() {
 	suite.validateStorageTest("TestHttpBlockSasKey", stgConfig)
 }
 
+func (suite *authTestSuite) TestBlockSasKeySetOption() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			SASKey:      storageTestConfigurationParameters.BlockSas,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestBlockSasKeySetOption : Failed to create Storage object")
+	}
+	stg.SetupPipeline()
+	stg.NewCredentialKey("saskey", storageTestConfigurationParameters.BlockSas)
+	if err := stg.SetupPipeline(); err != nil {
+		assert.Fail("TestBlockSasKeySetOption : Failed to setup pipeline")
+	}
+	err := stg.TestPipeline()
+	if err != nil {
+		assert.Fail("TestBlockSasKeySetOption : Failed to TestPipeline")
+	}
+}
+
 func (suite *authTestSuite) TestAdlsSasKey() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{
@@ -364,6 +392,34 @@ func (suite *authTestSuite) TestHttpAdlsSasKey() {
 		},
 	}
 	suite.validateStorageTest("TestHttpAdlsSasKey", stgConfig)
+}
+
+func (suite *authTestSuite) TestAdlsSasKeySetOption() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.AdlsContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			SASKey:      storageTestConfigurationParameters.AdlsSas,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestBlockSasKeySetOption : Failed to create Storage object")
+	}
+	stg.SetupPipeline()
+	stg.NewCredentialKey("saskey", storageTestConfigurationParameters.AdlsSas)
+	if err := stg.SetupPipeline(); err != nil {
+		assert.Fail("TestBlockSasKeySetOption : Failed to setup pipeline")
+	}
+	err := stg.TestPipeline()
+	if err != nil {
+		assert.Fail("TestBlockSasKeySetOption : Failed to TestPipeline")
+	}
 }
 
 func (suite *authTestSuite) TestBlockMsiAppId() {
