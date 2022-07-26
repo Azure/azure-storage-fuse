@@ -304,6 +304,28 @@ func (suite *authTestSuite) TestHttpAdlsSharedKey() {
 	suite.validateStorageTest("TestHttpAdlsSharedKey", stgConfig)
 }
 
+func (suite *authTestSuite) TestBlockInvalidSasKey() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			SASKey:      "",
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestBlockInvalidSasKey : Failed to create Storage object")
+	}
+	if err := stg.SetupPipeline(); err == nil {
+		assert.Fail("TestBlockInvalidSasKey : Setup pipeline even though sas key is invalid")
+	}
+}
+
 func (suite *authTestSuite) TestBlockSasKey() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{
@@ -360,6 +382,28 @@ func (suite *authTestSuite) TestBlockSasKeySetOption() {
 	err := stg.TestPipeline()
 	if err != nil {
 		assert.Fail("TestBlockSasKeySetOption : Failed to TestPipeline")
+	}
+}
+
+func (suite *authTestSuite) TestAdlsInvalidSasKey() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.AdlsContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			SASKey:      "",
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestAdlsInvalidSasKey : Failed to create Storage object")
+	}
+	if err := stg.SetupPipeline(); err == nil {
+		assert.Fail("TestAdlsInvalidSasKey : Setup pipeline even though sas key is invalid")
 	}
 }
 
