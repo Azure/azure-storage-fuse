@@ -386,7 +386,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 			srcPath := split(bb.Config.prefixPath, blobInfo.Name)
 			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
 			if err != nil {
-				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s (%s)", source, err.Error)
+				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s (%s)", srcPath, err.Error)
 			}
 		}
 	}
