@@ -112,6 +112,11 @@ jobs:
       - script: |
           ./build/blobfuse --version
         displayName: "Test the binary"
+
+      # enable allow_other
+      - script: |
+          sudo echo "user_allow_other" >> /etc/fuse.conf
+        displayName: "Enable allow other"
       
 
       # Initialize logging for blobfuse
@@ -1035,6 +1040,11 @@ jobs:
           displayName: "Test the binary"
           workingDirectory: $(ROOT_DIR)
 
+        # enable allow_other
+        - script: |
+            sudo echo "user_allow_other" >> /etc/fuse.conf
+          displayName: "Enable allow other"
+
         # Add the test work here
         # Create directory structures for the basic testing
         - script: |
@@ -1238,6 +1248,11 @@ jobs:
           displayName: "Test the binary"
           workingDirectory: $(ROOT_DIR)
 
+        # enable allow_other
+        - script: |
+            sudo echo "user_allow_other" >> /etc/fuse.conf
+          displayName: "Enable allow other"
+
         # Add the test work here
         # Create directory structures for the basic testing
         - script: |
@@ -1405,6 +1420,11 @@ jobs:
           displayName: "Test the binary"
           workingDirectory: $(ROOT_DIR)
 
+        # enable allow_other
+        - script: |
+            sudo echo "user_allow_other" >> /etc/fuse.conf
+          displayName: "Enable allow other"
+
         # Add the test work here
         # Create directory structures for the basic testing
         - script: |
@@ -1565,6 +1585,11 @@ jobs:
             ./build/blobfuse --version
           displayName: "Test the binary"
           workingDirectory: $(ROOT_DIR)
+
+        # enable allow_other
+        - script: |
+            sudo echo "user_allow_other" >> /etc/fuse.conf
+          displayName: "Enable allow other"
 
         # Add the test work here
         # Create directory structures for the basic testing
@@ -1730,6 +1755,11 @@ jobs:
             ./build/blobfuse --version
           displayName: "Test the binary"
           workingDirectory: $(ROOT_DIR)
+
+        # enable allow_other
+        - script: |
+            sudo echo "user_allow_other" >> /etc/fuse.conf
+          displayName: "Enable allow other"
 
         # Add the test work here
         # Create directory structures for the basic testing
@@ -1934,6 +1964,11 @@ jobs:
             ./build/blobfuse --version
           displayName: "Test the binary"
           workingDirectory: $(ROOT_DIR)
+
+        # enable allow_other
+        - script: |
+            sudo echo "user_allow_other" >> /etc/fuse.conf
+          displayName: "Enable allow other"
 
         # Add the test work here
         # Create directory structures for the basic testing
