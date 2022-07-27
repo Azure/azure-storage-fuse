@@ -168,13 +168,13 @@ jobs:
 
       # Mount container using blobFuse
       - script: |
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
+          ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
         displayName: "Mount container ADLS"
         condition: eq(variables.imageName, 'ubuntu-20.04')
         timeoutInMinutes: 3
     
       - script: |
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
+          ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
         displayName: "Mount container Block"
         condition: eq(variables.imageName, 'ubuntu-18.04')
         timeoutInMinutes: 3
@@ -345,7 +345,7 @@ jobs:
             sudo mkdir $(BLOBFUSE_STRESS_DIR)
             sudo chown -R `whoami` $(BLOBFUSE_STRESS_DIR)
             sudo chmod 777 $(BLOBFUSE_STRESS_DIR)
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --use-attr-cache=true
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --use-attr-cache=true
             cd test
             go run stressTest.go $(MOUNT_DIR)
             cd -
@@ -368,7 +368,7 @@ jobs:
             sudo mkdir $(BLOBFUSE_STRESS_DIR)
             sudo chown -R `whoami` $(BLOBFUSE_STRESS_DIR)
             sudo chmod 777 $(BLOBFUSE_STRESS_DIR)
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
             cd test
             go run stressTest.go $(MOUNT_DIR)
             cd -
@@ -389,7 +389,7 @@ jobs:
         - script:  |
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --file-cache-timeout-in-seconds=0
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --file-cache-timeout-in-seconds=0
             cd test
             set -e && go test -v -timeout=30m feature_test.go -args -mnt-path=$(MOUNT_DIR)
             cd -
@@ -415,7 +415,7 @@ jobs:
         - script:  |
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
             cd test
             go run stressTest.go $(MOUNT_DIR)
             cd -
@@ -438,7 +438,7 @@ jobs:
         - script:  |
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true
             cd test
             go run stressTest.go $(MOUNT_DIR)
             cd -
@@ -461,7 +461,7 @@ jobs:
         - script:  |
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --no-symlinks=true
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --no-symlinks=true
             cd test
             go run stressTest.go $(MOUNT_DIR)
             cd -
@@ -485,7 +485,7 @@ jobs:
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             sudo apt-get install parallel -y
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
             cd test
             for i in 1 2 3; do echo "go run stressTest.go $(MOUNT_DIR)"; done | parallel -j 3
             cd -
@@ -508,7 +508,7 @@ jobs:
         - script:  |
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0
             pidof blobfuse
             cd test
             set -e && go test -v -timeout=30m feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
@@ -532,7 +532,7 @@ jobs:
         - script:  |
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0
             pidof blobfuse
             for i in {10,50,100,200,500,1024}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > myfile_{}' 
             cp myfile_* $(MOUNT_DIR)
@@ -550,7 +550,7 @@ jobs:
           continueOnError: true
         
         - script:  |
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0 --background-download=true
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0 --background-download=true
             pidof blobfuse
             for i in {10,50,100,200,500,1024}; do echo $i; done | parallel --will-cite -j 5 'diff myfile_{} $(MOUNT_DIR)/myfile_{}' 
           # condition: eq(variables['Build.SourceBranchName'], 'master')
@@ -560,7 +560,7 @@ jobs:
 
         - script:  |
             sudo fusermount -u $(MOUNT_DIR)
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0 --streaming=true --max-blocks-per-file=3 --stream-cache-mb=500 -o ro
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0 --streaming=true --max-blocks-per-file=3 --stream-cache-mb=500 -o ro
             pidof blobfuse
             for i in {10,50,100,200,500,1024}; do echo $i; done | parallel --will-cite -j 5 'diff myfile_{} $(MOUNT_DIR)/myfile_{}' 
           # condition: eq(variables['Build.SourceBranchName'], 'master')
@@ -585,7 +585,7 @@ jobs:
         - script:  |
             sudo rm -rf $(TEMP_DIR)/*
             sudo cp $(BLOBFUSE_CFG_ADLS) $(BLOBFUSE_CFG_GTEST)
-            sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
+            sudo ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true
             cd ./test/
             sudo python tests.py
             cd -
@@ -612,7 +612,7 @@ jobs:
         - script:  |
             sudo rm -rf $(TEMP_DIR)/*
             sudo cp $(BLOBFUSE_CFG) $(BLOBFUSE_CFG_GTEST)
-            sudo ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
+            sudo ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
             cd ./test/
             sudo python tests.py
             cd -
@@ -638,7 +638,7 @@ jobs:
         # - script:  |
         #    sudo rm -rf $(MOUNT_DIR)/*
         #    sudo rm -rf $(TEMP_DIR)/*
-        #    ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+        #    ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
         #    cd stresstests/
         #    make
         #    chmod 777 ./blobfusestress
@@ -684,14 +684,14 @@ jobs:
 
       # Mount container using blobFuse (ADLS)
       - script: |
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --no-symlinks=true
+          ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --use-attr-cache=true --no-symlinks=true
         displayName: "HugeList: Mount container ADLS"
         condition: eq(variables.imageName, 'ubuntu-20.04')
         timeoutInMinutes: 3
 
       # Mount container using blobFuse (block Blob)
       - script: |
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
+          ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
         displayName: "HugeList: Mount container Block"
         condition: eq(variables.imageName, 'ubuntu-18.04')
         timeoutInMinutes: 3
@@ -730,7 +730,7 @@ jobs:
           sudo rm -rf $(MOUNT_DIR)/*
           sudo rm -rf $(TEMP_DIR)/*
           sudo fusermount -u $(MOUNT_DIR)s
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+          ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
           sleep 5s
           df
           sudo ps -aux | grep blobfuse
@@ -765,7 +765,7 @@ jobs:
       - script:  |
           sudo rm -rf $(MOUNT_DIR)/*
           sudo rm -rf $(TEMP_DIR)/*
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true 
+          ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true 
           sleep 5s
           df
           sudo ps -aux | grep blobfuse
@@ -802,7 +802,7 @@ jobs:
       - script:  |
           sudo rm -rf $(MOUNT_DIR)/*
           sudo rm -rf $(TEMP_DIR)/*
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
+          ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST)
           sleep 5s
           ls -l $(MOUNT_DIR)
           mkdir $(MOUNT_DIR)/B
@@ -834,7 +834,7 @@ jobs:
       - script:  |
           sudo rm -rf $(MOUNT_DIR)/*
           sudo rm -rf $(TEMP_DIR)/*
-          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --use-adls=true
+          ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --use-adls=true
           sleep 5s
           ls -l $(MOUNT_DIR)
           mkdir $(MOUNT_DIR)/B
@@ -1073,7 +1073,7 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
             pidof blobfuse
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
@@ -1112,7 +1112,7 @@ jobs:
         # This mount is bound to fail so to ignore the exit code of the blobfuse use '|| :' to redirect output to null
         # with this output will come on screen but the piepline task will not fail due to exit(1) by blobfuse
         - script:  |
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true 2>&1 || :
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true 2>&1 || :
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse - Negative"
           # condition: or(eq(variables.containerName, 'test-cnt-rhel-75-test'), eq(variables.containerName, 'test-cnt-rhel-82'))
@@ -1265,7 +1265,7 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
             pidof blobfuse
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
@@ -1432,7 +1432,7 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
             pidof blobfuse
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
@@ -1593,7 +1593,7 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
             pidof blobfuse
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
@@ -1757,7 +1757,7 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE)
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE)
             sleep 10s
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
@@ -1797,7 +1797,7 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE_ADLS) --use-adls=true
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE_ADLS) --use-adls=true
             sleep 10s
             df
             sudo ps -aux | grep blobfuse
@@ -1962,7 +1962,7 @@ jobs:
             sudo fusermount -u $(MOUNT_DIR)
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
-            ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
             pidof blobfuse
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
