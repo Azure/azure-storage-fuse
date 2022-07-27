@@ -113,7 +113,7 @@ func (ac *AttrCache) Stop() error {
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //  Return failure if any config is not valid to exit the process
-func (ac *AttrCache) Configure() error {
+func (ac *AttrCache) Configure(_ bool) error {
 	log.Trace("AttrCache::Configure : %s", ac.Name())
 
 	// >> If you do not need any config parameters remove below code and return nil
@@ -143,7 +143,7 @@ func (ac *AttrCache) Configure() error {
 // OnConfigChange : If component has registered, on config file change this method is called
 func (ac *AttrCache) OnConfigChange() {
 	log.Trace("AttrCache::OnConfigChange : %s", ac.Name())
-	ac.Configure()
+	ac.Configure(true)
 }
 
 // Helper Methods

@@ -78,7 +78,7 @@ func newTestLibfuse(next internal.Component, configuration string) *Libfuse {
 	config.ReadConfigFromReader(strings.NewReader(configuration))
 	libfuse := NewLibfuseComponent()
 	libfuse.SetNextComponent(next)
-	libfuse.Configure()
+	libfuse.Configure(true)
 
 	return libfuse.(*Libfuse)
 }

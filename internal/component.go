@@ -69,7 +69,7 @@ type Component interface {
 	// Pipeline participation related methods
 	Name() string
 	SetName(string)
-	Configure() error
+	Configure(bool) error
 	Priority() ComponentPriority
 
 	SetNextComponent(c Component)

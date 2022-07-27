@@ -72,7 +72,7 @@ func newTestAttrCache(next internal.Component, configuration string) *AttrCache 
 	config.ReadConfigFromReader(strings.NewReader(configuration))
 	attrCache := NewAttrCacheComponent()
 	attrCache.SetNextComponent(next)
-	attrCache.Configure()
+	attrCache.Configure(true)
 
 	return attrCache.(*AttrCache)
 }

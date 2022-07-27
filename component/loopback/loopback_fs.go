@@ -68,7 +68,7 @@ type LoopbackFSOptions struct {
 	Path string `config:"path"`
 }
 
-func (lfs *LoopbackFS) Configure() error {
+func (lfs *LoopbackFS) Configure(_ bool) error {
 	conf := LoopbackFSOptions{}
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {

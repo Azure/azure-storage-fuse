@@ -293,9 +293,11 @@ var mountCmd = &cobra.Command{
 
 		config.Set("mount-path", options.MountPath)
 
+		var pipeline *internal.Pipeline
+
 		log.Crit("Starting Blobfuse2 Mount : %s on (%s)", common.Blobfuse2Version, common.GetCurrentDistro())
 		log.Crit("Logging level set to : %s", logLevel.String())
-		pipeline, err := internal.NewPipeline(options.Components)
+		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			log.Err("Mount: error initializing new pipeline [%v]", err)
 			fmt.Println("failed to mount :", err)

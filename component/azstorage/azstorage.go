@@ -75,7 +75,7 @@ func (az *AzStorage) SetNextComponent(c internal.Component) {
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-func (az *AzStorage) Configure() error {
+func (az *AzStorage) Configure(isParent bool) error {
 	log.Trace("AzStorage::Configure : %s", az.Name())
 
 	conf := AzStorageOptions{}
@@ -91,7 +91,7 @@ func (az *AzStorage) Configure() error {
 		return fmt.Errorf("config error in %s [%s]", az.Name(), err.Error())
 	}
 
-	err = az.configureAndTest()
+	err = az.configureAndTest(isParent)
 	if err != nil {
 		log.Err("AzStorage::Configure : Failed to validate storage account (%s)", err.Error())
 		return err
@@ -124,7 +124,7 @@ func (az *AzStorage) OnConfigChange() {
 	az.storage.UpdateConfig(az.stConfig)
 }
 
-func (az *AzStorage) configureAndTest() error {
+func (az *AzStorage) configureAndTest(isParent bool) error {
 	az.storage = NewAzStorageConnection(az.stConfig)
 
 	err := az.storage.SetupPipeline()
@@ -135,10 +135,13 @@ func (az *AzStorage) configureAndTest() error {
 
 	az.storage.SetPrefixPath(az.stConfig.prefixPath)
 
-	err = az.storage.TestPipeline()
-	if err != nil {
-		log.Err("AzStorage::configureAndTest : Failed to validate credentials (%s)", err.Error())
-		return fmt.Errorf("failed to authenticate credentials for %s", az.Name())
+	// The daemon runs all pipeline Configure code twice. isParent allows us to only validate credentials in parent mode, preventing a second unnecessary REST call.
+	if isParent {
+		err = az.storage.TestPipeline()
+		if err != nil {
+			log.Err("AzStorage::configureAndTest : Failed to validate credentials (%s)", err.Error())
+			return fmt.Errorf("failed to authenticate credentials for %s", az.Name())
+		}
 	}
 
 	return nil
