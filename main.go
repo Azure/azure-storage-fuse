@@ -34,8 +34,8 @@
 package main
 
 import (
-	"blobfuse2/cmd"
-	_ "blobfuse2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/cmd"
+	_ "github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 //go:generate ./cmd/componentGenerator.sh $NAME

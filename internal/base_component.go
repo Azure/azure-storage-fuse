@@ -34,10 +34,11 @@
 package internal
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/internal/handlemap"
 	"context"
 	"syscall"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 // BaseComponent : Base implementation of the component interface
@@ -60,7 +61,7 @@ func (base *BaseComponent) SetName(name string) {
 	base.compName = name
 }
 
-func (base *BaseComponent) Configure() error {
+func (base *BaseComponent) Configure(isParent bool) error {
 	return nil
 }
 

@@ -34,9 +34,6 @@
 package azstorage
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
 	"context"
 	"errors"
 	"net/url"
@@ -45,6 +42,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
 )

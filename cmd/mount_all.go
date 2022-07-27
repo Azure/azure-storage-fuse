@@ -34,9 +34,6 @@
 package cmd
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -45,7 +42,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"blobfuse2/component/azstorage"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+
+	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -158,7 +159,7 @@ func getContainerList() []string {
 	azComponent.SetNextComponent(nil)
 
 	// Configure AzStorage component
-	err := azComponent.Configure()
+	err := azComponent.Configure(true)
 	if err != nil {
 		fmt.Printf("MountAll : Failed to configure AzureStorage object (%s)", err.Error())
 		os.Exit(1)

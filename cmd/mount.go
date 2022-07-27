@@ -34,11 +34,6 @@
 package cmd
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/exectime"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -51,6 +46,12 @@ import (
 	"runtime/pprof"
 	"strings"
 	"syscall"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/exectime"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
@@ -293,9 +294,11 @@ var mountCmd = &cobra.Command{
 
 		config.Set("mount-path", options.MountPath)
 
+		var pipeline *internal.Pipeline
+
 		log.Crit("Starting Blobfuse2 Mount : %s on (%s)", common.Blobfuse2Version, common.GetCurrentDistro())
 		log.Crit("Logging level set to : %s", logLevel.String())
-		pipeline, err := internal.NewPipeline(options.Components)
+		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			log.Err("Mount: error initializing new pipeline [%v]", err)
 			fmt.Println("failed to mount :", err)

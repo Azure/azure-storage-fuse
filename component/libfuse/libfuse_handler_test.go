@@ -34,9 +34,10 @@
 package libfuse
 
 import (
-	"blobfuse2/common"
 	"io/fs"
 	"testing"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
 
 	"github.com/stretchr/testify/suite"
 )

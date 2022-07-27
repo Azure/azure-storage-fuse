@@ -34,12 +34,13 @@
 package libfuse
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
 	"context"
 	"fmt"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 /* NOTES:
@@ -199,7 +200,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //  Return failure if any config is not valid to exit the process
-func (lf *Libfuse) Configure() error {
+func (lf *Libfuse) Configure(_ bool) error {
 	log.Trace("Libfuse::Configure : %s", lf.Name())
 
 	// >> If you do not need any config parameters remove below code and return nil

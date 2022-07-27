@@ -33,11 +33,6 @@
 package stream
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"context"
 	"crypto/rand"
 	"os"
@@ -46,6 +41,12 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -75,7 +76,7 @@ func newTestStream(next internal.Component, configuration string, ro bool) (*Str
 	config.SetBool("read-only", ro)
 	stream := NewStreamComponent()
 	stream.SetNextComponent(next)
-	err := stream.Configure()
+	err := stream.Configure(true)
 	return stream.(*Stream), err
 }
 

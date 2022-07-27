@@ -40,12 +40,12 @@ package libfuse
 // #include "libfuse_wrapper.h"
 import "C"
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"errors"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	"io/fs"
 	"strings"
 	"syscall"
@@ -78,7 +78,7 @@ func newTestLibfuse(next internal.Component, configuration string) *Libfuse {
 	config.ReadConfigFromReader(strings.NewReader(configuration))
 	libfuse := NewLibfuseComponent()
 	libfuse.SetNextComponent(next)
-	libfuse.Configure()
+	libfuse.Configure(true)
 
 	return libfuse.(*Libfuse)
 }

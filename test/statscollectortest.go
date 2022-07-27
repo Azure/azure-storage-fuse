@@ -34,8 +34,9 @@
 package test
 
 import (
-	statc "blobfuse2/common/stats_collector"
 	"sync"
+
+	statc "github.com/Azure/azure-storage-fuse/v2/common/stats_collector"
 )
 
 func main() { //nolint

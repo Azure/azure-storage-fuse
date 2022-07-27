@@ -34,7 +34,6 @@
 package log
 
 import (
-	"blobfuse2/common"
 	"fmt"
 	"io"
 	"log"
@@ -43,6 +42,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
 // LogConfig : Configuration to be provided to logging infra

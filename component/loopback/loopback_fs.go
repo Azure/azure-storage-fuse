@@ -34,10 +34,6 @@
 package loopback
 
 import (
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
 	"io"
@@ -46,6 +42,11 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 //LoopbackFS component Config specifications:
@@ -68,7 +69,7 @@ type LoopbackFSOptions struct {
 	Path string `config:"path"`
 }
 
-func (lfs *LoopbackFS) Configure() error {
+func (lfs *LoopbackFS) Configure(_ bool) error {
 	conf := LoopbackFSOptions{}
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {

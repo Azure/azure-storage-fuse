@@ -34,11 +34,6 @@
 package attr_cache
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"container/list"
 	"context"
 	"errors"
@@ -50,6 +45,12 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
@@ -72,7 +73,7 @@ func newTestAttrCache(next internal.Component, configuration string) *AttrCache 
 	_ = config.ReadConfigFromReader(strings.NewReader(configuration))
 	attrCache := NewAttrCacheComponent()
 	attrCache.SetNextComponent(next)
-	_ = attrCache.Configure()
+	_ = attrCache.Configure(true)
 
 	return attrCache.(*AttrCache)
 }
