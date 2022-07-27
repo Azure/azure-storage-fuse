@@ -391,7 +391,7 @@ jobs:
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_GTEST) --file-cache-timeout-in-seconds=0
             cd test
-            set -e && go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR)
+            set -e && go test -v -timeout=30m feature_test.go -args -mnt-path=$(MOUNT_DIR)
             cd -
           # condition: eq(variables['Build.SourceBranchName'], 'master')
           displayName: TEST - BLOCK FeatureTest
@@ -511,7 +511,7 @@ jobs:
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0
             pidof blobfuse
             cd test
-            set -e && go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+            set -e && go test -v -timeout=30m feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
             cd -
           # condition: eq(variables['Build.SourceBranchName'], 'master')
           displayName: TEST - ADLS FeatureTest
@@ -1074,13 +1074,14 @@ jobs:
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+            pidof blobfuse
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
 
         - script: | 
             sudo rm -rf $(MOUNT_DIR)/*  
             cd test
-            go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+            go test -v -timeout=30m feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
           workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
           timeoutInMinutes: 20
@@ -1265,13 +1266,14 @@ jobs:
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+            pidof blobfuse
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
 
         - script: | 
             sudo rm -rf $(MOUNT_DIR)/*  
             cd test
-            go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+            go test -v -timeout=30m feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
           workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
           timeoutInMinutes: 20
@@ -1431,13 +1433,14 @@ jobs:
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+            pidof blobfuse
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
 
         - script: | 
             sudo rm -rf $(MOUNT_DIR)/*  
             cd test
-            go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+            go test -v -timeout=30m feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
           workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
           timeoutInMinutes: 20
@@ -1591,13 +1594,14 @@ jobs:
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+            pidof blobfuse
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
 
         - script: | 
             sudo rm -rf $(MOUNT_DIR)/*  
             cd test
-            go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+            go test -v -timeout=30m feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
           workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
           timeoutInMinutes: 20
@@ -1959,6 +1963,7 @@ jobs:
             sudo rm -rf $(MOUNT_DIR)/*
             sudo rm -rf $(TEMP_DIR)/*
             ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_FILE) --file-cache-timeout-in-seconds=0 --use-adls=true --use-attr-cache=true
+            pidof blobfuse
           workingDirectory: $(ROOT_DIR)
           displayName: "Mount Blobfuse"
           env:
@@ -1968,7 +1973,7 @@ jobs:
         - script: | 
             sudo rm -rf $(MOUNT_DIR)/*  
             cd test
-            go test -v feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
+            go test -v -timeout=30m feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
           workingDirectory: $(ROOT_DIR)
           displayName: TEST - ADLS FeatureTest
           timeoutInMinutes: 20
