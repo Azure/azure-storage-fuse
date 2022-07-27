@@ -34,10 +34,6 @@
 package attr_cache
 
 import (
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
 	"os"
@@ -45,6 +41,11 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 // By default attr cache is valid for 120 seconds

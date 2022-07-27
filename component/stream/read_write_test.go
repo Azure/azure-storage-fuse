@@ -34,11 +34,12 @@
 package stream
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"os"
 	"testing"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/stretchr/testify/suite"
 )

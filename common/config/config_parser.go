@@ -34,14 +34,15 @@
 package config
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/spf13/cobra"
 

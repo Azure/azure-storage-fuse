@@ -34,13 +34,14 @@
 package file_cache
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"bytes"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 const DefaultEvictTime = 10

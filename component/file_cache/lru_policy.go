@@ -34,10 +34,11 @@
 package file_cache
 
 import (
-	"blobfuse2/common/log"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 type lruNode struct {

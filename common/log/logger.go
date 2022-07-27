@@ -34,11 +34,12 @@
 package log
 
 import (
-	"blobfuse2/common"
 	"errors"
 	"log"
 	"os"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
 // Logger : Interface to define a generic Logger. Implement this to create your new logging lib

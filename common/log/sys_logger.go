@@ -34,13 +34,14 @@
 package log
 
 import (
-	"blobfuse2/common"
 	"errors"
 	"fmt"
 	"log"
 	"log/syslog"
 	"path/filepath"
 	"runtime"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
 type SysLogger struct {
