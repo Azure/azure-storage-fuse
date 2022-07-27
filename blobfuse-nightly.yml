@@ -115,7 +115,7 @@ jobs:
 
       # enable allow_other
       - script: |
-          sudo echo "user_allow_other" >> /etc/fuse.conf
+          echo "user_allow_other" | sudo tee -a /etc/fuse.conf
         displayName: "Enable allow other"
       
 
@@ -1042,7 +1042,7 @@ jobs:
 
         # enable allow_other
         - script: |
-            sudo echo "user_allow_other" >> /etc/fuse.conf
+            echo "user_allow_other" | sudo tee -a /etc/fuse.conf
           displayName: "Enable allow other"
 
         # Add the test work here
@@ -1250,7 +1250,7 @@ jobs:
 
         # enable allow_other
         - script: |
-            sudo echo "user_allow_other" >> /etc/fuse.conf
+            echo "user_allow_other" | sudo tee -a /etc/fuse.conf
           displayName: "Enable allow other"
 
         # Add the test work here
@@ -1422,7 +1422,7 @@ jobs:
 
         # enable allow_other
         - script: |
-            sudo echo "user_allow_other" >> /etc/fuse.conf
+            echo "user_allow_other" | sudo tee -a /etc/fuse.conf
           displayName: "Enable allow other"
 
         # Add the test work here
@@ -1588,7 +1588,7 @@ jobs:
 
         # enable allow_other
         - script: |
-            sudo echo "user_allow_other" >> /etc/fuse.conf
+            echo "user_allow_other" | sudo tee -a /etc/fuse.conf
           displayName: "Enable allow other"
 
         # Add the test work here
@@ -1758,7 +1758,7 @@ jobs:
 
         # enable allow_other
         - script: |
-            sudo echo "user_allow_other" >> /etc/fuse.conf
+            echo "user_allow_other" | sudo tee -a /etc/fuse.conf
           displayName: "Enable allow other"
 
         # Add the test work here
@@ -1967,7 +1967,7 @@ jobs:
 
         # enable allow_other
         - script: |
-            sudo echo "user_allow_other" >> /etc/fuse.conf
+            echo "user_allow_other" | sudo tee -a /etc/fuse.conf
           displayName: "Enable allow other"
 
         # Add the test work here
