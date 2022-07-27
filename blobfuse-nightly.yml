@@ -569,6 +569,9 @@ jobs:
           continueOnError: true
 
         - script:  |
+            sudo fusermount -u $(MOUNT_DIR)
+            ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG_ADLS) --use-adls=true --file-cache-timeout-in-seconds=0
+            pidof blobfuse
             rm -rf myfile_*
             rm -rf $(MOUNT_DIR)/*
             sudo fusermount -u $(MOUNT_DIR)
