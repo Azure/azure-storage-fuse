@@ -683,6 +683,9 @@ D_RETURN_CODE BlockBlobBfsClient::IsDirectoryEmpty(std::string path)
             success = true;
             failcount = 0;
             continuation = response.next_marker;
+            if (response.blobs.size() == 0 && continuation.empty()) {
+                return D_EMPTY;
+            }
             if (response.blobs.size() > 1)
             {
                 return D_NOTEMPTY;
