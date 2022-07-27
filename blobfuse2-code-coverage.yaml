@@ -98,7 +98,7 @@ jobs:
       # Config Generation (Block Blob)
       - script: |
           cd $(WORK_DIR)
-          $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_gentest1.cov gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
         env:
           NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
           NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
@@ -158,7 +158,7 @@ jobs:
       # Config Generation (Block Blob - LFU policy)
       - script: |
           cd $(WORK_DIR)
-          $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_lfu.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_gentest2.cov gen-test-config --config-file=azure_key_lfu.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
         env:
           NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
           NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
@@ -167,6 +167,7 @@ jobs:
           VERBOSE_LOG: false
         displayName: 'Create Config File - LFU'
         continueOnError: false
+        workingDirectory: $(WORK_DIR)
       
       # Code Coverage with e2e-tests for block blob with lfu policy
       - script: |
@@ -189,7 +190,7 @@ jobs:
       # Config Generation (Block Blob - Stream)
       - script: |
           cd $(WORK_DIR)
-          $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_stream.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_STREAM_CFG)
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_gentest3.cov gen-test-config --config-file=azure_stream.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_STREAM_CFG)
         displayName: 'Create Config File - Stream'
         env:
           NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
@@ -198,6 +199,7 @@ jobs:
           ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
           VERBOSE_LOG: false
         continueOnError: false
+        workingDirectory: $(WORK_DIR)
       
       # Streaming test preparation
       - script: |
