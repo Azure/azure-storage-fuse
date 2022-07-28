@@ -31,55 +31,66 @@
    SOFTWARE
 */
 
-package internal
+package file_cache
 
 import (
+	"io/fs"
+	"math"
+	"os"
 	"testing"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
-type componentOptionsTestSuite struct {
+type cachePolicyTestSuite struct {
 	suite.Suite
+	assert *assert.Assertions
 }
 
-func (s *componentOptionsTestSuite) TestExtendDirName() {
-	assert := assert.New(s.T())
-	tests := []struct {
-		input          string
-		expectedOutput string
-	}{
-		{input: "dir", expectedOutput: "dir/"},
-		{input: "dir/", expectedOutput: "dir/"},
-		{input: "", expectedOutput: "/"},
+func (suite *cachePolicyTestSuite) SetupTest() {
+	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
+	if err != nil {
+		panic("Unable to set silent logger as default.")
 	}
-	for _, tt := range tests {
-		s.Run(tt.input, func() {
-			output := ExtendDirName(tt.input)
-			assert.EqualValues(tt.expectedOutput, output)
-		})
-	}
+	suite.assert = assert.New(suite.T())
+	os.Mkdir(cache_path, fs.FileMode(0777))
 }
 
-func (s *componentOptionsTestSuite) TestTruncateDirName() {
-	assert := assert.New(s.T())
-	tests := []struct {
-		input          string
-		expectedOutput string
-	}{
-		{input: "dir/", expectedOutput: "dir"},
-		{input: "dir", expectedOutput: "dir"},
-		{input: "/", expectedOutput: ""},
-	}
-	for _, tt := range tests {
-		s.Run(tt.input, func() {
-			output := TruncateDirName(tt.input)
-			assert.EqualValues(tt.expectedOutput, output)
-		})
-	}
+func (suite *cachePolicyTestSuite) cleanupTest() {
+	os.RemoveAll(cache_path)
 }
 
-func TestComponentOptionsTestSuite(t *testing.T) {
-	suite.Run(t, new(componentOptionsTestSuite))
+func (suite *cachePolicyTestSuite) TestGetUsage() {
+	defer suite.cleanupTest()
+	f, _ := os.Create(cache_path + "/test")
+	data := make([]byte, 1024*1024)
+	f.Write(data)
+	result := getUsage(cache_path)
+	suite.assert.Equal(float64(1), math.Floor(result))
+}
+
+func (suite *cachePolicyTestSuite) TestGetUsagePercentage() {
+	defer suite.cleanupTest()
+	f, _ := os.Create(cache_path + "/test")
+	data := make([]byte, 1024*1024)
+	f.Write(data)
+	result := getUsagePercentage(cache_path, 4)
+	// since the value might defer a little distro to distro
+	suite.assert.GreaterOrEqual(result, float64(25))
+	suite.assert.LessOrEqual(result, float64(30))
+}
+
+func (suite *cachePolicyTestSuite) TestDeleteFile() {
+	defer suite.cleanupTest()
+	f, _ := os.Create(cache_path + "/test")
+	result := deleteFile(f.Name() + "not_exist")
+	suite.assert.Equal(nil, result)
+}
+
+func TestCachePolicyTestSuite(t *testing.T) {
+	suite.Run(t, new(cachePolicyTestSuite))
 }

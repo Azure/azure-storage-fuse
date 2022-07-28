@@ -34,10 +34,12 @@
 package file_cache
 
 import (
-	"blobfuse2/common/log"
+	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 type lruNode struct {
@@ -148,17 +150,16 @@ func (p *lruPolicy) UpdateConfig(c cachePolicyConfig) error {
 	return nil
 }
 
-func (p *lruPolicy) CacheValid(name string) error {
+func (p *lruPolicy) CacheValid(name string) {
 	_, found := p.nodeMap.Load(name)
 	if !found {
 		p.cacheValidate(name)
 	} else {
 		p.validateChan <- name
 	}
-	return nil
 }
 
-func (p *lruPolicy) CacheInvalidate(name string) error {
+func (p *lruPolicy) CacheInvalidate(name string) {
 	log.Trace("lruPolicy::CacheInvalidate : %s", name)
 
 	// We check if the file is not in the nodeMap to deal with the case
@@ -171,17 +172,13 @@ func (p *lruPolicy) CacheInvalidate(name string) error {
 	if p.cacheTimeout == 0 || !found {
 		p.CachePurge(name)
 	}
-
-	return nil
 }
 
-func (p *lruPolicy) CachePurge(name string) error {
+func (p *lruPolicy) CachePurge(name string) {
 	log.Trace("lruPolicy::CachePurge : %s", name)
 
 	p.removeNode(name)
 	p.deleteEvent <- name
-
-	return nil
 }
 
 func (p *lruPolicy) IsCached(name string) bool {
@@ -305,14 +302,14 @@ func (p *lruPolicy) clearCache() {
 	}
 }
 
-func (p *lruPolicy) removeNode(name string) error {
+func (p *lruPolicy) removeNode(name string) {
 	log.Trace("lruPolicy::removeNode : %s", name)
 
 	var node *lruNode = nil
 
 	val, found := p.nodeMap.Load(name)
 	if !found || val == nil {
-		return nil
+		return
 	}
 
 	p.nodeMap.Delete(name)
@@ -327,7 +324,7 @@ func (p *lruPolicy) removeNode(name string) error {
 		p.head = node.next
 		p.head.prev = nil
 		node.next = nil
-		return nil
+		return
 	}
 
 	if node.next != nil {
@@ -339,8 +336,6 @@ func (p *lruPolicy) removeNode(name string) error {
 	}
 	node.prev = nil
 	node.next = nil
-
-	return nil
 }
 
 func (p *lruPolicy) updateMarker() {
@@ -412,7 +407,7 @@ func (p *lruPolicy) deleteExpiredNodes() {
 	log.Debug("lruPolicy::deleteExpiredNodes : Ends")
 }
 
-func (p *lruPolicy) deleteItem(name string) error {
+func (p *lruPolicy) deleteItem(name string) {
 	log.Trace("lruPolicy::deleteItem : Deleting %s", name)
 
 	azPath := strings.TrimPrefix(name, p.tmpPath)
@@ -424,7 +419,7 @@ func (p *lruPolicy) deleteItem(name string) error {
 	if p.fileLocks.Locked(azPath) {
 		log.Warn("lruPolicy::DeleteItem : File in under download %s", azPath)
 		p.CacheValid(name)
-		return nil
+		return
 	}
 
 	flock.Lock()
@@ -434,16 +429,18 @@ func (p *lruPolicy) deleteItem(name string) error {
 	if flock.Count() > 0 {
 		log.Warn("lruPolicy::DeleteItem : File in use %s", name)
 		p.CacheValid(name)
-		return nil
+		return
 	}
 
 	// There are no open handles for this file so its safe to remove this
-	deleteFile(name)
+	err := deleteFile(name)
+	if err != nil && !os.IsNotExist(err) {
+		log.Err("lruPolicy::DeleteItem : failed to delete local file %s [%s]", name, err.Error())
+	}
+
 	// File was deleted so try clearing its parent directory
 	// TODO: Delete directories up the path recursively that are "safe to delete". Ensure there is no race between this code and code that creates directories (like OpenFile)
 	// This might require something like hierarchical locking.
-
-	return nil
 }
 
 func (p *lruPolicy) printNodes() {

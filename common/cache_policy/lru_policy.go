@@ -34,10 +34,11 @@
 package cache_policy
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"container/list"
 	"sync"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 //KeyPair: the list node containing both block key and cache block values

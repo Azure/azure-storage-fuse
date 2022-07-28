@@ -34,12 +34,13 @@
 package cmd
 
 import (
-	"blobfuse2/common"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
 
 	"github.com/spf13/cobra"
 )
@@ -117,15 +118,15 @@ func validateOptions() error {
 	}
 
 	if secOpts.ConfigFile == "" {
-		errors.New("config file not provided, check usage")
+		return errors.New("config file not provided, check usage")
 	}
 
 	if _, err := os.Stat(secOpts.ConfigFile); os.IsNotExist(err) {
-		errors.New("config file does not exists")
+		return errors.New("config file does not exists")
 	}
 
 	if secOpts.PassPhrase == "" {
-		errors.New("provide passphrase as cli parameter or configure BLOBFUSE2_SECURE_CONFIG_PASSPHRASE environment variable")
+		return errors.New("provide passphrase as cli parameter or configure BLOBFUSE2_SECURE_CONFIG_PASSPHRASE environment variable")
 	}
 
 	return nil

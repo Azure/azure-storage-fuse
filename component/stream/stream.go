@@ -34,12 +34,13 @@
 package stream
 
 import (
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
+
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 type Stream struct {
@@ -60,9 +61,8 @@ type StreamOptions struct {
 }
 
 const (
-	compName              = "stream"
-	mb                    = 1024 * 1024
-	defaultDiskTimeoutSec = (30 * 60)
+	compName = "stream"
+	mb       = 1024 * 1024
 )
 
 var _ internal.Component = &Stream{}
@@ -88,7 +88,7 @@ func (st *Stream) Start(ctx context.Context) error {
 	return nil
 }
 
-func (st *Stream) Configure() error {
+func (st *Stream) Configure(_ bool) error {
 	log.Trace("Stream::Configure : %s", st.Name())
 	conf := StreamOptions{}
 	err := config.UnmarshalKey(compName, &conf)

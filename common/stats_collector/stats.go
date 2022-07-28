@@ -34,14 +34,11 @@
 package stats
 
 import (
-	"sync"
 	"time"
 )
 
 // FuseStats : Stats for the fuse wrapper
 type FuseStats struct {
-	lck sync.RWMutex
-
 	fileOpen   uint64
 	fileClose  uint64
 	fileRead   uint64
@@ -55,15 +52,11 @@ type FuseStats struct {
 
 // AttrCacheStats : Stats for attribute cache layer
 type AttrCacheStats struct {
-	lck sync.RWMutex
-
 	numFiles uint64
 }
 
 // FileCacheStats : Stats for file cache layer
 type FileCacheStats struct {
-	lck sync.RWMutex
-
 	numFiles          uint64
 	cacheUsage        uint64
 	lastCacheEviction uint64
@@ -71,8 +64,6 @@ type FileCacheStats struct {
 
 // StorageStats : Stats for storage layer
 type StorageStats struct {
-	lck sync.RWMutex
-
 	fileOpen   uint64
 	fileClose  uint64
 	fileRead   uint64
@@ -89,8 +80,6 @@ type StorageStats struct {
 
 // GlobalStats : Stats for global monitoring
 type GlobalStats struct {
-	lck sync.RWMutex
-
 	mountTime time.Time
 }
 

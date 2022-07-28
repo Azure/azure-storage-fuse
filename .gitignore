@@ -18,3 +18,4 @@ build/
 tools/
 test/manual_scripts/create1000.go
 test/manual_scripts/cachetest.go
+lint.log
