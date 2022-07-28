@@ -61,6 +61,7 @@ struct configParams
     bool useADLS;
     bool noSymlinks;
     bool cacheOnList;
+    bool debug_libcurl;
     //this is set by the --allow-other flag,
     // 0770 if not set, 0777 if the flag is set
     int defaultPermission;
@@ -75,7 +76,7 @@ struct configParams
     unsigned long long cachePollTimeout;
     unsigned long long maxEviction;
     
-    // Azure retry policty config
+    // Azure retry policy config
     int maxTryCount;
     double maxTimeoutSeconds;
     double retryDelay;
@@ -134,6 +135,7 @@ struct cmdlineOptions
     const char *max_blocks_per_file; // Number of blocks to be cached per file in case of streaming
     const char *block_size_mb; // Size of each block to be downloaded during streaming
     const char *ignore_open_flags; // Ignore unsupported flags provided in open file call
+    const char *debug_libcurl; // Whether or not libcurl debug should be turned on
 };
 
 

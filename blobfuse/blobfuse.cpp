@@ -75,6 +75,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-blocks-per-file=%s", max_blocks_per_file),
     OPTION("--block-size-mb=%s", block_size_mb),
     OPTION("--ignore-open-flags=%s", ignore_open_flags),
+    OPTION("--debug-libcurl=%s", debug_libcurl),
 
     OPTION("--version", version),
     OPTION("-v", version),
@@ -468,11 +469,11 @@ void *azs_init(struct fuse_conn_info * conn)
         std::shared_ptr<OAuthTokenCredentialManager> tokenManager;
         if (config_options.caCertFile.empty())
         {
-            tokenManager = GetTokenManagerInstance(EmptyCallback);
+            tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.debug_libcurl);
         }
         else
         {
-            tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.caCertFile, config_options.httpsProxy);        }
+            tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.debug_libcurl, config_options.caCertFile, config_options.httpsProxy);        }
 
         tokenManager->StartTokenMonitor();
     }
@@ -1219,6 +1220,16 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         if(ignore == "true")
         {
             config_options.ignoreOpenFlags = true;
+        } 
+    }
+
+    config_options.debug_libcurl = false;
+    if(cmd_options.debug_libcurl != NULL)
+    {
+        std::string debug(cmd_options.debug_libcurl);
+        if(debug == "true")
+        {
+            config_options.debug_libcurl = true;
         } 
     }
 

@@ -354,7 +354,7 @@ namespace azure {  namespace storage_lite {
     class CurlEasyClient : public std::enable_shared_from_this<CurlEasyClient>
     {
     public:
-        CurlEasyClient(int size) : m_size(size)
+        CurlEasyClient(int size, bool debug_libcurl) : m_size(size), m_debug_libcurl(debug_libcurl)
         {
             curl_global_init(CURL_GLOBAL_DEFAULT);
             for (int i = 0; i < m_size; i++) {
@@ -364,7 +364,7 @@ namespace azure {  namespace storage_lite {
         }
 
         //Sets CURL CA BUNDLE location for all the curl handlers.
-        CurlEasyClient(int size, const std::string& ca_path, const std::string& https_proxy) : m_size(size), m_capath(ca_path), m_proxy(https_proxy)
+        CurlEasyClient(int size, const std::string& ca_path, const std::string& https_proxy, bool debug_libcurl) : m_size(size), m_capath(ca_path), m_proxy(https_proxy), m_debug_libcurl(debug_libcurl)
         {
             syslog(LOG_DEBUG, "In libcurl CurlEasyClient ca path= %s", ca_path.c_str());
             curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -419,6 +419,11 @@ namespace azure {  namespace storage_lite {
             return m_proxy;
         }
 
+        bool debug_libcurl()
+        {
+            return m_debug_libcurl;
+        }
+
     private:
         int m_size;
         std::string m_capath;
@@ -426,6 +431,7 @@ namespace azure {  namespace storage_lite {
         std::queue<CURL *> m_handles;
         std::mutex m_handles_mutex;
         std::condition_variable m_cv;
+        bool m_debug_libcurl;
     };
 
 }}   // azure::storage_lite

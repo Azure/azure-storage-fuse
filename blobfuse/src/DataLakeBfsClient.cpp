@@ -119,6 +119,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_accountkey
             return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
+                config_options.debug_libcurl,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
                                 // blobfuse if we run into anything unexpected instead of logging errors
         }
@@ -129,6 +130,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_accountkey
                 configurations.concurrency,
                 configurations.caCertFile,
                 configurations.httpsProxy,
+                config_options.debug_libcurl,
                 false); 
         }
     }
@@ -164,6 +166,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_sas()
             return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
+                config_options.debug_libcurl,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
                                 // blobfuse if we run into anything unexpected instead of logging errors
         }
@@ -174,6 +177,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_sas()
                 configurations.concurrency,
                 configurations.caCertFile,
                 configurations.httpsProxy,
+                config_options.debug_libcurl,
                 false); 
         }
     }
@@ -194,7 +198,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_msi() {
                 configurations.msiEndpoint,
                 configurations.msiSecret);
 
-        std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback);
+        std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback, config_options.debug_libcurl);
 
         if (!tokenManager->is_valid_connection()) {
             // todo: isolate definitions of errno's for this function so we can output something meaningful.
@@ -216,6 +220,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_msi() {
             return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
+                config_options.debug_libcurl,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
                                 // blobfuse if we run into anything unexpected instead of logging errors
         }
@@ -226,6 +231,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_msi() {
                 configurations.concurrency,
                 configurations.caCertFile,
                 configurations.httpsProxy,
+                config_options.debug_libcurl,
                 false); 
         }
 
@@ -249,7 +255,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_spn()
                 configurations.spnClientSecret,
                 configurations.aadEndpoint);
 
-        std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(SPNCallback);
+        std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(SPNCallback, config_options.debug_libcurl);
 
         if (!tokenManager->is_valid_connection()) {
             // todo: isolate definitions of errno's for this function so we can output something meaningful.
@@ -272,6 +278,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_spn()
             return std::make_shared<adls_client_ext>(
                 account,
                 configurations.concurrency,
+                config_options.debug_libcurl,
                 false); //If this applies to blobs in the future, we can use this as a feature to exit
                                 // blobfuse if we run into anything unexpected instead of logging errors
         }
@@ -282,6 +289,7 @@ std::shared_ptr<adls_client_ext> DataLakeBfsClient::authenticate_adls_spn()
                 configurations.concurrency,
                 configurations.caCertFile,
                 configurations.httpsProxy,
+                config_options.debug_libcurl,
                 false); 
         }
     }

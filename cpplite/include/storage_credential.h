@@ -29,7 +29,7 @@ namespace azure {  namespace storage_lite {
                 headers.ms_headers[name] = value;
             }
         }
-        virtual void set_token_callback(std::string (* /*callback*/)()) {}
+        virtual void set_token_callback(std::string (* /*callback*/)(bool)) {}
     };
 
     class shared_key_credential final : public storage_credential
