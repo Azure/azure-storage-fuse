@@ -48,10 +48,6 @@ jobs:
               imageName: 'ubuntu-20.04' 
               containerName: 'test-cnt-ubn-20'
               quickTestDir: 'ubn20'
-            Ubuntu-22:
-              imageName: 'ubuntu-22.04' 
-              containerName: 'test-cnt-ubn-22'
-              quickTestDir: 'ubn22'
 
           ${{ if eq(parameters.exhaustive_test, false) }}:
             Ubuntu-18:
