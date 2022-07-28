@@ -5,7 +5,7 @@ set(VERSION "1.4.5-preview")
 
 # This macro is referred in code to print the current version
 # Change CPACK_DEBIAN_PACKAGE_DESCRIPTION as well in this file while bumping up the version
-add_definitions(-D_BLOBFUSE_VERSION_="1.4..5-preview")
+add_definitions(-D_BLOBFUSE_VERSION_="1.4.5-preview")
 
 set(CPACK_PACKAGE_VERSION_MAJOR 1)
 set(CPACK_PACKAGE_VERSION_MINOR 4)  
