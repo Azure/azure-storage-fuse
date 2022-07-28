@@ -34,16 +34,17 @@
 package azstorage
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
 	"sync/atomic"
 	"syscall"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/spf13/cobra"
 )
@@ -82,7 +83,7 @@ func (az *AzStorage) SetNextComponent(c internal.Component) {
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-func (az *AzStorage) Configure() error {
+func (az *AzStorage) Configure(isParent bool) error {
 	log.Trace("AzStorage::Configure : %s", az.Name())
 
 	conf := AzStorageOptions{}
@@ -98,7 +99,7 @@ func (az *AzStorage) Configure() error {
 		return fmt.Errorf("config error in %s [%s]", az.Name(), err.Error())
 	}
 
-	err = az.configureAndTest()
+	err = az.configureAndTest(isParent)
 	if err != nil {
 		log.Err("AzStorage::Configure : Failed to validate storage account (%s)", err.Error())
 		return err
@@ -130,10 +131,14 @@ func (az *AzStorage) OnConfigChange() {
 		return
 	}
 
-	az.storage.UpdateConfig(az.stConfig)
+	err = az.storage.UpdateConfig(az.stConfig)
+	if err != nil {
+		log.Err("AzStorage::OnConfigChange : failed to UpdateConfig", err.Error())
+		return
+	}
 }
 
-func (az *AzStorage) configureAndTest() error {
+func (az *AzStorage) configureAndTest(isParent bool) error {
 	az.storage = NewAzStorageConnection(az.stConfig)
 
 	err := az.storage.SetupPipeline()
@@ -142,12 +147,19 @@ func (az *AzStorage) configureAndTest() error {
 		return err
 	}
 
-	az.storage.SetPrefixPath(az.stConfig.prefixPath)
-
-	err = az.storage.TestPipeline()
+	err = az.storage.SetPrefixPath(az.stConfig.prefixPath)
 	if err != nil {
-		log.Err("AzStorage::configureAndTest : Failed to validate credentials (%s)", err.Error())
-		return fmt.Errorf("failed to authenticate credentials for %s", az.Name())
+		log.Err("AzStorage::configureAndTest : Failed to set prefix path (%s)", err.Error())
+		return err
+	}
+
+	// The daemon runs all pipeline Configure code twice. isParent allows us to only validate credentials in parent mode, preventing a second unnecessary REST call.
+	if isParent {
+		err = az.storage.TestPipeline()
+		if err != nil {
+			log.Err("AzStorage::configureAndTest : Failed to validate credentials (%s)", err.Error())
+			return fmt.Errorf("failed to authenticate credentials for %s", az.Name())
+		}
 	}
 
 	return nil
@@ -265,6 +277,17 @@ func (az *AzStorage) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 
 func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
 	log.Trace("AzStorage::StreamDir : Path %s, offset %d, count %d", options.Name, options.Offset, options.Count)
+
+	if az.listBlocked {
+		diff := time.Since(az.startTime)
+		if diff.Seconds() > float64(az.stConfig.cancelListForSeconds) {
+			az.listBlocked = false
+			log.Info("AzStorage::StreamDir : Unblocked List API")
+		} else {
+			log.Info("AzStorage::StreamDir : Blocked List API for %d more seconds", int(az.stConfig.cancelListForSeconds)-int(diff.Seconds()))
+			return make([]*internal.ObjAttr, 0), "", nil
+		}
+	}
 
 	path := formatListDirName(options.Name)
 

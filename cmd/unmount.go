@@ -34,11 +34,12 @@
 package cmd
 
 import (
-	"blobfuse2/common"
 	"fmt"
 	"os/exec"
 	"regexp"
 	"strings"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
 
 	"github.com/spf13/cobra"
 )

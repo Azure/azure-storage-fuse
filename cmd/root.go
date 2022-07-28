@@ -34,8 +34,6 @@
 package cmd
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"encoding/xml"
 	"fmt"
 	"io/ioutil"
@@ -43,6 +41,9 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/spf13/cobra"
 )
@@ -67,7 +68,7 @@ var rootCmd = &cobra.Command{
 	FlagErrorHandling: cobra.ExitOnError,
 	Run: func(cmd *cobra.Command, args []string) {
 		if !disableVersionCheck {
-			VersionCheck()
+			_ = VersionCheck()
 		}
 	},
 }

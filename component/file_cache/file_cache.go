@@ -34,11 +34,6 @@
 package file_cache
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
 	"io"
@@ -50,6 +45,12 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/spf13/cobra"
 )
@@ -139,14 +140,21 @@ func (c *FileCache) Start(ctx context.Context) error {
 	log.Trace("Starting component : %s", c.Name())
 
 	if c.cleanupOnStart {
-		c.TempCacheCleanup()
+		err := c.TempCacheCleanup()
+		if err != nil {
+			return fmt.Errorf("error in %s error [fail to cleanup temp cache]", c.Name())
+		}
 	}
 
 	if c.policy == nil {
 		return fmt.Errorf("config error in %s error [cache policy missing]", c.Name())
 	}
 
-	c.policy.StartPolicy()
+	err := c.policy.StartPolicy()
+	if err != nil {
+		return fmt.Errorf("config error in %s error [fail to start policy]", c.Name())
+	}
+
 	return nil
 }
 
@@ -154,8 +162,8 @@ func (c *FileCache) Start(ctx context.Context) error {
 func (c *FileCache) Stop() error {
 	log.Trace("Stopping component : %s", c.Name())
 
-	c.policy.ShutdownPolicy()
-	c.TempCacheCleanup()
+	_ = c.policy.ShutdownPolicy()
+	_ = c.TempCacheCleanup()
 
 	return nil
 }
@@ -180,7 +188,7 @@ func (c *FileCache) TempCacheCleanup() error {
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //  Return failure if any config is not valid to exit the process
-func (c *FileCache) Configure() error {
+func (c *FileCache) Configure(_ bool) error {
 	log.Trace("FileCache::Configure : %s", c.Name())
 
 	conf := FileCacheOptions{}
@@ -281,7 +289,7 @@ func (c *FileCache) OnConfigChange() {
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
 	c.maxCacheSize = conf.MaxSizeMB
-	c.policy.UpdateConfig(c.GetPolicyConfig(conf))
+	_ = c.policy.UpdateConfig(c.GetPolicyConfig(conf))
 }
 
 func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
@@ -352,33 +360,37 @@ func isLocalDirEmpty(path string) bool {
 }
 
 // invalidateDirectory: Recursively invalidates a directory in the file cache.
-func (fc *FileCache) invalidateDirectory(name string) error {
+func (fc *FileCache) invalidateDirectory(name string) {
 	log.Trace("FileCache::invalidateDirectory : %s", name)
 
 	localPath := filepath.Join(fc.tmpPath, name)
 	_, err := os.Stat(localPath)
 	if os.IsNotExist(err) {
 		log.Info("FileCache::invalidateDirectory : %s does not exist in local cache.", name)
-		return nil
+		return
 	} else if err != nil {
 		log.Debug("FileCache::invalidateDirectory : %s stat err [%s].", name, err.Error())
-		return err
+		return
 	}
 	// TODO : wouldn't this cause a race condition? a thread might get the lock before we purge - and the file would be non-existent
-	filepath.WalkDir(localPath, func(path string, d fs.DirEntry, err error) error {
+	err = filepath.WalkDir(localPath, func(path string, d fs.DirEntry, err error) error {
 		if err == nil && d != nil {
 			log.Debug("FileCache::invalidateDirectory : %s (%d) getting removed from cache", path, d.IsDir())
 			if !d.IsDir() {
 				fc.policy.CachePurge(path)
 			} else {
-				deleteFile(path)
+				_ = deleteFile(path)
 			}
 		}
 		return nil
 	})
 
-	deleteFile(localPath)
-	return nil
+	if err != nil {
+		log.Debug("FileCache::invalidateDirectory : Failed to iterate directory %s [%s].", localPath, err.Error())
+		return
+	}
+
+	_ = deleteFile(localPath)
 }
 
 // Note: The primary purpose of the file cache is to keep track of files that are opened by the user.
@@ -530,29 +542,33 @@ func (fc *FileCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	// If the directory does not exist locally then call the next component
 	localPath := filepath.Join(fc.tmpPath, options.Name)
 	f, err := os.Open(localPath)
-	if os.IsNotExist(err) {
+	if err == nil {
+		log.Debug("FileCache::IsDirEmpty : %s found in local cache", options.Name)
+
+		// Check local cache directory is empty or not
+		path, err := f.Readdirnames(1)
+
+		// If the local directory has a path in it, it is likely due to !createEmptyFile.
+		if err == nil && !fc.createEmptyFile && len(path) > 0 {
+			log.Debug("FileCache::IsDirEmpty : %s had a subpath in the local cache", options.Name)
+			return false
+		}
+
+		// If there are files in local cache then dont allow deletion of directory
+		if err != io.EOF {
+			// Local directory is not empty fail the call
+			log.Debug("FileCache::IsDirEmpty : %s was not empty in local cache", options.Name)
+			return false
+		}
+	} else if os.IsNotExist(err) {
+		// Not found in local cache so check with container
 		log.Debug("FileCache::IsDirEmpty : %s not found in local cache", options.Name)
-		return fc.NextComponent().IsDirEmpty(options)
+	} else {
+		// Unknown error, check with container
+		log.Err("FileCache::IsDirEmpty : %s failed while checking local cache (%s)", options.Name, err.Error())
 	}
 
-	if err != nil {
-		log.Err("FileCache::IsDirEmpty : error opening directory %s [%s]", options.Name, err.Error())
-		return false
-	}
-
-	// The file cache policy handles deleting locally empty directories in the cache
-	// If the directory exists locally and is empty, it was probably recently emptied and we can trust this result.
-	path, err := f.Readdirnames(1)
-	if err == io.EOF {
-		log.Debug("FileCache::IsDirEmpty : %s was empty in local cache", options.Name)
-		return true
-	}
-	// If the local directory has a path in it, it is likely due to !createEmptyFile.
-	if err == nil && !fc.createEmptyFile && len(path) > 0 {
-		log.Debug("FileCache::IsDirEmpty : %s had a subpath in the local cache", options.Name)
-		return false
-	}
-
+	log.Debug("FileCache::IsDirEmpty : %s checking with container", options.Name)
 	return fc.NextComponent().IsDirEmpty(options)
 }
 
@@ -687,7 +703,11 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	}
 
 	localPath := filepath.Join(fc.tmpPath, options.Name)
-	deleteFile(localPath)
+	err = deleteFile(localPath)
+	if err != nil && !os.IsNotExist(err) {
+		log.Err("FileCache::DeleteFile : failed to delete local file %s [%s]", localPath, err.Error())
+	}
+
 	fc.policy.CachePurge(localPath)
 
 	// addFileCacheStats("DeleteFile", options.Name, true, nil)
@@ -768,7 +788,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			log.Debug("FileCache::OpenFile : Delete cached file %s", options.Name)
 
 			err := deleteFile(localPath)
-			if err != nil {
+			if err != nil && !os.IsNotExist(err) {
 				log.Err("FileCache::OpenFile : Failed to delete old file %s", options.Name)
 			}
 		} else {
@@ -878,7 +898,7 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 
 	if options.Handle.Dirty() {
 		log.Info("FileCache::CloseFile : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
-		err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle})
+		err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle}) //nolint
 		if err != nil {
 			log.Err("FileCache::CloseFile : failed to flush file %s", options.Handle.Path)
 			return err
@@ -907,7 +927,12 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 	if options.Handle.Fsynced() {
 		log.Trace("FileCache::CloseFile : fsync/sync op, purging %s", options.Handle.Path)
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
-		deleteFile(localPath)
+
+		err = deleteFile(localPath)
+		if err != nil && !os.IsNotExist(err) {
+			log.Err("FileCache::CloseFile : failed to delete local file %s [%s]", localPath, err.Error())
+		}
+
 		fc.policy.CachePurge(localPath)
 		return nil
 	}
@@ -1209,6 +1234,7 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 		if err != nil && !os.IsNotExist(err) {
 			log.Err("FileCache::RenameFile : %s failed to delete local file %s [%s]", localDstPath, err.Error())
 		}
+
 		fc.policy.CachePurge(localDstPath)
 	}
 

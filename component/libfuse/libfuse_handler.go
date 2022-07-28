@@ -42,12 +42,9 @@ package libfuse
 // #cgo LDFLAGS: -lfuse3 -ldl
 // #include "libfuse_wrapper.h"
 // #include "extension_handler.h"
-import "C"
+import "C" //nolint
+
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"errors"
 	"fmt"
 	"io"
@@ -55,6 +52,11 @@ import (
 	"os"
 	"syscall"
 	"unsafe"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 /* --- IMPORTANT NOTE ---

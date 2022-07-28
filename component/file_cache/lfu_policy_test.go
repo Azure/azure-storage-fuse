@@ -34,14 +34,15 @@
 package file_cache
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -127,6 +128,14 @@ func (suite *lfuPolicyTestSuite) TestCacheValidNew() {
 	suite.assert.NotNil(node)
 	suite.assert.EqualValues("temp", node.key)
 	suite.assert.EqualValues(2, node.frequency) // the get will promote the node
+}
+
+func (suite *lfuPolicyTestSuite) TestClearItemFromCache() {
+	defer suite.cleanupTest()
+	f, _ := os.Create(cache_path + "/test")
+	suite.policy.clearItemFromCache(f.Name())
+	_, attr := os.Stat(f.Name())
+	suite.assert.NotEqual(nil, attr.Error())
 }
 
 func (suite *lfuPolicyTestSuite) TestCacheValidExisting() {

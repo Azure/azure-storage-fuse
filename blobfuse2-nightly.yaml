@@ -64,15 +64,14 @@ jobs:
           stressParallel: 1
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
-        # Ubn-22 is not supported by devops as of now  
-        #Ubuntu-22:
-        #  imageName: 'ubuntu-22.04'
-        #  containerName: 'test-cnt-ubn-22'
-        #  adlsSas: $(UBUNTU-20-ADLS-SAS)
-        #  hostedAgent: true
-        #  stressParallel: 1
-        #  fuselib: 'libfuse3-dev'
-        #  tags: 'fuse3'
+        Ubuntu-22:
+         imageName: 'ubuntu-22.04'
+         containerName: 'test-cnt-ubn-22'
+         adlsSas: $(UBUNTU-20-ADLS-SAS)
+         hostedAgent: true
+         stressParallel: 1
+         fuselib: 'libfuse3-dev'
+         tags: 'fuse3'
     pool:
       vmImage: $(imageName)
 

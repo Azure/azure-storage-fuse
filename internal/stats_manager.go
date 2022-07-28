@@ -1,8 +1,6 @@
 package internal
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"bufio"
 	"encoding/json"
 	"fmt"
@@ -10,6 +8,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 type ChannelReader func()

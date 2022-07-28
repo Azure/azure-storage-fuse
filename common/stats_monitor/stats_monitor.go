@@ -34,13 +34,14 @@
 package stats_monitor
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/component/file_cache"
 	"encoding/json"
 	"io/ioutil"
 	"os"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
 )
 
 type StatsOptions struct {

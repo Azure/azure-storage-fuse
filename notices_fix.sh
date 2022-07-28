@@ -286,6 +286,7 @@ function generate_notices
             else
                #echo "Missing $line in old file" 
                download_notice $line
+               ret=1
             fi
             echo -ne "." ;;
 
@@ -296,6 +297,7 @@ function generate_notices
             else
                #echo "Missing $line in old file" 
                download_notice $line
+               ret=1
             fi
             echo -ne "." ;;
             

@@ -1,6 +1,6 @@
 package stats_monitor
 
-import "blobfuse2/common/log"
+import "github.com/Azure/azure-storage-fuse/v2/common/log"
 
 type StatsCollector struct {
 	statsChannel chan interface{}

@@ -34,10 +34,11 @@
 package handlemap
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/cache_policy"
 	"os"
 	"sync"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/cache_policy"
 
 	"go.uber.org/atomic"
 )
@@ -177,8 +178,8 @@ func CreateCacheObject(capacity int64, handle *Handle) {
 }
 
 // GetHandles : Get map of handles stored
-func GetHandles() sync.Map {
-	return defaultHandleMap
+func GetHandles() *sync.Map {
+	return &defaultHandleMap
 }
 
 // Load : Search the handle object based on its id
