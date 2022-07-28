@@ -1,4 +1,5 @@
 // +build !authtest
+
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -172,7 +173,7 @@ type blockBlobTestSuite struct {
 }
 
 func newTestAzStorage(configuration string) (*AzStorage, error) {
-	config.ReadConfigFromReader(strings.NewReader(configuration))
+	_ = config.ReadConfigFromReader(strings.NewReader(configuration))
 	az := NewazstorageComponent()
 	err := az.Configure(true)
 
@@ -187,7 +188,7 @@ func (s *blockBlobTestSuite) SetupTest() {
 		FileCount:   10,
 		Level:       common.ELogLevel.LOG_DEBUG(),
 	}
-	log.SetDefaultLogger("base", cfg)
+	_ = log.SetDefaultLogger("base", cfg)
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -225,26 +226,26 @@ func (s *blockBlobTestSuite) setupTestHelper(configuration string, container str
 	s.assert = assert.New(s.T())
 
 	s.az, _ = newTestAzStorage(configuration)
-	s.az.Start(ctx) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
+	_ = s.az.Start(ctx) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
 	// We could create the container before but that requires rewriting the code to new up a service client.
 
 	s.serviceUrl = s.az.storage.(*BlockBlob).Service // Grab the service client to do some validation
 	s.containerUrl = s.serviceUrl.NewContainerURL(s.container)
 	if create {
-		s.containerUrl.Create(ctx, azblob.Metadata{}, azblob.PublicAccessNone)
+		_, _ = s.containerUrl.Create(ctx, azblob.Metadata{}, azblob.PublicAccessNone)
 	}
 }
 
 func (s *blockBlobTestSuite) tearDownTestHelper(delete bool) {
-	s.az.Stop()
+	_ = s.az.Stop()
 	if delete {
-		s.containerUrl.Delete(ctx, azblob.ContainerAccessConditions{})
+		_, _ = s.containerUrl.Delete(ctx, azblob.ContainerAccessConditions{})
 	}
 }
 
 func (s *blockBlobTestSuite) cleanupTest() {
 	s.tearDownTestHelper(true)
-	log.Destroy()
+	_ = log.Destroy()
 }
 
 func (s *blockBlobTestSuite) TestInvalidBlockSize() {

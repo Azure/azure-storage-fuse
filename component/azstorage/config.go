@@ -244,7 +244,12 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	var accountType AccountType
-	accountType.Parse(opt.AccountType)
+	err := accountType.Parse(opt.AccountType)
+	if err != nil {
+		log.Err("ParseAndValidateConfig : Failed to parse account type %s", opt.AccountType)
+		return errors.New("invalid account type")
+	}
+
 	az.stConfig.authConfig.AccountType = accountType
 	if accountType == EAccountType.INVALID_ACC() {
 		log.Err("ParseAndValidateConfig : Invalid account type %s", opt.AccountType)
@@ -252,7 +257,10 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	// Validate container name is present or not
-	config.UnmarshalKey("mount-all-containers", &az.stConfig.mountAllContainers)
+	err = config.UnmarshalKey("mount-all-containers", &az.stConfig.mountAllContainers)
+	if err != nil {
+		log.Err("ParseAndValidateConfig : Failed to detect mount-all-container")
+	}
 
 	if !az.stConfig.mountAllContainers && opt.Container == "" {
 		return errors.New("container name not provided")
@@ -292,18 +300,18 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 			az.stConfig.proxyAddress = opt.HttpsProxyAddress
 		} else {
 			if httpProxyProvided {
-				log.Err("BlockBlob::ParseAndValidateConfig : `http-proxy` Invalid : must set `use-http: true` in your config file")
+				log.Err("ParseAndValidateConfig : `http-proxy` Invalid : must set `use-http: true` in your config file")
 				return errors.New("`http-proxy` Invalid : must set `use-http: true` in your config file")
 			}
 		}
 	}
-	log.Info("BlockBlob::ParseAndValidateConfig : using the following proxy address from the config file: %s", az.stConfig.proxyAddress)
+	log.Info("ParseAndValidateConfig : using the following proxy address from the config file: %s", az.stConfig.proxyAddress)
 
 	az.stConfig.sdkTrace = opt.SdkTrace
 
-	log.Info("BlockBlob::ParseAndValidateConfig : sdk logging from the config file: %t", az.stConfig.sdkTrace)
+	log.Info("ParseAndValidateConfig : sdk logging from the config file: %t", az.stConfig.sdkTrace)
 
-	err := ParseAndReadDynamicConfig(az, opt, false)
+	err = ParseAndReadDynamicConfig(az, opt, false)
 	if err != nil {
 		return err
 	}
@@ -313,7 +321,12 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		opt.AuthMode = "key"
 	}
 
-	authType.Parse(opt.AuthMode)
+	err = authType.Parse(opt.AuthMode)
+	if err != nil {
+		log.Err("ParseAndValidateConfig : Invalid auth type %s", opt.AccountType)
+		return errors.New("invalid auth type")
+	}
+
 	switch authType {
 	case EAuthType.KEY():
 		az.stConfig.authConfig.AuthMode = EAuthType.KEY()
@@ -415,7 +428,7 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 
 			if err := az.storage.NewCredentialKey("saskey", az.stConfig.authConfig.SASKey); err != nil {
 				az.stConfig.authConfig.SASKey = oldSas
-				az.storage.NewCredentialKey("saskey", az.stConfig.authConfig.SASKey)
+				_ = az.storage.NewCredentialKey("saskey", az.stConfig.authConfig.SASKey)
 				return errors.New("SAS key update failure")
 			}
 		}

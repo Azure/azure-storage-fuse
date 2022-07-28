@@ -144,7 +144,7 @@ func (ac *AttrCache) Configure(_ bool) error {
 // OnConfigChange : If component has registered, on config file change this method is called
 func (ac *AttrCache) OnConfigChange() {
 	log.Trace("AttrCache::OnConfigChange : %s", ac.Name())
-	ac.Configure(true)
+	_ = ac.Configure(true)
 }
 
 // Helper Methods

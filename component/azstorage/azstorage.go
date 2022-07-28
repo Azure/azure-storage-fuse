@@ -122,7 +122,11 @@ func (az *AzStorage) OnConfigChange() {
 		return
 	}
 
-	az.storage.UpdateConfig(az.stConfig)
+	err = az.storage.UpdateConfig(az.stConfig)
+	if err != nil {
+		log.Err("AzStorage::OnConfigChange : failed to UpdateConfig", err.Error())
+		return
+	}
 }
 
 func (az *AzStorage) configureAndTest(isParent bool) error {
@@ -134,7 +138,11 @@ func (az *AzStorage) configureAndTest(isParent bool) error {
 		return err
 	}
 
-	az.storage.SetPrefixPath(az.stConfig.prefixPath)
+	err = az.storage.SetPrefixPath(az.stConfig.prefixPath)
+	if err != nil {
+		log.Err("AzStorage::configureAndTest : Failed to set prefix path (%s)", err.Error())
+		return err
+	}
 
 	// The daemon runs all pipeline Configure code twice. isParent allows us to only validate credentials in parent mode, preventing a second unnecessary REST call.
 	if isParent {

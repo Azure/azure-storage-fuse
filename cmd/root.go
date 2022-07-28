@@ -68,7 +68,7 @@ var rootCmd = &cobra.Command{
 	FlagErrorHandling: cobra.ExitOnError,
 	Run: func(cmd *cobra.Command, args []string) {
 		if !disableVersionCheck {
-			VersionCheck()
+			_ = VersionCheck()
 		}
 	},
 }

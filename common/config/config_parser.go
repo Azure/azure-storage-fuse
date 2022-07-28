@@ -295,7 +295,7 @@ func AttachToFlagSet(flagset *pflag.FlagSet) {
 
 func AttachFlagCompletions(cmd *cobra.Command) {
 	for key, fn := range userOptions.completionFuncMap {
-		cmd.RegisterFlagCompletionFunc(key, fn)
+		_ = cmd.RegisterFlagCompletionFunc(key, fn)
 	}
 }
 

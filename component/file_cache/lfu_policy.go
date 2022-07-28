@@ -34,6 +34,7 @@
 package file_cache
 
 import (
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -82,27 +83,24 @@ func (l *lfuPolicy) UpdateConfig(config cachePolicyConfig) error {
 	return nil
 }
 
-func (l *lfuPolicy) CacheValid(name string) error {
+func (l *lfuPolicy) CacheValid(name string) {
 	log.Trace("lfuPolicy::CacheValid : %s", name)
 
 	l.list.Lock()
 	defer l.list.Unlock()
 
 	l.list.put(name)
-	return nil
 }
 
-func (l *lfuPolicy) CacheInvalidate(name string) error {
+func (l *lfuPolicy) CacheInvalidate(name string) {
 	log.Trace("lfuPolicy::CacheInvalidate : %s", name)
 
 	if l.cacheTimeout == 0 {
-		return l.CachePurge(name)
+		l.CachePurge(name)
 	}
-
-	return nil
 }
 
-func (l *lfuPolicy) CachePurge(name string) error {
+func (l *lfuPolicy) CachePurge(name string) {
 	log.Trace("lfuPolicy::CachePurge : %s", name)
 
 	l.list.Lock()
@@ -110,8 +108,6 @@ func (l *lfuPolicy) CachePurge(name string) error {
 
 	l.list.delete(name)
 	l.removeFiles <- name
-
-	return nil
 }
 
 func (l *lfuPolicy) IsCached(name string) bool {
@@ -158,7 +154,10 @@ func (l *lfuPolicy) clearItemFromCache(path string) {
 	}
 
 	// There are no open handles for this file so its safe to remove this
-	deleteFile(path)
+	err := deleteFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		log.Err("lfuPolicy::DeleteItem : failed to delete local file %s [%s]", path, err.Error())
+	}
 
 	// File was deleted so try clearing its parent directory
 	// TODO: Delete directories up the path recursively that are "safe to delete". Ensure there is no race between this code and code that creates directories (like OpenFile)

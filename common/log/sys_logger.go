@@ -161,11 +161,9 @@ func (l *SysLogger) SetLogFile(name string) error {
 }
 
 func (l *SysLogger) SetMaxLogSize(size int) {
-	return
 }
 
 func (l *SysLogger) SetLogFileCount(count int) {
-	return
 }
 
 func (l *SysLogger) Destroy() error {

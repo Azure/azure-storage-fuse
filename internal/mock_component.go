@@ -38,9 +38,9 @@
 package internal
 
 import (
+	context "context"
 	common "github.com/Azure/azure-storage-fuse/v2/common"
 	handlemap "github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
-	context "context"
 	reflect "reflect"
 	"syscall"
 
