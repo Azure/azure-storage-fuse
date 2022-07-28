@@ -1,5 +1,8 @@
 #!/bin/bash
 
+rm -rf blobfuse2
+rm -rf azure-storage-fuse
+
 if [ "$1" == "fuse2" ]
 then
     # Build blobfuse2 with fuse2
