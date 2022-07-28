@@ -340,10 +340,11 @@ jobs:
 
       # Doc generation tests
       - script: |
-          ./blobfuse2.test -test.v -test.coverprofile=doc.cov doc
-          if [ $? -ne 0 ]; then
-            exit 1
-          fi
+          ./blobfuse2.test -test.v -test.coverprofile=doc1.cov doc
+          ./blobfuse2.test -test.v -test.coverprofile=doc2.cov doc --output-location /notexists
+          touch ~/a.txt
+          ./blobfuse2.test -test.v -test.coverprofile=doc2.cov doc --output-location ~/a.txt
+          rm -rf ~/a.txt
         workingDirectory: $(WORK_DIR)
         displayName: "CLI : doc generation"
         timeoutInMinutes: 2
