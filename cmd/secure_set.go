@@ -54,7 +54,10 @@ var setKeyCmd = &cobra.Command{
 	Example:           "blobfuse2 secure set --config-file=config.yaml --passphrase=PASSPHRASE --key=logging.log_level --value=log_debug",
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		validateOptions()
+		err := validateOptions()
+		if err != nil {
+			return err
+		}
 
 		plainText, err := decryptConfigFile(false)
 		if err != nil {
@@ -94,7 +97,10 @@ var setKeyCmd = &cobra.Command{
 			return err
 		}
 
-		saveToFile(secOpts.ConfigFile, cipherText, false)
+		if err = saveToFile(secOpts.ConfigFile, cipherText, false); err != nil {
+			return err
+		}
+
 		return nil
 	},
 }

@@ -39,7 +39,7 @@ import (
 	statc "github.com/Azure/azure-storage-fuse/v2/common/stats_collector"
 )
 
-func main() {
+func main() { //nolint
 	var wg sync.WaitGroup
 	wg.Add(1)
 

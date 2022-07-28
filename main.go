@@ -42,5 +42,5 @@ import (
 //  To use go:generate run command   "NAME="component" go generate"
 
 func main() {
-	cmd.Execute()
+	_ = cmd.Execute()
 }
