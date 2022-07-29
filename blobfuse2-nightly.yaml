@@ -66,15 +66,15 @@ jobs:
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
           sasValidate: true
-        Ubuntu-22:
-         imageName: 'ubuntu-22.04'
-         containerName: 'test-cnt-ubn-22'
-         adlsSas: $(UBUNTU-20-ADLS-SAS)
-         hostedAgent: true
-         stressParallel: 1
-         fuselib: 'libfuse3-dev'
-         tags: 'fuse3'
-         sasValidate: false
+        # Ubuntu-22:
+        #  imageName: 'ubuntu-22.04'
+        #  containerName: 'test-cnt-ubn-22'
+        #  adlsSas: $(UBUNTU-20-ADLS-SAS)
+        #  hostedAgent: true
+        #  stressParallel: 1
+        #  fuselib: 'libfuse3-dev'
+        #  tags: 'fuse3'
+        #  sasValidate: false
     pool:
       vmImage: $(imageName)
 
@@ -169,7 +169,7 @@ jobs:
           huge_container: 'testcnt1'
           quick_stress: ${{ parameters.quick_stress }}
           test_key_credential: true 
-          test_sas_credential: $(sasValidate)
+          test_sas_credential: true
           test_spn_credential: true
           sas_credential_config: $(BLOBFUSE2_SAS_CFG)
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
@@ -200,7 +200,7 @@ jobs:
           huge_container: 'testcnt'
           quick_stress: ${{ parameters.quick_stress }}
           test_key_credential: true
-          test_sas_credential: $(sasValidate)
+          test_sas_credential: true
           test_spn_credential: true
           sas_credential_config: $(BLOBFUSE2_SAS_CFG)
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)

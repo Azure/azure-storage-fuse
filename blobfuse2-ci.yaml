@@ -22,11 +22,11 @@ jobs:
           containerName: 'test-cnt-ubn-20'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
-        Ubuntu-22:
-          imageName: 'ubuntu-22.04'
-          containerName: 'test-cnt-ubn-22'
-          fuselib: 'libfuse3-dev'
-          tags: 'fuse3'
+        # Ubuntu-22:
+        #   imageName: 'ubuntu-22.04'
+        #   containerName: 'test-cnt-ubn-22'
+        #   fuselib: 'libfuse3-dev'
+        #   tags: 'fuse3'
   
     pool:
       vmImage: $(imageName)
