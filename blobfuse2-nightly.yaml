@@ -166,7 +166,7 @@ jobs:
           huge_container: 'testcnt1'
           quick_stress: ${{ parameters.quick_stress }}
           test_key_credential: true 
-          test_sas_credential: true
+          test_sas_credential: ${{ ne(parameters.imageName, "ubuntu-22.04") }}
           test_spn_credential: true
           sas_credential_config: $(BLOBFUSE2_SAS_CFG)
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
@@ -197,7 +197,7 @@ jobs:
           huge_container: 'testcnt'
           quick_stress: ${{ parameters.quick_stress }}
           test_key_credential: true
-          test_sas_credential: true
+          test_sas_credential: ${{ ne(parameters.imageName, "ubuntu-22.04") }}
           test_spn_credential: true
           sas_credential_config: $(BLOBFUSE2_SAS_CFG)
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
