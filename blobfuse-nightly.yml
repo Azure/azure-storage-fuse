@@ -1138,13 +1138,6 @@ jobs:
           timeoutInMinutes: 5
           condition: always()
 
-        - script: |
-            pwd
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-          displayName: 'Clean Agent Directories'
-          condition: always()
-
     - job: Set_3
       timeoutInMinutes: 30
       strategy:
@@ -1303,13 +1296,6 @@ jobs:
           workingDirectory: $(ROOT_DIR)
           displayName: 'Cleanup Directories'
           timeoutInMinutes: 5
-          condition: always()
-
-        - script: |
-            pwd
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-          displayName: 'Clean Agent Directories'
           condition: always()
 
     - job: Set_4
@@ -1477,13 +1463,6 @@ jobs:
           timeoutInMinutes: 5
           condition: always()
 
-        - script: |
-            pwd
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-          displayName: 'Clean Agent Directories'
-          condition: always()
-
     - job: Set_5
       timeoutInMinutes: 30
       strategy:
@@ -1641,13 +1620,6 @@ jobs:
           workingDirectory: $(ROOT_DIR)
           displayName: 'Cleanup Directories'
           timeoutInMinutes: 5
-          condition: always()
-
-        - script: |
-            pwd
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-          displayName: 'Clean Agent Directories'
           condition: always()
 
   - ${{ if eq(parameters.msi_test, true) }}:
@@ -1843,16 +1815,6 @@ jobs:
           continueOnError: true
           workingDirectory: $(ROOT_DIR)
 
-        - script: |
-            pwd
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-            sudo rm -rf $(WORK_DIR)
-            sudo rm -rf $(MOUNT_DIR)/*
-            sudo rm -rf $(TEMP_DIR)/*
-          displayName: 'Clean Agent Directories'
-          condition: always()
-
   - ${{ if eq(parameters.proxy_test, true) }}:    
     - job: Set_7
       timeoutInMinutes: 60
@@ -2022,11 +1984,4 @@ jobs:
           workingDirectory: $(ROOT_DIR)
           displayName: 'Cleanup Directories'
           timeoutInMinutes: 5
-          condition: always()
-
-        - script: |
-            pwd
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-          displayName: 'Clean Agent Directories'
           condition: always()
