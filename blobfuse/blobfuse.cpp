@@ -1229,6 +1229,7 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         std::string debug(cmd_options.debug_libcurl);
         if(debug == "true")
         {
+            syslog(LOG_INFO, "Debug libcurl is turned on");
             config_options.debug_libcurl = true;
         } 
     }

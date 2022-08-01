@@ -73,6 +73,7 @@ namespace azure { namespace storage_lite {
             if (m_client->debug_libcurl())
             {
                 check_code(curl_easy_setopt(m_curl, CURLOPT_VERBOSE, 1L));
+                check_code(curl_easy_setopt(m_curl, CURLOPT_DEBUGFUNCTION, debug_callback));
             }
 
             const auto result = curl_easy_perform(m_curl);
