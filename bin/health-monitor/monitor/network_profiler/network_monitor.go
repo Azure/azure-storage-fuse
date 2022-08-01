@@ -5,6 +5,7 @@ import (
 
 	hmcommon "github.com/Azure/azure-storage-fuse/v2/bin/health-monitor/common"
 	hminternal "github.com/Azure/azure-storage-fuse/v2/bin/health-monitor/internal"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 type NetworkProfiler struct {
@@ -22,12 +23,29 @@ func (nw *NetworkProfiler) SetName(name string) {
 }
 
 func (nw *NetworkProfiler) Monitor() error {
-	fmt.Println("Inside network monitor")
+	err := nw.Validate()
+	if err != nil {
+		log.Err("network_monitor::Monitor : [%v]", err)
+		return err
+	}
+
 	return nil
 }
 
 func (nw *NetworkProfiler) ExportStats() {
 	fmt.Println("Inside network export stats")
+}
+
+func (nw *NetworkProfiler) Validate() error {
+	if len(nw.pid) == 0 {
+		return fmt.Errorf("pid of blobfuse2 is not given")
+	}
+
+	if nw.pollInterval == 0 {
+		return fmt.Errorf("stats-poll-interval should be non-zero")
+	}
+
+	return nil
 }
 
 func NewNetworkMonitor() hminternal.Monitor {
@@ -42,6 +60,5 @@ func NewNetworkMonitor() hminternal.Monitor {
 }
 
 func init() {
-	fmt.Println("Inside network profiler")
 	hminternal.AddMonitor(hmcommon.Network_profiler, NewNetworkMonitor)
 }

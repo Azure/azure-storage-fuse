@@ -16,16 +16,16 @@ var (
 	Pid               string
 	BfsPollInterval   int
 	StatsPollinterval int
-	NoBfsMon          bool
-	NoCpuProf         bool
-	NoMemProf         bool
-	NoNetProf         bool
-	NoFileCacheMon    bool
-	TempCachePath     string
+
+	NoBfsMon       bool
+	NoCpuProf      bool
+	NoMemProf      bool
+	NoNetProf      bool
+	NoFileCacheMon bool
+
+	TempCachePath string
+	MaxCacheSize  float64
 )
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFile = filepath.Join(DefaultWorkDir, "healthmon.log")
-
-var TransferPipe = filepath.Join(DefaultWorkDir, "pipes/transferPipe")
-var PollingPipe = filepath.Join(DefaultWorkDir, "pipes/pollPipe")

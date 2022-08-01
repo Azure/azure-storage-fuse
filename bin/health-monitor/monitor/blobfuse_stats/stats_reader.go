@@ -10,6 +10,9 @@ import (
 
 	hmcommon "github.com/Azure/azure-storage-fuse/v2/bin/health-monitor/common"
 	hminternal "github.com/Azure/azure-storage-fuse/v2/bin/health-monitor/internal"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 type BlobfuseStats struct {
@@ -17,14 +20,6 @@ type BlobfuseStats struct {
 	pollInterval int
 	transferPipe string
 	pollingPipe  string
-}
-
-type Stats struct {
-	Timestamp     string                 `json:"timestamp"`
-	ComponentName string                 `json:"componentName"`
-	Operation     string                 `json:"operation"`
-	Path          string                 `json:"path"`
-	Value         map[string]interface{} `json:"value"`
 }
 
 func (bfs *BlobfuseStats) GetName() string {
@@ -36,25 +31,39 @@ func (bfs *BlobfuseStats) SetName(name string) {
 }
 
 func (bfs *BlobfuseStats) Monitor() error {
-	go bfs.StatsPolling()
+	err := bfs.Validate()
+	if err != nil {
+		log.Err("StatsReader::Monitor : [%v]", err)
+		return err
+	}
 
-	return bfs.StatsReader()
+	go bfs.statsPoll()
+
+	return bfs.statsReader()
 }
 
 func (bfs *BlobfuseStats) ExportStats() {
 	fmt.Println("Inside blobfuse export stats")
 }
 
-func (bfs *BlobfuseStats) StatsReader() error {
+func (bfs *BlobfuseStats) Validate() error {
+	if bfs.pollInterval == 0 {
+		return fmt.Errorf("blobfuse-poll-interval should be non-zero")
+	}
+
+	return nil
+}
+
+func (bfs *BlobfuseStats) statsReader() error {
 	err := createPipe(bfs.transferPipe)
 	if err != nil {
-		fmt.Printf("StatsReader::Reader : [%v]", err)
+		log.Err("StatsReader::statsReader : [%v]", err)
 		return err
 	}
 
 	f, err := os.OpenFile(bfs.transferPipe, os.O_RDONLY, os.ModeNamedPipe)
 	if err != nil {
-		fmt.Printf("StatsReader::Reader : unable to open pipe file [%v]", err)
+		log.Err("StatsReader::statsReader : unable to open pipe file [%v]", err)
 		return err
 	}
 	defer f.Close()
@@ -65,30 +74,33 @@ func (bfs *BlobfuseStats) StatsReader() error {
 	for {
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
-			fmt.Printf("StatsReader::Reader : [%v]", err)
+			log.Err("StatsReader::statsReader : [%v]", err)
 			e = err
 			break
 		}
-		fmt.Printf("Line: %v\n", string(line))
 
-		st := Stats{}
+		// TODO: export stats read
+		fmt.Printf("Line: %v\n", string(line))
+		log.Debug("StatsReader::statsReader : Line: %v\n", string(line))
+
+		st := internal.Stats{}
 		json.Unmarshal(line, &st)
-		fmt.Printf("%v : %v %v %v\n", st.ComponentName, st.Path, st.Operation, st.Value)
+		log.Debug("StatsReader::statsReader : %v, %v, %v, %v, %v\n", st.Timestamp, st.ComponentName, st.Operation, st.Path, st.Value)
 	}
 
 	return e
 }
 
-func (bfs *BlobfuseStats) StatsPolling() {
+func (bfs *BlobfuseStats) statsPoll() {
 	err := createPipe(bfs.pollingPipe)
 	if err != nil {
-		fmt.Printf("StatsReader::Polling : [%v]", err)
+		log.Err("StatsReader::statsPoll : [%v]", err)
 		return
 	}
 
 	pf, err := os.OpenFile(bfs.pollingPipe, os.O_CREATE|os.O_WRONLY, 0777)
 	if err != nil {
-		fmt.Printf("StatsManager::Polling : unable to open pipe file [%v]", err)
+		log.Err("StatsManager::statsPoll : unable to open pipe file [%v]", err)
 		return
 	}
 	defer pf.Close()
@@ -99,7 +111,7 @@ func (bfs *BlobfuseStats) StatsPolling() {
 	for t := range ticker.C {
 		_, err = pf.WriteString(fmt.Sprintf("Poll at %v\n", t.Format(time.RFC3339)))
 		if err != nil {
-			fmt.Printf("StatsManager::Polling : [%v]", err)
+			log.Err("StatsManager::statsPoll : [%v]", err)
 			break
 		}
 	}
@@ -110,11 +122,11 @@ func createPipe(pipe string) error {
 	if os.IsNotExist(err) {
 		err = syscall.Mkfifo(pipe, 0666)
 		if err != nil {
-			fmt.Printf("StatsReader::createPipe : unable to create pipe [%v]", err)
+			log.Err("StatsReader::createPipe : unable to create pipe [%v]", err)
 			return err
 		}
 	} else if err != nil {
-		fmt.Printf("StatsReader::createPipe : [%v]", err)
+		log.Err("StatsReader::createPipe : [%v]", err)
 		return err
 	}
 	return nil
@@ -123,8 +135,8 @@ func createPipe(pipe string) error {
 func NewBlobfuseStatsMonitor() hminternal.Monitor {
 	bfs := &BlobfuseStats{
 		pollInterval: hmcommon.BfsPollInterval,
-		transferPipe: hmcommon.TransferPipe,
-		pollingPipe:  hmcommon.PollingPipe,
+		transferPipe: common.TransferPipe,
+		pollingPipe:  common.PollingPipe,
 	}
 
 	bfs.SetName(hmcommon.Blobfuse_stats)
@@ -133,6 +145,5 @@ func NewBlobfuseStatsMonitor() hminternal.Monitor {
 }
 
 func init() {
-	fmt.Println("Inside Blobfuse stats")
 	hminternal.AddMonitor(hmcommon.Blobfuse_stats, NewBlobfuseStatsMonitor)
 }
