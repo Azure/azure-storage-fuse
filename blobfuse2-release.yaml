@@ -161,9 +161,7 @@ stages:
               tags: 'fuse3'
               container: 'test-cnt-ubn-22'
         pool:
-          name: "blobfuse-ubuntu-pool"
-          demands:
-            - ImageOverride -equals $(agentName)
+          vmImage: $(vmImage)
 
         variables:
           - group: NightlyBlobFuse
