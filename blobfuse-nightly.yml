@@ -112,6 +112,7 @@ jobs:
       # enable allow_other
       - script: |
           echo "user_allow_other" | sudo tee -a /etc/fuse.conf
+          sudo cat /etc/fuse.conf
         displayName: "Enable allow other"
       
 
@@ -695,7 +696,7 @@ jobs:
 
       # Mount container using blobFuse (block Blob)
       - script: |
-          ./build/blobfuse $(MOUNT_DIR) -o allow_other --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
+          ./build/blobfuse $(MOUNT_DIR) --tmp-path=$(TEMP_DIR) --config-file=$(BLOBFUSE_CFG) --use-attr-cache=true
         displayName: "HugeList: Mount container Block"
         condition: eq(variables.imageName, 'ubuntu-18.04')
         timeoutInMinutes: 3
@@ -1041,6 +1042,7 @@ jobs:
         # enable allow_other
         - script: |
             echo "user_allow_other" | sudo tee -a /etc/fuse.conf
+            sudo cat /etc/fuse.conf
           displayName: "Enable allow other"
 
         # Add the test work here
@@ -1242,6 +1244,7 @@ jobs:
         # enable allow_other
         - script: |
             echo "user_allow_other" | sudo tee -a /etc/fuse.conf
+            sudo cat /etc/fuse.conf
           displayName: "Enable allow other"
 
         # Add the test work here
@@ -1407,6 +1410,7 @@ jobs:
         # enable allow_other
         - script: |
             echo "user_allow_other" | sudo tee -a /etc/fuse.conf
+            sudo cat /etc/fuse.conf
           displayName: "Enable allow other"
 
         # Add the test work here
@@ -1566,6 +1570,7 @@ jobs:
         # enable allow_other
         - script: |
             echo "user_allow_other" | sudo tee -a /etc/fuse.conf
+            sudo cat /etc/fuse.conf
           displayName: "Enable allow other"
 
         # Add the test work here
@@ -1729,6 +1734,7 @@ jobs:
         # enable allow_other
         - script: |
             echo "user_allow_other" | sudo tee -a /etc/fuse.conf
+            sudo cat /etc/fuse.conf
           displayName: "Enable allow other"
 
         # Add the test work here
@@ -1928,6 +1934,7 @@ jobs:
         # enable allow_other
         - script: |
             echo "user_allow_other" | sudo tee -a /etc/fuse.conf
+            sudo cat /etc/fuse.conf
           displayName: "Enable allow other"
 
         # Add the test work here
