@@ -51,7 +51,7 @@ jobs:
         Ubuntu-18:
           imageName: 'ubuntu-18.04'
           containerName: 'test-cnt-ubn-18'
-          adlsSas: $(AZTEST_ADLS_SAS)
+          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_18)
           hostedAgent: true
           stressParallel: 3
           fuselib: 'libfuse-dev'
@@ -59,7 +59,7 @@ jobs:
         Ubuntu-20:
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
-          adlsSas: $(AZTEST_ADLS_SAS)
+          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
           hostedAgent: true
           stressParallel: 1
           fuselib: 'libfuse3-dev'
@@ -67,7 +67,7 @@ jobs:
         Ubuntu-22:
          imageName: 'ubuntu-22.04'
          containerName: 'test-cnt-ubn-22'
-         adlsSas: $(AZTEST_ADLS_SAS)
+         adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
          hostedAgent: true
          stressParallel: 1
          fuselib: 'libfuse3-dev'
