@@ -14,13 +14,15 @@ jobs:
         Ubuntu-18:
           imageName: 'ubuntu-18.04'
           containerName: 'test-cnt-ubn-18'
+          directoryName: 'test-dir-ubn-18'
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
           hostedAgent: true
           stressParallel: 3
         Ubuntu-20:
           imageName: 'ubuntu-20.04'
-          containerName: 'test-cnt-coverage'
+          containerName: 'test-cnt-ubn-20'
+          directoryName: 'test-dir-ubn-20'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
           hostedAgent: true
@@ -77,6 +79,7 @@ jobs:
           temp_dir: $(TEMP_DIR)
           gopath: $(GOPATH)
           container: $(containerName)
+          directory: $(directoryName)
           tags: $(tags)
           fuselib: $(fuselib)
 
