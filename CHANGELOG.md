@@ -10,6 +10,8 @@
 - Fixed a bug in MSI auth to send correct resource string
 - Fixed a bug in OAuth token parsing when expires_on denotes numbers of seconds
 - Fixed a bug in rmdir flow. Dont allow directory deletion if local cache says its empty. On container it might still have files.
+- Fixed a bug in background mode where auth validation would be run twice
+
 ## 2.0.0-preview.2 (2022-05-31)
 **Performance Improvements**
 - fio: Outperforms blobfuse by 10% in sequential reads

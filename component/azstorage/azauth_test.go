@@ -1,4 +1,5 @@
 // +build !authtest
+
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -35,13 +36,14 @@
 package azstorage
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -88,7 +90,11 @@ func (suite *authTestSuite) SetupTest() {
 		FileCount:   10,
 		Level:       common.ELogLevel.LOG_DEBUG(),
 	}
-	log.SetDefaultLogger("base", cfg)
+	err := log.SetDefaultLogger("base", cfg)
+	if err != nil {
+		fmt.Println("Unable to set default logger")
+		os.Exit(1)
+	}
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -774,7 +780,7 @@ func (suite *authTestSuite) TestAdlsSpn() {
 }
 
 func (suite *authTestSuite) cleanupTest() {
-	log.Destroy()
+	_ = log.Destroy()
 }
 
 func TestAuthTestSuite(t *testing.T) {

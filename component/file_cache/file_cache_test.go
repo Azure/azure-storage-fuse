@@ -34,12 +34,6 @@
 package file_cache
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/component/loopback"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
 	"math/rand"
@@ -49,6 +43,13 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -67,7 +68,7 @@ type fileCacheTestSuite struct {
 
 func newLoopbackFS() internal.Component {
 	loopback := loopback.NewLoopbackFSComponent()
-	loopback.Configure()
+	loopback.Configure(true)
 
 	return loopback
 }
@@ -76,7 +77,7 @@ func newTestFileCache(next internal.Component) *FileCache {
 
 	fileCache := NewFileCacheComponent()
 	fileCache.SetNextComponent(next)
-	err := fileCache.Configure()
+	err := fileCache.Configure(true)
 	if err != nil {
 		panic("Unable to configure file cache.")
 	}
@@ -1443,7 +1444,7 @@ func (suite *fileCacheTestSuite) TestZZMountPathConflict() {
 	fileCache := NewFileCacheComponent()
 	config.ReadConfigFromReader(strings.NewReader(configuration))
 	config.Set("mount-path", suite.cache_path)
-	err := fileCache.Configure()
+	err := fileCache.Configure(true)
 	suite.assert.NotNil(err)
 	suite.assert.Contains(err.Error(), "[tmp-path is same as mount path]")
 }

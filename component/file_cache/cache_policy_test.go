@@ -34,12 +34,13 @@
 package file_cache
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"io/fs"
 	"math"
 	"os"
 	"testing"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -79,8 +80,8 @@ func (suite *cachePolicyTestSuite) TestGetUsagePercentage() {
 	f.Write(data)
 	result := getUsagePercentage(cache_path, 4)
 	// since the value might defer a little distro to distro
-	suite.assert.Greater(result, float64(25))
-	suite.assert.Less(result, float64(30))
+	suite.assert.GreaterOrEqual(result, float64(25))
+	suite.assert.LessOrEqual(result, float64(30))
 }
 
 func (suite *cachePolicyTestSuite) TestDeleteFile() {

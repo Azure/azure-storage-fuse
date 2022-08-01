@@ -1,4 +1,5 @@
 // +build !authtest
+
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -35,11 +36,6 @@
 package azstorage
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"bytes"
 	"container/list"
 	"context"
@@ -57,6 +53,12 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-blob-go/azblob"
@@ -171,9 +173,9 @@ type blockBlobTestSuite struct {
 }
 
 func newTestAzStorage(configuration string) (*AzStorage, error) {
-	config.ReadConfigFromReader(strings.NewReader(configuration))
+	_ = config.ReadConfigFromReader(strings.NewReader(configuration))
 	az := NewazstorageComponent()
-	err := az.Configure()
+	err := az.Configure(true)
 
 	return az.(*AzStorage), err
 }
@@ -186,7 +188,7 @@ func (s *blockBlobTestSuite) SetupTest() {
 		FileCount:   10,
 		Level:       common.ELogLevel.LOG_DEBUG(),
 	}
-	log.SetDefaultLogger("base", cfg)
+	_ = log.SetDefaultLogger("base", cfg)
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -224,26 +226,26 @@ func (s *blockBlobTestSuite) setupTestHelper(configuration string, container str
 	s.assert = assert.New(s.T())
 
 	s.az, _ = newTestAzStorage(configuration)
-	s.az.Start(ctx) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
+	_ = s.az.Start(ctx) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
 	// We could create the container before but that requires rewriting the code to new up a service client.
 
 	s.serviceUrl = s.az.storage.(*BlockBlob).Service // Grab the service client to do some validation
 	s.containerUrl = s.serviceUrl.NewContainerURL(s.container)
 	if create {
-		s.containerUrl.Create(ctx, azblob.Metadata{}, azblob.PublicAccessNone)
+		_, _ = s.containerUrl.Create(ctx, azblob.Metadata{}, azblob.PublicAccessNone)
 	}
 }
 
 func (s *blockBlobTestSuite) tearDownTestHelper(delete bool) {
-	s.az.Stop()
+	_ = s.az.Stop()
 	if delete {
-		s.containerUrl.Delete(ctx, azblob.ContainerAccessConditions{})
+		_, _ = s.containerUrl.Delete(ctx, azblob.ContainerAccessConditions{})
 	}
 }
 
 func (s *blockBlobTestSuite) cleanupTest() {
 	s.tearDownTestHelper(true)
-	log.Destroy()
+	_ = log.Destroy()
 }
 
 func (s *blockBlobTestSuite) TestInvalidBlockSize() {

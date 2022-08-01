@@ -44,12 +44,12 @@ package libfuse
 // #include "extension_handler.h"
 import "C"
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"errors"
 	"fmt"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	"io"
 	"io/fs"
 	"os"
@@ -88,7 +88,7 @@ func trimFusePath(path *C.char) string {
 	return str
 }
 
-var fuse_opts C.fuse_options_t
+var fuse_opts C.fuse_options_t // nolint
 
 // convertConfig converts the config options from Go to C
 func (lf *Libfuse) convertConfig() *C.fuse_options_t {
@@ -937,6 +937,6 @@ func libfuse2_utimens(path *C.char, tv *C.timespec_t) C.int {
 func blobfuse_cache_update(path *C.char) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	go fuseFS.NextComponent().FileUsed(name)
+	go fuseFS.NextComponent().FileUsed(name) //nolint
 	return 0
 }
