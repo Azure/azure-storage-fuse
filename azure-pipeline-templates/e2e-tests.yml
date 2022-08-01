@@ -14,7 +14,8 @@ parameters:
   - name: adls
     type: boolean
   - name: sas
-    type: boolean    
+    type: boolean
+    default: false   
   - name: clone
     type: boolean
     default: "false"
