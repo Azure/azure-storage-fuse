@@ -51,7 +51,6 @@ jobs:
         Ubuntu-18:
           imageName: 'ubuntu-18.04'
           containerName: 'test-cnt-ubn-18'
-          directoryName: 'test-dir-ubn-18'
           adlsSas: $(UBUNTU-18-ADLS-SAS)
           hostedAgent: true
           stressParallel: 3
@@ -60,7 +59,6 @@ jobs:
         Ubuntu-20:
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
-          directoryName: 'test-dir-ubn-20'
           adlsSas: $(UBUNTU-20-ADLS-SAS)
           hostedAgent: true
           stressParallel: 1
@@ -136,7 +134,6 @@ jobs:
           temp_dir: $(TEMP_DIR)
           gopath: $(GOPATH)
           container: $(containerName)
-          directory: $(directoryName)
           tags: $(tags)
           fuselib: $(fuselib)
 

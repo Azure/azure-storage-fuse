@@ -51,11 +51,11 @@ import (
 
 type storageTestConfiguration struct {
 	// Get the mount path from command line argument
-	BlockAccount       string `json:"block-acct"`
-	AdlsAccount        string `json:"adls-acct"`
-	BlockContainer     string `json:"block-cont"`
-	AdlsContainer      string `json:"adls-cont"`
-	AdlsDirectory      string `json:"adls-dir"`
+	BlockAccount   string `json:"block-acct"`
+	AdlsAccount    string `json:"adls-acct"`
+	BlockContainer string `json:"block-cont"`
+	AdlsContainer  string `json:"adls-cont"`
+	// AdlsDirectory      string `json:"adls-dir"`
 	BlockContainerHuge string `json:"block-cont-huge"`
 	AdlsContainerHuge  string `json:"adls-cont-huge"`
 	BlockKey           string `json:"block-key"`
