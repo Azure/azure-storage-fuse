@@ -64,15 +64,15 @@ type storageTestConfiguration struct {
 	AdlsSas            string `json:"adls-sas"`
 	AdlsContSasUbn18   string `json:"adls-cont-sas-ubn-18"`
 	AdlsContSasUbn20   string `json:"adls-cont-sas-ubn-20"`
-	AdlsDirSasUbn18    string `json:"adls-dir-sas-ubn-18"`
-	AdlsDirSasUbn20    string `json:"adls-dir-sas-ubn-20"`
-	MsiAppId           string `json:"msi-appid"`
-	MsiResId           string `json:"msi-resid"`
-	SpnClientId        string `json:"spn-client"`
-	SpnTenantId        string `json:"spn-tenant"`
-	SpnClientSecret    string `json:"spn-secret"`
-	SkipMsi            bool   `json:"skip-msi"`
-	ProxyAddress       string `json:"proxy-address"`
+	// AdlsDirSasUbn18    string `json:"adls-dir-sas-ubn-18"`
+	// AdlsDirSasUbn20    string `json:"adls-dir-sas-ubn-20"`
+	MsiAppId        string `json:"msi-appid"`
+	MsiResId        string `json:"msi-resid"`
+	SpnClientId     string `json:"spn-client"`
+	SpnTenantId     string `json:"spn-tenant"`
+	SpnClientSecret string `json:"spn-secret"`
+	SkipMsi         bool   `json:"skip-msi"`
+	ProxyAddress    string `json:"proxy-address"`
 }
 
 var storageTestConfigurationParameters storageTestConfiguration
@@ -544,56 +544,56 @@ func (suite *authTestSuite) TestHttpAdlsContSasKey() {
 	suite.validateStorageTest("TestHttpAdlsContSasKey", stgConfig)
 }
 
-func (suite *authTestSuite) TestAdlsDirSasKey() {
-	defer suite.cleanupTest()
-	assert := assert.New(suite.T())
-	sas := ""
-	if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-18" {
-		sas = storageTestConfigurationParameters.AdlsDirSasUbn18
-	} else if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-20" {
-		sas = storageTestConfigurationParameters.AdlsDirSasUbn20
-	} else {
-		assert.Fail("TestAdlsDirSasKey : Unknown Directory for Sas Test")
-	}
-	stgConfig := AzStorageConfig{
-		container:  storageTestConfigurationParameters.AdlsContainer,
-		prefixPath: storageTestConfigurationParameters.AdlsDirectory,
-		authConfig: azAuthConfig{
-			AuthMode:    EAuthType.SAS(),
-			AccountType: EAccountType.ADLS(),
-			AccountName: storageTestConfigurationParameters.AdlsAccount,
-			SASKey:      sas,
-			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
-		},
-	}
-	suite.validateStorageTest("TestAdlsDirSasKey", stgConfig)
-}
+// func (suite *authTestSuite) TestAdlsDirSasKey() {
+// 	defer suite.cleanupTest()
+// 	assert := assert.New(suite.T())
+// 	sas := ""
+// 	if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-18" {
+// 		sas = storageTestConfigurationParameters.AdlsDirSasUbn18
+// 	} else if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-20" {
+// 		sas = storageTestConfigurationParameters.AdlsDirSasUbn20
+// 	} else {
+// 		assert.Fail("TestAdlsDirSasKey : Unknown Directory for Sas Test")
+// 	}
+// 	stgConfig := AzStorageConfig{
+// 		container:  storageTestConfigurationParameters.AdlsContainer,
+// 		prefixPath: storageTestConfigurationParameters.AdlsDirectory,
+// 		authConfig: azAuthConfig{
+// 			AuthMode:    EAuthType.SAS(),
+// 			AccountType: EAccountType.ADLS(),
+// 			AccountName: storageTestConfigurationParameters.AdlsAccount,
+// 			SASKey:      sas,
+// 			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+// 		},
+// 	}
+// 	suite.validateStorageTest("TestAdlsDirSasKey", stgConfig)
+// }
 
-func (suite *authTestSuite) TestHttpAdlsDirSasKey() {
-	defer suite.cleanupTest()
-	assert := assert.New(suite.T())
-	sas := ""
-	if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-18" {
-		sas = storageTestConfigurationParameters.AdlsDirSasUbn18
-	} else if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-20" {
-		sas = storageTestConfigurationParameters.AdlsDirSasUbn20
-	} else {
-		assert.Fail("TestHttpAdlsDirSasKey : Unknown Directory for Sas Test")
-	}
-	stgConfig := AzStorageConfig{
-		container:  storageTestConfigurationParameters.AdlsContainer,
-		prefixPath: storageTestConfigurationParameters.AdlsDirectory,
-		authConfig: azAuthConfig{
-			AuthMode:    EAuthType.SAS(),
-			AccountType: EAccountType.ADLS(),
-			AccountName: storageTestConfigurationParameters.AdlsAccount,
-			SASKey:      sas,
-			UseHTTP:     true,
-			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
-		},
-	}
-	suite.validateStorageTest("TestHttpAdlsDirSasKey", stgConfig)
-}
+// func (suite *authTestSuite) TestHttpAdlsDirSasKey() {
+// 	defer suite.cleanupTest()
+// 	assert := assert.New(suite.T())
+// 	sas := ""
+// 	if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-18" {
+// 		sas = storageTestConfigurationParameters.AdlsDirSasUbn18
+// 	} else if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-20" {
+// 		sas = storageTestConfigurationParameters.AdlsDirSasUbn20
+// 	} else {
+// 		assert.Fail("TestHttpAdlsDirSasKey : Unknown Directory for Sas Test")
+// 	}
+// 	stgConfig := AzStorageConfig{
+// 		container:  storageTestConfigurationParameters.AdlsContainer,
+// 		prefixPath: storageTestConfigurationParameters.AdlsDirectory,
+// 		authConfig: azAuthConfig{
+// 			AuthMode:    EAuthType.SAS(),
+// 			AccountType: EAccountType.ADLS(),
+// 			AccountName: storageTestConfigurationParameters.AdlsAccount,
+// 			SASKey:      sas,
+// 			UseHTTP:     true,
+// 			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+// 		},
+// 	}
+// 	suite.validateStorageTest("TestHttpAdlsDirSasKey", stgConfig)
+// }
 
 func (suite *authTestSuite) TestAdlsSasKeySetOption() {
 	defer suite.cleanupTest()
