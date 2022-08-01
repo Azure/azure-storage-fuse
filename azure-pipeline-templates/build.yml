@@ -14,8 +14,6 @@ parameters:
     type: string
   - name: container
     type: string
-  - name: directory
-    type: string
   - name: skip_msi
     type: string
     default: "true"
@@ -113,7 +111,6 @@ steps:
       echo "\"adls-acct\"": "\"$(AZTEST_ADLS_ACC_NAME)\"", >> $cnfFile
       echo "\"block-cont\"": "\"${{ parameters.container }}\"", >> $cnfFile
       echo "\"adls-cont\"": "\"${{ parameters.container }}\"", >> $cnfFile
-      echo "\"adls-dir\"": "\"${{ parameters.directory }}\"", >> $cnfFile
       echo "\"block-key\"": "\"$(AZTEST_BLOCK_KEY)\"", >> $cnfFile
       echo "\"adls-key\"": "\"$(AZTEST_ADLS_KEY)\"", >> $cnfFile
       echo "\"block-sas\"": "\"$(AZTEST_BLOCK_SAS)\"", >> $cnfFile
@@ -122,8 +119,6 @@ steps:
       echo "\"adls-sas\"": "\"$(AZTEST_ADLS_SAS)\"", >> $cnfFile
       echo "\"adls-cont-sas-ubn-18\"": "\"$(AZTEST_ADLS_CONT_SAS_UBN_18)\"", >> $cnfFile
       echo "\"adls-cont-sas-ubn-20\"": "\"$(AZTEST_ADLS_CONT_SAS_UBN_20)\"", >> $cnfFile
-      echo "\"adls-dir-sas-ubn-18\"": "\"$(AZTEST_ADLS_DIR_SAS_UBN_18)\"", >> $cnfFile
-      echo "\"adls-dir-sas-ubn-20\"": "\"$(AZTEST_ADLS_DIR_SAS_UBN_20)\"", >> $cnfFile
       echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
       echo "\"spn-client\"": "\"$(AZTEST_CLIENT)\"", >> $cnfFile
