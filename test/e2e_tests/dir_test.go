@@ -54,6 +54,7 @@ type dirTestSuite struct {
 	suite.Suite
 	testPath string
 	adlsTest bool
+	sasTest  bool
 	minBuff  []byte
 	medBuff  []byte
 	hugeBuff []byte
@@ -61,6 +62,7 @@ type dirTestSuite struct {
 
 var pathPtr string
 var adlsPtr string
+var sasPtr string
 var clonePtr string
 
 func regDirTestFlag(p *string, name string, value string, usage string) {
@@ -76,6 +78,7 @@ func getDirTestFlag(name string) string {
 func initDirFlags() {
 	pathPtr = getDirTestFlag("mnt-path")
 	adlsPtr = getDirTestFlag("adls")
+	sasPtr = getDirTestFlag("sas")
 	clonePtr = getDirTestFlag("clone")
 }
 
@@ -272,7 +275,7 @@ func (suite *dirTestSuite) TestDirGetStats() {
 
 // # Change mod of directory
 func (suite *dirTestSuite) TestDirChmod() {
-	if suite.adlsTest == true {
+	if suite.adlsTest == true && suite.sasTest == false {
 		dirName := suite.testPath + "/test3"
 		err := os.Mkdir(dirName, 0777)
 		suite.Equal(nil, err)
@@ -429,6 +432,11 @@ func TestDirTestSuite(t *testing.T) {
 		fmt.Println("BLOCK Blob Testing...")
 	}
 
+	if sasPtr == "true" || sasPtr == "True" {
+		fmt.Println("SAS Testing...")
+		dirTest.sasTest = true
+	}
+
 	// Sanity check in the off chance the same random name was generated twice and was still around somehow
 	err := os.RemoveAll(dirTest.testPath)
 	if err != nil {
@@ -453,5 +461,6 @@ func TestDirTestSuite(t *testing.T) {
 func init() {
 	regDirTestFlag(&pathPtr, "mnt-path", "", "Mount Path of Container")
 	regDirTestFlag(&adlsPtr, "adls", "", "Account is ADLS or not")
+	regDirTestFlag(&sasPtr, "sas", "", "Auth is SAS or not")
 	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enable or not")
 }
