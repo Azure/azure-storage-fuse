@@ -357,7 +357,7 @@ func (suite *fileTestSuite) TestFileGetStat() {
 
 // # Change mod of file
 func (suite *fileTestSuite) TestFileChmod() {
-	if suite.adlsTest && {
+	if suite.adlsTest {
 		fileName := suite.testPath + "/test"
 		f, err := os.Create(fileName)
 		suite.Equal(nil, err)
