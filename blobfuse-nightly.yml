@@ -1092,7 +1092,7 @@ jobs:
           displayName: "Mount Blobfuse"
 
         - script: | 
-            sudo rm -rf $(MOUNT_DIR)/*  
+            sudo rm -rf $(MOUNT_DIR)/*
             cd test
             go test -v -timeout=30m feature_test.go -args -mnt-path=$(MOUNT_DIR) -adls=true
           workingDirectory: $(ROOT_DIR)
@@ -1241,11 +1241,11 @@ jobs:
           displayName: "Test the binary"
           workingDirectory: $(ROOT_DIR)
 
-        # enable allow_other
-        - script: |
-            echo "user_allow_other" | sudo tee -a /etc/fuse.conf
-            sudo cat /etc/fuse.conf
-          displayName: "Enable allow other"
+        # enable allow_other - commenting it for Debian-9.0, since it is a self hosted VM and needs this step to be run once
+        # - script: |
+        #     echo "user_allow_other" | sudo tee -a /etc/fuse.conf
+        #     sudo cat /etc/fuse.conf
+        #   displayName: "Enable allow other"
 
         # Add the test work here
         # Create directory structures for the basic testing
