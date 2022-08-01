@@ -56,7 +56,6 @@ jobs:
           stressParallel: 3
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
-          sasValidate: true
         Ubuntu-20:
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
@@ -65,7 +64,6 @@ jobs:
           stressParallel: 1
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
-          sasValidate: true
         Ubuntu-22:
          imageName: 'ubuntu-22.04'
          containerName: 'test-cnt-ubn-22'
@@ -74,7 +72,6 @@ jobs:
          stressParallel: 1
          fuselib: 'libfuse3-dev'
          tags: 'fuse3'
-         sasValidate: false
     pool:
       vmImage: $(imageName)
 
