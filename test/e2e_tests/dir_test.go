@@ -275,7 +275,7 @@ func (suite *dirTestSuite) TestDirGetStats() {
 
 // # Change mod of directory
 func (suite *dirTestSuite) TestDirChmod() {
-	if suite.adlsTest == true && suite.sasTest == false {
+	if suite.adlsTest == true {
 		dirName := suite.testPath + "/test3"
 		err := os.Mkdir(dirName, 0777)
 		suite.Equal(nil, err)
