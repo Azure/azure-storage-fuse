@@ -374,6 +374,28 @@ jobs:
         workingDirectory: $(WORK_DIR)
         displayName: "CLI : Config change simulator"
 
+      # Secure Config, fine to use insecure passphrase as this is just for testing
+      - script: |
+          rm -rf $(MOUNT_DIR)/*
+          rm -rf $(TEMP_DIR)/*
+          ./blobfuse2 unmount all
+          
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_secure.cov secure encrypt --config-file=$(BLOBFUSE2_CFG) --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
+          if [ $? -ne 0 ]; then
+            exit 1
+          fi
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_secure.cov mount $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 &
+          sleep 10
+          ps -aux | grep blobfuse2
+          rm -rf $(MOUNT_DIR)/*
+          cd test/e2e_tests
+          go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -adls=true -tmp-path=$(TEMP_DIR)
+          cd -
+          ./blobfuse2 unmount all
+          sleep 5
+        workingDirectory: $(WORK_DIR)
+        displayName: "CLI : Secure Config"
+
       # -------------------------------------------------------
       # Coverage report consolidation
       - script: |
