@@ -34,12 +34,25 @@
 package common
 
 import (
-	"crypto/rand"
+	"fmt"
+	"math/rand"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
+
+var home_dir, _ = os.UserHomeDir()
+
+func randomString(length int) string {
+	rand.Seed(time.Now().UnixNano())
+	b := make([]byte, length)
+	rand.Read(b)
+	return fmt.Sprintf("%x", b)[:length]
+}
 
 type utilTestSuite struct {
 	suite.Suite
@@ -52,6 +65,34 @@ func (suite *utilTestSuite) SetupTest() {
 
 func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
+}
+
+func (suite *typesTestSuite) TestDirectoryExists() {
+	rand := randomString(8)
+	dir := filepath.Join(home_dir, "dir"+rand)
+	os.MkdirAll(dir, 0777)
+	defer os.RemoveAll(dir)
+
+	exists := DirectoryExists(dir)
+	suite.assert.True(exists)
+}
+
+func (suite *typesTestSuite) TestDirectoryDoesNotExist() {
+	rand := randomString(8)
+	dir := filepath.Join(home_dir, "dir"+rand)
+
+	exists := DirectoryExists(dir)
+	suite.assert.False(exists)
+}
+
+func (suite *typesTestSuite) TestDirectoryDoesNotExistFile() {
+	rand := randomString(8)
+	file := filepath.Join(home_dir, "file"+rand)
+	os.Create(file)
+	defer os.Remove(file)
+
+	exists := DirectoryExists(file)
+	suite.assert.False(exists)
 }
 
 func (suite *typesTestSuite) TestEncryptBadKey() {
