@@ -52,24 +52,18 @@ jobs:
           imageName: 'ubuntu-18.04'
           containerName: 'test-cnt-ubn-18'
           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_18)
-          hostedAgent: true
-          stressParallel: 3
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
         Ubuntu-20:
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
-          hostedAgent: true
-          stressParallel: 1
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
         Ubuntu-22:
          imageName: 'ubuntu-22.04'
          containerName: 'test-cnt-ubn-22'
          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
-         hostedAgent: true
-         stressParallel: 1
          fuselib: 'libfuse3-dev'
          tags: 'fuse3'
     pool:
@@ -221,8 +215,6 @@ jobs:
           Ubuntu-20-Proxy:
             imageName: 'ubuntu-20.04'
             containerName: 'test-cnt-ubn-18-proxy'
-            hostedAgent: true
-            stressParallel: 3
       pool:
         vmImage: $(imageName)
 
@@ -677,7 +669,6 @@ jobs:
           AgentName: "DEB 9.0"
           Description: "Debian Linux 9.0 Gen 1"
           containerName: 'test-cnt-deb-9'
-          hostedAgent: false
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
     pool:
@@ -1030,7 +1021,6 @@ jobs:
               root_dir: $(ROOT_DIR)
               mount_dir: $(MOUNT_DIR)
               temp_dir: $(TEMP_DIR)
-              hostedAgent: false
               gopath: $(GOPATH)
               container: $(containerName)
               skip_msi: "false"

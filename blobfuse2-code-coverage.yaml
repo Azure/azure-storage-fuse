@@ -16,15 +16,11 @@ jobs:
           containerName: 'test-cnt-ubn-18'
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
-          hostedAgent: true
-          stressParallel: 3
         Ubuntu-20:
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-coverage'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
-          hostedAgent: true
-          stressParallel: 1
     pool:
       vmImage: $(imageName)
 
