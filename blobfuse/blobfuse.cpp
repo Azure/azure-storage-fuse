@@ -469,11 +469,11 @@ void *azs_init(struct fuse_conn_info * conn)
         std::shared_ptr<OAuthTokenCredentialManager> tokenManager;
         if (config_options.caCertFile.empty())
         {
-            tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.debug_libcurl);
+            tokenManager = GetTokenManagerInstance(EmptyCallback);
         }
         else
         {
-            tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.debug_libcurl, config_options.caCertFile, config_options.httpsProxy);        }
+            tokenManager = GetTokenManagerInstance(EmptyCallback, config_options.caCertFile, config_options.httpsProxy);        }
 
         tokenManager->StartTokenMonitor();
     }
@@ -1223,14 +1223,14 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         } 
     }
 
-    config_options.debug_libcurl = false;
+    gEnableDebugLibcurl = false;
     if(cmd_options.debug_libcurl != NULL)
     {
         std::string debug(cmd_options.debug_libcurl);
         if(debug == "true")
         {
             syslog(LOG_INFO, "Debug libcurl is turned on");
-            config_options.debug_libcurl = true;
+            gEnableDebugLibcurl = true;
         } 
     }
 

@@ -56,10 +56,9 @@ public:
     
     adls_client_ext(
                 std::shared_ptr<storage_account> account, 
-                int max_concurrency, 
-                bool debug_libcurl,
+                int max_concurrency,
                 bool exception_enabled = true) :
-                adls_client(account, max_concurrency, debug_libcurl, exception_enabled),
+                adls_client(account, max_concurrency, exception_enabled),
                 maxConcurrency(max_concurrency)
     {
 
@@ -70,9 +69,8 @@ public:
                 int max_concurrency, 
                 std::string ca_path,
                 std::string https_proxy,
-                bool debug_libcurl,
                 bool exception_enabled = true) :
-                adls_client(account, max_concurrency, ca_path, https_proxy, debug_libcurl, exception_enabled),
+                adls_client(account, max_concurrency, ca_path, https_proxy, exception_enabled),
                 maxConcurrency(max_concurrency)
     {
 

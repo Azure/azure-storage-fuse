@@ -15,9 +15,9 @@
 
 using nlohmann::json;
 
-std::string GetTokenCallback(bool debug_libcurl)
+std::string GetTokenCallback()
 {
-    std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(EmptyCallback, debug_libcurl);
+    std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(EmptyCallback);
     OAuthToken temp_token = tokenManager->get_token();
     return temp_token.access_token;
 }
@@ -28,7 +28,7 @@ std::string GetTokenCallback(bool debug_libcurl)
 /// If no callback is supplied and the token manager doesn't exist, this function will throw.
 /// No callback is necessary to get the current instance.
 /// </summary>
-std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> defaultCallback, bool debug_libcurl, const std::string& caCertFile, const std::string& httpsProxy) {
+std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> defaultCallback, const std::string& caCertFile, const std::string& httpsProxy) {
     if(TokenManagerSingleton == nullptr) {
         if (defaultCallback == nullptr) {
             throw std::runtime_error("Tried to initialize the OAuthTokenCredentialManager, but failed because the default callback was empty!");
@@ -36,11 +36,11 @@ std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::functi
 
         if (caCertFile.empty())
         {
-            TokenManagerSingleton = std::make_shared<OAuthTokenCredentialManager>(defaultCallback, debug_libcurl);
+            TokenManagerSingleton = std::make_shared<OAuthTokenCredentialManager>(defaultCallback);
         }
         else
         {
-            TokenManagerSingleton = std::make_shared<OAuthTokenCredentialManager>(defaultCallback, caCertFile, httpsProxy, debug_libcurl);
+            TokenManagerSingleton = std::make_shared<OAuthTokenCredentialManager>(defaultCallback, caCertFile, httpsProxy);
         }
     }
 
@@ -51,9 +51,9 @@ std::shared_ptr<OAuthTokenCredentialManager> GetTokenManagerInstance(std::functi
 /// OauthTokenCredentialManager Constructor
 /// </summary>
 OAuthTokenCredentialManager::OAuthTokenCredentialManager(
-    std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback, bool debug_libcurl)
+    std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback)
 {
-    httpClient = std::make_shared<CurlEasyClient>(blobfuse_constants::max_concurrency_oauth, debug_libcurl);
+    httpClient = std::make_shared<CurlEasyClient>(blobfuse_constants::max_concurrency_oauth);
     Init(refreshCallback);
 }
 
@@ -61,9 +61,9 @@ OAuthTokenCredentialManager::OAuthTokenCredentialManager(
 /// OauthTokenCredentialManager Constructor
 /// </summary>
 OAuthTokenCredentialManager::OAuthTokenCredentialManager(
-    std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback, const std::string& caCertFile, const std::string& httpsProxy, bool debug_libcurl)
+    std::function<OAuthToken(std::shared_ptr<CurlEasyClient>)> refreshCallback, const std::string& caCertFile, const std::string& httpsProxy)
 {
-    httpClient = std::make_shared<CurlEasyClient>(blobfuse_constants::max_concurrency_oauth, caCertFile, httpsProxy, debug_libcurl);
+    httpClient = std::make_shared<CurlEasyClient>(blobfuse_constants::max_concurrency_oauth, caCertFile, httpsProxy);
     Init(refreshCallback);
 }
 

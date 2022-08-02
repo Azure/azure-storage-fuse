@@ -70,7 +70,7 @@ namespace azure { namespace storage_lite {
             {
                 check_code(curl_easy_setopt(m_curl, CURLOPT_PROXY, m_client->get_proxy().data()));
             }
-            if (m_client->debug_libcurl())
+            if (gEnableDebugLibcurl)
             {
                 check_code(curl_easy_setopt(m_curl, CURLOPT_VERBOSE, 1L));
                 check_code(curl_easy_setopt(m_curl, CURLOPT_DEBUGFUNCTION, debug_callback));

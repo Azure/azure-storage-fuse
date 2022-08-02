@@ -61,14 +61,14 @@ namespace azure {  namespace storage_lite {
         static mempool mpool;
         off_t get_file_size(const char* path);
 
-        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency, const bool debug_libcurl)
+        blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency)
         {
-            return blob_client_wrapper_init(account_name, account_key, sas_token, concurrency, false, NULL, debug_libcurl);
+            return blob_client_wrapper_init(account_name, account_key, sas_token, concurrency, false, NULL);
         }
 
 
         blob_client_wrapper blob_client_wrapper::blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token,  const unsigned int concurrency, const bool use_https, 
-                                                                          const std::string &blob_endpoint, const bool debug_libcurl)
+                                                                          const std::string &blob_endpoint)
         {
             if(account_name.empty() || ((account_key.empty() && sas_token.empty()) || (!account_key.empty() && !sas_token.empty())))
             {
@@ -98,7 +98,7 @@ namespace azure {  namespace storage_lite {
                     cred = std::make_shared<shared_access_signature_credential>(sas_token);
                 }
                 std::shared_ptr<storage_account> account = std::make_shared<storage_account>(accountName, cred, use_https, blob_endpoint);
-                std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit, debug_libcurl);
+                std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit);
                 errno = 0;
                 return blob_client_wrapper(blobClient);
             }

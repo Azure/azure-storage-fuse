@@ -44,7 +44,7 @@ namespace azure { namespace storage_lite {
             
             if (config_options.caCertFile.empty())
             {
-                std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit, config_options.debug_libcurl);
+                std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit);
                 errno = 0;
                 return std::make_shared<blob_client_wrapper>(blobClient);
             }
@@ -53,8 +53,7 @@ namespace azure { namespace storage_lite {
                 std::shared_ptr<blob_client> blobClient= std::make_shared<azure::storage_lite::blob_client>(account,
                  concurrency_limit, 
                  config_options.caCertFile,
-                 config_options.httpsProxy,
-                 config_options.debug_libcurl);
+                 config_options.httpsProxy);
                 errno = 0;
                 return std::make_shared<blob_client_wrapper>(blobClient);
             }
@@ -99,14 +98,13 @@ namespace azure { namespace storage_lite {
             std::shared_ptr<blob_client> blobClient;
             if (config_options.caCertFile.empty())
             {
-                blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit, config_options.debug_libcurl);
+                blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit);
             }
             else
             {
                 blobClient= std::make_shared<azure::storage_lite::blob_client>(account, concurrency_limit, 
                 config_options.caCertFile,
-                config_options.httpsProxy,
-                config_options.debug_libcurl);
+                config_options.httpsProxy);
             }
             errno = 0;
             return std::make_shared<blob_client_wrapper>(blobClient);
@@ -144,7 +142,7 @@ namespace azure { namespace storage_lite {
             {
                 std::shared_ptr<blob_client> blobClient= 
                 std::make_shared<azure::storage_lite::blob_client>(account, 
-                concurrency_limit, config_options.debug_libcurl);
+                concurrency_limit);
                 errno = 0;
                 return std::make_shared<blob_client_wrapper>(blobClient);
             }
@@ -154,8 +152,7 @@ namespace azure { namespace storage_lite {
                 std::make_shared<azure::storage_lite::blob_client>(account, 
                 concurrency_limit, 
                 config_options.caCertFile,
-                config_options.httpsProxy,
-                config_options.debug_libcurl);
+                config_options.httpsProxy);
                 errno = 0;
                 return std::make_shared<blob_client_wrapper>(blobClient);
             }

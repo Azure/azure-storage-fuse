@@ -18,12 +18,12 @@ namespace azure { namespace storage_adls {
     using azure::storage_lite::storage_outcome;
     namespace constants = azure::storage_lite::constants;
 
-    adls_client::adls_client(std::shared_ptr<storage_account> account, int max_concurrency, bool debug_libcurl, bool exception_enabled) : m_account(account), m_blob_client(std::make_shared<azure::storage_lite::blob_client>(account, max_concurrency, debug_libcurl)), m_context(m_blob_client->context()), m_exception_enabled(exception_enabled)
+    adls_client::adls_client(std::shared_ptr<storage_account> account, int max_concurrency, bool exception_enabled) : m_account(account), m_blob_client(std::make_shared<azure::storage_lite::blob_client>(account, max_concurrency)), m_context(m_blob_client->context()), m_exception_enabled(exception_enabled)
     {
         m_context->set_json_parser(std::make_shared<nlohmann_json_parser>());
     }
 
-    adls_client::adls_client(std::shared_ptr<storage_account> account, int max_concurrency, const std::string& ca_path, const std::string& https_proxy, bool debug_libcurl, bool exception_enabled) : m_account(account), m_blob_client(std::make_shared<azure::storage_lite::blob_client>(account, max_concurrency, ca_path, https_proxy, debug_libcurl)), m_context(m_blob_client->context()), m_exception_enabled(exception_enabled)
+    adls_client::adls_client(std::shared_ptr<storage_account> account, int max_concurrency, const std::string& ca_path, const std::string& https_proxy, bool exception_enabled) : m_account(account), m_blob_client(std::make_shared<azure::storage_lite::blob_client>(account, max_concurrency, ca_path, https_proxy)), m_context(m_blob_client->context()), m_exception_enabled(exception_enabled)
     {
         m_context->set_json_parser(std::make_shared<nlohmann_json_parser>());
     }

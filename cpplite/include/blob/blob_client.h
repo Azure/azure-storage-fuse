@@ -33,12 +33,11 @@ namespace azure { namespace storage_lite {
         /// </summary>
         /// <param name="account">An existing <see cref="azure::storage_lite::storage_account" /> object.</param>
         /// <param name="max_concurrency">An int value indicates the maximum concurrency expected during execute requests against the service.</param>
-        /// <param name="debug_libcurl">True if libcurl debug logging is to be enabled.</param>
-        blob_client(std::shared_ptr<storage_account> account, int max_concurrency, bool debug_libcurl)
+        blob_client(std::shared_ptr<storage_account> account, int max_concurrency)
             : m_account(account)
         {
             m_context = std::make_shared<executor_context>(std::make_shared<tinyxml2_parser>(), std::make_shared<retry_policy>());
-            m_client = std::make_shared<CurlEasyClient>(max_concurrency, debug_libcurl);
+            m_client = std::make_shared<CurlEasyClient>(max_concurrency);
         }
 
         /// <summary>
@@ -47,12 +46,11 @@ namespace azure { namespace storage_lite {
         /// <param name="account">An existing <see cref="azure::storage_lite::storage_account" /> object.</param>
         /// <param name="max_concurrency">An int value indicates the maximum concurrency expected during execute requests against the service.</param>
         /// <param name="ca_path">A string value with absolute path to CA bundle location.</param>
-        /// <param name="debug_libcurl">True if libcurl debug logging is to be enabled.</param>
-        blob_client(std::shared_ptr<storage_account> account, int max_concurrency, const std::string& ca_path, const std::string& https_proxy, bool debug_libcurl)
+        blob_client(std::shared_ptr<storage_account> account, int max_concurrency, const std::string& ca_path, const std::string& https_proxy)
             : m_account(account)
         {
             m_context = std::make_shared<executor_context>(std::make_shared<tinyxml2_parser>(), std::make_shared<retry_policy>());
-            m_client = std::make_shared<CurlEasyClient>(max_concurrency, ca_path, https_proxy, debug_libcurl);
+            m_client = std::make_shared<CurlEasyClient>(max_concurrency, ca_path, https_proxy);
         }
 
         /// <summary>
@@ -416,9 +414,8 @@ namespace azure { namespace storage_lite {
         /// <param name="account_key">The storage account key.</param>
 	    /// <param name="sas_token">A sas token for the container.</param>
         /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
-        /// <param name="debug_libcurl">True if libcurl debug logging is to be enabled.</param>
         /// <returns>Return a <see cref="azure::storage_lite::blob_client_wrapper"> object.</returns>
-        AZURE_STORAGE_API static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency, bool debug_libcurl);
+        AZURE_STORAGE_API static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency);
 
         /// <summary>
         /// Constructs a blob client wrapper from storage account credential.
@@ -429,10 +426,9 @@ namespace azure { namespace storage_lite {
         /// <param name="concurrency">The maximum number requests could be executed in the same time.</param>
         /// <param name="use_https">True if https should be used (instead of HTTP).  Note that this may cause a sizable perf loss, due to issues in libcurl.</param>
         /// <param name="blob_endpoint">Blob endpoint URI to allow non-public clouds as well as custom domains.</param>
-        /// <param name="debug_libcurl">True if libcurl debug logging is to be enabled.</param>
         /// <returns>Return a <see cref="azure::storage_lite::blob_client_wrapper"> object.</returns>
         AZURE_STORAGE_API static blob_client_wrapper blob_client_wrapper_init(const std::string &account_name, const std::string &account_key, const std::string &sas_token, const unsigned int concurrency, bool use_https,
-							    const std::string &blob_endpoint, bool debug_libcurl);
+							    const std::string &blob_endpoint);
         /* C++ wrappers without exception but error codes instead */
 
         /* container level*/

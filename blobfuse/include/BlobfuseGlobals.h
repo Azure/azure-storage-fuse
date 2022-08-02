@@ -61,7 +61,6 @@ struct configParams
     bool useADLS;
     bool noSymlinks;
     bool cacheOnList;
-    bool debug_libcurl;
     //this is set by the --allow-other flag,
     // 0770 if not set, 0777 if the flag is set
     int defaultPermission;

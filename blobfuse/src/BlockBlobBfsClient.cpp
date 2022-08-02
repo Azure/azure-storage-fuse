@@ -100,8 +100,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accou
         {
             blobClient = std::make_shared<blob_client>(
             account,
-            configurations.concurrency,
-            config_options.debug_libcurl);
+            configurations.concurrency);
         }
         else
         {
@@ -109,8 +108,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_accou
             account,
             configurations.concurrency,
             configurations.caCertFile,
-            configurations.httpsProxy,
-            config_options.debug_libcurl);
+            configurations.httpsProxy);
         }
         errno = 0;
         return std::make_shared<blob_client_wrapper>(blobClient);
@@ -146,8 +144,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_sas()
         {
             blobClient = std::make_shared<blob_client>(
             account,
-            configurations.concurrency,
-            config_options.debug_libcurl);
+            configurations.concurrency);
         }
         else
         {
@@ -155,8 +152,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_sas()
             account,
             configurations.concurrency,
             configurations.caCertFile,
-            configurations.httpsProxy,
-            config_options.debug_libcurl);
+            configurations.httpsProxy);
         }
         errno = 0;
         return std::make_shared<blob_client_wrapper>(blobClient);
@@ -181,7 +177,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
             configurations.msiEndpoint,
             configurations.msiSecret);
 
-        std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback, config_options.debug_libcurl);
+        std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(MSICallback);
 
         if (!tokenManager->is_valid_connection())
         {
@@ -205,8 +201,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
         {
             blobClient = std::make_shared<blob_client>(
             account,
-            configurations.concurrency,
-            config_options.debug_libcurl);
+            configurations.concurrency);
         }
         else
         {
@@ -214,8 +209,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_msi()
             account,
             configurations.concurrency,
             configurations.caCertFile,
-            configurations.httpsProxy,
-            config_options.debug_libcurl);
+            configurations.httpsProxy);
         }
         errno = 0;
         return std::make_shared<blob_client_wrapper>(blobClient);
@@ -239,7 +233,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
             configurations.spnClientSecret,
             configurations.aadEndpoint);
 
-        std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(SPNCallback, config_options.debug_libcurl);
+        std::shared_ptr<OAuthTokenCredentialManager> tokenManager = GetTokenManagerInstance(SPNCallback);
 
         if (!tokenManager->is_valid_connection())
         {
@@ -265,8 +259,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
         {
             blobClient = std::make_shared<blob_client>(
             account,
-            configurations.concurrency,
-            config_options.debug_libcurl);
+            configurations.concurrency);
         }
         else
         {
@@ -274,8 +267,7 @@ std::shared_ptr<blob_client_wrapper> BlockBlobBfsClient::authenticate_blob_spn()
             account,
             configurations.concurrency,
             configurations.caCertFile,
-            configurations.httpsProxy,
-            config_options.debug_libcurl);
+            configurations.httpsProxy);
         }
         errno = 0;
         return std::make_shared<blob_client_wrapper>(blobClient);
