@@ -360,6 +360,9 @@ D_RETURN_CODE DataLakeBfsClient::IsDirectoryEmpty(std::string path)
             success = true;
             failcount = 0;
             continuation = pathsResult.continuation_token;
+            if (pathsResult.paths.size() == 0 && continuation.empty()) {
+                return D_EMPTY;
+            }
             if (pathsResult.paths.size() > 1) {
                 return D_NOTEMPTY;
             }
