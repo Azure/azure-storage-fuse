@@ -54,6 +54,30 @@ func TestUtil(t *testing.T) {
 	suite.Run(t, new(utilTestSuite))
 }
 
+func (suite *typesTestSuite) TestEncryptBadKey() {
+	// Generate a random key
+	key := make([]byte, 20)
+	rand.Read(key)
+
+	data := make([]byte, 1024)
+	rand.Read(data)
+
+	_, err := EncryptData(data, key)
+	suite.assert.NotNil(err)
+}
+
+func (suite *typesTestSuite) TestDecryptBadKey() {
+	// Generate a random key
+	key := make([]byte, 20)
+	rand.Read(key)
+
+	data := make([]byte, 1024)
+	rand.Read(data)
+
+	_, err := DecryptData(data, key)
+	suite.assert.NotNil(err)
+}
+
 func (suite *typesTestSuite) TestEncryptDecrypt() {
 	// Generate a random key
 	key := make([]byte, 16)
@@ -68,5 +92,4 @@ func (suite *typesTestSuite) TestEncryptDecrypt() {
 	d, err := DecryptData(cipher, key)
 	suite.assert.Nil(err)
 	suite.assert.EqualValues(data, d)
-
 }
