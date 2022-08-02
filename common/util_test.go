@@ -85,16 +85,6 @@ func (suite *typesTestSuite) TestDirectoryDoesNotExist() {
 	suite.assert.False(exists)
 }
 
-func (suite *typesTestSuite) TestDirectoryDoesNotExistFile() {
-	rand := randomString(8)
-	file := filepath.Join(home_dir, "file"+rand)
-	os.Create(file)
-	defer os.Remove(file)
-
-	exists := DirectoryExists(file)
-	suite.assert.False(exists)
-}
-
 func (suite *typesTestSuite) TestEncryptBadKey() {
 	// Generate a random key
 	key := make([]byte, 20)
