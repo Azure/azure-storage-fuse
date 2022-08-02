@@ -245,13 +245,13 @@ stages:
         variables:
           - group: NightlyBlobFuse
           - name: root_dir
-            value: '$(System.DefaultWorkingDirectory)'
+            value: "/home/vsts/workv2"
           - name: work_dir
-            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+            value: "/home/vsts/workv2/go/src/azure-storage-fuse"
           - name: mount_dir
-            value: '$(System.DefaultWorkingDirectory)/fusetmp'
+            value: "/home/vsts/workv2/blob_mnt"
           - name: temp_dir
-            value: '$(System.DefaultWorkingDirectory)/fusetmpcache'
+            value: "/home/vsts/workv2/blobfuse2tmp"
 
         steps:
           - checkout: none
@@ -292,13 +292,13 @@ stages:
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
 
-          # - template: 'azure-pipeline-templates/release-distro-tests.yml'
-          #   parameters:
-          #     root_dir: $(root_dir)
-          #     work_dir: $(work_dir)
-          #     mount_dir: $(mount_dir)
-          #     temp_dir: $(temp_dir)
-          #     container: $(container)
+          - template: 'azure-pipeline-templates/release-distro-tests.yml'
+            parameters:
+              root_dir: $(root_dir)
+              work_dir: $(work_dir)
+              mount_dir: $(mount_dir)
+              temp_dir: $(temp_dir)
+              container: $(container)
 
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
