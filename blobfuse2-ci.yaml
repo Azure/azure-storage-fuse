@@ -17,16 +17,19 @@ jobs:
           containerName: 'test-cnt-ubn-18'
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
+          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_18)
         Ubuntu-20:
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
+          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
         Ubuntu-22:
           imageName: 'ubuntu-22.04'
           containerName: 'test-cnt-ubn-22'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
+          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
   
     pool:
       vmImage: $(imageName)
@@ -73,7 +76,7 @@ jobs:
         echo "\"block-key\"": "\"$(AZTEST_BLOCK_KEY)\"", >> $cnfFile
         echo "\"adls-key\"": "\"$(AZTEST_ADLS_KEY)\"", >> $cnfFile
         echo "\"block-sas\"": "\"$(AZTEST_BLOCK_SAS)\"", >> $cnfFile
-        echo "\"adls-sas\"": "\"$(AZTEST_ADLS_SAS)\"", >> $cnfFile
+        echo "\"adls-sas\"": "\"$(adlsSas)\"", >> $cnfFile
         echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
         echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
         echo "\"spn-client\"": "\"$(AZTEST_CLIENT)\"", >> $cnfFile
