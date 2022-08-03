@@ -44,8 +44,8 @@ jobs:
     - task: Go@0
       inputs:
         command: 'get'
-        arguments: '-d'
-        workingDirectory: './bin/blobfuse2'
+        arguments: '-d ./bin/blobfuse2/'
+        workingDirectory: './'
       displayName: "Get Dependencies"
 
     # Install fuse and build the code
