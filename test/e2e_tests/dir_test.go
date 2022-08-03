@@ -394,7 +394,7 @@ func (suite *dirTestSuite) TestDirRenameFull() {
 }
 
 func (suite *dirTestSuite) TestTarDir() {
-	dirName := suite.testPath + "/clone"
+	dirName := suite.testPath + "/tar"
 	tarName := suite.testPath + "/libfuse.tar.gz"
 
 	cmd := exec.Command("git", "clone", "https://github.com/libfuse/libfuse", dirName)
@@ -439,7 +439,7 @@ func (suite *dirTestSuite) TestGitClone() {
 
 func (suite *dirTestSuite) TestGitStatus() {
 	if clonePtr == "true" || clonePtr == "True" {
-		dirName := suite.testPath + "/clone"
+		dirName := suite.testPath + "/status"
 
 		cmd := exec.Command("git", "clone", "https://github.com/libfuse/libfuse", dirName)
 		_, err := cmd.Output()
@@ -479,7 +479,7 @@ func (suite *dirTestSuite) TestGitStatus() {
 
 func (suite *dirTestSuite) TestGitStash() {
 	if clonePtr == "true" || clonePtr == "True" {
-		dirName := suite.testPath + "/clone"
+		dirName := suite.testPath + "/stash"
 
 		cmd := exec.Command("git", "clone", "https://github.com/libfuse/libfuse", dirName)
 		_, err := cmd.Output()
