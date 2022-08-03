@@ -87,6 +87,32 @@ func (suite *keysTreeTestSuite) TestParseValue() {
 	}
 }
 
+func (suite *keysTreeTestSuite) TestParseValueErr() {
+	var inputs = []parseVal{
+		{val: "Hello World", toType: reflect.Bool},
+		{val: "Hello World", toType: reflect.Int},
+		{val: "Hello World", toType: reflect.Int8},
+		{val: "Hello World", toType: reflect.Int16},
+		{val: "Hello World", toType: reflect.Int32},
+		{val: "Hello World", toType: reflect.Int64},
+		{val: "Hello World", toType: reflect.Uint},
+		{val: "Hello World", toType: reflect.Uint8},
+		{val: "Hello World", toType: reflect.Uint16},
+		{val: "Hello World", toType: reflect.Uint32},
+		{val: "Hello World", toType: reflect.Uint64},
+		{val: "Hello World", toType: reflect.Float32},
+		{val: "Hello World", toType: reflect.Float64},
+		{val: "Hello World", toType: reflect.Complex64},
+		{val: "Hello World", toType: reflect.Complex128},
+	}
+	for _, i := range inputs {
+		suite.Run(i.val, func() {
+			output := parseValue(i.val, i.toType)
+			suite.assert.Nil(i.result, output)
+		})
+	}
+}
+
 func (suite *keysTreeTestSuite) TestIsPrimitiveType() {
 	var inputs = []reflect.Kind{
 		reflect.Bool,
