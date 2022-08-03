@@ -407,7 +407,9 @@ func (suite *dirTestSuite) TestTarDir() {
 	cmd = exec.Command("tar", "-zcvf", tarName, dirName)
 	cliOut, err := cmd.Output()
 	suite.Equal(nil, err)
-	suite.NotContains(cliOut, "file changed as we read it")
+	if len(cliOut) > 0 {
+		suite.NotContains(cliOut, "file changed as we read it")
+	}
 
 	cmd = exec.Command("tar", "-zxvf", tarName, "--directory", dirName)
 	_, err = cmd.Output()
@@ -452,7 +454,9 @@ func (suite *dirTestSuite) TestGitStatus() {
 		cmd = exec.Command("git", "status")
 		cliOut, err := cmd.Output()
 		suite.Equal(nil, err)
-		suite.Contains(string(cliOut), "nothing to commit, working")
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "nothing to commit, working")
+		}
 
 		f, err := os.OpenFile("README.md", os.O_APPEND|os.O_WRONLY, 0644)
 		suite.Equal(nil, err)
@@ -464,7 +468,9 @@ func (suite *dirTestSuite) TestGitStatus() {
 		cmd = exec.Command("git", "status")
 		cliOut, err = cmd.Output()
 		suite.Equal(nil, err)
-		suite.Contains(string(cliOut), "Changes not staged for commit")
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "Changes not staged for commit")
+		}
 
 		os.Chdir(suite.testPath)
 		os.RemoveAll(dirName)
@@ -488,7 +494,9 @@ func (suite *dirTestSuite) TestGitStash() {
 		cmd = exec.Command("git", "status")
 		cliOut, err := cmd.Output()
 		suite.Equal(nil, err)
-		suite.Contains(string(cliOut), "nothing to commit, working")
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "nothing to commit, working")
+		}
 
 		f, err := os.OpenFile("README.md", os.O_APPEND|os.O_WRONLY, 0644)
 		suite.Equal(nil, err)
@@ -500,12 +508,16 @@ func (suite *dirTestSuite) TestGitStash() {
 		cmd = exec.Command("git", "status")
 		cliOut, err = cmd.Output()
 		suite.Equal(nil, err)
-		suite.Contains(string(cliOut), "Changes not staged for commit")
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "Changes not staged for commit")
+		}
 
 		cmd = exec.Command("git", "stash")
 		cliOut, err = cmd.Output()
 		suite.Equal(nil, err)
-		suite.Contains(string(cliOut), "Saved working directory and index state WIP")
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "Saved working directory and index state WIP")
+		}
 
 		cmd = exec.Command("git", "stash", "list")
 		_, err = cmd.Output()
@@ -514,7 +526,9 @@ func (suite *dirTestSuite) TestGitStash() {
 		cmd = exec.Command("git", "stash", "pop")
 		cliOut, err = cmd.Output()
 		suite.Equal(nil, err)
-		suite.Contains(string(cliOut), "Changes not staged for commit")
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "Changes not staged for commit")
+		}
 
 		os.Chdir(suite.testPath)
 		os.RemoveAll(dirName)
