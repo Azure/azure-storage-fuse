@@ -380,7 +380,7 @@ jobs:
           rm -rf $(TEMP_DIR)/*
           ./blobfuse2 unmount all
           
-          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_secure.cov secure encrypt --config-file=$(BLOBFUSE2_CFG) --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_encrypt.cov secure encrypt --config-file=$(BLOBFUSE2_CFG) --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
           if [ $? -ne 0 ]; then
             exit 1
           fi
