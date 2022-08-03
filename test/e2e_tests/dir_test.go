@@ -411,6 +411,98 @@ func (suite *dirTestSuite) TestGitClone() {
 	}
 }
 
+func (suite *dirTestSuite) TestGitStatus() {
+	if clonePtr == "true" || clonePtr == "True" {
+		dirName := suite.testPath + "/clone"
+
+		cmd := exec.Command("git", "clone", "https://github.com/libfuse/libfuse", dirName)
+		_, err := cmd.Output()
+		suite.Equal(nil, err)
+
+		_, err = os.Stat(dirName)
+		suite.Equal(nil, err)
+
+		_, err = os.Stat(dirName + "/.git")
+		suite.Equal(nil, err)
+
+		err = os.Chdir(dirName)
+		suite.Equal(nil, err)
+
+		cmd = exec.Command("git", "status")
+		cliOut, err := cmd.Output()
+		suite.Equal(nil, err)
+		suite.Contains(string(cliOut), "nothing to commit, working tree clean")
+
+		f, err := os.OpenFile("README.md", os.O_APPEND|os.O_WRONLY, 0644)
+		suite.Equal(nil, err)
+		suite.NotZero(f)
+		_, err = f.WriteString("TestString")
+		suite.Equal(nil, err)
+		_ = f.Close()
+
+		cmd = exec.Command("git", "status")
+		cliOut, err = cmd.Output()
+		suite.Equal(nil, err)
+		suite.Contains(string(cliOut), "Changes not staged for commit")
+
+		os.Chdir(suite.testPath)
+		os.RemoveAll(dirName)
+	}
+}
+
+func (suite *dirTestSuite) TestGitStash() {
+	if clonePtr == "true" || clonePtr == "True" {
+		dirName := suite.testPath + "/clone"
+
+		cmd := exec.Command("git", "clone", "https://github.com/libfuse/libfuse", dirName)
+		_, err := cmd.Output()
+		suite.Equal(nil, err)
+
+		_, err = os.Stat(dirName)
+		suite.Equal(nil, err)
+
+		_, err = os.Stat(dirName + "/.git")
+		suite.Equal(nil, err)
+
+		err = os.Chdir(dirName)
+		suite.Equal(nil, err)
+
+		cmd = exec.Command("git", "status")
+		cliOut, err := cmd.Output()
+		suite.Equal(nil, err)
+		suite.Contains(string(cliOut), "nothing to commit, working tree clean")
+
+		f, err := os.OpenFile("README.md", os.O_APPEND|os.O_WRONLY, 0644)
+		suite.Equal(nil, err)
+		suite.NotZero(f)
+		_, err = f.WriteString("TestString")
+		suite.Equal(nil, err)
+		_ = f.Close()
+
+		cmd = exec.Command("git", "status")
+		cliOut, err = cmd.Output()
+		suite.Equal(nil, err)
+		suite.Contains(string(cliOut), "Changes not staged for commit")
+
+		cmd = exec.Command("git", "stash")
+		cliOut, err = cmd.Output()
+		suite.Equal(nil, err)
+		suite.Contains(string(cliOut), "Saved working directory and index state WIP")
+
+		cmd = exec.Command("git", "stash", "list")
+		_, err = cmd.Output()
+		suite.Equal(nil, err)
+
+		cmd = exec.Command("git", "stash", "pop")
+		cliOut, err = cmd.Output()
+		suite.Equal(nil, err)
+		suite.Contains(string(cliOut), "Changes not staged for commit")
+
+		os.Chdir(suite.testPath)
+		os.RemoveAll(dirName)
+	}
+}
+
 // -------------- Main Method -------------------
 func TestDirTestSuite(t *testing.T) {
 	initDirFlags()
