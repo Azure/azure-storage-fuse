@@ -178,14 +178,6 @@ stages:
           displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
           condition: succeeded()
 
-        - script: |
-            sudo rm -rf $(WORK_DIR)
-            pwd
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-          displayName: 'Clean Agent Directories'
-          condition: always()
-
     - job: Set_3
       strategy:
         matrix:
@@ -272,14 +264,6 @@ stages:
             artifactName: 'blobfuse'
           displayName: 'Publish Artifacts for blobfuse $(DistroVer)'
           condition: succeeded()
-
-        - script: |
-            sudo rm -rf $(WORK_DIR)
-            pwd
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-          displayName: 'Clean Agent Directories'
-          condition: always()
 
   # -------    Debain Pipelines end here ------------------
   - ${{ if eq(parameters.fast_run, false) }}:
@@ -453,15 +437,6 @@ stages:
           displayName: 'Cleanup temp directories'
           condition: succeededOrFailed()
 
-        - script: |
-            pwd
-            #sudo rm -rf $(Agent.BuildDirectory)
-            #sudo rm -rf $(Build.SourcesDirectory)
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-          displayName: 'Clean Agent Directories'
-          condition: always()
-
   # -------    RHEL Pipelines end here ------------------
   - ${{ if eq(parameters.fast_run, false) }}:
     - job: Set_5
@@ -581,15 +556,6 @@ stages:
             sudo rm -rf ~/rpmbuild
           displayName: 'Cleanup temp directories'
           condition: succeededOrFailed()
-
-        - script: |
-            pwd
-            #sudo rm -rf $(Agent.BuildDirectory)
-            #sudo rm -rf $(Build.SourcesDirectory)
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-          displayName: 'Clean Agent Directories'
-          condition: always()
 
   # -------    SUSE Pipelines end here ------------------
 
@@ -724,15 +690,6 @@ stages:
             sudo rm -rf ~/rpmbuild
           displayName: 'Cleanup temp directories'
           condition: succeededOrFailed()
-
-        - script: |
-            pwd
-            #sudo rm -rf $(Agent.BuildDirectory)
-            #sudo rm -rf $(Build.SourcesDirectory)
-            cd /`pwd | cut -d '/' -f 2,3,4,5`
-            sudo rm -rf [0-9]
-          displayName: 'Clean Agent Directories'
-          condition: always()
 
   # -------    Test Pipelines end here ------------------
 

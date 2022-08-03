@@ -754,5 +754,5 @@ func TestMain(m *testing.M) {
 	m.Run()
 
 	//  Wipe out the test directory created for feature test
-	os.RemoveAll(*pathPtr)
+	os.RemoveAll(mntPath)
 }

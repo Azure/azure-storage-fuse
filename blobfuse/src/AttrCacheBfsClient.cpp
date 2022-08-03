@@ -13,7 +13,7 @@ std::string get_parent_str(std::string object)
 }
 
 // Directory is getting deleted, invalidate all the files and directories recursively inside
-void AttrCache::invalidate_dir_recursively(const std::string& path)
+void AttrCache::invalidate_dir_recursively(const std::string& path, bool markDelete)
 {
     std::string dirPath = path + "/";
     std::shared_ptr<AttrCacheItem> cache_item;
@@ -25,7 +25,9 @@ void AttrCache::invalidate_dir_recursively(const std::string& path)
         if (IS_PROP_FLAG_SET(cache_item->flags, PROP_FLAG_CONFIRMED)) {
             // Let the cache be still valid but mark that file no more exists on the storage
             SET_PROP_FLAG(cache_item->flags, PROP_FLAG_VALID);
-            SET_PROP_FLAG(cache_item->flags, PROP_FLAG_NOT_EXISTS);
+            if(markDelete) {
+                SET_PROP_FLAG(cache_item->flags, PROP_FLAG_NOT_EXISTS);
+            }
             cache_item->clearMetaFlags();
         }
     }
@@ -216,8 +218,10 @@ bool AttrCacheBfsClient::CreateDirectory(const std::string directoryPath)
 
 bool AttrCacheBfsClient::DeleteDirectory(const std::string directoryPath)
 {
-    attr_cache.invalidate_dir_recursively(directoryPath);
     bool ret = blob_client->DeleteDirectory(directoryPath);
+    if(ret) {
+        attr_cache.invalidate_dir_recursively(directoryPath, true);
+    }
     return ret;
 }
 
@@ -552,6 +556,6 @@ void AttrCacheBfsClient::InvalidateFile(const std::string blob)
 
 void AttrCacheBfsClient::InvalidateDir(const std::string directoryPath)
 {
-    attr_cache.invalidate_dir_recursively(directoryPath);
+    attr_cache.invalidate_dir_recursively(directoryPath, false);
     return;
 }

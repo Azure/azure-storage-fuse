@@ -142,7 +142,7 @@ public:
 
     std::shared_ptr<boost::shared_mutex> get_dir_item(const std::string& path);
     std::shared_ptr<AttrCacheItem> get_blob_item(const std::string& path);
-    void invalidate_dir_recursively(const std::string& path);
+    void invalidate_dir_recursively(const std::string& path, bool);
     bool is_directory_empty(const std::string& path);
 
     unsigned int get_blob_item_len()
