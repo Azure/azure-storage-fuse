@@ -44,7 +44,7 @@ jobs:
     - task: Go@0
       inputs:
         command: 'get'
-        arguments: '-d ./bin/blobfuse2/'
+        arguments: '-d ./...'
         workingDirectory: './'
       displayName: "Get Dependencies"
 
