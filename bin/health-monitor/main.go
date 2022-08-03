@@ -76,9 +76,12 @@ func main() {
 	comps := getMonitors()
 
 	for _, obj := range comps {
-		obj.ExportStats()
+		hmcommon.Wg.Add(1)
+		go obj.Monitor()
 	}
 
+	hmcommon.Wg.Done()
+	log.Debug("Monitoring ended")
 }
 
 func init() {
@@ -86,11 +89,11 @@ func init() {
 	flag.IntVar(&hmcommon.BfsPollInterval, "blobfuse-poll-interval", 5, "Blobfuse stats polling interval in seconds")
 	flag.IntVar(&hmcommon.StatsPollinterval, "stats-poll-interval", 10, "CPU, memory and network usage polling interval in seconds")
 
-	flag.BoolVar(&hmcommon.NoBfsMon, "blobfuse-stats", false, "Enable blobfuse stats polling")
-	flag.BoolVar(&hmcommon.NoCpuProf, "cpu-profiler", false, "Enable CPU profiling on blobfuse process")
-	flag.BoolVar(&hmcommon.NoMemProf, "memory-profiler", false, "Enable memory profiling on blobfuse process")
-	flag.BoolVar(&hmcommon.NoNetProf, "network-profiler", false, "Enable network profiling on blobfuse process")
-	flag.BoolVar(&hmcommon.NoFileCacheMon, "file-cache", false, "Enable file cache directory monitor")
+	flag.BoolVar(&hmcommon.NoBfsMon, "no-blobfuse-stats", false, "Enable blobfuse stats polling")
+	flag.BoolVar(&hmcommon.NoCpuProf, "no-cpu-profiler", false, "Enable CPU profiling on blobfuse process")
+	flag.BoolVar(&hmcommon.NoMemProf, "no-memory-profiler", false, "Enable memory profiling on blobfuse process")
+	flag.BoolVar(&hmcommon.NoNetProf, "no-network-profiler", false, "Enable network profiling on blobfuse process")
+	flag.BoolVar(&hmcommon.NoFileCacheMon, "no-cache-monitor", false, "Enable file cache directory monitor")
 
 	flag.StringVar(&hmcommon.TempCachePath, "cache-path", "", "path to local disk cache")
 	flag.Float64Var(&hmcommon.MaxCacheSize, "max-size-mb", 0, "maximum cache size allowed. Default - 0 (unlimited)")

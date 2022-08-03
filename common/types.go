@@ -60,6 +60,8 @@ const (
 	DefaultFilePermissionBits       os.FileMode = 0755
 	DefaultDirectoryPermissionBits  os.FileMode = 0775
 	DefaultAllowOtherPermissionBits os.FileMode = 0777
+
+	MbToBytes = 1024 * 1024
 )
 
 var DefaultWorkDir = "$HOME/.blobfuse2"

@@ -23,6 +23,5 @@ func AddMonitor(name string, init NewMonitor) {
 }
 
 func init() {
-	fmt.Println("Inside factory")
 	registeredMonitors = make(map[string]NewMonitor)
 }

@@ -1,6 +1,9 @@
 package common
 
-import "path/filepath"
+import (
+	"path/filepath"
+	"sync"
+)
 
 const (
 	Blobfuse_stats   = "blobfuse_stats"
@@ -29,3 +32,5 @@ var (
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFile = filepath.Join(DefaultWorkDir, "healthmon.log")
+
+var Wg sync.WaitGroup
