@@ -31,7 +31,6 @@
    SOFTWARE
 */
 
-
 package internal
 
 type Monitor interface {

@@ -31,7 +31,6 @@
    SOFTWARE
 */
 
-
 package cpu_profiler
 
 import (

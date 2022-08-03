@@ -31,7 +31,6 @@
    SOFTWARE
 */
 
-
 package memory_profiler
 
 import (

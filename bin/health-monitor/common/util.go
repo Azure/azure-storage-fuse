@@ -31,5 +31,4 @@
    SOFTWARE
 */
 
-
 package common

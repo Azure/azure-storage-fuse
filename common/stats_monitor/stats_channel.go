@@ -31,7 +31,6 @@
    SOFTWARE
 */
 
-
 package stats_monitor
 
 import "github.com/Azure/azure-storage-fuse/v2/common/log"

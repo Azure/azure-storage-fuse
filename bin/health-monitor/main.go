@@ -31,7 +31,6 @@
    SOFTWARE
 */
 
-
 package main
 
 import (

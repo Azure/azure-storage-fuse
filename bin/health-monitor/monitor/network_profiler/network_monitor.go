@@ -31,7 +31,6 @@
    SOFTWARE
 */
 
-
 package network_monitor
 
 import (
