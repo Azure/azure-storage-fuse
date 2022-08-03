@@ -92,7 +92,7 @@ steps:
     continueOnError: false
 
   - script: |
-      cat adls_config.yaml
+      cat ${{ parameters.root_dir }}/adls_config.yaml
     displayName: 'Print ADLS Config File'
     
   - script: |
