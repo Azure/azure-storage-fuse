@@ -58,7 +58,7 @@ jobs:
       inputs:
         command: 'build'
         workingDirectory: ./
-        arguments: "-tags $(tags) -o blobfuse2 ./bin/blobfuse2"
+        arguments: "-tags $(tags) -o blobfuse2 ./bin/blobfuse"
       displayName: "Build"
 
     - script: |
