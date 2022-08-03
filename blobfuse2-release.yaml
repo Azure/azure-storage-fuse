@@ -37,6 +37,7 @@ stages:
   - stage: BuildArtifacts
     jobs:
       - job: Set_1
+        timeoutInMinutes: 120
         strategy:
           matrix:
             Ubuntu-18:
@@ -137,6 +138,7 @@ stages:
     condition: succeeded('BuildArtifacts')
     jobs:
       - job: Set_1
+        timeoutInMinutes: 120
         strategy:
           matrix:
             Ubuntu-18:
@@ -227,6 +229,7 @@ stages:
             displayName: 'Publish Artifacts' 
 
       - job: Set_2
+        timeoutInMinutes: 120
         strategy:
           matrix:
             Debian-9.0:
@@ -307,6 +310,7 @@ stages:
             displayName: 'Publish Artifacts' 
 
       - job: Set_3
+        timeoutInMinutes: 120
         strategy:
           matrix:
             Debian-10.0:
@@ -398,6 +402,7 @@ stages:
             displayName: 'Publish Artifacts'
             
       - job: Set_4
+        timeoutInMinutes: 120
         strategy:
           matrix:
             RHEL-7.5:
@@ -515,6 +520,7 @@ stages:
             displayName: 'Publish Artifacts'
 
       - job: Set_5
+        timeoutInMinutes: 120
         strategy:
           matrix:
             CentOS-7.9:
@@ -615,6 +621,7 @@ stages:
             displayName: 'Publish Artifacts'
 
       - job: Set_6
+        timeoutInMinutes: 120
         strategy:
           matrix:
             Oracle-8.1:
@@ -700,6 +707,7 @@ stages:
             displayName: 'Publish Artifacts'
 
       - job: Set_7
+        timeoutInMinutes: 120
         strategy:
           matrix:
             SUSE-15:
@@ -786,6 +794,7 @@ stages:
             displayName: 'Publish Artifacts'
 
       - job: Set_8
+        timeoutInMinutes: 120
         strategy:
           matrix:
             Mariner:
