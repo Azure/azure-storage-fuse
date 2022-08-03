@@ -446,16 +446,13 @@ func (suite *dirTestSuite) TestGitStatus() {
 		_, err = os.Stat(dirName)
 		suite.Equal(nil, err)
 
-		_, err = os.Stat(dirName + "/.git")
-		suite.Equal(nil, err)
-
 		err = os.Chdir(dirName)
 		suite.Equal(nil, err)
 
 		cmd = exec.Command("git", "status")
 		cliOut, err := cmd.Output()
 		suite.Equal(nil, err)
-		suite.Contains(string(cliOut), "nothing to commit, working tree clean")
+		suite.Contains(string(cliOut), "nothing to commit, working")
 
 		f, err := os.OpenFile("README.md", os.O_APPEND|os.O_WRONLY, 0644)
 		suite.Equal(nil, err)
@@ -485,16 +482,13 @@ func (suite *dirTestSuite) TestGitStash() {
 		_, err = os.Stat(dirName)
 		suite.Equal(nil, err)
 
-		_, err = os.Stat(dirName + "/.git")
-		suite.Equal(nil, err)
-
 		err = os.Chdir(dirName)
 		suite.Equal(nil, err)
 
 		cmd = exec.Command("git", "status")
 		cliOut, err := cmd.Output()
 		suite.Equal(nil, err)
-		suite.Contains(string(cliOut), "nothing to commit, working tree clean")
+		suite.Contains(string(cliOut), "nothing to commit, working")
 
 		f, err := os.OpenFile("README.md", os.O_APPEND|os.O_WRONLY, 0644)
 		suite.Equal(nil, err)
