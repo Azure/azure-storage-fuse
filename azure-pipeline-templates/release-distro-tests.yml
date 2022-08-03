@@ -42,6 +42,8 @@ steps:
     displayName: 'Print Block Blob Config File'
 
   - script: |
+      blobfuse2 unmount all 
+      sudo fusermount -u ${{ parameters.mount_dir }}
       blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.root_dir }}/block_blob_config.yaml
     displayName: 'Mount Block Blob'
     
@@ -96,6 +98,8 @@ steps:
     displayName: 'Print ADLS Config File'
     
   - script: |
+      blobfuse2 unmount all 
+      sudo fusermount -u ${{ parameters.mount_dir }}
       blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.root_dir }}/adls_config.yaml
     displayName: 'Mount ADLS'
     
