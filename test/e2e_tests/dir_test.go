@@ -393,6 +393,30 @@ func (suite *dirTestSuite) TestDirRenameFull() {
 
 }
 
+func (suite *dirTestSuite) TestTarDir() {
+	dirName := suite.testPath + "/clone"
+	tarName := suite.testPath + "/libfuse.tar.gz"
+
+	cmd := exec.Command("git", "clone", "https://github.com/libfuse/libfuse", dirName)
+	_, err := cmd.Output()
+	suite.Equal(nil, err)
+
+	_, err = os.Stat(dirName)
+	suite.Equal(nil, err)
+
+	cmd = exec.Command("tar", "-zcvf", tarName, dirName)
+	cliOut, err := cmd.Output()
+	suite.Equal(nil, err)
+	suite.NotContains(cliOut, "file changed as we read it")
+
+	cmd = exec.Command("tar", "-zxvf", tarName, "--directory", dirName)
+	_, err = cmd.Output()
+	suite.Equal(nil, err)
+
+	os.RemoveAll(dirName)
+	os.Remove("libfuse.tar.gz")
+}
+
 func (suite *dirTestSuite) TestGitClone() {
 	if clonePtr == "true" || clonePtr == "True" {
 		dirName := suite.testPath + "/clone"
