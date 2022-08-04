@@ -18,7 +18,7 @@ jobs:
           tags: 'fuse2'
         Ubuntu-20:
           imageName: 'ubuntu-20.04'
-          containerName: 'test-cnt-coverage'
+          containerName: 'test-cnt-ubn-20'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
     pool:
