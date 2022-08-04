@@ -304,7 +304,7 @@ namespace azure {  namespace storage_lite {
                 break;
             }
             
-            syslog(LOG_DEBUG, "%s: %s", text, data);
+            syslog(LOG_DEBUG, "libcurl: %s: %s", text, data);
             return 0;
         }
 
