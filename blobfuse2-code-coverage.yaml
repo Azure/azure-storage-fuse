@@ -64,9 +64,17 @@ jobs:
         workingDirectory: $(WORK_DIR)
     
       - script: |
-          sudo apt-get update --fix-missing
-          sudo apt-get install make cmake gcc g++ $(fuselib) -y
+          sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
+          sudo apt-get install make cmake gcc g++ $(fuselib) -y -o Dpkg::Options::="--force-confnew"
         displayName: 'Install libfuse'
+
+
+      # Create directory structure
+      - script: |
+          sudo mkdir -p $(ROOT_DIR)
+          sudo chown -R `whoami` $(ROOT_DIR)
+          chmod 777 $(ROOT_DIR)
+        displayName: 'Create Directory Structure'
 
       # -------------------------------------------------------
       # Pull and build the code
