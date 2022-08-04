@@ -16,12 +16,14 @@ jobs:
           imageName: 'ubuntu-18.04'
           containerName: 'test-cnt-ubn-18'
           fuselib: 'libfuse-dev'
+          fuselib2: 'fuse'
           tags: 'fuse2'
         Ubuntu-20:
           AgentName: 'blobfuse-ubuntu20'
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
           fuselib: 'libfuse3-dev'
+          fuselib2: 'fuse3'
           tags: 'fuse3'
 
     pool:
@@ -65,7 +67,7 @@ jobs:
     
       - script: |
           sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-          sudo apt-get install make cmake gcc g++ $(fuselib) -y -o Dpkg::Options::="--force-confnew"
+          sudo apt-get install make cmake gcc g++ $(fuselib) $(fuselib2) -y -o Dpkg::Options::="--force-confnew"
         displayName: 'Install libfuse'
 
 
