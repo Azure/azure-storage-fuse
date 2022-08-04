@@ -391,6 +391,8 @@ jobs:
           cd test/e2e_tests
           go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -adls=true -tmp-path=$(TEMP_DIR)
           cd -
+
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_set.cov --config-file=$(BLOBFUSE2_CFG) --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 --key=logging.level --value=log_debug
           ./blobfuse2 unmount all
           sleep 5
         workingDirectory: $(WORK_DIR)
