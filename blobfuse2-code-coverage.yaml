@@ -12,17 +12,22 @@ jobs:
     strategy:
       matrix:
         Ubuntu-18:
+          AgentName: 'blobfuse-ubuntu18'
           imageName: 'ubuntu-18.04'
           containerName: 'test-cnt-ubn-18'
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
         Ubuntu-20:
+          AgentName: 'blobfuse-ubuntu20'
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
+
     pool:
-      vmImage: $(imageName)
+      name: "blobfuse-ubuntu-pool"
+      demands:
+        - ImageOverride -equals $(AgentName)
 
     variables:
       - group: NightlyBlobFuse
@@ -75,6 +80,7 @@ jobs:
           container: $(containerName)
           tags: $(tags)
           fuselib: $(fuselib)
+          skip_msi: "false"
 
       # -------------------------------------------------------
       # UT based code coverage test
