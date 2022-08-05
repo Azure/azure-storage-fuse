@@ -34,11 +34,12 @@
 package azstorage
 
 import (
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
 	"errors"
 	"reflect"
 	"strings"
+
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/JeffreyRichter/enum/enum"
@@ -162,6 +163,7 @@ type AzStorageOptions struct {
 	HttpsProxyAddress       string `config:"https-proxy" yaml:"https-proxy,omitempty"`
 	SdkTrace                bool   `config:"sdk-trace" yaml:"sdk-trace,omitempty"`
 	FailUnsupportedOp       bool   `config:"fail-unsupported-op" yaml:"fail-unsupported-op,omitempty"`
+	AuthResourceString      string `config:"auth-resource" yaml:"auth-resource,omitempty"`
 }
 
 //  RegisterEnvVariables : Register environment varilables
@@ -242,7 +244,12 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	var accountType AccountType
-	accountType.Parse(opt.AccountType)
+	err := accountType.Parse(opt.AccountType)
+	if err != nil {
+		log.Err("ParseAndValidateConfig : Failed to parse account type %s", opt.AccountType)
+		return errors.New("invalid account type")
+	}
+
 	az.stConfig.authConfig.AccountType = accountType
 	if accountType == EAccountType.INVALID_ACC() {
 		log.Err("ParseAndValidateConfig : Invalid account type %s", opt.AccountType)
@@ -250,7 +257,10 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	// Validate container name is present or not
-	config.UnmarshalKey("mount-all-containers", &az.stConfig.mountAllContainers)
+	err = config.UnmarshalKey("mount-all-containers", &az.stConfig.mountAllContainers)
+	if err != nil {
+		log.Err("ParseAndValidateConfig : Failed to detect mount-all-container")
+	}
 
 	if !az.stConfig.mountAllContainers && opt.Container == "" {
 		return errors.New("container name not provided")
@@ -290,18 +300,18 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 			az.stConfig.proxyAddress = opt.HttpsProxyAddress
 		} else {
 			if httpProxyProvided {
-				log.Err("BlockBlob::ParseAndValidateConfig : `http-proxy` Invalid : must set `use-http: true` in your config file")
+				log.Err("ParseAndValidateConfig : `http-proxy` Invalid : must set `use-http: true` in your config file")
 				return errors.New("`http-proxy` Invalid : must set `use-http: true` in your config file")
 			}
 		}
 	}
-	log.Info("BlockBlob::ParseAndValidateConfig : using the following proxy address from the config file: %s", az.stConfig.proxyAddress)
+	log.Info("ParseAndValidateConfig : using the following proxy address from the config file: %s", az.stConfig.proxyAddress)
 
 	az.stConfig.sdkTrace = opt.SdkTrace
 
-	log.Info("BlockBlob::ParseAndValidateConfig : sdk logging from the config file: %t", az.stConfig.sdkTrace)
+	log.Info("ParseAndValidateConfig : sdk logging from the config file: %t", az.stConfig.sdkTrace)
 
-	err := ParseAndReadDynamicConfig(az, opt, false)
+	err = ParseAndReadDynamicConfig(az, opt, false)
 	if err != nil {
 		return err
 	}
@@ -311,7 +321,12 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		opt.AuthMode = "key"
 	}
 
-	authType.Parse(opt.AuthMode)
+	err = authType.Parse(opt.AuthMode)
+	if err != nil {
+		log.Err("ParseAndValidateConfig : Invalid auth type %s", opt.AccountType)
+		return errors.New("invalid auth type")
+	}
+
 	switch authType {
 	case EAuthType.KEY():
 		az.stConfig.authConfig.AuthMode = EAuthType.KEY()
@@ -324,7 +339,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		if opt.SaSKey == "" {
 			return errors.New("SAS key not provided")
 		}
-		az.stConfig.authConfig.SASKey = opt.SaSKey
+		az.stConfig.authConfig.SASKey = sanitizeSASKey(opt.SaSKey)
 	case EAuthType.MSI():
 		az.stConfig.authConfig.AuthMode = EAuthType.MSI()
 		if opt.ApplicationID == "" && opt.ResourceID == "" {
@@ -332,6 +347,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
 		az.stConfig.authConfig.ResourceID = opt.ResourceID
+
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
 		if opt.ClientID == "" || opt.ClientSecret == "" || opt.TenantID == "" {
@@ -344,6 +360,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		log.Err("ParseAndValidateConfig : Invalid auth mode %s", opt.AuthMode)
 		return errors.New("invalid auth mode")
 	}
+	az.stConfig.authConfig.AuthResource = opt.AuthResourceString
 
 	// Retry policy configuration
 	// A user provided value of 0 doesn't make sense for MaxRetries, MaxTimeout, BackoffTime, or MaxRetryDelay.
@@ -404,13 +421,14 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		}
 
 		oldSas := az.stConfig.authConfig.SASKey
-		az.stConfig.authConfig.SASKey = opt.SaSKey
+		az.stConfig.authConfig.SASKey = sanitizeSASKey(opt.SaSKey)
+
 		if reload {
 			log.Info("ParseAndReadDynamicConfig : SAS Key updated")
 
 			if err := az.storage.NewCredentialKey("saskey", az.stConfig.authConfig.SASKey); err != nil {
 				az.stConfig.authConfig.SASKey = oldSas
-				az.storage.NewCredentialKey("saskey", az.stConfig.authConfig.SASKey)
+				_ = az.storage.NewCredentialKey("saskey", az.stConfig.authConfig.SASKey)
 				return errors.New("SAS key update failure")
 			}
 		}

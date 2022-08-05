@@ -34,10 +34,6 @@
 package loopback
 
 import (
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
 	"io"
@@ -46,6 +42,11 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
+
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 //LoopbackFS component Config specifications:
@@ -68,7 +69,7 @@ type LoopbackFSOptions struct {
 	Path string `config:"path"`
 }
 
-func (lfs *LoopbackFS) Configure() error {
+func (lfs *LoopbackFS) Configure(_ bool) error {
 	conf := LoopbackFSOptions{}
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {
@@ -156,6 +157,43 @@ func (lfs *LoopbackFS) ReadDir(options internal.ReadDirOptions) ([]*internal.Obj
 		attrList = append(attrList, attr)
 	}
 	return attrList, nil
+}
+
+// TODO: we can make it more intricate by generating a token and splitting streamed dir mimicking storage
+func (lfs *LoopbackFS) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
+	if options.Token == "na" {
+		return nil, "", nil
+	}
+	log.Trace("LoopbackFS::StreamDir : name=%s", options.Name)
+	attrList := make([]*internal.ObjAttr, 0)
+	path := filepath.Join(lfs.path, options.Name)
+
+	log.Debug("LoopbackFS: StreamDir requested for %s", path)
+	files, err := ioutil.ReadDir(path)
+	if err != nil {
+		log.Err("LoopbackFS: StreamDir error[%s]", err)
+		return nil, "", err
+	}
+	log.Debug("LoopbackFS: StreamDir on %s returned %d items", path, len(files))
+
+	for _, file := range files {
+		attr := &internal.ObjAttr{
+			Path:  filepath.Join(options.Name, file.Name()),
+			Name:  file.Name(),
+			Size:  file.Size(),
+			Mode:  file.Mode(),
+			Mtime: file.ModTime(),
+		}
+		attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+		attr.Flags.Set(internal.PropFlagModeDefault)
+
+		if file.IsDir() {
+			attr.Flags.Set(internal.PropFlagIsDir)
+		}
+
+		attrList = append(attrList, attr)
+	}
+	return attrList, "", nil
 }
 
 func (lfs *LoopbackFS) RenameDir(options internal.RenameDirOptions) error {
@@ -409,7 +447,6 @@ func (lfs *LoopbackFS) Chown(options internal.ChownOptions) error {
 }
 
 func (lfs *LoopbackFS) InvalidateObject(_ string) {
-	return
 }
 
 func NewLoopbackFSComponent() internal.Component {

@@ -51,28 +51,21 @@ jobs:
         Ubuntu-18:
           imageName: 'ubuntu-18.04'
           containerName: 'test-cnt-ubn-18'
-          adlsSas: $(UBUNTU-18-ADLS-SAS)
-          hostedAgent: true
-          stressParallel: 3
+          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_18)
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
         Ubuntu-20:
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
-          adlsSas: $(UBUNTU-20-ADLS-SAS)
-          hostedAgent: true
-          stressParallel: 1
+          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
-        # Ubn-22 is not supported by devops as of now  
-        #Ubuntu-22:
-        #  imageName: 'ubuntu-22.04'
-        #  containerName: 'test-cnt-ubn-22'
-        #  adlsSas: $(UBUNTU-20-ADLS-SAS)
-        #  hostedAgent: true
-        #  stressParallel: 1
-        #  fuselib: 'libfuse3-dev'
-        #  tags: 'fuse3'
+        Ubuntu-22:
+         imageName: 'ubuntu-22.04'
+         containerName: 'test-cnt-ubn-22'
+         adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+         fuselib: 'libfuse3-dev'
+         tags: 'fuse3'
     pool:
       vmImage: $(imageName)
 
@@ -219,11 +212,9 @@ jobs:
       timeoutInMinutes: 300
       strategy:
         matrix:
-          ubuntu-20-proxy:
+          Ubuntu-20-Proxy:
             imageName: 'ubuntu-20.04'
             containerName: 'test-cnt-ubn-18-proxy'
-            hostedAgent: true
-            stressParallel: 3
       pool:
         vmImage: $(imageName)
 
@@ -669,8 +660,68 @@ jobs:
             displayName: 'Install fuse'
           verbose_log: ${{ parameters.verbose_log }}
 
-  # Debian Tests
   - job: Set_6
+    timeoutInMinutes: 60
+    strategy:
+      matrix:
+        Debian-9.0:
+          DistroVer: "Debian9.0"
+          AgentName: "DEB 9.0"
+          Description: "Debian Linux 9.0 Gen 1"
+          containerName: 'test-cnt-deb-9'
+          fuselib: 'libfuse-dev'
+          tags: 'fuse2'
+    pool:
+      name: 'Blobfuse Pool'
+      demands:
+        - Agent.Name -equals $(AgentName)
+
+    variables:
+      - group: NightlyBlobFuse
+      - name: ROOT_DIR
+        value: "/home/vsts/workv2"
+      - name: WORK_DIR
+        value: "/home/vsts/workv2/go/src/azure-storage-fuse"
+      - name: skipComponentGovernanceDetection
+        value: true
+      - name: MOUNT_DIR
+        value: "/home/vsts/workv2/blob_mnt"
+      - name: TEMP_DIR
+        value: "/home/vsts/workv2/blobfuse2tmp"
+      - name: BLOBFUSE2_CFG
+        value: "/home/vsts/workv2/blobfuse2.yaml"
+      - name: BLOBFUSE2_ADLS_CFG
+        value: "/home/vsts/workv2/blobfuse2.adls.yaml"
+      - name: GOPATH
+        value: "/home/vsts/workv2/go"
+
+    # Distro Tests
+    steps:
+      - template: 'azure-pipeline-templates/distro-tests.yml'
+        parameters:
+          working_dir: $(WORK_DIR)
+          root_dir: $(ROOT_DIR)
+          temp_dir: $(TEMP_DIR)
+          mount_dir: $(MOUNT_DIR)
+          gopath: $(GOPATH)
+          config_path: $(BLOBFUSE2_CFG)
+          container: $(containerName)
+          blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+          blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+          adls_account_name: $(AZTEST_ADLS_ACC_NAME)
+          adls_account_key: $(AZTEST_ADLS_KEY)
+          distro_name: $(AgentName)
+          tags: $(tags)
+          fuselib: $(fuselib)
+          installStep:
+            script: |
+              sudo apt-get update --fix-missing
+              sudo apt-get install $(fuselib) -y
+            displayName: 'Install libfuse'
+          verbose_log: ${{ parameters.verbose_log }}
+
+  # Debian Tests
+  - job: Set_7
     timeoutInMinutes: 60
     strategy:
       matrix:
@@ -753,7 +804,7 @@ jobs:
           verbose_log: ${{ parameters.verbose_log }}
 
   # SUSE Tests
-  - job: Set_7
+  - job: Set_8
     timeoutInMinutes: 60
     strategy:
       matrix:
@@ -817,7 +868,7 @@ jobs:
           verbose_log: ${{ parameters.verbose_log }}
 
   # Mariner Tests
-  - job: Set_8
+  - job: Set_9
     timeoutInMinutes: 60
     strategy:
       matrix:
@@ -885,7 +936,7 @@ jobs:
   - ${{ if eq(parameters.msi_test, true) }}:
       # -----------------------------------------------------------
       # Ubuntu-20.04 MSI tests
-      - job: Set_9
+      - job: Set_10
         timeoutInMinutes: 60
         strategy:
           matrix:
@@ -970,7 +1021,6 @@ jobs:
               root_dir: $(ROOT_DIR)
               mount_dir: $(MOUNT_DIR)
               temp_dir: $(TEMP_DIR)
-              hostedAgent: false
               gopath: $(GOPATH)
               container: $(containerName)
               skip_msi: "false"
@@ -1044,10 +1094,3 @@ jobs:
               mount_dir: $(MOUNT_DIR)
               temp_dir: $(TEMP_DIR)
           
-          - script: |
-              sudo rm -rf ${ROOT_DIR}
-              pwd
-              cd /`pwd | cut -d '/' -f 2,3,4,5`
-              sudo rm -rf [0-9]
-            displayName: 'Clean Agent Directories'
-            condition: always() 

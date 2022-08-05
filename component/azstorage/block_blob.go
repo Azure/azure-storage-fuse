@@ -34,9 +34,6 @@
 package azstorage
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
 	"bytes"
 	"context"
 	"encoding/base64"
@@ -51,6 +48,10 @@ import (
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-azcopy/v10/ste"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+
 	"github.com/Azure/azure-storage-blob-go/azblob"
 )
 
@@ -68,6 +69,7 @@ type BlockBlob struct {
 	blobCPKOpt      azblob.ClientProvidedKeyOptions
 	downloadOptions azblob.DownloadFromBlobOptions
 	listDetails     azblob.BlobListingDetails
+	blockLocks      common.KeyedMutex
 }
 
 // Verify that BlockBlob implements AzConnection interface
@@ -215,7 +217,9 @@ func (bb *BlockBlob) TestPipeline() error {
 
 	marker := (azblob.Marker{})
 	listBlob, err := bb.Container.ListBlobsHierarchySegment(context.Background(), marker, "/",
-		azblob.ListBlobsSegmentOptions{MaxResults: 2})
+		azblob.ListBlobsSegmentOptions{MaxResults: 2,
+			Prefix: bb.Config.prefixPath,
+		})
 
 	if err != nil {
 		log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error)
@@ -333,7 +337,10 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlob.Segment.BlobItems {
-			bb.DeleteFile(split(bb.Config.prefixPath, blobInfo.Name))
+			err = bb.DeleteFile(split(bb.Config.prefixPath, blobInfo.Name))
+			if err != nil {
+				log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s (%s)", blobInfo.Name, err.Error)
+			}
 		}
 	}
 	return bb.DeleteFile(name)
@@ -400,7 +407,10 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlob.Segment.BlobItems {
 			srcPath := split(bb.Config.prefixPath, blobInfo.Name)
-			bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
+			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
+			if err != nil {
+				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s (%s)", srcPath, err.Error)
+			}
 		}
 	}
 
@@ -767,6 +777,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		blockOffset += block.Size
 		blockList.BlockList = append(blockList.BlockList, blk)
 	}
+	// blockList.Etag = storageBlockList.ETag()
 	blockList.BlockIdLength = common.GetIdLength(blockList.BlockList[0].Id)
 	return &blockList, nil
 }
@@ -815,7 +826,12 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 		blk.EndIndex = size
 		blk.Data = make([]byte, blk.EndIndex-blk.StartIndex)
 		blk.Flags.Set(common.DirtyBlock)
-		bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data)
+
+		err := bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data)
+		if err != nil {
+			log.Err("BlockBlob::removeBlocks : Failed to remove blocks %s (%s)", name, err.Error())
+		}
+
 	}
 
 	blockList.BlockList = blockList.BlockList[:index+1]
@@ -954,7 +970,10 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
 		if !appendOnly {
 			// fetch the blocks that will be impacted by the new changes so we can overwrite them
-			bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
+			err = bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
+			if err != nil {
+				log.Err("BlockBlob::Write : Failed to read data in buffer %s (%s)", name, err.Error())
+			}
 		}
 		// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
 		blockOffset := offset - fileOffsets.BlockList[index].StartIndex
@@ -993,8 +1012,7 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 		bb.blobAccCond,
 		bb.Config.defaultTier,
 		nil, // datalake doesn't support tags here
-		bb.downloadOptions.ClientProvidedKeyOptions,
-		azblob.ImmutabilityPolicyOptions{})
+		bb.downloadOptions.ClientProvidedKeyOptions)
 	if err != nil {
 		log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to commit block list to blob %s (%s)", name, err.Error())
 		return err
@@ -1003,6 +1021,10 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 }
 
 func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) error {
+	// lock on the blob name so that no stage and commit race condition occur causing failure
+	blobMtx := bb.blockLocks.GetLock(name)
+	blobMtx.Lock()
+	defer blobMtx.Unlock()
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	var blockIDList []string
 	var data []byte
@@ -1036,14 +1058,16 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 			azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
 			nil,
 			bb.blobAccCond,
+			// azblob.BlobAccessConditions{ModifiedAccessConditions: azblob.ModifiedAccessConditions{IfMatch: bol.Etag}},
 			bb.Config.defaultTier,
 			nil, // datalake doesn't support tags here
-			bb.downloadOptions.ClientProvidedKeyOptions,
-			azblob.ImmutabilityPolicyOptions{})
+			bb.downloadOptions.ClientProvidedKeyOptions)
 		if err != nil {
 			log.Err("BlockBlob::StageAndCommit : Failed to commit block list to blob %s (%s)", name, err.Error())
 			return err
 		}
+		// update the etag
+		// bol.Etag = resp.ETag()
 	}
 	return nil
 }

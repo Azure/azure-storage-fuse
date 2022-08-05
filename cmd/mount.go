@@ -34,11 +34,6 @@
 package cmd
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/exectime"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -51,6 +46,12 @@ import (
 	"runtime/pprof"
 	"strings"
 	"syscall"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/exectime"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	"github.com/sevlyar/go-daemon"
 	"github.com/spf13/cobra"
@@ -85,7 +86,7 @@ type mountOptions struct {
 }
 
 var options mountOptions
-var pipelineStarted bool
+var pipelineStarted bool //nolint
 
 func (opt *mountOptions) validate(skipEmptyMount bool) error {
 	if opt.MountPath == "" {
@@ -293,9 +294,11 @@ var mountCmd = &cobra.Command{
 
 		config.Set("mount-path", options.MountPath)
 
+		var pipeline *internal.Pipeline
+
 		log.Crit("Starting Blobfuse2 Mount : %s on (%s)", common.Blobfuse2Version, common.GetCurrentDistro())
 		log.Crit("Logging level set to : %s", logLevel.String())
-		pipeline, err := internal.NewPipeline(options.Components)
+		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
 			log.Err("Mount: error initializing new pipeline [%v]", err)
 			fmt.Println("failed to mount :", err)
@@ -310,7 +313,7 @@ var mountCmd = &cobra.Command{
 				Umask:       027,
 			}
 
-			ctx, _ := context.WithCancel(context.Background())
+			ctx, _ := context.WithCancel(context.Background()) //nolint
 			daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
 			child, err := dmnCtx.Reborn()
 			if err != nil {
@@ -318,7 +321,7 @@ var mountCmd = &cobra.Command{
 				Destroy(1)
 			}
 			if child == nil {
-				defer dmnCtx.Release()
+				defer dmnCtx.Release() // nolint
 				setGOConfig()
 				go startDynamicProfiler()
 				runPipeline(pipeline, ctx)
@@ -378,7 +381,7 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) {
 		Destroy(1)
 	}
 
-	log.Destroy()
+	_ = log.Destroy()
 }
 
 func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
@@ -436,8 +439,6 @@ func startDynamicProfiler() {
 	if err != nil {
 		log.Err("startDynamicProfiler : Failed to start dynamic profiler [%s]", err.Error())
 	}
-
-	return
 }
 
 func init() {
@@ -451,7 +452,7 @@ func init() {
 
 	mountCmd.PersistentFlags().StringVar(&options.ConfigFile, "config-file", "",
 		"Configures the path for the file where the account credentials are provided. Default is config.yaml in current directory.")
-	mountCmd.MarkPersistentFlagFilename("config-file", "yaml")
+	_ = mountCmd.MarkPersistentFlagFilename("config-file", "yaml")
 
 	mountCmd.PersistentFlags().BoolVar(&options.SecureConfig, "secure-config", false,
 		"Encrypt auto generated config file for each container")
@@ -462,14 +463,14 @@ func init() {
 	mountCmd.PersistentFlags().String("log-level", "LOG_WARNING",
 		"Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG")
 	config.BindPFlag("logging.level", mountCmd.PersistentFlags().Lookup("log-level"))
-	mountCmd.RegisterFlagCompletionFunc("log-level", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	_ = mountCmd.RegisterFlagCompletionFunc("log-level", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return []string{"LOG_OFF", "LOG_CRIT", "LOG_ERR", "LOG_WARNING", "LOG_INFO", "LOG_TRACE", "LOG_DEBUG"}, cobra.ShellCompDirectiveNoFileComp
 	})
 
 	mountCmd.PersistentFlags().String("log-file-path",
 		common.DefaultLogFilePath, "Configures the path for log files. Default is "+common.DefaultLogFilePath)
 	config.BindPFlag("logging.file-path", mountCmd.PersistentFlags().Lookup("log-file-path"))
-	mountCmd.MarkPersistentFlagDirname("log-file-path")
+	_ = mountCmd.MarkPersistentFlagDirname("log-file-path")
 
 	mountCmd.PersistentFlags().Bool("foreground", false, "Mount the system in foreground mode. Default value false.")
 	config.BindPFlag("foreground", mountCmd.PersistentFlags().Lookup("foreground"))
@@ -480,7 +481,7 @@ func init() {
 	mountCmd.PersistentFlags().String("default-working-dir", "", "Default working directory for storing log files and other blobfuse2 information")
 	mountCmd.PersistentFlags().Lookup("default-working-dir").Hidden = true
 	config.BindPFlag("default-working-dir", mountCmd.PersistentFlags().Lookup("default-working-dir"))
-	mountCmd.MarkPersistentFlagDirname("default-working-dir")
+	_ = mountCmd.MarkPersistentFlagDirname("default-working-dir")
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)
@@ -488,6 +489,6 @@ func init() {
 }
 
 func Destroy(code int) {
-	log.Destroy()
+	_ = log.Destroy()
 	os.Exit(code)
 }

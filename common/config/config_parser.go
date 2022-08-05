@@ -34,14 +34,15 @@
 package config
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
 	"strings"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/spf13/cobra"
 
@@ -294,7 +295,7 @@ func AttachToFlagSet(flagset *pflag.FlagSet) {
 
 func AttachFlagCompletions(cmd *cobra.Command) {
 	for key, fn := range userOptions.completionFuncMap {
-		cmd.RegisterFlagCompletionFunc(key, fn)
+		_ = cmd.RegisterFlagCompletionFunc(key, fn)
 	}
 }
 

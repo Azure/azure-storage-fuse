@@ -1,13 +1,13 @@
-module blobfuse2
+module github.com/Azure/azure-storage-fuse/v2
 
 go 1.16
 
 require (
-	github.com/Azure/azure-pipeline-go v0.2.4-0.20220425205405-09e6f201e1e4
-	github.com/Azure/azure-storage-azcopy/v10 v10.15.0
-	github.com/Azure/azure-storage-blob-go v0.15.0
-	github.com/Azure/go-autorest/autorest v0.11.18
-	github.com/Azure/go-autorest/autorest/adal v0.9.18
+	github.com/Azure/azure-pipeline-go v0.2.3
+	github.com/Azure/azure-storage-azcopy/v10 v10.13.1-0.20211218014522-24209b81028e
+	github.com/Azure/azure-storage-blob-go v0.13.1-0.20210823171415-e7932f52ad61
+	github.com/Azure/go-autorest/autorest v0.11.27
+	github.com/Azure/go-autorest/autorest/adal v0.9.20
 	github.com/JeffreyRichter/enum v0.0.0-20180725232043-2567042f9cda
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/golang/mock v1.6.0

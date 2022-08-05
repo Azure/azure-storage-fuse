@@ -34,7 +34,7 @@
 package azstorage
 
 import (
-	"blobfuse2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 // AzAuthConfig : Config to authenticate to storage
@@ -61,7 +61,8 @@ type azAuthConfig struct {
 	ClientSecret            string
 	ActiveDirectoryEndpoint string
 
-	Endpoint string
+	Endpoint     string
+	AuthResource string
 }
 
 // azAuth : Interface to define a generic authentication type

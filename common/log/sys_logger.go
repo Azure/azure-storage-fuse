@@ -34,13 +34,14 @@
 package log
 
 import (
-	"blobfuse2/common"
 	"errors"
 	"fmt"
 	"log"
 	"log/syslog"
 	"path/filepath"
 	"runtime"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
 type SysLogger struct {
@@ -160,11 +161,9 @@ func (l *SysLogger) SetLogFile(name string) error {
 }
 
 func (l *SysLogger) SetMaxLogSize(size int) {
-	return
 }
 
 func (l *SysLogger) SetLogFileCount(count int) {
-	return
 }
 
 func (l *SysLogger) Destroy() error {

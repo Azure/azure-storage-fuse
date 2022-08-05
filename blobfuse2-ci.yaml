@@ -17,11 +17,19 @@ jobs:
           containerName: 'test-cnt-ubn-18'
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
+          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_18)
         Ubuntu-20:
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
+          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+        Ubuntu-22:
+          imageName: 'ubuntu-22.04'
+          containerName: 'test-cnt-ubn-22'
+          fuselib: 'libfuse3-dev'
+          tags: 'fuse3'
+          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
   
     pool:
       vmImage: $(imageName)
@@ -53,7 +61,7 @@ jobs:
       inputs:
         command: 'build'
         workingDirectory: ./
-        arguments: "-tags $(tags)"
+        arguments: "-tags $(tags) -o blobfuse2"
       displayName: "Build"
 
     - script: |
@@ -68,7 +76,9 @@ jobs:
         echo "\"block-key\"": "\"$(AZTEST_BLOCK_KEY)\"", >> $cnfFile
         echo "\"adls-key\"": "\"$(AZTEST_ADLS_KEY)\"", >> $cnfFile
         echo "\"block-sas\"": "\"$(AZTEST_BLOCK_SAS)\"", >> $cnfFile
-        echo "\"adls-sas\"": "\"$(AZTEST_ADLS_SAS)\"", >> $cnfFile
+        echo "\"block-cont-sas-ubn-18\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_18)\"", >> $cnfFile
+        echo "\"block-cont-sas-ubn-20\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_20)\"", >> $cnfFile
+        echo "\"adls-sas\"": "\"$(adlsSas)\"", >> $cnfFile
         echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
         echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
         echo "\"spn-client\"": "\"$(AZTEST_CLIENT)\"", >> $cnfFile
@@ -80,6 +90,63 @@ jobs:
         cat $cnfFile
       displayName: "Create Configuration File"
       continueOnError: false
+      workingDirectory: ./
+
+    # Code lint checks (Static-analysis)
+    - script: |
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
+        $(go env GOPATH)/bin/golangci-lint --version
+        $(go env GOPATH)/bin/golangci-lint run --tests=false --build-tags $(tags) --skip-dirs test,common/stats_collector,common/stats_monitor --max-issues-per-linter=0 -files component/libfuse/libfuse2_handler_test_wrapper.go > lint.log
+        result=$(cat lint.log | wc -l)
+        if [ $result -ne 0 ]; then
+          echo "-----------------------------------"
+          echo "Below issues are found in SA"
+          cat lint.log
+          echo "-----------------------------------"
+          exit 1
+        else
+          echo "-----------------------------------"
+          echo "No issues are found in SA"
+          echo "-----------------------------------"
+        fi 
+      displayName: 'Static Analysis (Lint)'
+      condition: always()
+      workingDirectory: ./
+
+    # Copyright checks
+    - script: |
+        result=$(grep -L -r --include \*.go "`date +%Y` Microsoft Corporation" ./ | wc -l)
+        if [ $result -ne 0 ]; then
+          exit 1
+        else  
+          echo "Copyright statements are up to date"
+        fi 
+      displayName: 'Copyright check'
+      condition: always()
+      failOnStderr: true
+      workingDirectory: ./
+
+    # Go code formatting checks
+    - script: |
+        gofmt -s -l -d . | tee >&2
+      displayName: 'Go Format Check'
+      condition: always()
+      failOnStderr: true
+      workingDirectory: ./
+
+    # Notices files check
+    - script: |
+        ./notices_fix.sh
+        result=$(git diff NOTICE | wc -l)
+        if [ $result -ne 0 ]; then
+          echo "Notices needs a fix. Run ./notices_fix.sh and commit NOTICE file."
+          exit 1
+        else
+          echo "Notices are up to date."
+        fi 
+      displayName: 'Notice file check'
+      condition: always()
+      failOnStderr: true
       workingDirectory: ./
 
     # Running unit tests for fuse3 on ubn-20

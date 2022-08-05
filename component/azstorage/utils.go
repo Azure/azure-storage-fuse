@@ -34,9 +34,6 @@
 package azstorage
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -48,6 +45,10 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
 	"github.com/Azure/azure-storage-azcopy/v10/ste"
@@ -427,7 +428,7 @@ func getContentType(key string) string {
 	return "application/octet-stream"
 }
 
-func populateContentType(newSet string) error {
+func populateContentType(newSet string) error { //nolint
 	var data map[string]string
 	if err := json.Unmarshal([]byte(newSet), &data); err != nil {
 		log.Err("Failed to parse config file : %s (%s)", newSet, err.Error())
@@ -494,30 +495,6 @@ func getACLPermissions(mode os.FileMode) string {
 	return sb.String()
 }
 
-// Called by x method
-func getAccessControlList(mode os.FileMode) string {
-	// The format for the value x-ms-acl is user::rwx,group::rwx,mask::rwx,other::rwx
-	// Since fuse has no way to expose mask to the user, we only are concerned about
-	// user, group and other.
-	var sb strings.Builder
-	sb.WriteString("user::")
-	writePermission(&sb, mode&(1<<8) != 0, 'r')
-	writePermission(&sb, mode&(1<<7) != 0, 'w')
-	writePermission(&sb, mode&(1<<6) != 0, 'x')
-
-	sb.WriteString(",group::")
-	writePermission(&sb, mode&(1<<5) != 0, 'r')
-	writePermission(&sb, mode&(1<<4) != 0, 'w')
-	writePermission(&sb, mode&(1<<3) != 0, 'x')
-
-	sb.WriteString(",other::")
-	writePermission(&sb, mode&(1<<2) != 0, 'r')
-	writePermission(&sb, mode&(1<<1) != 0, 'w')
-	writePermission(&sb, mode&(1<<0) != 0, 'x')
-
-	return sb.String()
-}
-
 func writePermission(sb *strings.Builder, permitted bool, permission rune) {
 	if permitted {
 		sb.WriteRune(permission)
@@ -563,4 +540,16 @@ func split(prefixPath string, path string) string {
 		paths = paths[1:]
 	}
 	return filepath.Join(paths...)
+}
+
+func sanitizeSASKey(key string) string {
+	if key == "" {
+		return key
+	}
+
+	if key[0] != '?' {
+		return ("?" + key)
+	}
+
+	return key
 }

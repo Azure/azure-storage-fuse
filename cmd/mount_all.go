@@ -34,9 +34,6 @@
 package cmd
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -45,7 +42,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"blobfuse2/component/azstorage"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+
+	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -68,7 +69,7 @@ var mountAllCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	Run: func(cmd *cobra.Command, args []string) {
-		VersionCheck()
+		_ = VersionCheck()
 
 		mountAllOpts.blobfuse2BinPath = os.Args[0]
 		options.MountPath = args[0]
@@ -154,15 +155,11 @@ func getContainerList() []string {
 
 	// Create AzStorage component to get container list
 	azComponent := &azstorage.AzStorage{}
-	if azComponent == nil {
-		fmt.Printf("MountAll : Failed to create AzureStorage object")
-		os.Exit(1)
-	}
 	azComponent.SetName("azstorage")
 	azComponent.SetNextComponent(nil)
 
 	// Configure AzStorage component
-	err := azComponent.Configure()
+	err := azComponent.Configure(true)
 	if err != nil {
 		fmt.Printf("MountAll : Failed to configure AzureStorage object (%s)", err.Error())
 		os.Exit(1)
@@ -183,7 +180,7 @@ func getContainerList() []string {
 	}
 
 	// Stop the azStorage component as its no more needed now
-	azComponent.Stop()
+	_ = azComponent.Stop()
 	return containerList
 }
 
@@ -256,7 +253,10 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 		}
 
 		if _, err := os.Stat(contMountPath); os.IsNotExist(err) {
-			os.MkdirAll(contMountPath, 0777)
+			err = os.MkdirAll(contMountPath, 0777)
+			if err != nil {
+				fmt.Printf("failed to create directory %s : %s\n", contMountPath, err.Error())
+			}
 		}
 
 		// NOTE : Add all the configs that need replacement based on container here
@@ -306,7 +306,11 @@ func writeConfigFile(contConfigFile string) {
 		}
 	} else {
 		// Write modified config as per container to a new config file
-		viper.WriteConfigAs(contConfigFile)
+		err := viper.WriteConfigAs(contConfigFile)
+		if err != nil {
+			fmt.Println("Failed to write config file : ", err.Error())
+			os.Exit(1)
+		}
 	}
 }
 
@@ -327,9 +331,5 @@ func buildCliParamForMount() []string {
 }
 
 func ignoreCliParam(opt string) bool {
-	if strings.HasPrefix(opt, "--config-file") {
-		return true
-	}
-
-	return false
+	return strings.HasPrefix(opt, "--config-file")
 }

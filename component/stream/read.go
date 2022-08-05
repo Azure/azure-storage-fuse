@@ -34,13 +34,14 @@
 package stream
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"io"
 	"sync/atomic"
 	"syscall"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 type ReadCache struct {
@@ -185,7 +186,7 @@ func (r *ReadCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, err
 
 func (r *ReadCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
-	r.NextComponent().CloseFile(options)
+	_ = r.NextComponent().CloseFile(options)
 	if !r.StreamOnly && !options.Handle.CacheObj.StreamOnly {
 		options.Handle.CacheObj.Lock()
 		defer options.Handle.CacheObj.Unlock()
