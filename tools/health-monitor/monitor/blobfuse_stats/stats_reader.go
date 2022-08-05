@@ -41,11 +41,11 @@ import (
 	"syscall"
 	"time"
 
-	hmcommon "github.com/Azure/azure-storage-fuse/v2/bin/health-monitor/common"
-	hminternal "github.com/Azure/azure-storage-fuse/v2/bin/health-monitor/internal"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
+	hminternal "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/internal"
 )
 
 type BlobfuseStats struct {

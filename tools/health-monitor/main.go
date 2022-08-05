@@ -40,11 +40,11 @@ import (
 	"strings"
 	"time"
 
-	hmcommon "github.com/Azure/azure-storage-fuse/v2/bin/health-monitor/common"
-	hminternal "github.com/Azure/azure-storage-fuse/v2/bin/health-monitor/internal"
-	_ "github.com/Azure/azure-storage-fuse/v2/bin/health-monitor/monitor"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
+	hminternal "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/internal"
+	_ "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/monitor"
 )
 
 func getMonitors() []hminternal.Monitor {

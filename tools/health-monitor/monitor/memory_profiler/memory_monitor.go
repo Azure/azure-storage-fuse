@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package cpu_profiler
+package memory_profiler
 
 import (
 	"fmt"
@@ -39,97 +39,97 @@ import (
 	"strings"
 	"time"
 
-	hmcommon "github.com/Azure/azure-storage-fuse/v2/bin/health-monitor/common"
-	hminternal "github.com/Azure/azure-storage-fuse/v2/bin/health-monitor/internal"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
+	hminternal "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/internal"
 )
 
-type CpuProfiler struct {
+type MemoryProfiler struct {
 	name         string
 	pid          string
 	pollInterval int
 }
 
-func (cpu *CpuProfiler) GetName() string {
-	return cpu.name
+func (mem *MemoryProfiler) GetName() string {
+	return mem.name
 }
 
-func (cpu *CpuProfiler) SetName(name string) {
-	cpu.name = name
+func (mem *MemoryProfiler) SetName(name string) {
+	mem.name = name
 }
 
-func (cpu *CpuProfiler) Monitor() error {
+func (mem *MemoryProfiler) Monitor() error {
 	defer hmcommon.Wg.Done()
 
-	err := cpu.Validate()
+	err := mem.Validate()
 	if err != nil {
-		log.Err("cpu_monitor::Monitor : [%v]", err)
+		log.Err("memory_monitor::Monitor : [%v]", err)
 		return err
 	}
 
-	ticker := time.NewTicker(time.Duration(cpu.pollInterval) * time.Second)
+	ticker := time.NewTicker(time.Duration(mem.pollInterval) * time.Second)
 	defer ticker.Stop()
 
 	for t := range ticker.C {
-		c, err := cpu.getCpuUsage()
+		c, err := mem.getMemoryUsage()
 		if err != nil {
-			log.Err("cpu_monitor::Monitor : [%v]", err)
+			log.Err("memory_monitor::Monitor : [%v]", err)
 			return err
 		}
 
-		// TODO: export cpu usage
-		log.Debug("CPU Usage : %v at %v", c, t.Format(time.RFC3339))
+		// TODO: export memory usage
+		log.Debug("Memory Usage : %v at %v", c, t.Format(time.RFC3339))
 	}
 
 	return nil
 }
 
-func (cpu *CpuProfiler) ExportStats() {
-	fmt.Println("Inside CPU export stats")
+func (mem *MemoryProfiler) ExportStats() {
+	fmt.Println("Inside memory export stats")
 }
 
-func (cpu *CpuProfiler) Validate() error {
-	if len(cpu.pid) == 0 {
+func (mem *MemoryProfiler) Validate() error {
+	if len(mem.pid) == 0 {
 		return fmt.Errorf("pid of blobfuse2 is not given")
 	}
 
-	if cpu.pollInterval == 0 {
+	if mem.pollInterval == 0 {
 		return fmt.Errorf("stats-poll-interval should be non-zero")
 	}
 
 	return nil
 }
 
-func (cpu *CpuProfiler) getCpuUsage() (string, error) {
-	topCmd := "top -b -n 1 -d 0.2 -p " + cpu.pid + " | tail -1 | awk '{print $9}'"
+func (mem *MemoryProfiler) getMemoryUsage() (string, error) {
+	topCmd := "top -b -n 1 -d 0.2 -p " + mem.pid + " | tail -1 | awk '{print $10}'"
 
 	cliOut, err := exec.Command("bash", "-c", topCmd).Output()
 	if err != nil {
-		log.Err("cpu_monitor::getCpuUsage : Blobfuse2 is not running on pid %v [%v]", cpu.pid, err)
+		log.Err("memory_monitor::getMemoryUsage : Blobfuse2 is not running on pid %v [%v]", mem.pid, err)
 		return "", err
 	}
 
 	stats := strings.Split(strings.Split(string(cliOut), "\n")[0], " ")
 
-	if stats[0] == "%CPU" {
-		log.Err("cpu_monitor::getCpuUsage : Blobfuse2 is not running on pid %v", cpu.pid)
-		return "", fmt.Errorf("blobfuse2 is not running on pid %v", cpu.pid)
+	if stats[0] == "%MEM" {
+		log.Err("memory_monitor::getMemoryUsage : Blobfuse2 is not running on pid %v", mem.pid)
+		return "", fmt.Errorf("blobfuse2 is not running on pid %v", mem.pid)
 	}
 
 	return stats[0], nil
 }
 
-func NewCpuMonitor() hminternal.Monitor {
-	cpu := &CpuProfiler{
+func NewMemoryMonitor() hminternal.Monitor {
+	mem := &MemoryProfiler{
 		pid:          hmcommon.Pid,
 		pollInterval: hmcommon.StatsPollinterval,
 	}
 
-	cpu.SetName(hmcommon.CpuProfiler)
+	mem.SetName(hmcommon.MemoryProfiler)
 
-	return cpu
+	return mem
 }
 
 func init() {
-	hminternal.AddMonitor(hmcommon.CpuProfiler, NewCpuMonitor)
+	hminternal.AddMonitor(hmcommon.MemoryProfiler, NewMemoryMonitor)
 }

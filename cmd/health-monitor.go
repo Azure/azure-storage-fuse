@@ -38,10 +38,10 @@ import (
 	"os/exec"
 	"strings"
 
-	hmcommon "github.com/Azure/azure-storage-fuse/v2/bin/health-monitor/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
+	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
 	"github.com/spf13/cobra"
 )
 
