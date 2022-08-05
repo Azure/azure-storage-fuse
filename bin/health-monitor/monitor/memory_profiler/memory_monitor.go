@@ -125,11 +125,11 @@ func NewMemoryMonitor() hminternal.Monitor {
 		pollInterval: hmcommon.StatsPollinterval,
 	}
 
-	mem.SetName(hmcommon.Memory_profiler)
+	mem.SetName(hmcommon.MemoryProfiler)
 
 	return mem
 }
 
 func init() {
-	hminternal.AddMonitor(hmcommon.Memory_profiler, NewMemoryMonitor)
+	hminternal.AddMonitor(hmcommon.MemoryProfiler, NewMemoryMonitor)
 }

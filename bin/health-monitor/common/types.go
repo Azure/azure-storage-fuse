@@ -39,11 +39,11 @@ import (
 )
 
 const (
-	Blobfuse_stats   = "blobfuse_stats"
-	File_cache       = "file_cache"
-	Cpu_profiler     = "cpu_profiler"
-	Memory_profiler  = "memory_profiler"
-	Network_profiler = "network_profiler"
+	BlobfuseStats   = "blobfuse_stats"
+	FileCacheMon    = "cache_monitor"
+	CpuProfiler     = "cpu_profiler"
+	MemoryProfiler  = "memory_profiler"
+	NetworkProfiler = "network_profiler"
 
 	HealthMon = "healthmon"
 )

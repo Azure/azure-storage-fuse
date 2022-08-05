@@ -243,11 +243,11 @@ func NewFileCacheMonitor() hminternal.Monitor {
 		cacheObj:  CacheDir{},
 	}
 
-	fc.SetName(hmcommon.File_cache)
+	fc.SetName(hmcommon.FileCacheMon)
 
 	return fc
 }
 
 func init() {
-	hminternal.AddMonitor(hmcommon.File_cache, NewFileCacheMonitor)
+	hminternal.AddMonitor(hmcommon.FileCacheMon, NewFileCacheMonitor)
 }

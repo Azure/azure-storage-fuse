@@ -125,11 +125,11 @@ func NewCpuMonitor() hminternal.Monitor {
 		pollInterval: hmcommon.StatsPollinterval,
 	}
 
-	cpu.SetName(hmcommon.Cpu_profiler)
+	cpu.SetName(hmcommon.CpuProfiler)
 
 	return cpu
 }
 
 func init() {
-	hminternal.AddMonitor(hmcommon.Cpu_profiler, NewCpuMonitor)
+	hminternal.AddMonitor(hmcommon.CpuProfiler, NewCpuMonitor)
 }

@@ -51,7 +51,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/exectime"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/common/stats_monitor"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	"github.com/sevlyar/go-daemon"
@@ -282,12 +281,6 @@ var mountCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		err = config.UnmarshalKey("enable-monitoring", &common.EnableMonitoring)
-		if err != nil {
-			log.Debug("Unable to unmarshal enable-monitoring key from config: " + err.Error())
-			common.EnableMonitoring = false
-		}
-
 		if options.Debug {
 			f, err := os.OpenFile(filepath.Join(options.DebugPath, "times.log"), os.O_CREATE|os.O_APPEND|os.O_RDWR, os.FileMode(0755))
 			if err != nil {
@@ -365,11 +358,14 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
+		err = config.UnmarshalKey("health-monitor.enable-monitoring", &common.EnableMonitoring)
+		if err != nil {
+			log.Debug("Unable to unmarshal enable-monitoring key from config: " + err.Error())
+			common.EnableMonitoring = false
+		}
+
 		if common.EnableMonitoring {
-			err = stats_monitor.GenerateMonitorConfig(options.MountPath)
-			if err != nil {
-				log.Debug("Mount: Failed to generate config for stats monitor [%v]", err)
-			}
+			fmt.Println(os.Args[0], os.Getpid())
 		}
 
 	},

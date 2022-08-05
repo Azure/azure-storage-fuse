@@ -89,11 +89,11 @@ func NewNetworkMonitor() hminternal.Monitor {
 		pollInterval: hmcommon.StatsPollinterval,
 	}
 
-	nw.SetName(hmcommon.Network_profiler)
+	nw.SetName(hmcommon.NetworkProfiler)
 
 	return nw
 }
 
 func init() {
-	hminternal.AddMonitor(hmcommon.Network_profiler, NewNetworkMonitor)
+	hminternal.AddMonitor(hmcommon.NetworkProfiler, NewNetworkMonitor)
 }

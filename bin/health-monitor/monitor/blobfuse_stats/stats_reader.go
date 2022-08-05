@@ -174,11 +174,11 @@ func NewBlobfuseStatsMonitor() hminternal.Monitor {
 		pollingPipe:  common.PollingPipe,
 	}
 
-	bfs.SetName(hmcommon.Blobfuse_stats)
+	bfs.SetName(hmcommon.BlobfuseStats)
 
 	return bfs
 }
 
 func init() {
-	hminternal.AddMonitor(hmcommon.Blobfuse_stats, NewBlobfuseStatsMonitor)
+	hminternal.AddMonitor(hmcommon.BlobfuseStats, NewBlobfuseStatsMonitor)
 }
