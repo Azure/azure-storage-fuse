@@ -66,6 +66,70 @@ func (s *utilsTestSuite) TestContentType() {
 	assert.EqualValues(val, "video/mp4")
 }
 
+type contentTypeVal struct {
+	val    string
+	result string
+}
+
+func (s *utilsTestSuite) TestGetContentType() {
+	assert := assert.New(s.T())
+	var inputs = []contentTypeVal{
+		{val: "a.css", result: "text/css"},
+		{val: "a.pdf", result: "application/pdf"},
+		{val: "a.xml", result: "text/xml"},
+		{val: "a.csv", result: "text/csv"},
+		{val: "a.json", result: "application/json"},
+		{val: "a.rtf", result: "application/rtf"},
+		{val: "a.txt", result: "text/plain"},
+		{val: "a.java", result: "text/plain"},
+		{val: "a.dat", result: "text/plain"},
+		{val: "a.htm", result: "text/html"},
+		{val: "a.html", result: "text/html"},
+		{val: "a.gif", result: "image/gif"},
+		{val: "a.jpeg", result: "image/jpeg"},
+		{val: "a.jpg", result: "image/jpeg"},
+		{val: "a.png", result: "image/png"},
+		{val: "a.bmp", result: "image/bmp"},
+		{val: "a.js", result: "application/javascript"},
+		{val: "a.mjs", result: "application/javascript"},
+		{val: "a.svg", result: "image/svg+xml"},
+		{val: "a.wasm", result: "application/wasm"},
+		{val: "a.webp", result: "image/webp"},
+		{val: "a.wav", result: "audio/wav"},
+		{val: "a.mp3", result: "audio/mpeg"},
+		{val: "a.mpeg", result: "audio/mpeg"},
+		{val: "a.aac", result: "audio/aac"},
+		{val: "a.avi", result: "video/x-msvideo"},
+		{val: "a.m3u8", result: "application/x-mpegURL"},
+		{val: "a.ts", result: "video/MP2T"},
+		{val: "a.mid", result: "audio/midiaudio/x-midi"},
+		{val: "a.3gp", result: "video/3gpp"},
+		{val: "a.mp4", result: "video/mp4"},
+		{val: "a.doc", result: "application/msword"},
+		{val: "a.docx", result: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+		{val: "a.ppt", result: "application/vnd.ms-powerpoint"},
+		{val: "a.pptx", result: "application/vnd.openxmlformats-officedocument.presentationml.presentation"},
+		{val: "a.xls", result: "application/vnd.ms-excel"},
+		{val: "a.xlsx", result: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"},
+		{val: "a.gz", result: "application/x-gzip"},
+		{val: "a.jar", result: "application/java-archive"},
+		{val: "a.rar", result: "application/vnd.rar"},
+		{val: "a.tar", result: "application/x-tar"},
+		{val: "a.zip", result: "application/x-zip-compressed"},
+		{val: "a.7z", result: "application/x-7z-compressed"},
+		{val: "a.3g2", result: "video/3gpp2"},
+		{val: "a.sh", result: "application/x-sh"},
+		{val: "a.exe", result: "application/x-msdownload"},
+		{val: "a.dll", result: "application/x-msdownload"},
+	}
+	for _, i := range inputs {
+		s.Run(i.val, func() {
+			output := getContentType(i.val)
+			assert.EqualValues(i.result, output)
+		})
+	}
+}
+
 type accesTierVal struct {
 	val    string
 	result azblob.AccessTierType
