@@ -395,9 +395,9 @@ func (suite *dirTestSuite) TestDirRenameFull() {
 
 func (suite *dirTestSuite) TestTarDir() {
 	dirName := suite.testPath + "/tar"
-	tarName := suite.testPath + "/libfuse.tar.gz"
+	tarName := suite.testPath + "/tardir.tar.gz"
 
-	cmd := exec.Command("git", "clone", "https://github.com/libfuse/libfuse", dirName)
+	cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
 	_, err := cmd.Output()
 	suite.Equal(nil, err)
 
@@ -421,7 +421,7 @@ func (suite *dirTestSuite) TestGitClone() {
 	if clonePtr == "true" || clonePtr == "True" {
 		dirName := suite.testPath + "/clone"
 
-		cmd := exec.Command("git", "clone", "https://github.com/libfuse/libfuse", dirName)
+		cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
 		_, err := cmd.Output()
 		suite.Equal(nil, err)
 
@@ -439,7 +439,7 @@ func (suite *dirTestSuite) TestGitStatus() {
 	if clonePtr == "true" || clonePtr == "True" {
 		dirName := suite.testPath + "/status"
 
-		cmd := exec.Command("git", "clone", "https://github.com/libfuse/libfuse", dirName)
+		cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
 		_, err := cmd.Output()
 		suite.Equal(nil, err)
 
@@ -479,7 +479,7 @@ func (suite *dirTestSuite) TestGitStash() {
 	if clonePtr == "true" || clonePtr == "True" {
 		dirName := suite.testPath + "/stash"
 
-		cmd := exec.Command("git", "clone", "https://github.com/libfuse/libfuse", dirName)
+		cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
 		_, err := cmd.Output()
 		suite.Equal(nil, err)
 
