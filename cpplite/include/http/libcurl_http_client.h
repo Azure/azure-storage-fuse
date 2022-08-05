@@ -21,6 +21,7 @@
 #include "http_base.h"
 
 extern bool gEnableLogsHttp;
+extern bool gEnableDebugLibcurl;
 namespace azure {  namespace storage_lite {
 
     class CurlEasyClient;
@@ -266,6 +267,45 @@ namespace azure {  namespace storage_lite {
             }
 
             return actual_size;
+        }
+
+        static int debug_callback(CURL *handle, curl_infotype type, char *data, size_t size, void *userptr)
+        {
+            /* Taken from curl docs: https://curl.se/libcurl/c/CURLOPT_DEBUGFUNCTION.html */
+            const char *text;
+            (void)handle; /* prevent compiler warning */
+            (void)userptr;
+            (void)size;
+            
+            switch (type) {
+            case CURLINFO_TEXT:
+                text = "== Info";
+                break;
+            default:
+                return 0;
+            
+            case CURLINFO_HEADER_OUT:
+                text = "=> Send header";
+                break;
+            case CURLINFO_DATA_OUT:
+                text = "=> Send data";
+                break;
+            case CURLINFO_SSL_DATA_OUT:
+                text = "=> Send SSL data";
+                break;
+            case CURLINFO_HEADER_IN:
+                text = "<= Recv header";
+                break;
+            case CURLINFO_DATA_IN:
+                text = "<= Recv data";
+                break;
+            case CURLINFO_SSL_DATA_IN:
+                text = "<= Recv SSL data";
+                break;
+            }
+            
+            syslog(LOG_DEBUG, "libcurl: %s: %s", text, data);
+            return 0;
         }
 
         static void check_code(CURLcode code, std::string = std::string())

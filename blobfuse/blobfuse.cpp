@@ -75,6 +75,7 @@ const struct fuse_opt option_spec[] =
     OPTION("--max-blocks-per-file=%s", max_blocks_per_file),
     OPTION("--block-size-mb=%s", block_size_mb),
     OPTION("--ignore-open-flags=%s", ignore_open_flags),
+    OPTION("--debug-libcurl=%s", debug_libcurl),
 
     OPTION("--version", version),
     OPTION("-v", version),
@@ -1219,6 +1220,17 @@ read_and_set_arguments(int argc, char *argv[], struct fuse_args *args)
         if(ignore == "true")
         {
             config_options.ignoreOpenFlags = true;
+        } 
+    }
+
+    gEnableDebugLibcurl = false;
+    if(cmd_options.debug_libcurl != NULL)
+    {
+        std::string debug(cmd_options.debug_libcurl);
+        if(debug == "true")
+        {
+            syslog(LOG_INFO, "Debug libcurl is turned on");
+            gEnableDebugLibcurl = true;
         } 
     }
 

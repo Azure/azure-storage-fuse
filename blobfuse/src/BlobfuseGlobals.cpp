@@ -4,6 +4,7 @@
 #include <curl/curl.h>
 
 bool gEnableLogsHttp;
+bool gEnableDebugLibcurl;
 
 std::string to_lower(std::string original) 
 {

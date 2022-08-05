@@ -56,7 +56,7 @@ public:
     
     adls_client_ext(
                 std::shared_ptr<storage_account> account, 
-                int max_concurrency, 
+                int max_concurrency,
                 bool exception_enabled = true) :
                 adls_client(account, max_concurrency, exception_enabled),
                 maxConcurrency(max_concurrency)
