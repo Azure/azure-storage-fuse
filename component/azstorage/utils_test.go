@@ -36,6 +36,7 @@ package azstorage
 import (
 	"testing"
 
+	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -63,6 +64,53 @@ func (s *utilsTestSuite) TestContentType() {
 	// assert mp4 content type would get deserialized correctly
 	val = getContentType("file.mp4")
 	assert.EqualValues(val, "video/mp4")
+}
+
+type accesTierVal struct {
+	val    string
+	result azblob.AccessTierType
+}
+
+func (s *utilsTestSuite) TestGetAccessTierType() {
+	assert := assert.New(s.T())
+	var inputs = []accesTierVal{
+		{val: "", result: azblob.AccessTierNone},
+		{val: "none", result: azblob.AccessTierNone},
+		{val: "hot", result: azblob.AccessTierHot},
+		{val: "cool", result: azblob.AccessTierCool},
+		{val: "archive", result: azblob.AccessTierArchive},
+		{val: "p4", result: azblob.AccessTierP4},
+		{val: "p6", result: azblob.AccessTierP6},
+		{val: "p10", result: azblob.AccessTierP10},
+		{val: "p15", result: azblob.AccessTierP15},
+		{val: "p20", result: azblob.AccessTierP20},
+		{val: "p30", result: azblob.AccessTierP30},
+		{val: "p40", result: azblob.AccessTierP40},
+		{val: "p50", result: azblob.AccessTierP50},
+		{val: "p60", result: azblob.AccessTierP60},
+		{val: "p70", result: azblob.AccessTierP70},
+		{val: "p80", result: azblob.AccessTierP80},
+		{val: "random", result: azblob.AccessTierNone},
+	}
+	for _, i := range inputs {
+		s.Run(i.val, func() {
+			output := getAccessTierType(i.val)
+			assert.EqualValues(i.result, output)
+		})
+	}
+}
+
+func (s *utilsTestSuite) TestSanitizeSASKey() {
+	assert := assert.New(s.T())
+
+	key := sanitizeSASKey("")
+	assert.EqualValues("", key)
+
+	key = sanitizeSASKey("?abcd")
+	assert.EqualValues("?abcd", key)
+
+	key = sanitizeSASKey("abcd")
+	assert.EqualValues("?abcd", key)
 }
 
 func TestUtilsTestSuite(t *testing.T) {
