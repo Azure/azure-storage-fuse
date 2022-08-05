@@ -97,7 +97,7 @@ func (s *utilsTestSuite) TestGetContentType() {
 		{val: "a.webp", result: "image/webp"},
 		{val: "a.wav", result: "audio/wav"},
 		{val: "a.mp3", result: "audio/mpeg"},
-		{val: "a.mpeg", result: "audio/mpeg"},
+		{val: "a.mpeg", result: "video/mpeg"},
 		{val: "a.aac", result: "audio/aac"},
 		{val: "a.avi", result: "video/x-msvideo"},
 		{val: "a.m3u8", result: "application/x-mpegURL"},
