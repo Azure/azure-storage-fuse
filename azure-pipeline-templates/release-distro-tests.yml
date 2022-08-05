@@ -34,6 +34,7 @@ steps:
       NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
       ACCOUNT_TYPE: 'block'
       ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+      VERBOSE_LOG: false
     continueOnError: false
 
   - script: |
@@ -41,6 +42,8 @@ steps:
     displayName: 'Print Block Blob Config File'
 
   - script: |
+      blobfuse2 unmount all 
+      sudo fusermount -u ${{ parameters.mount_dir }}
       blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.root_dir }}/block_blob_config.yaml
     displayName: 'Mount Block Blob'
     
@@ -59,7 +62,7 @@ steps:
   - task: Go@0
     inputs:
       command: 'test'
-      arguments: '-v -timeout=2h ./... -args -mnt-path=${{ parameters.mount_dir }} -adls=false -clone=true -tmp-path=${{ parameters.temp_dir }} -quick-test=false'
+      arguments: '-v -timeout=2h -run Test.i.* -args -mnt-path=${{ parameters.mount_dir }} -adls=false -clone=true -tmp-path=${{ parameters.temp_dir }} -quick-test=false'
       workingDirectory: ${{ parameters.work_dir }}/test/e2e_tests
     displayName: 'E2E Test: Block Blob'
     timeoutInMinutes: 120
@@ -87,13 +90,16 @@ steps:
       NIGHTLY_STO_ACC_KEY: $(AZTEST_ADLS_KEY)
       ACCOUNT_TYPE: 'adls'
       ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+      VERBOSE_LOG: false
     continueOnError: false
 
   - script: |
-      cat adls_config.yaml
+      cat ${{ parameters.root_dir }}/adls_config.yaml
     displayName: 'Print ADLS Config File'
     
   - script: |
+      blobfuse2 unmount all 
+      sudo fusermount -u ${{ parameters.mount_dir }}
       blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.root_dir }}/adls_config.yaml
     displayName: 'Mount ADLS'
     
@@ -112,7 +118,7 @@ steps:
   - task: Go@0
     inputs:
       command: 'test'
-      arguments: '-v -timeout=2h ./... -args -mnt-path=${{ parameters.mount_dir }} -adls=true -clone=true -tmp-path=${{ parameters.temp_dir }} -quick-test=false'
+      arguments: '-v -timeout=2h -run Test.i.* -args -mnt-path=${{ parameters.mount_dir }} -adls=true -clone=true -tmp-path=${{ parameters.temp_dir }} -quick-test=false'
       workingDirectory: ${{ parameters.work_dir }}/test/e2e_tests
     displayName: 'E2E Test: ADLS'
     timeoutInMinutes: 120
