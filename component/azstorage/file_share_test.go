@@ -44,6 +44,7 @@ import (
 	"io/ioutil"
 	"os"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/Azure/azure-storage-file-go/azfile"
@@ -129,8 +130,7 @@ func (s *fileTestSuite) cleanupTest() {
 	log.Destroy()
 }
 
-// others that block_blob_test.go has but this doesn't
-// these don't directly test a method in file_share.go
+// TODO: testinvalidrangesize()?
 
 func (s *fileTestSuite) TestDefault() {
 	defer s.cleanupTest()
@@ -239,7 +239,7 @@ func (s *fileTestSuite) TestDeleteDir() {
 }
 
 func (s *fileTestSuite) setupHierarchy(base string) (*list.List, *list.List, *list.List) {
-	// Hierarchy looks as follows
+	// Hierarchy looks as follows, a = base
 	// a/
 	//  a/c1/
 	//   a/c1/gc1
@@ -273,13 +273,11 @@ func (s *fileTestSuite) setupHierarchy(base string) (*list.List, *list.List, *li
 	// Validate the paths were setup correctly and all paths exist
 	for p := a.Front(); p != nil; p = p.Next() {
 		_, err := s.shareUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
-		tmp := p.Value.(string)
-		print(tmp)
 		if err != nil {
 
 			fileName, dirPath := getFileAndDirFromPath(p.Value.(string))
 			_, err := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
-			s.assert.Nil(err) // RESOURCE NOT FOUND FOR FILES?
+			s.assert.Nil(err)
 		} else {
 			s.assert.Nil(err)
 		}
@@ -314,20 +312,17 @@ func (s *fileTestSuite) TestDeleteDirHierarchy() {
 	a, ab, ac := s.setupHierarchy(base)
 
 	err := s.az.DeleteDir(internal.DeleteDirOptions{Name: base})
-
 	s.assert.Nil(err)
 
 	// a paths should be deleted
 	for p := a.Front(); p != nil; p = p.Next() {
-		_, err = s.shareUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
+		_, direrr := s.shareUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
 
-		if err != nil {
-			fileName, dirPath := getFileAndDirFromPath(p.Value.(string))
-			_, err := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
-			s.assert.Nil(err)
-		} else {
-			s.assert.Nil(err)
-		}
+		fileName, dirPath := getFileAndDirFromPath(p.Value.(string))
+		_, fileerr := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
+
+		s.assert.NotNil(direrr)
+		s.assert.NotNil(fileerr)
 	}
 
 	ab.PushBackList(ac) // ab and ac paths should exist
@@ -341,6 +336,392 @@ func (s *fileTestSuite) TestDeleteDirHierarchy() {
 		} else {
 			s.assert.Nil(err)
 		}
+	}
+}
+
+func (s *fileTestSuite) TestDeleteSubDirPrefixPath() {
+	defer s.cleanupTest()
+	// Setup
+	base := generateDirectoryName()
+	a, ab, ac := s.setupHierarchy(base)
+
+	s.az.storage.SetPrefixPath(base)
+
+	err := s.az.DeleteDir(internal.DeleteDirOptions{Name: "c1"})
+	s.assert.Nil(err)
+
+	// a paths under c1 should be deleted
+	for p := a.Front(); p != nil; p = p.Next() {
+		path := p.Value.(string)
+
+		// 4 cases: nonexistent file & directory, existing file & directory
+		_, direrr := s.shareUrl.NewDirectoryURL(path).GetProperties(ctx)
+
+		if direrr != nil {
+			fileName, dirPath := getFileAndDirFromPath(path)
+			_, fileerr := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
+			if fileerr == nil {
+				if strings.HasPrefix(path, base+"/c1") { // existing file
+					s.assert.NotNil(fileerr)
+				} else {
+					s.assert.Nil(fileerr)
+				}
+				break
+			}
+
+			if strings.HasPrefix(path, base+"/c1") { // nonexistent file and dir
+				s.assert.NotNil(direrr)
+				s.assert.NotNil(fileerr)
+			} else {
+				s.assert.Nil(direrr)
+				s.assert.Nil(fileerr)
+			}
+		} else {
+			if strings.HasPrefix(path, base+"/c1") { // existing dir
+				s.assert.NotNil(direrr)
+			} else {
+				s.assert.Nil(direrr)
+			}
+		}
+
+	}
+
+	ab.PushBackList(ac) // ab and ac paths should exist
+	for p := ab.Front(); p != nil; p = p.Next() {
+		_, err = s.shareUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
+
+		if err != nil {
+			fileName, dirPath := getFileAndDirFromPath(p.Value.(string))
+			_, err := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
+			s.assert.Nil(err)
+		} else {
+			s.assert.Nil(err)
+		}
+	}
+}
+
+func (s *fileTestSuite) TestDeleteDirError() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateDirectoryName()
+
+	err := s.az.DeleteDir(internal.DeleteDirOptions{Name: name})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ENOENT, storeFileErrToErr(err))
+
+	// Directory should not be in the account
+	dir := s.shareUrl.NewDirectoryURL(name)
+	_, err = dir.GetProperties(ctx)
+	s.assert.NotNil(err)
+}
+
+func (s *fileTestSuite) TestIsDirEmpty() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateDirectoryName()
+	s.az.CreateDir(internal.CreateDirOptions{Name: name})
+
+	// Testing dir and dir/
+	var paths = []string{name, name + "/"}
+	for _, path := range paths {
+		log.Debug(path)
+		s.Run(path, func() {
+			empty := s.az.IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
+
+			s.assert.True(empty)
+		})
+	}
+}
+
+func (s *fileTestSuite) TestIsDirEmptyFalse() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateDirectoryName()
+	s.az.CreateDir(internal.CreateDirOptions{Name: name})
+
+	file := name + "/" + generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: file})
+
+	empty := s.az.IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
+
+	s.assert.False(empty)
+}
+
+func (s *fileTestSuite) TestIsDirEmptyError() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateDirectoryName()
+
+	empty := s.az.IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
+	s.assert.False(empty) // Note: FileShare fails for nonexistent directory.
+	// FileShare behaves differently from BlockBlob (See comment in BlockBlob.List).
+
+	// Directory should not be in the account
+	dir := s.shareUrl.NewDirectoryURL(name)
+	_, err := dir.GetProperties(ctx)
+	s.assert.NotNil(err)
+}
+
+func (s *fileTestSuite) TestReadDir() {
+	defer s.cleanupTest()
+	// This tests the default listBlocked = 0. It should return the expected paths.
+	// Setup
+	name := generateDirectoryName()
+	s.az.CreateDir(internal.CreateDirOptions{Name: name})
+	childName := name + "/" + generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: childName})
+
+	// Testing dir and dir/
+	var paths = []string{name, name + "/"}
+	for _, path := range paths {
+		log.Debug(path)
+		s.Run(path, func() {
+			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: name})
+			s.assert.Nil(err)
+			s.assert.EqualValues(1, len(entries))
+		})
+	}
+}
+
+func (s *fileTestSuite) TestReadDirHierarchy() {
+	defer s.cleanupTest()
+	// Setup
+	base := generateDirectoryName()
+	s.setupHierarchy(base)
+
+	// TODO: test metadata retrieval once SDK is updated (in this method and others below)
+
+	// ReadDir only reads the first level of the hierarchy
+	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: base})
+	s.assert.Nil(err)
+	s.assert.EqualValues(2, len(entries))
+	// Check the file
+	s.assert.EqualValues(base+"/c2", entries[0].Path)
+	s.assert.EqualValues("c2", entries[0].Name)
+	s.assert.False(entries[0].IsDir())
+	//s.assert.True(entries[0].IsMetadataRetrieved())
+	s.assert.True(entries[0].IsModeDefault())
+	// Check the dir
+	s.assert.EqualValues(base+"/c1", entries[1].Path)
+	s.assert.EqualValues("c1", entries[1].Name)
+	s.assert.True(entries[1].IsDir())
+	// s.assert.True(entries[1].IsMetadataRetrieved())
+	s.assert.True(entries[1].IsModeDefault())
+}
+
+func (s *fileTestSuite) TestReadDirRoot() {
+	defer s.cleanupTest()
+	// Setup
+	base := generateDirectoryName()
+	s.setupHierarchy(base)
+
+	// Testing dir and dir/
+	var paths = []string{"", "/"}
+	for _, path := range paths {
+		log.Debug(path)
+		s.Run(path, func() {
+			// ReadDir only reads the first level of the hierarchy
+			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: ""})
+			s.assert.Nil(err)
+			s.assert.EqualValues(3, len(entries))
+			// Check the base dir
+			s.assert.EqualValues(base, entries[1].Path)
+			s.assert.EqualValues(base, entries[1].Name)
+			s.assert.True(entries[1].IsDir())
+			// s.assert.True(entries[1].IsMetadataRetrieved())
+			s.assert.True(entries[1].IsModeDefault())
+			// Check the baseb dir
+			s.assert.EqualValues(base+"b", entries[2].Path)
+			s.assert.EqualValues(base+"b", entries[2].Name)
+			s.assert.True(entries[2].IsDir())
+			// s.assert.True(entries[2].IsMetadataRetrieved())
+			s.assert.True(entries[2].IsModeDefault())
+			// Check the basec file
+			s.assert.EqualValues(base+"c", entries[0].Path)
+			s.assert.EqualValues(base+"c", entries[0].Name)
+			s.assert.False(entries[0].IsDir())
+			// s.assert.True(entries[0].IsMetadataRetrieved())
+			s.assert.True(entries[0].IsModeDefault())
+		})
+	}
+}
+
+func (s *fileTestSuite) TestReadDirSubDir() {
+	defer s.cleanupTest()
+	// Setup
+	base := generateDirectoryName()
+	s.setupHierarchy(base)
+
+	// ReadDir only reads the first level of the hierarchy
+	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: base + "/c1"})
+	s.assert.Nil(err)
+	s.assert.EqualValues(1, len(entries))
+	// Check the dir
+	s.assert.EqualValues(base+"/c1"+"/gc1", entries[0].Path)
+	s.assert.EqualValues("gc1", entries[0].Name)
+	s.assert.False(entries[0].IsDir())
+	// s.assert.True(entries[0].IsMetadataRetrieved())
+	s.assert.True(entries[0].IsModeDefault())
+}
+
+func (s *fileTestSuite) TestReadDirSubDirPrefixPath() {
+	defer s.cleanupTest()
+	// Setup
+	base := generateDirectoryName()
+	s.setupHierarchy(base)
+
+	s.az.storage.SetPrefixPath(base)
+
+	// ReadDir only reads the first level of the hierarchy
+	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: "/c1"})
+	s.assert.Nil(err)
+	s.assert.EqualValues(1, len(entries))
+	// Check the dir
+	s.assert.EqualValues("c1"+"/gc1", entries[0].Path)
+	s.assert.EqualValues("gc1", entries[0].Name)
+	s.assert.False(entries[0].IsDir())
+	// s.assert.True(entries[0].IsMetadataRetrieved())
+	s.assert.True(entries[0].IsModeDefault())
+}
+
+func (s *fileTestSuite) TestReadDirError() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateDirectoryName()
+
+	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: name})
+
+	s.assert.NotNil(err) // Note: FileShare fails for nonexistent directory.
+	// FileShare behaves differently from BlockBlob (See comment in BlockBlob.List).
+	s.assert.Empty(entries)
+	// Directory should not be in the account
+	dir := s.shareUrl.NewDirectoryURL(name)
+	_, err = dir.GetProperties(ctx)
+	s.assert.NotNil(err)
+}
+
+func (s *fileTestSuite) TestReadDirListBlocked() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+
+	listBlockedTime := 10
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  block-list-on-mount-sec: %d\n  fail-unsupported-op: true\n",
+		storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container, listBlockedTime)
+	s.setupTestHelper(config, s.container, true)
+
+	name := generateDirectoryName()
+	s.az.CreateDir(internal.CreateDirOptions{Name: name})
+	childName := name + "/" + generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: childName})
+
+	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.EqualValues(0, len(entries)) // Since we block the list, it will return an empty list.
+}
+
+func (s *fileTestSuite) TestRenameDir() {
+	defer s.cleanupTest()
+	// Test handling "dir" and "dir/"
+	var inputs = []struct {
+		src string
+		dst string
+	}{
+		{src: generateDirectoryName(), dst: generateDirectoryName()},
+		{src: generateDirectoryName() + "/", dst: generateDirectoryName()},
+		{src: generateDirectoryName(), dst: generateDirectoryName() + "/"},
+		{src: generateDirectoryName() + "/", dst: generateDirectoryName() + "/"},
+	}
+
+	for _, input := range inputs {
+		s.Run(input.src+"->"+input.dst, func() {
+			// Setup
+			s.az.CreateDir(internal.CreateDirOptions{Name: input.src})
+
+			err := s.az.RenameDir(internal.RenameDirOptions{Src: input.src, Dst: input.dst})
+			s.assert.Nil(err)
+			// Src should not be in the account
+			dir := s.shareUrl.NewDirectoryURL(internal.TruncateDirName(input.src))
+			_, err = dir.GetProperties(ctx)
+			s.assert.NotNil(err)
+
+			// Dst should be in the account
+			dir = s.shareUrl.NewDirectoryURL(internal.TruncateDirName(input.dst))
+			_, err = dir.GetProperties(ctx)
+			s.assert.Nil(err)
+		})
+	}
+
+}
+
+func (s *fileTestSuite) TestRenameDirHierarchy() {
+	defer s.cleanupTest()
+	// Setup
+	baseSrc := generateDirectoryName()
+	aSrc, abSrc, acSrc := s.setupHierarchy(baseSrc)
+	baseDst := generateDirectoryName()
+	aDst, abDst, acDst := generateNestedDirectory(baseDst)
+
+	err := s.az.RenameDir(internal.RenameDirOptions{Src: baseSrc, Dst: baseDst})
+	s.assert.Nil(err)
+
+	// Source
+	// aSrc paths should be deleted
+	for p := aSrc.Front(); p != nil; p = p.Next() {
+		_, direrr := s.shareUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
+
+		fileName, dirPath := getFileAndDirFromPath(p.Value.(string))
+		_, fileerr := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
+
+		s.assert.NotNil(direrr)
+		s.assert.NotNil(fileerr)
+	}
+	abSrc.PushBackList(acSrc) // abSrc and acSrc paths should exist
+	for p := abSrc.Front(); p != nil; p = p.Next() {
+		_, direrr := s.shareUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
+		if direrr != nil {
+			fileName, dirPath := getFileAndDirFromPath(p.Value.(string))
+			_, fileerr := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
+
+			if fileerr != nil { // nonexistent file and dir
+				s.assert.NotNil(fileerr)
+				s.assert.NotNil(direrr)
+			} else { // existing file
+				s.assert.Nil(fileerr)
+				s.assert.NotNil(direrr)
+			}
+		} else { // existing dir
+			s.assert.Nil(direrr)
+		}
+	}
+	// Destination
+	// aDst paths should exist
+	for p := aDst.Front(); p != nil; p = p.Next() {
+		_, direrr := s.shareUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
+		if direrr != nil {
+			fileName, dirPath := getFileAndDirFromPath(p.Value.(string))
+			_, fileerr := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
+
+			if fileerr != nil { // nonexistent file and dir
+				s.assert.NotNil(fileerr)
+				s.assert.NotNil(direrr)
+			} else { // existing file
+				s.assert.Nil(fileerr)
+				s.assert.NotNil(direrr)
+			}
+		} else { // existing dir
+			s.assert.Nil(direrr)
+		}
+	}
+	abDst.PushBackList(acDst) // abDst and acDst paths should not exist
+	for p := abDst.Front(); p != nil; p = p.Next() {
+		_, direrr := s.shareUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
+
+		fileName, dirPath := getFileAndDirFromPath(p.Value.(string))
+		_, fileerr := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
+
+		s.assert.NotNil(direrr)
+		s.assert.NotNil(fileerr)
 	}
 }
 

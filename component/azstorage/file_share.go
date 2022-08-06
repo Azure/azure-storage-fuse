@@ -292,6 +292,36 @@ func (fs *FileShare) DeleteDirectory(name string) (err error) {
 	log.Trace("FileShare::DeleteDirectory : name %s", name)
 
 	dirURL := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, name))
+
+	for marker := (azfile.Marker{}); marker.NotDone(); {
+		listFile, err := dirURL.ListFilesAndDirectoriesSegment(context.Background(), marker,
+			azfile.ListFilesAndDirectoriesOptions{
+				MaxResults: common.MaxDirListCount,
+			})
+		if err != nil {
+			log.Err("FileShare::DeleteDirectory : Failed to get list of files and directories %s", err.Error())
+			return err
+		}
+		marker = listFile.NextMarker
+
+		// Process the files returned in this result segment (if the segment is empty, the loop body won't execute)
+		for _, fileInfo := range listFile.FileItems {
+			err = fs.DeleteFile(filepath.Join(name, fileInfo.Name))
+			if err != nil {
+				log.Err("FileShare::DeleteDirectory : Failed to delete files  %s", err.Error())
+				return err
+			}
+		}
+
+		for _, dirInfo := range listFile.DirectoryItems {
+			err = fs.DeleteDirectory(filepath.Join(filepath.Join(fs.Config.prefixPath, name), dirInfo.Name))
+			if err != nil {
+				log.Err("FileShare::DeleteDirectory : Failed delete subdirectories  %s", err.Error())
+				return err
+			}
+		}
+	}
+
 	_, err = dirURL.Delete(context.Background())
 	if err != nil {
 		serr := storeFileErrToErr(err)
@@ -363,7 +393,7 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 				MaxResults: common.MaxDirListCount,
 			})
 		if err != nil {
-			log.Err("FileShare::RenameDirectory : Failed to get list of files %s", err.Error())
+			log.Err("FileShare::RenameDirectory : Failed to get list of files and directories %s", err.Error())
 			return err
 		}
 		marker = listFile.NextMarker
@@ -491,7 +521,7 @@ func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*intern
 	// Process the files returned in this result segment (if the segment is empty, the loop body won't execute)
 	for _, fileInfo := range listFile.FileItems {
 		attr := &internal.ObjAttr{
-			Path: split(fs.Config.prefixPath, fileInfo.Name),
+			Path: split(fs.Config.prefixPath, filepath.Join(listPath, fileInfo.Name)),
 			Name: filepath.Base(fileInfo.Name),
 			Size: fileInfo.Properties.ContentLength,
 			Mode: 0,
@@ -514,7 +544,7 @@ func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*intern
 
 	for _, dirInfo := range listFile.DirectoryItems {
 		attr := &internal.ObjAttr{
-			Path: split(fs.Config.prefixPath, dirInfo.Name),
+			Path: split(fs.Config.prefixPath, filepath.Join(listPath, dirInfo.Name)),
 			Name: filepath.Base(dirInfo.Name),
 			Size: 4096,
 			Mode: os.ModeDir,
