@@ -742,7 +742,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		return &common.BlockOffsetList{}, err
 	}
 	// if block list empty its a small file
-	if len(blockList.BlockList) == 0 {
+	if len(storageBlockList.CommittedBlocks) == 0 {
 		blockList.Flags.Set(common.SmallFile)
 		return &blockList, nil
 	}
