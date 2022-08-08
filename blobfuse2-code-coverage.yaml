@@ -414,6 +414,12 @@ jobs:
           sleep 5
         workingDirectory: $(WORK_DIR)
         displayName: "CLI : Secure Config"
+        env:
+          NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+          NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+          ACCOUNT_TYPE: 'block'
+          ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+          VERBOSE_LOG: false
 
       # -------------------------------------------------------
       # Coverage report consolidation
