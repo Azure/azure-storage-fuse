@@ -38,6 +38,7 @@ import (
 	"blobfuse2/common"
 	"blobfuse2/common/log"
 	"blobfuse2/internal"
+	"blobfuse2/internal/handlemap"
 	"container/list"
 	"encoding/json"
 	"fmt"
@@ -360,8 +361,8 @@ func (s *fileTestSuite) TestDeleteSubDirPrefixPath() {
 		if direrr != nil {
 			fileName, dirPath := getFileAndDirFromPath(path)
 			_, fileerr := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
-			if fileerr == nil {
-				if strings.HasPrefix(path, base+"/c1") { // existing file
+			if fileerr == nil { // existing file
+				if strings.HasPrefix(path, base+"/c1") {
 					s.assert.NotNil(fileerr)
 				} else {
 					s.assert.Nil(fileerr)
@@ -376,8 +377,8 @@ func (s *fileTestSuite) TestDeleteSubDirPrefixPath() {
 				s.assert.Nil(direrr)
 				s.assert.Nil(fileerr)
 			}
-		} else {
-			if strings.HasPrefix(path, base+"/c1") { // existing dir
+		} else { // existing dir
+			if strings.HasPrefix(path, base+"/c1") {
 				s.assert.NotNil(direrr)
 			} else {
 				s.assert.Nil(direrr)
@@ -725,6 +726,100 @@ func (s *fileTestSuite) TestRenameDirHierarchy() {
 	}
 }
 
+func (s *fileTestSuite) TestRenameDirSubDirPrefixPath() {
+	defer s.cleanupTest()
+	// Setup
+	baseSrc := generateDirectoryName()
+	aSrc, abSrc, acSrc := s.setupHierarchy(baseSrc)
+	baseDst := generateDirectoryName()
+
+	s.az.storage.SetPrefixPath(baseSrc)
+
+	err := s.az.RenameDir(internal.RenameDirOptions{Src: "c1", Dst: baseDst})
+	s.assert.Nil(err)
+
+	// Source
+	// aSrc paths under c1 should be deleted
+	for p := aSrc.Front(); p != nil; p = p.Next() {
+		path := p.Value.(string)
+		_, direrr := s.shareUrl.NewDirectoryURL(path).GetProperties(ctx)
+
+		if direrr != nil {
+			fileName, dirPath := getFileAndDirFromPath(path)
+			_, fileerr := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
+			if fileerr == nil { // existing file
+				if strings.HasPrefix(path, baseDst+"/c1") {
+					s.assert.NotNil(fileerr)
+				} else {
+					s.assert.Nil(fileerr)
+				}
+				break
+			}
+			// nonexistent file and dir
+			if strings.HasPrefix(path, baseSrc+"/c1") {
+				s.assert.NotNil(direrr)
+				s.assert.NotNil(fileerr)
+			} else {
+				s.assert.Nil(direrr)
+				s.assert.Nil(fileerr)
+			}
+		} else { // existing dir
+			if strings.HasPrefix(path, baseSrc+"/c1") {
+				s.assert.NotNil(direrr)
+			} else {
+				s.assert.Nil(direrr)
+			}
+		}
+
+		if strings.HasPrefix(path, baseSrc+"/c1") { // nonexistent dir
+			s.assert.NotNil(direrr)
+		} else { // existing dir
+			s.assert.Nil(direrr)
+		}
+	}
+
+	abSrc.PushBackList(acSrc) // abSrc and acSrc paths should exist
+	for p := abSrc.Front(); p != nil; p = p.Next() {
+		_, err = s.shareUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
+
+		if err != nil {
+			fileName, dirPath := getFileAndDirFromPath(p.Value.(string))
+			_, err := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
+			s.assert.Nil(err)
+		} else {
+			s.assert.Nil(err)
+		}
+	}
+	// Destination
+	// aDst paths should exist -> aDst and aDst/gc1
+	_, err = s.shareUrl.NewDirectoryURL(baseSrc + "/" + baseDst).GetProperties(ctx)
+	s.assert.Nil(err)
+	fileName, dirPath := getFileAndDirFromPath(baseSrc + "/" + baseDst + "/gc1")
+	_, err = s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName).GetProperties(ctx)
+	s.assert.Nil(err)
+}
+
+func (s *fileTestSuite) TestRenameDirError() {
+	defer s.cleanupTest()
+	// Setup
+	src := generateDirectoryName()
+	dst := generateDirectoryName()
+
+	err := s.az.RenameDir(internal.RenameDirOptions{Src: src, Dst: dst})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ENOENT, storeFileErrToErr(err))
+
+	// Neither directory should be in the account
+	dir := s.shareUrl.NewDirectoryURL(dst)
+	_, err = dir.GetProperties(ctx)
+	s.assert.NotNil(err)
+
+	dir = s.shareUrl.NewDirectoryURL(src)
+	_, err = dir.GetProperties(ctx)
+	s.assert.NotNil(err)
+
+}
+
 func (s *fileTestSuite) TestCreateFile() {
 	defer s.cleanupTest()
 	// Setup
@@ -742,6 +837,259 @@ func (s *fileTestSuite) TestCreateFile() {
 	s.assert.Nil(err)
 	s.assert.NotNil(props)
 	s.assert.Empty(props.NewMetadata())
+}
+
+func (s *fileTestSuite) TestOpenFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(h)
+	s.assert.EqualValues(name, h.Path)
+	// s.assert.EqualValues(0, h.Size)
+}
+
+func (s *fileTestSuite) TestOpenFileError() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+
+	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ENOENT, err)
+	s.assert.Nil(h)
+}
+
+func (s *fileTestSuite) TestOpenFileSize() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	size := 10
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(size)})
+
+	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(h)
+	s.assert.EqualValues(name, h.Path)
+	s.assert.EqualValues(size, h.Size)
+}
+
+func (s *fileTestSuite) TestCloseFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	// This method does nothing.
+	err := s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	s.assert.Nil(err)
+}
+
+func (s *fileTestSuite) TestCloseFileFakeHandle() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h := handlemap.NewHandle(name)
+
+	// This method does nothing.
+	err := s.az.CloseFile(internal.CloseFileOptions{Handle: h})
+	s.assert.Nil(err)
+}
+
+func (s *fileTestSuite) TestDeleteFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	err := s.az.DeleteFile(internal.DeleteFileOptions{Name: name})
+	s.assert.Nil(err)
+
+	// File should not be in the account
+	fileName, dirPath := getFileAndDirFromPath(name)
+	file := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	_, err = file.GetProperties(ctx)
+	s.assert.NotNil(err)
+}
+
+func (s *fileTestSuite) TestDeleteFileError() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+
+	err := s.az.DeleteFile(internal.DeleteFileOptions{Name: name})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ENOENT, err)
+
+	// File should not be in the account
+	fileName, dirPath := getFileAndDirFromPath(name)
+	file := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	_, err = file.GetProperties(ctx)
+	s.assert.NotNil(err)
+}
+
+func (s *fileTestSuite) TestRenameFile() {
+	defer s.cleanupTest()
+	// Setup
+	src := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: src})
+	dst := generateFileName()
+
+	err := s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
+	s.assert.Nil(err)
+
+	// Src should not be in the account
+	fileName, dirPath := getFileAndDirFromPath(src)
+	source := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	_, err = source.GetProperties(ctx)
+	s.assert.NotNil(err)
+	// Dst should be in the account
+	fileName, dirPath = getFileAndDirFromPath(dst)
+	destination := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	_, err = destination.GetProperties(ctx)
+	s.assert.Nil(err)
+}
+
+func (s *fileTestSuite) TestRenameFileMetadataConservation() {
+	defer s.cleanupTest()
+	// Setup
+	src := generateFileName()
+	fileName, dirPath := getFileAndDirFromPath(src)
+	source := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	s.az.CreateFile(internal.CreateFileOptions{Name: src})
+
+	// Add srcMeta to source
+	srcMeta := make(azfile.Metadata)
+	srcMeta["foo"] = "bar"
+	source.SetMetadata(ctx, srcMeta)
+
+	dst := generateFileName()
+	err := s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
+	s.assert.Nil(err)
+
+	// Src should not be in the account
+	_, err = source.GetProperties(ctx)
+	s.assert.NotNil(err)
+	// Dst should be in the account
+	fileName, dirPath = getFileAndDirFromPath(dst)
+	destination := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	props, err := destination.GetProperties(ctx)
+	s.assert.Nil(err)
+	// Dst should have metadata
+	destMeta := props.NewMetadata()
+	s.assert.Contains(destMeta, "foo")
+	s.assert.EqualValues("bar", destMeta["foo"])
+}
+
+func (s *fileTestSuite) TestRenameFileError() {
+	defer s.cleanupTest()
+	// Setup
+	src := generateFileName()
+	dst := generateFileName()
+
+	err := s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ENOENT, err)
+
+	// Src and destination should not be in the account
+	fileName, dirPath := getFileAndDirFromPath(src)
+	source := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	_, err = source.GetProperties(ctx)
+	s.assert.NotNil(err)
+	fileName, dirPath = getFileAndDirFromPath(dst)
+	destination := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	_, err = destination.GetProperties(ctx)
+	s.assert.NotNil(err)
+}
+
+// TODO: fix
+func (s *fileTestSuite) TestReadFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	print(data)
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
+
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	s.assert.EqualValues(testData, output)
+}
+
+func (s *fileTestSuite) TestReadFileError() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h := handlemap.NewHandle(name)
+
+	_, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ENOENT, err)
+}
+
+func (s *fileTestSuite) TestReadInBuffer() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
+
+	output := make([]byte, 5)
+	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	s.assert.Nil(err)
+	s.assert.EqualValues(5, len)
+	s.assert.EqualValues(testData[:5], output)
+}
+
+func (s *fileTestSuite) TestReadInBufferLargeBuffer() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
+
+	output := make([]byte, 1000) // Testing that passing in a super large buffer will still work
+	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	s.assert.Nil(err)
+	s.assert.EqualValues(h.Size, len)
+	s.assert.EqualValues(testData, output[:h.Size])
+}
+
+func (s *fileTestSuite) TestReadInBufferEmpty() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	output := make([]byte, 10)
+	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	s.assert.Nil(err)
+	s.assert.EqualValues(0, len)
+}
+
+func (s *fileTestSuite) TestReadInBufferBadRange() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h := handlemap.NewHandle(name)
+	h.Size = 10
+
+	_, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 20, Data: make([]byte, 2)})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ERANGE, err)
 }
 
 func TestFileShare(t *testing.T) {

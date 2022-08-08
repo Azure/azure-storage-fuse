@@ -53,7 +53,8 @@ import (
 
 const (
 	// FileMaxSizeInBytes indicates the maximum size of a file
-	FileMaxSizeInBytes = 4398046511104 // 4TiB
+	FileMaxSizeInBytes         = 4398046511104 // 4TiB
+	tmpFileCreationSizeInBytes = 1000000000    // 1GB
 )
 
 type FileShare struct {
@@ -226,7 +227,7 @@ func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
 	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
 
-	_, err := fileURL.Create(context.Background(), 1000000000, azfile.FileHTTPHeaders{
+	_, err := fileURL.Create(context.Background(), tmpFileCreationSizeInBytes, azfile.FileHTTPHeaders{
 		ContentType: getContentType(name),
 	},
 		nil)
@@ -394,6 +395,7 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 			})
 		if err != nil {
 			log.Err("FileShare::RenameDirectory : Failed to get list of files and directories %s", err.Error())
+			fs.DeleteDirectory(target)
 			return err
 		}
 		marker = listFile.NextMarker
@@ -403,6 +405,7 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 			err = fs.RenameFile(filepath.Join(source, fileInfo.Name), filepath.Join(target, fileInfo.Name))
 			if err != nil {
 				log.Err("FileShare::RenameDirectory : Failed to move files to new directory %s", err.Error())
+				fs.DeleteDirectory(target)
 				return err
 			}
 		}
@@ -411,6 +414,7 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 			err = fs.RenameDirectory(filepath.Join(source, dirInfo.Name), filepath.Join(target, dirInfo.Name))
 			if err != nil {
 				log.Err("FileShare::RenameDirectory : Failed to move subdirectories to new directory  %s", err.Error())
+				fs.DeleteDirectory(target)
 				return err
 			}
 		}
