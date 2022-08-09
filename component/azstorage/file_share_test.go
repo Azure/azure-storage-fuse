@@ -131,6 +131,24 @@ func (s *fileTestSuite) cleanupTest() {
 	log.Destroy()
 }
 
+// func (s *fileTestSuite) TestCleanupShares() {
+// 	marker := azfile.Marker{}
+// 	for {
+// 		shareList, _ := s.serviceUrl.ListSharesSegment(ctx, marker, azfile.ListSharesOptions{Prefix: "fuseutc"})
+
+// 		for _, share := range shareList.ShareItems {
+// 			fmt.Println(share.Name)
+// 			s.serviceUrl.NewShareURL(share.Name).Delete(ctx, azfile.DeleteSnapshotsOptionInclude)
+// 		}
+// 		new_marker := shareList.NextMarker
+// 		marker = new_marker
+
+// 		if !marker.NotDone() {
+// 			break
+// 		}
+// 	}
+// }
+
 // TODO: testinvalidrangesize()?
 
 func (s *fileTestSuite) TestDefault() {
@@ -500,13 +518,13 @@ func (s *fileTestSuite) TestReadDirHierarchy() {
 	s.assert.EqualValues(base+"/c2", entries[0].Path)
 	s.assert.EqualValues("c2", entries[0].Name)
 	s.assert.False(entries[0].IsDir())
-	//s.assert.True(entries[0].IsMetadataRetrieved())
+	s.assert.False(entries[0].IsMetadataRetrieved())
 	s.assert.True(entries[0].IsModeDefault())
 	// Check the dir
 	s.assert.EqualValues(base+"/c1", entries[1].Path)
 	s.assert.EqualValues("c1", entries[1].Name)
 	s.assert.True(entries[1].IsDir())
-	// s.assert.True(entries[1].IsMetadataRetrieved())
+	s.assert.False(entries[1].IsMetadataRetrieved())
 	s.assert.True(entries[1].IsModeDefault())
 }
 
@@ -529,19 +547,19 @@ func (s *fileTestSuite) TestReadDirRoot() {
 			s.assert.EqualValues(base, entries[1].Path)
 			s.assert.EqualValues(base, entries[1].Name)
 			s.assert.True(entries[1].IsDir())
-			// s.assert.True(entries[1].IsMetadataRetrieved())
+			s.assert.False(entries[1].IsMetadataRetrieved())
 			s.assert.True(entries[1].IsModeDefault())
 			// Check the baseb dir
 			s.assert.EqualValues(base+"b", entries[2].Path)
 			s.assert.EqualValues(base+"b", entries[2].Name)
 			s.assert.True(entries[2].IsDir())
-			// s.assert.True(entries[2].IsMetadataRetrieved())
+			s.assert.False(entries[2].IsMetadataRetrieved())
 			s.assert.True(entries[2].IsModeDefault())
 			// Check the basec file
 			s.assert.EqualValues(base+"c", entries[0].Path)
 			s.assert.EqualValues(base+"c", entries[0].Name)
 			s.assert.False(entries[0].IsDir())
-			// s.assert.True(entries[0].IsMetadataRetrieved())
+			s.assert.False(entries[0].IsMetadataRetrieved())
 			s.assert.True(entries[0].IsModeDefault())
 		})
 	}
@@ -561,7 +579,7 @@ func (s *fileTestSuite) TestReadDirSubDir() {
 	s.assert.EqualValues(base+"/c1"+"/gc1", entries[0].Path)
 	s.assert.EqualValues("gc1", entries[0].Name)
 	s.assert.False(entries[0].IsDir())
-	// s.assert.True(entries[0].IsMetadataRetrieved())
+	s.assert.False(entries[0].IsMetadataRetrieved())
 	s.assert.True(entries[0].IsModeDefault())
 }
 
@@ -581,7 +599,7 @@ func (s *fileTestSuite) TestReadDirSubDirPrefixPath() {
 	s.assert.EqualValues("c1"+"/gc1", entries[0].Path)
 	s.assert.EqualValues("gc1", entries[0].Name)
 	s.assert.False(entries[0].IsDir())
-	// s.assert.True(entries[0].IsMetadataRetrieved())
+	s.assert.False(entries[0].IsMetadataRetrieved())
 	s.assert.True(entries[0].IsModeDefault())
 }
 
@@ -839,18 +857,18 @@ func (s *fileTestSuite) TestCreateFile() {
 	s.assert.Empty(props.NewMetadata())
 }
 
-func (s *fileTestSuite) TestOpenFile() {
-	defer s.cleanupTest()
-	// Setup
-	name := generateFileName()
-	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+// func (s *fileTestSuite) TestOpenFile() {
+// 	defer s.cleanupTest()
+// 	// Setup
+// 	name := generateFileName()
+// 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
-	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
-	s.assert.Nil(err)
-	s.assert.NotNil(h)
-	s.assert.EqualValues(name, h.Path)
-	// s.assert.EqualValues(0, h.Size)
-}
+// 	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
+// 	s.assert.Nil(err)
+// 	s.assert.NotNil(h)
+// 	s.assert.EqualValues(name, h.Path)
+// 	// s.assert.EqualValues(0, h.Size)
+// }
 
 func (s *fileTestSuite) TestOpenFileError() {
 	defer s.cleanupTest()
@@ -863,20 +881,20 @@ func (s *fileTestSuite) TestOpenFileError() {
 	s.assert.Nil(h)
 }
 
-func (s *fileTestSuite) TestOpenFileSize() {
-	defer s.cleanupTest()
-	// Setup
-	name := generateFileName()
-	size := 10
-	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(size)})
+// func (s *fileTestSuite) TestOpenFileSize() {
+// 	defer s.cleanupTest()
+// 	// Setup
+// 	name := generateFileName()
+// 	size := 10
+// 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+// 	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(size)})
 
-	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
-	s.assert.Nil(err)
-	s.assert.NotNil(h)
-	s.assert.EqualValues(name, h.Path)
-	s.assert.EqualValues(size, h.Size)
-}
+// 	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
+// 	s.assert.Nil(err)
+// 	s.assert.NotNil(h)
+// 	s.assert.EqualValues(name, h.Path)
+// 	s.assert.EqualValues(size, h.Size)
+// }
 
 func (s *fileTestSuite) TestCloseFile() {
 	defer s.cleanupTest()
@@ -1034,39 +1052,39 @@ func (s *fileTestSuite) TestReadFileError() {
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
-func (s *fileTestSuite) TestReadInBuffer() {
-	defer s.cleanupTest()
-	// Setup
-	name := generateFileName()
-	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	testData := "test data"
-	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
+// func (s *fileTestSuite) TestReadInBuffer() {
+// 	defer s.cleanupTest()
+// 	// Setup
+// 	name := generateFileName()
+// 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+// 	testData := "test data"
+// 	data := []byte(testData)
+// 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+// 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
-	output := make([]byte, 5)
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
-	s.assert.Nil(err)
-	s.assert.EqualValues(5, len)
-	s.assert.EqualValues(testData[:5], output)
-}
+// 	output := make([]byte, 5)
+// 	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+// 	s.assert.Nil(err)
+// 	s.assert.EqualValues(5, len)
+// 	s.assert.EqualValues(testData[:5], output)
+// }
 
-func (s *fileTestSuite) TestReadInBufferLargeBuffer() {
-	defer s.cleanupTest()
-	// Setup
-	name := generateFileName()
-	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-	testData := "test data"
-	data := []byte(testData)
-	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
+// func (s *fileTestSuite) TestReadInBufferLargeBuffer() {
+// 	defer s.cleanupTest()
+// 	// Setup
+// 	name := generateFileName()
+// 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+// 	testData := "test data"
+// 	data := []byte(testData)
+// 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+// 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
-	output := make([]byte, 1000) // Testing that passing in a super large buffer will still work
-	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
-	s.assert.Nil(err)
-	s.assert.EqualValues(h.Size, len)
-	s.assert.EqualValues(testData, output[:h.Size])
-}
+// 	output := make([]byte, 1000) // Testing that passing in a super large buffer will still work
+// 	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+// 	s.assert.Nil(err)
+// 	s.assert.EqualValues(h.Size, len)
+// 	s.assert.EqualValues(testData, output[:h.Size])
+// }
 
 func (s *fileTestSuite) TestReadInBufferEmpty() {
 	defer s.cleanupTest()
@@ -1080,7 +1098,7 @@ func (s *fileTestSuite) TestReadInBufferEmpty() {
 	s.assert.EqualValues(0, len)
 }
 
-func (s *fileTestSuite) TestReadInBufferBadRange() {
+func (s *fileTestSuite) TestReadInBufferBadRangeNonzeroOffset() {
 	defer s.cleanupTest()
 	// Setup
 	name := generateFileName()
@@ -1090,6 +1108,266 @@ func (s *fileTestSuite) TestReadInBufferBadRange() {
 	_, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 20, Data: make([]byte, 2)})
 	s.assert.NotNil(err)
 	s.assert.EqualValues(syscall.ERANGE, err)
+}
+
+func (s *fileTestSuite) TestReadInBufferError() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h := handlemap.NewHandle(name)
+	h.Size = 10
+
+	_, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: make([]byte, 2)})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ENOENT, err)
+}
+
+func (s *fileTestSuite) TestWriteFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	testData := "test data"
+	data := []byte(testData)
+	count, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.Nil(err)
+	s.assert.EqualValues(len(data), count)
+
+	// Blob should have updated data
+	fileName, dirPath := getFileAndDirFromPath(name)
+	file := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	resp, err := file.Download(ctx, 0, int64(len(data)), false)
+	s.assert.Nil(err)
+	output, _ := ioutil.ReadAll(resp.Body(azfile.RetryReaderOptions{}))
+	s.assert.EqualValues(testData, output)
+}
+
+func (s *fileTestSuite) TestTruncateFileSmaller() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	truncatedLength := 5
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	s.assert.Nil(err)
+
+	// Blob should have updated data
+	fileName, dirPath := getFileAndDirFromPath(name)
+	file := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	resp, err := file.Download(ctx, 0, int64(truncatedLength), false)
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, resp.ContentLength())
+	output, _ := ioutil.ReadAll(resp.Body(azfile.RetryReaderOptions{}))
+	s.assert.EqualValues(testData[:truncatedLength], output)
+}
+
+func (s *fileTestSuite) TestTruncateFileEqual() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	truncatedLength := 9
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	s.assert.Nil(err)
+
+	// Blob should have updated data
+	fileName, dirPath := getFileAndDirFromPath(name)
+	file := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	resp, err := file.Download(ctx, 0, int64(truncatedLength), false)
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, resp.ContentLength())
+	output, _ := ioutil.ReadAll(resp.Body(azfile.RetryReaderOptions{}))
+	s.assert.EqualValues(testData, output)
+}
+
+func (s *fileTestSuite) TestTruncateFileBigger() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	truncatedLength := 15
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	s.assert.Nil(err)
+
+	// Blob should have updated data
+	fileName, dirPath := getFileAndDirFromPath(name)
+	file := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	resp, err := file.Download(ctx, 0, int64(truncatedLength), false)
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, resp.ContentLength())
+	output, _ := ioutil.ReadAll(resp.Body(azfile.RetryReaderOptions{}))
+	s.assert.EqualValues(testData, output[:len(data)])
+}
+
+func (s *fileTestSuite) TestTruncateFileError() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ENOENT, storeFileErrToErr(err))
+}
+
+func (s *fileTestSuite) TestWriteSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	dataLen := len(data)
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	output := make([]byte, len(data))
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(testData, output)
+	f.Close()
+}
+
+func (s *fileTestSuite) TestOverwriteSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-replace-data"
+	data := []byte(testData)
+	dataLen := len(data)
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-newdata-data")
+	output := make([]byte, len(currentData))
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *fileTestSuite) TestOverwriteAndAppendToSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-data"
+	data := []byte(testData)
+
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 5, Data: newTestData})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-newdata")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *fileTestSuite) TestAppendToSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-data"
+	data := []byte(testData)
+
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("-newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 9, Data: newTestData})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-data-newdata")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
+}
+
+func (s *fileTestSuite) TestAppendOffsetLargerThanSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test-data"
+	data := []byte(testData)
+
+	_, err := s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	s.assert.Nil(err)
+	f, _ := ioutil.TempFile("", name+".tmp")
+	defer os.Remove(f.Name())
+	newTestData := []byte("newdata")
+	_, err = s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 12, Data: newTestData})
+	s.assert.Nil(err)
+
+	currentData := []byte("test-data\x00\x00\x00newdata")
+	dataLen := len(currentData)
+	output := make([]byte, dataLen)
+
+	err = s.az.CopyToFile(internal.CopyToFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	f, _ = os.Open(f.Name())
+	len, err := f.Read(output)
+	s.assert.Nil(err)
+	s.assert.EqualValues(dataLen, len)
+	s.assert.EqualValues(currentData, output)
+	f.Close()
 }
 
 func TestFileShare(t *testing.T) {
