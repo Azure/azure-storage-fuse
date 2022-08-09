@@ -34,12 +34,6 @@
 package file_cache
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/config"
-	"blobfuse2/common/log"
-	"blobfuse2/component/loopback"
-	"blobfuse2/internal"
-	"blobfuse2/internal/handlemap"
 	"context"
 	"fmt"
 	"math/rand"
@@ -49,6 +43,13 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/component/loopback"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -67,7 +68,7 @@ type fileCacheTestSuite struct {
 
 func newLoopbackFS() internal.Component {
 	loopback := loopback.NewLoopbackFSComponent()
-	loopback.Configure()
+	loopback.Configure(true)
 
 	return loopback
 }
@@ -76,7 +77,7 @@ func newTestFileCache(next internal.Component) *FileCache {
 
 	fileCache := NewFileCacheComponent()
 	fileCache.SetNextComponent(next)
-	err := fileCache.Configure()
+	err := fileCache.Configure(true)
 	if err != nil {
 		panic("Unable to configure file cache.")
 	}
@@ -391,6 +392,65 @@ func (suite *fileCacheTestSuite) TestReadDirError() {
 	suite.assert.Empty(dir)
 }
 
+func (suite *fileCacheTestSuite) TestStreamDirCase1() {
+	defer suite.cleanupTest()
+	// Setup
+	name := "dir"
+	subdir := filepath.Join(name, "subdir")
+	file1 := filepath.Join(name, "file1")
+	file2 := filepath.Join(name, "file2")
+	file3 := filepath.Join(name, "file3")
+	// Create files directly in "fake_storage"
+	suite.loopback.CreateDir(internal.CreateDirOptions{Name: name, Mode: 0777})
+	suite.loopback.CreateDir(internal.CreateDirOptions{Name: subdir, Mode: 0777})
+	suite.loopback.CreateFile(internal.CreateFileOptions{Name: file1})
+	suite.loopback.CreateFile(internal.CreateFileOptions{Name: file2})
+	suite.loopback.CreateFile(internal.CreateFileOptions{Name: file3})
+
+	// Read the Directory
+	dir, _, err := suite.fileCache.StreamDir(internal.StreamDirOptions{Name: name})
+	suite.assert.Nil(err)
+	suite.assert.NotEmpty(dir)
+	suite.assert.EqualValues(4, len(dir))
+	suite.assert.EqualValues(file1, dir[0].Path)
+	suite.assert.EqualValues(file2, dir[1].Path)
+	suite.assert.EqualValues(file3, dir[2].Path)
+	suite.assert.EqualValues(subdir, dir[3].Path)
+}
+
+//TODO: case3 requires more thought due to the way loopback fs is designed, specifically getAttr and streamDir
+func (suite *fileCacheTestSuite) TestStreamDirCase2() {
+	defer suite.cleanupTest()
+	// Setup
+	name := "dir"
+	subdir := filepath.Join(name, "subdir")
+	file1 := filepath.Join(name, "file1")
+	file2 := filepath.Join(name, "file2")
+	file3 := filepath.Join(name, "file3")
+	suite.fileCache.CreateDir(internal.CreateDirOptions{Name: name, Mode: 0777})
+	suite.fileCache.CreateDir(internal.CreateDirOptions{Name: subdir, Mode: 0777})
+	// By default createEmptyFile is false, so we will not create these files in storage until they are closed.
+	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file1, Mode: 0777})
+	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file2, Mode: 0777})
+	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file3, Mode: 0777})
+
+	// Read the Directory
+	dir, _, err := suite.fileCache.StreamDir(internal.StreamDirOptions{Name: name})
+	suite.assert.Nil(err)
+	suite.assert.NotEmpty(dir)
+	suite.assert.EqualValues(4, len(dir))
+	suite.assert.EqualValues(subdir, dir[0].Path)
+	suite.assert.EqualValues(file1, dir[1].Path)
+	suite.assert.EqualValues(file2, dir[2].Path)
+	suite.assert.EqualValues(file3, dir[3].Path)
+}
+
+func (suite *fileCacheTestSuite) TestFileUsed() {
+	defer suite.cleanupTest()
+	suite.fileCache.FileUsed("temp")
+	suite.fileCache.policy.IsCached("temp")
+}
+
 // File cache does not have CreateDir Method implemented hence results are undefined here
 func (suite *fileCacheTestSuite) TestIsDirEmpty() {
 	defer suite.cleanupTest()
@@ -689,7 +749,7 @@ func (suite *fileCacheTestSuite) TestCloseFileTimeout() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // teardown the default file cache generated
 	cacheTimeout := 5
-	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout: %d\n\nloopbackfs:\n  path: %s",
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: %d\n\nloopbackfs:\n  path: %s",
 		suite.cache_path, cacheTimeout, suite.fake_storage_path)
 	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
 
@@ -1378,13 +1438,13 @@ func (suite *fileCacheTestSuite) TestChownCase2() {
 func (suite *fileCacheTestSuite) TestZZMountPathConflict() {
 	defer suite.cleanupTest()
 	cacheTimeout := 1
-	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout: %d\n\nloopbackfs:\n  path: %s",
+	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: %d\n\nloopbackfs:\n  path: %s",
 		suite.cache_path, cacheTimeout, suite.fake_storage_path)
 
 	fileCache := NewFileCacheComponent()
 	config.ReadConfigFromReader(strings.NewReader(configuration))
 	config.Set("mount-path", suite.cache_path)
-	err := fileCache.Configure()
+	err := fileCache.Configure(true)
 	suite.assert.NotNil(err)
 	suite.assert.Contains(err.Error(), "[tmp-path is same as mount path]")
 }
@@ -1420,7 +1480,7 @@ func (suite *fileCacheTestSuite) TestCachePathSymlink() {
 
 func (suite *fileCacheTestSuite) TestZZOffloadIO() {
 	defer suite.cleanupTest()
-	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  timeout: 0\n\nloopbackfs:\n  path: %s",
+	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  timeout-sec: 0\n\nloopbackfs:\n  path: %s",
 		suite.cache_path, suite.fake_storage_path)
 
 	suite.setupTestHelper(configuration)
@@ -1432,6 +1492,26 @@ func (suite *fileCacheTestSuite) TestZZOffloadIO() {
 	suite.assert.True(handle.Cached())
 
 	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+}
+
+func (suite *fileCacheTestSuite) TestStatFS() {
+	defer suite.cleanupTest()
+	cacheTimeout := 5
+	maxSizeMb := 2
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  max-size-mb: %d\n  offload-io: true\n  timeout-sec: %d\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, maxSizeMb, cacheTimeout, suite.fake_storage_path)
+	os.Mkdir(suite.cache_path, 0777)
+	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
+
+	file := "file"
+	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
+	data := make([]byte, 1024*1024)
+	suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
+	stat, ret, err := suite.fileCache.StatFs()
+	suite.assert.Equal(ret, true)
+	suite.assert.Equal(err, nil)
+	suite.assert.NotEqual(stat, &syscall.Statfs_t{})
 }
 
 // In order for 'go test' to run this suite, we need to create

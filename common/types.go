@@ -116,56 +116,6 @@ func (l *LogLevel) Parse(s string) error {
 	return err
 }
 
-type FileType int
-
-var EFileType = FileType(0).File()
-
-func (FileType) File() FileType {
-	return FileType(0)
-}
-
-func (FileType) Dir() FileType {
-	return FileType(1)
-}
-
-func (FileType) Symlink() FileType {
-	return FileType(2)
-}
-
-func (f FileType) String() string {
-	return enum.StringInt(f, reflect.TypeOf(f))
-}
-
-func (f *FileType) Parse(s string) error {
-	enumVal, err := enum.ParseInt(reflect.TypeOf(f), s, true, false)
-	if enumVal != nil {
-		*f = enumVal.(FileType)
-	}
-	return err
-}
-
-type EvictionPolicy int
-
-var EPolicy = EvictionPolicy(0).LRU()
-
-func (EvictionPolicy) LRU() EvictionPolicy {
-	return EvictionPolicy(0)
-}
-func (EvictionPolicy) LFU() EvictionPolicy {
-	return EvictionPolicy(1)
-}
-func (EvictionPolicy) ARC() EvictionPolicy {
-	return EvictionPolicy(2)
-}
-
-func (ep *EvictionPolicy) Parse(s string) error {
-	enumVal, err := enum.ParseInt(reflect.TypeOf(ep), s, true, false)
-	if enumVal != nil {
-		*ep = enumVal.(EvictionPolicy)
-	}
-	return err
-}
-
 type LogConfig struct {
 	Level       LogLevel
 	MaxFileSize uint64
@@ -300,10 +250,12 @@ func (u uuid) Bytes() []byte {
 func NewUUIDWithLength(length int64) []byte {
 	u := make([]byte, length)
 	// Set all bits to randomly (or pseudo-randomly) chosen values.
-	rand.Read(u[:])
-	u[8] = (u[8] | 0x40) & 0x7F // u.setVariant(ReservedRFC4122)
-	var version byte = 4
-	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
+	_, err := rand.Read(u[:])
+	if err == nil {
+		u[8] = (u[8] | 0x40) & 0x7F // u.setVariant(ReservedRFC4122)
+		var version byte = 4
+		u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
+	}
 	return u[:]
 }
 
@@ -311,11 +263,12 @@ func NewUUIDWithLength(length int64) []byte {
 func NewUUID() (u uuid) {
 	u = uuid{}
 	// Set all bits to randomly (or pseudo-randomly) chosen values.
-	rand.Read(u[:])
-	u[8] = (u[8] | reservedRFC4122) & 0x7F // u.setVariant(ReservedRFC4122)
-
-	var version byte = 4
-	u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
+	_, err := rand.Read(u[:])
+	if err == nil {
+		u[8] = (u[8] | reservedRFC4122) & 0x7F // u.setVariant(ReservedRFC4122)
+		var version byte = 4
+		u[6] = (u[6] & 0xF) | (version << 4) // u.setVersion(4)
+	}
 	return
 }
 

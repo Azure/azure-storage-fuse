@@ -1,4 +1,5 @@
 // +build !authtest
+
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -35,13 +36,14 @@
 package azstorage
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -49,12 +51,13 @@ import (
 
 type storageTestConfiguration struct {
 	// Get the mount path from command line argument
-	BlockAccount       string `json:"block-acct"`
-	AdlsAccount        string `json:"adls-acct"`
-	FileAccount        string `json:"file-acct"`
-	BlockContainer     string `json:"block-cont"`
-	AdlsContainer      string `json:"adls-cont"`
-	FileContainer      string `json:"file-cont"`
+	BlockAccount   string `json:"block-acct"`
+	AdlsAccount    string `json:"adls-acct"`
+	FileAccount    string `json:"file-acct"`
+	BlockContainer string `json:"block-cont"`
+	AdlsContainer  string `json:"adls-cont"`
+	FileContainer  string `json:"file-cont"`
+	// AdlsDirectory      string `json:"adls-dir"`
 	BlockContainerHuge string `json:"block-cont-huge"`
 	AdlsContainerHuge  string `json:"adls-cont-huge"`
 	FileContainerHuge  string `json:"file-cont-huge"`
@@ -62,15 +65,19 @@ type storageTestConfiguration struct {
 	AdlsKey            string `json:"adls-key"`
 	FileKey            string `json:"file-key"`
 	BlockSas           string `json:"block-sas"`
+	BlockContSasUbn18  string `json:"block-cont-sas-ubn-18"`
+	BlockContSasUbn20  string `json:"block-cont-sas-ubn-20"`
 	AdlsSas            string `json:"adls-sas"`
 	FileSas            string `json:"file-sas"`
-	MsiAppId           string `json:"msi-appid"`
-	MsiResId           string `json:"msi-resid"`
-	SpnClientId        string `json:"spn-client"`
-	SpnTenantId        string `json:"spn-tenant"`
-	SpnClientSecret    string `json:"spn-secret"`
-	SkipMsi            bool   `json:"skip-msi"`
-	ProxyAddress       string `json:"proxy-address"`
+	// AdlsDirSasUbn18    string `json:"adls-dir-sas-ubn-18"`
+	// AdlsDirSasUbn20    string `json:"adls-dir-sas-ubn-20"`
+	MsiAppId        string `json:"msi-appid"`
+	MsiResId        string `json:"msi-resid"`
+	SpnClientId     string `json:"spn-client"`
+	SpnTenantId     string `json:"spn-tenant"`
+	SpnClientSecret string `json:"spn-secret"`
+	SkipMsi         bool   `json:"skip-msi"`
+	ProxyAddress    string `json:"proxy-address"`
 }
 
 var storageTestConfigurationParameters storageTestConfiguration
@@ -86,7 +93,11 @@ func (suite *authTestSuite) SetupTest() {
 		FileCount:   10,
 		Level:       common.ELogLevel.LOG_DEBUG(),
 	}
-	log.SetDefaultLogger("base", cfg)
+	err := log.SetDefaultLogger("base", cfg)
+	if err != nil {
+		fmt.Println("Unable to set default logger")
+		os.Exit(1)
+	}
 
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
@@ -143,6 +154,113 @@ func generateEndpoint(useHttp bool, accountName string, accountType AccountType)
 	return endpoint
 }
 
+func (suite *authTestSuite) TestBlockInvalidAuth() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.INVALID_AUTH(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			AccountKey:  storageTestConfigurationParameters.BlockKey,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestInvalidAuth : Failed to create Storage object")
+	}
+	if err := stg.SetupPipeline(); err == nil {
+		assert.Fail("TestInvalidAuth : Setup pipeline even though auth is invalid")
+	}
+}
+
+func (suite *authTestSuite) TestAdlsInvalidAuth() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.AdlsContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.INVALID_AUTH(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			AccountKey:  storageTestConfigurationParameters.AdlsKey,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestInvalidAuth : Failed to create Storage object")
+	}
+	if err := stg.SetupPipeline(); err == nil {
+		assert.Fail("TestInvalidAuth : Setup pipeline even though auth is invalid")
+	}
+}
+
+func (suite *authTestSuite) TestInvalidAccountType() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.KEY(),
+			AccountType: EAccountType.INVALID_ACC(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			AccountKey:  storageTestConfigurationParameters.BlockKey,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg != nil {
+		assert.Fail("TestInvalidAuth : Created Storage object even though account type is invalid")
+	}
+}
+
+func (suite *authTestSuite) TestBlockInvalidSharedKey() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.KEY(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			AccountKey:  "",
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestBlockInvalidSharedKey : Failed to create Storage object")
+	}
+	if err := stg.SetupPipeline(); err == nil {
+		assert.Fail("TestBlockInvalidSharedKey : Setup pipeline even though shared key is invalid")
+	}
+}
+
+func (suite *authTestSuite) TestBlockInvalidSharedKey2() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.KEY(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			AccountKey:  "abcd>=", // string that will fail to base64 decode
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestBlockInvalidSharedKey : Failed to create Storage object")
+	}
+	if err := stg.SetupPipeline(); err == nil {
+		assert.Fail("TestBlockInvalidSharedKey : Setup pipeline even though shared key is invalid")
+	}
+}
+
 func (suite *authTestSuite) TestBlockSharedKey() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{
@@ -172,6 +290,29 @@ func (suite *authTestSuite) TestHttpBlockSharedKey() {
 	}
 	suite.validateStorageTest("TestHttpBlockSharedKey", stgConfig)
 }
+
+func (suite *authTestSuite) TestAdlsInvalidSharedKey() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.AdlsContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.KEY(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			AccountKey:  "",
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestAdlsInvalidSharedKey : Failed to create Storage object")
+	}
+	if err := stg.SetupPipeline(); err == nil {
+		assert.Fail("TestAdlsInvalidSharedKey : Setup pipeline even though shared key is invalid")
+	}
+}
+
 func (suite *authTestSuite) TestAdlsSharedKey() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{
@@ -234,6 +375,28 @@ func (suite *authTestSuite) TestHttpFileSharedKey() {
 	suite.validateStorageTest("TestHttpFileSharedKey", stgConfig)
 }
 
+func (suite *authTestSuite) TestBlockInvalidSasKey() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			SASKey:      "",
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestBlockInvalidSasKey : Failed to create Storage object")
+	}
+	if err := stg.SetupPipeline(); err == nil {
+		assert.Fail("TestBlockInvalidSasKey : Setup pipeline even though sas key is invalid")
+	}
+}
+
 func (suite *authTestSuite) TestBlockSasKey() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{
@@ -265,6 +428,105 @@ func (suite *authTestSuite) TestHttpBlockSasKey() {
 	suite.validateStorageTest("TestHttpBlockSasKey", stgConfig)
 }
 
+func (suite *authTestSuite) TestBlockContSasKey() {
+	defer suite.cleanupTest()
+	sas := ""
+	if storageTestConfigurationParameters.BlockContainer == "test-cnt-ubn-18" {
+		sas = storageTestConfigurationParameters.BlockContSasUbn18
+	} else if storageTestConfigurationParameters.BlockContainer == "test-cnt-ubn-20" {
+		sas = storageTestConfigurationParameters.BlockContSasUbn20
+	} else {
+		return
+	}
+
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			SASKey:      sas,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	suite.validateStorageTest("TestBlockContSasKey", stgConfig)
+}
+
+func (suite *authTestSuite) TestHttpBlockContSasKey() {
+	defer suite.cleanupTest()
+	sas := ""
+	if storageTestConfigurationParameters.BlockContainer == "test-cnt-ubn-18" {
+		sas = storageTestConfigurationParameters.BlockContSasUbn18
+	} else if storageTestConfigurationParameters.BlockContainer == "test-cnt-ubn-20" {
+		sas = storageTestConfigurationParameters.BlockContSasUbn20
+	} else {
+		return
+	}
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			SASKey:      sas,
+			UseHTTP:     true,
+			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	suite.validateStorageTest("TestHttpBlockContSasKey", stgConfig)
+}
+
+func (suite *authTestSuite) TestBlockSasKeySetOption() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			SASKey:      storageTestConfigurationParameters.BlockSas,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestBlockSasKeySetOption : Failed to create Storage object")
+	}
+	stg.SetupPipeline()
+	stg.NewCredentialKey("saskey", storageTestConfigurationParameters.BlockSas)
+	if err := stg.SetupPipeline(); err != nil {
+		assert.Fail("TestBlockSasKeySetOption : Failed to setup pipeline")
+	}
+	err := stg.TestPipeline()
+	if err != nil {
+		assert.Fail("TestBlockSasKeySetOption : Failed to TestPipeline")
+	}
+}
+
+func (suite *authTestSuite) TestAdlsInvalidSasKey() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.AdlsContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			SASKey:      "",
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestAdlsInvalidSasKey : Failed to create Storage object")
+	}
+	if err := stg.SetupPipeline(); err == nil {
+		assert.Fail("TestAdlsInvalidSasKey : Setup pipeline even though sas key is invalid")
+	}
+}
+
+// ADLS tests container SAS by default since ADLS account SAS does not support permissions.
 func (suite *authTestSuite) TestAdlsSasKey() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{
@@ -327,6 +589,85 @@ func (suite *authTestSuite) TestHttpFileSasKey() {
 	suite.validateStorageTest("TestHttpFileSasKey", stgConfig)
 }
 
+// func (suite *authTestSuite) TestAdlsDirSasKey() {
+// 	defer suite.cleanupTest()
+// 	assert := assert.New(suite.T())
+// 	sas := ""
+// 	if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-18" {
+// 		sas = storageTestConfigurationParameters.AdlsDirSasUbn18
+// 	} else if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-20" {
+// 		sas = storageTestConfigurationParameters.AdlsDirSasUbn20
+// 	} else {
+// 		assert.Fail("TestAdlsDirSasKey : Unknown Directory for Sas Test")
+// 	}
+// 	stgConfig := AzStorageConfig{
+// 		container:  storageTestConfigurationParameters.AdlsContainer,
+// 		prefixPath: storageTestConfigurationParameters.AdlsDirectory,
+// 		authConfig: azAuthConfig{
+// 			AuthMode:    EAuthType.SAS(),
+// 			AccountType: EAccountType.ADLS(),
+// 			AccountName: storageTestConfigurationParameters.AdlsAccount,
+// 			SASKey:      sas,
+// 			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+// 		},
+// 	}
+// 	suite.validateStorageTest("TestAdlsDirSasKey", stgConfig)
+// }
+
+// func (suite *authTestSuite) TestHttpAdlsDirSasKey() {
+// 	defer suite.cleanupTest()
+// 	assert := assert.New(suite.T())
+// 	sas := ""
+// 	if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-18" {
+// 		sas = storageTestConfigurationParameters.AdlsDirSasUbn18
+// 	} else if storageTestConfigurationParameters.AdlsDirectory == "test-dir-ubn-20" {
+// 		sas = storageTestConfigurationParameters.AdlsDirSasUbn20
+// 	} else {
+// 		assert.Fail("TestHttpAdlsDirSasKey : Unknown Directory for Sas Test")
+// 	}
+// 	stgConfig := AzStorageConfig{
+// 		container:  storageTestConfigurationParameters.AdlsContainer,
+// 		prefixPath: storageTestConfigurationParameters.AdlsDirectory,
+// 		authConfig: azAuthConfig{
+// 			AuthMode:    EAuthType.SAS(),
+// 			AccountType: EAccountType.ADLS(),
+// 			AccountName: storageTestConfigurationParameters.AdlsAccount,
+// 			SASKey:      sas,
+// 			UseHTTP:     true,
+// 			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+// 		},
+// 	}
+// 	suite.validateStorageTest("TestHttpAdlsDirSasKey", stgConfig)
+// }
+
+func (suite *authTestSuite) TestAdlsSasKeySetOption() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.AdlsContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.SAS(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			SASKey:      storageTestConfigurationParameters.AdlsSas,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestBlockSasKeySetOption : Failed to create Storage object")
+	}
+	stg.SetupPipeline()
+	stg.NewCredentialKey("saskey", storageTestConfigurationParameters.AdlsSas)
+	if err := stg.SetupPipeline(); err != nil {
+		assert.Fail("TestBlockSasKeySetOption : Failed to setup pipeline")
+	}
+	err := stg.TestPipeline()
+	if err != nil {
+		assert.Fail("TestBlockSasKeySetOption : Failed to TestPipeline")
+	}
+}
+
 func (suite *authTestSuite) TestBlockMsiAppId() {
 	defer suite.cleanupTest()
 	if !storageTestConfigurationParameters.SkipMsi {
@@ -361,7 +702,7 @@ func (suite *authTestSuite) TestBlockMsiResId() {
 }
 
 // Can't use HTTP requests with MSI/SPN credentials
-func (suite *authTestSuite) TestAdlskMsiAppId() {
+func (suite *authTestSuite) TestAdlsMsiAppId() {
 	defer suite.cleanupTest()
 	if !storageTestConfigurationParameters.SkipMsi {
 		stgConfig := AzStorageConfig{
@@ -374,7 +715,7 @@ func (suite *authTestSuite) TestAdlskMsiAppId() {
 				Endpoint:      generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
 			},
 		}
-		suite.validateStorageTest("TestAdlskMsiAppId", stgConfig)
+		suite.validateStorageTest("TestAdlsMsiAppId", stgConfig)
 	}
 }
 
@@ -394,6 +735,31 @@ func (suite *authTestSuite) TestAdlskMsiResId() {
 		suite.validateStorageTest("TestAdlskMsiResId", stgConfig)
 	}
 }
+
+func (suite *authTestSuite) TestBlockInvalidSpn() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:     EAuthType.SPN(),
+			AccountType:  EAccountType.BLOCK(),
+			AccountName:  storageTestConfigurationParameters.BlockAccount,
+			ClientID:     storageTestConfigurationParameters.SpnClientId,
+			TenantID:     storageTestConfigurationParameters.SpnTenantId,
+			ClientSecret: "",
+			Endpoint:     generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestBlockInvalidSpn : Failed to create Storage object")
+	}
+	if err := stg.SetupPipeline(); err == nil {
+		assert.Fail("TestBlockInvalidSpn : Setup pipeline even though spn is invalid")
+	}
+}
+
 func (suite *authTestSuite) TestBlockSpn() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{
@@ -409,6 +775,30 @@ func (suite *authTestSuite) TestBlockSpn() {
 		},
 	}
 	suite.validateStorageTest("TestBlockSpn", stgConfig)
+}
+
+func (suite *authTestSuite) TestAdlsInvalidSpn() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.AdlsContainer,
+		authConfig: azAuthConfig{
+			AuthMode:     EAuthType.SPN(),
+			AccountType:  EAccountType.ADLS(),
+			AccountName:  storageTestConfigurationParameters.AdlsAccount,
+			ClientID:     storageTestConfigurationParameters.SpnClientId,
+			TenantID:     storageTestConfigurationParameters.SpnTenantId,
+			ClientSecret: "",
+			Endpoint:     generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestAdlsInvalidSpn : Failed to create Storage object")
+	}
+	if err := stg.SetupPipeline(); err == nil {
+		assert.Fail("TestAdlsInvalidSpn : Setup pipeline even though spn is invalid")
+	}
 }
 
 func (suite *authTestSuite) TestAdlsSpn() {
@@ -429,7 +819,7 @@ func (suite *authTestSuite) TestAdlsSpn() {
 }
 
 func (suite *authTestSuite) cleanupTest() {
-	log.Destroy()
+	_ = log.Destroy()
 }
 
 func TestAuthTestSuite(t *testing.T) {

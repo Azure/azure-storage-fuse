@@ -62,7 +62,7 @@ file_cache:
   allow-non-empty-temp: true|false <allow non empty temp directory at startup>
   cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
   policy-trace: true|false <generate eviction policy logs showing which files will expire soon>
-  offload-io: true|false <let libufse call directly read/write the file for better perf. Set true to make read/write call reach file-cache component>
+  offload-io: true|false <by default libfuse will service reads/writes to files for better perf. Set to true to make file-cache component service read/write calls.>
 
 # Attribute cache related configuration
 attr_cache:
@@ -104,6 +104,7 @@ azstorage:
   https-proxy: ip-address:port <https proxy to be used for connection>
   sdk-trace: true|false <enable storage sdk logging>
   fail-unsupported-op: true|false <for block blob account return failure for unsupported operations like chmod and chown>
+  auth-resource: <resource string to be used during OAuth token retrieval>
 
 
 # Mount all configuration

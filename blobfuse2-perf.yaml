@@ -45,7 +45,7 @@ jobs:
 
         # Prestart cleanup
       - script: |
-          sudo fusermount -u $(MOUNT_DIR)
+          sudo fusermount3 -u $(MOUNT_DIR)
           sudo kill -9 `pidof blobfuse2`
           sudo rm -rf $(ROOT_DIR)
         displayName: 'PreBuild Cleanup'
@@ -102,7 +102,7 @@ jobs:
         continueOnError: false
 
       - script: |
-          sudo fusermount -u ${MOUNT_DIR}
+          sudo fusermount3 -u ${MOUNT_DIR}
           sudo kill -9 `pidof blobfuse2` || true
         displayName: "Unmount Blobfuse2 Binary Run"
 
@@ -131,7 +131,7 @@ jobs:
         displayName: Publish Performance Report
 
       - script: |
-          sudo fusermount -u ${MOUNT_DIR}
+          sudo fusermount3 -u ${MOUNT_DIR}
           sudo kill -9 `pidof blobfuse2` || true
         displayName: "Unmount Blobfuse2 Main Branch Run"
 
@@ -141,11 +141,4 @@ jobs:
           working_dir: $(WORK_DIR)
           mount_dir: $(MOUNT_DIR)
           temp_dir: $(TEMP_DIR)
-      
-      - script: |
-          sudo rm -rf ${ROOT_DIR}
-          pwd
-          cd /`pwd | cut -d '/' -f 2,3,4,5`
-          sudo rm -rf [0-9]
-        displayName: 'Clean Agent Directories'
-        condition: always() 
+

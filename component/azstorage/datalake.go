@@ -34,9 +34,6 @@
 package azstorage
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
-	"blobfuse2/internal"
 	"context"
 	"errors"
 	"net/url"
@@ -45,6 +42,10 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
 )
@@ -130,6 +131,10 @@ func (dl *Datalake) getCredential() azbfs.Credential {
 	}
 
 	cred := dl.Auth.getCredential()
+	if cred == nil {
+		log.Err("Datalake::getCredential : Failed to get credential")
+		return nil
+	}
 
 	return cred.(azbfs.Credential)
 }
@@ -182,10 +187,10 @@ func (dl *Datalake) TestPipeline() error {
 		return nil
 	}
 
-	var maxResults int32
-	maxResults = 2
+	maxResults := int32(2)
 	listPath, err := dl.Filesystem.ListPaths(context.Background(),
 		azbfs.ListPathsFilesystemOptions{
+			Path:       &dl.Config.prefixPath,
 			Recursive:  false,
 			MaxResults: &maxResults,
 		})
@@ -210,12 +215,6 @@ func (dl *Datalake) SetPrefixPath(path string) error {
 	log.Trace("Datalake::SetPrefixPath : path %s", path)
 	dl.Config.prefixPath = path
 	return dl.BlockBlob.SetPrefixPath(path)
-}
-
-// Exists : Check whether or not a given path exists
-func (dl *Datalake) Exists(name string) bool {
-	log.Trace("Datalake::Exists : name %s", name)
-	return dl.BlockBlob.Exists(name)
 }
 
 // CreateFile : Create a new file in the filesystem/directory

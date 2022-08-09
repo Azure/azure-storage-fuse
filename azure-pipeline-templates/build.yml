@@ -28,7 +28,7 @@ parameters:
     default: "null"    
   - name: fuselib
     type: string
-    default: "libfuse3-dev"
+    default: "fuse3 libfuse3-dev"
 
 steps:
   # Package manager installs for libfuse
@@ -65,7 +65,7 @@ steps:
   - task: Go@0
     inputs:
       command: 'build'
-      arguments: "-tags ${{ parameters.tags }}"
+      arguments: "-tags ${{ parameters.tags }} -o blobfuse2"
       workingDirectory: ${{ parameters.working_directory }}
     displayName: "Go Build"
 
@@ -80,6 +80,7 @@ steps:
   # Creating necessary directories
   - script: |
       sudo fusermount -u ${mount_dir}
+      sudo fusermount3 -u ${mount_dir}
       rm -rf ${mount_dir}
       mkdir -p ${mount_dir}
       echo "Creating mount dir " ${mount_dir}
@@ -116,6 +117,8 @@ steps:
       echo "\"adls-key\"": "\"$(AZTEST_ADLS_KEY)\"", >> $cnfFile
       echo "\"file-key\"": "\"$(AZTEST_FILE_KEY)\"", >> $cnfFile
       echo "\"block-sas\"": "\"$(AZTEST_BLOCK_SAS)\"", >> $cnfFile
+      echo "\"block-cont-sas-ubn-18\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_18)\"", >> $cnfFile
+      echo "\"block-cont-sas-ubn-20\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_20)\"", >> $cnfFile
       echo "\"adls-sas\"": "\"$(AZTEST_ADLS_SAS)\"", >> $cnfFile
       echo "\"file-sas\"": "\"$(AZTEST_FILE_SAS)\"", >> $cnfFile
       echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
