@@ -1123,7 +1123,7 @@ func (s *blockBlobTestSuite) TestWriteFile() {
 	s.assert.EqualValues(testData, output)
 }
 
-func (s *blockBlobTestSuite) TestTruncateFileSmaller() {
+func (s *blockBlobTestSuite) TestTruncateSmallFileSmaller() {
 	defer s.cleanupTest()
 	// Setup
 	name := generateFileName()
@@ -1145,7 +1145,33 @@ func (s *blockBlobTestSuite) TestTruncateFileSmaller() {
 	s.assert.EqualValues(testData[:truncatedLength], output)
 }
 
-func (s *blockBlobTestSuite) TestTruncateFileEqual() {
+func (s *blockBlobTestSuite) TestTruncateChunkedFileSmaller() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	truncatedLength := 5
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 4,
+	})
+	s.assert.Nil(err)
+
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	s.assert.Nil(err)
+
+	// Blob should have updated data
+	file := s.containerUrl.NewBlobURL(name)
+	resp, err := file.Download(ctx, 0, int64(truncatedLength), azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, resp.ContentLength())
+	output, _ := ioutil.ReadAll(resp.Body(azblob.RetryReaderOptions{}))
+	s.assert.EqualValues(testData[:truncatedLength], output)
+}
+
+func (s *blockBlobTestSuite) TestTruncateSmallFileEqual() {
 	defer s.cleanupTest()
 	// Setup
 	name := generateFileName()
@@ -1167,7 +1193,33 @@ func (s *blockBlobTestSuite) TestTruncateFileEqual() {
 	s.assert.EqualValues(testData, output)
 }
 
-func (s *blockBlobTestSuite) TestTruncateFileBigger() {
+func (s *blockBlobTestSuite) TestTruncateChunkedFileEqual() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	truncatedLength := 9
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 4,
+	})
+	s.assert.Nil(err)
+
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	s.assert.Nil(err)
+
+	// Blob should have updated data
+	file := s.containerUrl.NewBlobURL(name)
+	resp, err := file.Download(ctx, 0, int64(truncatedLength), azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, resp.ContentLength())
+	output, _ := ioutil.ReadAll(resp.Body(azblob.RetryReaderOptions{}))
+	s.assert.EqualValues(testData, output)
+}
+
+func (s *blockBlobTestSuite) TestTruncateSmallFileBigger() {
 	defer s.cleanupTest()
 	// Setup
 	name := generateFileName()
@@ -1178,6 +1230,32 @@ func (s *blockBlobTestSuite) TestTruncateFileBigger() {
 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	s.assert.Nil(err)
+
+	// Blob should have updated data
+	file := s.containerUrl.NewBlobURL(name)
+	resp, err := file.Download(ctx, 0, int64(truncatedLength), azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, resp.ContentLength())
+	output, _ := ioutil.ReadAll(resp.Body(azblob.RetryReaderOptions{}))
+	s.assert.EqualValues(testData, output[:len(data)])
+}
+
+func (s *blockBlobTestSuite) TestTruncateChunkedFileBigger() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	truncatedLength := 15
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 4,
+	})
+	s.assert.Nil(err)
+
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data
@@ -1443,7 +1521,7 @@ func (s *blockBlobTestSuite) TestOverwriteAndAppendBlocks() {
 	s.assert.Nil(err)
 
 	f, _ = os.Open(f.Name())
-	len, err := f.Read(output)
+	len, _ := f.Read(output)
 	s.assert.EqualValues(dataLen, len)
 	s.assert.EqualValues(currentData, output)
 	f.Close()
@@ -1476,7 +1554,7 @@ func (s *blockBlobTestSuite) TestAppendBlocks() {
 	s.assert.Nil(err)
 
 	f, _ = os.Open(f.Name())
-	len, err := f.Read(output)
+	len, _ := f.Read(output)
 	s.assert.EqualValues(dataLen, len)
 	s.assert.EqualValues(currentData, output)
 	f.Close()
@@ -1509,7 +1587,7 @@ func (s *blockBlobTestSuite) TestAppendOffsetLargerThanSize() {
 	s.assert.Nil(err)
 
 	f, _ = os.Open(f.Name())
-	len, err := f.Read(output)
+	len, _ := f.Read(output)
 	s.assert.EqualValues(dataLen, len)
 	s.assert.EqualValues(currentData, output)
 	f.Close()
@@ -1705,6 +1783,21 @@ func (s *blockBlobTestSuite) TestChmod() {
 	s.assert.EqualValues(syscall.ENOTSUP, err)
 }
 
+func (s *blockBlobTestSuite) TestChmodIgnore() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	err := s.az.Chmod(internal.ChmodOptions{Name: name, Mode: 0666})
+	s.assert.Nil(err)
+}
+
 func (s *blockBlobTestSuite) TestChown() {
 	defer s.cleanupTest()
 	// Setup
@@ -1716,7 +1809,22 @@ func (s *blockBlobTestSuite) TestChown() {
 	s.assert.EqualValues(syscall.ENOTSUP, err)
 }
 
-func (s *blockBlobTestSuite) TestXBlockSize() {
+func (s *blockBlobTestSuite) TestChownIgnore() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: 6, Group: 5})
+	s.assert.Nil(err)
+}
+
+func (s *blockBlobTestSuite) TestBlockSize() {
 	defer s.cleanupTest()
 	// Setup
 	name := generateFileName()
@@ -1802,6 +1910,46 @@ func (s *blockBlobTestSuite) TestXBlockSize() {
 	block, err = bb.calculateBlockSize(name, (200 * 1024 * 1024 * 1024 * 1024))
 	s.assert.NotNil(err)
 	s.assert.EqualValues(block, 0)
+}
+
+func (s *blockBlobTestSuite) TestGetFileBlockOffsetsSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+
+	// GetFileBlockOffsets
+	offsetList, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.Len(offsetList.BlockList, 0)
+	s.assert.True(offsetList.SmallFile())
+	s.assert.EqualValues(0, offsetList.BlockIdLength)
+}
+
+func (s *blockBlobTestSuite) TestGetFileBlockOffsetsChunkedFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 4,
+	})
+	s.assert.Nil(err)
+
+	// GetFileBlockOffsets
+	offsetList, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.Len(offsetList.BlockList, 10)
+	s.assert.Zero(offsetList.Flags)
+	s.assert.EqualValues(16, offsetList.BlockIdLength)
 }
 
 // func (s *blockBlobTestSuite) TestRAGRS() {

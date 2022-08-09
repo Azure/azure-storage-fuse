@@ -410,7 +410,7 @@ var ContentTypes = map[string]string{
 	".rar": "application/vnd.rar",
 	".tar": "application/x-tar",
 	".zip": "application/x-zip-compressed",
-	"7z":   "application/x-7z-compressed",
+	".7z":  "application/x-7z-compressed",
 	".3g2": "video/3gpp2",
 
 	".sh":  "application/x-sh",
