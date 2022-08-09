@@ -565,9 +565,34 @@ func (s *blockBlobTestSuite) TestReadDir() {
 	for _, path := range paths {
 		log.Debug(path)
 		s.Run(path, func() {
-			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: name})
+			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
 			s.assert.Nil(err)
 			s.assert.EqualValues(1, len(entries))
+		})
+	}
+}
+
+func (s *blockBlobTestSuite) TestReadDirNoVirtualDirectory() {
+	defer s.cleanupTest()
+	// This tests the default listBlocked = 0. It should return the expected paths.
+	// Setup
+	name := generateDirectoryName()
+	childName := name + "/" + generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: childName})
+
+	// Testing dir and dir/
+	var paths = []string{"", "/"}
+	for _, path := range paths {
+		log.Debug(path)
+		s.Run(path, func() {
+			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
+			s.assert.Nil(err)
+			s.assert.EqualValues(1, len(entries))
+			s.assert.EqualValues(name, entries[0].Path)
+			s.assert.EqualValues(name, entries[0].Name)
+			s.assert.True(entries[0].IsDir())
+			s.assert.True(entries[0].IsMetadataRetrieved())
+			s.assert.True(entries[0].IsModeDefault())
 		})
 	}
 }
@@ -608,7 +633,7 @@ func (s *blockBlobTestSuite) TestReadDirRoot() {
 		log.Debug(path)
 		s.Run(path, func() {
 			// ReadDir only reads the first level of the hierarchy
-			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: ""})
+			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
 			s.assert.Nil(err)
 			s.assert.EqualValues(3, len(entries))
 			// Check the base dir
@@ -1950,6 +1975,16 @@ func (s *blockBlobTestSuite) TestGetFileBlockOffsetsChunkedFile() {
 	s.assert.Len(offsetList.BlockList, 10)
 	s.assert.Zero(offsetList.Flags)
 	s.assert.EqualValues(16, offsetList.BlockIdLength)
+}
+
+func (s *blockBlobTestSuite) TestGetFileBlockOffsetsError() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+
+	// GetFileBlockOffsets
+	_, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	s.assert.NotNil(err)
 }
 
 // func (s *blockBlobTestSuite) TestRAGRS() {

@@ -404,7 +404,7 @@ func (s *datalakeTestSuite) TestReadDir() {
 	for _, path := range paths {
 		log.Debug(path)
 		s.Run(path, func() {
-			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: name})
+			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
 			s.assert.Nil(err)
 			s.assert.EqualValues(1, len(entries))
 		})
@@ -447,7 +447,7 @@ func (s *datalakeTestSuite) TestReadDirRoot() {
 		log.Debug(path)
 		s.Run(path, func() {
 			// ReadDir only reads the first level of the hierarchy
-			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: ""})
+			entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: path})
 			s.assert.Nil(err)
 			s.assert.EqualValues(3, len(entries))
 			// Check the base dir
@@ -949,7 +949,7 @@ func (s *datalakeTestSuite) TestOverwriteAndAppendBlocks() {
 	s.assert.Nil(err)
 
 	f, _ = os.Open(f.Name())
-	len, err := f.Read(output)
+	len, _ := f.Read(output)
 	s.assert.EqualValues(dataLen, len)
 	s.assert.EqualValues(currentData, output)
 	f.Close()
@@ -987,7 +987,7 @@ func (s *datalakeTestSuite) TestAppendBlocks() {
 	s.assert.Nil(err)
 
 	f, _ = os.Open(f.Name())
-	len, err := f.Read(output)
+	len, _ := f.Read(output)
 	s.assert.EqualValues(dataLen, len)
 	s.assert.EqualValues(currentData, output)
 	f.Close()
@@ -1025,7 +1025,7 @@ func (s *datalakeTestSuite) TestAppendOffsetLargerThanSize() {
 	s.assert.Nil(err)
 
 	f, _ = os.Open(f.Name())
-	len, err := f.Read(output)
+	len, _ := f.Read(output)
 	s.assert.EqualValues(dataLen, len)
 	s.assert.EqualValues(currentData, output)
 	f.Close()
@@ -1699,6 +1699,84 @@ func (s *datalakeTestSuite) TestChown() {
 	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: 6, Group: 5})
 	s.assert.NotNil(err)
 	s.assert.EqualValues(syscall.ENOTSUP, err)
+}
+
+func (s *datalakeTestSuite) TestChownIgnore() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	err := s.az.Chown(internal.ChownOptions{Name: name, Owner: 6, Group: 5})
+	s.assert.Nil(err)
+}
+
+func (s *datalakeTestSuite) TestGetFileBlockOffsetsSmallFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+
+	// GetFileBlockOffsets
+	offsetList, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.Len(offsetList.BlockList, 0)
+	s.assert.True(offsetList.SmallFile())
+	s.assert.EqualValues(0, offsetList.BlockIdLength)
+}
+
+func (s *datalakeTestSuite) TestGetFileBlockOffsetsChunkedFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(
+		ctx, bytes.NewReader(data),
+		int64(len(data)),
+		4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name),
+		azblob.UploadToBlockBlobOptions{
+			BlockSize: 4,
+		})
+	s.assert.Nil(err)
+
+	// GetFileBlockOffsets
+	offsetList, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.Len(offsetList.BlockList, 10)
+	s.assert.Zero(offsetList.Flags)
+	s.assert.EqualValues(16, offsetList.BlockIdLength)
+}
+
+func (s *datalakeTestSuite) TestGetFileBlockOffsetsError() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+
+	// GetFileBlockOffsets
+	_, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	s.assert.NotNil(err)
+}
+
+func (s *datalakeTestSuite) TestCustomEndpoint() {
+	defer s.cleanupTest()
+	dfsEndpoint := "https://mycustom.endpoint"
+
+	blobEndpoint := transformAccountEndpoint(dfsEndpoint)
+	s.assert.EqualValues(dfsEndpoint, blobEndpoint)
 }
 
 // func (s *datalakeTestSuite) TestRAGRS() {
