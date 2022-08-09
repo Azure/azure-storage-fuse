@@ -31,55 +31,96 @@
    SOFTWARE
 */
 
-package internal
+package common
 
 import (
+	"fmt"
+	"math/rand"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
-type componentOptionsTestSuite struct {
+var home_dir, _ = os.UserHomeDir()
+
+func randomString(length int) string {
+	rand.Seed(time.Now().UnixNano())
+	b := make([]byte, length)
+	rand.Read(b)
+	return fmt.Sprintf("%x", b)[:length]
+}
+
+type utilTestSuite struct {
 	suite.Suite
+	assert *assert.Assertions
 }
 
-func (s *componentOptionsTestSuite) TestExtendDirName() {
-	assert := assert.New(s.T())
-	tests := []struct {
-		input          string
-		expectedOutput string
-	}{
-		{input: "dir", expectedOutput: "dir/"},
-		{input: "dir/", expectedOutput: "dir/"},
-		{input: "", expectedOutput: "/"},
-	}
-	for _, tt := range tests {
-		s.Run(tt.input, func() {
-			output := ExtendDirName(tt.input)
-			assert.EqualValues(tt.expectedOutput, output)
-		})
-	}
+func (suite *utilTestSuite) SetupTest() {
+	suite.assert = assert.New(suite.T())
 }
 
-func (s *componentOptionsTestSuite) TestTruncateDirName() {
-	assert := assert.New(s.T())
-	tests := []struct {
-		input          string
-		expectedOutput string
-	}{
-		{input: "dir/", expectedOutput: "dir"},
-		{input: "dir", expectedOutput: "dir"},
-		{input: "/", expectedOutput: ""},
-	}
-	for _, tt := range tests {
-		s.Run(tt.input, func() {
-			output := TruncateDirName(tt.input)
-			assert.EqualValues(tt.expectedOutput, output)
-		})
-	}
+func TestUtil(t *testing.T) {
+	suite.Run(t, new(utilTestSuite))
 }
 
-func TestComponentOptionsTestSuite(t *testing.T) {
-	suite.Run(t, new(componentOptionsTestSuite))
+func (suite *typesTestSuite) TestDirectoryExists() {
+	rand := randomString(8)
+	dir := filepath.Join(home_dir, "dir"+rand)
+	os.MkdirAll(dir, 0777)
+	defer os.RemoveAll(dir)
+
+	exists := DirectoryExists(dir)
+	suite.assert.True(exists)
+}
+
+func (suite *typesTestSuite) TestDirectoryDoesNotExist() {
+	rand := randomString(8)
+	dir := filepath.Join(home_dir, "dir"+rand)
+
+	exists := DirectoryExists(dir)
+	suite.assert.False(exists)
+}
+
+func (suite *typesTestSuite) TestEncryptBadKey() {
+	// Generate a random key
+	key := make([]byte, 20)
+	rand.Read(key)
+
+	data := make([]byte, 1024)
+	rand.Read(data)
+
+	_, err := EncryptData(data, key)
+	suite.assert.NotNil(err)
+}
+
+func (suite *typesTestSuite) TestDecryptBadKey() {
+	// Generate a random key
+	key := make([]byte, 20)
+	rand.Read(key)
+
+	data := make([]byte, 1024)
+	rand.Read(data)
+
+	_, err := DecryptData(data, key)
+	suite.assert.NotNil(err)
+}
+
+func (suite *typesTestSuite) TestEncryptDecrypt() {
+	// Generate a random key
+	key := make([]byte, 16)
+	rand.Read(key)
+
+	data := make([]byte, 1024)
+	rand.Read(data)
+
+	cipher, err := EncryptData(data, key)
+	suite.assert.Nil(err)
+
+	d, err := DecryptData(cipher, key)
+	suite.assert.Nil(err)
+	suite.assert.EqualValues(data, d)
 }

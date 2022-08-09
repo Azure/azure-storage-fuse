@@ -1,5 +1,38 @@
 // +build !unittest
 
+/*
+    _____           _____   _____   ____          ______  _____  ------
+   |     |  |      |     | |     | |     |     | |       |            |
+   |     |  |      |     | |     | |     |     | |       |            |
+   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
+   |     |  |      |     | |     | |     |     |       | |       |
+   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
+
+
+   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
+
+   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Author : <blobfusedev@microsoft.com>
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE
+*/
+
 package e2e_tests
 
 import (
@@ -18,12 +51,14 @@ import (
 
 var fileTestPathPtr string
 var fileTestAdlsPtr string
+var fileTestSasPtr string
 var fileTestGitClonePtr string
 
 type fileTestSuite struct {
 	suite.Suite
 	testPath string
 	adlsTest bool
+	sasTest  bool
 	minBuff  []byte
 	medBuff  []byte
 	hugeBuff []byte
@@ -42,6 +77,7 @@ func getFileTestFlag(name string) string {
 func initFileFlags() {
 	fileTestPathPtr = getFileTestFlag("mnt-path")
 	fileTestAdlsPtr = getFileTestFlag("adls")
+	fileTestSasPtr = getFileTestFlag("sas")
 	fileTestGitClonePtr = getFileTestFlag("clone")
 }
 
@@ -525,6 +561,12 @@ func TestFileTestSuite(t *testing.T) {
 	} else {
 		fmt.Println("BLOCK Blob Testing...")
 	}
+
+	if fileTestSasPtr == "true" || fileTestSasPtr == "True" {
+		fmt.Println("ADLS Testing...")
+		fileTest.sasTest = true
+	}
+
 	// Sanity check in the off chance the same random name was generated twice and was still around somehow
 	err := os.RemoveAll(fileTest.testPath)
 	if err != nil {
@@ -548,5 +590,6 @@ func TestFileTestSuite(t *testing.T) {
 func init() {
 	regFileTestFlag(&fileTestPathPtr, "mnt-path", "", "Mount Path of Container")
 	regFileTestFlag(&fileTestAdlsPtr, "adls", "", "Account is ADLS or not")
+	regFileTestFlag(&fileTestSasPtr, "sas", "", "Auth is SAS or not")
 	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enable or not")
 }

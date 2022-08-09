@@ -12,21 +12,24 @@ jobs:
     strategy:
       matrix:
         Ubuntu-18:
+          AgentName: 'blobfuse-ubuntu18'
           imageName: 'ubuntu-18.04'
           containerName: 'test-cnt-ubn-18'
           fuselib: 'libfuse-dev'
+          fuselib2: 'fuse'
           tags: 'fuse2'
-          hostedAgent: true
-          stressParallel: 3
         Ubuntu-20:
+          AgentName: 'blobfuse-ubuntu20'
           imageName: 'ubuntu-20.04'
-          containerName: 'test-cnt-coverage'
+          containerName: 'test-cnt-ubn-20'
           fuselib: 'libfuse3-dev'
+          fuselib2: 'fuse3'
           tags: 'fuse3'
-          hostedAgent: true
-          stressParallel: 1
+
     pool:
-      vmImage: $(imageName)
+      name: "blobfuse-ubuntu-pool"
+      demands:
+        - ImageOverride -equals $(AgentName)
 
     variables:
       - group: NightlyBlobFuse
@@ -63,9 +66,17 @@ jobs:
         workingDirectory: $(WORK_DIR)
     
       - script: |
-          sudo apt-get update --fix-missing
-          sudo apt-get install $(fuselib) -y
+          sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
+          sudo apt-get install make cmake gcc g++ parallel $(fuselib) $(fuselib2) -y -o Dpkg::Options::="--force-confnew"
         displayName: 'Install libfuse'
+
+
+      # Create directory structure
+      - script: |
+          sudo mkdir -p $(ROOT_DIR)
+          sudo chown -R `whoami` $(ROOT_DIR)
+          chmod 777 $(ROOT_DIR)
+        displayName: 'Create Directory Structure'
 
       # -------------------------------------------------------
       # Pull and build the code
@@ -79,6 +90,7 @@ jobs:
           container: $(containerName)
           tags: $(tags)
           fuselib: $(fuselib)
+          skip_msi: "false"
 
       # -------------------------------------------------------
       # UT based code coverage test
@@ -98,7 +110,7 @@ jobs:
       # Config Generation (Block Blob)
       - script: |
           cd $(WORK_DIR)
-          $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_gentest1.cov gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
         env:
           NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
           NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
@@ -113,11 +125,13 @@ jobs:
       - script: |
           rm -rf $(MOUNT_DIR)/*
           rm -rf $(TEMP_DIR)/*
-          ./blobfuse2.test -test.v -test.coverprofile=blobfuse2_block.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
           sleep 10
           ps -aux | grep blobfuse2
           rm -rf $(MOUNT_DIR)/*
-          go test -v -timeout=7200s test/e2e_tests -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
+          cd test/e2e_tests
+          go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
+          cd -
           sudo fusermount -u $(MOUNT_DIR) 
           sleep 5
         workingDirectory: $(WORK_DIR)
@@ -139,11 +153,13 @@ jobs:
       - script: |
           rm -rf $(MOUNT_DIR)/*
           rm -rf $(TEMP_DIR)/*
-          ./blobfuse2.test -test.v -test.coverprofile=blobfuse2_adls.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_ADLS_CFG) --foreground=true &
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_adls.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_ADLS_CFG) --foreground=true &
           sleep 10
           ps -aux | grep blobfuse2
           rm -rf $(MOUNT_DIR)/*
-          go test -v -timeout=7200s test/e2e_tests -args -mnt-path=$(MOUNT_DIR) -adls=true -tmp-path=$(TEMP_DIR)
+          cd test/e2e_tests
+          go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -adls=true -tmp-path=$(TEMP_DIR)
+          cd -
           ./blobfuse2 unmount all
           sleep 5
         workingDirectory: $(WORK_DIR)
@@ -154,7 +170,7 @@ jobs:
       # Config Generation (Block Blob - LFU policy)
       - script: |
           cd $(WORK_DIR)
-          $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_lfu.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_gentest2.cov gen-test-config --config-file=azure_key_lfu.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
         env:
           NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
           NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
@@ -163,16 +179,19 @@ jobs:
           VERBOSE_LOG: false
         displayName: 'Create Config File - LFU'
         continueOnError: false
+        workingDirectory: $(WORK_DIR)
       
       # Code Coverage with e2e-tests for block blob with lfu policy
       - script: |
           rm -rf $(MOUNT_DIR)/*
           rm -rf $(TEMP_DIR)/*
-          ./blobfuse2.test -test.v -test.coverprofile=blobfuse2_block_lfu.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block_lfu.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
           sleep 10
           ps -aux | grep blobfuse2
           rm -rf $(MOUNT_DIR)/*
-          go test -v -timeout=7200s test/e2e_tests -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
+          cd test/e2e_tests
+          go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
+          cd -
           ./blobfuse2 unmount $(MOUNT_DIR)
           sleep 5
         workingDirectory: $(WORK_DIR)
@@ -183,7 +202,7 @@ jobs:
       # Config Generation (Block Blob - Stream)
       - script: |
           cd $(WORK_DIR)
-          $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_stream.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_STREAM_CFG)
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_gentest3.cov gen-test-config --config-file=azure_stream.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_STREAM_CFG)
         displayName: 'Create Config File - Stream'
         env:
           NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
@@ -192,12 +211,13 @@ jobs:
           ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
           VERBOSE_LOG: false
         continueOnError: false
+        workingDirectory: $(WORK_DIR)
       
       # Streaming test preparation
       - script: |
           rm -rf $(MOUNT_DIR)/*
           rm -rf $(TEMP_DIR)/*
-          ./blobfuse2.test -test.v -test.coverprofile=blobfuse2_stream_prep.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_stream_prep.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
           sleep 10
           ps -aux | grep blobfuse2
           for i in {10,50,100,200,500,1024}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > $(WORK_DIR)/myfile_{}'
@@ -212,7 +232,7 @@ jobs:
       - script: |
           rm -rf $(MOUNT_DIR)/*
           rm -rf $(TEMP_DIR)/*
-          ./blobfuse2.test -test.v -test.coverprofile=blobfuse2_stream.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_STREAM_CFG) --foreground=true &
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_stream.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_STREAM_CFG) --foreground=true &
           sleep 10
           ps -aux | grep blobfuse2
           ./blobfuse2 mount list
@@ -238,7 +258,7 @@ jobs:
 
       # Component generation code coverage
       - script: |
-          ./blobfuse2.test -test.v -test.coverprofile=generate_cmd.cov generate test_component
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/generate_cmd.cov generate test_component
           if [ $? -ne 0 ]; then
             exit 1
           fi
@@ -250,7 +270,7 @@ jobs:
           rm -rf $(MOUNT_DIR)/*
           rm -rf $(TEMP_DIR)/*
 
-          ./blobfuse2.test -test.v -test.coverprofile=list_empty_cmd.cov mount list
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/list_empty_cmd.cov mount list
           if [ $? -ne 0 ]; then
             exit 1
           fi
@@ -258,14 +278,14 @@ jobs:
         displayName: "CLI : Mount List"
 
       - script: |
-          ./blobfuse2.test -test.v -test.coverprofile=mount_cmd.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug 
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_cmd.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug 
           if [ $? -ne 0 ]; then
             exit 1
           fi
 
           sleep 20     
 
-          ./blobfuse2.test -test.v -test.coverprofile=list_cmd_all.cov mount list
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/list_cmd_all.cov mount list
           if [ $? -ne 0 ]; then
             exit 1
           fi
@@ -274,35 +294,35 @@ jobs:
         displayName: "CLI : Mount all and List"
 
       - script: |
-          ./blobfuse2.test -test.v -test.coverprofile=mount_cmd_all.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug 
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_cmd_all.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug 
           if [ $? -ne 0 ]; then
             exit 1
           fi
 
           sleep 20    
-          ./blobfuse2.test -test.v -test.coverprofile=umnt_cmd_cont.cov unmount $(MOUNT_DIR)/$(containerName)
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_cmd_cont.cov unmount $(MOUNT_DIR)/$(containerName)
           if [ $? -ne 0 ]; then
             exit 1
           fi
 
-          ./blobfuse2.test -test.v -test.coverprofile=umnt_wild_cmd.cov unmount testmut*
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_wild_cmd.cov unmount testmut*
           if [ $? -ne 0 ]; then
             exit 1
           fi
 
-          ./blobfuse2.test -test.v -test.coverprofile=umnt_negative_cmd.cov unmount abcdef
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_negative_cmd.cov unmount abcdef
           if [ $? -ne 0 ]; then
             exit 1
           fi
 
-          for i in {1..5}; do ./blobfuse2.test -test.v -test.coverprofile=umnt_all_cmd.cov unmount all; done
+          for i in {1..5}; do ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_all_cmd.cov unmount all; done
         workingDirectory: $(WORK_DIR)
         displayName: "CLI : Unmount options"
 
 
       # Mount / Unmount Negative tests
       - script: |
-          ./blobfuse2.test -test.v -test.coverprofile=mount_neg.cov mount all /abc --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_neg.cov mount all /abc --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug
           if [ $? -eq 0 ]; then
             exit 1
           fi
@@ -312,14 +332,14 @@ jobs:
 
       - script: |
           ./blobfuse2 unmount all
-          ./blobfuse2.test -test.v -test.coverprofile=mount_foreg.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug --foreground=true &
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_foreg.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug --foreground=true &
           if [ $? -ne 0 ]; then
             exit 1
           fi
 
           sleep 5
 
-          ./blobfuse2.test -test.v -test.coverprofile=mount_remount.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_remount.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug
           if [ $? -eq 0 ]; then
             exit 1
           fi
@@ -330,13 +350,33 @@ jobs:
         displayName: "CLI : Remount test"
         timeoutInMinutes: 2
 
+      # Doc generation tests
+      - script: |
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/doc1.cov doc
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/doc2.cov doc --output-location /notexists
+          touch ~/a.txt
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/doc2.cov doc --output-location ~/a.txt
+          rm -rf ~/a.txt
+        workingDirectory: $(WORK_DIR)
+        displayName: "CLI : doc generation"
+        timeoutInMinutes: 2
+
+      # Version check
+      - script: |
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version1.cov --version
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version2.cov version
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version2.cov version --check
+        workingDirectory: $(WORK_DIR)
+        displayName: "CLI : doc generation"
+        timeoutInMinutes: 2
+
       # Simulate config change
       - script: |
           rm -rf $(MOUNT_DIR)/*
           rm -rf $(TEMP_DIR)/*
           ./blobfuse2 unmount all
           
-          ./blobfuse2.test -test.v -test.coverprofile=mount_foreg_2.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug --foreground=true &
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_foreg_2.cov mount all $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug --foreground=true &
           if [ $? -ne 0 ]; then
             exit 1
           fi
@@ -350,12 +390,43 @@ jobs:
         workingDirectory: $(WORK_DIR)
         displayName: "CLI : Config change simulator"
 
+      # Secure Config, fine to use insecure passphrase as this is just for testing
+      - script: |
+          rm -rf $(MOUNT_DIR)/*
+          rm -rf $(TEMP_DIR)/*
+          ./blobfuse2 unmount all
+          ./blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+          
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_encrypt.cov secure encrypt --config-file=$(BLOBFUSE2_CFG) --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
+          if [ $? -ne 0 ]; then
+            exit 1
+          fi
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_secure.cov mount $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 &
+          sleep 10
+          ps -aux | grep blobfuse2
+          rm -rf $(MOUNT_DIR)/*
+          cd test/e2e_tests
+          go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -adls=false -tmp-path=$(TEMP_DIR)
+          cd -
+
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_set.cov secure set --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 --key=logging.level --value=log_debug
+          ./blobfuse2 unmount all
+          sleep 5
+        workingDirectory: $(WORK_DIR)
+        displayName: "CLI : Secure Config"
+        env:
+          NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+          NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+          ACCOUNT_TYPE: 'block'
+          ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+          VERBOSE_LOG: false
+
       # -------------------------------------------------------
       # Coverage report consolidation
       - script: |
           echo 'mode: count' > ./blobfuse2_coverage_raw.rpt
           tail -q -n +2 ./*.cov >> ./blobfuse2_coverage_raw.rpt
-          cat ./blobfuse2_coverage_raw.rpt  | grep -v mock_component | grep -v base_component | grep -v loopback | grep -v "common/log" > ./blobfuse2_coverage.rpt 
+          cat ./blobfuse2_coverage_raw.rpt  | grep -v mock_component | grep -v base_component | grep -v loopback | grep -v "common/log" | grep -v "common/exectime" > ./blobfuse2_coverage.rpt 
           go tool cover -func blobfuse2_coverage.rpt  > ./blobfuse2_func_cover.rpt
           go tool cover -html=./blobfuse2_coverage.rpt -o ./blobfuse2_coverage.html
           go tool cover -html=./blobfuse2_ut.cov -o ./blobfuse2_ut.html
@@ -371,4 +442,18 @@ jobs:
           artifactName: 'Blobfuse2 Coverage $(tags)'
         displayName: 'Publish Artifacts for blobfuse2 code coverage'
         condition: succeeded()
+
+      # Overall code coverage check
+      - script: |
+          chmod 777 ./test/scripts/coveragecheck.sh
+          ./test/scripts/coveragecheck.sh
+        workingDirectory: $(WORK_DIR)
+        displayName: "Overall coverage check"
+
+      # File level code coverage check
+      - script: |
+          ./test/scripts/coveragecheck.sh file
+        workingDirectory: $(WORK_DIR)
+        displayName: "File level coverage check"
+        condition: always()
   

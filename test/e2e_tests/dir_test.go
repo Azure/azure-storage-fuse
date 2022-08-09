@@ -1,5 +1,38 @@
 // +build !unittest
 
+/*
+    _____           _____   _____   ____          ______  _____  ------
+   |     |  |      |     | |     | |     |     | |       |            |
+   |     |  |      |     | |     | |     |     | |       |            |
+   | --- |  |      |     | |-----| |---- |     | |-----| |-----  ------
+   |     |  |      |     | |     | |     |     |       | |       |
+   | ____|  |_____ | ____| | ____| |     |_____|  _____| |_____  |_____
+
+
+   Licensed under the MIT License <http://opensource.org/licenses/MIT>.
+
+   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Author : <blobfusedev@microsoft.com>
+
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to deal
+   in the Software without restriction, including without limitation the rights
+   to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+   copies of the Software, and to permit persons to whom the Software is
+   furnished to do so, subject to the following conditions:
+
+   The above copyright notice and this permission notice shall be included in all
+   copies or substantial portions of the Software.
+
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE
+*/
+
 package e2e_tests
 
 import (
@@ -21,6 +54,7 @@ type dirTestSuite struct {
 	suite.Suite
 	testPath string
 	adlsTest bool
+	sasTest  bool
 	minBuff  []byte
 	medBuff  []byte
 	hugeBuff []byte
@@ -28,6 +62,7 @@ type dirTestSuite struct {
 
 var pathPtr string
 var adlsPtr string
+var sasPtr string
 var clonePtr string
 
 func regDirTestFlag(p *string, name string, value string, usage string) {
@@ -43,6 +78,7 @@ func getDirTestFlag(name string) string {
 func initDirFlags() {
 	pathPtr = getDirTestFlag("mnt-path")
 	adlsPtr = getDirTestFlag("adls")
+	sasPtr = getDirTestFlag("sas")
 	clonePtr = getDirTestFlag("clone")
 }
 
@@ -357,11 +393,35 @@ func (suite *dirTestSuite) TestDirRenameFull() {
 
 }
 
+func (suite *dirTestSuite) TestTarDir() {
+	dirName := suite.testPath + "/tar"
+	tarName := suite.testPath + "/tardir.tar.gz"
+
+	cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
+	_, err := cmd.Output()
+	suite.Equal(nil, err)
+
+	_, err = os.Stat(dirName)
+	suite.Equal(nil, err)
+
+	cmd = exec.Command("tar", "-zcvf", tarName, dirName)
+	cliOut, err := cmd.Output()
+	if len(cliOut) > 0 {
+		suite.NotContains(cliOut, "file changed as we read it")
+	}
+
+	cmd = exec.Command("tar", "-zxvf", tarName, "--directory", dirName)
+	_, _ = cmd.Output()
+
+	os.RemoveAll(dirName)
+	os.Remove("libfuse.tar.gz")
+}
+
 func (suite *dirTestSuite) TestGitClone() {
 	if clonePtr == "true" || clonePtr == "True" {
 		dirName := suite.testPath + "/clone"
 
-		cmd := exec.Command("git", "clone", "https://github.com/libfuse/libfuse", dirName)
+		cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
 		_, err := cmd.Output()
 		suite.Equal(nil, err)
 
@@ -371,6 +431,104 @@ func (suite *dirTestSuite) TestGitClone() {
 		_, err = os.Stat(dirName + "/.git")
 		suite.Equal(nil, err)
 
+		os.RemoveAll(dirName)
+	}
+}
+
+func (suite *dirTestSuite) TestGitStatus() {
+	if clonePtr == "true" || clonePtr == "True" {
+		dirName := suite.testPath + "/status"
+
+		cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
+		_, err := cmd.Output()
+		suite.Equal(nil, err)
+
+		_, err = os.Stat(dirName)
+		suite.Equal(nil, err)
+
+		err = os.Chdir(dirName)
+		suite.Equal(nil, err)
+
+		cmd = exec.Command("git", "status")
+		cliOut, err := cmd.Output()
+		suite.Equal(nil, err)
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "nothing to commit, working")
+		}
+
+		f, err := os.OpenFile("README.md", os.O_APPEND|os.O_WRONLY, 0644)
+		suite.Equal(nil, err)
+		suite.NotZero(f)
+		_, err = f.WriteString("TestString")
+		suite.Equal(nil, err)
+		_ = f.Close()
+
+		cmd = exec.Command("git", "status")
+		cliOut, err = cmd.Output()
+		suite.Equal(nil, err)
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "Changes not staged for commit")
+		}
+
+		os.Chdir(suite.testPath)
+		os.RemoveAll(dirName)
+	}
+}
+
+func (suite *dirTestSuite) TestGitStash() {
+	if clonePtr == "true" || clonePtr == "True" {
+		dirName := suite.testPath + "/stash"
+
+		cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
+		_, err := cmd.Output()
+		suite.Equal(nil, err)
+
+		_, err = os.Stat(dirName)
+		suite.Equal(nil, err)
+
+		err = os.Chdir(dirName)
+		suite.Equal(nil, err)
+
+		cmd = exec.Command("git", "status")
+		cliOut, err := cmd.Output()
+		suite.Equal(nil, err)
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "nothing to commit, working")
+		}
+
+		f, err := os.OpenFile("README.md", os.O_APPEND|os.O_WRONLY, 0644)
+		suite.Equal(nil, err)
+		suite.NotZero(f)
+		_, err = f.WriteString("TestString")
+		suite.Equal(nil, err)
+		_ = f.Close()
+
+		cmd = exec.Command("git", "status")
+		cliOut, err = cmd.Output()
+		suite.Equal(nil, err)
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "Changes not staged for commit")
+		}
+
+		cmd = exec.Command("git", "stash")
+		cliOut, err = cmd.Output()
+		suite.Equal(nil, err)
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "Saved working directory and index state WIP")
+		}
+
+		cmd = exec.Command("git", "stash", "list")
+		_, err = cmd.Output()
+		suite.Equal(nil, err)
+
+		cmd = exec.Command("git", "stash", "pop")
+		cliOut, err = cmd.Output()
+		suite.Equal(nil, err)
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "Changes not staged for commit")
+		}
+
+		os.Chdir(suite.testPath)
 		os.RemoveAll(dirName)
 	}
 }
@@ -394,6 +552,11 @@ func TestDirTestSuite(t *testing.T) {
 		dirTest.adlsTest = true
 	} else {
 		fmt.Println("BLOCK Blob Testing...")
+	}
+
+	if sasPtr == "true" || sasPtr == "True" {
+		fmt.Println("SAS Testing...")
+		dirTest.sasTest = true
 	}
 
 	// Sanity check in the off chance the same random name was generated twice and was still around somehow
@@ -420,5 +583,6 @@ func TestDirTestSuite(t *testing.T) {
 func init() {
 	regDirTestFlag(&pathPtr, "mnt-path", "", "Mount Path of Container")
 	regDirTestFlag(&adlsPtr, "adls", "", "Account is ADLS or not")
+	regDirTestFlag(&sasPtr, "sas", "", "Auth is SAS or not")
 	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enable or not")
 }

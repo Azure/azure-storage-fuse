@@ -30,7 +30,7 @@ parameters:
     default: "null"    
   - name: fuselib
     type: string
-    default: "libfuse3-dev"
+    default: "fuse3 libfuse3-dev"
   - name: quick_test
     type: boolean
     default: "true"
@@ -190,13 +190,3 @@ steps:
     continueOnError: true
     condition: always()
 
-  # Cleanup Agent dir  
-  - script: |
-      sudo rm -rf ${root_dir}
-      pwd
-      cd /`pwd | cut -d '/' -f 2,3,4,5`
-      sudo rm -rf [0-9]
-    displayName: 'Clean Agent Directories'
-    env:
-      root_dir: ${{ parameters.root_dir }}
-    condition: always()

@@ -34,11 +34,12 @@
 package cmd
 
 import (
-	"blobfuse2/common"
 	"errors"
 	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -53,7 +54,10 @@ var setKeyCmd = &cobra.Command{
 	Example:           "blobfuse2 secure set --config-file=config.yaml --passphrase=PASSPHRASE --key=logging.log_level --value=log_debug",
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		validateOptions()
+		err := validateOptions()
+		if err != nil {
+			return err
+		}
 
 		plainText, err := decryptConfigFile(false)
 		if err != nil {
@@ -93,7 +97,10 @@ var setKeyCmd = &cobra.Command{
 			return err
 		}
 
-		saveToFile(secOpts.ConfigFile, cipherText, false)
+		if err = saveToFile(secOpts.ConfigFile, cipherText, false); err != nil {
+			return err
+		}
+
 		return nil
 	},
 }

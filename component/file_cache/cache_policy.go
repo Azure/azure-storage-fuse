@@ -34,13 +34,14 @@
 package file_cache
 
 import (
-	"blobfuse2/common"
-	"blobfuse2/common/log"
 	"bytes"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
 const DefaultEvictTime = 10
@@ -65,9 +66,9 @@ type cachePolicy interface {
 
 	UpdateConfig(cachePolicyConfig) error
 
-	CacheValid(name string) error      // Mark the file as hit
-	CacheInvalidate(name string) error // Invalidate the file
-	CachePurge(name string) error      // Schedule the file for deletion
+	CacheValid(name string)      // Mark the file as hit
+	CacheInvalidate(name string) // Invalidate the file
+	CachePurge(name string)      // Schedule the file for deletion
 
 	IsCached(name string) bool // Whether or not the cache policy considers this file cached
 
@@ -98,7 +99,8 @@ func getUsage(path string) float64 {
 	if size == "0" {
 		return 0
 	}
-
+	// some OS's use "," instead of "." that will not work for float parsing - replace it
+	size = strings.Replace(size, ",", ".", 1)
 	parsed, err := strconv.ParseFloat(size[:len(size)-1], 64)
 	if err != nil {
 		log.Err("cachePolicy::getCacheUsage : error parsing folder size [%s]", err.Error())

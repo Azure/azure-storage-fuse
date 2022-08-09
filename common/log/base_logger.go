@@ -34,7 +34,6 @@
 package log
 
 import (
-	"blobfuse2/common"
 	"fmt"
 	"io"
 	"log"
@@ -43,6 +42,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
 )
 
 // LogConfig : Configuration to be provided to logging infra
@@ -237,7 +238,7 @@ func (l *BaseLogger) logDumper(id int, channel <-chan string) {
 		l.fileConfig.currentLogSize += (uint64)(len(j))
 		if l.fileConfig.currentLogSize > l.fileConfig.LogSize {
 			//fmt.Println("Calling logrotate : ", l.fileConfig.currentLogSize, " : ", l.fileConfig.logSize)
-			l.LogRotate()
+			_ = l.LogRotate()
 		}
 	}
 }
@@ -265,11 +266,11 @@ func (l *BaseLogger) LogRotate() error {
 
 		// Move each file to next number 8 -> 9, 7 -> 8, 6 -> 7 ...
 		//fmt.Println("Renaming : ", fname, " : ", fnameNew)
-		os.Rename(fname, fnameNew)
+		_ = os.Rename(fname, fnameNew)
 	}
 
 	//fmt.Println("Renaming : ", l.fileConfig.logFile, l.fileConfig.logFile+".1")
-	os.Rename(l.fileConfig.LogFile, l.fileConfig.LogFile+".1")
+	_ = os.Rename(l.fileConfig.LogFile, l.fileConfig.LogFile+".1")
 
 	var err error
 	l.logFileHandle, err = os.OpenFile(l.fileConfig.LogFile, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)

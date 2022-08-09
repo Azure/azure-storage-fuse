@@ -34,11 +34,6 @@
 package cmd
 
 import (
-	"blobfuse2/component/attr_cache"
-	"blobfuse2/component/azstorage"
-	"blobfuse2/component/file_cache"
-	"blobfuse2/component/libfuse"
-	"blobfuse2/component/stream"
 	"bufio"
 	"bytes"
 	"errors"
@@ -49,6 +44,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
+	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
+	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
+	"github.com/Azure/azure-storage-fuse/v2/component/libfuse"
+	"github.com/Azure/azure-storage-fuse/v2/component/stream"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -145,7 +146,7 @@ var generateConfigCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		VersionCheck()
+		_ = VersionCheck()
 		resetOptions()
 		// If we are only converting the config without mounting then we do not need the mount path and therefore the args length would be 0
 		if len(args) == 1 {
@@ -210,7 +211,8 @@ var generateConfigCmd = &cobra.Command{
 			if bfv2StorageConfigOptions.UseHTTP {
 				http = "http"
 			}
-			var accountType = ""
+
+			accountType := ""
 			if bfv2StorageConfigOptions.AccountType == "" || bfv2StorageConfigOptions.AccountType == "blob" {
 				accountType = "blob"
 			} else if bfv2StorageConfigOptions.AccountType == "adls" {
@@ -361,6 +363,11 @@ func convertBfConfigParameter(flags *pflag.FlagSet, configParameterKey string, c
 		bfv2StorageConfigOptions.ClientSecret = configParameterValue
 	case "servicePrincipalTenantId":
 		bfv2StorageConfigOptions.TenantID = configParameterValue
+
+	case "msiEndpoint":
+		// msiEndpoint is not supported config in V2, this needs to be given as MSI_ENDPOINT env variable
+		return nil
+
 	default:
 		return fmt.Errorf("failed to parse configuration file. the configuration parameter `%s` is not supported in Blobfuse2", configParameterKey)
 	}
@@ -372,7 +379,7 @@ func convertBfCliParameters(flags *pflag.FlagSet) error {
 	if flags.Lookup("set-content-type").Changed || flags.Lookup("ca-cert-file").Changed || flags.Lookup("basic-remount-check").Changed || flags.Lookup(
 		"background-download").Changed || flags.Lookup("cache-poll-timeout-msec").Changed || flags.Lookup("upload-modified-only").Changed {
 		logWriter, _ := syslog.New(syslog.LOG_WARNING, "")
-		logWriter.Warning("one or more unsupported v1 parameters [set-content-type, ca-cert-file, basic-remount-check, background-download, cache-poll-timeout-msec, upload-modified-only] have been passed, ignoring and proceeding to mount")
+		_ = logWriter.Warning("one or more unsupported v1 parameters [set-content-type, ca-cert-file, basic-remount-check, background-download, cache-poll-timeout-msec, upload-modified-only] have been passed, ignoring and proceeding to mount")
 	}
 
 	bfv2LoggingConfigOptions.Type = "syslog"

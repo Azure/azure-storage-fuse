@@ -40,46 +40,85 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-type componentOptionsTestSuite struct {
+//   Test compoennts
+type ComponentA struct {
+	BaseComponent
+}
+
+func (ac *ComponentA) Priority() ComponentPriority {
+	return EComponentPriority.Producer()
+}
+
+func NewComponentA() Component {
+	return &ComponentA{}
+}
+
+type ComponentB struct {
+	BaseComponent
+}
+
+func (ac *ComponentB) Priority() ComponentPriority {
+	return EComponentPriority.LevelMid()
+}
+
+func NewComponentB() Component {
+	return &ComponentB{}
+}
+
+type ComponentC struct {
+	BaseComponent
+}
+
+func (ac *ComponentC) Priority() ComponentPriority {
+	return EComponentPriority.Consumer()
+}
+
+func NewComponentC() Component {
+	return &ComponentC{}
+}
+
+/////////////////////////////////////////
+
+type pipelineTestSuite struct {
 	suite.Suite
+	assert *assert.Assertions
 }
 
-func (s *componentOptionsTestSuite) TestExtendDirName() {
-	assert := assert.New(s.T())
-	tests := []struct {
-		input          string
-		expectedOutput string
-	}{
-		{input: "dir", expectedOutput: "dir/"},
-		{input: "dir/", expectedOutput: "dir/"},
-		{input: "", expectedOutput: "/"},
-	}
-	for _, tt := range tests {
-		s.Run(tt.input, func() {
-			output := ExtendDirName(tt.input)
-			assert.EqualValues(tt.expectedOutput, output)
-		})
-	}
+func (suite *pipelineTestSuite) SetupTest() {
+	AddComponent("ComponentA", NewComponentA)
+	AddComponent("ComponentB", NewComponentB)
+	AddComponent("ComponentC", NewComponentC)
+	suite.assert = assert.New(suite.T())
 }
 
-func (s *componentOptionsTestSuite) TestTruncateDirName() {
-	assert := assert.New(s.T())
-	tests := []struct {
-		input          string
-		expectedOutput string
-	}{
-		{input: "dir/", expectedOutput: "dir"},
-		{input: "dir", expectedOutput: "dir"},
-		{input: "/", expectedOutput: ""},
-	}
-	for _, tt := range tests {
-		s.Run(tt.input, func() {
-			output := TruncateDirName(tt.input)
-			assert.EqualValues(tt.expectedOutput, output)
-		})
-	}
+func (s *pipelineTestSuite) TestCreatePipeline() {
+	_, err := NewPipeline([]string{"ComponentA", "ComponentB"}, false)
+	s.assert.Nil(err)
 }
 
-func TestComponentOptionsTestSuite(t *testing.T) {
-	suite.Run(t, new(componentOptionsTestSuite))
+func (s *pipelineTestSuite) TestCreateInvalidPipeline() {
+	_, err := NewPipeline([]string{"ComponentC", "ComponentA"}, false)
+	s.assert.NotNil(err)
+	s.assert.Contains(err.Error(), "is out of order")
+
+}
+
+func (s *pipelineTestSuite) TestInvalidComponent() {
+	_, err := NewPipeline([]string{"ComponentD"}, false)
+	s.assert.NotNil(err)
+}
+
+func (s *pipelineTestSuite) TestStartStopCreateNewPipeline() {
+	p, err := NewPipeline([]string{"ComponentA", "ComponentB"}, false)
+	s.assert.Nil(err)
+
+	err = p.Start(nil)
+	s.assert.Nil(err)
+
+	err = p.Stop()
+	s.assert.Nil(err)
+}
+
+func TestPipelineTestSuite(t *testing.T) {
+	suite.Run(t, new(pipelineTestSuite))
 }

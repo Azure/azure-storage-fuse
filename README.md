@@ -78,7 +78,7 @@ To learn about a specific command, just include the name of the command (For exa
 - List all mount instances of blobfuse2
     * blobfuse2 mount list
 - Unmount blobfuse2
-    * sudo fusermount -u <mount path>
+    * sudo fusermount3 -u <mount path>
 - Unmount all blobfuse2 instances
     * blobfuse2 unmount all 
 

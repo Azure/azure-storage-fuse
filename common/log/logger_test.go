@@ -34,8 +34,9 @@
 package log
 
 import (
-	"blobfuse2/common"
 	"testing"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
