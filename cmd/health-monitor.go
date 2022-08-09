@@ -52,19 +52,7 @@ type monitorOptions struct {
 	StatsPollinterval int      `config:"stats-poll-interval"`
 }
 
-var (
-	pid string
-	// bfsPollInterval   int
-	// statsPollinterval int
-	// noBfsMon          bool
-	// noCpuProf         bool
-	// noMemProf         bool
-	// noNetProf         bool
-	// noFileCacheMon    bool
-	// tempCachePath     string
-	// maxCacheSize      float64
-)
-
+var pid string
 var cacheMonitorOptions file_cache.FileCacheOptions
 var hmonOptions monitorOptions
 
@@ -186,16 +174,4 @@ func init() {
 	healthMonCmd.Flags().StringVar(&configFile, "config-file", "config.yaml",
 		"Configures the path for the file where the account credentials are provided. Default is config.yaml")
 	healthMonCmd.MarkFlagRequired("config-file")
-
-	// healthMonCmd.Flags().IntVar(&bfsPollInterval, "blobfuse2-poll-interval", 5, "Blobfuse2 stats polling interval in seconds")
-	// healthMonCmd.Flags().IntVar(&statsPollinterval, "stats-poll-interval", 10, "CPU, memory and network usage of blobfuse2 polling interval in seconds")
-
-	// healthMonCmd.Flags().BoolVar(&noBfsMon, "no-blobfuse2-stats", false, "Disable blobfuse2 stats polling")
-	// healthMonCmd.Flags().BoolVar(&noCpuProf, "no-cpu-profiler", false, "Disable CPU profiling on blobfuse2 process")
-	// healthMonCmd.Flags().BoolVar(&noMemProf, "no-memory-profiler", false, "Disable memory profiling on blobfuse2 process")
-	// healthMonCmd.Flags().BoolVar(&noNetProf, "no-network-profiler", false, "Disable network profiling on blobfuse2 process")
-	// healthMonCmd.Flags().BoolVar(&noFileCacheMon, "no-cache-monitor", false, "Disable file cache directory monitor")
-
-	// healthMonCmd.Flags().StringVar(&tempCachePath, "cache-path", "", "path to local disk cache")
-	// healthMonCmd.Flags().Float64Var(&maxCacheSize, "max-size-mb", 0, "maximum cache size allowed. Default - 0 (unlimited)")
 }

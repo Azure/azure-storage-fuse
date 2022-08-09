@@ -107,7 +107,8 @@ func NewStatsCollector(componentName string, reader ChannelReader) *StatsCollect
 			Timestamp:     time.Now().Format(time.RFC3339),
 			ComponentName: componentName,
 			Operation:     "Stats Collected",
-			Value:         make(map[string]interface{})}
+			Value:         make(map[string]interface{}),
+		}
 		statsList = append(statsList, &cmpSt)
 
 		cmpTimeMap[componentName] = cmpSt.Timestamp
@@ -250,7 +251,6 @@ func statsPolling() {
 	reader := bufio.NewReader(pf)
 
 	// create transfer pipe
-	// TODO: case where multiple threads try to create the pipe simultaneously
 	err = createPipe(transferPipe)
 	if err != nil {
 		log.Err("StatsManager::StatsPolling : [%v]", err)
