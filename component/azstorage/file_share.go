@@ -909,10 +909,10 @@ func getFileAndDirFromPath(completePath string) (fileName string, dirPath string
 	return fileName, dirPath
 }
 
-// calculateFileSize : calulates range size of the file based on file size
+// calculateRangeSize : calulates range size of the file based on file size
 func (fs *FileShare) calculateRangeSize(name string, fileSize int64) (rangeSize int64, err error) {
 	if fileSize > FileMaxSizeInBytes {
-		log.Err("FileShare::calculateBlockSize : buffer is too large to upload to an Azure file %s", name)
+		log.Err("FileShare::calculateRangeSize : buffer is too large to upload to an Azure file %s", name)
 		err = errors.New("buffer is too large to upload to an Azure file")
 		return 0, err
 	}
@@ -933,12 +933,12 @@ func (fs *FileShare) calculateRangeSize(name string, fileSize int64) (rangeSize 
 		} else {
 			if (rangeSize & (-8)) != 0 {
 				// EXTRA : round off the range size to next higher multiple of 8.
-				// No reason to do so just the odd numbers in block size will not be good on server end is assumption
+				// No reason to do so; assuming odd numbers in range size will not be good on server end
 				rangeSize = (rangeSize + 7) & (-8)
 			}
 
 			if rangeSize > azfile.FileMaxUploadRangeBytes {
-				// After rounding off the blockSize has become bigger then max allowed blocks.
+				// After rounding off the rangeSize has become bigger then max allowed range size.
 				log.Err("FileShare::calculateRangeSize : rangeSize exceeds max allowed range size for %s", name)
 				err = errors.New("ragnge size is too large to upload to a file")
 				return 0, err
@@ -946,6 +946,6 @@ func (fs *FileShare) calculateRangeSize(name string, fileSize int64) (rangeSize 
 		}
 	}
 
-	log.Info("FileShare::calculateBlockSize : %s size %lu, blockSize %lu", name, fileSize, rangeSize)
+	log.Info("FileShare::calculateRangeSize : %s size %lu, blockSize %lu", name, fileSize, rangeSize)
 	return rangeSize, nil
 }
