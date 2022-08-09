@@ -271,7 +271,7 @@ func statsPolling() {
 		// read the polling message sent by stats monitor
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
-			log.Err("StatsReader::Reader : [%v]", err)
+			log.Err("StatsReader::Reader : Unable to read from pipe [%v]", err)
 			break
 		}
 		log.Debug("StatsManager::StatsPolling : Polling message: %v\n", string(line))

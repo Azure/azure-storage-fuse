@@ -34,6 +34,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -281,6 +282,12 @@ var mountCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		err = config.UnmarshalKey("health-monitor.enable-monitoring", &common.EnableMonitoring)
+		if err != nil {
+			log.Debug("Mount: unable to unmarshal health-monitor.enable-monitoring key from config: " + err.Error())
+			common.EnableMonitoring = false
+		}
+
 		if options.Debug {
 			f, err := os.OpenFile(filepath.Join(options.DebugPath, "times.log"), os.O_CREATE|os.O_APPEND|os.O_RDWR, os.FileMode(0755))
 			if err != nil {
@@ -320,6 +327,7 @@ var mountCmd = &cobra.Command{
 				log.Err("Mount: error daemonizing application [%v]", err)
 				Destroy(1)
 			}
+			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
 			if child == nil {
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
@@ -343,6 +351,7 @@ var mountCmd = &cobra.Command{
 			setGOConfig()
 			go startDynamicProfiler()
 
+			log.Debug("mount: foreground enabled")
 			runPipeline(pipeline, context.Background())
 			if options.MemProfile != "" {
 				os.Remove(options.MemProfile)
@@ -358,16 +367,6 @@ var mountCmd = &cobra.Command{
 			}
 		}
 
-		err = config.UnmarshalKey("health-monitor.enable-monitoring", &common.EnableMonitoring)
-		if err != nil {
-			log.Debug("Unable to unmarshal enable-monitoring key from config: " + err.Error())
-			common.EnableMonitoring = false
-		}
-
-		if common.EnableMonitoring {
-			fmt.Println(os.Args[0], os.Getpid())
-		}
-
 	},
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
@@ -375,6 +374,8 @@ var mountCmd = &cobra.Command{
 }
 
 func runPipeline(pipeline *internal.Pipeline, ctx context.Context) {
+	go startMonitor(os.Getpid())
+
 	pipelineStarted = true
 	err := pipeline.Start(ctx)
 	if err != nil {
@@ -392,6 +393,20 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) {
 	}
 
 	_ = log.Destroy()
+}
+
+func startMonitor(pid int) {
+	if common.EnableMonitoring {
+		log.Debug("mount::startMonitor : pid = %v, config-file = %v", pid, options.ConfigFile)
+		buf := new(bytes.Buffer)
+		rootCmd.SetOut(buf)
+		rootCmd.SetErr(buf)
+		rootCmd.SetArgs([]string{"health-monitor", fmt.Sprintf("--pid=%v", pid), fmt.Sprintf("--config-file=%s", options.ConfigFile)})
+		err := rootCmd.Execute()
+		if err != nil {
+			log.Err("mount::startMonitor : [%v]", err)
+		}
+	}
 }
 
 func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
