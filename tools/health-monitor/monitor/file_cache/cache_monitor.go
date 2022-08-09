@@ -36,6 +36,7 @@ package file_cache
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -188,6 +189,9 @@ func (fc *FileCache) createEvent(event *watcher.Event) {
 	}
 
 	e := fc.getCacheEventObj(event.Op.String(), event.Path)
+	if !event.IsDir() {
+		e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
+	}
 
 	// TODO: export this event
 	log.Debug("cahce_monitor::writeEvent : %v", e)
@@ -202,6 +206,9 @@ func (fc *FileCache) removeEvent(event *watcher.Event) {
 	}
 
 	e := fc.getCacheEventObj(event.Op.String(), event.Path)
+	if !event.IsDir() {
+		e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
+	}
 
 	// TODO: export this event
 	log.Debug("cahce_monitor::writeEvent : %v", e)
@@ -243,6 +250,9 @@ func (fc *FileCache) writeEvent(event *watcher.Event) {
 	}
 
 	e := fc.getCacheEventObj(event.Op.String(), event.Path)
+	if !event.IsDir() {
+		e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
+	}
 
 	// TODO: export this event
 	log.Debug("cahce_monitor::writeEvent : %v", e)
