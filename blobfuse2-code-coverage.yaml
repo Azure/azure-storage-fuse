@@ -67,7 +67,7 @@ jobs:
     
       - script: |
           sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-          sudo apt-get install make cmake gcc g++ $(fuselib) $(fuselib2) -y -o Dpkg::Options::="--force-confnew"
+          sudo apt-get install make cmake gcc g++ parallel $(fuselib) $(fuselib2) -y -o Dpkg::Options::="--force-confnew"
         displayName: 'Install libfuse'
 
 
