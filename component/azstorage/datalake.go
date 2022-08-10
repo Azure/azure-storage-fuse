@@ -239,12 +239,6 @@ func (dl *Datalake) SetPrefixPath(path string) error {
 	return dl.BlockBlob.SetPrefixPath(path)
 }
 
-// Exists : Check whether or not a given path exists
-func (dl *Datalake) Exists(name string) bool {
-	log.Trace("Datalake::Exists : name %s", name)
-	return dl.BlockBlob.Exists(name)
-}
-
 // CreateFile : Create a new file in the filesystem/directory
 func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("Datalake::CreateFile : name %s", name)

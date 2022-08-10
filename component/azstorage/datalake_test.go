@@ -1305,7 +1305,7 @@ func (s *datalakeTestSuite) TestWriteFile() {
 	s.assert.EqualValues(testData, output)
 }
 
-func (s *datalakeTestSuite) TestTruncateFileSmaller() {
+func (s *datalakeTestSuite) TestTruncateSmallFileSmaller() {
 	defer s.cleanupTest()
 	// Setup
 	name := generateFileName()
@@ -1327,7 +1327,34 @@ func (s *datalakeTestSuite) TestTruncateFileSmaller() {
 	s.assert.EqualValues(testData[:truncatedLength], output)
 }
 
-func (s *datalakeTestSuite) TestTruncateFileEqual() {
+func (s *datalakeTestSuite) TestTruncateChunkedFileSmaller() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	truncatedLength := 5
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+			BlockSize: 4,
+		})
+	s.assert.Nil(err)
+
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	s.assert.Nil(err)
+
+	// Blob should have updated data
+	file := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
+	resp, err := file.Download(ctx, 0, int64(truncatedLength))
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, resp.ContentLength())
+	output, _ := ioutil.ReadAll(resp.Body(azbfs.RetryReaderOptions{}))
+	s.assert.EqualValues(testData[:truncatedLength], output)
+}
+
+func (s *datalakeTestSuite) TestTruncateSmallFileEqual() {
 	defer s.cleanupTest()
 	// Setup
 	name := generateFileName()
@@ -1349,7 +1376,34 @@ func (s *datalakeTestSuite) TestTruncateFileEqual() {
 	s.assert.EqualValues(testData, output)
 }
 
-func (s *datalakeTestSuite) TestTruncateFileBigger() {
+func (s *datalakeTestSuite) TestTruncateChunkedFileEqual() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	truncatedLength := 9
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+			BlockSize: 4,
+		})
+	s.assert.Nil(err)
+
+	err = s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	s.assert.Nil(err)
+
+	// Blob should have updated data
+	file := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
+	resp, err := file.Download(ctx, 0, int64(truncatedLength))
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, resp.ContentLength())
+	output, _ := ioutil.ReadAll(resp.Body(azbfs.RetryReaderOptions{}))
+	s.assert.EqualValues(testData, output)
+}
+
+func (s *datalakeTestSuite) TestTruncateSmallFileBigger() {
 	defer s.cleanupTest()
 	// Setup
 	name := generateFileName()
@@ -1360,6 +1414,33 @@ func (s *datalakeTestSuite) TestTruncateFileBigger() {
 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
 	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	s.assert.Nil(err)
+
+	// Blob should have updated data
+	file := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
+	resp, err := file.Download(ctx, 0, int64(truncatedLength))
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, resp.ContentLength())
+	output, _ := ioutil.ReadAll(resp.Body(azbfs.RetryReaderOptions{}))
+	s.assert.EqualValues(testData, output[:len(data)])
+}
+
+func (s *datalakeTestSuite) TestTruncateChunkedFileBigger() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	truncatedLength := 15
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+			BlockSize: 4,
+		})
+	s.assert.Nil(err)
+
+	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
 	s.assert.Nil(err)
 
 	// Blob should have updated data

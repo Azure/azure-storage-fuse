@@ -260,15 +260,6 @@ func (bb *BlockBlob) SetPrefixPath(path string) error {
 	return nil
 }
 
-// Exists : Check whether or not a given blob exists
-func (bb *BlockBlob) Exists(name string) bool {
-	log.Trace("BlockBlob::Exists : name %s", name)
-	if _, err := bb.GetAttr(name); err == syscall.ENOENT {
-		return false
-	}
-	return true
-}
-
 // CreateFile : Create a new file in the container/virtual directory
 func (bb *BlockBlob) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("BlockBlob::CreateFile : name %s", name)
@@ -764,7 +755,7 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 		return &common.BlockOffsetList{}, err
 	}
 	// if block list empty its a small file
-	if len(blockList.BlockList) == 0 {
+	if len(storageBlockList.CommittedBlocks) == 0 {
 		blockList.Flags.Set(common.SmallFile)
 		return &blockList, nil
 	}

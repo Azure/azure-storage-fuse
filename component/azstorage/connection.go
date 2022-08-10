@@ -91,7 +91,6 @@ type AzConnection interface {
 	// This is just for test, shall not be used otherwise
 	SetPrefixPath(string) error
 
-	Exists(name string) bool
 	CreateFile(name string, mode os.FileMode) error
 	CreateDirectory(name string) error
 	CreateLink(source string, target string) error

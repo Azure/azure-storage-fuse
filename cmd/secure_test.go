@@ -138,6 +138,26 @@ func (suite *secureConfigTestSuite) TestSecureConfigEncryptNotExistent() {
 	suite.assert.NotNil(err)
 }
 
+func (suite *secureConfigTestSuite) TestSecureConfigEncryptNoConfig() {
+	defer suite.cleanupTest()
+
+	_, err := executeCommandSecure(rootCmd, "secure", "encrypt")
+	suite.assert.NotNil(err)
+}
+
+func (suite *secureConfigTestSuite) TestSecureConfigEncryptNoKey() {
+	defer suite.cleanupTest()
+	confFile, _ := ioutil.TempFile("", "conf*.yaml")
+
+	defer os.Remove(confFile.Name())
+
+	_, err := confFile.WriteString(testPlainTextConfig)
+	suite.assert.Nil(err)
+
+	_, err = executeCommandSecure(rootCmd, "secure", "encrypt", fmt.Sprintf("--config-file=%s", confFile.Name()))
+	suite.assert.NotNil(err)
+}
+
 func (suite *secureConfigTestSuite) TestSecureConfigEncryptInvalidKey() {
 	defer suite.cleanupTest()
 	confFile, _ := ioutil.TempFile("", "conf*.yaml")
@@ -177,6 +197,26 @@ func (suite *secureConfigTestSuite) TestSecureConfigDecrypt() {
 
 	os.Remove("./tmp.yaml")
 	os.Remove(confFile.Name() + "." + SecureConfigExtension)
+}
+
+func (suite *secureConfigTestSuite) TestSecureConfigDecryptNoConfig() {
+	defer suite.cleanupTest()
+
+	_, err := executeCommandSecure(rootCmd, "secure", "decrypt")
+	suite.assert.NotNil(err)
+}
+
+func (suite *secureConfigTestSuite) TestSecureConfigDecryptNoKey() {
+	defer suite.cleanupTest()
+	confFile, _ := ioutil.TempFile("", "conf*.yaml")
+
+	defer os.Remove(confFile.Name())
+
+	_, err := confFile.WriteString(testPlainTextConfig)
+	suite.assert.Nil(err)
+
+	_, err = executeCommandSecure(rootCmd, "secure", "decrypt", fmt.Sprintf("--config-file=%s", confFile.Name()))
+	suite.assert.NotNil(err)
 }
 
 func (suite *secureConfigTestSuite) TestSecureConfigGet() {
