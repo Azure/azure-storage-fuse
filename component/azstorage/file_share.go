@@ -861,7 +861,7 @@ func (fs *FileShare) GetFileBlockOffsets(name string) (shareFileRangeList *commo
 		return &common.BlockOffsetList{}, err
 	}
 
-	if len(rangeList.BlockList) == 0 {
+	if len(storageRangeList.Ranges) == 0 {
 		rangeList.Flags.Set(common.SmallFile)
 		return &rangeList, nil
 	}
