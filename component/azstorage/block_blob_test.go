@@ -1989,27 +1989,6 @@ func (s *blockBlobTestSuite) TestGetFileBlockOffsetsError() {
 	s.assert.NotNil(err)
 }
 
-func (s *blockBlobTestSuite) TestFlushFileBase() {
-	defer s.cleanupTest()
-
-	// Setup
-	name := generateFileName()
-	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-
-	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
-	handlemap.CreateCacheObject(int64(16*MB), h)
-	h.CacheObj.BlockOffsetList = bol
-
-	// nothing to flush
-	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
-	s.assert.Nil(err)
-
-	// file should be empty
-	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-	s.assert.Nil(err)
-	s.assert.EqualValues("", output)
-}
-
 func (s *blockBlobTestSuite) TestFlushFileNoSmallFile() {
 	defer s.cleanupTest()
 
@@ -2027,7 +2006,126 @@ func (s *blockBlobTestSuite) TestFlushFileNoSmallFile() {
 	s.assert.NotNil(err)
 }
 
-func (s *blockBlobTestSuite) TestFlushFileAppendBlocks() {
+func (s *blockBlobTestSuite) TestFlushFileEmptyFile() {
+	defer s.cleanupTest()
+
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	handlemap.CreateCacheObject(int64(16*MB), h)
+	h.CacheObj.BlockOffsetList = bol
+
+	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	s.assert.EqualValues("", output)
+}
+
+func (s *blockBlobTestSuite) TestFlushFileChunkedFile() {
+	defer s.cleanupTest()
+
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	data := make([]byte, 16*MB)
+	rand.Read(data)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 4 * MB,
+	})
+	s.assert.Nil(err)
+	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	handlemap.CreateCacheObject(int64(16*MB), h)
+	h.CacheObj.BlockOffsetList = bol
+
+	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	s.assert.EqualValues(data, output)
+}
+
+func (s *blockBlobTestSuite) TestFlushFileUpdateChunkedFile() {
+	defer s.cleanupTest()
+
+	// Setup
+	name := generateFileName()
+	blockSize := 4 * MB
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	data := make([]byte, 16*MB)
+	rand.Read(data)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: int64(blockSize),
+	})
+	s.assert.Nil(err)
+	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	handlemap.CreateCacheObject(int64(16*MB), h)
+	h.CacheObj.BlockOffsetList = bol
+
+	updatedBlock := make([]byte, 2*MB)
+	rand.Read(updatedBlock)
+	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize)
+	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize), h.CacheObj.BlockOffsetList.BlockList[1].Data)
+	copy(h.CacheObj.BlockOffsetList.BlockList[1].Data[MB:2*MB+MB], updatedBlock)
+	h.CacheObj.BlockOffsetList.BlockList[1].Flags.Set(common.DirtyBlock)
+
+	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	s.assert.NotEqualValues(data, output)
+	s.assert.EqualValues(data[:5*MB], output[:5*MB])
+	s.assert.EqualValues(updatedBlock, output[5*MB:5*MB+2*MB])
+	s.assert.EqualValues(data[7*MB:], output[7*MB:])
+}
+
+func (s *blockBlobTestSuite) TestFlushFileTruncateUpdateChunkedFile() {
+	defer s.cleanupTest()
+
+	// Setup
+	name := generateFileName()
+	blockSize := 4 * MB
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	data := make([]byte, 16*MB)
+	rand.Read(data)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: int64(blockSize),
+	})
+	s.assert.Nil(err)
+	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	handlemap.CreateCacheObject(int64(16*MB), h)
+	h.CacheObj.BlockOffsetList = bol
+
+	// truncate block
+	h.CacheObj.BlockOffsetList.BlockList[1].Data = make([]byte, blockSize/2)
+	h.CacheObj.BlockOffsetList.BlockList[1].EndIndex = int64(blockSize + blockSize/2)
+	s.az.storage.ReadInBuffer(name, int64(blockSize), int64(blockSize)/2, h.CacheObj.BlockOffsetList.BlockList[1].Data)
+	h.CacheObj.BlockOffsetList.BlockList[1].Flags.Set(common.DirtyBlock)
+
+	// remove 2 blocks
+	h.CacheObj.BlockOffsetList.BlockList = h.CacheObj.BlockOffsetList.BlockList[:2]
+
+	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	s.assert.NotEqualValues(data, output)
+	s.assert.EqualValues(data[:6*MB], output[:6*MB])
+}
+
+func (s *blockBlobTestSuite) TestFlushFileAppendBlocksEmptyFile() {
 	defer s.cleanupTest()
 
 	// Setup
@@ -2072,11 +2170,9 @@ func (s *blockBlobTestSuite) TestFlushFileAppendBlocks() {
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
 	bol.Flags.Clear(common.SmallFile)
 
-	// nothing to flush
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.Nil(err)
 
-	// file should be empty
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
 	s.assert.Nil(err)
 	s.assert.EqualValues(blk1.Data, output[0:blockSize])
@@ -2084,7 +2180,71 @@ func (s *blockBlobTestSuite) TestFlushFileAppendBlocks() {
 	s.assert.EqualValues(blk3.Data, output[2*blockSize:3*blockSize])
 }
 
-func (s *blockBlobTestSuite) TestFlushFileTruncateBlocks() {
+func (s *blockBlobTestSuite) TestFlushFileAppendBlocksChunkedFile() {
+	defer s.cleanupTest()
+
+	// Setup
+	name := generateFileName()
+	blockSize := 2 * MB
+	fileSize := 16 * MB
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	data := make([]byte, fileSize)
+	rand.Read(data)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: int64(blockSize),
+	})
+	s.assert.Nil(err)
+	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	handlemap.CreateCacheObject(int64(16*MB), h)
+	h.CacheObj.BlockOffsetList = bol
+	h.CacheObj.BlockIdLength = 16
+
+	data1 := make([]byte, blockSize)
+	rand.Read(data1)
+	blk1 := &common.Block{
+		StartIndex: int64(fileSize),
+		EndIndex:   int64(fileSize + blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		Data:       data1,
+	}
+	blk1.Flags.Set(common.DirtyBlock)
+
+	data2 := make([]byte, blockSize)
+	rand.Read(data2)
+	blk2 := &common.Block{
+		StartIndex: int64(fileSize + blockSize),
+		EndIndex:   int64(fileSize + 2*blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		Data:       data2,
+	}
+	blk2.Flags.Set(common.DirtyBlock)
+
+	data3 := make([]byte, blockSize)
+	rand.Read(data3)
+	blk3 := &common.Block{
+		StartIndex: int64(fileSize + 2*blockSize),
+		EndIndex:   int64(fileSize + 3*blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		Data:       data3,
+	}
+	blk3.Flags.Set(common.DirtyBlock)
+	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
+	bol.Flags.Clear(common.SmallFile)
+
+	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	s.assert.EqualValues(data, output[0:fileSize])
+	s.assert.EqualValues(blk1.Data, output[fileSize:fileSize+blockSize])
+	s.assert.EqualValues(blk2.Data, output[fileSize+blockSize:fileSize+2*blockSize])
+	s.assert.EqualValues(blk3.Data, output[fileSize+2*blockSize:fileSize+3*blockSize])
+}
+
+func (s *blockBlobTestSuite) TestFlushFileTruncateBlocksEmptyFile() {
 	defer s.cleanupTest()
 
 	// Setup
@@ -2123,18 +2283,73 @@ func (s *blockBlobTestSuite) TestFlushFileTruncateBlocks() {
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
 	bol.Flags.Clear(common.SmallFile)
 
-	// nothing to flush
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.Nil(err)
 
-	// file should be empty
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
 	s.assert.Nil(err)
 	data := make([]byte, 3*blockSize)
 	s.assert.EqualValues(data, output)
 }
 
-func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocks() {
+func (s *blockBlobTestSuite) TestFlushFileTruncateBlocksChunkedFile() {
+	defer s.cleanupTest()
+
+	// Setup
+	name := generateFileName()
+	blockSize := 4 * MB
+	fileSize := 16 * MB
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	data := make([]byte, fileSize)
+	rand.Read(data)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: int64(blockSize),
+	})
+	s.assert.Nil(err)
+	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	handlemap.CreateCacheObject(int64(16*MB), h)
+	h.CacheObj.BlockOffsetList = bol
+	h.CacheObj.BlockIdLength = 16
+
+	blk1 := &common.Block{
+		StartIndex: int64(fileSize),
+		EndIndex:   int64(fileSize + blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+	}
+	blk1.Flags.Set(common.TruncatedBlock)
+	blk1.Flags.Set(common.DirtyBlock)
+
+	blk2 := &common.Block{
+		StartIndex: int64(fileSize + blockSize),
+		EndIndex:   int64(fileSize + 2*blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+	}
+	blk2.Flags.Set(common.TruncatedBlock)
+	blk2.Flags.Set(common.DirtyBlock)
+
+	blk3 := &common.Block{
+		StartIndex: int64(fileSize + 2*blockSize),
+		EndIndex:   int64(fileSize + 3*blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+	}
+	blk3.Flags.Set(common.TruncatedBlock)
+	blk3.Flags.Set(common.DirtyBlock)
+	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
+	bol.Flags.Clear(common.SmallFile)
+
+	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	s.assert.EqualValues(data, output[:fileSize])
+	emptyData := make([]byte, 3*blockSize)
+	s.assert.EqualValues(emptyData, output[fileSize:])
+}
+
+func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksEmptyFile() {
 	defer s.cleanupTest()
 
 	// Setup
@@ -2175,17 +2390,77 @@ func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocks() {
 	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
 	bol.Flags.Clear(common.SmallFile)
 
-	// nothing to flush
 	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
 	s.assert.Nil(err)
 
-	// file should be empty
 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
 	s.assert.Nil(err)
 	data := make([]byte, blockSize)
 	s.assert.EqualValues(blk1.Data, output[0:blockSize])
 	s.assert.EqualValues(data, output[blockSize:2*blockSize])
 	s.assert.EqualValues(data, output[2*blockSize:3*blockSize])
+}
+
+func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksChunkedFile() {
+	defer s.cleanupTest()
+
+	// Setup
+	name := generateFileName()
+	blockSize := 7 * MB
+	fileSize := 16 * MB
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	data := make([]byte, fileSize)
+	rand.Read(data)
+
+	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: int64(blockSize),
+	})
+	s.assert.Nil(err)
+	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	handlemap.CreateCacheObject(int64(16*MB), h)
+	h.CacheObj.BlockOffsetList = bol
+	h.CacheObj.BlockIdLength = 16
+
+	data1 := make([]byte, blockSize)
+	rand.Read(data1)
+	blk1 := &common.Block{
+		StartIndex: int64(fileSize),
+		EndIndex:   int64(fileSize + blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		Data:       data1,
+	}
+	blk1.Flags.Set(common.DirtyBlock)
+
+	blk2 := &common.Block{
+		StartIndex: int64(fileSize + blockSize),
+		EndIndex:   int64(fileSize + 2*blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+	}
+	blk2.Flags.Set(common.DirtyBlock)
+	blk2.Flags.Set(common.TruncatedBlock)
+
+	blk3 := &common.Block{
+		StartIndex: int64(fileSize + 2*blockSize),
+		EndIndex:   int64(fileSize + 3*blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+	}
+	blk3.Flags.Set(common.DirtyBlock)
+	blk3.Flags.Set(common.TruncatedBlock)
+	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
+	bol.Flags.Clear(common.SmallFile)
+
+	err = s.az.FlushFile(internal.FlushFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	// file should be empty
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	s.assert.EqualValues(data, output[:fileSize])
+	emptyData := make([]byte, blockSize)
+	s.assert.EqualValues(blk1.Data, output[fileSize:fileSize+blockSize])
+	s.assert.EqualValues(emptyData, output[fileSize+blockSize:fileSize+2*blockSize])
+	s.assert.EqualValues(emptyData, output[fileSize+2*blockSize:fileSize+3*blockSize])
 }
 
 // func (s *blockBlobTestSuite) TestRAGRS() {
