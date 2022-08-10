@@ -146,6 +146,7 @@ func (rw *ReadWriteCache) WriteFile(options internal.WriteFileOptions) (int, err
 	if err != nil {
 		log.Err("Stream::WriteFile : error failed to write data to %s: [%s]", options.Handle.Path, err.Error())
 	}
+	options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 	return written, err
 }
 
@@ -208,8 +209,8 @@ func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
 	return nil
 }
 
-func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
-	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+func (rw *ReadWriteCache) FlushFile(options internal.FlushFileOptions) error {
+	// log.Trace("Stream::FlushFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	if !rw.StreamOnly && !options.Handle.CacheObj.StreamOnly {
 		err := rw.purge(options.Handle, -1, true)
 		if err != nil {
@@ -217,10 +218,12 @@ func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
 			return err
 		}
 	}
-	err := rw.NextComponent().CloseFile(options)
+	err := rw.NextComponent().FlushFile(options)
 	if err != nil {
-		log.Err("Stream::CloseFile : error closing file %s [%s]", options.Handle.Path, err.Error())
+		log.Err("Stream::FlushFile : error closing file %s [%s]", options.Handle.Path, err.Error())
 	}
+
+	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
 	return nil
 }
 
