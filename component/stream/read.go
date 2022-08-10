@@ -186,7 +186,6 @@ func (r *ReadCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, err
 
 func (r *ReadCache) FlushFile(options internal.FlushFileOptions) error {
 	log.Trace("Stream::FlushFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
-	r.NextComponent().FlushFile(options)
 	if !r.StreamOnly && !options.Handle.CacheObj.StreamOnly {
 		options.Handle.CacheObj.Lock()
 		defer options.Handle.CacheObj.Unlock()
