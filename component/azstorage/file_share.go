@@ -648,7 +648,7 @@ func (fs *FileShare) ReadInBuffer(name string, offset int64, len int64, data []b
 	log.Trace("FileShare::ReadInBuffer : name %s", name)
 
 	if offset != 0 {
-		log.Err("FileShare::ReadToFile : offset is not 0")
+		log.Err("FileShare::ReadInBuffer : offset is not 0")
 		return errors.New("offset is not 0")
 	}
 
