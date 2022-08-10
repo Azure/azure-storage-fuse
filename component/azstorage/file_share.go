@@ -387,6 +387,13 @@ func (fs *FileShare) RenameFile(source string, target string) error {
 func (fs *FileShare) RenameDirectory(source string, target string) error {
 	log.Trace("FileShare::RenameDirectory : %s -> %s", source, target)
 
+	srcDir := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, source))
+	_, err := srcDir.GetProperties(context.Background())
+	if err != nil {
+		log.Err("FileShare::RenameDirectory : Source directory does not exist %s", err.Error())
+		return err
+	}
+
 	fs.CreateDirectory(target)
 
 	for marker := (azfile.Marker{}); marker.NotDone(); {
@@ -396,7 +403,6 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 			})
 		if err != nil {
 			log.Err("FileShare::RenameDirectory : Failed to get list of files and directories %s", err.Error())
-			fs.DeleteDirectory(target)
 			return err
 		}
 		marker = listFile.NextMarker
@@ -406,7 +412,6 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 			err = fs.RenameFile(filepath.Join(source, fileInfo.Name), filepath.Join(target, fileInfo.Name))
 			if err != nil {
 				log.Err("FileShare::RenameDirectory : Failed to move files to new directory %s", err.Error())
-				fs.DeleteDirectory(target)
 				return err
 			}
 		}
@@ -415,7 +420,6 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 			err = fs.RenameDirectory(filepath.Join(source, dirInfo.Name), filepath.Join(target, dirInfo.Name))
 			if err != nil {
 				log.Err("FileShare::RenameDirectory : Failed to move subdirectories to new directory  %s", err.Error())
-				fs.DeleteDirectory(target)
 				return err
 			}
 		}
