@@ -147,7 +147,8 @@ func NewBfsPipeline(c azbfs.Credential, o azbfs.PipelineOptions, ro ste.XferRetr
 	f := []pipeline.Factory{
 		azbfs.NewTelemetryPolicyFactory(o.Telemetry),
 		azbfs.NewUniqueRequestIDPolicyFactory(),
-		ste.NewBlobXferRetryPolicyFactory(ro),
+		// ste.NewBlobXferRetryPolicyFactory(ro),
+		ste.NewBFSXferRetryPolicyFactory(ro),
 	}
 	f = append(f, c)
 	f = append(f,
