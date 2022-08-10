@@ -68,6 +68,8 @@ import (
 
 var ctx = context.Background()
 
+const MB = 1024 * 1024
+
 // A UUID representation compliant with specification in RFC 4122 document.
 type uuid [16]byte
 
@@ -1985,6 +1987,205 @@ func (s *blockBlobTestSuite) TestGetFileBlockOffsetsError() {
 	// GetFileBlockOffsets
 	_, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
 	s.assert.NotNil(err)
+}
+
+func (s *blockBlobTestSuite) TestFlushFileBase() {
+	defer s.cleanupTest()
+
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	handlemap.CreateCacheObject(int64(16*MB), h)
+	h.CacheObj.BlockOffsetList = bol
+
+	// nothing to flush
+	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	// file should be empty
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	s.assert.EqualValues("", output)
+}
+
+func (s *blockBlobTestSuite) TestFlushFileNoSmallFile() {
+	defer s.cleanupTest()
+
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	handlemap.CreateCacheObject(int64(16*MB), h)
+	bol.Flags.Set(common.SmallFile)
+	h.CacheObj.BlockOffsetList = bol
+
+	// small file should fail to flush
+	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
+	s.assert.NotNil(err)
+}
+
+func (s *blockBlobTestSuite) TestFlushFileAppendBlocks() {
+	defer s.cleanupTest()
+
+	// Setup
+	name := generateFileName()
+	blockSize := 2 * MB
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	handlemap.CreateCacheObject(int64(12*MB), h)
+	h.CacheObj.BlockOffsetList = bol
+	h.CacheObj.BlockIdLength = 16
+
+	data1 := make([]byte, blockSize)
+	rand.Read(data1)
+	blk1 := &common.Block{
+		StartIndex: 0,
+		EndIndex:   int64(blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		Data:       data1,
+	}
+	blk1.Flags.Set(common.DirtyBlock)
+
+	data2 := make([]byte, blockSize)
+	rand.Read(data2)
+	blk2 := &common.Block{
+		StartIndex: int64(blockSize),
+		EndIndex:   2 * int64(blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		Data:       data2,
+	}
+	blk2.Flags.Set(common.DirtyBlock)
+
+	data3 := make([]byte, blockSize)
+	rand.Read(data3)
+	blk3 := &common.Block{
+		StartIndex: 2 * int64(blockSize),
+		EndIndex:   3 * int64(blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		Data:       data3,
+	}
+	blk3.Flags.Set(common.DirtyBlock)
+	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
+	bol.Flags.Clear(common.SmallFile)
+
+	// nothing to flush
+	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	// file should be empty
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	s.assert.EqualValues(blk1.Data, output[0:blockSize])
+	s.assert.EqualValues(blk2.Data, output[blockSize:2*blockSize])
+	s.assert.EqualValues(blk3.Data, output[2*blockSize:3*blockSize])
+}
+
+func (s *blockBlobTestSuite) TestFlushFileTruncateBlocks() {
+	defer s.cleanupTest()
+
+	// Setup
+	name := generateFileName()
+	blockSize := 4 * MB
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	handlemap.CreateCacheObject(int64(12*MB), h)
+	h.CacheObj.BlockOffsetList = bol
+	h.CacheObj.BlockIdLength = 16
+
+	blk1 := &common.Block{
+		StartIndex: 0,
+		EndIndex:   int64(blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+	}
+	blk1.Flags.Set(common.TruncatedBlock)
+	blk1.Flags.Set(common.DirtyBlock)
+
+	blk2 := &common.Block{
+		StartIndex: int64(blockSize),
+		EndIndex:   2 * int64(blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+	}
+	blk2.Flags.Set(common.TruncatedBlock)
+	blk2.Flags.Set(common.DirtyBlock)
+
+	blk3 := &common.Block{
+		StartIndex: 2 * int64(blockSize),
+		EndIndex:   3 * int64(blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+	}
+	blk3.Flags.Set(common.TruncatedBlock)
+	blk3.Flags.Set(common.DirtyBlock)
+	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
+	bol.Flags.Clear(common.SmallFile)
+
+	// nothing to flush
+	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	// file should be empty
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	data := make([]byte, 3*blockSize)
+	s.assert.EqualValues(data, output)
+}
+
+func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocks() {
+	defer s.cleanupTest()
+
+	// Setup
+	name := generateFileName()
+	blockSize := 7 * MB
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	handlemap.CreateCacheObject(int64(12*MB), h)
+	h.CacheObj.BlockOffsetList = bol
+	h.CacheObj.BlockIdLength = 16
+
+	data1 := make([]byte, blockSize)
+	rand.Read(data1)
+	blk1 := &common.Block{
+		StartIndex: 0,
+		EndIndex:   int64(blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+		Data:       data1,
+	}
+	blk1.Flags.Set(common.DirtyBlock)
+
+	blk2 := &common.Block{
+		StartIndex: int64(blockSize),
+		EndIndex:   2 * int64(blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+	}
+	blk2.Flags.Set(common.DirtyBlock)
+	blk2.Flags.Set(common.TruncatedBlock)
+
+	blk3 := &common.Block{
+		StartIndex: 2 * int64(blockSize),
+		EndIndex:   3 * int64(blockSize),
+		Id:         base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(h.CacheObj.BlockIdLength)),
+	}
+	blk3.Flags.Set(common.DirtyBlock)
+	blk3.Flags.Set(common.TruncatedBlock)
+	h.CacheObj.BlockOffsetList.BlockList = append(h.CacheObj.BlockOffsetList.BlockList, blk1, blk2, blk3)
+	bol.Flags.Clear(common.SmallFile)
+
+	// nothing to flush
+	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
+	s.assert.Nil(err)
+
+	// file should be empty
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	data := make([]byte, blockSize)
+	s.assert.EqualValues(blk1.Data, output[0:blockSize])
+	s.assert.EqualValues(data, output[blockSize:2*blockSize])
+	s.assert.EqualValues(data, output[2*blockSize:3*blockSize])
 }
 
 // func (s *blockBlobTestSuite) TestRAGRS() {
