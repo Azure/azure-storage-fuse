@@ -591,5 +591,5 @@ func init() {
 	regFileTestFlag(&fileTestPathPtr, "mnt-path", "", "Mount Path of Container")
 	regFileTestFlag(&fileTestAdlsPtr, "adls", "", "Account is ADLS or not")
 	regFileTestFlag(&fileTestSasPtr, "sas", "", "Auth is SAS or not")
-	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enable or not")
+	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enabled or not")
 }

@@ -79,6 +79,8 @@ jobs:
         value: '$(Pipeline.Workspace)/blobfuse2.yaml'
       - name: BLOBFUSE2_SAS_CFG
         value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
+      - name: BLOBFUSE2_STREAM_CFG
+        value: '$(Pipeline.Workspace)/blobfuse2_stream_config.yaml'
       - name: BLOBFUSE2_SPN_CFG
         value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
       - name: BLOBFUSE2_STREAM_CFG
@@ -162,6 +164,8 @@ jobs:
           test_key_credential: true 
           test_sas_credential: true
           test_spn_credential: true
+          test_stream: true
+          stream_config: $(BLOBFUSE2_STREAM_CFG)
           sas_credential_config: $(BLOBFUSE2_SAS_CFG)
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
           distro_name: $(imageName)

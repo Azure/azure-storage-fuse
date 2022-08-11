@@ -7,7 +7,6 @@ logging:
 components:
   - libfuse
   - stream
-  - file_cache
   - attr_cache
   - azstorage
 
@@ -17,16 +16,9 @@ libfuse:
   negative-entry-expiration-sec: 0
 
 stream:
-  block-size-mb: 1
-  blocks-per-file: 1
-  cache-size-mb: 2
-
-file_cache:
-  path: { 1 }
-  timeout-sec: 30
-  max-size-mb: 2048
-  allow-non-empty-temp: true
-  cleanup-on-start: true
+  block-size-mb: 4
+  handle-limit: 80
+  handle-buffer-size-mb: 8
 
 attr_cache:
   timeout-sec: 3600
