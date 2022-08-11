@@ -1989,23 +1989,6 @@ func (s *blockBlobTestSuite) TestGetFileBlockOffsetsError() {
 	s.assert.NotNil(err)
 }
 
-func (s *blockBlobTestSuite) TestFlushFileNoSmallFile() {
-	defer s.cleanupTest()
-
-	// Setup
-	name := generateFileName()
-	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-
-	bol, _ := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
-	handlemap.CreateCacheObject(int64(16*MB), h)
-	bol.Flags.Set(common.SmallFile)
-	h.CacheObj.BlockOffsetList = bol
-
-	// small file should fail to flush
-	err := s.az.FlushFile(internal.FlushFileOptions{Handle: h})
-	s.assert.NotNil(err)
-}
-
 func (s *blockBlobTestSuite) TestFlushFileEmptyFile() {
 	defer s.cleanupTest()
 

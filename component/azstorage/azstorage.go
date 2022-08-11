@@ -35,7 +35,6 @@ package azstorage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync/atomic"
 	"syscall"
@@ -430,10 +429,6 @@ func (az *AzStorage) Chown(options internal.ChownOptions) error {
 
 func (az *AzStorage) FlushFile(options internal.FlushFileOptions) error {
 	log.Trace("AzStorage::FlushFile : Flush file %s", options.Handle.Path)
-	if options.Handle.CacheObj.BlockOffsetList.SmallFile() {
-		log.Err("AzStorage::FlushFile : Small file %s cannot be flushed", options.Handle.Path)
-		return errors.New("small files can not be flushed")
-	}
 	return az.storage.StageAndCommit(options.Handle.Path, options.Handle.CacheObj.BlockOffsetList)
 }
 
