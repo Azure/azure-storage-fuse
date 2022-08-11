@@ -394,6 +394,13 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 		return err
 	}
 
+	tgtDir := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, target))
+	_, err = tgtDir.GetProperties(context.Background())
+	if err == nil {
+		log.Trace("FileShare::RenameDirectory : Overwriting preexisting target directory")
+		tgtDir.Delete(context.Background())
+	}
+
 	fs.CreateDirectory(target)
 
 	for marker := (azfile.Marker{}); marker.NotDone(); {
