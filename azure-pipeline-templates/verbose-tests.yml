@@ -81,7 +81,6 @@ steps:
     displayName: Print config file
 
 # Stream e2e
-steps:
   - script: |
       cd ${{ parameters.working_dir }}
       ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_stream.yaml --container-name=${{ parameters.container }} --output-file=${{ parameters.stream_config }}
