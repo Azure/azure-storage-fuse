@@ -2446,6 +2446,22 @@ func (s *blockBlobTestSuite) TestFlushFileAppendAndTruncateBlocksChunkedFile() {
 	s.assert.EqualValues(emptyData, output[fileSize+2*blockSize:fileSize+3*blockSize])
 }
 
+func (s *blockBlobTestSuite) TestUpdateConfig() {
+	defer s.cleanupTest()
+
+	s.az.storage.UpdateConfig(AzStorageConfig{
+		blockSize:             7 * MB,
+		maxConcurrency:        4,
+		defaultTier:           azblob.AccessTierArchive,
+		ignoreAccessModifiers: true,
+	})
+
+	s.assert.EqualValues(7*MB, s.az.storage.(*BlockBlob).Config.blockSize)
+	s.assert.EqualValues(4, s.az.storage.(*BlockBlob).Config.maxConcurrency)
+	s.assert.EqualValues(azblob.AccessTierArchive, s.az.storage.(*BlockBlob).Config.defaultTier)
+	s.assert.True(s.az.storage.(*BlockBlob).Config.ignoreAccessModifiers)
+}
+
 // func (s *blockBlobTestSuite) TestRAGRS() {
 // 	defer s.cleanupTest()
 // 	// Setup
