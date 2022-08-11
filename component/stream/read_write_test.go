@@ -94,6 +94,21 @@ func (suite *streamTestSuite) TestStreamOnlyCloseFile() {
 	suite.assert.Equal(suite.stream.StreamOnly, true)
 }
 
+func (suite *streamTestSuite) TestStreamOnlyFlushFile() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	// set handle limit to 1
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 0\n  handle-limit: 10\n"
+	suite.setupTestHelper(config, false)
+
+	handle1 := &handlemap.Handle{Size: 2, Path: fileNames[0]}
+	flushFileOptions := internal.FlushFileOptions{Handle: handle1}
+
+	suite.mock.EXPECT().FlushFile(flushFileOptions).Return(nil)
+	_ = suite.stream.FlushFile(flushFileOptions)
+	suite.assert.Equal(suite.stream.StreamOnly, true)
+}
+
 func (suite *streamTestSuite) TestStreamOnlyCreateFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
@@ -362,7 +377,6 @@ func (suite *streamTestSuite) TestPurgeOnClose() {
 	assertNumberOfCachedFileBlocks(suite, 1, handle)
 	assertHandleNotStreamOnly(suite, handle)
 
-	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Return(nil)
 	suite.mock.EXPECT().CloseFile(internal.CloseFileOptions{Handle: handle}).Return(nil)
 	_ = suite.stream.CloseFile(internal.CloseFileOptions{Handle: handle})
 	assertBlockNotCached(suite, 0, handle)
@@ -525,7 +539,6 @@ func (suite *streamTestSuite) TestStreamOnlyHandle() {
 
 	//close the first handle
 	closeFileOptions := internal.CloseFileOptions{Handle: handle1}
-	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle1}).Return(nil)
 	suite.mock.EXPECT().CloseFile(closeFileOptions).Return(nil)
 	_ = suite.stream.CloseFile(closeFileOptions)
 

@@ -211,19 +211,28 @@ func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
 
 func (rw *ReadWriteCache) FlushFile(options internal.FlushFileOptions) error {
 	// log.Trace("Stream::FlushFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
-	if !rw.StreamOnly && !options.Handle.CacheObj.StreamOnly {
-		err := rw.purge(options.Handle, -1, true)
-		if err != nil {
-			log.Err("Stream::CloseFile : failed to flush and purge handle cache %s [%s]", options.Handle.Path, err.Error())
-			return err
-		}
-	}
 	err := rw.NextComponent().FlushFile(options)
 	if err != nil {
-		log.Err("Stream::FlushFile : error closing file %s [%s]", options.Handle.Path, err.Error())
+		log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
 	}
 
 	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
+	return nil
+}
+
+func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
+	// log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	if !rw.StreamOnly && !options.Handle.CacheObj.StreamOnly {
+		err := rw.purge(options.Handle, -1)
+		if err != nil {
+			log.Err("Stream::CloseFile : failed to purge handle cache %s [%s]", options.Handle.Path, err.Error())
+			return err
+		}
+	}
+	err := rw.NextComponent().CloseFile(options)
+	if err != nil {
+		log.Err("Stream::CloseFile : error closing file %s [%s]", options.Handle.Path, err.Error())
+	}
 	return nil
 }
 
@@ -317,7 +326,7 @@ func (rw *ReadWriteCache) Stop() error {
 		handleMap.Range(func(key, value interface{}) bool {
 			handle := value.(*handlemap.Handle)
 			if handle.CacheObj != nil && !handle.CacheObj.StreamOnly {
-				err := rw.purge(handle, -1, false)
+				err := rw.purge(handle, -1)
 				if err != nil {
 					log.Err("Stream::Stop : failed to purge handle cache %s [%s]", handle.Path, err.Error())
 					return false
@@ -329,15 +338,15 @@ func (rw *ReadWriteCache) Stop() error {
 	return nil
 }
 
-func (rw *ReadWriteCache) purge(handle *handlemap.Handle, size int64, flush bool) error {
+func (rw *ReadWriteCache) purge(handle *handlemap.Handle, size int64) error {
 	handle.CacheObj.Lock()
 	defer handle.CacheObj.Unlock()
-	if flush {
-		err := rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
-		if err != nil {
-			return err
-		}
-	}
+	// if flush {
+	// 	err := rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// }
 	handle.CacheObj.Purge()
 	// if size isn't -1 then we're resizing
 	if size != -1 {

@@ -184,8 +184,8 @@ func (r *ReadCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, err
 	return r.copyCachedBlock(options.Handle, options.Offset, options.Data)
 }
 
-func (r *ReadCache) FlushFile(options internal.FlushFileOptions) error {
-	log.Trace("Stream::FlushFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+func (r *ReadCache) CloseFile(options internal.CloseFileOptions) error {
+	// log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	if !r.StreamOnly && !options.Handle.CacheObj.StreamOnly {
 		options.Handle.CacheObj.Lock()
 		defer options.Handle.CacheObj.Unlock()
@@ -198,6 +198,15 @@ func (r *ReadCache) FlushFile(options internal.FlushFileOptions) error {
 
 func (r *ReadCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	return 0, syscall.ENOTSUP
+}
+
+func (r *ReadCache) FlushFile(options internal.FlushFileOptions) error {
+	// log.Trace("Stream::FlushFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	err := r.NextComponent().FlushFile(options)
+	if err != nil {
+		log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
+	}
+	return nil
 }
 
 func (r *ReadCache) TruncateFile(options internal.TruncateFileOptions) error {

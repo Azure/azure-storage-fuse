@@ -50,6 +50,7 @@ type StreamConnection interface {
 	WriteFile(options internal.WriteFileOptions) (int, error)
 	FlushFile(internal.FlushFileOptions) error
 	TruncateFile(internal.TruncateFileOptions) error
+	CloseFile(options internal.CloseFileOptions) error
 	Stop() error
 }
 
