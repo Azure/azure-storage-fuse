@@ -1163,6 +1163,7 @@ stages:
                 distro_name: $(AgentName)
                 quick_test: "false"
                 gopath: $(GOPATH)
+                tags: $(tags)
                 installStep:
                   script: |
                     sudo apt-get update --fix-missing
