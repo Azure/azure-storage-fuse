@@ -40,17 +40,16 @@ stages:
         timeoutInMinutes: 120
         strategy:
           matrix:
-            Ubuntu-20:
-              vmImage: 'ubuntu-20.04'
+            Ubuntu-18:
+              vmImage: 'ubuntu-18.04'
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
-              container: 'test-cnt-ubn-20'
-            Ubuntu-22:
-              vmImage: 'ubuntu-22.04'
+              container: 'test-cnt-ubn-18'
+            Ubuntu-20:
+              vmImage: 'ubuntu-20.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
-              container: 'test-cnt-ubn-22'
-            
+              container: 'test-cnt-ubn-20'
         pool:
           vmImage: $(vmImage)
 
