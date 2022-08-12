@@ -34,6 +34,7 @@
 package azstorage
 
 import (
+	"os"
 	"testing"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
@@ -162,6 +163,27 @@ func (s *utilsTestSuite) TestGetAccessTierType() {
 			assert.EqualValues(i.result, output)
 		})
 	}
+}
+
+func (s *utilsTestSuite) TestGetMD5() {
+	assert := assert.New(s.T())
+
+	f, err := os.Create("abc.txt")
+	assert.Nil(err)
+
+	_, err = f.Write([]byte(randomString(50)))
+	assert.Nil(err)
+
+	f.Close()
+
+	f, err = os.Open("abc.txt")
+	assert.Nil(err)
+
+	md5Sum := getMD5(f)
+	assert.NotZero(md5Sum)
+
+	f.Close()
+	os.Remove("abc.txt")
 }
 
 func (s *utilsTestSuite) TestSanitizeSASKey() {

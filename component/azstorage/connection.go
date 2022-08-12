@@ -70,6 +70,8 @@ type AzStorageConfig struct {
 	sdkTrace              bool
 	ignoreAccessModifiers bool
 	mountAllContainers    bool
+
+	validateMD5 bool
 }
 type AzStorageConnection struct {
 	Config AzStorageConfig

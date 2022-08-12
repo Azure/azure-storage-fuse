@@ -42,6 +42,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -574,6 +575,31 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 		}
 	}
 
+	if bb.Config.validateMD5 {
+		// Compute md5 of local file
+		fileMD5, err := getMD5(fi)
+		if err != nil {
+			log.Warn("BlockBlob::ReadToFile : Failed to generate MD5 Sum for %s", name)
+		} else {
+			// Get latest properties from container to get the md5 of blob
+			prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
+			if err != nil {
+				log.Warn("BlockBlob::ReadToFile : Failed to get properties of blob %s (%s)", name, err.Error())
+			} else {
+				blobMD5 := prop.ContentMD5()
+				if blobMD5 == nil {
+					log.Warn("BlockBlob::ReadToFile : Failed to get MD5 Sum for blob %s", name)
+				} else {
+					// compare md5 and fail is not match
+					if !reflect.DeepEqual(fileMD5, prop.ContentMD5()) {
+						log.Err("BlockBlob::ReadToFile : MD5 Sum mismatch %s", name)
+						return errors.New("md5 sum mismatch on download")
+					}
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -684,7 +710,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		// get the size of the file
 		stat, err := fi.Stat()
 		if err != nil {
-			log.Err("BlockBlob::calculateBlockSize : Failed to get file size %s (%s)", name, err.Error())
+			log.Err("BlockBlob::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
 			return err
 		}
 
@@ -695,6 +721,17 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		}
 	}
 
+	// Compute md5 of this file is requested by user
+	md5sum := []byte{}
+	if bb.Config.validateMD5 {
+		md5sum, err = getMD5(fi)
+		if err != nil {
+			// Md5 sum generation failed so set nil while uploading
+			log.Warn("BlockBlob::WriteFromFile : Failed to generate md5 of %s", name)
+			md5sum = []byte{0}
+		}
+	}
+
 	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
 		BlockSize:      blockSize,
 		Parallelism:    bb.Config.maxConcurrency,
@@ -702,6 +739,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		BlobAccessTier: bb.Config.defaultTier,
 		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
 			ContentType: getContentType(name),
+			ContentMD5:  md5sum,
 		},
 	})
 
