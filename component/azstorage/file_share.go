@@ -54,8 +54,12 @@ import (
 
 const (
 	// FileMaxSizeInBytes indicates the maximum size of a file
-	FileMaxSizeInBytes         = 4398046511104 // 4TiB
-	tmpFileCreationSizeInBytes = 1000000000    // 1GB
+	FileMaxSizeInBytes = 4 * 1024 * 1024 * 1024 * 1024 // 4TiB
+
+	// max number of ranges = max file size / max size for one range
+	FileShareMaxRanges = FileMaxSizeInBytes / azfile.FileMaxUploadRangeBytes
+
+	tmpFileCreationSizeInBytes = 1 * 1024 * 1024 * 1024 // 1GB
 )
 
 type FileShare struct {
@@ -926,11 +930,8 @@ func (fs *FileShare) calculateRangeSize(name string, fileSize int64) (rangeSize 
 		// Files up to 4MB can be uploaded as a single range
 		rangeSize = azfile.FileMaxUploadRangeBytes
 	} else {
-		// max number of ranges = max file size / max size for one range
-		fileShareMaxRanges := FileMaxSizeInBytes / azfile.FileMaxUploadRangeBytes
-
 		// buffer / max number of file ranges = range size to use for all ranges
-		rangeSize = int64(math.Ceil(float64(fileSize) / float64(fileShareMaxRanges)))
+		rangeSize = int64(math.Ceil(float64(fileSize) / float64(FileShareMaxRanges)))
 
 		if rangeSize < azfile.FileMaxUploadRangeBytes {
 			// Range size is smaller than 4MB then consider 4MB as default

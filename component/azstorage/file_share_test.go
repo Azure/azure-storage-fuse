@@ -1577,6 +1577,84 @@ func (s *fileTestSuite) TestChownIgnore() {
 	s.assert.Nil(err)
 }
 
+func (s *fileTestSuite) TestBlockSize() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+
+	fs := FileShare{}
+
+	// For filesize 0 expected rangesize is 4MB
+	filerng, err := fs.calculateRangeSize(name, 0)
+	s.assert.Nil(err)
+	s.assert.EqualValues(filerng, azfile.FileMaxUploadRangeBytes)
+
+	// For filesize 100MB expected rangesize is 4MB
+	filerng, err = fs.calculateRangeSize(name, (100 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(filerng, azfile.FileMaxUploadRangeBytes)
+
+	// For filesize 500MB expected rangesize is 4MB
+	filerng, err = fs.calculateRangeSize(name, (500 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(filerng, azfile.FileMaxUploadRangeBytes)
+
+	// For filesize 1GB expected rangesize is 4MB
+	filerng, err = fs.calculateRangeSize(name, (1 * 1024 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(filerng, azfile.FileMaxUploadRangeBytes)
+
+	// For filesize 500GB expected rangesize is 4MB
+	filerng, err = fs.calculateRangeSize(name, (500 * 1024 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(filerng, azfile.FileMaxUploadRangeBytes)
+
+	// For filesize 1TB expected rangesize is 4MB
+	filerng, err = fs.calculateRangeSize(name, (1 * 1024 * 1024 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(filerng, azfile.FileMaxUploadRangeBytes)
+
+	// For filesize 4TB expected rangesize is 4MB
+	filerng, err = fs.calculateRangeSize(name, (4 * 1024 * 1024 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(filerng, azfile.FileMaxUploadRangeBytes)
+
+	// Boundary condition which is exactly max size supported by SDK
+	filerng, err = fs.calculateRangeSize(name, FileMaxSizeInBytes)
+	s.assert.Nil(err)
+	s.assert.EqualValues(filerng, azfile.FileMaxUploadRangeBytes) // 4194304000
+
+	// For Filesize created using dd for 1TB size
+	filerng, err = fs.calculateRangeSize(name, (1 * 1024 * 1024 * 1024 * 1024))
+	s.assert.Nil(err)
+	s.assert.EqualValues(filerng, azfile.FileMaxUploadRangeBytes)
+
+	// Boundary condition 5 bytes less then max expected file size
+	filerng, err = fs.calculateRangeSize(name, (FileMaxSizeInBytes - 5))
+	s.assert.Nil(err)
+	s.assert.EqualValues(filerng, azfile.FileMaxUploadRangeBytes)
+
+	// Boundary condition 1 bytes more then max expected file size
+	filerng, err = fs.calculateRangeSize(name, (FileMaxSizeInBytes + 1))
+	s.assert.NotNil(err)
+	s.assert.EqualValues(filerng, 0)
+
+	// Boundary condition 5 bytes more then max expected file size
+	filerng, err = fs.calculateRangeSize(name, (FileMaxSizeInBytes + 5))
+	s.assert.NotNil(err)
+	s.assert.EqualValues(filerng, 0)
+
+	// Boundary condition one byte more then max range size
+	filerng, err = fs.calculateRangeSize(name, ((azfile.FileMaxUploadRangeBytes + 1) * FileShareMaxRanges))
+	s.assert.NotNil(err)
+	s.assert.EqualValues(filerng, 0)
+
+	// For filesize 5, error is expected as max 4TB only supported
+	filerng, err = fs.calculateRangeSize(name, (5 * 1024 * 1024 * 1024 * 1024))
+	s.assert.NotNil(err)
+	s.assert.EqualValues(filerng, 0)
+}
+
 func TestFileShare(t *testing.T) {
 	suite.Run(t, new(fileTestSuite))
 }
