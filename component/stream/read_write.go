@@ -68,6 +68,7 @@ func (rw *ReadWriteCache) CreateFile(options internal.CreateFileOptions) (*handl
 	handle, err := rw.NextComponent().CreateFile(options)
 	if err != nil {
 		log.Err("Stream::CreateFile : error failed to create file %s: [%s]", options.Name, err.Error())
+		return handle, err
 	}
 	if !rw.StreamOnly {
 		err = rw.createHandleCache(handle)

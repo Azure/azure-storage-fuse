@@ -35,6 +35,7 @@ package stream
 
 import (
 	"os"
+	"syscall"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -122,6 +123,21 @@ func (suite *streamTestSuite) TestStreamOnlyCreateFile() {
 	suite.mock.EXPECT().CreateFile(createFileoptions).Return(handle1, nil)
 	_, _ = suite.stream.CreateFile(createFileoptions)
 	suite.assert.Equal(suite.stream.StreamOnly, true)
+}
+
+func (suite *streamTestSuite) TestCreateFileError() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	// set handle limit to 1
+	config := "stream:\n  block-size-mb: 0\n  handle-buffer-size-mb: 32\n  handle-limit: 1\n"
+	suite.setupTestHelper(config, false)
+
+	handle1 := &handlemap.Handle{Size: 0, Path: fileNames[0]}
+	createFileoptions := internal.CreateFileOptions{Name: handle1.Path, Mode: 0777}
+
+	suite.mock.EXPECT().CreateFile(createFileoptions).Return(handle1, syscall.ENOENT)
+	_, err := suite.stream.CreateFile(createFileoptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 func (suite *streamTestSuite) TestStreamOnlyDeleteFile() {
@@ -301,6 +317,10 @@ func (suite *streamTestSuite) TestStreamOnly() {
 	assertNumberOfCachedFileBlocks(suite, 0, handle)
 	// confirm new handle is stream only since limit is exceeded
 	assertHandleStreamOnly(suite, handle)
+
+	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, syscall.ENOENT)
+	_, err := suite.stream.OpenFile(openFileOptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 func (suite *streamTestSuite) TestReadLargeFileBlocks() {
