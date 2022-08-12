@@ -55,18 +55,12 @@ stages:
 
         strategy:
           matrix:
-            Ubuntu-18:
-              imageName: 'ubuntu-18.04'
-              containerName: 'test-cnt-ubn-18'
-              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_18)
-              fuselib: 'libfuse-dev'
-              tags: 'fuse2'
             Ubuntu-20:
               imageName: 'ubuntu-20.04'
               containerName: 'test-cnt-ubn-20'
               adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
-              fuselib: 'libfuse3-dev'
-              tags: 'fuse3'
+              fuselib: 'libfuse-dev'
+              tags: 'fuse2'
             Ubuntu-22:
               imageName: 'ubuntu-22.04'
               containerName: 'test-cnt-ubn-22'
