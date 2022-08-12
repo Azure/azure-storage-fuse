@@ -83,7 +83,7 @@ steps:
 # Stream e2e
   - script: |
       cd ${{ parameters.working_dir }}
-      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_stream.yaml --container-name=${{ parameters.container }} --output-file=${{ parameters.stream_config }} --temp-path=""
+      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_stream.yaml --container-name=${{ parameters.container }} --output-file=${{ parameters.stream_config }}
     displayName: Create Stream Config File
     env:
       ACCOUNT_TYPE: ${{ parameters.account_type }}
@@ -160,6 +160,7 @@ steps:
     - template: e2e-tests.yml
       parameters:
         working_dir: ${{ parameters.working_dir }}
+        temp_dir: ${{ parameters.temp_dir }}
         mount_dir: ${{ parameters.mount_dir }}
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with Streaming
