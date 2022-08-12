@@ -83,7 +83,7 @@ steps:
 # Stream e2e
   - script: |
       cd ${{ parameters.working_dir }}
-      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_stream.yaml --container-name=${{ parameters.container }} --output-file=${{ parameters.stream_config }}
+      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_stream.yaml --container-name=${{ parameters.container }} --output-file=${{ parameters.stream_config }} --temp-path=""
     displayName: Create Stream Config File
     env:
       ACCOUNT_TYPE: ${{ parameters.account_type }}
