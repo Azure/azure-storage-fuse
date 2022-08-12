@@ -143,66 +143,67 @@ stages:
             parameters:
               working_dir: $(WORK_DIR)
               mount_dir: $(MOUNT_DIR)
-              
-          - template: 'azure-pipeline-templates/verbose-tests.yml'
-            parameters:
-              service: 'BlockBlob'
-              account_type: 'block'
-              account_endpoint: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net' 
-              adls: false
-              account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-              account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-              account_sas: $(NIGHTLY_STO_ACC_SAS)
-              spn_account_name: $(AZTEST_BLOCK_ACC_NAME)
-              spn_account_endpoint: 'https://$(AZTEST_BLOCK_ACC_NAME).blob.core.windows.net' 
-              client_id: $(AZTEST_CLIENT)
-              tenant_id: $(AZTEST_TENANT)
-              client_secret: $(AZTEST_SECRET)
-              container: $(containerName)
-              config: $(BLOBFUSE2_CFG)
-              working_dir: $(WORK_DIR)
-              mount_dir: $(MOUNT_DIR)
-              temp_dir: $(TEMP_DIR)
-              stress_dir: $(BLOBFUSE2_STRESS_DIR)
-              huge_container: 'testcnt1'
-              quick_stress: ${{ parameters.quick_stress }}
-              test_key_credential: true 
-              test_sas_credential: true
-              test_spn_credential: true
-              sas_credential_config: $(BLOBFUSE2_SAS_CFG)
-              spn_credential_config: $(BLOBFUSE2_SPN_CFG)
-              distro_name: $(imageName)
-              verbose_log: ${{ parameters.verbose_log }}
 
-          - template: 'azure-pipeline-templates/verbose-tests.yml'
-            parameters:
-              service: 'ADLS'
-              account_type: 'adls'
-              account_endpoint: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net' 
-              adls: true
-              account_name: $(AZTEST_ADLS_ACC_NAME)
-              account_key: $(AZTEST_ADLS_KEY)
-              account_sas: $(adlsSas)
-              spn_account_name: $(AZTEST_ADLS_ACC_NAME)
-              spn_account_endpoint: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net' 
-              client_id: $(AZTEST_CLIENT)
-              tenant_id: $(AZTEST_TENANT)
-              client_secret: $(AZTEST_SECRET)
-              container: $(containerName)
-              config: $(BLOBFUSE2_ADLS_CFG)
-              working_dir: $(WORK_DIR)
-              mount_dir: $(MOUNT_DIR)
-              temp_dir: $(TEMP_DIR)
-              stress_dir: $(BLOBFUSE2_STRESS_DIR)
-              huge_container: 'testcnt'
-              quick_stress: ${{ parameters.quick_stress }}
-              test_key_credential: true
-              test_sas_credential: true
-              test_spn_credential: true
-              sas_credential_config: $(BLOBFUSE2_SAS_CFG)
-              spn_credential_config: $(BLOBFUSE2_SPN_CFG)
-              distro_name: $(imageName)
-              verbose_log: ${{ parameters.verbose_log }}
+          - ${{ if eq(parameters.exhaustive_test, true) }}:    
+            - template: 'azure-pipeline-templates/verbose-tests.yml'
+              parameters:
+                service: 'BlockBlob'
+                account_type: 'block'
+                account_endpoint: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net' 
+                adls: false
+                account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+                account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+                account_sas: $(NIGHTLY_STO_ACC_SAS)
+                spn_account_name: $(AZTEST_BLOCK_ACC_NAME)
+                spn_account_endpoint: 'https://$(AZTEST_BLOCK_ACC_NAME).blob.core.windows.net' 
+                client_id: $(AZTEST_CLIENT)
+                tenant_id: $(AZTEST_TENANT)
+                client_secret: $(AZTEST_SECRET)
+                container: $(containerName)
+                config: $(BLOBFUSE2_CFG)
+                working_dir: $(WORK_DIR)
+                mount_dir: $(MOUNT_DIR)
+                temp_dir: $(TEMP_DIR)
+                stress_dir: $(BLOBFUSE2_STRESS_DIR)
+                huge_container: 'testcnt1'
+                quick_stress: ${{ parameters.quick_stress }}
+                test_key_credential: true 
+                test_sas_credential: true
+                test_spn_credential: true
+                sas_credential_config: $(BLOBFUSE2_SAS_CFG)
+                spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+                distro_name: $(imageName)
+                verbose_log: ${{ parameters.verbose_log }}
+
+            - template: 'azure-pipeline-templates/verbose-tests.yml'
+              parameters:
+                service: 'ADLS'
+                account_type: 'adls'
+                account_endpoint: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net' 
+                adls: true
+                account_name: $(AZTEST_ADLS_ACC_NAME)
+                account_key: $(AZTEST_ADLS_KEY)
+                account_sas: $(adlsSas)
+                spn_account_name: $(AZTEST_ADLS_ACC_NAME)
+                spn_account_endpoint: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net' 
+                client_id: $(AZTEST_CLIENT)
+                tenant_id: $(AZTEST_TENANT)
+                client_secret: $(AZTEST_SECRET)
+                container: $(containerName)
+                config: $(BLOBFUSE2_ADLS_CFG)
+                working_dir: $(WORK_DIR)
+                mount_dir: $(MOUNT_DIR)
+                temp_dir: $(TEMP_DIR)
+                stress_dir: $(BLOBFUSE2_STRESS_DIR)
+                huge_container: 'testcnt'
+                quick_stress: ${{ parameters.quick_stress }}
+                test_key_credential: true
+                test_sas_credential: true
+                test_spn_credential: true
+                sas_credential_config: $(BLOBFUSE2_SAS_CFG)
+                spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+                distro_name: $(imageName)
+                verbose_log: ${{ parameters.verbose_log }}
 
           - template: azure-pipeline-templates/cleanup.yml
             parameters:
