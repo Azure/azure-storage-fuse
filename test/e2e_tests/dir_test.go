@@ -394,27 +394,29 @@ func (suite *dirTestSuite) TestDirRenameFull() {
 }
 
 func (suite *dirTestSuite) TestTarDir() {
-	dirName := suite.testPath + "/tar"
-	tarName := suite.testPath + "/tardir.tar.gz"
+	if clonePtr == "true" || clonePtr == "True" {
+		dirName := suite.testPath + "/tar"
+		tarName := suite.testPath + "/tardir.tar.gz"
 
-	cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
-	_, err := cmd.Output()
-	suite.Equal(nil, err)
+		cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
+		_, err := cmd.Output()
+		suite.Equal(nil, err)
 
-	_, err = os.Stat(dirName)
-	suite.Equal(nil, err)
+		_, err = os.Stat(dirName)
+		suite.Equal(nil, err)
 
-	cmd = exec.Command("tar", "-zcvf", tarName, dirName)
-	cliOut, err := cmd.Output()
-	if len(cliOut) > 0 {
-		suite.NotContains(cliOut, "file changed as we read it")
+		cmd = exec.Command("tar", "-zcvf", tarName, dirName)
+		cliOut, err := cmd.Output()
+		if len(cliOut) > 0 {
+			suite.NotContains(cliOut, "file changed as we read it")
+		}
+
+		cmd = exec.Command("tar", "-zxvf", tarName, "--directory", dirName)
+		_, _ = cmd.Output()
+
+		os.RemoveAll(dirName)
+		os.Remove("libfuse.tar.gz")
 	}
-
-	cmd = exec.Command("tar", "-zxvf", tarName, "--directory", dirName)
-	_, _ = cmd.Output()
-
-	os.RemoveAll(dirName)
-	os.Remove("libfuse.tar.gz")
 }
 
 func (suite *dirTestSuite) TestGitClone() {
