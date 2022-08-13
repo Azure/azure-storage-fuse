@@ -258,6 +258,36 @@ func (suite *streamTestSuite) TestCacheSmallFileOnOpen() {
 	assertHandleNotStreamOnly(suite, handle)
 }
 
+func (suite *streamTestSuite) TestReadInBuffer() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 32\n  handle-limit: 4\n"
+	suite.setupTestHelper(config, false)
+
+	handle := &handlemap.Handle{Size: int64(4 * MB), Path: fileNames[0]}
+	getFileBlockOffsetsOptions := internal.GetFileBlockOffsetsOptions{Name: fileNames[0]}
+	openFileOptions := internal.OpenFileOptions{Name: fileNames[0], Flags: os.O_RDONLY, Mode: os.FileMode(0777)}
+	// file consists of two blocks
+	bol := &common.BlockOffsetList{
+		BlockList: []*common.Block{{StartIndex: 0, EndIndex: 2 * MB}, {StartIndex: 2, EndIndex: 4 * MB}},
+	}
+
+	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
+	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
+	_, _ = suite.stream.OpenFile(openFileOptions)
+
+	// get second block
+	readInBufferOptions := internal.ReadInBufferOptions{
+		Handle: handle,
+		Offset: 0,
+		Data:   make([]byte, 2*MB),
+	}
+
+	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(len(readInBufferOptions.Data), syscall.ENOENT)
+	_, err := suite.stream.ReadInBuffer(readInBufferOptions)
+	suite.assert.NotEqual(nil, err)
+}
+
 // test large files don't cache block on open
 func (suite *streamTestSuite) TestOpenLargeFile() {
 	defer suite.cleanupTest()
