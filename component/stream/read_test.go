@@ -255,6 +255,19 @@ func (suite *streamTestSuite) TestReadDeleteFile() {
 	suite.assert.Equal(syscall.ENOTSUP, err)
 }
 
+func (suite *streamTestSuite) TestFlushFile() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	suite.setupTestHelper(config, true)
+	handle1 := &handlemap.Handle{Size: 2, Path: fileNames[0]}
+	flushFileOptions := internal.FlushFileOptions{Handle: handle1}
+
+	suite.mock.EXPECT().FlushFile(flushFileOptions).Return(syscall.ENOTSUP)
+	err := suite.stream.FlushFile(flushFileOptions)
+	suite.assert.NotEqual(nil, err)
+}
+
 func (suite *streamTestSuite) TestReadDeleteDir() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
