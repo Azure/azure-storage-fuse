@@ -12,6 +12,7 @@
 - Fixed a bug in rmdir flow. Dont allow directory deletion if local cache says its empty. On container it might still have files.
 - Fixed a bug in background mode where auth validation would be run twice
 - Fixed a bug in content type parsing for a 7z compressed file
+- Fixed a bug in retry logic to retry in case of server timeout errors
 
 ## 2.0.0-preview.2 (2022-05-31)
 **Performance Improvements**
