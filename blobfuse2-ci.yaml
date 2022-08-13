@@ -29,6 +29,22 @@ jobs:
       vmImage: $(imageName)
     variables:
       - group: NightlyBlobFuse
+      - name: MOUNT_DIR
+        value: '$(Pipeline.Workspace)/blob_mnt'
+      - name: TEMP_DIR
+        value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+      - name: BLOBFUSE2_CFG
+        value: '$(Pipeline.Workspace)/blobfuse2_proxy.yaml'
+      - name: BLOBFUSE2_ADLS_CFG
+        value: '$(Pipeline.Workspace)/blobfuse2_proxy.adls.yaml'
+      - name: DECODE_PERCENTS
+        value: false
+      - name: GOPATH
+        value: '$(Pipeline.Workspace)/go'
+      - name: ROOT_DIR
+        value: '$(System.DefaultWorkingDirectory)' 
+      - name: WORK_DIR
+        value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
     steps:
     - checkout: self
@@ -152,3 +168,82 @@ jobs:
       displayName: 'Unit tests'
       continueOnError: false
 
+    # End to End tests
+    # ------------------------------------------------------------
+    - script: |
+        cd $(WORK_DIR)
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(ContainerName) --temp-path=$(TEMP_DIR) --output-file= $(BLOBFUSE2_CFG)
+      displayName: 'Create Config File'
+      env:
+        NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+        NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+        ACCOUNT_TYPE: 'block'
+        ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+        VERBOSE_LOG: "false"
+      continueOnError: false
+
+    # Print config file
+    - script: |
+        cat  $(BLOBFUSE2_CFG)
+      displayName: 'Print config file'
+
+    - template: 'e2e-tests.yml'
+      parameters:
+        working_dir: $(WORK_DIR)
+        mount_dir: $(MOUNT_DIR)
+        temp_dir: $(TEMP_DIR)
+        adls: false
+        idstring: 'BlockBlob with Key Credentials'
+        distro_name:  $(AgentName)
+        mountStep:
+          script: |
+            $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file= $(BLOBFUSE2_CFG)
+          displayName: 'E2E TEST: Mount container'
+          timeoutInMinutes: 3
+          continueOnError: false
+
+    - template: 'cleanup.yml'
+      parameters:
+        working_dir: $(WORK_DIR)
+        mount_dir: $(MOUNT_DIR)
+        temp_dir: $(TEMP_DIR)
+
+    # --------------------------------------------------
+    - script: |
+        cd $(WORK_DIR)
+        $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(ContainerName) --temp-path=$(TEMP_DIR) --output-file= $(BLOBFUSE2_CFG)
+      displayName: 'Create Config File'
+      env:
+        NIGHTLY_STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
+        NIGHTLY_STO_ACC_KEY: $(AZTEST_ADLS_KEY)
+        ACCOUNT_TYPE: 'adls'
+        ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+        VERBOSE_LOG: "false"
+      continueOnError: false
+
+    # Print config file
+    - script: |
+        cat  $(BLOBFUSE2_CFG)
+      displayName: 'Print config file'
+
+    - template: 'e2e-tests.yml'
+      parameters:
+        working_dir: $(WORK_DIR)
+        mount_dir: $(MOUNT_DIR)
+        temp_dir: $(TEMP_DIR)
+        adls: true
+        idstring: 'ADLS with Key Credentials'
+        distro_name:  $(AgentName)
+        mountStep:
+          script: |
+            $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file= $(BLOBFUSE2_CFG)
+          displayName: 'E2E TEST: Mount container'
+          timeoutInMinutes: 3
+          continueOnError: false
+
+    - template: 'cleanup.yml'
+      parameters:
+        working_dir: $(WORK_DIR)
+        mount_dir: $(MOUNT_DIR)
+        temp_dir: $(TEMP_DIR)
+    # ------------------------------------------------------------
