@@ -54,7 +54,6 @@ type dirTestSuite struct {
 	suite.Suite
 	testPath string
 	adlsTest bool
-	sasTest  bool
 	minBuff  []byte
 	medBuff  []byte
 	hugeBuff []byte
@@ -62,7 +61,6 @@ type dirTestSuite struct {
 
 var pathPtr string
 var adlsPtr string
-var sasPtr string
 var clonePtr string
 
 func regDirTestFlag(p *string, name string, value string, usage string) {
@@ -78,7 +76,6 @@ func getDirTestFlag(name string) string {
 func initDirFlags() {
 	pathPtr = getDirTestFlag("mnt-path")
 	adlsPtr = getDirTestFlag("adls")
-	sasPtr = getDirTestFlag("sas")
 	clonePtr = getDirTestFlag("clone")
 }
 
@@ -554,11 +551,6 @@ func TestDirTestSuite(t *testing.T) {
 		fmt.Println("BLOCK Blob Testing...")
 	}
 
-	if sasPtr == "true" || sasPtr == "True" {
-		fmt.Println("SAS Testing...")
-		dirTest.sasTest = true
-	}
-
 	// Sanity check in the off chance the same random name was generated twice and was still around somehow
 	err := os.RemoveAll(dirTest.testPath)
 	if err != nil {
@@ -583,6 +575,5 @@ func TestDirTestSuite(t *testing.T) {
 func init() {
 	regDirTestFlag(&pathPtr, "mnt-path", "", "Mount Path of Container")
 	regDirTestFlag(&adlsPtr, "adls", "", "Account is ADLS or not")
-	regDirTestFlag(&sasPtr, "sas", "", "Auth is SAS or not")
 	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enable or not")
 }

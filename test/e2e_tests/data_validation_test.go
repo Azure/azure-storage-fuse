@@ -54,7 +54,6 @@ import (
 var dataValidationMntPathPtr string
 var dataValidationTempPathPtr string
 var dataValidationAdlsPtr string
-var dataValidationSasPtr string
 var quickTest string
 var distro string
 
@@ -66,7 +65,6 @@ type dataValidationTestSuite struct {
 	testLocalPath string
 	testCachePath string
 	adlsTest      bool
-	sasTest       bool
 }
 
 func regDataValidationTestFlag(p *string, name string, value string, usage string) {
@@ -82,7 +80,6 @@ func getDataValidationTestFlag(name string) string {
 func initDataValidationFlags() {
 	dataValidationMntPathPtr = getDataValidationTestFlag("mnt-path")
 	dataValidationAdlsPtr = getDataValidationTestFlag("adls")
-	dataValidationSasPtr = getDataValidationTestFlag("sas")
 	dataValidationTempPathPtr = getDataValidationTestFlag("tmp-path")
 	quickTest = getDataValidationTestFlag("quick-test")
 	distro = getDataValidationTestFlag("distro-name")
@@ -373,11 +370,6 @@ func TestDataValidationTestSuite(t *testing.T) {
 		fmt.Println("BLOCK Blob Testing...")
 	}
 
-	if dataValidationSasPtr == "true" || dataValidationSasPtr == "True" {
-		fmt.Println("ADLS Testing...")
-		dataValidationTest.sasTest = true
-	}
-
 	// Sanity check in the off chance the same random name was generated twice and was still around somehow
 	err := os.RemoveAll(dataValidationTest.testMntPath)
 	if err != nil {
@@ -407,7 +399,6 @@ func TestDataValidationTestSuite(t *testing.T) {
 func init() {
 	regDataValidationTestFlag(&dataValidationMntPathPtr, "mnt-path", "", "Mount Path of Container")
 	regDataValidationTestFlag(&dataValidationAdlsPtr, "adls", "", "Account is ADLS or not")
-	regDataValidationTestFlag(&dataValidationSasPtr, "sas", "", "Auth mode is sas or not")
 	regDataValidationTestFlag(&dataValidationTempPathPtr, "tmp-path", "", "Cache dir path")
 	regDataValidationTestFlag(&quickTest, "quick-test", "true", "Run quick tests")
 	regDataValidationTestFlag(&distro, "distro-name", "", "Name of the distro")
