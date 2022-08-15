@@ -74,10 +74,9 @@ func (rw *ReadWriteCache) CreateFile(options internal.CreateFileOptions) (*handl
 		err = rw.createHandleCache(handle)
 		if err != nil {
 			log.Err("Stream::CreateFile : error creating cache object %s [%s]", options.Name, err.Error())
-			return handle, err
 		}
 	}
-	return handle, nil
+	return handle, err
 }
 
 func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
@@ -91,7 +90,6 @@ func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap
 		err = rw.createHandleCache(handle)
 		if err != nil {
 			log.Err("Stream::OpenFile : error failed to create cache object %s [%s]", options.Name, err.Error())
-			return handle, err
 		}
 	}
 	return handle, err
@@ -175,9 +173,8 @@ func (rw *ReadWriteCache) TruncateFile(options internal.TruncateFileOptions) err
 	err := rw.NextComponent().TruncateFile(options)
 	if err != nil {
 		log.Err("Stream::TruncateFile : error truncating file %s [%s]", options.Name, err.Error())
-		return err
 	}
-	return nil
+	return err
 }
 
 func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
@@ -205,9 +202,8 @@ func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
 	err := rw.NextComponent().RenameFile(options)
 	if err != nil {
 		log.Err("Stream::RenameFile : error renaming file %s [%s]", options.Src, err.Error())
-		return err
 	}
-	return nil
+	return err
 }
 
 func (rw *ReadWriteCache) FlushFile(options internal.FlushFileOptions) error {
@@ -215,6 +211,7 @@ func (rw *ReadWriteCache) FlushFile(options internal.FlushFileOptions) error {
 	err := rw.NextComponent().FlushFile(options)
 	if err != nil {
 		log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
+		return err
 	}
 
 	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
@@ -234,7 +231,7 @@ func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
 	if err != nil {
 		log.Err("Stream::CloseFile : error closing file %s [%s]", options.Handle.Path, err.Error())
 	}
-	return nil
+	return err
 }
 
 func (rw *ReadWriteCache) DeleteFile(options internal.DeleteFileOptions) error {
@@ -258,9 +255,8 @@ func (rw *ReadWriteCache) DeleteFile(options internal.DeleteFileOptions) error {
 	err := rw.NextComponent().DeleteFile(options)
 	if err != nil {
 		log.Err("Stream::DeleteFile : error deleting file %s [%s]", options.Name, err.Error())
-		return err
 	}
-	return nil
+	return err
 }
 
 func (rw *ReadWriteCache) DeleteDirectory(options internal.DeleteDirOptions) error {
@@ -284,9 +280,8 @@ func (rw *ReadWriteCache) DeleteDirectory(options internal.DeleteDirOptions) err
 	err := rw.NextComponent().DeleteDir(options)
 	if err != nil {
 		log.Err("Stream::DeleteDirectory : error deleting directory %s [%s]", options.Name, err.Error())
-		return err
 	}
-	return nil
+	return err
 }
 
 func (rw *ReadWriteCache) RenameDirectory(options internal.RenameDirOptions) error {
@@ -314,9 +309,8 @@ func (rw *ReadWriteCache) RenameDirectory(options internal.RenameDirOptions) err
 	err := rw.NextComponent().RenameDir(options)
 	if err != nil {
 		log.Err("Stream::RenameDirectory : error renaming directory %s [%s]", options.Src, err.Error())
-		return err
 	}
-	return nil
+	return err
 }
 
 // Stop : Stop the component functionality and kill all threads started

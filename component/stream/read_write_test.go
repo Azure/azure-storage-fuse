@@ -655,6 +655,10 @@ func (suite *streamTestSuite) TestTruncateFile() {
 	suite.mock.EXPECT().TruncateFile(truncateFileOptions).Return(nil)
 	_ = suite.stream.TruncateFile(truncateFileOptions)
 	suite.assert.Equal(suite.stream.StreamOnly, false)
+
+	suite.mock.EXPECT().TruncateFile(truncateFileOptions).Return(syscall.ENOENT)
+	err := suite.stream.TruncateFile(truncateFileOptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 func (suite *streamTestSuite) TestRenameFile() {
@@ -670,6 +674,10 @@ func (suite *streamTestSuite) TestRenameFile() {
 	suite.mock.EXPECT().RenameFile(renameFileOptions).Return(nil)
 	_ = suite.stream.RenameFile(renameFileOptions)
 	suite.assert.Equal(suite.stream.StreamOnly, false)
+
+	suite.mock.EXPECT().RenameFile(renameFileOptions).Return(syscall.ENOENT)
+	err := suite.stream.RenameFile(renameFileOptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 func (suite *streamTestSuite) TestRenameDirectory() {
@@ -684,6 +692,10 @@ func (suite *streamTestSuite) TestRenameDirectory() {
 	suite.mock.EXPECT().RenameDir(renameDirOptions).Return(nil)
 	_ = suite.stream.RenameDir(renameDirOptions)
 	suite.assert.Equal(suite.stream.StreamOnly, false)
+
+	suite.mock.EXPECT().RenameDir(renameDirOptions).Return(syscall.ENOENT)
+	err := suite.stream.RenameDir(renameDirOptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 func (suite *streamTestSuite) TestDeleteDirectory() {
@@ -698,6 +710,10 @@ func (suite *streamTestSuite) TestDeleteDirectory() {
 	suite.mock.EXPECT().DeleteDir(deleteDirOptions).Return(nil)
 	_ = suite.stream.DeleteDir(deleteDirOptions)
 	suite.assert.Equal(suite.stream.StreamOnly, false)
+
+	suite.mock.EXPECT().DeleteDir(deleteDirOptions).Return(syscall.ENOENT)
+	err := suite.stream.DeleteDir(deleteDirOptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 // func (suite *streamTestSuite) TestFlushFile() {
