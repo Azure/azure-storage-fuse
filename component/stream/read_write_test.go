@@ -351,6 +351,16 @@ func (suite *streamTestSuite) TestStreamOnly() {
 	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, syscall.ENOENT)
 	_, err := suite.stream.OpenFile(openFileOptions)
 	suite.assert.NotEqual(nil, err)
+
+	// append new block and confirm old gets evicted
+	writeFileOptions := internal.WriteFileOptions{
+		Handle: handle,
+		Offset: 1 * MB,
+		Data:   make([]byte, 1*MB),
+	}
+	suite.mock.EXPECT().WriteFile(writeFileOptions).Return(0, syscall.ENOENT)
+	_, err = suite.stream.WriteFile(writeFileOptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 func (suite *streamTestSuite) TestReadLargeFileBlocks() {
