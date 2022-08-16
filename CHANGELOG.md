@@ -2,6 +2,8 @@
 **Features**
 - Added support for directory level SAS while mounting a subdirectory
 - Added support for displaying mount space utilization based on file cache consumption (for example when doing `df`)
+- Added support for updating MD5 sum on file upload
+- Added support for validating MD5 sum on download
 
 **Bug Fixes**
 - Fixed a bug in parsing output of disk utilization summary

@@ -71,8 +71,10 @@ type AzStorageConfig struct {
 	ignoreAccessModifiers bool
 	mountAllContainers    bool
 
+	updateMD5   bool
 	validateMD5 bool
 }
+
 type AzStorageConnection struct {
 	Config AzStorageConfig
 

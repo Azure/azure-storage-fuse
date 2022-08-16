@@ -724,7 +724,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 
 	// Compute md5 of this file is requested by user
 	md5sum := []byte{}
-	if bb.Config.validateMD5 {
+	if bb.Config.updateMD5 {
 		md5sum, err = getMD5(fi)
 		if err != nil {
 			// Md5 sum generation failed so set nil while uploading

@@ -105,7 +105,8 @@ azstorage:
   sdk-trace: true|false <enable storage sdk logging>
   fail-unsupported-op: true|false <for block blob account return failure for unsupported operations like chmod and chown>
   auth-resource: <resource string to be used during OAuth token retrieval>
-  validate-md5: true|false <validate md5 on download, set md5 on upload. Impacts performance>
+  update-md5: true|false <set md5 sum on upload. Impacts performance>
+  validate-md5: true|false <validate md5 on download. Impacts performance>
 
 
 # Mount all configuration
