@@ -87,6 +87,8 @@ jobs:
         value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
       - name: BLOBFUSE2_GTEST_CFG
         value: '$(Pipeline.Workspace)/connection.yaml'
+      - name: BLOBFUSE2_AZURITE_CFG
+        value: '$(Pipeline.Workspace)/blobfuse2_azurite_config.yaml'
       - name: BLOBFUSE2_STRESS_DIR
         value: '$(Pipeline.Workspace)/blobfuse2_stress'
       - name: DECODE_PERCENTS
@@ -162,8 +164,10 @@ jobs:
           test_key_credential: true 
           test_sas_credential: true
           test_spn_credential: true
+          test_azurite: true
           sas_credential_config: $(BLOBFUSE2_SAS_CFG)
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+          azurite_config: $(BLOBFUSE2_AZURITE_CFG)
           distro_name: $(imageName)
           quick_test: false
           verbose_log: ${{ parameters.verbose_log }}
@@ -193,6 +197,7 @@ jobs:
           test_key_credential: true
           test_sas_credential: true
           test_spn_credential: true
+          test_azurite: false
           sas_credential_config: $(BLOBFUSE2_SAS_CFG)
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
           distro_name: $(imageName)
