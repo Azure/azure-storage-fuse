@@ -2462,6 +2462,335 @@ func (s *blockBlobTestSuite) TestUpdateConfig() {
 	s.assert.True(s.az.storage.(*BlockBlob).Config.ignoreAccessModifiers)
 }
 
+func (s *blockBlobTestSuite) TestMD5SetOnUpload() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	name := generateFileName()
+	f, err := os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	data := make([]byte, azblob.BlockBlobMaxUploadBlobBytes+1)
+	_, _ = rand.Read(data)
+
+	n, err := f.Write(data)
+	s.assert.Nil(err)
+	s.assert.EqualValues(n, azblob.BlockBlobMaxUploadBlobBytes+1)
+	_, _ = f.Seek(0, 0)
+
+	err = s.az.storage.WriteFromFile(name, nil, f)
+	s.assert.Nil(err)
+
+	prop, err := s.az.storage.GetAttr(name)
+	s.assert.Nil(err)
+	s.assert.NotEmpty(prop.MD5)
+
+	_, _ = f.Seek(0, 0)
+	localMD5, err := getMD5(f)
+	s.assert.Nil(err)
+	s.assert.EqualValues(localMD5, prop.MD5)
+
+	_ = s.az.storage.DeleteFile(name)
+	_ = f.Close()
+	_ = os.Remove(name)
+}
+
+func (s *blockBlobTestSuite) TestMD5NotSetOnUpload() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: false\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	name := generateFileName()
+	f, err := os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	data := make([]byte, azblob.BlockBlobMaxUploadBlobBytes+1)
+	_, _ = rand.Read(data)
+
+	n, err := f.Write(data)
+	s.assert.Nil(err)
+	s.assert.EqualValues(n, azblob.BlockBlobMaxUploadBlobBytes+1)
+	_, _ = f.Seek(0, 0)
+
+	err = s.az.storage.WriteFromFile(name, nil, f)
+	s.assert.Nil(err)
+
+	prop, err := s.az.storage.GetAttr(name)
+	s.assert.Nil(err)
+	s.assert.Empty(prop.MD5)
+
+	_ = s.az.storage.DeleteFile(name)
+	_ = f.Close()
+	_ = os.Remove(name)
+}
+
+func (s *blockBlobTestSuite) TestMD5AutoSetOnUpload() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: false\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	name := generateFileName()
+	f, err := os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	data := make([]byte, 100)
+	_, _ = rand.Read(data)
+
+	n, err := f.Write(data)
+	s.assert.Nil(err)
+	s.assert.EqualValues(n, 100)
+	_, _ = f.Seek(0, 0)
+
+	err = s.az.storage.WriteFromFile(name, nil, f)
+	s.assert.Nil(err)
+
+	prop, err := s.az.storage.GetAttr(name)
+	s.assert.Nil(err)
+	s.assert.NotEmpty(prop.MD5)
+
+	_, _ = f.Seek(0, 0)
+	localMD5, err := getMD5(f)
+	s.assert.Nil(err)
+	s.assert.EqualValues(localMD5, prop.MD5)
+
+	_ = s.az.storage.DeleteFile(name)
+	_ = f.Close()
+	_ = os.Remove(name)
+}
+
+func (s *blockBlobTestSuite) TestInvalidateMD5PostUpload() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: true\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	name := generateFileName()
+	f, err := os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	data := make([]byte, 100)
+	_, _ = rand.Read(data)
+
+	n, err := f.Write(data)
+	s.assert.Nil(err)
+	s.assert.EqualValues(n, 100)
+	_, _ = f.Seek(0, 0)
+
+	err = s.az.storage.WriteFromFile(name, nil, f)
+	s.assert.Nil(err)
+
+	blobURL := s.containerUrl.NewBlobURL(name)
+	_, _ = blobURL.SetHTTPHeaders(context.Background(), azblob.BlobHTTPHeaders{ContentMD5: []byte("blobfuse")}, azblob.BlobAccessConditions{})
+
+	prop, err := s.az.storage.GetAttr(name)
+	s.assert.Nil(err)
+	s.assert.NotEmpty(prop.MD5)
+
+	_, _ = f.Seek(0, 0)
+	localMD5, err := getMD5(f)
+	s.assert.Nil(err)
+	s.assert.NotEqualValues(localMD5, prop.MD5)
+
+	_ = s.az.storage.DeleteFile(name)
+	_ = f.Close()
+	_ = os.Remove(name)
+}
+
+func (s *blockBlobTestSuite) TestValidateAutoMD5OnRead() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: false\n  validate-md5: true\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	name := generateFileName()
+	f, err := os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	data := make([]byte, 100)
+	_, _ = rand.Read(data)
+
+	n, err := f.Write(data)
+	s.assert.Nil(err)
+	s.assert.EqualValues(n, 100)
+	_, _ = f.Seek(0, 0)
+
+	err = s.az.storage.WriteFromFile(name, nil, f)
+	s.assert.Nil(err)
+	_ = f.Close()
+	_ = os.Remove(name)
+
+	prop, err := s.az.storage.GetAttr(name)
+	s.assert.Nil(err)
+	s.assert.NotEmpty(prop.MD5)
+
+	f, err = os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	err = s.az.storage.ReadToFile(name, 0, 100, f)
+	s.assert.Nil(err)
+
+	_ = s.az.storage.DeleteFile(name)
+	_ = os.Remove(name)
+}
+
+func (s *blockBlobTestSuite) TestValidateManualMD5OnRead() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: true\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	name := generateFileName()
+	f, err := os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	data := make([]byte, azblob.BlockBlobMaxUploadBlobBytes+1)
+	_, _ = rand.Read(data)
+
+	n, err := f.Write(data)
+	s.assert.Nil(err)
+	s.assert.EqualValues(n, azblob.BlockBlobMaxUploadBlobBytes+1)
+	_, _ = f.Seek(0, 0)
+
+	err = s.az.storage.WriteFromFile(name, nil, f)
+	s.assert.Nil(err)
+	_ = f.Close()
+	_ = os.Remove(name)
+
+	prop, err := s.az.storage.GetAttr(name)
+	s.assert.Nil(err)
+	s.assert.NotEmpty(prop.MD5)
+
+	f, err = os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	err = s.az.storage.ReadToFile(name, 0, azblob.BlockBlobMaxUploadBlobBytes+1, f)
+	s.assert.Nil(err)
+
+	_ = s.az.storage.DeleteFile(name)
+	_ = os.Remove(name)
+}
+
+func (s *blockBlobTestSuite) TestInvalidMD5OnRead() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: true\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	name := generateFileName()
+	f, err := os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	data := make([]byte, 100)
+	_, _ = rand.Read(data)
+
+	n, err := f.Write(data)
+	s.assert.Nil(err)
+	s.assert.EqualValues(n, 100)
+	_, _ = f.Seek(0, 0)
+
+	err = s.az.storage.WriteFromFile(name, nil, f)
+	s.assert.Nil(err)
+	_ = f.Close()
+	_ = os.Remove(name)
+
+	blobURL := s.containerUrl.NewBlobURL(name)
+	_, _ = blobURL.SetHTTPHeaders(context.Background(), azblob.BlobHTTPHeaders{ContentMD5: []byte("blobfuse")}, azblob.BlobAccessConditions{})
+
+	prop, err := s.az.storage.GetAttr(name)
+	s.assert.Nil(err)
+	s.assert.NotEmpty(prop.MD5)
+
+	f, err = os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	err = s.az.storage.ReadToFile(name, 0, 100, f)
+	s.assert.NotNil(err)
+	s.assert.Contains(err.Error(), "md5 sum mismatch on download")
+
+	_ = s.az.storage.DeleteFile(name)
+	_ = os.Remove(name)
+}
+
+func (s *blockBlobTestSuite) TestInvalidMD5OnReadNoVaildate() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: false\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	name := generateFileName()
+	f, err := os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	data := make([]byte, 100)
+	_, _ = rand.Read(data)
+
+	n, err := f.Write(data)
+	s.assert.Nil(err)
+	s.assert.EqualValues(n, 100)
+	_, _ = f.Seek(0, 0)
+
+	err = s.az.storage.WriteFromFile(name, nil, f)
+	s.assert.Nil(err)
+	_ = f.Close()
+	_ = os.Remove(name)
+
+	blobURL := s.containerUrl.NewBlobURL(name)
+	_, _ = blobURL.SetHTTPHeaders(context.Background(), azblob.BlobHTTPHeaders{ContentMD5: []byte("blobfuse")}, azblob.BlobAccessConditions{})
+
+	prop, err := s.az.storage.GetAttr(name)
+	s.assert.Nil(err)
+	s.assert.NotEmpty(prop.MD5)
+
+	f, err = os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	err = s.az.storage.ReadToFile(name, 0, 100, f)
+	s.assert.Nil(err)
+
+	_ = s.az.storage.DeleteFile(name)
+	_ = os.Remove(name)
+}
+
 // func (s *blockBlobTestSuite) TestRAGRS() {
 // 	defer s.cleanupTest()
 // 	// Setup

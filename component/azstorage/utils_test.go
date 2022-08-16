@@ -179,7 +179,8 @@ func (s *utilsTestSuite) TestGetMD5() {
 	f, err = os.Open("abc.txt")
 	assert.Nil(err)
 
-	md5Sum := getMD5(f)
+	md5Sum, err := getMD5(f)
+	assert.Nil(err)
 	assert.NotZero(md5Sum)
 
 	f.Close()

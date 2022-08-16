@@ -437,6 +437,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Ctime:  prop.LastModified(),
 		Crtime: prop.CreationTime(),
 		Flags:  internal.NewFileBitMap(),
+		MD5:    prop.ContentMD5(),
 	}
 	parseMetadata(attr, prop.NewMetadata())
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
@@ -706,15 +707,15 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
 
 	blockSize := bb.Config.blockSize
+	// get the size of the file
+	stat, err := fi.Stat()
+	if err != nil {
+		log.Err("BlockBlob::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
+		return err
+	}
+
 	// if the block size is not set then we configure it based on file size
 	if blockSize == 0 {
-		// get the size of the file
-		stat, err := fi.Stat()
-		if err != nil {
-			log.Err("BlockBlob::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
-			return err
-		}
-
 		// based on file-size calculate block size
 		blockSize, err = bb.calculateBlockSize(name, stat.Size())
 		if err != nil {
@@ -724,7 +725,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 
 	// Compute md5 of this file is requested by user
 	md5sum := []byte{}
-	if bb.Config.updateMD5 {
+	if bb.Config.updateMD5 && stat.Size() >= azblob.BlockBlobMaxUploadBlobBytes {
 		md5sum, err = getMD5(fi)
 		if err != nil {
 			// Md5 sum generation failed so set nil while uploading
