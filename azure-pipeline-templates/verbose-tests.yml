@@ -54,9 +54,9 @@ parameters:
     type: string
   - name: azurite_config
     type: string
+    default: ""
   - name: distro_name
     type: string
-    default: ""
   - name: quick_test
     type: boolean
     default: "true"
