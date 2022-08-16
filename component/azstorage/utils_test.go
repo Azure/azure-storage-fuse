@@ -165,6 +165,37 @@ func (s *utilsTestSuite) TestGetAccessTierType() {
 	}
 }
 
+type fileMode struct {
+	val  string
+	mode os.FileMode
+	str  string
+}
+
+func (s *utilsTestSuite) TestGetFileMode() {
+	assert := assert.New(s.T())
+	var inputs = []fileMode{
+		{"", 0, ""},
+		{"rwx", 0, "unexpected length of permissions from the service"},
+		{"rw-rw-rw-", 0x1b6, ""},
+		{"rwxrwxrwx+", 0x1ff, ""},
+	}
+
+	for _, i := range inputs {
+		s.Run(i.val, func() {
+			m, err := getFileMode(i.val)
+			if i.str == "" {
+				assert.Nil(err)
+			}
+
+			assert.EqualValues(i.mode, m)
+			if err != nil {
+				assert.Contains(err.Error(), i.str)
+			}
+
+		})
+	}
+}
+
 func (s *utilsTestSuite) TestGetMD5() {
 	assert := assert.New(s.T())
 
@@ -200,6 +231,33 @@ func (s *utilsTestSuite) TestSanitizeSASKey() {
 	assert.EqualValues("?abcd", key)
 }
 
+func (s *utilsTestSuite) TestBlockNonProxyOptions() {
+	assert := assert.New(s.T())
+	po, ro := getAzBlobPipelineOptions(AzStorageConfig{})
+	assert.EqualValues(ro.MaxTries, int(0))
+	assert.NotEqual(po.RequestLog.SyslogDisabled, true)
+}
+
+func (s *utilsTestSuite) TestBlockProxyOptions() {
+	assert := assert.New(s.T())
+	po, ro := getAzBlobPipelineOptions(AzStorageConfig{proxyAddress: "127.0.0.1", maxRetries: 3})
+	assert.EqualValues(ro.MaxTries, 3)
+	assert.NotEqual(po.RequestLog.SyslogDisabled, true)
+}
+
+func (s *utilsTestSuite) TestBfsNonProxyOptions() {
+	assert := assert.New(s.T())
+	po, ro := getAzBfsPipelineOptions(AzStorageConfig{})
+	assert.EqualValues(ro.MaxTries, int(0))
+	assert.NotEqual(po.RequestLog.SyslogDisabled, true)
+}
+
+func (s *utilsTestSuite) TestBfsProxyOptions() {
+	assert := assert.New(s.T())
+	po, ro := getAzBfsPipelineOptions(AzStorageConfig{proxyAddress: "127.0.0.1", maxRetries: 3})
+	assert.EqualValues(ro.MaxTries, 3)
+	assert.NotEqual(po.RequestLog.SyslogDisabled, true)
+}
 func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(utilsTestSuite))
 }
