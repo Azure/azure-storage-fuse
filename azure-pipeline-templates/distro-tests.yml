@@ -141,7 +141,7 @@ steps:
       ACCOUNT_TYPE: 'adls'
       ACCOUNT_ENDPOINT: 'https://${{ parameters.adls_account_name }}.dfs.core.windows.net'
       VERBOSE_LOG: ${{ parameters.verbose_log }}
-          USE_HTTP: false
+      USE_HTTP: false
     continueOnError: false
 
   # Print config file
