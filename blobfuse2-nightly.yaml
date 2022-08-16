@@ -200,6 +200,7 @@ jobs:
           test_azurite: false
           sas_credential_config: $(BLOBFUSE2_SAS_CFG)
           spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+          azurite_config: $(BLOBFUSE2_AZURITE_CFG)
           distro_name: $(imageName)
           quick_test: false
           verbose_log: ${{ parameters.verbose_log }}
