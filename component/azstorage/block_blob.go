@@ -529,9 +529,10 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		if !dirList[blobInfo.Name] {
 			//log.Info("BlockBlob::List : meta file does not exists for dir %s", blobInfo.Name)
 			// For these dirs we get only the name and no other properties so hardcoding time to current time
+			name := strings.TrimSuffix(blobInfo.Name, "/")
 			attr := &internal.ObjAttr{
-				Path:  split(bb.Config.prefixPath, blobInfo.Name),
-				Name:  filepath.Base(blobInfo.Name),
+				Path:  split(bb.Config.prefixPath, name),
+				Name:  filepath.Base(name),
 				Size:  4096,
 				Mode:  os.ModeDir,
 				Mtime: time.Now(),
