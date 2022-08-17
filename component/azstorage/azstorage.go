@@ -174,6 +174,7 @@ func (az *AzStorage) Start(ctx context.Context) error {
 // Stop : Disconnect all running operations here
 func (az *AzStorage) Stop() error {
 	log.Trace("AzStorage::Stop : Stopping component %s", az.Name())
+	AzStatsCollector.Destroy()
 	return nil
 }
 

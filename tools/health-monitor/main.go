@@ -75,7 +75,7 @@ func getMonitors() []hminternal.Monitor {
 func main() {
 	flag.Parse()
 
-	err := log.SetDefaultLogger("base", common.LogConfig{
+	err := log.SetDefaultLogger("syslog", common.LogConfig{
 		Level:       common.ELogLevel.LOG_DEBUG(),
 		FilePath:    os.ExpandEnv(hmcommon.DefaultLogFile),
 		MaxFileSize: common.DefaultMaxLogFileSize,
@@ -117,6 +117,13 @@ func main() {
 	}
 
 	hmcommon.Wg.Wait()
+
+	err = hminternal.CloseExporter()
+	if err != nil {
+		log.Err("main::main : Unable to close exporter [%v]", err)
+		os.Exit(1)
+	}
+
 	log.Debug("Monitoring ended")
 }
 

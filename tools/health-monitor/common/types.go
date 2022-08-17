@@ -66,17 +66,18 @@ var (
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFile = filepath.Join(DefaultWorkDir, "healthmon.log")
 
-var OutputFile = "monitor.json"
+var OutputFileName = "monitor"
+var OutputFileExtension = "json"
 
 var Wg sync.WaitGroup
 
 type CacheEvent struct {
-	CacheEvent      string
-	Path            string
-	IsDir           bool
-	CacheSize       int64
-	CacheConsumed   string
-	CacheFilesCnt   int64
-	EvictedFilesCnt int64
-	Value           map[string]string
+	CacheEvent      string            `json:"cacheEvent"`
+	Path            string            `json:"path"`
+	IsDir           bool              `json:"isDir"`
+	CacheSize       int64             `json:"cacheSize"`
+	CacheConsumed   string            `json:"cacheConsumed"`
+	CacheFilesCnt   int64             `json:"cacheFilesCount"`
+	EvictedFilesCnt int64             `json:"evictedFilesCount"`
+	Value           map[string]string `json:"value"`
 }

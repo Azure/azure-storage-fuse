@@ -86,7 +86,7 @@ func (cpu *CpuProfiler) Monitor() error {
 
 func (cpu *CpuProfiler) ExportStats(timestamp string, st interface{}) {
 	se, err := hminternal.NewStatsExporter()
-	if err != nil {
+	if err != nil || se == nil {
 		log.Err("cpu_monitor::ExportStats : Error in creating stats exporter instance [%v]", err)
 		return
 	}

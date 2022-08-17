@@ -40,6 +40,7 @@ import (
 	"path/filepath"
 	"sync"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
@@ -56,16 +57,17 @@ type StatsExporter struct {
 	wg         sync.WaitGroup
 	opFile     *os.File
 	outputList []*Output
+	filesList  []string
+	fileIdx    int
 }
 
 type Output struct {
-	Timestamp string                `json:"Timestamp"`
-	Bfs       []internal.Stats      `json:"BlobfuseStats"`
-	FcEvent   []hmcommon.CacheEvent `json:"FileCache"`
-	Cpu       string                `json:"CpuUsage"`
-	Mem       string                `json:"MemoryUsage"`
-	// commenting for now
-	// Net       string                `json:"NetworkUsage"`
+	Timestamp string                 `json:"Timestamp,omitempty"`
+	Bfs       []internal.Stats       `json:"BlobfuseStats,omitempty"`
+	FcEvent   []*hmcommon.CacheEvent `json:"FileCache,omitempty"`
+	Cpu       string                 `json:"CpuUsage,omitempty"`
+	Mem       string                 `json:"MemoryUsage,omitempty"`
+	Net       string                 `json:"NetworkUsage,omitempty"`
 }
 
 var expLock sync.Mutex
@@ -77,20 +79,15 @@ func NewStatsExporter() (*StatsExporter, error) {
 		expLock.Lock()
 		defer expLock.Unlock()
 		if se == nil {
-			se := &StatsExporter{}
+			se = &StatsExporter{}
+			se.fileIdx = 0
 			se.channel = make(chan ExportedStat, 100000)
 			se.wg.Add(1)
 			go se.StatsExporter()
 
-			currDir, err := os.Getwd()
+			err := se.getNewFile()
 			if err != nil {
 				log.Err("stats_export::NewStatsExporter : [%v]", err)
-				return nil, err
-			}
-
-			se.opFile, err = os.OpenFile(filepath.Join(currDir, hmcommon.OutputFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0755)
-			if err != nil {
-				log.Err("stats_export::NewStatsExporter : Unable to create output file [%v]", err)
 				return nil, err
 			}
 		}
@@ -100,6 +97,11 @@ func NewStatsExporter() (*StatsExporter, error) {
 }
 
 func (se *StatsExporter) Destroy() {
+	_, err := se.opFile.WriteString("\n]")
+	if err != nil {
+		log.Err("stats_exporter::NewStatsExporter : unable to write to file [%v]", err)
+	}
+
 	se.opFile.Close()
 	close(se.channel)
 	se.wg.Wait()
@@ -148,15 +150,14 @@ func (se *StatsExporter) addToList(st *ExportedStat, idx int) {
 	if st.MonitorName == hmcommon.BlobfuseStats {
 		se.outputList[idx].Bfs = append(se.outputList[idx].Bfs, st.Stat.(internal.Stats))
 	} else if st.MonitorName == hmcommon.FileCacheMon {
-		se.outputList[idx].FcEvent = append(se.outputList[idx].FcEvent, st.Stat.(hmcommon.CacheEvent))
+		se.outputList[idx].FcEvent = append(se.outputList[idx].FcEvent, st.Stat.(*hmcommon.CacheEvent))
 	} else if st.MonitorName == hmcommon.CpuProfiler {
 		se.outputList[idx].Cpu = st.Stat.(string)
 	} else if st.MonitorName == hmcommon.MemoryProfiler {
 		se.outputList[idx].Mem = st.Stat.(string)
+	} else if st.MonitorName == hmcommon.NetworkProfiler {
+		se.outputList[idx].Net = st.Stat.(string)
 	}
-	// else if st.MonitorName == hmcommon.NetworkProfiler {
-	// 	se.outputList[idx].Net = st.Stat.(string)
-	// }
 }
 
 func (se *StatsExporter) checkInList(t string) (int, bool) {
@@ -174,7 +175,6 @@ func (se *StatsExporter) addToOutputFile(op *Output) error {
 		log.Err("stats_exporter::addToOutputFile : unable to marshal [%v]", err)
 		return err
 	}
-	fmt.Println(string(jsonData))
 
 	_, err = se.opFile.Write(jsonData)
 	if err != nil {
@@ -182,11 +182,96 @@ func (se *StatsExporter) addToOutputFile(op *Output) error {
 		return err
 	}
 
-	_, err = se.opFile.WriteString("\n")
+	err = se.checkOutputFile()
 	if err != nil {
-		log.Err("stats_exporter::addToOutputFile : unable to write to file [%v]", err)
+		log.Err("stats_exporter::addToOutputFile : [%v]", err)
 		return err
 	}
 
+	return nil
+}
+
+func (se *StatsExporter) checkOutputFile() error {
+	f, err := se.opFile.Stat()
+	if err != nil {
+		log.Err("stats_export::checkOutputFile : Unable to get file info [%v]", err)
+		return err
+	}
+
+	sz := f.Size()
+
+	// close current file and create a new file if the size of current file is greater than 10MB
+	if sz >= 10*common.MbToBytes {
+		_, err = se.opFile.WriteString("\n]")
+		if err != nil {
+			log.Err("stats_exporter::checkOutputFile : unable to write to file [%v]", err)
+			return err
+		}
+
+		log.Debug("stats_export::checkOutputFile : closing file %v", f.Name())
+		se.opFile.Close()
+
+		err = se.getNewFile()
+		if err != nil {
+			log.Err("stats_export::checkOutputFile : [%v]")
+			return err
+		}
+		return nil
+	} else {
+		_, err = se.opFile.WriteString(",\n")
+		if err != nil {
+			log.Err("stats_exporter::checkOutputFile : unable to write to file [%v]", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (se *StatsExporter) getNewFile() error {
+	currDir, err := os.Getwd()
+	if err != nil {
+		log.Err("stats_export::NewStatsExporter : [%v]", err)
+		return err
+	}
+
+	se.fileIdx += 1
+	fileName := fmt.Sprintf("%v_%v_%v.%v", hmcommon.OutputFileName, hmcommon.Pid, se.fileIdx, hmcommon.OutputFileExtension)
+	se.opFile, err = os.OpenFile(filepath.Join(currDir, fileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0755)
+	if err != nil {
+		log.Err("stats_export::NewStatsExporter : Unable to create output file [%v]", err)
+		return err
+	}
+
+	se.filesList = append(se.filesList, filepath.Join(currDir, fileName))
+
+	// keep latest 10 output files
+	if len(se.filesList) > 10 {
+		se.deleteOldFile()
+	}
+
+	_, err = se.opFile.WriteString("[")
+	if err != nil {
+		log.Err("stats_exporter::NewStatsExporter : unable to write to file [%v]", err)
+		return err
+	}
+
+	return nil
+}
+
+func (se *StatsExporter) deleteOldFile() {
+	os.RemoveAll(se.filesList[0])
+	log.Debug("stats_export::deleteOldFile : deleted output file %v", se.filesList[0])
+	se.filesList = se.filesList[1:]
+}
+
+func CloseExporter() error {
+	se, err := NewStatsExporter()
+	if err != nil || se == nil {
+		log.Err("stats_export::CloseExporter : Error in creating stats exporter instance [%v]", err)
+		return err
+	}
+
+	se.Destroy()
 	return nil
 }

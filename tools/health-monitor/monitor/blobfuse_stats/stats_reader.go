@@ -79,7 +79,7 @@ func (bfs *BlobfuseStats) Monitor() error {
 
 func (bfs *BlobfuseStats) ExportStats(timestamp string, st interface{}) {
 	se, err := hminternal.NewStatsExporter()
-	if err != nil {
+	if err != nil || se == nil {
 		log.Err("stats_reader::ExportStats : Error in creating stats exporter instance [%v]", err)
 		return
 	}
@@ -128,7 +128,11 @@ func (bfs *BlobfuseStats) statsReader() error {
 		log.Debug("StatsReader::statsReader : Line: %v", string(line))
 
 		st := internal.Stats{}
-		json.Unmarshal(line, &st)
+		err = json.Unmarshal(line, &st)
+		if err != nil {
+			log.Err("StatsReader::statsReader : UNable to unmarshal json [%v]", err)
+			continue
+		}
 		bfs.ExportStats(st.Timestamp, st)
 	}
 

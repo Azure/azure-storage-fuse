@@ -86,7 +86,7 @@ func (mem *MemoryProfiler) Monitor() error {
 
 func (mem *MemoryProfiler) ExportStats(timestamp string, st interface{}) {
 	se, err := hminternal.NewStatsExporter()
-	if err != nil {
+	if err != nil || se == nil {
 		log.Err("memory_monitor::ExportStats : Error in creating stats exporter instance [%v]", err)
 		return
 	}

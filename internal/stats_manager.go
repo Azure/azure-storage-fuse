@@ -132,10 +132,9 @@ func (sc *StatsCollector) Init() {
 	}
 }
 
-func (sc *StatsCollector) Destroy() error {
+func (sc *StatsCollector) Destroy() {
 	close(sc.channel)
 	sc.workerDone.Wait()
-	return nil
 }
 
 func (sc *StatsCollector) AddStats(cmpName string, op string, path string, isEvent bool, mp map[string]interface{}) {

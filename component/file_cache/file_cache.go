@@ -163,6 +163,8 @@ func (c *FileCache) Stop() error {
 	_ = c.policy.ShutdownPolicy()
 	_ = c.TempCacheCleanup()
 
+	FileCacheStatsCollector.Destroy()
+
 	return nil
 }
 
