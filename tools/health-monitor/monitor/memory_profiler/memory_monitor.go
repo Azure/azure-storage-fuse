@@ -77,15 +77,21 @@ func (mem *MemoryProfiler) Monitor() error {
 			return err
 		}
 
-		// TODO: export memory usage
 		log.Debug("Memory Usage : %v at %v", c, t.Format(time.RFC3339))
+		mem.ExportStats(t.Format(time.RFC3339), c)
 	}
 
 	return nil
 }
 
-func (mem *MemoryProfiler) ExportStats() {
-	fmt.Println("Inside memory export stats")
+func (mem *MemoryProfiler) ExportStats(timestamp string, st interface{}) {
+	se, err := hminternal.NewStatsExporter()
+	if err != nil {
+		log.Err("memory_monitor::ExportStats : Error in creating stats exporter instance [%v]", err)
+		return
+	}
+
+	se.AddMonitorStats(mem.GetName(), timestamp, st)
 }
 
 func (mem *MemoryProfiler) Validate() error {

@@ -64,34 +64,35 @@ type Output struct {
 	FcEvent   []hmcommon.CacheEvent `json:"FileCache"`
 	Cpu       string                `json:"CpuUsage"`
 	Mem       string                `json:"MemoryUsage"`
-	Net       string                `json:"NetworkUsage"`
+	// commenting for now
+	// Net       string                `json:"NetworkUsage"`
 }
-
-// var outputList []*Output
 
 var expLock sync.Mutex
 var se *StatsExporter
 
 // create single instance of StatsExporter
 func NewStatsExporter() (*StatsExporter, error) {
-	expLock.Lock()
-	defer expLock.Unlock()
 	if se == nil {
-		se := &StatsExporter{}
-		se.channel = make(chan ExportedStat, 100000)
-		se.wg.Add(1)
-		go se.StatsExporter()
+		expLock.Lock()
+		defer expLock.Unlock()
+		if se == nil {
+			se := &StatsExporter{}
+			se.channel = make(chan ExportedStat, 100000)
+			se.wg.Add(1)
+			go se.StatsExporter()
 
-		currDir, err := os.Getwd()
-		if err != nil {
-			log.Err("stats_export::NewStatsExporter : [%v]", err)
-			return nil, err
-		}
+			currDir, err := os.Getwd()
+			if err != nil {
+				log.Err("stats_export::NewStatsExporter : [%v]", err)
+				return nil, err
+			}
 
-		se.opFile, err = os.OpenFile(filepath.Join(currDir, hmcommon.OutputFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0755)
-		if err != nil {
-			log.Err("stats_export::NewStatsExporter : Unable to create output file [%v]", err)
-			return nil, err
+			se.opFile, err = os.OpenFile(filepath.Join(currDir, hmcommon.OutputFile), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0755)
+			if err != nil {
+				log.Err("stats_export::NewStatsExporter : Unable to create output file [%v]", err)
+				return nil, err
+			}
 		}
 	}
 
@@ -105,6 +106,12 @@ func (se *StatsExporter) Destroy() {
 }
 
 func (se *StatsExporter) AddMonitorStats(monName string, timestamp string, st interface{}) {
+	// check if the channel is full
+	if len(se.channel) == cap(se.channel) {
+		// remove the first element from the channel
+		<-se.channel
+	}
+
 	se.channel <- ExportedStat{
 		Timestamp:   timestamp,
 		MonitorName: monName,
@@ -146,9 +153,10 @@ func (se *StatsExporter) addToList(st *ExportedStat, idx int) {
 		se.outputList[idx].Cpu = st.Stat.(string)
 	} else if st.MonitorName == hmcommon.MemoryProfiler {
 		se.outputList[idx].Mem = st.Stat.(string)
-	} else if st.MonitorName == hmcommon.NetworkProfiler {
-		se.outputList[idx].Net = st.Stat.(string)
 	}
+	// else if st.MonitorName == hmcommon.NetworkProfiler {
+	// 	se.outputList[idx].Net = st.Stat.(string)
+	// }
 }
 
 func (se *StatsExporter) checkInList(t string) (int, bool) {

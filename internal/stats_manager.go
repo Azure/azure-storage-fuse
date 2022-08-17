@@ -150,6 +150,12 @@ func (sc *StatsCollector) AddStats(cmpName string, op string, path string, isEve
 			st.Value = mp
 		}
 
+		// check if the channel is full
+		if len(sc.channel) == cap(sc.channel) {
+			// remove the first element from the channel
+			<-sc.channel
+		}
+
 		sc.channel <- ChannelMsg{IsEvent: isEvent, CompStats: st}
 	}
 }

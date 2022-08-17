@@ -77,8 +77,14 @@ func (bfs *BlobfuseStats) Monitor() error {
 	return bfs.statsReader()
 }
 
-func (bfs *BlobfuseStats) ExportStats() {
-	fmt.Println("Inside blobfuse export stats")
+func (bfs *BlobfuseStats) ExportStats(timestamp string, st interface{}) {
+	se, err := hminternal.NewStatsExporter()
+	if err != nil {
+		log.Err("stats_reader::ExportStats : Error in creating stats exporter instance [%v]", err)
+		return
+	}
+
+	se.AddMonitorStats(bfs.GetName(), timestamp, st)
 }
 
 func (bfs *BlobfuseStats) Validate() error {
@@ -119,12 +125,11 @@ func (bfs *BlobfuseStats) statsReader() error {
 			break
 		}
 
-		// TODO: export stats read
 		log.Debug("StatsReader::statsReader : Line: %v", string(line))
 
 		st := internal.Stats{}
 		json.Unmarshal(line, &st)
-		log.Debug("StatsReader::statsReader : %v, %v, %v, %v, %v", st.Timestamp, st.ComponentName, st.Operation, st.Path, st.Value)
+		bfs.ExportStats(st.Timestamp, st)
 	}
 
 	return e

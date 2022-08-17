@@ -77,15 +77,21 @@ func (cpu *CpuProfiler) Monitor() error {
 			return err
 		}
 
-		// TODO: export cpu usage
 		log.Debug("CPU Usage : %v at %v", c, t.Format(time.RFC3339))
+		cpu.ExportStats(t.Format(time.RFC3339), c)
 	}
 
 	return nil
 }
 
-func (cpu *CpuProfiler) ExportStats() {
-	fmt.Println("Inside CPU export stats")
+func (cpu *CpuProfiler) ExportStats(timestamp string, st interface{}) {
+	se, err := hminternal.NewStatsExporter()
+	if err != nil {
+		log.Err("cpu_monitor::ExportStats : Error in creating stats exporter instance [%v]", err)
+		return
+	}
+
+	se.AddMonitorStats(cpu.GetName(), timestamp, st)
 }
 
 func (cpu *CpuProfiler) Validate() error {

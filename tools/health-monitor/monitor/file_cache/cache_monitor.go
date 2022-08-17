@@ -83,8 +83,14 @@ func (fc *FileCache) Monitor() error {
 	return fc.cacheWatcher()
 }
 
-func (fc *FileCache) ExportStats() {
-	fmt.Println("Inside file cache export stats")
+func (fc *FileCache) ExportStats(timestamp string, st interface{}) {
+	se, err := hminternal.NewStatsExporter()
+	if err != nil {
+		log.Err("cache_monitor::ExportStats : Error in creating stats exporter instance [%v]", err)
+		return
+	}
+
+	se.AddMonitorStats(fc.GetName(), timestamp, st)
 }
 
 func (fc *FileCache) Validate() error {
@@ -188,8 +194,8 @@ func (fc *FileCache) createEvent(event *watcher.Event) {
 		e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
 	}
 
-	// TODO: export this event
 	log.Debug("cache_monitor::createEvent : %v", e)
+	fc.ExportStats(time.Now().Format(time.RFC3339), e)
 }
 
 func (fc *FileCache) removeEvent(event *watcher.Event) {
@@ -205,8 +211,8 @@ func (fc *FileCache) removeEvent(event *watcher.Event) {
 		e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
 	}
 
-	// TODO: export this event
 	log.Debug("cache_monitor::removeEvent : %v", e)
+	fc.ExportStats(time.Now().Format(time.RFC3339), e)
 }
 
 func (fc *FileCache) chmodEvent(event *watcher.Event) {
@@ -226,8 +232,8 @@ func (fc *FileCache) chmodEvent(event *watcher.Event) {
 	e := fc.getCacheEventObj(event)
 	e.Value[mode] = event.Mode().String()
 
-	// TODO: export this event
 	log.Debug("cache_monitor::chmodEvent : %v", e)
+	fc.ExportStats(time.Now().Format(time.RFC3339), e)
 }
 
 func (fc *FileCache) writeEvent(event *watcher.Event) {
@@ -252,29 +258,28 @@ func (fc *FileCache) writeEvent(event *watcher.Event) {
 	// 	e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
 	// }
 
-	// // TODO: export this event
 	// log.Debug("cache_monitor::writeEvent : %v", e)
+	// fc.ExportStats(time.Now().Format(time.RFC3339), e)
 }
 
 func (fc *FileCache) renameEvent(event *watcher.Event) {
 	e := fc.getCacheEventObj(event)
 	e.Value[oldPath] = event.OldPath
 
-	// TODO: export this event
 	log.Debug("cache_monitor::renameEvent : %v", e)
+	fc.ExportStats(time.Now().Format(time.RFC3339), e)
 }
 
 func (fc *FileCache) moveEvent(event *watcher.Event) {
 	e := fc.getCacheEventObj(event)
 	e.Value[oldPath] = event.OldPath
 
-	// TODO: export this event
 	log.Debug("cache_monitor::moveEvent : %v", e)
+	fc.ExportStats(time.Now().Format(time.RFC3339), e)
 }
 
 func (fc *FileCache) getCacheEventObj(event *watcher.Event) *hmcommon.CacheEvent {
 	e := &hmcommon.CacheEvent{
-		Timestamp:       time.Now().Format(time.RFC3339),
 		CacheEvent:      event.Op.String(),
 		Path:            event.Path,
 		IsDir:           event.IsDir(),

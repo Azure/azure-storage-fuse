@@ -71,7 +71,6 @@ var OutputFile = "monitor.json"
 var Wg sync.WaitGroup
 
 type CacheEvent struct {
-	Timestamp       string
 	CacheEvent      string
 	Path            string
 	IsDir           bool

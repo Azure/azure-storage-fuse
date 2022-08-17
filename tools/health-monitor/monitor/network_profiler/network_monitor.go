@@ -67,8 +67,14 @@ func (nw *NetworkProfiler) Monitor() error {
 	return nil
 }
 
-func (nw *NetworkProfiler) ExportStats() {
-	fmt.Println("Inside network export stats")
+func (nw *NetworkProfiler) ExportStats(timestamp string, st interface{}) {
+	se, err := hminternal.NewStatsExporter()
+	if err != nil {
+		log.Err("network_monitor::ExportStats : Error in creating stats exporter instance [%v]", err)
+		return
+	}
+
+	se.AddMonitorStats(nw.GetName(), timestamp, st)
 }
 
 func (nw *NetworkProfiler) Validate() error {
