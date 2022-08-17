@@ -133,8 +133,10 @@ func (sc *StatsCollector) Init() {
 }
 
 func (sc *StatsCollector) Destroy() {
-	close(sc.channel)
-	sc.workerDone.Wait()
+	if common.EnableMonitoring {
+		close(sc.channel)
+		sc.workerDone.Wait()
+	}
 }
 
 func (sc *StatsCollector) AddStats(cmpName string, op string, path string, isEvent bool, mp map[string]interface{}) {
