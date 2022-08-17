@@ -12,17 +12,24 @@ jobs:
     strategy:
       matrix:
         Ubuntu-18:
+          AgentName: 'blobfuse-ubuntu18'
           imageName: 'ubuntu-18.04'
           containerName: 'test-cnt-ubn-18'
           fuselib: 'libfuse-dev'
+          fuselib2: 'fuse'
           tags: 'fuse2'
         Ubuntu-20:
+          AgentName: 'blobfuse-ubuntu20'
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
           fuselib: 'libfuse3-dev'
+          fuselib2: 'fuse3'
           tags: 'fuse3'
+
     pool:
-      vmImage: $(imageName)
+      name: "blobfuse-ubuntu-pool"
+      demands:
+        - ImageOverride -equals $(AgentName)
 
     variables:
       - group: NightlyBlobFuse
@@ -59,9 +66,17 @@ jobs:
         workingDirectory: $(WORK_DIR)
     
       - script: |
-          sudo apt-get update --fix-missing
-          sudo apt-get install $(fuselib) -y
+          sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
+          sudo apt-get install make cmake gcc g++ parallel $(fuselib) $(fuselib2) -y -o Dpkg::Options::="--force-confnew"
         displayName: 'Install libfuse'
+
+
+      # Create directory structure
+      - script: |
+          sudo mkdir -p $(ROOT_DIR)
+          sudo chown -R `whoami` $(ROOT_DIR)
+          chmod 777 $(ROOT_DIR)
+        displayName: 'Create Directory Structure'
 
       # -------------------------------------------------------
       # Pull and build the code
@@ -75,6 +90,7 @@ jobs:
           container: $(containerName)
           tags: $(tags)
           fuselib: $(fuselib)
+          skip_msi: "false"
 
       # -------------------------------------------------------
       # UT based code coverage test
@@ -373,6 +389,37 @@ jobs:
           ./blobfuse2 unmount all
         workingDirectory: $(WORK_DIR)
         displayName: "CLI : Config change simulator"
+
+      # Secure Config, fine to use insecure passphrase as this is just for testing
+      - script: |
+          rm -rf $(MOUNT_DIR)/*
+          rm -rf $(TEMP_DIR)/*
+          ./blobfuse2 unmount all
+          ./blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+          
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_encrypt.cov secure encrypt --config-file=$(BLOBFUSE2_CFG) --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
+          if [ $? -ne 0 ]; then
+            exit 1
+          fi
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_secure.cov mount $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 &
+          sleep 10
+          ps -aux | grep blobfuse2
+          rm -rf $(MOUNT_DIR)/*
+          cd test/e2e_tests
+          go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -adls=false -tmp-path=$(TEMP_DIR)
+          cd -
+
+          ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_set.cov secure set --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 --key=logging.level --value=log_debug
+          ./blobfuse2 unmount all
+          sleep 5
+        workingDirectory: $(WORK_DIR)
+        displayName: "CLI : Secure Config"
+        env:
+          NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+          NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+          ACCOUNT_TYPE: 'block'
+          ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+          VERBOSE_LOG: false
 
       # -------------------------------------------------------
       # Coverage report consolidation
