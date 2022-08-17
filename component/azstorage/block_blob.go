@@ -674,13 +674,13 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 	return blockSize, nil
 }
 
-func trackUpload(name string, bytesTransferred int64, uploadPtr *int64) {
-	if bytesTransferred >= (*uploadPtr)*100*1024*1024 {
+func trackUpload(name string, bytesTransferred int64, count int64, uploadPtr *int64) {
+	if bytesTransferred >= (*uploadPtr)*100*1024*1024 || bytesTransferred == count {
 		(*uploadPtr)++
-		log.Debug("BlockBlob::trackUpload : Upload: Blob = %v, Bytes transferred = %v", name, bytesTransferred)
+		log.Debug("BlockBlob::trackUpload : Upload: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
 
 		// send upload progress as event
-		AzStatsCollector.AddStats(compName, "UploadProgress", name, true, map[string]interface{}{"Bytes Transferred": bytesTransferred})
+		AzStatsCollector.AddStats(compName, "UploadProgress", name, true, map[string]interface{}{"Bytes Transferred": bytesTransferred, "Size": count})
 	}
 }
 
@@ -723,9 +723,9 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 			ContentType: getContentType(name),
 		},
 	}
-	if common.EnableMonitoring {
+	if common.EnableMonitoring && fileSize > 0 {
 		uploadOptions.Progress = func(bytesTransferred int64) {
-			trackUpload(name, bytesTransferred, uploadPtr)
+			trackUpload(name, bytesTransferred, fileSize, uploadPtr)
 		}
 	}
 
@@ -744,7 +744,9 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		log.Debug("BlockBlob::WriteFromFile : Upload complete of blob %v", name)
 
 		// store total bytes uploaded
-		AzStatsCollector.AddStats(compName, internal.Increment, "", false, map[string]interface{}{internal.BytesUploaded: fileSize})
+		if fileSize > 0 {
+			AzStatsCollector.AddStats(compName, internal.Increment, "", false, map[string]interface{}{internal.BytesUploaded: fileSize})
+		}
 	}
 
 	return nil

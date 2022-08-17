@@ -133,9 +133,9 @@ func init() {
 	flag.IntVar(&hmcommon.StatsPollinterval, "stats-poll-interval", 10, "CPU, memory and network usage polling interval in seconds")
 
 	flag.BoolVar(&hmcommon.NoBfsMon, "no-blobfuse2-stats", false, "Disable blobfuse2 stats polling")
-	flag.BoolVar(&hmcommon.NoCpuProf, "no-cpu-profiler", false, "Disable CPU profiling on blobfuse2 process")
-	flag.BoolVar(&hmcommon.NoMemProf, "no-memory-profiler", false, "Disable memory profiling on blobfuse2 process")
-	flag.BoolVar(&hmcommon.NoNetProf, "no-network-profiler", false, "Disable network profiling on blobfuse2 process")
+	flag.BoolVar(&hmcommon.NoCpuProf, "no-cpu-profiler", false, "Disable CPU monitoring on blobfuse2 process")
+	flag.BoolVar(&hmcommon.NoMemProf, "no-memory-profiler", false, "Disable memory monitoring on blobfuse2 process")
+	flag.BoolVar(&hmcommon.NoNetProf, "no-network-profiler", false, "Disable network monitoring on blobfuse2 process")
 	flag.BoolVar(&hmcommon.NoFileCacheMon, "no-cache-monitor", false, "Disable file cache directory monitor")
 
 	flag.StringVar(&hmcommon.TempCachePath, "cache-path", "", "path to local disk cache")

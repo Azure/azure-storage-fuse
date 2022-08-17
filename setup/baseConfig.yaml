@@ -114,3 +114,16 @@ mountall:
     - <list of containers to be mounted>
   container-denylist:
     - <list of containers not to be mounted>
+
+# health-monitor configuration
+health-monitor:
+  enable-monitoring: true|false <enable health-monitor>
+  blobfuse2-poll-interval: <Blobfuse2 stats polling interval (in sec). Default - 5 sec>
+  stats-poll-interval: <CPU, memory and network usage polling interval (in sec). Default - 10 sec>
+  # list of monitors to be disabled
+  monitor-disable-list:
+    - blobfuse_stats <Disable blobfuse2 stats polling>
+    - cache_monitor <Disable file cache directory monitor>
+    - cpu_profiler <Disable CPU monitoring on blobfuse2 process>
+    - memory_profiler <Disable memory monitoring on blobfuse2 process>
+    - network_profiler <Disable network monitoring on blobfuse2 process>
