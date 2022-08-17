@@ -374,6 +374,11 @@ var mountCmd = &cobra.Command{
 }
 
 func runPipeline(pipeline *internal.Pipeline, ctx context.Context) {
+	pid := fmt.Sprintf("%v", os.Getpid())
+	common.TransferPipe += "_" + pid
+	common.PollingPipe += "_" + pid
+	log.Debug("Mount::runPipeline : blobfuse2 pid = %v, transfer pipe = %v, polling pipe = %v", pid, common.TransferPipe, common.PollingPipe)
+
 	go startMonitor(os.Getpid())
 
 	pipelineStarted = true

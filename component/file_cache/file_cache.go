@@ -155,6 +155,9 @@ func (c *FileCache) Start(ctx context.Context) error {
 		return fmt.Errorf("config error in %s error [fail to start policy]", c.Name())
 	}
 
+	// create stats collector for file cache
+	FileCacheStatsCollector = internal.NewStatsCollector(c.Name(), nil)
+
 	return nil
 }
 
@@ -269,9 +272,6 @@ func (c *FileCache) Configure(_ bool) error {
 
 	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s",
 		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath)
-
-	// create stats collector for file cache
-	FileCacheStatsCollector = internal.NewStatsCollector(c.Name(), nil)
 
 	return nil
 }

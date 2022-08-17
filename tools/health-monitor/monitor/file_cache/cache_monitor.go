@@ -63,17 +63,6 @@ type CacheDir struct {
 	fileRemovedMap map[string]int64
 }
 
-type CacheEvent struct {
-	Timestamp       string
-	CacheEvent      string
-	Path            string
-	CacheSize       int64
-	CacheConsumed   string
-	CacheFilesCnt   int64
-	EvictedFilesCnt int64
-	Value           map[string]string
-}
-
 func (fc *FileCache) GetName() string {
 	return fc.name
 }
@@ -124,6 +113,12 @@ func (fc *FileCache) cacheWatcher() error {
 			select {
 
 			case event := <-w.Event:
+				err := hmcommon.CheckProcessStatus(hmcommon.Pid)
+				if err != nil {
+					log.Err("cache_monitor::cacheWatcher : [%v]", err)
+					return
+				}
+
 				if strings.ToUpper(event.Op.String()) == create {
 					fc.createEvent(&event)
 
@@ -145,7 +140,7 @@ func (fc *FileCache) cacheWatcher() error {
 				}
 
 			case err := <-w.Error:
-				log.Err("cache_monitor::cache_watcher [%v]", err)
+				log.Err("cache_monitor::cache_watcher : [%v]", err)
 				return
 
 			case <-w.Closed:
@@ -156,24 +151,24 @@ func (fc *FileCache) cacheWatcher() error {
 
 	// watch file cache directory for changes
 	if err := w.Add(fc.tmpPath); err != nil {
-		log.Err("cache_monitor::Monitor : [%v]", err)
+		log.Err("cache_monitor::cacheWatcher : [%v]", err)
 		return err
 	}
 
 	// set recursive watcher on file cache directory
 	if err := w.AddRecursive(fc.tmpPath); err != nil {
-		log.Err("cache_monitor::Monitor : [%v]", err)
+		log.Err("cache_monitor::cacheWatcher : [%v]", err)
 		return err
 	}
 
 	// list of all of the files and folders currently being watched
 	for path := range w.WatchedFiles() {
-		log.Debug("Watching %v", path)
+		log.Debug("cache_monitor::cacheWatcher : Watching %v", path)
 	}
 
 	// Start the watching process - it'll check for changes every 100ms
 	if err := w.Start(time.Millisecond * 100); err != nil {
-		log.Err("cache_monitor::Monitor : [%v]", err)
+		log.Err("cache_monitor::cacheWatcher : [%v]", err)
 		return err
 	}
 
@@ -188,13 +183,13 @@ func (fc *FileCache) createEvent(event *watcher.Event) {
 		fc.cacheObj.cacheConsumed = (float64)(fc.cacheObj.cacheSize*100) / (fc.maxSizeMB * common.MbToBytes)
 	}
 
-	e := fc.getCacheEventObj(event.Op.String(), event.Path)
+	e := fc.getCacheEventObj(event)
 	if !event.IsDir() {
 		e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
 	}
 
 	// TODO: export this event
-	log.Debug("cahce_monitor::writeEvent : %v", e)
+	log.Debug("cache_monitor::createEvent : %v", e)
 }
 
 func (fc *FileCache) removeEvent(event *watcher.Event) {
@@ -205,13 +200,13 @@ func (fc *FileCache) removeEvent(event *watcher.Event) {
 		fc.cacheObj.cacheConsumed = (float64)(fc.cacheObj.cacheSize*100) / (fc.maxSizeMB * common.MbToBytes)
 	}
 
-	e := fc.getCacheEventObj(event.Op.String(), event.Path)
+	e := fc.getCacheEventObj(event)
 	if !event.IsDir() {
 		e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
 	}
 
 	// TODO: export this event
-	log.Debug("cahce_monitor::writeEvent : %v", e)
+	log.Debug("cache_monitor::removeEvent : %v", e)
 }
 
 func (fc *FileCache) chmodEvent(event *watcher.Event) {
@@ -228,11 +223,11 @@ func (fc *FileCache) chmodEvent(event *watcher.Event) {
 		fc.cacheObj.cacheConsumed = (float64)(fc.cacheObj.cacheSize*100) / (fc.maxSizeMB * common.MbToBytes)
 	}
 
-	e := fc.getCacheEventObj(event.Op.String(), event.Path)
+	e := fc.getCacheEventObj(event)
 	e.Value[mode] = event.Mode().String()
 
 	// TODO: export this event
-	log.Debug("cahce_monitor::writeEvent : %v", e)
+	log.Debug("cache_monitor::chmodEvent : %v", e)
 }
 
 func (fc *FileCache) writeEvent(event *watcher.Event) {
@@ -247,38 +242,42 @@ func (fc *FileCache) writeEvent(event *watcher.Event) {
 		fc.cacheObj.cacheSize += event.Size() - fileSize
 		fc.cacheObj.fileCreatedMap[event.Path] = event.Size()
 		fc.cacheObj.cacheConsumed = (float64)(fc.cacheObj.cacheSize*100) / (fc.maxSizeMB * common.MbToBytes)
+	} else {
+		return
 	}
 
-	e := fc.getCacheEventObj(event.Op.String(), event.Path)
-	if !event.IsDir() {
-		e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
-	}
+	// not logging write events since there are multiple events in case of uploads
+	// e := fc.getCacheEventObj(event)
+	// if !event.IsDir() {
+	// 	e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
+	// }
 
-	// TODO: export this event
-	log.Debug("cahce_monitor::writeEvent : %v", e)
+	// // TODO: export this event
+	// log.Debug("cache_monitor::writeEvent : %v", e)
 }
 
 func (fc *FileCache) renameEvent(event *watcher.Event) {
-	e := fc.getCacheEventObj(event.Op.String(), event.Path)
+	e := fc.getCacheEventObj(event)
 	e.Value[oldPath] = event.OldPath
 
 	// TODO: export this event
-	log.Debug("cahce_monitor::renameEvent : %v", e)
+	log.Debug("cache_monitor::renameEvent : %v", e)
 }
 
 func (fc *FileCache) moveEvent(event *watcher.Event) {
-	e := fc.getCacheEventObj(event.Op.String(), event.Path)
+	e := fc.getCacheEventObj(event)
 	e.Value[oldPath] = event.OldPath
 
 	// TODO: export this event
-	log.Debug("cahce_monitor::moveEvent : %v", e)
+	log.Debug("cache_monitor::moveEvent : %v", e)
 }
 
-func (fc *FileCache) getCacheEventObj(event string, path string) *CacheEvent {
-	e := &CacheEvent{
+func (fc *FileCache) getCacheEventObj(event *watcher.Event) *hmcommon.CacheEvent {
+	e := &hmcommon.CacheEvent{
 		Timestamp:       time.Now().Format(time.RFC3339),
-		CacheEvent:      event,
-		Path:            path,
+		CacheEvent:      event.Op.String(),
+		Path:            event.Path,
+		IsDir:           event.IsDir(),
 		CacheSize:       fc.cacheObj.cacheSize,
 		CacheConsumed:   fmt.Sprintf("%.2f%%", fc.cacheObj.cacheConsumed),
 		CacheFilesCnt:   (int64)(len(fc.cacheObj.fileCreatedMap)),

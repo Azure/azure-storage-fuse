@@ -86,8 +86,6 @@ func main() {
 
 	if err != nil {
 		fmt.Printf("Health Monitor: error initializing logger [%v]", err)
-		log.Err("main::main : error initializing logger [%v]", err)
-		time.Sleep(1 * time.Second) // adding 1 second wait for adding to log(base type) before exiting
 		os.Exit(1)
 	}
 
@@ -98,23 +96,27 @@ func main() {
 		os.Exit(1)
 	}
 
+	common.TransferPipe += "_" + hmcommon.Pid
+	common.PollingPipe += "_" + hmcommon.Pid
+
 	log.Debug("Blobfuse2 Pid: %v \n"+
-		"Blobfus2 Stats poll interval: %v \n"+
+		"Transfer Pipe: %v \n"+
+		"Polling Pipe: %v \n"+
+		"Blobfuse2 Stats poll interval: %v \n"+
 		"Health Stats poll interval: %v \n"+
 		"Cache Path: %v \n"+
 		"Max cache size in MB: %v",
-		hmcommon.Pid, hmcommon.BfsPollInterval, hmcommon.StatsPollinterval,
-		hmcommon.TempCachePath, hmcommon.MaxCacheSize)
+		hmcommon.Pid, common.TransferPipe, common.PollingPipe, hmcommon.BfsPollInterval,
+		hmcommon.StatsPollinterval, hmcommon.TempCachePath, hmcommon.MaxCacheSize)
 
 	comps := getMonitors()
 
 	for _, obj := range comps {
-		// hmcommon.Wg.Add(1)
-		// go obj.Monitor()
-		obj.ExportStats()
+		hmcommon.Wg.Add(1)
+		go obj.Monitor()
 	}
 
-	// hmcommon.Wg.Done()
+	hmcommon.Wg.Wait()
 	log.Debug("Monitoring ended")
 }
 

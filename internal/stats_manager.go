@@ -83,8 +83,6 @@ type ChannelMsg struct {
 	CompStats Stats
 }
 
-var transferPipe = "/home/sourav/monitorPipe"
-var pollingPipe = "/home/sourav/pollPipe"
 var statsList []*Stats
 var cmpTimeMap map[string]string = make(map[string]string)
 var pollStarted bool = false
@@ -116,6 +114,7 @@ func NewStatsCollector(componentName string, reader ChannelReader) *StatsCollect
 		statsMtx.Unlock()
 
 		sc.Init()
+		log.Debug("stats_manager::NewStatsCollector : %v", componentName)
 	}
 
 	return sc
@@ -158,13 +157,13 @@ func (sc *StatsCollector) AddStats(cmpName string, op string, path string, isEve
 func (sc *StatsCollector) statsDumper() {
 	defer sc.workerDone.Done()
 
-	err := createPipe(transferPipe)
+	err := createPipe(common.TransferPipe)
 	if err != nil {
 		log.Err("StatsManager::StatsDumper : [%v]", err)
 		return
 	}
 
-	f, err := os.OpenFile(transferPipe, os.O_CREATE|os.O_WRONLY, 0777)
+	f, err := os.OpenFile(common.TransferPipe, os.O_CREATE|os.O_WRONLY, 0777)
 	if err != nil {
 		log.Err("StatsManager::StatsDumper : unable to open pipe file [%v]", err)
 		return
@@ -232,14 +231,14 @@ func (sc *StatsCollector) statsDumper() {
 
 func statsPolling() {
 	// create polling pipe
-	err := createPipe(pollingPipe)
+	err := createPipe(common.PollingPipe)
 	if err != nil {
 		log.Err("StatsManager::StatsPolling : [%v]", err)
 		return
 	}
 
 	// open polling pipe
-	pf, err := os.OpenFile(pollingPipe, os.O_RDONLY, os.ModeNamedPipe)
+	pf, err := os.OpenFile(common.PollingPipe, os.O_RDONLY, os.ModeNamedPipe)
 	if err != nil {
 		fmt.Printf("StatsManager::StatsPolling : unable to open pipe file [%v]", err)
 		return
@@ -251,14 +250,14 @@ func statsPolling() {
 	reader := bufio.NewReader(pf)
 
 	// create transfer pipe
-	err = createPipe(transferPipe)
+	err = createPipe(common.TransferPipe)
 	if err != nil {
 		log.Err("StatsManager::StatsPolling : [%v]", err)
 		return
 	}
 
 	// open transfer pipe
-	tf, err := os.OpenFile(transferPipe, os.O_CREATE|os.O_WRONLY, 0777)
+	tf, err := os.OpenFile(common.TransferPipe, os.O_CREATE|os.O_WRONLY, 0777)
 	if err != nil {
 		log.Err("StatsManager::StatsPolling : unable to open pipe file [%v]", err)
 		return
@@ -274,7 +273,7 @@ func statsPolling() {
 			log.Err("StatsReader::Reader : Unable to read from pipe [%v]", err)
 			break
 		}
-		log.Debug("StatsManager::StatsPolling : Polling message: %v\n", string(line))
+		log.Debug("StatsManager::StatsPolling : Polling message: %v", string(line))
 
 		statsMtx.Lock()
 		for _, cmpSt := range statsList {

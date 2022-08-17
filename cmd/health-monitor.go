@@ -97,11 +97,13 @@ var healthMonCmd = &cobra.Command{
 		log.Debug("health-monitor: options = %v", cliParams)
 
 		log.Debug("Starting health-monitor for blobfuse2 pid = %s", pid)
+
+		// TODO: update the health monitor binary path
 		hmcmd := exec.Command("/home/sourav/go/src/azure-storage-fuse/"+hmcommon.HealthMon, cliParams...)
 		cliOut, err := hmcmd.Output()
 		if len(cliOut) > 0 {
-			log.Debug("health-monitor: cliout = %v", cliOut)
-			fmt.Println(cliOut)
+			log.Debug("health-monitor: cliout = %v", string(cliOut))
+			fmt.Println(string(cliOut))
 		}
 		if err != nil {
 			log.Err("health-monitor: [%v]", err)

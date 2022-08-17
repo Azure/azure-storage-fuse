@@ -86,6 +86,11 @@ func (bfs *BlobfuseStats) Validate() error {
 		return fmt.Errorf("blobfuse-poll-interval should be non-zero")
 	}
 
+	err := hmcommon.CheckProcessStatus(hmcommon.Pid)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -115,12 +120,11 @@ func (bfs *BlobfuseStats) statsReader() error {
 		}
 
 		// TODO: export stats read
-		fmt.Printf("Line: %v\n", string(line))
-		log.Debug("StatsReader::statsReader : Line: %v\n", string(line))
+		log.Debug("StatsReader::statsReader : Line: %v", string(line))
 
 		st := internal.Stats{}
 		json.Unmarshal(line, &st)
-		log.Debug("StatsReader::statsReader : %v, %v, %v, %v, %v\n", st.Timestamp, st.ComponentName, st.Operation, st.Path, st.Value)
+		log.Debug("StatsReader::statsReader : %v, %v, %v, %v, %v", st.Timestamp, st.ComponentName, st.Operation, st.Path, st.Value)
 	}
 
 	return e
@@ -135,7 +139,7 @@ func (bfs *BlobfuseStats) statsPoll() {
 
 	pf, err := os.OpenFile(bfs.pollingPipe, os.O_CREATE|os.O_WRONLY, 0777)
 	if err != nil {
-		log.Err("StatsManager::statsPoll : unable to open pipe file [%v]", err)
+		log.Err("StatsReader::statsPoll : unable to open pipe file [%v]", err)
 		return
 	}
 	defer pf.Close()
@@ -146,7 +150,7 @@ func (bfs *BlobfuseStats) statsPoll() {
 	for t := range ticker.C {
 		_, err = pf.WriteString(fmt.Sprintf("Poll at %v\n", t.Format(time.RFC3339)))
 		if err != nil {
-			log.Err("StatsManager::statsPoll : [%v]", err)
+			log.Err("StatsReader::statsPoll : [%v]", err)
 			break
 		}
 	}

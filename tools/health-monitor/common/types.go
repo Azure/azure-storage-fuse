@@ -66,4 +66,18 @@ var (
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFile = filepath.Join(DefaultWorkDir, "healthmon.log")
 
+var OutputFile = "monitor.json"
+
 var Wg sync.WaitGroup
+
+type CacheEvent struct {
+	Timestamp       string
+	CacheEvent      string
+	Path            string
+	IsDir           bool
+	CacheSize       int64
+	CacheConsumed   string
+	CacheFilesCnt   int64
+	EvictedFilesCnt int64
+	Value           map[string]string
+}

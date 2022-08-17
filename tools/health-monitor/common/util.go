@@ -32,3 +32,28 @@
 */
 
 package common
+
+import (
+	"fmt"
+	"os/exec"
+	"strings"
+)
+
+// check whether blobfuse2 process is running for the given pid
+func CheckProcessStatus(pid string) error {
+	cmd := "ps -ef | grep " + pid
+	cliOut, err := exec.Command("bash", "-c", cmd).Output()
+	if err != nil {
+		return err
+	}
+
+	processes := strings.Split(string(cliOut), "\n")
+	for _, process := range processes {
+		l := strings.Fields(process)
+		if l[1] == pid {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("blobfuse2 is not running on pid %v", pid)
+}

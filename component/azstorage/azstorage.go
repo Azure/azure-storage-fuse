@@ -105,8 +105,6 @@ func (az *AzStorage) Configure(isParent bool) error {
 		return err
 	}
 
-	AzStatsCollector = internal.NewStatsCollector(az.Name(), nil)
-
 	return nil
 }
 
@@ -171,6 +169,10 @@ func (az *AzStorage) Start(ctx context.Context) error {
 	// On mount block the ListBlob call for certain amount of time
 	az.startTime = time.Now()
 	az.listBlocked = true
+
+	// create stats collector for azstorage
+	AzStatsCollector = internal.NewStatsCollector(az.Name(), nil)
+
 	return nil
 }
 
