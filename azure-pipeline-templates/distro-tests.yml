@@ -96,6 +96,7 @@ steps:
       ACCOUNT_TYPE: 'block'
       ACCOUNT_ENDPOINT: 'https://${{ parameters.blob_account_name }}.blob.core.windows.net'
       VERBOSE_LOG: ${{ parameters.verbose_log }}
+      USE_HTTP: false
     continueOnError: false
 
   # Print config file
@@ -145,6 +146,7 @@ steps:
       ACCOUNT_TYPE: 'adls'
       ACCOUNT_ENDPOINT: 'https://${{ parameters.adls_account_name }}.dfs.core.windows.net'
       VERBOSE_LOG: ${{ parameters.verbose_log }}
+      USE_HTTP: false
     continueOnError: false
 
   # Print config file
