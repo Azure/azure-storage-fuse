@@ -51,8 +51,8 @@ func (suite *streamTestSuite) TestWriteConfig() {
 	suite.setupTestHelper(config, false)
 
 	suite.assert.Equal("stream", suite.stream.Name())
-	suite.assert.Equal(16*MB, int(suite.stream.BufferSizePerHandle))
-	suite.assert.Equal(4, int(suite.stream.HandleLimit))
+	suite.assert.Equal(16*MB, int(suite.stream.BufferSize))
+	suite.assert.Equal(4, int(suite.stream.CachedObjLimit))
 	suite.assert.EqualValues(false, suite.stream.StreamOnly)
 	suite.assert.EqualValues(4*MB, suite.stream.BlockSize)
 

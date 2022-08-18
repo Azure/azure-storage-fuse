@@ -48,19 +48,20 @@ import (
 
 type Stream struct {
 	internal.BaseComponent
-	cache               StreamConnection
-	BlockSize           int64
-	BufferSizePerHandle uint64 // maximum number of blocks allowed to be stored for a file
-	HandleLimit         int32
-	CachedHandles       int32
-	StreamOnly          bool // parameter used to check if its pure streaming
+	cache          StreamConnection
+	BlockSize      int64
+	BufferSize     uint64 // maximum number of blocks allowed to be stored for a file
+	CachedObjLimit int32
+	CachedObjects  int32
+	StreamOnly     bool // parameter used to check if its pure streaming
 }
 
 type StreamOptions struct {
-	BlockSize         uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	BufferSizePerFile uint64 `config:"handle-buffer-size-mb" yaml:"handle-buffer-size-mb,omitempty"`
-	HandleLimit       uint64 `config:"handle-limit" yaml:"handle-limit,omitempty"`
-	readOnly          bool   `config:"read-only"`
+	BlockSize      uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	BufferSize     uint64 `config:"buffer-size-mb" yaml:"buffer-size-mb,omitempty"`
+	CachedObjLimit uint64 `config:"max-buffers" yaml:"max-buffers,omitempty"`
+	FileCaching    bool   `config:"file-caching" yaml:"file-caching,omitempty"`
+	readOnly       bool   `config:"read-only"`
 }
 
 const (
@@ -104,7 +105,7 @@ func (st *Stream) Configure(_ bool) error {
 		log.Err("Stream::Configure : config error [unable to obtain read-only]")
 		return fmt.Errorf("config error in %s [%s]", st.Name(), err.Error())
 	}
-	if uint64((conf.BufferSizePerFile*conf.HandleLimit)*mb) > memory.FreeMemory() {
+	if uint64((conf.BufferSize*conf.CachedObjLimit)*mb) > memory.FreeMemory() {
 		log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
 		return errors.New("not enough free memory for provided stream configuration")
 	}
@@ -156,6 +157,10 @@ func (st *Stream) RenameDir(options internal.RenameDirOptions) error {
 
 func (st *Stream) TruncateFile(options internal.TruncateFileOptions) error {
 	return st.cache.TruncateFile(options)
+}
+
+func (st *Stream) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	return st.cache.GetAttr(options)
 }
 
 // ------------------------- Factory -------------------------------------------
