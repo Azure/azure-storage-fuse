@@ -75,6 +75,11 @@ func getMonitors() []hminternal.Monitor {
 func main() {
 	flag.Parse()
 
+	if hmcommon.CheckVersion {
+		fmt.Printf("health-monitor version %s\n", hmcommon.HealthMonitorVersion)
+		return
+	}
+
 	err := log.SetDefaultLogger("syslog", common.LogConfig{
 		Level:       common.ELogLevel.LOG_DEBUG(),
 		FilePath:    os.ExpandEnv(hmcommon.DefaultLogFile),
@@ -140,4 +145,6 @@ func init() {
 
 	flag.StringVar(&hmcommon.TempCachePath, "cache-path", "", "path to local disk cache")
 	flag.Float64Var(&hmcommon.MaxCacheSize, "max-size-mb", 0, "maximum cache size allowed. Default - 0 (unlimited)")
+
+	flag.BoolVar(&hmcommon.CheckVersion, "version", false, "Print the current version of health-monitor")
 }

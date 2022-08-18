@@ -61,7 +61,11 @@ var (
 
 	TempCachePath string
 	MaxCacheSize  float64
+
+	CheckVersion bool
 )
+
+const HealthMonitorVersion = "1.0.0-preview.1"
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFile = filepath.Join(DefaultWorkDir, "healthmon.log")
