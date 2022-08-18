@@ -34,8 +34,6 @@
 package stream
 
 import (
-	"fmt"
-
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
@@ -59,7 +57,6 @@ type StreamConnection interface {
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object
 func NewStreamConnection(cfg StreamOptions, stream *Stream) StreamConnection {
-	fmt.Println(cfg.FileCaching)
 	if cfg.readOnly {
 		r := ReadCache{}
 		r.Stream = stream
@@ -67,13 +64,11 @@ func NewStreamConnection(cfg StreamOptions, stream *Stream) StreamConnection {
 		return &r
 	}
 	if cfg.FileCaching {
-		fmt.Println("made it here")
 		rw := ReadWriteFilenameCache{}
 		rw.Stream = stream
 		_ = rw.Configure(cfg)
 		return &rw
 	}
-
 	rw := ReadWriteCache{}
 	rw.Stream = stream
 	_ = rw.Configure(cfg)

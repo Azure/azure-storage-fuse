@@ -63,8 +63,8 @@ func (rw *ReadWriteFilenameCache) Configure(conf StreamOptions) error {
 	rw.BlockSize = int64(conf.BlockSize) * mb
 	rw.BufferSize = conf.BufferSize * mb
 	rw.CachedObjLimit = int32(conf.CachedObjLimit)
-	rw.CachedObjects = 0
 	rw.fileCache = make(map[string]*handlemap.Cache)
+	rw.CachedObjects = 0
 	return nil
 }
 
@@ -115,8 +115,6 @@ func (rw *ReadWriteFilenameCache) ReadInBuffer(options internal.ReadInBufferOpti
 		}
 		return data, err
 	}
-	options.Handle.CacheObj.Lock()
-	defer options.Handle.CacheObj.Unlock()
 	if atomic.LoadInt64(&options.Handle.CacheObj.Size) == 0 {
 		return 0, nil
 	}
@@ -143,8 +141,6 @@ func (rw *ReadWriteFilenameCache) WriteFile(options internal.WriteFileOptions) (
 		}
 		return data, err
 	}
-	options.Handle.CacheObj.Lock()
-	defer options.Handle.CacheObj.Unlock()
 	written, err := rw.readWriteBlocks(options.Handle, options.Offset, options.Data, true)
 	if err != nil {
 		log.Err("Stream::WriteFile : error failed to write data to %s: [%s]", options.Handle.Path, err.Error())
@@ -225,7 +221,7 @@ func (rw *ReadWriteFilenameCache) DeleteFile(options internal.DeleteFileOptions)
 
 // TODO: any cached file to be purged without flushing
 func (rw *ReadWriteFilenameCache) DeleteDirectory(options internal.DeleteDirOptions) error {
-	// log.Trace("Stream::DeleteDirectory : name=%s", options.Name)
+	log.Trace("Stream::DeleteDirectory : name=%s", options.Name)
 	for fileName := range rw.fileCache {
 		if strings.HasPrefix(fileName, options.Name) {
 			rw.purge(fileName, false)
@@ -259,8 +255,12 @@ func (rw *ReadWriteFilenameCache) RenameDirectory(options internal.RenameDirOpti
 func (rw *ReadWriteFilenameCache) Stop() error {
 	log.Trace("Stopping component : %s", rw.Name())
 	if !rw.StreamOnly {
+		rw.Lock()
+		defer rw.Unlock()
 		for fileName, buffer := range rw.fileCache {
 			delete(rw.fileCache, fileName)
+			buffer.Lock()
+			defer buffer.Unlock()
 			buffer.Purge()
 			atomic.AddInt32(&rw.CachedObjects, -1)
 		}
@@ -270,15 +270,17 @@ func (rw *ReadWriteFilenameCache) Stop() error {
 
 // GetAttr : Try to serve the request from the attribute cache, otherwise cache attributes of the path returned by next component
 func (rw *ReadWriteFilenameCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
-	log.Trace("AttrCache::GetAttr : %s", options.Name)
-	buffer, found := rw.fileCache[options.Name]
-	if !found {
-		return rw.NextComponent().GetAttr(options)
-	}
+	// log.Trace("AttrCache::GetAttr : %s", options.Name)
 	attrs, err := rw.NextComponent().GetAttr(options)
 	if err != nil {
 		log.Err("Stream::GetAttr : error getting attributes %s [%s]", options.Name, err.Error())
 		return nil, err
+	}
+	rw.RLock()
+	defer rw.RUnlock()
+	buffer, found := rw.fileCache[options.Name]
+	if !found {
+		return attrs, err
 	}
 	attrs.Mtime = buffer.Mtime
 	attrs.Size = buffer.Size
@@ -287,7 +289,8 @@ func (rw *ReadWriteFilenameCache) GetAttr(options internal.GetAttrOptions) (*int
 
 func (rw *ReadWriteFilenameCache) purge(fileName string, close bool) {
 	// check if this file is cached
-	// rw.RLock()
+	rw.Lock()
+	defer rw.Unlock()
 	buffer, found := rw.fileCache[fileName]
 	if found {
 		// if it is a close operation then decrement the handle count on the buffer
@@ -297,12 +300,11 @@ func (rw *ReadWriteFilenameCache) purge(fileName string, close bool) {
 		// rw.RUnlock()
 		// if the handle count is 0 (no open handles) purge the buffer
 		if atomic.LoadInt64(&buffer.HandleCount) <= 0 || !close {
-			// rw.Lock()
-			// defer rw.Unlock()
 			delete(rw.fileCache, fileName)
-			// buffer.Lock()
-			// defer buffer.Unlock()
+			buffer.Lock()
+			defer buffer.Unlock()
 			buffer.Purge()
+			buffer.StreamOnly = true
 			atomic.AddInt32(&rw.CachedObjects, -1)
 		}
 	}
@@ -311,8 +313,8 @@ func (rw *ReadWriteFilenameCache) purge(fileName string, close bool) {
 //TODO: Store block offset list
 func (rw *ReadWriteFilenameCache) createFileCache(handle *handlemap.Handle) error {
 	// check if file is cached
-	// rw.Lock()
-	// defer rw.Unlock()
+	rw.Lock()
+	defer rw.Unlock()
 	buffer, found := rw.fileCache[handle.Path]
 	if found && !buffer.StreamOnly {
 		handle.CacheObj = buffer
@@ -401,6 +403,8 @@ func (rw *ReadWriteFilenameCache) getBlock(handle *handlemap.Handle, block *comm
 
 func (rw *ReadWriteFilenameCache) readWriteBlocks(handle *handlemap.Handle, offset int64, data []byte, write bool) (int, error) {
 	// if it's not a small file then we look the blocks it consistts of
+	handle.CacheObj.Lock()
+	defer handle.CacheObj.Unlock()
 	blocks, found := handle.CacheObj.FindBlocks(offset, int64(len(data)))
 	if !found && !write {
 		return 0, nil
