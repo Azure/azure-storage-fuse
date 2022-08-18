@@ -342,6 +342,13 @@ func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
 func TestDataValidationTestSuite(t *testing.T) {
 	initDataValidationFlags()
 	fmt.Println("Distro Name: " + distro)
+
+	// Ignore data validation test on all distros other than UBN
+	if strings.ToLower(quickTest) == "true" {
+		fmt.Println("Skipping Data Validation test suite...")
+		return
+	}
+
 	dataValidationTest := dataValidationTestSuite{}
 
 	minBuff = make([]byte, 1024)

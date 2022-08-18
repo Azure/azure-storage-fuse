@@ -50,7 +50,6 @@ stages:
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
               container: 'test-cnt-ubn-20'
-            
         pool:
           vmImage: $(vmImage)
 

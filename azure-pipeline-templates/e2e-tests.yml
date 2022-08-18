@@ -18,14 +18,15 @@ parameters:
     default: false   
   - name: clone
     type: boolean
-    default: "false"
+    default: false
   - name: quick_test
     type: boolean
-    default: "true"
+    default: true
   - name: artifact_name
     type: string
   - name: verbose_log
     type: boolean
+    default: false
 
 steps:
 
