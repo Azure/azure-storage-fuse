@@ -149,7 +149,6 @@ steps:
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with Key Credentials
         distro_name: ${{ parameters.distro_name }}
-        clone: "true"
         quick_test: ${{ parameters.quick_test }}
         artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_key.txt'
         verbose_log: ${{ parameters.verbose_log }}
@@ -170,7 +169,6 @@ steps:
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with SAS Credentials
         distro_name: ${{ parameters.distro_name }}
-        quick_test: ${{ parameters.quick_test }}
         artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_sas.txt'
         verbose_log: ${{ parameters.verbose_log }}
         mountStep:
@@ -190,7 +188,6 @@ steps:
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with SPN Credentials
         distro_name: ${{ parameters.distro_name }}
-        quick_test: ${{ parameters.quick_test }}
         artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_spn.txt'
         verbose_log: ${{ parameters.verbose_log }}
         mountStep:
@@ -245,7 +242,6 @@ steps:
       account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} LFU policy"
       distro_name: ${{ parameters.distro_name }}
-      quick_test: "true"
       verbose_log: ${{ parameters.verbose_log }}
 
   - template: e2e-tests-spcl.yml
@@ -262,7 +258,6 @@ steps:
       account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} LRU policy no timeout"
       distro_name: ${{ parameters.distro_name }}
-      quick_test: ${{ parameters.quick_test }}
       verbose_log: ${{ parameters.verbose_log }}
 
   - template: e2e-tests-spcl.yml
