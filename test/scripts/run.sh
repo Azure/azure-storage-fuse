@@ -1,4 +1,7 @@
 #!/bin/bash
+
+# To run this script from your workspace execute this command
+#   ./test/scripts/run.sh /mnt/blob_mnt /mnt/blobfusetmp ./config.yaml ./v1.cfg 2&> results.txt
 mntPath=$1
 tmpPath=$2
 v2configPath=$3
