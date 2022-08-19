@@ -45,13 +45,18 @@ stages:
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
               container: 'test-cnt-ubn-18'
+              AgentName: "blobfuse-ubuntu18"
             Ubuntu-20:
               vmImage: 'ubuntu-20.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
               container: 'test-cnt-ubn-20'
+              AgentName: "blobfuse-ubuntu20"
+
         pool:
-          vmImage: $(vmImage)
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
 
         variables:
           - group: NightlyBlobFuse
@@ -136,6 +141,83 @@ stages:
     dependsOn: BuildArtifacts
     condition: succeeded('BuildArtifacts')
     jobs:
+      - job: Set_0
+        timeoutInMinutes: 120
+        strategy:
+          matrix:
+            Ubuntu-22:
+              agentName: "blobfuse-ubuntu22"
+              vmImage: 'Ubuntu-22.04'
+              fuse-version: 'fuse3'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              container: 'test-cnt-ubn-22'
+        pool:
+          vmImage: $(vmImage)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
+          - name: work_dir
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          - name: mount_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmp'
+          - name: temp_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmpcache'
+
+        steps:
+          - checkout: none
+
+          - task: GoTool@0
+            inputs:
+              version: '1.16.2'
+            displayName: "GoTool Setup"
+
+          - script: |
+              git clone https://github.com/Azure/azure-storage-fuse
+            displayName: 'Checkout Code'
+            workingDirectory: $(root_dir)
+
+          - script: |
+              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+            displayName: 'Checkout Branch'
+            workingDirectory: $(root_dir)/azure-storage-fuse
+
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Build Artifacts'
+            inputs:
+              artifactName: 'blobfuse2-temp'
+              downloadPath: $(root_dir)
+              itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.deb
+
+          - script: |
+              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
+            displayName: 'Rename Package'
+            workingDirectory: $(root_dir)/blobfuse2-temp
+
+          - script: |
+              sudo dpkg --info blobfuse2*.deb
+              sudo dpkg -i blobfuse2*.deb
+              sudo apt-get install $(fuse-version) build-essential -y
+            displayName: 'Install Package'
+            workingDirectory: $(Build.ArtifactStagingDirectory)
+
+          - template: 'azure-pipeline-templates/release-distro-tests.yml'
+            parameters:
+              root_dir: $(root_dir)
+              work_dir: $(work_dir)
+              mount_dir: $(mount_dir)
+              temp_dir: $(temp_dir)
+              container: $(container)
+
+          # publishing the artifacts generated
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: 'blobfuse2'
+            displayName: 'Publish Artifacts' 
+
       - job: Set_1
         timeoutInMinutes: 120
         strategy:
@@ -147,6 +229,7 @@ stages:
               fuse-version: 'fuse'
               tags: 'fuse2'
               container: 'test-cnt-ubn-18'
+              AgentName: "blobfuse-ubuntu18"
             Ubuntu-20:
               agentName: "blobfuse-ubuntu20"
               vmImage: 'Ubuntu-20.04'
@@ -154,15 +237,12 @@ stages:
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
               container: 'test-cnt-ubn-20'
-            Ubuntu-22:
-              agentName: "blobfuse-ubuntu22"
-              vmImage: 'Ubuntu-22.04'
-              fuse-version: 'fuse3'
-              fuselib: 'libfuse3-dev'
-              tags: 'fuse3'
-              container: 'test-cnt-ubn-22'
+              AgentName: "blobfuse-ubuntu20"
+
         pool:
-          vmImage: $(vmImage)
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
 
         variables:
           - group: NightlyBlobFuse
