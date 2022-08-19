@@ -352,7 +352,6 @@ func (suite *streamTestSuite) TestStreamOnly() {
 	_, err := suite.stream.OpenFile(openFileOptions)
 	suite.assert.NotEqual(nil, err)
 
-	// append new block and confirm old gets evicted
 	writeFileOptions := internal.WriteFileOptions{
 		Handle: handle,
 		Offset: 1 * MB,
