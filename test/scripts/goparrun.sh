@@ -6,7 +6,7 @@ tmpPath=$2
 config=$3
 outputPath=$4
 
-sudo fusermount -u $mntPath
+sudo fusermount3 -u $mntPath
 rm -rf $mntPath/*
 sudo rm -rf $tmpPath/*
 
@@ -24,7 +24,7 @@ while IFS=, read -r thread count size; do
 	./test/scripts/pread.sh $thread $count $size $mntPath $outputPath $sed_line
 
 	rm -rf $mntPath/*
-	sudo fusermount -u $mntPath
+	sudo fusermount3 -u $mntPath
 
 	(( cnt++ ))
 	(( sed_line++ ))
