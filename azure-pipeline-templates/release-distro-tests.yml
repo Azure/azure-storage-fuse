@@ -35,6 +35,7 @@ steps:
       ACCOUNT_TYPE: 'block'
       ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
       VERBOSE_LOG: false
+      USE_HTTP: false
     continueOnError: false
 
   - script: |
@@ -91,6 +92,7 @@ steps:
       ACCOUNT_TYPE: 'adls'
       ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
       VERBOSE_LOG: false
+      USE_HTTP: false
     continueOnError: false
 
   - script: |

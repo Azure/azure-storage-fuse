@@ -117,6 +117,7 @@ jobs:
           ACCOUNT_TYPE: 'block'
           ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
           VERBOSE_LOG: false
+          USE_HTTP: false
         displayName: 'Create Config File - Block Blob'
         workingDirectory: $(WORK_DIR)
         continueOnError: false
@@ -146,6 +147,7 @@ jobs:
           ACCOUNT_TYPE: 'adls'
           ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
           VERBOSE_LOG: false
+          USE_HTTP: false
         displayName: 'Create Config File - ADLS'
         continueOnError: false
 
@@ -255,6 +257,7 @@ jobs:
           ACCOUNT_TYPE: 'block'
           ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
           VERBOSE_LOG: false
+          USE_HTTP: false
 
       # Component generation code coverage
       - script: |
@@ -420,6 +423,7 @@ jobs:
           ACCOUNT_TYPE: 'block'
           ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
           VERBOSE_LOG: false
+          USE_HTTP: false
 
       # -------------------------------------------------------
       # Coverage report consolidation
