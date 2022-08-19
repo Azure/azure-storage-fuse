@@ -341,12 +341,6 @@ func (rw *ReadWriteCache) Stop() error {
 func (rw *ReadWriteCache) purge(handle *handlemap.Handle, size int64) error {
 	handle.CacheObj.Lock()
 	defer handle.CacheObj.Unlock()
-	// if flush {
-	// 	err := rw.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
-	// 	if err != nil {
-	// 		return err
-	// 	}
-	// }
 	handle.CacheObj.Purge()
 	// if size isn't -1 then we're resizing
 	if size != -1 {
