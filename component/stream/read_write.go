@@ -220,14 +220,19 @@ func (rw *ReadWriteCache) FlushFile(options internal.FlushFileOptions) error {
 
 func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
 	// log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	// try to flush again to make sure it's cleaned up
+	err := rw.FlushFile(internal.FlushFileOptions(options))
+	if err != nil {
+		log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
+		return err
+	}
 	if !rw.StreamOnly && !options.Handle.CacheObj.StreamOnly {
-		err := rw.purge(options.Handle, -1)
+		err = rw.purge(options.Handle, -1)
 		if err != nil {
-			log.Err("Stream::CloseFile : failed to purge handle cache %s [%s]", options.Handle.Path, err.Error())
-			return err
+			log.Err("Stream::CloseFile : error purging file %s [%s]", options.Handle.Path, err.Error())
 		}
 	}
-	err := rw.NextComponent().CloseFile(options)
+	err = rw.NextComponent().CloseFile(options)
 	if err != nil {
 		log.Err("Stream::CloseFile : error closing file %s [%s]", options.Handle.Path, err.Error())
 	}
