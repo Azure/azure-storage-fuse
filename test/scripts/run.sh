@@ -20,7 +20,7 @@ done < <(tail -n +3 ./test/scripts/test_cases.csv)
 sed -i '1s/$/ latest v2 write | latest v2 read | /' $outputPath
 sed -i '2s/$/ -- | -- |/' $outputPath
 
-#./test/scripts/goparrun.sh $mntPath $tmpPath $v2configPath $outputPath
+./test/scripts/goparrun.sh $mntPath $tmpPath $v2configPath $outputPath
 
 # Run v1
 sed -i '1s/$/ v1 write | v1 read | /' $outputPath
