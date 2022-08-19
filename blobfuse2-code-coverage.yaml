@@ -468,6 +468,7 @@ stages:
       - job: Cleanup
         timeoutInMinutes: 300
         strategy:
+          matrix:
             Ubuntu-20:
               AgentName: 'blobfuse-ubuntu20'
               imageName: 'ubuntu-20.04'
