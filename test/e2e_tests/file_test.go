@@ -51,14 +51,12 @@ import (
 
 var fileTestPathPtr string
 var fileTestAdlsPtr string
-var fileTestSasPtr string
 var fileTestGitClonePtr string
 
 type fileTestSuite struct {
 	suite.Suite
 	testPath string
 	adlsTest bool
-	sasTest  bool
 	minBuff  []byte
 	medBuff  []byte
 	hugeBuff []byte
@@ -77,7 +75,6 @@ func getFileTestFlag(name string) string {
 func initFileFlags() {
 	fileTestPathPtr = getFileTestFlag("mnt-path")
 	fileTestAdlsPtr = getFileTestFlag("adls")
-	fileTestSasPtr = getFileTestFlag("sas")
 	fileTestGitClonePtr = getFileTestFlag("clone")
 }
 
@@ -562,11 +559,6 @@ func TestFileTestSuite(t *testing.T) {
 		fmt.Println("BLOCK Blob Testing...")
 	}
 
-	if fileTestSasPtr == "true" || fileTestSasPtr == "True" {
-		fmt.Println("ADLS Testing...")
-		fileTest.sasTest = true
-	}
-
 	// Sanity check in the off chance the same random name was generated twice and was still around somehow
 	err := os.RemoveAll(fileTest.testPath)
 	if err != nil {
@@ -590,6 +582,5 @@ func TestFileTestSuite(t *testing.T) {
 func init() {
 	regFileTestFlag(&fileTestPathPtr, "mnt-path", "", "Mount Path of Container")
 	regFileTestFlag(&fileTestAdlsPtr, "adls", "", "Account is ADLS or not")
-	regFileTestFlag(&fileTestSasPtr, "sas", "", "Auth is SAS or not")
-	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enabled or not")
+	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enable or not")
 }

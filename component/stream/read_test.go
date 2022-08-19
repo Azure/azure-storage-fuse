@@ -328,7 +328,7 @@ func (suite *streamTestSuite) TestStreamOnlyError() {
 func (suite *streamTestSuite) TestCacheOnOpenFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 64\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 3\n"
 	suite.setupTestHelper(config, true)
 	handle := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 
@@ -345,7 +345,7 @@ func (suite *streamTestSuite) TestCacheOnOpenFile() {
 func (suite *streamTestSuite) TestCacheOnOpenFileError() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 64\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 3\n"
 	suite.setupTestHelper(config, true)
 	handle := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 

@@ -49,10 +49,16 @@ parameters:
     type: boolean
   - name: stream_config
     type: string
+  - name: test_azurite
+    type: boolean
+    default: false
   - name: sas_credential_config
     type: string
   - name: spn_credential_config
     type: string
+  - name: azurite_config
+    type: string
+    default: ""
   - name: distro_name
     type: string
   - name: quick_test
@@ -74,6 +80,7 @@ steps:
       NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
       ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
+      USE_HTTP: false
     condition: ${{ parameters.test_key_credential }}
     continueOnError: false
       
@@ -133,6 +140,25 @@ steps:
   - script: cat ${{ parameters.spn_credential_config }}
     displayName: Print SPN config file
 
+  # Create azurite config file if we need to test it
+  - script: |
+      cd ${{ parameters.working_dir }}
+      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.azurite_config }}
+    displayName: Create Key Config File
+    # Note: It is fine to hardcode these credentials since they are publicly documented fake credentials for Azurite
+    env:
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      NIGHTLY_STO_ACC_NAME: 'devstoreaccount1'
+      NIGHTLY_STO_ACC_KEY: 'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=='
+      ACCOUNT_ENDPOINT: 'http://127.0.0.1:10000/devstoreaccount1'
+      USE_HTTP: 'true'
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    condition: ${{ parameters.test_azurite }}
+    continueOnError: false
+      
+  - script: cat ${{ parameters.azurite_config }}
+    displayName: Print Azurite config file
+
 #--------------------------------------- Tests: End to end tests with different Storage configurations ------------------------------------------
 
   - ${{ if eq(parameters.test_key_credential, true) }}:
@@ -144,7 +170,6 @@ steps:
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with Key Credentials
         distro_name: ${{ parameters.distro_name }}
-        clone: "true"
         quick_test: ${{ parameters.quick_test }}
         artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_key.txt'
         verbose_log: ${{ parameters.verbose_log }}
@@ -185,7 +210,6 @@ steps:
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with SAS Credentials
         distro_name: ${{ parameters.distro_name }}
-        quick_test: ${{ parameters.quick_test }}
         artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_sas.txt'
         verbose_log: ${{ parameters.verbose_log }}
         mountStep:
@@ -205,7 +229,6 @@ steps:
         adls: ${{ parameters.adls }}
         idstring: ${{ parameters.service }} with SPN Credentials
         distro_name: ${{ parameters.distro_name }}
-        quick_test: ${{ parameters.quick_test }}
         artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_spn.txt'
         verbose_log: ${{ parameters.verbose_log }}
         mountStep:
@@ -213,6 +236,34 @@ steps:
             ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.spn_credential_config }}
             --default-working-dir=${{ parameters.working_dir }}
           displayName: 'E2E Test: Mount with SPN Credential Configuration'
+          timeoutInMinutes: 3
+          continueOnError: false
+
+  - ${{ if eq(parameters.test_azurite, true) }}:
+    - bash: |
+        sudo apt-get install azure-cli -y
+        sudo npm install -g azurite
+        sudo mkdir azurite
+        sudo azurite --silent --location azurite --debug azurite\debug.log &
+        az storage container create -n ${{ parameters.container }} --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
+      displayName: 'Install and Run Azurite'
+
+    - template: e2e-tests.yml
+      parameters: 
+        working_dir: ${{ parameters.working_dir }}
+        mount_dir: ${{ parameters.mount_dir }}
+        temp_dir: ${{ parameters.temp_dir }}
+        adls: ${{ parameters.adls }}
+        idstring: ${{ parameters.service }} with Azurite
+        distro_name: ${{ parameters.distro_name }}
+        quick_test: ${{ parameters.quick_test }}
+        artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_azurite.txt'
+        verbose_log: ${{ parameters.verbose_log }}
+        mountStep:
+          script: >
+            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.azurite_config }}
+            --default-working-dir=${{ parameters.working_dir }}
+          displayName: 'E2E Test: Mount with Azurite Configuration'
           timeoutInMinutes: 3
           continueOnError: false
       
@@ -232,7 +283,6 @@ steps:
       account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} LFU policy"
       distro_name: ${{ parameters.distro_name }}
-      quick_test: "true"
       verbose_log: ${{ parameters.verbose_log }}
 
   - template: e2e-tests-spcl.yml
@@ -249,7 +299,6 @@ steps:
       account_endpoint: ${{ parameters.account_endpoint }}
       idstring: "${{ parameters.service }} LRU policy no timeout"
       distro_name: ${{ parameters.distro_name }}
-      quick_test: ${{ parameters.quick_test }}
       verbose_log: ${{ parameters.verbose_log }}
 
   - template: e2e-tests-spcl.yml
