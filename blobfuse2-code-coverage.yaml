@@ -27,9 +27,7 @@ jobs:
           tags: 'fuse3'          
 
     pool:
-      name: "blobfuse-ubuntu-pool"
-      demands:
-        - ImageOverride -equals $(AgentName)
+      vmImage: $(imageName)
 
     variables:
       - group: NightlyBlobFuse

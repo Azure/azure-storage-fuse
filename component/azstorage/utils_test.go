@@ -38,6 +38,8 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -179,6 +181,8 @@ func (s *utilsTestSuite) TestGetFileMode() {
 		{"rw-rw-rw-", 0x1b6, ""},
 		{"rwxrwxrwx+", 0x1ff, ""},
 	}
+
+	_ = log.SetDefaultLogger("silent", common.LogConfig{})
 
 	for _, i := range inputs {
 		s.Run(i.val, func() {
