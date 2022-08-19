@@ -11,23 +11,25 @@ jobs:
     timeoutInMinutes: 300
     strategy:
       matrix:
-        Ubuntu-20:
-          AgentName: 'blobfuse-ubuntu20'
-          imageName: 'ubuntu-20.04'
-          containerName: 'test-cnt-ubn-20'
+        Ubuntu-18:
+          AgentName: 'blobfuse-ubuntu18'
+          imageName: 'ubuntu-18.04'
+          containerName: 'test-cnt-ubn-18'
           fuselib: 'libfuse-dev'
           fuselib2: 'fuse'
           tags: 'fuse2'
         Ubuntu-22:
-          AgentName: 'blobfuse-ubuntu22'
-          imageName: 'ubuntu-22.04'
-          containerName: 'test-cnt-ubn-22'
+          AgentName: 'blobfuse-ubuntu20'
+          imageName: 'ubuntu-20.04'
+          containerName: 'test-cnt-ubn-20'
           fuselib: 'libfuse3-dev'
           fuselib2: 'fuse3'
           tags: 'fuse3'          
 
     pool:
-      vmImage: $(imageName)
+      name: "blobfuse-ubuntu-pool"
+      demands:
+        - ImageOverride -equals $(AgentName)
 
     variables:
       - group: NightlyBlobFuse
