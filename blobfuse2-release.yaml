@@ -223,7 +223,6 @@ stages:
         strategy:
           matrix:
             Ubuntu-18:
-              agentName: "blobfuse-ubuntu18"
               vmImage: 'Ubuntu-18.04'
               fuselib: 'libfuse-dev'
               fuse-version: 'fuse'
@@ -231,7 +230,6 @@ stages:
               container: 'test-cnt-ubn-18'
               AgentName: "blobfuse-ubuntu18"
             Ubuntu-20:
-              agentName: "blobfuse-ubuntu20"
               vmImage: 'Ubuntu-20.04'
               fuse-version: 'fuse3'
               fuselib: 'libfuse3-dev'
