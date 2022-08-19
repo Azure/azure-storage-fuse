@@ -58,8 +58,6 @@ const (
 
 	// max number of ranges = max file size / max size for one range
 	FileShareMaxRanges = FileMaxSizeInBytes / azfile.FileMaxUploadRangeBytes
-
-	tmpFileCreationSizeInBytes = 1 * 1024 * 1024 * 1024 // 1GB
 )
 
 type FileShare struct {
@@ -99,7 +97,7 @@ func (fs *FileShare) NewCredentialKey(key, value string) (err error) {
 		// Update the service url
 		fs.Service = azfile.NewServiceURL(*fs.Endpoint, fs.Pipeline)
 
-		// Update the container url
+		// Update the share url
 		fs.Share = fs.Service.NewShareURL(fs.Config.container)
 	}
 	return nil
@@ -146,14 +144,14 @@ func (fs *FileShare) SetupPipeline() error {
 	// Get the endpoint url from the credential
 	fs.Endpoint, err = url.Parse(fs.Auth.getEndpoint())
 	if err != nil {
-		log.Err("BlockBlob::SetupPipeline : Failed to form base end point url (%s)", err.Error())
+		log.Err("FileShare::SetupPipeline : Failed to form base end point url (%s)", err.Error())
 		return errors.New("failed to form base end point url")
 	}
 
 	// Create the service url
 	fs.Service = azfile.NewServiceURL(*fs.Endpoint, fs.Pipeline)
 
-	// Create the container url
+	// Create the share url
 	fs.Share = fs.Service.NewShareURL(fs.Config.container)
 
 	return nil
@@ -168,7 +166,7 @@ func (fs *FileShare) TestPipeline() error {
 	}
 
 	if fs.Share.String() == "" {
-		log.Err("FileShare::TestPipeline : Container URL is not built, check your credentials")
+		log.Err("FileShare::TestPipeline : Share URL is not built, check your credentials")
 		return nil
 	}
 
@@ -182,7 +180,7 @@ func (fs *FileShare) TestPipeline() error {
 	}
 
 	if listFile == nil {
-		log.Info("FileShare::TestPipeline : Container is empty")
+		log.Info("FileShare::TestPipeline : Share is empty")
 	}
 	return nil
 }
@@ -232,7 +230,7 @@ func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
 	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
 
-	_, err := fileURL.Create(context.Background(), tmpFileCreationSizeInBytes, azfile.FileHTTPHeaders{
+	_, err := fileURL.Create(context.Background(), 0, azfile.FileHTTPHeaders{
 		ContentType: getContentType(name),
 	},
 		nil)
@@ -293,7 +291,7 @@ func (fs *FileShare) DeleteFile(name string) (err error) {
 	return nil
 }
 
-// DeleteDirectory : Delete a virtual directory in the container/virtual directory
+// DeleteDirectory : Delete a virtual directory in the share
 func (fs *FileShare) DeleteDirectory(name string) (err error) {
 	log.Trace("FileShare::DeleteDirectory : name %s", name)
 
@@ -681,8 +679,36 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 	log.Trace("FileShare::WriteFromFile : name %s", name)
 	//defer exectime.StatTimeCurrentBlock("WriteFromFile::WriteFromFile")()
 
+	var length int64
+	if info, err := fi.Stat(); err == nil {
+		length = info.Size()
+	} else {
+		log.Err("FileShare::Write : Failed to get local file size %s", err.Error())
+		return err
+	}
+
+	fileOffsets, err := fs.GetFileBlockOffsets(name)
+	if err != nil {
+		log.Err("FileShare::Write : Failed to get file range offsets %s", err.Error())
+		return err
+	}
+
+	_, _, exceedsFileBlocks, _ := fileOffsets.FindBlocksToModify(0, length) // **********but this method only looks for true file size rather than file capacity
+	if exceedsFileBlocks {
+		err = fs.TruncateFile(name, length)
+		if err != nil {
+			log.Err("FileShare::Write : Failed to truncate Azure file %s", err.Error())
+			return err
+		}
+	}
+
 	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	exists := fs.Exists(filepath.Join(fs.Config.prefixPath, name))
+	if !exists {
+		log.Err("FileShare::WriteFromFile : Azure file %s does not exist (%s)", name, syscall.ENOENT)
+		return syscall.ENOENT
+	}
 
 	defer log.TimeTrack(time.Now(), "FileShare::WriteFromFile", name)
 	var rangeSize int64
@@ -705,7 +731,7 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 		}
 	}
 
-	err := azfile.UploadFileToAzureFile(context.Background(), fi, fileURL, azfile.UploadToAzureFileOptions{
+	err = azfile.UploadFileToAzureFile(context.Background(), fi, fileURL, azfile.UploadToAzureFileOptions{
 		RangeSize:   rangeSize,
 		Parallelism: fs.Config.maxConcurrency,
 		Metadata:    metadata,
@@ -717,10 +743,10 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 	if err != nil {
 		serr := storeFileErrToErr(err)
 		if serr == ErrFileAlreadyExists {
-			log.Err("BlockBlob::WriteFromFile : %s already exists (%s)", name, err.Error())
+			log.Err("FileShare::WriteFromFile : %s already exists (%s)", name, err.Error())
 			return syscall.EIO
 		} else {
-			log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s (%s)", name, err.Error())
+			log.Err("FileShare::WriteFromFile : Failed to upload file %s (%s)", name, err.Error())
 		}
 		return err
 	}
@@ -732,11 +758,28 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 func (fs *FileShare) WriteFromBuffer(name string, metadata map[string]string, data []byte) error {
 	log.Trace("FileShare::WriteFromBuffer : name %s", name)
 
+	length := int64(len(data))
+
+	fileOffsets, err := fs.GetFileBlockOffsets(name)
+	if err != nil {
+		log.Err("FileShare::Write : Failed to get file range offsets %s", err.Error())
+		return err
+	}
+
+	_, _, exceedsFileBlocks, _ := fileOffsets.FindBlocksToModify(0, length) // **********but this method only looks for true file size rather than file capacity
+	if exceedsFileBlocks {
+		err = fs.TruncateFile(name, length)
+		if err != nil {
+			log.Err("FileShare::Write : Failed to truncate Azure file %s", err.Error())
+			return err
+		}
+	}
+
 	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
 
 	defer log.TimeTrack(time.Now(), "FileShare::WriteFromBuffer", name)
-	err := azfile.UploadBufferToAzureFile(context.Background(), data, fileURL, azfile.UploadToAzureFileOptions{
+	err = azfile.UploadBufferToAzureFile(context.Background(), data, fileURL, azfile.UploadToAzureFileOptions{
 		RangeSize:   fs.Config.blockSize,
 		Parallelism: fs.Config.maxConcurrency,
 		Metadata:    metadata,
@@ -818,7 +861,7 @@ func (fs *FileShare) Write(options internal.WriteFileOptions) (err error) {
 	name := options.Handle.Path
 	offset := options.Offset
 	data := options.Data
-	// length := int64(len(options.Data))
+	length := int64(len(options.Data))
 
 	defer log.TimeTrack(time.Now(), "FileShare::Write", options.Handle.Path)
 	log.Trace("FileShare::Write : name %s offset %v", name, offset)
@@ -827,22 +870,32 @@ func (fs *FileShare) Write(options internal.WriteFileOptions) (err error) {
 		return nil
 	}
 
+	fileOffsets, err := fs.GetFileBlockOffsets(name)
+	if err != nil {
+		log.Err("FileShare::Write : Failed to get file range offsets %s", err.Error())
+		return err
+	}
+
+	_, _, exceedsFileBlocks, _ := fileOffsets.FindBlocksToModify(offset, length) // **********but this method only looks for true file size rather than file capacity
+	if exceedsFileBlocks {
+		err = fs.TruncateFile(name, offset+length)
+		if err != nil {
+			log.Err("FileShare::Write : Failed to truncate Azure file %s", err.Error())
+			return err
+		}
+	}
+
 	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
 
-	// fileOffsets, err := fs.GetFileBlockOffsets(name)
+	// attr, err := fs.GetAttr(name)
 	// if err != nil {
-	// 	log.Err("FileShare::Write : Failed to get file range offsets %s", err.Error())
-	// 	return err
-	// }
-
-	// _, _, exceedsFileBlocks, _ := fileOffsets.FindBlocksToModify(offset, length) // **********but this method only looks for true file size rather than file capacity
-	// if exceedsFileBlocks {
-	// 	err = fs.TruncateFile(name, offset+length)
-	// 	if err != nil {
-	// 		log.Err("FileShare::Write : Failed to truncate Azure file %s", err.Error())
-	// 		return err
+	// 	if (attr.Size + length < ??) {
+	// 		fs.Truncate(name, attr.Size + length)
 	// 	}
+	// } else {
+	// 	log.Err("FileShare::GetAttr : Failed to get file/directory properties for %s (%s)", name, err.Error())
+	// 	return err
 	// }
 
 	_, err = fileURL.UploadRange(context.Background(), options.Offset, bytes.NewReader(data), nil)

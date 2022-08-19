@@ -151,6 +151,14 @@ func (s *fileTestSuite) cleanupTest() {
 // 	}
 // }
 
+func (s *fileTestSuite) TestInvalidRangeSize() {
+	defer s.cleanupTest()
+	configuration := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  block-size-mb: 5\n account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+	_, err := newTestAzStorage(configuration)
+	s.assert.NotNil(err)
+}
+
 func (s *fileTestSuite) TestDefault() {
 	defer s.cleanupTest()
 	s.assert.Equal(storageTestConfigurationParameters.FileAccount, s.az.stConfig.authConfig.AccountName)
@@ -177,14 +185,6 @@ func (s *fileTestSuite) TestDefault() {
 	s.assert.EqualValues(1, s.az.stConfig.backoffTime)
 	s.assert.EqualValues(3, s.az.stConfig.maxRetryDelay)
 	s.assert.Empty(s.az.stConfig.proxyAddress)
-}
-
-func (s *fileTestSuite) TestInvalidRangeSize() {
-	defer s.cleanupTest()
-	configuration := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: block\n  block-size-mb: 5\n account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-		storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
-	_, err := newTestAzStorage(configuration)
-	s.assert.NotNil(err)
 }
 
 func (s *fileTestSuite) TestListShares() {
@@ -817,6 +817,28 @@ func (s *fileTestSuite) TestRenameDirSubDirPrefixPath() {
 	s.assert.Nil(err)
 }
 
+func (s *fileTestSuite) TestRenameDirTargetExistsError() {
+	defer s.cleanupTest()
+	// Setup
+	src := generateDirectoryName()
+	dst := generateDirectoryName()
+
+	s.az.CreateDir(internal.CreateDirOptions{Name: dst})
+
+	err := s.az.RenameDir(internal.RenameDirOptions{Src: src, Dst: dst})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ENOENT, storeFileErrToErr(err))
+
+	// Only target directory should be in the account
+	dir := s.shareUrl.NewDirectoryURL(dst)
+	_, err = dir.GetProperties(ctx)
+	s.assert.Nil(err)
+
+	dir = s.shareUrl.NewDirectoryURL(src)
+	_, err = dir.GetProperties(ctx)
+	s.assert.NotNil(err)
+}
+
 func (s *fileTestSuite) TestRenameDirError() {
 	defer s.cleanupTest()
 	// Setup
@@ -857,18 +879,18 @@ func (s *fileTestSuite) TestCreateFile() {
 	s.assert.Empty(props.NewMetadata())
 }
 
-// func (s *fileTestSuite) TestOpenFile() {
-// 	defer s.cleanupTest()
-// 	// Setup
-// 	name := generateFileName()
-// 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+func (s *fileTestSuite) TestOpenFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 
-// 	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
-// 	s.assert.Nil(err)
-// 	s.assert.NotNil(h)
-// 	s.assert.EqualValues(name, h.Path)
-// 	// s.assert.EqualValues(0, h.Size)
-// }
+	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(h)
+	s.assert.EqualValues(name, h.Path)
+	s.assert.EqualValues(0, h.Size)
+}
 
 func (s *fileTestSuite) TestOpenFileError() {
 	defer s.cleanupTest()
@@ -881,20 +903,20 @@ func (s *fileTestSuite) TestOpenFileError() {
 	s.assert.Nil(h)
 }
 
-// func (s *fileTestSuite) TestOpenFileSize() {
-// 	defer s.cleanupTest()
-// 	// Setup
-// 	name := generateFileName()
-// 	size := 10
-// 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
-// 	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(size)})
+func (s *fileTestSuite) TestOpenFileSize() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	size := 10
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(size)})
 
-// 	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
-// 	s.assert.Nil(err)
-// 	s.assert.NotNil(h)
-// 	s.assert.EqualValues(name, h.Path)
-// 	s.assert.EqualValues(size, h.Size)
-// }
+	h, err := s.az.OpenFile(internal.OpenFileOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(h)
+	s.assert.EqualValues(name, h.Path)
+	s.assert.EqualValues(size, h.Size)
+}
 
 func (s *fileTestSuite) TestCloseFile() {
 	defer s.cleanupTest()
@@ -1003,6 +1025,29 @@ func (s *fileTestSuite) TestRenameFileMetadataConservation() {
 	s.assert.EqualValues("bar", destMeta["foo"])
 }
 
+func (s *fileTestSuite) TestRenameFileTargetExistsError() {
+	defer s.cleanupTest()
+	// Setup
+	src := generateFileName()
+	dst := generateFileName()
+
+	s.az.CreateFile(internal.CreateFileOptions{Name: dst})
+
+	err := s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ENOENT, err)
+
+	// Only destination should be in the account
+	fileName, dirPath := getFileAndDirFromPath(src)
+	source := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	_, err = source.GetProperties(ctx)
+	s.assert.NotNil(err)
+	fileName, dirPath = getFileAndDirFromPath(dst)
+	destination := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	_, err = destination.GetProperties(ctx)
+	s.assert.Nil(err)
+}
+
 func (s *fileTestSuite) TestRenameFileError() {
 	defer s.cleanupTest()
 	// Setup
@@ -1024,21 +1069,31 @@ func (s *fileTestSuite) TestRenameFileError() {
 	s.assert.NotNil(err)
 }
 
-// func (s *fileTestSuite) TestReadFile() {
-// 	defer s.cleanupTest()
-// 	// Setup
-// 	name := generateFileName()
-// 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-// 	testData := "test data"
-// 	data := []byte(testData)
-// 	print(data)
-// 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-// 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
+func (s *fileTestSuite) TestReadFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
-// 	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
-// 	s.assert.Nil(err)
-// 	s.assert.EqualValues(testData, output)
-// }
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	s.assert.EqualValues(testData, output)
+}
+
+func (s *fileTestSuite) TestReadFileEmpty() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	output, err := s.az.ReadFile(internal.ReadFileOptions{Handle: h})
+	s.assert.Nil(err)
+	s.assert.EqualValues("", output)
+}
 
 func (s *fileTestSuite) TestReadFileError() {
 	defer s.cleanupTest()
@@ -1051,39 +1106,39 @@ func (s *fileTestSuite) TestReadFileError() {
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
-// func (s *fileTestSuite) TestReadInBuffer() {
-// 	defer s.cleanupTest()
-// 	// Setup
-// 	name := generateFileName()
-// 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-// 	testData := "test data"
-// 	data := []byte(testData)
-// 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-// 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
+func (s *fileTestSuite) TestReadInBuffer() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
-// 	output := make([]byte, 5)
-// 	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
-// 	s.assert.Nil(err)
-// 	s.assert.EqualValues(5, len)
-// 	s.assert.EqualValues(testData[:5], output)
-// }
+	output := make([]byte, 9)
+	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	s.assert.Nil(err)
+	s.assert.EqualValues(9, len)
+	s.assert.EqualValues(testData[:9], output)
+}
 
-// func (s *fileTestSuite) TestReadInBufferLargeBuffer() {
-// 	defer s.cleanupTest()
-// 	// Setup
-// 	name := generateFileName()
-// 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-// 	testData := "test data"
-// 	data := []byte(testData)
-// 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
-// 	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
+func (s *fileTestSuite) TestReadInBufferLargeBuffer() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+	h, _ = s.az.OpenFile(internal.OpenFileOptions{Name: name})
 
-// 	output := make([]byte, 1000) // Testing that passing in a super large buffer will still work
-// 	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
-// 	s.assert.Nil(err)
-// 	s.assert.EqualValues(h.Size, len)
-// 	s.assert.EqualValues(testData, output[:h.Size])
-// }
+	output := make([]byte, 1000) // Testing that passing in a super large buffer will still work
+	len, err := s.az.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: output})
+	s.assert.Nil(err)
+	s.assert.EqualValues(h.Size, len)
+	s.assert.EqualValues(testData, output[:h.Size])
+}
 
 func (s *fileTestSuite) TestReadInBufferEmpty() {
 	defer s.cleanupTest()
@@ -1355,6 +1410,7 @@ func (s *fileTestSuite) TestCopyToFileError() {
 	s.assert.NotNil(err)
 }
 
+// Upload existing, nonempty local file to existing Azure file
 func (s *fileTestSuite) TestCopyFromFile() {
 	defer s.cleanupTest()
 	// Setup
@@ -1368,7 +1424,6 @@ func (s *fileTestSuite) TestCopyFromFile() {
 	f.Write(data)
 
 	err := s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f})
-
 	s.assert.Nil(err)
 
 	// File should have updated data
@@ -1378,6 +1433,59 @@ func (s *fileTestSuite) TestCopyFromFile() {
 	s.assert.Nil(err)
 	output, _ := ioutil.ReadAll(resp.Body(azfile.RetryReaderOptions{}))
 	s.assert.EqualValues(testData, output)
+}
+
+// Upload existing, empty local file to existing Azure file
+func (s *fileTestSuite) TestCopyFromFileEmpty() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	homeDir, _ := os.UserHomeDir()
+	f, _ := ioutil.TempFile(homeDir, name+".tmp")
+	defer os.Remove(f.Name())
+
+	err := s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f})
+	s.assert.Nil(err)
+
+	// File should have no data
+	fileName, dirPath := getFileAndDirFromPath(name)
+	file := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
+	resp, err := file.Download(ctx, 0, 0, false)
+	s.assert.Nil(err)
+	output, _ := ioutil.ReadAll(resp.Body(azfile.RetryReaderOptions{}))
+	s.assert.EqualValues("", output)
+}
+
+// Upload existing, empty local file to nonexistent Azure file
+func (s *fileTestSuite) TestCopyFromFileEmptyError() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	homeDir, _ := os.UserHomeDir()
+	f, _ := ioutil.TempFile(homeDir, name+".tmp")
+	defer os.Remove(f.Name())
+
+	err := s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ENOENT, storeFileErrToErr(err))
+}
+
+// Upload existing, nonempty local file to nonexistent Azure file
+func (s *fileTestSuite) TestCopyFromFileError() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	testData := "test data"
+	data := []byte(testData)
+	homeDir, _ := os.UserHomeDir()
+	f, _ := ioutil.TempFile(homeDir, name+".tmp")
+	defer os.Remove(f.Name())
+	f.Write(data)
+
+	err := s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f})
+	s.assert.NotNil(err)
+	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
 func (s *fileTestSuite) TestCreateLink() {
@@ -1473,22 +1581,22 @@ func (s *fileTestSuite) TestGetAttrLink() {
 	s.assert.EqualValues("true", props.Metadata[symlinkKey])
 }
 
-// func (s *fileTestSuite) TestGetAttrFileSize() {
-// 	defer s.cleanupTest()
-// 	// Setup
-// 	name := generateFileName()
-// 	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
-// 	testData := "test data"
-// 	data := []byte(testData)
-// 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+func (s *fileTestSuite) TestGetAttrFileSize() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
 
-// 	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
-// 	s.assert.Nil(err)
-// 	s.assert.NotNil(props)
-// 	s.assert.False(props.IsDir())
-// 	s.assert.False(props.IsSymlink())
-// 	s.assert.EqualValues(len(testData), props.Size)
-// }
+	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(props)
+	s.assert.False(props.IsDir())
+	s.assert.False(props.IsSymlink())
+	s.assert.EqualValues(len(testData), props.Size)
+}
 
 func (s *fileTestSuite) TestGetAttrFileTime() {
 	defer s.cleanupTest()
@@ -1567,7 +1675,7 @@ func (s *fileTestSuite) TestChownIgnore() {
 	// Setup
 	s.tearDownTestHelper(false) // Don't delete the generated container.
 
-	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: false\n",
 		storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
 	s.setupTestHelper(config, s.container, true)
 	name := generateFileName()
@@ -1653,6 +1761,23 @@ func (s *fileTestSuite) TestBlockSize() {
 	filerng, err = fs.calculateRangeSize(name, (5 * 1024 * 1024 * 1024 * 1024))
 	s.assert.NotNil(err)
 	s.assert.EqualValues(filerng, 0)
+}
+
+func (s *fileTestSuite) TestGetFileBlockOffsetsRangedFile() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "testdatates1dat1tes2dat2tes3dat3tes4dat4"
+	data := []byte(testData)
+
+	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+
+	// GetFileBlockOffsets
+	offsetList, err := s.az.GetFileBlockOffsets(internal.GetFileBlockOffsetsOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.Len(offsetList.BlockList, 1)
+	s.assert.Zero(offsetList.Flags)
 }
 
 func TestFileShare(t *testing.T) {
