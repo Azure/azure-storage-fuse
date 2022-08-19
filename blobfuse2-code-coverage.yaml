@@ -522,7 +522,7 @@ stages:
               command: 'test'
               arguments: '-timeout 120m -v test/accoutcleanup/accountcleanup_test.go'
               workingDirectory: ${{ parameters.working_dir }}
-            displayName: 'Block Blob clenaup'
+            displayName: 'Block Blob cleanup'
             timeoutInMinutes: 120
             continueOnError: true
             env:
@@ -535,7 +535,7 @@ stages:
               command: 'test'
               arguments: '-timeout 120m -v test/accoutcleanup/accountcleanup_test.go'
               workingDirectory: ${{ parameters.working_dir }}
-            displayName: 'Gen2 clenaup'
+            displayName: 'Gen2 cleanup'
             timeoutInMinutes: 120
             continueOnError: true
             env:
