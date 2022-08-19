@@ -28,7 +28,7 @@ sed -i '2s/$/ -- | -- |/' $outputPath
 # Calculate the % difference
 tail -n +3 $outputPath > temp.out
 
-sed -i '1s/$/ write improve | read improve | /' $outputPath
+sed -i '1s/$/ write % improve | read % improve | /' $outputPath
 sed -i '2s/$/ -- | -- |/' $outputPath
 count=0
 sed_line=3
