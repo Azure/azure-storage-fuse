@@ -18,7 +18,7 @@ jobs:
           fuselib: 'libfuse-dev'
           fuselib2: 'fuse'
           tags: 'fuse2'
-        Ubuntu-22:
+        Ubuntu-20:
           AgentName: 'blobfuse-ubuntu20'
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
