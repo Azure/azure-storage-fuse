@@ -346,10 +346,7 @@ func (fs *FileShare) RenameFile(source string, target string) error {
 	log.Trace("FileShare::RenameFile : %s -> %s", source, target)
 
 	srcFileName, srcDirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, source))
-	tgtFileName, tgtDirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, target)) // need if renaming file indirectly through RenameDirectory(), where dir rather than filename needs to be changed
-
 	srcFileURL := fs.Share.NewDirectoryURL(srcDirPath).NewFileURL(srcFileName)
-	tgtFileURL := fs.Share.NewDirectoryURL(tgtDirPath).NewFileURL(tgtFileName)
 
 	prop, err := srcFileURL.GetProperties(context.Background())
 	if err != nil {
@@ -363,26 +360,11 @@ func (fs *FileShare) RenameFile(source string, target string) error {
 		}
 	}
 
-	startCopy, err := tgtFileURL.StartCopy(context.Background(), srcFileURL.URL(), prop.NewMetadata())
+	contentType := prop.ContentType()
+	replaceIfExists := true
+	_, err = srcFileURL.Rename(context.Background(), filepath.Join(fs.Config.prefixPath, target), &replaceIfExists, prop.NewMetadata(), &contentType)
 
-	if err != nil {
-		log.Err("FileShare::RenameFile : Failed to start copy of file %s (%s)", source, err.Error())
-		return err
-	}
-
-	copyStatus := startCopy.CopyStatus()
-	for copyStatus == azfile.CopyStatusPending {
-		time.Sleep(time.Second * 1)
-		prop, err = tgtFileURL.GetProperties(context.Background())
-		if err != nil {
-			log.Err("FileShare::RenameFile : CopyStats : Failed to get file properties for %s (%s)", source, err.Error())
-		}
-		copyStatus = prop.CopyStatus()
-	}
-	log.Trace("FileShare::RenameFile : %s -> %s done", source, target)
-
-	// Copy of the file is done so now delete the older file
-	return fs.DeleteFile(source)
+	return err
 }
 
 // RenameDirectory : Rename a directory
@@ -390,44 +372,22 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 	log.Trace("FileShare::RenameDirectory : %s -> %s", source, target)
 
 	srcDir := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, source))
-	_, err := srcDir.GetProperties(context.Background())
+	prop, err := srcDir.GetProperties(context.Background())
 	if err != nil {
-		log.Err("FileShare::RenameDirectory : Source directory does not exist %s", err.Error())
-		return err
-	}
-
-	fs.CreateDirectory(target)
-
-	for marker := (azfile.Marker{}); marker.NotDone(); {
-		listFile, err := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, source)).ListFilesAndDirectoriesSegment(context.Background(), marker,
-			azfile.ListFilesAndDirectoriesOptions{
-				MaxResults: common.MaxDirListCount,
-			})
-		if err != nil {
-			log.Err("FileShare::RenameDirectory : Failed to get list of files and directories %s", err.Error())
+		serr := storeFileErrToErr(err)
+		if serr == ErrFileNotFound {
+			log.Err("FileShare::RenameDirectory : %s does not exist", source)
+			return err
+		} else {
+			log.Err("FileShare::RenameDirectory : Failed to get directory properties for %s (%s)", source, err.Error())
 			return err
 		}
-		marker = listFile.NextMarker
-
-		// Process the files returned in this result segment (if the segment is empty, the loop body won't execute)
-		for _, fileInfo := range listFile.FileItems {
-			err = fs.RenameFile(filepath.Join(source, fileInfo.Name), filepath.Join(target, fileInfo.Name))
-			if err != nil {
-				log.Err("FileShare::RenameDirectory : Failed to move files to new directory %s", err.Error())
-				return err
-			}
-		}
-
-		for _, dirInfo := range listFile.DirectoryItems {
-			err = fs.RenameDirectory(filepath.Join(source, dirInfo.Name), filepath.Join(target, dirInfo.Name))
-			if err != nil {
-				log.Err("FileShare::RenameDirectory : Failed to move subdirectories to new directory  %s", err.Error())
-				return err
-			}
-		}
 	}
 
-	return fs.DeleteDirectory(source)
+	replaceIfExists := true
+	_, err = srcDir.Rename(context.Background(), filepath.Join(fs.Config.prefixPath, target), &replaceIfExists, prop.NewMetadata())
+
+	return err
 }
 
 // GetAttr : Retrieve attributes of a file or directory
@@ -679,36 +639,8 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 	log.Trace("FileShare::WriteFromFile : name %s", name)
 	//defer exectime.StatTimeCurrentBlock("WriteFromFile::WriteFromFile")()
 
-	var length int64
-	if info, err := fi.Stat(); err == nil {
-		length = info.Size()
-	} else {
-		log.Err("FileShare::Write : Failed to get local file size %s", err.Error())
-		return err
-	}
-
-	fileOffsets, err := fs.GetFileBlockOffsets(name)
-	if err != nil {
-		log.Err("FileShare::Write : Failed to get file range offsets %s", err.Error())
-		return err
-	}
-
-	_, _, exceedsFileBlocks, _ := fileOffsets.FindBlocksToModify(0, length) // **********but this method only looks for true file size rather than file capacity
-	if exceedsFileBlocks {
-		err = fs.TruncateFile(name, length)
-		if err != nil {
-			log.Err("FileShare::Write : Failed to truncate Azure file %s", err.Error())
-			return err
-		}
-	}
-
 	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
-	exists := fs.Exists(filepath.Join(fs.Config.prefixPath, name))
-	if !exists {
-		log.Err("FileShare::WriteFromFile : Azure file %s does not exist (%s)", name, syscall.ENOENT)
-		return syscall.ENOENT
-	}
 
 	defer log.TimeTrack(time.Now(), "FileShare::WriteFromFile", name)
 	var rangeSize int64
@@ -731,7 +663,7 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 		}
 	}
 
-	err = azfile.UploadFileToAzureFile(context.Background(), fi, fileURL, azfile.UploadToAzureFileOptions{
+	err := azfile.UploadFileToAzureFile(context.Background(), fi, fileURL, azfile.UploadToAzureFileOptions{
 		RangeSize:   rangeSize,
 		Parallelism: fs.Config.maxConcurrency,
 		Metadata:    metadata,
@@ -755,25 +687,8 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 }
 
 // WriteFromBuffer : Upload from a buffer to a file
-func (fs *FileShare) WriteFromBuffer(name string, metadata map[string]string, data []byte) error {
+func (fs *FileShare) WriteFromBuffer(name string, metadata map[string]string, data []byte) (err error) {
 	log.Trace("FileShare::WriteFromBuffer : name %s", name)
-
-	length := int64(len(data))
-
-	fileOffsets, err := fs.GetFileBlockOffsets(name)
-	if err != nil {
-		log.Err("FileShare::Write : Failed to get file range offsets %s", err.Error())
-		return err
-	}
-
-	_, _, exceedsFileBlocks, _ := fileOffsets.FindBlocksToModify(0, length) // **********but this method only looks for true file size rather than file capacity
-	if exceedsFileBlocks {
-		err = fs.TruncateFile(name, length)
-		if err != nil {
-			log.Err("FileShare::Write : Failed to truncate Azure file %s", err.Error())
-			return err
-		}
-	}
 
 	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)

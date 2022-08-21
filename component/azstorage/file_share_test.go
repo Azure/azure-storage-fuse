@@ -153,6 +153,7 @@ func (s *fileTestSuite) cleanupTest() {
 
 func (s *fileTestSuite) TestInvalidRangeSize() {
 	defer s.cleanupTest()
+	// max range size is 4MiB
 	configuration := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  block-size-mb: 5\n account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
 		storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
 	_, err := newTestAzStorage(configuration)
@@ -1457,49 +1458,19 @@ func (s *fileTestSuite) TestCopyFromFileEmpty() {
 	s.assert.EqualValues("", output)
 }
 
-// Upload existing, empty local file to nonexistent Azure file
-func (s *fileTestSuite) TestCopyFromFileEmptyError() {
-	defer s.cleanupTest()
-	// Setup
-	name := generateFileName()
-	homeDir, _ := os.UserHomeDir()
-	f, _ := ioutil.TempFile(homeDir, name+".tmp")
-	defer os.Remove(f.Name())
-
-	err := s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f})
-	s.assert.NotNil(err)
-	s.assert.EqualValues(syscall.ENOENT, storeFileErrToErr(err))
-}
-
-// Upload existing, nonempty local file to nonexistent Azure file
-func (s *fileTestSuite) TestCopyFromFileError() {
-	defer s.cleanupTest()
-	// Setup
-	name := generateFileName()
-	testData := "test data"
-	data := []byte(testData)
-	homeDir, _ := os.UserHomeDir()
-	f, _ := ioutil.TempFile(homeDir, name+".tmp")
-	defer os.Remove(f.Name())
-	f.Write(data)
-
-	err := s.az.CopyFromFile(internal.CopyFromFileOptions{Name: name, File: f})
-	s.assert.NotNil(err)
-	s.assert.EqualValues(syscall.ENOENT, err)
-}
-
 func (s *fileTestSuite) TestCreateLink() {
 	defer s.cleanupTest()
 	// Setup
 	target := generateFileName()
-	s.az.CreateFile(internal.CreateFileOptions{Name: target})
-	name := generateFileName()
+	_, err := s.az.CreateFile(internal.CreateFileOptions{Name: target})
+	s.assert.Nil(err)
 
-	err := s.az.CreateLink(internal.CreateLinkOptions{Name: name, Target: target})
+	source := generateFileName()
+	err = s.az.CreateLink(internal.CreateLinkOptions{Name: source, Target: target})
 	s.assert.Nil(err)
 
 	// Link should be in the account
-	fileName, dirPath := getFileAndDirFromPath(name)
+	fileName, dirPath := getFileAndDirFromPath(source)
 	link := s.shareUrl.NewDirectoryURL(dirPath).NewFileURL(fileName)
 	props, err := link.GetProperties(ctx)
 	s.assert.Nil(err)
