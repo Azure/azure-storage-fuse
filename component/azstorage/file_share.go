@@ -376,13 +376,33 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 	if err != nil {
 		serr := storeFileErrToErr(err)
 		if serr == ErrFileNotFound {
-			log.Err("FileShare::RenameDirectory : %s does not exist", source)
+			log.Err("FileShare::RenameDirectory : Source directory %s does not exist", source)
 			return err
 		} else {
 			log.Err("FileShare::RenameDirectory : Failed to get directory properties for %s (%s)", source, err.Error())
 			return err
 		}
 	}
+
+	// tgtDir := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, target))
+	// _, err = tgtDir.GetProperties(context.Background())
+	// if err == nil {
+	// 	log.Trace("FileShare::RenameDirectory : Overwriting preexisting target directory")
+	// 	tgtDir.Delete(context.Background())
+	// }
+
+	// fs.CreateDirectory(target)
+
+	// for marker := (azfile.Marker{}); marker.NotDone(); {
+	// 	listFile, err := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, source)).ListFilesAndDirectoriesSegment(context.Background(), marker,
+	// 		azfile.ListFilesAndDirectoriesOptions{
+	// 			MaxResults: common.MaxDirListCount,
+	// 		})
+	// 	if err != nil {
+	// 		log.Err("FileShare::RenameDirectory : Failed to get list of files and directories %s", err.Error())
+	// 		return err
+	// 	}
+	// }
 
 	replaceIfExists := true
 	_, err = srcDir.Rename(context.Background(), filepath.Join(fs.Config.prefixPath, target), &replaceIfExists, prop.NewMetadata())
@@ -610,7 +630,7 @@ func (fs *FileShare) ReadInBuffer(name string, offset int64, len int64, data []b
 	log.Trace("FileShare::ReadInBuffer : name %s", name)
 
 	if offset != 0 {
-		log.Err("FileShare::ReadToFile : offset is not 0")
+		log.Err("FileShare::ReadInBuffer : offset is not 0")
 		return errors.New("offset is not 0")
 	}
 
