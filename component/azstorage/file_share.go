@@ -904,7 +904,7 @@ func (fs *FileShare) calculateRangeSize(name string, fileSize int64) (rangeSize 
 			if rangeSize > azfile.FileMaxUploadRangeBytes {
 				// After rounding off the rangeSize has become bigger then max allowed range size.
 				log.Err("FileShare::calculateRangeSize : rangeSize exceeds max allowed range size for %s", name)
-				err = errors.New("ragnge size is too large to upload to a file")
+				err = errors.New("range size is too large to upload to a file")
 				return 0, err
 			}
 		}
