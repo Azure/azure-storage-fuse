@@ -352,7 +352,7 @@ func (fs *FileShare) RenameFile(source string, target string) error {
 	if err != nil {
 		serr := storeFileErrToErr(err)
 		if serr == ErrFileNotFound {
-			log.Err("FileShare::RenameFile : %s does not exist", source)
+			log.Err("FileShare::RenameFile : Source file %s does not exist", source)
 			return syscall.ENOENT
 		} else {
 			log.Err("FileShare::RenameFile : Failed to get file properties for %s (%s)", source, err.Error())
@@ -383,26 +383,6 @@ func (fs *FileShare) RenameDirectory(source string, target string) error {
 			return err
 		}
 	}
-
-	// tgtDir := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, target))
-	// _, err = tgtDir.GetProperties(context.Background())
-	// if err == nil {
-	// 	log.Trace("FileShare::RenameDirectory : Overwriting preexisting target directory")
-	// 	tgtDir.Delete(context.Background())
-	// }
-
-	// fs.CreateDirectory(target)
-
-	// for marker := (azfile.Marker{}); marker.NotDone(); {
-	// 	listFile, err := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, source)).ListFilesAndDirectoriesSegment(context.Background(), marker,
-	// 		azfile.ListFilesAndDirectoriesOptions{
-	// 			MaxResults: common.MaxDirListCount,
-	// 		})
-	// 	if err != nil {
-	// 		log.Err("FileShare::RenameDirectory : Failed to get list of files and directories %s", err.Error())
-	// 		return err
-	// 	}
-	// }
 
 	replaceIfExists := true
 	_, err = srcDir.Rename(context.Background(), filepath.Join(fs.Config.prefixPath, target), &replaceIfExists, prop.NewMetadata())
@@ -590,7 +570,7 @@ func (fs *FileShare) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 	var buff []byte
 
 	if offset != 0 {
-		log.Err("FileShare::ReadToFile : offset is not 0")
+		log.Err("FileShare::ReadBuffer : offset is not 0")
 		return buff, errors.New("offset is not 0")
 	}
 
@@ -678,7 +658,7 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 		// based on file-size calculate range size
 		rangeSize, err = fs.calculateRangeSize(name, stat.Size())
 		if err != nil {
-			log.Err("FileShare::calculateFileSize : Failed to get file size %s (%s)", name, err.Error())
+			log.Err("FileShare::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
 			return err
 		}
 	}
@@ -811,7 +791,7 @@ func (fs *FileShare) Write(options internal.WriteFileOptions) (err error) {
 		return err
 	}
 
-	_, _, exceedsFileBlocks, _ := fileOffsets.FindBlocksToModify(offset, length) // **********but this method only looks for true file size rather than file capacity
+	_, _, exceedsFileBlocks, _ := fileOffsets.FindBlocksToModify(offset, length)
 	if exceedsFileBlocks {
 		err = fs.TruncateFile(name, offset+length)
 		if err != nil {
@@ -822,16 +802,6 @@ func (fs *FileShare) Write(options internal.WriteFileOptions) (err error) {
 
 	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
-
-	// attr, err := fs.GetAttr(name)
-	// if err != nil {
-	// 	if (attr.Size + length < ??) {
-	// 		fs.Truncate(name, attr.Size + length)
-	// 	}
-	// } else {
-	// 	log.Err("FileShare::GetAttr : Failed to get file/directory properties for %s (%s)", name, err.Error())
-	// 	return err
-	// }
 
 	_, err = fileURL.UploadRange(context.Background(), options.Offset, bytes.NewReader(data), nil)
 	if err != nil {
