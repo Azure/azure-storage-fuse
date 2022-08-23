@@ -81,6 +81,8 @@ do
 	(( sed_line++ ))
 	blobfuse_average=$(( $blobfuse_average + $time_diff ))
 done
+blobfuse2_average=$(( $blobfuse2_average / 3 ))
+blobfuse_average=$(( $blobfuse_average / 3 ))
 
 sed -i "6s/$/ ${blobfuse2_average} | ${blobfuse_average} |/" $outputPath
 
