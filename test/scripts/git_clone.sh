@@ -88,4 +88,4 @@ sed -i "6s/$/ ${blobfuse2_average} | ${blobfuse_average} |/" $outputPath
 diff=$(( $blobfuse2_average - $blobfuse_average ))
 percent=`echo "scale=2; $diff * 100 / $blobfuse_average" | bc`
 
-sed -i "7s/$/ ${percent} |/" $outputPath
+sed -i "7s/$/ ${percent} | |/" $outputPath
