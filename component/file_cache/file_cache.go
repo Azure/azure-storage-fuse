@@ -780,7 +780,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		}
 
 		// Open the file in write mode.
-		f, err = os.OpenFile(localPath, os.O_CREATE|os.O_WRONLY, options.Mode)
+		f, err = os.OpenFile(localPath, os.O_CREATE|os.O_RDWR, options.Mode) // need these permissions for file share to work
 		if err != nil {
 			log.Err("FileCache::OpenFile : error creating new file %s [%s]", options.Name, err.Error())
 			return nil, err

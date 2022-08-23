@@ -34,8 +34,10 @@
 package azstorage
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"math"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -50,11 +52,20 @@ import (
 	"github.com/Azure/azure-storage-file-go/azfile"
 )
 
+const (
+	// FileMaxSizeInBytes indicates the maximum size of a file
+	FileMaxSizeInBytes = 4 * 1024 * 1024 * 1024 * 1024 // 4TiB
+
+	// max number of ranges = max file size / max size for one range
+	FileShareMaxRanges = FileMaxSizeInBytes / azfile.FileMaxUploadRangeBytes
+)
+
 type FileShare struct {
 	AzStorageConnection
-	Auth    azAuth
-	Service azfile.ServiceURL
-	Share   azfile.ShareURL
+	Auth            azAuth
+	Service         azfile.ServiceURL
+	Share           azfile.ShareURL
+	downloadOptions azfile.DownloadFromAzureFileOptions
 }
 
 func (fs *FileShare) Configure(cfg AzStorageConfig) error {
@@ -69,6 +80,26 @@ func (fs *FileShare) UpdateConfig(cfg AzStorageConfig) error {
 	fs.Config.maxConcurrency = cfg.maxConcurrency
 	fs.Config.defaultTier = cfg.defaultTier
 	fs.Config.ignoreAccessModifiers = cfg.ignoreAccessModifiers
+	return nil
+}
+
+// NewCredentialKey : Update the credential key specified by the user
+func (fs *FileShare) NewCredentialKey(key, value string) (err error) {
+	if key == "saskey" {
+		fs.Auth.setOption(key, value)
+		// Update the endpoint url from the credential
+		fs.Endpoint, err = url.Parse(fs.Auth.getEndpoint())
+		if err != nil {
+			log.Err("FileShare::NewCredentialKey : Failed to form base endpoint url (%s)", err.Error())
+			return errors.New("failed to form base endpoint url")
+		}
+
+		// Update the service url
+		fs.Service = azfile.NewServiceURL(*fs.Endpoint, fs.Pipeline)
+
+		// Update the share url
+		fs.Share = fs.Service.NewShareURL(fs.Config.container)
+	}
 	return nil
 }
 
@@ -113,14 +144,14 @@ func (fs *FileShare) SetupPipeline() error {
 	// Get the endpoint url from the credential
 	fs.Endpoint, err = url.Parse(fs.Auth.getEndpoint())
 	if err != nil {
-		log.Err("BlockBlob::SetupPipeline : Failed to form base end point url (%s)", err.Error())
+		log.Err("FileShare::SetupPipeline : Failed to form base end point url (%s)", err.Error())
 		return errors.New("failed to form base end point url")
 	}
 
 	// Create the service url
 	fs.Service = azfile.NewServiceURL(*fs.Endpoint, fs.Pipeline)
 
-	// Create the container url
+	// Create the share url
 	fs.Share = fs.Service.NewShareURL(fs.Config.container)
 
 	return nil
@@ -135,7 +166,7 @@ func (fs *FileShare) TestPipeline() error {
 	}
 
 	if fs.Share.String() == "" {
-		log.Err("FileShare::TestPipeline : Container URL is not built, check your credentials")
+		log.Err("FileShare::TestPipeline : Share URL is not built, check your credentials")
 		return nil
 	}
 
@@ -149,7 +180,7 @@ func (fs *FileShare) TestPipeline() error {
 	}
 
 	if listFile == nil {
-		log.Info("FileShare::TestPipeline : Container is empty")
+		log.Info("FileShare::TestPipeline : Share is empty")
 	}
 	return nil
 }
@@ -197,10 +228,9 @@ func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("FileShare::CreateFile : name %s", name)
 
 	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
-
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
 
-	_, err := fileURL.Create(context.Background(), 4398046511104, azfile.FileHTTPHeaders{
+	_, err := fileURL.Create(context.Background(), 0, azfile.FileHTTPHeaders{
 		ContentType: getContentType(name),
 	},
 		nil)
@@ -261,11 +291,41 @@ func (fs *FileShare) DeleteFile(name string) (err error) {
 	return nil
 }
 
-// DeleteDirectory : Delete a virtual directory in the container/virtual directory
+// DeleteDirectory : Delete a virtual directory in the share
 func (fs *FileShare) DeleteDirectory(name string) (err error) {
 	log.Trace("FileShare::DeleteDirectory : name %s", name)
 
 	dirURL := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, name))
+
+	for marker := (azfile.Marker{}); marker.NotDone(); {
+		listFile, err := dirURL.ListFilesAndDirectoriesSegment(context.Background(), marker,
+			azfile.ListFilesAndDirectoriesOptions{
+				MaxResults: common.MaxDirListCount,
+			})
+		if err != nil {
+			log.Err("FileShare::DeleteDirectory : Failed to get list of files and directories %s", err.Error())
+			return err
+		}
+		marker = listFile.NextMarker
+
+		// Process the files returned in this result segment (if the segment is empty, the loop body won't execute)
+		for _, fileInfo := range listFile.FileItems {
+			err = fs.DeleteFile(filepath.Join(name, fileInfo.Name))
+			if err != nil {
+				log.Err("FileShare::DeleteDirectory : Failed to delete files  %s", err.Error())
+				return err
+			}
+		}
+
+		for _, dirInfo := range listFile.DirectoryItems {
+			err = fs.DeleteDirectory(filepath.Join(filepath.Join(fs.Config.prefixPath, name), dirInfo.Name))
+			if err != nil {
+				log.Err("FileShare::DeleteDirectory : Failed delete subdirectories  %s", err.Error())
+				return err
+			}
+		}
+	}
+
 	_, err = dirURL.Delete(context.Background())
 	if err != nil {
 		serr := storeFileErrToErr(err)
@@ -286,16 +346,13 @@ func (fs *FileShare) RenameFile(source string, target string) error {
 	log.Trace("FileShare::RenameFile : %s -> %s", source, target)
 
 	srcFileName, srcDirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, source))
-	tgtFileName, tgtDirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, target)) // need if renaming file indirectly through RenameDirectory(), where dir rather than filename needs to be changed
-
 	srcFileURL := fs.Share.NewDirectoryURL(srcDirPath).NewFileURL(srcFileName)
-	tgtFileURL := fs.Share.NewDirectoryURL(tgtDirPath).NewFileURL(tgtFileName)
 
 	prop, err := srcFileURL.GetProperties(context.Background())
 	if err != nil {
 		serr := storeFileErrToErr(err)
 		if serr == ErrFileNotFound {
-			log.Err("FileShare::RenameFile : %s does not exist", source)
+			log.Err("FileShare::RenameFile : Source file %s does not exist", source)
 			return syscall.ENOENT
 		} else {
 			log.Err("FileShare::RenameFile : Failed to get file properties for %s (%s)", source, err.Error())
@@ -303,64 +360,34 @@ func (fs *FileShare) RenameFile(source string, target string) error {
 		}
 	}
 
-	startCopy, err := tgtFileURL.StartCopy(context.Background(), srcFileURL.URL(), prop.NewMetadata())
+	contentType := prop.ContentType()
+	replaceIfExists := true
+	_, err = srcFileURL.Rename(context.Background(), filepath.Join(fs.Config.prefixPath, target), &replaceIfExists, prop.NewMetadata(), &contentType)
 
-	if err != nil {
-		log.Err("FileShare::RenameFile : Failed to start copy of file %s (%s)", source, err.Error())
-		return err
-	}
-
-	copyStatus := startCopy.CopyStatus()
-	for copyStatus == azfile.CopyStatusPending {
-		time.Sleep(time.Second * 1)
-		prop, err = tgtFileURL.GetProperties(context.Background())
-		if err != nil {
-			log.Err("FileShare::RenameFile : CopyStats : Failed to get file properties for %s (%s)", source, err.Error())
-		}
-		copyStatus = prop.CopyStatus()
-	}
-	log.Trace("FileShare::RenameFile : %s -> %s done", source, target)
-
-	// Copy of the file is done so now delete the older file
-	return fs.DeleteFile(source)
+	return err
 }
 
 // RenameDirectory : Rename a directory
 func (fs *FileShare) RenameDirectory(source string, target string) error {
 	log.Trace("FileShare::RenameDirectory : %s -> %s", source, target)
 
-	fs.CreateDirectory(target)
-
-	for marker := (azfile.Marker{}); marker.NotDone(); {
-		listFile, err := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, source)).ListFilesAndDirectoriesSegment(context.Background(), marker,
-			azfile.ListFilesAndDirectoriesOptions{
-				MaxResults: common.MaxDirListCount,
-			})
-		if err != nil {
-			log.Err("FileShare::RenameDirectory : Failed to get list of files %s", err.Error())
+	srcDir := fs.Share.NewDirectoryURL(filepath.Join(fs.Config.prefixPath, source))
+	prop, err := srcDir.GetProperties(context.Background())
+	if err != nil {
+		serr := storeFileErrToErr(err)
+		if serr == ErrFileNotFound {
+			log.Err("FileShare::RenameDirectory : Source directory %s does not exist", source)
 			return err
-		}
-		marker = listFile.NextMarker
-
-		// Process the files returned in this result segment (if the segment is empty, the loop body won't execute)
-		for _, fileInfo := range listFile.FileItems {
-			err = fs.RenameFile(filepath.Join(source, fileInfo.Name), filepath.Join(target, fileInfo.Name))
-			if err != nil {
-				log.Err("FileShare::RenameDirectory : Failed to move files to new directory %s", err.Error())
-				return err
-			}
-		}
-
-		for _, dirInfo := range listFile.DirectoryItems {
-			err = fs.RenameDirectory(filepath.Join(source, dirInfo.Name), filepath.Join(target, dirInfo.Name))
-			if err != nil {
-				log.Err("FileShare::RenameDirectory : Failed to move subdirectories to new directory  %s", err.Error())
-				return err
-			}
+		} else {
+			log.Err("FileShare::RenameDirectory : Failed to get directory properties for %s (%s)", source, err.Error())
+			return err
 		}
 	}
 
-	return fs.DeleteDirectory(source)
+	replaceIfExists := true
+	_, err = srcDir.Rename(context.Background(), filepath.Join(fs.Config.prefixPath, target), &replaceIfExists, prop.NewMetadata())
+
+	return err
 }
 
 // GetAttr : Retrieve attributes of a file or directory
@@ -465,7 +492,7 @@ func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*intern
 	// Process the files returned in this result segment (if the segment is empty, the loop body won't execute)
 	for _, fileInfo := range listFile.FileItems {
 		attr := &internal.ObjAttr{
-			Path: split(fs.Config.prefixPath, fileInfo.Name),
+			Path: split(fs.Config.prefixPath, filepath.Join(listPath, fileInfo.Name)),
 			Name: filepath.Base(fileInfo.Name),
 			Size: fileInfo.Properties.ContentLength,
 			Mode: 0,
@@ -488,7 +515,7 @@ func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*intern
 
 	for _, dirInfo := range listFile.DirectoryItems {
 		attr := &internal.ObjAttr{
-			Path: split(fs.Config.prefixPath, dirInfo.Name),
+			Path: split(fs.Config.prefixPath, filepath.Join(listPath, dirInfo.Name)),
 			Name: filepath.Base(dirInfo.Name),
 			Size: 4096,
 			Mode: os.ModeDir,
@@ -508,32 +535,166 @@ func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*intern
 	return fileList, listFile.NextMarker.Val, nil
 }
 
+// ReadToFile : Download an Azure file to a local file
 func (fs *FileShare) ReadToFile(name string, offset int64, count int64, fi *os.File) error {
-	return syscall.ENOTSUP
+	log.Trace("FileShare::ReadToFile : name %s, offset : %d, count %d", name, offset, count)
+	//defer exectime.StatTimeCurrentBlock("FileShare::ReadToFile")()
+
+	if offset != 0 {
+		log.Err("FileShare::ReadToFile : offset is not 0")
+		return errors.New("offset is not 0")
+	}
+
+	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
+	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
+
+	defer log.TimeTrack(time.Now(), "FileShare::ReadToFile", name)
+	_, err := azfile.DownloadAzureFileToFile(context.Background(), fileURL, fi, fs.downloadOptions)
+
+	if err != nil {
+		e := storeFileErrToErr(err)
+		if e == ErrFileNotFound {
+			return syscall.ENOENT
+		} else {
+			log.Err("FileShare::ReadToFile : Failed to download file %s (%s)", name, err.Error())
+			return err
+		}
+	}
+
+	return nil
 }
 
+// ReadBuffer : Downloads a file to a buffer
 func (fs *FileShare) ReadBuffer(name string, offset int64, len int64) ([]byte, error) {
-	return nil, syscall.ENOTSUP
+	log.Trace("FileShare::ReadBuffer : name %s", name)
+	var buff []byte
+
+	if offset != 0 {
+		log.Err("FileShare::ReadBuffer : offset is not 0")
+		return buff, errors.New("offset is not 0")
+	}
+
+	if len == 0 {
+		len = azfile.CountToEnd
+		attr, err := fs.GetAttr(name)
+		if err != nil {
+			return buff, err
+		}
+		buff = make([]byte, attr.Size)
+	} else {
+		buff = make([]byte, len)
+	}
+
+	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
+	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
+
+	_, err := azfile.DownloadAzureFileToBuffer(context.Background(), fileURL, buff, fs.downloadOptions)
+
+	if err != nil {
+		e := storeFileErrToErr(err)
+		if e == ErrFileNotFound {
+			return buff, syscall.ENOENT
+		} else if e == InvalidRange {
+			return buff, syscall.ERANGE
+		}
+
+		log.Err("FileShare::ReadBuffer : Failed to download file %s (%s)", name, err.Error())
+		return buff, err
+	}
+
+	return buff, nil
 }
 
+// ReadInBuffer : Download specific range from a file to a user provided buffer
 func (fs *FileShare) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
-	return syscall.ENOTSUP
+	log.Trace("FileShare::ReadInBuffer : name %s", name)
+
+	if offset != 0 {
+		log.Err("FileShare::ReadInBuffer : offset is not 0")
+		return errors.New("offset is not 0")
+	}
+
+	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
+	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
+
+	_, err := azfile.DownloadAzureFileToBuffer(context.Background(), fileURL, data, fs.downloadOptions)
+
+	if err != nil {
+		e := storeFileErrToErr(err)
+		if e == ErrFileNotFound {
+			return syscall.ENOENT
+		} else if e == InvalidRange {
+			return syscall.ERANGE
+		}
+
+		log.Err("FileShare::ReadInBuffer : Failed to download file %s (%s)", name, err.Error())
+		return err
+	}
+
+	return nil
 }
 
+// WriteFromFile : Upload local file to Azure file
 func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *os.File) error {
-	return syscall.ENOTSUP
+	log.Trace("FileShare::WriteFromFile : name %s", name)
+	//defer exectime.StatTimeCurrentBlock("WriteFromFile::WriteFromFile")()
+
+	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
+	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
+
+	defer log.TimeTrack(time.Now(), "FileShare::WriteFromFile", name)
+	var rangeSize int64
+
+	fileSize := fs.Config.blockSize
+	// if the range size is not set then we configure it based on file size
+	if fileSize == 0 {
+		// get the size of the file
+		stat, err := fi.Stat()
+		if err != nil {
+			log.Err("FileShare::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
+			return err
+		}
+
+		// based on file-size calculate range size
+		rangeSize, err = fs.calculateRangeSize(name, stat.Size())
+		if err != nil {
+			log.Err("FileShare::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
+			return err
+		}
+	}
+
+	err := azfile.UploadFileToAzureFile(context.Background(), fi, fileURL, azfile.UploadToAzureFileOptions{
+		RangeSize:   rangeSize,
+		Parallelism: fs.Config.maxConcurrency,
+		Metadata:    metadata,
+		FileHTTPHeaders: azfile.FileHTTPHeaders{
+			ContentType: getContentType(name),
+		},
+	})
+
+	if err != nil {
+		serr := storeFileErrToErr(err)
+		if serr == ErrFileAlreadyExists {
+			log.Err("FileShare::WriteFromFile : %s already exists (%s)", name, err.Error())
+			return syscall.EIO
+		} else {
+			log.Err("FileShare::WriteFromFile : Failed to upload file %s (%s)", name, err.Error())
+		}
+		return err
+	}
+
+	return nil
 }
 
 // WriteFromBuffer : Upload from a buffer to a file
-func (fs *FileShare) WriteFromBuffer(name string, metadata map[string]string, data []byte) error {
+func (fs *FileShare) WriteFromBuffer(name string, metadata map[string]string, data []byte) (err error) {
 	log.Trace("FileShare::WriteFromBuffer : name %s", name)
 
 	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
-
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
 
 	defer log.TimeTrack(time.Now(), "FileShare::WriteFromBuffer", name)
-	err := azfile.UploadBufferToAzureFile(context.Background(), data, fileURL, azfile.UploadToAzureFileOptions{
+	err = azfile.UploadBufferToAzureFile(context.Background(), data, fileURL, azfile.UploadToAzureFileOptions{
 		RangeSize:   fs.Config.blockSize,
 		Parallelism: fs.Config.maxConcurrency,
 		Metadata:    metadata,
@@ -550,29 +711,150 @@ func (fs *FileShare) WriteFromBuffer(name string, metadata map[string]string, da
 	return nil
 }
 
-func (fs *FileShare) Write(options internal.WriteFileOptions) error {
+// ChangeMod : Change mode of a file
+func (fs *FileShare) ChangeMod(name string, _ os.FileMode) error {
+	log.Trace("FileShare::ChangeMod : name %s", name)
+
+	if fs.Config.ignoreAccessModifiers {
+		// for operations like git clone where transaction fails if chmod is not successful
+		// return success instead of ENOSYS
+		return nil
+	}
+
+	// This is not currently supported for a fileshare account
 	return syscall.ENOTSUP
 }
 
-func (fs *FileShare) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
-	return nil, syscall.ENOTSUP
+// ChangeOwner : Change owner of a file
+func (fs *FileShare) ChangeOwner(name string, _ int, _ int) error {
+	log.Trace("FileShare::ChangeOwner : name %s", name)
+
+	if fs.Config.ignoreAccessModifiers {
+		// for operations like git clone where transaction fails if chown is not successful
+		// return success instead of ENOSYS
+		return nil
+	}
+
+	// This is not currently supported for a fileshare account
+	return syscall.ENOTSUP
 }
 
-func (fs *FileShare) ChangeMod(string, os.FileMode) error {
-	return syscall.ENOTSUP
-}
-func (fs *FileShare) ChangeOwner(string, int, int) error {
-	return syscall.ENOTSUP
-}
-func (fs *FileShare) TruncateFile(string, int64) error {
-	return syscall.ENOTSUP
-}
+// StageAndCommit : write data to an Azure file given a list of ranges
 func (fs *FileShare) StageAndCommit(name string, bol *common.BlockOffsetList) error {
-	return syscall.ENOTSUP
+	log.Trace("FileShare::StageAndCommit : name %s", name)
+
+	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
+	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
+
+	var data []byte
+
+	for _, rng := range bol.BlockList {
+		if rng.Truncated() {
+			data = make([]byte, rng.EndIndex-rng.StartIndex)
+			rng.Flags.Clear(common.TruncatedBlock)
+		} else {
+			data = rng.Data
+		}
+		if rng.Dirty() {
+			_, err := fileURL.UploadRange(context.Background(),
+				rng.StartIndex,
+				bytes.NewReader(data),
+				nil,
+			)
+			if err != nil {
+				log.Err("FileShare::StageAndCommit : Failed to upload range to file %s at index %v (%s)", name, rng.StartIndex, err.Error())
+				return err
+			}
+			rng.Flags.Clear(common.DirtyBlock)
+		}
+	}
+	return nil
 }
 
-func (fs *FileShare) NewCredentialKey(_, _ string) error {
-	return syscall.ENOTSUP
+// Write : write data at given offset to an Azure file
+func (fs *FileShare) Write(options internal.WriteFileOptions) (err error) {
+	name := options.Handle.Path
+	offset := options.Offset
+	data := options.Data
+	length := int64(len(options.Data))
+
+	defer log.TimeTrack(time.Now(), "FileShare::Write", options.Handle.Path)
+	log.Trace("FileShare::Write : name %s offset %v", name, offset)
+
+	if len(data) == 0 {
+		return nil
+	}
+
+	fileOffsets, err := fs.GetFileBlockOffsets(name)
+	if err != nil {
+		log.Err("FileShare::Write : Failed to get file range offsets %s", err.Error())
+		return err
+	}
+
+	_, _, exceedsFileBlocks, _ := fileOffsets.FindBlocksToModify(offset, length)
+	if exceedsFileBlocks {
+		err = fs.TruncateFile(name, offset+length)
+		if err != nil {
+			log.Err("FileShare::Write : Failed to truncate Azure file %s", err.Error())
+			return err
+		}
+	}
+
+	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
+	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
+
+	_, err = fileURL.UploadRange(context.Background(), options.Offset, bytes.NewReader(data), nil)
+	if err != nil {
+		log.Err("FileShare::Write : Failed to write data to Azure file %s", err.Error())
+		return err
+	}
+
+	return nil
+}
+
+// GetFileBlockOffsets : store file range list and corresponding offsets
+func (fs *FileShare) GetFileBlockOffsets(name string) (shareFileRangeList *common.BlockOffsetList, err error) {
+	log.Trace("FileShare::GetFileBlockOffsets : name %s", name)
+	rangeList := common.BlockOffsetList{}
+
+	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
+	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
+
+	storageRangeList, err := fileURL.GetRangeList(
+		context.Background(), 0, 0)
+	if err != nil {
+		log.Err("FileShare::GetFileBlockOffsets : Failed to get range list %s ", name, err.Error())
+		return &common.BlockOffsetList{}, err
+	}
+
+	if len(storageRangeList.Ranges) == 0 {
+		rangeList.Flags.Set(common.SmallFile)
+		return &rangeList, nil
+	}
+	for _, rng := range storageRangeList.Ranges {
+		fileRng := &common.Block{
+			StartIndex: rng.Start,
+			EndIndex:   rng.End,
+		}
+		rangeList.BlockList = append(rangeList.BlockList, fileRng)
+	}
+
+	return &rangeList, nil
+}
+
+// TruncateFile : resize the file to a smaller, equal, or bigger size
+func (fs *FileShare) TruncateFile(name string, size int64) (err error) {
+	log.Trace("FileShare::TruncateFile : name=%s, size=%d", name, size)
+
+	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
+	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
+
+	_, err = fileURL.Resize(context.Background(), size)
+	if err != nil {
+		log.Err("FileShare::TruncateFile : failed to resize file %s", name)
+		return err
+	}
+	return nil
 }
 
 // getFileAndDirFromPath : Helper that separates directory/directories and file name of a given file/directory path
@@ -592,4 +874,42 @@ func getFileAndDirFromPath(completePath string) (fileName string, dirPath string
 	fileName = filepath.Base(completePath)
 
 	return fileName, dirPath
+}
+
+// calculateRangeSize : calulates range size of the file based on file size
+func (fs *FileShare) calculateRangeSize(name string, fileSize int64) (rangeSize int64, err error) {
+	if fileSize > FileMaxSizeInBytes {
+		log.Err("FileShare::calculateRangeSize : buffer is too large to upload to an Azure file %s", name)
+		err = errors.New("buffer is too large to upload to an Azure file")
+		return 0, err
+	}
+
+	if fileSize <= azfile.FileMaxUploadRangeBytes {
+		// Files up to 4MB can be uploaded as a single range
+		rangeSize = azfile.FileMaxUploadRangeBytes
+	} else {
+		// buffer / max number of file ranges = range size to use for all ranges
+		rangeSize = int64(math.Ceil(float64(fileSize) / float64(FileShareMaxRanges)))
+
+		if rangeSize < azfile.FileMaxUploadRangeBytes {
+			// Range size is smaller than 4MB then consider 4MB as default
+			rangeSize = azfile.FileMaxUploadRangeBytes
+		} else {
+			if (rangeSize & (-8)) != 0 {
+				// EXTRA : round off the range size to next higher multiple of 8.
+				// No reason to do so; assuming odd numbers in range size will not be good on server end
+				rangeSize = (rangeSize + 7) & (-8)
+			}
+
+			if rangeSize > azfile.FileMaxUploadRangeBytes {
+				// After rounding off the rangeSize has become bigger then max allowed range size.
+				log.Err("FileShare::calculateRangeSize : rangeSize exceeds max allowed range size for %s", name)
+				err = errors.New("range size is too large to upload to a file")
+				return 0, err
+			}
+		}
+	}
+
+	log.Info("FileShare::calculateRangeSize : %s size %lu, blockSize %lu", name, fileSize, rangeSize)
+	return rangeSize, nil
 }
