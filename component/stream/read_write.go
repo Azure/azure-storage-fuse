@@ -208,13 +208,17 @@ func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
 
 func (rw *ReadWriteCache) FlushFile(options internal.FlushFileOptions) error {
 	// log.Trace("Stream::FlushFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
-	err := rw.NextComponent().FlushFile(options)
-	if err != nil {
-		log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
-		return err
+	if rw.StreamOnly || options.Handle.CacheObj.StreamOnly {
+		return nil
 	}
-
-	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
+	if options.Handle.Dirty() {
+		err := rw.NextComponent().FlushFile(options)
+		if err != nil {
+			log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
+			return err
+		}
+		options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
+	}
 	return nil
 }
 

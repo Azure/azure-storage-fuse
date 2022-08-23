@@ -263,9 +263,8 @@ func (suite *streamTestSuite) TestFlushFile() {
 	handle1 := &handlemap.Handle{Size: 2, Path: fileNames[0]}
 	flushFileOptions := internal.FlushFileOptions{Handle: handle1}
 
-	suite.mock.EXPECT().FlushFile(flushFileOptions).Return(syscall.ENOTSUP)
 	err := suite.stream.FlushFile(flushFileOptions)
-	suite.assert.NotEqual(nil, err)
+	suite.assert.Equal(nil, err)
 }
 
 func (suite *streamTestSuite) TestReadDeleteDir() {

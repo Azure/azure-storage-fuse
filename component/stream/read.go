@@ -206,11 +206,6 @@ func (r *ReadCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 
 func (r *ReadCache) FlushFile(options internal.FlushFileOptions) error {
 	// log.Trace("Stream::FlushFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
-	err := r.NextComponent().FlushFile(options)
-	if err != nil {
-		log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
-		return err
-	}
 	return nil
 }
 

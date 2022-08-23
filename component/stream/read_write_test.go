@@ -90,7 +90,6 @@ func (suite *streamTestSuite) TestStreamOnlyCloseFile() {
 	handle1 := &handlemap.Handle{Size: 2, Path: fileNames[0]}
 	closeFileOptions := internal.CloseFileOptions{Handle: handle1}
 
-	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle1}).Return(nil)
 	suite.mock.EXPECT().CloseFile(closeFileOptions).Return(nil)
 	_ = suite.stream.CloseFile(closeFileOptions)
 	suite.assert.Equal(suite.stream.StreamOnly, true)
@@ -106,7 +105,6 @@ func (suite *streamTestSuite) TestStreamOnlyFlushFile() {
 	handle1 := &handlemap.Handle{Size: 2, Path: fileNames[0]}
 	flushFileOptions := internal.FlushFileOptions{Handle: handle1}
 
-	suite.mock.EXPECT().FlushFile(flushFileOptions).Return(nil)
 	_ = suite.stream.FlushFile(flushFileOptions)
 	suite.assert.Equal(suite.stream.StreamOnly, true)
 }
@@ -437,7 +435,6 @@ func (suite *streamTestSuite) TestPurgeOnClose() {
 	assertNumberOfCachedFileBlocks(suite, 1, handle)
 	assertHandleNotStreamOnly(suite, handle)
 
-	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Return(nil)
 	suite.mock.EXPECT().CloseFile(internal.CloseFileOptions{Handle: handle}).Return(nil)
 	_ = suite.stream.CloseFile(internal.CloseFileOptions{Handle: handle})
 	assertBlockNotCached(suite, 0, handle)
@@ -553,6 +550,7 @@ func (suite *streamTestSuite) TestLargeFileEviction() {
 	callbackFunc := func(options internal.FlushFileOptions) {
 		block1.Flags.Clear(common.DirtyBlock)
 		block2.Flags.Clear(common.DirtyBlock)
+		handle.Flags.Set(handlemap.HandleFlagDirty)
 	}
 	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Do(callbackFunc).Return(nil)
 
@@ -600,7 +598,6 @@ func (suite *streamTestSuite) TestStreamOnlyHandle() {
 
 	//close the first handle
 	closeFileOptions := internal.CloseFileOptions{Handle: handle1}
-	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle1}).Return(nil)
 	suite.mock.EXPECT().CloseFile(closeFileOptions).Return(nil)
 	_ = suite.stream.CloseFile(closeFileOptions)
 
