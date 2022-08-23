@@ -407,7 +407,7 @@ bool BlockBlobBfsClient::DeleteDirectory(const std::string directoryPath)
         syslog(LOG_DEBUG,
                "Directory is empty, attempting deleting directory marker: %s\n",
                directoryPath.c_str());
-        DeleteFile((std::string)directoryPath);
+        m_blob_client->delete_empty_directory(configurations.containerName, (std::string)directoryPath);
         return true;
         break;
     case D_NOTEMPTY:
@@ -580,12 +580,85 @@ int BlockBlobBfsClient::Exists(const std::string pathName)
     //return 0 for success
     return 0;
 }
+
+/// <summary>
+/// return the name of the blob path
+/// </summary>
+std::string get_blob_name(const std::string path)
+{
+    auto name = path;
+    if (name.back() == '/') {
+        name = name.substr(0, name.size() - 1);
+    }
+    return name.substr(name.find_last_of("/") + 1);
+}
+
+///< summary>
+/// Copy Directory with valid source path.
+///</summary>
+bool BlockBlobBfsClient::copy_directory(const std::string sourcePath, const std::string destinationPath)
+{
+    // TODO limit the number of files
+    syslog(LOG_DEBUG, "BlockBlobBfsClient::copy_directory() called with path = %s %s", sourcePath.c_str(), destinationPath.c_str());
+    if (!CreateDirectory(destinationPath))
+    {
+        return false;
+    }
+    std::vector<std::pair<std::vector<list_segmented_item>, bool>> listResponse;
+    ListAllItemsSegmented(sourcePath, "/", listResponse);
+    if (errno != 0)
+    {
+        int storage_errno = errno;
+        syslog(LOG_ERR, "list blobs operation failed during attempt to copy directory %s to %s.  errno = %d.\n", sourcePath.c_str(), destinationPath.c_str(), storage_errno);
+        return 0 - map_errno(storage_errno);
+    }
+    AZS_DEBUGLOGV("Total of %d result lists found from list_blobs call during copy directory operation\n.", (int)listResponse.size());
+    std::string srcPath = sourcePath;
+    std::string destPath = destinationPath;
+    for (size_t result_lists_index = 0; result_lists_index < listResponse.size(); result_lists_index++)
+    {
+        unsigned int resultStart = listResponse[result_lists_index].second ? 1 : 0;
+        std::vector<list_segmented_item> listResults = listResponse[result_lists_index].first;
+        for (size_t i = resultStart; i < listResults.size(); i++)
+        {
+            list_segmented_item blobItem = listResults[i];
+            auto name = get_blob_name(blobItem.name);
+            if (!blobItem.is_directory)
+            {
+                m_blob_client->start_copy(configurations.containerName,
+                    srcPath + "/" + name,
+                    configurations.containerName,
+                    destPath + "/" + name);
+                continue;
+            }
+            if (!copy_directory(sourcePath + name + "/", destinationPath + name + "/"))
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
 ///<summary>
 /// Determines whether or not a path (file or directory) exists or not
 ///</summary>
 ///<returns>none</returns>
 bool BlockBlobBfsClient::Copy(const std::string sourcePath, const std::string destinationPath)
 {
+    syslog(LOG_DEBUG, "BlockBlobBfsClient::Copy() called with path = %s %s", sourcePath.c_str(), destinationPath.c_str());
+    BfsFileProperty property = GetProperties(sourcePath, true);
+    if (property.isValid() && property.exists() && property.is_directory)
+    {
+        std::string srcPath = sourcePath;
+        if (srcPath.back() != '/') {
+            srcPath = srcPath.append("/");
+        }
+        std::string destPath = destinationPath;
+        if (destPath.back() != '/') {
+            destPath = destPath.append("/");
+        }
+        return copy_directory(srcPath, destPath);
+    }
     m_blob_client->start_copy(configurations.containerName, sourcePath, configurations.containerName, destinationPath);
     return true;
 }
@@ -837,11 +910,12 @@ int BlockBlobBfsClient::rename_directory(std::string src, std::string dst, std::
     // Rename the directory blob, if it exists.
     errno = 0;
     BfsFileProperty property = GetProperties(srcPathStr.substr(1));
-    if ((errno == 0) && (property.is_directory))
+    // when running to here, we just know that src is a directory.
+    if (errno == 0)
     {
         rename_single_file(src.c_str(), dst.c_str(), files_to_remove_cache);
     } 
-    if (errno != 0)
+    else
     {
         if ((errno != 404) && (errno != ENOENT))
         {

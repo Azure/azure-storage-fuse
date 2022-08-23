@@ -317,7 +317,7 @@ namespace azure { namespace storage_adls {
 
     void adls_client::delete_file(const std::string& filesystem, const std::string& file)
     {
-        return blob_client_adaptor<void>(std::bind(&azure::storage_lite::blob_client::delete_blob, m_blob_client, filesystem, file, false));
+        return blob_client_adaptor<void>(std::bind(&azure::storage_lite::blob_client::delete_blob, m_blob_client, filesystem, file, false, false));
     }
 
     bool adls_client::file_exists(const std::string& filesystem, const std::string& file)

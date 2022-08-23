@@ -132,6 +132,10 @@ protected:
     /// Helper function - Authenticates with spn
     ///</summary>
     std::shared_ptr<blob_client_wrapper> authenticate_blob_spn();
+    ///< summary>
+    /// Helper function - Copy directory.
+    ///</summary>
+    bool copy_directory(const std::string sourcePath, const std::string destinationPath);
 private:
     ///<summary>
     /// Helper function - Renames single file

@@ -160,7 +160,7 @@ namespace azure { namespace storage_lite {
         /// <param name="blob">The blob name.</param>
         /// <param name="delete_snapshots">A bool value, delete snapshots if it is true.</param>
         /// <returns>A <see cref="std::future" /> object that represents the current operation.</returns>
-        AZURE_STORAGE_API std::future<storage_outcome<void>> delete_blob(const std::string &container, const std::string &blob, bool delete_snapshots = false);
+        AZURE_STORAGE_API std::future<storage_outcome<void>> delete_blob(const std::string &container, const std::string &blob, bool delete_snapshots = false, bool is_directory = false);
 
         /// <summary>
         /// Intitiates an asynchronous operation  to create a container.
@@ -553,6 +553,13 @@ namespace azure { namespace storage_lite {
         /// <param name="destBlob">The destination blob name.</param>
         AZURE_STORAGE_API virtual void start_copy(const std::string &sourceContainer, const std::string &sourceBlob, const std::string &destContainer, const std::string &destBlob);
         
+        /// <summary>
+        /// Deletes a blob which is empty directory.
+        /// </summary>
+        /// <param name="container">The container name.</param>
+        /// <param name="blob">The blob name.</param>
+        AZURE_STORAGE_API virtual void delete_empty_directory(const std::string &container, const std::string &blob);
+
         AZURE_STORAGE_API void set_retry_policy(std::shared_ptr<retry_policy_base> retry_policy)
         {
             if (m_blobClient)

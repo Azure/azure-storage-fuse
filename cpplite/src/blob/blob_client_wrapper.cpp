@@ -887,4 +887,45 @@ namespace azure {  namespace storage_lite {
             }
         }
 
+        void blob_client_wrapper::delete_empty_directory(const std::string &container, const std::string &blob)
+        {
+            if(!is_valid())
+            {
+                errno = client_not_init;
+                return;
+            }
+            if(container.empty() || blob.empty())
+            {
+                errno = invalid_parameters;
+                return;
+            }
+
+            try
+            {
+                auto blobPath = blob;
+                if (blob.back() == '/') {
+                    blobPath = blob.substr(0, blob.size() - 1);
+                }
+                auto task = m_blobClient->delete_blob(container, blobPath, false, true);
+                task.wait();
+                auto result = task.get();
+
+                if(!result.success())
+                {
+                    errno = std::stoi(result.error().code);
+                    logger::log(log_level::error, "Delete empty directory failed.  ex.what() = %s, container = %s, blob = %s.", result.error().message.c_str(), container.c_str(), blob.c_str());
+                }
+                else
+                {
+                    errno = 0;
+                }
+            }
+            catch(std::exception& ex)
+            {
+                logger::log(log_level::error, "Unknown failure in delete_empty_directory.  ex.what() = %s, container = %s, blob = %s.", ex.what(), container.c_str(), blob.c_str());
+                errno = unknown_error;
+                return;
+            }
+        }
+
 }} // azure::storage_lite

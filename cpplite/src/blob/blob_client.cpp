@@ -388,11 +388,11 @@ std::future<storage_outcome<void>> blob_client::upload_block_from_buffer(const s
     return async_executor<void>::submit(m_account, request, http, m_context);
 }
 
-std::future<storage_outcome<void>> blob_client::delete_blob(const std::string &container, const std::string &blob, bool delete_snapshots)
+std::future<storage_outcome<void>> blob_client::delete_blob(const std::string &container, const std::string &blob, bool delete_snapshots, bool is_directory)
 {
     auto http = m_client->get_handle();
 
-    auto request = std::make_shared<delete_blob_request>(container, blob, delete_snapshots);
+    auto request = std::make_shared<delete_blob_request>(container, blob, delete_snapshots, is_directory);
 
     return async_executor<void>::submit(m_account, request, http, m_context);
 }
