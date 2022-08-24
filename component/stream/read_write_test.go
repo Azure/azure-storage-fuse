@@ -35,6 +35,7 @@ package stream
 
 import (
 	"os"
+	"syscall"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -94,6 +95,20 @@ func (suite *streamTestSuite) TestStreamOnlyCloseFile() {
 	suite.assert.Equal(suite.stream.StreamOnly, true)
 }
 
+func (suite *streamTestSuite) TestStreamOnlyFlushFile() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	// set handle limit to 1
+	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 0\n  handle-limit: 10\n"
+	suite.setupTestHelper(config, false)
+
+	handle1 := &handlemap.Handle{Size: 2, Path: fileNames[0]}
+	flushFileOptions := internal.FlushFileOptions{Handle: handle1}
+
+	_ = suite.stream.FlushFile(flushFileOptions)
+	suite.assert.Equal(suite.stream.StreamOnly, true)
+}
+
 func (suite *streamTestSuite) TestStreamOnlyCreateFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
@@ -107,6 +122,21 @@ func (suite *streamTestSuite) TestStreamOnlyCreateFile() {
 	suite.mock.EXPECT().CreateFile(createFileoptions).Return(handle1, nil)
 	_, _ = suite.stream.CreateFile(createFileoptions)
 	suite.assert.Equal(suite.stream.StreamOnly, true)
+}
+
+func (suite *streamTestSuite) TestCreateFileError() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	// set handle limit to 1
+	config := "stream:\n  block-size-mb: 0\n  handle-buffer-size-mb: 32\n  handle-limit: 1\n"
+	suite.setupTestHelper(config, false)
+
+	handle1 := &handlemap.Handle{Size: 0, Path: fileNames[0]}
+	createFileoptions := internal.CreateFileOptions{Name: handle1.Path, Mode: 0777}
+
+	suite.mock.EXPECT().CreateFile(createFileoptions).Return(handle1, syscall.ENOENT)
+	_, err := suite.stream.CreateFile(createFileoptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 func (suite *streamTestSuite) TestStreamOnlyDeleteFile() {
@@ -227,6 +257,36 @@ func (suite *streamTestSuite) TestCacheSmallFileOnOpen() {
 	assertHandleNotStreamOnly(suite, handle)
 }
 
+func (suite *streamTestSuite) TestReadInBuffer() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 32\n  handle-limit: 4\n"
+	suite.setupTestHelper(config, false)
+
+	handle := &handlemap.Handle{Size: int64(4 * MB), Path: fileNames[0]}
+	getFileBlockOffsetsOptions := internal.GetFileBlockOffsetsOptions{Name: fileNames[0]}
+	openFileOptions := internal.OpenFileOptions{Name: fileNames[0], Flags: os.O_RDONLY, Mode: os.FileMode(0777)}
+	// file consists of two blocks
+	bol := &common.BlockOffsetList{
+		BlockList: []*common.Block{{StartIndex: 0, EndIndex: 2 * MB}, {StartIndex: 2, EndIndex: 4 * MB}},
+	}
+
+	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, nil)
+	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
+	_, _ = suite.stream.OpenFile(openFileOptions)
+
+	// get second block
+	readInBufferOptions := internal.ReadInBufferOptions{
+		Handle: handle,
+		Offset: 0,
+		Data:   make([]byte, 2*MB),
+	}
+
+	suite.mock.EXPECT().ReadInBuffer(readInBufferOptions).Return(len(readInBufferOptions.Data), syscall.ENOENT)
+	_, err := suite.stream.ReadInBuffer(readInBufferOptions)
+	suite.assert.NotEqual(nil, err)
+}
+
 // test large files don't cache block on open
 func (suite *streamTestSuite) TestOpenLargeFile() {
 	defer suite.cleanupTest()
@@ -286,6 +346,19 @@ func (suite *streamTestSuite) TestStreamOnly() {
 	assertNumberOfCachedFileBlocks(suite, 0, handle)
 	// confirm new handle is stream only since limit is exceeded
 	assertHandleStreamOnly(suite, handle)
+
+	suite.mock.EXPECT().OpenFile(openFileOptions).Return(handle, syscall.ENOENT)
+	_, err := suite.stream.OpenFile(openFileOptions)
+	suite.assert.NotEqual(nil, err)
+
+	writeFileOptions := internal.WriteFileOptions{
+		Handle: handle,
+		Offset: 1 * MB,
+		Data:   make([]byte, 1*MB),
+	}
+	suite.mock.EXPECT().WriteFile(writeFileOptions).Return(0, syscall.ENOENT)
+	_, err = suite.stream.WriteFile(writeFileOptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 func (suite *streamTestSuite) TestReadLargeFileBlocks() {
@@ -362,7 +435,6 @@ func (suite *streamTestSuite) TestPurgeOnClose() {
 	assertNumberOfCachedFileBlocks(suite, 1, handle)
 	assertHandleNotStreamOnly(suite, handle)
 
-	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Return(nil)
 	suite.mock.EXPECT().CloseFile(internal.CloseFileOptions{Handle: handle}).Return(nil)
 	_ = suite.stream.CloseFile(internal.CloseFileOptions{Handle: handle})
 	assertBlockNotCached(suite, 0, handle)
@@ -478,6 +550,7 @@ func (suite *streamTestSuite) TestLargeFileEviction() {
 	callbackFunc := func(options internal.FlushFileOptions) {
 		block1.Flags.Clear(common.DirtyBlock)
 		block2.Flags.Clear(common.DirtyBlock)
+		handle.Flags.Set(handlemap.HandleFlagDirty)
 	}
 	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle}).Do(callbackFunc).Return(nil)
 
@@ -525,7 +598,6 @@ func (suite *streamTestSuite) TestStreamOnlyHandle() {
 
 	//close the first handle
 	closeFileOptions := internal.CloseFileOptions{Handle: handle1}
-	suite.mock.EXPECT().FlushFile(internal.FlushFileOptions{Handle: handle1}).Return(nil)
 	suite.mock.EXPECT().CloseFile(closeFileOptions).Return(nil)
 	_ = suite.stream.CloseFile(closeFileOptions)
 
@@ -582,6 +654,10 @@ func (suite *streamTestSuite) TestTruncateFile() {
 	suite.mock.EXPECT().TruncateFile(truncateFileOptions).Return(nil)
 	_ = suite.stream.TruncateFile(truncateFileOptions)
 	suite.assert.Equal(suite.stream.StreamOnly, false)
+
+	suite.mock.EXPECT().TruncateFile(truncateFileOptions).Return(syscall.ENOENT)
+	err := suite.stream.TruncateFile(truncateFileOptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 func (suite *streamTestSuite) TestRenameFile() {
@@ -597,6 +673,10 @@ func (suite *streamTestSuite) TestRenameFile() {
 	suite.mock.EXPECT().RenameFile(renameFileOptions).Return(nil)
 	_ = suite.stream.RenameFile(renameFileOptions)
 	suite.assert.Equal(suite.stream.StreamOnly, false)
+
+	suite.mock.EXPECT().RenameFile(renameFileOptions).Return(syscall.ENOENT)
+	err := suite.stream.RenameFile(renameFileOptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 func (suite *streamTestSuite) TestRenameDirectory() {
@@ -611,6 +691,10 @@ func (suite *streamTestSuite) TestRenameDirectory() {
 	suite.mock.EXPECT().RenameDir(renameDirOptions).Return(nil)
 	_ = suite.stream.RenameDir(renameDirOptions)
 	suite.assert.Equal(suite.stream.StreamOnly, false)
+
+	suite.mock.EXPECT().RenameDir(renameDirOptions).Return(syscall.ENOENT)
+	err := suite.stream.RenameDir(renameDirOptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 func (suite *streamTestSuite) TestDeleteDirectory() {
@@ -625,6 +709,10 @@ func (suite *streamTestSuite) TestDeleteDirectory() {
 	suite.mock.EXPECT().DeleteDir(deleteDirOptions).Return(nil)
 	_ = suite.stream.DeleteDir(deleteDirOptions)
 	suite.assert.Equal(suite.stream.StreamOnly, false)
+
+	suite.mock.EXPECT().DeleteDir(deleteDirOptions).Return(syscall.ENOENT)
+	err := suite.stream.DeleteDir(deleteDirOptions)
+	suite.assert.NotEqual(nil, err)
 }
 
 // func (suite *streamTestSuite) TestFlushFile() {
