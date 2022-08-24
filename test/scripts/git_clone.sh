@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # To run this script from your workspace execute this command
-#   ./test/scripts/run.sh /mnt/blob_mnt /mnt/blobfusetmp ./config.yaml ./v1.cfg 2&> results.txt
+#   ./test/scripts/git_clone.sh /mnt/blob_mnt /mnt/blobfusetmp ./config.yaml ./v1.cfg 2&> results.txt
 mntPath=$1
 tmpPath=$2
 v2configPath=$3
@@ -9,10 +9,11 @@ v1configPath=$4
 outputPath=results_git_clone.txt
 rm $outputPath
 
+runs=3
 echo "| Case | latest v2 | v1 |" >> $outputPath
 echo "| -- | -- | -- |" >> $outputPath
 
-for i in {1..3}; 
+for i in {1..$runs}; 
 do 
 	echo "| Run $i |" >> $outputPath
 done
@@ -26,7 +27,7 @@ sudo rm -rf $tmpPath/*
 
 sed_line=3
 blobfuse2_average=0
-for i in {1..3}; 
+for i in {1..$runs}; 
 do 
 	echo "Blobfuse2 Run $i"
 	./blobfuse2 mount $mntPath --config-file=$v2configPath &
@@ -55,7 +56,7 @@ done
 
 sed_line=3
 blobfuse_average=0
-for i in {1..3}; 
+for i in {1..$runs}; 
 do 
 	echo "Blobfuse Run $i"
 	blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR -o allow_other --file-cache-timeout-in-seconds=0 --use-attr-cache=true --max-concurrency=32
@@ -81,13 +82,15 @@ do
 	(( sed_line++ ))
 	blobfuse_average=$(( $blobfuse_average + $time_diff ))
 done
-blobfuse2_average=$(( $blobfuse2_average / 3 ))
-blobfuse_average=$(( $blobfuse_average / 3 ))
+blobfuse2_average=$(( $blobfuse2_average / $runs ))
+blobfuse_average=$(( $blobfuse_average / $runs ))
 
-sed -i "6s/$/ ${blobfuse2_average} | ${blobfuse_average} |/" $outputPath
+average_line=$(( $runs + 3 ))
+sed -i "${average_line}s/$/ ${blobfuse2_average} | ${blobfuse_average} |/" $outputPath
 
 # Calculate the % difference
 diff=$(( $blobfuse2_average - $blobfuse_average ))
 percent=`echo "scale=2; $diff * 100 / $blobfuse_average" | bc`
 
-sed -i "7s/$/ ${percent} | |/" $outputPath
+percent_line=$(( $runs + 4 ))
+sed -i "${percent_line}s/$/ ${percent} | |/" $outputPath
