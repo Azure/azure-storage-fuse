@@ -93,9 +93,9 @@ sed -i "8s/$/ ${blobfuse2_write_average} | ${blobfuse2_read_average} | ${blobfus
 
 # Calculate the % difference
 diff_write=$(( $blobfuse2_write_average - $blobfuse_write_average ))
-percent_write=`echo "scale=2; $diff * 100 / $blobfuse_write_average" | bc`
+percent_write=`echo "scale=2; $diff_write * 100 / $blobfuse_write_average" | bc`
 
 diff_read=$(( $blobfuse2_read_average - $blobfuse_read_average ))
-percent_read=`echo "scale=2; $diff * 100 / $blobfuse_read_average" | bc`
+percent_read=`echo "scale=2; $diff_read * 100 / $blobfuse_read_average" | bc`
 
 sed -i "9s/$/ ${percent_write} | ${percent_read} |/" $outputPath
