@@ -505,6 +505,12 @@ stages:
         steps:
           - checkout: none
 
+          # GoTool task used only for Microsoft Hosted Agents to install Go-lang
+          - task: GoTool@0
+            inputs:
+              version: '1.16.2'
+            displayName: "GoTool Setup"
+
           # Clone the repo
           - script: |
               git clone https://github.com/Azure/azure-storage-fuse
