@@ -12,7 +12,7 @@ rm $outputPath
 echo "| Case | latest v2 write IOPS | latest v2 read IOPS | v1 write IOPS | v2 read IOPS |" >> $outputPath
 echo "| -- | -- | -- | -- | -- |" >> $outputPath
 
-for i in {1..2}; 
+for i in {1..5}; 
 do 
 	echo "| Run $i |" >> $outputPath
 done
@@ -89,7 +89,7 @@ blobfuse2_read_average=$(( $blobfuse2_read_average / 5 ))
 blobfuse_write_average=$(( $blobfuse_write_average / 5 ))
 blobfuse_read_average=$(( $blobfuse_read_average / 5 ))
 
-sed -i "$5s/$/ ${blobfuse2_write_average} | ${blobfuse2_read_average} | ${blobfuse_write_average} | ${blobfuse_read_average} |/" $outputPath
+sed -i "8s/$/ ${blobfuse2_write_average} | ${blobfuse2_read_average} | ${blobfuse_write_average} | ${blobfuse_read_average} |/" $outputPath
 
 # Calculate the % difference
 diff_write=$(( $blobfuse2_write_average - $blobfuse_write_average ))
@@ -98,4 +98,4 @@ percent_write=`echo "scale=2; $diff * 100 / $blobfuse_write_average" | bc`
 diff_read=$(( $blobfuse2_read_average - $blobfuse_read_average ))
 percent_read=`echo "scale=2; $diff * 100 / $blobfuse_read_average" | bc`
 
-sed -i "6s/$/ ${percent_write} | ${percent_read} |/" $outputPath
+sed -i "9s/$/ ${percent_write} | ${percent_read} |/" $outputPath
