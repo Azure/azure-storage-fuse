@@ -260,8 +260,8 @@ func (c *FileCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [%s]", c.Name(), "failed to create cache policy")
 	}
 
-	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s",
-		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath)
+	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d",
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold))
 
 	return nil
 }
@@ -1338,11 +1338,24 @@ func NewFileCacheComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewFileCacheComponent)
+
 	fileCacheTimeout := config.AddUint32Flag("file-cache-timeout", defaultFileCacheTimeout, "file cache timeout")
 	config.BindPFlag(compName+".timeout-sec", fileCacheTimeout)
-	tmpPathFlag := config.AddStringFlag("tmp-path", "", "Configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
+
+	tmpPathFlag := config.AddStringFlag("tmp-path", "", "configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
 	config.BindPFlag(compName+".path", tmpPathFlag)
+
+	cacheSizeMB := config.AddUint32Flag("cache-size-mb", 0, "max size in MB that file-cache can occupy on local disk for caching")
+	config.BindPFlag(compName+".max-size-mb", cacheSizeMB)
+
+	highThreshold := config.AddUint32Flag("high-disk-threshold", 90, "percentage of cache utilization which kicks in early eviction")
+	config.BindPFlag(compName+".high-threshold", highThreshold)
+
+	lowThreshold := config.AddUint32Flag("low-disk-threshold", 80, "percentage of cache utilization which stops early eviction started by high-disk-threshold")
+	config.BindPFlag(compName+".low-threshold", lowThreshold)
+
 	config.RegisterFlagCompletionFunc("tmp-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	})
+
 }
