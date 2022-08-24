@@ -260,8 +260,8 @@ func (c *FileCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [%s]", c.Name(), "failed to create cache policy")
 	}
 
-	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s",
-		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath)
+	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d",
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold))
 
 	return nil
 }

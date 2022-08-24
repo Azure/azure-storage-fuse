@@ -84,7 +84,7 @@ Note: For an exhaustive list of the blobfuse2 config file options and the format
 | --config-file=PATH                      | --config-file=PATH                  |                                   |                                                                           |
 | --container-name=NAME                   | --container-name=NAME               | azstorage.container               |                                                                           |
 | --use-https=true                        |                                     | azstorage.use-http                | This parameter has the opposite boolean semantics                         |
-| --file-cache-timeout-in-seconds=120     |  --file-cache-timeout=0             | file_cache.timeout-sec            | Default changed to 0                                                      |
+| --file-cache-timeout-in-seconds=120     |  --file-cache-timeout=120           | file_cache.timeout-sec            |                                      |
 | --log-level=LOG_WARNING                 | --log-level=LOG_WARNING             | logging.level                     |                                                                           |
 | --use-attr-cache=true                   |                                     | attr_cache                        | Add attr_cache to the components list                                     |
 | --use-adls=false                        |                                     | azstorage.type                    | Specify either 'block' or 'adls'                                          |
