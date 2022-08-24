@@ -46,18 +46,17 @@ import (
 )
 
 type monitorOptions struct {
-	EnableMon         bool     `config:"enable-monitoring"`
-	DisableList       []string `config:"monitor-disable-list"`
-	BfsPollInterval   int      `config:"blobfuse2-poll-interval"`
-	StatsPollinterval int      `config:"stats-poll-interval"`
+	EnableMon       bool     `config:"enable-monitoring"`
+	DisableList     []string `config:"monitor-disable-list"`
+	BfsPollInterval int      `config:"stats-poll-interval-sec"`
+	ProcMonInterval int      `config:"process-monitor-interval-sec"`
 }
 
 var pid string
 var cacheMonitorOptions file_cache.FileCacheOptions
-var hmonOptions monitorOptions
 
 func resetMonitorOptions() {
-	hmonOptions = monitorOptions{}
+	options.MonitorOpt = monitorOptions{}
 	cacheMonitorOptions = file_cache.FileCacheOptions{}
 }
 
@@ -87,7 +86,7 @@ var healthMonCmd = &cobra.Command{
 			return err
 		}
 
-		err = config.UnmarshalKey("health-monitor", &hmonOptions)
+		err = config.UnmarshalKey("health-monitor", &options.MonitorOpt)
 		if err != nil {
 			log.Err("health-monitor: FileCache config error [invalid config attributes]")
 			return err
@@ -138,16 +137,16 @@ func buildCliParamForMonitor() []string {
 	var cliParams []string
 
 	cliParams = append(cliParams, "--pid="+pid)
-	if hmonOptions.BfsPollInterval != 0 {
-		cliParams = append(cliParams, fmt.Sprintf("--blobfuse2-poll-interval=%v", hmonOptions.BfsPollInterval))
+	if options.MonitorOpt.BfsPollInterval != 0 {
+		cliParams = append(cliParams, fmt.Sprintf("--stats-poll-interval-sec=%v", options.MonitorOpt.BfsPollInterval))
 	}
-	if hmonOptions.StatsPollinterval != 0 {
-		cliParams = append(cliParams, fmt.Sprintf("--stats-poll-interval=%v", hmonOptions.StatsPollinterval))
+	if options.MonitorOpt.ProcMonInterval != 0 {
+		cliParams = append(cliParams, fmt.Sprintf("--process-monitor-interval-sec=%v", options.MonitorOpt.ProcMonInterval))
 	}
 	cliParams = append(cliParams, "--cache-path="+cacheMonitorOptions.TmpPath)
 	cliParams = append(cliParams, fmt.Sprintf("--max-size-mb=%v", cacheMonitorOptions.MaxSizeMB))
 
-	for _, v := range hmonOptions.DisableList {
+	for _, v := range options.MonitorOpt.DisableList {
 		switch v {
 		case hmcommon.BlobfuseStats:
 			cliParams = append(cliParams, "--no-blobfuse2-stats")

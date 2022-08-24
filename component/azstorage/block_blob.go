@@ -533,14 +533,14 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	return blobList, listBlob.NextMarker.Val, nil
 }
 
-// track the progress of downloads of blobs
+// track the progress of download of blobs where every 100MB of data downloaded is being tracked. It also tracks the completion of download
 func trackDownload(name string, bytesTransferred int64, count int64, downloadPtr *int64) {
-	if bytesTransferred >= (*downloadPtr)*100*1024*1024 || bytesTransferred == count {
+	if bytesTransferred >= (*downloadPtr)*100*common.MbToBytes || bytesTransferred == count {
 		(*downloadPtr)++
 		log.Debug("BlockBlob::trackDownload : Download: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
 
 		// send the download progress as an event
-		AzStatsCollector.AddStats(compName, "DownloadProgress", name, true, map[string]interface{}{"Bytes Transferred": bytesTransferred, "Size": count})
+		azStatsCollector.AddStats(compName, "DownloadProgress", name, true, map[string]interface{}{"Bytes Transferred": bytesTransferred, "Size": count})
 	}
 }
 
@@ -554,7 +554,7 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 	var downloadPtr *int64 = new(int64)
 	*downloadPtr = 1
 
-	if common.EnableMonitoring {
+	if internal.MonitorBfs() {
 		bb.downloadOptions.Progress = func(bytesTransferred int64) {
 			trackDownload(name, bytesTransferred, count, downloadPtr)
 		}
@@ -574,8 +574,8 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 	} else {
 		log.Debug("BlockBlob::ReadToFile : Download complete of blob %v", name)
 
-		// store total bytes downloaded
-		AzStatsCollector.AddStats(compName, internal.Increment, "", false, map[string]interface{}{internal.BytesDownloaded: count})
+		// store total bytes downloaded so far
+		azStatsCollector.AddStats(compName, internal.Increment, "", false, map[string]interface{}{internal.BytesDownloaded: count})
 	}
 
 	return nil
@@ -674,13 +674,14 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 	return blockSize, nil
 }
 
+// track the progress of upload of blobs where every 100MB of data uploaded is being tracked. It also tracks the completion of upload
 func trackUpload(name string, bytesTransferred int64, count int64, uploadPtr *int64) {
-	if bytesTransferred >= (*uploadPtr)*100*1024*1024 || bytesTransferred == count {
+	if bytesTransferred >= (*uploadPtr)*100*common.MbToBytes || bytesTransferred == count {
 		(*uploadPtr)++
 		log.Debug("BlockBlob::trackUpload : Upload: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
 
 		// send upload progress as event
-		AzStatsCollector.AddStats(compName, "UploadProgress", name, true, map[string]interface{}{"Bytes Transferred": bytesTransferred, "Size": count})
+		azStatsCollector.AddStats(compName, "UploadProgress", name, true, map[string]interface{}{"Bytes Transferred": bytesTransferred, "Size": count})
 	}
 }
 
@@ -723,7 +724,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 			ContentType: getContentType(name),
 		},
 	}
-	if common.EnableMonitoring && fileSize > 0 {
+	if internal.MonitorBfs() && fileSize > 0 {
 		uploadOptions.Progress = func(bytesTransferred int64) {
 			trackUpload(name, bytesTransferred, fileSize, uploadPtr)
 		}
@@ -743,9 +744,9 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 	} else {
 		log.Debug("BlockBlob::WriteFromFile : Upload complete of blob %v", name)
 
-		// store total bytes uploaded
+		// store total bytes uploaded so far
 		if fileSize > 0 {
-			AzStatsCollector.AddStats(compName, internal.Increment, "", false, map[string]interface{}{internal.BytesUploaded: fileSize})
+			azStatsCollector.AddStats(compName, internal.Increment, "", false, map[string]interface{}{internal.BytesUploaded: fileSize})
 		}
 	}
 

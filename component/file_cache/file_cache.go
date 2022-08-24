@@ -111,7 +111,7 @@ const (
 //  Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &FileCache{}
 
-var FileCacheStatsCollector *internal.StatsCollector
+var fileCacheStatsCollector *internal.StatsCollector
 
 func (c *FileCache) Name() string {
 	return compName
@@ -151,7 +151,7 @@ func (c *FileCache) Start(ctx context.Context) error {
 	}
 
 	// create stats collector for file cache
-	FileCacheStatsCollector = internal.NewStatsCollector(c.Name(), nil)
+	fileCacheStatsCollector = internal.NewStatsCollector(c.Name())
 
 	return nil
 }
@@ -163,7 +163,7 @@ func (c *FileCache) Stop() error {
 	_ = c.policy.ShutdownPolicy()
 	_ = c.TempCacheCleanup()
 
-	FileCacheStatsCollector.Destroy()
+	fileCacheStatsCollector.Destroy()
 
 	return nil
 }
@@ -699,7 +699,7 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 
 	fc.policy.CachePurge(localPath)
 
-	FileCacheStatsCollector.AddStats(fc.Name(), "DeleteFile", options.Name, true, nil)
+	fileCacheStatsCollector.AddStats(fc.Name(), "DeleteFile", options.Name, true, nil)
 	return nil
 }
 
@@ -871,7 +871,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
 	handle.SetFileObject(f)
 
-	FileCacheStatsCollector.AddStats(fc.Name(), "OpenFile", options.Name, true, map[string]interface{}{"Mode": options.Mode.String()})
+	fileCacheStatsCollector.AddStats(fc.Name(), "OpenFile", options.Name, true, map[string]interface{}{"Mode": options.Mode.String()})
 
 	return handle, nil
 }
@@ -1260,7 +1260,7 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 		}
 	}
 
-	FileCacheStatsCollector.AddStats(fc.Name(), "TruncateFile", options.Name, true, map[string]interface{}{"Size": options.Size})
+	fileCacheStatsCollector.AddStats(fc.Name(), "TruncateFile", options.Name, true, map[string]interface{}{"Size": options.Size})
 
 	return nil
 }
@@ -1296,7 +1296,7 @@ func (fc *FileCache) Chmod(options internal.ChmodOptions) error {
 		}
 	}
 
-	FileCacheStatsCollector.AddStats(fc.Name(), "Chmod", options.Name, true, map[string]interface{}{"Mode": options.Mode.String()})
+	fileCacheStatsCollector.AddStats(fc.Name(), "Chmod", options.Name, true, map[string]interface{}{"Mode": options.Mode.String()})
 
 	return nil
 }
@@ -1326,7 +1326,7 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 		}
 	}
 
-	FileCacheStatsCollector.AddStats(fc.Name(), "Chown", options.Name, true, map[string]interface{}{"Owner": options.Owner, "Group": options.Group})
+	fileCacheStatsCollector.AddStats(fc.Name(), "Chown", options.Name, true, map[string]interface{}{"Owner": options.Owner, "Group": options.Group})
 
 	return nil
 }

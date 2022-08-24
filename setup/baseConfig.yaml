@@ -118,8 +118,8 @@ mountall:
 # health-monitor configuration
 health-monitor:
   enable-monitoring: true|false <enable health-monitor>
-  blobfuse2-poll-interval: <Blobfuse2 stats polling interval (in sec). Default - 5 sec>
-  stats-poll-interval: <CPU, memory and network usage polling interval (in sec). Default - 10 sec>
+  stats-poll-interval-sec: <Blobfuse2 stats polling interval (in sec). Default - 5 sec>
+  process-monitor-interval-sec: <CPU, memory and network usage polling interval (in sec). Default - 10 sec>
   # list of monitors to be disabled
   monitor-disable-list:
     - blobfuse_stats <Disable blobfuse2 stats polling>

@@ -100,7 +100,7 @@ func (cpu *CpuProfiler) Validate() error {
 	}
 
 	if cpu.pollInterval == 0 {
-		return fmt.Errorf("stats-poll-interval should be non-zero")
+		return fmt.Errorf("process-monitor-interval-sec should be non-zero")
 	}
 
 	return nil
@@ -128,7 +128,7 @@ func (cpu *CpuProfiler) getCpuUsage() (string, error) {
 func NewCpuMonitor() hminternal.Monitor {
 	cpu := &CpuProfiler{
 		pid:          hmcommon.Pid,
-		pollInterval: hmcommon.StatsPollinterval,
+		pollInterval: hmcommon.ProcMonInterval,
 	}
 
 	cpu.SetName(hmcommon.CpuProfiler)

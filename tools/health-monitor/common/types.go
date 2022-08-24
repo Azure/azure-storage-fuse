@@ -49,9 +49,9 @@ const (
 )
 
 var (
-	Pid               string
-	BfsPollInterval   int
-	StatsPollinterval int
+	Pid             string
+	BfsPollInterval int
+	ProcMonInterval int
 
 	NoBfsMon       bool
 	NoCpuProf      bool

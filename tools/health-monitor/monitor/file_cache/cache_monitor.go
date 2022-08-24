@@ -220,13 +220,11 @@ func (fc *FileCache) chmodEvent(event *watcher.Event) {
 		delete(fc.cacheObj.fileRemovedMap, event.Path)
 		fileSize := fc.cacheObj.fileCreatedMap[event.Path]
 
-		if fileSize == event.Size() {
-			return
+		if fileSize != event.Size() {
+			fc.cacheObj.cacheSize += event.Size() - fileSize
+			fc.cacheObj.fileCreatedMap[event.Path] = event.Size()
+			fc.cacheObj.cacheConsumed = (float64)(fc.cacheObj.cacheSize*100) / (fc.maxSizeMB * common.MbToBytes)
 		}
-
-		fc.cacheObj.cacheSize += event.Size() - fileSize
-		fc.cacheObj.fileCreatedMap[event.Path] = event.Size()
-		fc.cacheObj.cacheConsumed = (float64)(fc.cacheObj.cacheSize*100) / (fc.maxSizeMB * common.MbToBytes)
 	}
 
 	e := fc.getCacheEventObj(event)

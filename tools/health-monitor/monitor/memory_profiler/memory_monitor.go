@@ -100,7 +100,7 @@ func (mem *MemoryProfiler) Validate() error {
 	}
 
 	if mem.pollInterval == 0 {
-		return fmt.Errorf("stats-poll-interval should be non-zero")
+		return fmt.Errorf("process-monitor-interval-sec should be non-zero")
 	}
 
 	return nil
@@ -128,7 +128,7 @@ func (mem *MemoryProfiler) getMemoryUsage() (string, error) {
 func NewMemoryMonitor() hminternal.Monitor {
 	mem := &MemoryProfiler{
 		pid:          hmcommon.Pid,
-		pollInterval: hmcommon.StatsPollinterval,
+		pollInterval: hmcommon.ProcMonInterval,
 	}
 
 	mem.SetName(hmcommon.MemoryProfiler)

@@ -46,8 +46,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
-type ChannelReader func()
-
 const (
 	// Stats collection operation types
 	Increment = "increment"
@@ -66,7 +64,6 @@ const (
 type StatsCollector struct {
 	channel    chan ChannelMsg
 	workerDone sync.WaitGroup
-	reader     ChannelReader
 	compIdx    int
 }
 
@@ -91,12 +88,11 @@ var transferMtx sync.Mutex
 var pollMtx sync.Mutex
 var statsMtx sync.Mutex
 
-func NewStatsCollector(componentName string, reader ChannelReader) *StatsCollector {
+func NewStatsCollector(componentName string) *StatsCollector {
 	sc := &StatsCollector{}
 
-	if common.EnableMonitoring {
+	if MonitorBfs() {
 		sc.channel = make(chan ChannelMsg, 100000)
-		sc.reader = reader
 
 		statsMtx.Lock()
 
@@ -133,14 +129,14 @@ func (sc *StatsCollector) Init() {
 }
 
 func (sc *StatsCollector) Destroy() {
-	if common.EnableMonitoring {
+	if MonitorBfs() {
 		close(sc.channel)
 		sc.workerDone.Wait()
 	}
 }
 
 func (sc *StatsCollector) AddStats(cmpName string, op string, path string, isEvent bool, mp map[string]interface{}) {
-	if common.EnableMonitoring {
+	if MonitorBfs() {
 		st := Stats{
 			ComponentName: cmpName,
 			Operation:     op,
@@ -203,6 +199,7 @@ func (sc *StatsCollector) statsDumper() {
 			for key, val := range st.CompStats.Value {
 				idx := sc.compIdx
 
+				// TODO: remove lock
 				statsMtx.Lock()
 
 				_, isPresent := statsList[idx].Value[key]
@@ -217,6 +214,7 @@ func (sc *StatsCollector) statsDumper() {
 				case Decrement:
 					statsList[idx].Value[key] = statsList[idx].Value[key].(int64) - val.(int64)
 					if statsList[idx].Value[key].(int64) < 0 {
+						// TODO: add error log
 						statsList[idx].Value[key] = (int64)(0)
 					}
 
@@ -332,4 +330,9 @@ func createPipe(pipe string) error {
 		return err
 	}
 	return nil
+}
+
+// check if health-monitor is enabled and blofuse stats monitor is not disabled
+func MonitorBfs() bool {
+	return common.EnableMonitoring && !common.BfsDisabled
 }

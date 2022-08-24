@@ -71,19 +71,20 @@ type mountOptions struct {
 	MountPath  string
 	ConfigFile string
 
-	Logging           LogOptions `config:"logging"`
-	Components        []string   `config:"components"`
-	Foreground        bool       `config:"foreground"`
-	DefaultWorkingDir string     `config:"default-working-dir"`
-	Debug             bool       `config:"debug"`
-	DebugPath         string     `config:"debug-path"`
-	CPUProfile        string     `config:"cpu-profile"`
-	MemProfile        string     `config:"mem-profile"`
-	PassPhrase        string     `config:"passphrase"`
-	SecureConfig      bool       `config:"secure-config"`
-	DynamicProfiler   bool       `config:"dynamic-profile"`
-	ProfilerPort      int        `config:"profiler-port"`
-	ProfilerIP        string     `config:"profiler-ip"`
+	Logging           LogOptions     `config:"logging"`
+	Components        []string       `config:"components"`
+	Foreground        bool           `config:"foreground"`
+	DefaultWorkingDir string         `config:"default-working-dir"`
+	Debug             bool           `config:"debug"`
+	DebugPath         string         `config:"debug-path"`
+	CPUProfile        string         `config:"cpu-profile"`
+	MemProfile        string         `config:"mem-profile"`
+	PassPhrase        string         `config:"passphrase"`
+	SecureConfig      bool           `config:"secure-config"`
+	DynamicProfiler   bool           `config:"dynamic-profile"`
+	ProfilerPort      int            `config:"profiler-port"`
+	ProfilerIP        string         `config:"profiler-ip"`
+	MonitorOpt        monitorOptions `config:"health-monitor"`
 }
 
 var options mountOptions
@@ -282,10 +283,14 @@ var mountCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		err = config.UnmarshalKey("health-monitor.enable-monitoring", &common.EnableMonitoring)
-		if err != nil {
-			log.Debug("Mount: unable to unmarshal health-monitor.enable-monitoring key from config: " + err.Error())
-			common.EnableMonitoring = false
+		common.EnableMonitoring = options.MonitorOpt.EnableMon
+
+		// check if blobfuse stats monitor is added in the disable list
+		for _, mon := range options.MonitorOpt.DisableList {
+			if mon == common.BfuseStats {
+				common.BfsDisabled = true
+				break
+			}
 		}
 
 		if options.Debug {

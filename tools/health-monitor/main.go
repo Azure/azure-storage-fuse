@@ -112,7 +112,7 @@ func main() {
 		"Cache Path: %v \n"+
 		"Max cache size in MB: %v",
 		hmcommon.Pid, common.TransferPipe, common.PollingPipe, hmcommon.BfsPollInterval,
-		hmcommon.StatsPollinterval, hmcommon.TempCachePath, hmcommon.MaxCacheSize)
+		hmcommon.ProcMonInterval, hmcommon.TempCachePath, hmcommon.MaxCacheSize)
 
 	comps := getMonitors()
 
@@ -134,8 +134,8 @@ func main() {
 
 func init() {
 	flag.StringVar(&hmcommon.Pid, "pid", "", "Pid of blobfuse2 process")
-	flag.IntVar(&hmcommon.BfsPollInterval, "blobfuse2-poll-interval", 5, "Blobfuse2 stats polling interval in seconds")
-	flag.IntVar(&hmcommon.StatsPollinterval, "stats-poll-interval", 10, "CPU, memory and network usage polling interval in seconds")
+	flag.IntVar(&hmcommon.BfsPollInterval, "stats-poll-interval-sec", 5, "Blobfuse2 stats polling interval in seconds")
+	flag.IntVar(&hmcommon.ProcMonInterval, "process-monitor-interval-sec", 10, "CPU, memory and network usage polling interval in seconds")
 
 	flag.BoolVar(&hmcommon.NoBfsMon, "no-blobfuse2-stats", false, "Disable blobfuse2 stats polling")
 	flag.BoolVar(&hmcommon.NoCpuProf, "no-cpu-profiler", false, "Disable CPU monitoring on blobfuse2 process")

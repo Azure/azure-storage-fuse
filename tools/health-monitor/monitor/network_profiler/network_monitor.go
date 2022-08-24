@@ -83,7 +83,7 @@ func (nw *NetworkProfiler) Validate() error {
 	}
 
 	if nw.pollInterval == 0 {
-		return fmt.Errorf("stats-poll-interval should be non-zero")
+		return fmt.Errorf("process-monitor-interval-sec should be non-zero")
 	}
 
 	return nil
@@ -92,7 +92,7 @@ func (nw *NetworkProfiler) Validate() error {
 func NewNetworkMonitor() hminternal.Monitor {
 	nw := &NetworkProfiler{
 		pid:          hmcommon.Pid,
-		pollInterval: hmcommon.StatsPollinterval,
+		pollInterval: hmcommon.ProcMonInterval,
 	}
 
 	nw.SetName(hmcommon.NetworkProfiler)

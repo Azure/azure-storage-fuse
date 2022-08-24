@@ -61,7 +61,8 @@ const (
 	DefaultDirectoryPermissionBits  os.FileMode = 0775
 	DefaultAllowOtherPermissionBits os.FileMode = 0777
 
-	MbToBytes = 1024 * 1024
+	MbToBytes  = 1024 * 1024
+	BfuseStats = "blobfuse_stats"
 )
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
@@ -71,6 +72,7 @@ var DefaultPipeline = []string{"libfuse", "file_cache", "attr_cache", "azstorage
 var DefaultStreamPipeline = []string{"libfuse", "stream", "attr_cache", "azstorage"}
 
 var EnableMonitoring = false
+var BfsDisabled = false
 var TransferPipe = filepath.Join(os.ExpandEnv(DefaultWorkDir), "transferPipe")
 var PollingPipe = filepath.Join(os.ExpandEnv(DefaultWorkDir), "pollPipe")
 
