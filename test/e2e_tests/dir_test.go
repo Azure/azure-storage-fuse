@@ -397,7 +397,6 @@ func (suite *dirTestSuite) TestDirRenameFull() {
 // 	cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
 // 	_, err := cmd.Output()
 // 	suite.Equal(nil, err)
-
 // 	_, err = os.Stat(dirName)
 // 	suite.Equal(nil, err)
 

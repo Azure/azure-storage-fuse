@@ -45,6 +45,10 @@ parameters:
     type: boolean
   - name: test_spn_credential
     type: boolean
+  - name: test_stream
+    type: boolean
+  - name: stream_config
+    type: string
   - name: test_azurite
     type: boolean
     default: false
@@ -78,6 +82,23 @@ steps:
       VERBOSE_LOG: ${{ parameters.verbose_log }}
       USE_HTTP: false
     condition: ${{ parameters.test_key_credential }}
+    continueOnError: false
+      
+  - script: cat ${{ parameters.config }}
+    displayName: Print config file
+
+# Stream e2e
+  - script: |
+      cd ${{ parameters.working_dir }}
+      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_stream.yaml --container-name=${{ parameters.container }} --output-file=${{ parameters.stream_config }}
+    displayName: Create Stream Config File
+    env:
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    condition: ${{ parameters.test_stream }}
     continueOnError: false
       
   - script: cat ${{ parameters.config }}
@@ -157,6 +178,26 @@ steps:
             ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }}
             --default-working-dir=${{ parameters.working_dir }}
           displayName: 'E2E Test: Mount with Key Credential Configuration'
+          timeoutInMinutes: 3
+          continueOnError: false
+
+  - ${{ if eq(parameters.test_stream, true) }}:
+    - template: e2e-tests.yml
+      parameters:
+        working_dir: ${{ parameters.working_dir }}
+        temp_dir: ${{ parameters.temp_dir }}
+        mount_dir: ${{ parameters.mount_dir }}
+        adls: ${{ parameters.adls }}
+        idstring: ${{ parameters.service }} with Streaming
+        distro_name: ${{ parameters.distro_name }}
+        quick_test: ${{ parameters.quick_test }}
+        artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_stream.txt'
+        verbose_log: ${{ parameters.verbose_log }}
+        mountStep:
+          script: >
+            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.stream_config }}
+            --default-working-dir=${{ parameters.working_dir }}
+          displayName: 'E2E Test: Mount with Stream Configuration'
           timeoutInMinutes: 3
           continueOnError: false
 

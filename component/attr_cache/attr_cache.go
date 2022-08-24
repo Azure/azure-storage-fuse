@@ -505,6 +505,19 @@ func (ac *AttrCache) CreateLink(options internal.CreateLinkOptions) error {
 	return err
 }
 
+// FlushFile : flush file
+func (ac *AttrCache) FlushFile(options internal.FlushFileOptions) error {
+	log.Trace("AttrCache::FlushFile : %s", options.Handle.Path)
+	err := ac.NextComponent().FlushFile(options)
+	if err == nil {
+		ac.cacheLock.RLock()
+		defer ac.cacheLock.RUnlock()
+
+		ac.invalidatePath(options.Handle.Path)
+	}
+	return err
+}
+
 // Chmod : Update the file with its new permissions
 func (ac *AttrCache) Chmod(options internal.ChmodOptions) error {
 	log.Trace("AttrCache::Chmod : Change mode of file/directory %s", options.Name)
