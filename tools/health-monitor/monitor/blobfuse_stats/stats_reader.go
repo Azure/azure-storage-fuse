@@ -43,7 +43,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
 	hminternal "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/internal"
 )
@@ -127,7 +127,7 @@ func (bfs *BlobfuseStats) statsReader() error {
 
 		log.Debug("StatsReader::statsReader : Line: %v", string(line))
 
-		st := internal.Stats{}
+		st := stats_manager.Stats{}
 		err = json.Unmarshal(line, &st)
 		if err != nil {
 			log.Err("StatsReader::statsReader : UNable to unmarshal json [%v]", err)

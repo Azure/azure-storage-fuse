@@ -51,6 +51,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/spf13/cobra"
 )
@@ -111,7 +112,7 @@ const (
 //  Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &FileCache{}
 
-var fileCacheStatsCollector *internal.StatsCollector
+var fileCacheStatsCollector *stats_manager.StatsCollector
 
 func (c *FileCache) Name() string {
 	return compName
@@ -151,7 +152,7 @@ func (c *FileCache) Start(ctx context.Context) error {
 	}
 
 	// create stats collector for file cache
-	fileCacheStatsCollector = internal.NewStatsCollector(c.Name())
+	fileCacheStatsCollector = stats_manager.NewStatsCollector(c.Name())
 
 	return nil
 }

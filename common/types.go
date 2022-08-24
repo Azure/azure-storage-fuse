@@ -73,8 +73,8 @@ var DefaultStreamPipeline = []string{"libfuse", "stream", "attr_cache", "azstora
 
 var EnableMonitoring = false
 var BfsDisabled = false
-var TransferPipe = filepath.Join(os.ExpandEnv(DefaultWorkDir), "transferPipe")
-var PollingPipe = filepath.Join(os.ExpandEnv(DefaultWorkDir), "pollPipe")
+var TransferPipe = "/tmp/transferPipe"
+var PollingPipe = "/tmp/pollPipe"
 
 //LogLevel enum
 type LogLevel int

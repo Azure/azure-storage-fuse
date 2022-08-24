@@ -42,7 +42,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
 )
 
@@ -63,7 +63,7 @@ type StatsExporter struct {
 
 type Output struct {
 	Timestamp string                 `json:"Timestamp,omitempty"`
-	Bfs       []internal.Stats       `json:"BlobfuseStats,omitempty"`
+	Bfs       []stats_manager.Stats  `json:"BlobfuseStats,omitempty"`
 	FcEvent   []*hmcommon.CacheEvent `json:"FileCache,omitempty"`
 	Cpu       string                 `json:"CpuUsage,omitempty"`
 	Mem       string                 `json:"MemoryUsage,omitempty"`
@@ -148,7 +148,7 @@ func (se *StatsExporter) StatsExporter() {
 
 func (se *StatsExporter) addToList(st *ExportedStat, idx int) {
 	if st.MonitorName == hmcommon.BlobfuseStats {
-		se.outputList[idx].Bfs = append(se.outputList[idx].Bfs, st.Stat.(internal.Stats))
+		se.outputList[idx].Bfs = append(se.outputList[idx].Bfs, st.Stat.(stats_manager.Stats))
 	} else if st.MonitorName == hmcommon.FileCacheMon {
 		se.outputList[idx].FcEvent = append(se.outputList[idx].FcEvent, st.Stat.(*hmcommon.CacheEvent))
 	} else if st.MonitorName == hmcommon.CpuProfiler {

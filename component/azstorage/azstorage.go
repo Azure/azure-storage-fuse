@@ -45,6 +45,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/spf13/cobra"
 )
@@ -63,7 +64,7 @@ const compName = "azstorage"
 //Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AzStorage{}
 
-var azStatsCollector *internal.StatsCollector
+var azStatsCollector *stats_manager.StatsCollector
 
 func (az *AzStorage) Name() string {
 	return az.BaseComponent.Name()
@@ -166,7 +167,7 @@ func (az *AzStorage) Start(ctx context.Context) error {
 	az.listBlocked = true
 
 	// create stats collector for azstorage
-	azStatsCollector = internal.NewStatsCollector(az.Name())
+	azStatsCollector = stats_manager.NewStatsCollector(az.Name())
 
 	return nil
 }

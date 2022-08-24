@@ -43,7 +43,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
 const DefaultEvictTime = 10
@@ -134,7 +134,7 @@ func getUsagePercentage(path string, maxSize float64) float64 {
 	usagePercent := (currSize / float64(maxSize)) * 100
 	log.Debug("cachePolicy::getUsagePercentage : current cache usage : %f%%", usagePercent)
 
-	fileCacheStatsCollector.AddStats(compName, internal.Replace, "", false, map[string]interface{}{internal.CacheUsage: fmt.Sprintf("%f MB", currSize), internal.UsagePercent: fmt.Sprintf("%f%%", usagePercent)})
+	fileCacheStatsCollector.AddStats(compName, stats_manager.Replace, "", false, map[string]interface{}{stats_manager.CacheUsage: fmt.Sprintf("%f MB", currSize), stats_manager.UsagePercent: fmt.Sprintf("%f%%", usagePercent)})
 
 	return usagePercent
 }

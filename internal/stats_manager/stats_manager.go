@@ -31,34 +31,20 @@
    SOFTWARE
 */
 
-package internal
+package stats_manager
 
 import (
 	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
-)
-
-const (
-	// Stats collection operation types
-	Increment = "increment"
-	Decrement = "decrement"
-	Replace   = "replace"
-
-	// AzStorage stats types
-	BytesDownloaded = "Bytes Downloaded"
-	BytesUploaded   = "Bytes Uploaded"
-
-	// File Cache stats types
-	CacheUsage   = "Cache Usage"
-	UsagePercent = "Usage Percent"
 )
 
 type StatsCollector struct {
@@ -80,34 +66,39 @@ type ChannelMsg struct {
 	CompStats Stats
 }
 
-var statsList []*Stats
-var cmpTimeMap map[string]string = make(map[string]string)
-var pollStarted bool = false
+type statsManagerOpt struct {
+	statsList []*Stats
+	// map to store the last updated timestamp of component's stats
+	// This way a component's stat which was not updated is not pushed to the transfer pipe
+	cmpTimeMap  map[string]string
+	pollStarted bool
+	transferMtx sync.Mutex
+	pollMtx     sync.Mutex
+	statsMtx    sync.Mutex
+}
 
-var transferMtx sync.Mutex
-var pollMtx sync.Mutex
-var statsMtx sync.Mutex
+var stMgrOpt statsManagerOpt
 
 func NewStatsCollector(componentName string) *StatsCollector {
 	sc := &StatsCollector{}
 
-	if MonitorBfs() {
+	if common.MonitorBfs() {
 		sc.channel = make(chan ChannelMsg, 100000)
 
-		statsMtx.Lock()
+		stMgrOpt.statsMtx.Lock()
 
-		sc.compIdx = len(statsList)
+		sc.compIdx = len(stMgrOpt.statsList)
 		cmpSt := Stats{
 			Timestamp:     time.Now().Format(time.RFC3339),
 			ComponentName: componentName,
 			Operation:     "Stats Collected",
 			Value:         make(map[string]interface{}),
 		}
-		statsList = append(statsList, &cmpSt)
+		stMgrOpt.statsList = append(stMgrOpt.statsList, &cmpSt)
 
-		cmpTimeMap[componentName] = cmpSt.Timestamp
+		stMgrOpt.cmpTimeMap[componentName] = cmpSt.Timestamp
 
-		statsMtx.Unlock()
+		stMgrOpt.statsMtx.Unlock()
 
 		sc.Init()
 		log.Debug("stats_manager::NewStatsCollector : %v", componentName)
@@ -120,23 +111,23 @@ func (sc *StatsCollector) Init() {
 	sc.workerDone.Add(1)
 	go sc.statsDumper()
 
-	pollMtx.Lock()
-	defer pollMtx.Unlock()
-	if !pollStarted {
-		pollStarted = true
+	stMgrOpt.pollMtx.Lock()
+	defer stMgrOpt.pollMtx.Unlock()
+	if !stMgrOpt.pollStarted {
+		stMgrOpt.pollStarted = true
 		go statsPolling()
 	}
 }
 
 func (sc *StatsCollector) Destroy() {
-	if MonitorBfs() {
+	if common.MonitorBfs() {
 		close(sc.channel)
 		sc.workerDone.Wait()
 	}
 }
 
 func (sc *StatsCollector) AddStats(cmpName string, op string, path string, isEvent bool, mp map[string]interface{}) {
-	if MonitorBfs() {
+	if common.MonitorBfs() {
 		st := Stats{
 			ComponentName: cmpName,
 			Operation:     op,
@@ -162,35 +153,35 @@ func (sc *StatsCollector) statsDumper() {
 
 	err := createPipe(common.TransferPipe)
 	if err != nil {
-		log.Err("StatsManager::StatsDumper : [%v]", err)
+		log.Err("stats_manager::statsDumper : [%v]", err)
 		return
 	}
 
 	f, err := os.OpenFile(common.TransferPipe, os.O_CREATE|os.O_WRONLY, 0777)
 	if err != nil {
-		log.Err("StatsManager::StatsDumper : unable to open pipe file [%v]", err)
+		log.Err("stats_manager::statsDumper : unable to open pipe file [%v]", err)
 		return
 	}
 	defer f.Close()
 
-	log.Info("StatsManager::StatsDumper : opened transfer pipe file")
+	log.Info("stats_manager::statsDumper : opened transfer pipe file")
 
 	for st := range sc.channel {
-		log.Debug("StatsManager::StatsDumper : stats: %v", st)
+		log.Debug("stats_manager::statsDumper : stats: %v", st)
 		if st.IsEvent {
 			msg, err := json.Marshal(st.CompStats)
 			if err != nil {
-				log.Err("StatsManager::StatsDumper : Unable to marshal [%v]", err)
+				log.Err("stats_manager::statsDumper : Unable to marshal [%v]", err)
 				continue
 			}
 
-			log.Debug("StatsManager::StatsDumper : stats: %v", string(msg))
+			log.Debug("stats_manager::statsDumper : stats: %v", string(msg))
 
-			transferMtx.Lock()
+			stMgrOpt.transferMtx.Lock()
 			_, err = f.WriteString(fmt.Sprintf("%v\n", string(msg)))
-			transferMtx.Unlock()
+			stMgrOpt.transferMtx.Unlock()
 			if err != nil {
-				log.Err("StatsManager::StatsDumper : Unable to write to pipe [%v]", err)
+				log.Err("stats_manager::statsDumper : Unable to write to pipe [%v]", err)
 				break
 			}
 
@@ -199,36 +190,31 @@ func (sc *StatsCollector) statsDumper() {
 			for key, val := range st.CompStats.Value {
 				idx := sc.compIdx
 
-				// TODO: remove lock
-				statsMtx.Lock()
-
-				_, isPresent := statsList[idx].Value[key]
+				_, isPresent := stMgrOpt.statsList[idx].Value[key]
 				if !isPresent {
-					statsList[idx].Value[key] = (int64)(0)
+					stMgrOpt.statsList[idx].Value[key] = (int64)(0)
 				}
 
 				switch st.CompStats.Operation {
 				case Increment:
-					statsList[idx].Value[key] = statsList[idx].Value[key].(int64) + val.(int64)
+					stMgrOpt.statsList[idx].Value[key] = stMgrOpt.statsList[idx].Value[key].(int64) + val.(int64)
 
 				case Decrement:
-					statsList[idx].Value[key] = statsList[idx].Value[key].(int64) - val.(int64)
-					if statsList[idx].Value[key].(int64) < 0 {
-						// TODO: add error log
-						statsList[idx].Value[key] = (int64)(0)
+					stMgrOpt.statsList[idx].Value[key] = stMgrOpt.statsList[idx].Value[key].(int64) - val.(int64)
+					if stMgrOpt.statsList[idx].Value[key].(int64) < 0 {
+						log.Err("stats_manager::statsDumper : Negative value %v after decrement of %v for component %v",
+							stMgrOpt.statsList[idx].Value[key], key, st.CompStats.ComponentName)
 					}
 
 				case Replace:
-					statsList[idx].Value[key] = val
+					stMgrOpt.statsList[idx].Value[key] = val
 
 				default:
-					log.Debug("StatsManager::StatsDumper : Incorrect operation for stats collection")
-					statsMtx.Unlock()
+					log.Debug("stats_manager::statsDumper : Incorrect operation for stats collection")
 					continue
 				}
-				statsList[idx].Timestamp = time.Now().Format(time.RFC3339)
+				stMgrOpt.statsList[idx].Timestamp = time.Now().Format(time.RFC3339)
 
-				statsMtx.Unlock()
 			}
 		}
 	}
@@ -238,101 +224,106 @@ func statsPolling() {
 	// create polling pipe
 	err := createPipe(common.PollingPipe)
 	if err != nil {
-		log.Err("StatsManager::StatsPolling : [%v]", err)
+		log.Err("stats_manager::statsPolling : [%v]", err)
 		return
 	}
 
 	// open polling pipe
 	pf, err := os.OpenFile(common.PollingPipe, os.O_RDONLY, os.ModeNamedPipe)
 	if err != nil {
-		fmt.Printf("StatsManager::StatsPolling : unable to open pipe file [%v]", err)
+		fmt.Printf("stats_manager::statsPolling : unable to open pipe file [%v]", err)
 		return
 	}
 	defer pf.Close()
 
-	log.Info("StatsManager::StatsPolling : opened polling pipe file")
+	log.Info("stats_manager::statsPolling : opened polling pipe file")
 
 	reader := bufio.NewReader(pf)
 
 	// create transfer pipe
 	err = createPipe(common.TransferPipe)
 	if err != nil {
-		log.Err("StatsManager::StatsPolling : [%v]", err)
+		log.Err("stats_manager::statsPolling : [%v]", err)
 		return
 	}
 
 	// open transfer pipe
 	tf, err := os.OpenFile(common.TransferPipe, os.O_CREATE|os.O_WRONLY, 0777)
 	if err != nil {
-		log.Err("StatsManager::StatsPolling : unable to open pipe file [%v]", err)
+		log.Err("stats_manager::statsPolling : unable to open pipe file [%v]", err)
 		return
 	}
 	defer tf.Close()
 
-	log.Info("StatsManager::StatsPolling : opened transfer pipe file")
+	log.Info("stats_manager::statsPolling : opened transfer pipe file")
 
 	for {
 		// read the polling message sent by stats monitor
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
-			log.Err("StatsReader::Reader : Unable to read from pipe [%v]", err)
+			log.Err("stats_manager::statsPolling : Unable to read from pipe [%v]", err)
 			break
 		}
-		log.Debug("StatsManager::StatsPolling : Polling message: %v", string(line))
 
-		statsMtx.Lock()
-		for _, cmpSt := range statsList {
+		if !strings.Contains(string(line), "Poll at") {
+			continue
+		}
+
+		stMgrOpt.statsMtx.Lock()
+		for _, cmpSt := range stMgrOpt.statsList {
 			if len(cmpSt.Value) == 0 {
 				continue
 			}
 
-			if cmpSt.Timestamp == cmpTimeMap[cmpSt.ComponentName] {
-				log.Debug("StatsManager::StatsPolling : Skipping as there is no change in stats collected for %v", cmpSt.ComponentName)
+			if cmpSt.Timestamp == stMgrOpt.cmpTimeMap[cmpSt.ComponentName] {
+				log.Debug("stats_manager::statsPolling : Skipping as there is no change in stats collected for %v", cmpSt.ComponentName)
 				continue
 			}
 
 			msg, err := json.Marshal(cmpSt)
 			if err != nil {
-				log.Err("StatsManager::StatsPolling : Unable to marshal [%v]", err)
+				log.Err("stats_manager::statsPolling : Unable to marshal [%v]", err)
 				continue
 			}
 
-			log.Debug("StatsManager::StatsPolling : stats: %v", string(msg))
+			log.Debug("stats_manager::statsPolling : stats: %v", string(msg))
 
 			// send the stats collected so far to transfer pipe
-			transferMtx.Lock()
+			stMgrOpt.transferMtx.Lock()
 			_, err = tf.WriteString(fmt.Sprintf("%v\n", string(msg)))
-			transferMtx.Unlock()
+			stMgrOpt.transferMtx.Unlock()
 			if err != nil {
-				log.Err("StatsManager::StatsDumper : Unable to write to pipe [%v]", err)
+				log.Err("stats_manager::statsDumper : Unable to write to pipe [%v]", err)
 				break
 			}
 
-			cmpTimeMap[cmpSt.ComponentName] = cmpSt.Timestamp
+			stMgrOpt.cmpTimeMap[cmpSt.ComponentName] = cmpSt.Timestamp
 		}
-		statsMtx.Unlock()
+		stMgrOpt.statsMtx.Unlock()
 	}
 }
 
 func createPipe(pipe string) error {
-	pollMtx.Lock()
-	defer pollMtx.Unlock()
+	stMgrOpt.pollMtx.Lock()
+	defer stMgrOpt.pollMtx.Unlock()
 
 	_, err := os.Stat(pipe)
 	if os.IsNotExist(err) {
 		err = syscall.Mkfifo(pipe, 0666)
 		if err != nil {
-			log.Err("StatsManager::createPipe : unable to create pipe %v [%v]", pipe, err)
+			log.Err("stats_manager::createPipe : unable to create pipe %v [%v]", pipe, err)
 			return err
 		}
 	} else if err != nil {
-		log.Err("StatsManager::createPipe : [%v]", err)
+		log.Err("stats_manager::createPipe : [%v]", err)
 		return err
 	}
 	return nil
 }
 
-// check if health-monitor is enabled and blofuse stats monitor is not disabled
-func MonitorBfs() bool {
-	return common.EnableMonitoring && !common.BfsDisabled
+func init() {
+	stMgrOpt = statsManagerOpt{}
+	stMgrOpt.pollStarted = false
+	stMgrOpt.cmpTimeMap = make(map[string]string)
+	log.Debug("stats_manager::Init : inside stats manager")
 }

@@ -49,6 +49,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 )
@@ -554,7 +555,7 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 	var downloadPtr *int64 = new(int64)
 	*downloadPtr = 1
 
-	if internal.MonitorBfs() {
+	if common.MonitorBfs() {
 		bb.downloadOptions.Progress = func(bytesTransferred int64) {
 			trackDownload(name, bytesTransferred, count, downloadPtr)
 		}
@@ -575,7 +576,7 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 		log.Debug("BlockBlob::ReadToFile : Download complete of blob %v", name)
 
 		// store total bytes downloaded so far
-		azStatsCollector.AddStats(compName, internal.Increment, "", false, map[string]interface{}{internal.BytesDownloaded: count})
+		azStatsCollector.AddStats(compName, stats_manager.Increment, "", false, map[string]interface{}{stats_manager.BytesDownloaded: count})
 	}
 
 	return nil
@@ -724,7 +725,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 			ContentType: getContentType(name),
 		},
 	}
-	if internal.MonitorBfs() && fileSize > 0 {
+	if common.MonitorBfs() && fileSize > 0 {
 		uploadOptions.Progress = func(bytesTransferred int64) {
 			trackUpload(name, bytesTransferred, fileSize, uploadPtr)
 		}
@@ -746,7 +747,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 
 		// store total bytes uploaded so far
 		if fileSize > 0 {
-			azStatsCollector.AddStats(compName, internal.Increment, "", false, map[string]interface{}{internal.BytesUploaded: fileSize})
+			azStatsCollector.AddStats(compName, stats_manager.Increment, "", false, map[string]interface{}{stats_manager.BytesUploaded: fileSize})
 		}
 	}
 
