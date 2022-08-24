@@ -60,7 +60,7 @@ blobfuse_read_average=0
 for i in {1..5}; 
 do 
 	echo "Blobfuse Run $i"
-	blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR -o allow_other --file-cache-timeout-in-seconds=0 --use-attr-cache=true --max-concurrency=32
+	blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR -o allow_other --file-cache-timeout-in-seconds=0 --use-attr-cache=true
 	sleep 3
 	rm -rf $mntPath/*
 
