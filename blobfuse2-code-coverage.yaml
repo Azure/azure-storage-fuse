@@ -11,20 +11,20 @@ jobs:
     timeoutInMinutes: 300
     strategy:
       matrix:
-        Ubuntu-18:
-          AgentName: 'blobfuse-ubuntu18'
-          imageName: 'ubuntu-18.04'
-          containerName: 'test-cnt-ubn-18'
-          fuselib: 'libfuse-dev'
-          fuselib2: 'fuse'
-          tags: 'fuse2'
         Ubuntu-20:
           AgentName: 'blobfuse-ubuntu20'
           imageName: 'ubuntu-20.04'
           containerName: 'test-cnt-ubn-20'
+          fuselib: 'libfuse-dev'
+          fuselib2: 'fuse'
+          tags: 'fuse2'
+        Ubuntu-22:
+          AgentName: 'blobfuse-ubuntu22'
+          imageName: 'ubuntu-22.04'
+          containerName: 'test-cnt-ubn-22'
           fuselib: 'libfuse3-dev'
           fuselib2: 'fuse3'
-          tags: 'fuse3'
+          tags: 'fuse3'          
 
     pool:
       name: "blobfuse-ubuntu-pool"
@@ -117,6 +117,7 @@ jobs:
           ACCOUNT_TYPE: 'block'
           ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
           VERBOSE_LOG: false
+          USE_HTTP: false
         displayName: 'Create Config File - Block Blob'
         workingDirectory: $(WORK_DIR)
         continueOnError: false
@@ -146,6 +147,7 @@ jobs:
           ACCOUNT_TYPE: 'adls'
           ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
           VERBOSE_LOG: false
+          USE_HTTP: false
         displayName: 'Create Config File - ADLS'
         continueOnError: false
 
@@ -255,6 +257,7 @@ jobs:
           ACCOUNT_TYPE: 'block'
           ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
           VERBOSE_LOG: false
+          USE_HTTP: false
 
       # Component generation code coverage
       - script: |
@@ -420,6 +423,7 @@ jobs:
           ACCOUNT_TYPE: 'block'
           ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
           VERBOSE_LOG: false
+          USE_HTTP: false
 
       # -------------------------------------------------------
       # Coverage report consolidation

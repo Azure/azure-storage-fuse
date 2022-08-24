@@ -347,7 +347,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	case EAuthType.MSI():
 		az.stConfig.authConfig.AuthMode = EAuthType.MSI()
 		if opt.ApplicationID == "" && opt.ResourceID == "" {
-			return errors.New("Application ID an Resource ID not provided")
+			//lint:ignore ST1005 ignore
+			return errors.New("Application ID and Resource ID not provided")
 		}
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
 		az.stConfig.authConfig.ResourceID = opt.ResourceID
@@ -355,6 +356,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
 		if opt.ClientID == "" || opt.ClientSecret == "" || opt.TenantID == "" {
+			//lint:ignore ST1005 ignore
 			return errors.New("Client ID, Tenant ID or Client Secret not provided")
 		}
 		az.stConfig.authConfig.ClientID = opt.ClientID

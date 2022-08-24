@@ -46,15 +46,16 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"github.com/Azure/azure-storage-fuse/v2/common"
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	"io"
 	"io/fs"
 	"os"
 	"syscall"
 	"unsafe"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 /* --- IMPORTANT NOTE ---

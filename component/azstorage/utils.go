@@ -48,6 +48,7 @@ import (
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
+	"github.com/Azure/azure-storage-azcopy/v10/ste"
 	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/azure-storage-file-go/azfile"
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -73,9 +74,9 @@ const (
 )
 
 // getAzBlobPipelineOptions : Create pipeline options based on the config
-func getAzBlobPipelineOptions(conf AzStorageConfig) azblob.PipelineOptions {
-	retryOptions := azblob.RetryOptions{
-		Policy:        azblob.RetryPolicyExponential,                   // Use exponential backoff as opposed to linear
+func getAzBlobPipelineOptions(conf AzStorageConfig) (azblob.PipelineOptions, ste.XferRetryOptions) {
+	retryOptions := ste.XferRetryOptions{
+		Policy:        ste.RetryPolicyExponential,                      // Use exponential backoff as opposed to linear
 		MaxTries:      conf.maxRetries,                                 // Try at most 3 times to perform the operation (set to 1 to disable retries)
 		TryTimeout:    time.Second * time.Duration(conf.maxTimeout),    // Maximum time allowed for any single try
 		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)
@@ -94,31 +95,31 @@ func getAzBlobPipelineOptions(conf AzStorageConfig) azblob.PipelineOptions {
 	if conf.proxyAddress == "" {
 		// If we did not set a proxy address in our config then use default settings
 		return azblob.PipelineOptions{
-			Log:        logOptions,
-			RequestLog: requestLogOptions,
+				Log:        logOptions,
+				RequestLog: requestLogOptions,
+				Telemetry:  telemetryOptions,
+			},
 			// Set RetryOptions to control how HTTP request are retried when retryable failures occur
-			Retry:     retryOptions,
-			Telemetry: telemetryOptions,
-		}
+			retryOptions
 	} else {
 		// Else create custom HTTPClient to pass to the factory in order to set our proxy
 		var pipelineHTTPClient = newBlobfuse2HttpClient(conf)
 		// While creating new pipeline we need to provide the retry policy
 		return azblob.PipelineOptions{
-			Log:        logOptions,
-			RequestLog: requestLogOptions,
+				Log:        logOptions,
+				RequestLog: requestLogOptions,
+				Telemetry:  telemetryOptions,
+				HTTPSender: newBlobfuse2HTTPClientFactory(pipelineHTTPClient),
+			},
 			// Set RetryOptions to control how HTTP request are retried when retryable failures occur
-			Retry:      retryOptions,
-			Telemetry:  telemetryOptions,
-			HTTPSender: newBlobfuse2HTTPClientFactory(pipelineHTTPClient),
-		}
+			retryOptions
 	}
 }
 
 // getAzBfsPipelineOptions : Create pipeline options based on the config
-func getAzBfsPipelineOptions(conf AzStorageConfig) azbfs.PipelineOptions {
-	retryOptions := azbfs.RetryOptions{
-		Policy:        azbfs.RetryPolicyExponential,                    // Use exponential backoff as opposed to linear
+func getAzBfsPipelineOptions(conf AzStorageConfig) (azbfs.PipelineOptions, ste.XferRetryOptions) {
+	retryOptions := ste.XferRetryOptions{
+		Policy:        ste.RetryPolicyExponential,                      // Use exponential backoff as opposed to linear
 		MaxTries:      conf.maxRetries,                                 // Try at most 3 times to perform the operation (set to 1 to disable retries)
 		TryTimeout:    time.Second * time.Duration(conf.maxTimeout),    // Maximum time allowed for any single try
 		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)
@@ -136,24 +137,24 @@ func getAzBfsPipelineOptions(conf AzStorageConfig) azbfs.PipelineOptions {
 	if conf.proxyAddress == "" {
 		// If we did not set a proxy address in our config then use default settings
 		return azbfs.PipelineOptions{
-			Log:        logOptions,
-			RequestLog: requestLogOptions,
+				Log:        logOptions,
+				RequestLog: requestLogOptions,
+				Telemetry:  telemetryOptions,
+			},
 			// Set RetryOptions to control how HTTP request are retried when retryable failures occur
-			Retry:     retryOptions,
-			Telemetry: telemetryOptions,
-		}
+			retryOptions
 	} else {
 		// Else create custom HTTPClient to pass to the factory in order to set our proxy
 		var pipelineHTTPClient = newBlobfuse2HttpClient(conf)
 		// While creating new pipeline we need to provide the retry policy
 		return azbfs.PipelineOptions{
-			Log:        logOptions,
-			RequestLog: requestLogOptions,
+				Log:        logOptions,
+				RequestLog: requestLogOptions,
+				Telemetry:  telemetryOptions,
+				HTTPSender: newBlobfuse2HTTPClientFactory(pipelineHTTPClient),
+			},
 			// Set RetryOptions to control how HTTP request are retried when retryable failures occur
-			Retry:      retryOptions,
-			Telemetry:  telemetryOptions,
-			HTTPSender: newBlobfuse2HTTPClientFactory(pipelineHTTPClient),
-		}
+			retryOptions
 	}
 }
 
