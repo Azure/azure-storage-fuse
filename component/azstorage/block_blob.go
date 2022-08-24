@@ -593,7 +593,7 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 					log.Warn("BlockBlob::ReadToFile : Failed to get MD5 Sum for blob %s", name)
 				} else {
 					// compare md5 and fail is not match
-					if !reflect.DeepEqual(fileMD5, prop.ContentMD5()) {
+					if !reflect.DeepEqual(fileMD5, blobMD5) {
 						log.Err("BlockBlob::ReadToFile : MD5 Sum mismatch %s", name)
 						return errors.New("md5 sum mismatch on download")
 					}
@@ -724,6 +724,8 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 	}
 
 	// Compute md5 of this file is requested by user
+	// If file is uploaded in one shot (no blocks created) then server is populating md5 on upload automatically.
+	// hence we take cost of calculating md5 only for files which are bigger in size and which will be converted to blocks.
 	md5sum := []byte{}
 	if bb.Config.updateMD5 && stat.Size() >= azblob.BlockBlobMaxUploadBlobBytes {
 		md5sum, err = getMD5(fi)
