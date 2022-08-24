@@ -8,7 +8,7 @@ outputPath=$5
 sed_line=$6
 
 start_time=`date +%s`
-time seq 1 $count | parallel --will-cite -j $thread -I{} dd if=/dev/zero of=$mntPath/$size_{}.tst bs=1M count=$size
+time seq 1 $count | parallel --will-cite -j $thread -I{} dd if=/dev/random of=$mntPath/$size_{}.tst bs=1M count=$size
 end_time=`date +%s`
 
 time_diff=$(( $end_time - $start_time ))
