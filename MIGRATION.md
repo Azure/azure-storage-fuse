@@ -84,7 +84,7 @@ Note: For an exhaustive list of the blobfuse2 config file options and the format
 | --config-file=PATH                      | --config-file=PATH                  |                                   |                                                                           |
 | --container-name=NAME                   | --container-name=NAME               | azstorage.container               |                                                                           |
 | --use-https=true                        |                                     | azstorage.use-http                | This parameter has the opposite boolean semantics                         |
-| --file-cache-timeout-in-seconds=120     |                                     | file_cache.timeout-sec            | Default changed to 0                                                      |
+| --file-cache-timeout-in-seconds=120     |  --file-cache-timeout=120           | file_cache.timeout-sec            |                                      |
 | --log-level=LOG_WARNING                 | --log-level=LOG_WARNING             | logging.level                     |                                                                           |
 | --use-attr-cache=true                   |                                     | attr_cache                        | Add attr_cache to the components list                                     |
 | --use-adls=false                        |                                     | azstorage.type                    | Specify either 'block' or 'adls'                                          |
@@ -92,10 +92,10 @@ Note: For an exhaustive list of the blobfuse2 config file options and the format
 | --cache-on-list=true                    |                                     | attr_cache.no-cache-on-list       | This parameter has the opposite boolean semantics                         |
 | --upload-modified-only=false            |                                     |                                   | Default behavior in blobfuse2                                             |
 | --max-concurrency=12                    |                                     | azstorage.max-concurrency         |                                                                           |
-| --cache-size-mb=0                       |                                     | file_cache.max-size-mb            |                                                                           |
+| --cache-size-mb=0                       | --cache-size-mb=0               | file_cache.max-size-mb            |                                                                           |
 | --cancel-list-on-mount-seconds=0        |                                     | azstorage.block-list-on-mount-sec |                                                                           |
-| --high-disk-threshold=90                |                                     | file_cache.high-threshold         |                                                                           |
-| --low-disk-threshold=80                 |                                     | file_cache.low-threshold          |                                                                           |
+| --high-disk-threshold=90                | --high-disk-threshold=90        | file_cache.high-threshold         |                                                                           |
+| --low-disk-threshold=80                 | --low-disk-threshold=80         | file_cache.low-threshold          |                                                                           |
 | --cache-poll-timeout-msec=1000          |                                     |                                   | Not an option in blobfuse2                                                |
 | ---max-eviction=0                       |                                     | file_cache.max-eviction           |                                                                           |
 | --set-content-type=false                |                                     |                                   | Not an option in blobfuse2, always true                                   |
@@ -113,9 +113,9 @@ Note: For an exhaustive list of the blobfuse2 config file options and the format
 | --stream-cache-mb=500                   |                                     | stream.cache-size-mb              |                                                                           |
 | ---max-blocks-per-file=3                |                                     | stream.blocks-per-file            |                                                                           |
 | --block-size-mb=16                      |                                     | stream.block-size-mb              |                                                                           |
-| -o attr_timeout=20                      | --attr_timeout=20                   | libfuse.attribute-expiration-sec  | Default changed to 0                                                      |
-| -o entry_timeout=20                     | --entry_timeout=20                  | libfuse.entry-expiration-sec      | Default changed to 0                                                      |
-| -o negative_timeout=20                  | --negative_timeout=20               |                                   | Default changed to 0                                                      |
+| -o attr_timeout=20                      | --attr-timeout=20                   | libfuse.attribute-expiration-sec  | Default changed to 0                                                      |
+| -o entry_timeout=20                     | --entry-timeout=20                  | libfuse.entry-expiration-sec      | Default changed to 0                                                      |
+| -o negative_timeout=20                  | --negative-timeout=20               | libfuse.negative-entry-expiration-sec  | Default changed to 0                                                      |
 | -d                                      |                                     | libfuse.fuse-trace                |                                                                           |
 | -o umask                                |                                     | libfuse.default-permission        |                                                                           |
 
