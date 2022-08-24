@@ -48,10 +48,10 @@ type StreamConnection interface {
 	ReadInBuffer(internal.ReadInBufferOptions) (int, error)
 	OpenFile(internal.OpenFileOptions) (*handlemap.Handle, error)
 	WriteFile(options internal.WriteFileOptions) (int, error)
-	CloseFile(internal.CloseFileOptions) error
 	TruncateFile(internal.TruncateFileOptions) error
 	FlushFile(internal.FlushFileOptions) error
 	GetAttr(internal.GetAttrOptions) (*internal.ObjAttr, error)
+	CloseFile(options internal.CloseFileOptions) error
 	Stop() error
 }
 

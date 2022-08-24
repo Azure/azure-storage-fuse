@@ -49,7 +49,7 @@ import (
 const (
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
-	Blobfuse2Version      = "2.0.0-preview.2"
+	Blobfuse2Version      = "2.0.0-preview.3"
 	FileSystemName        = "blobfuse2"
 
 	DefaultConfigFilePath = "config.yaml"

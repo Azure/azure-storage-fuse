@@ -46,6 +46,7 @@ parameters:
     type: boolean
     default: false
 
+
 stages:
   - stage: BuildAndTest
     jobs:
@@ -166,7 +167,9 @@ stages:
                 test_key_credential: true 
                 test_sas_credential: true
                 test_spn_credential: true
+                test_stream: true
                 test_azurite: true
+                stream_config: $(BLOBFUSE2_STREAM_CFG)
                 sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                 spn_credential_config: $(BLOBFUSE2_SPN_CFG)
                 azurite_config: $(BLOBFUSE2_AZURITE_CFG)
@@ -198,7 +201,9 @@ stages:
                 test_key_credential: true
                 test_sas_credential: true
                 test_spn_credential: true
+                test_stream: true
                 test_azurite: false
+                stream_config: $(BLOBFUSE2_STREAM_CFG)
                 sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                 spn_credential_config: $(BLOBFUSE2_SPN_CFG)
                 azurite_config: $(BLOBFUSE2_AZURITE_CFG)

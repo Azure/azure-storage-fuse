@@ -185,8 +185,11 @@ func (r *ReadCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, err
 }
 
 func (r *ReadCache) CloseFile(options internal.CloseFileOptions) error {
-	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
-	_ = r.NextComponent().CloseFile(options)
+	// log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	err := r.NextComponent().CloseFile(options)
+	if err != nil {
+		log.Err("Stream::CloseFile : error closing file %s [%s]", options.Handle.Path, err.Error())
+	}
 	if !r.StreamOnly && !options.Handle.CacheObj.StreamOnly {
 		options.Handle.CacheObj.Lock()
 		defer options.Handle.CacheObj.Unlock()
@@ -204,6 +207,11 @@ func (r *ReadCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr,
 
 func (r *ReadCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	return 0, syscall.ENOTSUP
+}
+
+func (r *ReadCache) FlushFile(options internal.FlushFileOptions) error {
+	// log.Trace("Stream::FlushFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	return nil
 }
 
 func (r *ReadCache) TruncateFile(options internal.TruncateFileOptions) error {
@@ -230,7 +238,4 @@ func (r *ReadCache) RenameDirectory(options internal.RenameDirOptions) error {
 func (r *ReadCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	return nil, syscall.ENOTSUP
 
-}
-func (r *ReadCache) FlushFile(options internal.FlushFileOptions) error {
-	return nil
 }

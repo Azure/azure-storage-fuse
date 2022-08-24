@@ -349,19 +349,6 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 	return err
 }
 
-// FlushFile : flush file
-func (ac *AttrCache) FlushFile(options internal.FlushFileOptions) error {
-	// log.Trace("AttrCache::FlushFile : %s", options.Handle.Path)
-	err := ac.NextComponent().FlushFile(options)
-	if err == nil {
-		ac.cacheLock.RLock()
-		defer ac.cacheLock.RUnlock()
-
-		ac.invalidatePath(options.Handle.Path)
-	}
-	return err
-}
-
 // WriteFile : Mark the file invalid
 func (ac *AttrCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 
@@ -515,6 +502,19 @@ func (ac *AttrCache) CreateLink(options internal.CreateLinkOptions) error {
 		ac.invalidatePath(options.Target) // TODO : Why do we invalidate the target? Shouldn't the target remain unchanged?
 	}
 
+	return err
+}
+
+// FlushFile : flush file
+func (ac *AttrCache) FlushFile(options internal.FlushFileOptions) error {
+	log.Trace("AttrCache::FlushFile : %s", options.Handle.Path)
+	err := ac.NextComponent().FlushFile(options)
+	if err == nil {
+		ac.cacheLock.RLock()
+		defer ac.cacheLock.RUnlock()
+
+		ac.invalidatePath(options.Handle.Path)
+	}
 	return err
 }
 
