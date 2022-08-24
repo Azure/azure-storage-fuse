@@ -46,6 +46,11 @@ const (
 	NetworkProfiler = "network_profiler"
 
 	HealthMon = "healthmon"
+
+	OutputFileName      = "monitor"
+	OutputFileExtension = "json"
+	OutputFileCount     = 10
+	OutputFileSizeinMB  = 10
 )
 
 var (
@@ -69,9 +74,6 @@ const HealthMonitorVersion = "1.0.0-preview.1"
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFile = filepath.Join(DefaultWorkDir, "healthmon.log")
-
-var OutputFileName = "monitor"
-var OutputFileExtension = "json"
 
 var Wg sync.WaitGroup
 

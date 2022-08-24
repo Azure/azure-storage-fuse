@@ -81,7 +81,7 @@ func NewStatsExporter() (*StatsExporter, error) {
 		if se == nil {
 			se = &StatsExporter{}
 			se.fileIdx = 0
-			se.channel = make(chan ExportedStat, 100000)
+			se.channel = make(chan ExportedStat, 10000)
 			se.wg.Add(1)
 			go se.StatsExporter()
 
@@ -125,11 +125,12 @@ func (se *StatsExporter) StatsExporter() {
 	defer se.wg.Done()
 
 	for st := range se.channel {
-		idx, isPresent := se.checkInList(st.Timestamp)
-		if isPresent {
+		idx := se.checkInList(st.Timestamp)
+		if idx != -1 {
 			se.addToList(&st, idx)
 		} else {
-			if len(se.outputList) >= 10 {
+			// keep max 4 timestamps in memory
+			if len(se.outputList) >= 4 {
 				err := se.addToOutputFile(se.outputList[0])
 				if err != nil {
 					log.Err("stats_export::StatsExporter : [%v]", err)
@@ -160,13 +161,15 @@ func (se *StatsExporter) addToList(st *ExportedStat, idx int) {
 	}
 }
 
-func (se *StatsExporter) checkInList(t string) (int, bool) {
+// check if the given timestamp is present in the output list
+// return index if present else return -1
+func (se *StatsExporter) checkInList(t string) int {
 	for i, val := range se.outputList {
 		if val.Timestamp == t {
-			return i, true
+			return i
 		}
 	}
-	return -1, false
+	return -1
 }
 
 func (se *StatsExporter) addToOutputFile(op *Output) error {
@@ -201,7 +204,7 @@ func (se *StatsExporter) checkOutputFile() error {
 	sz := f.Size()
 
 	// close current file and create a new file if the size of current file is greater than 10MB
-	if sz >= 10*common.MbToBytes {
+	if sz >= hmcommon.OutputFileSizeinMB*common.MbToBytes {
 		_, err = se.opFile.WriteString("\n]")
 		if err != nil {
 			log.Err("stats_exporter::checkOutputFile : unable to write to file [%v]", err)
@@ -246,7 +249,7 @@ func (se *StatsExporter) getNewFile() error {
 	se.filesList = append(se.filesList, filepath.Join(currDir, fileName))
 
 	// keep latest 10 output files
-	if len(se.filesList) > 10 {
+	if len(se.filesList) > hmcommon.OutputFileCount {
 		se.deleteOldFile()
 	}
 

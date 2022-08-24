@@ -296,6 +296,10 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	log.Debug("AzStorage::StreamDir : Retrieved %d objects with %s marker for Path %s", len(new_list), options.Token, path)
 
+	// if path is empty, it means it is the root, relative to the mounted directory
+	if len(path) == 0 {
+		path = "/"
+	}
 	azStatsCollector.PushEvents("StreamDir", path, map[string]interface{}{"Count": len(new_list)})
 
 	return new_list, *new_marker, nil
