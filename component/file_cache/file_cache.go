@@ -700,7 +700,7 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 
 	fc.policy.CachePurge(localPath)
 
-	fileCacheStatsCollector.AddStats(fc.Name(), "DeleteFile", options.Name, true, nil)
+	fileCacheStatsCollector.PushEvents("DeleteFile", options.Name, nil)
 	return nil
 }
 
@@ -872,7 +872,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
 	handle.SetFileObject(f)
 
-	fileCacheStatsCollector.AddStats(fc.Name(), "OpenFile", options.Name, true, map[string]interface{}{"Mode": options.Mode.String()})
+	fileCacheStatsCollector.PushEvents("OpenFile", options.Name, map[string]interface{}{"Mode": options.Mode.String()})
 
 	return handle, nil
 }
@@ -1261,7 +1261,7 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 		}
 	}
 
-	fileCacheStatsCollector.AddStats(fc.Name(), "TruncateFile", options.Name, true, map[string]interface{}{"Size": options.Size})
+	fileCacheStatsCollector.PushEvents("TruncateFile", options.Name, map[string]interface{}{"Size": options.Size})
 
 	return nil
 }
@@ -1297,7 +1297,7 @@ func (fc *FileCache) Chmod(options internal.ChmodOptions) error {
 		}
 	}
 
-	fileCacheStatsCollector.AddStats(fc.Name(), "Chmod", options.Name, true, map[string]interface{}{"Mode": options.Mode.String()})
+	fileCacheStatsCollector.PushEvents("Chmod", options.Name, map[string]interface{}{"Mode": options.Mode.String()})
 
 	return nil
 }
@@ -1327,7 +1327,7 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 		}
 	}
 
-	fileCacheStatsCollector.AddStats(fc.Name(), "Chown", options.Name, true, map[string]interface{}{"Owner": options.Owner, "Group": options.Group})
+	fileCacheStatsCollector.PushEvents("Chown", options.Name, map[string]interface{}{"Owner": options.Owner, "Group": options.Group})
 
 	return nil
 }

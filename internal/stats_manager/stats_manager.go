@@ -53,21 +53,35 @@ type StatsCollector struct {
 	compIdx    int
 }
 
-type Stats struct {
+type PipeMsg struct {
 	Timestamp     string                 `json:"timestamp"`
-	ComponentName string                 `json:"componentName"`
-	Operation     string                 `json:"operation"`
-	Path          string                 `json:"path"`
-	Value         map[string]interface{} `json:"value"`
+	ComponentName string                 `json:"componentName,omitempty"`
+	Operation     string                 `json:"operation,omitempty"`
+	Path          string                 `json:"path,omitempty"`
+	Value         map[string]interface{} `json:"value,omitempty"`
+}
+
+type Events struct {
+	Timestamp string
+	Operation string
+	Path      string
+	Value     map[string]interface{}
+}
+
+type Stats struct {
+	Timestamp string
+	Operation string
+	Key       string
+	Value     interface{}
 }
 
 type ChannelMsg struct {
-	IsEvent   bool
-	CompStats Stats
+	IsEvent bool
+	CompMsg interface{}
 }
 
 type statsManagerOpt struct {
-	statsList []*Stats
+	statsList []*PipeMsg
 	// map to store the last updated timestamp of component's stats
 	// This way a component's stat which was not updated is not pushed to the transfer pipe
 	cmpTimeMap  map[string]string
@@ -88,7 +102,7 @@ func NewStatsCollector(componentName string) *StatsCollector {
 		stMgrOpt.statsMtx.Lock()
 
 		sc.compIdx = len(stMgrOpt.statsList)
-		cmpSt := Stats{
+		cmpSt := PipeMsg{
 			Timestamp:     time.Now().Format(time.RFC3339),
 			ComponentName: componentName,
 			Operation:     "Stats Collected",
@@ -126,16 +140,19 @@ func (sc *StatsCollector) Destroy() {
 	}
 }
 
-func (sc *StatsCollector) AddStats(cmpName string, op string, path string, isEvent bool, mp map[string]interface{}) {
+func (sc *StatsCollector) PushEvents(op string, path string, mp map[string]interface{}) {
 	if common.MonitorBfs() {
-		st := Stats{
-			ComponentName: cmpName,
-			Operation:     op,
-			Path:          path,
-			Timestamp:     time.Now().Format(time.RFC3339)}
+		event := Events{
+			Timestamp: time.Now().Format(time.RFC3339),
+			Operation: op,
+			Path:      path,
+		}
 
 		if mp != nil {
-			st.Value = mp
+			event.Value = make(map[string]interface{})
+			for k, v := range mp {
+				event.Value[k] = v
+			}
 		}
 
 		// check if the channel is full
@@ -144,7 +161,32 @@ func (sc *StatsCollector) AddStats(cmpName string, op string, path string, isEve
 			<-sc.channel
 		}
 
-		sc.channel <- ChannelMsg{IsEvent: isEvent, CompStats: st}
+		sc.channel <- ChannelMsg{
+			IsEvent: true,
+			CompMsg: event,
+		}
+	}
+}
+
+func (sc *StatsCollector) UpdateStats(op string, key string, val interface{}) {
+	if common.MonitorBfs() {
+		st := Stats{
+			Timestamp: time.Now().Format(time.RFC3339),
+			Operation: op,
+			Key:       key,
+			Value:     val,
+		}
+
+		// check if the channel is full
+		if len(sc.channel) == cap(sc.channel) {
+			// remove the first element from the channel
+			<-sc.channel
+		}
+
+		sc.channel <- ChannelMsg{
+			IsEvent: false,
+			CompMsg: st,
+		}
 	}
 }
 
@@ -168,8 +210,19 @@ func (sc *StatsCollector) statsDumper() {
 
 	for st := range sc.channel {
 		log.Debug("stats_manager::statsDumper : stats: %v", st)
+
+		idx := sc.compIdx
 		if st.IsEvent {
-			msg, err := json.Marshal(st.CompStats)
+			event := st.CompMsg.(Events)
+			pipeMsg := PipeMsg{
+				Timestamp:     event.Timestamp,
+				ComponentName: stMgrOpt.statsList[idx].ComponentName,
+				Operation:     event.Operation,
+				Path:          event.Path,
+				Value:         event.Value,
+			}
+
+			msg, err := json.Marshal(pipeMsg)
 			if err != nil {
 				log.Err("stats_manager::statsDumper : Unable to marshal [%v]", err)
 				continue
@@ -187,35 +240,38 @@ func (sc *StatsCollector) statsDumper() {
 
 		} else {
 			// accumulate component level stats
-			for key, val := range st.CompStats.Value {
-				idx := sc.compIdx
+			stat := st.CompMsg.(Stats)
 
-				_, isPresent := stMgrOpt.statsList[idx].Value[key]
-				if !isPresent {
-					stMgrOpt.statsList[idx].Value[key] = (int64)(0)
-				}
+			// TODO: check if this lock can be removed
+			stMgrOpt.statsMtx.Lock()
 
-				switch st.CompStats.Operation {
-				case Increment:
-					stMgrOpt.statsList[idx].Value[key] = stMgrOpt.statsList[idx].Value[key].(int64) + val.(int64)
-
-				case Decrement:
-					stMgrOpt.statsList[idx].Value[key] = stMgrOpt.statsList[idx].Value[key].(int64) - val.(int64)
-					if stMgrOpt.statsList[idx].Value[key].(int64) < 0 {
-						log.Err("stats_manager::statsDumper : Negative value %v after decrement of %v for component %v",
-							stMgrOpt.statsList[idx].Value[key], key, st.CompStats.ComponentName)
-					}
-
-				case Replace:
-					stMgrOpt.statsList[idx].Value[key] = val
-
-				default:
-					log.Debug("stats_manager::statsDumper : Incorrect operation for stats collection")
-					continue
-				}
-				stMgrOpt.statsList[idx].Timestamp = time.Now().Format(time.RFC3339)
-
+			_, isPresent := stMgrOpt.statsList[idx].Value[stat.Key]
+			if !isPresent {
+				stMgrOpt.statsList[idx].Value[stat.Key] = (int64)(0)
 			}
+
+			switch stat.Operation {
+			case Increment:
+				stMgrOpt.statsList[idx].Value[stat.Key] = stMgrOpt.statsList[idx].Value[stat.Key].(int64) + stat.Value.(int64)
+
+			case Decrement:
+				stMgrOpt.statsList[idx].Value[stat.Key] = stMgrOpt.statsList[idx].Value[stat.Key].(int64) - stat.Value.(int64)
+				if stMgrOpt.statsList[idx].Value[stat.Key].(int64) < 0 {
+					log.Err("stats_manager::statsDumper : Negative value %v after decrement of %v for component %v",
+						stMgrOpt.statsList[idx].Value[stat.Key], stat.Key, stMgrOpt.statsList[idx].ComponentName)
+				}
+
+			case Replace:
+				stMgrOpt.statsList[idx].Value[stat.Key] = stat.Value
+
+			default:
+				log.Debug("stats_manager::statsDumper : Incorrect operation for stats collection")
+				stMgrOpt.statsMtx.Unlock()
+				continue
+			}
+			stMgrOpt.statsList[idx].Timestamp = stat.Timestamp
+
+			stMgrOpt.statsMtx.Unlock()
 		}
 	}
 }
@@ -265,10 +321,12 @@ func statsPolling() {
 			break
 		}
 
+		// validating poll message
 		if !strings.Contains(string(line), "Poll at") {
 			continue
 		}
 
+		// TODO: check if this lock can be removed
 		stMgrOpt.statsMtx.Lock()
 		for _, cmpSt := range stMgrOpt.statsList {
 			if len(cmpSt.Value) == 0 {
