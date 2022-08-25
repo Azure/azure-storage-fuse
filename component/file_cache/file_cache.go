@@ -268,8 +268,8 @@ func (c *FileCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [%s]", c.Name(), "failed to create cache policy")
 	}
 
-	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s",
-		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath)
+	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d",
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold))
 
 	return nil
 }
@@ -790,7 +790,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		}
 
 		// Open the file in write mode.
-		f, err = os.OpenFile(localPath, os.O_CREATE|os.O_WRONLY, options.Mode)
+		f, err = os.OpenFile(localPath, os.O_CREATE|os.O_RDWR, options.Mode)
 		if err != nil {
 			log.Err("FileCache::OpenFile : error creating new file %s [%s]", options.Name, err.Error())
 			return nil, err
@@ -817,7 +817,10 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 					File:   f,
 				})
 			if err != nil {
+				// File was created locally and now download has failed so we need to delete it back from local cache
 				log.Err("FileCache::OpenFile : error downloading file from storage %s [%s]", options.Name, err.Error())
+				_ = f.Close()
+				_ = os.Remove(localPath)
 				return nil, err
 			}
 		}
@@ -1355,11 +1358,24 @@ func NewFileCacheComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewFileCacheComponent)
+
 	fileCacheTimeout := config.AddUint32Flag("file-cache-timeout", defaultFileCacheTimeout, "file cache timeout")
 	config.BindPFlag(compName+".timeout-sec", fileCacheTimeout)
-	tmpPathFlag := config.AddStringFlag("tmp-path", "", "Configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
+
+	tmpPathFlag := config.AddStringFlag("tmp-path", "", "configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
 	config.BindPFlag(compName+".path", tmpPathFlag)
+
+	cacheSizeMB := config.AddUint32Flag("cache-size-mb", 0, "max size in MB that file-cache can occupy on local disk for caching")
+	config.BindPFlag(compName+".max-size-mb", cacheSizeMB)
+
+	highThreshold := config.AddUint32Flag("high-disk-threshold", 90, "percentage of cache utilization which kicks in early eviction")
+	config.BindPFlag(compName+".high-threshold", highThreshold)
+
+	lowThreshold := config.AddUint32Flag("low-disk-threshold", 80, "percentage of cache utilization which stops early eviction started by high-disk-threshold")
+	config.BindPFlag(compName+".low-threshold", lowThreshold)
+
 	config.RegisterFlagCompletionFunc("tmp-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	})
+
 }

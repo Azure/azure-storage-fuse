@@ -90,7 +90,7 @@ func trimFusePath(path *C.char) string {
 	return str
 }
 
-var fuse_opts C.fuse_options_t
+var fuse_opts C.fuse_options_t // nolint
 
 // convertConfig converts the config options from Go to C
 func (lf *Libfuse) convertConfig() *C.fuse_options_t {
@@ -1012,6 +1012,6 @@ func libfuse_utimens(path *C.char, tv *C.timespec_t, fi *C.fuse_file_info_t) C.i
 func blobfuse_cache_update(path *C.char) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	go fuseFS.NextComponent().FileUsed(name)
+	go fuseFS.NextComponent().FileUsed(name) //nolint
 	return 0
 }

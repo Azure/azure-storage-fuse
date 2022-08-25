@@ -57,7 +57,7 @@ file_cache:
   max-eviction: <number of files that can be evicted at once. Default - 5000>
   max-size-mb: <maximum cache size allowed. Default - 0 (unlimited)>
   high-threshold: <% disk space consumed which triggers eviction. This parameter overrides 'timeout-sec' parameter and cached files will be removed even if they have not expired. Default - 80>
-  low-threshold: <% disk space consumed which triggers eviction to stop when previoulsy triggered by the high-threshold. Default - 60>
+  low-threshold: <% disk space consumed which triggers eviction to stop when previously triggered by the high-threshold. Default - 60>
   create-empty-file: true|false <create an empty file on container when create call is received from kernel>
   allow-non-empty-temp: true|false <allow non empty temp directory at startup>
   cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
@@ -105,6 +105,8 @@ azstorage:
   sdk-trace: true|false <enable storage sdk logging>
   fail-unsupported-op: true|false <for block blob account return failure for unsupported operations like chmod and chown>
   auth-resource: <resource string to be used during OAuth token retrieval>
+  update-md5: true|false <set md5 sum on upload. Impacts performance. works only when file-cache component is part of the pipeline>
+  validate-md5: true|false <validate md5 on download. Impacts performance. works only when file-cache component is part of the pipeline>
 
 
 # Mount all configuration

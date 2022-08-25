@@ -69,7 +69,7 @@ func (l *SysLogger) GetLoggerObj() *log.Logger {
 }
 
 func (l *SysLogger) SetLogLevel(level common.LogLevel) {
-	// Reset the log leve here
+	// Reset the log level here
 	l.level = level
 	l.write(common.ELogLevel.LOG_CRIT().String(), "Log level reset to : %s", level.String())
 }

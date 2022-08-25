@@ -42,10 +42,13 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-pipeline-go/pipeline"
+	"github.com/Azure/azure-storage-azcopy/v10/ste"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -146,6 +149,25 @@ func (bb *BlockBlob) getCredential() azblob.Credential {
 	return cred.(azblob.Credential)
 }
 
+// NewPipeline creates a Pipeline using the specified credentials and options.
+func NewBlobPipeline(c azblob.Credential, o azblob.PipelineOptions, ro ste.XferRetryOptions) pipeline.Pipeline {
+	// Closest to API goes first; closest to the wire goes last
+	f := []pipeline.Factory{
+		azblob.NewTelemetryPolicyFactory(o.Telemetry),
+		azblob.NewUniqueRequestIDPolicyFactory(),
+		ste.NewBlobXferRetryPolicyFactory(ro),
+	}
+	f = append(f, c)
+	f = append(f,
+		pipeline.MethodFactoryMarker(), // indicates at what stage in the pipeline the method factory is invoked
+		ste.NewRequestLogPolicyFactory(ste.RequestLogOptions{
+			LogWarningIfTryOverThreshold: o.RequestLog.LogWarningIfTryOverThreshold,
+			SyslogDisabled:               o.RequestLog.SyslogDisabled,
+		}))
+
+	return pipeline.NewPipeline(f, pipeline.Options{HTTPSender: o.HTTPSender, Log: o.Log})
+}
+
 // SetupPipeline : Based on the config setup the ***URLs
 func (bb *BlockBlob) SetupPipeline() error {
 	log.Trace("BlockBlob::SetupPipeline : Setting up")
@@ -159,7 +181,8 @@ func (bb *BlockBlob) SetupPipeline() error {
 	}
 
 	// Create a new pipeline
-	bb.Pipeline = azblob.NewPipeline(cred, getAzBlobPipelineOptions(bb.Config))
+	options, retryOptions := getAzBlobPipelineOptions(bb.Config)
+	bb.Pipeline = NewBlobPipeline(cred, options, retryOptions)
 	if bb.Pipeline == nil {
 		log.Err("BlockBlob::SetupPipeline : Failed to create pipeline object")
 		return errors.New("failed to create pipeline object")
@@ -415,6 +438,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Ctime:  prop.LastModified(),
 		Crtime: prop.CreationTime(),
 		Flags:  internal.NewFileBitMap(),
+		MD5:    prop.ContentMD5(),
 	}
 	parseMetadata(attr, prop.NewMetadata())
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
@@ -579,6 +603,31 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 		azStatsCollector.UpdateStats(stats_manager.Increment, bytesDownloaded, count)
 	}
 
+	if bb.Config.validateMD5 {
+		// Compute md5 of local file
+		fileMD5, err := getMD5(fi)
+		if err != nil {
+			log.Warn("BlockBlob::ReadToFile : Failed to generate MD5 Sum for %s", name)
+		} else {
+			// Get latest properties from container to get the md5 of blob
+			prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
+			if err != nil {
+				log.Warn("BlockBlob::ReadToFile : Failed to get properties of blob %s (%s)", name, err.Error())
+			} else {
+				blobMD5 := prop.ContentMD5()
+				if blobMD5 == nil {
+					log.Warn("BlockBlob::ReadToFile : Failed to get MD5 Sum for blob %s", name)
+				} else {
+					// compare md5 and fail is not match
+					if !reflect.DeepEqual(fileMD5, blobMD5) {
+						log.Err("BlockBlob::ReadToFile : MD5 Sum mismatch %s", name)
+						return errors.New("md5 sum mismatch on download")
+					}
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -696,23 +745,34 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 
 	var uploadPtr *int64 = new(int64)
 	*uploadPtr = 1
-	var fileSize int64 = 0
 
 	blockSize := bb.Config.blockSize
+	// get the size of the file
+	stat, err := fi.Stat()
+	if err != nil {
+		log.Err("BlockBlob::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
+		return err
+	}
+
 	// if the block size is not set then we configure it based on file size
 	if blockSize == 0 {
-		// get the size of the file
-		stat, err := fi.Stat()
+		// based on file-size calculate block size
+		blockSize, err = bb.calculateBlockSize(name, stat.Size())
 		if err != nil {
-			log.Err("BlockBlob::calculateBlockSize : Failed to get file size %s (%s)", name, err.Error())
 			return err
 		}
+	}
 
-		// based on file-size calculate block size
-		fileSize = stat.Size()
-		blockSize, err = bb.calculateBlockSize(name, fileSize)
+	// Compute md5 of this file is requested by user
+	// If file is uploaded in one shot (no blocks created) then server is populating md5 on upload automatically.
+	// hence we take cost of calculating md5 only for files which are bigger in size and which will be converted to blocks.
+	md5sum := []byte{}
+	if bb.Config.updateMD5 && stat.Size() >= azblob.BlockBlobMaxUploadBlobBytes {
+		md5sum, err = getMD5(fi)
 		if err != nil {
-			return err
+			// Md5 sum generation failed so set nil while uploading
+			log.Warn("BlockBlob::WriteFromFile : Failed to generate md5 of %s", name)
+			md5sum = []byte{0}
 		}
 	}
 
@@ -723,11 +783,12 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		BlobAccessTier: bb.Config.defaultTier,
 		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
 			ContentType: getContentType(name),
+			ContentMD5:  md5sum,
 		},
 	}
-	if common.MonitorBfs() && fileSize > 0 {
+	if common.MonitorBfs() && stat.Size() > 0 {
 		uploadOptions.Progress = func(bytesTransferred int64) {
-			trackUpload(name, bytesTransferred, fileSize, uploadPtr)
+			trackUpload(name, bytesTransferred, stat.Size(), uploadPtr)
 		}
 	}
 
@@ -746,8 +807,8 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		log.Debug("BlockBlob::WriteFromFile : Upload complete of blob %v", name)
 
 		// store total bytes uploaded so far
-		if fileSize > 0 {
-			azStatsCollector.UpdateStats(stats_manager.Increment, bytesUploaded, fileSize)
+		if stat.Size() > 0 {
+			azStatsCollector.UpdateStats(stats_manager.Increment, bytesUploaded, stat.Size())
 		}
 	}
 

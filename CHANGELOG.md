@@ -2,6 +2,8 @@
 **Features**
 - Added support for directory level SAS while mounting a subdirectory
 - Added support for displaying mount space utilization based on file cache consumption (for example when doing `df`)
+- Added support for updating MD5 sum on file upload
+- Added support for validating MD5 sum on download
 
 **Bug Fixes**
 - Fixed a bug in parsing output of disk utilization summary
@@ -12,6 +14,7 @@
 - Fixed a bug in rmdir flow. Dont allow directory deletion if local cache says its empty. On container it might still have files.
 - Fixed a bug in background mode where auth validation would be run twice
 - Fixed a bug in content type parsing for a 7z compressed file
+- Fixed a bug in retry logic to retry in case of server timeout errors
 
 ## 2.0.0-preview.2 (2022-05-31)
 **Performance Improvements**

@@ -35,6 +35,7 @@ steps:
       ACCOUNT_TYPE: 'block'
       ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
       VERBOSE_LOG: false
+      USE_HTTP: false
     continueOnError: false
 
   - script: |
@@ -62,7 +63,7 @@ steps:
   - task: Go@0
     inputs:
       command: 'test'
-      arguments: '-v -timeout=2h -run Test.i.* -args -mnt-path=${{ parameters.mount_dir }} -adls=false -clone=true -tmp-path=${{ parameters.temp_dir }} -quick-test=false'
+      arguments: '-v -timeout=2h -run Test.i.* -args -mnt-path=${{ parameters.mount_dir }} -adls=false -clone=false -tmp-path=${{ parameters.temp_dir }} -quick-test=true'
       workingDirectory: ${{ parameters.work_dir }}/test/e2e_tests
     displayName: 'E2E Test: Block Blob'
     timeoutInMinutes: 120
@@ -91,6 +92,7 @@ steps:
       ACCOUNT_TYPE: 'adls'
       ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
       VERBOSE_LOG: false
+      USE_HTTP: false
     continueOnError: false
 
   - script: |
@@ -118,7 +120,7 @@ steps:
   - task: Go@0
     inputs:
       command: 'test'
-      arguments: '-v -timeout=2h -run Test.i.* -args -mnt-path=${{ parameters.mount_dir }} -adls=true -clone=true -tmp-path=${{ parameters.temp_dir }} -quick-test=false'
+      arguments: '-v -timeout=2h -run Test.i.* -args -mnt-path=${{ parameters.mount_dir }} -adls=true -clone=false -tmp-path=${{ parameters.temp_dir }} -quick-test=true'
       workingDirectory: ${{ parameters.work_dir }}/test/e2e_tests
     displayName: 'E2E Test: ADLS'
     timeoutInMinutes: 120
