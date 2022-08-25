@@ -54,6 +54,7 @@ import (
 var dataValidationMntPathPtr string
 var dataValidationTempPathPtr string
 var dataValidationAdlsPtr string
+var dataValidationFileSharePtr string
 var quickTest string
 var distro string
 
@@ -65,6 +66,7 @@ type dataValidationTestSuite struct {
 	testLocalPath string
 	testCachePath string
 	adlsTest      bool
+	fileShareTest bool
 }
 
 func regDataValidationTestFlag(p *string, name string, value string, usage string) {
@@ -80,6 +82,7 @@ func getDataValidationTestFlag(name string) string {
 func initDataValidationFlags() {
 	dataValidationMntPathPtr = getDataValidationTestFlag("mnt-path")
 	dataValidationAdlsPtr = getDataValidationTestFlag("adls")
+	dataValidationFileSharePtr = getDataValidationTestFlag("fileshare")
 	dataValidationTempPathPtr = getDataValidationTestFlag("tmp-path")
 	quickTest = getDataValidationTestFlag("quick-test")
 	distro = getDataValidationTestFlag("distro-name")
@@ -373,6 +376,9 @@ func TestDataValidationTestSuite(t *testing.T) {
 	if dataValidationAdlsPtr == "true" || dataValidationAdlsPtr == "True" {
 		fmt.Println("ADLS Testing...")
 		dataValidationTest.adlsTest = true
+	} else if dataValidationFileSharePtr == "true" || dataValidationFileSharePtr == "True" {
+		fmt.Println("FileShare Testing...")
+		dataValidationTest.fileShareTest = true
 	} else {
 		fmt.Println("BLOCK Blob Testing...")
 	}
@@ -406,6 +412,7 @@ func TestDataValidationTestSuite(t *testing.T) {
 func init() {
 	regDataValidationTestFlag(&dataValidationMntPathPtr, "mnt-path", "", "Mount Path of Container")
 	regDataValidationTestFlag(&dataValidationAdlsPtr, "adls", "", "Account is ADLS or not")
+	regDataValidationTestFlag(&dataValidationFileSharePtr, "fileshare", "", "Account is FileShare or not")
 	regDataValidationTestFlag(&dataValidationTempPathPtr, "tmp-path", "", "Cache dir path")
 	regDataValidationTestFlag(&quickTest, "quick-test", "true", "Run quick tests")
 	regDataValidationTestFlag(&distro, "distro-name", "", "Name of the distro")

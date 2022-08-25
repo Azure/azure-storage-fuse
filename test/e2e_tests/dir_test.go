@@ -52,15 +52,17 @@ import (
 
 type dirTestSuite struct {
 	suite.Suite
-	testPath string
-	adlsTest bool
-	minBuff  []byte
-	medBuff  []byte
-	hugeBuff []byte
+	testPath      string
+	adlsTest      bool
+	fileShareTest bool
+	minBuff       []byte
+	medBuff       []byte
+	hugeBuff      []byte
 }
 
 var pathPtr string
 var adlsPtr string
+var fileSharePtr string
 var clonePtr string
 
 func regDirTestFlag(p *string, name string, value string, usage string) {
@@ -76,6 +78,7 @@ func getDirTestFlag(name string) string {
 func initDirFlags() {
 	pathPtr = getDirTestFlag("mnt-path")
 	adlsPtr = getDirTestFlag("adls")
+	fileSharePtr = getDirTestFlag("fileshare")
 	clonePtr = getDirTestFlag("clone")
 }
 
@@ -120,22 +123,26 @@ func (suite *dirTestSuite) TestDirCreateDuplicate() {
 
 // # Create Directory with special characters in name
 func (suite *dirTestSuite) TestDirCreateSplChar() {
-	dirName := suite.testPath + "/" + "@#$^&*()_+=-{}[]|?><.,~"
-	err := os.Mkdir(dirName, 0777)
-	suite.Equal(nil, err)
+	if !suite.fileShareTest {
+		dirName := suite.testPath + "/" + "@#$^&*()_+=-{}[]|?><.,~"
+		err := os.Mkdir(dirName, 0777)
+		suite.Equal(nil, err)
 
-	// cleanup
-	suite.dirTestCleanup([]string{dirName})
+		// cleanup
+		suite.dirTestCleanup([]string{dirName})
+	}
 }
 
 // # Create Directory with slash in name
 func (suite *dirTestSuite) TestDirCreateSlashChar() {
-	dirName := suite.testPath + "/" + "PRQ\\STUV"
-	err := os.Mkdir(dirName, 0777)
-	suite.Equal(nil, err)
+	if !suite.fileShareTest {
+		dirName := suite.testPath + "/" + "PRQ\\STUV"
+		err := os.Mkdir(dirName, 0777)
+		suite.Equal(nil, err)
 
-	// cleanup
-	suite.dirTestCleanup([]string{dirName})
+		// cleanup
+		suite.dirTestCleanup([]string{dirName})
+	}
 }
 
 // # Rename a directory
@@ -501,6 +508,9 @@ func TestDirTestSuite(t *testing.T) {
 	if adlsPtr == "true" || adlsPtr == "True" {
 		fmt.Println("ADLS Testing...")
 		dirTest.adlsTest = true
+	} else if dataValidationFileSharePtr == "true" || dataValidationFileSharePtr == "True" {
+		fmt.Println("FileShare Testing...")
+		dirTest.fileShareTest = true
 	} else {
 		fmt.Println("BLOCK Blob Testing...")
 	}
@@ -529,5 +539,6 @@ func TestDirTestSuite(t *testing.T) {
 func init() {
 	regDirTestFlag(&pathPtr, "mnt-path", "", "Mount Path of Container")
 	regDirTestFlag(&adlsPtr, "adls", "", "Account is ADLS or not")
+	regDirTestFlag(&fileSharePtr, "fileshare", "", "Account is FileShare or not")
 	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enable or not")
 }
