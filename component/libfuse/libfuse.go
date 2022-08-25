@@ -53,19 +53,20 @@ import (
 // Common structure for Component
 type Libfuse struct {
 	internal.BaseComponent
-	mountPath           string
-	dirPermission       uint
-	filePermission      uint
-	readOnly            bool
-	attributeExpiration uint32
-	entryExpiration     uint32
-	negativeTimeout     uint32
-	allowOther          bool
-	ownerUID            uint32
-	ownerGID            uint32
-	traceEnable         bool
-	extensionPath       string
-	lsFlags             common.BitMap16
+	mountPath            string
+	dirPermission        uint
+	filePermission       uint
+	readOnly             bool
+	attributeExpiration  uint32
+	entryExpiration      uint32
+	negativeTimeout      uint32
+	allowOther           bool
+	ownerUID             uint32
+	ownerGID             uint32
+	traceEnable          bool
+	extensionPath        string
+	enableWritebackCache bool
+	lsFlags              common.BitMap16
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -88,6 +89,7 @@ type LibfuseOptions struct {
 	allowOther              bool   `config:"allow-other"`
 	readOnly                bool   `config:"read-only"`
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
+	EnableWritebackCache    bool   `config:"enable-writeback-cache"`
 }
 
 const compName = "libfuse"
@@ -156,6 +158,8 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.traceEnable = opt.EnableFuseTrace
 	lf.allowOther = opt.allowOther
 	lf.extensionPath = opt.ExtensionPath
+	// Setting here to make testing easier.
+	lf.enableWritebackCache = opt.readOnly || opt.EnableWritebackCache
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
