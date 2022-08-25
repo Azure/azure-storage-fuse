@@ -64,8 +64,6 @@ func (bfs *BlobfuseStats) SetName(name string) {
 }
 
 func (bfs *BlobfuseStats) Monitor() error {
-	defer hmcommon.Wg.Done()
-
 	err := bfs.Validate()
 	if err != nil {
 		log.Err("StatsReader::Monitor : [%v]", err)

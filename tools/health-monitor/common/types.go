@@ -35,7 +35,6 @@ package common
 
 import (
 	"path/filepath"
-	"sync"
 )
 
 const (
@@ -74,8 +73,6 @@ const HealthMonitorVersion = "1.0.0-preview.1"
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFile = filepath.Join(DefaultWorkDir, "healthmon.log")
-
-var Wg sync.WaitGroup
 
 type CacheEvent struct {
 	CacheEvent      string            `json:"cacheEvent"`

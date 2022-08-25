@@ -31,15 +31,33 @@
    SOFTWARE
 */
 
-package stats_manager
+package azstorage
 
 const (
-	// Stats collection operation types
-	Increment = "increment"
-	Decrement = "decrement"
-	Replace   = "replace"
+	bytesDownloaded  = "Bytes Downloaded"
+	bytesUploaded    = "Bytes Uploaded"
+	downloadProgress = "DownloadProgress"
+	uploadProgress   = "UploadProgress"
+	bytesTfrd        = "Bytes Transferred"
 
-	// File Cache stats types
-	CacheUsage   = "Cache Usage"
-	UsagePercent = "Usage Percent"
+	createDir    = "CreateDir"
+	deleteDir    = "DeleteDir"
+	streamDir    = "StreamDir"
+	renameDir    = "RenameDir"
+	createFile   = "CreateFile"
+	deleteFile   = "DeleteFile"
+	renameFile   = "RenameFile"
+	truncateFile = "TruncateFile"
+	createLink   = "CreateLink"
+	chmod        = "Chmod"
+	chown        = "Chown"
+
+	mode   = "Mode"
+	count  = "Count"
+	src    = "Src"
+	dest   = "Dest"
+	size   = "Size"
+	target = "Target"
+	owner  = "Owner"
+	group  = "Group"
 )

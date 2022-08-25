@@ -31,15 +31,23 @@
    SOFTWARE
 */
 
-package stats_manager
+package libfuse
 
 const (
-	// Stats collection operation types
-	Increment = "increment"
-	Decrement = "decrement"
-	Replace   = "replace"
+	createDir    = "CreateDir"
+	deleteDir    = "DeleteDir"
+	createFile   = "CreateFile"
+	truncateFile = "TruncateFile"
+	renameDir    = "RenameDir"
+	renameFile   = "RenameFile"
+	createLink   = "CreateLink"
+	chmod        = "Chmod"
 
-	// File Cache stats types
-	CacheUsage   = "Cache Usage"
-	UsagePercent = "Usage Percent"
+	openHandles = "OpenFileHandles"
+
+	md     = "Mode"
+	size   = "Size"
+	source = "Src"
+	dest   = "Dest"
+	trgt   = "Target"
 )

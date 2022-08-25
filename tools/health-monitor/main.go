@@ -117,11 +117,11 @@ func main() {
 	comps := getMonitors()
 
 	for _, obj := range comps {
-		hmcommon.Wg.Add(1)
 		go obj.Monitor()
 	}
 
-	hmcommon.Wg.Wait()
+	// check if the pid of blobfuse2 is active
+	hmcommon.MonitorPid()
 
 	err = hminternal.CloseExporter()
 	if err != nil {

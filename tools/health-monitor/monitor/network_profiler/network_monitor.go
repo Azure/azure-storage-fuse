@@ -56,8 +56,6 @@ func (nw *NetworkProfiler) SetName(name string) {
 }
 
 func (nw *NetworkProfiler) Monitor() error {
-	defer hmcommon.Wg.Done()
-
 	err := nw.Validate()
 	if err != nil {
 		log.Err("network_monitor::Monitor : [%v]", err)

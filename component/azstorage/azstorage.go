@@ -193,7 +193,7 @@ func (az *AzStorage) CreateDir(options internal.CreateDirOptions) error {
 	err := az.storage.CreateDirectory(internal.TruncateDirName(options.Name))
 
 	if err == nil {
-		azStatsCollector.PushEvents("CreateDir", options.Name, map[string]interface{}{"Mode": options.Mode.String()})
+		azStatsCollector.PushEvents(createDir, options.Name, map[string]interface{}{mode: options.Mode.String()})
 	}
 
 	return err
@@ -205,7 +205,7 @@ func (az *AzStorage) DeleteDir(options internal.DeleteDirOptions) error {
 	err := az.storage.DeleteDirectory(internal.TruncateDirName(options.Name))
 
 	if err == nil {
-		azStatsCollector.PushEvents("DeleteDir", options.Name, nil)
+		azStatsCollector.PushEvents(deleteDir, options.Name, nil)
 	}
 
 	return err
@@ -300,7 +300,10 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	if len(path) == 0 {
 		path = "/"
 	}
-	azStatsCollector.PushEvents("StreamDir", path, map[string]interface{}{"Count": len(new_list)})
+	azStatsCollector.PushEvents(streamDir, path, map[string]interface{}{count: len(new_list)})
+
+	// increment streamdir call count
+	azStatsCollector.UpdateStats(stats_manager.Increment, streamDir, (int64)(1))
 
 	return new_list, *new_marker, nil
 }
@@ -313,7 +316,7 @@ func (az *AzStorage) RenameDir(options internal.RenameDirOptions) error {
 	err := az.storage.RenameDirectory(options.Src, options.Dst)
 
 	if err == nil {
-		azStatsCollector.PushEvents("RenameDir", options.Src, map[string]interface{}{"Src": options.Src, "Dest": options.Dst})
+		azStatsCollector.PushEvents(renameDir, options.Src, map[string]interface{}{src: options.Src, dest: options.Dst})
 	}
 	return err
 }
@@ -335,7 +338,7 @@ func (az *AzStorage) CreateFile(options internal.CreateFileOptions) (*handlemap.
 		return nil, err
 	}
 
-	azStatsCollector.PushEvents("CreateFile", options.Name, map[string]interface{}{"Mode": options.Mode.String()})
+	azStatsCollector.PushEvents(createFile, options.Name, map[string]interface{}{mode: options.Mode.String()})
 
 	return handle, nil
 }
@@ -371,7 +374,7 @@ func (az *AzStorage) DeleteFile(options internal.DeleteFileOptions) error {
 	err := az.storage.DeleteFile(options.Name)
 
 	if err == nil {
-		azStatsCollector.PushEvents("DeleteFile", options.Name, nil)
+		azStatsCollector.PushEvents(deleteFile, options.Name, nil)
 	}
 
 	return err
@@ -383,7 +386,7 @@ func (az *AzStorage) RenameFile(options internal.RenameFileOptions) error {
 	err := az.storage.RenameFile(options.Src, options.Dst)
 
 	if err == nil {
-		azStatsCollector.PushEvents("RenameFile", options.Src, map[string]interface{}{"Src": options.Src, "Dest": options.Dst})
+		azStatsCollector.PushEvents(renameFile, options.Src, map[string]interface{}{src: options.Src, dest: options.Dst})
 	}
 	return err
 }
@@ -433,7 +436,7 @@ func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 	err := az.storage.TruncateFile(options.Name, options.Size)
 
 	if err == nil {
-		azStatsCollector.PushEvents("TruncateFile", options.Name, map[string]interface{}{"Size": options.Size})
+		azStatsCollector.PushEvents(truncateFile, options.Name, map[string]interface{}{size: options.Size})
 	}
 	return err
 }
@@ -454,7 +457,7 @@ func (az *AzStorage) CreateLink(options internal.CreateLinkOptions) error {
 	err := az.storage.CreateLink(options.Name, options.Target)
 
 	if err == nil {
-		azStatsCollector.PushEvents("CreateLink", options.Name, map[string]interface{}{"Target": options.Target})
+		azStatsCollector.PushEvents(createLink, options.Name, map[string]interface{}{target: options.Target})
 	}
 
 	return err
@@ -477,7 +480,7 @@ func (az *AzStorage) Chmod(options internal.ChmodOptions) error {
 	err := az.storage.ChangeMod(options.Name, options.Mode)
 
 	if err == nil {
-		azStatsCollector.PushEvents("Chmod", options.Name, map[string]interface{}{"Mode": options.Mode.String()})
+		azStatsCollector.PushEvents(chmod, options.Name, map[string]interface{}{mode: options.Mode.String()})
 	}
 
 	return err
@@ -487,7 +490,7 @@ func (az *AzStorage) Chown(options internal.ChownOptions) error {
 	log.Trace("AzStorage::Chown : Change ownership of file %s to %d-%d", options.Name, options.Owner, options.Group)
 	err := az.storage.ChangeOwner(options.Name, options.Owner, options.Group)
 	if err == nil {
-		azStatsCollector.PushEvents("Chown", options.Name, map[string]interface{}{"Owner": options.Owner, "Group": options.Group})
+		azStatsCollector.PushEvents(chown, options.Name, map[string]interface{}{owner: options.Owner, group: options.Group})
 	}
 
 	return err

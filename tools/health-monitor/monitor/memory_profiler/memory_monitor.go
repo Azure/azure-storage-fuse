@@ -59,8 +59,6 @@ func (mem *MemoryProfiler) SetName(name string) {
 }
 
 func (mem *MemoryProfiler) Monitor() error {
-	defer hmcommon.Wg.Done()
-
 	err := mem.Validate()
 	if err != nil {
 		log.Err("memory_monitor::Monitor : [%v]", err)

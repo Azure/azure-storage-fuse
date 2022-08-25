@@ -72,8 +72,6 @@ func (fc *FileCache) SetName(name string) {
 }
 
 func (fc *FileCache) Monitor() error {
-	defer hmcommon.Wg.Done()
-
 	err := fc.Validate()
 	if err != nil {
 		log.Err("cache_monitor::Monitor : [%v]", err)

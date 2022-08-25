@@ -39,6 +39,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -73,6 +74,9 @@ type Output struct {
 var expLock sync.Mutex
 var se *StatsExporter
 
+// atomic variable to prevent writing to channel after it has been closed
+var pidStatus int32 = 0
+
 // create single instance of StatsExporter
 func NewStatsExporter() (*StatsExporter, error) {
 	if se == nil {
@@ -97,9 +101,32 @@ func NewStatsExporter() (*StatsExporter, error) {
 }
 
 func (se *StatsExporter) Destroy() {
-	_, err := se.opFile.WriteString("\n]")
-	if err != nil {
-		log.Err("stats_exporter::NewStatsExporter : unable to write to file [%v]", err)
+	// add 1 to the atomic variable. This will prevent writing to it in AddMonitorStats() method
+	atomic.AddInt32(&pidStatus, 1)
+
+	// write remaining data to the output file
+	for i, op := range se.outputList {
+		jsonData, err := json.MarshalIndent(op, "", "\t")
+		if err != nil {
+			log.Err("stats_exporter::addToOutputFile : unable to marshal [%v]", err)
+		}
+
+		_, err = se.opFile.Write(jsonData)
+		if err != nil {
+			log.Err("stats_exporter::addToOutputFile : unable to write to file [%v]", err)
+		}
+
+		if i != len(se.outputList)-1 {
+			_, err := se.opFile.WriteString(",\n")
+			if err != nil {
+				log.Err("stats_exporter::NewStatsExporter : unable to write to file [%v]", err)
+			}
+		} else {
+			_, err := se.opFile.WriteString("\n]")
+			if err != nil {
+				log.Err("stats_exporter::NewStatsExporter : unable to write to file [%v]", err)
+			}
+		}
 	}
 
 	se.opFile.Close()
@@ -114,10 +141,12 @@ func (se *StatsExporter) AddMonitorStats(monName string, timestamp string, st in
 		<-se.channel
 	}
 
-	se.channel <- ExportedStat{
-		Timestamp:   timestamp,
-		MonitorName: monName,
-		Stat:        st,
+	if atomic.LoadInt32(&pidStatus) == 0 {
+		se.channel <- ExportedStat{
+			Timestamp:   timestamp,
+			MonitorName: monName,
+			Stat:        st,
+		}
 	}
 }
 
@@ -129,8 +158,8 @@ func (se *StatsExporter) StatsExporter() {
 		if idx != -1 {
 			se.addToList(&st, idx)
 		} else {
-			// keep max 4 timestamps in memory
-			if len(se.outputList) >= 4 {
+			// keep max 3 timestamps in memory
+			if len(se.outputList) >= 3 {
 				err := se.addToOutputFile(se.outputList[0])
 				if err != nil {
 					log.Err("stats_export::StatsExporter : [%v]", err)

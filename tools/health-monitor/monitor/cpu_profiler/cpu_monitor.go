@@ -59,8 +59,6 @@ func (cpu *CpuProfiler) SetName(name string) {
 }
 
 func (cpu *CpuProfiler) Monitor() error {
-	defer hmcommon.Wg.Done()
-
 	err := cpu.Validate()
 	if err != nil {
 		log.Err("cpu_monitor::Monitor : [%v]", err)

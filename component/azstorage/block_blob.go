@@ -541,7 +541,7 @@ func trackDownload(name string, bytesTransferred int64, count int64, downloadPtr
 		log.Debug("BlockBlob::trackDownload : Download: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
 
 		// send the download progress as an event
-		azStatsCollector.PushEvents("DownloadProgress", name, map[string]interface{}{"Bytes Transferred": bytesTransferred, "Size": count})
+		azStatsCollector.PushEvents(downloadProgress, name, map[string]interface{}{bytesTfrd: bytesTransferred, size: count})
 	}
 }
 
@@ -576,7 +576,7 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 		log.Debug("BlockBlob::ReadToFile : Download complete of blob %v", name)
 
 		// store total bytes downloaded so far
-		azStatsCollector.UpdateStats(stats_manager.Increment, stats_manager.BytesDownloaded, count)
+		azStatsCollector.UpdateStats(stats_manager.Increment, bytesDownloaded, count)
 	}
 
 	return nil
@@ -682,7 +682,7 @@ func trackUpload(name string, bytesTransferred int64, count int64, uploadPtr *in
 		log.Debug("BlockBlob::trackUpload : Upload: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
 
 		// send upload progress as event
-		azStatsCollector.PushEvents("UploadProgress", name, map[string]interface{}{"Bytes Transferred": bytesTransferred, "Size": count})
+		azStatsCollector.PushEvents(uploadProgress, name, map[string]interface{}{bytesTfrd: bytesTransferred, size: count})
 	}
 }
 
@@ -747,7 +747,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 
 		// store total bytes uploaded so far
 		if fileSize > 0 {
-			azStatsCollector.UpdateStats(stats_manager.Increment, stats_manager.BytesUploaded, fileSize)
+			azStatsCollector.UpdateStats(stats_manager.Increment, bytesUploaded, fileSize)
 		}
 	}
 

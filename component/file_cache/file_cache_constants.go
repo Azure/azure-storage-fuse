@@ -31,15 +31,20 @@
    SOFTWARE
 */
 
-package stats_manager
+package file_cache
 
 const (
-	// Stats collection operation types
-	Increment = "increment"
-	Decrement = "decrement"
-	Replace   = "replace"
+	dlFile       = "DeleteFile"
+	openFile     = "OpenFile"
+	truncateFile = "TruncateFile"
+	chmod        = "Chmod"
+	chown        = "Chown"
 
-	// File Cache stats types
-	CacheUsage   = "Cache Usage"
-	UsagePercent = "Usage Percent"
+	cacheUsage = "Cache Usage"
+	usgPer     = "Usage Percent"
+
+	mode  = "Mode"
+	size  = "Size"
+	owner = "Owner"
+	group = "Group"
 )
