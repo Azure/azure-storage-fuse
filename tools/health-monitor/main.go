@@ -117,7 +117,7 @@ func main() {
 	comps := getMonitors()
 
 	for _, obj := range comps {
-		go obj.Monitor()
+		go obj.Monitor() // nolint
 	}
 
 	// check if the pid of blobfuse2 is active

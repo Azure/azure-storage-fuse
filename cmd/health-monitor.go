@@ -170,9 +170,9 @@ func init() {
 	rootCmd.AddCommand(healthMonCmd)
 
 	healthMonCmd.Flags().StringVar(&pid, "pid", "", "Pid of blobfuse2 process")
-	healthMonCmd.MarkFlagRequired("pid")
+	_ = healthMonCmd.MarkFlagRequired("pid")
 
 	healthMonCmd.Flags().StringVar(&configFile, "config-file", "config.yaml",
 		"Configures the path for the file where the account credentials are provided. Default is config.yaml")
-	healthMonCmd.MarkFlagRequired("config-file")
+	_ = healthMonCmd.MarkFlagRequired("config-file")
 }
