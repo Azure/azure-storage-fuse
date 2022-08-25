@@ -13,7 +13,7 @@ parameters:
     type: step
   - name: adls
     type: boolean
-  - name: file 
+  - name: fileshare 
     type: boolean
   - name: clone
     type: boolean
