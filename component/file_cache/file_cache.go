@@ -780,7 +780,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		}
 
 		// Open the file in write mode.
-		f, err = os.OpenFile(localPath, os.O_CREATE|os.O_WRONLY, options.Mode)
+		f, err = os.OpenFile(localPath, os.O_CREATE|os.O_RDWR, options.Mode)
 		if err != nil {
 			log.Err("FileCache::OpenFile : error creating new file %s [%s]", options.Name, err.Error())
 			return nil, err
@@ -807,7 +807,10 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 					File:   f,
 				})
 			if err != nil {
+				// File was created locally and now download has failed so we need to delete it back from local cache
 				log.Err("FileCache::OpenFile : error downloading file from storage %s [%s]", options.Name, err.Error())
+				_ = f.Close()
+				_ = os.Remove(localPath)
 				return nil, err
 			}
 		}
