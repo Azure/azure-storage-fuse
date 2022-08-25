@@ -130,51 +130,51 @@ steps:
       blobfuse2 unmount ${{ parameters.mount_dir }}
     displayName: 'Unmount ADLS'
 
-  - script: |
-      blobfuse2 gen-test-config --config-file=${{ parameters.root_dir }}/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.root_dir }}/file_share_config.yaml
-    displayName: 'Create File Share Config File'
-    env:
-      NIGHTLY_STO_ACC_NAME: $(AZTEST_FILE_ACC_NAME)
-      NIGHTLY_STO_ACC_KEY: $(AZTEST_FILE_KEY)
-      ACCOUNT_TYPE: 'file'
-      ACCOUNT_ENDPOINT: 'https://$(AZTEST_FILE_ACC_NAME).file.core.windows.net'
-      VERBOSE_LOG: false
-      USE_HTTP: false
-    continueOnError: false
+  # - script: |
+  #     blobfuse2 gen-test-config --config-file=${{ parameters.root_dir }}/azure-storage-fuse/testdata/config/azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.root_dir }}/file_share_config.yaml
+  #   displayName: 'Create File Share Config File'
+  #   env:
+  #     NIGHTLY_STO_ACC_NAME: $(AZTEST_FILE_ACC_NAME)
+  #     NIGHTLY_STO_ACC_KEY: $(AZTEST_FILE_KEY)
+  #     ACCOUNT_TYPE: 'file'
+  #     ACCOUNT_ENDPOINT: 'https://$(AZTEST_FILE_ACC_NAME).file.core.windows.net'
+  #     VERBOSE_LOG: false
+  #     USE_HTTP: false
+  #   continueOnError: false
 
-  - script: |
-      cat ${{ parameters.root_dir }}/file_share_config.yaml
-    displayName: 'Print File Share Config File'
+  # - script: |
+  #     cat ${{ parameters.root_dir }}/file_share_config.yaml
+  #   displayName: 'Print File Share Config File'
     
-  - script: |
-      blobfuse2 unmount all 
-      sudo fusermount -u ${{ parameters.mount_dir }}
-      blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.root_dir }}/file_share_config.yaml
-    displayName: 'Mount File Share'
+  # - script: |
+  #     blobfuse2 unmount all 
+  #     sudo fusermount -u ${{ parameters.mount_dir }}
+  #     blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.root_dir }}/file_share_config.yaml
+  #   displayName: 'Mount File Share'
     
-    # Wait for some time to let the container come up
-  - script: |
-      sleep 10s
-    displayName: 'Waiting for Mount'
+  #   # Wait for some time to let the container come up
+  # - script: |
+  #     sleep 10s
+  #   displayName: 'Waiting for Mount'
 
-  - script: |
-      df
-      echo "-------------------------------------------------------------------"
-      df | grep blobfuse2
-      exit $?
-    displayName: 'Verify Mount'
+  # - script: |
+  #     df
+  #     echo "-------------------------------------------------------------------"
+  #     df | grep blobfuse2
+  #     exit $?
+  #   displayName: 'Verify Mount'
 
-  # Skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to the file share documentation
-  # https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
-  # https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
-  - task: Go@0
-    inputs:
-      command: 'test'
-      arguments: '-v -timeout=2h -run Test.i.* -args -mnt-path=${{ parameters.mount_dir }} -adls=false -fileshare=true -clone=false -tmp-path=${{ parameters.temp_dir }} -quick-test=true'
-      workingDirectory: ${{ parameters.work_dir }}/test/e2e_tests
-    displayName: 'E2E Test: File Share'
-    timeoutInMinutes: 120
-    continueOnError: false
+  # # Skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to the file share documentation
+  # # https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
+  # # https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
+  # - task: Go@0
+  #   inputs:
+  #     command: 'test'
+  #     arguments: '-v -timeout=2h -run Test.i.* -args -mnt-path=${{ parameters.mount_dir }} -adls=false -fileshare=true -clone=false -tmp-path=${{ parameters.temp_dir }} -quick-test=true'
+  #     workingDirectory: ${{ parameters.work_dir }}/test/e2e_tests
+  #   displayName: 'E2E Test: File Share'
+  #   timeoutInMinutes: 120
+  #   continueOnError: false
 
   - script: |
       blobfuse2 unmount ${{ parameters.mount_dir }}
