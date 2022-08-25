@@ -1,5 +1,0 @@
-| Case | latest v2 write IOPS | latest v2 read IOPS |
-| -- | -- | -- |
-| Run {1..2} |
-| Average |
-| % Diff |
