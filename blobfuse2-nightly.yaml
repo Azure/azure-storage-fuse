@@ -31,6 +31,11 @@ parameters:
     type: boolean
     default: true
 
+  - name: healthmon_test
+    displayName: 'Healthmon test'
+    type: boolean
+    default: true
+
   - name: quick_stress
     displayName: 'Quick Stress'
     type: boolean
@@ -1176,3 +1181,114 @@ stages:
                     sudo apt-get install $(fuselib) -y
                   displayName: 'Install fuse'
                 verbose_log: ${{ parameters.verbose_log }}
+
+  - ${{ if eq(parameters.healthmon_test, true) }}:
+    - stage: Healthmon
+      jobs:
+        - job: Set_1
+          timeoutInMinutes: 300
+          strategy:
+            matrix:
+              Ubuntu-22:
+                imageName: 'ubuntu-22.04'
+                containerName: 'test-cnt-ubn-22'
+                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+          pool:
+            vmImage: $(imageName)
+
+          variables:
+            - group: NightlyBlobFuse
+            - name: ROOT_DIR
+              value: "/usr/pipeline/workv2"
+            - name: WORK_DIR
+              value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+            - name: skipComponentGovernanceDetection
+              value: true
+            - name: MOUNT_DIR
+              value: "/usr/pipeline/workv2/blob_mnt"
+            - name: TEMP_DIR
+              value: "/usr/pipeline/workv2/temp"
+            - name: BLOBFUSE2_CFG
+              value: "/usr/pipeline/workv2/blobfuse2.yaml"
+            - name: BLOBFUSE2_ADLS_CFG
+              value: "/home/vsts/workv2/blobfuse2.adls.yaml"
+            - name: GOPATH
+              value: "/usr/pipeline/workv2/go"
+
+          steps:
+            - checkout: none
+
+            - script: |
+                sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
+                sudo apt-get install make cmake gcc g++ parallel $(fuselib) -y -o Dpkg::Options::="--force-confnew"
+              displayName: 'Install libfuse'
+
+            # Clone the repo
+            - script: |
+                git clone https://github.com/Azure/azure-storage-fuse
+              displayName: 'Checkout Code'
+              workingDirectory: $(ROOT_DIR)
+
+            # Checkout the branch
+            - script: |
+                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+              displayName: 'Checkout Branch'
+              workingDirectory: $(WORK_DIR)
+
+            # Create directory structure
+            - script: |
+                sudo mkdir -p $(ROOT_DIR)
+                sudo chown -R `whoami` $(ROOT_DIR)
+                chmod 777 $(ROOT_DIR)
+              displayName: 'Create Directory Structure'
+
+            # -------------------------------------------------------
+            # Pull and build the code
+            - template: 'azure-pipeline-templates/build.yml'
+              parameters:
+                working_directory: $(WORK_DIR)
+                root_dir: $(Pipeline.Workspace)
+                mount_dir: $(MOUNT_DIR)
+                temp_dir: $(TEMP_DIR)
+                gopath: $(GOPATH)
+                container: $(containerName)
+                tags: $(tags)
+                fuselib: $(fuselib)
+                skip_msi: "true"
+
+            - script: |
+                cd $(WORK_DIR)
+                $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_hmon.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+              displayName: Create Key Config File
+              env:
+                ACCOUNT_TYPE: 'block'
+                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+                VERBOSE_LOG: false
+                USE_HTTP: false
+              continueOnError: false
+
+            - script: cat $(BLOBFUSE2_CFG)
+              displayName: Print config file
+
+            - template: 'azure-pipeline-templates/mount.yml'
+              parameters:
+                working_dir: $(WORK_DIR)
+                mount_dir: $(MOUNT_DIR)
+                temp_dir: $(TEMP_DIR)
+                prefix: "Healthmon mounting"
+                mountStep:
+                  script: |
+                    $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
+                  displayName: 'Mount Blobfuse2'
+                  timeoutInMinutes: 3
+                  continueOnError: false
+
+            - template: 'azure-pipeline-templates/cleanup.yml'
+              parameters:
+                working_dir: $(WORK_DIR)
+                mount_dir: $(MOUNT_DIR)
+                temp_dir: $(TEMP_DIR)
