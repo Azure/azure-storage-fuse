@@ -1316,7 +1316,19 @@ stages:
                   workingDirectory: $(WORK_DIR)
                   timeoutInMinutes: 3
                   continueOnError: false
-                
+
+            - script: |
+                touch $(MOUNT_DIR)/h1.txt
+                echo "123456" > $(MOUNT_DIR)/h2.txt
+                cp *.md $(MOUNT_DIR)/
+                mkdir $(MOUNT_DIR)/A
+                mv $(MOUNT_DIR)/h1.txt $(MOUNT_DIR)/h5.txt
+                mv $(MOUNT_DIR)/h*.* $(MOUNT_DIR)/A
+                rm -rf $(MOUNT_DIR)/*.md
+                rm -rf $(MOUNT_DIR)/A
+              displayName: "Test for health monitor"
+              workingDirectory: $(WORK_DIR)
+
             - script: |
                 sleep 20s
                 cat $(WORK_DIR)/monitor_*.json
