@@ -32,6 +32,9 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 - Option to dump logs to syslog or a file on disk
 - Support for config file encryption and mounting with an encrypted config file via a passphrase (CLI or environment variable) to decrypt the config file
 - CLI to check or update a parameter in the encrypted config
+- Set MD5 sum of a blob while uploading
+- Validate MD5 sum on download and fail file open on mismatch
+- Large file writing through write streaming
 
  ## Blobfuse2 performance compared to blobfuse(v1.x.x)
 - 'git clone' operation is 25% faster (tested with vscode repo cloning)
@@ -153,6 +156,11 @@ az storage container generate-sas --account-name <account name ex:myadlsaccount>
 ## Un-Supported Scenarios
 - Blobfuse2 does not support overlapping mount paths. While running multiple instances of Blobfuse2 make sure each instance has a unique and non-overlapping mount point.
 - Blobfuse2 does not support co-existance with NFS on same mount path. Behaviour in this case is undefined.
+- For block blob accounts, where data is uploaded through other means, Blobfuse2 expects special directory marker files to exist in contianer. In absense of this
+  few file operations might not work. For e.g. if you have a blob 'A/B/c.txt' then special marker files shall exists for 'A' and 'A/B', otherwise opening of 'A/B/c.txt' will fail.
+  Once a 'ls' operation is done on these directories 'A' and 'A/B' you will be able to open 'A/B/c.txt' as well. Possible workaround to resolve this from yoru container is to either
+  create the directory marker files manually through portal or run 'mkdir' command for 'A' and 'A/B' from blobfuse. Refer [me](https://github.com/Azure/azure-storage-fuse/issues/866) 
+  for details on this.
 
 ## Limitations
 - In case of BlockBlob accounts, ACLs are not supported by Azure Storage so Blobfuse2 will bydefault return success for 'chmod' operation. However it will work fine for Gen2 (DataLake) accounts.
