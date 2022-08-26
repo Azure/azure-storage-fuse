@@ -65,6 +65,7 @@ var (
 
 	TempCachePath string
 	MaxCacheSize  float64
+	OutputPath    string
 
 	CheckVersion bool
 )

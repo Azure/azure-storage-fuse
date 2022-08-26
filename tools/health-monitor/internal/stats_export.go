@@ -258,34 +258,31 @@ func (se *StatsExporter) checkOutputFile() error {
 }
 
 func (se *StatsExporter) getNewFile() error {
-	currDir, err := os.Getwd()
-	if err != nil {
-		log.Err("stats_export::NewStatsExporter : [%v]", err)
-		return err
-	}
-
 	var fname string
 	var fnameNew string
+	var err error
+
+	baseName := filepath.Join(hmcommon.OutputPath, hmcommon.OutputFileName)
 
 	// Remove the oldest file
-	fname = fmt.Sprintf("%v_%v_%v.%v", hmcommon.OutputFileName, hmcommon.Pid, (hmcommon.OutputFileCount - 1), hmcommon.OutputFileExtension)
+	fname = fmt.Sprintf("%v_%v_%v.%v", baseName, hmcommon.Pid, (hmcommon.OutputFileCount - 1), hmcommon.OutputFileExtension)
 	_ = os.Remove(fname)
 
 	for i := hmcommon.OutputFileCount - 2; i > 0; i-- {
-		fname = fmt.Sprintf("%v_%v_%v.%v", hmcommon.OutputFileName, hmcommon.Pid, i, hmcommon.OutputFileExtension)
-		fnameNew = fmt.Sprintf("%v_%v_%v.%v", hmcommon.OutputFileName, hmcommon.Pid, (i + 1), hmcommon.OutputFileExtension)
+		fname = fmt.Sprintf("%v_%v_%v.%v", baseName, hmcommon.Pid, i, hmcommon.OutputFileExtension)
+		fnameNew = fmt.Sprintf("%v_%v_%v.%v", baseName, hmcommon.Pid, (i + 1), hmcommon.OutputFileExtension)
 
 		// Move each file to next number 8 -> 9, 7 -> 8, 6 -> 7 ...
 		_ = os.Rename(fname, fnameNew)
 	}
 
 	// Rename the latest file to _1
-	fname = fmt.Sprintf("%v_%v.%v", hmcommon.OutputFileName, hmcommon.Pid, hmcommon.OutputFileExtension)
-	fnameNew = fmt.Sprintf("%v_%v_1.%v", hmcommon.OutputFileName, hmcommon.Pid, hmcommon.OutputFileExtension)
+	fname = fmt.Sprintf("%v_%v.%v", baseName, hmcommon.Pid, hmcommon.OutputFileExtension)
+	fnameNew = fmt.Sprintf("%v_%v_1.%v", baseName, hmcommon.Pid, hmcommon.OutputFileExtension)
 	_ = os.Rename(fname, fnameNew)
 
-	fileName := fmt.Sprintf("%v_%v.%v", hmcommon.OutputFileName, hmcommon.Pid, hmcommon.OutputFileExtension)
-	se.opFile, err = os.OpenFile(filepath.Join(currDir, fileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0755)
+	fname = fmt.Sprintf("%v_%v.%v", baseName, hmcommon.Pid, hmcommon.OutputFileExtension)
+	se.opFile, err = os.OpenFile(fname, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0755)
 	if err != nil {
 		log.Err("stats_export::NewStatsExporter : Unable to create output file [%v]", err)
 		return err

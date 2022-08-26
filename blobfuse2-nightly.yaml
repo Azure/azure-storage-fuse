@@ -1290,6 +1290,7 @@ stages:
                 ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
                 VERBOSE_LOG: false
                 USE_HTTP: false
+                HMON_OUTPUT: $(WORK_DIR)
               continueOnError: false
 
             - script: cat $(BLOBFUSE2_CFG)

@@ -80,6 +80,15 @@ func main() {
 		return
 	}
 
+	if hmcommon.OutputPath == "" {
+		currDir, err := os.Getwd()
+		if err != nil {
+			fmt.Printf("health-monitor : failed to get current directory (%s)\n", err.Error())
+			return
+		}
+		hmcommon.OutputPath = currDir
+	}
+
 	err := log.SetDefaultLogger("syslog", common.LogConfig{
 		Level:       common.ELogLevel.LOG_DEBUG(),
 		FilePath:    os.ExpandEnv(hmcommon.DefaultLogFile),
@@ -135,6 +144,7 @@ func init() {
 	flag.StringVar(&hmcommon.Pid, "pid", "", "Pid of blobfuse2 process")
 	flag.IntVar(&hmcommon.BfsPollInterval, "stats-poll-interval-sec", 5, "Blobfuse2 stats polling interval in seconds")
 	flag.IntVar(&hmcommon.ProcMonInterval, "process-monitor-interval-sec", 10, "CPU, memory and network usage polling interval in seconds")
+	flag.StringVar(&hmcommon.OutputPath, "output-path", "", "Path where output files will be created")
 
 	flag.BoolVar(&hmcommon.NoBfsMon, "no-blobfuse2-stats", false, "Disable blobfuse2 stats polling")
 	flag.BoolVar(&hmcommon.NoCpuProf, "no-cpu-profiler", false, "Disable CPU monitoring on blobfuse2 process")

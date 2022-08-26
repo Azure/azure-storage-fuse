@@ -122,6 +122,7 @@ health-monitor:
   enable-monitoring: true|false <enable health-monitor>
   stats-poll-interval-sec: <Blobfuse2 stats polling interval (in sec). Default - 5 sec>
   process-monitor-interval-sec: <CPU, memory and network usage polling interval (in sec). Default - 10 sec>
+  output-path: <Path where health monitor will generate its output file. File name will be monitor_<pid>.json>
   # list of monitors to be disabled
   monitor-disable-list:
     - blobfuse_stats <Disable blobfuse2 stats polling>

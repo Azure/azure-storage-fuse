@@ -39,5 +39,6 @@ health-monitor:
   enable-monitoring: true
   stats-poll-interval-sec: 3
   process-monitor-interval-sec: 2
+  output-path: { HMON_OUTPUT }
   monitor-disable-list:
     - network_profiler

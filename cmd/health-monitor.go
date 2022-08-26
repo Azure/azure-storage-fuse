@@ -51,6 +51,7 @@ type monitorOptions struct {
 	DisableList     []string `config:"monitor-disable-list"`
 	BfsPollInterval int      `config:"stats-poll-interval-sec"`
 	ProcMonInterval int      `config:"process-monitor-interval-sec"`
+	OutputPath      string   `config:"output-path"`
 }
 
 var pid string
@@ -69,7 +70,7 @@ var healthMonCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(0),
 	Hidden:            true,
 	FlagErrorHandling: cobra.ExitOnError,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, _ []string) error {
 		resetMonitorOptions()
 
 		err := validateMonOptions()
@@ -145,6 +146,11 @@ func buildCliParamForMonitor() []string {
 	if options.MonitorOpt.ProcMonInterval != 0 {
 		cliParams = append(cliParams, fmt.Sprintf("--process-monitor-interval-sec=%v", options.MonitorOpt.ProcMonInterval))
 	}
+
+	if options.MonitorOpt.OutputPath != "" {
+		cliParams = append(cliParams, fmt.Sprintf("--output-path=%v", options.MonitorOpt.OutputPath))
+	}
+
 	cliParams = append(cliParams, "--cache-path="+cacheMonitorOptions.TmpPath)
 	cliParams = append(cliParams, fmt.Sprintf("--max-size-mb=%v", cacheMonitorOptions.MaxSizeMB))
 
