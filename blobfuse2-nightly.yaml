@@ -1248,18 +1248,36 @@ stages:
               displayName: 'Create Directory Structure'
 
             # -------------------------------------------------------
-            # Pull and build the code
-            - template: 'azure-pipeline-templates/build.yml'
-              parameters:
-                working_directory: $(WORK_DIR)
-                root_dir: $(Pipeline.Workspace)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-                gopath: $(GOPATH)
-                container: $(containerName)
-                tags: $(tags)
-                fuselib: $(fuselib)
-                skip_msi: "true"
+             # Alternative custom script for Self-Hosted agents to install Go-lang
+            - task: ShellScript@2
+              inputs:
+                scriptPath: "$(WORK_DIR)/go_installer.sh"
+                args: "$(ROOT_DIR)/ 1.16.2"
+              displayName: "GoTool Custom Setup"
+
+            # Downloading Go dependency packages
+            - task: Go@0
+              inputs:
+                command: 'get'
+                arguments: '-d'
+                workingDirectory: $(WORK_DIR)
+              displayName: "Go Get"
+
+            # Building our package
+            - task: Go@0
+              inputs:
+                command: 'build'
+                arguments: "-o blobfuse2"
+                workingDirectory: $(WORK_DIR)
+              displayName: "Go Build Blobfuse2"
+
+            # Building our package
+            - task: Go@0
+              inputs:
+                command: 'build'
+                arguments: "-o healthmon ./tools/health-monitor/"
+                workingDirectory: $(WORK_DIR)
+              displayName: "Go Build Healthmon"
 
             - script: |
                 cd $(WORK_DIR)
@@ -1295,7 +1313,6 @@ stages:
               displayName: 'Print Healthmon Process info'
               env:
                 mount_dir: $(MOUNT_DIR)
-
 
             - template: 'azure-pipeline-templates/cleanup.yml'
               parameters:
