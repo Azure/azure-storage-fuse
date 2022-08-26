@@ -75,7 +75,6 @@ func (cpu *CpuProfiler) Monitor() error {
 			return err
 		}
 
-		log.Debug("CPU Usage : %v at %v", c, t.Format(time.RFC3339))
 		cpu.ExportStats(t.Format(time.RFC3339), c)
 	}
 
@@ -120,7 +119,7 @@ func (cpu *CpuProfiler) getCpuUsage() (string, error) {
 		return "", fmt.Errorf("blobfuse2 is not running on pid %v", cpu.pid)
 	}
 
-	return stats[0], nil
+	return stats[0] + "%", nil
 }
 
 func NewCpuMonitor() hminternal.Monitor {

@@ -194,6 +194,7 @@ func (az *AzStorage) CreateDir(options internal.CreateDirOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(createDir, options.Name, map[string]interface{}{mode: options.Mode.String()})
+		azStatsCollector.UpdateStats(stats_manager.Increment, createDir, (int64)(1))
 	}
 
 	return err
@@ -206,6 +207,7 @@ func (az *AzStorage) DeleteDir(options internal.DeleteDirOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(deleteDir, options.Name, nil)
+		azStatsCollector.UpdateStats(stats_manager.Increment, deleteDir, (int64)(1))
 	}
 
 	return err
@@ -317,6 +319,7 @@ func (az *AzStorage) RenameDir(options internal.RenameDirOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(renameDir, options.Src, map[string]interface{}{src: options.Src, dest: options.Dst})
+		azStatsCollector.UpdateStats(stats_manager.Increment, renameDir, (int64)(1))
 	}
 	return err
 }
@@ -340,6 +343,9 @@ func (az *AzStorage) CreateFile(options internal.CreateFileOptions) (*handlemap.
 
 	azStatsCollector.PushEvents(createFile, options.Name, map[string]interface{}{mode: options.Mode.String()})
 
+	// increment open file handles count
+	azStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
+
 	return handle, nil
 }
 
@@ -360,11 +366,18 @@ func (az *AzStorage) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	}
 	handle.Size = int64(attr.Size)
 
+	// increment open file handles count
+	azStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
+
 	return handle, nil
 }
 
 func (az *AzStorage) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("AzStorage::CloseFile : %s", options.Handle.Path)
+
+	// decrement open file handles count
+	azStatsCollector.UpdateStats(stats_manager.Decrement, openHandles, (int64)(1))
+
 	return nil
 }
 
@@ -375,6 +388,7 @@ func (az *AzStorage) DeleteFile(options internal.DeleteFileOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(deleteFile, options.Name, nil)
+		azStatsCollector.UpdateStats(stats_manager.Increment, deleteFile, (int64)(1))
 	}
 
 	return err
@@ -387,6 +401,7 @@ func (az *AzStorage) RenameFile(options internal.RenameFileOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(renameFile, options.Src, map[string]interface{}{src: options.Src, dest: options.Dst})
+		azStatsCollector.UpdateStats(stats_manager.Increment, renameFile, (int64)(1))
 	}
 	return err
 }
@@ -437,6 +452,7 @@ func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(truncateFile, options.Name, map[string]interface{}{size: options.Size})
+		azStatsCollector.UpdateStats(stats_manager.Increment, truncateFile, (int64)(1))
 	}
 	return err
 }
@@ -458,6 +474,7 @@ func (az *AzStorage) CreateLink(options internal.CreateLinkOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(createLink, options.Name, map[string]interface{}{target: options.Target})
+		azStatsCollector.UpdateStats(stats_manager.Increment, createLink, (int64)(1))
 	}
 
 	return err
@@ -466,6 +483,12 @@ func (az *AzStorage) CreateLink(options internal.CreateLinkOptions) error {
 func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) {
 	log.Trace("AzStorage::ReadLink : Read symlink %s", options.Name)
 	data, err := az.storage.ReadBuffer(options.Name, 0, 0)
+
+	if err != nil {
+		azStatsCollector.PushEvents(readLink, options.Name, nil)
+		azStatsCollector.UpdateStats(stats_manager.Increment, readLink, (int64)(1))
+	}
+
 	return string(data), err
 }
 
@@ -481,6 +504,7 @@ func (az *AzStorage) Chmod(options internal.ChmodOptions) error {
 
 	if err == nil {
 		azStatsCollector.PushEvents(chmod, options.Name, map[string]interface{}{mode: options.Mode.String()})
+		azStatsCollector.UpdateStats(stats_manager.Increment, chmod, (int64)(1))
 	}
 
 	return err
@@ -488,12 +512,7 @@ func (az *AzStorage) Chmod(options internal.ChmodOptions) error {
 
 func (az *AzStorage) Chown(options internal.ChownOptions) error {
 	log.Trace("AzStorage::Chown : Change ownership of file %s to %d-%d", options.Name, options.Owner, options.Group)
-	err := az.storage.ChangeOwner(options.Name, options.Owner, options.Group)
-	if err == nil {
-		azStatsCollector.PushEvents(chown, options.Name, map[string]interface{}{owner: options.Owner, group: options.Group})
-	}
-
-	return err
+	return az.storage.ChangeOwner(options.Name, options.Owner, options.Group)
 }
 
 func (az *AzStorage) FlushFile(options internal.FlushFileOptions) error {

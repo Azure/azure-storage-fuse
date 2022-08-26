@@ -192,7 +192,6 @@ func (fc *FileCache) createEvent(event *watcher.Event) {
 		e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
 	}
 
-	log.Debug("cache_monitor::createEvent : %v", e)
 	fc.ExportStats(time.Now().Format(time.RFC3339), e)
 }
 
@@ -209,7 +208,6 @@ func (fc *FileCache) removeEvent(event *watcher.Event) {
 		e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
 	}
 
-	log.Debug("cache_monitor::removeEvent : %v", e)
 	fc.ExportStats(time.Now().Format(time.RFC3339), e)
 }
 
@@ -228,7 +226,6 @@ func (fc *FileCache) chmodEvent(event *watcher.Event) {
 	e := fc.getCacheEventObj(event)
 	e.Value[mode] = event.Mode().String()
 
-	log.Debug("cache_monitor::chmodEvent : %v", e)
 	fc.ExportStats(time.Now().Format(time.RFC3339), e)
 }
 
@@ -254,7 +251,6 @@ func (fc *FileCache) writeEvent(event *watcher.Event) {
 	// 	e.Value[fileSize] = strconv.FormatInt(event.Size(), 10)
 	// }
 
-	// log.Debug("cache_monitor::writeEvent : %v", e)
 	// fc.ExportStats(time.Now().Format(time.RFC3339), e)
 }
 
@@ -262,7 +258,6 @@ func (fc *FileCache) renameEvent(event *watcher.Event) {
 	e := fc.getCacheEventObj(event)
 	e.Value[oldPath] = event.OldPath
 
-	log.Debug("cache_monitor::renameEvent : %v", e)
 	fc.ExportStats(time.Now().Format(time.RFC3339), e)
 }
 
@@ -270,7 +265,6 @@ func (fc *FileCache) moveEvent(event *watcher.Event) {
 	e := fc.getCacheEventObj(event)
 	e.Value[oldPath] = event.OldPath
 
-	log.Debug("cache_monitor::moveEvent : %v", e)
 	fc.ExportStats(time.Now().Format(time.RFC3339), e)
 }
 

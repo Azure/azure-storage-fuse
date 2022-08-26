@@ -38,6 +38,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
@@ -104,6 +105,7 @@ var healthMonCmd = &cobra.Command{
 			fmt.Println(string(cliOut))
 		}
 		if err != nil {
+			common.EnableMonitoring = false
 			log.Err("health-monitor: [%v]", err)
 			return fmt.Errorf("failed to start health monitor: [%v]", err)
 		}

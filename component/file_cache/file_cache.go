@@ -700,7 +700,6 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 
 	fc.policy.CachePurge(localPath)
 
-	fileCacheStatsCollector.PushEvents(dlFile, options.Name, nil)
 	return nil
 }
 
@@ -847,8 +846,11 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			log.Err("FileCache::OpenFile : Failed to change times of file %s [%s]", options.Name, err.Error())
 		}
 
+		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, dlFiles, (int64)(1))
+
 	} else {
 		log.Debug("FileCache::OpenFile : %s will be served from cache", options.Name)
+		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, cacheServed, (int64)(1))
 	}
 
 	// Open the file and grab a shared lock to prevent deletion by the cache policy.
@@ -874,8 +876,6 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 	log.Info("FileCache::OpenFile : file=%s, fd=%d", options.Name, f.Fd())
 	handle.SetFileObject(f)
-
-	fileCacheStatsCollector.PushEvents(openFile, options.Name, map[string]interface{}{mode: options.Mode.String()})
 
 	return handle, nil
 }
@@ -1264,8 +1264,6 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 		}
 	}
 
-	fileCacheStatsCollector.PushEvents(truncateFile, options.Name, map[string]interface{}{size: options.Size})
-
 	return nil
 }
 
@@ -1300,8 +1298,6 @@ func (fc *FileCache) Chmod(options internal.ChmodOptions) error {
 		}
 	}
 
-	fileCacheStatsCollector.PushEvents(chmod, options.Name, map[string]interface{}{mode: options.Mode.String()})
-
 	return nil
 }
 
@@ -1329,8 +1325,6 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 			return err
 		}
 	}
-
-	fileCacheStatsCollector.PushEvents(chown, options.Name, map[string]interface{}{owner: options.Owner, group: options.Group})
 
 	return nil
 }

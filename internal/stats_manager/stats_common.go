@@ -38,8 +38,4 @@ const (
 	Increment = "increment"
 	Decrement = "decrement"
 	Replace   = "replace"
-
-	// File Cache stats types
-	CacheUsage   = "Cache Usage"
-	UsagePercent = "Usage Percent"
 )

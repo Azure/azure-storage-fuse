@@ -97,7 +97,7 @@ func NewStatsCollector(componentName string) *StatsCollector {
 	sc := &StatsCollector{}
 
 	if common.MonitorBfs() {
-		sc.channel = make(chan ChannelMsg, 100000)
+		sc.channel = make(chan ChannelMsg, 10000)
 
 		stMgrOpt.statsMtx.Lock()
 
@@ -196,12 +196,14 @@ func (sc *StatsCollector) statsDumper() {
 	err := createPipe(common.TransferPipe)
 	if err != nil {
 		log.Err("stats_manager::statsDumper : [%v]", err)
+		disableMonitoring()
 		return
 	}
 
 	f, err := os.OpenFile(common.TransferPipe, os.O_CREATE|os.O_WRONLY, 0777)
 	if err != nil {
 		log.Err("stats_manager::statsDumper : unable to open pipe file [%v]", err)
+		disableMonitoring()
 		return
 	}
 	defer f.Close()
@@ -209,7 +211,7 @@ func (sc *StatsCollector) statsDumper() {
 	log.Info("stats_manager::statsDumper : opened transfer pipe file")
 
 	for st := range sc.channel {
-		log.Debug("stats_manager::statsDumper : stats: %v", st)
+		// log.Debug("stats_manager::statsDumper : stats: %v", st)
 
 		idx := sc.compIdx
 		if st.IsEvent {
@@ -228,13 +230,14 @@ func (sc *StatsCollector) statsDumper() {
 				continue
 			}
 
-			log.Debug("stats_manager::statsDumper : stats: %v", string(msg))
+			// log.Debug("stats_manager::statsDumper : stats: %v", string(msg))
 
 			stMgrOpt.transferMtx.Lock()
 			_, err = f.WriteString(fmt.Sprintf("%v\n", string(msg)))
 			stMgrOpt.transferMtx.Unlock()
 			if err != nil {
 				log.Err("stats_manager::statsDumper : Unable to write to pipe [%v]", err)
+				disableMonitoring()
 				break
 			}
 
@@ -281,6 +284,7 @@ func statsPolling() {
 	err := createPipe(common.PollingPipe)
 	if err != nil {
 		log.Err("stats_manager::statsPolling : [%v]", err)
+		disableMonitoring()
 		return
 	}
 
@@ -300,6 +304,7 @@ func statsPolling() {
 	err = createPipe(common.TransferPipe)
 	if err != nil {
 		log.Err("stats_manager::statsPolling : [%v]", err)
+		disableMonitoring()
 		return
 	}
 
@@ -307,6 +312,7 @@ func statsPolling() {
 	tf, err := os.OpenFile(common.TransferPipe, os.O_CREATE|os.O_WRONLY, 0777)
 	if err != nil {
 		log.Err("stats_manager::statsPolling : unable to open pipe file [%v]", err)
+		disableMonitoring()
 		return
 	}
 	defer tf.Close()
@@ -318,6 +324,7 @@ func statsPolling() {
 		line, err := reader.ReadBytes('\n')
 		if err != nil {
 			log.Err("stats_manager::statsPolling : Unable to read from pipe [%v]", err)
+			disableMonitoring()
 			break
 		}
 
@@ -344,7 +351,7 @@ func statsPolling() {
 				continue
 			}
 
-			log.Debug("stats_manager::statsPolling : stats: %v", string(msg))
+			// log.Debug("stats_manager::statsPolling : stats: %v", string(msg))
 
 			// send the stats collected so far to transfer pipe
 			stMgrOpt.transferMtx.Lock()
@@ -352,6 +359,7 @@ func statsPolling() {
 			stMgrOpt.transferMtx.Unlock()
 			if err != nil {
 				log.Err("stats_manager::statsDumper : Unable to write to pipe [%v]", err)
+				disableMonitoring()
 				break
 			}
 
@@ -379,9 +387,13 @@ func createPipe(pipe string) error {
 	return nil
 }
 
+func disableMonitoring() {
+	common.EnableMonitoring = false
+	log.Debug("stats_manager::disableMonitoring : disabling monitoring flag")
+}
+
 func init() {
 	stMgrOpt = statsManagerOpt{}
 	stMgrOpt.pollStarted = false
 	stMgrOpt.cmpTimeMap = make(map[string]string)
-	log.Debug("stats_manager::Init : inside stats manager")
 }
