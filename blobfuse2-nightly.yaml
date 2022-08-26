@@ -1315,10 +1315,11 @@ stages:
                   workingDirectory: $(WORK_DIR)
                   timeoutInMinutes: 3
                   continueOnError: false
+              workingDirectory: $(WORK_DIR)
                 
             - script: |
                 sleep 20s
-                cat $(WORK_DIR)/monitor_*.json
+                cat monitor_*.json
               displayName: "Print healthmon output"
               workingDirectory: $(WORK_DIR)
 
