@@ -76,7 +76,7 @@ func main() {
 	flag.Parse()
 
 	if hmcommon.CheckVersion {
-		fmt.Printf("health-monitor version %s\n", hmcommon.HealthMonitorVersion)
+		fmt.Printf("health-monitor version %s\n", hmcommon.BfuseMonitorVersion)
 		return
 	}
 
@@ -95,7 +95,7 @@ func main() {
 		MaxFileSize: common.DefaultMaxLogFileSize,
 		FileCount:   common.DefaultLogFileCount,
 		TimeTracker: false,
-		Tag:         hmcommon.HealthMon,
+		Tag:         hmcommon.BfuseMon,
 	})
 
 	if err != nil {
@@ -119,9 +119,10 @@ func main() {
 		"Blobfuse2 Stats poll interval: %v \n"+
 		"Health Stats poll interval: %v \n"+
 		"Cache Path: %v \n"+
-		"Max cache size in MB: %v",
+		"Max cache size in MB: %v \n",
+		"Output path: %v",
 		hmcommon.Pid, common.TransferPipe, common.PollingPipe, hmcommon.BfsPollInterval,
-		hmcommon.ProcMonInterval, hmcommon.TempCachePath, hmcommon.MaxCacheSize)
+		hmcommon.ProcMonInterval, hmcommon.TempCachePath, hmcommon.MaxCacheSize, hmcommon.OutputPath)
 
 	comps := getMonitors()
 
@@ -130,7 +131,9 @@ func main() {
 	}
 
 	// check if the pid of blobfuse2 is active
-	hmcommon.MonitorPid()
+	if len(comps) > 0 {
+		hmcommon.MonitorPid()
+	}
 
 	err = hminternal.CloseExporter()
 	if err != nil {
@@ -142,8 +145,8 @@ func main() {
 
 func init() {
 	flag.StringVar(&hmcommon.Pid, "pid", "", "Pid of blobfuse2 process")
-	flag.IntVar(&hmcommon.BfsPollInterval, "stats-poll-interval-sec", 5, "Blobfuse2 stats polling interval in seconds")
-	flag.IntVar(&hmcommon.ProcMonInterval, "process-monitor-interval-sec", 10, "CPU, memory and network usage polling interval in seconds")
+	flag.IntVar(&hmcommon.BfsPollInterval, "stats-poll-interval-sec", 10, "Blobfuse2 stats polling interval in seconds")
+	flag.IntVar(&hmcommon.ProcMonInterval, "process-monitor-interval-sec", 30, "CPU, memory and network usage polling interval in seconds")
 	flag.StringVar(&hmcommon.OutputPath, "output-path", "", "Path where output files will be created")
 
 	flag.BoolVar(&hmcommon.NoBfsMon, "no-blobfuse2-stats", false, "Disable blobfuse2 stats polling")

@@ -1275,9 +1275,9 @@ stages:
             - task: Go@0
               inputs:
                 command: 'build'
-                arguments: "-o healthmon ./tools/health-monitor/"
+                arguments: "-o bfusemon ./tools/health-monitor/"
                 workingDirectory: $(WORK_DIR)
-              displayName: "Go Build Healthmon"
+              displayName: "Go Build bfusemon"
 
             - script: |
                 cd $(WORK_DIR)
@@ -1309,7 +1309,7 @@ stages:
                 prefix: "Mount"
                 mountStep:
                   script: |
-                    sudo ln -s `pwd`/healthmon /usr/local/bin/healthmon
+                    sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
                     ls -l /usr/local/bin/health*
                     $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
                   displayName: 'Mount Blobfuse2'
@@ -1332,12 +1332,12 @@ stages:
             - script: |
                 sleep 20s
                 cat $(WORK_DIR)/monitor_*.json
-              displayName: "Print healthmon output"
+              displayName: "Print bfusemon output"
               workingDirectory: $(WORK_DIR)
 
             - script: |
-                sudo ps -aux | grep healthmon
-              displayName: 'Print Healthmon Process info'
+                sudo ps -aux | grep bfusemon
+              displayName: 'Print bfusemon Process info'
               env:
                 mount_dir: $(MOUNT_DIR)
 

@@ -131,7 +131,7 @@ type LogConfig struct {
 	FileCount   uint64
 	FilePath    string
 	TimeTracker bool
-	Tag         string // logging tag which can be either blobfuse2 or healthmon
+	Tag         string // logging tag which can be either blobfuse2 or bfusemon
 }
 
 // Flags for blocks

@@ -54,10 +54,10 @@ steps:
   
   # Verifying whether built binary is correct
   - script: |
-      sudo chmod +x ./healthmon
-      ./healthmon --version
+      sudo chmod +x ./bfusemon
+      ./bfusemon --version
     workingDirectory: ${{ parameters.work_dir }}
-    displayName: "Test healthmon binary built"
+    displayName: "Test bfusemon binary built"
     continueOnError: false
 
   # Run Unit tests if parameters is true

@@ -114,7 +114,7 @@ func (mem *MemoryProfiler) getMemoryUsage() (string, error) {
 
 	stats := strings.Split(strings.Split(string(cliOut), "\n")[0], " ")
 
-	if stats[0] == "%MEM" {
+	if stats[0] == "VIRT" {
 		log.Err("memory_monitor::getMemoryUsage : Blobfuse2 is not running on pid %v", mem.pid)
 		return "", fmt.Errorf("blobfuse2 is not running on pid %v", mem.pid)
 	}

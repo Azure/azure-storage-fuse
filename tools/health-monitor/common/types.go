@@ -44,7 +44,7 @@ const (
 	MemoryProfiler  = "memory_profiler"
 	NetworkProfiler = "network_profiler"
 
-	HealthMon = "healthmon"
+	BfuseMon = "bfusemon"
 
 	OutputFileName      = "monitor"
 	OutputFileExtension = "json"
@@ -70,10 +70,10 @@ var (
 	CheckVersion bool
 )
 
-const HealthMonitorVersion = "1.0.0-preview.1"
+const BfuseMonitorVersion = "1.0.0-preview.1"
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
-var DefaultLogFile = filepath.Join(DefaultWorkDir, "healthmon.log")
+var DefaultLogFile = filepath.Join(DefaultWorkDir, "bfuseMonitor.log")
 
 type CacheEvent struct {
 	CacheEvent      string            `json:"cacheEvent"`

@@ -66,7 +66,7 @@ var healthMonCmd = &cobra.Command{
 	Use:               "health-monitor",
 	Short:             "Monitor blobfuse2 mount",
 	Long:              "Monitor blobfuse2 mount",
-	SuggestFor:        []string{"healthmon", "monitor health"},
+	SuggestFor:        []string{"bfusemon", "monitor health"},
 	Args:              cobra.ExactArgs(0),
 	Hidden:            true,
 	FlagErrorHandling: cobra.ExitOnError,
@@ -99,7 +99,7 @@ var healthMonCmd = &cobra.Command{
 
 		log.Debug("Starting health-monitor for blobfuse2 pid = %s", pid)
 
-		hmcmd := exec.Command(hmcommon.HealthMon, cliParams...)
+		hmcmd := exec.Command(hmcommon.BfuseMon, cliParams...)
 		cliOut, err := hmcmd.Output()
 		if len(cliOut) > 0 {
 			log.Debug("health-monitor: cliout = %v", string(cliOut))
