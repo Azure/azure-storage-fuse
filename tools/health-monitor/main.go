@@ -126,7 +126,6 @@ func main() {
 	err = hminternal.CloseExporter()
 	if err != nil {
 		log.Err("main::main : Unable to close exporter [%v]", err)
-		os.Exit(1)
 	}
 
 	log.Debug("Monitoring ended")

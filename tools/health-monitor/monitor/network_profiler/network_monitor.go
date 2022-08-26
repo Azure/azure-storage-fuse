@@ -99,5 +99,6 @@ func NewNetworkMonitor() hminternal.Monitor {
 }
 
 func init() {
-	hminternal.AddMonitor(hmcommon.NetworkProfiler, NewNetworkMonitor)
+	// commenting this for now
+	// hminternal.AddMonitor(hmcommon.NetworkProfiler, NewNetworkMonitor)
 }

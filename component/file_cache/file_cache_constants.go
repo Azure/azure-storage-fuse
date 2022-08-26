@@ -34,17 +34,8 @@
 package file_cache
 
 const (
-	dlFile       = "DeleteFile"
-	openFile     = "OpenFile"
-	truncateFile = "TruncateFile"
-	chmod        = "Chmod"
-	chown        = "Chown"
-
-	cacheUsage = "Cache Usage"
-	usgPer     = "Usage Percent"
-
-	mode  = "Mode"
-	size  = "Size"
-	owner = "Owner"
-	group = "Group"
+	cacheUsage  = "Cache Usage"
+	usgPer      = "Usage Percent"
+	dlFiles     = "Files Downloaded"
+	cacheServed = "Files served from cache"
 )

@@ -123,7 +123,7 @@ func (bfs *BlobfuseStats) statsReader() error {
 			break
 		}
 
-		log.Debug("StatsReader::statsReader : Line: %v", string(line))
+		// log.Debug("StatsReader::statsReader : Line: %v", string(line))
 
 		st := stats_manager.PipeMsg{}
 		err = json.Unmarshal(line, &st)

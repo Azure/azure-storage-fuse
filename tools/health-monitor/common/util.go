@@ -70,6 +70,8 @@ func MonitorPid() {
 		err := CheckProcessStatus(Pid)
 		if err != nil {
 			log.Err("util::MonitorPid : time = %v, [%v]", t.Format(time.RFC3339), err)
+			// wait for 5 seconds for monitor threads to exit
+			time.Sleep(5 * time.Second)
 			break
 		}
 	}

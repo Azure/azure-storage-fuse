@@ -75,7 +75,6 @@ func (mem *MemoryProfiler) Monitor() error {
 			return err
 		}
 
-		log.Debug("Memory Usage : %v at %v", c, t.Format(time.RFC3339))
 		mem.ExportStats(t.Format(time.RFC3339), c)
 	}
 

@@ -414,6 +414,7 @@ func startMonitor(pid int) {
 		rootCmd.SetArgs([]string{"health-monitor", fmt.Sprintf("--pid=%v", pid), fmt.Sprintf("--config-file=%s", options.ConfigFile)})
 		err := rootCmd.Execute()
 		if err != nil {
+			common.EnableMonitoring = false
 			log.Err("mount::startMonitor : [%v]", err)
 		}
 	}
