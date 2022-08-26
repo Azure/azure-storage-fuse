@@ -58,8 +58,6 @@ type StatsExporter struct {
 	wg         sync.WaitGroup
 	opFile     *os.File
 	outputList []*Output
-	filesList  []string
-	fileIdx    int
 }
 
 type Output struct {
@@ -84,7 +82,6 @@ func NewStatsExporter() (*StatsExporter, error) {
 		defer expLock.Unlock()
 		if se == nil {
 			se = &StatsExporter{}
-			se.fileIdx = 0
 			se.channel = make(chan ExportedStat, 10000)
 			se.wg.Add(1)
 			go se.StatsExporter()
@@ -267,19 +264,31 @@ func (se *StatsExporter) getNewFile() error {
 		return err
 	}
 
-	se.fileIdx += 1
-	fileName := fmt.Sprintf("%v_%v_%v.%v", hmcommon.OutputFileName, hmcommon.Pid, se.fileIdx, hmcommon.OutputFileExtension)
+	var fname string
+	var fnameNew string
+
+	// Remove the oldest file
+	fname = fmt.Sprintf("%v_%v_%v.%v", hmcommon.OutputFileName, hmcommon.Pid, (hmcommon.OutputFileCount - 1), hmcommon.OutputFileExtension)
+	_ = os.Remove(fname)
+
+	for i := hmcommon.OutputFileCount - 2; i > 0; i-- {
+		fname = fmt.Sprintf("%v_%v_%v.%v", hmcommon.OutputFileName, hmcommon.Pid, i, hmcommon.OutputFileExtension)
+		fnameNew = fmt.Sprintf("%v_%v_%v.%v", hmcommon.OutputFileName, hmcommon.Pid, (i + 1), hmcommon.OutputFileExtension)
+
+		// Move each file to next number 8 -> 9, 7 -> 8, 6 -> 7 ...
+		_ = os.Rename(fname, fnameNew)
+	}
+
+	// Rename the latest file to _1
+	fname = fmt.Sprintf("%v_%v.%v", hmcommon.OutputFileName, hmcommon.Pid, hmcommon.OutputFileExtension)
+	fnameNew = fmt.Sprintf("%v_%v_1.%v", hmcommon.OutputFileName, hmcommon.Pid, hmcommon.OutputFileExtension)
+	_ = os.Rename(fname, fnameNew)
+
+	fileName := fmt.Sprintf("%v_%v.%v", hmcommon.OutputFileName, hmcommon.Pid, hmcommon.OutputFileExtension)
 	se.opFile, err = os.OpenFile(filepath.Join(currDir, fileName), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0755)
 	if err != nil {
 		log.Err("stats_export::NewStatsExporter : Unable to create output file [%v]", err)
 		return err
-	}
-
-	se.filesList = append(se.filesList, filepath.Join(currDir, fileName))
-
-	// keep latest 10 output files
-	if len(se.filesList) > hmcommon.OutputFileCount {
-		se.deleteOldFile()
 	}
 
 	_, err = se.opFile.WriteString("[")
@@ -289,12 +298,6 @@ func (se *StatsExporter) getNewFile() error {
 	}
 
 	return nil
-}
-
-func (se *StatsExporter) deleteOldFile() {
-	os.RemoveAll(se.filesList[0])
-	log.Debug("stats_export::deleteOldFile : deleted output file %v", se.filesList[0])
-	se.filesList = se.filesList[1:]
 }
 
 func CloseExporter() error {
