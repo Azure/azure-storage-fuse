@@ -100,6 +100,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--no-symlinks=true`: To improve performance disable symlink support.
 - Storage options
     * `--container-name=<CONTAINER NAME>`: The container to mount.
+    * `--cancel-list-on-mount-seconds=<TIMEOUT IN SECONDS>`: Time for which list calls will be blocked after mount. ( prevent billing charges on mounting)
 - File cache options
     * `--file-cache-timeout=<TIMEOUT IN SECONDS>`: Timeout for which file is cached on local system.
     * `--tmp-path=<PATH>`: The path to the file cache.
@@ -110,7 +111,8 @@ To learn about a specific command, just include the name of the command (For exa
     * `--attr-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache inode attributes.
     * `--entry-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache directory listing.
     * `--negative-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache non-existance of file or directory.
-    * `--allow-other=true`: Allow other users to have access this mount point.
+    * `--allow-other`: Allow other users to have access this mount point.
+
 
 ## Environment variables
 - General options
