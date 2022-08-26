@@ -89,6 +89,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--log-level=<LOG_*>`: The level of logs to capture.
     * `--log-file-path=<PATH>`: The path for the log file.
     * `--foreground=true`: Mounts the system in foreground mode.
+    * `--read-only=true`: Mount container in read-only mode.
     * `--default-working-dir`: The default working directory to store log files and other blobfuse2 related information.
     * `--disable-version-check=true`: Disable the blobfuse2 version check.
 - Attribute cache options
@@ -97,11 +98,16 @@ To learn about a specific command, just include the name of the command (For exa
 - Storage options
     * `--container-name=<CONTAINER NAME>`: The container to mount.
 - File cache options
+    * `--file-cache-timeout=<TIMEOUT IN SECONDS>`: Timeout for which file is cached on local system.
     * `--tmp-path=<PATH>`: The path to the file cache.
+    * `--cache-size-mb=<SIZE IN MB>`: Amount of disk cache that can be used by blobfuse.
+    * `--high-disk-threshold=<PERCENTAGE>`: If local cache usage exceeds this, start early eviction of files from cache.
+    * `--low-disk-threshold=<PERCENTAGE>`: If local cache usage comes below this threshold then stop early eviction.
 - Fuse options
-    * `--read-only=true`: Mount container in read-only mode.
     * `--attr-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache inode attributes.
     * `--entry-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache directory listing.
+    * `--negative-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache non-existance of file or directory.
+    * `--allow-other=true`: Allow other users to have access this mount point.
 
 ## Environment variables
 - General options
