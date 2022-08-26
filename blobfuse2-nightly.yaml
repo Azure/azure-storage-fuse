@@ -1207,22 +1207,18 @@ stages:
 
           variables:
             - group: NightlyBlobFuse
-            - name: ROOT_DIR
-              value: "/usr/pipeline/workv2"
-            - name: WORK_DIR
-              value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
-            - name: skipComponentGovernanceDetection
-              value: true
             - name: MOUNT_DIR
-              value: "/usr/pipeline/workv2/blob_mnt"
+              value: '$(Pipeline.Workspace)/blob_mnt'
             - name: TEMP_DIR
-              value: "/usr/pipeline/workv2/temp"
+              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
             - name: BLOBFUSE2_CFG
-              value: "/usr/pipeline/workv2/blobfuse2.yaml"
-            - name: BLOBFUSE2_ADLS_CFG
-              value: "/home/vsts/workv2/blobfuse2.adls.yaml"
+              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
             - name: GOPATH
-              value: "/usr/pipeline/workv2/go"
+              value: '$(Pipeline.Workspace)/go'
+            - name: ROOT_DIR
+              value: '$(System.DefaultWorkingDirectory)' 
+            - name: WORK_DIR
+              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
             - checkout: none
