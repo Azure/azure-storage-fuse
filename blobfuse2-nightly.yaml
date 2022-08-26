@@ -1296,6 +1296,11 @@ stages:
             - script: cat $(BLOBFUSE2_CFG)
               displayName: Print config file
 
+            - script:
+                mkdir -p $(MOUNT_DIR)
+                mkdir -p $(TEMP_DIR)
+              displayName: "Create directory structure"
+
             - template: 'azure-pipeline-templates/mount.yml'
               parameters:
                 working_dir: $(WORK_DIR)
@@ -1308,6 +1313,11 @@ stages:
                   displayName: 'Mount Blobfuse2'
                   timeoutInMinutes: 3
                   continueOnError: false
+                
+            - script:
+                sleep 20
+                cat $(WORK_DIR)/monitor_*.json
+              displayName: "Print healthmon output"
 
             - script: |
                 sudo ps -aux | grep healthmon
