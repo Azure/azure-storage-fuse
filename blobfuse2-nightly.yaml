@@ -1316,7 +1316,6 @@ stages:
                   workingDirectory: $(WORK_DIR)
                   timeoutInMinutes: 3
                   continueOnError: false
-              workingDirectory: $(WORK_DIR)
                 
             - script: |
                 sleep 20s
