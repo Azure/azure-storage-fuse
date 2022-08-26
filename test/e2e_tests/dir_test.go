@@ -122,6 +122,9 @@ func (suite *dirTestSuite) TestDirCreateDuplicate() {
 }
 
 // # Create Directory with special characters in name
+// For fileshare, skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to documentation
+// https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
+// https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *dirTestSuite) TestDirCreateSplChar() {
 	if !suite.fileShareTest {
 		dirName := suite.testPath + "/" + "@#$^&*()_+=-{}[]|?><.,~"
@@ -134,6 +137,9 @@ func (suite *dirTestSuite) TestDirCreateSplChar() {
 }
 
 // # Create Directory with slash in name
+// For fileshare, skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to documentation
+// https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
+// https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *dirTestSuite) TestDirCreateSlashChar() {
 	if !suite.fileShareTest {
 		dirName := suite.testPath + "/" + "PRQ\\STUV"
@@ -511,6 +517,9 @@ func TestDirTestSuite(t *testing.T) {
 	} else if dataValidationFileSharePtr == "true" || dataValidationFileSharePtr == "True" {
 		fmt.Println("FileShare Testing...")
 		dirTest.fileShareTest = true
+		// For fileshare, skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to documentation
+		// https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
+		// https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 	} else {
 		fmt.Println("BLOCK Blob Testing...")
 	}

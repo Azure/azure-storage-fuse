@@ -164,9 +164,6 @@ steps:
   #     exit $?
   #   displayName: 'Verify Mount'
 
-  # # Skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to the file share documentation
-  # # https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
-  # # https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
   # - task: Go@0
   #   inputs:
   #     command: 'test'

@@ -116,6 +116,9 @@ func (suite *fileTestSuite) TestFileCreateUtf8Char() {
 	suite.fileTestCleanup([]string{fileName})
 }
 
+// For fileshare, skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to documentation
+// https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
+// https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *fileTestSuite) TestFileCreatSpclChar() {
 	if !suite.fileShareTest {
 		speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
@@ -172,6 +175,9 @@ func (suite *fileTestSuite) TestFileCreatEncodeChar() {
 	suite.fileTestCleanup([]string{fileName})
 }
 
+// For fileshare, skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to documentation
+// https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
+// https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *fileTestSuite) TestFileCreateMultiSpclCharWithinSpclDir() {
 	if !suite.fileShareTest {
 		speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
@@ -219,6 +225,9 @@ func (suite *fileTestSuite) TestFileCreateLongName() {
 	suite.fileTestCleanup([]string{fileName})
 }
 
+// For fileshare, skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to documentation
+// https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
+// https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *fileTestSuite) TestFileCreateSlashName() {
 	if !suite.fileShareTest {
 		fileName := suite.testPath + "/abcd\\efg.txt"
@@ -567,6 +576,10 @@ func TestFileTestSuite(t *testing.T) {
 	} else if dataValidationFileSharePtr == "true" || dataValidationFileSharePtr == "True" {
 		fmt.Println("FileShare Testing...")
 		fileTest.fileShareTest = true
+		// For fileshare, skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to documentation
+		// https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
+		// https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
+
 	} else {
 		fmt.Println("BLOCK Blob Testing...")
 	}
