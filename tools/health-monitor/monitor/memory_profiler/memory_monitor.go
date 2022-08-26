@@ -104,7 +104,7 @@ func (mem *MemoryProfiler) Validate() error {
 }
 
 func (mem *MemoryProfiler) getMemoryUsage() (string, error) {
-	topCmd := "top -b -n 1 -d 0.2 -p " + mem.pid + " | tail -1 | awk '{print $10}'"
+	topCmd := "top -b -n 1 -d 0.2 -p " + mem.pid + " | tail -1 | awk '{print $5}'"
 
 	cliOut, err := exec.Command("bash", "-c", topCmd).Output()
 	if err != nil {
