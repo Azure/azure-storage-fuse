@@ -1311,13 +1311,15 @@ stages:
                   script: |
                     $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
                   displayName: 'Mount Blobfuse2'
+                  workingDirectory: $(WORK_DIR)
                   timeoutInMinutes: 3
                   continueOnError: false
                 
             - script:
-                sleep 20
+                sleep 20s
                 cat $(WORK_DIR)/monitor_*.json
               displayName: "Print healthmon output"
+              workingDirectory: $(WORK_DIR)
 
             - script: |
                 sudo ps -aux | grep healthmon
