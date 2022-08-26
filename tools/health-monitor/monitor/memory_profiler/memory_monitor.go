@@ -64,6 +64,7 @@ func (mem *MemoryProfiler) Monitor() error {
 		log.Err("memory_monitor::Monitor : [%v]", err)
 		return err
 	}
+	log.Debug("memory_monitor::Monitor : started")
 
 	ticker := time.NewTicker(time.Duration(mem.pollInterval) * time.Second)
 	defer ticker.Stop()

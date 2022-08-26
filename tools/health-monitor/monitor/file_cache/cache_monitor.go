@@ -77,6 +77,7 @@ func (fc *FileCache) Monitor() error {
 		log.Err("cache_monitor::Monitor : [%v]", err)
 		return err
 	}
+	log.Debug("cache_monitor::Monitor : started")
 
 	return fc.cacheWatcher()
 }

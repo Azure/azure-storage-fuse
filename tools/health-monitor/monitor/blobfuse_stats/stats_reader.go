@@ -69,6 +69,7 @@ func (bfs *BlobfuseStats) Monitor() error {
 		log.Err("StatsReader::Monitor : [%v]", err)
 		return err
 	}
+	log.Debug("StatsReader::Monitor : started")
 
 	go bfs.statsPoll()
 

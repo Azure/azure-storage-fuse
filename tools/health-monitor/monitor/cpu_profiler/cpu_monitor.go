@@ -64,6 +64,7 @@ func (cpu *CpuProfiler) Monitor() error {
 		log.Err("cpu_monitor::Monitor : [%v]", err)
 		return err
 	}
+	log.Debug("cpu_monitor::Monitor : started")
 
 	ticker := time.NewTicker(time.Duration(cpu.pollInterval) * time.Second)
 	defer ticker.Stop()

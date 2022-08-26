@@ -80,15 +80,6 @@ func main() {
 		return
 	}
 
-	if hmcommon.OutputPath == "" {
-		currDir, err := os.Getwd()
-		if err != nil {
-			fmt.Printf("health-monitor : failed to get current directory (%s)\n", err.Error())
-			return
-		}
-		hmcommon.OutputPath = currDir
-	}
-
 	err := log.SetDefaultLogger("syslog", common.LogConfig{
 		Level:       common.ELogLevel.LOG_DEBUG(),
 		FilePath:    os.ExpandEnv(hmcommon.DefaultLogFile),
@@ -108,6 +99,16 @@ func main() {
 		log.Err("main::main : pid of blobfuse2 process not provided")
 		time.Sleep(1 * time.Second) // adding 1 second wait for adding to log(base type) before exiting
 		os.Exit(1)
+	}
+
+	if hmcommon.OutputPath == "" {
+		currDir, err := os.Getwd()
+		if err != nil {
+			fmt.Printf("health-monitor : failed to get current directory (%s)\n", err.Error())
+			log.Err("main::main : failed to get current directory (%s)\n", err.Error())
+			return
+		}
+		hmcommon.OutputPath = currDir
 	}
 
 	common.TransferPipe += "_" + hmcommon.Pid
