@@ -1320,7 +1320,7 @@ stages:
                 
             - script: |
                 sleep 20s
-                cat monitor_*.json
+                cat $(WORK_DIR)/monitor_*.json
               displayName: "Print healthmon output"
               workingDirectory: $(WORK_DIR)
 
