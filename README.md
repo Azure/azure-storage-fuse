@@ -156,7 +156,7 @@ az storage container generate-sas --account-name <account name ex:myadlsaccount>
 ## Un-Supported Scenarios
 - Blobfuse2 does not support overlapping mount paths. While running multiple instances of Blobfuse2 make sure each instance has a unique and non-overlapping mount point.
 - Blobfuse2 does not support co-existance with NFS on same mount path. Behaviour in this case is undefined.
-- For block blob accounts, where data is uploaded through other means, Blobfuse2 expects special directory marker files to exist in contianer. In absense of this
+- For block blob accounts, where data is uploaded through other means, Blobfuse2 expects special directory marker files to exist in container. In absence of this
   few file operations might not work. For e.g. if you have a blob 'A/B/c.txt' then special marker files shall exists for 'A' and 'A/B', otherwise opening of 'A/B/c.txt' will fail.
   Once a 'ls' operation is done on these directories 'A' and 'A/B' you will be able to open 'A/B/c.txt' as well. Possible workaround to resolve this from yoru container is to either
   create the directory marker files manually through portal or run 'mkdir' command for 'A' and 'A/B' from blobfuse. Refer [me](https://github.com/Azure/azure-storage-fuse/issues/866) 
