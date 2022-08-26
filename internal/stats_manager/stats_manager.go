@@ -105,7 +105,7 @@ func NewStatsCollector(componentName string) *StatsCollector {
 		cmpSt := PipeMsg{
 			Timestamp:     time.Now().Format(time.RFC3339),
 			ComponentName: componentName,
-			Operation:     "Stats Collected",
+			Operation:     "",
 			Value:         make(map[string]interface{}),
 		}
 		stMgrOpt.statsList = append(stMgrOpt.statsList, &cmpSt)

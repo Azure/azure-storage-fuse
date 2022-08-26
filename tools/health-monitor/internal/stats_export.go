@@ -66,7 +66,7 @@ type Output struct {
 	Timestamp string                  `json:"Timestamp,omitempty"`
 	Bfs       []stats_manager.PipeMsg `json:"BlobfuseStats,omitempty"`
 	FcEvent   []*hmcommon.CacheEvent  `json:"FileCache,omitempty"`
-	Cpu       string                  `json:"CpuUsage,omitempty"`
+	Cpu       string                  `json:"CPUUsage,omitempty"`
 	Mem       string                  `json:"MemoryUsage,omitempty"`
 	Net       string                  `json:"NetworkUsage,omitempty"`
 }
