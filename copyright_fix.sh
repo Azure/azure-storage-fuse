@@ -38,7 +38,7 @@ else
             else
                 echo "/*" > __temp__
                 cat LICENSE >> __temp__
-                echo -e "*/\n\n" >> __temp__
+                echo -e "*/\n" >> __temp__
                 cat $i >> __temp__
             fi
             mv __temp__ $i

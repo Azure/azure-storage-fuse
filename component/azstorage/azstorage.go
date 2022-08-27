@@ -45,6 +45,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/spf13/cobra"
 )
@@ -62,6 +63,8 @@ const compName = "azstorage"
 
 //Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AzStorage{}
+
+var azStatsCollector *stats_manager.StatsCollector
 
 func (az *AzStorage) Name() string {
 	return az.BaseComponent.Name()
@@ -162,12 +165,17 @@ func (az *AzStorage) Start(ctx context.Context) error {
 	// On mount block the ListBlob call for certain amount of time
 	az.startTime = time.Now()
 	az.listBlocked = true
+
+	// create stats collector for azstorage
+	azStatsCollector = stats_manager.NewStatsCollector(az.Name())
+
 	return nil
 }
 
 // Stop : Disconnect all running operations here
 func (az *AzStorage) Stop() error {
 	log.Trace("AzStorage::Stop : Stopping component %s", az.Name())
+	azStatsCollector.Destroy()
 	return nil
 }
 
@@ -182,13 +190,27 @@ func (az *AzStorage) ListContainers() ([]string, error) {
 func (az *AzStorage) CreateDir(options internal.CreateDirOptions) error {
 	log.Trace("AzStorage::CreateDir : %s", options.Name)
 
-	return az.storage.CreateDirectory(internal.TruncateDirName(options.Name))
+	err := az.storage.CreateDirectory(internal.TruncateDirName(options.Name))
+
+	if err == nil {
+		azStatsCollector.PushEvents(createDir, options.Name, map[string]interface{}{mode: options.Mode.String()})
+		azStatsCollector.UpdateStats(stats_manager.Increment, createDir, (int64)(1))
+	}
+
+	return err
 }
 
 func (az *AzStorage) DeleteDir(options internal.DeleteDirOptions) error {
 	log.Trace("AzStorage::DeleteDir : %s", options.Name)
 
-	return az.storage.DeleteDirectory(internal.TruncateDirName(options.Name))
+	err := az.storage.DeleteDirectory(internal.TruncateDirName(options.Name))
+
+	if err == nil {
+		azStatsCollector.PushEvents(deleteDir, options.Name, nil)
+		azStatsCollector.UpdateStats(stats_manager.Increment, deleteDir, (int64)(1))
+	}
+
+	return err
 }
 
 func formatListDirName(path string) string {
@@ -276,6 +298,15 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	log.Debug("AzStorage::StreamDir : Retrieved %d objects with %s marker for Path %s", len(new_list), options.Token, path)
 
+	// if path is empty, it means it is the root, relative to the mounted directory
+	if len(path) == 0 {
+		path = "/"
+	}
+	azStatsCollector.PushEvents(streamDir, path, map[string]interface{}{count: len(new_list)})
+
+	// increment streamdir call count
+	azStatsCollector.UpdateStats(stats_manager.Increment, streamDir, (int64)(1))
+
 	return new_list, *new_marker, nil
 }
 
@@ -284,7 +315,13 @@ func (az *AzStorage) RenameDir(options internal.RenameDirOptions) error {
 	options.Src = internal.TruncateDirName(options.Src)
 	options.Dst = internal.TruncateDirName(options.Dst)
 
-	return az.storage.RenameDirectory(options.Src, options.Dst)
+	err := az.storage.RenameDirectory(options.Src, options.Dst)
+
+	if err == nil {
+		azStatsCollector.PushEvents(renameDir, options.Src, map[string]interface{}{src: options.Src, dest: options.Dst})
+		azStatsCollector.UpdateStats(stats_manager.Increment, renameDir, (int64)(1))
+	}
+	return err
 }
 
 // File operations
@@ -303,6 +340,11 @@ func (az *AzStorage) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	if err != nil {
 		return nil, err
 	}
+
+	azStatsCollector.PushEvents(createFile, options.Name, map[string]interface{}{mode: options.Mode.String()})
+
+	// increment open file handles count
+	azStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
 
 	return handle, nil
 }
@@ -324,24 +366,44 @@ func (az *AzStorage) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	}
 	handle.Size = int64(attr.Size)
 
+	// increment open file handles count
+	azStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
+
 	return handle, nil
 }
 
 func (az *AzStorage) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("AzStorage::CloseFile : %s", options.Handle.Path)
+
+	// decrement open file handles count
+	azStatsCollector.UpdateStats(stats_manager.Decrement, openHandles, (int64)(1))
+
 	return nil
 }
 
 func (az *AzStorage) DeleteFile(options internal.DeleteFileOptions) error {
 	log.Trace("AzStorage::DeleteFile : %s", options.Name)
 
-	return az.storage.DeleteFile(options.Name)
+	err := az.storage.DeleteFile(options.Name)
+
+	if err == nil {
+		azStatsCollector.PushEvents(deleteFile, options.Name, nil)
+		azStatsCollector.UpdateStats(stats_manager.Increment, deleteFile, (int64)(1))
+	}
+
+	return err
 }
 
 func (az *AzStorage) RenameFile(options internal.RenameFileOptions) error {
 	log.Trace("AzStorage::RenameFile : %s to %s", options.Src, options.Dst)
 
-	return az.storage.RenameFile(options.Src, options.Dst)
+	err := az.storage.RenameFile(options.Src, options.Dst)
+
+	if err == nil {
+		azStatsCollector.PushEvents(renameFile, options.Src, map[string]interface{}{src: options.Src, dest: options.Dst})
+		azStatsCollector.UpdateStats(stats_manager.Increment, renameFile, (int64)(1))
+	}
+	return err
 }
 
 func (az *AzStorage) ReadFile(options internal.ReadFileOptions) (data []byte, err error) {
@@ -386,7 +448,13 @@ func (az *AzStorage) GetFileBlockOffsets(options internal.GetFileBlockOffsetsOpt
 
 func (az *AzStorage) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("AzStorage::TruncateFile : %s to %d bytes", options.Name, options.Size)
-	return az.storage.TruncateFile(options.Name, options.Size)
+	err := az.storage.TruncateFile(options.Name, options.Size)
+
+	if err == nil {
+		azStatsCollector.PushEvents(truncateFile, options.Name, map[string]interface{}{size: options.Size})
+		azStatsCollector.UpdateStats(stats_manager.Increment, truncateFile, (int64)(1))
+	}
+	return err
 }
 
 func (az *AzStorage) CopyToFile(options internal.CopyToFileOptions) error {
@@ -402,12 +470,25 @@ func (az *AzStorage) CopyFromFile(options internal.CopyFromFileOptions) error {
 // Symlink operations
 func (az *AzStorage) CreateLink(options internal.CreateLinkOptions) error {
 	log.Trace("AzStorage::CreateLink : Create symlink %s -> %s", options.Name, options.Target)
-	return az.storage.CreateLink(options.Name, options.Target)
+	err := az.storage.CreateLink(options.Name, options.Target)
+
+	if err == nil {
+		azStatsCollector.PushEvents(createLink, options.Name, map[string]interface{}{target: options.Target})
+		azStatsCollector.UpdateStats(stats_manager.Increment, createLink, (int64)(1))
+	}
+
+	return err
 }
 
 func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) {
 	log.Trace("AzStorage::ReadLink : Read symlink %s", options.Name)
 	data, err := az.storage.ReadBuffer(options.Name, 0, 0)
+
+	if err != nil {
+		azStatsCollector.PushEvents(readLink, options.Name, nil)
+		azStatsCollector.UpdateStats(stats_manager.Increment, readLink, (int64)(1))
+	}
+
 	return string(data), err
 }
 
@@ -419,7 +500,14 @@ func (az *AzStorage) GetAttr(options internal.GetAttrOptions) (attr *internal.Ob
 
 func (az *AzStorage) Chmod(options internal.ChmodOptions) error {
 	log.Trace("AzStorage::Chmod : Change mod of file %s", options.Name)
-	return az.storage.ChangeMod(options.Name, options.Mode)
+	err := az.storage.ChangeMod(options.Name, options.Mode)
+
+	if err == nil {
+		azStatsCollector.PushEvents(chmod, options.Name, map[string]interface{}{mode: options.Mode.String()})
+		azStatsCollector.UpdateStats(stats_manager.Increment, chmod, (int64)(1))
+	}
+
+	return err
 }
 
 func (az *AzStorage) Chown(options internal.ChownOptions) error {

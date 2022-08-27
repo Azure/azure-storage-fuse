@@ -41,6 +41,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
 /* NOTES:
@@ -99,6 +100,8 @@ const defaultNegativeEntryExpiration = 120
 
 var fuseFS *Libfuse
 
+var libfuseStatsCollector *stats_manager.StatsCollector
+
 // Bitmasks in Go: https://yourbasic.org/golang/bitmask-flag-set-clear/
 
 var ignoreFiles = map[string]bool{
@@ -128,6 +131,9 @@ func (lf *Libfuse) SetNextComponent(nc internal.Component) {
 func (lf *Libfuse) Start(ctx context.Context) error {
 	log.Trace("Libfuse::Start : Starting component %s", lf.Name())
 
+	// create stats collector for libfuse
+	libfuseStatsCollector = stats_manager.NewStatsCollector(lf.Name())
+
 	lf.lsFlags = internal.NewDirBitMap()
 	lf.lsFlags.Set(internal.PropFlagModeDefault)
 
@@ -148,6 +154,7 @@ func (lf *Libfuse) Start(ctx context.Context) error {
 func (lf *Libfuse) Stop() error {
 	log.Trace("Libfuse::Stop : Stopping component %s", lf.Name())
 	_ = lf.destroyFuse()
+	libfuseStatsCollector.Destroy()
 	return nil
 }
 

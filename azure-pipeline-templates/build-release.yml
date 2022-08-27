@@ -32,7 +32,7 @@ steps:
   - task: Go@0
     inputs:
       command: 'build'
-      arguments: "-tags ${{ parameters.tags }}  -o blobfuse2"
+      arguments: "-tags ${{ parameters.tags }} -o blobfuse2"
       workingDirectory: ${{ parameters.work_dir }}
     displayName: 'Building Blobfuse2'
   
@@ -42,6 +42,22 @@ steps:
       ./blobfuse2 --version
     workingDirectory: ${{ parameters.work_dir }}
     displayName: "Test Binary built"
+    continueOnError: false
+
+  # Build the health-monitor binary
+  - script: |
+      chmod 755 build.sh
+      ./build.sh health
+    workingDirectory: ${{ parameters.work_dir }}
+    displayName: "Building health-monitor binary"
+    continueOnError: false
+  
+  # Verifying whether built binary is correct
+  - script: |
+      sudo chmod +x ./bfusemon
+      ./bfusemon --version
+    workingDirectory: ${{ parameters.work_dir }}
+    displayName: "Test bfusemon binary built"
     continueOnError: false
 
   # Run Unit tests if parameters is true

@@ -37,6 +37,7 @@ import (
 	"errors"
 	"log"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -68,12 +69,17 @@ type Logger interface {
 func NewLogger(name string, config common.LogConfig) (Logger, error) {
 	timeTracker = config.TimeTracker
 
+	if len(strings.TrimSpace(config.Tag)) == 0 {
+		config.Tag = common.FileSystemName
+	}
+
 	if name == "base" {
 		baseLogger, err := newBaseLogger(LogFileConfig{
 			LogFile:      config.FilePath,
 			LogLevel:     config.Level,
 			LogSize:      config.MaxFileSize * 1024 * 1024,
 			LogFileCount: int(config.FileCount),
+			LogTag:       config.Tag,
 		})
 		if err != nil {
 			return nil, err
@@ -83,7 +89,7 @@ func NewLogger(name string, config common.LogConfig) (Logger, error) {
 		silentLogger := &SilentLogger{}
 		return silentLogger, nil
 	} else if name == "" || name == "default" || name == "syslog" {
-		sysLogger, err := newSysLogger(config.Level)
+		sysLogger, err := newSysLogger(config.Level, config.Tag)
 		if err != nil {
 			if err == NoSyslogService {
 				// Syslog service does not exists on this system

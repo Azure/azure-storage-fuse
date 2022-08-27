@@ -100,6 +100,7 @@ stages:
               mkdir -p pkgDir/usr/bin/
               mkdir -p pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/blobfuse2 pkgDir/usr/bin/blobfuse2
+              cp azure-storage-fuse/bfusemon pkgDir/usr/bin/bfusemon
               cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/

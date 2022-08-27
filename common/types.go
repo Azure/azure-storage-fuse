@@ -60,12 +60,21 @@ const (
 	DefaultFilePermissionBits       os.FileMode = 0755
 	DefaultDirectoryPermissionBits  os.FileMode = 0775
 	DefaultAllowOtherPermissionBits os.FileMode = 0777
+
+	MbToBytes  = 1024 * 1024
+	BfuseStats = "blobfuse_stats"
 )
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFilePath = filepath.Join(DefaultWorkDir, "blobfuse2.log")
+var StatsConfigFilePath = filepath.Join(DefaultWorkDir, "stats_monitor.cfg")
 var DefaultPipeline = []string{"libfuse", "file_cache", "attr_cache", "azstorage"}
 var DefaultStreamPipeline = []string{"libfuse", "stream", "attr_cache", "azstorage"}
+
+var EnableMonitoring = false
+var BfsDisabled = false
+var TransferPipe = "/tmp/transferPipe"
+var PollingPipe = "/tmp/pollPipe"
 
 //LogLevel enum
 type LogLevel int
@@ -122,6 +131,7 @@ type LogConfig struct {
 	FileCount   uint64
 	FilePath    string
 	TimeTracker bool
+	Tag         string // logging tag which can be either blobfuse2 or bfusemon
 }
 
 // Flags for blocks

@@ -52,6 +52,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 )
@@ -557,12 +558,32 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	return blobList, listBlob.NextMarker.Val, nil
 }
 
+// track the progress of download of blobs where every 100MB of data downloaded is being tracked. It also tracks the completion of download
+func trackDownload(name string, bytesTransferred int64, count int64, downloadPtr *int64) {
+	if bytesTransferred >= (*downloadPtr)*100*common.MbToBytes || bytesTransferred == count {
+		(*downloadPtr)++
+		log.Debug("BlockBlob::trackDownload : Download: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
+
+		// send the download progress as an event
+		azStatsCollector.PushEvents(downloadProgress, name, map[string]interface{}{bytesTfrd: bytesTransferred, size: count})
+	}
+}
+
 // ReadToFile : Download a blob to a local file
 func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.File) (err error) {
 	log.Trace("BlockBlob::ReadToFile : name %s, offset : %d, count %d", name, offset, count)
 	//defer exectime.StatTimeCurrentBlock("BlockBlob::ReadToFile")()
 
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
+
+	var downloadPtr *int64 = new(int64)
+	*downloadPtr = 1
+
+	if common.MonitorBfs() {
+		bb.downloadOptions.Progress = func(bytesTransferred int64) {
+			trackDownload(name, bytesTransferred, count, downloadPtr)
+		}
+	}
 
 	defer log.TimeTrack(time.Now(), "BlockBlob::ReadToFile", name)
 	err = azblob.DownloadBlobToFile(context.Background(), blobURL, offset, count, fi, bb.downloadOptions)
@@ -575,6 +596,11 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 			log.Err("BlockBlob::ReadToFile : Failed to download blob %s (%s)", name, err.Error())
 			return err
 		}
+	} else {
+		log.Debug("BlockBlob::ReadToFile : Download complete of blob %v", name)
+
+		// store total bytes downloaded so far
+		azStatsCollector.UpdateStats(stats_manager.Increment, bytesDownloaded, count)
 	}
 
 	if bb.Config.validateMD5 {
@@ -698,6 +724,17 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 	return blockSize, nil
 }
 
+// track the progress of upload of blobs where every 100MB of data uploaded is being tracked. It also tracks the completion of upload
+func trackUpload(name string, bytesTransferred int64, count int64, uploadPtr *int64) {
+	if bytesTransferred >= (*uploadPtr)*100*common.MbToBytes || bytesTransferred == count {
+		(*uploadPtr)++
+		log.Debug("BlockBlob::trackUpload : Upload: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
+
+		// send upload progress as event
+		azStatsCollector.PushEvents(uploadProgress, name, map[string]interface{}{bytesTfrd: bytesTransferred, size: count})
+	}
+}
+
 // WriteFromFile : Upload local file to blob
 func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *os.File) (err error) {
 	log.Trace("BlockBlob::WriteFromFile : name %s", name)
@@ -705,6 +742,9 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
+
+	var uploadPtr *int64 = new(int64)
+	*uploadPtr = 1
 
 	blockSize := bb.Config.blockSize
 	// get the size of the file
@@ -736,7 +776,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		}
 	}
 
-	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
+	uploadOptions := azblob.UploadToBlockBlobOptions{
 		BlockSize:      blockSize,
 		Parallelism:    bb.Config.maxConcurrency,
 		Metadata:       metadata,
@@ -745,7 +785,14 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 			ContentType: getContentType(name),
 			ContentMD5:  md5sum,
 		},
-	})
+	}
+	if common.MonitorBfs() && stat.Size() > 0 {
+		uploadOptions.Progress = func(bytesTransferred int64) {
+			trackUpload(name, bytesTransferred, stat.Size(), uploadPtr)
+		}
+	}
+
+	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, uploadOptions)
 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
@@ -756,6 +803,13 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 			log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s (%s)", name, err.Error())
 		}
 		return err
+	} else {
+		log.Debug("BlockBlob::WriteFromFile : Upload complete of blob %v", name)
+
+		// store total bytes uploaded so far
+		if stat.Size() > 0 {
+			azStatsCollector.UpdateStats(stats_manager.Increment, bytesUploaded, stat.Size())
+		}
 	}
 
 	return nil

@@ -51,6 +51,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/spf13/cobra"
 )
@@ -111,6 +112,8 @@ const (
 //  Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &FileCache{}
 
+var fileCacheStatsCollector *stats_manager.StatsCollector
+
 func (c *FileCache) Name() string {
 	return compName
 }
@@ -148,6 +151,9 @@ func (c *FileCache) Start(ctx context.Context) error {
 		return fmt.Errorf("config error in %s error [fail to start policy]", c.Name())
 	}
 
+	// create stats collector for file cache
+	fileCacheStatsCollector = stats_manager.NewStatsCollector(c.Name())
+
 	return nil
 }
 
@@ -157,6 +163,8 @@ func (c *FileCache) Stop() error {
 
 	_ = c.policy.ShutdownPolicy()
 	_ = c.TempCacheCleanup()
+
+	fileCacheStatsCollector.Destroy()
 
 	return nil
 }
@@ -691,6 +699,7 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	}
 
 	fc.policy.CachePurge(localPath)
+
 	return nil
 }
 
@@ -836,8 +845,12 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		if err != nil {
 			log.Err("FileCache::OpenFile : Failed to change times of file %s [%s]", options.Name, err.Error())
 		}
+
+		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, dlFiles, (int64)(1))
+
 	} else {
 		log.Debug("FileCache::OpenFile : %s will be served from cache", options.Name)
+		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, cacheServed, (int64)(1))
 	}
 
 	// Open the file and grab a shared lock to prevent deletion by the cache policy.
@@ -995,6 +1008,7 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	if err == nil {
 		// Mark the handle dirty so the file is written back to storage on FlushFile.
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
+
 	} else {
 		log.Err("FileCache::WriteFile : failed to write %s (%s)", options.Handle.Path, err.Error())
 	}

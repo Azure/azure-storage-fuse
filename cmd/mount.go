@@ -34,6 +34,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -70,19 +71,20 @@ type mountOptions struct {
 	MountPath  string
 	ConfigFile string
 
-	Logging           LogOptions `config:"logging"`
-	Components        []string   `config:"components"`
-	Foreground        bool       `config:"foreground"`
-	DefaultWorkingDir string     `config:"default-working-dir"`
-	Debug             bool       `config:"debug"`
-	DebugPath         string     `config:"debug-path"`
-	CPUProfile        string     `config:"cpu-profile"`
-	MemProfile        string     `config:"mem-profile"`
-	PassPhrase        string     `config:"passphrase"`
-	SecureConfig      bool       `config:"secure-config"`
-	DynamicProfiler   bool       `config:"dynamic-profile"`
-	ProfilerPort      int        `config:"profiler-port"`
-	ProfilerIP        string     `config:"profiler-ip"`
+	Logging           LogOptions     `config:"logging"`
+	Components        []string       `config:"components"`
+	Foreground        bool           `config:"foreground"`
+	DefaultWorkingDir string         `config:"default-working-dir"`
+	Debug             bool           `config:"debug"`
+	DebugPath         string         `config:"debug-path"`
+	CPUProfile        string         `config:"cpu-profile"`
+	MemProfile        string         `config:"mem-profile"`
+	PassPhrase        string         `config:"passphrase"`
+	SecureConfig      bool           `config:"secure-config"`
+	DynamicProfiler   bool           `config:"dynamic-profile"`
+	ProfilerPort      int            `config:"profiler-port"`
+	ProfilerIP        string         `config:"profiler-ip"`
+	MonitorOpt        monitorOptions `config:"health-monitor"`
 }
 
 var options mountOptions
@@ -281,6 +283,16 @@ var mountCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		common.EnableMonitoring = options.MonitorOpt.EnableMon
+
+		// check if blobfuse stats monitor is added in the disable list
+		for _, mon := range options.MonitorOpt.DisableList {
+			if mon == common.BfuseStats {
+				common.BfsDisabled = true
+				break
+			}
+		}
+
 		if options.Debug {
 			f, err := os.OpenFile(filepath.Join(options.DebugPath, "times.log"), os.O_CREATE|os.O_APPEND|os.O_RDWR, os.FileMode(0755))
 			if err != nil {
@@ -320,6 +332,7 @@ var mountCmd = &cobra.Command{
 				log.Err("Mount: error daemonizing application [%v]", err)
 				Destroy(1)
 			}
+			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
 			if child == nil {
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
@@ -343,6 +356,7 @@ var mountCmd = &cobra.Command{
 			setGOConfig()
 			go startDynamicProfiler()
 
+			log.Debug("mount: foreground enabled")
 			runPipeline(pipeline, context.Background())
 			if options.MemProfile != "" {
 				os.Remove(options.MemProfile)
@@ -365,6 +379,13 @@ var mountCmd = &cobra.Command{
 }
 
 func runPipeline(pipeline *internal.Pipeline, ctx context.Context) {
+	pid := fmt.Sprintf("%v", os.Getpid())
+	common.TransferPipe += "_" + pid
+	common.PollingPipe += "_" + pid
+	log.Debug("Mount::runPipeline : blobfuse2 pid = %v, transfer pipe = %v, polling pipe = %v", pid, common.TransferPipe, common.PollingPipe)
+
+	go startMonitor(os.Getpid())
+
 	pipelineStarted = true
 	err := pipeline.Start(ctx)
 	if err != nil {
@@ -382,6 +403,21 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) {
 	}
 
 	_ = log.Destroy()
+}
+
+func startMonitor(pid int) {
+	if common.EnableMonitoring {
+		log.Debug("mount::startMonitor : pid = %v, config-file = %v", pid, options.ConfigFile)
+		buf := new(bytes.Buffer)
+		rootCmd.SetOut(buf)
+		rootCmd.SetErr(buf)
+		rootCmd.SetArgs([]string{"health-monitor", fmt.Sprintf("--pid=%v", pid), fmt.Sprintf("--config-file=%s", options.ConfigFile)})
+		err := rootCmd.Execute()
+		if err != nil {
+			common.EnableMonitoring = false
+			log.Err("mount::startMonitor : [%v]", err)
+		}
+	}
 }
 
 func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
