@@ -553,8 +553,12 @@ func init() {
 	internal.AddComponent(compName, NewazstorageComponent)
 	RegisterEnvVariables()
 
+	blockListSecFlag := config.AddInt32Flag("cancel-list-on-mount-seconds", 0, "Number of seconds list call is blocked post mount")
+	config.BindPFlag(compName+".block-list-on-mount-sec", blockListSecFlag)
+
 	containerNameFlag := config.AddStringFlag("container-name", "", "Configures the name of the container to be mounted")
 	config.BindPFlag(compName+".container", containerNameFlag)
+
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})
