@@ -400,6 +400,9 @@ func convertBfCliParameters(flags *pflag.FlagSet) error {
 			}
 			if flags.Lookup("stream-cache-mb").Changed {
 				bfv2StreamConfigOptions.HandleLimit = bfConfCliOptions.streamCacheSize / bfv2StreamConfigOptions.BufferSizePerFile
+				if bfv2StreamConfigOptions.HandleLimit == 0 {
+					bfv2StreamConfigOptions.HandleLimit = 1
+				}
 			}
 		} else {
 			useStream = false

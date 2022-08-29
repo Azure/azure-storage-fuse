@@ -113,6 +113,9 @@ func (st *Stream) Configure(_ bool) error {
 	}
 	if config.IsSet(compName + ".stream-cache-mb") {
 		conf.HandleLimit = conf.StreamCacheMb / conf.BufferSizePerFile
+		if conf.HandleLimit == 0 {
+			conf.HandleLimit = 1
+		}
 	}
 	if uint64((conf.BufferSizePerFile*conf.HandleLimit)*mb) > memory.FreeMemory() {
 		log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
