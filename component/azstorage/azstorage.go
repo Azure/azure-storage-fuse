@@ -580,6 +580,9 @@ func init() {
 	httpsProxy := config.AddStringFlag("https-proxy", "", "HTTPS Proxy address.")
 	config.BindPFlag(compName+".https-proxy", httpsProxy)
 
+	useHttps := config.AddBoolFlag("use-https", true, "Enables HTTPS communication with Blob storage.")
+	config.BindPFlag(compName+".use-https", useHttps)
+
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})

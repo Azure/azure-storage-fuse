@@ -168,7 +168,8 @@ type AzStorageOptions struct {
 	ValidateMD5             bool   `config:"validate-md5" yaml:"validate-md5"`
 
 	// v1 support
-	UseAdls bool `config:"use-adls"`
+	UseAdls  bool `config:"use-adls"`
+	UseHTTPS bool `config:"use-https"`
 }
 
 //  RegisterEnvVariables : Register environment varilables
@@ -301,6 +302,9 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	httpsProxyProvided := opt.HttpsProxyAddress != ""
 
 	// Set whether to use http or https and proxy
+	if config.IsSet(compName + ".use-https") {
+		opt.UseHTTP = !opt.UseHTTPS
+	}
 	if opt.UseHTTP {
 		az.stConfig.authConfig.UseHTTP = true
 		if httpProxyProvided {

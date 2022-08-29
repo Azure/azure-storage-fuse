@@ -85,6 +85,11 @@ type mountOptions struct {
 	ProfilerPort      int            `config:"profiler-port"`
 	ProfilerIP        string         `config:"profiler-ip"`
 	MonitorOpt        monitorOptions `config:"health-monitor"`
+
+	// v1 support
+	Streaming      bool     `config:"streaming"`
+	AttrCache      bool     `config:"attr-cache"` // this flag is ignored and we always turn attribute cache on
+	LibfuseOptions []string `config:"libfuse-options"`
 }
 
 var options mountOptions
@@ -233,7 +238,11 @@ var mountCmd = &cobra.Command{
 			// Fall back to defaults and let components fail if all required env variables are not set.
 			_, err := os.Stat(common.DefaultConfigFilePath)
 			if err != nil && os.IsNotExist(err) {
-				options.Components = common.DefaultPipeline
+				if options.Streaming {
+					options.Components = common.DefaultStreamPipeline
+				} else {
+					options.Components = common.DefaultPipeline
+				}
 				configFileExists = false
 			} else {
 				options.ConfigFile = common.DefaultConfigFilePath
@@ -518,6 +527,15 @@ func init() {
 	mountCmd.PersistentFlags().Lookup("default-working-dir").Hidden = true
 	config.BindPFlag("default-working-dir", mountCmd.PersistentFlags().Lookup("default-working-dir"))
 	_ = mountCmd.MarkPersistentFlagDirname("default-working-dir")
+
+	mountCmd.Flags().Bool("streaming", false, "Enable Streaming.")
+	config.BindPFlag("streaming", mountCmd.Flags().Lookup("streaming"))
+
+	mountCmd.Flags().Bool("use-attr-cache", true, "Use attribute caching.")
+	config.BindPFlag("attr-cache", mountCmd.Flags().Lookup("use-attr-cache"))
+
+	mountCmd.Flags().StringSliceP("o", "o", []string{}, "FUSE options.")
+	config.BindPFlag("libfuse-options", mountCmd.Flags().ShorthandLookup("o"))
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)

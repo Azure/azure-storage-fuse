@@ -99,7 +99,8 @@ type FileCacheOptions struct {
 	OffloadIO         bool `config:"offload-io" yaml:"offload-io,omitempty"`
 
 	// v1 support
-	v1Timeout uint32 `config:"file-cache-timeout-in-seconds"`
+	V1Timeout     uint32 `config:"file-cache-timeout-in-seconds"`
+	EmptyDirCheck bool   `config:"empty-dir-check"`
 }
 
 const (
@@ -204,13 +205,17 @@ func (c *FileCache) Configure(_ bool) error {
 
 	c.createEmptyFile = conf.CreateEmptyFile
 	if config.IsSet(compName + ".file-cache-timeout-in-seconds") {
-		c.cacheTimeout = float64(conf.v1Timeout)
+		c.cacheTimeout = float64(conf.V1Timeout)
 	} else if config.IsSet(compName + ".timeout-sec") {
 		c.cacheTimeout = float64(conf.Timeout)
 	} else {
 		c.cacheTimeout = float64(defaultFileCacheTimeout)
 	}
-	c.allowNonEmpty = conf.AllowNonEmpty
+	if config.IsSet(compName + ".empty-dir-check") {
+		c.allowNonEmpty = !conf.EmptyDirCheck
+	} else {
+		c.allowNonEmpty = conf.AllowNonEmpty
+	}
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
@@ -1375,6 +1380,9 @@ func init() {
 
 	maxEviction := config.AddUint32Flag("max-eviction", 0, "Number of files to be evicted from cache at once.")
 	config.BindPFlag(compName+".max-eviction", maxEviction)
+
+	emptyDirCheck := config.AddBoolFlag("empty-dir-check", false, "Disallows remounting using a non-empty tmp-path.")
+	config.BindPFlag(compName+".empty-dir-check", emptyDirCheck)
 
 	config.RegisterFlagCompletionFunc("tmp-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault

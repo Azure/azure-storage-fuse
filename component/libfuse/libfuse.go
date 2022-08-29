@@ -340,5 +340,5 @@ func init() {
 	debug.Hidden = true
 
 	fuseOptions := config.AddStringSlicePFlag("o", []string{}, "FUSE options.")
-	config.BindPFlag(compName+".libfuse-options", debug)
+	config.BindPFlag(compName+".libfuse-options", fuseOptions)
 }
