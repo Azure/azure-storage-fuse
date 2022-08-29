@@ -61,6 +61,9 @@ type StreamOptions struct {
 	BufferSizePerFile uint64 `config:"handle-buffer-size-mb" yaml:"handle-buffer-size-mb,omitempty"`
 	HandleLimit       uint64 `config:"handle-limit" yaml:"handle-limit,omitempty"`
 	readOnly          bool   `config:"read-only"`
+
+	// v1 support
+	StreamCacheMb uint64 `config:"stream-cache-mb"`
 }
 
 const (
@@ -103,6 +106,9 @@ func (st *Stream) Configure(_ bool) error {
 	if err != nil {
 		log.Err("Stream::Configure : config error [unable to obtain read-only]")
 		return fmt.Errorf("config error in %s [%s]", st.Name(), err.Error())
+	}
+	if conf.StreamCacheMb != 0 {
+		conf.HandleLimit = conf.StreamCacheMb / conf.BufferSizePerFile
 	}
 	if uint64((conf.BufferSizePerFile*conf.HandleLimit)*mb) > memory.FreeMemory() {
 		log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
@@ -175,4 +181,11 @@ func NewStreamComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewStreamComponent)
+	maxBlocksMb := config.AddIntFlag("max-blocks-per-file", 0, "Maximum number of blocks to be cached in memory for streaming.")
+	config.BindPFlag(compName+".handle-buffer-size-mb", maxBlocksMb)
+	blockSizeMb := config.AddUint64Flag("block-size-mb", 0, "Size (in MB) of a block to be downloaded during streaming.")
+	config.BindPFlag(compName+".block-size-mb", blockSizeMb)
+
+	streamCacheSize := config.AddUint64Flag("stream-cache-mb", 0, "Limit total amount of data being cached in memory to conserve memory footprint of blobfuse.")
+	config.BindPFlag(compName+".stream-cache-mb", streamCacheSize)
 }

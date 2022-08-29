@@ -97,6 +97,9 @@ type FileCacheOptions struct {
 
 	EnablePolicyTrace bool `config:"policy-trace" yaml:"policy-trace,omitempty"`
 	OffloadIO         bool `config:"offload-io" yaml:"offload-io,omitempty"`
+
+	// v1 support
+	v1Timeout uint32 `config:"file-cache-timeout-in-seconds"`
 }
 
 const (
@@ -200,7 +203,9 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	c.createEmptyFile = conf.CreateEmptyFile
-	if config.IsSet(compName + ".timeout-sec") {
+	if config.IsSet(compName + ".file-cache-timeout-in-seconds") {
+		c.cacheTimeout = float64(conf.v1Timeout)
+	} else if config.IsSet(compName + ".timeout-sec") {
 		c.cacheTimeout = float64(conf.Timeout)
 	} else {
 		c.cacheTimeout = float64(defaultFileCacheTimeout)
@@ -1368,8 +1373,14 @@ func init() {
 	lowThreshold := config.AddUint32Flag("low-disk-threshold", 80, "percentage of cache utilization which stops early eviction started by high-disk-threshold")
 	config.BindPFlag(compName+".low-threshold", lowThreshold)
 
+	maxEviction := config.AddUint32Flag("max-eviction", 0, "Number of files to be evicted from cache at once.")
+	config.BindPFlag(compName+".max-eviction", maxEviction)
+
 	config.RegisterFlagCompletionFunc("tmp-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	})
+
+	fileCacheTimeoutSec := config.AddUint32Flag("file-cache-timeout-in-seconds", defaultFileCacheTimeout, "file cache timeout")
+	config.BindPFlag(compName+".file-cache-timeout-in-seconds", fileCacheTimeoutSec)
 
 }

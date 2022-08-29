@@ -117,7 +117,7 @@ func (a *AccountType) Parse(s string) error {
 // newServicePrincipalTokenFromMSI : reads them directly from env
 const (
 	EnvAzStorageAccount            = "AZURE_STORAGE_ACCOUNT"
-	EnvAzStorageAccounType         = "AZURE_STORAGE_ACCOUNT_TYPE"
+	EnvAzStorageAccountType        = "AZURE_STORAGE_ACCOUNT_TYPE"
 	EnvAzStorageAccessKey          = "AZURE_STORAGE_ACCESS_KEY"
 	EnvAzStorageSasToken           = "AZURE_STORAGE_SAS_TOKEN"
 	EnvAzStorageIdentityClientId   = "AZURE_STORAGE_IDENTITY_CLIENT_ID"
@@ -166,12 +166,15 @@ type AzStorageOptions struct {
 	AuthResourceString      string `config:"auth-resource" yaml:"auth-resource,omitempty"`
 	UpdateMD5               bool   `config:"update-md5" yaml:"update-md5"`
 	ValidateMD5             bool   `config:"validate-md5" yaml:"validate-md5"`
+
+	// v1 support
+	UseAdls bool `config:"use-adls"`
 }
 
 //  RegisterEnvVariables : Register environment varilables
 func RegisterEnvVariables() {
 	config.BindEnv("azstorage.account-name", EnvAzStorageAccount)
-	config.BindEnv("azstorage.type", EnvAzStorageAccounType)
+	config.BindEnv("azstorage.type", EnvAzStorageAccountType)
 
 	config.BindEnv("azstorage.account-key", EnvAzStorageAccessKey)
 
@@ -246,20 +249,24 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	var accountType AccountType
-	err := accountType.Parse(opt.AccountType)
-	if err != nil {
-		log.Err("ParseAndValidateConfig : Failed to parse account type %s", opt.AccountType)
-		return errors.New("invalid account type")
-	}
+	if opt.UseAdls {
+		az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.ADLS()
+	} else {
+		err := accountType.Parse(opt.AccountType)
+		if err != nil {
+			log.Err("ParseAndValidateConfig : Failed to parse account type %s", opt.AccountType)
+			return errors.New("invalid account type")
+		}
 
-	az.stConfig.authConfig.AccountType = accountType
+		az.stConfig.authConfig.AccountType = accountType
+	}
 	if accountType == EAccountType.INVALID_ACC() {
 		log.Err("ParseAndValidateConfig : Invalid account type %s", opt.AccountType)
 		return errors.New("invalid account type")
 	}
 
 	// Validate container name is present or not
-	err = config.UnmarshalKey("mount-all-containers", &az.stConfig.mountAllContainers)
+	err := config.UnmarshalKey("mount-all-containers", &az.stConfig.mountAllContainers)
 	if err != nil {
 		log.Err("ParseAndValidateConfig : Failed to detect mount-all-container")
 	}
