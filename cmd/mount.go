@@ -168,6 +168,8 @@ func OnConfigChange() {
 
 // parseConfig : Based on config file or encrypted data parse the provided config
 func parseConfig() {
+	options.ConfigFile = common.ExpandPath(options.ConfigFile)
+
 	// Based on extension decide file is encrypted or not
 	if options.SecureConfig ||
 		filepath.Ext(options.ConfigFile) == SecureConfigExtension {
@@ -223,7 +225,7 @@ var mountCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Parent().Run(cmd.Parent(), args)
 
-		options.MountPath = args[0]
+		options.MountPath = common.ExpandPath(args[0])
 		configFileExists := true
 
 		if options.ConfigFile == "" {
