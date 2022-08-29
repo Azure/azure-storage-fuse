@@ -363,10 +363,6 @@ func TestMain(m *testing.M) {
 	mntDir = filepath.Join(*pathPtr, mntDir)
 	configFile = *configPtr
 
-	blobfuseBinary = "/home/sourav/go/src/azure-storage-fuse/blobfuse2"
-	mntDir = "/home/sourav/testmntdir/mntdir"
-	configFile = "/home/sourav/config/v2/config.yaml"
-
 	err := os.RemoveAll(mntDir)
 	if err != nil {
 		fmt.Println("Could not cleanup mount directory before testing")
