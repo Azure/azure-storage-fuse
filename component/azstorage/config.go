@@ -168,8 +168,10 @@ type AzStorageOptions struct {
 	ValidateMD5             bool   `config:"validate-md5" yaml:"validate-md5"`
 
 	// v1 support
-	UseAdls  bool `config:"use-adls"`
-	UseHTTPS bool `config:"use-https"`
+	UseAdls        bool   `config:"use-adls"`
+	UseHTTPS       bool   `config:"use-https"`
+	SetContentType bool   `config:"set-content-type"`
+	CaCertFile     string `config:"ca-cert-file"`
 }
 
 //  RegisterEnvVariables : Register environment varilables
@@ -398,6 +400,16 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 	if opt.MaxRetryDelay != 0 {
 		az.stConfig.maxRetryDelay = opt.MaxRetryDelay
+	}
+
+	if config.IsSet(compName + ".set-content-type") {
+		log.Warn("unsupported v1 CLI parameter: set-content-type is always true in blobfuse2.")
+	}
+	if config.IsSet(compName + ".ca-cert-file") {
+		log.Warn("unsupported v1 CLI parameter: ca-cert-file is not supported in blobfuse2. Use the default ca cert path for your environment.")
+	}
+	if config.IsSet(compName + ".debug-libcurl") {
+		log.Warn("unsupported v1 CLI parameter: debug-libcurl is not applicable in blobfuse2.")
 	}
 
 	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, Endpoint: %s, ListBlock: %d, MD5 : %v %v",

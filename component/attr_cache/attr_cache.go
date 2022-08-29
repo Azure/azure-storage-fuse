@@ -573,6 +573,8 @@ func init() {
 	config.BindPFlag(compName+".timeout-sec", attrCacheTimeout)
 	noSymlinks := config.AddBoolFlag("no-symlinks", false, "whether or not symlinks should be supported")
 	config.BindPFlag(compName+".no-symlinks", noSymlinks)
+
 	cacheOnList := config.AddBoolFlag("cache-on-list", true, "Cache attributes on listing.")
 	config.BindPFlag(compName+".cache-on-list", cacheOnList)
+	cacheOnList.Hidden = true
 }

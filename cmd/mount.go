@@ -238,11 +238,17 @@ var mountCmd = &cobra.Command{
 			// Fall back to defaults and let components fail if all required env variables are not set.
 			_, err := os.Stat(common.DefaultConfigFilePath)
 			if err != nil && os.IsNotExist(err) {
-				if options.Streaming {
-					options.Components = common.DefaultStreamPipeline
+				pipeline := []string{"libfuse"}
+				if config.IsSet("streaming") && options.Streaming {
+					pipeline = append(pipeline, "stream")
 				} else {
-					options.Components = common.DefaultPipeline
+					pipeline = append(pipeline, "file_cache")
 				}
+				if !(config.IsSet("attr-cache") && !options.AttrCache) {
+					pipeline = append(pipeline, "attr_cache")
+				}
+				pipeline = append(pipeline, "azstorage")
+				options.Components = pipeline
 				configFileExists = false
 			} else {
 				options.ConfigFile = common.DefaultConfigFilePath
@@ -290,6 +296,16 @@ var mountCmd = &cobra.Command{
 		if err != nil {
 			fmt.Printf("Mount: error initializing logger [%v]", err)
 			os.Exit(1)
+		}
+
+		if config.IsSet("invalidate-on-sync") {
+			log.Warn("unsupported v1 CLI parameter: invalidate-on-sync is always true in blobfuse2.")
+		}
+		if config.IsSet("pre-mount-validate") {
+			log.Warn("unsupported v1 CLI parameter: pre-mount-validate is always true in blobfuse2.")
+		}
+		if config.IsSet("basic-remount-check") {
+			log.Warn("unsupported v1 CLI parameter: basic-remount-check is always true in blobfuse2.")
 		}
 
 		common.EnableMonitoring = options.MonitorOpt.EnableMon
@@ -530,9 +546,23 @@ func init() {
 
 	mountCmd.Flags().Bool("streaming", false, "Enable Streaming.")
 	config.BindPFlag("streaming", mountCmd.Flags().Lookup("streaming"))
+	mountCmd.Flags().Lookup("streaming").Hidden = true
 
 	mountCmd.Flags().Bool("use-attr-cache", true, "Use attribute caching.")
 	config.BindPFlag("attr-cache", mountCmd.Flags().Lookup("use-attr-cache"))
+	mountCmd.Flags().Lookup("use-attr-cache").Hidden = true
+
+	mountCmd.Flags().Bool("invalidate-on-sync", true, "Invalidate file/dir on sync/fsync.")
+	config.BindPFlag("invalidate-on-sync", mountCmd.Flags().Lookup("invalidate-on-sync"))
+	mountCmd.Flags().Lookup("invalidate-on-sync").Hidden = true
+
+	mountCmd.Flags().Bool("pre-mount-validate", true, "Validate blobfuse2 is mounted.")
+	config.BindPFlag("pre-mount-validate", mountCmd.Flags().Lookup("pre-mount-validate"))
+	mountCmd.Flags().Lookup("pre-mount-validate").Hidden = true
+
+	mountCmd.Flags().Bool("basic-remount-check", true, "Validate blobfuse2 is mounted by reading /etc/mtab.")
+	config.BindPFlag("basic-remount-check", mountCmd.Flags().Lookup("basic-remount-check"))
+	mountCmd.Flags().Lookup("basic-remount-check").Hidden = true
 
 	mountCmd.Flags().StringSliceP("o", "o", []string{}, "FUSE options.")
 	config.BindPFlag("libfuse-options", mountCmd.Flags().ShorthandLookup("o"))

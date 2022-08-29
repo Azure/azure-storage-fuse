@@ -278,6 +278,16 @@ func (c *FileCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [%s]", c.Name(), "failed to create cache policy")
 	}
 
+	if config.IsSet(compName + ".background-download") {
+		log.Warn("unsupported v1 CLI parameter: background-download is not supported in blobfuse2. Consider using the streaming component.")
+	}
+	if config.IsSet(compName + ".cache-poll-timeout-msec") {
+		log.Warn("unsupported v1 CLI parameter: cache-poll-timeout-msec is not supported in blobfuse2. Polling occurs every timeout interval.")
+	}
+	if config.IsSet(compName + ".upload-modified-only") {
+		log.Warn("unsupported v1 CLI parameter: upload-modified-only is always true in blobfuse2.")
+	}
+
 	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d",
 		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold))
 
@@ -1363,11 +1373,15 @@ func NewFileCacheComponent() internal.Component {
 func init() {
 	internal.AddComponent(compName, NewFileCacheComponent)
 
+	tmpPathFlag := config.AddStringFlag("tmp-path", "", "configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
+	config.BindPFlag(compName+".path", tmpPathFlag)
+
 	fileCacheTimeout := config.AddUint32Flag("file-cache-timeout", defaultFileCacheTimeout, "file cache timeout")
 	config.BindPFlag(compName+".timeout-sec", fileCacheTimeout)
 
-	tmpPathFlag := config.AddStringFlag("tmp-path", "", "configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
-	config.BindPFlag(compName+".path", tmpPathFlag)
+	fileCacheTimeoutSec := config.AddUint32Flag("file-cache-timeout-in-seconds", defaultFileCacheTimeout, "file cache timeout")
+	config.BindPFlag(compName+".file-cache-timeout-in-seconds", fileCacheTimeoutSec)
+	fileCacheTimeoutSec.Hidden = true
 
 	cacheSizeMB := config.AddUint32Flag("cache-size-mb", 0, "max size in MB that file-cache can occupy on local disk for caching")
 	config.BindPFlag(compName+".max-size-mb", cacheSizeMB)
@@ -1380,15 +1394,26 @@ func init() {
 
 	maxEviction := config.AddUint32Flag("max-eviction", 0, "Number of files to be evicted from cache at once.")
 	config.BindPFlag(compName+".max-eviction", maxEviction)
+	maxEviction.Hidden = true
 
 	emptyDirCheck := config.AddBoolFlag("empty-dir-check", false, "Disallows remounting using a non-empty tmp-path.")
 	config.BindPFlag(compName+".empty-dir-check", emptyDirCheck)
+	emptyDirCheck.Hidden = true
+
+	backgroundDownload := config.AddBoolFlag("background-download", false, "File download to run in the background on open call.")
+	config.BindPFlag(compName+".background-download", backgroundDownload)
+	backgroundDownload.Hidden = true
+
+	cachePollTimeout := config.AddUint64Flag("cache-poll-timeout-msec", 0, "Time in milliseconds in order to poll for possible expired files awaiting cache eviction.")
+	config.BindPFlag(compName+".cache-poll-timeout-msec", cachePollTimeout)
+	cachePollTimeout.Hidden = true
+
+	uploadModifiedOnly := config.AddBoolFlag("upload-modified-only", false, "Flag to turn off unnecessary uploads to storage.")
+	config.BindPFlag(compName+".upload-modified-only", uploadModifiedOnly)
+	uploadModifiedOnly.Hidden = true
 
 	config.RegisterFlagCompletionFunc("tmp-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	})
-
-	fileCacheTimeoutSec := config.AddUint32Flag("file-cache-timeout-in-seconds", defaultFileCacheTimeout, "file cache timeout")
-	config.BindPFlag(compName+".file-cache-timeout-in-seconds", fileCacheTimeoutSec)
 
 }

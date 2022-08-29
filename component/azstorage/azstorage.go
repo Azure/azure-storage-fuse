@@ -553,35 +553,56 @@ func init() {
 	internal.AddComponent(compName, NewazstorageComponent)
 	RegisterEnvVariables()
 
+	useHttps := config.AddBoolFlag("use-https", false, "Enables HTTPS communication with Blob storage.")
+	config.BindPFlag(compName+".use-https", useHttps)
+	useHttps.Hidden = true
+
 	blockListSecFlag := config.AddInt32Flag("cancel-list-on-mount-seconds", 0, "Number of seconds list call is blocked post mount")
 	config.BindPFlag(compName+".block-list-on-mount-sec", blockListSecFlag)
+	blockListSecFlag.Hidden = true
 
 	containerNameFlag := config.AddStringFlag("container-name", "", "Configures the name of the container to be mounted")
 	config.BindPFlag(compName+".container", containerNameFlag)
 
 	useAdls := config.AddBoolFlag("use-adls", false, "Enables blobfuse to access Azure DataLake storage account.")
 	config.BindPFlag(compName+".use-adls", useAdls)
+	useAdls.Hidden = true
 
 	maxConcurrency := config.AddUint16Flag("max-concurrency", 0, "Option to override default number of concurrent storage connections")
 	config.BindPFlag(compName+".max-concurrency", maxConcurrency)
-
-	maxRetry := config.AddUint16Flag("max-retry", 0, "Maximum retry count if the failure codes are retryable.")
-	config.BindPFlag(compName+".max-retries", maxRetry)
-
-	maxRetryInterval := config.AddUint16Flag("max-retry-interval-in-seconds", 0, "Maximum number of seconds between 2 retries.")
-	config.BindPFlag(compName+".max-retry-timeout-sec", maxRetryInterval)
-
-	retryDelayFactor := config.AddUint16Flag("retry-delay-factor", 0, "Retry delay between two tries")
-	config.BindPFlag(compName+".retry-backoff-sec", retryDelayFactor)
+	maxConcurrency.Hidden = true
 
 	httpProxy := config.AddStringFlag("http-proxy", "", "HTTP Proxy address.")
 	config.BindPFlag(compName+".http-proxy", httpProxy)
+	httpProxy.Hidden = true
 
 	httpsProxy := config.AddStringFlag("https-proxy", "", "HTTPS Proxy address.")
 	config.BindPFlag(compName+".https-proxy", httpsProxy)
+	httpsProxy.Hidden = true
 
-	useHttps := config.AddBoolFlag("use-https", true, "Enables HTTPS communication with Blob storage.")
-	config.BindPFlag(compName+".use-https", useHttps)
+	maxRetry := config.AddUint16Flag("max-retry", 0, "Maximum retry count if the failure codes are retryable.")
+	config.BindPFlag(compName+".max-retries", maxRetry)
+	maxRetry.Hidden = true
+
+	maxRetryInterval := config.AddUint16Flag("max-retry-interval-in-seconds", 0, "Maximum number of seconds between 2 retries.")
+	config.BindPFlag(compName+".max-retry-timeout-sec", maxRetryInterval)
+	maxRetryInterval.Hidden = true
+
+	retryDelayFactor := config.AddUint16Flag("retry-delay-factor", 0, "Retry delay between two tries")
+	config.BindPFlag(compName+".retry-backoff-sec", retryDelayFactor)
+	retryDelayFactor.Hidden = true
+
+	setContentType := config.AddBoolFlag("set-content-type", true, "Turns on automatic 'content-type' property based on the file extension.")
+	config.BindPFlag(compName+".set-content-type", setContentType)
+	setContentType.Hidden = true
+
+	caCertFile := config.AddStringFlag("ca-cert-file", "", "Specifies the proxy pem certificate path if its not in the default path.")
+	config.BindPFlag(compName+".ca-cert-file", caCertFile)
+	caCertFile.Hidden = true
+
+	debugLibcurl := config.AddStringFlag("debug-libcurl", "", "Flag to allow users to debug libcurl calls.")
+	config.BindPFlag(compName+".debug-libcurl", debugLibcurl)
+	debugLibcurl.Hidden = true
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
