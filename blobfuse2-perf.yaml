@@ -13,7 +13,7 @@ schedules:
 stages:
 - stage: ShortRunning
   jobs:
-    - job: Upload_Download, Git_Clone, FIO
+    - job: UploadDownload_GitClone_FIO
       timeoutInMinutes: 240
       strategy:
         matrix:
