@@ -576,7 +576,7 @@ int azs_unlink(const char *path)
         int storage_errno = errno;
 
         // If we successfully removed the file locally and the blob does not exist, we should still return success - this accounts for the case where the file hasn't yet been uploaded.
-        if (!((remove_success == 0) && (storage_errno = 404)))
+        if (!((remove_success == 0) && (storage_errno == 404)))
         {
             syslog(LOG_ERR, "Failure to delete blob %s (errno = %d) and local cached file does not exist; returning failure from azs_unlink", pathString.c_str()+1, storage_errno);
             retval = 0 - map_errno(storage_errno);
