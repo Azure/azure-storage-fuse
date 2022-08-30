@@ -257,14 +257,19 @@ var mountCmd = &cobra.Command{
 
 		if !configFileExists || len(options.Components) == 0 {
 			pipeline := []string{"libfuse"}
+
 			if config.IsSet("streaming") && options.Streaming {
 				pipeline = append(pipeline, "stream")
 			} else {
 				pipeline = append(pipeline, "file_cache")
 			}
-			if !(config.IsSet("use-attr-cache") && !options.AttrCache) {
+
+			// by default attr-cache is enable in v2
+			// only way to disable is to pass cli param and set it to false
+			if options.AttrCache {
 				pipeline = append(pipeline, "attr_cache")
 			}
+
 			pipeline = append(pipeline, "azstorage")
 			options.Components = pipeline
 		}
