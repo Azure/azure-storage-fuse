@@ -89,7 +89,7 @@ type mountOptions struct {
 
 	// v1 support
 	Streaming      bool     `config:"streaming"`
-	AttrCache      bool     `config:"use-attr-cache"` // this flag is ignored and we always turn attribute cache on
+	AttrCache      bool     `config:"use-attr-cache"`
 	LibfuseOptions []string `config:"libfuse-options"`
 }
 
