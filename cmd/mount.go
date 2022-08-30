@@ -291,17 +291,15 @@ var mountCmd = &cobra.Command{
 				if v == "default_permissions" {
 					continue
 				} else if v == "allow_other" || v == "allow_other=true" {
-					config.Set("allow_other", "true")
-				} else if v == "allow_other=false" {
-					config.Set("allow_other", "false")
+					config.Set("allow-other", "true")
 				} else if strings.HasPrefix(v, "attr_timeout=") {
 					config.Set("libfuse.attribute-expiration-sec", parameter[1])
 				} else if strings.HasPrefix(v, "entry_timeout=") {
 					config.Set("libfuse.entry-expiration-sec", parameter[1])
 				} else if strings.HasPrefix(v, "negative_timeout=") {
 					config.Set("libfuse.negative-entry-expiration-sec", parameter[1])
-				} else if v == "ro" {
-					config.Set("read_only", "false")
+				} else if v == "ro" || v == "ro=true" {
+					config.Set("read-only", "true")
 				} else if v == "allow_root" {
 					config.Set("libfuse.default-permission", "700")
 				} else if strings.HasPrefix(v, "umask=") {
