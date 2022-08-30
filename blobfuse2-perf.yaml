@@ -46,9 +46,9 @@ stages:
         - checkout: none      
         
         - script: |
-          echo $(Description)
-          hostnamectl
-        displayName: 'Print Agent Info'
+            echo $(Description)
+            hostnamectl
+          displayName: 'Print Agent Info'
       
         # Install libfuse
         - script: |          
