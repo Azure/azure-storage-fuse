@@ -85,7 +85,7 @@ func blobfuseUnmount(suite *mountSuite, unmountOutput string) {
 	suite.Contains(string(cliOut), unmountOutput)
 
 	// wait after unmount
-	time.Sleep(5 * time.Second)
+	time.Sleep(4 * time.Second)
 
 	// validate unmount
 	cliOut = listBlobfuseMounts(suite)
@@ -102,7 +102,7 @@ func (suite *mountSuite) TestMountCmd() {
 	suite.Equal(nil, err)
 
 	// wait for mount
-	time.Sleep(10 * time.Second)
+	time.Sleep(4 * time.Second)
 
 	// validate mount
 	cliOut = listBlobfuseMounts(suite)
@@ -219,6 +219,13 @@ func (suite *mountSuite) TestEnvVarMountFailure() {
 
 // mount test using environment variables for mounting
 func (suite *mountSuite) TestEnvVarMount() {
+	// read config file
+	configData, err := os.ReadFile(configFile)
+	suite.Equal(nil, err)
+
+	viper.SetConfigType("yaml")
+	viper.ReadConfig(bytes.NewBuffer(configData))
+
 	// create environment variables
 	os.Setenv("AZURE_STORAGE_ACCOUNT", viper.GetString("azstorage.account-name"))
 	os.Setenv("AZURE_STORAGE_ACCESS_KEY", viper.GetString("azstorage.account-key"))
@@ -235,7 +242,7 @@ func (suite *mountSuite) TestEnvVarMount() {
 	suite.Equal(nil, err)
 
 	// wait for mount
-	time.Sleep(10 * time.Second)
+	time.Sleep(4 * time.Second)
 
 	// list blobfuse mounted directories
 	cliOut = listBlobfuseMounts(suite)
@@ -253,79 +260,93 @@ func (suite *mountSuite) TestEnvVarMount() {
 }
 
 // mount test using environment variables for mounting with cli options
-func (suite *mountSuite) TestEnvVarMountCliParams() {
-	// create environment variables
-	os.Setenv("AZURE_STORAGE_ACCOUNT", viper.GetString("azstorage.account-name"))
-	os.Setenv("AZURE_STORAGE_ACCESS_KEY", viper.GetString("azstorage.account-key"))
-	os.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", viper.GetString("azstorage.endpoint"))
-	os.Setenv("AZURE_STORAGE_ACCOUNT_CONTAINER", viper.GetString("azstorage.container"))
-	os.Setenv("AZURE_STORAGE_ACCOUNT_TYPE", viper.GetString("azstorage.type"))
+// func (suite *mountSuite) TestEnvVarMountCliParams() {
+// 	// read config file
+// 	configData, err := os.ReadFile(configFile)
+// 	suite.Equal(nil, err)
 
-	tempFile := viper.GetString("file_cache.path")
+// 	viper.SetConfigType("yaml")
+// 	viper.ReadConfig(bytes.NewBuffer(configData))
 
-	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--tmp-path="+tempFile, "--allow-other",
-		"--file-cache-timeout=120", "--cancel-list-on-mount-seconds=10", "--attr-timeout=120", "--entry-timeout=120",
-		"--negative-timeout=120", "--log-level=LOG_WARNING", "--cache-size-mb=1000")
-	cliOut, err := mountCmd.Output()
-	fmt.Println(string(cliOut))
-	suite.Equal(0, len(cliOut))
-	suite.Equal(nil, err)
+// 	// create environment variables
+// 	os.Setenv("AZURE_STORAGE_ACCOUNT", viper.GetString("azstorage.account-name"))
+// 	os.Setenv("AZURE_STORAGE_ACCESS_KEY", viper.GetString("azstorage.account-key"))
+// 	os.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", viper.GetString("azstorage.endpoint"))
+// 	os.Setenv("AZURE_STORAGE_ACCOUNT_CONTAINER", viper.GetString("azstorage.container"))
+// 	os.Setenv("AZURE_STORAGE_ACCOUNT_TYPE", viper.GetString("azstorage.type"))
 
-	// wait for mount
-	time.Sleep(10 * time.Second)
+// 	tempFile := viper.GetString("file_cache.path")
 
-	// list blobfuse mounted directories
-	cliOut = listBlobfuseMounts(suite)
-	suite.NotEqual(0, len(cliOut))
-	suite.Contains(string(cliOut), mntDir)
+// 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--tmp-path="+tempFile, "--allow-other",
+// 		"--file-cache-timeout=120", "--cancel-list-on-mount-seconds=10", "--attr-timeout=120", "--entry-timeout=120",
+// 		"--negative-timeout=120", "--log-level=LOG_WARNING", "--cache-size-mb=1000")
+// 	cliOut, err := mountCmd.Output()
+// 	fmt.Println(string(cliOut))
+// 	suite.Equal(0, len(cliOut))
+// 	suite.Equal(nil, err)
 
-	// unmount
-	blobfuseUnmount(suite, mntDir)
+// 	// wait for mount
+// 	time.Sleep(4 * time.Second)
 
-	os.Unsetenv("AZURE_STORAGE_ACCOUNT")
-	os.Unsetenv("AZURE_STORAGE_ACCESS_KEY")
-	os.Unsetenv("AZURE_STORAGE_BLOB_ENDPOINT")
-	os.Unsetenv("AZURE_STORAGE_ACCOUNT_CONTAINER")
-	os.Unsetenv("AZURE_STORAGE_ACCOUNT_TYPE")
-}
+// 	// list blobfuse mounted directories
+// 	cliOut = listBlobfuseMounts(suite)
+// 	suite.NotEqual(0, len(cliOut))
+// 	suite.Contains(string(cliOut), mntDir)
 
-// mountv1 test using CSI driver cli options
-func (suite *mountSuite) TestEnvVarMountCSIParams() {
-	// create environment variables
-	os.Setenv("AZURE_STORAGE_ACCOUNT", viper.GetString("azstorage.account-name"))
-	os.Setenv("AZURE_STORAGE_ACCESS_KEY", viper.GetString("azstorage.account-key"))
-	os.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", viper.GetString("azstorage.endpoint"))
-	os.Setenv("AZURE_STORAGE_ACCOUNT_CONTAINER", viper.GetString("azstorage.container"))
-	os.Setenv("AZURE_STORAGE_ACCOUNT_TYPE", viper.GetString("azstorage.type"))
+// 	// unmount
+// 	blobfuseUnmount(suite, mntDir)
 
-	tempFile := viper.GetString("file_cache.path")
+// 	os.Unsetenv("AZURE_STORAGE_ACCOUNT")
+// 	os.Unsetenv("AZURE_STORAGE_ACCESS_KEY")
+// 	os.Unsetenv("AZURE_STORAGE_BLOB_ENDPOINT")
+// 	os.Unsetenv("AZURE_STORAGE_ACCOUNT_CONTAINER")
+// 	os.Unsetenv("AZURE_STORAGE_ACCOUNT_TYPE")
+// }
 
-	mountCmd := exec.Command(blobfuseBinary, "mountv1", mntDir, "--tmp-path="+tempFile, "-o", "allow_other",
-		"--file-cache-timeout-in-seconds=120", "--use-attr-cache=true", "--cancel-list-on-mount-seconds=10",
-		"-o", "attr_timeout=120", "-o", "entry_timeout=120", "-o", "negative_timeout=120",
-		"--log-level=LOG_WARNING", "--cache-size-mb=1000")
-	cliOut, err := mountCmd.Output()
-	fmt.Println(string(cliOut))
-	suite.Equal(0, len(cliOut))
-	suite.Equal(nil, err)
+// // mountv1 test using CSI driver cli options
+// func (suite *mountSuite) TestEnvVarMountCSIParams() {
+// 	// read config file
+// 	configData, err := os.ReadFile(configFile)
+// 	suite.Equal(nil, err)
 
-	// wait for mount
-	time.Sleep(10 * time.Second)
+// 	viper.SetConfigType("yaml")
+// 	viper.ReadConfig(bytes.NewBuffer(configData))
 
-	// list blobfuse mounted directories
-	cliOut = listBlobfuseMounts(suite)
-	suite.NotEqual(0, len(cliOut))
-	suite.Contains(string(cliOut), mntDir)
+// 	// create environment variables
+// 	os.Setenv("AZURE_STORAGE_ACCOUNT", viper.GetString("azstorage.account-name"))
+// 	os.Setenv("AZURE_STORAGE_ACCESS_KEY", viper.GetString("azstorage.account-key"))
+// 	os.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", viper.GetString("azstorage.endpoint"))
+// 	os.Setenv("AZURE_STORAGE_ACCOUNT_CONTAINER", viper.GetString("azstorage.container"))
+// 	os.Setenv("AZURE_STORAGE_ACCOUNT_TYPE", viper.GetString("azstorage.type"))
 
-	// unmount
-	blobfuseUnmount(suite, mntDir)
+// 	tempFile := viper.GetString("file_cache.path")
 
-	os.Unsetenv("AZURE_STORAGE_ACCOUNT")
-	os.Unsetenv("AZURE_STORAGE_ACCESS_KEY")
-	os.Unsetenv("AZURE_STORAGE_BLOB_ENDPOINT")
-	os.Unsetenv("AZURE_STORAGE_ACCOUNT_CONTAINER")
-	os.Unsetenv("AZURE_STORAGE_ACCOUNT_TYPE")
-}
+// 	mountCmd := exec.Command(blobfuseBinary, "mountv1", mntDir, "--tmp-path="+tempFile, "-o", "allow_other",
+// 		"--file-cache-timeout-in-seconds=120", "--use-attr-cache=true", "--cancel-list-on-mount-seconds=10",
+// 		"-o", "attr_timeout=120", "-o", "entry_timeout=120", "-o", "negative_timeout=120",
+// 		"--log-level=LOG_WARNING", "--cache-size-mb=1000")
+// 	cliOut, err := mountCmd.Output()
+// 	fmt.Println(string(cliOut))
+// 	suite.Equal(0, len(cliOut))
+// 	suite.Equal(nil, err)
+
+// 	// wait for mount
+// 	time.Sleep(4 * time.Second)
+
+// 	// list blobfuse mounted directories
+// 	cliOut = listBlobfuseMounts(suite)
+// 	suite.NotEqual(0, len(cliOut))
+// 	suite.Contains(string(cliOut), mntDir)
+
+// 	// unmount
+// 	blobfuseUnmount(suite, mntDir)
+
+// 	os.Unsetenv("AZURE_STORAGE_ACCOUNT")
+// 	os.Unsetenv("AZURE_STORAGE_ACCESS_KEY")
+// 	os.Unsetenv("AZURE_STORAGE_BLOB_ENDPOINT")
+// 	os.Unsetenv("AZURE_STORAGE_ACCOUNT_CONTAINER")
+// 	os.Unsetenv("AZURE_STORAGE_ACCOUNT_TYPE")
+// }
 
 func TestMountSuite(t *testing.T) {
 	suite.Run(t, new(mountSuite))
@@ -347,15 +368,6 @@ func TestMain(m *testing.M) {
 		fmt.Println("Could not cleanup mount directory before testing")
 	}
 	os.Mkdir(mntDir, 0777)
-
-	// read config file
-	configData, err := os.ReadFile(configFile)
-	if err != nil {
-		fmt.Printf("Unable to read config file, %v : [%v]", configFile, err)
-	}
-
-	viper.SetConfigType("yaml")
-	viper.ReadConfig(bytes.NewBuffer(configData))
 
 	m.Run()
 
