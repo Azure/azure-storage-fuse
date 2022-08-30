@@ -255,7 +255,7 @@ var mountCmd = &cobra.Command{
 			os.Exit(1)
 		}
 
-		if !configFileExists {
+		if !configFileExists || len(options.Components) == 0 {
 			pipeline := []string{"libfuse"}
 			if config.IsSet("streaming") && options.Streaming {
 				pipeline = append(pipeline, "stream")
