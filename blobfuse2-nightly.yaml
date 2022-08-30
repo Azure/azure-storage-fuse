@@ -1181,7 +1181,7 @@ stages:
                 adls_account_name: $(AZTEST_ADLS_ACC_NAME)
                 adls_account_key: $(AZTEST_ADLS_KEY)
                 distro_name: $(AgentName)
-                stream: true
+                test_stream: true
                 quick_test: false
                 clone: true
                 gopath: $(GOPATH)
