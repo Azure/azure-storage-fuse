@@ -219,13 +219,6 @@ func (suite *mountSuite) TestEnvVarMountFailure() {
 
 // mount test using environment variables for mounting
 func (suite *mountSuite) TestEnvVarMount() {
-	// read config file
-	configData, err := os.ReadFile(configFile)
-	suite.Equal(nil, err)
-
-	viper.SetConfigType("yaml")
-	viper.ReadConfig(bytes.NewBuffer(configData))
-
 	// create environment variables
 	os.Setenv("AZURE_STORAGE_ACCOUNT", viper.GetString("azstorage.account-name"))
 	os.Setenv("AZURE_STORAGE_ACCESS_KEY", viper.GetString("azstorage.account-key"))
@@ -261,13 +254,6 @@ func (suite *mountSuite) TestEnvVarMount() {
 
 // mount test using environment variables for mounting with cli options
 func (suite *mountSuite) TestEnvVarMountCliParams() {
-	// read config file
-	configData, err := os.ReadFile(configFile)
-	suite.Equal(nil, err)
-
-	viper.SetConfigType("yaml")
-	viper.ReadConfig(bytes.NewBuffer(configData))
-
 	// create environment variables
 	os.Setenv("AZURE_STORAGE_ACCOUNT", viper.GetString("azstorage.account-name"))
 	os.Setenv("AZURE_STORAGE_ACCESS_KEY", viper.GetString("azstorage.account-key"))
@@ -286,7 +272,7 @@ func (suite *mountSuite) TestEnvVarMountCliParams() {
 	suite.Equal(nil, err)
 
 	// wait for mount
-	time.Sleep(4 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	// list blobfuse mounted directories
 	cliOut = listBlobfuseMounts(suite)
@@ -305,13 +291,6 @@ func (suite *mountSuite) TestEnvVarMountCliParams() {
 
 // mountv1 test using CSI driver cli options
 func (suite *mountSuite) TestEnvVarMountCSIParams() {
-	// read config file
-	configData, err := os.ReadFile(configFile)
-	suite.Equal(nil, err)
-
-	viper.SetConfigType("yaml")
-	viper.ReadConfig(bytes.NewBuffer(configData))
-
 	// create environment variables
 	os.Setenv("AZURE_STORAGE_ACCOUNT", viper.GetString("azstorage.account-name"))
 	os.Setenv("AZURE_STORAGE_ACCESS_KEY", viper.GetString("azstorage.account-key"))
@@ -331,7 +310,7 @@ func (suite *mountSuite) TestEnvVarMountCSIParams() {
 	suite.Equal(nil, err)
 
 	// wait for mount
-	time.Sleep(4 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	// list blobfuse mounted directories
 	cliOut = listBlobfuseMounts(suite)
@@ -368,6 +347,15 @@ func TestMain(m *testing.M) {
 		fmt.Println("Could not cleanup mount directory before testing")
 	}
 	os.Mkdir(mntDir, 0777)
+
+	// read config file
+	configData, err := os.ReadFile(configFile)
+	if err != nil {
+		fmt.Printf("Unable to read config file, %v : [%v]", configFile, err)
+	}
+
+	viper.SetConfigType("yaml")
+	viper.ReadConfig(bytes.NewBuffer(configData))
 
 	m.Run()
 
