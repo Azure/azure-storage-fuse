@@ -98,30 +98,39 @@ func (st *Stream) Start(ctx context.Context) error {
 func (st *Stream) Configure(_ bool) error {
 	log.Trace("Stream::Configure : %s", st.Name())
 	conf := StreamOptions{}
+
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {
 		log.Err("Stream::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("config error in %s [%s]", st.Name(), err.Error())
 	}
+
 	err = config.UnmarshalKey("read-only", &conf.readOnly)
 	if err != nil {
 		log.Err("Stream::Configure : config error [unable to obtain read-only]")
 		return fmt.Errorf("config error in %s [%s]", st.Name(), err.Error())
 	}
+
 	if config.IsSet(compName + ".max-blocks-per-file") {
 		conf.BufferSizePerFile = conf.BlockSize * uint64(conf.MaxBlocksPerFile)
 	}
+
 	if config.IsSet(compName + ".stream-cache-mb") {
 		conf.HandleLimit = conf.StreamCacheMb / conf.BufferSizePerFile
 		if conf.HandleLimit == 0 {
 			conf.HandleLimit = 1
 		}
 	}
+
 	if uint64((conf.BufferSizePerFile*conf.HandleLimit)*mb) > memory.FreeMemory() {
 		log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
 		return errors.New("not enough free memory for provided stream configuration")
 	}
 	st.cache = NewStreamConnection(conf, st)
+
+	log.Info("Stream::Configure : Buffer size %v, Block size %v, Handle limit %v",
+		conf.BufferSizePerFile, conf.BlockSize, conf.HandleLimit)
+
 	return nil
 }
 
