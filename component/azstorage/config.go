@@ -252,7 +252,6 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
 	}
 
-	var accountType AccountType
 	if config.IsSet(compName + ".use-adls") {
 		if opt.UseAdls {
 			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.ADLS()
@@ -260,6 +259,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.BLOCK()
 		}
 	} else {
+		var accountType AccountType
 		err := accountType.Parse(opt.AccountType)
 		if err != nil {
 			log.Err("ParseAndValidateConfig : Failed to parse account type %s", opt.AccountType)
