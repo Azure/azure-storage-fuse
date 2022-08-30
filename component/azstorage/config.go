@@ -266,11 +266,12 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 			return errors.New("invalid account type")
 		}
 
+		if accountType == EAccountType.INVALID_ACC() {
+			log.Err("ParseAndValidateConfig : Invalid account type %s", opt.AccountType)
+			return errors.New("invalid account type")
+		}
+
 		az.stConfig.authConfig.AccountType = accountType
-	}
-	if accountType == EAccountType.INVALID_ACC() {
-		log.Err("ParseAndValidateConfig : Invalid account type %s", opt.AccountType)
-		return errors.New("invalid account type")
 	}
 
 	// Validate container name is present or not

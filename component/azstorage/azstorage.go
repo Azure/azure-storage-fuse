@@ -553,7 +553,7 @@ func init() {
 	internal.AddComponent(compName, NewazstorageComponent)
 	RegisterEnvVariables()
 
-	useHttps := config.AddBoolFlag("use-https", false, "Enables HTTPS communication with Blob storage.")
+	useHttps := config.AddBoolFlag("use-https", true, "Enables HTTPS communication with Blob storage.")
 	config.BindPFlag(compName+".use-https", useHttps)
 	useHttps.Hidden = true
 
@@ -568,7 +568,7 @@ func init() {
 	config.BindPFlag(compName+".use-adls", useAdls)
 	useAdls.Hidden = true
 
-	maxConcurrency := config.AddUint16Flag("max-concurrency", 0, "Option to override default number of concurrent storage connections")
+	maxConcurrency := config.AddUint16Flag("max-concurrency", 32, "Option to override default number of concurrent storage connections")
 	config.BindPFlag(compName+".max-concurrency", maxConcurrency)
 	maxConcurrency.Hidden = true
 
@@ -580,15 +580,15 @@ func init() {
 	config.BindPFlag(compName+".https-proxy", httpsProxy)
 	httpsProxy.Hidden = true
 
-	maxRetry := config.AddUint16Flag("max-retry", 0, "Maximum retry count if the failure codes are retryable.")
+	maxRetry := config.AddUint16Flag("max-retry", 3, "Maximum retry count if the failure codes are retryable.")
 	config.BindPFlag(compName+".max-retries", maxRetry)
 	maxRetry.Hidden = true
 
-	maxRetryInterval := config.AddUint16Flag("max-retry-interval-in-seconds", 0, "Maximum number of seconds between 2 retries.")
+	maxRetryInterval := config.AddUint16Flag("max-retry-interval-in-seconds", 3, "Maximum number of seconds between 2 retries.")
 	config.BindPFlag(compName+".max-retry-timeout-sec", maxRetryInterval)
 	maxRetryInterval.Hidden = true
 
-	retryDelayFactor := config.AddUint16Flag("retry-delay-factor", 0, "Retry delay between two tries")
+	retryDelayFactor := config.AddUint16Flag("retry-delay-factor", 1, "Retry delay between two tries")
 	config.BindPFlag(compName+".retry-backoff-sec", retryDelayFactor)
 	retryDelayFactor.Hidden = true
 
