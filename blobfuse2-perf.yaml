@@ -34,7 +34,9 @@ stages:
         - name: TEMP_DIR
           value: "/home/vsts/workv2/blobfuse2tmp"
         - name: BLOBFUSE2_CFG
-          value: "/home/tamer/blobfuse2.yaml"
+          value: "/home/tamer/blobfuse2_manual_perf.yaml"
+        - name: BLOBFUSE_CFG
+          value: "/home/tamer/blobfuse_manual_perf.cfg"
         - name: GOPATH
           value: "/home/vsts/workv2/go"
         - name: ROOT_DIR
@@ -50,11 +52,14 @@ stages:
             hostnamectl
           displayName: 'Print Agent Info'
       
-        # Install libfuse
         - script: |          
             sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
             sudo apt-get install make cmake gcc g++ python3-setuptools python3-pip -y -o Dpkg::Options::="--force-confnew"
           displayName: 'Install C and Python libraries'
+
+        - script: |          
+            sudo apt-get install blobfuse -y -o Dpkg::Options::="--force-confnew"
+          displayName: 'Install blobfuse'
 
           # Prestart cleanup
         - script: |
@@ -96,6 +101,30 @@ stages:
             container: cont1
             skip_ut: true
 
+        - script: |
+            cd $(WORK_DIR)
+            $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_perf.yaml --container-name=cont1 --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+            cat $(BLOBFUSE2_CFG)
+          displayName: "Generate v2 Config File"
+          env:
+            NIGHTLY_STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
+            NIGHTLY_STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
+            ACCOUNT_TYPE: 'block'
+            ACCOUNT_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+          continueOnError: false
+        
+        - script: |
+            cd $(WORK_DIR)
+            touch $(BLOBFUSE_CFG)
+            echo "accountName $(PERF_WEEKLY_STO_BLOB_ACC_NAME)" >> $(BLOBFUSE_CFG)
+            echo "accountKey $(PERF_WEEKLY_STO_BLOB_ACC_KEY)" >> $(BLOBFUSE_CFG)
+            echo "authType Key" >> $(BLOBFUSE_CFG)
+            echo "containerName cont1" >> $(BLOBFUSE_CFG)
+            cat $(BLOBFUSE_CFG)
+          displayName: "Generate v1 Config File"
+          continueOnError: false
+
+        
 
 
 - stage: LongRunning
