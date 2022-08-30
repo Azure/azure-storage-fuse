@@ -35,10 +35,7 @@ package libfuse
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strconv"
-	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -94,16 +91,12 @@ type LibfuseOptions struct {
 	readOnly                bool   `config:"read-only"`
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
 	EnableWritebackCache    bool   `config:"enable-writeback-cache"`
-
-	// support v1
-	LibfuseOptions []string `config:"libfuse-options"`
 }
 
 const compName = "libfuse"
 const defaultEntryExpiration = 120
 const defaultAttrExpiration = 120
 const defaultNegativeEntryExpiration = 120
-const allowedFlags = "Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
 
 var fuseFS *Libfuse
 
@@ -167,52 +160,6 @@ func (lf *Libfuse) Stop() error {
 
 // Validate : Validate available config and convert them if required
 func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
-	if config.IsSet(compName + ".libfuse-options") {
-		for _, v := range opt.LibfuseOptions {
-			parameter := strings.Split(v, "=")
-			if len(parameter) > 2 || len(parameter) <= 0 {
-				return errors.New(allowedFlags)
-			}
-			v = strings.TrimSpace(v)
-			if v == "default_permissions" {
-				continue
-			} else if v == "allow_other" || v == "allow_other=true" {
-				opt.allowOther = true
-			} else if v == "allow_other=false" {
-				opt.allowOther = false
-			} else if strings.HasPrefix(v, "attr_timeout=") {
-				timeout, err := strconv.ParseUint(parameter[1], 10, 32)
-				if err != nil {
-					return err
-				}
-				lf.attributeExpiration = uint32(timeout)
-			} else if strings.HasPrefix(v, "entry_timeout=") {
-				timeout, err := strconv.ParseUint(parameter[1], 10, 32)
-				if err != nil {
-					return err
-				}
-				lf.entryExpiration = uint32(timeout)
-			} else if strings.HasPrefix(v, "negative_timeout=") {
-				timeout, err := strconv.ParseUint(parameter[1], 10, 32)
-				if err != nil {
-					return err
-				}
-				lf.negativeTimeout = uint32(timeout)
-			} else if v == "ro" {
-				opt.readOnly = true
-			} else if v == "allow_root" {
-				opt.DefaultPermission = 700
-			} else if strings.HasPrefix(v, "umask=") {
-				permission, err := strconv.ParseUint(parameter[1], 10, 32)
-				if err != nil {
-					return err
-				}
-				perm := ^uint32(permission) & 777
-				opt.DefaultPermission = perm
-			}
-		}
-	}
-
 	lf.mountPath = opt.mountPath
 	lf.readOnly = opt.readOnly
 	lf.traceEnable = opt.EnableFuseTrace
@@ -342,9 +289,6 @@ func init() {
 	debug := config.AddBoolPFlag("d", false, "Mount with foreground and FUSE logs on.")
 	config.BindPFlag(compName+".fuse-trace", debug)
 	debug.Hidden = true
-
-	fuseOptions := config.AddStringSlicePFlag("o", []string{}, "FUSE options.")
-	config.BindPFlag(compName+".libfuse-options", fuseOptions)
 
 	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", false, "Ignore unsupported open flags by blobfuse.")
 	config.BindPFlag(compName+".ignore-open-flags", ignoreOpenFlags)

@@ -45,6 +45,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -88,7 +89,7 @@ type mountOptions struct {
 
 	// v1 support
 	Streaming      bool     `config:"streaming"`
-	AttrCache      bool     `config:"attr-cache"` // this flag is ignored and we always turn attribute cache on
+	AttrCache      bool     `config:"use-attr-cache"` // this flag is ignored and we always turn attribute cache on
 	LibfuseOptions []string `config:"libfuse-options"`
 }
 
@@ -238,17 +239,6 @@ var mountCmd = &cobra.Command{
 			// Fall back to defaults and let components fail if all required env variables are not set.
 			_, err := os.Stat(common.DefaultConfigFilePath)
 			if err != nil && os.IsNotExist(err) {
-				pipeline := []string{"libfuse"}
-				if config.IsSet("streaming") && options.Streaming {
-					pipeline = append(pipeline, "stream")
-				} else {
-					pipeline = append(pipeline, "file_cache")
-				}
-				if !(config.IsSet("attr-cache") && !options.AttrCache) {
-					pipeline = append(pipeline, "attr_cache")
-				}
-				pipeline = append(pipeline, "azstorage")
-				options.Components = pipeline
 				configFileExists = false
 			} else {
 				options.ConfigFile = common.DefaultConfigFilePath
@@ -263,6 +253,65 @@ var mountCmd = &cobra.Command{
 		if err != nil {
 			fmt.Printf("Init error config unmarshall [%s]", err)
 			os.Exit(1)
+		}
+
+		if !configFileExists {
+			pipeline := []string{"libfuse"}
+			if config.IsSet("streaming") && options.Streaming {
+				pipeline = append(pipeline, "stream")
+			} else {
+				pipeline = append(pipeline, "file_cache")
+			}
+			if !(config.IsSet("use-attr-cache") && !options.AttrCache) {
+				pipeline = append(pipeline, "attr_cache")
+			}
+			pipeline = append(pipeline, "azstorage")
+			options.Components = pipeline
+		}
+
+		if config.IsSet("libfuse-options") {
+			allowedFlags := "Mount: error allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
+			// there are only 8 available options for -o so if we have more we should throw
+			if len(options.LibfuseOptions) > 8 {
+				fmt.Print(allowedFlags)
+				os.Exit(1)
+			}
+			for _, v := range options.LibfuseOptions {
+				parameter := strings.Split(v, "=")
+				if len(parameter) > 2 || len(parameter) <= 0 {
+					fmt.Print(allowedFlags)
+					os.Exit(1)
+				}
+				v = strings.TrimSpace(v)
+				if v == "default_permissions" {
+					continue
+				} else if v == "allow_other" || v == "allow_other=true" {
+					config.Set("allow_other", "true")
+				} else if v == "allow_other=false" {
+					config.Set("allow_other", "false")
+				} else if strings.HasPrefix(v, "attr_timeout=") {
+					config.Set("libfuse.attribute-expiration-sec", parameter[1])
+				} else if strings.HasPrefix(v, "entry_timeout=") {
+					config.Set("libfuse.entry-expiration-sec", parameter[1])
+				} else if strings.HasPrefix(v, "negative_timeout=") {
+					config.Set("libfuse.negative-entry-expiration-sec", parameter[1])
+				} else if v == "ro" {
+					config.Set("read_only", "false")
+				} else if v == "allow_root" {
+					config.Set("libfuse.default-permission", "700")
+				} else if strings.HasPrefix(v, "umask=") {
+					permission, err := strconv.ParseUint(parameter[1], 10, 32)
+					if err != nil {
+						fmt.Printf("Mount: %s", err)
+						os.Exit(1)
+					}
+					perm := ^uint32(permission) & 777
+					config.Set("libfuse.default-permission", fmt.Sprint(perm))
+				} else {
+					fmt.Print(allowedFlags)
+					os.Exit(1)
+				}
+			}
 		}
 
 		if !config.IsSet("logging.file-path") {
@@ -544,12 +593,12 @@ func init() {
 	config.BindPFlag("default-working-dir", mountCmd.PersistentFlags().Lookup("default-working-dir"))
 	_ = mountCmd.MarkPersistentFlagDirname("default-working-dir")
 
-	mountCmd.Flags().Bool("streaming", false, "Enable Streaming.")
+	mountCmd.Flags().BoolVar(&options.Streaming, "streaming", false, "Enable Streaming.")
 	config.BindPFlag("streaming", mountCmd.Flags().Lookup("streaming"))
 	mountCmd.Flags().Lookup("streaming").Hidden = true
 
-	mountCmd.Flags().Bool("use-attr-cache", true, "Use attribute caching.")
-	config.BindPFlag("attr-cache", mountCmd.Flags().Lookup("use-attr-cache"))
+	mountCmd.Flags().BoolVar(&options.AttrCache, "use-attr-cache", true, "Use attribute caching.")
+	config.BindPFlag("use-attr-cache", mountCmd.Flags().Lookup("use-attr-cache"))
 	mountCmd.Flags().Lookup("use-attr-cache").Hidden = true
 
 	mountCmd.Flags().Bool("invalidate-on-sync", true, "Invalidate file/dir on sync/fsync.")
@@ -564,8 +613,9 @@ func init() {
 	config.BindPFlag("basic-remount-check", mountCmd.Flags().Lookup("basic-remount-check"))
 	mountCmd.Flags().Lookup("basic-remount-check").Hidden = true
 
-	mountCmd.Flags().StringSliceP("o", "o", []string{}, "FUSE options.")
-	config.BindPFlag("libfuse-options", mountCmd.Flags().ShorthandLookup("o"))
+	mountCmd.PersistentFlags().StringSliceVarP(&options.LibfuseOptions, "o", "o", []string{}, "FUSE options.")
+	config.BindPFlag("libfuse-options", mountCmd.PersistentFlags().ShorthandLookup("o"))
+	mountCmd.PersistentFlags().ShorthandLookup("o").Hidden = true
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)

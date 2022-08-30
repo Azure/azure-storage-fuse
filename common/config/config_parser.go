@@ -306,9 +306,9 @@ func AddStringFlag(name string, value string, usage string) *pflag.Flag {
 	return userOptions.flags.Lookup(name)
 }
 
-func AddStringSlicePFlag(name string, value []string, usage string) *pflag.Flag {
-	userOptions.flags.StringSliceP(name, name, value, usage)
-	return userOptions.flags.Lookup(name)
+func AddStringSlicePFlag(name string, shorthand string, value []string, usage string) *pflag.Flag {
+	userOptions.flags.StringSliceP(name, shorthand, value, usage)
+	return userOptions.flags.ShorthandLookup(name)
 }
 
 func AddIntFlag(name string, value int, usage string) *pflag.Flag {
@@ -368,6 +368,11 @@ func AddUint16Flag(name string, value uint16, usage string) *pflag.Flag {
 
 func AddUint32Flag(name string, value uint32, usage string) *pflag.Flag {
 	userOptions.flags.Uint32(name, value, usage)
+	return userOptions.flags.Lookup(name)
+}
+
+func AddUint32PFlag(name string, shorthand string, value uint32, usage string) *pflag.Flag {
+	userOptions.flags.Uint32P(name, shorthand, value, usage)
 	return userOptions.flags.Lookup(name)
 }
 
