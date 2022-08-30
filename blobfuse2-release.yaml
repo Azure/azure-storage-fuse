@@ -41,7 +41,7 @@ stages:
         strategy:
           matrix:
             Ubuntu-18:
-              vmImage: 'ubuntu-18.04'
+              vmImage: 'ubuntu-20.04'
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
               container: 'test-cnt-ubn-18'
