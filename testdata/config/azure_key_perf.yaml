@@ -10,7 +10,6 @@ components:
   - azstorage
 
 libfuse:
-  allow-other: true
   attribute-expiration-sec: 120
   entry-expiration-sec: 120
   negative-entry-expiration-sec: 240

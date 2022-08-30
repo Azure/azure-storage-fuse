@@ -54,7 +54,7 @@ stages:
       
         - script: |          
             sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-            sudo apt-get install make cmake gcc g++ python3-setuptools python3-pip -y -o Dpkg::Options::="--force-confnew"
+            sudo apt-get install make cmake gcc g++ python3-setuptools python3-pip parallel fio -y -o Dpkg::Options::="--force-confnew"
           displayName: 'Install C and Python libraries'
 
         - script: |          
@@ -128,6 +128,20 @@ stages:
 
             cat results.txt
           displayName: 'Upload Download'
+          workingDirectory: $(WORK_DIR)
+
+        - script: |
+            ./test/scripts/git_clone.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+
+            cat results_git_clone.txt
+          displayName: 'Git Clone'
+          workingDirectory: $(WORK_DIR)
+
+        - script: |
+            ./test/scripts/fio.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+
+            cat results_fio.txt
+          displayName: 'FIO'
           workingDirectory: $(WORK_DIR)
 
         
