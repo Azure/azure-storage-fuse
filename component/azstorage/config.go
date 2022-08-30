@@ -35,6 +35,7 @@ package azstorage
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 
@@ -284,9 +285,18 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	az.stConfig.container = opt.Container
 
+	if config.IsSet(compName + ".use-https") {
+		opt.UseHTTP = !opt.UseHTTPS
+	}
+
 	// Validate endpoint
 	if opt.Endpoint == "" {
-		return errors.New("account endpoint not provided")
+		log.Warn("ParseAndValidateConfig : account endpoint not provided, assuming the default .core.windows.net style endpoint")
+		if az.stConfig.authConfig.AccountType == EAccountType.BLOCK() {
+			opt.Endpoint = fmt.Sprintf("%s.blob.core.windows.net", opt.AccountName)
+		} else if az.stConfig.authConfig.AccountType == EAccountType.ADLS() {
+			opt.Endpoint = fmt.Sprintf("%s.dfs.core.windows.net", opt.AccountName)
+		}
 	}
 	az.stConfig.authConfig.Endpoint = opt.Endpoint
 	az.stConfig.authConfig.Endpoint = formatEndPoint(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
@@ -304,9 +314,6 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	httpsProxyProvided := opt.HttpsProxyAddress != ""
 
 	// Set whether to use http or https and proxy
-	if config.IsSet(compName + ".use-https") {
-		opt.UseHTTP = !opt.UseHTTPS
-	}
 	if opt.UseHTTP {
 		az.stConfig.authConfig.UseHTTP = true
 		if httpProxyProvided {
