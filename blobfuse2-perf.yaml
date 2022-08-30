@@ -34,9 +34,9 @@ stages:
         - name: TEMP_DIR
           value: "/home/vsts/workv2/blobfuse2tmp"
         - name: BLOBFUSE2_CFG
-          value: "/home/tamer/blobfuse2_manual_perf.yaml"
+          value: "$(System.DefaultWorkingDirectory)/blobfuse2_manual_perf.yaml"
         - name: BLOBFUSE_CFG
-          value: "/home/tamer/blobfuse_manual_perf.cfg"
+          value: "$(System.DefaultWorkingDirectory)/blobfuse_manual_perf.cfg"
         - name: GOPATH
           value: "/home/vsts/workv2/go"
         - name: ROOT_DIR
@@ -103,7 +103,6 @@ stages:
 
         - script: |
             cd $(WORK_DIR)
-            touch $(BLOBFUSE2_CFG)
             $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_perf.yaml --container-name=cont1 --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
             cat $(BLOBFUSE2_CFG)
           displayName: "Generate v2 Config File"
