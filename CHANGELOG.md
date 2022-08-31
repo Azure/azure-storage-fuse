@@ -4,7 +4,7 @@
 - Added support for displaying mount space utilization based on file cache consumption (for example when doing `df`)
 - Added support for updating MD5 sum on file upload
 - Added support for validating MD5 sum on download
-- Added support to enable writeback cache for read only workloads and user configurable for read-write workloads. 
+- Added support to allow disabling writeback cache if a customer is opening a file with O_APPEND. 
 
 **Bug Fixes**
 - Fixed a bug in parsing output of disk utilization summary
