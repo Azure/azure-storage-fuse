@@ -132,12 +132,12 @@ stages:
         #   displayName: 'Upload Download'
         #   workingDirectory: $(WORK_DIR)
 
-        - script: |
-            ./test/scripts/git_clone.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+        # - script: |
+        #     ./test/scripts/git_clone.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
 
-            cat results_git_clone.txt
-          displayName: 'Git Clone'
-          workingDirectory: $(WORK_DIR)
+        #     cat results_git_clone.txt
+        #   displayName: 'Git Clone'
+        #   workingDirectory: $(WORK_DIR)
 
         - script: |
             ./test/scripts/fio.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
