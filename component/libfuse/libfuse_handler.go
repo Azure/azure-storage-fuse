@@ -618,11 +618,11 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		fi.flags = fi.flags &^ C.__O_DIRECT
 	}
 	if !fuseFS.disableWritebackCache {
-		// if fi.flags&C.O_ACCMODE == O_WRONLY {
-		// 	log.Err("Libfuse::libfuse_open : Unsupported flag O_WRONLY (%X) for open %s when write back cache is on. Replacing O_WRONLY with O_RDWR.", fi.flags, name)
-		// 	fi.flags = fi.flags &^ C.O_ACCMODE
-		// 	fi.flags = fi.flags | C.O_RDWR
-		// }
+		if fi.flags&C.O_ACCMODE == C.O_WRONLY {
+			log.Debug("Libfuse::libfuse_open : Flag O_WRONLY (%X) for open %s when write back cache is on.", fi.flags, name)
+			// 	fi.flags = fi.flags &^ C.O_ACCMODE
+			// 	fi.flags = fi.flags | C.O_RDWR
+		}
 
 		if fi.flags&C.O_APPEND != 0 {
 			log.Err("Libfuse::libfuse_open : Unsupported flag O_APPEND (%X) for open %s when write back cache is on. Pass --disable-writeback-cache via CLI or libfuse.disable-writeback-cache: true via config file", fi.flags, name)
