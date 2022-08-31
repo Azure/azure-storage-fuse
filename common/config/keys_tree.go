@@ -240,7 +240,6 @@ func (tree *Tree) MergeWithKey(key string, obj interface{}, getValue func(val in
 				} else if elem.Field(i).Type().Kind() == reflect.Ptr {
 					subKey := key + "." + idx
 					tree.MergeWithKey(subKey, elem.Field(i).Elem().Addr().Interface(), getValue)
-
 				} else {
 					val, ok := getValue(subTree.children[idx].value)
 					if ok {

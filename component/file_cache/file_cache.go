@@ -97,6 +97,10 @@ type FileCacheOptions struct {
 
 	EnablePolicyTrace bool `config:"policy-trace" yaml:"policy-trace,omitempty"`
 	OffloadIO         bool `config:"offload-io" yaml:"offload-io,omitempty"`
+
+	// v1 support
+	V1Timeout     uint32 `config:"file-cache-timeout-in-seconds"`
+	EmptyDirCheck bool   `config:"empty-dir-check"`
 }
 
 const (
@@ -200,12 +204,18 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	c.createEmptyFile = conf.CreateEmptyFile
-	if config.IsSet(compName + ".timeout-sec") {
+	if config.IsSet(compName + ".file-cache-timeout-in-seconds") {
+		c.cacheTimeout = float64(conf.V1Timeout)
+	} else if config.IsSet(compName + ".timeout-sec") {
 		c.cacheTimeout = float64(conf.Timeout)
 	} else {
 		c.cacheTimeout = float64(defaultFileCacheTimeout)
 	}
-	c.allowNonEmpty = conf.AllowNonEmpty
+	if config.IsSet(compName + ".empty-dir-check") {
+		c.allowNonEmpty = !conf.EmptyDirCheck
+	} else {
+		c.allowNonEmpty = conf.AllowNonEmpty
+	}
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
@@ -266,6 +276,16 @@ func (c *FileCache) Configure(_ bool) error {
 	if c.policy == nil {
 		log.Err("FileCache::Configure : failed to create cache eviction policy")
 		return fmt.Errorf("config error in %s [%s]", c.Name(), "failed to create cache policy")
+	}
+
+	if config.IsSet(compName + ".background-download") {
+		log.Warn("unsupported v1 CLI parameter: background-download is not supported in blobfuse2. Consider using the streaming component.")
+	}
+	if config.IsSet(compName + ".cache-poll-timeout-msec") {
+		log.Warn("unsupported v1 CLI parameter: cache-poll-timeout-msec is not supported in blobfuse2. Polling occurs every timeout interval.")
+	}
+	if config.IsSet(compName + ".upload-modified-only") {
+		log.Warn("unsupported v1 CLI parameter: upload-modified-only is always true in blobfuse2.")
 	}
 
 	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d",
@@ -1353,11 +1373,15 @@ func NewFileCacheComponent() internal.Component {
 func init() {
 	internal.AddComponent(compName, NewFileCacheComponent)
 
+	tmpPathFlag := config.AddStringFlag("tmp-path", "", "configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
+	config.BindPFlag(compName+".path", tmpPathFlag)
+
 	fileCacheTimeout := config.AddUint32Flag("file-cache-timeout", defaultFileCacheTimeout, "file cache timeout")
 	config.BindPFlag(compName+".timeout-sec", fileCacheTimeout)
 
-	tmpPathFlag := config.AddStringFlag("tmp-path", "", "configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
-	config.BindPFlag(compName+".path", tmpPathFlag)
+	fileCacheTimeoutSec := config.AddUint32Flag("file-cache-timeout-in-seconds", defaultFileCacheTimeout, "file cache timeout")
+	config.BindPFlag(compName+".file-cache-timeout-in-seconds", fileCacheTimeoutSec)
+	fileCacheTimeoutSec.Hidden = true
 
 	cacheSizeMB := config.AddUint32Flag("cache-size-mb", 0, "max size in MB that file-cache can occupy on local disk for caching")
 	config.BindPFlag(compName+".max-size-mb", cacheSizeMB)
@@ -1367,6 +1391,26 @@ func init() {
 
 	lowThreshold := config.AddUint32Flag("low-disk-threshold", 80, "percentage of cache utilization which stops early eviction started by high-disk-threshold")
 	config.BindPFlag(compName+".low-threshold", lowThreshold)
+
+	maxEviction := config.AddUint32Flag("max-eviction", 0, "Number of files to be evicted from cache at once.")
+	config.BindPFlag(compName+".max-eviction", maxEviction)
+	maxEviction.Hidden = true
+
+	emptyDirCheck := config.AddBoolFlag("empty-dir-check", false, "Disallows remounting using a non-empty tmp-path.")
+	config.BindPFlag(compName+".empty-dir-check", emptyDirCheck)
+	emptyDirCheck.Hidden = true
+
+	backgroundDownload := config.AddBoolFlag("background-download", false, "File download to run in the background on open call.")
+	config.BindPFlag(compName+".background-download", backgroundDownload)
+	backgroundDownload.Hidden = true
+
+	cachePollTimeout := config.AddUint64Flag("cache-poll-timeout-msec", 0, "Time in milliseconds in order to poll for possible expired files awaiting cache eviction.")
+	config.BindPFlag(compName+".cache-poll-timeout-msec", cachePollTimeout)
+	cachePollTimeout.Hidden = true
+
+	uploadModifiedOnly := config.AddBoolFlag("upload-modified-only", false, "Flag to turn off unnecessary uploads to storage.")
+	config.BindPFlag(compName+".upload-modified-only", uploadModifiedOnly)
+	uploadModifiedOnly.Hidden = true
 
 	config.RegisterFlagCompletionFunc("tmp-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault

@@ -245,6 +245,10 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [invalid config settings]", lf.Name())
 	}
 
+	if config.IsSet(compName + ".ignore-open-flags") {
+		log.Warn("unsupported v1 CLI parameter: ignore-open-flags is always true in blobfuse2.")
+	}
+
 	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d",
 		lf.readOnly, lf.allowOther, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout)
 
@@ -283,4 +287,12 @@ func init() {
 
 	disableWritebackCache := config.AddBoolFlag("disable-writeback-cache", false, "Disallow libfuse to buffer write requests.")
 	config.BindPFlag(compName+".disable-writeback-cache", disableWritebackCache)
+
+	debug := config.AddBoolPFlag("d", false, "Mount with foreground and FUSE logs on.")
+	config.BindPFlag(compName+".fuse-trace", debug)
+	debug.Hidden = true
+
+	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", false, "Ignore unsupported open flags by blobfuse.")
+	config.BindPFlag(compName+".ignore-open-flags", ignoreOpenFlags)
+	ignoreOpenFlags.Hidden = true
 }
