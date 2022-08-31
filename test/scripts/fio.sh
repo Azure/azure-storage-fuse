@@ -21,8 +21,8 @@ echo "| Average |" >> $outputPath
 echo "| % Diff |" >> $outputPath
 
 sudo fusermount3 -u $mntPath
-rm -rf $mntPath/testfile4G
-rm -rf $tmpPath/testfile4G
+rm -rf $mntPath/*
+rm -rf $tmpPath/*
 
 sed_line=3
 blobfuse2_write_average=0
