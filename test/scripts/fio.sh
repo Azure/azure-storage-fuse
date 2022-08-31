@@ -52,6 +52,7 @@ do
 
 	sed -i "${sed_line}s/$/ ${write_iops} | ${read_iops} |/" $outputPath
 
+    ls -la $mntPath
 	rm $mntPath/testfile4G
 	sudo fusermount3 -u $mntPath
 
@@ -67,8 +68,12 @@ for i in {1..5};
 do 
 	echo "Blobfuse Run $i"
 	blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
 	sleep 3
-	rm -rf $mntPath/*
+    ps -aux | grep blobfuse2
+	rm $mntPath/testfile4G
 
     fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=$mntPath/testfile4G)
     read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
@@ -82,7 +87,8 @@ do
 
 	sed -i "${sed_line}s/$/ ${write_iops} | ${read_iops} |/" $outputPath
 
-	rm -rf $mntPath/*
+    ls -la $mntPath
+	rm $mntPath/testfile4G
 	sudo fusermount3 -u $mntPath
 
 	(( sed_line++ ))
