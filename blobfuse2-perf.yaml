@@ -138,8 +138,6 @@ stages:
         #   workingDirectory: $(WORK_DIR)
 
         - script: |
-            sudo rm -rf $(MOUNT_DIR)
-            sudo rm -rf $(TEMP_DIR)
             chmod 777 ./test/scripts/fio.sh
             ./test/scripts/fio.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
 
