@@ -21,8 +21,8 @@ echo "| Average |" >> $outputPath
 echo "| % Diff |" >> $outputPath
 
 sudo fusermount3 -u $mntPath
-rm -rf $mntPath/*
-rm -rf $tmpPath/*
+rm -rf $mntPath/testfile4G
+rm -rf $tmpPath/testfile4G
 
 sed_line=3
 blobfuse2_write_average=0
@@ -32,7 +32,7 @@ do
 	echo "Blobfuse2 Run $i"
 	./blobfuse2 mount $mntPath --config-file=$v2configPath &
 	sleep 3
-	rm -rf $mntPath/*
+	rm $mntPath/testfile4G
 
     fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=$mntPath/testfile4G)
     read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
@@ -46,7 +46,7 @@ do
 
 	sed -i "${sed_line}s/$/ ${write_iops} | ${read_iops} |/" $outputPath
 
-	rm -rf $mntPath/*
+	rm  $mntPath/testfile4G
 	sudo fusermount3 -u $mntPath
 
 	(( sed_line++ ))
