@@ -87,6 +87,7 @@ To learn about a specific command, just include the name of the command (For exa
 
 <!---TODO Add Usage for mount, unmount, etc--->
 ## CLI parameters
+- Note: Blobfuse2 accepts all CLI parameters that Blobfuse does, but may ignore parameters that are no longer applicable. 
 - General options
     * `--config-file=<PATH>`: The path to the config file.
     * `--log-level=<LOG_*>`: The level of logs to capture.
