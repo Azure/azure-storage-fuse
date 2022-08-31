@@ -66,12 +66,12 @@ blobfuse_average=0
 for i in {1..3}; 
 do 
 	echo "Blobfuse Run $i"
-	./blobfuse2 mount $mntPath --config-file=$v2config	blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR -o allow_other --file-cache-timeout-in-seconds=0 --use-attr-cache=true
+	blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
 	if [ $? -ne 0 ]; then
         exit 1
     fi
 	sleep 3
-    ps -aux | grep blobfuse2
+    ps -aux | grep blobfuse
 	rm -rf $mntPath/vscode
 
 	start_time=`date +%s`
