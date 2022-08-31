@@ -41,6 +41,7 @@ do
 	rm $mntPath/testfile4G
 
     fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=$mntPath/testfile4G)
+    echo $fio_result
     read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
     read_iops=$(echo $read_iops | tr '[:lower:]' '[:upper:]')
     read_iops=$(echo $read_iops | numfmt --from=si)
@@ -72,10 +73,11 @@ do
         exit 1
     fi
 	sleep 3
-    ps -aux | grep blobfuse2
+    ps -aux | grep blobfuse
 	rm $mntPath/testfile4G
 
     fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=$mntPath/testfile4G)
+    echo $fio_result
     read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
     read_iops=$(echo $read_iops | tr '[:lower:]' '[:upper:]')
     read_iops=$(echo $read_iops | numfmt --from=si)
