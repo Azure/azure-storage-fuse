@@ -280,4 +280,7 @@ func init() {
 
 	allowOther := config.AddBoolFlag("allow-other", false, "Allow other users to access this mount point.")
 	config.BindPFlag("allow-other", allowOther)
+
+	disableWritebackCache := config.AddBoolFlag("disable-writeback-cache", false, "Disallow libfuse to buffer write requests.")
+	config.BindPFlag(compName+".disable-writeback-cache", disableWritebackCache)
 }

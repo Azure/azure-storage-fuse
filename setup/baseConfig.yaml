@@ -38,7 +38,7 @@ libfuse:
   negative-entry-expiration-sec: <time kernel can cache attributes of non existent paths (in sec). Default - 120 sec>
   fuse-trace: true|false <enable libfuse api trace logs for debugging>
   extension: <physical path to extension library>
-  disable-writeback-cache: true|false <disallow libfuse to buffer write requests when a customer opens a file with O_APPEND>
+  disable-writeback-cache: true|false <disallow libfuse to buffer write requests>
  
   # Streaming configuration
 stream:
