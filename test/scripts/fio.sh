@@ -23,6 +23,8 @@ echo "| % Diff |" >> $outputPath
 sudo fusermount3 -u $mntPath
 rm -rf $mntPath/*
 rm -rf $tmpPath/*
+ls -la $mntPath
+ls -la $tmpPath
 
 sed_line=3
 blobfuse2_write_average=0
