@@ -54,7 +54,7 @@ stages:
       
         - script: |          
             sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-            sudo apt-get install fuse fuse3 make cmake gcc g++ python3-setuptools python3-pip parallel fio -y -o Dpkg::Options::="--force-confnew"
+            sudo apt-get install fuse3 make cmake gcc g++ python3-setuptools python3-pip parallel fio -y -o Dpkg::Options::="--force-confnew"
           displayName: 'Install libraries'
 
         - script: |          
