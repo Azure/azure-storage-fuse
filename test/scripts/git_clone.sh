@@ -21,8 +21,10 @@ echo "| Average |" >> $outputPath
 echo "| % Diff |" >> $outputPath
 
 sudo fusermount3 -u $mntPath
-rm -rf $mntPath/*
-sudo rm -rf $tmpPath/*
+rm -rf $mntPath
+rm -rf $tmpPath
+mkdir -p $mntPath
+mkdir -p $tmpPath
 
 sed_line=3
 blobfuse2_average=0
@@ -30,8 +32,12 @@ for i in {1..3};
 do 
 	echo "Blobfuse2 Run $i"
 	./blobfuse2 mount $mntPath --config-file=$v2configPath &
+	if [ $? -ne 0 ]; then
+        exit 1
+    fi
 	sleep 3
-	rm -rf $mntPath/*
+    ps -aux | grep blobfuse2
+	rm -rf $mntPath/vscode
 
 	start_time=`date +%s`
 	time git clone https://github.com/microsoft/vscode.git $mntPath/vscode
@@ -46,11 +52,13 @@ do
 	echo $time_diff
 	sed -i "${sed_line}s/$/ ${time_diff} |/" $outputPath
 
-	rm -rf $mntPath/*
+	ls -la $mntPath
+	rm -rf $mntPath/vscode
 	sudo fusermount3 -u $mntPath
 
 	(( sed_line++ ))
 	blobfuse2_average=$(( $blobfuse2_average + $time_diff ))
+	echo "========================================================="
 done
 
 sed_line=3
@@ -58,9 +66,13 @@ blobfuse_average=0
 for i in {1..3}; 
 do 
 	echo "Blobfuse Run $i"
-	blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR -o allow_other --file-cache-timeout-in-seconds=0 --use-attr-cache=true --max-concurrency=32
+	./blobfuse2 mount $mntPath --config-file=$v2config	blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR -o allow_other --file-cache-timeout-in-seconds=0 --use-attr-cache=true
+	if [ $? -ne 0 ]; then
+        exit 1
+    fi
 	sleep 3
-	rm -rf $mntPath/*
+    ps -aux | grep blobfuse2
+	rm -rf $mntPath/vscode
 
 	start_time=`date +%s`
 	time git clone https://github.com/microsoft/vscode.git $mntPath/vscode
@@ -75,11 +87,13 @@ do
 	echo $time_diff
 	sed -i "${sed_line}s/$/ ${time_diff} |/" $outputPath
 
-	rm -rf $mntPath/*
+	ls -la $mntPath
+	rm -rf $mntPath/vscode
 	sudo fusermount3 -u $mntPath
 
 	(( sed_line++ ))
 	blobfuse_average=$(( $blobfuse_average + $time_diff ))
+	echo "========================================================="
 done
 blobfuse2_average=$(( $blobfuse2_average / 3 ))
 blobfuse_average=$(( $blobfuse_average / 3 ))

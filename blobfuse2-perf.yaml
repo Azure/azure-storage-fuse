@@ -129,20 +129,27 @@ stages:
         #     cat results.txt
         #   displayName: 'Upload Download'
         #   workingDirectory: $(WORK_DIR)
+        - script: |
+            chmod 777 ./test/scripts/git_clone.sh
+            ./test/scripts/git_clone.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
 
-        # - script: |
-        #     ./test/scripts/git_clone.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+          displayName: 'Git Clone'
+          workingDirectory: $(WORK_DIR)
 
-        #     cat results_git_clone.txt
-        #   displayName: 'Git Clone'
-        #   workingDirectory: $(WORK_DIR)
+        - script: |
+            cat results_git_clone.txt
+          displayName: 'Git Clone Results'
+          workingDirectory: $(WORK_DIR)
 
         - script: |
             chmod 777 ./test/scripts/fio.sh
             ./test/scripts/fio.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
-
-            cat results_fio.txt
           displayName: 'FIO'
+          workingDirectory: $(WORK_DIR)
+
+        - script: |
+            cat results_fio.txt
+          displayName: 'FIO Results'
           workingDirectory: $(WORK_DIR)
 
         

@@ -60,6 +60,7 @@ do
 	(( sed_line++ ))
     blobfuse2_write_average=$(( $blobfuse2_write_average + $write_iops ))
     blobfuse2_read_average=$(( $blobfuse2_read_average + $read_iops ))
+    echo "========================================================="
 done
 
 sed_line=3
@@ -96,6 +97,7 @@ do
 	(( sed_line++ ))
     blobfuse_write_average=$(( $blobfuse_write_average + $write_iops ))
     blobfuse_read_average=$(( $blobfuse_read_average + $read_iops ))
+    echo "========================================================="
 done
 
 blobfuse2_write_average=$(( $blobfuse2_write_average / 5 ))
