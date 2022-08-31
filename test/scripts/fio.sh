@@ -33,7 +33,11 @@ for i in {1..5};
 do 
 	echo "Blobfuse2 Run $i"
 	./blobfuse2 mount $mntPath --config-file=$v2configPath &
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
 	sleep 3
+    ps -aux | grep blobfuse2
 	rm $mntPath/testfile4G
 
     fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=$mntPath/testfile4G)
