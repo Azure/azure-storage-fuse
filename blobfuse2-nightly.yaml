@@ -1157,6 +1157,8 @@ stages:
               value: "/usr/pipeline/workv2/temp"
             - name: BLOBFUSE2_CFG
               value: "/usr/pipeline/workv2/blobfuse2.yaml"
+            - name: BLOBFUSE2_STREAM_CFG
+              value: "/usr/pipeline/workv2/blobfuse2_stream.yaml"
             - name: BLOBFUSE2_ADLS_CFG
               value: "/home/vsts/workv2/blobfuse2.adls.yaml"
             - name: GOPATH
@@ -1172,12 +1174,14 @@ stages:
                 temp_dir: $(TEMP_DIR)
                 mount_dir: $(MOUNT_DIR)
                 config_path: $(BLOBFUSE2_CFG)
+                stream_config: $(BLOBFUSE2_STREAM_CFG)
                 container: $(ContainerName)
                 blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
                 blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
                 adls_account_name: $(AZTEST_ADLS_ACC_NAME)
                 adls_account_key: $(AZTEST_ADLS_KEY)
                 distro_name: $(AgentName)
+                test_stream: true
                 quick_test: false
                 clone: true
                 gopath: $(GOPATH)
