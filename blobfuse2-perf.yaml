@@ -66,6 +66,8 @@ stages:
             sudo fusermount3 -u $(MOUNT_DIR)
             sudo kill -9 `pidof blobfuse2`
             sudo rm -rf $(ROOT_DIR)
+            sudo rm -rf $(MOUNT_DIR)
+            sudo rm -rf $(TEMP_DIR)
           displayName: 'PreBuild Cleanup'
 
         # Create directory structure
