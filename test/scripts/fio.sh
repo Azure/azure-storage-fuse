@@ -23,8 +23,6 @@ echo "| % Diff |" >> $outputPath
 sudo fusermount3 -u $mntPath
 rm -rf $mntPath/*
 rm -rf $tmpPath/*
-ls -la $mntPath
-ls -la $tmpPath
 
 sed_line=3
 blobfuse2_write_average=0
@@ -32,6 +30,8 @@ blobfuse2_read_average=0
 for i in {1..5}; 
 do 
 	echo "Blobfuse2 Run $i"
+    ls -la $mntPath
+    ls -la $tmpPath
 	./blobfuse2 mount $mntPath --config-file=$v2configPath &
 	sleep 3
 	rm $mntPath/testfile4G
@@ -48,7 +48,7 @@ do
 
 	sed -i "${sed_line}s/$/ ${write_iops} | ${read_iops} |/" $outputPath
 
-	rm  $mntPath/testfile4G
+	rm $mntPath/testfile4G
 	sudo fusermount3 -u $mntPath
 
 	(( sed_line++ ))
