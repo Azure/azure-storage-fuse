@@ -627,7 +627,11 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		if fi.flags&C.O_APPEND != 0 {
 			log.Err("Libfuse::libfuse_open : Unsupported flag O_APPEND (%X) for open %s when write back cache is on. Pass --disable-writeback-cache via CLI or libfuse.disable-writeback-cache: true via config file", fi.flags, name)
 			// TODO: Potentially add a configuration option to support "unreliable append"
-			return -C.EINVAL
+			if fuseFS.ignoreAppendFlag {
+				fi.flags = fi.flags &^ C.O_APPEND
+			} else {
+				return -C.EINVAL
+			}
 		}
 	}
 

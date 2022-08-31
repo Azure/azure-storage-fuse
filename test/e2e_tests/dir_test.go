@@ -450,7 +450,7 @@ func (suite *dirTestSuite) TestGitStash() {
 		new_info, err := f.Stat()
 		suite.Equal(nil, err)
 		suite.EqualValues(info.Size()+10, new_info.Size())
-		data := make([]byte, 10, 10)
+		data := make([]byte, 10)
 		n, err := f.ReadAt(data, info.Size())
 		suite.Equal(nil, err)
 		suite.EqualValues(10, n)

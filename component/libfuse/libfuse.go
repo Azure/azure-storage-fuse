@@ -67,6 +67,7 @@ type Libfuse struct {
 	traceEnable           bool
 	extensionPath         string
 	disableWritebackCache bool
+	ignoreAppendFlag      bool
 	lsFlags               common.BitMap16
 }
 
@@ -91,6 +92,7 @@ type LibfuseOptions struct {
 	readOnly                bool   `config:"read-only"`
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
 	DisableWritebackCache   bool   `config:"disable-writeback-cache"`
+	IgnoreAppendFlag        bool   `config:"ignore-append-flag"`
 }
 
 const compName = "libfuse"
@@ -166,6 +168,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.allowOther = opt.allowOther
 	lf.extensionPath = opt.ExtensionPath
 	lf.disableWritebackCache = opt.DisableWritebackCache
+	lf.ignoreAppendFlag = opt.IgnoreAppendFlag
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
