@@ -21,8 +21,10 @@ echo "| Average |" >> $outputPath
 echo "| % Diff |" >> $outputPath
 
 sudo fusermount3 -u $mntPath
-rm -rf $mntPath/*
-rm -rf $tmpPath/*
+rm -rf $mntPath
+rm -rf $tmpPath
+mkdir -p $mntPath
+mkdir -p $tmpPath
 
 sed_line=3
 blobfuse2_write_average=0
@@ -30,8 +32,6 @@ blobfuse2_read_average=0
 for i in {1..5}; 
 do 
 	echo "Blobfuse2 Run $i"
-    ls -la $mntPath
-    ls -la $tmpPath
 	./blobfuse2 mount $mntPath --config-file=$v2configPath &
 	sleep 3
 	rm $mntPath/testfile4G
