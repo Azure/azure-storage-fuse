@@ -13,6 +13,7 @@ libfuse:
   attribute-expiration-sec: 0
   entry-expiration-sec: 0
   negative-entry-expiration-sec: 0
+  ignore-open-flag: true
 
 file_cache:
   path: { 1 }
