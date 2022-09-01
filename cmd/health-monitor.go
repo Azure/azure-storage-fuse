@@ -151,7 +151,7 @@ func buildCliParamForMonitor() []string {
 		cliParams = append(cliParams, fmt.Sprintf("--output-path=%v", options.MonitorOpt.OutputPath))
 	}
 
-	cliParams = append(cliParams, "--cache-path="+cacheMonitorOptions.TmpPath)
+	cliParams = append(cliParams, "--cache-path="+common.ExpandPath(cacheMonitorOptions.TmpPath))
 	cliParams = append(cliParams, fmt.Sprintf("--max-size-mb=%v", cacheMonitorOptions.MaxSizeMB))
 
 	for _, v := range options.MonitorOpt.DisableList {
