@@ -67,7 +67,7 @@ type Libfuse struct {
 	traceEnable           bool
 	extensionPath         string
 	disableWritebackCache bool
-	ignoreAppendFlag      bool
+	ignoreOpenFlag        bool
 	lsFlags               common.BitMap16
 }
 
@@ -92,7 +92,7 @@ type LibfuseOptions struct {
 	readOnly                bool   `config:"read-only"`
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
 	DisableWritebackCache   bool   `config:"disable-writeback-cache"`
-	IgnoreAppendFlag        bool   `config:"ignore-append-flag"`
+	IgnoreOpenFlag          bool   `config:"ignore-open-flag"`
 }
 
 const compName = "libfuse"
@@ -168,7 +168,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.allowOther = opt.allowOther
 	lf.extensionPath = opt.ExtensionPath
 	lf.disableWritebackCache = opt.DisableWritebackCache
-	lf.ignoreAppendFlag = opt.IgnoreAppendFlag
+	lf.ignoreOpenFlag = opt.IgnoreOpenFlag
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
@@ -248,10 +248,6 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [invalid config settings]", lf.Name())
 	}
 
-	if config.IsSet(compName + ".ignore-open-flags") {
-		log.Warn("unsupported v1 CLI parameter: ignore-open-flags is always true in blobfuse2.")
-	}
-
 	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d",
 		lf.readOnly, lf.allowOther, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout)
 
@@ -288,11 +284,8 @@ func init() {
 	allowOther := config.AddBoolFlag("allow-other", false, "Allow other users to access this mount point.")
 	config.BindPFlag("allow-other", allowOther)
 
-	disableWritebackCache := config.AddBoolFlag("disable-writeback-cache", false, "Disallow libfuse to buffer write requests if you must strictly open files in WR_ONLY or O_APPEND mode.")
+	disableWritebackCache := config.AddBoolFlag("disable-writeback-cache", false, "Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.")
 	config.BindPFlag(compName+".disable-writeback-cache", disableWritebackCache)
-
-	ignoreAppendFlag := config.AddBoolFlag("ignore-append-flag", false, "Ignore the append flag since O_APPEND is not supported with writeback caching.")
-	config.BindPFlag(compName+".ignore-append-flag", ignoreAppendFlag)
 
 	debug := config.AddBoolPFlag("d", false, "Mount with foreground and FUSE logs on.")
 	config.BindPFlag(compName+".fuse-trace", debug)
@@ -300,5 +293,4 @@ func init() {
 
 	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", false, "Ignore unsupported open flags by blobfuse.")
 	config.BindPFlag(compName+".ignore-open-flags", ignoreOpenFlags)
-	ignoreOpenFlags.Hidden = true
 }

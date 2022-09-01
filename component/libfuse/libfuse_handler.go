@@ -618,18 +618,14 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		fi.flags = fi.flags &^ C.__O_DIRECT
 	}
 	if !fuseFS.disableWritebackCache {
-		if fi.flags&C.O_ACCMODE == C.O_WRONLY {
-			log.Debug("Libfuse::libfuse_open : Flag O_WRONLY (%X) for open %s when write back cache is on.", fi.flags, name)
-			// 	fi.flags = fi.flags &^ C.O_ACCMODE
-			// 	fi.flags = fi.flags | C.O_RDWR
-		}
-
-		if fi.flags&C.O_APPEND != 0 {
-			log.Err("Libfuse::libfuse_open : Unsupported flag O_APPEND (%X) for open %s when write back cache is on. Pass --disable-writeback-cache via CLI or libfuse.disable-writeback-cache: true via config file", fi.flags, name)
-			if fuseFS.ignoreAppendFlag {
-				fi.flags = fi.flags &^ (C.O_APPEND | C.O_WRONLY | C.O_RDONLY)
+		if fi.flags&C.O_ACCMODE == C.O_WRONLY || fi.flags&C.O_APPEND != 0 {
+			if fuseFS.ignoreOpenFlag {
+				log.Warn("Libfuse::libfuse_open : Flag (%X) not supported %s when write back cache is on. Ignoring unsupported flags.", fi.flags, name)
+				// O_ACCMODE disables both RDONLY, WRONLY and RDWR flags
+				fi.flags = fi.flags &^ (C.O_APPEND | C.O_ACCMODE)
 				fi.flags = fi.flags | C.O_RDWR
 			} else {
+				log.Err("Libfuse::libfuse_open : Flag (%X) not supported %s when write back cache is on. Pass --disable-writeback-cache or --ignore-open-flag via CLI", fi.flags, name)
 				return -C.EINVAL
 			}
 		}

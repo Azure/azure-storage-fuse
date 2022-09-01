@@ -287,9 +287,9 @@ func testOpenAppendFlagDisableWritebackCache(suite *libfuseTestSuite) {
 func testOpenAppendFlagIgnoreAppendFlag(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default libfuse generated
-	config := "libfuse:\n  ignore-append-flag: true\n"
+	config := "libfuse:\n  ignore-open-flag: true\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
-	suite.assert.True(suite.libfuse.ignoreAppendFlag)
+	suite.assert.True(suite.libfuse.ignoreOpenFlag)
 
 	name := "path"
 	path := C.CString("/" + name)
@@ -314,6 +314,15 @@ func testOpenAppendFlagIgnoreAppendFlag(suite *libfuseTestSuite) {
 	err = libfuse_open(path, info)
 	suite.assert.Equal(C.int(0), err)
 	suite.assert.Equal(C.int(0), info.flags&C.O_APPEND)
+
+	flags = C.O_RDWR & 0xffffffff
+	info = &C.fuse_file_info_t{}
+	info.flags = C.O_WRONLY
+	options = internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
+	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+
+	err = libfuse_open(path, info)
+	suite.assert.Equal(C.int(0), err)
 }
 
 func testOpenNotExists(suite *libfuseTestSuite) {
