@@ -305,7 +305,7 @@ func testOpenAppendFlagIgnoreAppendFlag(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), err)
 	suite.assert.Equal(C.int(0), info.flags&C.O_APPEND)
 
-	flags = C.O_WRONLY & 0xffffffff
+	flags = C.O_RDWR & 0xffffffff
 	info = &C.fuse_file_info_t{}
 	info.flags = C.O_WRONLY | C.O_APPEND
 	options = internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
