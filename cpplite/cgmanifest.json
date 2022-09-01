@@ -1,31 +1,33 @@
-{"Registrations":[ 
-  {
-    "component": {
-      "type": "git",
-      "git": {
-        "repositoryUrl": "https://github.com/nlohmann/json",
-        "commitHash": "e7b3b40b5a95bc74b9a7f662830a27c49ffc01b4"
+{
+  "$schema": "https://json.schemastore.org/component-detection-manifest.json",
+  "Registrations": [
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/nlohmann/json",
+          "commitHash": "e7b3b40b5a95bc74b9a7f662830a27c49ffc01b4"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/leethomason/tinyxml2",
+          "commitHash": "9c740e8d2341bd46dbe8e87053cdb4d931971967"
+        }
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "repositoryUrl": "https://github.com/microsoft/cpprestsdk",
+          "commitHash": "18212a2a7967e12d740bfb957e500892b3463c88"
+        }
       }
     }
-  },
-  {
-    "component": {
-      "type": "git",
-      "git": {
-        "repositoryUrl": "https://github.com/leethomason/tinyxml2",
-        "commitHash": "9c740e8d2341bd46dbe8e87053cdb4d931971967"
-      }
-    }
-  },
-  {
-    "component": {
-      "type": "git",
-      "git": {
-        "repositoryUrl": "https://github.com/microsoft/cpprestsdk",
-        "commitHash": "18212a2a7967e12d740bfb957e500892b3463c88"
-      }
-    }
-  }
-],
-"Version": 1
+  ],
+  "Version": 1
 }
