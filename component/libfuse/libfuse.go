@@ -291,6 +291,6 @@ func init() {
 	config.BindPFlag(compName+".fuse-trace", debug)
 	debug.Hidden = true
 
-	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", false, "Ignore unsupported open flags by blobfuse.")
+	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", false, "Ignore unsupported open flags (APPEND, WRONLY) by blobfuse when writeback caching is enabled.")
 	config.BindPFlag(compName+".ignore-open-flags", ignoreOpenFlags)
 }
