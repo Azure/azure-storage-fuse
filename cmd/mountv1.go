@@ -152,29 +152,32 @@ var generateConfigCmd = &cobra.Command{
 		if len(args) == 1 {
 			mountPath = args[0]
 		}
-		file, _ := os.Open(bfConfCliOptions.configFile)
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			// some users may have a commented out config
-			linePieces := strings.SplitN(scanner.Text(), "#", 2)
-			line := linePieces[0]
-			configParam := strings.Fields(line)
-			if len(configParam) == 0 {
-				continue
-			}
-			if len(configParam) != 2 {
-				return fmt.Errorf("failed to read configuration file. the configuration %s is incorrect. please make sure your configuration file parameters are of the format `key value`", configParam)
-			}
-			// get corresponding Blobfuse2 configurations from the config file parameters
-			err := convertBfConfigParameter(cmd.Flags(), configParam[0], configParam[1])
-			if err != nil {
-				return err
-			}
+		file, err := os.Open(bfConfCliOptions.configFile)
+		if err == nil {
+			defer file.Close()
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				// some users may have a commented out config
+				linePieces := strings.SplitN(scanner.Text(), "#", 2)
+				line := linePieces[0]
+				configParam := strings.Fields(line)
+				if len(configParam) == 0 {
+					continue
+				}
+				if len(configParam) != 2 {
+					return fmt.Errorf("failed to read configuration file. the configuration %s is incorrect. please make sure your configuration file parameters are of the format `key value`", configParam)
+				}
+				// get corresponding Blobfuse2 configurations from the config file parameters
+				err := convertBfConfigParameter(cmd.Flags(), configParam[0], configParam[1])
+				if err != nil {
+					return err
+				}
 
+			}
 		}
 		bfv2ComponentsConfigOptions = append(bfv2ComponentsConfigOptions, "libfuse")
 		// get corresponding Blobfuse2 configurations from the cli parameters - these supersede the config options
-		err := convertBfCliParameters(cmd.Flags())
+		err = convertBfCliParameters(cmd.Flags())
 		if err != nil {
 			return err
 		}

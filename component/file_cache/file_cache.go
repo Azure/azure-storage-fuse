@@ -221,7 +221,7 @@ func (c *FileCache) Configure(_ bool) error {
 	c.offloadIO = conf.OffloadIO
 	c.maxCacheSize = conf.MaxSizeMB
 
-	c.tmpPath = conf.TmpPath
+	c.tmpPath = common.ExpandPath(conf.TmpPath)
 	if c.tmpPath == "" {
 		log.Err("FileCache: config error [tmp-path not set]")
 		return fmt.Errorf("config error in %s error [tmp-path not set]", c.Name())
@@ -234,18 +234,18 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	// Extract values from 'conf' and store them as you wish here
-	_, err = os.Stat(conf.TmpPath)
+	_, err = os.Stat(c.tmpPath)
 	if os.IsNotExist(err) {
 		log.Err("FileCache: config error [tmp-path does not exist. attempting to create tmp-path.]")
-		err := os.Mkdir(conf.TmpPath, os.FileMode(0755))
+		err := os.Mkdir(c.tmpPath, os.FileMode(0755))
 		if err != nil {
 			log.Err("FileCache: config error creating directory after clean [%s]", err.Error())
 			return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
 		}
 	}
 
-	if !isLocalDirEmpty(conf.TmpPath) && !c.allowNonEmpty {
-		log.Err("FileCache: config error %s directory is not empty", conf.TmpPath)
+	if !isLocalDirEmpty(c.tmpPath) && !c.allowNonEmpty {
+		log.Err("FileCache: config error %s directory is not empty", c.tmpPath)
 		return fmt.Errorf("config error in %s [%s]", c.Name(), "temp directory not empty")
 	}
 
@@ -347,7 +347,7 @@ func (c *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
 	}
 
 	cacheConfig := cachePolicyConfig{
-		tmpPath:       conf.TmpPath,
+		tmpPath:       c.tmpPath,
 		maxEviction:   conf.MaxEviction,
 		highThreshold: float64(conf.HighThreshold),
 		lowThreshold:  float64(conf.LowThreshold),

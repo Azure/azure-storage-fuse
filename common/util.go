@@ -43,6 +43,7 @@ import (
 	"io/ioutil"
 	"os"
 	"os/user"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -249,4 +250,17 @@ func (m *KeyedMutex) GetLock(key string) *sync.Mutex {
 // check if health-monitor is enabled and blofuse stats monitor is not disabled
 func MonitorBfs() bool {
 	return EnableMonitoring && !BfsDisabled
+}
+
+// convert ~ to $HOME in path
+func ExpandPath(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		homeDir, err := os.UserHomeDir()
+		if err != nil {
+			return path
+		}
+		path = filepath.Join(homeDir, path[2:])
+	}
+
+	return path
 }

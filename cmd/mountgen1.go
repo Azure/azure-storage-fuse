@@ -208,7 +208,7 @@ func generateAdlsGenOneJson() error {
 	}
 
 	if fileCacheOpt.TmpPath != "" {
-		rustFuseMap["cachedir"] = fileCacheOpt.TmpPath
+		rustFuseMap["cachedir"] = common.ExpandPath(fileCacheOpt.TmpPath)
 	}
 
 	if azStorageOpt.Container != "" {
