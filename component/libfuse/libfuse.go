@@ -54,20 +54,21 @@ import (
 // Common structure for Component
 type Libfuse struct {
 	internal.BaseComponent
-	mountPath            string
-	dirPermission        uint
-	filePermission       uint
-	readOnly             bool
-	attributeExpiration  uint32
-	entryExpiration      uint32
-	negativeTimeout      uint32
-	allowOther           bool
-	ownerUID             uint32
-	ownerGID             uint32
-	traceEnable          bool
-	extensionPath        string
-	enableWritebackCache bool
-	lsFlags              common.BitMap16
+	mountPath             string
+	dirPermission         uint
+	filePermission        uint
+	readOnly              bool
+	attributeExpiration   uint32
+	entryExpiration       uint32
+	negativeTimeout       uint32
+	allowOther            bool
+	ownerUID              uint32
+	ownerGID              uint32
+	traceEnable           bool
+	extensionPath         string
+	disableWritebackCache bool
+	ignoreOpenFlag        bool
+	lsFlags               common.BitMap16
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -90,7 +91,8 @@ type LibfuseOptions struct {
 	allowOther              bool   `config:"allow-other"`
 	readOnly                bool   `config:"read-only"`
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
-	EnableWritebackCache    bool   `config:"enable-writeback-cache"`
+	DisableWritebackCache   bool   `config:"disable-writeback-cache"`
+	IgnoreOpenFlag          bool   `config:"ignore-open-flag"`
 }
 
 const compName = "libfuse"
@@ -165,8 +167,8 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.traceEnable = opt.EnableFuseTrace
 	lf.allowOther = opt.allowOther
 	lf.extensionPath = opt.ExtensionPath
-	// Setting here to make testing easier.
-	lf.enableWritebackCache = opt.readOnly || opt.EnableWritebackCache
+	lf.disableWritebackCache = opt.DisableWritebackCache
+	lf.ignoreOpenFlag = opt.IgnoreOpenFlag
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
@@ -246,10 +248,6 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [invalid config settings]", lf.Name())
 	}
 
-	if config.IsSet(compName + ".ignore-open-flags") {
-		log.Warn("unsupported v1 CLI parameter: ignore-open-flags is always true in blobfuse2.")
-	}
-
 	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d",
 		lf.readOnly, lf.allowOther, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout)
 
@@ -286,11 +284,13 @@ func init() {
 	allowOther := config.AddBoolFlag("allow-other", false, "Allow other users to access this mount point.")
 	config.BindPFlag("allow-other", allowOther)
 
+	disableWritebackCache := config.AddBoolFlag("disable-writeback-cache", false, "Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.")
+	config.BindPFlag(compName+".disable-writeback-cache", disableWritebackCache)
+
 	debug := config.AddBoolPFlag("d", false, "Mount with foreground and FUSE logs on.")
 	config.BindPFlag(compName+".fuse-trace", debug)
 	debug.Hidden = true
 
-	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", false, "Ignore unsupported open flags by blobfuse.")
+	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", false, "Ignore unsupported open flags (APPEND, WRONLY) by blobfuse when writeback caching is enabled.")
 	config.BindPFlag(compName+".ignore-open-flags", ignoreOpenFlags)
-	ignoreOpenFlags.Hidden = true
 }

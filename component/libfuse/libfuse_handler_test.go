@@ -55,20 +55,22 @@ func (suite *libfuseTestSuite) TestDefault() {
 	suite.assert.Equal(suite.libfuse.entryExpiration, uint32(120))
 	suite.assert.Equal(suite.libfuse.attributeExpiration, uint32(120))
 	suite.assert.Equal(suite.libfuse.negativeTimeout, uint32(120))
-	suite.assert.False(suite.libfuse.enableWritebackCache)
+	suite.assert.False(suite.libfuse.disableWritebackCache)
+	suite.assert.False(suite.libfuse.ignoreOpenFlag)
 }
 
 func (suite *libfuseTestSuite) TestConfig() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default libfuse generated
-	config := "allow-other: true\nread-only: true\nlibfuse:\n  attribute-expiration-sec: 60\n  entry-expiration-sec: 60\n  negative-entry-expiration-sec: 60\n  fuse-trace: true\n  enable-writeback-cache: true\n"
+	config := "allow-other: true\nread-only: true\nlibfuse:\n  attribute-expiration-sec: 60\n  entry-expiration-sec: 60\n  negative-entry-expiration-sec: 60\n  fuse-trace: true\n  disable-writeback-cache: true\n  ignore-open-flag: true\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 
 	suite.assert.Equal(suite.libfuse.Name(), "libfuse")
 	suite.assert.Empty(suite.libfuse.mountPath)
 	suite.assert.True(suite.libfuse.readOnly)
 	suite.assert.True(suite.libfuse.traceEnable)
-	suite.assert.True(suite.libfuse.enableWritebackCache)
+	suite.assert.True(suite.libfuse.disableWritebackCache)
+	suite.assert.True(suite.libfuse.ignoreOpenFlag)
 	suite.assert.True(suite.libfuse.allowOther)
 	suite.assert.Equal(suite.libfuse.dirPermission, uint(fs.FileMode(0777)))
 	suite.assert.Equal(suite.libfuse.filePermission, uint(fs.FileMode(0777)))
@@ -113,28 +115,34 @@ func (suite *libfuseTestSuite) TestConfigDefaultPermission() {
 	suite.assert.Equal(suite.libfuse.negativeTimeout, uint32(0))
 }
 
-func (suite *libfuseTestSuite) TestEnableWritebackCache() {
+func (suite *libfuseTestSuite) TestDisableWritebackCache() {
 	defer suite.cleanupTest()
-	// Default ro: false, ewc: false
-	suite.assert.False(suite.libfuse.enableWritebackCache)
+	suite.assert.False(suite.libfuse.disableWritebackCache)
 
-	// ro: false, ewc: true
 	suite.cleanupTest() // clean up the default libfuse generated
-	config := "read-only: false\nlibfuse:\n  enable-writeback-cache: true\n"
+	config := "libfuse:\n  disable-writeback-cache: true\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
-	suite.assert.True(suite.libfuse.enableWritebackCache)
+	suite.assert.True(suite.libfuse.disableWritebackCache)
 
-	// ro: true, ewc: false
 	suite.cleanupTest() // clean up the default libfuse generated
-	config = "read-only: true\nlibfuse:\n  enable-writeback-cache: false\n"
+	config = "libfuse:\n  disable-writeback-cache: false\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
-	suite.assert.True(suite.libfuse.enableWritebackCache)
+	suite.assert.False(suite.libfuse.disableWritebackCache)
+}
 
-	// ro: true, ewc: true
+func (suite *libfuseTestSuite) TestIgnoreAppendFlag() {
+	defer suite.cleanupTest()
+	suite.assert.False(suite.libfuse.ignoreOpenFlag)
+
 	suite.cleanupTest() // clean up the default libfuse generated
-	config = "read-only: true\nlibfuse:\n  enable-writeback-cache: true\n"
+	config := "libfuse:\n  ignore-open-flag: true\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
-	suite.assert.True(suite.libfuse.enableWritebackCache)
+	suite.assert.True(suite.libfuse.ignoreOpenFlag)
+
+	suite.cleanupTest() // clean up the default libfuse generated
+	config = "libfuse:\n  ignore-open-flag: false\n"
+	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
+	suite.assert.False(suite.libfuse.ignoreOpenFlag)
 }
 
 // getattr
@@ -173,8 +181,20 @@ func (suite *libfuseTestSuite) TestOpen() {
 	testOpen(suite)
 }
 
-func (suite *libfuseTestSuite) TestOpenSyncFlag() {
+func (suite *libfuseTestSuite) TestOpenSyncDirectFlag() {
 	testOpenSyncDirectFlag(suite)
+}
+
+func (suite *libfuseTestSuite) TestOpenAppendFlagDefault() {
+	testOpenAppendFlagDefault(suite)
+}
+
+func (suite *libfuseTestSuite) TestOpenAppendFlagDisableWritebackCache() {
+	testOpenAppendFlagDisableWritebackCache(suite)
+}
+
+func (suite *libfuseTestSuite) TestOpenAppendFlagIgnoreAppendFlag() {
+	testOpenAppendFlagIgnoreAppendFlag(suite)
 }
 
 func (suite *libfuseTestSuite) TestOpenNotExists() {
