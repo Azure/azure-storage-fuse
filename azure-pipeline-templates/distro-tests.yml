@@ -177,7 +177,7 @@ steps:
         adls: false
         idstring: 'Distro BlockBlob with Stream Key Credentials'
         distro_name: ${{ parameters.distro_name }}
-        quick_test: ${{ parameters.quick_test }}
+        quick_test: true
         artifact_name: '${{ parameters.distro_name }}_block_stream_key.txt'
         verbose_log: ${{ parameters.verbose_log }}
         clone: false
