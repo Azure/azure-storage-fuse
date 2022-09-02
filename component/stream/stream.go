@@ -58,6 +58,10 @@ type StreamOptions struct {
 	BufferSizePerFile uint64 `config:"handle-buffer-size-mb" yaml:"handle-buffer-size-mb,omitempty"`
 	HandleLimit       uint64 `config:"handle-limit" yaml:"handle-limit,omitempty"`
 	readOnly          bool   `config:"read-only"`
+
+	// v1 support
+	StreamCacheMb    uint64 `config:"stream-cache-mb"`
+	MaxBlocksPerFile uint64 `config:"max-blocks-per-file"`
 }
 
 const (
@@ -91,21 +95,39 @@ func (st *Stream) Start(ctx context.Context) error {
 func (st *Stream) Configure(_ bool) error {
 	log.Trace("Stream::Configure : %s", st.Name())
 	conf := StreamOptions{}
+
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {
 		log.Err("Stream::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("config error in %s [%s]", st.Name(), err.Error())
 	}
+
 	err = config.UnmarshalKey("read-only", &conf.readOnly)
 	if err != nil {
 		log.Err("Stream::Configure : config error [unable to obtain read-only]")
 		return fmt.Errorf("config error in %s [%s]", st.Name(), err.Error())
 	}
+
+	if config.IsSet(compName + ".max-blocks-per-file") {
+		conf.BufferSizePerFile = conf.BlockSize * uint64(conf.MaxBlocksPerFile)
+	}
+
+	if config.IsSet(compName + ".stream-cache-mb") {
+		conf.HandleLimit = conf.StreamCacheMb / conf.BufferSizePerFile
+		if conf.HandleLimit == 0 {
+			conf.HandleLimit = 1
+		}
+	}
+
 	// if uint64((conf.BufferSizePerFile*conf.HandleLimit)*mb) > memory.FreeMemory() {
 	// 	log.Err("Stream::Configure : config error, not enough free memory for provided configuration")
 	// 	return errors.New("not enough free memory for provided stream configuration")
 	// }
 	st.cache = NewStreamConnection(conf, st)
+
+	log.Info("Stream::Configure : Buffer size %v, Block size %v, Handle limit %v",
+		conf.BufferSizePerFile, conf.BlockSize, conf.HandleLimit)
+
 	return nil
 }
 
@@ -139,6 +161,10 @@ func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
 	}
 
 	return st.cache.WriteFile(options)
+}
+
+func (st *Stream) FlushFile(options internal.FlushFileOptions) error {
+	return st.cache.FlushFile(options)
 }
 
 func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
@@ -183,4 +209,14 @@ func NewStreamComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewStreamComponent)
+	blockSizeMb := config.AddUint64Flag("block-size-mb", 0, "Size (in MB) of a block to be downloaded during streaming.")
+	config.BindPFlag(compName+".block-size-mb", blockSizeMb)
+
+	maxBlocksMb := config.AddIntFlag("max-blocks-per-file", 0, "Maximum number of blocks to be cached in memory for streaming.")
+	config.BindPFlag(compName+".max-blocks-per-file", maxBlocksMb)
+	maxBlocksMb.Hidden = true
+
+	streamCacheSize := config.AddUint64Flag("stream-cache-mb", 0, "Limit total amount of data being cached in memory to conserve memory footprint of blobfuse.")
+	config.BindPFlag(compName+".stream-cache-mb", streamCacheSize)
+	streamCacheSize.Hidden = true
 }

@@ -43,11 +43,13 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
+	"github.com/Azure/azure-storage-azcopy/v10/ste"
 )
 
 type Datalake struct {
@@ -139,6 +141,26 @@ func (dl *Datalake) getCredential() azbfs.Credential {
 	return cred.(azbfs.Credential)
 }
 
+// NewPipeline creates a Pipeline using the specified credentials and options.
+func NewBfsPipeline(c azbfs.Credential, o azbfs.PipelineOptions, ro ste.XferRetryOptions) pipeline.Pipeline {
+	// Closest to API goes first; closest to the wire goes last
+	f := []pipeline.Factory{
+		azbfs.NewTelemetryPolicyFactory(o.Telemetry),
+		azbfs.NewUniqueRequestIDPolicyFactory(),
+		// ste.NewBlobXferRetryPolicyFactory(ro),
+		ste.NewBFSXferRetryPolicyFactory(ro),
+	}
+	f = append(f, c)
+	f = append(f,
+		pipeline.MethodFactoryMarker(), // indicates at what stage in the pipeline the method factory is invoked
+		ste.NewRequestLogPolicyFactory(ste.RequestLogOptions{
+			LogWarningIfTryOverThreshold: o.RequestLog.LogWarningIfTryOverThreshold,
+			SyslogDisabled:               o.RequestLog.SyslogDisabled,
+		}))
+
+	return pipeline.NewPipeline(f, pipeline.Options{HTTPSender: o.HTTPSender, Log: o.Log})
+}
+
 // SetupPipeline : Based on the config setup the ***URLs
 func (dl *Datalake) SetupPipeline() error {
 	log.Trace("Datalake::SetupPipeline : Setting up")
@@ -152,7 +174,8 @@ func (dl *Datalake) SetupPipeline() error {
 	}
 
 	// Create a new pipeline
-	dl.Pipeline = azbfs.NewPipeline(cred, getAzBfsPipelineOptions(dl.Config))
+	options, retryOptions := getAzBfsPipelineOptions(dl.Config)
+	dl.Pipeline = NewBfsPipeline(cred, options, retryOptions)
 	if dl.Pipeline == nil {
 		log.Err("Datalake::SetupPipeline : Failed to create pipeline object")
 		return errors.New("failed to create pipeline object")
@@ -215,12 +238,6 @@ func (dl *Datalake) SetPrefixPath(path string) error {
 	log.Trace("Datalake::SetPrefixPath : path %s", path)
 	dl.Config.prefixPath = path
 	return dl.BlockBlob.SetPrefixPath(path)
-}
-
-// Exists : Check whether or not a given path exists
-func (dl *Datalake) Exists(name string) bool {
-	log.Trace("Datalake::Exists : name %s", name)
-	return dl.BlockBlob.Exists(name)
 }
 
 // CreateFile : Create a new file in the filesystem/directory

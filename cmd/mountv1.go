@@ -152,29 +152,32 @@ var generateConfigCmd = &cobra.Command{
 		if len(args) == 1 {
 			mountPath = args[0]
 		}
-		file, _ := os.Open(bfConfCliOptions.configFile)
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			// some users may have a commented out config
-			linePieces := strings.SplitN(scanner.Text(), "#", 2)
-			line := linePieces[0]
-			configParam := strings.Fields(line)
-			if len(configParam) == 0 {
-				continue
-			}
-			if len(configParam) != 2 {
-				return fmt.Errorf("failed to read configuration file. the configuration %s is incorrect. please make sure your configuration file parameters are of the format `key value`", configParam)
-			}
-			// get corresponding Blobfuse2 configurations from the config file parameters
-			err := convertBfConfigParameter(cmd.Flags(), configParam[0], configParam[1])
-			if err != nil {
-				return err
-			}
+		file, err := os.Open(bfConfCliOptions.configFile)
+		if err == nil {
+			defer file.Close()
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				// some users may have a commented out config
+				linePieces := strings.SplitN(scanner.Text(), "#", 2)
+				line := linePieces[0]
+				configParam := strings.Fields(line)
+				if len(configParam) == 0 {
+					continue
+				}
+				if len(configParam) != 2 {
+					return fmt.Errorf("failed to read configuration file. the configuration %s is incorrect. please make sure your configuration file parameters are of the format `key value`", configParam)
+				}
+				// get corresponding Blobfuse2 configurations from the config file parameters
+				err := convertBfConfigParameter(cmd.Flags(), configParam[0], configParam[1])
+				if err != nil {
+					return err
+				}
 
+			}
 		}
 		bfv2ComponentsConfigOptions = append(bfv2ComponentsConfigOptions, "libfuse")
 		// get corresponding Blobfuse2 configurations from the cli parameters - these supersede the config options
-		err := convertBfCliParameters(cmd.Flags())
+		err = convertBfCliParameters(cmd.Flags())
 		if err != nil {
 			return err
 		}
@@ -377,9 +380,10 @@ func convertBfConfigParameter(flags *pflag.FlagSet, configParameterKey string, c
 // helper method: converts cli options - cli options that overlap with config file take precedence
 func convertBfCliParameters(flags *pflag.FlagSet) error {
 	if flags.Lookup("set-content-type").Changed || flags.Lookup("ca-cert-file").Changed || flags.Lookup("basic-remount-check").Changed || flags.Lookup(
-		"background-download").Changed || flags.Lookup("cache-poll-timeout-msec").Changed || flags.Lookup("upload-modified-only").Changed {
+		"background-download").Changed || flags.Lookup("cache-poll-timeout-msec").Changed || flags.Lookup("upload-modified-only").Changed ||
+		flags.Lookup("ignore-open-flags").Changed || flags.Lookup("debug-libcurl").Changed {
 		logWriter, _ := syslog.New(syslog.LOG_WARNING, "")
-		_ = logWriter.Warning("one or more unsupported v1 parameters [set-content-type, ca-cert-file, basic-remount-check, background-download, cache-poll-timeout-msec, upload-modified-only] have been passed, ignoring and proceeding to mount")
+		_ = logWriter.Warning("one or more unsupported v1 parameters [set-content-type, ca-cert-file, basic-remount-check, background-download, cache-poll-timeout-msec, upload-modified-only, ignore-open-flags, debug-libcurl] have been passed, ignoring and proceeding to mount")
 	}
 
 	bfv2LoggingConfigOptions.Type = "syslog"
@@ -395,10 +399,13 @@ func convertBfCliParameters(flags *pflag.FlagSet) error {
 				bfv2StreamConfigOptions.BlockSize = bfConfCliOptions.blockSize
 			}
 			if flags.Lookup("max-blocks-per-file").Changed {
-				bfv2StreamConfigOptions.BufferSizePerFile = uint64(bfConfCliOptions.maxBlocksPerFile)
+				bfv2StreamConfigOptions.BufferSizePerFile = bfConfCliOptions.blockSize * uint64(bfConfCliOptions.maxBlocksPerFile)
 			}
 			if flags.Lookup("stream-cache-mb").Changed {
 				bfv2StreamConfigOptions.HandleLimit = bfConfCliOptions.streamCacheSize / bfv2StreamConfigOptions.BufferSizePerFile
+				if bfv2StreamConfigOptions.HandleLimit == 0 {
+					bfv2StreamConfigOptions.HandleLimit = 1
+				}
 			}
 		} else {
 			useStream = false
@@ -528,7 +535,9 @@ func init() {
 	generateConfigCmd.Flags().Bool("basic-remount-check", false, "Check for an already mounted status using /etc/mtab.")
 	generateConfigCmd.Flags().Bool("background-download", false, "File download to run in the background on open call.")
 	generateConfigCmd.Flags().Uint64("cache-poll-timeout-msec", 0, "Time in milliseconds in order to poll for possible expired files awaiting cache eviction.")
-	generateConfigCmd.Flags().Bool("upload-modified-only", false, " Flag to turn off unnecessary uploads to storage.")
+	generateConfigCmd.Flags().Bool("upload-modified-only", false, "Flag to turn off unnecessary uploads to storage.")
+	generateConfigCmd.Flags().Bool("ignore-open-flags", false, "Flag to ignore open flags unsupported by blobfuse.")
+	generateConfigCmd.Flags().Bool("debug-libcurl", false, "Flag to allow users to debug libcurl calls.")
 
 	// flags for gen1 mount
 	generateConfigCmd.Flags().BoolVar(&enableGen1, "enable-gen1", false, "To enable Gen1 mount")

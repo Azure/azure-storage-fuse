@@ -66,6 +66,9 @@ type AttrCacheOptions struct {
 	Timeout       uint32 `config:"timeout-sec" yaml:"timeout-sec,omitempty"`
 	NoCacheOnList bool   `config:"no-cache-on-list" yaml:"no-cache-on-list,omitempty"`
 	NoSymlinks    bool   `config:"no-symlinks" yaml:"no-symlinks,omitempty"`
+
+	// support v1
+	CacheOnList bool `config:"cache-on-list"`
 }
 
 const compName = "attr_cache"
@@ -131,7 +134,11 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.cacheTimeout = defaultAttrCacheTimeout
 	}
 
-	ac.cacheOnList = !conf.NoCacheOnList
+	if config.IsSet(compName + ".cache-on-list") {
+		ac.cacheOnList = conf.CacheOnList
+	} else {
+		ac.cacheOnList = !conf.NoCacheOnList
+	}
 
 	ac.noSymlinks = conf.NoSymlinks
 
@@ -505,6 +512,19 @@ func (ac *AttrCache) CreateLink(options internal.CreateLinkOptions) error {
 	return err
 }
 
+// FlushFile : flush file
+func (ac *AttrCache) FlushFile(options internal.FlushFileOptions) error {
+	log.Trace("AttrCache::FlushFile : %s", options.Handle.Path)
+	err := ac.NextComponent().FlushFile(options)
+	if err == nil {
+		ac.cacheLock.RLock()
+		defer ac.cacheLock.RUnlock()
+
+		ac.invalidatePath(options.Handle.Path)
+	}
+	return err
+}
+
 // Chmod : Update the file with its new permissions
 func (ac *AttrCache) Chmod(options internal.ChmodOptions) error {
 	log.Trace("AttrCache::Chmod : Change mode of file/directory %s", options.Name)
@@ -553,4 +573,8 @@ func init() {
 	config.BindPFlag(compName+".timeout-sec", attrCacheTimeout)
 	noSymlinks := config.AddBoolFlag("no-symlinks", false, "whether or not symlinks should be supported")
 	config.BindPFlag(compName+".no-symlinks", noSymlinks)
+
+	cacheOnList := config.AddBoolFlag("cache-on-list", true, "Cache attributes on listing.")
+	config.BindPFlag(compName+".cache-on-list", cacheOnList)
+	cacheOnList.Hidden = true
 }

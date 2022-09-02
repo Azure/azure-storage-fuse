@@ -48,7 +48,7 @@ import (
 const (
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
-	Blobfuse2Version      = "2.0.0-preview.2"
+	Blobfuse2Version      = "2.0.0-preview.3"
 	FileSystemName        = "blobfuse2"
 
 	DefaultConfigFilePath = "config.yaml"
@@ -60,12 +60,19 @@ const (
 	DefaultFilePermissionBits       os.FileMode = 0755
 	DefaultDirectoryPermissionBits  os.FileMode = 0775
 	DefaultAllowOtherPermissionBits os.FileMode = 0777
+
+	MbToBytes  = 1024 * 1024
+	BfuseStats = "blobfuse_stats"
 )
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFilePath = filepath.Join(DefaultWorkDir, "blobfuse2.log")
-var DefaultPipeline = []string{"libfuse", "file_cache", "attr_cache", "azstorage"}
-var DefaultStreamPipeline = []string{"libfuse", "stream", "attr_cache", "azstorage"}
+var StatsConfigFilePath = filepath.Join(DefaultWorkDir, "stats_monitor.cfg")
+
+var EnableMonitoring = false
+var BfsDisabled = false
+var TransferPipe = "/tmp/transferPipe"
+var PollingPipe = "/tmp/pollPipe"
 
 //LogLevel enum
 type LogLevel int
@@ -116,62 +123,13 @@ func (l *LogLevel) Parse(s string) error {
 	return err
 }
 
-type FileType int
-
-var EFileType = FileType(0).File()
-
-func (FileType) File() FileType {
-	return FileType(0)
-}
-
-func (FileType) Dir() FileType {
-	return FileType(1)
-}
-
-func (FileType) Symlink() FileType {
-	return FileType(2)
-}
-
-func (f FileType) String() string {
-	return enum.StringInt(f, reflect.TypeOf(f))
-}
-
-func (f *FileType) Parse(s string) error {
-	enumVal, err := enum.ParseInt(reflect.TypeOf(f), s, true, false)
-	if enumVal != nil {
-		*f = enumVal.(FileType)
-	}
-	return err
-}
-
-type EvictionPolicy int
-
-var EPolicy = EvictionPolicy(0).LRU()
-
-func (EvictionPolicy) LRU() EvictionPolicy {
-	return EvictionPolicy(0)
-}
-func (EvictionPolicy) LFU() EvictionPolicy {
-	return EvictionPolicy(1)
-}
-func (EvictionPolicy) ARC() EvictionPolicy {
-	return EvictionPolicy(2)
-}
-
-func (ep *EvictionPolicy) Parse(s string) error {
-	enumVal, err := enum.ParseInt(reflect.TypeOf(ep), s, true, false)
-	if enumVal != nil {
-		*ep = enumVal.(EvictionPolicy)
-	}
-	return err
-}
-
 type LogConfig struct {
 	Level       LogLevel
 	MaxFileSize uint64
 	FileCount   uint64
 	FilePath    string
 	TimeTracker bool
+	Tag         string // logging tag which can be either blobfuse2 or bfusemon
 }
 
 // Flags for blocks

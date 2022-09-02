@@ -46,15 +46,17 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"github.com/Azure/azure-storage-fuse/v2/common"
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
-	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 	"io"
 	"io/fs"
 	"os"
 	"syscall"
 	"unsafe"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
 /* --- IMPORTANT NOTE ---
@@ -387,6 +389,10 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 		log.Err("Libfuse::libfuse_mkdir : Failed to create %s (%s)", name, err.Error())
 		return -C.EIO
 	}
+
+	libfuseStatsCollector.PushEvents(createDir, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, createDir, (int64)(1))
+
 	return 0
 }
 
@@ -517,6 +523,9 @@ func libfuse_rmdir(path *C.char) C.int {
 		}
 	}
 
+	libfuseStatsCollector.PushEvents(deleteDir, name, nil)
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, deleteDir, (int64)(1))
+
 	return 0
 }
 
@@ -546,6 +555,12 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	}
 	log.Trace("Libfuse::libfuse_create : %s, handle %d", name, handle.ID)
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
+
+	libfuseStatsCollector.PushEvents(createFile, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+
+	// increment open file handles count
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
+
 	return 0
 }
 
@@ -590,6 +605,10 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	}
 	log.Trace("Libfuse::libfuse_open : %s, handle %d", name, handle.ID)
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
+
+	// increment open file handles count
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
+
 	return 0
 }
 
@@ -695,6 +714,9 @@ func libfuse2_truncate(path *C.char, off C.off_t) C.int {
 		return -C.EIO
 	}
 
+	libfuseStatsCollector.PushEvents(truncateFile, name, map[string]interface{}{size: int64(off)})
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, truncateFile, (int64)(1))
+
 	return 0
 }
 
@@ -718,6 +740,10 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	handlemap.Delete(handle.ID)
 	C.release_native_file_object(fi)
+
+	// decrement open file handles count
+	libfuseStatsCollector.UpdateStats(stats_manager.Decrement, openHandles, (int64)(1))
+
 	return 0
 }
 
@@ -736,6 +762,9 @@ func libfuse_unlink(path *C.char) C.int {
 		}
 		return -C.EIO
 	}
+
+	libfuseStatsCollector.PushEvents(deleteFile, name, nil)
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, deleteFile, (int64)(1))
 
 	return 0
 }
@@ -793,12 +822,20 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 			log.Err("Libfuse::libfuse2_rename : error renaming directory %s -> %s [%s]", srcPath, dstPath, err.Error())
 			return -C.EIO
 		}
+
+		libfuseStatsCollector.PushEvents(renameDir, srcPath, map[string]interface{}{source: srcPath, dest: dstPath})
+		libfuseStatsCollector.UpdateStats(stats_manager.Increment, renameDir, (int64)(1))
+
 	} else {
 		err := fuseFS.NextComponent().RenameFile(internal.RenameFileOptions{Src: srcPath, Dst: dstPath})
 		if err != nil {
 			log.Err("Libfuse::libfuse2_rename : error renaming file %s -> %s [%s]", srcPath, dstPath, err.Error())
 			return -C.EIO
 		}
+
+		libfuseStatsCollector.PushEvents(renameFile, srcPath, map[string]interface{}{source: srcPath, dest: dstPath})
+		libfuseStatsCollector.UpdateStats(stats_manager.Increment, renameFile, (int64)(1))
+
 	}
 
 	return 0
@@ -821,6 +858,9 @@ func libfuse_symlink(target *C.char, link *C.char) C.int {
 		return -C.EIO
 	}
 
+	libfuseStatsCollector.PushEvents(createLink, name, map[string]interface{}{trgt: targetPath})
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, createLink, (int64)(1))
+
 	return 0
 }
 
@@ -842,6 +882,10 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 	data := (*[1 << 30]byte)(unsafe.Pointer(buf))
 	copy(data[:size-1], targetPath)
 	data[len(targetPath)] = 0
+
+	libfuseStatsCollector.PushEvents(readLink, name, map[string]interface{}{trgt: targetPath})
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, readLink, (int64)(1))
+
 	return 0
 }
 
@@ -865,6 +909,10 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 		log.Err("Libfuse::libfuse_fsync : error syncing file %s [%s]", handle.Path, err.Error())
 		return -C.EIO
 	}
+
+	libfuseStatsCollector.PushEvents(syncFile, handle.Path, nil)
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, syncFile, (int64)(1))
+
 	return 0
 }
 
@@ -884,6 +932,10 @@ func libfuse_fsyncdir(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.in
 		log.Err("Libfuse::libfuse_fsyncdir : error syncing dir %s [%s]", name, err.Error())
 		return -C.EIO
 	}
+
+	libfuseStatsCollector.PushEvents(syncDir, name, nil)
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, syncDir, (int64)(1))
+
 	return 0
 }
 
@@ -906,6 +958,9 @@ func libfuse2_chmod(path *C.char, mode C.mode_t) C.int {
 		}
 		return -C.EIO
 	}
+
+	libfuseStatsCollector.PushEvents(chmod, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
+	libfuseStatsCollector.UpdateStats(stats_manager.Increment, chmod, (int64)(1))
 
 	return 0
 }

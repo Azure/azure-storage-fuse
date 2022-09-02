@@ -232,6 +232,28 @@ func (suite *authTestSuite) TestBlockInvalidSharedKey() {
 	}
 }
 
+func (suite *authTestSuite) TestBlockInvalidSharedKey2() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.KEY(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			AccountKey:  "abcd>=", // string that will fail to base64 decode
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestBlockInvalidSharedKey : Failed to create Storage object")
+	}
+	if err := stg.SetupPipeline(); err == nil {
+		assert.Fail("TestBlockInvalidSharedKey : Setup pipeline even though shared key is invalid")
+	}
+}
+
 func (suite *authTestSuite) TestBlockSharedKey() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{

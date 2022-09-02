@@ -15,6 +15,7 @@ require (
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/montanaflynn/stats v0.6.6
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
+	github.com/radovskyb/watcher v1.0.7
 	github.com/sevlyar/go-daemon v0.1.5
 	github.com/spf13/cobra v1.4.0
 	github.com/spf13/pflag v1.0.5

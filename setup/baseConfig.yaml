@@ -38,6 +38,8 @@ libfuse:
   negative-entry-expiration-sec: <time kernel can cache attributes of non existent paths (in sec). Default - 120 sec>
   fuse-trace: true|false <enable libfuse api trace logs for debugging>
   extension: <physical path to extension library>
+  disable-writeback-cache: true|false <disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode. alternatively, you can ignore-open-flag.>
+  ignore-open-flag: true|false <ignore the append and write only flag since O_APPEND and O_WRONLY is not supported with writeback caching. alternatively, you can disable-writeback-cache.>
  
   # Streaming configuration
 stream:
@@ -57,7 +59,7 @@ file_cache:
   max-eviction: <number of files that can be evicted at once. Default - 5000>
   max-size-mb: <maximum cache size allowed. Default - 0 (unlimited)>
   high-threshold: <% disk space consumed which triggers eviction. This parameter overrides 'timeout-sec' parameter and cached files will be removed even if they have not expired. Default - 80>
-  low-threshold: <% disk space consumed which triggers eviction to stop when previoulsy triggered by the high-threshold. Default - 60>
+  low-threshold: <% disk space consumed which triggers eviction to stop when previously triggered by the high-threshold. Default - 60>
   create-empty-file: true|false <create an empty file on container when create call is received from kernel>
   allow-non-empty-temp: true|false <allow non empty temp directory at startup>
   cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
@@ -104,6 +106,8 @@ azstorage:
   sdk-trace: true|false <enable storage sdk logging>
   fail-unsupported-op: true|false <for block blob account return failure for unsupported operations like chmod and chown>
   auth-resource: <resource string to be used during OAuth token retrieval>
+  update-md5: true|false <set md5 sum on upload. Impacts performance. works only when file-cache component is part of the pipeline>
+  validate-md5: true|false <validate md5 on download. Impacts performance. works only when file-cache component is part of the pipeline>
 
 
 # Mount all configuration
@@ -113,3 +117,17 @@ mountall:
     - <list of containers to be mounted>
   container-denylist:
     - <list of containers not to be mounted>
+
+# health-monitor configuration
+health-monitor:
+  enable-monitoring: true|false <enable health-monitor>
+  stats-poll-interval-sec: <Blobfuse2 stats polling interval (in sec). Default - 10 sec>
+  process-monitor-interval-sec: <CPU, memory and network usage polling interval (in sec). Default - 30 sec>
+  output-path: <Path where health monitor will generate its output file. File name will be monitor_<pid>.json>
+  # list of monitors to be disabled
+  monitor-disable-list:
+    - blobfuse_stats <Disable blobfuse2 stats polling>
+    - cache_monitor <Disable file cache directory monitor>
+    - cpu_profiler <Disable CPU monitoring on blobfuse2 process>
+    - memory_profiler <Disable memory monitoring on blobfuse2 process>
+    - network_profiler <Disable network monitoring on blobfuse2 process>

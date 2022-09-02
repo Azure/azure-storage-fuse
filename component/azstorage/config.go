@@ -35,6 +35,7 @@ package azstorage
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 
@@ -117,7 +118,7 @@ func (a *AccountType) Parse(s string) error {
 // newServicePrincipalTokenFromMSI : reads them directly from env
 const (
 	EnvAzStorageAccount            = "AZURE_STORAGE_ACCOUNT"
-	EnvAzStorageAccounType         = "AZURE_STORAGE_ACCOUNT_TYPE"
+	EnvAzStorageAccountType        = "AZURE_STORAGE_ACCOUNT_TYPE"
 	EnvAzStorageAccessKey          = "AZURE_STORAGE_ACCESS_KEY"
 	EnvAzStorageSasToken           = "AZURE_STORAGE_SAS_TOKEN"
 	EnvAzStorageIdentityClientId   = "AZURE_STORAGE_IDENTITY_CLIENT_ID"
@@ -164,12 +165,20 @@ type AzStorageOptions struct {
 	SdkTrace                bool   `config:"sdk-trace" yaml:"sdk-trace,omitempty"`
 	FailUnsupportedOp       bool   `config:"fail-unsupported-op" yaml:"fail-unsupported-op,omitempty"`
 	AuthResourceString      string `config:"auth-resource" yaml:"auth-resource,omitempty"`
+	UpdateMD5               bool   `config:"update-md5" yaml:"update-md5"`
+	ValidateMD5             bool   `config:"validate-md5" yaml:"validate-md5"`
+
+	// v1 support
+	UseAdls        bool   `config:"use-adls"`
+	UseHTTPS       bool   `config:"use-https"`
+	SetContentType bool   `config:"set-content-type"`
+	CaCertFile     string `config:"ca-cert-file"`
 }
 
 //  RegisterEnvVariables : Register environment varilables
 func RegisterEnvVariables() {
 	config.BindEnv("azstorage.account-name", EnvAzStorageAccount)
-	config.BindEnv("azstorage.type", EnvAzStorageAccounType)
+	config.BindEnv("azstorage.type", EnvAzStorageAccountType)
 
 	config.BindEnv("azstorage.account-key", EnvAzStorageAccessKey)
 
@@ -243,21 +252,30 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
 	}
 
-	var accountType AccountType
-	err := accountType.Parse(opt.AccountType)
-	if err != nil {
-		log.Err("ParseAndValidateConfig : Failed to parse account type %s", opt.AccountType)
-		return errors.New("invalid account type")
-	}
+	if config.IsSet(compName + ".use-adls") {
+		if opt.UseAdls {
+			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.ADLS()
+		} else {
+			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.BLOCK()
+		}
+	} else {
+		var accountType AccountType
+		err := accountType.Parse(opt.AccountType)
+		if err != nil {
+			log.Err("ParseAndValidateConfig : Failed to parse account type %s", opt.AccountType)
+			return errors.New("invalid account type")
+		}
 
-	az.stConfig.authConfig.AccountType = accountType
-	if accountType == EAccountType.INVALID_ACC() {
-		log.Err("ParseAndValidateConfig : Invalid account type %s", opt.AccountType)
-		return errors.New("invalid account type")
+		if accountType == EAccountType.INVALID_ACC() {
+			log.Err("ParseAndValidateConfig : Invalid account type %s", opt.AccountType)
+			return errors.New("invalid account type")
+		}
+
+		az.stConfig.authConfig.AccountType = accountType
 	}
 
 	// Validate container name is present or not
-	err = config.UnmarshalKey("mount-all-containers", &az.stConfig.mountAllContainers)
+	err := config.UnmarshalKey("mount-all-containers", &az.stConfig.mountAllContainers)
 	if err != nil {
 		log.Err("ParseAndValidateConfig : Failed to detect mount-all-container")
 	}
@@ -268,9 +286,18 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	az.stConfig.container = opt.Container
 
+	if config.IsSet(compName + ".use-https") {
+		opt.UseHTTP = !opt.UseHTTPS
+	}
+
 	// Validate endpoint
 	if opt.Endpoint == "" {
-		return errors.New("account endpoint not provided")
+		log.Warn("ParseAndValidateConfig : account endpoint not provided, assuming the default .core.windows.net style endpoint")
+		if az.stConfig.authConfig.AccountType == EAccountType.BLOCK() {
+			opt.Endpoint = fmt.Sprintf("%s.blob.core.windows.net", opt.AccountName)
+		} else if az.stConfig.authConfig.AccountType == EAccountType.ADLS() {
+			opt.Endpoint = fmt.Sprintf("%s.dfs.core.windows.net", opt.AccountName)
+		}
 	}
 	az.stConfig.authConfig.Endpoint = opt.Endpoint
 	az.stConfig.authConfig.Endpoint = formatEndPoint(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
@@ -343,7 +370,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	case EAuthType.MSI():
 		az.stConfig.authConfig.AuthMode = EAuthType.MSI()
 		if opt.ApplicationID == "" && opt.ResourceID == "" {
-			return errors.New("Application ID an Resource ID not provided")
+			//lint:ignore ST1005 ignore
+			return errors.New("Application ID and Resource ID not provided")
 		}
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
 		az.stConfig.authConfig.ResourceID = opt.ResourceID
@@ -351,6 +379,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
 		if opt.ClientID == "" || opt.ClientSecret == "" || opt.TenantID == "" {
+			//lint:ignore ST1005 ignore
 			return errors.New("Client ID, Tenant ID or Client Secret not provided")
 		}
 		az.stConfig.authConfig.ClientID = opt.ClientID
@@ -381,9 +410,19 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.maxRetryDelay = opt.MaxRetryDelay
 	}
 
-	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, Endpoint: %s, ListBlock: %d",
+	if config.IsSet(compName + ".set-content-type") {
+		log.Warn("unsupported v1 CLI parameter: set-content-type is always true in blobfuse2.")
+	}
+	if config.IsSet(compName + ".ca-cert-file") {
+		log.Warn("unsupported v1 CLI parameter: ca-cert-file is not supported in blobfuse2. Use the default ca cert path for your environment.")
+	}
+	if config.IsSet(compName + ".debug-libcurl") {
+		log.Warn("unsupported v1 CLI parameter: debug-libcurl is not applicable in blobfuse2.")
+	}
+
+	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, Endpoint: %s, ListBlock: %d, MD5 : %v %v",
 		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,
-		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.cancelListForSeconds)
+		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.cancelListForSeconds, az.stConfig.validateMD5, az.stConfig.updateMD5)
 
 	log.Info("ParseAndValidateConfig : Retry Config: Retry count %d, Max Timeout %d, BackOff Time %d, Max Delay %d",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay)
@@ -411,6 +450,8 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 	}
 
 	az.stConfig.ignoreAccessModifiers = !opt.FailUnsupportedOp
+	az.stConfig.validateMD5 = opt.ValidateMD5
+	az.stConfig.updateMD5 = opt.UpdateMD5
 
 	// Auth related reconfig
 	switch opt.AuthMode {

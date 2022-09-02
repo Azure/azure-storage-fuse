@@ -9,7 +9,8 @@ then
 elif [ "$1" == "health" ]
 then
     # Build Health Monitor binary
-    go build -tags healthmon -o healthmon
+    rm -rf bfusemon
+    go build -o bfusemon ./tools/health-monitor/
 else
     # Build blobfuse2 with fuse3
     rm -rf blobfuse2

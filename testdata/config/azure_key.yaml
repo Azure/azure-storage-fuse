@@ -14,6 +14,7 @@ libfuse:
   attribute-expiration-sec: 0
   entry-expiration-sec: 0
   negative-entry-expiration-sec: 0
+  ignore-open-flag: true
 
 stream:
   block-size-mb: 1
@@ -34,7 +35,7 @@ attr_cache:
 azstorage:
   type: { ACCOUNT_TYPE }
   endpoint: { ACCOUNT_ENDPOINT }
-  use-http: false
+  use-http: { USE_HTTP }
   account-name: { NIGHTLY_STO_ACC_NAME }
   account-key: { NIGHTLY_STO_ACC_KEY }
   mode: key

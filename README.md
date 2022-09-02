@@ -32,6 +32,9 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 - Option to dump logs to syslog or a file on disk
 - Support for config file encryption and mounting with an encrypted config file via a passphrase (CLI or environment variable) to decrypt the config file
 - CLI to check or update a parameter in the encrypted config
+- Set MD5 sum of a blob while uploading
+- Validate MD5 sum on download and fail file open on mismatch
+- Large file writing through write streaming
 
  ## Blobfuse2 performance compared to blobfuse(v1.x.x)
 - 'git clone' operation is 25% faster (tested with vscode repo cloning)
@@ -84,11 +87,13 @@ To learn about a specific command, just include the name of the command (For exa
 
 <!---TODO Add Usage for mount, unmount, etc--->
 ## CLI parameters
+- Note: Blobfuse2 accepts all CLI parameters that Blobfuse does, but may ignore parameters that are no longer applicable. 
 - General options
     * `--config-file=<PATH>`: The path to the config file.
     * `--log-level=<LOG_*>`: The level of logs to capture.
     * `--log-file-path=<PATH>`: The path for the log file.
     * `--foreground=true`: Mounts the system in foreground mode.
+    * `--read-only=true`: Mount container in read-only mode.
     * `--default-working-dir`: The default working directory to store log files and other blobfuse2 related information.
     * `--disable-version-check=true`: Disable the blobfuse2 version check.
 - Attribute cache options
@@ -96,12 +101,21 @@ To learn about a specific command, just include the name of the command (For exa
     * `--no-symlinks=true`: To improve performance disable symlink support.
 - Storage options
     * `--container-name=<CONTAINER NAME>`: The container to mount.
+    * `--cancel-list-on-mount-seconds=<TIMEOUT IN SECONDS>`: Time for which list calls will be blocked after mount. ( prevent billing charges on mounting)
 - File cache options
+    * `--file-cache-timeout=<TIMEOUT IN SECONDS>`: Timeout for which file is cached on local system.
     * `--tmp-path=<PATH>`: The path to the file cache.
+    * `--cache-size-mb=<SIZE IN MB>`: Amount of disk cache that can be used by blobfuse.
+    * `--high-disk-threshold=<PERCENTAGE>`: If local cache usage exceeds this, start early eviction of files from cache.
+    * `--low-disk-threshold=<PERCENTAGE>`: If local cache usage comes below this threshold then stop early eviction.
 - Fuse options
-    * `--read-only=true`: Mount container in read-only mode.
     * `--attr-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache inode attributes.
     * `--entry-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache directory listing.
+    * `--negative-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache non-existance of file or directory.
+    * `--allow-other`: Allow other users to have access this mount point.
+    * `--disable-writeback-cache`: Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.
+    * `--ignore-open-flags`: Ignore the append and write only flag since O_APPEND and O_WRONLY is not supported with writeback caching.
+
 
 ## Environment variables
 - General options
@@ -137,6 +151,8 @@ To learn about a specific command, just include the name of the command (For exa
 - How do I generate a SAS with permissions for rename?
 az cli has a command to generate a sas token. Open a command prompt and make sure you are logged in to az cli. Run the following command and the sas token will be displayed in the command prompt.
 az storage container generate-sas --account-name <account name ex:myadlsaccount> --account-key <accountKey> -n <container name> --permissions dlrwac --start <today's date ex: 2021-03-26> --expiry <date greater than the current time ex:2021-03-28>
+- Why do I get EINVAL on opening a file with WRONLY or APPEND flags?
+To improve performance, Blobfuse2 by default enables writeback caching, which can produce unexpected behavior for files opened with WRONLY or APPEND flags, so Blobfuse2 returns EINVAL on open of a file with those flags. Either use disable-writeback-caching to turn off writeback caching (can potentiallu result in degraded performance) or ignore-open-flags (replace WRONLY with RDWR and ignore APPEND) based on your workload. 
 
 ## Un-Supported File system operations
 - mkfifo : fifo creation is not supported by blobfuse2 and this will result in "function not implemented" error
@@ -147,9 +163,15 @@ az storage container generate-sas --account-name <account name ex:myadlsaccount>
 ## Un-Supported Scenarios
 - Blobfuse2 does not support overlapping mount paths. While running multiple instances of Blobfuse2 make sure each instance has a unique and non-overlapping mount point.
 - Blobfuse2 does not support co-existance with NFS on same mount path. Behaviour in this case is undefined.
+- For block blob accounts, where data is uploaded through other means, Blobfuse2 expects special directory marker files to exist in container. In absence of this
+  few file operations might not work. For e.g. if you have a blob 'A/B/c.txt' then special marker files shall exists for 'A' and 'A/B', otherwise opening of 'A/B/c.txt' will fail.
+  Once a 'ls' operation is done on these directories 'A' and 'A/B' you will be able to open 'A/B/c.txt' as well. Possible workaround to resolve this from your container is to either
+
+  create the directory marker files manually through portal or run 'mkdir' command for 'A' and 'A/B' from blobfuse. Refer [me](https://github.com/Azure/azure-storage-fuse/issues/866) 
+  for details on this.
 
 ## Limitations
-- In case of BlockBlob accounts, ACLs are not supported by Azure Storage so Blobfuse2 will bydefault return success for 'chmod' operation. However it will work fine for Gen2 (DataLake) accounts.
+- In case of BlockBlob accounts, ACLs are not supported by Azure Storage so Blobfuse2 will by default return success for 'chmod' operation. However it will work fine for Gen2 (DataLake) accounts.
 
 
 ### Syslog security warning

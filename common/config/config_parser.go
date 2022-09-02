@@ -336,6 +336,11 @@ func AddBoolFlag(name string, value bool, usage string) *pflag.Flag {
 	return userOptions.flags.Lookup(name)
 }
 
+func AddBoolPFlag(name string, value bool, usage string) *pflag.Flag {
+	userOptions.flags.BoolP(name, name, value, usage)
+	return userOptions.flags.Lookup(name)
+}
+
 func AddFloat64Flag(name string, value float64, usage string) *pflag.Flag {
 	userOptions.flags.Float64(name, value, usage)
 	return userOptions.flags.Lookup(name)

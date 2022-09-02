@@ -70,15 +70,16 @@ const (
 
 // ObjAttr : Attributes of any file/directory
 type ObjAttr struct {
-	Mtime    time.Time         // modified time
-	Atime    time.Time         // access time
-	Ctime    time.Time         // change time
-	Crtime   time.Time         // creation time
-	Size     int64             // size of the file/directory
-	Mode     os.FileMode       // permissions in 0xxx format
-	Flags    common.BitMap16   // flags
-	Path     string            // full path
-	Name     string            // base name of the path
+	Mtime    time.Time       // modified time
+	Atime    time.Time       // access time
+	Ctime    time.Time       // change time
+	Crtime   time.Time       // creation time
+	Size     int64           // size of the file/directory
+	Mode     os.FileMode     // permissions in 0xxx format
+	Flags    common.BitMap16 // flags
+	Path     string          // full path
+	Name     string          // base name of the path
+	MD5      []byte
 	Metadata map[string]string // extra information to preserve
 }
 

@@ -51,6 +51,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/spf13/cobra"
 )
@@ -97,6 +98,10 @@ type FileCacheOptions struct {
 
 	EnablePolicyTrace bool  `config:"policy-trace" yaml:"policy-trace,omitempty"`
 	CacheFileSizeMB   int64 `config:"cache-file-size-mb" yaml:"cache-file-size-mb,omitempty"`
+
+	// v1 support
+	V1Timeout     uint32 `config:"file-cache-timeout-in-seconds"`
+	EmptyDirCheck bool   `config:"empty-dir-check"`
 }
 
 const (
@@ -112,6 +117,8 @@ const (
 
 //  Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &FileCache{}
+
+var fileCacheStatsCollector *stats_manager.StatsCollector
 
 func (c *FileCache) Name() string {
 	return compName
@@ -150,6 +157,9 @@ func (c *FileCache) Start(ctx context.Context) error {
 		return fmt.Errorf("config error in %s error [fail to start policy]", c.Name())
 	}
 
+	// create stats collector for file cache
+	fileCacheStatsCollector = stats_manager.NewStatsCollector(c.Name())
+
 	return nil
 }
 
@@ -159,6 +169,8 @@ func (c *FileCache) Stop() error {
 
 	_ = c.policy.ShutdownPolicy()
 	_ = c.TempCacheCleanup()
+
+	fileCacheStatsCollector.Destroy()
 
 	return nil
 }
@@ -194,18 +206,24 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	c.createEmptyFile = conf.CreateEmptyFile
-	if config.IsSet(compName + ".timeout-sec") {
+	if config.IsSet(compName + ".file-cache-timeout-in-seconds") {
+		c.cacheTimeout = float64(conf.V1Timeout)
+	} else if config.IsSet(compName + ".timeout-sec") {
 		c.cacheTimeout = float64(conf.Timeout)
 	} else {
 		c.cacheTimeout = float64(defaultFileCacheTimeout)
 	}
-	c.allowNonEmpty = conf.AllowNonEmpty
+	if config.IsSet(compName + ".empty-dir-check") {
+		c.allowNonEmpty = !conf.EmptyDirCheck
+	} else {
+		c.allowNonEmpty = conf.AllowNonEmpty
+	}
 	c.cleanupOnStart = conf.CleanupOnStart
 	c.policyTrace = conf.EnablePolicyTrace
 	c.maxCacheSize = conf.MaxSizeMB
 	c.cacheFileSize = conf.CacheFileSizeMB * MB
 
-	c.tmpPath = conf.TmpPath
+	c.tmpPath = common.ExpandPath(conf.TmpPath)
 	if c.tmpPath == "" {
 		log.Err("FileCache: config error [tmp-path not set]")
 		return fmt.Errorf("config error in %s error [tmp-path not set]", c.Name())
@@ -218,18 +236,18 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	// Extract values from 'conf' and store them as you wish here
-	_, err = os.Stat(conf.TmpPath)
+	_, err = os.Stat(c.tmpPath)
 	if os.IsNotExist(err) {
 		log.Err("FileCache: config error [tmp-path does not exist. attempting to create tmp-path.]")
-		err := os.Mkdir(conf.TmpPath, os.FileMode(0755))
+		err := os.Mkdir(c.tmpPath, os.FileMode(0755))
 		if err != nil {
 			log.Err("FileCache: config error creating directory after clean [%s]", err.Error())
 			return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
 		}
 	}
 
-	if !isLocalDirEmpty(conf.TmpPath) && !c.allowNonEmpty {
-		log.Err("FileCache: config error %s directory is not empty", conf.TmpPath)
+	if !isLocalDirEmpty(c.tmpPath) && !c.allowNonEmpty {
+		log.Err("FileCache: config error %s directory is not empty", c.tmpPath)
 		return fmt.Errorf("config error in %s [%s]", c.Name(), "temp directory not empty")
 	}
 
@@ -264,8 +282,18 @@ func (c *FileCache) Configure(_ bool) error {
 
 	c.streamPlugged = internal.IsComponentPlugged("stream")
 
-	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s",
-		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath)
+	if config.IsSet(compName + ".background-download") {
+		log.Warn("unsupported v1 CLI parameter: background-download is not supported in blobfuse2. Consider using the streaming component.")
+	}
+	if config.IsSet(compName + ".cache-poll-timeout-msec") {
+		log.Warn("unsupported v1 CLI parameter: cache-poll-timeout-msec is not supported in blobfuse2. Polling occurs every timeout interval.")
+	}
+	if config.IsSet(compName + ".upload-modified-only") {
+		log.Warn("unsupported v1 CLI parameter: upload-modified-only is always true in blobfuse2.")
+	}
+
+	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d",
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold))
 
 	return nil
 }
@@ -325,7 +353,7 @@ func (c *FileCache) GetPolicyConfig(conf FileCacheOptions) cachePolicyConfig {
 	}
 
 	cacheConfig := cachePolicyConfig{
-		tmpPath:       conf.TmpPath,
+		tmpPath:       c.tmpPath,
 		maxEviction:   conf.MaxEviction,
 		highThreshold: float64(conf.HighThreshold),
 		lowThreshold:  float64(conf.LowThreshold),
@@ -695,6 +723,7 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	}
 
 	fc.policy.CachePurge(localPath)
+
 	return nil
 }
 
@@ -814,7 +843,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		}
 
 		// Open the file in write mode.
-		f, err = os.OpenFile(localPath, os.O_CREATE|os.O_WRONLY, options.Mode)
+		f, err = os.OpenFile(localPath, os.O_CREATE|os.O_RDWR, options.Mode)
 		if err != nil {
 			log.Err("FileCache::OpenFile : error creating new file %s [%s]", options.Name, err.Error())
 			return nil, err
@@ -848,7 +877,10 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 					File:   f,
 				})
 			if err != nil {
+				// File was created locally and now download has failed so we need to delete it back from local cache
 				log.Err("FileCache::OpenFile : error downloading file from storage %s [%s]", options.Name, err.Error())
+				_ = f.Close()
+				_ = os.Remove(localPath)
 				return nil, err
 			}
 		}
@@ -874,8 +906,12 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		if err != nil {
 			log.Err("FileCache::OpenFile : Failed to change times of file %s [%s]", options.Name, err.Error())
 		}
+
+		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, dlFiles, (int64)(1))
+
 	} else {
 		log.Debug("FileCache::OpenFile : %s will be served from cache", options.Name)
+		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, cacheServed, (int64)(1))
 	}
 
 	// Open the file and grab a shared lock to prevent deletion by the cache policy.
@@ -1054,6 +1090,7 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	if err == nil {
 		// Mark the handle dirty so the file is written back to storage on FlushFile.
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
+
 	} else {
 		log.Err("FileCache::WriteFile : failed to write %s (%s)", options.Handle.Path, err.Error())
 	}
@@ -1402,11 +1439,48 @@ func NewFileCacheComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewFileCacheComponent)
+
+	tmpPathFlag := config.AddStringFlag("tmp-path", "", "configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
+	config.BindPFlag(compName+".path", tmpPathFlag)
+
 	fileCacheTimeout := config.AddUint32Flag("file-cache-timeout", defaultFileCacheTimeout, "file cache timeout")
 	config.BindPFlag(compName+".timeout-sec", fileCacheTimeout)
-	tmpPathFlag := config.AddStringFlag("tmp-path", "", "Configures the tmp location for the cache. Configure the fastest disk (SSD or ramdisk) for best performance.")
-	config.BindPFlag(compName+".path", tmpPathFlag)
+
+	fileCacheTimeoutSec := config.AddUint32Flag("file-cache-timeout-in-seconds", defaultFileCacheTimeout, "file cache timeout")
+	config.BindPFlag(compName+".file-cache-timeout-in-seconds", fileCacheTimeoutSec)
+	fileCacheTimeoutSec.Hidden = true
+
+	cacheSizeMB := config.AddUint32Flag("cache-size-mb", 0, "max size in MB that file-cache can occupy on local disk for caching")
+	config.BindPFlag(compName+".max-size-mb", cacheSizeMB)
+
+	highThreshold := config.AddUint32Flag("high-disk-threshold", 90, "percentage of cache utilization which kicks in early eviction")
+	config.BindPFlag(compName+".high-threshold", highThreshold)
+
+	lowThreshold := config.AddUint32Flag("low-disk-threshold", 80, "percentage of cache utilization which stops early eviction started by high-disk-threshold")
+	config.BindPFlag(compName+".low-threshold", lowThreshold)
+
+	maxEviction := config.AddUint32Flag("max-eviction", 0, "Number of files to be evicted from cache at once.")
+	config.BindPFlag(compName+".max-eviction", maxEviction)
+	maxEviction.Hidden = true
+
+	emptyDirCheck := config.AddBoolFlag("empty-dir-check", false, "Disallows remounting using a non-empty tmp-path.")
+	config.BindPFlag(compName+".empty-dir-check", emptyDirCheck)
+	emptyDirCheck.Hidden = true
+
+	backgroundDownload := config.AddBoolFlag("background-download", false, "File download to run in the background on open call.")
+	config.BindPFlag(compName+".background-download", backgroundDownload)
+	backgroundDownload.Hidden = true
+
+	cachePollTimeout := config.AddUint64Flag("cache-poll-timeout-msec", 0, "Time in milliseconds in order to poll for possible expired files awaiting cache eviction.")
+	config.BindPFlag(compName+".cache-poll-timeout-msec", cachePollTimeout)
+	cachePollTimeout.Hidden = true
+
+	uploadModifiedOnly := config.AddBoolFlag("upload-modified-only", false, "Flag to turn off unnecessary uploads to storage.")
+	config.BindPFlag(compName+".upload-modified-only", uploadModifiedOnly)
+	uploadModifiedOnly.Hidden = true
+
 	config.RegisterFlagCompletionFunc("tmp-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	})
+
 }

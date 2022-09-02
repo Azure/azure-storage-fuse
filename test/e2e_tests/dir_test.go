@@ -54,7 +54,6 @@ type dirTestSuite struct {
 	suite.Suite
 	testPath string
 	adlsTest bool
-	sasTest  bool
 	minBuff  []byte
 	medBuff  []byte
 	hugeBuff []byte
@@ -62,7 +61,6 @@ type dirTestSuite struct {
 
 var pathPtr string
 var adlsPtr string
-var sasPtr string
 var clonePtr string
 
 func regDirTestFlag(p *string, name string, value string, usage string) {
@@ -78,7 +76,6 @@ func getDirTestFlag(name string) string {
 func initDirFlags() {
 	pathPtr = getDirTestFlag("mnt-path")
 	adlsPtr = getDirTestFlag("adls")
-	sasPtr = getDirTestFlag("sas")
 	clonePtr = getDirTestFlag("clone")
 }
 
@@ -393,21 +390,111 @@ func (suite *dirTestSuite) TestDirRenameFull() {
 
 }
 
-func (suite *dirTestSuite) TestGitClone() {
-	if clonePtr == "true" || clonePtr == "True" {
-		dirName := suite.testPath + "/clone"
+// func (suite *dirTestSuite) TestTarDir() {
+// 	dirName := suite.testPath + "/tar"
+// 	tarName := suite.testPath + "/tardir.tar.gz"
 
-		cmd := exec.Command("git", "clone", "https://github.com/libfuse/libfuse", dirName)
+// 	cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
+// 	_, err := cmd.Output()
+// 	suite.Equal(nil, err)
+// 	_, err = os.Stat(dirName)
+// 	suite.Equal(nil, err)
+
+// 	cmd = exec.Command("tar", "-zcvf", tarName, dirName)
+// 	cliOut, err := cmd.Output()
+// 	if len(cliOut) > 0 {
+// 		suite.NotContains(cliOut, "file changed as we read it")
+// 	}
+
+// 	cmd = exec.Command("tar", "-zxvf", tarName, "--directory", dirName)
+// 	_, _ = cmd.Output()
+
+// 	os.RemoveAll(dirName)
+// 	os.Remove("libfuse.tar.gz")
+// }
+
+func (suite *dirTestSuite) TestGitStash() {
+	if clonePtr == "true" || clonePtr == "True" {
+		dirName := suite.testPath + "/stash"
+		tarName := suite.testPath + "/tardir.tar.gz"
+
+		cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
 		_, err := cmd.Output()
 		suite.Equal(nil, err)
 
 		_, err = os.Stat(dirName)
 		suite.Equal(nil, err)
 
-		_, err = os.Stat(dirName + "/.git")
+		err = os.Chdir(dirName)
 		suite.Equal(nil, err)
 
+		cmd = exec.Command("git", "status")
+		cliOut, err := cmd.Output()
+		suite.Equal(nil, err)
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "nothing to commit, working")
+		}
+
+		f, err := os.OpenFile("README.md", os.O_WRONLY, 0644)
+		suite.Equal(nil, err)
+		suite.NotZero(f)
+		info, err := f.Stat()
+		suite.Equal(nil, err)
+		_, err = f.WriteAt([]byte("TestString"), info.Size())
+		suite.Equal(nil, err)
+		_ = f.Close()
+
+		f, err = os.OpenFile("README.md", os.O_RDONLY, 0644)
+		suite.Equal(nil, err)
+		suite.NotZero(f)
+		new_info, err := f.Stat()
+		suite.Equal(nil, err)
+		suite.EqualValues(info.Size()+10, new_info.Size())
+		data := make([]byte, 10)
+		n, err := f.ReadAt(data, info.Size())
+		suite.Equal(nil, err)
+		suite.EqualValues(10, n)
+		suite.EqualValues("TestString", string(data))
+
+		cmd = exec.Command("git", "status")
+		cliOut, err = cmd.Output()
+		suite.Equal(nil, err)
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "Changes not staged for commit")
+		}
+
+		cmd = exec.Command("git", "stash")
+		cliOut, err = cmd.Output()
+		suite.Equal(nil, err)
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "Saved working directory and index state WIP")
+		}
+
+		cmd = exec.Command("git", "stash", "list")
+		_, err = cmd.Output()
+		suite.Equal(nil, err)
+
+		cmd = exec.Command("git", "stash", "pop")
+		cliOut, err = cmd.Output()
+		suite.Equal(nil, err)
+		if len(cliOut) > 0 {
+			suite.Contains(string(cliOut), "Changes not staged for commit")
+		}
+
+		os.Chdir(suite.testPath)
+
+		// As Tar is taking long time first to clone and then to tar just mixing both the test cases
+		cmd = exec.Command("tar", "-zcvf", tarName, dirName)
+		cliOut, _ = cmd.Output()
+		if len(cliOut) > 0 {
+			suite.NotContains(cliOut, "file changed as we read it")
+		}
+
+		cmd = exec.Command("tar", "-zxvf", tarName, "--directory", dirName)
+		_, _ = cmd.Output()
+
 		os.RemoveAll(dirName)
+		os.Remove("libfuse.tar.gz")
 	}
 }
 
@@ -430,11 +517,6 @@ func TestDirTestSuite(t *testing.T) {
 		dirTest.adlsTest = true
 	} else {
 		fmt.Println("BLOCK Blob Testing...")
-	}
-
-	if sasPtr == "true" || sasPtr == "True" {
-		fmt.Println("SAS Testing...")
-		dirTest.sasTest = true
 	}
 
 	// Sanity check in the off chance the same random name was generated twice and was still around somehow
@@ -461,6 +543,5 @@ func TestDirTestSuite(t *testing.T) {
 func init() {
 	regDirTestFlag(&pathPtr, "mnt-path", "", "Mount Path of Container")
 	regDirTestFlag(&adlsPtr, "adls", "", "Account is ADLS or not")
-	regDirTestFlag(&sasPtr, "sas", "", "Auth is SAS or not")
 	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enable or not")
 }
