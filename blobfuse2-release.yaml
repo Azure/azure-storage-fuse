@@ -1054,8 +1054,16 @@ stages:
     condition: succeeded('ReleaseArtifacts')
     jobs:
       - job: UpdateVersion
+        strategy:
+          matrix:
+            Ubuntu-20:
+              vmImage: 'Ubuntu-20.04'
+              AgentName: "blobfuse-ubuntu20"
+
         pool:
-          vmImage: 'ubuntu-18.04'
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
         variables:
           - group: NightlyBlobFuse
           - name: root_dir
@@ -1080,8 +1088,8 @@ stages:
               # install blobfuse2
               - script: |
                   cd $(Build.ArtifactStagingDirectory)/blobfuse2
-                  ls | grep -i ubuntu-18.04
-                  sudo apt-get install ./`ls | grep -i ubuntu-18.04` -y
+                  ls | grep -i ubuntu-20.04
+                  sudo apt-get install ./`ls | grep -i ubuntu-20.04` -y
                   blobfuse2 version
                 displayName: 'Installing blobfuse2'
 
