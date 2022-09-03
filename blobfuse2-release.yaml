@@ -1080,8 +1080,8 @@ stages:
               # install blobfuse2
               - script: |
                   cd $(Build.ArtifactStagingDirectory)/blobfuse2
-                  ls | grep ubuntu-18.04
-                  sudo apt-get install ./`ls | grep ubuntu-18.04` -y
+                  ls | grep -i ubuntu-18.04
+                  sudo apt-get install ./`ls | grep -i ubuntu-18.04` -y
                   blobfuse2 version
                 displayName: 'Installing blobfuse2'
 
