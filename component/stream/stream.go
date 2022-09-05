@@ -146,26 +146,20 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 }
 
 func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	// File is handled by file-cache, just forward the calls
-	if options.Handle != nil && options.Handle.Cached() {
-		return st.NextComponent().ReadInBuffer(options)
-	}
-
+	// For files cached by file-cache calls will be served from libfuse layer and it will never come here
+	// So its safe to assume that if call comes here then file is served by streaming layer
 	return st.cache.ReadInBuffer(options)
 }
 
 func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
-	// File is handled by file-cache, just forward the calls
-	if options.Handle != nil && options.Handle.Cached() {
-		return st.NextComponent().WriteFile(options)
-	}
-
+	// For files cached by file-cache calls will be served from libfuse layer and it will never come here
+	// So its safe to assume that if call comes here then file is served by streaming layer
 	return st.cache.WriteFile(options)
 }
 
 func (st *Stream) FlushFile(options internal.FlushFileOptions) error {
-	// File is handled by file-cache, just forward the calls
 	if options.Handle != nil && options.Handle.Cached() {
+		// File is handled by file-cache, just forward the calls
 		return st.NextComponent().FlushFile(options)
 	}
 
@@ -173,8 +167,8 @@ func (st *Stream) FlushFile(options internal.FlushFileOptions) error {
 }
 
 func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
-	// File is handled by file-cache, just forward the calls
 	if options.Handle != nil && options.Handle.Cached() {
+		// File is handled by file-cache, just forward the calls
 		return st.NextComponent().CloseFile(options)
 	}
 
