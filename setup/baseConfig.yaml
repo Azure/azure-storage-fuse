@@ -64,6 +64,7 @@ file_cache:
   allow-non-empty-temp: true|false <allow non empty temp directory at startup>
   cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
   policy-trace: true|false <generate eviction policy logs showing which files will expire soon>
+  cache-file-size-mb: <maximum size of file to be cached when file-cache and stream both are used in pipeline. file size exceeding this will be streamed>
 
 # Attribute cache related configuration
 attr_cache:
