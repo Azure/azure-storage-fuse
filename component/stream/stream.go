@@ -147,7 +147,7 @@ func (st *Stream) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle,
 
 func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	// File is handled by file-cache, just forward the calls
-	if options.Handle.Cached() {
+	if options.Handle != nil && options.Handle.Cached() {
 		return st.NextComponent().ReadInBuffer(options)
 	}
 
@@ -156,7 +156,7 @@ func (st *Stream) ReadInBuffer(options internal.ReadInBufferOptions) (int, error
 
 func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
 	// File is handled by file-cache, just forward the calls
-	if options.Handle.Cached() {
+	if options.Handle != nil && options.Handle.Cached() {
 		return st.NextComponent().WriteFile(options)
 	}
 
@@ -165,7 +165,7 @@ func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
 
 func (st *Stream) FlushFile(options internal.FlushFileOptions) error {
 	// File is handled by file-cache, just forward the calls
-	if options.Handle.Cached() {
+	if options.Handle != nil && options.Handle.Cached() {
 		return st.NextComponent().FlushFile(options)
 	}
 
@@ -174,7 +174,7 @@ func (st *Stream) FlushFile(options internal.FlushFileOptions) error {
 
 func (st *Stream) CloseFile(options internal.CloseFileOptions) error {
 	// File is handled by file-cache, just forward the calls
-	if options.Handle.Cached() {
+	if options.Handle != nil && options.Handle.Cached() {
 		return st.NextComponent().CloseFile(options)
 	}
 
