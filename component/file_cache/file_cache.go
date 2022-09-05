@@ -778,19 +778,20 @@ func (fc *FileCache) cacheFile(fileSize int64) bool {
 	}
 
 	// Disk cache size is limited by user then additional checks
+	if fc.cacheFileSize > 0 && fileSize > fc.cacheFileSize {
+		// This file is bigger then configured max file size
+		return false
+	}
+
+	currSize := getUsage(fc.tmpPath)
+	usagePercent := (currSize / float64(fc.maxCacheSize)) * 100
+	if usagePercent > maxCacheLimitPercent {
+		// Current cache usage is already 90% so dont cache this file
+		return false
+	}
+
 	if fc.maxCacheSize > 0 {
-		if fileSize > fc.cacheFileSize {
-			// This file is bigger then configured cache size
-			return false
-		}
-
-		currSize := getUsage(fc.tmpPath)
-		usagePercent := (currSize / float64(fc.maxCacheSize)) * 100
-		if usagePercent > maxCacheLimitPercent {
-			// Current cache usage is already 90% then dont cache the file
-			return false
-		}
-
+		// If max size is configured then check next file can be cached or not
 		if (fc.maxCacheSize - currSize) < float64((fileSize / 1024 / 1024)) { // size comparison in MB
 			// If file can not fit in available disk space then do not cache
 			return false
