@@ -164,6 +164,11 @@ func (st *Stream) WriteFile(options internal.WriteFileOptions) (int, error) {
 }
 
 func (st *Stream) FlushFile(options internal.FlushFileOptions) error {
+	// File is handled by file-cache, just forward the calls
+	if options.Handle.Cached() {
+		return st.NextComponent().FlushFile(options)
+	}
+
 	return st.cache.FlushFile(options)
 }
 

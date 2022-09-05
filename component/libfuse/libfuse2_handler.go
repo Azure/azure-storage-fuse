@@ -49,7 +49,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"syscall"
 	"unsafe"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -624,17 +623,12 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 	var err error
 	var bytesRead int
 
-	if handle.Cached() {
-		bytesRead, err = syscall.Pread(handle.FD(), data[:size], int64(offset))
-		//bytesRead, err = handle.FObj.ReadAt(data[:size], int64(offset))
-	} else {
-		bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
-			internal.ReadInBufferOptions{
-				Handle: handle,
-				Offset: int64(offset),
-				Data:   data[:size],
-			})
-	}
+	bytesRead, err = fuseFS.NextComponent().ReadInBuffer(
+		internal.ReadInBufferOptions{
+			Handle: handle,
+			Offset: int64(offset),
+			Data:   data[:size],
+		})
 
 	if err == io.EOF {
 		err = nil

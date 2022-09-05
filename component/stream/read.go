@@ -47,6 +47,7 @@ import (
 type ReadCache struct {
 	*Stream
 	StreamConnection
+	fileCachePlugged bool
 }
 
 func (r *ReadCache) Configure(conf StreamOptions) error {
@@ -58,6 +59,9 @@ func (r *ReadCache) Configure(conf StreamOptions) error {
 	r.BufferSizePerHandle = conf.BufferSizePerFile * mb
 	r.HandleLimit = int32(conf.HandleLimit)
 	r.CachedHandles = 0
+
+	r.fileCachePlugged = internal.IsComponentPlugged("file_cache")
+
 	return nil
 }
 
@@ -217,27 +221,56 @@ func (r *ReadCache) FlushFile(options internal.FlushFileOptions) error {
 }
 
 func (r *ReadCache) TruncateFile(options internal.TruncateFileOptions) error {
+	// If file-cache is plugged then this needs to be handled there
+	if r.fileCachePlugged {
+		return r.NextComponent().TruncateFile(options)
+	}
+
 	return syscall.ENOTSUP
 }
 
 func (r *ReadCache) RenameFile(options internal.RenameFileOptions) error {
+	// If file-cache is plugged then this needs to be handled there
+	if r.fileCachePlugged {
+		return r.NextComponent().RenameFile(options)
+	}
+
 	return syscall.ENOTSUP
 
 }
 
 func (r *ReadCache) DeleteFile(options internal.DeleteFileOptions) error {
+	// If file-cache is plugged then this needs to be handled there
+	if r.fileCachePlugged {
+		return r.NextComponent().DeleteFile(options)
+	}
+
 	return syscall.ENOTSUP
 
 }
 func (r *ReadCache) DeleteDirectory(options internal.DeleteDirOptions) error {
+	// If file-cache is plugged then this needs to be handled there
+	if r.fileCachePlugged {
+		return r.NextComponent().DeleteDir(options)
+	}
+
 	return syscall.ENOTSUP
 
 }
 func (r *ReadCache) RenameDirectory(options internal.RenameDirOptions) error {
+	// If file-cache is plugged then this needs to be handled there
+	if r.fileCachePlugged {
+		return r.NextComponent().RenameDir(options)
+	}
+
 	return syscall.ENOTSUP
 
 }
 func (r *ReadCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
-	return nil, syscall.ENOTSUP
+	// If file-cache is plugged then this needs to be handled there
+	if r.fileCachePlugged {
+		return r.NextComponent().CreateFile(options)
+	}
 
+	return nil, syscall.ENOTSUP
 }

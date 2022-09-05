@@ -945,7 +945,7 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 
 	// File is not being handled by file-cache so just forward the calls
 	if !options.Handle.Cached() {
-		fc.NextComponent().CloseFile(options)
+		return fc.NextComponent().CloseFile(options)
 	}
 
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
@@ -1001,7 +1001,7 @@ func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) 
 
 	// File is not being handled by file-cache so just forward the calls
 	if !options.Handle.Cached() {
-		fc.NextComponent().ReadFile(options)
+		return fc.NextComponent().ReadFile(options)
 	}
 
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
