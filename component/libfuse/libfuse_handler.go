@@ -50,7 +50,6 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"syscall"
 	"unsafe"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
