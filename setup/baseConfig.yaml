@@ -65,7 +65,8 @@ file_cache:
   cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
   policy-trace: true|false <generate eviction policy logs showing which files will expire soon>
   cache-file-size-mb: <maximum size of file to be cached when file-cache and stream both are used in pipeline. file size exceeding this will be streamed>
-
+  stream-create-file: true|false <when both stream and file-cache are part of pipeline, new files created shall be handled by streaming layer>
+  
 # Attribute cache related configuration
 attr_cache:
   timeout-sec: <time attributes can be cached (in sec). Default - 120 sec>

@@ -77,6 +77,7 @@ type FileCache struct {
 
 	defaultPermission os.FileMode
 	streamPlugged     bool
+	streamCreateFile  bool
 }
 
 // Structure defining your config parameters
@@ -98,6 +99,7 @@ type FileCacheOptions struct {
 
 	EnablePolicyTrace bool  `config:"policy-trace" yaml:"policy-trace,omitempty"`
 	CacheFileSizeMB   int64 `config:"cache-file-size-mb" yaml:"cache-file-size-mb,omitempty"`
+	StreamCreateFile  bool  `config:"stream-create-file" yaml:"stream-create-file,omitempty"`
 
 	// v1 support
 	V1Timeout     uint32 `config:"file-cache-timeout-in-seconds"`
@@ -281,6 +283,7 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	c.streamPlugged = internal.IsComponentPlugged("stream")
+	c.streamCreateFile = conf.StreamCreateFile
 
 	if config.IsSet(compName + ".background-download") {
 		log.Warn("unsupported v1 CLI parameter: background-download is not supported in blobfuse2. Consider using the streaming component.")
@@ -608,6 +611,11 @@ func (fc *FileCache) RenameDir(options internal.RenameDirOptions) error {
 func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::CreateFile")()
 	log.Trace("FileCache::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
+
+	if fc.streamPlugged && fc.streamCreateFile {
+		// Stream is plugged in and its suppose to handle the create file
+		return fc.NextComponent().CreateFile(options)
+	}
 
 	flock := fc.fileLocks.Get(options.Name)
 	flock.Lock()
@@ -1479,6 +1487,9 @@ func init() {
 	uploadModifiedOnly := config.AddBoolFlag("upload-modified-only", false, "Flag to turn off unnecessary uploads to storage.")
 	config.BindPFlag(compName+".upload-modified-only", uploadModifiedOnly)
 	uploadModifiedOnly.Hidden = true
+
+	streamCreateFile := config.AddBoolFlag("stream-create-file", false, "When both stream and file-cache are plugged, let stream layer create the file.")
+	config.BindPFlag(compName+".stream-create-file", streamCreateFile)
 
 	config.RegisterFlagCompletionFunc("tmp-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
