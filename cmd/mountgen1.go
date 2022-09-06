@@ -77,9 +77,12 @@ var gen1Cmd = &cobra.Command{
 		resetGenOneOptions()
 		options.MountPath = args[0]
 		options.ConfigFile = configFile
-		parseConfig()
+		err := parseConfig()
+		if err != nil {
+			return err
+		}
 
-		err := config.Unmarshal(&options)
+		err = config.Unmarshal(&options)
 		if err != nil {
 			fmt.Printf("Init error config unmarshall [%s]", err)
 			return err
