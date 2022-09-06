@@ -131,6 +131,7 @@ var gen1Cmd = &cobra.Command{
 		var logLevel common.LogLevel
 		err = logLevel.Parse(options.Logging.LogLevel)
 		if err != nil {
+			// TODO: Why don't we throw here?
 			fmt.Println("error: invalid log level")
 		}
 

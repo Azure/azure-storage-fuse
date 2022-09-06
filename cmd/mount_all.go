@@ -35,6 +35,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -68,36 +69,44 @@ var mountAllCmd = &cobra.Command{
 	SuggestFor:        []string{"mnta", "mout"},
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
-	Run: func(cmd *cobra.Command, args []string) {
-		_ = VersionCheck()
+	RunE: func(cmd *cobra.Command, args []string) error {
+		err := VersionCheck()
+		if err != nil {
+			return err
+		}
 
 		mountAllOpts.blobfuse2BinPath = os.Args[0]
 		options.MountPath = args[0]
-		processCommand()
+		return processCommand()
 	},
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	},
 }
 
-func processCommand() {
-	parseConfig()
-
-	err := config.Unmarshal(&options)
+func processCommand() error {
+	err := parseConfig()
 	if err != nil {
-		fmt.Printf("MountAll : Init error config unmarshall [%s]", err)
-		os.Exit(1)
+		fmt.Printf("mount all: Failed to parse config")
+		return err
+	}
+
+	err = config.Unmarshal(&options)
+	if err != nil {
+		fmt.Printf("mount all : Init error config unmarshall [%s]", err)
+		return fmt.Errorf("mount all : Init error config unmarshall [%s]", err)
 	}
 
 	err = options.validate(true)
 	if err != nil {
-		fmt.Printf("MountAll : error invalid options [%v]", err)
-		os.Exit(1)
+		fmt.Printf("mount all : error invalid options [%v]", err)
+		return fmt.Errorf("mount all : error invalid options [%v]", err)
 	}
 
 	var logLevel common.LogLevel
 	err = logLevel.Parse(options.Logging.LogLevel)
 	if err != nil {
+		// TODO: Why don't we throw here?
 		fmt.Println("error: invalid log level")
 	}
 
@@ -110,8 +119,8 @@ func processCommand() {
 	})
 
 	if err != nil {
-		fmt.Printf("Mount: error initializing logger [%v]", err)
-		os.Exit(1)
+		fmt.Printf("mount all: Error initializing logger [%v]", err)
+		return fmt.Errorf("mount all: Error initializing logger [%v]", err)
 	}
 
 	config.Set("mount-path", options.MountPath)
@@ -126,7 +135,7 @@ func processCommand() {
 	// Get allowlist/denylist containers from the config
 	err = config.UnmarshalKey("mountall", &mountAllOpts)
 	if err != nil {
-		fmt.Printf("MountAll : Failed to get container listing options (%s)\n", err.Error())
+		log.Warn("mount all : Failed to get container listing options (%s)\n", err.Error())
 	}
 
 	// Validate config is to be secured on write or not
@@ -135,22 +144,28 @@ func processCommand() {
 	}
 
 	if options.SecureConfig && options.PassPhrase == "" {
-		fmt.Println("Key not provided for decrypt config file")
-		os.Exit(1)
+		fmt.Println("mount all: Key not provided for decrypt config file")
+		return errors.New("mount all: Key not provided for decrypt config file")
 	}
 
-	containerList := getContainerList()
+	containerList, err := getContainerList()
+	if err != nil {
+		return err
+	}
 	if len(containerList) > 0 {
 		containerList = filterAllowedContainerList(containerList)
-		mountAllContainers(containerList, options.ConfigFile, options.MountPath)
+		err = mountAllContainers(containerList, options.ConfigFile, options.MountPath)
+		if err != nil {
+			return err
+		}
 	} else {
-		fmt.Println("MountAll : There is nothing to mount from this account")
-		os.Exit(1)
+		fmt.Println("mount all : No containers to mount from this account")
 	}
+	return nil
 }
 
 // getContainerList : Get list of containers from storage account
-func getContainerList() []string {
+func getContainerList() ([]string, error) {
 	var containerList []string
 
 	// Create AzStorage component to get container list
@@ -161,27 +176,27 @@ func getContainerList() []string {
 	// Configure AzStorage component
 	err := azComponent.Configure(true)
 	if err != nil {
-		fmt.Printf("MountAll : Failed to configure AzureStorage object (%s)", err.Error())
-		os.Exit(1)
+		fmt.Printf("mount all : Failed to configure AzureStorage object (%s)", err.Error())
+		return nil, fmt.Errorf("mount all : Failed to configure AzureStorage object (%s)", err.Error())
 	}
 
 	//  Start AzStorage the component so that credentials are verified
 	err = azComponent.Start(context.Background())
 	if err != nil {
-		fmt.Printf("MountAll : Failed to initialize AzureStorage object (%s)", err.Error())
-		os.Exit(1)
+		fmt.Printf("mount all : Failed to initialize AzureStorage object (%s)", err.Error())
+		return nil, fmt.Errorf("mount all : Failed to initialize AzureStorage object (%s)", err.Error())
 	}
 
 	// Get the list of containers from the component
 	containerList, err = azComponent.ListContainers()
 	if err != nil {
-		fmt.Printf("MountAll : Failed to get container list from storage (%s)", err.Error())
-		os.Exit(1)
+		fmt.Printf("mount all : Failed to get container list from storage (%s)", err.Error())
+		return nil, fmt.Errorf("mount all : Failed to get container list from storage (%s)", err.Error())
 	}
 
 	// Stop the azStorage component as its no more needed now
 	_ = azComponent.Stop()
-	return containerList
+	return containerList, nil
 }
 
 // FiterAllowedContainer : Filter which containers are allowed to be mounted
@@ -228,7 +243,7 @@ func filterAllowedContainerList(containers []string) []string {
 }
 
 // mountAllContainers : Iterate allowed container list and create config file and mount path for them
-func mountAllContainers(containerList []string, configFile string, mountPath string) {
+func mountAllContainers(containerList []string, configFile string, mountPath string) error {
 	// Now iterate filtered container list and prepare mount path, temp path, and config file for them
 	fileCachePath := viper.GetString("file_cache.path")
 
@@ -267,7 +282,10 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 		viper.Set("file_cache.path", filepath.Join(fileCachePath, container))
 
 		// Create config file with container specific configs
-		writeConfigFile(contConfigFile)
+		err := writeConfigFile(contConfigFile)
+		if err != nil {
+			return err
+		}
 
 		// Now that we have mount path and config file for this container fire a mount command for this one
 		cliParams[1] = contMountPath
@@ -282,36 +300,38 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 			fmt.Printf("failed to mount container %s : %s\n", container, err.Error())
 		}
 	}
+	return nil
 }
 
-func writeConfigFile(contConfigFile string) {
+func writeConfigFile(contConfigFile string) error {
 	if options.SecureConfig {
 		allConf := viper.AllSettings()
 		confStream, err := yaml.Marshal(allConf)
 		if err != nil {
-			fmt.Println("Failed to marshall yaml content")
-			os.Exit(1)
+			fmt.Println("write config: Failed to marshall yaml content")
+			return errors.New("write config: Failed to marshall yaml content")
 		}
 
 		cipherText, err := common.EncryptData(confStream, []byte(options.PassPhrase))
 		if err != nil {
-			fmt.Println("Failed to marshall yaml content ", err.Error())
-			os.Exit(1)
+			fmt.Println("write config: Failed to marshall yaml content ", err.Error())
+			return fmt.Errorf("write config: Failed to marshall yaml content %s", err.Error())
 		}
 
 		err = ioutil.WriteFile(contConfigFile, cipherText, 0777)
 		if err != nil {
-			fmt.Println("Failed to write encrypted file : ", err.Error())
-			os.Exit(1)
+			fmt.Println("write config: Failed to write encrypted file : ", err.Error())
+			return fmt.Errorf("write config: Failed to write encrypted file : %s", err.Error())
 		}
 	} else {
 		// Write modified config as per container to a new config file
 		err := viper.WriteConfigAs(contConfigFile)
 		if err != nil {
-			fmt.Println("Failed to write config file : ", err.Error())
-			os.Exit(1)
+			fmt.Println("write config: Failed to write config file : ", err.Error())
+			return fmt.Errorf("write config: Failed to write config file : %s", err.Error())
 		}
 	}
+	return nil
 }
 
 func buildCliParamForMount() []string {

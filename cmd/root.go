@@ -35,6 +35,7 @@ package cmd
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -66,10 +67,14 @@ var rootCmd = &cobra.Command{
 	Long:              "Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the fuse protocol to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs.",
 	Version:           common.Blobfuse2Version,
 	FlagErrorHandling: cobra.ExitOnError,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		if !disableVersionCheck {
-			_ = VersionCheck()
+			err := VersionCheck()
+			if err != nil {
+				return err
+			}
 		}
+		return errors.New("error unknown command 'blobfuse2' for 'blobfuse2'\n\nDid you mean this?\nblobfuse2 mount\n ")
 	},
 }
 
@@ -168,7 +173,11 @@ func VersionCheck() error {
 }
 
 func Execute() error {
-	return rootCmd.Execute()
+	err := rootCmd.Execute()
+	if err != nil {
+		os.Exit(1)
+	}
+	return err
 }
 
 func init() {

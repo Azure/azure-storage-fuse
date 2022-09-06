@@ -146,7 +146,12 @@ var generateConfigCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_ = VersionCheck()
+		if !disableVersionCheck {
+			err := VersionCheck()
+			if err != nil {
+				return err
+			}
+		}
 		resetOptions()
 		// If we are only converting the config without mounting then we do not need the mount path and therefore the args length would be 0
 		if len(args) == 1 {
