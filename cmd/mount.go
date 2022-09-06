@@ -403,7 +403,7 @@ var mountCmd = &cobra.Command{
 		if err != nil {
 			log.Err("mount : error initializing new pipeline [%v]", err)
 			fmt.Println("failed to mount :", err)
-			Destroy(1, fmt.Sprintf("failed to mount : %s", err))
+			return Destroy(1, fmt.Sprintf("failed to mount : %s", err))
 		}
 
 		if !options.Foreground {
@@ -419,14 +419,17 @@ var mountCmd = &cobra.Command{
 			child, err := dmnCtx.Reborn()
 			if err != nil {
 				log.Err("mount : error daemonizing application [%v]", err)
-				Destroy(1, fmt.Sprintf("mount : error daemonizing application [%v]", err))
+				return Destroy(1, fmt.Sprintf("mount : error daemonizing application [%v]", err))
 			}
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
 			if child == nil {
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
 				go startDynamicProfiler()
-				runPipeline(pipeline, ctx)
+				err = runPipeline(pipeline, ctx)
+				if err != nil {
+					return err
+				}
 			}
 		} else {
 			if options.CPUProfile != "" {
@@ -446,7 +449,10 @@ var mountCmd = &cobra.Command{
 			go startDynamicProfiler()
 
 			log.Debug("mount: foreground enabled")
-			runPipeline(pipeline, context.Background())
+			err = runPipeline(pipeline, context.Background())
+			if err != nil {
+				return err
+			}
 			if options.MemProfile != "" {
 				os.Remove(options.MemProfile)
 				f, err := os.Create(options.MemProfile)
@@ -467,7 +473,7 @@ var mountCmd = &cobra.Command{
 	},
 }
 
-func runPipeline(pipeline *internal.Pipeline, ctx context.Context) {
+func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 	pid := fmt.Sprintf("%v", os.Getpid())
 	common.TransferPipe += "_" + pid
 	common.PollingPipe += "_" + pid
@@ -479,17 +485,18 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) {
 	if err != nil {
 		log.Err("mount : error unable to start pipeline [%v]", err)
 		fmt.Printf("mount : error unable to start pipeline [%v]", err)
-		Destroy(1, fmt.Sprintf("mount : error unable to start pipeline [%v]", err))
+		return Destroy(1, fmt.Sprintf("mount : error unable to start pipeline [%v]", err))
 	}
 
 	err = pipeline.Stop()
 	if err != nil {
 		log.Err("mount : error unable to stop pipeline [%v]", err)
 		fmt.Printf("mount : error unable to stop pipeline [%v]", err)
-		Destroy(1, fmt.Sprintf("mount : error unable to stop pipeline [%v]", err))
+		return Destroy(1, fmt.Sprintf("mount : error unable to stop pipeline [%v]", err))
 	}
 
 	_ = log.Destroy()
+	return nil
 }
 
 func startMonitor(pid int) {
