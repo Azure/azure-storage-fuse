@@ -83,7 +83,7 @@ var rootCmd = &cobra.Command{
 func checkVersionExists(versionUrl string) bool {
 	resp, err := http.Get(versionUrl)
 	if err != nil {
-		log.Err("checkVersionExists: error getting version file from container (%s)", err.Error())
+		log.Err("checkVersionExists: error getting version file from container [%s]", err.Error())
 		return false
 	}
 
@@ -93,20 +93,20 @@ func checkVersionExists(versionUrl string) bool {
 func getRemoteVersion(req string) (string, error) {
 	resp, err := http.Get(req)
 	if err != nil {
-		log.Err("getRemoteVersion: error listing version file from container (%s)", err.Error())
+		log.Err("getRemoteVersion: error listing version file from container [%s]", err.Error())
 		return "", err
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Err("getRemoteVersion: error reading body of response (%s)", err.Error())
+		log.Err("getRemoteVersion: error reading body of response [%s]", err.Error())
 		return "", err
 	}
 
 	var versionList VersionFilesList
 	err = xml.Unmarshal(body, &versionList)
 	if err != nil {
-		log.Err("getRemoteVersion: error unmarshalling xml response (%s)", err.Error())
+		log.Err("getRemoteVersion: error unmarshalling xml response [%s]", err.Error())
 		return "", err
 	}
 
@@ -127,21 +127,21 @@ func beginDetectNewVersion() chan interface{} {
 		latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest/"
 		remoteVersion, err := getRemoteVersion(latestVersionUrl)
 		if err != nil {
-			log.Err("beginDetectNewVersion: error getting latest version (%s)", err.Error())
+			log.Err("beginDetectNewVersion: error getting latest version [%s]", err.Error())
 			completed <- err.Error()
 			return
 		}
 
 		local, err := common.ParseVersion(common.Blobfuse2Version)
 		if err != nil {
-			log.Err("beginDetectNewVersion: error parsing Blobfuse2Version (%s)", err.Error())
+			log.Err("beginDetectNewVersion: error parsing Blobfuse2Version [%s]", err.Error())
 			completed <- err.Error()
 			return
 		}
 
 		remote, err := common.ParseVersion(remoteVersion)
 		if err != nil {
-			log.Err("beginDetectNewVersion: error parsing remoteVersion (%s)", err.Error())
+			log.Err("beginDetectNewVersion: error parsing remoteVersion [%s]", err.Error())
 			completed <- err.Error()
 			return
 		}
@@ -150,16 +150,16 @@ func beginDetectNewVersion() chan interface{} {
 			executablePathSegments := strings.Split(strings.Replace(os.Args[0], "\\", "/", -1), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
 			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remoteVersion)
-			fmt.Fprintf(stderr, "*** "+executableName+": A new version (%s) is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
-			log.Info("*** "+executableName+": A new version (%s) is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
+			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
+			log.Info("*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
 
 			warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
 			hasWarnings := checkVersionExists(warningsUrl)
 
 			if hasWarnings {
 				warningsPage := common.BlobFuse2WarningsURL + "#" + strings.ReplaceAll(common.Blobfuse2Version, ".", "")
-				fmt.Fprintf(stderr, "Visit %s to see the list of vulnerabilities associated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
-				log.Warn("Vist %s to see the list of vulnerabilities associated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
+				fmt.Fprintf(stderr, "Visit %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
+				log.Warn("Vist %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
 			}
 			completed <- "A new version of Blobfuse2 is available"
 		}

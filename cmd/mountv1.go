@@ -177,8 +177,8 @@ var generateConfigCmd = &cobra.Command{
 				// get corresponding Blobfuse2 configurations from the config file parameters
 				err := convertBfConfigParameter(cmd.Flags(), configParam[0], configParam[1])
 				if err != nil {
-					fmt.Printf("mountv1 : failed to convert configuration parameters (%s)", err.Error())
-					return fmt.Errorf("mountv1 : failed to convert configuration parameters (%s)", err.Error())
+					fmt.Printf("mountv1 : failed to convert configuration parameters [%s]", err.Error())
+					return fmt.Errorf("mountv1 : failed to convert configuration parameters [%s]", err.Error())
 				}
 
 			}
@@ -188,16 +188,16 @@ var generateConfigCmd = &cobra.Command{
 		// get corresponding Blobfuse2 configurations from the cli parameters - these supersede the config options
 		err = convertBfCliParameters(cmd.Flags())
 		if err != nil {
-			fmt.Printf("mountv1 : failed to convert CLI parameters (%s)", err.Error())
-			return fmt.Errorf("mountv1 : failed to convert CLI parameters (%s)", err.Error())
+			fmt.Printf("mountv1 : failed to convert CLI parameters [%s]", err.Error())
+			return fmt.Errorf("mountv1 : failed to convert CLI parameters [%s]", err.Error())
 		}
 
 		// if we have the o being passed then parse it
 		if cmd.Flags().Lookup("o").Changed {
 			err := parseFuseConfig(libfuseOptions)
 			if err != nil {
-				fmt.Printf("mountv1 : failed to parse fuse CLI parameters (%s)", err.Error())
-				return fmt.Errorf("mountv1 : failed to parse fuse CLI parameters (%s)", err.Error())
+				fmt.Printf("mountv1 : failed to parse fuse CLI parameters [%s]", err.Error())
+				return fmt.Errorf("mountv1 : failed to parse fuse CLI parameters [%s]", err.Error())
 			}
 		}
 		if useStream {
@@ -255,8 +255,8 @@ var generateConfigCmd = &cobra.Command{
 		data, _ := yaml.Marshal(&pConf)
 		err2 := ioutil.WriteFile(outputFilePath, data, 0700)
 		if err2 != nil {
-			fmt.Printf("mountv1 : failed to write file (%s)", err2.Error())
-			return fmt.Errorf("mountv1 : failed to write file (%s)", err2.Error())
+			fmt.Printf("mountv1 : failed to write file [%s]", err2.Error())
+			return fmt.Errorf("mountv1 : failed to write file [%s]", err2.Error())
 		}
 
 		if !convertConfigOnly {
@@ -270,8 +270,8 @@ var generateConfigCmd = &cobra.Command{
 			}
 			err := rootCmd.Execute()
 			if err != nil {
-				fmt.Printf("mountv1 : failed to execute command (%s)", err.Error())
-				return fmt.Errorf("mountv1 : failed to execute command (%s)", err.Error())
+				fmt.Printf("mountv1 : failed to execute command [%s]", err.Error())
+				return fmt.Errorf("mountv1 : failed to execute command [%s]", err.Error())
 			}
 		}
 		return nil
@@ -308,19 +308,19 @@ func parseFuseConfig(config []string) error {
 		} else if strings.HasPrefix(v, "attr_timeout=") {
 			timeout, err := strconv.ParseUint(parameter[1], 10, 32)
 			if err != nil {
-				return fmt.Errorf("failed to parse attr_timeout (%s)", err.Error())
+				return fmt.Errorf("failed to parse attr_timeout [%s]", err.Error())
 			}
 			bfv2FuseConfigOptions.AttributeExpiration = uint32(timeout)
 		} else if strings.HasPrefix(v, "entry_timeout=") {
 			timeout, err := strconv.ParseUint(parameter[1], 10, 32)
 			if err != nil {
-				return fmt.Errorf("failed to parse entry_timeout (%s)", err.Error())
+				return fmt.Errorf("failed to parse entry_timeout [%s]", err.Error())
 			}
 			bfv2FuseConfigOptions.EntryExpiration = uint32(timeout)
 		} else if strings.HasPrefix(v, "negative_timeout=") {
 			timeout, err := strconv.ParseUint(parameter[1], 10, 32)
 			if err != nil {
-				return fmt.Errorf("failed to parse negative_timeout (%s)", err.Error())
+				return fmt.Errorf("failed to parse negative_timeout [%s]", err.Error())
 			}
 			bfv2FuseConfigOptions.NegativeEntryExpiration = uint32(timeout)
 		} else if v == "ro" {
@@ -330,7 +330,7 @@ func parseFuseConfig(config []string) error {
 		} else if strings.HasPrefix(v, "umask=") {
 			permission, err := strconv.ParseUint(parameter[1], 10, 32)
 			if err != nil {
-				return fmt.Errorf("failed to parse umask (%s)", err.Error())
+				return fmt.Errorf("failed to parse umask [%s]", err.Error())
 			}
 			perm := ^uint32(permission) & 777
 			bfv2FuseConfigOptions.DefaultPermission = perm

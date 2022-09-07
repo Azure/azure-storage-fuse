@@ -102,13 +102,13 @@ func (st *Stream) Configure(_ bool) error {
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {
 		log.Err("Stream::Configure : config error [invalid config attributes]")
-		return fmt.Errorf("config error in %s (%s)", st.Name(), err.Error())
+		return fmt.Errorf("config error in %s [%s]", st.Name(), err.Error())
 	}
 
 	err = config.UnmarshalKey("read-only", &conf.readOnly)
 	if err != nil {
 		log.Err("Stream::Configure : config error [unable to obtain read-only]")
-		return fmt.Errorf("config error in %s (%s)", st.Name(), err.Error())
+		return fmt.Errorf("config error in %s [%s]", st.Name(), err.Error())
 	}
 
 	if config.IsSet(compName + ".max-blocks-per-file") {

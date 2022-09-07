@@ -93,7 +93,7 @@ func getUsage(path string) float64 {
 
 	err := cmd.Run()
 	if err != nil {
-		log.Err("cachePolicy::getCacheUsage : error running du (%s)", err.Error())
+		log.Err("cachePolicy::getCacheUsage : error running du [%s]", err.Error())
 		return 0
 	}
 
@@ -105,7 +105,7 @@ func getUsage(path string) float64 {
 	size = strings.Replace(size, ",", ".", 1)
 	parsed, err := strconv.ParseFloat(size[:len(size)-1], 64)
 	if err != nil {
-		log.Err("cachePolicy::getCacheUsage : error parsing folder size (%s)", err.Error())
+		log.Err("cachePolicy::getCacheUsage : error parsing folder size [%s]", err.Error())
 		return 0
 	}
 

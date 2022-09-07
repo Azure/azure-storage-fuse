@@ -52,27 +52,27 @@ var getKeyCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			fmt.Printf("secure get : failed to validate options (%s)", err.Error())
-			return fmt.Errorf("secure get : failed to validate options (%s)", err.Error())
+			fmt.Printf("secure get : failed to validate options [%s]", err.Error())
+			return fmt.Errorf("secure get : failed to validate options [%s]", err.Error())
 		}
 
 		plainText, err := decryptConfigFile(false)
 		if err != nil {
-			fmt.Printf("secure get : failed to decrypt config file (%s)", err.Error())
-			return fmt.Errorf("secure get : failed to decrypt config file (%s)", err.Error())
+			fmt.Printf("secure get : failed to decrypt config file [%s]", err.Error())
+			return fmt.Errorf("secure get : failed to decrypt config file [%s]", err.Error())
 		}
 
 		viper.SetConfigType("yaml")
 		err = viper.ReadConfig(strings.NewReader(string(plainText)))
 		if err != nil {
-			fmt.Printf("secure get : failed to load config (%s)", err.Error())
-			return fmt.Errorf("secure get : failed to load config (%s)", err.Error())
+			fmt.Printf("secure get : failed to load config [%s]", err.Error())
+			return fmt.Errorf("secure get : failed to load config [%s]", err.Error())
 		}
 
 		value := viper.Get(secOpts.Key)
 		if value == nil {
-			fmt.Printf("secure get : key not found in config (%s)", err.Error())
-			return fmt.Errorf("secure get : key not found in config (%s)", err.Error())
+			fmt.Printf("secure get : key not found in config [%s]", err.Error())
+			return fmt.Errorf("secure get : key not found in config [%s]", err.Error())
 		}
 
 		valType := reflect.TypeOf(value)

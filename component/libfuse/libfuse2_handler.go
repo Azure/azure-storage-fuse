@@ -117,7 +117,7 @@ func (lf *Libfuse) initFuse() error {
 	operations := C.fuse_operations_t{}
 
 	if lf.extensionPath != "" {
-		log.Trace("Libfuse::InitFuse : Going for extension mouting (%s)", lf.extensionPath)
+		log.Trace("Libfuse::InitFuse : Going for extension mouting [%s]", lf.extensionPath)
 
 		// User has given an extension so we need to register it to fuse
 		//  and then register ourself to it
@@ -335,7 +335,7 @@ func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 	// Get attributes
 	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
 	if err != nil {
-		//log.Err("Libfuse::libfuse2_getattr : Failed to get attributes of %s (%s)", name, err.Error())
+		//log.Err("Libfuse::libfuse2_getattr : Failed to get attributes of %s [%s]", name, err.Error())
 		return -C.ENOENT
 	}
 
@@ -353,7 +353,7 @@ func libfuse_statfs(path *C.char, buf *C.statvfs_t) C.int {
 
 	attr, populated, err := fuseFS.NextComponent().StatFs()
 	if err != nil {
-		log.Err("Libfuse::libfuse_statfs: Failed to get stats %s (%s)", name, err.Error())
+		log.Err("Libfuse::libfuse_statfs: Failed to get stats %s [%s]", name, err.Error())
 		return -C.EIO
 	}
 
@@ -386,7 +386,7 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 
 	err := fuseFS.NextComponent().CreateDir(internal.CreateDirOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
 	if err != nil {
-		log.Err("Libfuse::libfuse_mkdir : Failed to create %s (%s)", name, err.Error())
+		log.Err("Libfuse::libfuse_mkdir : Failed to create %s [%s]", name, err.Error())
 		return -C.EIO
 	}
 
@@ -515,7 +515,7 @@ func libfuse_rmdir(path *C.char) C.int {
 
 	err := fuseFS.NextComponent().DeleteDir(internal.DeleteDirOptions{Name: name})
 	if err != nil {
-		log.Err("Libfuse::libfuse_rmdir : Failed to delete %s (%s)", name, err.Error())
+		log.Err("Libfuse::libfuse_rmdir : Failed to delete %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
 		} else {
@@ -540,7 +540,7 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 
 	handle, err := fuseFS.NextComponent().CreateFile(internal.CreateFileOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
 	if err != nil {
-		log.Err("Libfuse::libfuse_create : Failed to create %s (%s)", name, err.Error())
+		log.Err("Libfuse::libfuse_create : Failed to create %s [%s]", name, err.Error())
 		if os.IsExist(err) {
 			return -C.EEXIST
 		} else {
@@ -590,7 +590,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		})
 
 	if err != nil {
-		log.Err("Libfuse::libfuse_open : Failed to open %s (%s)", name, err.Error())
+		log.Err("Libfuse::libfuse_open : Failed to open %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
 		} else {
@@ -640,7 +640,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 		err = nil
 	}
 	if err != nil {
-		log.Err("Libfuse::libfuse_read : error reading file %s, handle: %d (%s)", handle.Path, handle.ID, err.Error())
+		log.Err("Libfuse::libfuse_read : error reading file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		return -C.EIO
 	}
 
@@ -664,7 +664,7 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		})
 
 	if err != nil {
-		log.Err("Libfuse::libfuse_write : error writing file %s, handle: %d (%s)", handle.Path, handle.ID, err.Error())
+		log.Err("Libfuse::libfuse_write : error writing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		return -C.EIO
 	}
 
@@ -690,7 +690,7 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 	if err != nil {
-		log.Err("Libfuse::libfuse_flush : error flushing file %s, handle: %d (%s)", handle.Path, handle.ID, err.Error())
+		log.Err("Libfuse::libfuse_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		return -C.EIO
 	}
 
@@ -707,7 +707,7 @@ func libfuse2_truncate(path *C.char, off C.off_t) C.int {
 
 	err := fuseFS.NextComponent().TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(off)})
 	if err != nil {
-		log.Err("Libfuse::libfuse2_truncate : error truncating file %s (%s)", name, err.Error())
+		log.Err("Libfuse::libfuse2_truncate : error truncating file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
 		}
@@ -734,7 +734,7 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
 	if err != nil {
-		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d (%s)", handle.Path, handle.ID, err.Error())
+		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		return -C.EIO
 	}
 
@@ -756,7 +756,7 @@ func libfuse_unlink(path *C.char) C.int {
 
 	err := fuseFS.NextComponent().DeleteFile(internal.DeleteFileOptions{Name: name})
 	if err != nil {
-		log.Err("Libfuse::libfuse_unlink : error deleting file %s (%s)", name, err.Error())
+		log.Err("Libfuse::libfuse_unlink : error deleting file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
 		}
@@ -785,26 +785,26 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 
 	// ENOENT. Not covered: a directory component in dst does not exist
 	if srcPath == "" || dstPath == "" {
-		log.Err("Libfuse::libfuse2_rename : src: (%s) or dst: (%s) is an empty string", srcPath, dstPath)
+		log.Err("Libfuse::libfuse2_rename : src: [%s] or dst: [%s] is an empty string", srcPath, dstPath)
 		return -C.ENOENT
 	}
 
 	srcAttr, srcErr := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: srcPath})
 	if os.IsNotExist(srcErr) {
-		log.Err("Libfuse::libfuse2_rename : Failed to get attributes of %s (%s)", srcPath, srcErr.Error())
+		log.Err("Libfuse::libfuse2_rename : Failed to get attributes of %s [%s]", srcPath, srcErr.Error())
 		return -C.ENOENT
 	}
 	dstAttr, dstErr := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: dstPath})
 
 	// EISDIR
 	if (dstErr == nil || os.IsExist(dstErr)) && dstAttr.IsDir() && !srcAttr.IsDir() {
-		log.Err("Libfuse::libfuse2_rename : dst (%s) is an existing directory but src (%s) is not a directory", dstPath, srcPath)
+		log.Err("Libfuse::libfuse2_rename : dst [%s] is an existing directory but src [%s] is not a directory", dstPath, srcPath)
 		return -C.EISDIR
 	}
 
 	// ENOTDIR
 	if (dstErr == nil || os.IsExist(dstErr)) && !dstAttr.IsDir() && srcAttr.IsDir() {
-		log.Err("Libfuse::libfuse2_rename : dst (%s) is an existing file but src (%s) is a directory", dstPath, srcPath)
+		log.Err("Libfuse::libfuse2_rename : dst [%s] is an existing file but src [%s] is a directory", dstPath, srcPath)
 		return -C.ENOTDIR
 	}
 
@@ -819,7 +819,7 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 
 		err := fuseFS.NextComponent().RenameDir(internal.RenameDirOptions{Src: srcPath, Dst: dstPath})
 		if err != nil {
-			log.Err("Libfuse::libfuse2_rename : error renaming directory %s -> %s (%s)", srcPath, dstPath, err.Error())
+			log.Err("Libfuse::libfuse2_rename : error renaming directory %s -> %s [%s]", srcPath, dstPath, err.Error())
 			return -C.EIO
 		}
 
@@ -829,7 +829,7 @@ func libfuse2_rename(src *C.char, dst *C.char) C.int {
 	} else {
 		err := fuseFS.NextComponent().RenameFile(internal.RenameFileOptions{Src: srcPath, Dst: dstPath})
 		if err != nil {
-			log.Err("Libfuse::libfuse2_rename : error renaming file %s -> %s (%s)", srcPath, dstPath, err.Error())
+			log.Err("Libfuse::libfuse2_rename : error renaming file %s -> %s [%s]", srcPath, dstPath, err.Error())
 			return -C.EIO
 		}
 
@@ -854,7 +854,7 @@ func libfuse_symlink(target *C.char, link *C.char) C.int {
 
 	err := fuseFS.NextComponent().CreateLink(internal.CreateLinkOptions{Name: name, Target: targetPath})
 	if err != nil {
-		log.Err("Libfuse::libfuse_symlink : error linking file %s -> %s (%s)", name, targetPath, err.Error())
+		log.Err("Libfuse::libfuse_symlink : error linking file %s -> %s [%s]", name, targetPath, err.Error())
 		return -C.EIO
 	}
 
@@ -873,7 +873,7 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 
 	targetPath, err := fuseFS.NextComponent().ReadLink(internal.ReadLinkOptions{Name: name})
 	if err != nil {
-		log.Err("Libfuse::libfuse_readlink : error reading link file %s (%s)", name, err.Error())
+		log.Err("Libfuse::libfuse_readlink : error reading link file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
 		}
@@ -906,7 +906,7 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 
 	err := fuseFS.NextComponent().SyncFile(options)
 	if err != nil {
-		log.Err("Libfuse::libfuse_fsync : error syncing file %s (%s)", handle.Path, err.Error())
+		log.Err("Libfuse::libfuse_fsync : error syncing file %s [%s]", handle.Path, err.Error())
 		return -C.EIO
 	}
 
@@ -929,7 +929,7 @@ func libfuse_fsyncdir(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.in
 
 	err := fuseFS.NextComponent().SyncDir(options)
 	if err != nil {
-		log.Err("Libfuse::libfuse_fsyncdir : error syncing dir %s (%s)", name, err.Error())
+		log.Err("Libfuse::libfuse_fsyncdir : error syncing dir %s [%s]", name, err.Error())
 		return -C.EIO
 	}
 
@@ -952,7 +952,7 @@ func libfuse2_chmod(path *C.char, mode C.mode_t) C.int {
 			Mode: fs.FileMode(uint32(mode) & 0xffffffff),
 		})
 	if err != nil {
-		log.Err("Libfuse::libfuse2_chmod : error in chmod of %s (%s)", name, err.Error())
+		log.Err("Libfuse::libfuse2_chmod : error in chmod of %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
 		}

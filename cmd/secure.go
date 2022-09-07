@@ -71,8 +71,8 @@ var secureCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			fmt.Printf("secure : failed to validate options (%s)", err.Error())
-			return fmt.Errorf("secure : failed to validate options (%s)", err.Error())
+			fmt.Printf("secure : failed to validate options [%s]", err.Error())
+			return fmt.Errorf("secure : failed to validate options [%s]", err.Error())
 		}
 		return nil
 	},
@@ -88,14 +88,14 @@ var encryptCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			fmt.Printf("secure encrypt : failed to validate options (%s)", err.Error())
-			return fmt.Errorf("secure encrypt : failed to validate options (%s)", err.Error())
+			fmt.Printf("secure encrypt : failed to validate options [%s]", err.Error())
+			return fmt.Errorf("secure encrypt : failed to validate options [%s]", err.Error())
 		}
 
 		_, err = encryptConfigFile(true)
 		if err != nil {
-			fmt.Printf("secure encrypt : failed to encrypt config file (%s)", err.Error())
-			return fmt.Errorf("secure encrypt : failed to encrypt config file (%s)", err.Error())
+			fmt.Printf("secure encrypt : failed to encrypt config file [%s]", err.Error())
+			return fmt.Errorf("secure encrypt : failed to encrypt config file [%s]", err.Error())
 		}
 		return nil
 	},
@@ -111,14 +111,14 @@ var decryptCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			fmt.Printf("secure decrypt : failed to validate options (%s)", err.Error())
-			return fmt.Errorf("secure decrypt : failed to validate options (%s)", err.Error())
+			fmt.Printf("secure decrypt : failed to validate options [%s]", err.Error())
+			return fmt.Errorf("secure decrypt : failed to validate options [%s]", err.Error())
 		}
 
 		_, err = decryptConfigFile(true)
 		if err != nil {
-			fmt.Printf("secure decrypt : failed to decrypt config file (%s)", err.Error())
-			return fmt.Errorf("secure decrypt : failed to decrypt config file (%s)", err.Error())
+			fmt.Printf("secure decrypt : failed to decrypt config file [%s]", err.Error())
+			return fmt.Errorf("secure decrypt : failed to decrypt config file [%s]", err.Error())
 		}
 		return nil
 	},

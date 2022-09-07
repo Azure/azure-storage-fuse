@@ -86,18 +86,18 @@ func (az *AzStorage) Configure(isParent bool) error {
 	err := config.UnmarshalKey(az.Name(), &conf)
 	if err != nil {
 		log.Err("AzStorage::Configure : config error [invalid config attributes]")
-		return fmt.Errorf("config error in %s (%s)", az.Name(), err.Error())
+		return fmt.Errorf("config error in %s [%s]", az.Name(), err.Error())
 	}
 
 	err = ParseAndValidateConfig(az, conf)
 	if err != nil {
-		log.Err("AzStorage::Configure : Config validation failed (%s)", err.Error())
-		return fmt.Errorf("config error in %s (%s)", az.Name(), err.Error())
+		log.Err("AzStorage::Configure : Config validation failed [%s]", err.Error())
+		return fmt.Errorf("config error in %s [%s]", az.Name(), err.Error())
 	}
 
 	err = az.configureAndTest(isParent)
 	if err != nil {
-		log.Err("AzStorage::Configure : Failed to validate storage account (%s)", err.Error())
+		log.Err("AzStorage::Configure : Failed to validate storage account [%s]", err.Error())
 		return err
 	}
 
@@ -137,13 +137,13 @@ func (az *AzStorage) configureAndTest(isParent bool) error {
 
 	err := az.storage.SetupPipeline()
 	if err != nil {
-		log.Err("AzStorage::configureAndTest : Failed to create container URL (%s)", err.Error())
+		log.Err("AzStorage::configureAndTest : Failed to create container URL [%s]", err.Error())
 		return err
 	}
 
 	err = az.storage.SetPrefixPath(az.stConfig.prefixPath)
 	if err != nil {
-		log.Err("AzStorage::configureAndTest : Failed to set prefix path (%s)", err.Error())
+		log.Err("AzStorage::configureAndTest : Failed to set prefix path [%s]", err.Error())
 		return err
 	}
 
@@ -151,7 +151,7 @@ func (az *AzStorage) configureAndTest(isParent bool) error {
 	if isParent {
 		err = az.storage.TestPipeline()
 		if err != nil {
-			log.Err("AzStorage::configureAndTest : Failed to validate credentials (%s)", err.Error())
+			log.Err("AzStorage::configureAndTest : Failed to validate credentials [%s]", err.Error())
 			return fmt.Errorf("failed to authenticate credentials for %s", az.Name())
 		}
 	}
@@ -228,7 +228,7 @@ func (az *AzStorage) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	log.Trace("AzStorage::IsDirEmpty : %s", options.Name)
 	list, _, err := az.storage.List(formatListDirName(options.Name), nil, 1)
 	if err != nil {
-		log.Err("AzStorage::IsDirEmpty : error listing (%s)", err)
+		log.Err("AzStorage::IsDirEmpty : error listing [%s]", err)
 		return false
 	}
 	if len(list) == 0 {
@@ -258,7 +258,7 @@ func (az *AzStorage) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 	for {
 		new_list, new_marker, err := az.storage.List(path, marker, common.MaxDirListCount)
 		if err != nil {
-			log.Err("AzStorage::ReadDir : Failed to read dir (%s)", err)
+			log.Err("AzStorage::ReadDir : Failed to read dir [%s]", err)
 			return blobList, err
 		}
 		blobList = append(blobList, new_list...)
@@ -292,7 +292,7 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	new_list, new_marker, err := az.storage.List(path, &options.Token, options.Count)
 	if err != nil {
-		log.Err("AzStorage::StreamDir : Failed to read dir (%s)", err)
+		log.Err("AzStorage::StreamDir : Failed to read dir [%s]", err)
 		return new_list, "", err
 	}
 
@@ -429,7 +429,7 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 
 	err = az.storage.ReadInBuffer(options.Handle.Path, options.Offset, dataLen, options.Data)
 	if err != nil {
-		log.Err("AzStorage::ReadInBuffer : Failed to read %s (%s)", options.Handle.Path, err.Error())
+		log.Err("AzStorage::ReadInBuffer : Failed to read %s [%s]", options.Handle.Path, err.Error())
 	}
 
 	length = int(dataLen)

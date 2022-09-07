@@ -156,7 +156,7 @@ func (l *lfuPolicy) clearItemFromCache(path string) {
 	// There are no open handles for this file so its safe to remove this
 	err := deleteFile(path)
 	if err != nil && !os.IsNotExist(err) {
-		log.Err("lfuPolicy::DeleteItem : failed to delete local file %s (%s)", path, err.Error())
+		log.Err("lfuPolicy::DeleteItem : failed to delete local file %s [%s]", path, err.Error())
 	}
 
 	// File was deleted so try clearing its parent directory

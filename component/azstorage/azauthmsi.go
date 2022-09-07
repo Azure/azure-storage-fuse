@@ -71,7 +71,7 @@ func (azmsi *azAuthMSI) fetchToken() (*adal.ServicePrincipalToken, error) {
 	}, func(token adal.Token) error { return nil })
 
 	if err != nil {
-		log.Err("AzAuthMSI::fetchToken : Failed to generate MSI token (%s)", err.Error())
+		log.Err("AzAuthMSI::fetchToken : Failed to generate MSI token [%s]", err.Error())
 		return nil, err
 	}
 
@@ -94,7 +94,7 @@ func (azmsi *azAuthBlobMSI) getCredential() interface{} {
 	tc := azblob.NewTokenCredential(spt.Token().AccessToken, func(tc azblob.TokenCredential) time.Duration {
 		err := spt.Refresh()
 		if err != nil {
-			log.Err("azAuthBlobMSI::getCredential : Failed to refresh token (%s)", err.Error())
+			log.Err("azAuthBlobMSI::getCredential : Failed to refresh token [%s]", err.Error())
 			return 0
 		}
 
@@ -125,7 +125,7 @@ func (azmsi *azAuthBfsMSI) getCredential() interface{} {
 	tc := azbfs.NewTokenCredential(spt.Token().AccessToken, func(tc azbfs.TokenCredential) time.Duration {
 		err := spt.Refresh()
 		if err != nil {
-			log.Err("azAuthBfsMSI::getCredential : Failed to refresh token (%s)", err.Error())
+			log.Err("azAuthBfsMSI::getCredential : Failed to refresh token [%s]", err.Error())
 			return 0
 		}
 

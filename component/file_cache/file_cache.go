@@ -200,7 +200,7 @@ func (c *FileCache) Configure(_ bool) error {
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {
 		log.Err("FileCache: config error [invalid config attributes]")
-		return fmt.Errorf("config error in %s (%s)", c.Name(), err.Error())
+		return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
 	}
 
 	c.createEmptyFile = conf.CreateEmptyFile
@@ -239,20 +239,20 @@ func (c *FileCache) Configure(_ bool) error {
 		log.Err("FileCache: config error [tmp-path does not exist. attempting to create tmp-path.]")
 		err := os.Mkdir(c.tmpPath, os.FileMode(0755))
 		if err != nil {
-			log.Err("FileCache: config error creating directory after clean (%s)", err.Error())
-			return fmt.Errorf("config error in %s (%s)", c.Name(), err.Error())
+			log.Err("FileCache: config error creating directory after clean [%s]", err.Error())
+			return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
 		}
 	}
 
 	if !isLocalDirEmpty(c.tmpPath) && !c.allowNonEmpty {
 		log.Err("FileCache: config error %s directory is not empty", c.tmpPath)
-		return fmt.Errorf("config error in %s (%s)", c.Name(), "temp directory not empty")
+		return fmt.Errorf("config error in %s [%s]", c.Name(), "temp directory not empty")
 	}
 
 	err = config.UnmarshalKey("allow-other", &c.allowOther)
 	if err != nil {
 		log.Err("FileCache::Configure : config error [unable to obtain allow-other]")
-		return fmt.Errorf("config error in %s (%s)", c.Name(), err.Error())
+		return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
 	}
 
 	if c.allowOther {
@@ -275,7 +275,7 @@ func (c *FileCache) Configure(_ bool) error {
 
 	if c.policy == nil {
 		log.Err("FileCache::Configure : failed to create cache eviction policy")
-		return fmt.Errorf("config error in %s (%s)", c.Name(), "failed to create cache policy")
+		return fmt.Errorf("config error in %s [%s]", c.Name(), "failed to create cache policy")
 	}
 
 	if config.IsSet(compName + ".background-download") {
@@ -324,7 +324,7 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	statfs := &syscall.Statfs_t{}
 	err := syscall.Statfs("/", statfs)
 	if err != nil {
-		log.Debug("FileCache::StatFs : statfs err (%s).", err.Error())
+		log.Debug("FileCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
 	}
 	statfs.Blocks = uint64(maxCacheSize) / uint64(statfs.Frsize)
@@ -379,7 +379,7 @@ func (fc *FileCache) invalidateDirectory(name string) {
 		log.Info("FileCache::invalidateDirectory : %s does not exist in local cache.", name)
 		return
 	} else if err != nil {
-		log.Debug("FileCache::invalidateDirectory : %s stat err (%s).", name, err.Error())
+		log.Debug("FileCache::invalidateDirectory : %s stat err [%s].", name, err.Error())
 		return
 	}
 	// TODO : wouldn't this cause a race condition? a thread might get the lock before we purge - and the file would be non-existent
@@ -396,7 +396,7 @@ func (fc *FileCache) invalidateDirectory(name string) {
 	})
 
 	if err != nil {
-		log.Debug("FileCache::invalidateDirectory : Failed to iterate directory %s (%s).", localPath, err.Error())
+		log.Debug("FileCache::invalidateDirectory : Failed to iterate directory %s [%s].", localPath, err.Error())
 		return
 	}
 
@@ -456,7 +456,7 @@ func (fc *FileCache) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 	// To cover case 1, grab all entries from storage
 	attrs, err := fc.NextComponent().ReadDir(options)
 	if err != nil {
-		log.Err("FileCache::ReadDir : error fetching storage attributes (%s)", err.Error())
+		log.Err("FileCache::ReadDir : error fetching storage attributes [%s]", err.Error())
 		// TODO : Should we return here if the directory failed to be read from storage?
 	}
 
@@ -501,7 +501,7 @@ func (fc *FileCache) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 			}
 		}
 	} else {
-		log.Debug("FileCache::ReadDir : error fetching local attributes (%s)", err.Error())
+		log.Debug("FileCache::ReadDir : error fetching local attributes [%s]", err.Error())
 	}
 
 	return attrs, nil
@@ -575,7 +575,7 @@ func (fc *FileCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 		log.Debug("FileCache::IsDirEmpty : %s not found in local cache", options.Name)
 	} else {
 		// Unknown error, check with container
-		log.Err("FileCache::IsDirEmpty : %s failed while checking local cache (%s)", options.Name, err.Error())
+		log.Err("FileCache::IsDirEmpty : %s failed while checking local cache [%s]", options.Name, err.Error())
 	}
 
 	log.Debug("FileCache::IsDirEmpty : %s checking with container", options.Name)
@@ -588,7 +588,7 @@ func (fc *FileCache) RenameDir(options internal.RenameDirOptions) error {
 
 	err := fc.NextComponent().RenameDir(options)
 	if err != nil {
-		log.Err("FileCache::RenameDir : error %s (%s)", options.Src, err.Error())
+		log.Err("FileCache::RenameDir : error %s [%s]", options.Src, err.Error())
 		return err
 	}
 
@@ -625,14 +625,14 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 
 	err := os.MkdirAll(filepath.Dir(localPath), fc.defaultPermission)
 	if err != nil {
-		log.Err("FileCache::CreateFile : unable to create local directory %s (%s)", options.Name, err.Error())
+		log.Err("FileCache::CreateFile : unable to create local directory %s [%s]", options.Name, err.Error())
 		return nil, err
 	}
 
 	// Open the file and grab a shared lock to prevent deletion by the cache policy.
 	f, err := os.OpenFile(localPath, os.O_RDWR|os.O_CREATE|os.O_TRUNC, options.Mode)
 	if err != nil {
-		log.Err("FileCache::CreateFile : error opening local file %s (%s)", options.Name, err.Error())
+		log.Err("FileCache::CreateFile : error opening local file %s [%s]", options.Name, err.Error())
 		return nil, err
 	}
 	// The user might change permissions WHILE creating the file therefore we need to account for that
@@ -708,14 +708,14 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 	err := fc.NextComponent().DeleteFile(options)
 	err = fc.validateStorageError(options.Name, err, "DeleteFile", false)
 	if err != nil {
-		log.Err("FileCache::DeleteFile : error  %s (%s)", options.Name, err.Error())
+		log.Err("FileCache::DeleteFile : error  %s [%s]", options.Name, err.Error())
 		return err
 	}
 
 	localPath := filepath.Join(fc.tmpPath, options.Name)
 	err = deleteFile(localPath)
 	if err != nil && !os.IsNotExist(err) {
-		log.Err("FileCache::DeleteFile : failed to delete local file %s (%s)", localPath, err.Error())
+		log.Err("FileCache::DeleteFile : failed to delete local file %s [%s]", localPath, err.Error())
 	}
 
 	fc.policy.CachePurge(localPath)
@@ -759,7 +759,7 @@ func (fc *FileCache) isDownloadRequired(localPath string) (bool, bool) {
 		downloadRequired = true
 	} else {
 		// Catch all, the file needs to be downloaded
-		log.Debug("FileCache::isDownloadRequired : error calling stat %s (%s)", localPath, err.Error())
+		log.Debug("FileCache::isDownloadRequired : error calling stat %s [%s]", localPath, err.Error())
 		downloadRequired = true
 	}
 
@@ -803,7 +803,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			// Create the file if if doesn't already exist.
 			err := os.MkdirAll(filepath.Dir(localPath), fc.defaultPermission)
 			if err != nil {
-				log.Err("FileCache::OpenFile : error creating directory structure for file %s (%s)", options.Name, err.Error())
+				log.Err("FileCache::OpenFile : error creating directory structure for file %s [%s]", options.Name, err.Error())
 				return nil, err
 			}
 		}
@@ -811,7 +811,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		// Open the file in write mode.
 		f, err = os.OpenFile(localPath, os.O_CREATE|os.O_RDWR, options.Mode)
 		if err != nil {
-			log.Err("FileCache::OpenFile : error creating new file %s (%s)", options.Name, err.Error())
+			log.Err("FileCache::OpenFile : error creating new file %s [%s]", options.Name, err.Error())
 			return nil, err
 		}
 
@@ -820,7 +820,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 		attr, err := fc.NextComponent().GetAttr(internal.GetAttrOptions{Name: options.Name})
 		if err != nil {
-			log.Err("FileCache::OpenFile : Failed to get attr of %s (%s)", options.Name, err.Error())
+			log.Err("FileCache::OpenFile : Failed to get attr of %s [%s]", options.Name, err.Error())
 		} else {
 			attrReceived = true
 			fileSize = int64(attr.Size)
@@ -837,7 +837,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 				})
 			if err != nil {
 				// File was created locally and now download has failed so we need to delete it back from local cache
-				log.Err("FileCache::OpenFile : error downloading file from storage %s (%s)", options.Name, err.Error())
+				log.Err("FileCache::OpenFile : error downloading file from storage %s [%s]", options.Name, err.Error())
 				_ = f.Close()
 				_ = os.Remove(localPath)
 				return nil, err
@@ -856,14 +856,14 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		// If user has selected some non default mode in config then every local file shall be created with that mode only
 		err = os.Chmod(localPath, fileMode)
 		if err != nil {
-			log.Err("FileCache::OpenFile : Failed to change mode of file %s (%s)", options.Name, err.Error())
+			log.Err("FileCache::OpenFile : Failed to change mode of file %s [%s]", options.Name, err.Error())
 		}
 		// TODO: When chown is supported should we update that?
 
 		// chtimes shall be the last api otherwise calling chmod/chown will update the last change time
 		err = os.Chtimes(localPath, attr.Atime, attr.Mtime)
 		if err != nil {
-			log.Err("FileCache::OpenFile : Failed to change times of file %s (%s)", options.Name, err.Error())
+			log.Err("FileCache::OpenFile : Failed to change times of file %s [%s]", options.Name, err.Error())
 		}
 
 		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, dlFiles, (int64)(1))
@@ -876,7 +876,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	// Open the file and grab a shared lock to prevent deletion by the cache policy.
 	f, err = os.OpenFile(localPath, options.Flags, options.Mode)
 	if err != nil {
-		log.Err("FileCache::OpenFile : error opening cached file %s (%s)", options.Name, err.Error())
+		log.Err("FileCache::OpenFile : error opening cached file %s [%s]", options.Name, err.Error())
 		return nil, err
 	}
 
@@ -928,7 +928,7 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 
 	err := f.Close()
 	if err != nil {
-		log.Err("FileCache::CloseFile : error closing file %s(%d) (%s)", options.Handle.Path, int(f.Fd()), err.Error())
+		log.Err("FileCache::CloseFile : error closing file %s(%d) [%s]", options.Handle.Path, int(f.Fd()), err.Error())
 		return err
 	}
 	flock.Dec()
@@ -940,7 +940,7 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 
 		err = deleteFile(localPath)
 		if err != nil && !os.IsNotExist(err) {
-			log.Err("FileCache::CloseFile : failed to delete local file %s (%s)", localPath, err.Error())
+			log.Err("FileCache::CloseFile : failed to delete local file %s [%s]", localPath, err.Error())
 		}
 
 		fc.policy.CachePurge(localPath)
@@ -966,7 +966,7 @@ func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) 
 	// Get file info so we know the size of data we expect to read.
 	info, err := f.Stat()
 	if err != nil {
-		log.Err("FileCache::ReadFile : error stat %s (%s) ", options.Handle.Path, err.Error())
+		log.Err("FileCache::ReadFile : error stat %s [%s] ", options.Handle.Path, err.Error())
 		return nil, err
 	}
 	data := make([]byte, info.Size())
@@ -1030,7 +1030,7 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 
 	} else {
-		log.Err("FileCache::WriteFile : failed to write %s (%s)", options.Handle.Path, err.Error())
+		log.Err("FileCache::WriteFile : failed to write %s [%s]", options.Handle.Path, err.Error())
 	}
 
 	return bytesWritten, err
@@ -1100,7 +1100,7 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 		// The local handle can still be used for read and write.
 		uploadHandle, err := os.Open(localPath)
 		if err != nil {
-			log.Err("FileCache::FlushFile : error [unable to open upload handle] %s (%s)", options.Handle.Path, err.Error())
+			log.Err("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
 			return nil
 		}
 
@@ -1112,7 +1112,7 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 
 		uploadHandle.Close()
 		if err != nil {
-			log.Err("FileCache::FlushFile : %s upload failed (%s)", options.Handle.Path, err.Error())
+			log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
 			return err
 		}
 
@@ -1135,7 +1135,7 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 				if err != nil {
 					// chmod was missed earlier for this file and doing it now also
 					// resulted in error so ignore this one and proceed for flush handling
-					log.Err("FileCache::FlushFile : %s chmod failed (%s)", options.Handle.Path, err.Error())
+					log.Err("FileCache::FlushFile : %s chmod failed [%s]", options.Handle.Path, err.Error())
 				}
 			}
 		}
@@ -1161,7 +1161,7 @@ func (fc *FileCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 			log.Debug("FileCache::GetAttr : %s does not exist in storage", options.Name)
 			exists = false
 		} else {
-			log.Err("FileCache::GetAttr : Failed to get attr of %s (%s)", options.Name, err.Error())
+			log.Err("FileCache::GetAttr : Failed to get attr of %s [%s]", options.Name, err.Error())
 			return &internal.ObjAttr{}, err
 		}
 	} else {
@@ -1217,7 +1217,7 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 	err := fc.NextComponent().RenameFile(options)
 	err = fc.validateStorageError(options.Src, err, "RenameFile", false)
 	if err != nil {
-		log.Err("FileCache::RenameFile : %s failed to rename file (%s)", options.Src, err.Error())
+		log.Err("FileCache::RenameFile : %s failed to rename file [%s]", options.Src, err.Error())
 		return err
 	}
 
@@ -1230,7 +1230,7 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 	// stale content). We either need to remove dest file as well from cache or just run rename to replace the content.
 	err = os.Rename(localSrcPath, localDstPath)
 	if err != nil && !os.IsNotExist(err) {
-		log.Err("FileCache::RenameFile : %s failed to rename local file %s (%s)", localSrcPath, err.Error())
+		log.Err("FileCache::RenameFile : %s failed to rename local file %s [%s]", localSrcPath, err.Error())
 	}
 
 	if err != nil {
@@ -1239,7 +1239,7 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 		// so deleting local dest file ensures next open of that will get the updated file from container
 		err = deleteFile(localDstPath)
 		if err != nil && !os.IsNotExist(err) {
-			log.Err("FileCache::RenameFile : %s failed to delete local file %s (%s)", localDstPath, err.Error())
+			log.Err("FileCache::RenameFile : %s failed to delete local file %s [%s]", localDstPath, err.Error())
 		}
 
 		fc.policy.CachePurge(localDstPath)
@@ -1247,7 +1247,7 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 
 	err = deleteFile(localSrcPath)
 	if err != nil && !os.IsNotExist(err) {
-		log.Err("FileCache::RenameFile : %s failed to delete local file %s (%s)", localSrcPath, err.Error())
+		log.Err("FileCache::RenameFile : %s failed to delete local file %s [%s]", localSrcPath, err.Error())
 	}
 
 	fc.policy.CachePurge(localSrcPath)
@@ -1265,7 +1265,7 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	err := fc.NextComponent().TruncateFile(options)
 	err = fc.validateStorageError(options.Name, err, "TruncateFile", true)
 	if err != nil {
-		log.Err("FileCache::TruncateFile : %s failed to truncate (%s)", options.Name, err.Error())
+		log.Err("FileCache::TruncateFile : %s failed to truncate [%s]", options.Name, err.Error())
 		return err
 	}
 
@@ -1278,7 +1278,7 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 		if info.Size() != options.Size {
 			err = os.Truncate(localPath, options.Size)
 			if err != nil {
-				log.Err("FileCache::TruncateFile : error truncating cached file %s (%s)", localPath, err.Error())
+				log.Err("FileCache::TruncateFile : error truncating cached file %s [%s]", localPath, err.Error())
 				return err
 			}
 		}
@@ -1296,7 +1296,7 @@ func (fc *FileCache) Chmod(options internal.ChmodOptions) error {
 	err = fc.validateStorageError(options.Name, err, "Chmod", false)
 	if err != nil {
 		if err != syscall.EIO {
-			log.Err("FileCache::Chmod : %s failed to change mode (%s)", options.Name, err.Error())
+			log.Err("FileCache::Chmod : %s failed to change mode [%s]", options.Name, err.Error())
 			return err
 		} else {
 			fc.missedChmodList.LoadOrStore(options.Name, true)
@@ -1312,7 +1312,7 @@ func (fc *FileCache) Chmod(options internal.ChmodOptions) error {
 		if info.Mode() != options.Mode {
 			err = os.Chmod(localPath, options.Mode)
 			if err != nil {
-				log.Err("FileCache::Chmod : error changing mode on the cached path %s (%s)", localPath, err.Error())
+				log.Err("FileCache::Chmod : error changing mode on the cached path %s [%s]", localPath, err.Error())
 				return err
 			}
 		}
@@ -1329,7 +1329,7 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 	err := fc.NextComponent().Chown(options)
 	err = fc.validateStorageError(options.Name, err, "Chown", false)
 	if err != nil {
-		log.Err("FileCache::Chown : %s failed to change owner (%s)", options.Name, err.Error())
+		log.Err("FileCache::Chown : %s failed to change owner [%s]", options.Name, err.Error())
 		return err
 	}
 
@@ -1341,7 +1341,7 @@ func (fc *FileCache) Chown(options internal.ChownOptions) error {
 
 		err = os.Chown(localPath, options.Owner, options.Group)
 		if err != nil {
-			log.Err("FileCache::Chown : error changing owner on the cached path %s (%s)", localPath, err.Error())
+			log.Err("FileCache::Chown : error changing owner on the cached path %s [%s]", localPath, err.Error())
 			return err
 		}
 	}

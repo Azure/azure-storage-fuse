@@ -57,12 +57,12 @@ var docCmd = &cobra.Command{
 		if err != nil && os.IsNotExist(err) {
 			// create the output location if it does not exist yet
 			if err = os.MkdirAll(docCmdInput.outputLocation, os.ModePerm); err != nil {
-				fmt.Printf("doc : failed to create output location (%s)", err.Error())
-				return fmt.Errorf("doc : failed to create output location (%s)", err.Error())
+				fmt.Printf("doc : failed to create output location [%s]", err.Error())
+				return fmt.Errorf("doc : failed to create output location [%s]", err.Error())
 			}
 		} else if err != nil {
-			fmt.Printf("doc : cannot access the output location (%s)", err.Error())
-			return fmt.Errorf("doc : cannot access the output location (%s)", err.Error())
+			fmt.Printf("doc : cannot access the output location [%s]", err.Error())
+			return fmt.Errorf("doc : cannot access the output location [%s]", err.Error())
 		} else if !f.IsDir() {
 			fmt.Printf("doc : output location is invalid as it is pointing to a file")
 			return fmt.Errorf("doc : output location is invalid as it is pointing to a file")
@@ -72,8 +72,8 @@ var docCmd = &cobra.Command{
 		// it will include this command too, which is intended
 		err = doc.GenMarkdownTree(rootCmd, docCmdInput.outputLocation)
 		if err != nil {
-			fmt.Printf("doc : cannot generate command tree (%s). Please contact the dev team", err.Error())
-			return fmt.Errorf("doc : cannot generate command tree (%s). Please contact the dev team", err.Error())
+			fmt.Printf("doc : cannot generate command tree [%s]. Please contact the dev team", err.Error())
+			return fmt.Errorf("doc : cannot generate command tree [%s]. Please contact the dev team", err.Error())
 		}
 		return nil
 	},

@@ -75,27 +75,27 @@ var healthMonCmd = &cobra.Command{
 
 		err := validateHMonOptions()
 		if err != nil {
-			log.Err("health-monitor : failed to validate options (%s)", err.Error())
-			return fmt.Errorf("health monitor : failed to validate options (%s)", err.Error())
+			log.Err("health-monitor : failed to validate options [%s]", err.Error())
+			return fmt.Errorf("health monitor : failed to validate options [%s]", err.Error())
 		}
 
 		options.ConfigFile = configFile
 		err = parseConfig()
 		if err != nil {
-			log.Err("health-monitor : failed to parse config (%s)", err.Error())
-			return fmt.Errorf("health-monitor : failed to parse config (%s)", err.Error())
+			log.Err("health-monitor : failed to parse config [%s]", err.Error())
+			return fmt.Errorf("health-monitor : failed to parse config [%s]", err.Error())
 		}
 
 		err = config.UnmarshalKey("file_cache", &cacheMonitorOptions)
 		if err != nil {
-			log.Err("health-monitor : file_cache config error (invalid config attributes) (%s)", err.Error())
-			return fmt.Errorf("health-monitor : file_cache config error (invalid config attributes) (%s)", err.Error())
+			log.Err("health-monitor : file_cache config error (invalid config attributes) [%s]", err.Error())
+			return fmt.Errorf("health-monitor : file_cache config error (invalid config attributes) [%s]", err.Error())
 		}
 
 		err = config.UnmarshalKey("health-monitor", &options.MonitorOpt)
 		if err != nil {
-			log.Err("health-monitor : health_monitor config error (invalid config attributes) (%s)", err.Error())
-			return fmt.Errorf("health-monitor : health_monitor config error (invalid config attributes) (%s)", err.Error())
+			log.Err("health-monitor : health_monitor config error (invalid config attributes) [%s]", err.Error())
+			return fmt.Errorf("health-monitor : health_monitor config error (invalid config attributes) [%s]", err.Error())
 		}
 
 		cliParams := buildCliParamForMonitor()
@@ -110,8 +110,8 @@ var healthMonCmd = &cobra.Command{
 
 		if err != nil {
 			common.EnableMonitoring = false
-			log.Err("health-monitor : failed to start health monitor (%s)", err.Error())
-			return fmt.Errorf("health-monitor : failed to start health monitor (%s)", err.Error())
+			log.Err("health-monitor : failed to start health monitor [%s]", err.Error())
+			return fmt.Errorf("health-monitor : failed to start health monitor [%s]", err.Error())
 		}
 
 		return nil

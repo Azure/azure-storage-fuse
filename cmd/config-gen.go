@@ -70,8 +70,8 @@ var generateTestConfig = &cobra.Command{
 			templateConfig, err = ioutil.ReadFile(templatesDir + opts.configFilePath)
 		}
 		if err != nil {
-			fmt.Printf("config-gen : failed to read file (%s)", err.Error())
-			return fmt.Errorf("config-gen : failed to read file (%s)", err.Error())
+			fmt.Printf("config-gen : failed to read file [%s]", err.Error())
+			return fmt.Errorf("config-gen : failed to read file [%s]", err.Error())
 		}
 		// match all parameters in { }
 		re := regexp.MustCompile("{.*?}")
@@ -95,8 +95,8 @@ var generateTestConfig = &cobra.Command{
 		// write the config with the params to the output file
 		err2 := ioutil.WriteFile(opts.outputConfigPath, []byte(newConfig), 0700)
 		if err2 != nil {
-			fmt.Printf("config-gen : failed to write file (%s)", err2.Error())
-			return fmt.Errorf("config-gen : failed to write file (%s)", err2.Error())
+			fmt.Printf("config-gen : failed to write file [%s]", err2.Error())
+			return fmt.Errorf("config-gen : failed to write file [%s]", err2.Error())
 		}
 		return nil
 	},

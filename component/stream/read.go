@@ -89,7 +89,7 @@ func (r *ReadCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handl
 	log.Trace("Stream::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
 	handle, err := r.NextComponent().OpenFile(options)
 	if err != nil {
-		log.Err("Stream::OpenFile : error %s (%s)", options.Name, err.Error())
+		log.Err("Stream::OpenFile : error %s [%s]", options.Name, err.Error())
 		return handle, err
 	}
 	if handle == nil {
@@ -98,14 +98,14 @@ func (r *ReadCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handl
 	if !r.StreamOnly {
 		handlemap.CreateCacheObject(int64(r.BufferSizePerHandle), handle)
 		if r.CachedHandles >= r.HandleLimit {
-			log.Trace("Stream::OpenFile : file handle limit exceeded - switch handle to stream only mode %s (%s)", options.Name, handle.ID)
+			log.Trace("Stream::OpenFile : file handle limit exceeded - switch handle to stream only mode %s [%s]", options.Name, handle.ID)
 			handle.CacheObj.StreamOnly = true
 			return handle, nil
 		}
 		atomic.AddInt32(&r.CachedHandles, 1)
 		block, exists, err := r.getBlock(handle, 0)
 		if err != nil {
-			log.Err("Stream::OpenFile : error failed to get block on open %s (%s)", options.Name, err.Error())
+			log.Err("Stream::OpenFile : error failed to get block on open %s [%s]", options.Name, err.Error())
 			return handle, err
 		}
 		// if it exists then we can just RUnlock since we didn't manipulate its data buffer
@@ -161,7 +161,7 @@ func (r *ReadCache) copyCachedBlock(handle *handlemap.Handle, offset int64, data
 		block, exists, err := r.getBlock(handle, cachedBlockStartIndex)
 		if err != nil {
 			r.unlockBlock(block, exists)
-			log.Err("Stream::ReadInBuffer : failed to download block of %s with offset %d: (%s)", handle.Path, block.StartIndex, err.Error())
+			log.Err("Stream::ReadInBuffer : failed to download block of %s with offset %d: [%s]", handle.Path, block.StartIndex, err.Error())
 			return dataRead, err
 		}
 		dataCopied := int64(copy(data[dataRead:], block.Data[offset-cachedBlockStartIndex:]))
@@ -178,7 +178,7 @@ func (r *ReadCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, err
 	if r.StreamOnly || options.Handle.CacheObj.StreamOnly {
 		data, err := r.NextComponent().ReadInBuffer(options)
 		if err != nil && err != io.EOF {
-			log.Err("Stream::ReadInBuffer : error failed to download requested data for %s: (%s)", options.Handle.Path, err.Error())
+			log.Err("Stream::ReadInBuffer : error failed to download requested data for %s: [%s]", options.Handle.Path, err.Error())
 		}
 		return data, err
 	}
@@ -189,7 +189,7 @@ func (r *ReadCache) CloseFile(options internal.CloseFileOptions) error {
 	// log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	err := r.NextComponent().CloseFile(options)
 	if err != nil {
-		log.Err("Stream::CloseFile : error closing file %s (%s)", options.Handle.Path, err.Error())
+		log.Err("Stream::CloseFile : error closing file %s [%s]", options.Handle.Path, err.Error())
 	}
 	if !r.StreamOnly && !options.Handle.CacheObj.StreamOnly {
 		options.Handle.CacheObj.Lock()

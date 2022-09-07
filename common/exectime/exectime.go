@@ -73,14 +73,14 @@ func (t *Timer) PrintStats() {
 		separator := "\n\n\n******************************************Stats******************************************\n\n\n"
 		_, err := t.out.Write([]byte(separator))
 		if err != nil {
-			fmt.Printf("Timer::PrintStats: error writing (%s)\n", err)
+			fmt.Printf("Timer::PrintStats: error writing [%s]\n", err)
 		}
 		for key, stat := range t.statsMap {
 			total := stat.Mean() * time.Duration(stat.N)
 			msg := fmt.Sprintf("%s: avg=%s, std=%s, total=%s, ops/sec=%f\n", key, stat.Mean(), stat.StandardDeviation(), total, (1.0 / float64(stat.Mean().Seconds())))
 			_, err = t.out.Write([]byte(msg))
 			if err != nil {
-				fmt.Printf("Timer::PrintStats: error writing (%s)\n", err)
+				fmt.Printf("Timer::PrintStats: error writing [%s]\n", err)
 			}
 		}
 	}
@@ -94,7 +94,7 @@ func (t *Timer) TimeCurrentBlock(name string) func() {
 			msg := fmt.Sprintf("%s took %v\n", name, time.Since(start))
 			_, err := t.out.Write([]byte(msg))
 			if err != nil {
-				fmt.Printf("Timer::TimeCurrentBlock for %s: error (%s)\n", name, err)
+				fmt.Printf("Timer::TimeCurrentBlock for %s: error [%s]\n", name, err)
 			}
 		}
 	} else {
@@ -123,7 +123,7 @@ func (t *Timer) Stop(key string) {
 	msg := fmt.Sprintf("%s took %v\n", key, time.Since(last))
 	_, err := t.out.Write([]byte(msg))
 	if err != nil {
-		fmt.Printf("Timer::TimeCurrentBlock for %s: error (%s)", key, err)
+		fmt.Printf("Timer::TimeCurrentBlock for %s: error [%s]", key, err)
 	}
 }
 

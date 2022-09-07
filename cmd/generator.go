@@ -56,8 +56,8 @@ var generateCmd = &cobra.Command{
 		script.Stderr = os.Stdout
 
 		if err := script.Run(); err != nil {
-			fmt.Printf("generate : failed to generate new component (%s)", err.Error())
-			return fmt.Errorf("generate : failed to generate new component (%s)", err.Error())
+			fmt.Printf("generate : failed to generate new component [%s]", err.Error())
+			return fmt.Errorf("generate : failed to generate new component [%s]", err.Error())
 		}
 		return nil
 	},

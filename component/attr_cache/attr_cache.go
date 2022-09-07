@@ -125,7 +125,7 @@ func (ac *AttrCache) Configure(_ bool) error {
 	err := config.UnmarshalKey(ac.Name(), &conf)
 	if err != nil {
 		log.Err("AttrCache::Configure : config error [invalid config attributes]")
-		return fmt.Errorf("config error in %s (%s)", ac.Name(), err.Error())
+		return fmt.Errorf("config error in %s [%s]", ac.Name(), err.Error())
 	}
 
 	if config.IsSet(compName + ".timeout-sec") {

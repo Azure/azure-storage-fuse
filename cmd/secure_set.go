@@ -56,21 +56,21 @@ var setKeyCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			fmt.Printf("secure set : failed to validate options (%s)", err.Error())
-			return fmt.Errorf("secure set : failed to validate options (%s)", err.Error())
+			fmt.Printf("secure set : failed to validate options [%s]", err.Error())
+			return fmt.Errorf("secure set : failed to validate options [%s]", err.Error())
 		}
 
 		plainText, err := decryptConfigFile(false)
 		if err != nil {
-			fmt.Printf("secure set : failed to decrypt config file (%s)", err.Error())
-			return fmt.Errorf("secure set : failed to decrypt config file (%s)", err.Error())
+			fmt.Printf("secure set : failed to decrypt config file [%s]", err.Error())
+			return fmt.Errorf("secure set : failed to decrypt config file [%s]", err.Error())
 		}
 
 		viper.SetConfigType("yaml")
 		err = viper.ReadConfig(strings.NewReader(string(plainText)))
 		if err != nil {
-			fmt.Printf("secure set : failed to load config (%s)", err.Error())
-			return fmt.Errorf("secure set : failed to load config (%s)", err.Error())
+			fmt.Printf("secure set : failed to load config [%s]", err.Error())
+			return fmt.Errorf("secure set : failed to load config [%s]", err.Error())
 		}
 
 		value := viper.Get(secOpts.Key)
@@ -93,19 +93,19 @@ var setKeyCmd = &cobra.Command{
 		allConf := viper.AllSettings()
 		confStream, err := yaml.Marshal(allConf)
 		if err != nil {
-			fmt.Printf("secure set : failed to marshal config (%s)", err.Error())
-			return fmt.Errorf("secure set : failed to marshal config (%s)", err.Error())
+			fmt.Printf("secure set : failed to marshal config [%s]", err.Error())
+			return fmt.Errorf("secure set : failed to marshal config [%s]", err.Error())
 		}
 
 		cipherText, err := common.EncryptData(confStream, []byte(secOpts.PassPhrase))
 		if err != nil {
-			fmt.Printf("secure set : failed to encrypt config (%s)", err.Error())
-			return fmt.Errorf("secure set : failed to encrypt config (%s)", err.Error())
+			fmt.Printf("secure set : failed to encrypt config [%s]", err.Error())
+			return fmt.Errorf("secure set : failed to encrypt config [%s]", err.Error())
 		}
 
 		if err = saveToFile(secOpts.ConfigFile, cipherText, false); err != nil {
-			fmt.Printf("secure set : failed save config file (%s)", err.Error())
-			return fmt.Errorf("secure set : failed save config file (%s)", err.Error())
+			fmt.Printf("secure set : failed save config file [%s]", err.Error())
+			return fmt.Errorf("secure set : failed save config file [%s]", err.Error())
 		}
 
 		return nil

@@ -74,13 +74,13 @@ func (lfs *LoopbackFS) Configure(_ bool) error {
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {
 		log.Err("LoopbackFS: config error [invalid config attributes]")
-		return fmt.Errorf("config error in %s (%s)", lfs.Name(), err)
+		return fmt.Errorf("config error in %s [%s]", lfs.Name(), err)
 	}
 	if _, err := os.Stat(conf.Path); os.IsNotExist(err) {
 		err = os.MkdirAll(conf.Path, os.FileMode(0777))
 		if err != nil {
-			log.Err("LoopbackFS: config error (%s)", err)
-			return fmt.Errorf("config error in %s (%s)", lfs.Name(), err)
+			log.Err("LoopbackFS: config error [%s]", err)
+			return fmt.Errorf("config error in %s [%s]", lfs.Name(), err)
 		}
 		lfs.path = conf.Path
 	} else {
@@ -119,7 +119,7 @@ func (lfs *LoopbackFS) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	path := filepath.Join(lfs.path, options.Name)
 	f, err := os.Open(path)
 	if err != nil {
-		log.Err("LoopbackFS::IsDirEmpty : error opening path (%s)", err)
+		log.Err("LoopbackFS::IsDirEmpty : error opening path [%s]", err)
 		return false
 	}
 	_, err = f.Readdirnames(1)
@@ -134,7 +134,7 @@ func (lfs *LoopbackFS) ReadDir(options internal.ReadDirOptions) ([]*internal.Obj
 	log.Debug("LoopbackFS: ReadDir requested for %s", path)
 	files, err := ioutil.ReadDir(path)
 	if err != nil {
-		log.Err("LoopbackFS: ReadDir error(%s)", err)
+		log.Err("LoopbackFS: ReadDir error[%s]", err)
 		return nil, err
 	}
 	log.Debug("LoopbackFS: ReadDir on %s returned %d items", path, len(files))
@@ -171,7 +171,7 @@ func (lfs *LoopbackFS) StreamDir(options internal.StreamDirOptions) ([]*internal
 	log.Debug("LoopbackFS: StreamDir requested for %s", path)
 	files, err := ioutil.ReadDir(path)
 	if err != nil {
-		log.Err("LoopbackFS: StreamDir error(%s)", err)
+		log.Err("LoopbackFS: StreamDir error[%s]", err)
 		return nil, "", err
 	}
 	log.Debug("LoopbackFS: StreamDir on %s returned %d items", path, len(files))
@@ -240,7 +240,7 @@ func (lfs *LoopbackFS) OpenFile(options internal.OpenFileOptions) (*handlemap.Ha
 	log.Debug("LoopbackFS: OpenFile requested for %s", options.Name)
 	f, err := os.OpenFile(path, options.Flags, options.Mode)
 	if err != nil {
-		log.Err("LoopbackFS: OpenFile error (%s)", err)
+		log.Err("LoopbackFS: OpenFile error [%s]", err)
 		return nil, err
 	}
 	handle := handlemap.NewHandle(options.Name)
@@ -281,7 +281,7 @@ func (lfs *LoopbackFS) ReadFile(options internal.ReadFileOptions) ([]byte, error
 
 	info, err := f.Stat()
 	if err != nil {
-		log.Err("LoopbackFS: ReadFile error (%s)", err)
+		log.Err("LoopbackFS: ReadFile error [%s]", err)
 		return nil, err
 	}
 	data := make([]byte, info.Size())
@@ -298,7 +298,7 @@ func (lfs *LoopbackFS) ReadLink(options internal.ReadLinkOptions) (string, error
 	path := filepath.Join(lfs.path, options.Name)
 	targetPath, err := os.Readlink(path)
 	if err != nil {
-		log.Err("LoopbackFS: ReadLink error (%s)", err)
+		log.Err("LoopbackFS: ReadLink error [%s]", err)
 		return "", err
 	}
 	return strings.TrimPrefix(targetPath, lfs.path), nil
@@ -365,7 +365,7 @@ func (lfs *LoopbackFS) UnlinkFile(options internal.UnlinkFileOptions) error {
 	path := filepath.Join(lfs.path, options.Name)
 	_, err := os.Lstat(path)
 	if err != nil {
-		log.Err("LoopbackFS: UnlinkFile error (%s)", err)
+		log.Err("LoopbackFS: UnlinkFile error [%s]", err)
 		return err
 	}
 	return err
@@ -376,12 +376,12 @@ func (lfs *LoopbackFS) CopyToFile(options internal.CopyToFileOptions) error {
 	path := filepath.Join(lfs.path, options.Name)
 	fsrc, err := os.Open(path)
 	if err != nil {
-		log.Err("LoopbackFS::CopyToFile : error opening (%s)", err)
+		log.Err("LoopbackFS::CopyToFile : error opening [%s]", err)
 		return err
 	}
 	_, err = io.Copy(options.File, fsrc)
 	if err != nil {
-		log.Err("LoopbackFS::CopyToFile : error copying (%s)", err)
+		log.Err("LoopbackFS::CopyToFile : error copying [%s]", err)
 		return err
 	}
 	return nil
@@ -392,12 +392,12 @@ func (lfs *LoopbackFS) CopyFromFile(options internal.CopyFromFileOptions) error 
 	path := filepath.Join(lfs.path, options.Name)
 	fdst, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, os.FileMode(0666))
 	if err != nil {
-		log.Err("LoopbackFS::CopyFromFile : error opening (%s)", err)
+		log.Err("LoopbackFS::CopyFromFile : error opening [%s]", err)
 		return err
 	}
 	_, err = io.Copy(fdst, options.File)
 	if err != nil {
-		log.Err("LoopbackFS::CopyFromFile : error copying (%s)", err)
+		log.Err("LoopbackFS::CopyFromFile : error copying [%s]", err)
 		return err
 	}
 	return nil
@@ -408,7 +408,7 @@ func (lfs *LoopbackFS) GetAttr(options internal.GetAttrOptions) (*internal.ObjAt
 	path := filepath.Join(lfs.path, options.Name)
 	info, err := os.Lstat(path)
 	if err != nil {
-		log.Err("LoopbackFS: GetAttr error (%s)", err)
+		log.Err("LoopbackFS: GetAttr error [%s]", err)
 		return &internal.ObjAttr{}, err
 	}
 	attr := &internal.ObjAttr{

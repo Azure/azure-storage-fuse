@@ -51,8 +51,8 @@ var umntAllCmd = &cobra.Command{
 
 		lstMnt, err := common.ListMountPoints()
 		if err != nil {
-			fmt.Printf("unmount all : failed to list mount points (%s)", err.Error())
-			return fmt.Errorf("unmount all : failed to list mount points (%s)", err.Error())
+			fmt.Printf("unmount all : failed to list mount points [%s]", err.Error())
+			return fmt.Errorf("unmount all : failed to list mount points [%s]", err.Error())
 		}
 
 		mountfound := 0
