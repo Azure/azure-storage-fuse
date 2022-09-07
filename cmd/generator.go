@@ -50,15 +50,7 @@ var generateCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if !disableVersionCheck {
-			err := VersionCheck()
-			if err != nil {
-				return err
-			}
-		}
-
 		componentName := args[0]
-
 		script := exec.Command("./cmd/componentGenerator.sh", componentName)
 		script.Stdout = os.Stdout
 		script.Stderr = os.Stdout
