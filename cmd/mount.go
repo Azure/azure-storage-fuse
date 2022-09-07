@@ -139,7 +139,7 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 		if os.IsNotExist(err) {
 			err := os.MkdirAll(opt.DebugPath, os.FileMode(0755))
 			if err != nil {
-				return fmt.Errorf("Invalid debug path")
+				return fmt.Errorf("invalid debug path")
 			}
 		}
 	}
@@ -180,7 +180,7 @@ func parseConfig() error {
 	// Based on extension decide file is encrypted or not
 	if options.SecureConfig ||
 		filepath.Ext(options.ConfigFile) == SecureConfigExtension {
-		fmt.Println("secure config provided, going for decryption")
+		fmt.Println("Secure config provided, going for decryption")
 
 		// Validate config is to be secured on write or not
 		if options.PassPhrase == "" {
