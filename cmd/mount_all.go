@@ -35,7 +35,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -87,27 +86,23 @@ var mountAllCmd = &cobra.Command{
 func processCommand() error {
 	err := parseConfig()
 	if err != nil {
-		fmt.Printf("mount all: Failed to parse config")
-		return err
+		return fmt.Errorf("failed to parse config")
 	}
 
 	err = config.Unmarshal(&options)
 	if err != nil {
-		fmt.Printf("mount all : Init error config unmarshall [%s]", err)
-		return fmt.Errorf("mount all : Init error config unmarshall [%s]", err)
+		return fmt.Errorf("failed to unmarshall config (%s)", err.Error())
 	}
 
 	err = options.validate(true)
 	if err != nil {
-		fmt.Printf("mount all : error invalid options [%v]", err)
-		return fmt.Errorf("mount all : error invalid options [%v]", err)
+		return fmt.Errorf("invalid options (%s)", err.Error())
 	}
 
 	var logLevel common.LogLevel
 	err = logLevel.Parse(options.Logging.LogLevel)
 	if err != nil {
-		// TODO: Why don't we throw here?
-		fmt.Println("error: invalid log level")
+		return fmt.Errorf("invalid log level")
 	}
 
 	err = log.SetDefaultLogger(options.Logging.Type, common.LogConfig{
@@ -119,8 +114,7 @@ func processCommand() error {
 	})
 
 	if err != nil {
-		fmt.Printf("mount all: Error initializing logger [%v]", err)
-		return fmt.Errorf("mount all: Error initializing logger [%v]", err)
+		return fmt.Errorf("failed to initialize logger (%s)", err.Error())
 	}
 
 	config.Set("mount-path", options.MountPath)
@@ -135,7 +129,7 @@ func processCommand() error {
 	// Get allowlist/denylist containers from the config
 	err = config.UnmarshalKey("mountall", &mountAllOpts)
 	if err != nil {
-		log.Warn("mount all : Failed to get container listing options (%s)\n", err.Error())
+		log.Warn("mount all: Failed to get container listing options (%s)\n", err.Error())
 	}
 
 	// Validate config is to be secured on write or not
@@ -144,14 +138,14 @@ func processCommand() error {
 	}
 
 	if options.SecureConfig && options.PassPhrase == "" {
-		fmt.Println("mount all: Key not provided for decrypt config file")
-		return errors.New("mount all: Key not provided for decrypt config file")
+		return fmt.Errorf("key not provided for decrypt config file")
 	}
 
 	containerList, err := getContainerList()
 	if err != nil {
 		return err
 	}
+
 	if len(containerList) > 0 {
 		containerList = filterAllowedContainerList(containerList)
 		err = mountAllContainers(containerList, options.ConfigFile, options.MountPath)
@@ -159,7 +153,7 @@ func processCommand() error {
 			return err
 		}
 	} else {
-		fmt.Println("mount all : No containers to mount from this account")
+		fmt.Println("No containers to mount from this account")
 	}
 	return nil
 }
@@ -176,22 +170,19 @@ func getContainerList() ([]string, error) {
 	// Configure AzStorage component
 	err := azComponent.Configure(true)
 	if err != nil {
-		fmt.Printf("mount all : Failed to configure AzureStorage object (%s)", err.Error())
-		return nil, fmt.Errorf("mount all : Failed to configure AzureStorage object (%s)", err.Error())
+		return nil, fmt.Errorf("failed to configure AzureStorage object (%s)", err.Error())
 	}
 
 	//  Start AzStorage the component so that credentials are verified
 	err = azComponent.Start(context.Background())
 	if err != nil {
-		fmt.Printf("mount all : Failed to initialize AzureStorage object (%s)", err.Error())
-		return nil, fmt.Errorf("mount all : Failed to initialize AzureStorage object (%s)", err.Error())
+		return nil, fmt.Errorf("failed to initialize AzureStorage object (%s)", err.Error())
 	}
 
 	// Get the list of containers from the component
 	containerList, err = azComponent.ListContainers()
 	if err != nil {
-		fmt.Printf("mount all : Failed to get container list from storage (%s)", err.Error())
-		return nil, fmt.Errorf("mount all : Failed to get container list from storage (%s)", err.Error())
+		return nil, fmt.Errorf("failed to get container list from storage (%s)", err.Error())
 	}
 
 	// Stop the azStorage component as its no more needed now
@@ -270,7 +261,7 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 		if _, err := os.Stat(contMountPath); os.IsNotExist(err) {
 			err = os.MkdirAll(contMountPath, 0777)
 			if err != nil {
-				fmt.Printf("failed to create directory %s : %s\n", contMountPath, err.Error())
+				fmt.Printf("Failed to create directory %s : %s\n", contMountPath, err.Error())
 			}
 		}
 
@@ -297,7 +288,7 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 		cliOut, err := cmd.Output()
 		fmt.Println(string(cliOut))
 		if err != nil {
-			fmt.Printf("failed to mount container %s : %s\n", container, err.Error())
+			fmt.Printf("Failed to mount container %s : %s\n", container, err.Error())
 		}
 	}
 	return nil
@@ -308,27 +299,23 @@ func writeConfigFile(contConfigFile string) error {
 		allConf := viper.AllSettings()
 		confStream, err := yaml.Marshal(allConf)
 		if err != nil {
-			fmt.Println("write config: Failed to marshall yaml content")
-			return errors.New("write config: Failed to marshall yaml content")
+			return fmt.Errorf("failed to marshall yaml content")
 		}
 
 		cipherText, err := common.EncryptData(confStream, []byte(options.PassPhrase))
 		if err != nil {
-			fmt.Println("write config: Failed to marshall yaml content ", err.Error())
-			return fmt.Errorf("write config: Failed to marshall yaml content %s", err.Error())
+			return fmt.Errorf("failed to encrypt yaml content (%s)", err.Error())
 		}
 
 		err = ioutil.WriteFile(contConfigFile, cipherText, 0777)
 		if err != nil {
-			fmt.Println("write config: Failed to write encrypted file : ", err.Error())
-			return fmt.Errorf("write config: Failed to write encrypted file : %s", err.Error())
+			return fmt.Errorf("failed to write encrypted file (%s)", err.Error())
 		}
 	} else {
 		// Write modified config as per container to a new config file
 		err := viper.WriteConfigAs(contConfigFile)
 		if err != nil {
-			fmt.Println("write config: Failed to write config file : ", err.Error())
-			return fmt.Errorf("write config: Failed to write config file : %s", err.Error())
+			return fmt.Errorf("failed to write config file (%s)", err.Error())
 		}
 	}
 	return nil

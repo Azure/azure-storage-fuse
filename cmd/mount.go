@@ -98,25 +98,25 @@ var options mountOptions
 
 func (opt *mountOptions) validate(skipEmptyMount bool) error {
 	if opt.MountPath == "" {
-		return fmt.Errorf("argument error: mount path not provided")
+		return fmt.Errorf("Mount path not provided")
 	}
 
 	if _, err := os.Stat(opt.MountPath); os.IsNotExist(err) {
-		return fmt.Errorf("argument error: mount directory does not exists")
+		return fmt.Errorf("Mount directory does not exists")
 	} else if common.IsDirectoryMounted(opt.MountPath) {
-		return fmt.Errorf("argument error: directory is already mounted")
+		return fmt.Errorf("Directory is already mounted")
 	} else if !skipEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
-		return fmt.Errorf("argument error: mount directory is not empty")
+		return fmt.Errorf("Mount directory is not empty")
 	}
 
 	if err := common.ELogLevel.Parse(opt.Logging.LogLevel); err != nil {
-		return fmt.Errorf("argument error: invalid log-level = %s", opt.Logging.LogLevel)
+		return fmt.Errorf("Invalid log-level %s", opt.Logging.LogLevel)
 	}
 	opt.Logging.LogFilePath = os.ExpandEnv(opt.Logging.LogFilePath)
 	if !common.DirectoryExists(filepath.Dir(opt.Logging.LogFilePath)) {
 		err := os.MkdirAll(filepath.Dir(opt.Logging.LogFilePath), os.FileMode(0666)|os.ModeDir)
 		if err != nil {
-			return fmt.Errorf("argument error: invalid log-file-path = %s", opt.Logging.LogFilePath)
+			return fmt.Errorf("Invalid log-file-path %s", opt.Logging.LogFilePath)
 		}
 	}
 
@@ -139,10 +139,11 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 		if os.IsNotExist(err) {
 			err := os.MkdirAll(opt.DebugPath, os.FileMode(0755))
 			if err != nil {
-				return fmt.Errorf("argument error: invalid debug path")
+				return fmt.Errorf("Invalid debug path")
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -150,13 +151,13 @@ func OnConfigChange() {
 	newLogOptions := &LogOptions{}
 	err := config.UnmarshalKey("logging", newLogOptions)
 	if err != nil {
-		log.Err("Mount.go::OnConfigChange : Invalid logging options [%s]", err)
+		log.Err("Mount.go::OnConfigChange : Invalid logging options (%s)", err.Error())
 	}
 
 	var logLevel common.LogLevel
 	err = logLevel.Parse(newLogOptions.LogLevel)
 	if err != nil {
-		log.Err("Mount.go::OnConfigChange : Invalid log level [%s]", newLogOptions.LogLevel)
+		log.Err("Mount.go::OnConfigChange : Invalid log level (%s)", newLogOptions.LogLevel)
 	}
 
 	err = log.SetConfig(common.LogConfig{
@@ -168,7 +169,7 @@ func OnConfigChange() {
 	})
 
 	if err != nil {
-		log.Err("Mount.go::OnConfigChange : Unable to reset Logging options [%s]", err)
+		log.Err("Mount.go::OnConfigChange : Unable to reset Logging options (%s)", err.Error())
 	}
 }
 
@@ -179,7 +180,7 @@ func parseConfig() error {
 	// Based on extension decide file is encrypted or not
 	if options.SecureConfig ||
 		filepath.Ext(options.ConfigFile) == SecureConfigExtension {
-		fmt.Println("Secure config provided, going for decryption")
+		fmt.Println("secure config provided, going for decryption")
 
 		// Validate config is to be secured on write or not
 		if options.PassPhrase == "" {
@@ -187,38 +188,33 @@ func parseConfig() error {
 		}
 
 		if options.PassPhrase == "" {
-			fmt.Println("argument error: No passphrase provided to decrypt the config file.",
-				"Either use --passphrase cli option or store passphrase in BLOBFUSE2_SECURE_CONFIG_PASSPHRASE environment variable.")
-			return errors.New("argument error: No passphrase provided to decrypt the config file.\n Either use --passphrase cli option or store passphrase in BLOBFUSE2_SECURE_CONFIG_PASSPHRASE environment variable")
+			return fmt.Errorf("no passphrase provided to decrypt the config file.\n Either use --passphrase cli option or store passphrase in BLOBFUSE2_SECURE_CONFIG_PASSPHRASE environment variable")
 		}
 
 		cipherText, err := ioutil.ReadFile(options.ConfigFile)
 		if err != nil {
-			fmt.Println("parse config: failed to read encrypted config file ", options.ConfigFile, "[", err.Error(), "]")
-			return fmt.Errorf("parse config: failed to read encrypted config file %s [%s]", options.ConfigFile, err.Error())
+			return fmt.Errorf("failed to read encrypted config file %s (%s)", options.ConfigFile, err.Error())
 		}
 
 		plainText, err := common.DecryptData(cipherText, []byte(options.PassPhrase))
 		if err != nil {
-			fmt.Println("parse config: failed to decrypt config file ", options.ConfigFile, "[", err.Error(), "]")
-			return fmt.Errorf("parse config: failed to decrypt config file %s [%s]", options.ConfigFile, err.Error())
+			return fmt.Errorf("failed to decrypt config file %s (%s)", options.ConfigFile, err.Error())
 		}
 
 		config.SetConfigFile(options.ConfigFile)
 		config.SetSecureConfigOptions(options.PassPhrase)
 		err = config.ReadFromConfigBuffer(plainText)
 		if err != nil {
-			fmt.Printf("parse config: invalid decrypted config file [%v]", err)
-			return fmt.Errorf("parse config: invalid decrypted config file [%v]", err)
+			return fmt.Errorf("invalid decrypted config file (%s)", err.Error())
 		}
 
 	} else {
 		err := config.ReadFromConfigFile(options.ConfigFile)
 		if err != nil {
-			fmt.Printf("parse config: invalid config file [%v]", err)
-			return fmt.Errorf("parse config: invalid config file [%v]", err)
+			return fmt.Errorf("invalid config file (%s)", err.Error())
 		}
 	}
+
 	return nil
 }
 
@@ -262,8 +258,7 @@ var mountCmd = &cobra.Command{
 
 		err := config.Unmarshal(&options)
 		if err != nil {
-			fmt.Printf("mount : Init error config unmarshall [%s]", err)
-			return fmt.Errorf("mount : Init error config unmarshall [%s]", err)
+			return fmt.Errorf("failed to unmarshall config (%s)", err.Error())
 		}
 
 		if !configFileExists || len(options.Components) == 0 {
@@ -286,18 +281,19 @@ var mountCmd = &cobra.Command{
 		}
 
 		if config.IsSet("libfuse-options") {
-			allowedFlags := "mount: error allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
+			allowedFlags := "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
+
 			// there are only 8 available options for -o so if we have more we should throw
 			if len(options.LibfuseOptions) > 8 {
-				fmt.Print(allowedFlags)
 				return errors.New(allowedFlags)
 			}
+
 			for _, v := range options.LibfuseOptions {
 				parameter := strings.Split(v, "=")
 				if len(parameter) > 2 || len(parameter) <= 0 {
-					fmt.Print(allowedFlags)
 					return errors.New(allowedFlags)
 				}
+
 				v = strings.TrimSpace(v)
 				if v == "default_permissions" {
 					continue
@@ -316,13 +312,11 @@ var mountCmd = &cobra.Command{
 				} else if strings.HasPrefix(v, "umask=") {
 					permission, err := strconv.ParseUint(parameter[1], 10, 32)
 					if err != nil {
-						fmt.Printf("mount : error parsing umask [%s]", err)
-						return fmt.Errorf("mount : error parsing umask [%s]", err)
+						return fmt.Errorf("failed to parse umask (%s)", err.Error())
 					}
 					perm := ^uint32(permission) & 777
 					config.Set("libfuse.default-permission", fmt.Sprint(perm))
 				} else {
-					fmt.Print(allowedFlags)
 					return errors.New(allowedFlags)
 				}
 			}
@@ -338,15 +332,13 @@ var mountCmd = &cobra.Command{
 
 		err = options.validate(false)
 		if err != nil {
-			fmt.Printf("mount : error invalid options [%v]", err)
-			return fmt.Errorf("mount : error invalid options [%v]", err)
+			return fmt.Errorf("invalid options (%s)", err.Error())
 		}
 
 		var logLevel common.LogLevel
 		err = logLevel.Parse(options.Logging.LogLevel)
 		if err != nil {
-			// TODO: Why don't we throw here?
-			fmt.Println("error: invalid log level")
+			return fmt.Errorf("invalid log level (%s)", err.Error())
 		}
 
 		err = log.SetDefaultLogger(options.Logging.Type, common.LogConfig{
@@ -358,18 +350,17 @@ var mountCmd = &cobra.Command{
 		})
 
 		if err != nil {
-			fmt.Printf("mount : error initializing logger [%v]", err)
-			return fmt.Errorf("mount : error initializing logger [%v]", err)
+			return fmt.Errorf("failed to initialize logger (%s)", err.Error())
 		}
 
 		if config.IsSet("invalidate-on-sync") {
-			log.Warn("unsupported v1 CLI parameter: invalidate-on-sync is always true in blobfuse2.")
+			log.Warn("mount: unsupported v1 CLI parameter: invalidate-on-sync is always true in blobfuse2.")
 		}
 		if config.IsSet("pre-mount-validate") {
-			log.Warn("unsupported v1 CLI parameter: pre-mount-validate is always true in blobfuse2.")
+			log.Warn("mount: unsupported v1 CLI parameter: pre-mount-validate is always true in blobfuse2.")
 		}
 		if config.IsSet("basic-remount-check") {
-			log.Warn("unsupported v1 CLI parameter: basic-remount-check is always true in blobfuse2.")
+			log.Warn("mount: unsupported v1 CLI parameter: basic-remount-check is always true in blobfuse2.")
 		}
 
 		common.EnableMonitoring = options.MonitorOpt.EnableMon
@@ -385,7 +376,7 @@ var mountCmd = &cobra.Command{
 		if options.Debug {
 			f, err := os.OpenFile(filepath.Join(options.DebugPath, "times.log"), os.O_CREATE|os.O_APPEND|os.O_RDWR, os.FileMode(0755))
 			if err != nil {
-				fmt.Printf("unable to open times.log file for exectime reporting [%s]", err)
+				fmt.Printf("Unable to open times.log file for exectime reporting (%s)", err.Error())
 			}
 			exectime.SetDefault(f, true)
 		} else {
@@ -401,9 +392,7 @@ var mountCmd = &cobra.Command{
 		log.Crit("Logging level set to : %s", logLevel.String())
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
-			log.Err("mount : error initializing new pipeline [%v]", err)
-			fmt.Println("failed to mount :", err)
-			return Destroy(1, fmt.Sprintf("failed to mount : %s", err))
+			return Destroy(fmt.Sprintf("failed to initialize new pipeline (%s)", err.Error()))
 		}
 
 		if !options.Foreground {
@@ -418,9 +407,9 @@ var mountCmd = &cobra.Command{
 			daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
 			child, err := dmnCtx.Reborn()
 			if err != nil {
-				log.Err("mount : error daemonizing application [%v]", err)
-				return Destroy(1, fmt.Sprintf("mount : error daemonizing application [%v]", err))
+				return Destroy(fmt.Sprintf("failed to daemonize application (%s)", err.Error()))
 			}
+
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
 			if child == nil {
 				defer dmnCtx.Release() // nolint
@@ -436,11 +425,11 @@ var mountCmd = &cobra.Command{
 				os.Remove(options.CPUProfile)
 				f, err := os.Create(options.CPUProfile)
 				if err != nil {
-					fmt.Printf("error opening file for cpuprofile [%s]", err)
+					fmt.Printf("Error opening file for cpuprofile (%s)", err.Error())
 				}
 				defer f.Close()
 				if err := pprof.StartCPUProfile(f); err != nil {
-					fmt.Printf("failed to start cpuprofile [%s]", err)
+					fmt.Printf("Failed to start cpuprofile (%s)", err.Error())
 				}
 				defer pprof.StopCPUProfile()
 			}
@@ -457,12 +446,12 @@ var mountCmd = &cobra.Command{
 				os.Remove(options.MemProfile)
 				f, err := os.Create(options.MemProfile)
 				if err != nil {
-					fmt.Printf("error opening file for memprofile [%s]", err)
+					fmt.Printf("Error opening file for memprofile (%s)", err.Error())
 				}
 				defer f.Close()
 				runtime.GC()
 				if err = pprof.WriteHeapProfile(f); err != nil {
-					fmt.Printf("error memory profiling [%s]", err)
+					fmt.Printf("Error memory profiling (%s)", err.Error())
 				}
 			}
 		}
@@ -483,16 +472,14 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 
 	err := pipeline.Start(ctx)
 	if err != nil {
-		log.Err("mount : error unable to start pipeline [%v]", err)
-		fmt.Printf("mount : error unable to start pipeline [%v]", err)
-		return Destroy(1, fmt.Sprintf("mount : error unable to start pipeline [%v]", err))
+		log.Err("mount : error unable to start pipeline (%s)", err.Error())
+		return Destroy(fmt.Sprintf("unable to start pipeline (%s)", err.Error()))
 	}
 
 	err = pipeline.Stop()
 	if err != nil {
-		log.Err("mount : error unable to stop pipeline [%v]", err)
-		fmt.Printf("mount : error unable to stop pipeline [%v]", err)
-		return Destroy(1, fmt.Sprintf("mount : error unable to stop pipeline [%v]", err))
+		log.Err("mount : error unable to stop pipeline (%s)", err.Error())
+		return Destroy(fmt.Sprintf("unable to stop pipeline (%s)", err.Error()))
 	}
 
 	_ = log.Destroy()
@@ -509,7 +496,7 @@ func startMonitor(pid int) {
 		err := rootCmd.Execute()
 		if err != nil {
 			common.EnableMonitoring = false
-			log.Err("mount::startMonitor : [%v]", err)
+			log.Err("mount::startMonitor : (%s)", err.Error())
 		}
 	}
 }
@@ -537,7 +524,7 @@ func setGOConfig() {
 
 	// Golang's default behaviour is to GC when new objects = (100% of) total of objects surviving previous GC.
 	// Set it to lower level so that memory if freed up early
-	debug.SetGCPercent(70)
+	debug.SetGCPercent(80)
 }
 
 func startDynamicProfiler() {
@@ -556,7 +543,7 @@ func startDynamicProfiler() {
 	}
 
 	connStr := fmt.Sprintf("%s:%d", options.ProfilerIP, options.ProfilerPort)
-	log.Info("startDynamicProfiler : Staring profiler on [%s]", connStr)
+	log.Info("startDynamicProfiler : Staring profiler on (%s)", connStr)
 
 	// To check dynamic profiling info http://<ip>:<port>/debug/pprof
 	// for e.g. for default config use http://localhost:6060/debug/pprof
@@ -567,7 +554,7 @@ func startDynamicProfiler() {
 	//
 	err := http.ListenAndServe(connStr, nil)
 	if err != nil {
-		log.Err("startDynamicProfiler : Failed to start dynamic profiler [%s]", err.Error())
+		log.Err("startDynamicProfiler : Failed to start dynamic profiler (%s)", err.Error())
 	}
 }
 
@@ -641,7 +628,7 @@ func init() {
 	config.AddConfigChangeEventListener(config.ConfigChangeEventHandlerFunc(OnConfigChange))
 }
 
-func Destroy(code int, message string) error {
+func Destroy(message string) error {
 	_ = log.Destroy()
-	return errors.New(message)
+	return fmt.Errorf(message)
 }

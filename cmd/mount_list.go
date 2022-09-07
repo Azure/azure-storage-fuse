@@ -51,8 +51,7 @@ var mountListCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		lstMnt, err := common.ListMountPoints()
 		if err != nil {
-			fmt.Printf("mount list: failed to list mount points (%s)", err.Error())
-			return fmt.Errorf("mount list: failed to list mount points (%s)", err.Error())
+			return fmt.Errorf("failed to list mount points (%s)", err.Error())
 		}
 
 		for i, mntPath := range lstMnt {

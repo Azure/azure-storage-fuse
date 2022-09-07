@@ -69,7 +69,7 @@ var unmountCmd = &cobra.Command{
 			for _, mntPath := range lstMnt {
 				match, err := regexp.MatchString(mntPathPrefix, mntPath)
 				if err != nil {
-					fmt.Printf("pattern matching failed for mount point %s (%s)\n", mntPath, err.Error())
+					fmt.Printf("Pattern matching failed for mount point %s (%s)\n", mntPath, err.Error())
 				}
 				if match {
 					unmountBlobfuse2(mntPath)
@@ -97,10 +97,10 @@ func unmountBlobfuse2(mntPath string) bool {
 	cliOut := exec.Command("fusermount", "-u", mntPath)
 	_, err := cliOut.Output()
 	if err != nil {
-		fmt.Printf("failed to unmount %s (%s)\n", mntPath, err.Error())
+		fmt.Printf("Failed to unmount %s (%s)\n", mntPath, err.Error())
 		return false
 	} else {
-		fmt.Println("successfully unmounted", mntPath)
+		fmt.Println("Successfully unmounted", mntPath)
 		return true
 	}
 }

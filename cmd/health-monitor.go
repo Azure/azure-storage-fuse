@@ -73,67 +73,60 @@ var healthMonCmd = &cobra.Command{
 	RunE: func(_ *cobra.Command, _ []string) error {
 		resetMonitorOptions()
 
-		err := validateMonOptions()
+		err := validateHMonOptions()
 		if err != nil {
-			log.Err("health-monitor: [%v]", err)
-			return err
+			return fmt.Errorf("failed to validate options (%s)", err.Error())
 		}
 
 		options.ConfigFile = configFile
 		err = parseConfig()
 		if err != nil {
-			log.Err("health-monitor: Failed to parse config")
-			return err
+			return fmt.Errorf("failed to parse config (%s)", err.Error())
 		}
 
 		err = config.UnmarshalKey("file_cache", &cacheMonitorOptions)
 		if err != nil {
-			log.Err("health-monitor: FileCache config error [invalid config attributes]")
-			return err
+			return fmt.Errorf("fileCache config error (invalid config attributes)")
 		}
 
 		err = config.UnmarshalKey("health-monitor", &options.MonitorOpt)
 		if err != nil {
-			log.Err("health-monitor: FileCache config error [invalid config attributes]")
-			return err
+			return fmt.Errorf("health-monitor config error (invalid config attributes)")
 		}
 
 		cliParams := buildCliParamForMonitor()
-		log.Debug("health-monitor: options = %v", cliParams)
-
-		log.Debug("Starting health-monitor for blobfuse2 pid = %s", pid)
+		log.Debug("health-monitor: Options = %v", cliParams)
+		log.Debug("health-monitor: Starting health-monitor for blobfuse2 pid = %s", pid)
 
 		hmcmd := exec.Command(hmcommon.BfuseMon, cliParams...)
 		cliOut, err := hmcmd.Output()
 		if len(cliOut) > 0 {
 			log.Debug("health-monitor: cliout = %v", string(cliOut))
-			fmt.Println(string(cliOut))
+			// fmt.Println(string(cliOut))
 		}
 		if err != nil {
 			common.EnableMonitoring = false
-			log.Err("health-monitor: [%v]", err)
-			return fmt.Errorf("failed to start health monitor: [%v]", err)
+			return fmt.Errorf("failed to start health monitor (%s)", err.Error())
 		}
 
 		return nil
 	},
 }
 
-func validateMonOptions() error {
+func validateHMonOptions() error {
 	pid = strings.TrimSpace(pid)
 	configFile = strings.TrimSpace(configFile)
 	errMsg := ""
 
 	if len(pid) == 0 {
-		errMsg = "Pid of blobfuse2 process not given\n"
+		errMsg = "Pid of blobfuse2 process not given. "
 	}
 
 	if len(configFile) == 0 {
-		errMsg += "Config file not given\n"
+		errMsg += "Config file not given. "
 	}
 
 	if len(errMsg) != 0 {
-		errMsg += "Failed to start health-monitor"
 		return fmt.Errorf(errMsg)
 	}
 

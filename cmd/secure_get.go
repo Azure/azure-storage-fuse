@@ -74,11 +74,11 @@ var getKeyCmd = &cobra.Command{
 
 		valType := reflect.TypeOf(value)
 		if strings.HasPrefix(valType.String(), "map") {
-			fmt.Println("fetching group level configuration")
+			fmt.Println("Fetching group level configuration")
 		} else if strings.HasPrefix(valType.String(), "[]") {
-			fmt.Println("fetching options level configuration")
+			fmt.Println("Fetching options level configuration")
 		} else {
-			fmt.Println("fetching scalar configuration")
+			fmt.Println("Fetching scalar configuration")
 		}
 
 		fmt.Println(secOpts.Key, "=", value)

@@ -65,7 +65,7 @@ var umntAllCmd = &cobra.Command{
 		}
 
 		if mountfound == 0 {
-			fmt.Println("nothing to unmount")
+			fmt.Println("Nothing to unmount")
 		} else {
 			fmt.Printf("%d of %d mounts were successfully unmounted\n", unmounted, mountfound)
 		}
