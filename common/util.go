@@ -247,7 +247,7 @@ func (m *KeyedMutex) GetLock(key string) *sync.Mutex {
 	return mtx
 }
 
-// check if health-monitor is enabled and blofuse stats monitor is not disabled
+// check if health monitor is enabled and blofuse stats monitor is not disabled
 func MonitorBfs() bool {
 	return EnableMonitoring && !BfsDisabled
 }

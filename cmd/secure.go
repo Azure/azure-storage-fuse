@@ -69,7 +69,12 @@ var secureCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return validateOptions()
+		err := validateOptions()
+		if err != nil {
+			fmt.Printf("secure : failed to validate options (%s)", err.Error())
+			return fmt.Errorf("secure : failed to validate options (%s)", err.Error())
+		}
+		return nil
 	},
 }
 
@@ -83,11 +88,16 @@ var encryptCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			return err
+			fmt.Printf("secure encrypt : failed to validate options (%s)", err.Error())
+			return fmt.Errorf("secure encrypt : failed to validate options (%s)", err.Error())
 		}
 
 		_, err = encryptConfigFile(true)
-		return err
+		if err != nil {
+			fmt.Printf("secure encrypt : failed to encrypt config file (%s)", err.Error())
+			return fmt.Errorf("secure encrypt : failed to encrypt config file (%s)", err.Error())
+		}
+		return nil
 	},
 }
 
@@ -101,11 +111,16 @@ var decryptCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			return err
+			fmt.Printf("secure decrypt : failed to validate options (%s)", err.Error())
+			return fmt.Errorf("secure decrypt : failed to validate options (%s)", err.Error())
 		}
 
 		_, err = decryptConfigFile(true)
-		return err
+		if err != nil {
+			fmt.Printf("secure decrypt : failed to decrypt config file (%s)", err.Error())
+			return fmt.Errorf("secure decrypt : failed to decrypt config file (%s)", err.Error())
+		}
+		return nil
 	},
 }
 
@@ -122,11 +137,11 @@ func validateOptions() error {
 	}
 
 	if _, err := os.Stat(secOpts.ConfigFile); os.IsNotExist(err) {
-		return errors.New("config file does not exists")
+		return errors.New("config file does not exist")
 	}
 
 	if secOpts.PassPhrase == "" {
-		return errors.New("provide passphrase as cli parameter or configure BLOBFUSE2_SECURE_CONFIG_PASSPHRASE environment variable")
+		return errors.New("provide the passphrase as a cli parameter or configure the BLOBFUSE2_SECURE_CONFIG_PASSPHRASE environment variable")
 	}
 
 	return nil

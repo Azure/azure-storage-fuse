@@ -57,7 +57,8 @@ var unmountCmd = &cobra.Command{
 
 			lstMnt, err := common.ListMountPoints()
 			if err != nil {
-				return fmt.Errorf("failed to list mount points (%s)", err.Error())
+				fmt.Printf("unmount : failed to list mount points (%s)", err.Error())
+				return fmt.Errorf("unmount : failed to list mount points (%s)", err.Error())
 			}
 			for _, mntPath := range lstMnt {
 				match, err := regexp.MatchString(mntPathPrefix, mntPath)

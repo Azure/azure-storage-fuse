@@ -118,7 +118,7 @@ func (suite *fileCacheTestSuite) setupTestHelper(configuration string) {
 	suite.loopback.Start(context.Background())
 	err := suite.fileCache.Start(context.Background())
 	if err != nil {
-		panic(fmt.Sprintf("Unable to start file cache [%s]", err.Error()))
+		panic(fmt.Sprintf("Unable to start file cache (%s)", err.Error()))
 	}
 
 }
@@ -127,7 +127,7 @@ func (suite *fileCacheTestSuite) cleanupTest() {
 	suite.loopback.Stop()
 	err := suite.fileCache.Stop()
 	if err != nil {
-		panic(fmt.Sprintf("Unable to stop file cache [%s]", err.Error()))
+		panic(fmt.Sprintf("Unable to stop file cache (%s)", err.Error()))
 	}
 
 	// Delete the temp directories created

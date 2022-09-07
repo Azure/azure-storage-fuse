@@ -80,19 +80,19 @@ func (suite *benchmarkSuite) TestCreateSingleFiles() {
 			fileName := filepath.Join(mntPath, "testfile"+strconv.Itoa(i))
 			completionTime, err := createSingleFile(size, fileName)
 			if err != nil {
-				suite.T().Logf("error creating file of size %.2fGB for %d run [%s]\n", size, i, err)
+				suite.T().Logf("error creating file of size %.2fGB for %d run (%s)\n", size, i, err)
 			}
 			durs = append(durs, completionTime)
 			os.Remove(fileName)
 		}
 		mean, err := stats.Mean(durs)
 		if err != nil {
-			suite.T().Logf("error computing mean for %.2fGB file [%s]\n", size, err)
+			suite.T().Logf("error computing mean for %.2fGB file (%s)\n", size, err)
 		}
 		suite.T().Logf("\nMean create time for %.2fGB files=%s\n", size, time.Duration(mean))
 		std, err := stats.StandardDeviation(durs)
 		if err != nil {
-			suite.T().Logf("error computing std for %.2fGB file [%s]\n", size, err)
+			suite.T().Logf("error computing std for %.2fGB file (%s)\n", size, err)
 		}
 		suite.T().Logf("Standard Deviation of create files for %.2fGB files=%s\n", size, time.Duration(std))
 	}
@@ -112,11 +112,11 @@ func TestMain(m *testing.M) {
 	mntPath = filepath.Join(*pathFlag, mntPath)
 	err := os.RemoveAll(mntPath)
 	if err != nil {
-		fmt.Printf("error cleaning up base dir %s [%s]", mntPath, err)
+		fmt.Printf("error cleaning up base dir %s (%s)", mntPath, err)
 	}
 	err = os.Mkdir(mntPath, os.FileMode(0755))
 	if err != nil {
-		fmt.Printf("error mkdir for base dir %s [%s]", mntPath, err)
+		fmt.Printf("error mkdir for base dir %s (%s)", mntPath, err)
 	}
 
 	n = *nFlag
@@ -141,7 +141,7 @@ func TestMain(m *testing.M) {
 	exit := m.Run()
 	err = os.RemoveAll(mntPath)
 	if err != nil {
-		fmt.Printf("error post test clean up %s [%s]", mntPath, err)
+		fmt.Printf("error post test clean up %s (%s)", mntPath, err)
 	}
 	os.Exit(exit)
 }

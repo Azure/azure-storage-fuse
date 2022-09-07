@@ -75,42 +75,43 @@ var healthMonCmd = &cobra.Command{
 
 		err := validateHMonOptions()
 		if err != nil {
-			return fmt.Errorf("failed to validate options (%s)", err.Error())
+			log.Err("health-monitor : failed to validate options (%s)", err.Error())
+			return fmt.Errorf("health monitor : failed to validate options (%s)", err.Error())
 		}
 
 		options.ConfigFile = configFile
 		err = parseConfig()
 		if err != nil {
-			log.Err("health-monitor: failed to parse config (%s)", err.Error())
-			return fmt.Errorf("failed to parse config (%s)", err.Error())
+			log.Err("health-monitor : failed to parse config (%s)", err.Error())
+			return fmt.Errorf("health-monitor : failed to parse config (%s)", err.Error())
 		}
 
 		err = config.UnmarshalKey("file_cache", &cacheMonitorOptions)
 		if err != nil {
-			log.Err("health-monitor: FileCache config error (invalid config attributes)")
-			return fmt.Errorf("fileCache config error (invalid config attributes)")
+			log.Err("health-monitor : file_cache config error (invalid config attributes) (%s)", err.Error())
+			return fmt.Errorf("health-monitor : file_cache config error (invalid config attributes) (%s)", err.Error())
 		}
 
 		err = config.UnmarshalKey("health-monitor", &options.MonitorOpt)
 		if err != nil {
-			log.Err("health-monitor: health-monitor config error (invalid config attributes)")
-			return fmt.Errorf("health-monitor config error (invalid config attributes)")
+			log.Err("health-monitor : health_monitor config error (invalid config attributes) (%s)", err.Error())
+			return fmt.Errorf("health-monitor : health_monitor config error (invalid config attributes) (%s)", err.Error())
 		}
 
 		cliParams := buildCliParamForMonitor()
-		log.Debug("health-monitor: Options = %v", cliParams)
-		log.Debug("health-monitor: Starting health-monitor for blobfuse2 pid = %s", pid)
+		log.Debug("health-monitor : Options = %v", cliParams)
+		log.Debug("health-monitor : Starting health-monitor for blobfuse2 pid = %s", pid)
 
 		hmcmd := exec.Command(hmcommon.BfuseMon, cliParams...)
 		cliOut, err := hmcmd.Output()
 		if len(cliOut) > 0 {
-			log.Debug("health-monitor: cliout = %v", string(cliOut))
+			log.Debug("health-monitor : cliout = %v", string(cliOut))
 		}
 
 		if err != nil {
 			common.EnableMonitoring = false
-			log.Err("health-monitor: failed to start health monitor (%s)", err.Error())
-			return fmt.Errorf("failed to start health monitor (%s)", err.Error())
+			log.Err("health-monitor : failed to start health monitor (%s)", err.Error())
+			return fmt.Errorf("health-monitor : failed to start health monitor (%s)", err.Error())
 		}
 
 		return nil
@@ -123,11 +124,11 @@ func validateHMonOptions() error {
 	errMsg := ""
 
 	if len(pid) == 0 {
-		errMsg = "Pid of blobfuse2 process not given. "
+		errMsg = "Pid of blobfuse2 process not given"
 	}
 
 	if len(configFile) == 0 {
-		errMsg += "Config file not given. "
+		errMsg += "Config file not given"
 	}
 
 	if len(errMsg) != 0 {

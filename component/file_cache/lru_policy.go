@@ -435,7 +435,7 @@ func (p *lruPolicy) deleteItem(name string) {
 	// There are no open handles for this file so its safe to remove this
 	err := deleteFile(name)
 	if err != nil && !os.IsNotExist(err) {
-		log.Err("lruPolicy::DeleteItem : failed to delete local file %s [%s]", name, err.Error())
+		log.Err("lruPolicy::DeleteItem : failed to delete local file %s (%s)", name, err.Error())
 	}
 
 	// File was deleted so try clearing its parent directory

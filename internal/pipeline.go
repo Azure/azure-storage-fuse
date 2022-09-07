@@ -66,7 +66,7 @@ func NewPipeline(components []string, isParent bool) (*Pipeline, error) {
 			// request component to parse and validate config of its interest
 			err := comp.Configure(isParent)
 			if err != nil {
-				log.Err("Pipeline: error creating pipeline component %s [%s]", comp.Name(), err)
+				log.Err("Pipeline: error creating pipeline component %s (%s)", comp.Name(), err)
 				return nil, err
 			}
 

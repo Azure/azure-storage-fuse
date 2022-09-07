@@ -86,13 +86,13 @@ func (az *AzStorage) Configure(isParent bool) error {
 	err := config.UnmarshalKey(az.Name(), &conf)
 	if err != nil {
 		log.Err("AzStorage::Configure : config error [invalid config attributes]")
-		return fmt.Errorf("config error in %s [%s]", az.Name(), err.Error())
+		return fmt.Errorf("config error in %s (%s)", az.Name(), err.Error())
 	}
 
 	err = ParseAndValidateConfig(az, conf)
 	if err != nil {
 		log.Err("AzStorage::Configure : Config validation failed (%s)", err.Error())
-		return fmt.Errorf("config error in %s [%s]", az.Name(), err.Error())
+		return fmt.Errorf("config error in %s (%s)", az.Name(), err.Error())
 	}
 
 	err = az.configureAndTest(isParent)
@@ -228,7 +228,7 @@ func (az *AzStorage) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 	log.Trace("AzStorage::IsDirEmpty : %s", options.Name)
 	list, _, err := az.storage.List(formatListDirName(options.Name), nil, 1)
 	if err != nil {
-		log.Err("AzStorage::IsDirEmpty : error listing [%s]", err)
+		log.Err("AzStorage::IsDirEmpty : error listing (%s)", err)
 		return false
 	}
 	if len(list) == 0 {

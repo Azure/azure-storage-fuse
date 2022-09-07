@@ -89,23 +89,27 @@ var mountAllCmd = &cobra.Command{
 func processCommand() error {
 	err := parseConfig()
 	if err != nil {
-		return fmt.Errorf("failed to parse config")
+		fmt.Printf("mount all : failed to parse config (%s)", err.Error())
+		return fmt.Errorf("mount all : failed to parse config (%s)", err.Error())
 	}
 
 	err = config.Unmarshal(&options)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshall config (%s)", err.Error())
+		fmt.Printf("mount all : failed to unmarshal config (%s)", err.Error())
+		return fmt.Errorf("mount all : failed to unmarshal config (%s)", err.Error())
 	}
 
 	err = options.validate(true)
 	if err != nil {
-		return fmt.Errorf("invalid options (%s)", err.Error())
+		fmt.Printf("mount all : invalid options (%s)", err.Error())
+		return fmt.Errorf("mount all : invalid options (%s)", err.Error())
 	}
 
 	var logLevel common.LogLevel
 	err = logLevel.Parse(options.Logging.LogLevel)
 	if err != nil {
-		return fmt.Errorf("invalid log level")
+		fmt.Printf("mount all : invalid log level (%s)", err.Error())
+		return fmt.Errorf("mount all : invalid log level (%s)", err.Error())
 	}
 
 	err = log.SetDefaultLogger(options.Logging.Type, common.LogConfig{
@@ -117,7 +121,8 @@ func processCommand() error {
 	})
 
 	if err != nil {
-		return fmt.Errorf("failed to initialize logger (%s)", err.Error())
+		fmt.Printf("mount all : failed to initialize logger (%s)", err.Error())
+		return fmt.Errorf("mount all : failed to initialize logger (%s)", err.Error())
 	}
 
 	config.Set("mount-path", options.MountPath)
@@ -132,7 +137,7 @@ func processCommand() error {
 	// Get allowlist/denylist containers from the config
 	err = config.UnmarshalKey("mountall", &mountAllOpts)
 	if err != nil {
-		log.Warn("mount all: Failed to get container listing options (%s)\n", err.Error())
+		log.Warn("mount all: mountall config error (invalid config attributes) (%s)\n", err.Error())
 	}
 
 	// Validate config is to be secured on write or not
@@ -141,19 +146,22 @@ func processCommand() error {
 	}
 
 	if options.SecureConfig && options.PassPhrase == "" {
-		return fmt.Errorf("key not provided for decrypt config file")
+		fmt.Printf("mount all : key not provided to decrypt config file")
+		return fmt.Errorf("mount all : key not provided to decrypt config file")
 	}
 
 	containerList, err := getContainerList()
 	if err != nil {
-		return err
+		fmt.Printf("mount all : failed to get container list (%s)", err.Error())
+		return fmt.Errorf("mount all : failed to get container list (%s)", err.Error())
 	}
 
 	if len(containerList) > 0 {
 		containerList = filterAllowedContainerList(containerList)
 		err = mountAllContainers(containerList, options.ConfigFile, options.MountPath)
 		if err != nil {
-			return err
+			fmt.Printf("mount all : failed to mount all containers (%s)", err.Error())
+			return fmt.Errorf("mount all : failed to mount all containers (%s)", err.Error())
 		}
 	} else {
 		fmt.Println("No containers to mount from this account")

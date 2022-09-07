@@ -56,18 +56,21 @@ var setKeyCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			return err
+			fmt.Printf("secure set : failed to validate options (%s)", err.Error())
+			return fmt.Errorf("secure set : failed to validate options (%s)", err.Error())
 		}
 
 		plainText, err := decryptConfigFile(false)
 		if err != nil {
-			return err
+			fmt.Printf("secure set : failed to decrypt config file (%s)", err.Error())
+			return fmt.Errorf("secure set : failed to decrypt config file (%s)", err.Error())
 		}
 
 		viper.SetConfigType("yaml")
 		err = viper.ReadConfig(strings.NewReader(string(plainText)))
 		if err != nil {
-			return errors.New("failed to load config")
+			fmt.Printf("secure set : failed to load config (%s)", err.Error())
+			return fmt.Errorf("secure set : failed to load config (%s)", err.Error())
 		}
 
 		value := viper.Get(secOpts.Key)
@@ -75,13 +78,14 @@ var setKeyCmd = &cobra.Command{
 			valType := reflect.TypeOf(value)
 			if strings.HasPrefix(valType.String(), "map") ||
 				strings.HasPrefix(valType.String(), "[]") {
-				return errors.New("set can only be used to modify a scalar config")
+				fmt.Print("secure set : invalid option, only allowed to modify a scalar config")
+				return errors.New("secure set : invalid option, only allowed to modify a scalar config")
 			}
 
-			fmt.Println("Current value : ", secOpts.Key, "=", value)
-			fmt.Println("Setting value : ", secOpts.Key, "=", secOpts.Value)
+			fmt.Println("secure set : Current value : ", secOpts.Key, "=", value)
+			fmt.Println("secure set : Setting value : ", secOpts.Key, "=", secOpts.Value)
 		} else {
-			fmt.Println("Key does not exist in config file, adding now")
+			fmt.Println("secure set : Key not found in config file, adding now")
 		}
 
 		viper.Set(secOpts.Key, secOpts.Value)
@@ -89,16 +93,19 @@ var setKeyCmd = &cobra.Command{
 		allConf := viper.AllSettings()
 		confStream, err := yaml.Marshal(allConf)
 		if err != nil {
-			return errors.New("failed to marshall yaml content")
+			fmt.Printf("secure set : failed to marshal config (%s)", err.Error())
+			return fmt.Errorf("secure set : failed to marshal config (%s)", err.Error())
 		}
 
 		cipherText, err := common.EncryptData(confStream, []byte(secOpts.PassPhrase))
 		if err != nil {
-			return err
+			fmt.Printf("secure set : failed to encrypt config (%s)", err.Error())
+			return fmt.Errorf("secure set : failed to encrypt config (%s)", err.Error())
 		}
 
 		if err = saveToFile(secOpts.ConfigFile, cipherText, false); err != nil {
-			return err
+			fmt.Printf("secure set : failed save config file (%s)", err.Error())
+			return fmt.Errorf("secure set : failed save config file (%s)", err.Error())
 		}
 
 		return nil

@@ -34,7 +34,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -53,35 +52,39 @@ var getKeyCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			return err
+			fmt.Printf("secure get : failed to validate options (%s)", err.Error())
+			return fmt.Errorf("secure get : failed to validate options (%s)", err.Error())
 		}
 
 		plainText, err := decryptConfigFile(false)
 		if err != nil {
-			return err
+			fmt.Printf("secure get : failed to decrypt config file (%s)", err.Error())
+			return fmt.Errorf("secure get : failed to decrypt config file (%s)", err.Error())
 		}
 
 		viper.SetConfigType("yaml")
 		err = viper.ReadConfig(strings.NewReader(string(plainText)))
 		if err != nil {
-			return errors.New("failed to load config")
+			fmt.Printf("secure get : failed to load config (%s)", err.Error())
+			return fmt.Errorf("secure get : failed to load config (%s)", err.Error())
 		}
 
 		value := viper.Get(secOpts.Key)
 		if value == nil {
-			return errors.New("search key not found in config")
+			fmt.Printf("secure get : key not found in config (%s)", err.Error())
+			return fmt.Errorf("secure get : key not found in config (%s)", err.Error())
 		}
 
 		valType := reflect.TypeOf(value)
 		if strings.HasPrefix(valType.String(), "map") {
-			fmt.Println("Fetching group level configuration")
+			fmt.Println("secure get : Fetching group level configuration")
 		} else if strings.HasPrefix(valType.String(), "[]") {
-			fmt.Println("Fetching options level configuration")
+			fmt.Println("secure get : Fetching options level configuration")
 		} else {
-			fmt.Println("Fetching scalar configuration")
+			fmt.Println("secure get : Fetching scalar configuration")
 		}
 
-		fmt.Println(secOpts.Key, "=", value)
+		fmt.Println("secure get : ", secOpts.Key, "=", value)
 		return nil
 	},
 }

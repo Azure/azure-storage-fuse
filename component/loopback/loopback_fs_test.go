@@ -289,6 +289,6 @@ func TestLoopbackFSTestSuite(t *testing.T) {
 
 func panicIfNotNil(err error, msg string) {
 	if err != nil {
-		panic(fmt.Sprintf("%s: err[%s]", err, msg))
+		panic(fmt.Sprintf("%s: err(%s)", err, msg))
 	}
 }

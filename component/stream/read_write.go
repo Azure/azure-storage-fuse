@@ -68,13 +68,13 @@ func (rw *ReadWriteCache) CreateFile(options internal.CreateFileOptions) (*handl
 	log.Trace("Stream::CreateFile : name=%s, mode=%s", options.Name, options.Mode)
 	handle, err := rw.NextComponent().CreateFile(options)
 	if err != nil {
-		log.Err("Stream::CreateFile : error failed to create file %s: [%s]", options.Name, err.Error())
+		log.Err("Stream::CreateFile : error failed to create file %s: (%s)", options.Name, err.Error())
 		return handle, err
 	}
 	if !rw.StreamOnly {
 		err = rw.createHandleCache(handle)
 		if err != nil {
-			log.Err("Stream::CreateFile : error creating cache object %s [%s]", options.Name, err.Error())
+			log.Err("Stream::CreateFile : error creating cache object %s (%s)", options.Name, err.Error())
 		}
 	}
 	return handle, err
@@ -84,13 +84,13 @@ func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap
 	log.Trace("Stream::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
 	handle, err := rw.NextComponent().OpenFile(options)
 	if err != nil {
-		log.Err("Stream::OpenFile : error failed to open file %s [%s]", options.Name, err.Error())
+		log.Err("Stream::OpenFile : error failed to open file %s (%s)", options.Name, err.Error())
 		return handle, err
 	}
 	if !rw.StreamOnly {
 		err = rw.createHandleCache(handle)
 		if err != nil {
-			log.Err("Stream::OpenFile : error failed to create cache object %s [%s]", options.Name, err.Error())
+			log.Err("Stream::OpenFile : error failed to create cache object %s (%s)", options.Name, err.Error())
 		}
 	}
 	return handle, err
@@ -101,14 +101,14 @@ func (rw *ReadWriteCache) ReadInBuffer(options internal.ReadInBufferOptions) (in
 	if !rw.StreamOnly && options.Handle.CacheObj.StreamOnly {
 		err := rw.createHandleCache(options.Handle)
 		if err != nil {
-			log.Err("Stream::ReadInBuffer : error failed to create cache object  %s [%s]", options.Handle.Path, err.Error())
+			log.Err("Stream::ReadInBuffer : error failed to create cache object  %s (%s)", options.Handle.Path, err.Error())
 			return 0, err
 		}
 	}
 	if rw.StreamOnly || options.Handle.CacheObj.StreamOnly {
 		data, err := rw.NextComponent().ReadInBuffer(options)
 		if err != nil && err != io.EOF {
-			log.Err("Stream::ReadInBuffer : error failed to download requested data for %s: [%s]", options.Handle.Path, err.Error())
+			log.Err("Stream::ReadInBuffer : error failed to download requested data for %s: (%s)", options.Handle.Path, err.Error())
 		}
 		return data, err
 	}
@@ -119,7 +119,7 @@ func (rw *ReadWriteCache) ReadInBuffer(options internal.ReadInBufferOptions) (in
 	}
 	read, err := rw.readWriteBlocks(options.Handle, options.Offset, options.Data, false)
 	if err != nil {
-		log.Err("Stream::ReadInBuffer : error failed to download requested data for %s: [%s]", options.Handle.Path, err.Error())
+		log.Err("Stream::ReadInBuffer : error failed to download requested data for %s: (%s)", options.Handle.Path, err.Error())
 	}
 	return read, err
 }
@@ -129,14 +129,14 @@ func (rw *ReadWriteCache) WriteFile(options internal.WriteFileOptions) (int, err
 	if !rw.StreamOnly && options.Handle.CacheObj.StreamOnly {
 		err := rw.createHandleCache(options.Handle)
 		if err != nil {
-			log.Err("Stream::WriteFile : error failed to create cache object %s [%s]", options.Handle.Path, err.Error())
+			log.Err("Stream::WriteFile : error failed to create cache object %s (%s)", options.Handle.Path, err.Error())
 			return 0, err
 		}
 	}
 	if rw.StreamOnly || options.Handle.CacheObj.StreamOnly {
 		data, err := rw.NextComponent().WriteFile(options)
 		if err != nil && err != io.EOF {
-			log.Err("Stream::WriteFile : error failed to write data to %s: [%s]", options.Handle.Path, err.Error())
+			log.Err("Stream::WriteFile : error failed to write data to %s: (%s)", options.Handle.Path, err.Error())
 		}
 		return data, err
 	}
@@ -144,7 +144,7 @@ func (rw *ReadWriteCache) WriteFile(options internal.WriteFileOptions) (int, err
 	defer options.Handle.CacheObj.Unlock()
 	written, err := rw.readWriteBlocks(options.Handle, options.Offset, options.Data, true)
 	if err != nil {
-		log.Err("Stream::WriteFile : error failed to write data to %s: [%s]", options.Handle.Path, err.Error())
+		log.Err("Stream::WriteFile : error failed to write data to %s: (%s)", options.Handle.Path, err.Error())
 	}
 	options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 	return written, err
@@ -160,7 +160,7 @@ func (rw *ReadWriteCache) TruncateFile(options internal.TruncateFileOptions) err
 	// 			if handle.Path == options.Name {
 	// 				err := rw.purge(handle, options.Size, true)
 	// 				if err != nil {
-	// 					log.Err("Stream::TruncateFile : failed to flush and purge handle cache %s [%s]", handle.Path, err.Error())
+	// 					log.Err("Stream::TruncateFile : failed to flush and purge handle cache %s (%s)", handle.Path, err.Error())
 	// 					return false
 	// 				}
 	// 			}
@@ -173,7 +173,7 @@ func (rw *ReadWriteCache) TruncateFile(options internal.TruncateFileOptions) err
 	// }
 	err := rw.NextComponent().TruncateFile(options)
 	if err != nil {
-		log.Err("Stream::TruncateFile : error truncating file %s [%s]", options.Name, err.Error())
+		log.Err("Stream::TruncateFile : error truncating file %s (%s)", options.Name, err.Error())
 	}
 	return err
 }
@@ -189,7 +189,7 @@ func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
 	// 			if handle.Path == options.Src {
 	// 				err := rw.purge(handle, -1, true)
 	// 				if err != nil {
-	// 					log.Err("Stream::RenameFile : failed to flush and purge handle cache %s [%s]", handle.Path, err.Error())
+	// 					log.Err("Stream::RenameFile : failed to flush and purge handle cache %s (%s)", handle.Path, err.Error())
 	// 					return false
 	// 				}
 	// 			}
@@ -202,7 +202,7 @@ func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
 	// }
 	err := rw.NextComponent().RenameFile(options)
 	if err != nil {
-		log.Err("Stream::RenameFile : error renaming file %s [%s]", options.Src, err.Error())
+		log.Err("Stream::RenameFile : error renaming file %s (%s)", options.Src, err.Error())
 	}
 	return err
 }
@@ -215,7 +215,7 @@ func (rw *ReadWriteCache) FlushFile(options internal.FlushFileOptions) error {
 	if options.Handle.Dirty() {
 		err := rw.NextComponent().FlushFile(options)
 		if err != nil {
-			log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
+			log.Err("Stream::FlushFile : error flushing file %s (%s)", options.Handle.Path, err.Error())
 			return err
 		}
 		options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
@@ -228,18 +228,18 @@ func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
 	// try to flush again to make sure it's cleaned up
 	err := rw.FlushFile(internal.FlushFileOptions(options))
 	if err != nil {
-		log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
+		log.Err("Stream::FlushFile : error flushing file %s (%s)", options.Handle.Path, err.Error())
 		return err
 	}
 	if !rw.StreamOnly && !options.Handle.CacheObj.StreamOnly {
 		err = rw.purge(options.Handle, -1)
 		if err != nil {
-			log.Err("Stream::CloseFile : error purging file %s [%s]", options.Handle.Path, err.Error())
+			log.Err("Stream::CloseFile : error purging file %s (%s)", options.Handle.Path, err.Error())
 		}
 	}
 	err = rw.NextComponent().CloseFile(options)
 	if err != nil {
-		log.Err("Stream::CloseFile : error closing file %s [%s]", options.Handle.Path, err.Error())
+		log.Err("Stream::CloseFile : error closing file %s (%s)", options.Handle.Path, err.Error())
 	}
 	return err
 }
@@ -254,7 +254,7 @@ func (rw *ReadWriteCache) DeleteFile(options internal.DeleteFileOptions) error {
 	// 			if handle.Path == options.Name {
 	// 				err := rw.purge(handle, -1, false)
 	// 				if err != nil {
-	// 					log.Err("Stream::DeleteFile : failed to purge handle cache %s [%s]", handle.Path, err.Error())
+	// 					log.Err("Stream::DeleteFile : failed to purge handle cache %s (%s)", handle.Path, err.Error())
 	// 					return false
 	// 				}
 	// 			}
@@ -264,7 +264,7 @@ func (rw *ReadWriteCache) DeleteFile(options internal.DeleteFileOptions) error {
 	// }
 	err := rw.NextComponent().DeleteFile(options)
 	if err != nil {
-		log.Err("Stream::DeleteFile : error deleting file %s [%s]", options.Name, err.Error())
+		log.Err("Stream::DeleteFile : error deleting file %s (%s)", options.Name, err.Error())
 	}
 	return err
 }
@@ -279,7 +279,7 @@ func (rw *ReadWriteCache) DeleteDirectory(options internal.DeleteDirOptions) err
 	// 			if strings.HasPrefix(handle.Path, options.Name) {
 	// 				err := rw.purge(handle, -1, false)
 	// 				if err != nil {
-	// 					log.Err("Stream::DeleteDirectory : failed to purge handle cache %s [%s]", handle.Path, err.Error())
+	// 					log.Err("Stream::DeleteDirectory : failed to purge handle cache %s (%s)", handle.Path, err.Error())
 	// 					return false
 	// 				}
 	// 			}
@@ -289,7 +289,7 @@ func (rw *ReadWriteCache) DeleteDirectory(options internal.DeleteDirOptions) err
 	// }
 	err := rw.NextComponent().DeleteDir(options)
 	if err != nil {
-		log.Err("Stream::DeleteDirectory : error deleting directory %s [%s]", options.Name, err.Error())
+		log.Err("Stream::DeleteDirectory : error deleting directory %s (%s)", options.Name, err.Error())
 	}
 	return err
 }
@@ -305,7 +305,7 @@ func (rw *ReadWriteCache) RenameDirectory(options internal.RenameDirOptions) err
 	// 			if strings.HasPrefix(handle.Path, options.Src) {
 	// 				err := rw.purge(handle, -1, true)
 	// 				if err != nil {
-	// 					log.Err("Stream::RenameDirectory : failed to flush and purge handle cache %s [%s]", handle.Path, err.Error())
+	// 					log.Err("Stream::RenameDirectory : failed to flush and purge handle cache %s (%s)", handle.Path, err.Error())
 	// 					return false
 	// 				}
 	// 			}
@@ -318,7 +318,7 @@ func (rw *ReadWriteCache) RenameDirectory(options internal.RenameDirOptions) err
 	// }
 	err := rw.NextComponent().RenameDir(options)
 	if err != nil {
-		log.Err("Stream::RenameDirectory : error renaming directory %s [%s]", options.Src, err.Error())
+		log.Err("Stream::RenameDirectory : error renaming directory %s (%s)", options.Src, err.Error())
 	}
 	return err
 }
@@ -333,7 +333,7 @@ func (rw *ReadWriteCache) Stop() error {
 			if handle.CacheObj != nil && !handle.CacheObj.StreamOnly {
 				err := rw.purge(handle, -1)
 				if err != nil {
-					log.Err("Stream::Stop : failed to purge handle cache %s [%s]", handle.Path, err.Error())
+					log.Err("Stream::Stop : failed to purge handle cache %s (%s)", handle.Path, err.Error())
 					return false
 				}
 			}
