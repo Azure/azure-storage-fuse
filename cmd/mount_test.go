@@ -50,6 +50,8 @@ import (
 var configMountTest string = `
 logging:
   type: syslog
+  file-path: /tmp/blobfuse2logs/blobfuse2.log
+default-working-dir: /tmp/blobfuse2
 file_cache:
   path: /tmp/fileCachePath
 libfuse:
