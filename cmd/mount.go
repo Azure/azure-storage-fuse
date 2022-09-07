@@ -98,25 +98,25 @@ var options mountOptions
 
 func (opt *mountOptions) validate(skipEmptyMount bool) error {
 	if opt.MountPath == "" {
-		return fmt.Errorf("Mount path not provided")
+		return fmt.Errorf("mount path not provided")
 	}
 
 	if _, err := os.Stat(opt.MountPath); os.IsNotExist(err) {
-		return fmt.Errorf("Mount directory does not exists")
+		return fmt.Errorf("mount directory does not exists")
 	} else if common.IsDirectoryMounted(opt.MountPath) {
-		return fmt.Errorf("Directory is already mounted")
+		return fmt.Errorf("directory is already mounted")
 	} else if !skipEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
-		return fmt.Errorf("Mount directory is not empty")
+		return fmt.Errorf("mount directory is not empty")
 	}
 
 	if err := common.ELogLevel.Parse(opt.Logging.LogLevel); err != nil {
-		return fmt.Errorf("Invalid log-level %s", opt.Logging.LogLevel)
+		return fmt.Errorf("invalid log-level %s", opt.Logging.LogLevel)
 	}
 	opt.Logging.LogFilePath = os.ExpandEnv(opt.Logging.LogFilePath)
 	if !common.DirectoryExists(filepath.Dir(opt.Logging.LogFilePath)) {
 		err := os.MkdirAll(filepath.Dir(opt.Logging.LogFilePath), os.FileMode(0666)|os.ModeDir)
 		if err != nil {
-			return fmt.Errorf("Invalid log-file-path %s", opt.Logging.LogFilePath)
+			return fmt.Errorf("invalid log-file-path %s", opt.Logging.LogFilePath)
 		}
 	}
 
