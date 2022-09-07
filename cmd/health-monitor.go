@@ -81,16 +81,19 @@ var healthMonCmd = &cobra.Command{
 		options.ConfigFile = configFile
 		err = parseConfig()
 		if err != nil {
+			log.Err("health-monitor: failed to parse config (%s)", err.Error())
 			return fmt.Errorf("failed to parse config (%s)", err.Error())
 		}
 
 		err = config.UnmarshalKey("file_cache", &cacheMonitorOptions)
 		if err != nil {
+			log.Err("health-monitor: fileCache config error (invalid config attributes)")
 			return fmt.Errorf("fileCache config error (invalid config attributes)")
 		}
 
 		err = config.UnmarshalKey("health-monitor", &options.MonitorOpt)
 		if err != nil {
+			log.Err("health-monitor: health-monitor config error (invalid config attributes)")
 			return fmt.Errorf("health-monitor config error (invalid config attributes)")
 		}
 
@@ -102,10 +105,11 @@ var healthMonCmd = &cobra.Command{
 		cliOut, err := hmcmd.Output()
 		if len(cliOut) > 0 {
 			log.Debug("health-monitor: cliout = %v", string(cliOut))
-			// fmt.Println(string(cliOut))
 		}
+
 		if err != nil {
 			common.EnableMonitoring = false
+			log.Err("health-monitor: failed to start health monitor (%s)", err.Error())
 			return fmt.Errorf("failed to start health monitor (%s)", err.Error())
 		}
 
