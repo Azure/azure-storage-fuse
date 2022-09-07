@@ -216,6 +216,105 @@ func (suite *mountTestSuite) TestInvalidLogLevel() {
 	suite.assert.Contains(op, "invalid log-level")
 }
 
+func (suite *mountTestSuite) TestCliParamsV1() {
+	defer suite.cleanupTest()
+
+	mntDir, err := ioutil.TempDir("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	tempLogDir := "/tmp/templogs_" + randomString(6)
+	defer os.RemoveAll(tempLogDir)
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
+		fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"), "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to initialize new pipeline")
+}
+
+// libfuse options test
+func (suite *mountTestSuite) TestLibfuseOptions() {
+	defer suite.cleanupTest()
+
+	mntDir, err := ioutil.TempDir("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	tempLogDir := "/tmp/templogs_" + randomString(6)
+	defer os.RemoveAll(tempLogDir)
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
+		fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"), "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check",
+		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
+		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to initialize new pipeline")
+}
+
+// mount failure test where libfuse options are greater than 8
+func (suite *mountTestSuite) TestLibfuseOptionsMoreThan8() {
+	defer suite.cleanupTest()
+
+	mntDir, err := ioutil.TempDir("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	// greater than 8 libfuse options
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
+		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
+		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o random_option")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "invalid FUSE options")
+}
+
+// mount failure test where a libfuse option is incorrect
+func (suite *mountTestSuite) TestInvalidLibfuseOption() {
+	defer suite.cleanupTest()
+
+	mntDir, err := ioutil.TempDir("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	// incorrect option
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
+		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
+		"-o ro", "-o default_permissions", "-o umask=755", "-o a=b=c")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "invalid FUSE options")
+}
+
+// mount failure test where a libfuse option is undefined
+func (suite *mountTestSuite) TestUndefinedLibfuseOption() {
+	defer suite.cleanupTest()
+
+	mntDir, err := ioutil.TempDir("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	// undefined option
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
+		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
+		"-o ro", "-o allow_root", "-o umask=755", "-o random_option")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "invalid FUSE options")
+}
+
+// mount failure test where umask value is invalid
+func (suite *mountTestSuite) TestInvalidUmaskValue() {
+	defer suite.cleanupTest()
+
+	mntDir, err := ioutil.TempDir("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	// incorrect umask value
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
+		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
+		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=abcd")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to parse umask")
+}
+
 func TestMountCommand(t *testing.T) {
 	confFile, err := ioutil.TempFile("", "conf*.yaml")
 	if err != nil {
