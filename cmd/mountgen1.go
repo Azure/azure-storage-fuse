@@ -102,6 +102,7 @@ var gen1Cmd = &cobra.Command{
 
 		err = config.UnmarshalKey("azstorage", &azStorageOpt)
 		if err != nil {
+			log.Err("mountgen1: AzStorage config error (invalid config attributes)")
 			return fmt.Errorf("azstorage config error (invalid config attributes)")
 		}
 
@@ -117,11 +118,13 @@ var gen1Cmd = &cobra.Command{
 
 		err = config.UnmarshalKey("libfuse", &libFuseOpt)
 		if err != nil {
+			log.Err("mountgen1: Libfuse config error (invalid config attributes)")
 			return fmt.Errorf("libfuse config error (invalid config attributes)")
 		}
 
 		err = config.UnmarshalKey("file_cache", &fileCacheOpt)
 		if err != nil {
+			log.Err("mountgen1: FileCache config error (invalid config attributes)")
 			return fmt.Errorf("file_cache config error (invalid config attributes)")
 		}
 
@@ -164,6 +167,7 @@ func generateAdlsGenOneJson() error {
 
 		rustFuseMap["credentialtype"] = "servicePrincipal"
 	} else {
+		log.Err("generateAdlsGenOneJson: for Gen1 account only SPN auth is supported")
 		return fmt.Errorf("for Gen1 account only SPN auth is supported")
 	}
 
@@ -180,6 +184,7 @@ func generateAdlsGenOneJson() error {
 	var allowOther bool
 	err := config.UnmarshalKey("allow-other", &allowOther)
 	if err != nil {
+		log.Err("generateAdlsGenOneJson: failed to parse allow-other (%s)", err.Error())
 		return fmt.Errorf("failed to parse allow-other (%s)", err.Error())
 	}
 	rustFuseMap["fuseallowother"] = allowOther
