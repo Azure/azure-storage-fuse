@@ -71,8 +71,8 @@ var getKeyCmd = &cobra.Command{
 
 		value := viper.Get(secOpts.Key)
 		if value == nil {
-			fmt.Printf("secure get : key not found in config [%s]", err.Error())
-			return fmt.Errorf("secure get : key not found in config [%s]", err.Error())
+			fmt.Printf("secure get : key not found in config")
+			return fmt.Errorf("secure get : key not found in config")
 		}
 
 		valType := reflect.TypeOf(value)
