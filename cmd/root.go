@@ -128,18 +128,21 @@ func beginDetectNewVersion() chan interface{} {
 		remoteVersion, err := getRemoteVersion(latestVersionUrl)
 		if err != nil {
 			log.Err("beginDetectNewVersion: error getting latest version [%s]", err.Error())
+			completed <- err.Error()
 			return
 		}
 
 		local, err := common.ParseVersion(common.Blobfuse2Version)
 		if err != nil {
 			log.Err("beginDetectNewVersion: error parsing Blobfuse2Version [%s]", err.Error())
+			completed <- err.Error()
 			return
 		}
 
 		remote, err := common.ParseVersion(remoteVersion)
 		if err != nil {
 			log.Err("beginDetectNewVersion: error parsing remoteVersion [%s]", err.Error())
+			completed <- err.Error()
 			return
 		}
 
@@ -158,6 +161,7 @@ func beginDetectNewVersion() chan interface{} {
 				fmt.Fprintf(stderr, "Visit %s to see the list of vulnerabilities associated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
 				log.Warn("Vist %s to see the list of vulnerabilities associated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
 			}
+			completed <- "A new version of Blobfuse2 is available"
 		}
 	}()
 	return completed
