@@ -59,11 +59,13 @@ type mountSuite struct {
 
 func remountCheck(suite *mountSuite) {
 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--config-file="+configFile)
-	cliOut, err := mountCmd.Output()
-	fmt.Println(string(cliOut))
-	suite.NotEqual(0, len(cliOut))
+	var errb bytes.Buffer
+	mountCmd.Stderr = &errb
+	_, err := mountCmd.Output()
 	suite.NotEqual(nil, err)
-	suite.Contains(string(cliOut), "directory is already mounted")
+	fmt.Println(errb.String())
+	suite.NotEqual(0, len(errb.String()))
+	suite.Contains(errb.String(), "directory is already mounted")
 }
 
 // list blobfuse mounted directories
@@ -119,18 +121,20 @@ func (suite *mountSuite) TestMountCmd() {
 func (suite *mountSuite) TestMountDirNotExists() {
 	tempDir := filepath.Join(mntDir, "tempdir")
 	mountCmd := exec.Command(blobfuseBinary, "mount", tempDir, "--config-file="+configFile)
-	cliOut, err := mountCmd.Output()
-	fmt.Println(string(cliOut))
-	suite.NotEqual(0, len(cliOut))
+	var errb bytes.Buffer
+	mountCmd.Stderr = &errb
+	_, err := mountCmd.Output()
 	suite.NotEqual(nil, err)
-	suite.Contains(string(cliOut), "mount directory does not exists")
+	fmt.Println(errb.String())
+	suite.NotEqual(0, len(errb.String()))
+	suite.Contains(errb.String(), "mount directory does not exists")
 
 	// list blobfuse mounted directories
-	cliOut = listBlobfuseMounts(suite)
+	cliOut := listBlobfuseMounts(suite)
 	suite.Equal(0, len(cliOut))
 
 	// unmount
-	blobfuseUnmount(suite, "nothing to unmount")
+	blobfuseUnmount(suite, "Nothing to unmount")
 }
 
 // mount failure test where the mount directory is not empty
@@ -138,54 +142,60 @@ func (suite *mountSuite) TestMountDirNotEmpty() {
 	tempDir := filepath.Join(mntDir, "tempdir")
 	_ = os.Mkdir(tempDir, 0777)
 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--config-file="+configFile)
-	cliOut, err := mountCmd.Output()
-	fmt.Println(string(cliOut))
-	suite.NotEqual(0, len(cliOut))
+	var errb bytes.Buffer
+	mountCmd.Stderr = &errb
+	_, err := mountCmd.Output()
 	suite.NotEqual(nil, err)
-	suite.Contains(string(cliOut), "mount directory is not empty")
+	fmt.Println(errb.String())
+	suite.NotEqual(0, len(errb.String()))
+	suite.Contains(errb.String(), "mount directory is not empty")
 
 	// list blobfuse mounted directories
-	cliOut = listBlobfuseMounts(suite)
+	cliOut := listBlobfuseMounts(suite)
 	suite.Equal(0, len(cliOut))
 
 	os.RemoveAll(tempDir)
 
 	// unmount
-	blobfuseUnmount(suite, "nothing to unmount")
+	blobfuseUnmount(suite, "Nothing to unmount")
 }
 
 // mount failure test where the mount path is not provided
 func (suite *mountSuite) TestMountPathNotProvided() {
 	mountCmd := exec.Command(blobfuseBinary, "mount", "", "--config-file="+configFile)
-	cliOut, err := mountCmd.Output()
-	fmt.Println(string(cliOut))
-	suite.NotEqual(0, len(cliOut))
+	var errb bytes.Buffer
+	mountCmd.Stderr = &errb
+	_, err := mountCmd.Output()
 	suite.NotEqual(nil, err)
-	suite.Contains(string(cliOut), "mount path not provided")
+	fmt.Println(errb.String())
+	suite.NotEqual(0, len(errb.String()))
+	suite.Contains(errb.String(), "mount path not provided")
 
 	// list blobfuse mounted directories
-	cliOut = listBlobfuseMounts(suite)
+	cliOut := listBlobfuseMounts(suite)
 	suite.Equal(0, len(cliOut))
 
 	// unmount
-	blobfuseUnmount(suite, "nothing to unmount")
+	blobfuseUnmount(suite, "Nothing to unmount")
 }
 
 // mount failure test where config file is not provided
 func (suite *mountSuite) TestConfigFileNotProvided() {
 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir)
-	cliOut, err := mountCmd.Output()
-	fmt.Println(string(cliOut))
-	suite.NotEqual(0, len(cliOut))
+	var errb bytes.Buffer
+	mountCmd.Stderr = &errb
+	_, err := mountCmd.Output()
 	suite.NotEqual(nil, err)
-	suite.Contains(string(cliOut), "failed to mount")
+	fmt.Println(errb.String())
+	suite.NotEqual(0, len(errb.String()))
+	suite.Contains(errb.String(), "failed to initialize new pipeline")
 
 	// list blobfuse mounted directories
-	cliOut = listBlobfuseMounts(suite)
+	cliOut := listBlobfuseMounts(suite)
 	suite.Equal(0, len(cliOut))
 
 	// unmount
-	blobfuseUnmount(suite, "nothing to unmount")
+	blobfuseUnmount(suite, "Nothing to unmount")
 }
 
 // mount failure test where config file is not provided and environment variables have incorrect credentials
@@ -208,7 +218,7 @@ func (suite *mountSuite) TestEnvVarMountFailure() {
 	suite.Equal(0, len(cliOut))
 
 	// unmount
-	blobfuseUnmount(suite, "nothing to unmount")
+	blobfuseUnmount(suite, "Nothing to unmount")
 
 	os.Unsetenv("AZURE_STORAGE_ACCOUNT")
 	os.Unsetenv("AZURE_STORAGE_ACCESS_KEY")
