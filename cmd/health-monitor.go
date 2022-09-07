@@ -87,7 +87,7 @@ var healthMonCmd = &cobra.Command{
 
 		err = config.UnmarshalKey("file_cache", &cacheMonitorOptions)
 		if err != nil {
-			log.Err("health-monitor: fileCache config error (invalid config attributes)")
+			log.Err("health-monitor: FileCache config error (invalid config attributes)")
 			return fmt.Errorf("fileCache config error (invalid config attributes)")
 		}
 

@@ -52,13 +52,6 @@ var unmountCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if !disableVersionCheck {
-			err := VersionCheck()
-			if err != nil {
-				return err
-			}
-		}
-
 		if strings.Contains(args[0], "*") {
 			mntPathPrefix := args[0]
 

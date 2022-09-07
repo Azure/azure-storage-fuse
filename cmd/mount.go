@@ -472,13 +472,13 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 
 	err := pipeline.Start(ctx)
 	if err != nil {
-		log.Err("mount : error unable to start pipeline (%s)", err.Error())
+		log.Err("mount: error unable to start pipeline (%s)", err.Error())
 		return Destroy(fmt.Sprintf("unable to start pipeline (%s)", err.Error()))
 	}
 
 	err = pipeline.Stop()
 	if err != nil {
-		log.Err("mount : error unable to stop pipeline (%s)", err.Error())
+		log.Err("mount: error unable to stop pipeline (%s)", err.Error())
 		return Destroy(fmt.Sprintf("unable to stop pipeline (%s)", err.Error()))
 	}
 
@@ -554,7 +554,7 @@ func startDynamicProfiler() {
 	//
 	err := http.ListenAndServe(connStr, nil)
 	if err != nil {
-		log.Err("startDynamicProfiler : Failed to start dynamic profiler (%s)", err.Error())
+		log.Err("startDynamicProfiler: Failed to start dynamic profiler (%s)", err.Error())
 	}
 }
 

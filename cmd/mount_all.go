@@ -69,15 +69,18 @@ var mountAllCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		err := VersionCheck()
-		if err != nil {
-			return err
+		if !disableVersionCheck {
+			err := VersionCheck()
+			if err != nil {
+				return err
+			}
 		}
 
 		mountAllOpts.blobfuse2BinPath = os.Args[0]
 		options.MountPath = args[0]
 		return processCommand()
 	},
+
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	},
