@@ -134,7 +134,7 @@ func (suite *mountSuite) TestMountDirNotExists() {
 	suite.Equal(0, len(cliOut))
 
 	// unmount
-	blobfuseUnmount(suite, "nothing to unmount")
+	blobfuseUnmount(suite, "Nothing to unmount")
 }
 
 // mount failure test where the mount directory is not empty
