@@ -50,7 +50,6 @@ import (
 var configMountTest string = `
 logging:
   type: syslog
-  file-path: /tmp/blobfuse2logs/blobfuse2.log
 default-working-dir: /tmp/blobfuse2
 file_cache:
   path: /tmp/fileCachePath
@@ -72,6 +71,20 @@ health-monitor:
   monitor-disable-list:
     - network_profiler
     - blobfuse_stats
+`
+
+var configMountLoopback string = `
+logging:
+  type: syslog
+default-working-dir: /tmp/blobfuse2
+components:
+  - libfuse
+  - loopbackfs
+libfuse:
+  attribute-expiration-sec: 120
+  entry-expiration-sec: 60
+loopbackfs:
+  path: /tmp/bfuseloopback
 `
 
 var confFileMntTest string
@@ -232,6 +245,22 @@ func (suite *mountTestSuite) TestCliParamsV1() {
 	suite.assert.Contains(op, "failed to initialize new pipeline")
 }
 
+func (suite *mountTestSuite) TestStreamAttrCacheOptionsV1() {
+	defer suite.cleanupTest()
+
+	mntDir, err := ioutil.TempDir("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	tempLogDir := "/tmp/templogs_" + randomString(6)
+	defer os.RemoveAll(tempLogDir)
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"),
+		"--streaming", "--use-attr-cache", "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to initialize new pipeline")
+}
+
 // libfuse options test
 func (suite *mountTestSuite) TestLibfuseOptions() {
 	defer suite.cleanupTest()
@@ -315,6 +344,27 @@ func (suite *mountTestSuite) TestInvalidUmaskValue() {
 	suite.assert.Contains(op, "failed to parse umask")
 }
 
+func (suite *mountTestSuite) TestMountUsingLoopbackFailure() {
+	defer suite.cleanupTest()
+
+	confFile, err := ioutil.TempFile("", "conf*.yaml")
+	suite.assert.Nil(err)
+	confFileName := confFile.Name()
+	defer os.Remove(confFileName)
+
+	_, err = confFile.WriteString(configMountLoopback)
+	suite.assert.Nil(err)
+	confFile.Close()
+
+	mntDir, err := ioutil.TempDir("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName))
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to daemonize application")
+}
+
 func TestMountCommand(t *testing.T) {
 	confFile, err := ioutil.TempFile("", "conf*.yaml")
 	if err != nil {
@@ -327,6 +377,7 @@ func TestMountCommand(t *testing.T) {
 	if err != nil {
 		t.Error("Failed to write to config file")
 	}
+	confFile.Close()
 
 	suite.Run(t, new(mountTestSuite))
 }
