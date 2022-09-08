@@ -381,7 +381,7 @@ stages:
                 fi
 
                 ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_negative_cmd.cov unmount abcdef
-                if [ $? -ne 0 ]; then
+                if [ $? -ne 1 ]; then
                   exit 1
                 fi
 
