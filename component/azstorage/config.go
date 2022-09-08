@@ -206,8 +206,8 @@ func RegisterEnvVariables() {
 
 //    ----------- Config Parsing and Validation  ---------------
 
-// formatEndpoint : add the protocol and missing "/" at the end to the endpoint
-func formatEndpoint(endpoint string, http bool) string {
+// formatEndpointProtocol : add the protocol and missing "/" at the end to the endpoint
+func formatEndpointProtocol(endpoint string, http bool) string {
 	correctedEP := endpoint
 
 	// If the pvtEndpoint does not have protocol mentioned in front, pvtEndpoint parsing will fail while
@@ -300,10 +300,10 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 	}
 	az.stConfig.authConfig.Endpoint = opt.Endpoint
-	az.stConfig.authConfig.Endpoint = formatEndpoint(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
+	az.stConfig.authConfig.Endpoint = formatEndpointProtocol(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
 
 	az.stConfig.authConfig.ActiveDirectoryEndpoint = opt.ActiveDirectoryEndpoint
-	az.stConfig.authConfig.ActiveDirectoryEndpoint = formatEndpoint(az.stConfig.authConfig.ActiveDirectoryEndpoint, false)
+	az.stConfig.authConfig.ActiveDirectoryEndpoint = formatEndpointProtocol(az.stConfig.authConfig.ActiveDirectoryEndpoint, false)
 
 	// If subdirectory is mounted, take the prefix path
 	az.stConfig.prefixPath = opt.PrefixPath
