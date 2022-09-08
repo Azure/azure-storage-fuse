@@ -226,7 +226,7 @@ func (suite *mountTestSuite) TestInvalidLogLevel() {
 
 	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "--log-level=debug")
 	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "invalid log-level")
+	suite.assert.Contains(op, "invalid log level")
 }
 
 func (suite *mountTestSuite) TestCliParamsV1() {

@@ -84,7 +84,7 @@ func (suite *docTestSuite) TestOutputDirCreationError() {
 
 	op, err := executeCommandC(rootCmd, "doc", fmt.Sprintf("--output-location=%s", opDir))
 	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "unable to create output location")
+	suite.assert.Contains(op, "failed to create output location")
 }
 
 func (suite *docTestSuite) TestDocsGenerationError() {
@@ -94,7 +94,7 @@ func (suite *docTestSuite) TestDocsGenerationError() {
 
 	op, err := executeCommandC(rootCmd, "doc", fmt.Sprintf("--output-location=%s", opDir))
 	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "cannot generate doc")
+	suite.assert.Contains(op, "cannot generate command tree")
 }
 
 func (suite *docTestSuite) TestOutputDirIsFileError() {
