@@ -64,7 +64,7 @@ var umntAllCmd = &cobra.Command{
 			if err == nil {
 				unmounted += 1
 			} else {
-				errMsg += " " + mntPath + "[" + err.Error() + "]\n"
+				errMsg += " " + mntPath + " - [" + err.Error() + "]\n"
 			}
 		}
 

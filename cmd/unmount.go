@@ -100,6 +100,7 @@ func unmountBlobfuse2(mntPath string) error {
 	if err != nil {
 		return err
 	} else {
+		fmt.Println("successfully unmounted", mntPath)
 		return nil
 	}
 }
