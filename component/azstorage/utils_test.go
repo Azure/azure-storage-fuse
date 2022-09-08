@@ -262,6 +262,44 @@ func (s *utilsTestSuite) TestBfsProxyOptions() {
 	assert.EqualValues(ro.MaxTries, 3)
 	assert.NotEqual(po.RequestLog.SyslogDisabled, true)
 }
+
+func (s *utilsTestSuite) TestAutoDetectAuthMode() {
+	assert := assert.New(s.T())
+
+	atuhType := autoDetectAuthMode(AzStorageOptions{AccountKey: "abc"})
+	assert.Equal(atuhType, "key")
+
+	atuhType = autoDetectAuthMode(AzStorageOptions{})
+	assert.Equal(atuhType, "key")
+
+	atuhType = autoDetectAuthMode(AzStorageOptions{SaSKey: "abc"})
+	assert.Equal(atuhType, "sas")
+
+	atuhType = autoDetectAuthMode(AzStorageOptions{ApplicationID: "abc"})
+	assert.Equal(atuhType, "msi")
+
+	atuhType = autoDetectAuthMode(AzStorageOptions{ResourceID: "abc"})
+	assert.Equal(atuhType, "msi")
+
+	atuhType = autoDetectAuthMode(AzStorageOptions{ClientID: "abc"})
+	assert.Equal(atuhType, "spn")
+
+	atuhType = autoDetectAuthMode(AzStorageOptions{ClientSecret: "abc"})
+	assert.Equal(atuhType, "spn")
+
+	atuhType = autoDetectAuthMode(AzStorageOptions{TenantID: "abc"})
+	assert.Equal(atuhType, "spn")
+
+	atuhType = autoDetectAuthMode(AzStorageOptions{ApplicationID: "abc", AccountKey: "abc", SaSKey: "abc", ClientID: "abc"})
+	assert.Equal(atuhType, "msi")
+
+	atuhType = autoDetectAuthMode(AzStorageOptions{AccountKey: "abc", SaSKey: "abc", ClientID: "abc"})
+	assert.Equal(atuhType, "key")
+
+	atuhType = autoDetectAuthMode(AzStorageOptions{SaSKey: "abc", ClientID: "abc"})
+	assert.Equal(atuhType, "sas")
+}
+
 func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(utilsTestSuite))
 }
