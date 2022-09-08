@@ -64,7 +64,7 @@ func (azspn *azAuthSPN) fetchToken() (*adal.ServicePrincipalToken, error) {
 	//  Use the configured AAD endpoint for token generation
 	config, err := adal.NewOAuthConfig(azspn.getAADEndpoint(), azspn.config.TenantID)
 	if err != nil {
-		log.Err("AzAuthSPN::fetchToken : Failed to generate OAuth Config for SPN (%s)", err.Error())
+		log.Err("AzAuthSPN::fetchToken : Failed to generate OAuth Config for SPN [%s]", err.Error())
 		return nil, err
 	}
 
@@ -72,7 +72,7 @@ func (azspn *azAuthSPN) fetchToken() (*adal.ServicePrincipalToken, error) {
 	resourceURL := azspn.getEndpoint()
 	spt, err := adal.NewServicePrincipalToken(*config, azspn.config.ClientID, azspn.config.ClientSecret, resourceURL)
 	if err != nil {
-		log.Err("AzAuthSPN::fetchToken : Failed to generate token for SPN (%s)", err.Error())
+		log.Err("AzAuthSPN::fetchToken : Failed to generate token for SPN [%s]", err.Error())
 		return nil, err
 	}
 
@@ -88,7 +88,7 @@ func (azspn *azAuthBlobSPN) getCredential() interface{} {
 
 	spt, err := azspn.fetchToken()
 	if err != nil {
-		log.Err("azAuthBlobSPN::getCredential : Failed to fetch token for SPN (%s)", err.Error())
+		log.Err("azAuthBlobSPN::getCredential : Failed to fetch token for SPN [%s]", err.Error())
 		return nil
 	}
 
@@ -96,7 +96,7 @@ func (azspn *azAuthBlobSPN) getCredential() interface{} {
 	tc := azblob.NewTokenCredential(spt.Token().AccessToken, func(tc azblob.TokenCredential) time.Duration {
 		err := spt.Refresh()
 		if err != nil {
-			log.Err("azAuthBlobSPN::getCredential : Failed to refresh SPN token (%s)", err.Error())
+			log.Err("azAuthBlobSPN::getCredential : Failed to refresh SPN token [%s]", err.Error())
 			return 0
 		}
 
@@ -120,7 +120,7 @@ func (azspn *azAuthBfsSPN) getCredential() interface{} {
 
 	spt, err := azspn.fetchToken()
 	if err != nil {
-		log.Err("azAuthBfsSPN::getCredential : Failed to fetch token for SPN (%s)", err.Error())
+		log.Err("azAuthBfsSPN::getCredential : Failed to fetch token for SPN [%s]", err.Error())
 		return nil
 	}
 
@@ -128,7 +128,7 @@ func (azspn *azAuthBfsSPN) getCredential() interface{} {
 	tc := azbfs.NewTokenCredential(spt.Token().AccessToken, func(tc azbfs.TokenCredential) time.Duration {
 		err := spt.Refresh()
 		if err != nil {
-			log.Err("azAuthBfsSPN::getCredential : Failed to refresh SPN token (%s)", err.Error())
+			log.Err("azAuthBfsSPN::getCredential : Failed to refresh SPN token [%s]", err.Error())
 			return 0
 		}
 
