@@ -164,7 +164,7 @@ stages:
                 echo "health_monitor:" >> /tmp/configBlockProfilerTemp.yaml
                 echo "  enable-monitoring: true" >> /tmp/configBlockProfilerTemp.yaml
                 echo "  monitor-disable-list:" >> /tmp/configBlockProfilerTemp.yaml
-                echo "    - bobfuse_stats" >> /tmp/configBlockProfilerTemp.yaml
+                echo "    - blobfuse_stats" >> /tmp/configBlockProfilerTemp.yaml
                 cat /tmp/configBlockProfilerTemp.yaml
 
                 ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block_profiler.cov mount $(MOUNT_DIR) --config-file=/tmp/configBlockProfilerTemp.yaml --foreground=true &
@@ -219,7 +219,7 @@ stages:
                 echo "health_monitor:" >> /tmp/configAdlsProfilerTemp.yaml
                 echo "  enable-monitoring: true" >> /tmp/configAdlsProfilerTemp.yaml
                 echo "  monitor-disable-list:" >> /tmp/configAdlsProfilerTemp.yaml
-                echo "    - bobfuse_stats" >> /tmp/configAdlsProfilerTemp.yaml
+                echo "    - blobfuse_stats" >> /tmp/configAdlsProfilerTemp.yaml
                 cat /tmp/configAdlsProfilerTemp.yaml
 
                 ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_adls_profiler.cov mount $(MOUNT_DIR) --config-file=/tmp/configAdlsProfilerTemp.yaml --foreground=true &
