@@ -153,6 +153,32 @@ stages:
               workingDirectory: $(WORK_DIR)
               displayName: "Block Blob Coverage"
 
+            # Code Coverage with health monitor, dynamic, CPU and mem profilers enabled for block blob
+            - script: |
+                rm -rf $(MOUNT_DIR)/*
+                rm -rf $(TEMP_DIR)/*
+                cp $(BLOBFUSE2_CFG) /tmp/configBlockProfilerTemp.yaml
+                echo "dynamic-profile: true" >> /tmp/configBlockProfilerTemp.yaml
+                echo "cpu-profile: /tmp/cpuBlockProfTmp" >> /tmp/configBlockProfilerTemp.yaml
+                echo "mem-profile: /tmp/memBlockProfTmp" >> /tmp/configBlockProfilerTemp.yaml
+                echo "health-monitor:" >> /tmp/configBlockProfilerTemp.yaml
+                echo "  enable-monitoring: true" >> /tmp/configBlockProfilerTemp.yaml
+                echo "  monitor-disable-list:" >> /tmp/configBlockProfilerTemp.yaml
+                echo "    - bobfuse_stats" >> /tmp/configBlockProfilerTemp.yaml
+                cat /tmp/configBlockProfilerTemp.yaml
+
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block_profiler.cov mount $(MOUNT_DIR) --config-file=/tmp/configBlockProfilerTemp.yaml --foreground=true &
+                sleep 10
+                ps -aux | grep blobfuse2
+                rm -rf $(MOUNT_DIR)/*
+                cd test/e2e_tests
+                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
+                cd -
+                sudo fusermount -u $(MOUNT_DIR) 
+                sleep 5
+              workingDirectory: $(WORK_DIR)
+              displayName: "Block Blob Coverage with profilers"
+
             - script: |
                 cd $(WORK_DIR)
                 $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_ADLS_CFG)
@@ -181,6 +207,32 @@ stages:
                 sleep 5
               workingDirectory: $(WORK_DIR)
               displayName: "ADLS Coverage"
+
+            # Code Coverage with health monitor, dynamic, CPU and mem profilers enabled for adls
+            - script: |
+                rm -rf $(MOUNT_DIR)/*
+                rm -rf $(TEMP_DIR)/*
+                cp $(BLOBFUSE2_ADLS_CFG) /tmp/configAdlsProfilerTemp.yaml
+                echo "dynamic-profile: true" >> /tmp/configAdlsProfilerTemp.yaml
+                echo "cpu-profile: /tmp/cpuAdlsProfTmp" >> /tmp/configAdlsProfilerTemp.yaml
+                echo "mem-profile: /tmp/memAdlsProfTmp" >> /tmp/configAdlsProfilerTemp.yaml
+                echo "health-monitor:" >> /tmp/configAdlsProfilerTemp.yaml
+                echo "  enable-monitoring: true" >> /tmp/configAdlsProfilerTemp.yaml
+                echo "  monitor-disable-list:" >> /tmp/configAdlsProfilerTemp.yaml
+                echo "    - bobfuse_stats" >> /tmp/configAdlsProfilerTemp.yaml
+                cat /tmp/configAdlsProfilerTemp.yaml
+
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_adls_profiler.cov mount $(MOUNT_DIR) --config-file=/tmp/configAdlsProfilerTemp.yaml --foreground=true &
+                sleep 10
+                ps -aux | grep blobfuse2
+                rm -rf $(MOUNT_DIR)/*
+                cd test/e2e_tests
+                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
+                cd -
+                sudo fusermount -u $(MOUNT_DIR) 
+                sleep 5
+              workingDirectory: $(WORK_DIR)
+              displayName: "ADLS Coverage with profilers"
 
 
             # -------------------------------------------------------
