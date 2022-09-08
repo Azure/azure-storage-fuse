@@ -75,7 +75,7 @@ var rootCmd = &cobra.Command{
 				return err
 			}
 		}
-		return errors.New("missing command options\n\nDid you mean this?\n\tblobfuse2 mount\n\nRun 'blobfuse2 --help' for usage.")
+		return errors.New("missing command options\n\nDid you mean this?\n\tblobfuse2 mount\n\nRun 'blobfuse2 --help' for usage")
 	},
 }
 
@@ -150,16 +150,16 @@ func beginDetectNewVersion() chan interface{} {
 			executablePathSegments := strings.Split(strings.Replace(os.Args[0], "\\", "/", -1), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
 			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remoteVersion)
-			fmt.Fprintf(stderr, "*** "+executableName+": A new version (%s) is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
-			log.Info("*** "+executableName+": A new version (%s) is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
+			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
+			log.Info("*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
 
 			warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
 			hasWarnings := checkVersionExists(warningsUrl)
 
 			if hasWarnings {
 				warningsPage := common.BlobFuse2WarningsURL + "#" + strings.ReplaceAll(common.Blobfuse2Version, ".", "")
-				fmt.Fprintf(stderr, "Visit %s to see the list of vulnerabilities associated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
-				log.Warn("Vist %s to see the list of vulnerabilities associated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
+				fmt.Fprintf(stderr, "Visit %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
+				log.Warn("Vist %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
 			}
 			completed <- "A new version of Blobfuse2 is available"
 		}

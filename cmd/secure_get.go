@@ -34,7 +34,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -53,23 +52,23 @@ var getKeyCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to validate options [%s]", err.Error())
 		}
 
 		plainText, err := decryptConfigFile(false)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to decrypt config file [%s]", err.Error())
 		}
 
 		viper.SetConfigType("yaml")
 		err = viper.ReadConfig(strings.NewReader(string(plainText)))
 		if err != nil {
-			return errors.New("failed to load config")
+			return fmt.Errorf("failed to load config [%s]", err.Error())
 		}
 
 		value := viper.Get(secOpts.Key)
 		if value == nil {
-			return errors.New("search key not found in config")
+			return fmt.Errorf("key not found in config")
 		}
 
 		valType := reflect.TypeOf(value)

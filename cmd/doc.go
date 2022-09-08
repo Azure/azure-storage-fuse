@@ -57,10 +57,10 @@ var docCmd = &cobra.Command{
 		if err != nil && os.IsNotExist(err) {
 			// create the output location if it does not exist yet
 			if err = os.MkdirAll(docCmdInput.outputLocation, os.ModePerm); err != nil {
-				return fmt.Errorf("unable to create output location (%s)", err.Error())
+				return fmt.Errorf("failed to create output location [%s]", err.Error())
 			}
 		} else if err != nil {
-			return fmt.Errorf("cannot access the output location (%s)", err.Error())
+			return fmt.Errorf("cannot access output location [%s]", err.Error())
 		} else if !f.IsDir() {
 			return fmt.Errorf("output location is invalid as it is pointing to a file")
 		}
@@ -69,7 +69,7 @@ var docCmd = &cobra.Command{
 		// it will include this command too, which is intended
 		err = doc.GenMarkdownTree(rootCmd, docCmdInput.outputLocation)
 		if err != nil {
-			return fmt.Errorf("cannot generate doc (%s). Please contact the dev team", err.Error())
+			return fmt.Errorf("cannot generate command tree [%s]. Please contact the dev team", err.Error())
 		}
 		return nil
 	},

@@ -83,7 +83,7 @@ type mountOptions struct {
 	DynamicProfiler   bool           `config:"dynamic-profile"`
 	ProfilerPort      int            `config:"profiler-port"`
 	ProfilerIP        string         `config:"profiler-ip"`
-	MonitorOpt        monitorOptions `config:"health-monitor"`
+	MonitorOpt        monitorOptions `config:"health_monitor"`
 	// Debug             bool           `config:"debug"`
 	// DebugPath         string         `config:"debug-path"`
 
@@ -109,13 +109,13 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 	}
 
 	if err := common.ELogLevel.Parse(opt.Logging.LogLevel); err != nil {
-		return fmt.Errorf("invalid log-level %s", opt.Logging.LogLevel)
+		return fmt.Errorf("invalid log level [%s]", err.Error())
 	}
 	opt.Logging.LogFilePath = os.ExpandEnv(opt.Logging.LogFilePath)
 	if !common.DirectoryExists(filepath.Dir(opt.Logging.LogFilePath)) {
 		err := os.MkdirAll(filepath.Dir(opt.Logging.LogFilePath), os.FileMode(0666)|os.ModeDir)
 		if err != nil {
-			return fmt.Errorf("invalid log-file-path %s", opt.Logging.LogFilePath)
+			return fmt.Errorf("invalid log file path [%s]", err.Error())
 		}
 	}
 
@@ -139,7 +139,7 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 	// 	if os.IsNotExist(err) {
 	// 		err := os.MkdirAll(opt.DebugPath, os.FileMode(0755))
 	// 		if err != nil {
-	// 			return fmt.Errorf("invalid debug path")
+	// 			return fmt.Errorf("invalid debug path [%s]", err.Error())
 	// 		}
 	// 	}
 	// }
@@ -151,13 +151,13 @@ func OnConfigChange() {
 	newLogOptions := &LogOptions{}
 	err := config.UnmarshalKey("logging", newLogOptions)
 	if err != nil {
-		log.Err("Mount.go::OnConfigChange : Invalid logging options (%s)", err.Error())
+		log.Err("Mount::OnConfigChange : Invalid logging options [%s]", err.Error())
 	}
 
 	var logLevel common.LogLevel
 	err = logLevel.Parse(newLogOptions.LogLevel)
 	if err != nil {
-		log.Err("Mount.go::OnConfigChange : Invalid log level (%s)", newLogOptions.LogLevel)
+		log.Err("Mount::OnConfigChange : Invalid log level [%s]", newLogOptions.LogLevel)
 	}
 
 	err = log.SetConfig(common.LogConfig{
@@ -169,7 +169,7 @@ func OnConfigChange() {
 	})
 
 	if err != nil {
-		log.Err("Mount.go::OnConfigChange : Unable to reset Logging options (%s)", err.Error())
+		log.Err("Mount::OnConfigChange : Unable to reset Logging options [%s]", err.Error())
 	}
 }
 
@@ -180,7 +180,6 @@ func parseConfig() error {
 	// Based on extension decide file is encrypted or not
 	if options.SecureConfig ||
 		filepath.Ext(options.ConfigFile) == SecureConfigExtension {
-		fmt.Println("Secure config provided, going for decryption")
 
 		// Validate config is to be secured on write or not
 		if options.PassPhrase == "" {
@@ -193,25 +192,25 @@ func parseConfig() error {
 
 		cipherText, err := ioutil.ReadFile(options.ConfigFile)
 		if err != nil {
-			return fmt.Errorf("failed to read encrypted config file %s (%s)", options.ConfigFile, err.Error())
+			return fmt.Errorf("failed to read encrypted config file %s [%s]", options.ConfigFile, err.Error())
 		}
 
 		plainText, err := common.DecryptData(cipherText, []byte(options.PassPhrase))
 		if err != nil {
-			return fmt.Errorf("failed to decrypt config file %s (%s)", options.ConfigFile, err.Error())
+			return fmt.Errorf("failed to decrypt config file %s [%s]", options.ConfigFile, err.Error())
 		}
 
 		config.SetConfigFile(options.ConfigFile)
 		config.SetSecureConfigOptions(options.PassPhrase)
 		err = config.ReadFromConfigBuffer(plainText)
 		if err != nil {
-			return fmt.Errorf("invalid decrypted config file (%s)", err.Error())
+			return fmt.Errorf("invalid decrypted config file [%s]", err.Error())
 		}
 
 	} else {
 		err := config.ReadFromConfigFile(options.ConfigFile)
 		if err != nil {
-			return fmt.Errorf("invalid config file (%s)", err.Error())
+			return fmt.Errorf("invalid config file [%s]", err.Error())
 		}
 	}
 
@@ -258,7 +257,7 @@ var mountCmd = &cobra.Command{
 
 		err := config.Unmarshal(&options)
 		if err != nil {
-			return fmt.Errorf("failed to unmarshall config (%s)", err.Error())
+			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
 		}
 
 		if !configFileExists || len(options.Components) == 0 {
@@ -312,7 +311,7 @@ var mountCmd = &cobra.Command{
 				} else if strings.HasPrefix(v, "umask=") {
 					permission, err := strconv.ParseUint(parameter[1], 10, 32)
 					if err != nil {
-						return fmt.Errorf("failed to parse umask (%s)", err.Error())
+						return fmt.Errorf("failed to parse umask [%s]", err.Error())
 					}
 					perm := ^uint32(permission) & 777
 					config.Set("libfuse.default-permission", fmt.Sprint(perm))
@@ -332,13 +331,13 @@ var mountCmd = &cobra.Command{
 
 		err = options.validate(false)
 		if err != nil {
-			return fmt.Errorf("invalid options (%s)", err.Error())
+			return err
 		}
 
 		var logLevel common.LogLevel
 		err = logLevel.Parse(options.Logging.LogLevel)
 		if err != nil {
-			return fmt.Errorf("invalid log level (%s)", err.Error())
+			return fmt.Errorf("invalid log level [%s]", err.Error())
 		}
 
 		err = log.SetDefaultLogger(options.Logging.Type, common.LogConfig{
@@ -350,7 +349,7 @@ var mountCmd = &cobra.Command{
 		})
 
 		if err != nil {
-			return fmt.Errorf("failed to initialize logger (%s)", err.Error())
+			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
 		}
 
 		if config.IsSet("invalidate-on-sync") {
@@ -378,7 +377,7 @@ var mountCmd = &cobra.Command{
 		// if options.Debug {
 		// 	f, err := os.OpenFile(filepath.Join(options.DebugPath, "times.log"), os.O_CREATE|os.O_APPEND|os.O_RDWR, os.FileMode(0755))
 		// 	if err != nil {
-		// 		fmt.Printf("Unable to open times.log file for exectime reporting (%s)", err.Error())
+		// 		fmt.Printf("Unable to open times.log file for exectime reporting [%s]", err.Error())
 		// 	}
 		// 	exectime.SetDefault(f, true)
 		// } else {
@@ -390,11 +389,12 @@ var mountCmd = &cobra.Command{
 
 		var pipeline *internal.Pipeline
 
-		log.Crit("Starting Blobfuse2 Mount : %s on (%s)", common.Blobfuse2Version, common.GetCurrentDistro())
+		log.Crit("Starting Blobfuse2 Mount : %s on [%s]", common.Blobfuse2Version, common.GetCurrentDistro())
 		log.Crit("Logging level set to : %s", logLevel.String())
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
 		if err != nil {
-			return Destroy(fmt.Sprintf("failed to initialize new pipeline (%s)", err.Error()))
+			log.Err("mount : failed to initialize new pipeline [%v]", err)
+			return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
 		}
 
 		if !options.Foreground {
@@ -409,7 +409,8 @@ var mountCmd = &cobra.Command{
 			daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
 			child, err := dmnCtx.Reborn()
 			if err != nil {
-				return Destroy(fmt.Sprintf("failed to daemonize application (%s)", err.Error()))
+				log.Err("mount : failed to daemonize application [%v]", err)
+				return Destroy(fmt.Sprintf("failed to daemonize application [%s]", err.Error()))
 			}
 
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
@@ -427,11 +428,11 @@ var mountCmd = &cobra.Command{
 				os.Remove(options.CPUProfile)
 				f, err := os.Create(options.CPUProfile)
 				if err != nil {
-					fmt.Printf("Error opening file for cpuprofile (%s)", err.Error())
+					fmt.Printf("Error opening file for cpuprofile [%s]", err.Error())
 				}
 				defer f.Close()
 				if err := pprof.StartCPUProfile(f); err != nil {
-					fmt.Printf("Failed to start cpuprofile (%s)", err.Error())
+					fmt.Printf("Failed to start cpuprofile [%s]", err.Error())
 				}
 				defer pprof.StopCPUProfile()
 			}
@@ -448,12 +449,12 @@ var mountCmd = &cobra.Command{
 				os.Remove(options.MemProfile)
 				f, err := os.Create(options.MemProfile)
 				if err != nil {
-					fmt.Printf("Error opening file for memprofile (%s)", err.Error())
+					fmt.Printf("Error opening file for memprofile [%s]", err.Error())
 				}
 				defer f.Close()
 				runtime.GC()
 				if err = pprof.WriteHeapProfile(f); err != nil {
-					fmt.Printf("Error memory profiling (%s)", err.Error())
+					fmt.Printf("Error memory profiling [%s]", err.Error())
 				}
 			}
 		}
@@ -474,14 +475,14 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 
 	err := pipeline.Start(ctx)
 	if err != nil {
-		log.Err("mount: error unable to start pipeline (%s)", err.Error())
-		return Destroy(fmt.Sprintf("unable to start pipeline (%s)", err.Error()))
+		log.Err("mount: error unable to start pipeline [%s]", err.Error())
+		return Destroy(fmt.Sprintf("unable to start pipeline [%s]", err.Error()))
 	}
 
 	err = pipeline.Stop()
 	if err != nil {
-		log.Err("mount: error unable to stop pipeline (%s)", err.Error())
-		return Destroy(fmt.Sprintf("unable to stop pipeline (%s)", err.Error()))
+		log.Err("mount: error unable to stop pipeline [%s]", err.Error())
+		return Destroy(fmt.Sprintf("unable to stop pipeline [%s]", err.Error()))
 	}
 
 	_ = log.Destroy()
@@ -490,7 +491,7 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
 
 func startMonitor(pid int) {
 	if common.EnableMonitoring {
-		log.Debug("mount::startMonitor : pid = %v, config-file = %v", pid, options.ConfigFile)
+		log.Debug("Mount::startMonitor : pid = %v, config-file = %v", pid, options.ConfigFile)
 		buf := new(bytes.Buffer)
 		rootCmd.SetOut(buf)
 		rootCmd.SetErr(buf)
@@ -498,18 +499,18 @@ func startMonitor(pid int) {
 		err := rootCmd.Execute()
 		if err != nil {
 			common.EnableMonitoring = false
-			log.Err("mount::startMonitor : (%s)", err.Error())
+			log.Err("Mount::startMonitor : [%s]", err.Error())
 		}
 	}
 }
 
 func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
 	return func(sig os.Signal) error {
-		log.Crit("sigusrHandler: Signal %d received", sig)
+		log.Crit("Mount::sigusrHandler : Signal %d received", sig)
 
 		var err error
 		if sig == syscall.SIGUSR1 {
-			log.Crit("sigusrHandler: SIGUSR1 received")
+			log.Crit("Mount::sigusrHandler : SIGUSR1 received")
 			config.OnConfigChange()
 		}
 
@@ -545,7 +546,7 @@ func startDynamicProfiler() {
 	}
 
 	connStr := fmt.Sprintf("%s:%d", options.ProfilerIP, options.ProfilerPort)
-	log.Info("startDynamicProfiler : Staring profiler on (%s)", connStr)
+	log.Info("Mount::startDynamicProfiler : Staring profiler on [%s]", connStr)
 
 	// To check dynamic profiling info http://<ip>:<port>/debug/pprof
 	// for e.g. for default config use http://localhost:6060/debug/pprof
@@ -556,7 +557,7 @@ func startDynamicProfiler() {
 	//
 	err := http.ListenAndServe(connStr, nil)
 	if err != nil {
-		log.Err("startDynamicProfiler: Failed to start dynamic profiler (%s)", err.Error())
+		log.Err("Mount::startDynamicProfiler : Failed to start dynamic profiler [%s]", err.Error())
 	}
 }
 

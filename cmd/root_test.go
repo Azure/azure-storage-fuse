@@ -34,6 +34,7 @@
 package cmd
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -54,10 +55,13 @@ func (suite *rootCmdSuite) SetupTest() {
 	if err != nil {
 		panic("Unable to set silent logger as default.")
 	}
+	// suite.testExecute()
 }
 
 func (suite *rootCmdSuite) cleanupTest() {
-	resetCLIFlags(*generateConfigCmd)
+	rootCmd.SetOut(nil)
+	rootCmd.SetErr(nil)
+	rootCmd.SetArgs(nil)
 }
 
 func (suite *rootCmdSuite) TestNoOptions() {
@@ -82,23 +86,27 @@ func (suite *rootCmdSuite) TestNoMountPath() {
 }
 
 func (suite *rootCmdSuite) TestCheckVersionExistsInvalidURL() {
+	defer suite.cleanupTest()
 	found := checkVersionExists("abcd")
 	suite.assert.False(found)
 }
 
 func (suite *rootCmdSuite) TestNoSecurityWarnings() {
+	defer suite.cleanupTest()
 	warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
 	found := checkVersionExists(warningsUrl)
 	suite.assert.False(found)
 }
 
 func (suite *rootCmdSuite) TestGetRemoteVersionInvalidURL() {
+	defer suite.cleanupTest()
 	out, err := getRemoteVersion("abcd")
 	suite.assert.Empty(out)
 	suite.assert.NotNil(err)
 }
 
 func (suite *rootCmdSuite) TestGetRemoteVersionInvalidContainer() {
+	defer suite.cleanupTest()
 	latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest1/"
 	out, err := getRemoteVersion(latestVersionUrl)
 	suite.assert.Empty(out)
@@ -111,6 +119,7 @@ func getDummyVersion() string {
 }
 
 func (suite *rootCmdSuite) TestGetRemoteVersionValidContainer() {
+	defer suite.cleanupTest()
 	latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest/"
 	out, err := getRemoteVersion(latestVersionUrl)
 	suite.assert.NotEmpty(out)
@@ -118,6 +127,7 @@ func (suite *rootCmdSuite) TestGetRemoteVersionValidContainer() {
 }
 
 func (suite *rootCmdSuite) TestGetRemoteVersionCurrentOlder() {
+	defer suite.cleanupTest()
 	common.Blobfuse2Version = getDummyVersion()
 	msg := <-beginDetectNewVersion()
 	suite.assert.NotEmpty(msg)
@@ -125,9 +135,22 @@ func (suite *rootCmdSuite) TestGetRemoteVersionCurrentOlder() {
 }
 
 func (suite *rootCmdSuite) TestGetRemoteVersionCurrentSame() {
+	defer suite.cleanupTest()
 	common.Blobfuse2Version = common.Blobfuse2Version_()
 	msg := <-beginDetectNewVersion()
 	suite.assert.Nil(msg)
+}
+
+func (suite *rootCmdSuite) testExecute() {
+	defer suite.cleanupTest()
+	buf := new(bytes.Buffer)
+	rootCmd.SetOut(buf)
+	rootCmd.SetErr(buf)
+	rootCmd.SetArgs([]string{"--version"})
+
+	err := Execute()
+	suite.assert.Nil(err)
+	suite.assert.Contains(buf.String(), "blobfuse2 version")
 }
 
 func TestRootCmd(t *testing.T) {

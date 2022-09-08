@@ -245,13 +245,13 @@ func init() {
 func TimeTrack(start time.Time, location string, name string) {
 	if timeTracker {
 		elapsed := time.Since(start)
-		logObj.Crit("TimeTracker :: (%s) %s => %s", location, name, elapsed)
+		logObj.Crit("TimeTracker :: [%s] %s => %s", location, name, elapsed)
 	}
 }
 
 // TimeTracker : Dump time taken by a call
 func TimeTrackDiff(diff time.Duration, location string, name string) {
 	if timeTracker {
-		logObj.Crit("TimeTracker :: (%s) %s => %s", location, name, diff)
+		logObj.Crit("TimeTracker :: [%s] %s => %s", location, name, diff)
 	}
 }

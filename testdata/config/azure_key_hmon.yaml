@@ -36,7 +36,7 @@ azstorage:
   tier: hot
   sdk-trace: { VERBOSE_LOG }
 
-health-monitor:
+health_monitor:
   enable-monitoring: true
   stats-poll-interval-sec: 3
   process-monitor-interval-sec: 2

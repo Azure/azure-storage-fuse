@@ -57,20 +57,28 @@ var unmountCmd = &cobra.Command{
 
 			lstMnt, err := common.ListMountPoints()
 			if err != nil {
-				return fmt.Errorf("failed to list mount points (%s)", err.Error())
+				return fmt.Errorf("failed to list mount points [%s]", err.Error())
 			}
+
 			for _, mntPath := range lstMnt {
 				match, err := regexp.MatchString(mntPathPrefix, mntPath)
 				if err != nil {
-					fmt.Printf("Pattern matching failed for mount point %s (%s)\n", mntPath, err.Error())
+					fmt.Printf("Pattern matching failed for mount point %s [%s]\n", mntPath, err.Error())
 				}
 				if match {
-					unmountBlobfuse2(mntPath)
+					err := unmountBlobfuse2(mntPath)
+					if err != nil {
+						return fmt.Errorf("failed to unmount %s [%s]", mntPath, err.Error())
+					}
 				}
 			}
 		} else {
-			unmountBlobfuse2(args[0])
+			err := unmountBlobfuse2(args[0])
+			if err != nil {
+				return fmt.Errorf("failed to unmount %s [%s]", args[0], err.Error())
+			}
 		}
+
 		return nil
 	},
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
@@ -86,15 +94,14 @@ var unmountCmd = &cobra.Command{
 }
 
 // Attempts to unmount the directory and returns true if the operation succeeded
-func unmountBlobfuse2(mntPath string) bool {
+func unmountBlobfuse2(mntPath string) error {
 	cliOut := exec.Command("fusermount", "-u", mntPath)
 	_, err := cliOut.Output()
 	if err != nil {
-		fmt.Printf("Failed to unmount %s (%s)\n", mntPath, err.Error())
-		return false
+		return err
 	} else {
 		fmt.Println("Successfully unmounted", mntPath)
-		return true
+		return nil
 	}
 }
 

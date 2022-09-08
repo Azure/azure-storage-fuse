@@ -34,6 +34,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -48,19 +49,22 @@ var umntAllCmd = &cobra.Command{
 	SuggestFor:        []string{"al", "all"},
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-
 		lstMnt, err := common.ListMountPoints()
 		if err != nil {
-			return fmt.Errorf("failed to list mount points (%s)", err.Error())
+			return fmt.Errorf("failed to list mount points [%s]", err.Error())
 		}
 
 		mountfound := 0
 		unmounted := 0
+		errMsg := "failed to unmount - \n"
+
 		for _, mntPath := range lstMnt {
 			mountfound += 1
-			success := unmountBlobfuse2(mntPath)
-			if success {
+			err := unmountBlobfuse2(mntPath)
+			if err == nil {
 				unmounted += 1
+			} else {
+				errMsg += " " + mntPath + " - [" + err.Error() + "]\n"
 			}
 		}
 
@@ -69,6 +73,11 @@ var umntAllCmd = &cobra.Command{
 		} else {
 			fmt.Printf("%d of %d mounts were successfully unmounted\n", unmounted, mountfound)
 		}
+
+		if unmounted < mountfound {
+			return errors.New(errMsg)
+		}
+
 		return nil
 	},
 }

@@ -437,7 +437,7 @@ func getContentType(key string) string {
 func populateContentType(newSet string) error { //nolint
 	var data map[string]string
 	if err := json.Unmarshal([]byte(newSet), &data); err != nil {
-		log.Err("Failed to parse config file : %s (%s)", newSet, err.Error())
+		log.Err("Failed to parse config file : %s [%s]", newSet, err.Error())
 		return err
 	}
 
