@@ -161,7 +161,7 @@ stages:
                 echo "dynamic-profile: true" >> /tmp/configBlockProfilerTemp.yaml
                 echo "cpu-profile: /tmp/cpuBlockProfTmp" >> /tmp/configBlockProfilerTemp.yaml
                 echo "mem-profile: /tmp/memBlockProfTmp" >> /tmp/configBlockProfilerTemp.yaml
-                echo "health-monitor:" >> /tmp/configBlockProfilerTemp.yaml
+                echo "health_monitor:" >> /tmp/configBlockProfilerTemp.yaml
                 echo "  enable-monitoring: true" >> /tmp/configBlockProfilerTemp.yaml
                 echo "  monitor-disable-list:" >> /tmp/configBlockProfilerTemp.yaml
                 echo "    - bobfuse_stats" >> /tmp/configBlockProfilerTemp.yaml
@@ -216,7 +216,7 @@ stages:
                 echo "dynamic-profile: true" >> /tmp/configAdlsProfilerTemp.yaml
                 echo "cpu-profile: /tmp/cpuAdlsProfTmp" >> /tmp/configAdlsProfilerTemp.yaml
                 echo "mem-profile: /tmp/memAdlsProfTmp" >> /tmp/configAdlsProfilerTemp.yaml
-                echo "health-monitor:" >> /tmp/configAdlsProfilerTemp.yaml
+                echo "health_monitor:" >> /tmp/configAdlsProfilerTemp.yaml
                 echo "  enable-monitoring: true" >> /tmp/configAdlsProfilerTemp.yaml
                 echo "  monitor-disable-list:" >> /tmp/configAdlsProfilerTemp.yaml
                 echo "    - bobfuse_stats" >> /tmp/configAdlsProfilerTemp.yaml

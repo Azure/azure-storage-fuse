@@ -67,7 +67,7 @@ components:
   - file_cache
   - attr_cache
   - azstorage
-health-monitor:
+health_monitor:
   monitor-disable-list:
     - network_profiler
     - blobfuse_stats
