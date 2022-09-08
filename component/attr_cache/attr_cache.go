@@ -66,6 +66,9 @@ type AttrCacheOptions struct {
 	Timeout       uint32 `config:"timeout-sec" yaml:"timeout-sec,omitempty"`
 	NoCacheOnList bool   `config:"no-cache-on-list" yaml:"no-cache-on-list,omitempty"`
 	NoSymlinks    bool   `config:"no-symlinks" yaml:"no-symlinks,omitempty"`
+
+	// support v1
+	CacheOnList bool `config:"cache-on-list"`
 }
 
 const compName = "attr_cache"
@@ -131,7 +134,11 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.cacheTimeout = defaultAttrCacheTimeout
 	}
 
-	ac.cacheOnList = !conf.NoCacheOnList
+	if config.IsSet(compName + ".cache-on-list") {
+		ac.cacheOnList = conf.CacheOnList
+	} else {
+		ac.cacheOnList = !conf.NoCacheOnList
+	}
 
 	ac.noSymlinks = conf.NoSymlinks
 
@@ -566,4 +573,8 @@ func init() {
 	config.BindPFlag(compName+".timeout-sec", attrCacheTimeout)
 	noSymlinks := config.AddBoolFlag("no-symlinks", false, "whether or not symlinks should be supported")
 	config.BindPFlag(compName+".no-symlinks", noSymlinks)
+
+	cacheOnList := config.AddBoolFlag("cache-on-list", true, "Cache attributes on listing.")
+	config.BindPFlag(compName+".cache-on-list", cacheOnList)
+	cacheOnList.Hidden = true
 }

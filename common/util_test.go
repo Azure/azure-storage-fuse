@@ -124,3 +124,14 @@ func (suite *typesTestSuite) TestEncryptDecrypt() {
 	suite.assert.Nil(err)
 	suite.assert.EqualValues(data, d)
 }
+
+func (suite *utilTestSuite) TestMonitorBfs() {
+	monitor := MonitorBfs()
+	suite.assert.False(monitor)
+}
+
+func (suite *utilTestSuite) TestExpandPath() {
+	path := "~/a/b/c/d"
+	expandedPath := ExpandPath(path)
+	suite.assert.Contains(expandedPath, path[2:])
+}

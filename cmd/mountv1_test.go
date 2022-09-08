@@ -616,8 +616,8 @@ func (suite *generateConfigTestSuite) TestCLIParamStreaming() {
 	config.ReadFromConfigFile(v2ConfigFile.Name())
 	config.UnmarshalKey("stream", &options)
 
-	suite.assert.EqualValues(4, int(options.CachedObjLimit))
-	suite.assert.EqualValues(10, int(options.BufferSize))
+	suite.assert.EqualValues(1, int(options.CachedObjLimit))
+	suite.assert.EqualValues(50, int(options.BufferSize))
 	suite.assert.EqualValues(5, options.BlockSize)
 }
 

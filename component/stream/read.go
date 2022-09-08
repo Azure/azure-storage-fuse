@@ -52,6 +52,7 @@ type ReadCache struct {
 func (r *ReadCache) Configure(conf StreamOptions) error {
 	if conf.BufferSize <= 0 || conf.BlockSize <= 0 || conf.CachedObjLimit <= 0 {
 		r.StreamOnly = true
+		log.Info("ReadCache::Configure : Streamonly set to true")
 	}
 	r.BlockSize = int64(conf.BlockSize) * mb
 	r.BufferSize = conf.BufferSize * mb

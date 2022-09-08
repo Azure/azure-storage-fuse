@@ -435,12 +435,26 @@ func (suite *dirTestSuite) TestGitStash() {
 			suite.Contains(string(cliOut), "nothing to commit, working")
 		}
 
-		f, err := os.OpenFile("README.md", os.O_APPEND|os.O_WRONLY, 0644)
+		f, err := os.OpenFile("README.md", os.O_WRONLY, 0644)
 		suite.Equal(nil, err)
 		suite.NotZero(f)
-		_, err = f.WriteString("TestString")
+		info, err := f.Stat()
+		suite.Equal(nil, err)
+		_, err = f.WriteAt([]byte("TestString"), info.Size())
 		suite.Equal(nil, err)
 		_ = f.Close()
+
+		f, err = os.OpenFile("README.md", os.O_RDONLY, 0644)
+		suite.Equal(nil, err)
+		suite.NotZero(f)
+		new_info, err := f.Stat()
+		suite.Equal(nil, err)
+		suite.EqualValues(info.Size()+10, new_info.Size())
+		data := make([]byte, 10)
+		n, err := f.ReadAt(data, info.Size())
+		suite.Equal(nil, err)
+		suite.EqualValues(10, n)
+		suite.EqualValues("TestString", string(data))
 
 		cmd = exec.Command("git", "status")
 		cliOut, err = cmd.Output()

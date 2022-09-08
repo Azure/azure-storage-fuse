@@ -69,6 +69,14 @@ steps:
       workingDirectory: ${{ parameters.working_directory }}
     displayName: "Go Build"
 
+  # Building our package
+  - task: Go@0
+    inputs:
+      command: 'build'
+      arguments: "-tags ${{ parameters.tags }} -o bfusemon ./tools/health-monitor/"
+      workingDirectory: ${{ parameters.working_directory }}
+    displayName: "Go Build bfusemon"
+    
   #Verification of built binary
   - script: |
       sudo chmod +x ${working_directory}/blobfuse2

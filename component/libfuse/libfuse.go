@@ -41,6 +41,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 )
 
 /* NOTES:
@@ -53,19 +54,21 @@ import (
 // Common structure for Component
 type Libfuse struct {
 	internal.BaseComponent
-	mountPath           string
-	dirPermission       uint
-	filePermission      uint
-	readOnly            bool
-	attributeExpiration uint32
-	entryExpiration     uint32
-	negativeTimeout     uint32
-	allowOther          bool
-	ownerUID            uint32
-	ownerGID            uint32
-	traceEnable         bool
-	extensionPath       string
-	lsFlags             common.BitMap16
+	mountPath             string
+	dirPermission         uint
+	filePermission        uint
+	readOnly              bool
+	attributeExpiration   uint32
+	entryExpiration       uint32
+	negativeTimeout       uint32
+	allowOther            bool
+	ownerUID              uint32
+	ownerGID              uint32
+	traceEnable           bool
+	extensionPath         string
+	disableWritebackCache bool
+	ignoreOpenFlag        bool
+	lsFlags               common.BitMap16
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -88,6 +91,8 @@ type LibfuseOptions struct {
 	allowOther              bool   `config:"allow-other"`
 	readOnly                bool   `config:"read-only"`
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
+	DisableWritebackCache   bool   `config:"disable-writeback-cache"`
+	IgnoreOpenFlag          bool   `config:"ignore-open-flag"`
 }
 
 const compName = "libfuse"
@@ -96,6 +101,8 @@ const defaultAttrExpiration = 120
 const defaultNegativeEntryExpiration = 120
 
 var fuseFS *Libfuse
+
+var libfuseStatsCollector *stats_manager.StatsCollector
 
 // Bitmasks in Go: https://yourbasic.org/golang/bitmask-flag-set-clear/
 
@@ -126,6 +133,9 @@ func (lf *Libfuse) SetNextComponent(nc internal.Component) {
 func (lf *Libfuse) Start(ctx context.Context) error {
 	log.Trace("Libfuse::Start : Starting component %s", lf.Name())
 
+	// create stats collector for libfuse
+	libfuseStatsCollector = stats_manager.NewStatsCollector(lf.Name())
+
 	lf.lsFlags = internal.NewDirBitMap()
 	lf.lsFlags.Set(internal.PropFlagModeDefault)
 
@@ -146,6 +156,7 @@ func (lf *Libfuse) Start(ctx context.Context) error {
 func (lf *Libfuse) Stop() error {
 	log.Trace("Libfuse::Stop : Stopping component %s", lf.Name())
 	_ = lf.destroyFuse()
+	libfuseStatsCollector.Destroy()
 	return nil
 }
 
@@ -156,6 +167,8 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.traceEnable = opt.EnableFuseTrace
 	lf.allowOther = opt.allowOther
 	lf.extensionPath = opt.ExtensionPath
+	lf.disableWritebackCache = opt.DisableWritebackCache
+	lf.ignoreOpenFlag = opt.IgnoreOpenFlag
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
@@ -270,4 +283,14 @@ func init() {
 
 	allowOther := config.AddBoolFlag("allow-other", false, "Allow other users to access this mount point.")
 	config.BindPFlag("allow-other", allowOther)
+
+	disableWritebackCache := config.AddBoolFlag("disable-writeback-cache", false, "Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.")
+	config.BindPFlag(compName+".disable-writeback-cache", disableWritebackCache)
+
+	debug := config.AddBoolPFlag("d", false, "Mount with foreground and FUSE logs on.")
+	config.BindPFlag(compName+".fuse-trace", debug)
+	debug.Hidden = true
+
+	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", false, "Ignore unsupported open flags (APPEND, WRONLY) by blobfuse when writeback caching is enabled.")
+	config.BindPFlag(compName+".ignore-open-flags", ignoreOpenFlags)
 }

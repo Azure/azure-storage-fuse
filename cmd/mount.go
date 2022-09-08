@@ -34,6 +34,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -44,6 +45,7 @@ import (
 	"runtime"
 	"runtime/debug"
 	"runtime/pprof"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -70,19 +72,25 @@ type mountOptions struct {
 	MountPath  string
 	ConfigFile string
 
-	Logging           LogOptions `config:"logging"`
-	Components        []string   `config:"components"`
-	Foreground        bool       `config:"foreground"`
-	DefaultWorkingDir string     `config:"default-working-dir"`
-	Debug             bool       `config:"debug"`
-	DebugPath         string     `config:"debug-path"`
-	CPUProfile        string     `config:"cpu-profile"`
-	MemProfile        string     `config:"mem-profile"`
-	PassPhrase        string     `config:"passphrase"`
-	SecureConfig      bool       `config:"secure-config"`
-	DynamicProfiler   bool       `config:"dynamic-profile"`
-	ProfilerPort      int        `config:"profiler-port"`
-	ProfilerIP        string     `config:"profiler-ip"`
+	Logging           LogOptions     `config:"logging"`
+	Components        []string       `config:"components"`
+	Foreground        bool           `config:"foreground"`
+	DefaultWorkingDir string         `config:"default-working-dir"`
+	Debug             bool           `config:"debug"`
+	DebugPath         string         `config:"debug-path"`
+	CPUProfile        string         `config:"cpu-profile"`
+	MemProfile        string         `config:"mem-profile"`
+	PassPhrase        string         `config:"passphrase"`
+	SecureConfig      bool           `config:"secure-config"`
+	DynamicProfiler   bool           `config:"dynamic-profile"`
+	ProfilerPort      int            `config:"profiler-port"`
+	ProfilerIP        string         `config:"profiler-ip"`
+	MonitorOpt        monitorOptions `config:"health-monitor"`
+
+	// v1 support
+	Streaming      bool     `config:"streaming"`
+	AttrCache      bool     `config:"use-attr-cache"`
+	LibfuseOptions []string `config:"libfuse-options"`
 }
 
 var options mountOptions
@@ -166,6 +174,8 @@ func OnConfigChange() {
 
 // parseConfig : Based on config file or encrypted data parse the provided config
 func parseConfig() {
+	options.ConfigFile = common.ExpandPath(options.ConfigFile)
+
 	// Based on extension decide file is encrypted or not
 	if options.SecureConfig ||
 		filepath.Ext(options.ConfigFile) == SecureConfigExtension {
@@ -221,7 +231,7 @@ var mountCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Parent().Run(cmd.Parent(), args)
 
-		options.MountPath = args[0]
+		options.MountPath = common.ExpandPath(args[0])
 		configFileExists := true
 
 		if options.ConfigFile == "" {
@@ -231,7 +241,6 @@ var mountCmd = &cobra.Command{
 			// Fall back to defaults and let components fail if all required env variables are not set.
 			_, err := os.Stat(common.DefaultConfigFilePath)
 			if err != nil && os.IsNotExist(err) {
-				options.Components = common.DefaultPipeline
 				configFileExists = false
 			} else {
 				options.ConfigFile = common.DefaultConfigFilePath
@@ -246,6 +255,68 @@ var mountCmd = &cobra.Command{
 		if err != nil {
 			fmt.Printf("Init error config unmarshall [%s]", err)
 			os.Exit(1)
+		}
+
+		if !configFileExists || len(options.Components) == 0 {
+			pipeline := []string{"libfuse"}
+
+			if config.IsSet("streaming") && options.Streaming {
+				pipeline = append(pipeline, "stream")
+			} else {
+				pipeline = append(pipeline, "file_cache")
+			}
+
+			// by default attr-cache is enable in v2
+			// only way to disable is to pass cli param and set it to false
+			if options.AttrCache {
+				pipeline = append(pipeline, "attr_cache")
+			}
+
+			pipeline = append(pipeline, "azstorage")
+			options.Components = pipeline
+		}
+
+		if config.IsSet("libfuse-options") {
+			allowedFlags := "Mount: error allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
+			// there are only 8 available options for -o so if we have more we should throw
+			if len(options.LibfuseOptions) > 8 {
+				fmt.Print(allowedFlags)
+				os.Exit(1)
+			}
+			for _, v := range options.LibfuseOptions {
+				parameter := strings.Split(v, "=")
+				if len(parameter) > 2 || len(parameter) <= 0 {
+					fmt.Print(allowedFlags)
+					os.Exit(1)
+				}
+				v = strings.TrimSpace(v)
+				if v == "default_permissions" {
+					continue
+				} else if v == "allow_other" || v == "allow_other=true" {
+					config.Set("allow-other", "true")
+				} else if strings.HasPrefix(v, "attr_timeout=") {
+					config.Set("libfuse.attribute-expiration-sec", parameter[1])
+				} else if strings.HasPrefix(v, "entry_timeout=") {
+					config.Set("libfuse.entry-expiration-sec", parameter[1])
+				} else if strings.HasPrefix(v, "negative_timeout=") {
+					config.Set("libfuse.negative-entry-expiration-sec", parameter[1])
+				} else if v == "ro" || v == "ro=true" {
+					config.Set("read-only", "true")
+				} else if v == "allow_root" {
+					config.Set("libfuse.default-permission", "700")
+				} else if strings.HasPrefix(v, "umask=") {
+					permission, err := strconv.ParseUint(parameter[1], 10, 32)
+					if err != nil {
+						fmt.Printf("Mount: %s", err)
+						os.Exit(1)
+					}
+					perm := ^uint32(permission) & 777
+					config.Set("libfuse.default-permission", fmt.Sprint(perm))
+				} else {
+					fmt.Print(allowedFlags)
+					os.Exit(1)
+				}
+			}
 		}
 
 		if !config.IsSet("logging.file-path") {
@@ -279,6 +350,26 @@ var mountCmd = &cobra.Command{
 		if err != nil {
 			fmt.Printf("Mount: error initializing logger [%v]", err)
 			os.Exit(1)
+		}
+
+		if config.IsSet("invalidate-on-sync") {
+			log.Warn("unsupported v1 CLI parameter: invalidate-on-sync is always true in blobfuse2.")
+		}
+		if config.IsSet("pre-mount-validate") {
+			log.Warn("unsupported v1 CLI parameter: pre-mount-validate is always true in blobfuse2.")
+		}
+		if config.IsSet("basic-remount-check") {
+			log.Warn("unsupported v1 CLI parameter: basic-remount-check is always true in blobfuse2.")
+		}
+
+		common.EnableMonitoring = options.MonitorOpt.EnableMon
+
+		// check if blobfuse stats monitor is added in the disable list
+		for _, mon := range options.MonitorOpt.DisableList {
+			if mon == common.BfuseStats {
+				common.BfsDisabled = true
+				break
+			}
 		}
 
 		if options.Debug {
@@ -320,6 +411,7 @@ var mountCmd = &cobra.Command{
 				log.Err("Mount: error daemonizing application [%v]", err)
 				Destroy(1)
 			}
+			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
 			if child == nil {
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
@@ -343,6 +435,7 @@ var mountCmd = &cobra.Command{
 			setGOConfig()
 			go startDynamicProfiler()
 
+			log.Debug("mount: foreground enabled")
 			runPipeline(pipeline, context.Background())
 			if options.MemProfile != "" {
 				os.Remove(options.MemProfile)
@@ -365,6 +458,13 @@ var mountCmd = &cobra.Command{
 }
 
 func runPipeline(pipeline *internal.Pipeline, ctx context.Context) {
+	pid := fmt.Sprintf("%v", os.Getpid())
+	common.TransferPipe += "_" + pid
+	common.PollingPipe += "_" + pid
+	log.Debug("Mount::runPipeline : blobfuse2 pid = %v, transfer pipe = %v, polling pipe = %v", pid, common.TransferPipe, common.PollingPipe)
+
+	go startMonitor(os.Getpid())
+
 	pipelineStarted = true
 	err := pipeline.Start(ctx)
 	if err != nil {
@@ -382,6 +482,21 @@ func runPipeline(pipeline *internal.Pipeline, ctx context.Context) {
 	}
 
 	_ = log.Destroy()
+}
+
+func startMonitor(pid int) {
+	if common.EnableMonitoring {
+		log.Debug("mount::startMonitor : pid = %v, config-file = %v", pid, options.ConfigFile)
+		buf := new(bytes.Buffer)
+		rootCmd.SetOut(buf)
+		rootCmd.SetErr(buf)
+		rootCmd.SetArgs([]string{"health-monitor", fmt.Sprintf("--pid=%v", pid), fmt.Sprintf("--config-file=%s", options.ConfigFile)})
+		err := rootCmd.Execute()
+		if err != nil {
+			common.EnableMonitoring = false
+			log.Err("mount::startMonitor : [%v]", err)
+		}
+	}
 }
 
 func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
@@ -482,6 +597,30 @@ func init() {
 	mountCmd.PersistentFlags().Lookup("default-working-dir").Hidden = true
 	config.BindPFlag("default-working-dir", mountCmd.PersistentFlags().Lookup("default-working-dir"))
 	_ = mountCmd.MarkPersistentFlagDirname("default-working-dir")
+
+	mountCmd.Flags().BoolVar(&options.Streaming, "streaming", false, "Enable Streaming.")
+	config.BindPFlag("streaming", mountCmd.Flags().Lookup("streaming"))
+	mountCmd.Flags().Lookup("streaming").Hidden = true
+
+	mountCmd.Flags().BoolVar(&options.AttrCache, "use-attr-cache", true, "Use attribute caching.")
+	config.BindPFlag("use-attr-cache", mountCmd.Flags().Lookup("use-attr-cache"))
+	mountCmd.Flags().Lookup("use-attr-cache").Hidden = true
+
+	mountCmd.Flags().Bool("invalidate-on-sync", true, "Invalidate file/dir on sync/fsync.")
+	config.BindPFlag("invalidate-on-sync", mountCmd.Flags().Lookup("invalidate-on-sync"))
+	mountCmd.Flags().Lookup("invalidate-on-sync").Hidden = true
+
+	mountCmd.Flags().Bool("pre-mount-validate", true, "Validate blobfuse2 is mounted.")
+	config.BindPFlag("pre-mount-validate", mountCmd.Flags().Lookup("pre-mount-validate"))
+	mountCmd.Flags().Lookup("pre-mount-validate").Hidden = true
+
+	mountCmd.Flags().Bool("basic-remount-check", true, "Validate blobfuse2 is mounted by reading /etc/mtab.")
+	config.BindPFlag("basic-remount-check", mountCmd.Flags().Lookup("basic-remount-check"))
+	mountCmd.Flags().Lookup("basic-remount-check").Hidden = true
+
+	mountCmd.PersistentFlags().StringSliceVarP(&options.LibfuseOptions, "o", "o", []string{}, "FUSE options.")
+	config.BindPFlag("libfuse-options", mountCmd.PersistentFlags().ShorthandLookup("o"))
+	mountCmd.PersistentFlags().ShorthandLookup("o").Hidden = true
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)

@@ -42,6 +42,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -51,6 +52,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 )
@@ -436,6 +438,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Ctime:  prop.LastModified(),
 		Crtime: prop.CreationTime(),
 		Flags:  internal.NewFileBitMap(),
+		MD5:    prop.ContentMD5(),
 	}
 	parseMetadata(attr, prop.NewMetadata())
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
@@ -555,12 +558,32 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	return blobList, listBlob.NextMarker.Val, nil
 }
 
+// track the progress of download of blobs where every 100MB of data downloaded is being tracked. It also tracks the completion of download
+func trackDownload(name string, bytesTransferred int64, count int64, downloadPtr *int64) {
+	if bytesTransferred >= (*downloadPtr)*100*common.MbToBytes || bytesTransferred == count {
+		(*downloadPtr)++
+		log.Debug("BlockBlob::trackDownload : Download: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
+
+		// send the download progress as an event
+		azStatsCollector.PushEvents(downloadProgress, name, map[string]interface{}{bytesTfrd: bytesTransferred, size: count})
+	}
+}
+
 // ReadToFile : Download a blob to a local file
 func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.File) (err error) {
 	log.Trace("BlockBlob::ReadToFile : name %s, offset : %d, count %d", name, offset, count)
 	//defer exectime.StatTimeCurrentBlock("BlockBlob::ReadToFile")()
 
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
+
+	var downloadPtr *int64 = new(int64)
+	*downloadPtr = 1
+
+	if common.MonitorBfs() {
+		bb.downloadOptions.Progress = func(bytesTransferred int64) {
+			trackDownload(name, bytesTransferred, count, downloadPtr)
+		}
+	}
 
 	defer log.TimeTrack(time.Now(), "BlockBlob::ReadToFile", name)
 	err = azblob.DownloadBlobToFile(context.Background(), blobURL, offset, count, fi, bb.downloadOptions)
@@ -572,6 +595,36 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 		} else {
 			log.Err("BlockBlob::ReadToFile : Failed to download blob %s (%s)", name, err.Error())
 			return err
+		}
+	} else {
+		log.Debug("BlockBlob::ReadToFile : Download complete of blob %v", name)
+
+		// store total bytes downloaded so far
+		azStatsCollector.UpdateStats(stats_manager.Increment, bytesDownloaded, count)
+	}
+
+	if bb.Config.validateMD5 {
+		// Compute md5 of local file
+		fileMD5, err := getMD5(fi)
+		if err != nil {
+			log.Warn("BlockBlob::ReadToFile : Failed to generate MD5 Sum for %s", name)
+		} else {
+			// Get latest properties from container to get the md5 of blob
+			prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
+			if err != nil {
+				log.Warn("BlockBlob::ReadToFile : Failed to get properties of blob %s (%s)", name, err.Error())
+			} else {
+				blobMD5 := prop.ContentMD5()
+				if blobMD5 == nil {
+					log.Warn("BlockBlob::ReadToFile : Failed to get MD5 Sum for blob %s", name)
+				} else {
+					// compare md5 and fail is not match
+					if !reflect.DeepEqual(fileMD5, blobMD5) {
+						log.Err("BlockBlob::ReadToFile : MD5 Sum mismatch %s", name)
+						return errors.New("md5 sum mismatch on download")
+					}
+				}
+			}
 		}
 	}
 
@@ -671,6 +724,17 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 	return blockSize, nil
 }
 
+// track the progress of upload of blobs where every 100MB of data uploaded is being tracked. It also tracks the completion of upload
+func trackUpload(name string, bytesTransferred int64, count int64, uploadPtr *int64) {
+	if bytesTransferred >= (*uploadPtr)*100*common.MbToBytes || bytesTransferred == count {
+		(*uploadPtr)++
+		log.Debug("BlockBlob::trackUpload : Upload: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
+
+		// send upload progress as event
+		azStatsCollector.PushEvents(uploadProgress, name, map[string]interface{}{bytesTfrd: bytesTransferred, size: count})
+	}
+}
+
 // WriteFromFile : Upload local file to blob
 func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *os.File) (err error) {
 	log.Trace("BlockBlob::WriteFromFile : name %s", name)
@@ -679,16 +743,19 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
 
+	var uploadPtr *int64 = new(int64)
+	*uploadPtr = 1
+
 	blockSize := bb.Config.blockSize
+	// get the size of the file
+	stat, err := fi.Stat()
+	if err != nil {
+		log.Err("BlockBlob::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
+		return err
+	}
+
 	// if the block size is not set then we configure it based on file size
 	if blockSize == 0 {
-		// get the size of the file
-		stat, err := fi.Stat()
-		if err != nil {
-			log.Err("BlockBlob::calculateBlockSize : Failed to get file size %s (%s)", name, err.Error())
-			return err
-		}
-
 		// based on file-size calculate block size
 		blockSize, err = bb.calculateBlockSize(name, stat.Size())
 		if err != nil {
@@ -696,15 +763,36 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		}
 	}
 
-	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
+	// Compute md5 of this file is requested by user
+	// If file is uploaded in one shot (no blocks created) then server is populating md5 on upload automatically.
+	// hence we take cost of calculating md5 only for files which are bigger in size and which will be converted to blocks.
+	md5sum := []byte{}
+	if bb.Config.updateMD5 && stat.Size() >= azblob.BlockBlobMaxUploadBlobBytes {
+		md5sum, err = getMD5(fi)
+		if err != nil {
+			// Md5 sum generation failed so set nil while uploading
+			log.Warn("BlockBlob::WriteFromFile : Failed to generate md5 of %s", name)
+			md5sum = []byte{0}
+		}
+	}
+
+	uploadOptions := azblob.UploadToBlockBlobOptions{
 		BlockSize:      blockSize,
 		Parallelism:    bb.Config.maxConcurrency,
 		Metadata:       metadata,
 		BlobAccessTier: bb.Config.defaultTier,
 		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
 			ContentType: getContentType(name),
+			ContentMD5:  md5sum,
 		},
-	})
+	}
+	if common.MonitorBfs() && stat.Size() > 0 {
+		uploadOptions.Progress = func(bytesTransferred int64) {
+			trackUpload(name, bytesTransferred, stat.Size(), uploadPtr)
+		}
+	}
+
+	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, uploadOptions)
 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
@@ -715,6 +803,13 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 			log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s (%s)", name, err.Error())
 		}
 		return err
+	} else {
+		log.Debug("BlockBlob::WriteFromFile : Upload complete of blob %v", name)
+
+		// store total bytes uploaded so far
+		if stat.Size() > 0 {
+			azStatsCollector.UpdateStats(stats_manager.Increment, bytesUploaded, stat.Size())
+		}
 	}
 
 	return nil
