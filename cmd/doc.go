@@ -60,7 +60,7 @@ var docCmd = &cobra.Command{
 				return fmt.Errorf("failed to create output location [%s]", err.Error())
 			}
 		} else if err != nil {
-			return fmt.Errorf("cannot access the output location [%s]", err.Error())
+			return fmt.Errorf("cannot access output location [%s]", err.Error())
 		} else if !f.IsDir() {
 			return fmt.Errorf("output location is invalid as it is pointing to a file")
 		}

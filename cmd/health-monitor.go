@@ -83,7 +83,7 @@ var healthMonCmd = &cobra.Command{
 		err = parseConfig()
 		if err != nil {
 			log.Err("health-monitor : failed to parse config [%s]", err.Error())
-			return fmt.Errorf("failed to parse config [%s]", err.Error())
+			return err
 		}
 
 		err = config.UnmarshalKey("file_cache", &cacheMonitorOptions)
@@ -124,11 +124,11 @@ func validateHMonOptions() error {
 	errMsg := ""
 
 	if len(pid) == 0 {
-		errMsg = "Pid of blobfuse2 process not given"
+		errMsg = "pid of blobfuse2 process not given. "
 	}
 
 	if len(configFile) == 0 {
-		errMsg += "Config file not given"
+		errMsg += "config file not given. "
 	}
 
 	if len(errMsg) != 0 {

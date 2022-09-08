@@ -153,6 +153,7 @@ func ListMountPoints() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	defer file.Close()
 
 	// Read /etc/mtab file line by line
