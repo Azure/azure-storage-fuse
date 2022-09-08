@@ -262,6 +262,29 @@ func (s *utilsTestSuite) TestBfsProxyOptions() {
 	assert.EqualValues(ro.MaxTries, 3)
 	assert.NotEqual(po.RequestLog.SyslogDisabled, true)
 }
+
+type endpointAccountType struct {
+	endpoint string
+	account  AccountType
+	result   string
+}
+
+func (s *utilsTestSuite) TestFormatEndpointAccountType() {
+	assert := assert.New(s.T())
+	var inputs = []endpointAccountType{
+		{endpoint: "https://account.blob.core.windows.net", account: EAccountType.BLOCK(), result: "https://account.blob.core.windows.net"},
+		{endpoint: "https://account.dfs.core.windows.net", account: EAccountType.BLOCK(), result: "https://account.blob.core.windows.net"},
+		{endpoint: "https://account.blob.core.windows.net", account: EAccountType.ADLS(), result: "https://account.dfs.core.windows.net"},
+		{endpoint: "https://account.dfs.core.windows.net", account: EAccountType.ADLS(), result: "https://account.dfs.core.windows.net"},
+	}
+	for _, i := range inputs {
+		s.Run(i.endpoint+","+i.account.String(), func() {
+			output := formatEndpointAccountType(i.endpoint, i.account)
+			assert.EqualValues(i.result, output)
+		})
+	}
+}
+
 func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(utilsTestSuite))
 }
