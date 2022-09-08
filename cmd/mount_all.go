@@ -89,27 +89,23 @@ var mountAllCmd = &cobra.Command{
 func processCommand() error {
 	err := parseConfig()
 	if err != nil {
-		fmt.Printf("mount all : failed to parse config [%s]", err.Error())
-		return fmt.Errorf("mount all : failed to parse config [%s]", err.Error())
+		return err
 	}
 
 	err = config.Unmarshal(&options)
 	if err != nil {
-		fmt.Printf("mount all : failed to unmarshal config [%s]", err.Error())
-		return fmt.Errorf("mount all : failed to unmarshal config [%s]", err.Error())
+		return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
 	}
 
 	err = options.validate(true)
 	if err != nil {
-		fmt.Printf("mount all : invalid options [%s]", err.Error())
-		return fmt.Errorf("mount all : invalid options [%s]", err.Error())
+		return err
 	}
 
 	var logLevel common.LogLevel
 	err = logLevel.Parse(options.Logging.LogLevel)
 	if err != nil {
-		fmt.Printf("mount all : invalid log level [%s]", err.Error())
-		return fmt.Errorf("mount all : invalid log level [%s]", err.Error())
+		return fmt.Errorf("invalid log level [%s]", err.Error())
 	}
 
 	err = log.SetDefaultLogger(options.Logging.Type, common.LogConfig{
@@ -121,8 +117,7 @@ func processCommand() error {
 	})
 
 	if err != nil {
-		fmt.Printf("mount all : failed to initialize logger [%s]", err.Error())
-		return fmt.Errorf("mount all : failed to initialize logger [%s]", err.Error())
+		return fmt.Errorf("failed to initialize logger [%s]", err.Error())
 	}
 
 	config.Set("mount-path", options.MountPath)
@@ -146,22 +141,19 @@ func processCommand() error {
 	}
 
 	if options.SecureConfig && options.PassPhrase == "" {
-		fmt.Printf("mount all : key not provided to decrypt config file")
-		return fmt.Errorf("mount all : key not provided to decrypt config file")
+		return fmt.Errorf("key not provided to decrypt config file")
 	}
 
 	containerList, err := getContainerList()
 	if err != nil {
-		fmt.Printf("mount all : failed to get container list [%s]", err.Error())
-		return fmt.Errorf("mount all : failed to get container list [%s]", err.Error())
+		return err
 	}
 
 	if len(containerList) > 0 {
 		containerList = filterAllowedContainerList(containerList)
 		err = mountAllContainers(containerList, options.ConfigFile, options.MountPath)
 		if err != nil {
-			fmt.Printf("mount all : failed to mount all containers [%s]", err.Error())
-			return fmt.Errorf("mount all : failed to mount all containers [%s]", err.Error())
+			return err
 		}
 	} else {
 		fmt.Println("No containers to mount from this account")
@@ -302,6 +294,7 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 			fmt.Printf("Failed to mount container %s : %s\n", container, err.Error())
 		}
 	}
+
 	return nil
 }
 

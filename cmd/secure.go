@@ -71,8 +71,7 @@ var secureCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			fmt.Printf("secure : failed to validate options [%s]", err.Error())
-			return fmt.Errorf("secure : failed to validate options [%s]", err.Error())
+			return fmt.Errorf("failed to validate options [%s]", err.Error())
 		}
 		return nil
 	},
@@ -88,15 +87,14 @@ var encryptCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			fmt.Printf("secure encrypt : failed to validate options [%s]", err.Error())
-			return fmt.Errorf("secure encrypt : failed to validate options [%s]", err.Error())
+			return fmt.Errorf("failed to validate options [%s]", err.Error())
 		}
 
 		_, err = encryptConfigFile(true)
 		if err != nil {
-			fmt.Printf("secure encrypt : failed to encrypt config file [%s]", err.Error())
-			return fmt.Errorf("secure encrypt : failed to encrypt config file [%s]", err.Error())
+			return fmt.Errorf("failed to encrypt config file [%s]", err.Error())
 		}
+
 		return nil
 	},
 }
@@ -111,15 +109,14 @@ var decryptCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := validateOptions()
 		if err != nil {
-			fmt.Printf("secure decrypt : failed to validate options [%s]", err.Error())
-			return fmt.Errorf("secure decrypt : failed to validate options [%s]", err.Error())
+			return fmt.Errorf("failed to validate options [%s]", err.Error())
 		}
 
 		_, err = decryptConfigFile(true)
 		if err != nil {
-			fmt.Printf("secure decrypt : failed to decrypt config file [%s]", err.Error())
-			return fmt.Errorf("secure decrypt : failed to decrypt config file [%s]", err.Error())
+			return fmt.Errorf("failed to decrypt config file [%s]", err.Error())
 		}
+
 		return nil
 	},
 }
@@ -128,7 +125,6 @@ var decryptCmd = &cobra.Command{
 
 func validateOptions() error {
 	if secOpts.PassPhrase == "" {
-		fmt.Println("Reading config security key from env-variable")
 		secOpts.PassPhrase = os.Getenv(SecureConfigEnvName)
 	}
 
@@ -147,6 +143,7 @@ func validateOptions() error {
 	return nil
 }
 
+// encryptConfigFile: Encrypt config file using the passphrase provided by user
 func encryptConfigFile(saveConfig bool) ([]byte, error) {
 	plaintext, err := ioutil.ReadFile(secOpts.ConfigFile)
 	if err != nil {
@@ -173,6 +170,7 @@ func encryptConfigFile(saveConfig bool) ([]byte, error) {
 	return cipherText, nil
 }
 
+// decryptConfigFile: Decrypt config file using the passphrase provided by user
 func decryptConfigFile(saveConfig bool) ([]byte, error) {
 	cipherText, err := ioutil.ReadFile(secOpts.ConfigFile)
 	if err != nil {
@@ -200,6 +198,7 @@ func decryptConfigFile(saveConfig bool) ([]byte, error) {
 	return plainText, nil
 }
 
+// saveToFile: Save the newly generated config file and delete the source if requested
 func saveToFile(configFileName string, data []byte, deleteSource bool) error {
 	err := ioutil.WriteFile(configFileName, data, 0777)
 	if err != nil {

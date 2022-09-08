@@ -64,19 +64,22 @@ var generateTestConfig = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var templateConfig []byte
 		var err error
+
 		if strings.Contains(opts.configFilePath, templatesDir) {
 			templateConfig, err = ioutil.ReadFile(opts.configFilePath)
 		} else {
 			templateConfig, err = ioutil.ReadFile(templatesDir + opts.configFilePath)
 		}
+
 		if err != nil {
-			fmt.Printf("config-gen : failed to read file [%s]", err.Error())
-			return fmt.Errorf("config-gen : failed to read file [%s]", err.Error())
+			return fmt.Errorf("failed to read file [%s]", err.Error())
 		}
+
 		// match all parameters in { }
 		re := regexp.MustCompile("{.*?}")
 		templateParams := re.FindAll(templateConfig, -1)
 		newConfig := string(templateConfig)
+
 		for _, param := range templateParams {
 			// { 0 } -> container name
 			// { 1 } -> temp path
@@ -92,12 +95,13 @@ var generateTestConfig = &cobra.Command{
 				newConfig = re.ReplaceAllString(newConfig, envVar)
 			}
 		}
+
 		// write the config with the params to the output file
-		err2 := ioutil.WriteFile(opts.outputConfigPath, []byte(newConfig), 0700)
-		if err2 != nil {
-			fmt.Printf("config-gen : failed to write file [%s]", err2.Error())
-			return fmt.Errorf("config-gen : failed to write file [%s]", err2.Error())
+		err = ioutil.WriteFile(opts.outputConfigPath, []byte(newConfig), 0700)
+		if err != nil {
+			return fmt.Errorf("failed to write file [%s]", err.Error())
 		}
+
 		return nil
 	},
 }

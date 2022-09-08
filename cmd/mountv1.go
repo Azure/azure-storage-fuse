@@ -170,15 +170,13 @@ var generateConfigCmd = &cobra.Command{
 					continue
 				}
 				if len(configParam) != 2 {
-					fmt.Printf("mountv1 : Failed to read configuration file. Configuration %s is incorrect. Make sure your configuration file parameters are of the format `key value`", configParam)
-					return fmt.Errorf("mountv1 : Failed to read configuration file. Configuration %s is incorrect. Make sure your configuration file parameters are of the format `key value`", configParam)
+					return fmt.Errorf("failed to read configuration file. Configuration %s is incorrect. Make sure your configuration file parameters are of the format `key value`", configParam)
 				}
 
 				// get corresponding Blobfuse2 configurations from the config file parameters
 				err := convertBfConfigParameter(cmd.Flags(), configParam[0], configParam[1])
 				if err != nil {
-					fmt.Printf("mountv1 : failed to convert configuration parameters [%s]", err.Error())
-					return fmt.Errorf("mountv1 : failed to convert configuration parameters [%s]", err.Error())
+					return fmt.Errorf("failed to convert configuration parameters [%s]", err.Error())
 				}
 
 			}
@@ -188,16 +186,14 @@ var generateConfigCmd = &cobra.Command{
 		// get corresponding Blobfuse2 configurations from the cli parameters - these supersede the config options
 		err = convertBfCliParameters(cmd.Flags())
 		if err != nil {
-			fmt.Printf("mountv1 : failed to convert CLI parameters [%s]", err.Error())
-			return fmt.Errorf("mountv1 : failed to convert CLI parameters [%s]", err.Error())
+			return fmt.Errorf("failed to convert CLI parameters [%s]", err.Error())
 		}
 
 		// if we have the o being passed then parse it
 		if cmd.Flags().Lookup("o").Changed {
 			err := parseFuseConfig(libfuseOptions)
 			if err != nil {
-				fmt.Printf("mountv1 : failed to parse fuse CLI parameters [%s]", err.Error())
-				return fmt.Errorf("mountv1 : failed to parse fuse CLI parameters [%s]", err.Error())
+				return err
 			}
 		}
 		if useStream {
@@ -217,8 +213,7 @@ var generateConfigCmd = &cobra.Command{
 			if accountName == "" {
 				res, ok := os.LookupEnv(azstorage.EnvAzStorageAccount)
 				if !ok {
-					fmt.Printf("mountv1 : invalid account name")
-					return fmt.Errorf("mountv1 : invalid account name")
+					return fmt.Errorf("invalid account name")
 				} else {
 					accountName = res
 				}
@@ -234,8 +229,7 @@ var generateConfigCmd = &cobra.Command{
 			} else if bfv2StorageConfigOptions.AccountType == "adls" {
 				accountType = "dfs"
 			} else {
-				fmt.Printf("mountv1 : invalid account type")
-				return fmt.Errorf("mountv1 : invalid account type")
+				return fmt.Errorf("invalid account type")
 			}
 			bfv2StorageConfigOptions.Endpoint = fmt.Sprintf("%s://%s.%s.core.windows.net", http, accountName, accountType)
 		}
@@ -255,8 +249,7 @@ var generateConfigCmd = &cobra.Command{
 		data, _ := yaml.Marshal(&pConf)
 		err2 := ioutil.WriteFile(outputFilePath, data, 0700)
 		if err2 != nil {
-			fmt.Printf("mountv1 : failed to write file [%s]", err2.Error())
-			return fmt.Errorf("mountv1 : failed to write file [%s]", err2.Error())
+			return fmt.Errorf("failed to write file [%s]", err2.Error())
 		}
 
 		if !convertConfigOnly {
@@ -270,8 +263,7 @@ var generateConfigCmd = &cobra.Command{
 			}
 			err := rootCmd.Execute()
 			if err != nil {
-				fmt.Printf("mountv1 : failed to execute command [%s]", err.Error())
-				return fmt.Errorf("mountv1 : failed to execute command [%s]", err.Error())
+				return fmt.Errorf("failed to execute command [%s]", err.Error())
 			}
 		}
 		return nil

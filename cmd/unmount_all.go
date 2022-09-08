@@ -49,23 +49,22 @@ var umntAllCmd = &cobra.Command{
 	SuggestFor:        []string{"al", "all"},
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-
 		lstMnt, err := common.ListMountPoints()
 		if err != nil {
-			fmt.Printf("unmount all : failed to list mount points [%s]", err.Error())
-			return fmt.Errorf("unmount all : failed to list mount points [%s]", err.Error())
+			return fmt.Errorf("failed to list mount points [%s]", err.Error())
 		}
 
 		mountfound := 0
 		unmounted := 0
-		errMsg := "unmount all : Failed to unmount \n "
+		errMsg := "failed to unmount - \n"
+
 		for _, mntPath := range lstMnt {
 			mountfound += 1
 			err := unmountBlobfuse2(mntPath)
 			if err == nil {
 				unmounted += 1
 			} else {
-				errMsg += mntPath + " " + err.Error() + "\n"
+				errMsg += " " + mntPath + "[" + err.Error() + "]\n"
 			}
 		}
 
@@ -74,9 +73,11 @@ var umntAllCmd = &cobra.Command{
 		} else {
 			fmt.Printf("%d of %d mounts were successfully unmounted\n", unmounted, mountfound)
 		}
+
 		if unmounted < mountfound {
 			return errors.New(errMsg)
 		}
+
 		return nil
 	},
 }

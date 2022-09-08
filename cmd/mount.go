@@ -180,7 +180,6 @@ func parseConfig() error {
 	// Based on extension decide file is encrypted or not
 	if options.SecureConfig ||
 		filepath.Ext(options.ConfigFile) == SecureConfigExtension {
-		fmt.Println("Secure config provided, going for decryption")
 
 		// Validate config is to be secured on write or not
 		if options.PassPhrase == "" {
@@ -252,15 +251,13 @@ var mountCmd = &cobra.Command{
 		if configFileExists {
 			err := parseConfig()
 			if err != nil {
-				fmt.Printf("mount : failed to parse config [%s]", err.Error())
-				return fmt.Errorf("mount : failed to parse config [%s]", err.Error())
+				return err
 			}
 		}
 
 		err := config.Unmarshal(&options)
 		if err != nil {
-			fmt.Printf("mount : failed to parse config [%s]", err.Error())
-			return fmt.Errorf("mount : failed to unmarshal config [%s]", err.Error())
+			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
 		}
 
 		if !configFileExists || len(options.Components) == 0 {
@@ -283,18 +280,16 @@ var mountCmd = &cobra.Command{
 		}
 
 		if config.IsSet("libfuse-options") {
-			allowedFlags := "mount : invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
+			allowedFlags := "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
 
 			// there are only 8 available options for -o so if we have more we should throw
 			if len(options.LibfuseOptions) > 8 {
-				fmt.Print(allowedFlags)
 				return errors.New(allowedFlags)
 			}
 
 			for _, v := range options.LibfuseOptions {
 				parameter := strings.Split(v, "=")
 				if len(parameter) > 2 || len(parameter) <= 0 {
-					fmt.Print(allowedFlags)
 					return errors.New(allowedFlags)
 				}
 
@@ -316,13 +311,11 @@ var mountCmd = &cobra.Command{
 				} else if strings.HasPrefix(v, "umask=") {
 					permission, err := strconv.ParseUint(parameter[1], 10, 32)
 					if err != nil {
-						fmt.Printf("mount : failed to parse umask [%s]", err.Error())
-						return fmt.Errorf("mount : failed to parse umask [%s]", err.Error())
+						return fmt.Errorf("failed to parse umask [%s]", err.Error())
 					}
 					perm := ^uint32(permission) & 777
 					config.Set("libfuse.default-permission", fmt.Sprint(perm))
 				} else {
-					fmt.Print(allowedFlags)
 					return errors.New(allowedFlags)
 				}
 			}
@@ -338,15 +331,13 @@ var mountCmd = &cobra.Command{
 
 		err = options.validate(false)
 		if err != nil {
-			fmt.Printf("mount : invalid options [%s]", err.Error())
-			return fmt.Errorf("mount : invalid options [%s]", err.Error())
+			return err
 		}
 
 		var logLevel common.LogLevel
 		err = logLevel.Parse(options.Logging.LogLevel)
 		if err != nil {
-			fmt.Printf("mount : invalid log level [%s]", err.Error())
-			return fmt.Errorf("mount : invalid log level [%s]", err.Error())
+			return fmt.Errorf("invalid log level [%s]", err.Error())
 		}
 
 		err = log.SetDefaultLogger(options.Logging.Type, common.LogConfig{
@@ -358,8 +349,7 @@ var mountCmd = &cobra.Command{
 		})
 
 		if err != nil {
-			fmt.Printf("mount : failed to initialize logger [%s]", err.Error())
-			return fmt.Errorf("mount : failed to initialize logger [%s]", err.Error())
+			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
 		}
 
 		if config.IsSet("invalidate-on-sync") {
@@ -385,7 +375,7 @@ var mountCmd = &cobra.Command{
 		if options.Debug {
 			f, err := os.OpenFile(filepath.Join(options.DebugPath, "times.log"), os.O_CREATE|os.O_APPEND|os.O_RDWR, os.FileMode(0755))
 			if err != nil {
-				fmt.Printf("mount : Unable to open times.log file for exectime reporting [%s]", err.Error())
+				fmt.Printf("Unable to open times.log file for exectime reporting [%s]", err.Error())
 			}
 			exectime.SetDefault(f, true)
 		} else {
