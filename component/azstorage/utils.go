@@ -578,5 +578,6 @@ func autoDetectAuthMode(opt AzStorageOptions) string {
 	} else if opt.ClientID != "" || opt.ClientSecret != "" || opt.TenantID != "" {
 		return "spn"
 	}
-	return "key"
+
+	return "invalid_auth"
 }

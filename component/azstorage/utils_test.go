@@ -266,38 +266,44 @@ func (s *utilsTestSuite) TestBfsProxyOptions() {
 func (s *utilsTestSuite) TestAutoDetectAuthMode() {
 	assert := assert.New(s.T())
 
-	atuhType := autoDetectAuthMode(AzStorageOptions{AccountKey: "abc"})
-	assert.Equal(atuhType, "key")
+	var authType string
+	authType = autoDetectAuthMode(AzStorageOptions{})
+	assert.Equal(authType, "invalid_auth")
 
-	atuhType = autoDetectAuthMode(AzStorageOptions{})
-	assert.Equal(atuhType, "key")
+	var authType_ AuthType
+	err := authType_.Parse(authType)
+	assert.Nil(err)
+	assert.Equal(authType_, EAuthType.INVALID_AUTH())
 
-	atuhType = autoDetectAuthMode(AzStorageOptions{SaSKey: "abc"})
-	assert.Equal(atuhType, "sas")
+	authType = autoDetectAuthMode(AzStorageOptions{AccountKey: "abc"})
+	assert.Equal(authType, "key")
 
-	atuhType = autoDetectAuthMode(AzStorageOptions{ApplicationID: "abc"})
-	assert.Equal(atuhType, "msi")
+	authType = autoDetectAuthMode(AzStorageOptions{SaSKey: "abc"})
+	assert.Equal(authType, "sas")
 
-	atuhType = autoDetectAuthMode(AzStorageOptions{ResourceID: "abc"})
-	assert.Equal(atuhType, "msi")
+	authType = autoDetectAuthMode(AzStorageOptions{ApplicationID: "abc"})
+	assert.Equal(authType, "msi")
 
-	atuhType = autoDetectAuthMode(AzStorageOptions{ClientID: "abc"})
-	assert.Equal(atuhType, "spn")
+	authType = autoDetectAuthMode(AzStorageOptions{ResourceID: "abc"})
+	assert.Equal(authType, "msi")
 
-	atuhType = autoDetectAuthMode(AzStorageOptions{ClientSecret: "abc"})
-	assert.Equal(atuhType, "spn")
+	authType = autoDetectAuthMode(AzStorageOptions{ClientID: "abc"})
+	assert.Equal(authType, "spn")
 
-	atuhType = autoDetectAuthMode(AzStorageOptions{TenantID: "abc"})
-	assert.Equal(atuhType, "spn")
+	authType = autoDetectAuthMode(AzStorageOptions{ClientSecret: "abc"})
+	assert.Equal(authType, "spn")
 
-	atuhType = autoDetectAuthMode(AzStorageOptions{ApplicationID: "abc", AccountKey: "abc", SaSKey: "abc", ClientID: "abc"})
-	assert.Equal(atuhType, "msi")
+	authType = autoDetectAuthMode(AzStorageOptions{TenantID: "abc"})
+	assert.Equal(authType, "spn")
 
-	atuhType = autoDetectAuthMode(AzStorageOptions{AccountKey: "abc", SaSKey: "abc", ClientID: "abc"})
-	assert.Equal(atuhType, "key")
+	authType = autoDetectAuthMode(AzStorageOptions{ApplicationID: "abc", AccountKey: "abc", SaSKey: "abc", ClientID: "abc"})
+	assert.Equal(authType, "msi")
 
-	atuhType = autoDetectAuthMode(AzStorageOptions{SaSKey: "abc", ClientID: "abc"})
-	assert.Equal(atuhType, "sas")
+	authType = autoDetectAuthMode(AzStorageOptions{AccountKey: "abc", SaSKey: "abc", ClientID: "abc"})
+	assert.Equal(authType, "key")
+
+	authType = autoDetectAuthMode(AzStorageOptions{SaSKey: "abc", ClientID: "abc"})
+	assert.Equal(authType, "sas")
 }
 
 func TestUtilsTestSuite(t *testing.T) {
