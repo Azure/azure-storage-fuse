@@ -1,8 +1,8 @@
-# Blobfuse2 Health Monitor
+# Blobfuse2 Health Monitor (Preview)
 
 ## About
 
-Blobfuse2 Health Monitor is a tool which will help you monitor the mounts via Blobfuse2. It supports the following types of monitors:
+Blobfuse2 Health Monitor is a tool which will help you monitor the mounts done via Blobfuse2. It supports the following types of monitors:
 
 1. **Blobfuse2 Stats Monitor:** Monitor the different statistics of blobfuse2 components like,
     - Total bytes uploaded and downloaded via blobfuse2
@@ -18,6 +18,8 @@ Blobfuse2 Health Monitor is a tool which will help you monitor the mounts via Bl
     - Monitor the different events like create, delete, rename, chmod, etc. of files and directories in the cache
     - Keep track of the cache consumption with respect to the cache size specified during mounting
 
+**Note:** Health Monitor runs as a separate process where one health monitor process is associated with monitoring one blobfuse2 mounted directory.
+
 ## Enable Health Monitor
 
 The different configuration options for the health monitor are,
@@ -31,10 +33,10 @@ The different configuration options for the health monitor are,
     - `memory_profiler` - Disable memory monitoring on blobfuse2 process
     - `cache_monitor` - Disable file cache directory monitor
 
-### Sample config
+### Sample Config
 
 Add the following section to your blobfuse2 config file. Here file cache and memory monitors are disabled.
-```pwsh
+```
 health_monitor:
   enable-monitoring: true
   stats-poll-interval-sec: 10
@@ -48,6 +50,50 @@ health_monitor:
 ## Output Reports
 
 Health monitor will store its ouput reports in the path specified in the `output-path` config option. If this option is not specified, it takes the current directory as default. It stores the last 100MB of monitor data in 10 different files named as `monitor_<pid>_<index>.json` where `monitor_<pid>.json`(Zeroth index) is latest and `monitor_<pid>_9.json` is the oldest output file.
+
+### Sample Output
+
+```
+{
+	"Timestamp": "t1",
+    "CPUUsage": "value in %",
+    "MemoryUsage": "value in bytes",
+	"BlobfuseStats": [
+        {
+			"componentName": "azstorage",
+			"value": {
+				"Bytes Downloaded": value in bytes,
+                "Bytes Uploaded": value in bytes,
+                "Chmod": count of chmod calls,
+				"StreamDir": count of stream dir calls
+			}
+		},
+		{
+			"componentName": "file_cache",
+			"value": {
+				"Cache Usage": "value in MB",
+				"Usage Percent": "value in %",
+                "Files Downloaded": count,
+                "Files served from cache": count
+			}
+		}
+	],
+    "FileCache": [
+		{
+			"cacheEvent": "CREATE",
+			"path": "filePath",
+			"isDir": false,
+			"cacheSize": value in bytes,
+			"cacheConsumed": "value in %",
+			"cacheFilesCount": count of files in cache,
+			"evictedFilesCount": count of files evicted from cache,
+			"value": {
+				"FileSize": "value in bytes"
+			}
+		}
+	]
+}
+```
 
 
 
