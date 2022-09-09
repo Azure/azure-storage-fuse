@@ -273,9 +273,56 @@ func (s *utilsTestSuite) TestFormatEndpointAccountType() {
 	assert := assert.New(s.T())
 	var inputs = []endpointAccountType{
 		{endpoint: "https://account.blob.core.windows.net", account: EAccountType.BLOCK(), result: "https://account.blob.core.windows.net"},
+		{endpoint: "https://blobaccount.blob.core.windows.net", account: EAccountType.BLOCK(), result: "https://blobaccount.blob.core.windows.net"},
+		{endpoint: "https://accountblob.blob.core.windows.net", account: EAccountType.BLOCK(), result: "https://accountblob.blob.core.windows.net"},
+		{endpoint: "https://dfsaccount.blob.core.windows.net", account: EAccountType.BLOCK(), result: "https://dfsaccount.blob.core.windows.net"},
+		{endpoint: "https://accountdfs.blob.core.windows.net", account: EAccountType.BLOCK(), result: "https://accountdfs.blob.core.windows.net"},
+
 		{endpoint: "https://account.dfs.core.windows.net", account: EAccountType.BLOCK(), result: "https://account.blob.core.windows.net"},
+		{endpoint: "https://dfsaccount.dfs.core.windows.net", account: EAccountType.BLOCK(), result: "https://dfsaccount.blob.core.windows.net"},
+		{endpoint: "https://accountdfs.dfs.core.windows.net", account: EAccountType.BLOCK(), result: "https://accountdfs.blob.core.windows.net"},
+		{endpoint: "https://blobaccount.dfs.core.windows.net", account: EAccountType.BLOCK(), result: "https://blobaccount.blob.core.windows.net"},
+		{endpoint: "https://accountblob.dfs.core.windows.net", account: EAccountType.BLOCK(), result: "https://accountblob.blob.core.windows.net"},
+
 		{endpoint: "https://account.blob.core.windows.net", account: EAccountType.ADLS(), result: "https://account.dfs.core.windows.net"},
+		{endpoint: "https://blobaccount.blob.core.windows.net", account: EAccountType.ADLS(), result: "https://blobaccount.dfs.core.windows.net"},
+		{endpoint: "https://accountblob.blob.core.windows.net", account: EAccountType.ADLS(), result: "https://accountblob.dfs.core.windows.net"},
+		{endpoint: "https://dfsaccount.blob.core.windows.net", account: EAccountType.ADLS(), result: "https://dfsaccount.dfs.core.windows.net"},
+		{endpoint: "https://accountdfs.blob.core.windows.net", account: EAccountType.ADLS(), result: "https://accountdfs.dfs.core.windows.net"},
+
 		{endpoint: "https://account.dfs.core.windows.net", account: EAccountType.ADLS(), result: "https://account.dfs.core.windows.net"},
+		{endpoint: "https://dfsaccount.dfs.core.windows.net", account: EAccountType.ADLS(), result: "https://dfsaccount.dfs.core.windows.net"},
+		{endpoint: "https://accountdfs.dfs.core.windows.net", account: EAccountType.ADLS(), result: "https://accountdfs.dfs.core.windows.net"},
+		{endpoint: "https://blobaccount.dfs.core.windows.net", account: EAccountType.ADLS(), result: "https://blobaccount.dfs.core.windows.net"},
+		{endpoint: "https://accountblob.dfs.core.windows.net", account: EAccountType.ADLS(), result: "https://accountblob.dfs.core.windows.net"},
+
+		// Private Endpoint
+		{endpoint: "https://myprivateendpoint.net", account: EAccountType.BLOCK(), result: "https://myprivateendpoint.net"},
+		{endpoint: "https://myprivateendpoint.net", account: EAccountType.ADLS(), result: "https://myprivateendpoint.net"},
+
+		// Zonal DNS endpoint
+		{endpoint: "https://account.z99.blob.storage.azure.net", account: EAccountType.BLOCK(), result: "https://account.z99.blob.storage.azure.net"},
+		{endpoint: "https://account.z99.blob.storage.azure.net", account: EAccountType.ADLS(), result: "https://account.z99.dfs.storage.azure.net"},
+		{endpoint: "https://account.z99.dfs.storage.azure.net", account: EAccountType.BLOCK(), result: "https://account.z99.blob.storage.azure.net"},
+		{endpoint: "https://account.z99.dfs.storage.azure.net", account: EAccountType.ADLS(), result: "https://account.z99.dfs.storage.azure.net"},
+
+		// China Cloud endpoint
+		{endpoint: "https://account.z99.blob.core.chinacloudapi.cn", account: EAccountType.BLOCK(), result: "https://account.z99.blob.core.chinacloudapi.cn"},
+		{endpoint: "https://account.z99.blob.core.chinacloudapi.cn", account: EAccountType.ADLS(), result: "https://account.z99.dfs.core.chinacloudapi.cn"},
+		{endpoint: "https://account.z99.dfs.core.chinacloudapi.cn", account: EAccountType.BLOCK(), result: "https://account.z99.blob.core.chinacloudapi.cn"},
+		{endpoint: "https://account.z99.dfs.core.chinacloudapi.cn", account: EAccountType.ADLS(), result: "https://account.z99.dfs.core.chinacloudapi.cn"},
+
+		// Germany endpoint
+		{endpoint: "https://account.z99.blob.core.cloudapi.de", account: EAccountType.BLOCK(), result: "https://account.z99.blob.core.cloudapi.de"},
+		{endpoint: "https://account.z99.blob.core.cloudapi.de", account: EAccountType.ADLS(), result: "https://account.z99.dfs.core.cloudapi.de"},
+		{endpoint: "https://account.z99.dfs.core.cloudapi.de", account: EAccountType.BLOCK(), result: "https://account.z99.blob.core.cloudapi.de"},
+		{endpoint: "https://account.z99.dfs.core.cloudapi.de", account: EAccountType.ADLS(), result: "https://account.z99.dfs.core.cloudapi.de"},
+
+		// Government endpoint
+		{endpoint: "https://account.z99.blob.core.usgovcloudapi.net", account: EAccountType.BLOCK(), result: "https://account.z99.blob.core.usgovcloudapi.net"},
+		{endpoint: "https://account.z99.blob.core.usgovcloudapi.net", account: EAccountType.ADLS(), result: "https://account.z99.dfs.core.usgovcloudapi.net"},
+		{endpoint: "https://account.z99.dfs.core.usgovcloudapi.net", account: EAccountType.BLOCK(), result: "https://account.z99.blob.core.usgovcloudapi.net"},
+		{endpoint: "https://account.z99.dfs.core.usgovcloudapi.net", account: EAccountType.ADLS(), result: "https://account.z99.dfs.core.usgovcloudapi.net"},
 	}
 	for _, i := range inputs {
 		s.Run(i.endpoint+","+i.account.String(), func() {
