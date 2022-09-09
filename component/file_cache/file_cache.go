@@ -584,7 +584,7 @@ func (fc *FileCache) IsDirEmpty(options internal.IsDirEmptyOptions) bool {
 		log.Debug("FileCache::IsDirEmpty : %s not found in local cache", options.Name)
 	} else {
 		// Unknown error, check with container
-		log.Err("FileCache::IsDirEmpty : %s failed while checking local cache (%s)", options.Name, err.Error())
+		log.Err("FileCache::IsDirEmpty : %s failed while checking local cache [%s]", options.Name, err.Error())
 	}
 
 	log.Debug("FileCache::IsDirEmpty : %s checking with container", options.Name)
@@ -1101,7 +1101,7 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 
 	} else {
-		log.Err("FileCache::WriteFile : failed to write %s (%s)", options.Handle.Path, err.Error())
+		log.Err("FileCache::WriteFile : failed to write %s [%s]", options.Handle.Path, err.Error())
 	}
 
 	return bytesWritten, err

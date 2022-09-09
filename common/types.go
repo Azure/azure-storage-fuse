@@ -46,9 +46,10 @@ import (
 
 // Standard config default values
 const (
+	blobfuse2Version_ = "2.0.0-preview.4"
+
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
-	Blobfuse2Version      = "2.0.0-preview.4"
 	FileSystemName        = "blobfuse2"
 
 	DefaultConfigFilePath = "config.yaml"
@@ -64,6 +65,12 @@ const (
 	MbToBytes  = 1024 * 1024
 	BfuseStats = "blobfuse_stats"
 )
+
+var Blobfuse2Version = Blobfuse2Version_()
+
+func Blobfuse2Version_() string {
+	return blobfuse2Version_
+}
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFilePath = filepath.Join(DefaultWorkDir, "blobfuse2.log")

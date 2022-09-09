@@ -129,7 +129,7 @@ func (bfs *BlobfuseStats) statsReader() error {
 		st := stats_manager.PipeMsg{}
 		err = json.Unmarshal(line, &st)
 		if err != nil {
-			log.Err("StatsReader::statsReader : UNable to unmarshal json [%v]", err)
+			log.Err("StatsReader::statsReader : Unable to unmarshal json [%v]", err)
 			continue
 		}
 		bfs.ExportStats(st.Timestamp, st)

@@ -62,8 +62,11 @@ import (
 
 //    ----------- Helper to create pipeline options ---------------
 
+var UserAgent = func() string {
+	return "Azure-Storage-Fuse/" + common.Blobfuse2Version
+}
+
 const (
-	UserAgent              string        = "Azure-Storage-Fuse/" + common.Blobfuse2Version
 	Timeout                time.Duration = 30 * time.Second
 	KeepAlive              time.Duration = 30 * time.Second
 	DualStack              bool          = true
@@ -87,7 +90,7 @@ func getAzBlobPipelineOptions(conf AzStorageConfig) (azblob.PipelineOptions, ste
 		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
 	}
 	telemetryOptions := azblob.TelemetryOptions{
-		Value: UserAgent + " (" + common.GetCurrentDistro() + ")",
+		Value: UserAgent() + " (" + common.GetCurrentDistro() + ")",
 	}
 
 	sysLogDisabled := log.GetType() == "silent" // If logging is enabled, allow the SDK to log retries to syslog.
@@ -130,7 +133,7 @@ func getAzBfsPipelineOptions(conf AzStorageConfig) (azbfs.PipelineOptions, ste.X
 		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
 	}
 	telemetryOptions := azbfs.TelemetryOptions{
-		Value: UserAgent + " (" + common.GetCurrentDistro() + ")",
+		Value: UserAgent() + " (" + common.GetCurrentDistro() + ")",
 	}
 	sysLogDisabled := log.GetType() == "silent" // If logging is enabled, allow the SDK to log retries to syslog.
 	requestLogOptions := azbfs.RequestLogOptions{
@@ -434,7 +437,7 @@ func getContentType(key string) string {
 func populateContentType(newSet string) error { //nolint
 	var data map[string]string
 	if err := json.Unmarshal([]byte(newSet), &data); err != nil {
-		log.Err("Failed to parse config file : %s (%s)", newSet, err.Error())
+		log.Err("Failed to parse config file : %s [%s]", newSet, err.Error())
 		return err
 	}
 

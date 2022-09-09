@@ -139,7 +139,7 @@ func WatchConfig() {
 		if userOptions.secureConfig {
 			cipherText, err := ioutil.ReadFile(userOptions.path)
 			if err != nil {
-				log.Err("WatchConfig : Failed to read encrypted config file (%s)", err.Error())
+				log.Err("WatchConfig : Failed to read encrypted config file [%s]", err.Error())
 				return
 			}
 
@@ -149,12 +149,12 @@ func WatchConfig() {
 
 			plainText, err := common.DecryptData(cipherText, []byte(userOptions.passphrase))
 			if err != nil {
-				log.Err("WatchConfig : Failed to decrypt config file (%s)", err.Error())
+				log.Err("WatchConfig : Failed to decrypt config file [%s]", err.Error())
 				return
 			}
 			err = loadConfigFromBufferToViper(plainText)
 			if err != nil {
-				log.Err("WatchConfig : Failed to load decrypted config file (%s)", err.Error())
+				log.Err("WatchConfig : Failed to load decrypted config file [%s]", err.Error())
 				return
 			}
 		}
