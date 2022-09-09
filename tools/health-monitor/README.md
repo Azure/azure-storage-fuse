@@ -18,7 +18,7 @@ Blobfuse2 Health Monitor is a tool which will help you monitor the mounts done v
     - Monitor the different events like create, delete, rename, chmod, etc. of files and directories in the cache
     - Keep track of the cache consumption with respect to the cache size specified during mounting
 
-**Note:** Health Monitor runs as a separate process where one health monitor process is associated with monitoring one blobfuse2 mounted directory.
+> **Note:** Health Monitor runs as a separate process where one health monitor process is associated with monitoring one blobfuse2 mounted directory.
 
 ## Enable Health Monitor
 
@@ -53,7 +53,7 @@ Health monitor will store its ouput reports in the path specified in the `output
 
 ### Sample Output
 
-```
+```json
 {
 	"Timestamp": "t1",
     "CPUUsage": "value in %",
@@ -62,10 +62,10 @@ Health monitor will store its ouput reports in the path specified in the `output
         {
 			"componentName": "azstorage",
 			"value": {
-				"Bytes Downloaded": value in bytes,
-                "Bytes Uploaded": value in bytes,
-                "Chmod": count of chmod calls,
-				"StreamDir": count of stream dir calls
+				"Bytes Downloaded": "value in bytes",
+                "Bytes Uploaded": "value in bytes",
+                "Chmod": "count of chmod calls",
+				"StreamDir": "count of stream dir calls"
 			}
 		},
 		{
@@ -73,8 +73,8 @@ Health monitor will store its ouput reports in the path specified in the `output
 			"value": {
 				"Cache Usage": "value in MB",
 				"Usage Percent": "value in %",
-                "Files Downloaded": count,
-                "Files served from cache": count
+                "Files Downloaded": "count",
+                "Files served from cache": "count"
 			}
 		}
 	],
@@ -83,10 +83,10 @@ Health monitor will store its ouput reports in the path specified in the `output
 			"cacheEvent": "CREATE",
 			"path": "filePath",
 			"isDir": false,
-			"cacheSize": value in bytes,
+			"cacheSize": "value in bytes",
 			"cacheConsumed": "value in %",
-			"cacheFilesCount": count of files in cache,
-			"evictedFilesCount": count of files evicted from cache,
+			"cacheFilesCount": "count of files in cache",
+			"evictedFilesCount": "count of files evicted from cache",
 			"value": {
 				"FileSize": "value in bytes"
 			}
