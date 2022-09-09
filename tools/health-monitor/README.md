@@ -53,7 +53,7 @@ Health monitor will store its ouput reports in the path specified in the `output
 
 ### Sample Output
 
-```json
+```
 {
     "Timestamp": "t1",
     "CPUUsage": "value in %",
