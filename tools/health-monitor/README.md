@@ -36,7 +36,7 @@ The different configuration options for the health monitor are,
 ### Sample Config
 
 Add the following section to your blobfuse2 config file. Here file cache and memory monitors are disabled.
-```
+```yaml
 health_monitor:
   enable-monitoring: true
   stats-poll-interval-sec: 10
@@ -55,43 +55,43 @@ Health monitor will store its ouput reports in the path specified in the `output
 
 ```json
 {
-	"Timestamp": "t1",
+    "Timestamp": "t1",
     "CPUUsage": "value in %",
     "MemoryUsage": "value in bytes",
-	"BlobfuseStats": [
+    "BlobfuseStats": [
         {
-			"componentName": "azstorage",
-			"value": {
-				"Bytes Downloaded": "value in bytes",
-                "Bytes Uploaded": "value in bytes",
-                "Chmod": "count of chmod calls",
-				"StreamDir": "count of stream dir calls"
-			}
-		},
-		{
-			"componentName": "file_cache",
-			"value": {
-				"Cache Usage": "value in MB",
-				"Usage Percent": "value in %",
-                "Files Downloaded": "count",
-                "Files served from cache": "count"
-			}
-		}
-	],
+            "componentName": "azstorage",
+            "value": {
+                "Bytes Downloaded": value in bytes,
+                "Bytes Uploaded": value in bytes,
+                "Chmod": count of chmod calls,
+                "StreamDir": count of stream dir calls
+            }
+        },
+        {
+            "componentName": "file_cache",
+            "value": {
+                "Cache Usage": "value in MB",
+                "Usage Percent": "value in %",
+                "Files Downloaded": count,
+                "Files served from cache": count
+            }
+        }
+    ],
     "FileCache": [
-		{
-			"cacheEvent": "CREATE",
-			"path": "filePath",
-			"isDir": false,
-			"cacheSize": "value in bytes",
-			"cacheConsumed": "value in %",
-			"cacheFilesCount": "count of files in cache",
-			"evictedFilesCount": "count of files evicted from cache",
-			"value": {
-				"FileSize": "value in bytes"
-			}
-		}
-	]
+        {
+            "cacheEvent": "CREATE",
+            "path": "filePath",
+            "isDir": false,
+            "cacheSize": value in bytes,
+            "cacheConsumed": "value in %",
+            "cacheFilesCount": count of files in cache,
+            "evictedFilesCount": count of files evicted from cache,
+            "value": {
+                "FileSize": "value in bytes"
+            }
+        }
+    ]
 }
 ```
 
