@@ -514,7 +514,7 @@ func TestDirTestSuite(t *testing.T) {
 	if adlsPtr == "true" || adlsPtr == "True" {
 		fmt.Println("ADLS Testing...")
 		dirTest.adlsTest = true
-	} else if dataValidationFileSharePtr == "true" || dataValidationFileSharePtr == "True" {
+	} else if fileSharePtr == "true" || fileSharePtr == "True" {
 		fmt.Println("FileShare Testing...")
 		dirTest.fileShareTest = true
 		// For fileshare, skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to documentation
