@@ -30,7 +30,7 @@ stages:
       variables:
         - group: NightlyBlobFuse
         - name: MOUNT_DIR
-          value: "/home/vsts/workv2/blob_mnt"
+          value: "/home/vsts/workv2/blobfusemnt"
         - name: TEMP_DIR
           value: "/home/vsts/workv2/blobfuse2tmp"
         - name: BLOBFUSE2_CFG
