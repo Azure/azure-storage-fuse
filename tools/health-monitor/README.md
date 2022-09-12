@@ -31,7 +31,7 @@ The different configuration options for the health monitor are,
     - `blobfuse_stats` - Disable blobfuse2 stats polling
     - `cpu_profiler` - Disable CPU monitoring on blobfuse2 process
     - `memory_profiler` - Disable memory monitoring on blobfuse2 process
-    - `cache_monitor` - Disable file cache directory monitor
+    - `file_cache_monitor` - Disable file cache directory monitor
 
 ### Sample Config
 
@@ -43,7 +43,7 @@ health_monitor:
   process-monitor-interval-sec: 30
   output-path: outputReportsPath
   monitor-disable-list:
-    - cache_monitor
+    - file_cache_monitor
     - memory_profiler
 ```
 
