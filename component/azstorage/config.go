@@ -213,7 +213,8 @@ func formatEndpointProtocol(endpoint string, http bool) string {
 	// If the pvtEndpoint does not have protocol mentioned in front, pvtEndpoint parsing will fail while
 	// creating URI also the string shall end with "/"
 	if correctedEndpoint != "" {
-		if !strings.Contains(correctedEndpoint, "://") {
+		if !(strings.HasPrefix(correctedEndpoint, "https://") ||
+			strings.HasPrefix(correctedEndpoint, "http://")) {
 			if http {
 				correctedEndpoint = "http://" + correctedEndpoint
 			} else {
@@ -361,11 +362,13 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		return err
 	}
 
-	var authType AuthType
 	if opt.AuthMode == "" {
-		opt.AuthMode = "key"
+		// Based on other config decide the auth mode
+		// for e.g. if sas token is set then mode shall be set to sas and if key is set then authmode shall be key
+		opt.AuthMode = autoDetectAuthMode(opt)
 	}
 
+	var authType AuthType
 	err = authType.Parse(opt.AuthMode)
 	if err != nil {
 		log.Err("ParseAndValidateConfig : Invalid auth type %s", opt.AccountType)

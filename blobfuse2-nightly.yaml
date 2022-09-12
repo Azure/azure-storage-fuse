@@ -1314,7 +1314,7 @@ stages:
                 mountStep:
                   script: |
                     sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
-                    ls -l /usr/local/bin/health*
+                    ls -l /usr/local/bin/bfusemon*
                     $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
                   displayName: 'Mount Blobfuse2'
                   workingDirectory: $(WORK_DIR)

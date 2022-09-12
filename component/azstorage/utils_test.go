@@ -35,6 +35,7 @@ package azstorage
 
 import (
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
@@ -330,6 +331,81 @@ func (s *utilsTestSuite) TestFormatEndpointAccountType() {
 			assert.EqualValues(i.result, output)
 		})
 	}
+}
+
+type endpointProtocol struct {
+	endpoint string
+	ustHttp  bool
+	result   string
+}
+
+func (s *utilsTestSuite) TestFormatEndpointProtocol() {
+	assert := assert.New(s.T())
+	var inputs = []endpointProtocol{
+		{endpoint: "https://account.blob.core.windows.net", result: "https://account.blob.core.windows.net/", ustHttp: true},
+		{endpoint: "http://account.blob.core.windows.net", result: "http://account.blob.core.windows.net/", ustHttp: false},
+		{endpoint: "account.blob.core.windows.net", result: "http://account.blob.core.windows.net/", ustHttp: true},
+		{endpoint: "account.blob.core.windows.net", result: "https://account.blob.core.windows.net/", ustHttp: false},
+		{endpoint: "account.bl://ob.core.windows.net", result: "https://account.bl://ob.core.windows.net/", ustHttp: false},
+		{endpoint: "account.bl://ob.core.windows.net", result: "http://account.bl://ob.core.windows.net/", ustHttp: true},
+		{endpoint: "https://account.blob.core.windows.net/", result: "https://account.blob.core.windows.net/", ustHttp: true},
+		{endpoint: "https://account.blob.core.windows.net/abc", result: "https://account.blob.core.windows.net/abc/", ustHttp: true},
+
+		// These are false positive test cases where we are forming the wrong URI and it shall fail for user when used in blobfuse
+		{endpoint: "://account.blob.core.windows.net", result: "https://://account.blob.core.windows.net/", ustHttp: false},
+		{endpoint: "://account.blob.core.windows.net", result: "http://://account.blob.core.windows.net/", ustHttp: true},
+		{endpoint: "https://://./account.blob.core.windows.net", result: "https://://./account.blob.core.windows.net/", ustHttp: true},
+	}
+
+	for _, i := range inputs {
+		s.Run(i.endpoint+","+strconv.FormatBool(i.ustHttp), func() {
+			output := formatEndpointProtocol(i.endpoint, i.ustHttp)
+			assert.EqualValues(i.result, output)
+		})
+	}
+}
+
+func (s *utilsTestSuite) TestAutoDetectAuthMode() {
+	assert := assert.New(s.T())
+
+	var authType string
+	authType = autoDetectAuthMode(AzStorageOptions{})
+	assert.Equal(authType, "invalid_auth")
+
+	var authType_ AuthType
+	err := authType_.Parse(authType)
+	assert.Nil(err)
+	assert.Equal(authType_, EAuthType.INVALID_AUTH())
+
+	authType = autoDetectAuthMode(AzStorageOptions{AccountKey: "abc"})
+	assert.Equal(authType, "key")
+
+	authType = autoDetectAuthMode(AzStorageOptions{SaSKey: "abc"})
+	assert.Equal(authType, "sas")
+
+	authType = autoDetectAuthMode(AzStorageOptions{ApplicationID: "abc"})
+	assert.Equal(authType, "msi")
+
+	authType = autoDetectAuthMode(AzStorageOptions{ResourceID: "abc"})
+	assert.Equal(authType, "msi")
+
+	authType = autoDetectAuthMode(AzStorageOptions{ClientID: "abc"})
+	assert.Equal(authType, "spn")
+
+	authType = autoDetectAuthMode(AzStorageOptions{ClientSecret: "abc"})
+	assert.Equal(authType, "spn")
+
+	authType = autoDetectAuthMode(AzStorageOptions{TenantID: "abc"})
+	assert.Equal(authType, "spn")
+
+	authType = autoDetectAuthMode(AzStorageOptions{ApplicationID: "abc", AccountKey: "abc", SaSKey: "abc", ClientID: "abc"})
+	assert.Equal(authType, "msi")
+
+	authType = autoDetectAuthMode(AzStorageOptions{AccountKey: "abc", SaSKey: "abc", ClientID: "abc"})
+	assert.Equal(authType, "key")
+
+	authType = autoDetectAuthMode(AzStorageOptions{SaSKey: "abc", ClientID: "abc"})
+	assert.Equal(authType, "sas")
 }
 
 func TestUtilsTestSuite(t *testing.T) {

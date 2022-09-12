@@ -48,7 +48,7 @@ var versionCmd = &cobra.Command{
 	Short:             "Command to print the current version along with optional check for latest version",
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		fmt.Printf("blobfuse2 version %s\n", common.Blobfuse2Version)
+		fmt.Printf("blobfuse2 version: %s\n", common.Blobfuse2Version)
 		if check {
 			return VersionCheck()
 		}
