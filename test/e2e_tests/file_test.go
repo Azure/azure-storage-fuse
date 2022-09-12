@@ -51,15 +51,17 @@ import (
 
 var fileTestPathPtr string
 var fileTestAdlsPtr string
+var fileTestFileSharePtr string
 var fileTestGitClonePtr string
 
 type fileTestSuite struct {
 	suite.Suite
-	testPath string
-	adlsTest bool
-	minBuff  []byte
-	medBuff  []byte
-	hugeBuff []byte
+	testPath      string
+	adlsTest      bool
+	fileShareTest bool
+	minBuff       []byte
+	medBuff       []byte
+	hugeBuff      []byte
 }
 
 func regFileTestFlag(p *string, name string, value string, usage string) {
@@ -75,6 +77,7 @@ func getFileTestFlag(name string) string {
 func initFileFlags() {
 	fileTestPathPtr = getFileTestFlag("mnt-path")
 	fileTestAdlsPtr = getFileTestFlag("adls")
+	fileTestFileSharePtr = getDataValidationTestFlag("fileshare")
 	fileTestGitClonePtr = getFileTestFlag("clone")
 }
 
@@ -113,31 +116,36 @@ func (suite *fileTestSuite) TestFileCreateUtf8Char() {
 	suite.fileTestCleanup([]string{fileName})
 }
 
+// For fileshare, skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to documentation
+// https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
+// https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *fileTestSuite) TestFileCreatSpclChar() {
-	speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
-	fileName := suite.testPath + "/" + speclChar
+	if !suite.fileShareTest {
+		speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
+		fileName := suite.testPath + "/" + speclChar
 
-	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
-	suite.Equal(nil, err)
-	srcFile.Close()
-	time.Sleep(time.Second * 2)
+		srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+		suite.Equal(nil, err)
+		srcFile.Close()
+		time.Sleep(time.Second * 2)
 
-	_, err = os.Stat(fileName)
-	suite.Equal(nil, err)
+		_, err = os.Stat(fileName)
+		suite.Equal(nil, err)
 
-	files, err := ioutil.ReadDir(suite.testPath)
-	suite.Equal(nil, err)
-	suite.GreaterOrEqual(len(files), 1)
+		files, err := ioutil.ReadDir(suite.testPath)
+		suite.Equal(nil, err)
+		suite.GreaterOrEqual(len(files), 1)
 
-	found := false
-	for _, file := range files {
-		if file.Name() == speclChar {
-			found = true
+		found := false
+		for _, file := range files {
+			if file.Name() == speclChar {
+				found = true
+			}
 		}
-	}
-	suite.Equal(true, found)
+		suite.Equal(true, found)
 
-	suite.fileTestCleanup([]string{fileName})
+		suite.fileTestCleanup([]string{fileName})
+	}
 }
 
 func (suite *fileTestSuite) TestFileCreatEncodeChar() {
@@ -167,40 +175,45 @@ func (suite *fileTestSuite) TestFileCreatEncodeChar() {
 	suite.fileTestCleanup([]string{fileName})
 }
 
+// For fileshare, skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to documentation
+// https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
+// https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *fileTestSuite) TestFileCreateMultiSpclCharWithinSpclDir() {
-	speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
-	speclDirName := suite.testPath + "/" + "abc%23%24%25efg-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत"
-	secFile := speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|\\abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|.txt"
-	fileName := speclDirName + "/" + speclChar
+	if !suite.fileShareTest {
+		speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
+		speclDirName := suite.testPath + "/" + "abc%23%24%25efg-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत"
+		secFile := speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|\\abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|.txt"
+		fileName := speclDirName + "/" + speclChar
 
-	err := os.Mkdir(speclDirName, 0777)
-	suite.Equal(nil, err)
+		err := os.Mkdir(speclDirName, 0777)
+		suite.Equal(nil, err)
 
-	srcFile, err := os.OpenFile(secFile, os.O_CREATE, 0777)
-	suite.Equal(nil, err)
-	srcFile.Close()
+		srcFile, err := os.OpenFile(secFile, os.O_CREATE, 0777)
+		suite.Equal(nil, err)
+		srcFile.Close()
 
-	srcFile, err = os.OpenFile(fileName, os.O_CREATE, 0777)
-	suite.Equal(nil, err)
-	srcFile.Close()
-	time.Sleep(time.Second * 2)
+		srcFile, err = os.OpenFile(fileName, os.O_CREATE, 0777)
+		suite.Equal(nil, err)
+		srcFile.Close()
+		time.Sleep(time.Second * 2)
 
-	_, err = os.Stat(fileName)
-	suite.Equal(nil, err)
+		_, err = os.Stat(fileName)
+		suite.Equal(nil, err)
 
-	files, err := ioutil.ReadDir(speclDirName)
-	suite.Equal(nil, err)
-	suite.GreaterOrEqual(len(files), 1)
+		files, err := ioutil.ReadDir(speclDirName)
+		suite.Equal(nil, err)
+		suite.GreaterOrEqual(len(files), 1)
 
-	found := false
-	for _, file := range files {
-		if file.Name() == speclChar {
-			found = true
+		found := false
+		for _, file := range files {
+			if file.Name() == speclChar {
+				found = true
+			}
 		}
-	}
-	suite.Equal(true, found)
+		suite.Equal(true, found)
 
-	suite.fileTestCleanup([]string{fileName, secFile, speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|", speclDirName})
+		suite.fileTestCleanup([]string{fileName, secFile, speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|", speclDirName})
+	}
 }
 
 func (suite *fileTestSuite) TestFileCreateLongName() {
@@ -212,14 +225,19 @@ func (suite *fileTestSuite) TestFileCreateLongName() {
 	suite.fileTestCleanup([]string{fileName})
 }
 
+// For fileshare, skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to documentation
+// https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
+// https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *fileTestSuite) TestFileCreateSlashName() {
-	fileName := suite.testPath + "/abcd\\efg.txt"
+	if !suite.fileShareTest {
+		fileName := suite.testPath + "/abcd\\efg.txt"
 
-	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
-	suite.Equal(nil, err)
-	srcFile.Close()
+		srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+		suite.Equal(nil, err)
+		srcFile.Close()
 
-	suite.fileTestCleanup([]string{fileName})
+		suite.fileTestCleanup([]string{fileName})
+	}
 }
 
 func (suite *fileTestSuite) TestFileCreateLabel() {
@@ -555,6 +573,13 @@ func TestFileTestSuite(t *testing.T) {
 	if fileTestAdlsPtr == "true" || fileTestAdlsPtr == "True" {
 		fmt.Println("ADLS Testing...")
 		fileTest.adlsTest = true
+	} else if fileTestFileSharePtr == "true" || fileTestFileSharePtr == "True" {
+		fmt.Println("FileShare Testing...")
+		fileTest.fileShareTest = true
+		// For fileshare, skip tests that include Greek/Arabic letters and slashes in the file/dir name as these are not supported according to documentation
+		// https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
+		// https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
+
 	} else {
 		fmt.Println("BLOCK Blob Testing...")
 	}
@@ -582,5 +607,6 @@ func TestFileTestSuite(t *testing.T) {
 func init() {
 	regFileTestFlag(&fileTestPathPtr, "mnt-path", "", "Mount Path of Container")
 	regFileTestFlag(&fileTestAdlsPtr, "adls", "", "Account is ADLS or not")
+	regFileTestFlag(&fileTestFileSharePtr, "fileshare", "", "Account is FileShare or not")
 	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enable or not")
 }

@@ -575,7 +575,6 @@ func (fs *FileShare) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 	}
 
 	if len == 0 {
-		len = azfile.CountToEnd
 		attr, err := fs.GetAttr(name)
 		if err != nil {
 			return buff, err
