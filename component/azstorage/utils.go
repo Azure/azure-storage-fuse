@@ -570,3 +570,17 @@ func getMD5(fi *os.File) ([]byte, error) {
 
 	return hasher.Sum(nil), nil
 }
+
+func autoDetectAuthMode(opt AzStorageOptions) string {
+	if opt.ApplicationID != "" || opt.ResourceID != "" {
+		return "msi"
+	} else if opt.AccountKey != "" {
+		return "key"
+	} else if opt.SaSKey != "" {
+		return "sas"
+	} else if opt.ClientID != "" || opt.ClientSecret != "" || opt.TenantID != "" {
+		return "spn"
+	}
+
+	return "invalid_auth"
+}

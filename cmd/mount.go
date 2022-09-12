@@ -52,7 +52,6 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
-	"github.com/Azure/azure-storage-fuse/v2/common/exectime"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
@@ -77,8 +76,6 @@ type mountOptions struct {
 	Components        []string       `config:"components"`
 	Foreground        bool           `config:"foreground"`
 	DefaultWorkingDir string         `config:"default-working-dir"`
-	Debug             bool           `config:"debug"`
-	DebugPath         string         `config:"debug-path"`
 	CPUProfile        string         `config:"cpu-profile"`
 	MemProfile        string         `config:"mem-profile"`
 	PassPhrase        string         `config:"passphrase"`
@@ -132,16 +129,6 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 	if opt.DefaultWorkingDir != "" {
 		common.DefaultWorkDir = opt.DefaultWorkingDir
 		common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
-	}
-
-	if opt.Debug {
-		_, err := os.Stat(opt.DebugPath)
-		if os.IsNotExist(err) {
-			err := os.MkdirAll(opt.DebugPath, os.FileMode(0755))
-			if err != nil {
-				return fmt.Errorf("invalid debug path [%s]", err.Error())
-			}
-		}
 	}
 
 	return nil
@@ -371,17 +358,6 @@ var mountCmd = &cobra.Command{
 				break
 			}
 		}
-
-		if options.Debug {
-			f, err := os.OpenFile(filepath.Join(options.DebugPath, "times.log"), os.O_CREATE|os.O_APPEND|os.O_RDWR, os.FileMode(0755))
-			if err != nil {
-				fmt.Printf("Unable to open times.log file for exectime reporting [%s]", err.Error())
-			}
-			exectime.SetDefault(f, true)
-		} else {
-			exectime.SetDefault(nil, false)
-		}
-		defer exectime.PrintStats()
 
 		config.Set("mount-path", options.MountPath)
 

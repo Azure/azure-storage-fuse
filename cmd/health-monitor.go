@@ -167,7 +167,7 @@ func buildCliParamForMonitor() []string {
 		case hmcommon.NetworkProfiler:
 			cliParams = append(cliParams, "--no-network-profiler")
 		case hmcommon.FileCacheMon:
-			cliParams = append(cliParams, "--no-cache-monitor")
+			cliParams = append(cliParams, "--no-file-cache-monitor")
 		default:
 			log.Debug("health-monitor::buildCliParamForMonitor: Invalid health monitor option %v", v)
 		}
