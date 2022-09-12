@@ -128,7 +128,7 @@ health_monitor:
   # list of monitors to be disabled
   monitor-disable-list:
     - blobfuse_stats <Disable blobfuse2 stats polling>
-    - cache_monitor <Disable file cache directory monitor>
+    - file_cache_monitor <Disable file cache directory monitor>
     - cpu_profiler <Disable CPU monitoring on blobfuse2 process>
     - memory_profiler <Disable memory monitoring on blobfuse2 process>
     - network_profiler <Disable network monitoring on blobfuse2 process>
