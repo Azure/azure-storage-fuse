@@ -1,4 +1,10 @@
-## 2.0.0-preview.3 (WIP)
+## 2.0.0-preview.4 (WIP)
+**Bug Fixes**
+- Auto detect auth mode based on storage config
+- Auto correct endpoint for public cloud
+- In case of invalid option or failure CLI to return non-zero return code
+
+## 2.0.0-preview.3  (2022-09-02)
 **Features**
 - Added support for directory level SAS while mounting a subdirectory
 - Added support for displaying mount space utilization based on file cache consumption (for example when doing `df`)
