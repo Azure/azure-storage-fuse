@@ -305,6 +305,30 @@ func generateFileName() string {
 	return "file" + randomString(8)
 }
 
+func (s *blockBlobTestSuite) TestModifyEndpoint() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	err := s.az.storage.TestPipeline()
+	s.assert.Nil(err)
+}
+
+func (s *blockBlobTestSuite) TestNoEndpoint() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	err := s.az.storage.TestPipeline()
+	s.assert.Nil(err)
+}
+
 func (s *blockBlobTestSuite) TestListContainers() {
 	defer s.cleanupTest()
 	// Setup

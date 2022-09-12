@@ -1055,7 +1055,7 @@ stages:
     jobs:
       - job: UpdateVersion
         pool:
-          vmImage: 'ubuntu-18.04'
+          vmImage: 'ubuntu-20.04'
         variables:
           - group: NightlyBlobFuse
           - name: root_dir
@@ -1080,8 +1080,8 @@ stages:
               # install blobfuse2
               - script: |
                   cd $(Build.ArtifactStagingDirectory)/blobfuse2
-                  ls | grep ubuntu-18.04
-                  sudo apt-get install ./`ls | grep ubuntu-18.04` -y
+                  ls | grep -i ubuntu-20.04
+                  sudo apt-get install ./`ls | grep -i ubuntu-20.04` -y
                   blobfuse2 version
                 displayName: 'Installing blobfuse2'
 

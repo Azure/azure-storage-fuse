@@ -139,7 +139,7 @@ func WatchConfig() {
 		if userOptions.secureConfig {
 			cipherText, err := ioutil.ReadFile(userOptions.path)
 			if err != nil {
-				log.Err("WatchConfig : Failed to read encrypted config file (%s)", err.Error())
+				log.Err("WatchConfig : Failed to read encrypted config file [%s]", err.Error())
 				return
 			}
 
@@ -149,12 +149,12 @@ func WatchConfig() {
 
 			plainText, err := common.DecryptData(cipherText, []byte(userOptions.passphrase))
 			if err != nil {
-				log.Err("WatchConfig : Failed to decrypt config file (%s)", err.Error())
+				log.Err("WatchConfig : Failed to decrypt config file [%s]", err.Error())
 				return
 			}
 			err = loadConfigFromBufferToViper(plainText)
 			if err != nil {
-				log.Err("WatchConfig : Failed to load decrypted config file (%s)", err.Error())
+				log.Err("WatchConfig : Failed to load decrypted config file [%s]", err.Error())
 				return
 			}
 		}
@@ -333,6 +333,11 @@ func AddInt64Flag(name string, value int64, usage string) *pflag.Flag {
 
 func AddBoolFlag(name string, value bool, usage string) *pflag.Flag {
 	userOptions.flags.Bool(name, value, usage)
+	return userOptions.flags.Lookup(name)
+}
+
+func AddBoolPFlag(name string, value bool, usage string) *pflag.Flag {
+	userOptions.flags.BoolP(name, name, value, usage)
 	return userOptions.flags.Lookup(name)
 }
 

@@ -13,6 +13,7 @@ libfuse:
   attribute-expiration-sec: 0
   entry-expiration-sec: 0
   negative-entry-expiration-sec: 0
+  ignore-open-flag: true
 
 file_cache:
   path: { 1 }
@@ -35,7 +36,7 @@ azstorage:
   tier: hot
   sdk-trace: { VERBOSE_LOG }
 
-health-monitor:
+health_monitor:
   enable-monitoring: true
   stats-poll-interval-sec: 3
   process-monitor-interval-sec: 2

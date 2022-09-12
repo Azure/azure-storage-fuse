@@ -134,14 +134,14 @@ func NewAzStorageConnection(cfg AzStorageConfig) AzConnection {
 	} else if cfg.authConfig.AccountType == EAccountType.BLOCK() {
 		stg := &BlockBlob{}
 		if err := stg.Configure(cfg); err != nil {
-			log.Err("NewAzStorageConnection : Failed to configure BlockBlob object (%s)", err.Error())
+			log.Err("NewAzStorageConnection : Failed to configure BlockBlob object [%s]", err.Error())
 			return nil
 		}
 		return stg
 	} else if cfg.authConfig.AccountType == EAccountType.ADLS() {
 		stg := &Datalake{}
 		if err := stg.Configure(cfg); err != nil {
-			log.Err("NewAzStorageConnection : Failed to configure Datalake object (%s)", err.Error())
+			log.Err("NewAzStorageConnection : Failed to configure Datalake object [%s]", err.Error())
 			return nil
 		}
 		return stg

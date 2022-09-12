@@ -39,7 +39,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"log/syslog"
 	"os"
 	"strconv"
@@ -146,38 +145,50 @@ var generateConfigCmd = &cobra.Command{
 	Args:              cobra.MaximumNArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		_ = VersionCheck()
+		if !disableVersionCheck {
+			err := VersionCheck()
+			if err != nil {
+				return err
+			}
+		}
 		resetOptions()
 		// If we are only converting the config without mounting then we do not need the mount path and therefore the args length would be 0
 		if len(args) == 1 {
 			mountPath = args[0]
 		}
-		file, _ := os.Open(bfConfCliOptions.configFile)
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			// some users may have a commented out config
-			linePieces := strings.SplitN(scanner.Text(), "#", 2)
-			line := linePieces[0]
-			configParam := strings.Fields(line)
-			if len(configParam) == 0 {
-				continue
-			}
-			if len(configParam) != 2 {
-				return fmt.Errorf("failed to read configuration file. the configuration %s is incorrect. please make sure your configuration file parameters are of the format `key value`", configParam)
-			}
-			// get corresponding Blobfuse2 configurations from the config file parameters
-			err := convertBfConfigParameter(cmd.Flags(), configParam[0], configParam[1])
-			if err != nil {
-				return err
-			}
 
+		file, err := os.Open(bfConfCliOptions.configFile)
+		if err == nil {
+			defer file.Close()
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				// some users may have a commented out config
+				linePieces := strings.SplitN(scanner.Text(), "#", 2)
+				line := linePieces[0]
+				configParam := strings.Fields(line)
+				if len(configParam) == 0 {
+					continue
+				}
+				if len(configParam) != 2 {
+					return fmt.Errorf("failed to read configuration file. Configuration %s is incorrect. Make sure your configuration file parameters are of the format `key value`", configParam)
+				}
+
+				// get corresponding Blobfuse2 configurations from the config file parameters
+				err := convertBfConfigParameter(cmd.Flags(), configParam[0], configParam[1])
+				if err != nil {
+					return fmt.Errorf("failed to convert configuration parameters [%s]", err.Error())
+				}
+
+			}
 		}
+
 		bfv2ComponentsConfigOptions = append(bfv2ComponentsConfigOptions, "libfuse")
 		// get corresponding Blobfuse2 configurations from the cli parameters - these supersede the config options
-		err := convertBfCliParameters(cmd.Flags())
+		err = convertBfCliParameters(cmd.Flags())
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to convert CLI parameters [%s]", err.Error())
 		}
+
 		// if we have the o being passed then parse it
 		if cmd.Flags().Lookup("o").Changed {
 			err := parseFuseConfig(libfuseOptions)
@@ -238,8 +249,7 @@ var generateConfigCmd = &cobra.Command{
 		data, _ := yaml.Marshal(&pConf)
 		err2 := ioutil.WriteFile(outputFilePath, data, 0700)
 		if err2 != nil {
-			log.Fatal(err2)
-			return err2
+			return fmt.Errorf("failed to write file [%s]", err2.Error())
 		}
 
 		if !convertConfigOnly {
@@ -252,7 +262,9 @@ var generateConfigCmd = &cobra.Command{
 				rootCmd.SetArgs([]string{"mount", mountPath, fmt.Sprintf("--config-file=%s", outputFilePath), "--disable-version-check=true"})
 			}
 			err := rootCmd.Execute()
-			return err
+			if err != nil {
+				return fmt.Errorf("failed to execute command [%s]", err.Error())
+			}
 		}
 		return nil
 	},
@@ -265,16 +277,19 @@ var generateConfigCmd = &cobra.Command{
 // `-o umask`: inverse of default permissions being set, so 0000 is 0777
 // `-d` : enable debug logs and foreground on
 func parseFuseConfig(config []string) error {
-	allowedFlags := "Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
+	allowedFlags := "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
+
 	// there are only 8 available options for -o so if we have more we should throw
 	if len(config) > 8 {
 		return errors.New(allowedFlags)
 	}
+
 	for _, v := range config {
 		parameter := strings.Split(v, "=")
 		if len(parameter) > 2 || len(parameter) <= 0 {
 			return errors.New(allowedFlags)
 		}
+
 		v = strings.TrimSpace(v)
 		if v == "default_permissions" {
 			continue
@@ -285,19 +300,19 @@ func parseFuseConfig(config []string) error {
 		} else if strings.HasPrefix(v, "attr_timeout=") {
 			timeout, err := strconv.ParseUint(parameter[1], 10, 32)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to parse attr_timeout [%s]", err.Error())
 			}
 			bfv2FuseConfigOptions.AttributeExpiration = uint32(timeout)
 		} else if strings.HasPrefix(v, "entry_timeout=") {
 			timeout, err := strconv.ParseUint(parameter[1], 10, 32)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to parse entry_timeout [%s]", err.Error())
 			}
 			bfv2FuseConfigOptions.EntryExpiration = uint32(timeout)
 		} else if strings.HasPrefix(v, "negative_timeout=") {
 			timeout, err := strconv.ParseUint(parameter[1], 10, 32)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to parse negative_timeout [%s]", err.Error())
 			}
 			bfv2FuseConfigOptions.NegativeEntryExpiration = uint32(timeout)
 		} else if v == "ro" {
@@ -307,7 +322,7 @@ func parseFuseConfig(config []string) error {
 		} else if strings.HasPrefix(v, "umask=") {
 			permission, err := strconv.ParseUint(parameter[1], 10, 32)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to parse umask [%s]", err.Error())
 			}
 			perm := ^uint32(permission) & 777
 			bfv2FuseConfigOptions.DefaultPermission = perm
@@ -315,6 +330,7 @@ func parseFuseConfig(config []string) error {
 			return errors.New(allowedFlags)
 		}
 	}
+
 	return nil
 }
 
@@ -369,17 +385,19 @@ func convertBfConfigParameter(flags *pflag.FlagSet, configParameterKey string, c
 		return nil
 
 	default:
-		return fmt.Errorf("failed to parse configuration file. the configuration parameter `%s` is not supported in Blobfuse2", configParameterKey)
+		return fmt.Errorf("failed to parse configuration file. Configuration parameter `%s` is not supported in Blobfuse2", configParameterKey)
 	}
+
 	return nil
 }
 
 // helper method: converts cli options - cli options that overlap with config file take precedence
 func convertBfCliParameters(flags *pflag.FlagSet) error {
 	if flags.Lookup("set-content-type").Changed || flags.Lookup("ca-cert-file").Changed || flags.Lookup("basic-remount-check").Changed || flags.Lookup(
-		"background-download").Changed || flags.Lookup("cache-poll-timeout-msec").Changed || flags.Lookup("upload-modified-only").Changed {
+		"background-download").Changed || flags.Lookup("cache-poll-timeout-msec").Changed || flags.Lookup("upload-modified-only").Changed ||
+		flags.Lookup("ignore-open-flags").Changed || flags.Lookup("debug-libcurl").Changed {
 		logWriter, _ := syslog.New(syslog.LOG_WARNING, "")
-		_ = logWriter.Warning("one or more unsupported v1 parameters [set-content-type, ca-cert-file, basic-remount-check, background-download, cache-poll-timeout-msec, upload-modified-only] have been passed, ignoring and proceeding to mount")
+		_ = logWriter.Warning("one or more unsupported v1 parameters [set-content-type, ca-cert-file, basic-remount-check, background-download, cache-poll-timeout-msec, upload-modified-only, ignore-open-flags, debug-libcurl] have been passed, ignoring and proceeding to mount")
 	}
 
 	bfv2LoggingConfigOptions.Type = "syslog"
@@ -395,10 +413,13 @@ func convertBfCliParameters(flags *pflag.FlagSet) error {
 				bfv2StreamConfigOptions.BlockSize = bfConfCliOptions.blockSize
 			}
 			if flags.Lookup("max-blocks-per-file").Changed {
-				bfv2StreamConfigOptions.BufferSizePerFile = uint64(bfConfCliOptions.maxBlocksPerFile)
+				bfv2StreamConfigOptions.BufferSizePerFile = bfConfCliOptions.blockSize * uint64(bfConfCliOptions.maxBlocksPerFile)
 			}
 			if flags.Lookup("stream-cache-mb").Changed {
 				bfv2StreamConfigOptions.HandleLimit = bfConfCliOptions.streamCacheSize / bfv2StreamConfigOptions.BufferSizePerFile
+				if bfv2StreamConfigOptions.HandleLimit == 0 {
+					bfv2StreamConfigOptions.HandleLimit = 1
+				}
 			}
 		} else {
 			useStream = false
@@ -528,7 +549,9 @@ func init() {
 	generateConfigCmd.Flags().Bool("basic-remount-check", false, "Check for an already mounted status using /etc/mtab.")
 	generateConfigCmd.Flags().Bool("background-download", false, "File download to run in the background on open call.")
 	generateConfigCmd.Flags().Uint64("cache-poll-timeout-msec", 0, "Time in milliseconds in order to poll for possible expired files awaiting cache eviction.")
-	generateConfigCmd.Flags().Bool("upload-modified-only", false, " Flag to turn off unnecessary uploads to storage.")
+	generateConfigCmd.Flags().Bool("upload-modified-only", false, "Flag to turn off unnecessary uploads to storage.")
+	generateConfigCmd.Flags().Bool("ignore-open-flags", false, "Flag to ignore open flags unsupported by blobfuse.")
+	generateConfigCmd.Flags().Bool("debug-libcurl", false, "Flag to allow users to debug libcurl calls.")
 
 	// flags for gen1 mount
 	generateConfigCmd.Flags().BoolVar(&enableGen1, "enable-gen1", false, "To enable Gen1 mount")

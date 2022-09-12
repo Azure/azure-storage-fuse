@@ -77,12 +77,14 @@ var gen1Cmd = &cobra.Command{
 		resetGenOneOptions()
 		options.MountPath = args[0]
 		options.ConfigFile = configFile
-		parseConfig()
-
-		err := config.Unmarshal(&options)
+		err := parseConfig()
 		if err != nil {
-			fmt.Printf("Init error config unmarshall [%s]", err)
 			return err
+		}
+
+		err = config.Unmarshal(&options)
+		if err != nil {
+			return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
 		}
 
 		if !config.IsSet("logging.file-path") {
@@ -95,19 +97,17 @@ var gen1Cmd = &cobra.Command{
 
 		err = options.validate(false)
 		if err != nil {
-			fmt.Printf("mountgen1: error invalid options [%v]", err)
 			return err
 		}
 
 		err = config.UnmarshalKey("azstorage", &azStorageOpt)
 		if err != nil {
-			log.Err("mountgen1: AzStorage config error [invalid config attributes]")
-			return err
+			return fmt.Errorf("invalid azstorage config [%s]", err.Error())
 		}
 
 		// not checking ClientSecret since adlsgen1fuse will be reading secret from env variable (ADL_CLIENT_SECRET)
 		if azStorageOpt.ClientID == "" || azStorageOpt.TenantID == "" || azStorageOpt.AccountName == "" {
-			fmt.Println("Unable to mount Gen1: clientId, tenantId or accountName can't be empty")
+			log.Err("mountgen1 : clientId, tenantId or accountName can't be empty")
 			return fmt.Errorf("clientId, tenantId or accountName can't be empty")
 		}
 
@@ -118,33 +118,29 @@ var gen1Cmd = &cobra.Command{
 
 		err = config.UnmarshalKey("libfuse", &libFuseOpt)
 		if err != nil {
-			log.Err("mountgen1: Libfuse config error [invalid config attributes]")
-			return err
+			return fmt.Errorf("invalid libfuse config [%s]", err.Error())
 		}
 
 		err = config.UnmarshalKey("file_cache", &fileCacheOpt)
 		if err != nil {
-			log.Err("mountgen1: FileCache config error [invalid config attributes]")
-			return err
+			return fmt.Errorf("invalid file_cache config [%s]", err.Error())
 		}
 
 		var logLevel common.LogLevel
 		err = logLevel.Parse(options.Logging.LogLevel)
 		if err != nil {
-			fmt.Println("error: invalid log level")
+			return fmt.Errorf("invalid log level [%s]", err.Error())
 		}
 
 		err = generateAdlsGenOneJson()
 		if err != nil {
-			fmt.Printf("Unable to mount Gen1: [%s]\n", err.Error())
-			return fmt.Errorf("unable to mount Gen1: [%s]", err.Error())
+			return err
 		}
 
 		if !generateJsonOnly {
 			err = runAdlsGenOneBinary()
 			if err != nil {
-				fmt.Printf("Unable to run adlsgen1fuse binary: [%s]\n", err.Error())
-				return fmt.Errorf("unable to run adlsgen1fuse binary: [%s]", err.Error())
+				return err
 			}
 		}
 
@@ -169,7 +165,6 @@ func generateAdlsGenOneJson() error {
 
 		rustFuseMap["credentialtype"] = "servicePrincipal"
 	} else {
-		log.Err("mountgen1::MountRustFuse : For Gen1 account only SPN auth is supported")
 		return fmt.Errorf("for Gen1 account only SPN auth is supported")
 	}
 
@@ -186,9 +181,10 @@ func generateAdlsGenOneJson() error {
 	var allowOther bool
 	err := config.UnmarshalKey("allow-other", &allowOther)
 	if err != nil {
-		log.Err("mountgen1::MountRustFuse : config error [unable to obtain allow-other]")
-		return fmt.Errorf("config error in [%s]", err.Error())
+		log.Err("mountgen1 : generateAdlsGenOneJson:allow-other config error (invalid config attributes) [%s]", err.Error())
+		return fmt.Errorf("unable to parse allow-other config [%s]", err.Error())
 	}
+
 	rustFuseMap["fuseallowother"] = allowOther
 
 	if options.Logging.LogLevel != "" {
@@ -208,7 +204,7 @@ func generateAdlsGenOneJson() error {
 	}
 
 	if fileCacheOpt.TmpPath != "" {
-		rustFuseMap["cachedir"] = fileCacheOpt.TmpPath
+		rustFuseMap["cachedir"] = common.ExpandPath(fileCacheOpt.TmpPath)
 	}
 
 	if azStorageOpt.Container != "" {
@@ -223,8 +219,8 @@ func generateAdlsGenOneJson() error {
 
 	err = os.WriteFile(gen1ConfigFilePath, jsonData, 0777)
 	if err != nil {
-		log.Err("mountgen1::MountRustFuse : Unable to write to adlsgen1fuse.json")
-		return fmt.Errorf("unable to write to adlsgen1fuse.json: [%s]", err.Error())
+		log.Err("mountgen1 : generateAdlsGenOneJson:failed to write adlsgen1fuse.json [%s]", err.Error())
+		return fmt.Errorf("failed to write adlsgen1fuse.json [%s]", err.Error())
 	}
 
 	return nil
@@ -235,22 +231,22 @@ func runAdlsGenOneBinary() error {
 	adlsgen1fuseCmd := exec.Command("adlsgen1fuse", gen1ConfigFilePath)
 	stderr, err := adlsgen1fuseCmd.StderrPipe()
 	if err != nil {
-		log.Err(err.Error())
-		return err
+		log.Err("mountgen1 : runAdlsGenOneBinary:[%s]", err.Error())
+		return fmt.Errorf("failed to setup stderr pipe [%s]", err.Error())
 	}
 	if err := adlsgen1fuseCmd.Start(); err != nil {
-		log.Err(err.Error())
-		return err
+		log.Err("mountgen1 : runAdlsGenOneBinary:[%s]", err.Error())
+		return fmt.Errorf("failed to run adlsgen1fuse binary [%s]", err.Error())
 	}
+
 	data, err := ioutil.ReadAll(stderr)
 	if err != nil {
-		log.Err(err.Error())
-		return err
+		log.Err("mountgen1 : runAdlsGenOneBinary:[%s]", err.Error())
+		return fmt.Errorf("adlsgen1fuse failed [%s]", err.Error())
 	}
 	if err := adlsgen1fuseCmd.Wait(); err != nil {
-		fmt.Printf("Unable to run adlsgen1fuse binary: %s\n", err.Error())
-		fmt.Printf("%s\n", string(data))
-		return err
+		log.Err("mountgen1 : runAdlsGenOneBinary: unable to run adlsgen1fuse binary (%s : %s)", err.Error(), string(data))
+		return fmt.Errorf("unable to run adlsgen1fuse binary (%s : %s)", err.Error(), string(data))
 	}
 
 	return nil

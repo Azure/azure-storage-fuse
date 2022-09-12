@@ -31,107 +31,86 @@
    SOFTWARE
 */
 
-package common
+package cmd
 
 import (
 	"fmt"
-	"math/rand"
+	"io/ioutil"
 	"os"
-	"path/filepath"
 	"testing"
-	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
-var home_dir, _ = os.UserHomeDir()
-
-func randomString(length int) string {
-	rand.Seed(time.Now().UnixNano())
-	b := make([]byte, length)
-	rand.Read(b)
-	return fmt.Sprintf("%x", b)[:length]
-}
-
-type utilTestSuite struct {
+type docTestSuite struct {
 	suite.Suite
 	assert *assert.Assertions
 }
 
-func (suite *utilTestSuite) SetupTest() {
+func (suite *docTestSuite) SetupTest() {
 	suite.assert = assert.New(suite.T())
+	docCmdInput = struct{ outputLocation string }{}
+	options = mountOptions{}
+	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
+	if err != nil {
+		panic("Unable to set silent logger as default.")
+	}
 }
 
-func TestUtil(t *testing.T) {
-	suite.Run(t, new(utilTestSuite))
+func (suite *docTestSuite) cleanupTest() {
+	resetCLIFlags(*docCmd)
 }
 
-func (suite *typesTestSuite) TestDirectoryExists() {
-	rand := randomString(8)
-	dir := filepath.Join(home_dir, "dir"+rand)
-	os.MkdirAll(dir, 0777)
-	defer os.RemoveAll(dir)
+func (suite *docTestSuite) TestDocsGeneration() {
+	defer suite.cleanupTest()
 
-	exists := DirectoryExists(dir)
-	suite.assert.True(exists)
-}
+	opDir := "/tmp/docs_" + randomString(6)
+	defer os.RemoveAll(opDir)
 
-func (suite *typesTestSuite) TestDirectoryDoesNotExist() {
-	rand := randomString(8)
-	dir := filepath.Join(home_dir, "dir"+rand)
-
-	exists := DirectoryExists(dir)
-	suite.assert.False(exists)
-}
-
-func (suite *typesTestSuite) TestEncryptBadKey() {
-	// Generate a random key
-	key := make([]byte, 20)
-	rand.Read(key)
-
-	data := make([]byte, 1024)
-	rand.Read(data)
-
-	_, err := EncryptData(data, key)
-	suite.assert.NotNil(err)
-}
-
-func (suite *typesTestSuite) TestDecryptBadKey() {
-	// Generate a random key
-	key := make([]byte, 20)
-	rand.Read(key)
-
-	data := make([]byte, 1024)
-	rand.Read(data)
-
-	_, err := DecryptData(data, key)
-	suite.assert.NotNil(err)
-}
-
-func (suite *typesTestSuite) TestEncryptDecrypt() {
-	// Generate a random key
-	key := make([]byte, 16)
-	rand.Read(key)
-
-	data := make([]byte, 1024)
-	rand.Read(data)
-
-	cipher, err := EncryptData(data, key)
+	_, err := executeCommandC(rootCmd, "doc", fmt.Sprintf("--output-location=%s", opDir))
 	suite.assert.Nil(err)
-
-	d, err := DecryptData(cipher, key)
+	files, err := os.ReadDir(opDir)
 	suite.assert.Nil(err)
-	suite.assert.EqualValues(data, d)
+	suite.assert.NotZero(len(files))
 }
 
-func (suite *utilTestSuite) TestMonitorBfs() {
-	monitor := MonitorBfs()
-	suite.assert.False(monitor)
+func (suite *docTestSuite) TestOutputDirCreationError() {
+	defer suite.cleanupTest()
+
+	opDir := "/var/docs_" + randomString(6)
+
+	op, err := executeCommandC(rootCmd, "doc", fmt.Sprintf("--output-location=%s", opDir))
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to create output location")
 }
 
-func (suite *utilTestSuite) TestExpandPath() {
-	path := "~/a/b/c/d"
-	expandedPath := ExpandPath(path)
-	suite.assert.Contains(expandedPath, path[2:])
+func (suite *docTestSuite) TestDocsGenerationError() {
+	defer suite.cleanupTest()
+
+	opDir := "/var"
+
+	op, err := executeCommandC(rootCmd, "doc", fmt.Sprintf("--output-location=%s", opDir))
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "cannot generate command tree")
+}
+
+func (suite *docTestSuite) TestOutputDirIsFileError() {
+	defer suite.cleanupTest()
+
+	opFile, err := ioutil.TempFile("", "docfile*")
+	suite.assert.Nil(err)
+	opFileName := opFile.Name()
+	opFile.Close()
+	defer os.Remove(opFileName)
+
+	op, err := executeCommandC(rootCmd, "doc", fmt.Sprintf("--output-location=%s", opFileName))
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "output location is invalid as it is pointing to a file")
+}
+
+func TestDocCommand(t *testing.T) {
+	suite.Run(t, new(docTestSuite))
 }

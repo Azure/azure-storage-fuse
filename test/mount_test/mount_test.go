@@ -59,11 +59,13 @@ type mountSuite struct {
 
 func remountCheck(suite *mountSuite) {
 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--config-file="+configFile)
-	cliOut, err := mountCmd.Output()
-	fmt.Println(string(cliOut))
-	suite.NotEqual(0, len(cliOut))
+	var errb bytes.Buffer
+	mountCmd.Stderr = &errb
+	_, err := mountCmd.Output()
 	suite.NotEqual(nil, err)
-	suite.Contains(string(cliOut), "directory is already mounted")
+	fmt.Println(errb.String())
+	suite.NotEqual(0, len(errb.String()))
+	suite.Contains(errb.String(), "directory is already mounted")
 }
 
 // list blobfuse mounted directories
@@ -119,18 +121,20 @@ func (suite *mountSuite) TestMountCmd() {
 func (suite *mountSuite) TestMountDirNotExists() {
 	tempDir := filepath.Join(mntDir, "tempdir")
 	mountCmd := exec.Command(blobfuseBinary, "mount", tempDir, "--config-file="+configFile)
-	cliOut, err := mountCmd.Output()
-	fmt.Println(string(cliOut))
-	suite.NotEqual(0, len(cliOut))
+	var errb bytes.Buffer
+	mountCmd.Stderr = &errb
+	_, err := mountCmd.Output()
 	suite.NotEqual(nil, err)
-	suite.Contains(string(cliOut), "mount directory does not exists")
+	fmt.Println(errb.String())
+	suite.NotEqual(0, len(errb.String()))
+	suite.Contains(errb.String(), "mount directory does not exists")
 
 	// list blobfuse mounted directories
-	cliOut = listBlobfuseMounts(suite)
+	cliOut := listBlobfuseMounts(suite)
 	suite.Equal(0, len(cliOut))
 
 	// unmount
-	blobfuseUnmount(suite, "nothing to unmount")
+	blobfuseUnmount(suite, "Nothing to unmount")
 }
 
 // mount failure test where the mount directory is not empty
@@ -138,54 +142,60 @@ func (suite *mountSuite) TestMountDirNotEmpty() {
 	tempDir := filepath.Join(mntDir, "tempdir")
 	_ = os.Mkdir(tempDir, 0777)
 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--config-file="+configFile)
-	cliOut, err := mountCmd.Output()
-	fmt.Println(string(cliOut))
-	suite.NotEqual(0, len(cliOut))
+	var errb bytes.Buffer
+	mountCmd.Stderr = &errb
+	_, err := mountCmd.Output()
 	suite.NotEqual(nil, err)
-	suite.Contains(string(cliOut), "mount directory is not empty")
+	fmt.Println(errb.String())
+	suite.NotEqual(0, len(errb.String()))
+	suite.Contains(errb.String(), "mount directory is not empty")
 
 	// list blobfuse mounted directories
-	cliOut = listBlobfuseMounts(suite)
+	cliOut := listBlobfuseMounts(suite)
 	suite.Equal(0, len(cliOut))
 
 	os.RemoveAll(tempDir)
 
 	// unmount
-	blobfuseUnmount(suite, "nothing to unmount")
+	blobfuseUnmount(suite, "Nothing to unmount")
 }
 
 // mount failure test where the mount path is not provided
 func (suite *mountSuite) TestMountPathNotProvided() {
 	mountCmd := exec.Command(blobfuseBinary, "mount", "", "--config-file="+configFile)
-	cliOut, err := mountCmd.Output()
-	fmt.Println(string(cliOut))
-	suite.NotEqual(0, len(cliOut))
+	var errb bytes.Buffer
+	mountCmd.Stderr = &errb
+	_, err := mountCmd.Output()
 	suite.NotEqual(nil, err)
-	suite.Contains(string(cliOut), "mount path not provided")
+	fmt.Println(errb.String())
+	suite.NotEqual(0, len(errb.String()))
+	suite.Contains(errb.String(), "mount path not provided")
 
 	// list blobfuse mounted directories
-	cliOut = listBlobfuseMounts(suite)
+	cliOut := listBlobfuseMounts(suite)
 	suite.Equal(0, len(cliOut))
 
 	// unmount
-	blobfuseUnmount(suite, "nothing to unmount")
+	blobfuseUnmount(suite, "Nothing to unmount")
 }
 
 // mount failure test where config file is not provided
 func (suite *mountSuite) TestConfigFileNotProvided() {
 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir)
-	cliOut, err := mountCmd.Output()
-	fmt.Println(string(cliOut))
-	suite.NotEqual(0, len(cliOut))
+	var errb bytes.Buffer
+	mountCmd.Stderr = &errb
+	_, err := mountCmd.Output()
 	suite.NotEqual(nil, err)
-	suite.Contains(string(cliOut), "failed to mount")
+	fmt.Println(errb.String())
+	suite.NotEqual(0, len(errb.String()))
+	suite.Contains(errb.String(), "failed to initialize new pipeline")
 
 	// list blobfuse mounted directories
-	cliOut = listBlobfuseMounts(suite)
+	cliOut := listBlobfuseMounts(suite)
 	suite.Equal(0, len(cliOut))
 
 	// unmount
-	blobfuseUnmount(suite, "nothing to unmount")
+	blobfuseUnmount(suite, "Nothing to unmount")
 }
 
 // mount failure test where config file is not provided and environment variables have incorrect credentials
@@ -208,7 +218,7 @@ func (suite *mountSuite) TestEnvVarMountFailure() {
 	suite.Equal(0, len(cliOut))
 
 	// unmount
-	blobfuseUnmount(suite, "nothing to unmount")
+	blobfuseUnmount(suite, "Nothing to unmount")
 
 	os.Unsetenv("AZURE_STORAGE_ACCOUNT")
 	os.Unsetenv("AZURE_STORAGE_ACCESS_KEY")
@@ -258,6 +268,95 @@ func (suite *mountSuite) TestEnvVarMount() {
 	os.Unsetenv("AZURE_STORAGE_ACCOUNT_CONTAINER")
 	os.Unsetenv("AZURE_STORAGE_ACCOUNT_TYPE")
 }
+
+// mount test using environment variables for mounting with cli options
+// func (suite *mountSuite) TestEnvVarMountCliParams() {
+// 	// read config file
+// 	configData, err := os.ReadFile(configFile)
+// 	suite.Equal(nil, err)
+
+// 	viper.SetConfigType("yaml")
+// 	viper.ReadConfig(bytes.NewBuffer(configData))
+
+// 	// create environment variables
+// 	os.Setenv("AZURE_STORAGE_ACCOUNT", viper.GetString("azstorage.account-name"))
+// 	os.Setenv("AZURE_STORAGE_ACCESS_KEY", viper.GetString("azstorage.account-key"))
+// 	os.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", viper.GetString("azstorage.endpoint"))
+// 	os.Setenv("AZURE_STORAGE_ACCOUNT_CONTAINER", viper.GetString("azstorage.container"))
+// 	os.Setenv("AZURE_STORAGE_ACCOUNT_TYPE", viper.GetString("azstorage.type"))
+
+// 	tempFile := viper.GetString("file_cache.path")
+
+// 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--tmp-path="+tempFile, "--allow-other",
+// 		"--file-cache-timeout=120", "--cancel-list-on-mount-seconds=10", "--attr-timeout=120", "--entry-timeout=120",
+// 		"--negative-timeout=120", "--log-level=LOG_WARNING", "--cache-size-mb=1000")
+// 	cliOut, err := mountCmd.Output()
+// 	fmt.Println(string(cliOut))
+// 	suite.Equal(0, len(cliOut))
+// 	suite.Equal(nil, err)
+
+// 	// wait for mount
+// 	time.Sleep(10 * time.Second)
+
+// 	// list blobfuse mounted directories
+// 	cliOut = listBlobfuseMounts(suite)
+// 	suite.NotEqual(0, len(cliOut))
+// 	suite.Contains(string(cliOut), mntDir)
+
+// 	// unmount
+// 	blobfuseUnmount(suite, mntDir)
+
+// 	os.Unsetenv("AZURE_STORAGE_ACCOUNT")
+// 	os.Unsetenv("AZURE_STORAGE_ACCESS_KEY")
+// 	os.Unsetenv("AZURE_STORAGE_BLOB_ENDPOINT")
+// 	os.Unsetenv("AZURE_STORAGE_ACCOUNT_CONTAINER")
+// 	os.Unsetenv("AZURE_STORAGE_ACCOUNT_TYPE")
+// }
+
+// // mountv1 test using CSI driver cli options
+// func (suite *mountSuite) TestEnvVarMountCSIParams() {
+// 	// read config file
+// 	configData, err := os.ReadFile(configFile)
+// 	suite.Equal(nil, err)
+
+// 	viper.SetConfigType("yaml")
+// 	viper.ReadConfig(bytes.NewBuffer(configData))
+
+// 	// create environment variables
+// 	os.Setenv("AZURE_STORAGE_ACCOUNT", viper.GetString("azstorage.account-name"))
+// 	os.Setenv("AZURE_STORAGE_ACCESS_KEY", viper.GetString("azstorage.account-key"))
+// 	os.Setenv("AZURE_STORAGE_BLOB_ENDPOINT", viper.GetString("azstorage.endpoint"))
+// 	os.Setenv("AZURE_STORAGE_ACCOUNT_CONTAINER", viper.GetString("azstorage.container"))
+// 	os.Setenv("AZURE_STORAGE_ACCOUNT_TYPE", viper.GetString("azstorage.type"))
+
+// 	tempFile := viper.GetString("file_cache.path")
+
+// 	mountCmd := exec.Command(blobfuseBinary, "mountv1", mntDir, "--tmp-path="+tempFile, "-o", "allow_other",
+// 		"--file-cache-timeout-in-seconds=120", "--use-attr-cache=true", "--cancel-list-on-mount-seconds=10",
+// 		"-o", "attr_timeout=120", "-o", "entry_timeout=120", "-o", "negative_timeout=120",
+// 		"--log-level=LOG_WARNING", "--cache-size-mb=1000", "--output-file=configV1.yaml")
+// 	cliOut, err := mountCmd.Output()
+// 	fmt.Println(string(cliOut))
+// 	suite.Equal(0, len(cliOut))
+// 	suite.Equal(nil, err)
+
+// 	// wait for mount
+// 	time.Sleep(10 * time.Second)
+
+// 	// list blobfuse mounted directories
+// 	cliOut = listBlobfuseMounts(suite)
+// 	suite.NotEqual(0, len(cliOut))
+// 	suite.Contains(string(cliOut), mntDir)
+
+// 	// unmount
+// 	blobfuseUnmount(suite, mntDir)
+
+// 	os.Unsetenv("AZURE_STORAGE_ACCOUNT")
+// 	os.Unsetenv("AZURE_STORAGE_ACCESS_KEY")
+// 	os.Unsetenv("AZURE_STORAGE_BLOB_ENDPOINT")
+// 	os.Unsetenv("AZURE_STORAGE_ACCOUNT_CONTAINER")
+// 	os.Unsetenv("AZURE_STORAGE_ACCOUNT_TYPE")
+// }
 
 func TestMountSuite(t *testing.T) {
 	suite.Run(t, new(mountSuite))

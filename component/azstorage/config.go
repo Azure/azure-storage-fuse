@@ -35,6 +35,7 @@ package azstorage
 
 import (
 	"errors"
+	"fmt"
 	"reflect"
 	"strings"
 
@@ -117,7 +118,7 @@ func (a *AccountType) Parse(s string) error {
 // newServicePrincipalTokenFromMSI : reads them directly from env
 const (
 	EnvAzStorageAccount            = "AZURE_STORAGE_ACCOUNT"
-	EnvAzStorageAccounType         = "AZURE_STORAGE_ACCOUNT_TYPE"
+	EnvAzStorageAccountType        = "AZURE_STORAGE_ACCOUNT_TYPE"
 	EnvAzStorageAccessKey          = "AZURE_STORAGE_ACCESS_KEY"
 	EnvAzStorageSasToken           = "AZURE_STORAGE_SAS_TOKEN"
 	EnvAzStorageIdentityClientId   = "AZURE_STORAGE_IDENTITY_CLIENT_ID"
@@ -166,12 +167,18 @@ type AzStorageOptions struct {
 	AuthResourceString      string `config:"auth-resource" yaml:"auth-resource,omitempty"`
 	UpdateMD5               bool   `config:"update-md5" yaml:"update-md5"`
 	ValidateMD5             bool   `config:"validate-md5" yaml:"validate-md5"`
+
+	// v1 support
+	UseAdls        bool   `config:"use-adls"`
+	UseHTTPS       bool   `config:"use-https"`
+	SetContentType bool   `config:"set-content-type"`
+	CaCertFile     string `config:"ca-cert-file"`
 }
 
 //  RegisterEnvVariables : Register environment varilables
 func RegisterEnvVariables() {
 	config.BindEnv("azstorage.account-name", EnvAzStorageAccount)
-	config.BindEnv("azstorage.type", EnvAzStorageAccounType)
+	config.BindEnv("azstorage.type", EnvAzStorageAccountType)
 
 	config.BindEnv("azstorage.account-key", EnvAzStorageAccessKey)
 
@@ -199,27 +206,45 @@ func RegisterEnvVariables() {
 
 //    ----------- Config Parsing and Validation  ---------------
 
-// formatEndPoint : add the protocol and missing "/" at the end to the endpoint
-func formatEndPoint(endpoint string, http bool) string {
-	correctedEP := endpoint
+// formatEndpointProtocol : add the protocol and missing "/" at the end to the endpoint
+func formatEndpointProtocol(endpoint string, http bool) string {
+	correctedEndpoint := endpoint
 
 	// If the pvtEndpoint does not have protocol mentioned in front, pvtEndpoint parsing will fail while
 	// creating URI also the string shall end with "/"
-	if correctedEP != "" {
-		if !strings.Contains(correctedEP, "://") {
+	if correctedEndpoint != "" {
+		if !(strings.HasPrefix(correctedEndpoint, "https://") ||
+			strings.HasPrefix(correctedEndpoint, "http://")) {
 			if http {
-				correctedEP = "http://" + correctedEP
+				correctedEndpoint = "http://" + correctedEndpoint
 			} else {
-				correctedEP = "https://" + correctedEP
+				correctedEndpoint = "https://" + correctedEndpoint
 			}
 		}
 
-		if correctedEP[len(correctedEP)-1] != '/' {
-			correctedEP = correctedEP + "/"
+		if correctedEndpoint[len(correctedEndpoint)-1] != '/' {
+			correctedEndpoint = correctedEndpoint + "/"
 		}
 	}
 
-	return correctedEP
+	return correctedEndpoint
+}
+
+// formatEndpointAccountType : format the endpoint to match the account type
+func formatEndpointAccountType(endpoint string, account AccountType) string {
+	// TODO : Modify this method when file share support is merged
+	correctedEndpoint := endpoint
+	if strings.Contains(correctedEndpoint, ".blob.") {
+		if account == EAccountType.ADLS() {
+			correctedEndpoint = strings.Replace(correctedEndpoint, ".blob.", ".dfs.", 1)
+		}
+	} else if strings.Contains(correctedEndpoint, ".dfs.") {
+		if account == EAccountType.BLOCK() {
+			correctedEndpoint = strings.Replace(correctedEndpoint, ".dfs.", ".blob.", 1)
+		}
+	}
+
+	return correctedEndpoint
 }
 
 // ParseAndValidateConfig : Parse and validate config
@@ -237,6 +262,28 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		opt.AccountType = "block"
 	}
 
+	if config.IsSet(compName + ".use-adls") {
+		if opt.UseAdls {
+			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.ADLS()
+		} else {
+			az.stConfig.authConfig.AccountType = az.stConfig.authConfig.AccountType.BLOCK()
+		}
+	} else {
+		var accountType AccountType
+		err := accountType.Parse(opt.AccountType)
+		if err != nil {
+			log.Err("ParseAndValidateConfig : Failed to parse account type %s", opt.AccountType)
+			return errors.New("invalid account type")
+		}
+
+		if accountType == EAccountType.INVALID_ACC() {
+			log.Err("ParseAndValidateConfig : Invalid account type %s", opt.AccountType)
+			return errors.New("invalid account type")
+		}
+
+		az.stConfig.authConfig.AccountType = accountType
+	}
+
 	if opt.BlockSize != 0 {
 		if opt.BlockSize > azblob.BlockBlobMaxStageBlockBytes {
 			log.Err("block size is too large. Block size has to be smaller than %s Bytes", azblob.BlockBlobMaxStageBlockBytes)
@@ -245,21 +292,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
 	}
 
-	var accountType AccountType
-	err := accountType.Parse(opt.AccountType)
-	if err != nil {
-		log.Err("ParseAndValidateConfig : Failed to parse account type %s", opt.AccountType)
-		return errors.New("invalid account type")
-	}
-
-	az.stConfig.authConfig.AccountType = accountType
-	if accountType == EAccountType.INVALID_ACC() {
-		log.Err("ParseAndValidateConfig : Invalid account type %s", opt.AccountType)
-		return errors.New("invalid account type")
-	}
-
 	// Validate container name is present or not
-	err = config.UnmarshalKey("mount-all-containers", &az.stConfig.mountAllContainers)
+	err := config.UnmarshalKey("mount-all-containers", &az.stConfig.mountAllContainers)
 	if err != nil {
 		log.Err("ParseAndValidateConfig : Failed to detect mount-all-container")
 	}
@@ -270,15 +304,25 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	az.stConfig.container = opt.Container
 
+	if config.IsSet(compName + ".use-https") {
+		opt.UseHTTP = !opt.UseHTTPS
+	}
+
 	// Validate endpoint
 	if opt.Endpoint == "" {
-		return errors.New("account endpoint not provided")
+		log.Warn("ParseAndValidateConfig : account endpoint not provided, assuming the default .core.windows.net style endpoint")
+		if az.stConfig.authConfig.AccountType == EAccountType.BLOCK() {
+			opt.Endpoint = fmt.Sprintf("%s.blob.core.windows.net", opt.AccountName)
+		} else if az.stConfig.authConfig.AccountType == EAccountType.ADLS() {
+			opt.Endpoint = fmt.Sprintf("%s.dfs.core.windows.net", opt.AccountName)
+		}
 	}
 	az.stConfig.authConfig.Endpoint = opt.Endpoint
-	az.stConfig.authConfig.Endpoint = formatEndPoint(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
+	az.stConfig.authConfig.Endpoint = formatEndpointProtocol(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
+	az.stConfig.authConfig.Endpoint = formatEndpointAccountType(az.stConfig.authConfig.Endpoint, az.stConfig.authConfig.AccountType)
 
 	az.stConfig.authConfig.ActiveDirectoryEndpoint = opt.ActiveDirectoryEndpoint
-	az.stConfig.authConfig.ActiveDirectoryEndpoint = formatEndPoint(az.stConfig.authConfig.ActiveDirectoryEndpoint, false)
+	az.stConfig.authConfig.ActiveDirectoryEndpoint = formatEndpointProtocol(az.stConfig.authConfig.ActiveDirectoryEndpoint, false)
 
 	// If subdirectory is mounted, take the prefix path
 	az.stConfig.prefixPath = opt.PrefixPath
@@ -318,11 +362,13 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		return err
 	}
 
-	var authType AuthType
 	if opt.AuthMode == "" {
-		opt.AuthMode = "key"
+		// Based on other config decide the auth mode
+		// for e.g. if sas token is set then mode shall be set to sas and if key is set then authmode shall be key
+		opt.AuthMode = autoDetectAuthMode(opt)
 	}
 
+	var authType AuthType
 	err = authType.Parse(opt.AuthMode)
 	if err != nil {
 		log.Err("ParseAndValidateConfig : Invalid auth type %s", opt.AccountType)
@@ -383,6 +429,16 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 	if opt.MaxRetryDelay != 0 {
 		az.stConfig.maxRetryDelay = opt.MaxRetryDelay
+	}
+
+	if config.IsSet(compName + ".set-content-type") {
+		log.Warn("unsupported v1 CLI parameter: set-content-type is always true in blobfuse2.")
+	}
+	if config.IsSet(compName + ".ca-cert-file") {
+		log.Warn("unsupported v1 CLI parameter: ca-cert-file is not supported in blobfuse2. Use the default ca cert path for your environment.")
+	}
+	if config.IsSet(compName + ".debug-libcurl") {
+		log.Warn("unsupported v1 CLI parameter: debug-libcurl is not applicable in blobfuse2.")
 	}
 
 	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, Endpoint: %s, ListBlock: %d, MD5 : %v %v",

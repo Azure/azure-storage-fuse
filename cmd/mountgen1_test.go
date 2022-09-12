@@ -138,7 +138,7 @@ func (suite *genOneConfigTestSuite) TestConfigCreation() {
 
 	suite.assert.EqualValues("myClientId", clientId)
 	suite.assert.EqualValues("myTenantId", tenantId)
-	suite.assert.EqualValues("fileCachePath", cacheDir)
+	suite.assert.Contains(cacheDir, "fileCachePath")
 	suite.assert.EqualValues(mntDir, mountDirTest)
 }
 

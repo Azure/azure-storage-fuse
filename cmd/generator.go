@@ -49,18 +49,16 @@ var generateCmd = &cobra.Command{
 	SuggestFor:        []string{"gen", "gener"},
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
-	Run: func(cmd *cobra.Command, args []string) {
-		cmd.Parent().Run(cmd.Parent(), args)
-
+	RunE: func(cmd *cobra.Command, args []string) error {
 		componentName := args[0]
-
 		script := exec.Command("./cmd/componentGenerator.sh", componentName)
 		script.Stdout = os.Stdout
 		script.Stderr = os.Stdout
 
 		if err := script.Run(); err != nil {
-			fmt.Println("Failed to generate new component ", err.Error())
+			return fmt.Errorf("failed to generate new component [%s]", err.Error())
 		}
+		return nil
 	},
 }
 

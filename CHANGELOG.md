@@ -1,10 +1,18 @@
-## 2.0.0-preview.3 (WIP)
+## 2.0.0-preview.4 (WIP)
+**Bug Fixes**
+- Auto detect auth mode based on storage config
+- Auto correct endpoint for public cloud
+- In case of invalid option or failure CLI to return non-zero return code
+
+## 2.0.0-preview.3  (2022-09-02)
 **Features**
 - Added support for directory level SAS while mounting a subdirectory
 - Added support for displaying mount space utilization based on file cache consumption (for example when doing `df`)
 - Added support for updating MD5 sum on file upload
 - Added support for validating MD5 sum on download
-- Added support to enable writeback cache for read only workloads and user configurable for read-write workloads. 
+- Added backwards compatibility support for all blobfuse v1 CLI options
+- Added support to allow disabling writeback cache if a customer is opening a file with O_APPEND
+- Added support to ignore append flag on open when writeback cache is on
 
 **Bug Fixes**
 - Fixed a bug in parsing output of disk utilization summary

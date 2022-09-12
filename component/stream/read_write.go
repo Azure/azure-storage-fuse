@@ -55,6 +55,7 @@ type ReadWriteCache struct {
 func (rw *ReadWriteCache) Configure(conf StreamOptions) error {
 	if conf.BufferSizePerFile <= 0 || conf.BlockSize <= 0 || conf.HandleLimit <= 0 {
 		rw.StreamOnly = true
+		log.Info("ReadWriteCache::Configure : Streamonly set to true")
 	}
 	rw.BlockSize = int64(conf.BlockSize) * mb
 	rw.BufferSizePerHandle = conf.BufferSizePerFile * mb

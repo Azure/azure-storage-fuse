@@ -87,6 +87,7 @@ To learn about a specific command, just include the name of the command (For exa
 
 <!---TODO Add Usage for mount, unmount, etc--->
 ## CLI parameters
+- Note: Blobfuse2 accepts all CLI parameters that Blobfuse does, but may ignore parameters that are no longer applicable. 
 - General options
     * `--config-file=<PATH>`: The path to the config file.
     * `--log-level=<LOG_*>`: The level of logs to capture.
@@ -112,6 +113,8 @@ To learn about a specific command, just include the name of the command (For exa
     * `--entry-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache directory listing.
     * `--negative-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache non-existance of file or directory.
     * `--allow-other`: Allow other users to have access this mount point.
+    * `--disable-writeback-cache`: Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.
+    * `--ignore-open-flags`: Ignore the append and write only flag since O_APPEND and O_WRONLY is not supported with writeback caching.
 
 
 ## Environment variables
@@ -148,6 +151,8 @@ To learn about a specific command, just include the name of the command (For exa
 - How do I generate a SAS with permissions for rename?
 az cli has a command to generate a sas token. Open a command prompt and make sure you are logged in to az cli. Run the following command and the sas token will be displayed in the command prompt.
 az storage container generate-sas --account-name <account name ex:myadlsaccount> --account-key <accountKey> -n <container name> --permissions dlrwac --start <today's date ex: 2021-03-26> --expiry <date greater than the current time ex:2021-03-28>
+- Why do I get EINVAL on opening a file with WRONLY or APPEND flags?
+To improve performance, Blobfuse2 by default enables writeback caching, which can produce unexpected behavior for files opened with WRONLY or APPEND flags, so Blobfuse2 returns EINVAL on open of a file with those flags. Either use disable-writeback-caching to turn off writeback caching (can potentiallu result in degraded performance) or ignore-open-flags (replace WRONLY with RDWR and ignore APPEND) based on your workload. 
 
 ## Un-Supported File system operations
 - mkfifo : fifo creation is not supported by blobfuse2 and this will result in "function not implemented" error
@@ -166,7 +171,7 @@ az storage container generate-sas --account-name <account name ex:myadlsaccount>
   for details on this.
 
 ## Limitations
-- In case of BlockBlob accounts, ACLs are not supported by Azure Storage so Blobfuse2 will bydefault return success for 'chmod' operation. However it will work fine for Gen2 (DataLake) accounts.
+- In case of BlockBlob accounts, ACLs are not supported by Azure Storage so Blobfuse2 will by default return success for 'chmod' operation. However it will work fine for Gen2 (DataLake) accounts.
 
 
 ### Syslog security warning

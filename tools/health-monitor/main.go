@@ -104,8 +104,8 @@ func main() {
 	if hmcommon.OutputPath == "" {
 		currDir, err := os.Getwd()
 		if err != nil {
-			fmt.Printf("health-monitor : failed to get current directory (%s)\n", err.Error())
-			log.Err("main::main : failed to get current directory (%s)\n", err.Error())
+			fmt.Printf("health-monitor : failed to get current directory [%s]\n", err.Error())
+			log.Err("main::main : failed to get current directory [%s]\n", err.Error())
 			return
 		}
 		hmcommon.OutputPath = currDir
@@ -154,7 +154,7 @@ func init() {
 	flag.BoolVar(&hmcommon.NoCpuProf, "no-cpu-profiler", false, "Disable CPU monitoring on blobfuse2 process")
 	flag.BoolVar(&hmcommon.NoMemProf, "no-memory-profiler", false, "Disable memory monitoring on blobfuse2 process")
 	flag.BoolVar(&hmcommon.NoNetProf, "no-network-profiler", false, "Disable network monitoring on blobfuse2 process")
-	flag.BoolVar(&hmcommon.NoFileCacheMon, "no-cache-monitor", false, "Disable file cache directory monitor")
+	flag.BoolVar(&hmcommon.NoFileCacheMon, "no-file-cache-monitor", false, "Disable file cache directory monitor")
 
 	flag.StringVar(&hmcommon.TempCachePath, "cache-path", "", "path to local disk cache")
 	flag.Float64Var(&hmcommon.MaxCacheSize, "max-size-mb", 0, "maximum cache size allowed. Default - 0 (unlimited)")
