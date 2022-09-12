@@ -2,7 +2,7 @@
 
 ## About
 
-Blobfuse2 Health Monitor is a tool which will help in monitoring the mounts done via Blobfuse2. It supports the following types of monitors:
+Blobfuse2 Health Monitor is a tool which will help in monitoring Blobfuse2 mounts. It supports the following types of monitors:
 
 1. **Blobfuse2 Stats Monitor:** Monitor the different statistics of blobfuse2 components like,
     - Total bytes uploaded and downloaded via blobfuse2
