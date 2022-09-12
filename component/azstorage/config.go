@@ -206,27 +206,45 @@ func RegisterEnvVariables() {
 
 //    ----------- Config Parsing and Validation  ---------------
 
-// formatEndPoint : add the protocol and missing "/" at the end to the endpoint
-func formatEndPoint(endpoint string, http bool) string {
-	correctedEP := endpoint
+// formatEndpointProtocol : add the protocol and missing "/" at the end to the endpoint
+func formatEndpointProtocol(endpoint string, http bool) string {
+	correctedEndpoint := endpoint
 
 	// If the pvtEndpoint does not have protocol mentioned in front, pvtEndpoint parsing will fail while
 	// creating URI also the string shall end with "/"
-	if correctedEP != "" {
-		if !strings.Contains(correctedEP, "://") {
+	if correctedEndpoint != "" {
+		if !(strings.HasPrefix(correctedEndpoint, "https://") ||
+			strings.HasPrefix(correctedEndpoint, "http://")) {
 			if http {
-				correctedEP = "http://" + correctedEP
+				correctedEndpoint = "http://" + correctedEndpoint
 			} else {
-				correctedEP = "https://" + correctedEP
+				correctedEndpoint = "https://" + correctedEndpoint
 			}
 		}
 
-		if correctedEP[len(correctedEP)-1] != '/' {
-			correctedEP = correctedEP + "/"
+		if correctedEndpoint[len(correctedEndpoint)-1] != '/' {
+			correctedEndpoint = correctedEndpoint + "/"
 		}
 	}
 
-	return correctedEP
+	return correctedEndpoint
+}
+
+// formatEndpointAccountType : format the endpoint to match the account type
+func formatEndpointAccountType(endpoint string, account AccountType) string {
+	// TODO : Modify this method when file share support is merged
+	correctedEndpoint := endpoint
+	if strings.Contains(correctedEndpoint, ".blob.") {
+		if account == EAccountType.ADLS() {
+			correctedEndpoint = strings.Replace(correctedEndpoint, ".blob.", ".dfs.", 1)
+		}
+	} else if strings.Contains(correctedEndpoint, ".dfs.") {
+		if account == EAccountType.BLOCK() {
+			correctedEndpoint = strings.Replace(correctedEndpoint, ".dfs.", ".blob.", 1)
+		}
+	}
+
+	return correctedEndpoint
 }
 
 // ParseAndValidateConfig : Parse and validate config
@@ -242,14 +260,6 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	// Validate account type property
 	if opt.AccountType == "" {
 		opt.AccountType = "block"
-	}
-
-	if opt.BlockSize != 0 {
-		if opt.BlockSize > azblob.BlockBlobMaxStageBlockBytes {
-			log.Err("block size is too large. Block size has to be smaller than %s Bytes", azblob.BlockBlobMaxStageBlockBytes)
-			return errors.New("block size is too large")
-		}
-		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
 	}
 
 	if config.IsSet(compName + ".use-adls") {
@@ -272,6 +282,14 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 
 		az.stConfig.authConfig.AccountType = accountType
+	}
+
+	if opt.BlockSize != 0 {
+		if opt.BlockSize > azblob.BlockBlobMaxStageBlockBytes {
+			log.Err("block size is too large. Block size has to be smaller than %s Bytes", azblob.BlockBlobMaxStageBlockBytes)
+			return errors.New("block size is too large")
+		}
+		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
 	}
 
 	// Validate container name is present or not
@@ -300,10 +318,11 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 	}
 	az.stConfig.authConfig.Endpoint = opt.Endpoint
-	az.stConfig.authConfig.Endpoint = formatEndPoint(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
+	az.stConfig.authConfig.Endpoint = formatEndpointProtocol(az.stConfig.authConfig.Endpoint, opt.UseHTTP)
+	az.stConfig.authConfig.Endpoint = formatEndpointAccountType(az.stConfig.authConfig.Endpoint, az.stConfig.authConfig.AccountType)
 
 	az.stConfig.authConfig.ActiveDirectoryEndpoint = opt.ActiveDirectoryEndpoint
-	az.stConfig.authConfig.ActiveDirectoryEndpoint = formatEndPoint(az.stConfig.authConfig.ActiveDirectoryEndpoint, false)
+	az.stConfig.authConfig.ActiveDirectoryEndpoint = formatEndpointProtocol(az.stConfig.authConfig.ActiveDirectoryEndpoint, false)
 
 	// If subdirectory is mounted, take the prefix path
 	az.stConfig.prefixPath = opt.PrefixPath
