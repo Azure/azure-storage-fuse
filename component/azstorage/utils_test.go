@@ -262,6 +262,50 @@ func (s *utilsTestSuite) TestBfsProxyOptions() {
 	assert.EqualValues(ro.MaxTries, 3)
 	assert.NotEqual(po.RequestLog.SyslogDisabled, true)
 }
+
+func (s *utilsTestSuite) TestAutoDetectAuthMode() {
+	assert := assert.New(s.T())
+
+	var authType string
+	authType = autoDetectAuthMode(AzStorageOptions{})
+	assert.Equal(authType, "invalid_auth")
+
+	var authType_ AuthType
+	err := authType_.Parse(authType)
+	assert.Nil(err)
+	assert.Equal(authType_, EAuthType.INVALID_AUTH())
+
+	authType = autoDetectAuthMode(AzStorageOptions{AccountKey: "abc"})
+	assert.Equal(authType, "key")
+
+	authType = autoDetectAuthMode(AzStorageOptions{SaSKey: "abc"})
+	assert.Equal(authType, "sas")
+
+	authType = autoDetectAuthMode(AzStorageOptions{ApplicationID: "abc"})
+	assert.Equal(authType, "msi")
+
+	authType = autoDetectAuthMode(AzStorageOptions{ResourceID: "abc"})
+	assert.Equal(authType, "msi")
+
+	authType = autoDetectAuthMode(AzStorageOptions{ClientID: "abc"})
+	assert.Equal(authType, "spn")
+
+	authType = autoDetectAuthMode(AzStorageOptions{ClientSecret: "abc"})
+	assert.Equal(authType, "spn")
+
+	authType = autoDetectAuthMode(AzStorageOptions{TenantID: "abc"})
+	assert.Equal(authType, "spn")
+
+	authType = autoDetectAuthMode(AzStorageOptions{ApplicationID: "abc", AccountKey: "abc", SaSKey: "abc", ClientID: "abc"})
+	assert.Equal(authType, "msi")
+
+	authType = autoDetectAuthMode(AzStorageOptions{AccountKey: "abc", SaSKey: "abc", ClientID: "abc"})
+	assert.Equal(authType, "key")
+
+	authType = autoDetectAuthMode(AzStorageOptions{SaSKey: "abc", ClientID: "abc"})
+	assert.Equal(authType, "sas")
+}
+
 func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(utilsTestSuite))
 }
