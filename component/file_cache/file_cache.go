@@ -298,6 +298,9 @@ func (c *FileCache) Configure(_ bool) error {
 	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d",
 		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold))
 
+	log.Info("FileCache::Configure : max-size %v, cache-file-size %v, stream-create %v",
+		c.maxCacheSize, c.cacheFileSize, c.streamCreateFile)
+
 	return nil
 }
 
@@ -313,6 +316,12 @@ func (c *FileCache) OnConfigChange() {
 	c.cacheTimeout = float64(conf.Timeout)
 	c.policyTrace = conf.EnablePolicyTrace
 	c.maxCacheSize = conf.MaxSizeMB
+	c.cacheFileSize = conf.CacheFileSizeMB * MB
+	c.streamCreateFile = conf.StreamCreateFile
+
+	log.Info("FileCache::OnConfigChange : create-empty %t, cache-timeout %d, max-size %v, cache-file-size %v, stream-create %v",
+		c.createEmptyFile, int(c.cacheTimeout), c.maxCacheSize, c.cacheFileSize, c.streamCreateFile)
+
 	_ = c.policy.UpdateConfig(c.GetPolicyConfig(conf))
 }
 
@@ -614,6 +623,7 @@ func (fc *FileCache) CreateFile(options internal.CreateFileOptions) (*handlemap.
 
 	if fc.streamPlugged && fc.streamCreateFile {
 		// Stream is plugged in and its suppose to handle the create file
+		log.Info("FileCache::CreateFile : name=%s offloaded to streaming", options.Name)
 		return fc.NextComponent().CreateFile(options)
 	}
 
@@ -871,7 +881,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 		if !attrReceived || fileSize > 0 {
 			if !fc.cacheFile(fileSize) {
-				log.Info("FileCache::OpenFile : Decided not to cache %s", options.Name)
+				log.Info("FileCache::OpenFile : name=%s offloaded to streaming", options.Name)
 				f.Close()
 				os.Remove(localPath)
 				return fc.NextComponent().OpenFile(options)
