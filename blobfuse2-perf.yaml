@@ -123,6 +123,14 @@ stages:
           displayName: "Generate v1 Config File"
           continueOnError: false
 
+        - template: 'azure-pipeline-templates/perf/fio.yml'
+          parameters:
+            mnt_path: $(MOUNT_DIR)
+            tmp_path: $(TEMP_DIR)
+            v2_config_path: $(BLOBFUSE2_CFG)
+            v1_config_path: $(BLOBFUSE_CFG)
+            output_path: $(ROOT_DIR)/results_fio.txt
+
         # - script: |
         #     ./test/scripts/run.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
 
@@ -141,16 +149,16 @@ stages:
         #   displayName: 'Git Clone Results'
         #   workingDirectory: $(WORK_DIR)
 
-        - script: |
-            chmod 777 ./test/scripts/fio.sh
-            ./test/scripts/fio.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
-          displayName: 'FIO'
-          workingDirectory: $(WORK_DIR)
+        # - script: |
+        #     chmod 777 ./test/scripts/fio.sh
+        #     ./test/scripts/fio.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+        #   displayName: 'FIO'
+        #   workingDirectory: $(WORK_DIR)
 
-        - script: |
-            cat results_fio.txt
-          displayName: 'FIO Results'
-          workingDirectory: $(WORK_DIR)
+        # - script: |
+        #     cat results_fio.txt
+        #   displayName: 'FIO Results'
+        #   workingDirectory: $(WORK_DIR)
 
         
 
