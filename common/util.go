@@ -87,7 +87,7 @@ func IsDirectoryEmpty(path string) bool {
 	f, _ := os.Open(path)
 	defer f.Close()
 
-	_, err := f.Readdirnames(1)
+	_, err := f.Readdirnames(3)
 	if err == io.EOF {
 		return true
 	}
