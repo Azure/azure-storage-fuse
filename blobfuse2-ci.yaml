@@ -151,3 +151,11 @@ jobs:
         workingDirectory: ./
       displayName: 'Unit tests'
       continueOnError: false
+
+    - task: ComponentGovernanceComponentDetection@0
+      inputs:
+        scanType: 'Register'
+        verbosity: 'Verbose'
+        alertWarningLevel: 'High'
+      displayName: "Component governance"
+      condition: always()
