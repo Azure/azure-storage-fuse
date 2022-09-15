@@ -39,19 +39,22 @@ steps:
       sed_line=3
       blobfuse2_write_average=0
       blobfuse2_read_average=0
+      
+      sudo rm -rf ${{ parameters.mnt_path }}/*
+      ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mnt_path }} --config-file=${{ parameters.v2_config_path }} &
+      if [ $? -ne 0 ]; then
+          exit 1
+      fi
+      sleep 3
+      ps -aux | grep blobfuse2
+
+      rm ${{ parameters.mnt_path }}/testfile4G*
+
       for i in {1..5}; 
       do 
         echo "Blobfuse2 Run $i"
-        sudo rm -rf ${{ parameters.mnt_path }}/*
-        ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mnt_path }} --config-file=${{ parameters.v2_config_path }} &
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
-        sleep 3
-        ps -aux | grep blobfuse2
-        rm ${{ parameters.mnt_path }}/testfile4G
 
-        fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=${{ parameters.mnt_path }}/testfile4G)
+        fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=${{ parameters.mnt_path }}/testfile4G${i})
         echo $fio_result
         read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
         read_iops=$(echo $read_iops | tr '[:lower:]' '[:upper:]')
@@ -65,31 +68,33 @@ steps:
         sed -i "${sed_line}s/$/ ${write_iops} | ${read_iops} |/" ${{ parameters.output_path }}
 
         ls -la ${{ parameters.mnt_path }}
-        rm ${{ parameters.mnt_path }}/testfile4G
-        sudo fusermount3 -u ${{ parameters.mnt_path }}
+        rm ${{ parameters.mnt_path }}/testfile4G${i}
 
         (( sed_line++ ))
         blobfuse2_write_average=$(( $blobfuse2_write_average + $write_iops ))
         blobfuse2_read_average=$(( $blobfuse2_read_average + $read_iops ))
         echo "========================================================="
       done
+      sudo fusermount3 -u ${{ parameters.mnt_path }}
 
       sed_line=3
       blobfuse_write_average=0
       blobfuse_read_average=0
+      sudo rm -rf ${{ parameters.mnt_path }}/*
+      blobfuse ${{ parameters.mnt_path }} --tmp-path=${{ parameters.tmp_path }} --config-file=${{ parameters.v1_config_path }} --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
+      if [ $? -ne 0 ]; then
+          exit 1
+      fi
+      sleep 3
+      ps -aux | grep blobfuse
+
+      rm ${{ parameters.mnt_path }}/testfile4G*
+
       for i in {1..5}; 
       do 
         echo "Blobfuse Run $i"
-        sudo rm -rf ${{ parameters.mnt_path }}/*
-        blobfuse ${{ parameters.mnt_path }} --tmp-path=${{ parameters.tmp_path }} --config-file=${{ parameters.v1_config_path }} --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
-        sleep 3
-        ps -aux | grep blobfuse
-        rm ${{ parameters.mnt_path }}/testfile4G
 
-        fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=${{ parameters.mnt_path }}/testfile4G)
+        fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=${{ parameters.mnt_path }}/testfile4G${i})
         echo $fio_result
         read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
         read_iops=$(echo $read_iops | tr '[:lower:]' '[:upper:]')
@@ -103,14 +108,14 @@ steps:
         sed -i "${sed_line}s/$/ ${write_iops} | ${read_iops} |/" ${{ parameters.output_path }}
 
         ls -la ${{ parameters.mnt_path }}
-        rm ${{ parameters.mnt_path }}/testfile4G
-        sudo fusermount3 -u ${{ parameters.mnt_path }}
+        rm ${{ parameters.mnt_path }}/testfile4G${i}
 
         (( sed_line++ ))
         blobfuse_write_average=$(( $blobfuse_write_average + $write_iops ))
         blobfuse_read_average=$(( $blobfuse_read_average + $read_iops ))
         echo "========================================================="
       done
+      sudo fusermount3 -u ${{ parameters.mnt_path }}
 
       blobfuse2_write_average=$(( $blobfuse2_write_average / 5 ))
       blobfuse2_read_average=$(( $blobfuse2_read_average / 5 ))
