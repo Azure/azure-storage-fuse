@@ -26,21 +26,21 @@ rm -rf $tmpPath
 mkdir -p $mntPath
 mkdir -p $tmpPath
 
+./blobfuse2 mount $mntPath --config-file=$v2configPath &
+if [ $? -ne 0 ]; then
+	exit 1
+fi
+sleep 3
+ps -aux | grep blobfuse2
+
 sed_line=3
 blobfuse2_average=0
 for i in {1..3}; 
 do 
 	echo "Blobfuse2 Run $i"
-	./blobfuse2 mount $mntPath --config-file=$v2configPath &
-	if [ $? -ne 0 ]; then
-        exit 1
-    fi
-	sleep 3
-    ps -aux | grep blobfuse2
-	rm -rf $mntPath/vscode
 
 	start_time=`date +%s`
-	time git clone https://github.com/microsoft/vscode.git $mntPath/vscode
+	time git clone https://github.com/microsoft/vscode.git $mntPath/vscode$i
 	end_time=`date +%s`
 
 	time_diff=$(( $end_time - $start_time ))
@@ -52,30 +52,29 @@ do
 	echo $time_diff
 	sed -i "${sed_line}s/$/ ${time_diff} |/" $outputPath
 
-	ls -la $mntPath
-	rm -rf $mntPath/vscode
-	sudo fusermount3 -u $mntPath
+	rm -rf $mntPath/vscode$i
 
 	(( sed_line++ ))
 	blobfuse2_average=$(( $blobfuse2_average + $time_diff ))
 	echo "========================================================="
 done
+sudo fusermount3 -u $mntPath
+
+blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
+if [ $? -ne 0 ]; then
+	exit 1
+fi
+sleep 3
+ps -aux | grep blobfuse
 
 sed_line=3
 blobfuse_average=0
 for i in {1..3}; 
 do 
 	echo "Blobfuse Run $i"
-	blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
-	if [ $? -ne 0 ]; then
-        exit 1
-    fi
-	sleep 3
-    ps -aux | grep blobfuse
-	rm -rf $mntPath/vscode
 
 	start_time=`date +%s`
-	time git clone https://github.com/microsoft/vscode.git $mntPath/vscode
+	time git clone https://github.com/microsoft/vscode.git $mntPath/vscode$i
 	end_time=`date +%s`
 
 	time_diff=$(( $end_time - $start_time ))
@@ -88,13 +87,14 @@ do
 	sed -i "${sed_line}s/$/ ${time_diff} |/" $outputPath
 
 	ls -la $mntPath
-	rm -rf $mntPath/vscode
-	sudo fusermount3 -u $mntPath
+	rm -rf $mntPath/vscode$i
 
 	(( sed_line++ ))
 	blobfuse_average=$(( $blobfuse_average + $time_diff ))
 	echo "========================================================="
 done
+sudo fusermount3 -u $mntPath
+
 blobfuse2_average=$(( $blobfuse2_average / 3 ))
 blobfuse_average=$(( $blobfuse_average / 3 ))
 

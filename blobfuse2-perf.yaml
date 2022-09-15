@@ -123,32 +123,24 @@ stages:
           displayName: "Generate v1 Config File"
           continueOnError: false
 
-        # - template: 'azure-pipeline-templates/perf/fio.yml'
-        #   parameters:
-        #     working_dir: $(WORK_DIR)
-        #     mnt_path: $(MOUNT_DIR)
-        #     tmp_path: $(TEMP_DIR)
-        #     v2_config_path: $(BLOBFUSE2_CFG)
-        #     v1_config_path: $(BLOBFUSE_CFG)
-        #     output_path: $(ROOT_DIR)/results_fio.txt
-
         # - script: |
         #     ./test/scripts/run.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
 
         #     cat results.txt
         #   displayName: 'Upload Download'
         #   workingDirectory: $(WORK_DIR)
-        # - script: |
-        #     chmod 777 ./test/scripts/git_clone.sh
-        #     ./test/scripts/git_clone.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+        
+        - script: |
+            chmod 777 ./test/scripts/git_clone.sh
+            ./test/scripts/git_clone.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
 
-        #   displayName: 'Git Clone'
-        #   workingDirectory: $(WORK_DIR)
+          displayName: 'Git Clone'
+          workingDirectory: $(WORK_DIR)
 
-        # - script: |
-        #     cat results_git_clone.txt
-        #   displayName: 'Git Clone Results'
-        #   workingDirectory: $(WORK_DIR)
+        - script: |
+            cat results_git_clone.txt
+          displayName: 'Git Clone Results'
+          workingDirectory: $(WORK_DIR)
 
         - script: |
             chmod 777 ./test/scripts/fio.sh
