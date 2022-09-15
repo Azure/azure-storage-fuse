@@ -26,9 +26,11 @@ rm -rf $tmpPath
 mkdir -p $mntPath
 mkdir -p $tmpPath
 
+# Mount Blobfuse2
+rm -rf $mntPath/*
 ./blobfuse2 mount $mntPath --config-file=$v2configPath &
 if [ $? -ne 0 ]; then
-	exit 1
+    exit 1
 fi
 sleep 3
 ps -aux | grep blobfuse2
@@ -60,6 +62,7 @@ do
 done
 sudo fusermount3 -u $mntPath
 
+# Mount Blobfuse
 blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
 if [ $? -ne 0 ]; then
 	exit 1
@@ -86,7 +89,6 @@ do
 	echo $time_diff
 	sed -i "${sed_line}s/$/ ${time_diff} |/" $outputPath
 
-	ls -la $mntPath
 	rm -rf $mntPath/vscode$i
 
 	(( sed_line++ ))

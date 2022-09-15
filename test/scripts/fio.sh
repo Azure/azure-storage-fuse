@@ -63,6 +63,7 @@ do
 done
 sudo fusermount3 -u $mntPath
 
+# Mount Blobfuse
 blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
 if [ $? -ne 0 ]; then
     exit 1
