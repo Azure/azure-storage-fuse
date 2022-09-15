@@ -26,21 +26,22 @@ rm -rf $tmpPath
 mkdir -p $mntPath
 mkdir -p $tmpPath
 
+# Mount Blobfuse2
+./blobfuse2 mount $mntPath --config-file=$v2configPath &
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+sleep 3
+ps -aux | grep blobfuse2
+
 sed_line=3
 blobfuse2_write_average=0
 blobfuse2_read_average=0
 for i in {1..5}; 
 do 
 	echo "Blobfuse2 Run $i"
-	./blobfuse2 mount $mntPath --config-file=$v2configPath &
-    if [ $? -ne 0 ]; then
-        exit 1
-    fi
-	sleep 3
-    ps -aux | grep blobfuse2
-	rm $mntPath/testfile4G
 
-    fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=$mntPath/testfile4G)
+    fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=$mntPath/testfile4G$i)
     echo $fio_result
     read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
     read_iops=$(echo $read_iops | tr '[:lower:]' '[:upper:]')
@@ -53,15 +54,21 @@ do
 
 	sed -i "${sed_line}s/$/ ${write_iops} | ${read_iops} |/" $outputPath
 
-    ls -la $mntPath
-	rm $mntPath/testfile4G
-	sudo fusermount3 -u $mntPath
+	rm $mntPath/testfile4G$i
 
 	(( sed_line++ ))
     blobfuse2_write_average=$(( $blobfuse2_write_average + $write_iops ))
     blobfuse2_read_average=$(( $blobfuse2_read_average + $read_iops ))
     echo "========================================================="
 done
+sudo fusermount3 -u $mntPath
+
+blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
+if [ $? -ne 0 ]; then
+    exit 1
+fi
+sleep 3
+ps -aux | grep blobfuse
 
 sed_line=3
 blobfuse_write_average=0
@@ -69,15 +76,8 @@ blobfuse_read_average=0
 for i in {1..5}; 
 do 
 	echo "Blobfuse Run $i"
-	blobfuse $mntPath --tmp-path=$tmpPath --config-file=$v1configPath --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
-    if [ $? -ne 0 ]; then
-        exit 1
-    fi
-	sleep 3
-    ps -aux | grep blobfuse
-	rm $mntPath/testfile4G
 
-    fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=$mntPath/testfile4G)
+    fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=$mntPath/testfile4G$i)
     echo $fio_result
     read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
     read_iops=$(echo $read_iops | tr '[:lower:]' '[:upper:]')
@@ -90,15 +90,14 @@ do
 
 	sed -i "${sed_line}s/$/ ${write_iops} | ${read_iops} |/" $outputPath
 
-    ls -la $mntPath
-	rm $mntPath/testfile4G
-	sudo fusermount3 -u $mntPath
+	rm $mntPath/testfile4G$i
 
 	(( sed_line++ ))
     blobfuse_write_average=$(( $blobfuse_write_average + $write_iops ))
     blobfuse_read_average=$(( $blobfuse_read_average + $read_iops ))
     echo "========================================================="
 done
+sudo fusermount3 -u $mntPath
 
 blobfuse2_write_average=$(( $blobfuse2_write_average / 5 ))
 blobfuse2_read_average=$(( $blobfuse2_read_average / 5 ))
