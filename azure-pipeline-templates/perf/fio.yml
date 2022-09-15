@@ -12,7 +12,7 @@ parameters:
 
 steps:
   - script: |
-      sudo fusermount3 -u {{ parameters.mnt_path }}
+      sudo fusermount3 -u ${{ parameters.mnt_path }}
       sudo rm ${{ parameters.output_path }}
       sudo rm -rf ${{ parameters.mnt_path }}
       sudo rm -rf ${{ parameters.tmp_path }}
@@ -31,7 +31,7 @@ steps:
 
       echo "| Average |" >> ${{ parameters.output_path }}
       echo "| % Diff |" >> ${{ parameters.output_path }}
-    displayName: 'Setup Ouptut File'
+    displayName: 'Setup Output File'
 
   - script: |
       sed_line=3
@@ -40,15 +40,15 @@ steps:
       for i in {1..5}; 
       do 
         echo "Blobfuse2 Run $i"
-        ./blobfuse2 mount {{ parameters.mnt_path }} --config-file={{ parameters.v2_config_path }} &
+        ./blobfuse2 mount ${{ parameters.mnt_path }} --config-file=${{ parameters.v2_config_path }} &
           if [ $? -ne 0 ]; then
               exit 1
           fi
         sleep 3
           ps -aux | grep blobfuse2
-        rm {{ parameters.mnt_path }}/testfile4G
+        rm ${{ parameters.mnt_path }}/testfile4G
 
-          fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename={{ parameters.mnt_path }}/testfile4G)
+          fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=${{ parameters.mnt_path }}/testfile4G)
           echo $fio_result
           read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
           read_iops=$(echo $read_iops | tr '[:lower:]' '[:upper:]')
@@ -59,11 +59,11 @@ steps:
           write_iops=$(echo $write_iops | numfmt --from=si)
           echo $write_iops
 
-        sed -i "${sed_line}s/$/ ${write_iops} | ${read_iops} |/" {{ parameters.output_path }}
+        sed -i "${sed_line}s/$/ ${write_iops} | ${read_iops} |/" ${{ parameters.output_path }}
 
-          ls -la {{ parameters.mnt_path }}
-        rm {{ parameters.mnt_path }}/testfile4G
-        sudo fusermount3 -u {{ parameters.mnt_path }}
+          ls -la ${{ parameters.mnt_path }}
+        rm ${{ parameters.mnt_path }}/testfile4G
+        sudo fusermount3 -u ${{ parameters.mnt_path }}
 
         (( sed_line++ ))
           blobfuse2_write_average=$(( $blobfuse2_write_average + $write_iops ))
@@ -77,15 +77,15 @@ steps:
       for i in {1..5}; 
       do 
         echo "Blobfuse Run $i"
-        blobfuse {{ parameters.mnt_path }} --tmp-path={{ parameters.tmp_path }} --config-file={{ parameters.v1_config_path }} --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
+        blobfuse ${{ parameters.mnt_path }} --tmp-path=${{ parameters.tmp_path }} --config-file=${{ parameters.v1_config_path }} --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
           if [ $? -ne 0 ]; then
               exit 1
           fi
         sleep 3
           ps -aux | grep blobfuse
-        rm {{ parameters.mnt_path }}/testfile4G
+        rm ${{ parameters.mnt_path }}/testfile4G
 
-          fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename={{ parameters.mnt_path }}/testfile4G)
+          fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=${{ parameters.mnt_path }}/testfile4G)
           echo $fio_result
           read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
           read_iops=$(echo $read_iops | tr '[:lower:]' '[:upper:]')
@@ -96,11 +96,11 @@ steps:
           write_iops=$(echo $write_iops | numfmt --from=si)
           echo $write_iops
 
-        sed -i "${sed_line}s/$/ ${write_iops} | ${read_iops} |/" {{ parameters.output_path }}
+        sed -i "${sed_line}s/$/ ${write_iops} | ${read_iops} |/" ${{ parameters.output_path }}
 
-          ls -la {{ parameters.mnt_path }}
-        rm {{ parameters.mnt_path }}/testfile4G
-        sudo fusermount3 -u {{ parameters.mnt_path }}
+          ls -la ${{ parameters.mnt_path }}
+        rm ${{ parameters.mnt_path }}/testfile4G
+        sudo fusermount3 -u ${{ parameters.mnt_path }}
 
         (( sed_line++ ))
           blobfuse_write_average=$(( $blobfuse_write_average + $write_iops ))
@@ -113,7 +113,7 @@ steps:
       blobfuse_write_average=$(( $blobfuse_write_average / 5 ))
       blobfuse_read_average=$(( $blobfuse_read_average / 5 ))
 
-      sed -i "8s/$/ ${blobfuse2_write_average} | ${blobfuse2_read_average} | ${blobfuse_write_average} | ${blobfuse_read_average} |/" {{ parameters.output_path }}
+      sed -i "8s/$/ ${blobfuse2_write_average} | ${blobfuse2_read_average} | ${blobfuse_write_average} | ${blobfuse_read_average} |/" ${{ parameters.output_path }}
 
       # Calculate the % difference
       diff_write=$(( $blobfuse2_write_average - $blobfuse_write_average ))
@@ -122,7 +122,7 @@ steps:
       diff_read=$(( $blobfuse2_read_average - $blobfuse_read_average ))
       percent_read=`echo "scale=2; $diff_read * 100 / $blobfuse_read_average" | bc`
 
-      sed -i "9s/$/ ${percent_write} | ${percent_read} |/" {{ parameters.output_path }}
+      sed -i "9s/$/ ${percent_write} | ${percent_read} |/" ${{ parameters.output_path }}
     displayName: 'Run Fio Script'
 
 
