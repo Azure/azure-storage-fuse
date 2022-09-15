@@ -27,14 +27,24 @@ On Kubernetes, go [here](https://github.com/kubernetes-sigs/blob-csi-driver)
 
 1. Install blobfuse2
 
-On Ubuntu
+On Ubuntu 20.04 and above
 ```
-sudo apt-get install blobfuse2 fuse
+sudo apt-get install fuse3 blobfuse2
+```
+
+On Ubuntu 18.04
+```
+sudo apt-get install fuse blobfuse2
 ```
 
 On RedHat/CentOS
 ```
-sudo yum install blobfuse2 fuse
+sudo yum install fuse3 blobfuse2
+```
+
+On SUSE
+```
+sudo zypper install fuse3 blobfuse2
 ```
 
 Now you're good to go.
