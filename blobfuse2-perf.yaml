@@ -125,6 +125,7 @@ stages:
 
         - template: 'azure-pipeline-templates/perf/fio.yml'
           parameters:
+            working_dir: $(WORK_DIR)
             mnt_path: $(MOUNT_DIR)
             tmp_path: $(TEMP_DIR)
             v2_config_path: $(BLOBFUSE2_CFG)

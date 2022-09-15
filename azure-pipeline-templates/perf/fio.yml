@@ -1,4 +1,6 @@
 parameters:
+  - name: working_dir
+    type: string
   - name: mnt_path
     type: string
   - name: tmp_path
@@ -40,7 +42,7 @@ steps:
       for i in {1..5}; 
       do 
         echo "Blobfuse2 Run $i"
-        ./blobfuse2 mount ${{ parameters.mnt_path }} --config-file=${{ parameters.v2_config_path }} &
+        ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mnt_path }} --config-file=${{ parameters.v2_config_path }} &
           if [ $? -ne 0 ]; then
               exit 1
           fi
