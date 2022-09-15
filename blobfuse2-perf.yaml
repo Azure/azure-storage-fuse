@@ -129,10 +129,10 @@ stages:
         #     cat results.txt
         #   displayName: 'Upload Download'
         #   workingDirectory: $(WORK_DIR)
-        
+
         - script: |
             chmod 777 ./test/scripts/git_clone.sh
-            ./test/scripts/git_clone.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+            ./test/scripts/git_clone.sh $(MOUNT_DIR)/git $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
 
           displayName: 'Git Clone'
           workingDirectory: $(WORK_DIR)
@@ -144,7 +144,7 @@ stages:
 
         - script: |
             chmod 777 ./test/scripts/fio.sh
-            ./test/scripts/fio.sh $(MOUNT_DIR) $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+            ./test/scripts/fio.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
           displayName: 'FIO'
           workingDirectory: $(WORK_DIR)
 
