@@ -10,9 +10,12 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 - Basic file system operations such as mkdir, opendir, readdir, rmdir, open, 
    read, create, write, close, unlink, truncate, stat, rename
 - Local caching to improve subsequent access times
-- Streaming to support reading large files
+- Streaming to support reading AND writing large files 
 - Parallel downloads and uploads to improve access time for large files
 - Multiple mounts to the same container for read-only workloads
+
+## _New BlobFuse2 Health Monitor_
+One of the biggest BlobFuse2 features is our brand new health monitor. It allows customers gain more insight into how their BlobFuse2 instance is behaving with the rest of their machine. Visit [here](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md) to set it up.
 
 ## Distinctive features compared to blobfuse (v1.x)
 - Blobfuse2 is fuse3 compatible (other than Ubuntu-18 and Debian-9, where it still runs with fuse2)
