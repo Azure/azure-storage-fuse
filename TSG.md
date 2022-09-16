@@ -212,3 +212,5 @@ Make sure you have correctly setup your GO dev environment. Ensure you have inst
 
     sudo apt-get install fuse3 libfuse3-dev -y
 
+## Blobfuse2 Health Monitor
+Enable Blobfuse2 Health Monitor for monitoring the Blobfuse2 mounts. For more details, refer [this](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md).
