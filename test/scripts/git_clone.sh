@@ -42,7 +42,7 @@ do
 	echo "Blobfuse2 Run $i"
 
 	start_time=`date +%s`
-	time git clone https://github.com/microsoft/vscode.git $mntPath/vscode$i
+	time git clone https://github.com/Azure/azure-storage-fuse.git $mntPath/fuse$i
 	end_time=`date +%s`
 
 	time_diff=$(( $end_time - $start_time ))
@@ -54,7 +54,7 @@ do
 	echo $time_diff
 	sed -i "${sed_line}s/$/ ${time_diff} |/" $outputPath
 
-	rm -rf $mntPath/vscode$i
+	rm -rf $mntPath/fuse$i
 
 	(( sed_line++ ))
 	blobfuse2_average=$(( $blobfuse2_average + $time_diff ))
@@ -77,7 +77,7 @@ do
 	echo "Blobfuse Run $i"
 
 	start_time=`date +%s`
-	time git clone https://github.com/microsoft/vscode.git $mntPath/vscode$i
+	time git clone https://github.com/Azure/azure-storage-fuse.git $mntPath/fuse$i
 	end_time=`date +%s`
 
 	time_diff=$(( $end_time - $start_time ))
@@ -89,7 +89,7 @@ do
 	echo $time_diff
 	sed -i "${sed_line}s/$/ ${time_diff} |/" $outputPath
 
-	rm -rf $mntPath/vscode$i
+	rm -rf $mntPath/fuse$i
 
 	(( sed_line++ ))
 	blobfuse_average=$(( $blobfuse_average + $time_diff ))
