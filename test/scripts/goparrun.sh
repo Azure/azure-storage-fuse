@@ -26,6 +26,7 @@ while IFS=, read -r thread count size; do
 	sudo rm -rf $tmpPath/*
 	./test/scripts/pread.sh $thread $count $size $mntPath $outputPath $sed_line
 
+	rm -rf $mntPath/*.tst
 	sudo fusermount3 -u $mntPath
 
 	(( cnt++ ))
