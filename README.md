@@ -35,7 +35,7 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 - Set MD5 sum of a blob while uploading
 - Validate MD5 sum on download and fail file open on mismatch
 - Large file writing through write streaming
-- Blobfuse2 Health Monitor which will help in monitoring Blobfuse2 mounts. For more details refer [this](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md)
+- Blobfuse2 Health Monitor which will help in monitoring Blobfuse2 mounts. For more details, refer [this](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md)
 
  ## Blobfuse2 performance compared to blobfuse(v1.x.x)
 - 'git clone' operation is 25% faster (tested with vscode repo cloning)
