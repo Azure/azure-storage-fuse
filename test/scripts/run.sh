@@ -9,6 +9,12 @@ v1configPath=$4
 outputPath=results.txt
 rm $outputPath
 
+sudo fusermount3 -u $mntPath
+rm -rf $mntPath
+rm -rf $tmpPath
+mkdir -p $mntPath
+mkdir -p $tmpPath
+
 echo "| Case |" >> $outputPath
 echo "| -- |" >> $outputPath
 cnt=1
