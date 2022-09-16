@@ -42,7 +42,7 @@ do
 	echo "Blobfuse2 Run $i"
 
 	start_time=`date +%s`
-	time git clone https://github.com/Azure/azure-storage-fuse.git $mntPath/fuse$i
+	time (git clone https://github.com/Azure/azure-storage-fuse.git $mntPath/fuse$i > /dev/null)
 	end_time=`date +%s`
 
 	time_diff=$(( $end_time - $start_time ))
@@ -77,7 +77,7 @@ do
 	echo "Blobfuse Run $i"
 
 	start_time=`date +%s`
-	time git clone https://github.com/Azure/azure-storage-fuse.git $mntPath/fuse$i
+	time (git clone https://github.com/Azure/azure-storage-fuse.git $mntPath/fuse$i > /dev/null)
 	end_time=`date +%s`
 
 	time_diff=$(( $end_time - $start_time ))
