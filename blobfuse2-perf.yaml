@@ -125,7 +125,7 @@ stages:
 
         - script: |
             chmod 777 ./test/scripts/run.sh
-            ./test/scripts/run.sh $(MOUNT_DIR)/git $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+            ./test/scripts/run.sh $(MOUNT_DIR)/run $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
 
           displayName: 'Upload Download'
           workingDirectory: $(WORK_DIR)
