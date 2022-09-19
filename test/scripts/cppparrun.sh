@@ -35,4 +35,4 @@ while IFS=, read -r thread count size; do
 done < <(tail -n +3 ./test/scripts/test_cases.csv)
 if [ $? -ne 0 ]; then
     	exit 1
-	fi
+fi

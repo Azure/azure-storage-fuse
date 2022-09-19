@@ -27,12 +27,18 @@ sed -i '1s/$/ latest v2 write | latest v2 read | /' $outputPath
 sed -i '2s/$/ -- | -- |/' $outputPath
 
 ./test/scripts/goparrun.sh $mntPath $tmpPath $v2configPath $outputPath
+if [ $? -ne 0 ]; then
+    	exit 1
+fi
 
 # Run v1
 sed -i '1s/$/ v1 write | v1 read | /' $outputPath
 sed -i '2s/$/ -- | -- |/' $outputPath
 
 ./test/scripts/cppparrun.sh $mntPath $tmpPath $v1configPath $outputPath
+if [ $? -ne 0 ]; then
+    	exit 1
+fi
 
 # Calculate the % difference
 tail -n +3 $outputPath > temp.out
