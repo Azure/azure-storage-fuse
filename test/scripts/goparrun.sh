@@ -33,3 +33,6 @@ while IFS=, read -r thread count size; do
 	(( sed_line++ ))
 
 done < <(tail -n +3 ./test/scripts/test_cases.csv)
+if [ $? -ne 0 ]; then
+    	exit 1
+	fi

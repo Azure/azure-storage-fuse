@@ -14,7 +14,7 @@ sed_line=3
 while IFS=, read -r thread count size; do
 
 	echo "Blobfuse | $cnt ($thread threads: $count files : $size MB) |"
-	blobfuse $mntPath --tmp-path=$tmpPath --config-file=$config --log-level=LOG_ERR -o allow_other --file-cache-timeout-in-seconds=0 --use-attr-cache=true --max-concurrency=32
+	blobfuse $mntPath --tmp-path=$tmpPath --config-file=$config --log-level=LOG_ERR --file-cache-timeout-in-seconds=0 --use-attr-cache=true
 	if [ $? -ne 0 ]; then
     	exit 1
 	fi
@@ -33,3 +33,6 @@ while IFS=, read -r thread count size; do
 	(( sed_line++ ))
 
 done < <(tail -n +3 ./test/scripts/test_cases.csv)
+if [ $? -ne 0 ]; then
+    	exit 1
+	fi
