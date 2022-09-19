@@ -183,7 +183,7 @@ func (suite *streamTestSuite) TestDefault() {
 func (suite *streamTestSuite) TestConfig() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 
 	suite.assert.Equal("stream", suite.stream.Name())
@@ -194,7 +194,7 @@ func (suite *streamTestSuite) TestConfig() {
 
 	// assert streaming is on if any of the values is 0
 	suite.cleanupTest()
-	config = "stream:\n  block-size-mb: 0\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config = "stream:\n  block-size-mb: 0\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	suite.assert.EqualValues(true, suite.stream.StreamOnly)
 }
@@ -202,12 +202,12 @@ func (suite *streamTestSuite) TestConfig() {
 func (suite *streamTestSuite) TestReadWriteFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 
 	// assert streaming is on if any of the values is 0
 	suite.cleanupTest()
-	config = "stream:\n  block-size-mb: 0\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config = "stream:\n  block-size-mb: 0\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	_, err := suite.stream.WriteFile(internal.WriteFileOptions{})
 	suite.assert.Equal(syscall.ENOTSUP, err)
@@ -216,12 +216,12 @@ func (suite *streamTestSuite) TestReadWriteFile() {
 func (suite *streamTestSuite) TestReadTruncateFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 
 	// assert streaming is on if any of the values is 0
 	suite.cleanupTest()
-	config = "stream:\n  block-size-mb: 0\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config = "stream:\n  block-size-mb: 0\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	err := suite.stream.TruncateFile(internal.TruncateFileOptions{})
 	suite.assert.Equal(syscall.ENOTSUP, err)
@@ -230,12 +230,12 @@ func (suite *streamTestSuite) TestReadTruncateFile() {
 func (suite *streamTestSuite) TestReadRenameFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 
 	// assert streaming is on if any of the values is 0
 	suite.cleanupTest()
-	config = "stream:\n  block-size-mb: 0\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config = "stream:\n  block-size-mb: 0\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	err := suite.stream.RenameFile(internal.RenameFileOptions{})
 	suite.assert.Equal(syscall.ENOTSUP, err)
@@ -244,12 +244,12 @@ func (suite *streamTestSuite) TestReadRenameFile() {
 func (suite *streamTestSuite) TestReadDeleteFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 
 	// assert streaming is on if any of the values is 0
 	suite.cleanupTest()
-	config = "stream:\n  block-size-mb: 0\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config = "stream:\n  block-size-mb: 0\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	err := suite.stream.DeleteFile(internal.DeleteFileOptions{})
 	suite.assert.Equal(syscall.ENOTSUP, err)
@@ -258,7 +258,7 @@ func (suite *streamTestSuite) TestReadDeleteFile() {
 func (suite *streamTestSuite) TestFlushFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	handle1 := &handlemap.Handle{Size: 2, Path: fileNames[0]}
 	flushFileOptions := internal.FlushFileOptions{Handle: handle1}
@@ -270,12 +270,12 @@ func (suite *streamTestSuite) TestFlushFile() {
 func (suite *streamTestSuite) TestReadDeleteDir() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 
 	// assert streaming is on if any of the values is 0
 	suite.cleanupTest()
-	config = "stream:\n  block-size-mb: 0\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config = "stream:\n  block-size-mb: 0\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	err := suite.stream.DeleteDir(internal.DeleteDirOptions{})
 	suite.assert.Equal(syscall.ENOTSUP, err)
@@ -284,12 +284,12 @@ func (suite *streamTestSuite) TestReadDeleteDir() {
 func (suite *streamTestSuite) TestReadRenameDir() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 
 	// assert streaming is on if any of the values is 0
 	suite.cleanupTest()
-	config = "stream:\n  block-size-mb: 0\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config = "stream:\n  block-size-mb: 0\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	err := suite.stream.RenameDir(internal.RenameDirOptions{})
 	suite.assert.Equal(syscall.ENOTSUP, err)
@@ -298,12 +298,12 @@ func (suite *streamTestSuite) TestReadRenameDir() {
 func (suite *streamTestSuite) TestReadCreateFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 
 	// assert streaming is on if any of the values is 0
 	suite.cleanupTest()
-	config = "stream:\n  block-size-mb: 0\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config = "stream:\n  block-size-mb: 0\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	_, err := suite.stream.CreateFile(internal.CreateFileOptions{})
 	suite.assert.Equal(syscall.ENOTSUP, err)
@@ -312,7 +312,7 @@ func (suite *streamTestSuite) TestReadCreateFile() {
 func (suite *streamTestSuite) TestStreamOnlyError() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 0\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 0\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	// assert streaming is on if any of the values is 0
 	suite.assert.EqualValues(true, suite.stream.StreamOnly)
@@ -327,7 +327,7 @@ func (suite *streamTestSuite) TestStreamOnlyError() {
 func (suite *streamTestSuite) TestCacheOnOpenFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 3\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 3\n"
 	suite.setupTestHelper(config, true)
 	handle := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 
@@ -344,7 +344,7 @@ func (suite *streamTestSuite) TestCacheOnOpenFile() {
 func (suite *streamTestSuite) TestCacheOnOpenFileError() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 3\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 3\n"
 	suite.setupTestHelper(config, true)
 	handle := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 
@@ -360,7 +360,7 @@ func (suite *streamTestSuite) TestFileKeyEviction() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
 	// our config only fits one block - therefore with every open we purge the previous file cached
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 16\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	handle_1 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 	handle_2 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[1]}
@@ -381,7 +381,7 @@ func (suite *streamTestSuite) TestFileKeyEviction() {
 func (suite *streamTestSuite) TestBlockEviction() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 16\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	handle := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 
@@ -406,7 +406,7 @@ func (suite *streamTestSuite) TestBlockEviction() {
 func (suite *streamTestSuite) TestHandles() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 16\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	handle := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 
@@ -428,7 +428,7 @@ func (suite *streamTestSuite) TestHandles() {
 func (suite *streamTestSuite) TestStreamOnlyHandleLimit() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 16\n  handle-limit: 1\n"
+	config := "stream:\n  block-size-mb: 16\n  buffer-size-mb: 16\n  max-buffers: 1\n"
 	suite.setupTestHelper(config, true)
 	handle1 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 	handle2 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
@@ -460,7 +460,7 @@ func (suite *streamTestSuite) TestStreamOnlyHandleLimit() {
 func (suite *streamTestSuite) TestBlockDataOverlap() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 32\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 16\n  buffer-size-mb: 32\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	handle := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 
@@ -488,7 +488,7 @@ func (suite *streamTestSuite) TestBlockDataOverlap() {
 func (suite *streamTestSuite) TestFileSmallerThanBlockSize() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 16\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	handle := &handlemap.Handle{Size: int64(15 * MB), Path: fileNames[0]}
 
@@ -510,7 +510,7 @@ func (suite *streamTestSuite) TestFileSmallerThanBlockSize() {
 func (suite *streamTestSuite) TestEmptyFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 16\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	handle := &handlemap.Handle{Size: 0, Path: fileNames[0]}
 
@@ -531,7 +531,7 @@ func (suite *streamTestSuite) TestEmptyFile() {
 func (suite *streamTestSuite) TestCachePurge() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	handle_1 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 	handle_2 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[1]}
@@ -554,7 +554,7 @@ func (suite *streamTestSuite) TestCachePurge() {
 func (suite *streamTestSuite) TestCachedData() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 16\n  handle-buffer-size-mb: 32\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 16\n  buffer-size-mb: 32\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	var dataBuffer *[]byte
 	var readInBufferOptions internal.ReadInBufferOptions
@@ -595,7 +595,7 @@ func (suite *streamTestSuite) TestCachedData() {
 func (suite *streamTestSuite) TestAsyncReadAndEviction() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 
 	var blockOneDataBuffer *[]byte
@@ -651,7 +651,7 @@ func (suite *streamTestSuite) TestAsyncReadAndEviction() {
 func (suite *streamTestSuite) TestAsyncOpen() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	handle_1 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 	handle_2 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[1]}
@@ -675,7 +675,7 @@ func (suite *streamTestSuite) TestAsyncOpen() {
 func (suite *streamTestSuite) TestAsyncClose() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
-	config := "stream:\n  block-size-mb: 4\n  handle-buffer-size-mb: 16\n  handle-limit: 4\n"
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
 	suite.setupTestHelper(config, true)
 	handle_1 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[0]}
 	handle_2 := &handlemap.Handle{Size: int64(100 * MB), Path: fileNames[1]}
