@@ -69,7 +69,7 @@ func (rw *ReadWriteFilenameCache) Configure(conf StreamOptions) error {
 }
 
 func (rw *ReadWriteFilenameCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
-	// log.Trace("Stream::CreateFile : name=%s, mode=%s", options.Name, options.Mode)
+	log.Trace("Stream::CreateFile : name=%s, mode=%s", options.Name, options.Mode)
 	handle, err := rw.NextComponent().CreateFile(options)
 	if err != nil {
 		log.Err("Stream::CreateFile : error failed to create file %s: [%s]", options.Name, err.Error())
@@ -151,27 +151,27 @@ func (rw *ReadWriteFilenameCache) WriteFile(options internal.WriteFileOptions) (
 
 // TODO: truncate in cache
 func (rw *ReadWriteFilenameCache) TruncateFile(options internal.TruncateFileOptions) error {
-	// log.Trace("Stream::TruncateFile : name=%s, size=%d", options.Name, options.Size)
-	if !rw.StreamOnly {
-		rw.purge(options.Name, false)
-	}
+	log.Trace("Stream::TruncateFile : name=%s, size=%d", options.Name, options.Size)
 	err := rw.NextComponent().TruncateFile(options)
 	if err != nil {
 		log.Err("Stream::TruncateFile : error truncating file %s [%s]", options.Name, err.Error())
 		return err
 	}
+	if !rw.StreamOnly {
+		rw.purge(options.Name, false)
+	}
 	return nil
 }
 
 func (rw *ReadWriteFilenameCache) RenameFile(options internal.RenameFileOptions) error {
-	// log.Trace("Stream::RenameFile : name=%s", options.Src)
-	if !rw.StreamOnly {
-		rw.purge(options.Src, false)
-	}
+	log.Trace("Stream::RenameFile : name=%s", options.Src)
 	err := rw.NextComponent().RenameFile(options)
 	if err != nil {
 		log.Err("Stream::RenameFile : error renaming file %s [%s]", options.Src, err.Error())
 		return err
+	}
+	if !rw.StreamOnly {
+		rw.purge(options.Src, false)
 	}
 	return nil
 }
@@ -196,30 +196,30 @@ func (rw *ReadWriteFilenameCache) CloseFile(options internal.CloseFileOptions) e
 
 func (rw *ReadWriteFilenameCache) FlushFile(options internal.FlushFileOptions) error {
 	// log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
-	err := rw.NextComponent().FlushFile(options)
-	if err != nil {
-		log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
-		return err
+	if options.Handle.Dirty() {
+		err := rw.NextComponent().FlushFile(options)
+		if err != nil {
+			log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
+			return err
+		}
+		options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
 	}
-	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
 	return nil
 }
 
-// TODO: any cached file to be purged without flushing
 func (rw *ReadWriteFilenameCache) DeleteFile(options internal.DeleteFileOptions) error {
-	// log.Trace("Stream::DeleteFile : name=%s", options.Name)
-	if !rw.StreamOnly {
-		rw.purge(options.Name, false)
-	}
+	log.Trace("Stream::DeleteFile : name=%s", options.Name)
 	err := rw.NextComponent().DeleteFile(options)
 	if err != nil {
 		log.Err("Stream::DeleteFile : error deleting file %s [%s]", options.Name, err.Error())
 		return err
 	}
+	if !rw.StreamOnly {
+		rw.purge(options.Name, false)
+	}
 	return nil
 }
 
-// TODO: any cached file to be purged without flushing
 func (rw *ReadWriteFilenameCache) DeleteDirectory(options internal.DeleteDirOptions) error {
 	log.Trace("Stream::DeleteDirectory : name=%s", options.Name)
 	for fileName := range rw.fileCache {
@@ -235,7 +235,6 @@ func (rw *ReadWriteFilenameCache) DeleteDirectory(options internal.DeleteDirOpti
 	return nil
 }
 
-// TODO: any cached file to be purged without flushing
 func (rw *ReadWriteFilenameCache) RenameDirectory(options internal.RenameDirOptions) error {
 	log.Trace("Stream::RenameDirectory : name=%s", options.Src)
 	for fileName := range rw.fileCache {
@@ -310,7 +309,6 @@ func (rw *ReadWriteFilenameCache) purge(fileName string, close bool) {
 	}
 }
 
-//TODO: Store block offset list
 func (rw *ReadWriteFilenameCache) createFileCache(handle *handlemap.Handle) error {
 	// check if file is cached
 	rw.Lock()
