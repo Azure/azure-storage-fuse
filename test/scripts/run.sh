@@ -49,8 +49,9 @@ count=0
 sed_line=3
 
 while IFS=\| read -r casenum case v2write v2read v1write v1read; do
-	writeDiff=$(( $v2write - $v1write ))
-	readDiff=$(( $v2read - $v1read ))
+	# Swapping order of blobfuse and blobfuse2 so that blobfuse2 taking less time reflects it being better than blobfuse. 
+	writeDiff=$(( $v1write - $v2write ))
+	readDiff=$(( $v1read - $v2read ))
 
     writePercent=`echo "scale=2; $writeDiff * 100 / $v1write" | bc`
     readPercent=`echo "scale=2; $readDiff * 100 / $v1read" | bc`
