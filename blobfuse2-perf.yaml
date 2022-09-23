@@ -248,6 +248,7 @@ stages:
             sudo dpkg -i $(ROOT_DIR)/blobfuse2-2.0.0-preview.1-ubuntu-20.04-x86-64.deb
             sudo apt-get install -f
             sudo apt-get install fuse3
+            sleep 10
             blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
             cd $(WORK_DIR)
             python3 $(WORK_DIR)/test/perf_test/resnet50_classify.py --dataset='$(MOUNT_DIR)/data' --job='binary' --log=$(ROOT_DIR)/blobfuse2-perf.json
@@ -263,6 +264,7 @@ stages:
             cd $(WORK_DIR)
             $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=cont1 --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
             $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
+            sleep 10
             python3 $(WORK_DIR)/test/perf_test/resnet50_classify.py --dataset='$(MOUNT_DIR)/data' --job='main' --log=$(ROOT_DIR)/blobfuse2-perf.json
           displayName: "Blobfuse2 ResNet50 on Main"
           env:
