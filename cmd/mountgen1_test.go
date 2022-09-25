@@ -103,6 +103,7 @@ func (suite *genOneConfigTestSuite) SetupTest() {
 
 func (suite *genOneConfigTestSuite) cleanupTest() {
 	resetCLIFlags(*gen1Cmd)
+	generateJsonOnly = false
 }
 
 func TestGenOneConfig(t *testing.T) {
