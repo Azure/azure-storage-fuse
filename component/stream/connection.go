@@ -48,8 +48,9 @@ type StreamConnection interface {
 	ReadInBuffer(internal.ReadInBufferOptions) (int, error)
 	OpenFile(internal.OpenFileOptions) (*handlemap.Handle, error)
 	WriteFile(options internal.WriteFileOptions) (int, error)
-	FlushFile(internal.FlushFileOptions) error
 	TruncateFile(internal.TruncateFileOptions) error
+	FlushFile(internal.FlushFileOptions) error
+	GetAttr(internal.GetAttrOptions) (*internal.ObjAttr, error)
 	CloseFile(options internal.CloseFileOptions) error
 	Stop() error
 }
@@ -61,6 +62,12 @@ func NewStreamConnection(cfg StreamOptions, stream *Stream) StreamConnection {
 		r.Stream = stream
 		_ = r.Configure(cfg)
 		return &r
+	}
+	if cfg.FileCaching {
+		rw := ReadWriteFilenameCache{}
+		rw.Stream = stream
+		_ = rw.Configure(cfg)
+		return &rw
 	}
 	rw := ReadWriteCache{}
 	rw.Stream = stream

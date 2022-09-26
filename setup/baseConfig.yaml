@@ -44,9 +44,10 @@ libfuse:
   # Streaming configuration
 stream:
   # If block-size-mb, blocks-per-file or cache-size-mb are 0, the stream component will not cache blocks. 
-  block-size-mb: <for read only mode - size of each block to be cached in memory while streaming (in MB). Default - 0 MB>
-  handle-limit: <total amount of memory that streaming can consume on the system. Default - 0 MB>
-  handle-buffer-size-mb: <capacity of cached data for per file handle. Default - 0>
+  block-size-mb: <for read only mode:: size of each block to be cached in memory while streaming (in MB). For read/write:: size of newly created blocks. Default - 0 MB>
+  max-buffers: <total number of buffers to store blocks in. Default - 0 MB>
+  buffer-size-mb: <size for each buffer. Default - 0>
+  file-caching: <read/write mode file level caching or handle level caching. Default - false (handle level caching ON)>
 
 # Disk cache related configuration
 file_cache:

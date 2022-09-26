@@ -36,6 +36,7 @@ package handlemap
 import (
 	"os"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/cache_policy"
@@ -57,17 +58,20 @@ const (
 
 // Structure to hold in memory cache for streaming layer
 type Cache struct {
+	sync.RWMutex
 	*cache_policy.LRUCache
 	*common.BlockOffsetList
-	StreamOnly bool
+	StreamOnly  bool
+	HandleCount int64
 }
 
 type Handle struct {
 	sync.RWMutex
-	FObj     *os.File               // File object being represented by this handle
-	CacheObj *Cache                 // Streaming layer cache for this handle
-	ID       HandleID               // Blobfuse assigned unique ID to this handle
-	Size     int64                  // Size of the file being handled here
+	FObj     *os.File // File object being represented by this handle
+	CacheObj *Cache   // Streaming layer cache for this handle
+	ID       HandleID // Blobfuse assigned unique ID to this handle
+	Size     int64    // Size of the file being handled here
+	Mtime    time.Time
 	UnixFD   uint64                 // Unix FD created by create/open syscall
 	OptCnt   uint64                 // Number of operations done on this file
 	Flags    common.BitMap16        // Various states of the file
@@ -171,9 +175,11 @@ func Delete(key HandleID) {
 
 func CreateCacheObject(capacity int64, handle *Handle) {
 	handle.CacheObj = &Cache{
+		sync.RWMutex{},
 		cache_policy.NewLRUCache(capacity),
 		&common.BlockOffsetList{},
 		false,
+		0,
 	}
 }
 
