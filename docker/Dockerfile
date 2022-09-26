@@ -6,13 +6,16 @@ RUN mkdir -p /usr/share/blobfuse2
 
 # Copy blobfuse2 binary to executable path
 COPY ./blobfuse2 /usr/local/bin/
-COPY ./dockerconfig.yaml /usr/share/blobfuse2/config.yaml
+COPY ./config.yaml /usr/share/blobfuse2/
 
 # Install fuse library
 RUN \
 	apt update && \
-	apt-get install -y libfuse3-dev fuse3 rsyslog ca-certificates vim && \
-	echo "user_allow_other" >> /etc/fuse.conf
+	apt-get install -y ca-certificates vim rsyslog
+
+RUN if [ "$FUSE2" = "TRUE" ]; then apt-get install -y libfuse3-dev fuse3; else apt-get install -y libfuse-dev fuse; fi 
+
+RUN echo "user_allow_other" >> /etc/fuse.conf
 
 # Create syslog filter files
 COPY ./11-blobfuse2.conf /etc/rsyslog.d

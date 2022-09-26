@@ -1,7 +1,14 @@
 
 # Build blobfuse2 binary
 cd ..
-./build.sh
+if [ "$1" == "fuse2" ]
+then
+	echo "Building container for libfuse"
+	./build.sh fuse2
+else
+	echo "Building container for libfuse3"
+	./build.sh
+fi
 
 # As docker build can not go out of scope os this directory copy the binary here
 cd -
@@ -13,7 +20,12 @@ cp ../setup/blobfuse2-logrotate ./
 docker image rm azure-blobfuse2 -f
 
 # Build new container image using current code
-docker build -t azure-blobfuse2 -f Dockerfile .
+if [ "$1" == "fuse2" ]
+then
+	docker build -t azure-blobfuse2 -f Dockerfile . --build-arg FUSE2=TRUE
+else
+	docker build -t azure-blobfuse2 -f Dockerfile .
+fi
  
 # Image build is executed so we can clean up temp executable from here
 rm -rf ./blobfuse2
