@@ -63,8 +63,8 @@ type StreamOptions struct {
 	readOnly          bool   `config:"read-only"`
 
 	// v1 support
-	StreamCacheMb    uint64 `config:"stream-cache-mb"`
-	MaxBlocksPerFile uint64 `config:"max-blocks-per-file"`
+	StreamCacheMb    uint64 `config:"stream-cache-mb" yaml:"-"`
+	MaxBlocksPerFile uint64 `config:"max-blocks-per-file" yaml:"-"`
 }
 
 const (

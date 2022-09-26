@@ -48,6 +48,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
+	"github.com/Azure/azure-storage-fuse/v2/component/libfuse"
 	"github.com/Azure/azure-storage-fuse/v2/component/stream"
 
 	"github.com/spf13/cobra"
@@ -458,6 +459,32 @@ func (suite *generateConfigTestSuite) TestCLIParamLogging() {
 	config.UnmarshalKey("logging", &options)
 
 	suite.assert.EqualValues("LOG_DEBUG", options.LogLevel)
+}
+
+func (suite *generateConfigTestSuite) TestCLIParamLibfuse() {
+	defer suite.cleanupTest()
+	name := generateFileName()
+	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+	defer os.Remove(v1ConfigFile.Name())
+	v1ConfigFile.WriteString("accountName myAccountName")
+
+	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
+	defer os.Remove(v2ConfigFile.Name())
+
+	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
+	ignoreOpenFlags := "--ignore-open-flags=true"
+
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, ignoreOpenFlags, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
+	suite.assert.Nil(err)
+
+	// Read the generated v2 config file
+	options := libfuse.LibfuseOptions{}
+
+	viper.SetConfigType("yaml")
+	config.ReadFromConfigFile(v2ConfigFile.Name())
+	config.UnmarshalKey("libfuse", &options)
+
+	suite.assert.True(options.IgnoreOpenFlags)
 }
 
 func (suite *generateConfigTestSuite) TestCLIParamFileCache() {

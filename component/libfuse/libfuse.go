@@ -88,11 +88,11 @@ type LibfuseOptions struct {
 	EntryExpiration         uint32 `config:"entry-expiration-sec" yaml:"entry-expiration-sec,omitempty"`
 	NegativeEntryExpiration uint32 `config:"negative-entry-expiration-sec" yaml:"negative-entry-expiration-sec,omitempty"`
 	EnableFuseTrace         bool   `config:"fuse-trace" yaml:"fuse-trace,omitempty"`
-	allowOther              bool   `config:"allow-other"`
-	readOnly                bool   `config:"read-only"`
+	allowOther              bool   `config:"allow-other" yaml:"-"`
+	readOnly                bool   `config:"read-only" yaml:"-"`
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
-	DisableWritebackCache   bool   `config:"disable-writeback-cache"`
-	IgnoreOpenFlags         bool   `config:"ignore-open-flags"`
+	DisableWritebackCache   bool   `config:"disable-writeback-cache" yaml:"-"`
+	IgnoreOpenFlags         bool   `config:"ignore-open-flags" yaml:"ignore-open-flags,omitempty"`
 }
 
 const compName = "libfuse"
