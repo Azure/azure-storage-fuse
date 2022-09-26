@@ -19,7 +19,7 @@ COPY ./11-blobfuse2.conf /etc/rsyslog.d
 COPY ./blobfuse2-logrotate /etc/logrotate.d/blobfuse2
 
 
-# Create mount directory strcture
+# Create mount directory structure
 RUN \
 	mkdir -p /mnt/blobfuse_mnt && \
 	mkdir -p /tmp/blobfuse_temp && \
