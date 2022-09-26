@@ -34,7 +34,6 @@
 package cmd
 
 import (
-	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -84,12 +83,16 @@ func getPid(blobfuse2Pid string) (string, error) {
 	for _, process := range processes {
 		if strings.Contains(process, fmt.Sprintf("bfusemon --pid=%s", blobfuse2Pid)) {
 			re := regexp.MustCompile(`[-]?\d[\d,]*[\.]?[\d{2}]*`)
-			pid := re.FindAllString(process, 1)[0]
+			pids := re.FindAllString(process, 1)
+			if pids == nil {
+				return "", fmt.Errorf("failed to process PID from %s", process)
+			}
+			pid := pids[0]
 			fmt.Printf("Successfully got health monitor PID %s.\n", pid)
 			return pid, nil
 		}
 	}
-	return "", errors.New("no corresponding health monitor PID found")
+	return "", fmt.Errorf("no corresponding health monitor PID found")
 
 }
 
