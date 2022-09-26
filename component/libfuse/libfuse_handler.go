@@ -625,7 +625,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 				fi.flags = fi.flags &^ (C.O_APPEND | C.O_ACCMODE)
 				fi.flags = fi.flags | C.O_RDWR
 			} else {
-				log.Err("Libfuse::libfuse_open : Flag (%X) not supported to open %s when write back cache is on. Pass --disable-writeback-cache or --ignore-open-flags via CLI", fi.flags, name)
+				log.Err("Libfuse::libfuse_open : Flag (%X) not supported to open %s when write back cache is on. Pass --disable-writeback-cache=true or --ignore-open-flags=true via CLI", fi.flags, name)
 				return -C.EINVAL
 			}
 		}
