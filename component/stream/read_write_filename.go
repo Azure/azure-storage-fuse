@@ -315,10 +315,12 @@ func (rw *ReadWriteFilenameCache) createFileCache(handle *handlemap.Handle) erro
 	defer rw.Unlock()
 	buffer, found := rw.fileCache[handle.Path]
 	if found && !buffer.StreamOnly {
+		// this file is cached set the buffer of the handle to point to the cached obj
 		handle.CacheObj = buffer
 		atomic.AddInt64(&handle.CacheObj.HandleCount, 1)
 		return nil
 	} else {
+		// if the file is not cached then try to create a buffer for it
 		handlemap.CreateCacheObject(int64(rw.BufferSize), handle)
 		if atomic.LoadInt32(&rw.CachedObjects) >= rw.CachedObjLimit {
 			handle.CacheObj.StreamOnly = true
@@ -366,6 +368,7 @@ func (rw *ReadWriteFilenameCache) putBlock(handle *handlemap.Handle, buffer *han
 		if err != nil {
 			return err
 		}
+		// re-attempt to put the block in cache once more after the flush
 		ok = handle.CacheObj.Put(block.StartIndex, block)
 		if !ok {
 			return errors.New("flushed and still unable to put block in cache")
@@ -378,6 +381,7 @@ func (rw *ReadWriteFilenameCache) getBlock(handle *handlemap.Handle, block *comm
 	cached_block, found := handle.CacheObj.Get(block.StartIndex)
 	if !found {
 		block.Data = make([]byte, block.EndIndex-block.StartIndex)
+		// put the newly created block into the cache
 		err := rw.putBlock(handle, handle.CacheObj, block)
 		if err != nil {
 			return block, false, err
