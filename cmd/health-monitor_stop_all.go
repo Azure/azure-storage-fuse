@@ -45,7 +45,6 @@ var healthMonStopAll = &cobra.Command{
 	Short:             "Stop all health monitor binaries",
 	Long:              "Stop all health monitor binaries",
 	SuggestFor:        []string{"al", "all"},
-	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		err := stopAll()
@@ -56,7 +55,7 @@ var healthMonStopAll = &cobra.Command{
 	},
 }
 
-// Attempts to kill the health monitor
+// Attempts to kill all health monitors
 func stopAll() error {
 	cliOut := exec.Command("killall", "bfusemon")
 	_, err := cliOut.Output()
