@@ -13,7 +13,7 @@ RUN \
 	apt update && \
 	apt-get install -y ca-certificates vim rsyslog
 
-RUN if [ "$FUSE2" = "TRUE" ]; then apt-get install -y libfuse3-dev fuse3; else apt-get install -y libfuse-dev fuse; fi 
+RUN if [ "$FUSE2" = "TRUE" ]; then apt-get install -y libfuse-dev fuse; else apt-get install -y libfuse3-dev fuse3; fi 
 
 RUN echo "user_allow_other" >> /etc/fuse.conf
 
