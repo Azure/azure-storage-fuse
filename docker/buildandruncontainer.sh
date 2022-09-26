@@ -3,10 +3,10 @@
 cd ..
 if [ "$1" == "fuse2" ]
 then
-	echo "Building container for libfuse"
+	echo "Building blobfuse2 with libfuse"
 	./build.sh fuse2
 else
-	echo "Building container for libfuse3"
+	echo "Building blobfuse2 with libfuse3"
 	./build.sh
 fi
 
@@ -22,8 +22,10 @@ docker image rm azure-blobfuse2 -f
 # Build new container image using current code
 if [ "$1" == "fuse2" ]
 then
+	echo "Build container for libfuse"
 	docker build -t azure-blobfuse2 -f Dockerfile . --build-arg FUSE2=TRUE
 else
+	echo "Build container for libfuse3"
 	docker build -t azure-blobfuse2 -f Dockerfile .
 fi
  
