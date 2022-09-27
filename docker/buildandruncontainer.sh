@@ -10,7 +10,7 @@ else
 	./build.sh
 fi
 
-# As docker build can not go out of scope os this directory copy the binary here
+# As docker build can not go out of scope of this directory copy the binary here
 cd -
 cp ../blobfuse2 ./
 cp ../setup/11-blobfuse2.conf ./
@@ -36,7 +36,7 @@ rm -rf 11-blobfuse2.conf blobfuse2-logrotate
 # If build was successful then launch a container instance
 status=`docker images | grep azure-blobfuse2`
 if [ $? = 0 ]; then
-	echo " **** Build successful, trying container now ******"
+	echo " **** Build successful, running container now ******"
 	docker run -it --rm \
 		--cap-add=SYS_ADMIN \
 		--device=/dev/fuse \
@@ -48,6 +48,5 @@ if [ $? = 0 ]; then
 else
 	echo "Failed to build docker image"
 fi
-
 
 # Use commands fuse and unfuse inside container to mount and unmount
