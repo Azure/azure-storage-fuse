@@ -16,17 +16,20 @@ cp ../blobfuse2 ./
 cp ../setup/11-blobfuse2.conf ./
 cp ../setup/blobfuse2-logrotate ./
 
+ver=`./blobfuse2 --version | cut -d " " -f 3`
+tag="azure-blobfuse2.$ver"
+
 # Cleanup older container image from docker
-docker image rm azure-blobfuse2 -f
+docker image rm $tag -f
 
 # Build new container image using current code
 if [ "$1" == "fuse2" ]
 then
 	echo "Build container for libfuse"
-	docker build -t azure-blobfuse2 -f Dockerfile . --build-arg FUSE2=TRUE
+	docker build -t $tag -f Dockerfile . --build-arg FUSE2=TRUE
 else
 	echo "Build container for libfuse3"
-	docker build -t azure-blobfuse2 -f Dockerfile .
+	docker build -t $tag -f Dockerfile .
 fi
  
 # Image build is executed so we can clean up temp executable from here
@@ -34,7 +37,8 @@ rm -rf ./blobfuse2
 rm -rf 11-blobfuse2.conf blobfuse2-logrotate
 
 # If build was successful then launch a container instance
-status=`docker images | grep azure-blobfuse2`
+status=`docker images | grep $tag`
+
 if [ $? = 0 ]; then
 	echo " **** Build successful, running container now ******"
 	docker run -it --rm \
@@ -44,7 +48,7 @@ if [ $? = 0 ]; then
 		-e AZURE_STORAGE_ACCOUNT \
 		-e AZURE_STORAGE_ACCESS_KEY \
 		-e AZURE_STORAGE_ACCOUNT_CONTAINER \
-		azure-blobfuse2
+		$tag
 else
 	echo "Failed to build docker image"
 fi
