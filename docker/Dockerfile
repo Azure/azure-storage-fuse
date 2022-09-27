@@ -36,7 +36,7 @@ RUN \
 # Create the mount script and set it to entry point once container start
 RUN \
 	echo "/sbin/rsyslogd" > /usr/share/blobfuse2/blobfuse2-mount.sh && \
-	echo "blobfuse2 mount /mnt/blobfuse_mnt --config-file=/usr/share/blobfuse2/config.yaml" >> /usr/share/blobfuse2/blobfuse2-mount.sh && \
+	echo "blobfuse2 mount /mnt/blobfuse_mnt --config-file=/usr/share/blobfuse2/config.yaml  --ignore-open-flag" >> /usr/share/blobfuse2/blobfuse2-mount.sh && \
 	echo "blobfuse2 unmount all" > /usr/share/blobfuse2/blobfuse2-umount.sh && \
 	chmod 777 /usr/share/blobfuse2/blobfuse2-mount.sh && \
 	chmod 777 /usr/share/blobfuse2/blobfuse2-umount.sh && \
