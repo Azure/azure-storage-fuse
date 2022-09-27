@@ -402,6 +402,54 @@ stages:
 
             - script: |
                 ./blobfuse2 unmount all
+                cp $(BLOBFUSE2_CFG) /tmp/configMountall.yaml
+                echo "mountall:" >> /tmp/configMountall.yaml
+                echo "  container-allowlist:" >> /tmp/configMountall.yaml
+                echo "    - abcd" >> /tmp/configMountall.yaml
+                cat /tmp/configMountall.yaml
+
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_encrypt_all.cov secure encrypt --config-file=/tmp/configMountall.yaml --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
+                if [ $? -ne 0 ]; then
+                  exit 1
+                fi
+
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_all_cmd_secure.cov mount all $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 --log-level=log_debug --foreground=true &
+                if [ $? -ne 0 ]; then
+                  exit 1
+                fi
+
+                sleep 5
+                ./blobfuse2 unmount all
+              workingDirectory: $(WORK_DIR)
+              displayName: "CLI : Mount all with secure config"
+              timeoutInMinutes: 2
+
+            - script: |
+                ./blobfuse2 unmount all
+                cp $(BLOBFUSE2_CFG) /tmp/configMountall.yaml
+                echo "mountall:" >> /tmp/configMountall.yaml
+                echo "  container-denylist:" >> /tmp/configMountall.yaml
+                echo "    - abcd" >> /tmp/configMountall.yaml
+                cat /tmp/configMountall.yaml
+
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/secure_encrypt_all2.cov secure encrypt --config-file=/tmp/configMountall.yaml --output-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 
+                if [ $? -ne 0 ]; then
+                  exit 1
+                fi
+
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_all_cmd_secure2.cov mount all $(MOUNT_DIR) --config-file=$(Pipeline.Workspace)/blobfuse2.azsec --passphrase=123123123123123123123123 --log-level=log_debug --foreground=true &
+                if [ $? -ne 0 ]; then
+                  exit 1
+                fi
+
+                sleep 5
+                ./blobfuse2 unmount all
+              workingDirectory: $(WORK_DIR)
+              displayName: "CLI : Mount all with secure config 2"
+              timeoutInMinutes: 2
+
+            - script: |
+                ./blobfuse2 unmount all
                 ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/mount_foreg.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --log-level=log_debug --foreground=true &
                 if [ $? -ne 0 ]; then
                   exit 1
