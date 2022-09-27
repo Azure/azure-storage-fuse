@@ -62,7 +62,7 @@ func (suite *libfuseTestSuite) TestDefault() {
 func (suite *libfuseTestSuite) TestConfig() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default libfuse generated
-	config := "allow-other: true\nread-only: true\nlibfuse:\n  attribute-expiration-sec: 60\n  entry-expiration-sec: 60\n  negative-entry-expiration-sec: 60\n  fuse-trace: true\n  disable-writeback-cache: true\n  ignore-open-flag: true\n"
+	config := "allow-other: true\nread-only: true\nlibfuse:\n  attribute-expiration-sec: 60\n  entry-expiration-sec: 60\n  negative-entry-expiration-sec: 60\n  fuse-trace: true\n  disable-writeback-cache: true\n  ignore-open-flags: true\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 
 	suite.assert.Equal(suite.libfuse.Name(), "libfuse")
@@ -135,12 +135,12 @@ func (suite *libfuseTestSuite) TestIgnoreAppendFlag() {
 	suite.assert.False(suite.libfuse.ignoreOpenFlag)
 
 	suite.cleanupTest() // clean up the default libfuse generated
-	config := "libfuse:\n  ignore-open-flag: true\n"
+	config := "libfuse:\n  ignore-open-flags: true\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 	suite.assert.True(suite.libfuse.ignoreOpenFlag)
 
 	suite.cleanupTest() // clean up the default libfuse generated
-	config = "libfuse:\n  ignore-open-flag: false\n"
+	config = "libfuse:\n  ignore-open-flags: false\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 	suite.assert.False(suite.libfuse.ignoreOpenFlag)
 }

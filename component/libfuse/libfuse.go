@@ -92,7 +92,7 @@ type LibfuseOptions struct {
 	readOnly                bool   `config:"read-only"`
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
 	DisableWritebackCache   bool   `config:"disable-writeback-cache"`
-	IgnoreOpenFlag          bool   `config:"ignore-open-flag"`
+	IgnoreOpenFlag          bool   `config:"ignore-open-flags"`
 }
 
 const compName = "libfuse"
