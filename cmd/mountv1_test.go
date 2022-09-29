@@ -42,7 +42,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	"github.com/Azure/azure-storage-fuse/v2/component/libfuse"
 	"github.com/Azure/azure-storage-fuse/v2/component/stream"
 
 	"github.com/spf13/cobra"
@@ -776,20 +775,8 @@ func (suite *generateConfigTestSuite) TestLibfuseOptions() {
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "--ignore-open-flags=true")
+		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755")
 	suite.assert.Nil(err)
-
-	// Read the generated v2 config file
-	options := libfuse.LibfuseOptions{}
-
-	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("libfuse", &options)
-
-	suite.assert.EqualValues(120, options.AttributeExpiration)
-	suite.assert.EqualValues(120, options.EntryExpiration)
-	suite.assert.EqualValues(120, options.NegativeEntryExpiration)
-	suite.assert.True(options.IgnoreOpenFlags)
 }
 
 // mountv1 failure test where libfuse options are greater than 8
