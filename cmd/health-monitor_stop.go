@@ -57,7 +57,6 @@ var healthMonStop = &cobra.Command{
 			return fmt.Errorf("pid of blobfuse2 process not given")
 		}
 
-		fmt.Println(blobfuse2Pid)
 		pid, err := getPid(blobfuse2Pid)
 		if err != nil {
 			return fmt.Errorf("failed to get health monitor pid")
@@ -81,7 +80,7 @@ func getPid(blobfuse2Pid string) (string, error) {
 	}
 	processes := strings.Split(string(out), "\n")
 	for _, process := range processes {
-		if strings.Contains(process, fmt.Sprintf("bfusemon --pid=%s", blobfuse2Pid)) {
+		if strings.Contains(process, "bfusemon") && strings.Contains(process, fmt.Sprintf("--pid=%s", blobfuse2Pid)) {
 			re := regexp.MustCompile(`[-]?\d[\d,]*[\.]?[\d{2}]*`)
 			pids := re.FindAllString(process, 1)
 			if pids == nil {
