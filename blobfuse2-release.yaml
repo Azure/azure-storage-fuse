@@ -511,6 +511,20 @@ stages:
               fuse-version: 'fuse3'
               tags: 'fuse3'
               container: 'test-cnt-rhel-82'
+            RHEL-8.6:
+              agentName: "blobfuse-rhel8_6"
+              vmImage: 'RHEL-8.6'
+              fuselib: 'fuse fuse3-libs fuse3-devel'
+              fuse-version: 'fuse3'
+              tags: 'fuse3'
+              container: 'test-cnt-rhel-86'
+            RHEL-9.0:
+              agentName: "blobfuse-rhel9"
+              vmImage: 'RHEL-9.0'
+              fuselib: 'fuse fuse3-libs fuse3-devel'
+              fuse-version: 'fuse3'
+              tags: 'fuse3'
+              container: 'test-cnt-rhel-9'                            
         
         pool:
           name: "blobfuse-rhel-pool"
