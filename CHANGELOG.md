@@ -1,4 +1,7 @@
 ## 2.0.0-preview.4 (WIP)
+**Features**
+- Added support for health-monitor stop --pid=<pid> and health-monitor stop all commands
+
 **Bug Fixes**
 - Auto detect auth mode based on storage config
 - Auto correct endpoint for public cloud
