@@ -50,14 +50,14 @@ type ReadCache struct {
 }
 
 func (r *ReadCache) Configure(conf StreamOptions) error {
-	if conf.BufferSizePerFile <= 0 || conf.BlockSize <= 0 || conf.HandleLimit <= 0 {
+	if conf.BufferSize <= 0 || conf.BlockSize <= 0 || conf.CachedObjLimit <= 0 {
 		r.StreamOnly = true
 		log.Info("ReadCache::Configure : Streamonly set to true")
 	}
 	r.BlockSize = int64(conf.BlockSize) * mb
-	r.BufferSizePerHandle = conf.BufferSizePerFile * mb
-	r.HandleLimit = int32(conf.HandleLimit)
-	r.CachedHandles = 0
+	r.BufferSize = conf.BufferSize * mb
+	r.CachedObjLimit = int32(conf.CachedObjLimit)
+	r.CachedObjects = 0
 	return nil
 }
 
@@ -96,13 +96,13 @@ func (r *ReadCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handl
 		handle = handlemap.NewHandle(options.Name)
 	}
 	if !r.StreamOnly {
-		handlemap.CreateCacheObject(int64(r.BufferSizePerHandle), handle)
-		if r.CachedHandles >= r.HandleLimit {
+		handlemap.CreateCacheObject(int64(r.BufferSize), handle)
+		if r.CachedObjects >= r.CachedObjLimit {
 			log.Trace("Stream::OpenFile : file handle limit exceeded - switch handle to stream only mode %s [%s]", options.Name, handle.ID)
 			handle.CacheObj.StreamOnly = true
 			return handle, nil
 		}
-		atomic.AddInt32(&r.CachedHandles, 1)
+		atomic.AddInt32(&r.CachedObjects, 1)
 		block, exists, err := r.getBlock(handle, 0)
 		if err != nil {
 			log.Err("Stream::OpenFile : error failed to get block on open %s [%s]", options.Name, err.Error())
@@ -196,9 +196,14 @@ func (r *ReadCache) CloseFile(options internal.CloseFileOptions) error {
 		defer options.Handle.CacheObj.Unlock()
 		options.Handle.CacheObj.Purge()
 		options.Handle.CacheObj.StreamOnly = true
-		atomic.AddInt32(&r.CachedHandles, -1)
+		atomic.AddInt32(&r.CachedObjects, -1)
 	}
 	return nil
+}
+
+func (r *ReadCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	// log.Trace("AttrCache::GetAttr : %s", options.Name)
+	return r.NextComponent().GetAttr(options)
 }
 
 func (r *ReadCache) WriteFile(options internal.WriteFileOptions) (int, error) {

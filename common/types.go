@@ -40,6 +40,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/JeffreyRichter/enum/enum"
 )
@@ -176,6 +177,8 @@ type BlockOffsetList struct {
 	BlockList     []*Block //blockId to offset mapping
 	Flags         BitMap16
 	BlockIdLength int64
+	Size          int64
+	Mtime         time.Time
 }
 
 // Dirty : Handle is dirty or not

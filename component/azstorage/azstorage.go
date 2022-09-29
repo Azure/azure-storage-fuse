@@ -365,6 +365,7 @@ func (az *AzStorage) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		return nil, syscall.EFAULT
 	}
 	handle.Size = int64(attr.Size)
+	handle.Mtime = attr.Mtime
 
 	// increment open file handles count
 	azStatsCollector.UpdateStats(stats_manager.Increment, openHandles, (int64)(1))
