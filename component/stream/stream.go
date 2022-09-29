@@ -60,7 +60,7 @@ type StreamOptions struct {
 	BlockSize         uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	BufferSizePerFile uint64 `config:"handle-buffer-size-mb" yaml:"handle-buffer-size-mb,omitempty"`
 	HandleLimit       uint64 `config:"handle-limit" yaml:"handle-limit,omitempty"`
-	readOnly          bool   `config:"read-only"`
+	readOnly          bool   `config:"read-only" yaml:"-"`
 
 	// v1 support
 	StreamCacheMb    uint64 `config:"stream-cache-mb" yaml:"-"`

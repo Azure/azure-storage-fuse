@@ -461,32 +461,6 @@ func (suite *generateConfigTestSuite) TestCLIParamLogging() {
 	suite.assert.EqualValues("LOG_DEBUG", options.LogLevel)
 }
 
-func (suite *generateConfigTestSuite) TestCLIParamLibfuse() {
-	defer suite.cleanupTest()
-	name := generateFileName()
-	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
-	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
-
-	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
-	defer os.Remove(v2ConfigFile.Name())
-
-	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
-	ignoreOpenFlags := "--ignore-open-flags=true"
-
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, ignoreOpenFlags, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
-
-	// Read the generated v2 config file
-	options := libfuse.LibfuseOptions{}
-
-	viper.SetConfigType("yaml")
-	config.ReadFromConfigFile(v2ConfigFile.Name())
-	config.UnmarshalKey("libfuse", &options)
-
-	suite.assert.True(options.IgnoreOpenFlags)
-}
-
 func (suite *generateConfigTestSuite) TestCLIParamFileCache() {
 	defer suite.cleanupTest()
 	name := generateFileName()
@@ -808,8 +782,20 @@ func (suite *generateConfigTestSuite) TestLibfuseOptions() {
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755")
+		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "--ignore-open-flags=true")
 	suite.assert.Nil(err)
+
+	// Read the generated v2 config file
+	options := libfuse.LibfuseOptions{}
+
+	viper.SetConfigType("yaml")
+	config.ReadFromConfigFile(v2ConfigFile.Name())
+	config.UnmarshalKey("libfuse", &options)
+
+	suite.assert.EqualValues(120, options.AttributeExpiration)
+	suite.assert.EqualValues(120, options.EntryExpiration)
+	suite.assert.EqualValues(120, options.NegativeEntryExpiration)
+	suite.assert.True(options.IgnoreOpenFlags)
 }
 
 // mountv1 failure test where libfuse options are greater than 8
