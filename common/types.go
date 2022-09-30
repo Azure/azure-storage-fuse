@@ -69,7 +69,7 @@ const (
 	FuseAllowedFlags = "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
 )
 
-var FuseIgnoredFlags = []string{"default_permissions", "rw", "dev", "suid", "nosuid", "nodev"}
+var FuseIgnoredFlags = []string{"default_permissions", "rw", "dev", "suid", "nosuid", "nodev", "delay_connect"}
 
 var Blobfuse2Version = Blobfuse2Version_()
 
