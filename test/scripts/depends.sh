@@ -25,8 +25,6 @@ getSource()
         if [ "$1" != "$lib" ]
         then
             getSource $lib
-        # else
-            # echo "$lib imported from its own previous verisons"
         fi
     done
     let "level=level - 1"
