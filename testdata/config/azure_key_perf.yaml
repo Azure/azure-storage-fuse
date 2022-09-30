@@ -14,7 +14,7 @@ libfuse:
   entry-expiration-sec: 120
   negative-entry-expiration-sec: 240
   fuse-trace: false
-  ignore-open-flag: true
+  ignore-open-flags: true
 
 file_cache:
   policy: lru

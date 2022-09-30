@@ -31,63 +31,38 @@
    SOFTWARE
 */
 
-package common
+package cmd
 
 import (
-	"path/filepath"
+	"fmt"
+	"os/exec"
+
+	"github.com/spf13/cobra"
 )
 
-const (
-	BlobfuseStats     = "blobfuse_stats"
-	FileCacheMon      = "file_cache_monitor"
-	CpuProfiler       = "cpu_profiler"
-	MemoryProfiler    = "memory_profiler"
-	CpuMemoryProfiler = "cpu_mem_profiler"
-	NetworkProfiler   = "network_profiler"
-
-	BfuseMon = "bfusemon"
-
-	OutputFileName      = "monitor"
-	OutputFileExtension = "json"
-	OutputFileCount     = 10
-	OutputFileSizeinMB  = 10
-)
-
-var (
-	Pid             string
-	BfsPollInterval int
-	ProcMonInterval int
-
-	NoBfsMon       bool
-	NoCpuProf      bool
-	NoMemProf      bool
-	NoNetProf      bool
-	NoFileCacheMon bool
-
-	TempCachePath string
-	MaxCacheSize  float64
-	OutputPath    string
-
-	CheckVersion bool
-)
-
-const BfuseMonitorVersion = "1.0.0-preview.1"
-
-var DefaultWorkDir = "$HOME/.blobfuse2"
-var DefaultLogFile = filepath.Join(DefaultWorkDir, "bfuseMonitor.log")
-
-type CacheEvent struct {
-	CacheEvent      string            `json:"cacheEvent"`
-	Path            string            `json:"path"`
-	IsDir           bool              `json:"isDir"`
-	CacheSize       int64             `json:"cacheSize"`
-	CacheConsumed   string            `json:"cacheConsumed"`
-	CacheFilesCnt   int64             `json:"cacheFilesCount"`
-	EvictedFilesCnt int64             `json:"evictedFilesCount"`
-	Value           map[string]string `json:"value"`
+var healthMonStopAll = &cobra.Command{
+	Use:               "all",
+	Short:             "Stop all health monitor binaries",
+	Long:              "Stop all health monitor binaries",
+	SuggestFor:        []string{"al", "all"},
+	FlagErrorHandling: cobra.ExitOnError,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		err := stopAll()
+		if err != nil {
+			return fmt.Errorf("failed to stop all health monitor binaries [%s]", err.Error())
+		}
+		return nil
+	},
 }
 
-type CpuMemStat struct {
-	CpuUsage string
-	MemUsage string
+// Attempts to kill all health monitors
+func stopAll() error {
+	cliOut := exec.Command("killall", "bfusemon")
+	_, err := cliOut.Output()
+	if err != nil {
+		return err
+	} else {
+		fmt.Println("Successfully stopped all health monitor binaries.")
+		return nil
+	}
 }

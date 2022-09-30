@@ -61,11 +61,11 @@ type StreamOptions struct {
 	BufferSize     uint64 `config:"buffer-size-mb" yaml:"buffer-size-mb,omitempty"`
 	CachedObjLimit uint64 `config:"max-buffers" yaml:"max-buffers,omitempty"`
 	FileCaching    bool   `config:"file-caching" yaml:"file-caching,omitempty"`
-	readOnly       bool   `config:"read-only"`
+	readOnly       bool   `config:"read-only" yaml:"-"`
 
 	// v1 support
-	StreamCacheMb    uint64 `config:"stream-cache-mb"`
-	MaxBlocksPerFile uint64 `config:"max-blocks-per-file"`
+	StreamCacheMb    uint64 `config:"stream-cache-mb" yaml:"-"`
+	MaxBlocksPerFile uint64 `config:"max-blocks-per-file" yaml:"-"`
 }
 
 const (
