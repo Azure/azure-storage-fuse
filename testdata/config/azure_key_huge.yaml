@@ -14,7 +14,7 @@ libfuse:
   attribute-expiration-sec: 120
   entry-expiration-sec: 120
   negative-entry-expiration-sec: 120
-  ignore-open-flag: true
+  ignore-open-flags: true
   
 stream:
   block-size-mb: 1

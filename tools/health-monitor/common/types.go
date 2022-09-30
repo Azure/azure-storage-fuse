@@ -38,11 +38,12 @@ import (
 )
 
 const (
-	BlobfuseStats   = "blobfuse_stats"
-	FileCacheMon    = "file_cache_monitor"
-	CpuProfiler     = "cpu_profiler"
-	MemoryProfiler  = "memory_profiler"
-	NetworkProfiler = "network_profiler"
+	BlobfuseStats     = "blobfuse_stats"
+	FileCacheMon      = "file_cache_monitor"
+	CpuProfiler       = "cpu_profiler"
+	MemoryProfiler    = "memory_profiler"
+	CpuMemoryProfiler = "cpu_mem_profiler"
+	NetworkProfiler   = "network_profiler"
 
 	BfuseMon = "bfusemon"
 
@@ -84,4 +85,9 @@ type CacheEvent struct {
 	CacheFilesCnt   int64             `json:"cacheFilesCount"`
 	EvictedFilesCnt int64             `json:"evictedFilesCount"`
 	Value           map[string]string `json:"value"`
+}
+
+type CpuMemStat struct {
+	CpuUsage string
+	MemUsage string
 }

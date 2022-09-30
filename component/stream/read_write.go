@@ -53,14 +53,14 @@ type ReadWriteCache struct {
 }
 
 func (rw *ReadWriteCache) Configure(conf StreamOptions) error {
-	if conf.BufferSizePerFile <= 0 || conf.BlockSize <= 0 || conf.HandleLimit <= 0 {
+	if conf.BufferSize <= 0 || conf.BlockSize <= 0 || conf.CachedObjLimit <= 0 {
 		rw.StreamOnly = true
 		log.Info("ReadWriteCache::Configure : Streamonly set to true")
 	}
 	rw.BlockSize = int64(conf.BlockSize) * mb
-	rw.BufferSizePerHandle = conf.BufferSizePerFile * mb
-	rw.HandleLimit = int32(conf.HandleLimit)
-	rw.CachedHandles = 0
+	rw.BufferSize = conf.BufferSize * mb
+	rw.CachedObjLimit = int32(conf.CachedObjLimit)
+	rw.CachedObjects = 0
 	return nil
 }
 
@@ -355,6 +355,11 @@ func (rw *ReadWriteCache) Stop() error {
 	return nil
 }
 
+func (rw *ReadWriteCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	// log.Trace("AttrCache::GetAttr : %s", options.Name)
+	return rw.NextComponent().GetAttr(options)
+}
+
 func (rw *ReadWriteCache) purge(handle *handlemap.Handle, size int64) error {
 	handle.CacheObj.Lock()
 	defer handle.CacheObj.Unlock()
@@ -364,14 +369,14 @@ func (rw *ReadWriteCache) purge(handle *handlemap.Handle, size int64) error {
 		atomic.StoreInt64(&handle.Size, size)
 	}
 	handle.CacheObj.StreamOnly = true
-	atomic.AddInt32(&rw.CachedHandles, -1)
+	atomic.AddInt32(&rw.CachedObjects, -1)
 	return nil
 }
 
 func (rw *ReadWriteCache) createHandleCache(handle *handlemap.Handle) error {
-	handlemap.CreateCacheObject(int64(rw.BufferSizePerHandle), handle)
+	handlemap.CreateCacheObject(int64(rw.BufferSize), handle)
 	// if we hit handle limit then stream only on this new handle
-	if atomic.LoadInt32(&rw.CachedHandles) >= rw.HandleLimit {
+	if atomic.LoadInt32(&rw.CachedObjects) >= rw.CachedObjLimit {
 		handle.CacheObj.StreamOnly = true
 		return nil
 	}
@@ -394,15 +399,13 @@ func (rw *ReadWriteCache) createHandleCache(handle *handlemap.Handle) error {
 			return err
 		}
 		block.Id = base64.StdEncoding.EncodeToString(common.NewUUID().Bytes())
-		atomic.AddInt32(&rw.CachedHandles, 1)
 		// our handle will consist of a single block locally for simpler logic
 		handle.CacheObj.BlockList = append(handle.CacheObj.BlockList, block)
 		handle.CacheObj.BlockIdLength = common.GetIdLength(block.Id)
 		// now consists of a block - clear the flag
 		handle.CacheObj.Flags.Clear(common.SmallFile)
-		return nil
 	}
-	atomic.AddInt32(&rw.CachedHandles, 1)
+	atomic.AddInt32(&rw.CachedObjects, 1)
 	return nil
 }
 

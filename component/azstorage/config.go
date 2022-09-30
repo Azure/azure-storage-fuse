@@ -169,10 +169,10 @@ type AzStorageOptions struct {
 	ValidateMD5             bool   `config:"validate-md5" yaml:"validate-md5"`
 
 	// v1 support
-	UseAdls        bool   `config:"use-adls"`
-	UseHTTPS       bool   `config:"use-https"`
-	SetContentType bool   `config:"set-content-type"`
-	CaCertFile     string `config:"ca-cert-file"`
+	UseAdls        bool   `config:"use-adls" yaml:"-"`
+	UseHTTPS       bool   `config:"use-https" yaml:"-"`
+	SetContentType bool   `config:"set-content-type" yaml:"-"`
+	CaCertFile     string `config:"ca-cert-file" yaml:"-"`
 }
 
 //  RegisterEnvVariables : Register environment varilables

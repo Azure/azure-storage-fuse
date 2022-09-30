@@ -102,8 +102,8 @@ type FileCacheOptions struct {
 	StreamCreateFile  bool  `config:"stream-create-file" yaml:"stream-create-file,omitempty"`
 
 	// v1 support
-	V1Timeout     uint32 `config:"file-cache-timeout-in-seconds"`
-	EmptyDirCheck bool   `config:"empty-dir-check"`
+	V1Timeout     uint32 `config:"file-cache-timeout-in-seconds" yaml:"-"`
+	EmptyDirCheck bool   `config:"empty-dir-check" yaml:"-"`
 }
 
 const (

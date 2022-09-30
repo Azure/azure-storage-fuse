@@ -34,9 +34,9 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"strings"
@@ -229,24 +229,13 @@ func generateAdlsGenOneJson() error {
 // run the adlsgen1fuse binary
 func runAdlsGenOneBinary() error {
 	adlsgen1fuseCmd := exec.Command("adlsgen1fuse", gen1ConfigFilePath)
-	stderr, err := adlsgen1fuseCmd.StderrPipe()
-	if err != nil {
-		log.Err("mountgen1 : runAdlsGenOneBinary:[%s]", err.Error())
-		return fmt.Errorf("failed to setup stderr pipe [%s]", err.Error())
-	}
-	if err := adlsgen1fuseCmd.Start(); err != nil {
-		log.Err("mountgen1 : runAdlsGenOneBinary:[%s]", err.Error())
-		return fmt.Errorf("failed to run adlsgen1fuse binary [%s]", err.Error())
-	}
+	var errb bytes.Buffer
+	adlsgen1fuseCmd.Stderr = &errb
+	_, err := adlsgen1fuseCmd.Output()
 
-	data, err := ioutil.ReadAll(stderr)
 	if err != nil {
-		log.Err("mountgen1 : runAdlsGenOneBinary:[%s]", err.Error())
-		return fmt.Errorf("adlsgen1fuse failed [%s]", err.Error())
-	}
-	if err := adlsgen1fuseCmd.Wait(); err != nil {
-		log.Err("mountgen1 : runAdlsGenOneBinary: unable to run adlsgen1fuse binary (%s : %s)", err.Error(), string(data))
-		return fmt.Errorf("unable to run adlsgen1fuse binary (%s : %s)", err.Error(), string(data))
+		log.Err("mountgen1 : runAdlsGenOneBinary: unable to run adlsgen1fuse binary (%s : %s)", err.Error(), errb.String())
+		return fmt.Errorf("unable to run adlsgen1fuse binary (%s : %s)", err.Error(), errb.String())
 	}
 
 	return nil

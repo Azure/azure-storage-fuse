@@ -13,14 +13,14 @@ libfuse:
   attribute-expiration-sec: 0
   entry-expiration-sec: 0
   negative-entry-expiration-sec: 0
-  ignore-open-flag: true
+  ignore-open-flags: true
 
 stream:
   blocks-per-file: 1
   cache-size-mb: 2
   block-size-mb: 4
-  handle-limit: 80
-  handle-buffer-size-mb: 8
+  max-buffers: 80
+  buffer-size-mb: 8
 
 file_cache:
   path: { 1 }

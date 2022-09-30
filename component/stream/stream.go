@@ -45,23 +45,24 @@ import (
 
 type Stream struct {
 	internal.BaseComponent
-	cache               StreamConnection
-	BlockSize           int64
-	BufferSizePerHandle uint64 // maximum number of blocks allowed to be stored for a file
-	HandleLimit         int32
-	CachedHandles       int32
-	StreamOnly          bool // parameter used to check if its pure streaming
+	cache          StreamConnection
+	BlockSize      int64
+	BufferSize     uint64 // maximum number of blocks allowed to be stored for a file
+	CachedObjLimit int32
+	CachedObjects  int32
+	StreamOnly     bool // parameter used to check if its pure streaming
 }
 
 type StreamOptions struct {
-	BlockSize         uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	BufferSizePerFile uint64 `config:"handle-buffer-size-mb" yaml:"handle-buffer-size-mb,omitempty"`
-	HandleLimit       uint64 `config:"handle-limit" yaml:"handle-limit,omitempty"`
-	readOnly          bool   `config:"read-only"`
+	BlockSize      uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	BufferSize     uint64 `config:"buffer-size-mb" yaml:"buffer-size-mb,omitempty"`
+	CachedObjLimit uint64 `config:"max-buffers" yaml:"max-buffers,omitempty"`
+	FileCaching    bool   `config:"file-caching" yaml:"file-caching,omitempty"`
+	readOnly       bool   `config:"read-only" yaml:"-"`
 
 	// v1 support
-	StreamCacheMb    uint64 `config:"stream-cache-mb"`
-	MaxBlocksPerFile uint64 `config:"max-blocks-per-file"`
+	StreamCacheMb    uint64 `config:"stream-cache-mb" yaml:"-"`
+	MaxBlocksPerFile uint64 `config:"max-blocks-per-file" yaml:"-"`
 }
 
 const (
@@ -109,13 +110,13 @@ func (st *Stream) Configure(_ bool) error {
 	}
 
 	if config.IsSet(compName + ".max-blocks-per-file") {
-		conf.BufferSizePerFile = conf.BlockSize * uint64(conf.MaxBlocksPerFile)
+		conf.BufferSize = conf.BlockSize * uint64(conf.MaxBlocksPerFile)
 	}
 
 	if config.IsSet(compName + ".stream-cache-mb") {
-		conf.HandleLimit = conf.StreamCacheMb / conf.BufferSizePerFile
-		if conf.HandleLimit == 0 {
-			conf.HandleLimit = 1
+		conf.CachedObjLimit = conf.StreamCacheMb / conf.BufferSize
+		if conf.CachedObjLimit == 0 {
+			conf.CachedObjLimit = 1
 		}
 	}
 
@@ -126,7 +127,7 @@ func (st *Stream) Configure(_ bool) error {
 	st.cache = NewStreamConnection(conf, st)
 
 	log.Info("Stream::Configure : Buffer size %v, Block size %v, Handle limit %v",
-		conf.BufferSizePerFile, conf.BlockSize, conf.HandleLimit)
+		conf.BufferSize, conf.BlockSize, conf.CachedObjLimit)
 
 	return nil
 }
@@ -193,6 +194,10 @@ func (st *Stream) RenameDir(options internal.RenameDirOptions) error {
 
 func (st *Stream) TruncateFile(options internal.TruncateFileOptions) error {
 	return st.cache.TruncateFile(options)
+}
+
+func (st *Stream) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
+	return st.cache.GetAttr(options)
 }
 
 // ------------------------- Factory -------------------------------------------

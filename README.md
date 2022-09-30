@@ -10,9 +10,12 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 - Basic file system operations such as mkdir, opendir, readdir, rmdir, open, 
    read, create, write, close, unlink, truncate, stat, rename
 - Local caching to improve subsequent access times
-- Streaming to support reading large files
+- Streaming to support reading AND writing large files 
 - Parallel downloads and uploads to improve access time for large files
 - Multiple mounts to the same container for read-only workloads
+
+## _New BlobFuse2 Health Monitor_
+One of the biggest BlobFuse2 features is our brand new health monitor. It allows customers gain more insight into how their BlobFuse2 instance is behaving with the rest of their machine. Visit [here](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md) to set it up.
 
 ## Distinctive features compared to blobfuse (v1.x)
 - Blobfuse2 is fuse3 compatible (other than Ubuntu-18 and Debian-9, where it still runs with fuse2)
@@ -113,8 +116,8 @@ To learn about a specific command, just include the name of the command (For exa
     * `--entry-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache directory listing.
     * `--negative-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache non-existance of file or directory.
     * `--allow-other`: Allow other users to have access this mount point.
-    * `--disable-writeback-cache`: Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.
-    * `--ignore-open-flags`: Ignore the append and write only flag since O_APPEND and O_WRONLY is not supported with writeback caching.
+    * `--disable-writeback-cache=true`: Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.
+    * `--ignore-open-flags=true`: Ignore the append and write only flag since O_APPEND and O_WRONLY is not supported with writeback caching.
 
 
 ## Environment variables
@@ -152,7 +155,7 @@ To learn about a specific command, just include the name of the command (For exa
 az cli has a command to generate a sas token. Open a command prompt and make sure you are logged in to az cli. Run the following command and the sas token will be displayed in the command prompt.
 az storage container generate-sas --account-name <account name ex:myadlsaccount> --account-key <accountKey> -n <container name> --permissions dlrwac --start <today's date ex: 2021-03-26> --expiry <date greater than the current time ex:2021-03-28>
 - Why do I get EINVAL on opening a file with WRONLY or APPEND flags?
-To improve performance, Blobfuse2 by default enables writeback caching, which can produce unexpected behavior for files opened with WRONLY or APPEND flags, so Blobfuse2 returns EINVAL on open of a file with those flags. Either use disable-writeback-caching to turn off writeback caching (can potentiallu result in degraded performance) or ignore-open-flags (replace WRONLY with RDWR and ignore APPEND) based on your workload. 
+To improve performance, Blobfuse2 by default enables writeback caching, which can produce unexpected behavior for files opened with WRONLY or APPEND flags, so Blobfuse2 returns EINVAL on open of a file with those flags. Either use disable-writeback-caching to turn off writeback caching (can potentially result in degraded performance) or ignore-open-flags (replace WRONLY with RDWR and ignore APPEND) based on your workload. 
 
 ## Un-Supported File system operations
 - mkfifo : fifo creation is not supported by blobfuse2 and this will result in "function not implemented" error
