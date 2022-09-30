@@ -394,6 +394,19 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 			//lint:ignore ST1005 ignore
 			return errors.New("Application ID and Resource ID not provided")
 		}
+		v := make(map[string]bool, 3)
+		if opt.ClientID != "" {
+			v[opt.ClientID] = true
+		}
+		if opt.ObjectID != "" {
+			v[opt.ObjectID] = true
+		}
+		if opt.ResourceID != "" {
+			v[opt.ResourceID] = true
+		}
+		if len(v) > 1 {
+			return errors.New("client ID, object ID and MSI resource ID are mutually exclusive")
+		}
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
 		az.stConfig.authConfig.ResourceID = opt.ResourceID
 		az.stConfig.authConfig.ObjectID = opt.ObjectID
