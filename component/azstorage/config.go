@@ -390,12 +390,13 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.SASKey = sanitizeSASKey(opt.SaSKey)
 	case EAuthType.MSI():
 		az.stConfig.authConfig.AuthMode = EAuthType.MSI()
-		if opt.ApplicationID == "" && opt.ResourceID == "" {
+		if opt.ApplicationID == "" && opt.ResourceID == "" && opt.ObjectID == "" {
 			//lint:ignore ST1005 ignore
 			return errors.New("Application ID and Resource ID not provided")
 		}
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
 		az.stConfig.authConfig.ResourceID = opt.ResourceID
+		az.stConfig.authConfig.ObjectID = opt.ObjectID
 
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
@@ -406,6 +407,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.ClientSecret = opt.ClientSecret
 		az.stConfig.authConfig.TenantID = opt.TenantID
+		az.stConfig.authConfig.ObjectID = opt.ObjectID
+
 	default:
 		log.Err("ParseAndValidateConfig : Invalid auth mode %s", opt.AuthMode)
 		return errors.New("invalid auth mode")
