@@ -86,7 +86,7 @@ func (azmsi *azAuthBlobMSI) getCredential() interface{} {
 
 	token, err := azmsi.fetchToken()
 	if err != nil {
-		fmt.Println(token.AccessToken)
+		// fmt.Println(token.AccessToken)
 		fmt.Println(azmsi.config.ObjectID)
 		log.Err("azAuthBlobMSI::getCredential : Failed to get credential [%s]", err.Error())
 		return nil
@@ -120,7 +120,7 @@ func (azmsi *azAuthBfsMSI) getCredential() interface{} {
 	// Generate the token based on configured inputs
 	token, err := azmsi.fetchToken()
 	if err != nil {
-		fmt.Println(token.AccessToken)
+		// fmt.Println(token.AccessToken)
 		fmt.Println(azmsi.config.ObjectID)
 		log.Err("azAuthBfsMSI::getCredential : Failed to get credential [%s]", err.Error())
 		return nil
