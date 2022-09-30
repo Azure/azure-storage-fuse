@@ -103,6 +103,7 @@ func (suite *genOneConfigTestSuite) SetupTest() {
 
 func (suite *genOneConfigTestSuite) cleanupTest() {
 	resetCLIFlags(*gen1Cmd)
+	generateJsonOnly = false
 }
 
 func TestGenOneConfig(t *testing.T) {
@@ -177,5 +178,24 @@ func (suite *genOneConfigTestSuite) TestInvalidAuthMode() {
 	suite.assert.Nil(err)
 
 	_, err = executeCommandC(rootCmd, "mountgen1", mntDir, "--generate-json-only=true", fmt.Sprintf("--config-file=%s", confFile.Name()), fmt.Sprintf("--output-file=%s", outFile.Name()))
+	suite.assert.NotNil(err)
+}
+
+func (suite *genOneConfigTestSuite) TestGen1FuseMount() {
+	defer suite.cleanupTest()
+	confFile, _ := ioutil.TempFile("", "conf*.yaml")
+	outFile, _ := ioutil.TempFile("", "adlsgen1fuse*.json")
+	mntDir, err := ioutil.TempDir("", "mntdir")
+
+	suite.assert.Nil(err)
+
+	defer os.Remove(confFile.Name())
+	defer os.Remove(outFile.Name())
+	defer os.Remove(mntDir)
+
+	_, err = confFile.WriteString(configGenOne)
+	suite.assert.Nil(err)
+
+	_, err = executeCommandC(rootCmd, "mountgen1", mntDir, "--required-free-space-mb=500", fmt.Sprintf("--config-file=%s", confFile.Name()), fmt.Sprintf("--output-file=%s", outFile.Name()))
 	suite.assert.NotNil(err)
 }

@@ -67,7 +67,7 @@ type Libfuse struct {
 	traceEnable           bool
 	extensionPath         string
 	disableWritebackCache bool
-	ignoreOpenFlag        bool
+	ignoreOpenFlags       bool
 	lsFlags               common.BitMap16
 }
 
@@ -88,11 +88,11 @@ type LibfuseOptions struct {
 	EntryExpiration         uint32 `config:"entry-expiration-sec" yaml:"entry-expiration-sec,omitempty"`
 	NegativeEntryExpiration uint32 `config:"negative-entry-expiration-sec" yaml:"negative-entry-expiration-sec,omitempty"`
 	EnableFuseTrace         bool   `config:"fuse-trace" yaml:"fuse-trace,omitempty"`
-	allowOther              bool   `config:"allow-other"`
-	readOnly                bool   `config:"read-only"`
+	allowOther              bool   `config:"allow-other" yaml:"-"`
+	readOnly                bool   `config:"read-only" yaml:"-"`
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
-	DisableWritebackCache   bool   `config:"disable-writeback-cache"`
-	IgnoreOpenFlag          bool   `config:"ignore-open-flags"`
+	DisableWritebackCache   bool   `config:"disable-writeback-cache" yaml:"-"`
+	IgnoreOpenFlags         bool   `config:"ignore-open-flags" yaml:"ignore-open-flags,omitempty"`
 }
 
 const compName = "libfuse"
@@ -168,7 +168,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.allowOther = opt.allowOther
 	lf.extensionPath = opt.ExtensionPath
 	lf.disableWritebackCache = opt.DisableWritebackCache
-	lf.ignoreOpenFlag = opt.IgnoreOpenFlag
+	lf.ignoreOpenFlags = opt.IgnoreOpenFlags
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
@@ -248,8 +248,8 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [invalid config settings]", lf.Name())
 	}
 
-	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d",
-		lf.readOnly, lf.allowOther, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout)
+	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags: %t",
+		lf.readOnly, lf.allowOther, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags)
 
 	return nil
 }

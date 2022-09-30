@@ -9,6 +9,12 @@ v1configPath=$4
 outputPath=results.txt
 rm $outputPath
 
+sudo fusermount3 -u $mntPath
+rm -rf $mntPath
+rm -rf $tmpPath
+mkdir -p $mntPath
+mkdir -p $tmpPath
+
 echo "| Case |" >> $outputPath
 echo "| -- |" >> $outputPath
 cnt=1
@@ -21,12 +27,18 @@ sed -i '1s/$/ latest v2 write | latest v2 read | /' $outputPath
 sed -i '2s/$/ -- | -- |/' $outputPath
 
 ./test/scripts/goparrun.sh $mntPath $tmpPath $v2configPath $outputPath
+if [ $? -ne 0 ]; then
+    	exit 1
+fi
 
 # Run v1
 sed -i '1s/$/ v1 write | v1 read | /' $outputPath
 sed -i '2s/$/ -- | -- |/' $outputPath
 
 ./test/scripts/cppparrun.sh $mntPath $tmpPath $v1configPath $outputPath
+if [ $? -ne 0 ]; then
+    	exit 1
+fi
 
 # Calculate the % difference
 tail -n +3 $outputPath > temp.out
@@ -37,8 +49,9 @@ count=0
 sed_line=3
 
 while IFS=\| read -r casenum case v2write v2read v1write v1read; do
-	writeDiff=$(( $v2write - $v1write ))
-	readDiff=$(( $v2read - $v1read ))
+	# Swapping order of blobfuse and blobfuse2 so that blobfuse2 taking less time reflects it being better than blobfuse. 
+	writeDiff=$(( $v1write - $v2write ))
+	readDiff=$(( $v1read - $v2read ))
 
     writePercent=`echo "scale=2; $writeDiff * 100 / $v1write" | bc`
     readPercent=`echo "scale=2; $readDiff * 100 / $v1read" | bc`
