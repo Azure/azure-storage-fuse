@@ -127,6 +127,7 @@ steps:
     continueOnError: false
 
   - script: |
+      sleep 10s
       sudo fusermount -u ${{ parameters.mount_dir }}
     displayName: 'Unmount ADLS'
 
