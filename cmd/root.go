@@ -177,7 +177,60 @@ func VersionCheck() error {
 	return nil
 }
 
+// ignore commands handled by cobra
+func ignoreCommand(cmdArgs []string) bool {
+	ignoreCmds := []string{"completion", "help"}
+	if len(cmdArgs) > 0 {
+		for _, c := range ignoreCmds {
+			if c == cmdArgs[0] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// parse arguments passed
+func parseArgs(cmdArgs []string) []string {
+	cmdArgs = cmdArgs[1:]
+	cmd, _, err := rootCmd.Find(cmdArgs)
+	if err != nil && cmd == rootCmd && !ignoreCommand(cmdArgs) {
+		cmdArgs = append([]string{"mount"}, cmdArgs...)
+	}
+
+	args := make([]string, 0)
+	for i := 0; i < len(cmdArgs); i++ {
+		if cmdArgs[i] == "-o" {
+			i++
+			if i < len(cmdArgs) {
+				bfuseArgs := make([]string, 0)
+				lfuseArgs := make([]string, 0)
+				opts := strings.Split(cmdArgs[i], ",")
+				for _, o := range opts {
+					if strings.HasPrefix(o, "--") {
+						bfuseArgs = append(bfuseArgs, o)
+					} else {
+						lfuseArgs = append(lfuseArgs, o)
+					}
+				}
+				if len(lfuseArgs) > 0 {
+					args = append(args, "-o", strings.Join(lfuseArgs, ","))
+				}
+				if len(bfuseArgs) > 0 {
+					args = append(args, bfuseArgs...)
+				}
+			}
+		} else {
+			args = append(args, cmdArgs[i])
+		}
+	}
+	return args
+}
+
 func Execute() error {
+	parsedArgs := parseArgs(os.Args)
+	rootCmd.SetArgs(parsedArgs)
+
 	err := rootCmd.Execute()
 	if err != nil {
 		os.Exit(1)

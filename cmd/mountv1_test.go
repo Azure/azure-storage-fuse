@@ -786,7 +786,7 @@ func (suite *generateConfigTestSuite) TestLibfuseOptions() {
 }
 
 // mountv1 failure test where libfuse options are greater than 8
-func (suite *generateConfigTestSuite) TestLibfuseOptionsMoreThan8() {
+func (suite *generateConfigTestSuite) TestLibfuseIgnoreOptions() {
 	defer suite.cleanupTest()
 	name := generateFileName()
 	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
@@ -798,11 +798,10 @@ func (suite *generateConfigTestSuite) TestLibfuseOptionsMoreThan8() {
 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 
 	// greater than 8 libfuse options
-	op, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
+	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o random_option")
-	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "invalid FUSE options")
+		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o dev,suid")
+	suite.assert.Nil(err)
 }
 
 // mountv1 failure test where a libfuse option is incorrect

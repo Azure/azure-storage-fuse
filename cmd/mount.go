@@ -267,21 +267,14 @@ var mountCmd = &cobra.Command{
 		}
 
 		if config.IsSet("libfuse-options") {
-			allowedFlags := "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
-
-			// there are only 8 available options for -o so if we have more we should throw
-			if len(options.LibfuseOptions) > 8 {
-				return errors.New(allowedFlags)
-			}
-
 			for _, v := range options.LibfuseOptions {
 				parameter := strings.Split(v, "=")
 				if len(parameter) > 2 || len(parameter) <= 0 {
-					return errors.New(allowedFlags)
+					return errors.New(common.FuseAllowedFlags)
 				}
 
 				v = strings.TrimSpace(v)
-				if v == "default_permissions" {
+				if ignoreFuseOptions(v) {
 					continue
 				} else if v == "allow_other" || v == "allow_other=true" {
 					config.Set("allow-other", "true")
@@ -303,7 +296,7 @@ var mountCmd = &cobra.Command{
 					perm := ^uint32(permission) & 777
 					config.Set("libfuse.default-permission", fmt.Sprint(perm))
 				} else {
-					return errors.New(allowedFlags)
+					return errors.New(common.FuseAllowedFlags)
 				}
 			}
 		}
@@ -437,6 +430,15 @@ var mountCmd = &cobra.Command{
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	},
+}
+
+func ignoreFuseOptions(opt string) bool {
+	for _, o := range common.FuseIgnoredFlags {
+		if o == opt {
+			return true
+		}
+	}
+	return false
 }
 
 func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {

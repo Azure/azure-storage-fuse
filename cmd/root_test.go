@@ -35,6 +35,7 @@ package cmd
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -47,6 +48,11 @@ import (
 type rootCmdSuite struct {
 	suite.Suite
 	assert *assert.Assertions
+}
+
+type osArgs struct {
+	input  string
+	output string
 }
 
 func (suite *rootCmdSuite) SetupTest() {
@@ -151,6 +157,35 @@ func (suite *rootCmdSuite) testExecute() {
 	err := Execute()
 	suite.assert.Nil(err)
 	suite.assert.Contains(buf.String(), "blobfuse2 version")
+}
+
+func (suite *rootCmdSuite) TestParseArgs() {
+	defer suite.cleanupTest()
+	var inputs = []osArgs{
+		{input: "mount abc", output: "mount abc"},
+		{input: "mount abc --config-file=./config.yaml", output: "mount abc --config-file=./config.yaml"},
+		{input: "help", output: "help"},
+		{input: "--help", output: "--help"},
+		{input: "version", output: "version"},
+		{input: "--version", output: "--version"},
+		{input: "version --check=true", output: "version --check=true"},
+		{input: "mount abc --config-file=./config.yaml -o ro", output: "mount abc --config-file=./config.yaml -o ro"},
+		{input: "abc", output: "mount abc"},
+		{input: "-o", output: ""},
+
+		{input: "/home/mntdir -o rw,--config-file=config.yaml,dev,suid", output: "mount /home/mntdir -o rw,dev,suid --config-file=config.yaml"},
+		{input: "/home/mntdir -o --config-file=config.yaml,rw,dev,suid", output: "mount /home/mntdir -o rw,dev,suid --config-file=config.yaml"},
+		{input: "/home/mntdir -o --config-file=config.yaml,rw", output: "mount /home/mntdir -o rw --config-file=config.yaml"},
+		{input: "/home/mntdir -o rw,--config-file=config.yaml,dev,suid -o allow_other", output: "mount /home/mntdir -o rw,dev,suid --config-file=config.yaml -o allow_other"},
+		{input: "/home/mntdir -o rw,--config-file=config.yaml,dev,suid -o allow_other,--adls=true", output: "mount /home/mntdir -o rw,dev,suid --config-file=config.yaml -o allow_other --adls=true"},
+		{input: "/home/mntdir -o --config-file=config.yaml", output: "mount /home/mntdir --config-file=config.yaml"},
+		{input: "/home/mntdir -o", output: "mount /home/mntdir"},
+		{input: "mount /home/mntdir -o --config-file=config.yaml,rw", output: "mount /home/mntdir -o rw --config-file=config.yaml"},
+	}
+	for _, i := range inputs {
+		o := parseArgs(strings.Split("blobfuse2 "+i.input, " "))
+		suite.assert.Equal(i.output, strings.Join(o, " "))
+	}
 }
 
 func TestRootCmd(t *testing.T) {

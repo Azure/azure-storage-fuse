@@ -44,6 +44,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
@@ -277,21 +278,14 @@ var generateConfigCmd = &cobra.Command{
 // `-o umask`: inverse of default permissions being set, so 0000 is 0777
 // `-d` : enable debug logs and foreground on
 func parseFuseConfig(config []string) error {
-	allowedFlags := "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
-
-	// there are only 8 available options for -o so if we have more we should throw
-	if len(config) > 8 {
-		return errors.New(allowedFlags)
-	}
-
 	for _, v := range config {
 		parameter := strings.Split(v, "=")
 		if len(parameter) > 2 || len(parameter) <= 0 {
-			return errors.New(allowedFlags)
+			return errors.New(common.FuseAllowedFlags)
 		}
 
 		v = strings.TrimSpace(v)
-		if v == "default_permissions" {
+		if ignoreFuseOptions(v) {
 			continue
 		} else if v == "allow_other" || v == "allow_other=true" {
 			bfv2AllowOtherOption = true
@@ -327,7 +321,7 @@ func parseFuseConfig(config []string) error {
 			perm := ^uint32(permission) & 777
 			bfv2FuseConfigOptions.DefaultPermission = perm
 		} else {
-			return errors.New(allowedFlags)
+			return errors.New(common.FuseAllowedFlags)
 		}
 	}
 
