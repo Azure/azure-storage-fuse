@@ -311,9 +311,9 @@ func testOpenAppendFlagDisableWritebackCache(suite *libfuseTestSuite) {
 func testOpenAppendFlagIgnoreAppendFlag(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default libfuse generated
-	config := "libfuse:\n  ignore-open-flag: true\n"
+	config := "libfuse:\n  ignore-open-flags: true\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
-	suite.assert.True(suite.libfuse.ignoreOpenFlag)
+	suite.assert.True(suite.libfuse.ignoreOpenFlags)
 
 	name := "path"
 	path := C.CString("/" + name)
