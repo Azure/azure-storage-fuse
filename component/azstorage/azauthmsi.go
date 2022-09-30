@@ -60,24 +60,6 @@ func (azmsi *azAuthMSI) fetchToken() (*common.OAuthTokenInfo, error) {
 	// and does not work in all types of clouds (US, German, China etc).
 	// resource := azure.PublicCloud.ResourceIdentifiers.Datalake
 	// resource := azure.PublicCloud.ResourceIdentifiers.Storage
-	// if azmsi.config.AuthResource != "" {
-	// 	resource = azmsi.config.AuthResource
-	// }
-	// log.Info("AzAuthMSI::fetchToken : Resource : %s", resource)
-	// fmt.Println(azmsi.config.ObjectID)
-
-	// spt, err := adal.NewServicePrincipalTokenFromManagedIdentity(resource, &adal.ManagedIdentityOptions{
-	// 	ClientID:           azmsi.config.ApplicationID,
-	// 	IdentityResourceID: azmsi.config.ResourceID,
-	// 	ObjectID:           azmsi.config.ObjectID,
-	// }, func(token adal.Token) error { return nil })
-
-	// if err != nil {
-	// 	log.Err("AzAuthMSI::fetchToken : Failed to generate MSI token [%s]", err.Error())
-	// 	return nil, err
-	// }
-
-	// return spt, nil
 	oAuthTokenInfo := &common.OAuthTokenInfo{
 		Identity: true,
 		IdentityInfo: common.IdentityInfo{
