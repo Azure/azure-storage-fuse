@@ -41,15 +41,16 @@ package libfuse
 import "C"
 import (
 	"errors"
+	"io/fs"
+	"strings"
+	"syscall"
+	"unsafe"
+
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
-	"io/fs"
-	"strings"
-	"syscall"
-	"unsafe"
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
