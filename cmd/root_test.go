@@ -172,6 +172,7 @@ func (suite *rootCmdSuite) TestParseArgs() {
 		{input: "mount abc --config-file=./config.yaml -o ro", output: "mount abc --config-file=./config.yaml -o ro"},
 		{input: "abc", output: "mount abc"},
 		{input: "-o", output: ""},
+		{input: "", output: ""},
 
 		{input: "/home/mntdir -o rw,--config-file=config.yaml,dev,suid", output: "mount /home/mntdir -o rw,dev,suid --config-file=config.yaml"},
 		{input: "/home/mntdir -o --config-file=config.yaml,rw,dev,suid", output: "mount /home/mntdir -o rw,dev,suid --config-file=config.yaml"},
