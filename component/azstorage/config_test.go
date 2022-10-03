@@ -37,13 +37,22 @@ import (
 	"testing"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
 type configTestSuite struct {
 	suite.Suite
+}
+
+func (suite *configTestSuite) SetupTest() {
+	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
+	if err != nil {
+		panic("Unable to set silent logger as default.")
+	}
 }
 
 func (s *configTestSuite) TestEmptyAccountName() {
