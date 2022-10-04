@@ -414,37 +414,98 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("BlockBlob::GetAttr : name %s", name)
 
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
+	// To support virtual directories with no marker blob, we call list instead of get properties since list will not return a 404
+	if bb.Config.virtualDirectory {
+		const maxFailCount = 20
+		success := false
+		failCount := 0
+		iteration := 0
 
-	if err != nil {
-		e := storeBlobErrToErr(err)
-		if e == ErrFileNotFound {
+		var marker *string = nil
+		blobsRead := 0
+		for {
+			success = false
+			blobs, new_marker, err := bb.List(name, marker, common.MaxDirListCount)
+			if err != nil {
+				e := storeBlobErrToErr(err)
+				if e == ErrFileNotFound {
+					return attr, syscall.ENOENT
+				} else if e == InvalidPermission {
+					return attr, syscall.EPERM
+				} else {
+					log.Warn("BlockBlob::GetAttr : Failed to list blob properties for %s [%s]", name, err.Error())
+					success = false
+					failCount++
+					continue
+				}
+			}
+
+			for i, blob := range blobs {
+				log.Trace("BlockBlob::GetAttr : Item %d Blob %s", i+blobsRead, blob.Name)
+				if blob.Name == name {
+					return blob, nil
+				}
+			}
+
+			marker = new_marker
+			iteration++
+			blobsRead += len(blobs)
+
+			log.Trace("BlockBlob::GetAttr : So far retrieved %d objects in %d iterations", blobsRead, iteration)
+			if success || new_marker == nil || *new_marker == "" || failCount >= maxFailCount {
+				break
+			}
+		}
+		if err == nil {
+			log.Err("BlockBlob::GetAttr : blob %s does not exist", name)
 			return attr, syscall.ENOENT
+
 		} else {
-			log.Err("BlockBlob::GetAttr : Failed to get blob properties for %s [%s]", name, err.Error())
+			log.Err("BlockBlob::GetAttr : Failed to list blob properties for %s [%s]", name, err.Error())
 			return attr, err
 		}
-	}
+	} else {
+		blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+		prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
 
-	// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
-	attr = &internal.ObjAttr{
-		Path:   name, // We don't need to strip the prefixPath here since we pass the input name
-		Name:   filepath.Base(name),
-		Size:   prop.ContentLength(),
-		Mode:   0,
-		Mtime:  prop.LastModified(),
-		Atime:  prop.LastModified(),
-		Ctime:  prop.LastModified(),
-		Crtime: prop.CreationTime(),
-		Flags:  internal.NewFileBitMap(),
-		MD5:    prop.ContentMD5(),
-	}
-	parseMetadata(attr, prop.NewMetadata())
-	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
-	attr.Flags.Set(internal.PropFlagModeDefault)
+		if err != nil {
+			e := storeBlobErrToErr(err)
+			if e == ErrFileNotFound {
+				return attr, syscall.ENOENT
+			} else {
+				log.Err("BlockBlob::GetAttr : Failed to get blob properties for %s [%s]", name, err.Error())
+				return attr, err
+			}
+		}
 
-	return attr, nil
+		// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
+		attr = &internal.ObjAttr{
+			Path:   name, // We don't need to strip the prefixPath here since we pass the input name
+			Name:   filepath.Base(name),
+			Size:   prop.ContentLength(),
+			Mode:   0,
+			Mtime:  prop.LastModified(),
+			Atime:  prop.LastModified(),
+			Ctime:  prop.LastModified(),
+			Crtime: prop.CreationTime(),
+			Flags:  internal.NewFileBitMap(),
+			MD5:    prop.ContentMD5(),
+		}
+		parseMetadata(attr, prop.NewMetadata())
+		attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+		attr.Flags.Set(internal.PropFlagModeDefault)
+
+		return attr, nil
+	}
+}
+
+func isDirectory(metadata map[string]string) bool {
+	for k, v := range metadata {
+		if strings.ToLower(k) == folderKey && v == "true" {
+			return true
+		}
+	}
+	return false
 }
 
 // List : Get a list of blobs matching the given prefix
@@ -511,6 +572,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			Ctime:  blobInfo.Properties.LastModified,
 			Crtime: dereferenceTime(blobInfo.Properties.CreationTime, blobInfo.Properties.LastModified),
 			Flags:  internal.NewFileBitMap(),
+			MD5:    blobInfo.Properties.ContentMD5,
 		}
 
 		parseMetadata(attr, blobInfo.Metadata)
@@ -525,7 +587,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		}
 	}
 
-	// If in case virtual directory exists but its corrosponding 0 byte file is not there holding hdi_isfolder then just iterating
+	// If in case virtual directory exists but its corresponding 0 byte file is not there holding hdi_isfolder then just iterating
 	// BlobItems will fail to identify that directory. In such cases BlobPrefixes help to list all directories
 	// dirList contains all dirs for which we got 0 byte meta file, so except those add rest to the list
 	for _, blobInfo := range listBlob.Segment.BlobPrefixes {

@@ -4,6 +4,7 @@
 
 **Features**
 - Added support for health-monitor stop --pid=<pid> and health-monitor stop all commands
+- Added support to work with virtual directories without the special marker directory using the virtual-directory config option. 
 
 **Bug Fixes**
 - Auto detect auth mode based on storage config

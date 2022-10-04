@@ -234,6 +234,7 @@ var generateConfigCmd = &cobra.Command{
 			}
 			bfv2StorageConfigOptions.Endpoint = fmt.Sprintf("%s://%s.%s.core.windows.net", http, accountName, accountType)
 		}
+		bfv2StorageConfigOptions.VirtualDirectory = true
 
 		pConf := PipelineConfig{
 			bfv2ForegroundOption,
