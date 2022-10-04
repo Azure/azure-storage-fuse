@@ -433,7 +433,7 @@ var mountCmd = &cobra.Command{
 }
 
 func ignoreFuseOptions(opt string) bool {
-	for _, o := range common.FuseIgnoredFlags {
+	for _, o := range common.FuseIgnoredFlags() {
 		if o == opt {
 			return true
 		}
