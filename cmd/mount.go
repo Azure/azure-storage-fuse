@@ -211,7 +211,7 @@ var mountCmd = &cobra.Command{
 	SuggestFor:        []string{"mnt", "mout"},
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		if !disableVersionCheck {
 			err := VersionCheck()
 			if err != nil {
@@ -364,6 +364,7 @@ var mountCmd = &cobra.Command{
 			return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
 		}
 
+		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
 			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
 			dmnCtx := &daemon.Context{
