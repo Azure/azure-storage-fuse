@@ -88,6 +88,7 @@ func NewHandle(path string) *Handle {
 		OptCnt:   0,
 		values:   make(map[string]interface{}),
 		CacheObj: nil,
+		FObj:     nil,
 	}
 }
 
@@ -200,7 +201,7 @@ func Load(key HandleID) (*Handle, bool) {
 
 //Store function must not be used in production application.
 //This is a utility function present only for test scenarios.
-func Store(key HandleID, path string, fd uintptr) *Handle {
+func Store(key HandleID, path string, _ uintptr) *Handle {
 	handle := &Handle{
 		ID:   key,
 		Path: path,
