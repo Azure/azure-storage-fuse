@@ -196,7 +196,7 @@ func ignoreCommand(cmdArgs []string) bool {
 // parseArgs : Depending upon inputs are coming from /etc/fstab or CLI, parameter style may vary.
 //   /etc/fstab example : blobfuse2 mount <dir> -o suid,nodev,--config-file=config.yaml,--use-adls=true,allow_other
 //   cli command        : blobfuse2 mount <dir> -o suid,nodev --config-file=config.yaml --use-adls=true -o allow_other
-//   As we need to support both the ways, here we convert the /etc/fstab style (comma seperated list) to standard cli ways
+//   As we need to support both the ways, here we convert the /etc/fstab style (comma separated list) to standard cli ways
 func parseArgs(cmdArgs []string) []string {
 	// Ignore binary name, rest all are arguments to blobfuse2
 	cmdArgs = cmdArgs[1:]
@@ -216,7 +216,7 @@ func parseArgs(cmdArgs []string) []string {
 	// Check for /etc/fstab style inputs
 	args := make([]string, 0)
 	for i := 0; i < len(cmdArgs); i++ {
-		// /etc/fstab will give everything in comma seperated list with -o option
+		// /etc/fstab will give everything in comma separated list with -o option
 		if cmdArgs[i] == "-o" {
 			i++
 			if i < len(cmdArgs) {
@@ -226,7 +226,7 @@ func parseArgs(cmdArgs []string) []string {
 				// Check if ',' exists in arguments or not. If so we assume it might be coming from /etc/fstab
 				opts := strings.Split(cmdArgs[i], ",")
 				for _, o := range opts {
-					// If we got comma seperated list then all blobfuse specific options needs to be extracted out
+					// If we got comma separated list then all blobfuse specific options needs to be extracted out
 					//  as those shall not be part of -o list which for us means libfuse options
 					if strings.HasPrefix(o, "--") {
 						bfuseArgs = append(bfuseArgs, o)
@@ -254,7 +254,7 @@ func parseArgs(cmdArgs []string) []string {
 	return args
 }
 
-// Execute : Actual command excution starts from here
+// Execute : Actual command execution starts from here
 func Execute() error {
 	parsedArgs := parseArgs(os.Args)
 	rootCmd.SetArgs(parsedArgs)

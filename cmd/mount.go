@@ -367,8 +367,9 @@ var mountCmd = &cobra.Command{
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
 			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
+			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 			dmnCtx := &daemon.Context{
-				PidFileName: filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile),
+				PidFileName: pidFileName,
 				PidFilePerm: 0644,
 				Umask:       027,
 			}
