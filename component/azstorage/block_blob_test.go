@@ -1772,6 +1772,47 @@ func (s *blockBlobTestSuite) TestGetAttrVirtualDir() {
 	s.assert.NotNil(props)
 	s.assert.True(props.IsDir())
 	s.assert.False(props.IsSymlink())
+
+	// Check file in dir too
+	props, err = s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(props)
+	s.assert.False(props.IsDir())
+	s.assert.False(props.IsSymlink())
+}
+
+func (s *blockBlobTestSuite) TestGetAttrVirtualDirSubDir() {
+	defer s.cleanupTest()
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+	// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
+	s.tearDownTestHelper(false)
+	s.setupTestHelper(vdConfig, s.container, true)
+	// Setup
+	dirName := generateFileName()
+	subDirName := dirName + "/" + generateFileName()
+	name := subDirName + "/" + generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+
+	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: dirName})
+	s.assert.Nil(err)
+	s.assert.NotNil(props)
+	s.assert.True(props.IsDir())
+	s.assert.False(props.IsSymlink())
+
+	// Check subdir in dir too
+	props, err = s.az.GetAttr(internal.GetAttrOptions{Name: subDirName})
+	s.assert.Nil(err)
+	s.assert.NotNil(props)
+	s.assert.True(props.IsDir())
+	s.assert.False(props.IsSymlink())
+
+	// Check file in subdir too
+	props, err = s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(props)
+	s.assert.False(props.IsDir())
+	s.assert.False(props.IsSymlink())
 }
 
 func (s *blockBlobTestSuite) TestGetAttrFile() {

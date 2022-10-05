@@ -439,7 +439,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 
 			for i, blob := range blobs {
 				log.Trace("BlockBlob::GetAttr : Item %d Blob %s", i+blobsRead, blob.Name)
-				if blob.Name == name {
+				if blob.Path == name {
 					return blob, nil
 				}
 			}
