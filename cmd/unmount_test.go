@@ -89,7 +89,7 @@ func (suite *unmountTestSuite) cleanupTest() {
 }
 
 // mount failure test where the mount directory does not exists
-func (suite *unmountTestSuite) unmountCmd() {
+func (suite *unmountTestSuite) TestUnmountCmd() {
 	defer suite.cleanupTest()
 
 	mountDirectory1, _ := ioutil.TempDir("", "TestUnMountTemp")
@@ -106,7 +106,7 @@ func (suite *unmountTestSuite) unmountCmd() {
 	suite.assert.Nil(err)
 }
 
-func (suite *unmountTestSuite) unmountCmdFail() {
+func (suite *unmountTestSuite) TestUnmountCmdFail() {
 	defer suite.cleanupTest()
 
 	mountDirectory2, _ := ioutil.TempDir("", "TestUnMountTemp")
@@ -130,7 +130,7 @@ func (suite *unmountTestSuite) unmountCmdFail() {
 	suite.assert.Nil(err)
 }
 
-func (suite *unmountTestSuite) unmountCmdWildcard() {
+func (suite *unmountTestSuite) TestUnmountCmdWildcard() {
 	defer suite.cleanupTest()
 
 	mountDirectory3, _ := ioutil.TempDir("", "TestUnMountTemp")
@@ -146,7 +146,7 @@ func (suite *unmountTestSuite) unmountCmdWildcard() {
 	suite.assert.Nil(err)
 }
 
-func (suite *unmountTestSuite) unmountCmdWildcardFail() {
+func (suite *unmountTestSuite) TestUnmountCmdWildcardFail() {
 	defer suite.cleanupTest()
 
 	mountDirectory4, _ := ioutil.TempDir("", "TestUnMountTemp")
@@ -174,7 +174,7 @@ func (suite *unmountTestSuite) unmountCmdWildcardFail() {
 	suite.assert.Nil(err)
 }
 
-func (suite *unmountTestSuite) unmountCmdValidArg() {
+func (suite *unmountTestSuite) TestUnmountCmdValidArg() {
 	defer suite.cleanupTest()
 
 	mountDirectory5, _ := ioutil.TempDir("", "TestUnMountTemp")
@@ -197,14 +197,6 @@ func (suite *unmountTestSuite) unmountCmdValidArg() {
 
 	lst, _ = unmountCmd.ValidArgsFunction(nil, nil, "abcd")
 	suite.assert.Empty(lst)
-}
-
-func (suite *unmountTestSuite) TestUnMountCmd() {
-	suite.unmountCmd()
-	suite.unmountCmdFail()
-	suite.unmountCmdWildcard()
-	suite.unmountCmdWildcardFail()
-	suite.unmountCmdValidArg()
 }
 
 func TestUnMountCommand(t *testing.T) {
