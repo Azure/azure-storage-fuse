@@ -37,6 +37,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -50,6 +51,8 @@ var confFileUnMntTest string
 var configUnMountLoopback string = `
 logging:
   type: syslog
+  #level: log_debug
+  #file-path: blobfuse2.log
 default-working-dir: ./
 components:
   - libfuse
@@ -60,6 +63,9 @@ libfuse:
 loopbackfs:
   path: /tmp/bfuseloopback
 `
+
+var currentDir string
+var mountDirectoryPrefix string
 
 type unmountTestSuite struct {
 	suite.Suite
@@ -75,103 +81,94 @@ func (suite *unmountTestSuite) SetupTest() {
 		panic("Unable to set silent logger as default.")
 	}
 
-	os.RemoveAll("/tmp/bfuseloopback")
+	os.MkdirAll(mountDirectoryPrefix, 0777)
 	os.MkdirAll("/tmp/bfuseloopback", 0777)
 }
 
 func (suite *unmountTestSuite) cleanupTest() {
 	resetCLIFlags(*unmountCmd)
-	os.RemoveAll("/tmp/bfuseloopback")
+	resetCLIFlags(*mountCmd)
+	resetCLIFlags(*rootCmd)
+	time.Sleep(2 * time.Second)
 }
 
 // mount failure test where the mount directory does not exists
-func (suite *unmountTestSuite) TestUnMount() {
+func (suite *unmountTestSuite) unmountCmd() {
 	defer suite.cleanupTest()
 
-	mountDirectory := "TestUnMount_1"
-	os.MkdirAll(mountDirectory, 0777)
-	defer os.RemoveAll(mountDirectory)
-
-	_, err := executeCommandC(rootCmd, "mount", mountDirectory, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
+	_, err := executeCommandC(rootCmd, "mount", mountDirectoryPrefix, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
 	suite.assert.Nil(err)
 
 	time.Sleep(2 * time.Second)
 
-	_, err = executeCommandC(rootCmd, "unmount", mountDirectory)
+	_, err = executeCommandC(rootCmd, "unmount", mountDirectoryPrefix)
 	suite.assert.Nil(err)
 }
 
-func (suite *unmountTestSuite) TestUnMountFail() {
+func (suite *unmountTestSuite) unmountCmdFail() {
 	defer suite.cleanupTest()
 
-	mountDirectory := "TestUnMount_2"
-	os.MkdirAll(mountDirectory, 0777)
-	defer os.RemoveAll(mountDirectory)
-
-	_, err := executeCommandC(rootCmd, "mount", mountDirectory, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
+	_, err := executeCommandC(rootCmd, "mount", mountDirectoryPrefix, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
 	suite.assert.Nil(err)
 
 	time.Sleep(2 * time.Second)
-	os.Chdir(mountDirectory)
-	_, err = executeCommandC(rootCmd, "unmount", mountDirectory)
+	err = os.Chdir(mountDirectoryPrefix)
+	suite.assert.Nil(err)
+
+	_, err = executeCommandC(rootCmd, "unmount", mountDirectoryPrefix)
 	suite.assert.NotNil(err)
 
-	os.Chdir("..")
-	_, err = executeCommandC(rootCmd, "unmount", mountDirectory)
+	err = os.Chdir(currentDir)
+	suite.assert.Nil(err)
+	_, err = executeCommandC(rootCmd, "unmount", mountDirectoryPrefix)
 	suite.assert.Nil(err)
 }
 
-func (suite *unmountTestSuite) TestUnMountWildcard() {
+func (suite *unmountTestSuite) unmountCmdWildcard() {
 	defer suite.cleanupTest()
 
-	mountDirectory := "TestUnMount_3"
-	os.MkdirAll(mountDirectory, 0777)
-	defer os.RemoveAll(mountDirectory)
-
-	_, err := executeCommandC(rootCmd, "mount", mountDirectory, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
+	_, err := executeCommandC(rootCmd, "mount", mountDirectoryPrefix, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
 	suite.assert.Nil(err)
 
 	time.Sleep(2 * time.Second)
-	_, err = executeCommandC(rootCmd, "unmount", mountDirectory+"*")
+	_, err = executeCommandC(rootCmd, "unmount", mountDirectoryPrefix+"*")
 	suite.assert.Nil(err)
 }
 
-func (suite *unmountTestSuite) TestUnMountWildcardFail() {
+func (suite *unmountTestSuite) unmountCmdWildcardFail() {
 	defer suite.cleanupTest()
 
-	mountDirectory := "TestUnMount_4"
-	os.MkdirAll(mountDirectory, 0777)
-	defer os.RemoveAll(mountDirectory)
-
-	_, err := executeCommandC(rootCmd, "mount", mountDirectory, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
+	_, err := executeCommandC(rootCmd, "mount", mountDirectoryPrefix, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
 	suite.assert.Nil(err)
 
 	time.Sleep(2 * time.Second)
-	os.Chdir(mountDirectory)
-	_, err = executeCommandC(rootCmd, "unmount", mountDirectory+"*")
+	err = os.Chdir(mountDirectoryPrefix)
+	suite.assert.Nil(err)
+
+	_, err = executeCommandC(rootCmd, "unmount", mountDirectoryPrefix+"*")
 	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "failed to unmount")
+	if err != nil {
+		suite.assert.Contains(err.Error(), "failed to unmount")
+	}
 
-	os.Chdir("..")
-	_, err = executeCommandC(rootCmd, "unmount", mountDirectory+"*")
+	err = os.Chdir(currentDir)
+	suite.assert.Nil(err)
+
+	_, err = executeCommandC(rootCmd, "unmount", mountDirectoryPrefix+"*")
 	suite.assert.Nil(err)
 }
 
-func (suite *unmountTestSuite) TestValidArg() {
+func (suite *unmountTestSuite) unmountCmdValidArg() {
 	defer suite.cleanupTest()
 
-	mountDirectory := "TestUnMount_5"
-	os.MkdirAll(mountDirectory, 0777)
-	defer os.RemoveAll(mountDirectory)
-
-	_, err := executeCommandC(rootCmd, "mount", mountDirectory, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
+	_, err := executeCommandC(rootCmd, "mount", mountDirectoryPrefix, fmt.Sprintf("--config-file=%s", confFileUnMntTest))
 	suite.assert.Nil(err)
 
 	time.Sleep(2 * time.Second)
 	lst, _ := unmountCmd.ValidArgsFunction(nil, nil, "")
 	suite.assert.NotEmpty(lst)
 
-	_, err = executeCommandC(rootCmd, "unmount", mountDirectory+"*")
+	_, err = executeCommandC(rootCmd, "unmount", mountDirectoryPrefix+"*")
 	suite.assert.Nil(err)
 
 	lst, _ = unmountCmd.ValidArgsFunction(nil, nil, "")
@@ -179,6 +176,14 @@ func (suite *unmountTestSuite) TestValidArg() {
 
 	lst, _ = unmountCmd.ValidArgsFunction(nil, nil, "abcd")
 	suite.assert.Empty(lst)
+}
+
+func (suite *unmountTestSuite) TestUnMountCmd() {
+	suite.unmountCmd()
+	suite.unmountCmdFail()
+	suite.unmountCmdWildcard()
+	suite.unmountCmdWildcardFail()
+	suite.unmountCmdValidArg()
 }
 
 func TestUnMountCommand(t *testing.T) {
@@ -195,6 +200,15 @@ func TestUnMountCommand(t *testing.T) {
 		t.Error("Failed to write to config file")
 	}
 	confFile.Close()
+
+	currentDir, _ = os.Getwd()
+	mountDirectoryPrefix = filepath.Join(currentDir, "TestUnMount")
+
+	os.MkdirAll(mountDirectoryPrefix, 0777)
+	os.MkdirAll("/tmp/bfuseloopback", 0777)
+
+	defer os.RemoveAll(mountDirectoryPrefix)
+	defer os.RemoveAll("/tmp/bfuseloopback")
 
 	suite.Run(t, new(unmountTestSuite))
 }
