@@ -204,8 +204,15 @@ func TestUnMountCommand(t *testing.T) {
 	currentDir, _ = os.Getwd()
 	mountDirectoryPrefix = filepath.Join(currentDir, "TestUnMount")
 
-	os.MkdirAll(mountDirectoryPrefix, 0777)
-	os.MkdirAll("/tmp/bfuseloopback", 0777)
+	err = os.MkdirAll(mountDirectoryPrefix, 0777)
+	if err != nil {
+		t.Error("Failed to create mount dir ", err.Error())
+	}
+
+	err = os.MkdirAll("/tmp/bfuseloopback", 0777)
+	if err != nil {
+		t.Error("Failed to create loopback dir ", err.Error())
+	}
 
 	defer os.RemoveAll(mountDirectoryPrefix)
 	defer os.RemoveAll("/tmp/bfuseloopback")
