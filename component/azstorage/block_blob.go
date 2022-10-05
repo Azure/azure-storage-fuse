@@ -417,14 +417,12 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	// To support virtual directories with no marker blob, we call list instead of get properties since list will not return a 404
 	if bb.Config.virtualDirectory {
 		const maxFailCount = 20
-		success := false
 		failCount := 0
 		iteration := 0
 
 		var marker *string = nil
 		blobsRead := 0
 		for {
-			success = false
 			blobs, new_marker, err := bb.List(name, marker, common.MaxDirListCount)
 			if err != nil {
 				e := storeBlobErrToErr(err)
@@ -434,7 +432,6 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 					return attr, syscall.EPERM
 				} else {
 					log.Warn("BlockBlob::GetAttr : Failed to list blob properties for %s [%s]", name, err.Error())
-					success = false
 					failCount++
 					continue
 				}
@@ -452,7 +449,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 			blobsRead += len(blobs)
 
 			log.Trace("BlockBlob::GetAttr : So far retrieved %d objects in %d iterations", blobsRead, iteration)
-			if success || new_marker == nil || *new_marker == "" || failCount >= maxFailCount {
+			if new_marker == nil || *new_marker == "" || failCount >= maxFailCount {
 				break
 			}
 		}
@@ -497,15 +494,6 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 
 		return attr, nil
 	}
-}
-
-func isDirectory(metadata map[string]string) bool {
-	for k, v := range metadata {
-		if strings.ToLower(k) == folderKey && v == "true" {
-			return true
-		}
-	}
-	return false
 }
 
 // List : Get a list of blobs matching the given prefix
