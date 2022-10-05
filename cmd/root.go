@@ -90,6 +90,7 @@ func checkVersionExists(versionUrl string) bool {
 	return resp.StatusCode != 404
 }
 
+// getRemoteVersion : From public container get the latest blobfuse version
 func getRemoteVersion(req string) (string, error) {
 	resp, err := http.Get(req)
 	if err != nil {
@@ -118,6 +119,7 @@ func getRemoteVersion(req string) (string, error) {
 	return versionName, nil
 }
 
+// beginDetectNewVersion : Get latest release version and compare if user needs an upgrade or not
 func beginDetectNewVersion() chan interface{} {
 	completed := make(chan interface{})
 	stderr := os.Stderr
@@ -167,6 +169,7 @@ func beginDetectNewVersion() chan interface{} {
 	return completed
 }
 
+// VersionCheck : Start version check and wait for 8 seconds to complete otherwise just timeout and move on
 func VersionCheck() error {
 	select {
 	//either wait till this routine completes or timeout if it exceeds 8 secs
@@ -177,7 +180,7 @@ func VersionCheck() error {
 	return nil
 }
 
-// ignore commands handled by cobra
+// ignoreCommand : There are command implicitly added by cobra itself, while parsing we need to ignore these commands
 func ignoreCommand(cmdArgs []string) bool {
 	ignoreCmds := []string{"completion", "help"}
 	if len(cmdArgs) > 0 {
@@ -190,43 +193,68 @@ func ignoreCommand(cmdArgs []string) bool {
 	return false
 }
 
-// parse arguments passed
+// parseArgs : Depending upon inputs are coming from /etc/fstab or CLI, parameter style may vary.
+//   /etc/fstab example : blobfuse2 mount <dir> -o suid,nodev,--config-file=config.yaml,--use-adls=true,allow_other
+//   cli command        : blobfuse2 mount <dir> -o suid,nodev --config-file=config.yaml --use-adls=true -o allow_other
+//   As we need to support both the ways, here we convert the /etc/fstab style (comma seperated list) to standard cli ways
 func parseArgs(cmdArgs []string) []string {
+	// Ignore binary name, rest all are arguments to blobfuse2
 	cmdArgs = cmdArgs[1:]
+
 	cmd, _, err := rootCmd.Find(cmdArgs)
 	if err != nil && cmd == rootCmd && !ignoreCommand(cmdArgs) {
+		/* /etc/fstab has a standard format and it goes like "<binary> <mount point> <type> <options>"
+		 * as here we can not give any subcommand like "blobfuse2 mount" (giving this will assume mount is mount point)
+		 * we need to assume 'mount' being default sub command.
+		 * To do so, we just ignore the implicit commands handled by cobra and then try to check if input matches any of
+		 * our subcommands or not. If not, we assume user has executed mount command without specifying mount subcommand
+		 * so inject mount command in the cli options so that rest of the handling just assumes user gave mount subcommand.
+		 */
 		cmdArgs = append([]string{"mount"}, cmdArgs...)
 	}
 
+	// Check for /etc/fstab style inputs
 	args := make([]string, 0)
 	for i := 0; i < len(cmdArgs); i++ {
+		// /etc/fstab will give everything in comma seperated list with -o option
 		if cmdArgs[i] == "-o" {
 			i++
 			if i < len(cmdArgs) {
 				bfuseArgs := make([]string, 0)
 				lfuseArgs := make([]string, 0)
+
+				// Check if ',' exists in arguments or not. If so we assume it might be coming from /etc/fstab
 				opts := strings.Split(cmdArgs[i], ",")
 				for _, o := range opts {
+					// If we got comma seperated list then all blobfuse specific options needs to be extracted out
+					//  as those shall not be part of -o list which for us means libfuse options
 					if strings.HasPrefix(o, "--") {
 						bfuseArgs = append(bfuseArgs, o)
 					} else {
 						lfuseArgs = append(lfuseArgs, o)
 					}
 				}
+
+				// Extract and add libfuse options with -o
 				if len(lfuseArgs) > 0 {
 					args = append(args, "-o", strings.Join(lfuseArgs, ","))
 				}
+
+				// Extract and add blobfuse specific options sepratly
 				if len(bfuseArgs) > 0 {
 					args = append(args, bfuseArgs...)
 				}
 			}
 		} else {
+			// If any option is without -o then keep it as is (assuming its directly from cli)
 			args = append(args, cmdArgs[i])
 		}
 	}
+
 	return args
 }
 
+// Execute : Actual command excution starts from here
 func Execute() error {
 	parsedArgs := parseArgs(os.Args)
 	rootCmd.SetArgs(parsedArgs)
