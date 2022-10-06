@@ -5,23 +5,24 @@ logging:
 
 components:
   - libfuse
+  - stream
   - file_cache
   - attr_cache
   - azstorage
 
 libfuse:
-  attribute-expiration-sec: 0
-  entry-expiration-sec: 0
-  negative-entry-expiration-sec: 0
+  attribute-expiration-sec: 120
+  entry-expiration-sec: 120
+  negative-entry-expiration-sec: 120
   ignore-open-flags: true
-
+  
 stream:
   blocks-per-file: 1
   cache-size-mb: 2
   block-size-mb: 4
   max-buffers: 80
   buffer-size-mb: 8
-  
+    
 file_cache:
   path: { 1 }
   timeout-sec: 30
@@ -29,19 +30,19 @@ file_cache:
   allow-non-empty-temp: true
   cleanup-on-start: true
   cache-file-size-mb: 5
-
+  
 attr_cache:
   timeout-sec: 3600
+  no-cache-on-list: false
 
 azstorage:
   type: { ACCOUNT_TYPE }
   endpoint: { ACCOUNT_ENDPOINT }
   use-http: false
-  account-name: { NIGHTLY_SPN_ACC_NAME }
-  mode: spn
-  clientid: { NIGHTLY_SPN_CLIENT_ID }
-  tenantid: { NIGHTLY_SPN_TENANT_ID }
-  clientsecret: { NIGHTLY_SPN_CLIENT_SECRET }
+  account-name: { NIGHTLY_STO_ACC_NAME }
+  account-key: { NIGHTLY_STO_ACC_KEY }
+  mode: key
   container: { 0 }
   tier: hot
+  block-list-on-mount-sec: 7
   sdk-trace: { VERBOSE_LOG }

@@ -5,7 +5,6 @@ logging:
 
 components:
   - libfuse
-  - stream
   - file_cache
   - attr_cache
   - azstorage

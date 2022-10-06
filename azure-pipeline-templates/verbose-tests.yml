@@ -360,6 +360,48 @@ steps:
         timeoutInMinutes: 3
         continueOnError: false
 
+  #--------------------------- Stress test with file+streaming config ----------------------------
+  - script: |
+      cd ${{ parameters.working_dir }}
+      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_key_huge_filestream.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config }}
+    displayName: Create Config File
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    continueOnError: false
+
+  - script: cat ${{ parameters.config }}
+    displayName: Print config file
+
+  - template: mount-test.yml
+    parameters:
+      working_dir: ${{ parameters.working_dir }}
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      config: ${{ parameters.config }}
+      idstring: ${{ parameters.service }} Mount Test
+
+  - template: stress-test.yml
+    parameters:
+      working_dir: ${{ parameters.working_dir }}
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      stress_dir: ${{ parameters.stress_dir }}
+      idstring: ${{ parameters.service }} Stress Test
+      quick: '${{ parameters.quick_stress }}'
+      distro_name: ${{ parameters.distro_name }}
+      mountStep:
+        script: >
+          ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }}
+          --default-working-dir=${{ parameters.working_dir }}
+        displayName: 'StressTest: Mount'
+        timeoutInMinutes: 3
+        continueOnError: false
+
+  #--------------------------- Huge List Test ----------------------------
   - script: |
       cd ${{ parameters.working_dir }}
       ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_key_huge.yaml --container-name=${{ parameters.huge_container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config }}
