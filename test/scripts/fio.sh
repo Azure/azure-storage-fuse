@@ -18,7 +18,7 @@ do
 done
 
 echo "| Average |" >> $outputPath
-echo "| % Diff |" >> $outputPath
+echo "| % Improvement |" >> $outputPath
 
 sudo fusermount3 -u $mntPath
 rm -rf $mntPath

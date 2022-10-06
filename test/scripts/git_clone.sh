@@ -18,7 +18,7 @@ do
 done
 
 echo "| Average |" >> $outputPath
-echo "| % Diff |" >> $outputPath
+echo "| % Improvement |" >> $outputPath
 
 sudo fusermount3 -u $mntPath
 rm -rf $mntPath
@@ -103,7 +103,7 @@ blobfuse_average=$(( $blobfuse_average / 3 ))
 sed -i "6s/$/ ${blobfuse2_average} | ${blobfuse_average} |/" $outputPath
 
 # Calculate the % difference
-diff=$(( $blobfuse2_average - $blobfuse_average ))
+diff=$(( $blobfuse_average - $blobfuse2_average ))
 percent=`echo "scale=2; $diff * 100 / $blobfuse_average" | bc`
 
 sed -i "7s/$/ ${percent} | |/" $outputPath
