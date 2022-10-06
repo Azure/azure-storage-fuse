@@ -211,7 +211,7 @@ var mountCmd = &cobra.Command{
 	SuggestFor:        []string{"mnt", "mout"},
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(_ *cobra.Command, args []string) error {
 		if !disableVersionCheck {
 			err := VersionCheck()
 			if err != nil {
@@ -267,21 +267,14 @@ var mountCmd = &cobra.Command{
 		}
 
 		if config.IsSet("libfuse-options") {
-			allowedFlags := "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
-
-			// there are only 8 available options for -o so if we have more we should throw
-			if len(options.LibfuseOptions) > 8 {
-				return errors.New(allowedFlags)
-			}
-
 			for _, v := range options.LibfuseOptions {
 				parameter := strings.Split(v, "=")
 				if len(parameter) > 2 || len(parameter) <= 0 {
-					return errors.New(allowedFlags)
+					return errors.New(common.FuseAllowedFlags)
 				}
 
 				v = strings.TrimSpace(v)
-				if v == "default_permissions" {
+				if ignoreFuseOptions(v) {
 					continue
 				} else if v == "allow_other" || v == "allow_other=true" {
 					config.Set("allow-other", "true")
@@ -303,7 +296,7 @@ var mountCmd = &cobra.Command{
 					perm := ^uint32(permission) & 777
 					config.Set("libfuse.default-permission", fmt.Sprint(perm))
 				} else {
-					return errors.New(allowedFlags)
+					return errors.New(common.FuseAllowedFlags)
 				}
 			}
 		}
@@ -371,10 +364,12 @@ var mountCmd = &cobra.Command{
 			return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
 		}
 
+		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
 			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
+			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 			dmnCtx := &daemon.Context{
-				PidFileName: filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile),
+				PidFileName: pidFileName,
 				PidFilePerm: 0644,
 				Umask:       027,
 			}
@@ -392,6 +387,7 @@ var mountCmd = &cobra.Command{
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
 				go startDynamicProfiler()
+
 				err = runPipeline(pipeline, ctx)
 				if err != nil {
 					return err
@@ -437,6 +433,15 @@ var mountCmd = &cobra.Command{
 	ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	},
+}
+
+func ignoreFuseOptions(opt string) bool {
+	for _, o := range common.FuseIgnoredFlags() {
+		if o == opt {
+			return true
+		}
+	}
+	return false
 }
 
 func runPipeline(pipeline *internal.Pipeline, ctx context.Context) error {
