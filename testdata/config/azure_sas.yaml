@@ -15,20 +15,12 @@ libfuse:
   negative-entry-expiration-sec: 0
   ignore-open-flags: true
   
-stream:
-  blocks-per-file: 1
-  cache-size-mb: 2
-  block-size-mb: 4
-  max-buffers: 80
-  buffer-size-mb: 8
-  
 file_cache:
   path: { 1 }
   timeout-sec: 30
   max-size-mb: 2048
   allow-non-empty-temp: true
   cleanup-on-start: true
-  cache-file-size-mb: 5
 
 attr_cache:
   timeout-sec: 3600
