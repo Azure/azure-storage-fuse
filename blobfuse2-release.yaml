@@ -104,7 +104,6 @@ stages:
               cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
-              cp azure-storage-fuse/tools/postinstall.sh pkgDir/usr/share/blobfuse2/
               mkdir -p pkgDir/etc/rsyslog.d
               mkdir -p pkgDir/etc/logrotate.d
               cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d

@@ -31,63 +31,57 @@
    SOFTWARE
 */
 
-package common
+package cpu_mem_profiler
 
 import (
-	"path/filepath"
+	"fmt"
+	"os"
+	"testing"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
-const (
-	BlobfuseStats     = "blobfuse_stats"
-	FileCacheMon      = "file_cache_monitor"
-	CpuProfiler       = "cpu_profiler"
-	MemoryProfiler    = "memory_profiler"
-	CpuMemoryProfiler = "cpu_mem_profiler"
-	NetworkProfiler   = "network_profiler"
-
-	BfuseMon = "bfusemon"
-
-	OutputFileName      = "monitor"
-	OutputFileExtension = "json"
-	OutputFileCount     = 10
-	OutputFileSizeinMB  = 10
-)
-
-var (
-	Pid             string
-	BfsPollInterval int
-	ProcMonInterval int
-
-	NoBfsMon       bool
-	NoCpuProf      bool
-	NoMemProf      bool
-	NoNetProf      bool
-	NoFileCacheMon bool
-
-	TempCachePath string
-	MaxCacheSize  float64
-	OutputPath    string
-
-	CheckVersion bool
-)
-
-const BfuseMonitorVersion = "1.0.0-preview.1"
-
-var DefaultWorkDir = "$HOME/.blobfuse2"
-var DefaultLogFile = filepath.Join(DefaultWorkDir, "bfuseMonitor.log")
-
-type CacheEvent struct {
-	CacheEvent      string            `json:"cacheEvent"`
-	Path            string            `json:"path"`
-	IsDir           bool              `json:"isDir"`
-	CacheSize       int64             `json:"cacheSize"`
-	CacheConsumed   string            `json:"cacheConsumed"`
-	CacheFilesCnt   int64             `json:"cacheFilesCount"`
-	EvictedFilesCnt int64             `json:"evictedFilesCount"`
-	Value           map[string]string `json:"value"`
+type cpuMemMonitorTestSuite struct {
+	suite.Suite
+	assert *assert.Assertions
 }
 
-type CpuMemStat struct {
-	CpuUsage string
-	MemUsage string
+func (suite *cpuMemMonitorTestSuite) SetupTest() {
+	suite.assert = assert.New(suite.T())
+	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
+	if err != nil {
+		panic("Unable to set silent logger as default.")
+	}
+}
+
+func (suite *cpuMemMonitorTestSuite) TestGetCpuMemoryUsage() {
+	cm := &CpuMemProfiler{
+		name:         hmcommon.CpuMemoryProfiler,
+		pid:          fmt.Sprintf("%v", os.Getpid()),
+		pollInterval: 5,
+	}
+
+	c, err := cm.getCpuMemoryUsage()
+	suite.assert.NotNil(c)
+	suite.assert.Nil(err)
+}
+
+func (suite *cpuMemMonitorTestSuite) TestGetCpuMemoryUsageFailure() {
+	cm := &CpuMemProfiler{
+		name:         hmcommon.CpuMemoryProfiler,
+		pid:          "abcd",
+		pollInterval: 5,
+	}
+
+	c, err := cm.getCpuMemoryUsage()
+	suite.assert.Nil(c)
+	suite.assert.NotNil(err)
+}
+
+func TestCpuMemMonitor(t *testing.T) {
+	suite.Run(t, new(cpuMemMonitorTestSuite))
 }

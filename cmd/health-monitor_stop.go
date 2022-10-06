@@ -39,63 +39,78 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/Azure/azure-storage-fuse/v2/common"
-
 	"github.com/spf13/cobra"
 )
 
-var unmountCmd = &cobra.Command{
-	Use:               "unmount <mount path>",
-	Short:             "Unmount Blobfuse2",
-	Long:              "Unmount Blobfuse2",
-	SuggestFor:        []string{"unmount", "unmnt"},
-	Args:              cobra.ExactArgs(1),
-	FlagErrorHandling: cobra.ExitOnError,
-	RunE: func(_ *cobra.Command, args []string) error {
-		if strings.Contains(args[0], "*") {
-			mntPathPrefix := args[0]
+var blobfuse2Pid string
 
-			lstMnt, _ := common.ListMountPoints()
-			for _, mntPath := range lstMnt {
-				match, _ := regexp.MatchString(mntPathPrefix, mntPath)
-				if match {
-					err := unmountBlobfuse2(mntPath)
-					if err != nil {
-						return fmt.Errorf("failed to unmount %s [%s]", mntPath, err.Error())
-					}
-				}
-			}
-		} else {
-			err := unmountBlobfuse2(args[0])
-			if err != nil {
-				return fmt.Errorf("failed to unmount %s [%s]", args[0], err.Error())
-			}
+var healthMonStop = &cobra.Command{
+	Use:               "stop",
+	Short:             "Stops the health monitor binary associated with a given Blobfuse2 pid",
+	Long:              "Stops the health monitor binary associated with a given Blobfuse2 pid",
+	SuggestFor:        []string{"stp", "st"},
+	FlagErrorHandling: cobra.ExitOnError,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		blobfuse2Pid = strings.TrimSpace(blobfuse2Pid)
+
+		if len(blobfuse2Pid) == 0 {
+			return fmt.Errorf("pid of blobfuse2 process not given")
+		}
+
+		pid, err := getPid(blobfuse2Pid)
+		if err != nil {
+			return fmt.Errorf("failed to get health monitor pid")
+		}
+
+		err = stop(pid)
+		if err != nil {
+			return fmt.Errorf("failed to stop health monitor")
 		}
 
 		return nil
 	},
-	ValidArgsFunction: func(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-		if toComplete == "" {
-			mntPts, _ := common.ListMountPoints()
-			return mntPts, cobra.ShellCompDirectiveNoFileComp
-		}
-		return nil, cobra.ShellCompDirectiveDefault
-	},
 }
 
-// Attempts to unmount the directory and returns true if the operation succeeded
-func unmountBlobfuse2(mntPath string) error {
-	cliOut := exec.Command("fusermount", "-u", mntPath)
+// Attempts to get pid of the health monitor
+func getPid(blobfuse2Pid string) (string, error) {
+	psAux := exec.Command("ps", "aux")
+	out, err := psAux.Output()
+	if err != nil {
+		return "", err
+	}
+	processes := strings.Split(string(out), "\n")
+	for _, process := range processes {
+		if strings.Contains(process, "bfusemon") && strings.Contains(process, fmt.Sprintf("--pid=%s", blobfuse2Pid)) {
+			re := regexp.MustCompile(`[-]?\d[\d,]*[\.]?[\d{2}]*`)
+			pids := re.FindAllString(process, 1)
+			if pids == nil {
+				return "", fmt.Errorf("failed to process PID from %s", process)
+			}
+			pid := pids[0]
+			fmt.Printf("Successfully got health monitor PID %s.\n", pid)
+			return pid, nil
+		}
+	}
+	return "", fmt.Errorf("no corresponding health monitor PID found")
+
+}
+
+// Attempts to kill all health monitors
+func stop(pid string) error {
+	cliOut := exec.Command("kill", "-9", pid)
 	_, err := cliOut.Output()
 	if err != nil {
 		return err
 	} else {
-		fmt.Println("Successfully unmounted", mntPath)
+		fmt.Println("Successfully stopped health monitor binary.")
 		return nil
 	}
 }
 
 func init() {
-	rootCmd.AddCommand(unmountCmd)
-	unmountCmd.AddCommand(umntAllCmd)
+	healthMonCmd.AddCommand(healthMonStop)
+	healthMonStop.AddCommand(healthMonStopAll)
+
+	healthMonStop.Flags().StringVar(&blobfuse2Pid, "pid", "", "Blobfuse2 PID associated with the health monitor that should be stopped")
+	_ = healthMonStop.MarkFlagRequired("pid")
 }

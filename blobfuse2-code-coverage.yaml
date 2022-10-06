@@ -291,7 +291,7 @@ stages:
                 ps -aux | grep blobfuse2
                 for i in {10,50,100,200,500,1024}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > $(WORK_DIR)/myfile_{}'
                 for i in {10,50,100,200,500,1024}; do echo $i; done | parallel --will-cite -j 5 'cp $(WORK_DIR)/myfile_{} $(MOUNT_DIR)/'
-                ./blobfuse2 unmount $(MOUNT_DIR)*
+                ./blobfuse2 unmount "$(MOUNT_DIR)*"
                 sudo fusermount -u $(MOUNT_DIR) 
                 sleep 5
               workingDirectory: $(WORK_DIR)
@@ -369,13 +369,21 @@ stages:
                   exit 1
                 fi
 
-                sleep 20    
+                sleep 20
+                cd $(MOUNT_DIR)/$(containerName)
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_cmd_cont_fail.cov unmount $(MOUNT_DIR)/$(containerName)
+                cd -
                 ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_cmd_cont.cov unmount $(MOUNT_DIR)/$(containerName)
                 if [ $? -ne 0 ]; then
                   exit 1
                 fi
 
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_wild_cmd.cov unmount testmut*
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_wild_cmd.cov unmount "testmut*"
+                if [ $? -ne 0 ]; then
+                  exit 1
+                fi
+
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_wild_cmd.cov unmount "abcdef*"
                 if [ $? -ne 0 ]; then
                   exit 1
                 fi
@@ -385,7 +393,7 @@ stages:
                   exit 1
                 fi
 
-                for i in {1..5}; do ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_all_cmd.cov unmount all; done
+                for i in {1..5}; do ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/umnt_all_cmd$i.cov unmount all; done
               workingDirectory: $(WORK_DIR)
               displayName: "CLI : Unmount options"
 

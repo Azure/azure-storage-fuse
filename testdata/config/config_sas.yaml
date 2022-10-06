@@ -15,7 +15,7 @@ components:
 libfuse:
   attribute-expiration-sec: 0
   entry-expiration-sec: 0
-  ignore-open-flag: true
+  ignore-open-flags: true
 
 loopbackfs:
   path: { 1 }
