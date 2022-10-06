@@ -32,8 +32,9 @@ Environment=AZURE_STORAGE_ACCESS_KEY=<account.key>
 
 # Uncomment the block below when using SAS token auth
 # Environment=AZURE_STORAGE_AUTH_TYPE=SAS
-# Specifies the storage account key to use for authentication.
-# Environment=AZURE_STORAGE_SAS_TOKEN=<sas.token>
+# Specifies the SAS token to use for authentication. Due to systemd file specification, SAS token should be in double quotes, start with question mark (?) and every percent sign should be doubled (% -> %%)
+# Example: Environment=AZURE_STORAGE_SAS_TOKEN="?sp=rl&st=2022-10-06T11:53:25Z&se=2029-09-20T19:53:25Z&spr=https&sv=2021-06-08&sr=c&sig=AAAAAA%%2FYAAAA%%3D"
+# Environment=AZURE_STORAGE_SAS_TOKEN="<sas.token>"
 
 # Uncomment the line below and the parameter used in this block, when using Managed Identity auth
 # Environment=AZURE_STORAGE_AUTH_TYPE=MSI
