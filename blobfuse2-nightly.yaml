@@ -55,7 +55,7 @@ parameters:
   - name: verbose_log
     displayName: 'Verbose Log'
     type: boolean
-    default: true
+    default: false
 
 
 stages:
