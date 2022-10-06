@@ -61,6 +61,7 @@ func (azmsi *azAuthMSI) fetchToken() (*common.OAuthTokenInfo, error) {
 	// and does not work in all types of clouds (US, German, China etc).
 	// resource := azure.PublicCloud.ResourceIdentifiers.Datalake
 	// resource := azure.PublicCloud.ResourceIdentifiers.Storage
+	fmt.Println("hi", azmsi.config.ClientID, azmsi.config.ObjectID)
 	oAuthTokenInfo := &common.OAuthTokenInfo{
 		Identity: true,
 		IdentityInfo: common.IdentityInfo{
