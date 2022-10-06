@@ -607,7 +607,6 @@ func init() {
 
 	virtualDir := config.AddBoolFlag("virtual-directory", false, "Support virtual directories without existence of a special marker blob.")
 	config.BindPFlag(compName+".virtual-directory", virtualDir)
-	virtualDir.Hidden = true
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
