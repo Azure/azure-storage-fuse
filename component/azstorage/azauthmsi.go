@@ -35,7 +35,6 @@ package azstorage
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -61,7 +60,6 @@ func (azmsi *azAuthMSI) fetchToken() (*common.OAuthTokenInfo, error) {
 	// and does not work in all types of clouds (US, German, China etc).
 	// resource := azure.PublicCloud.ResourceIdentifiers.Datalake
 	// resource := azure.PublicCloud.ResourceIdentifiers.Storage
-	fmt.Println("hi", azmsi.config.ResourceID, azmsi.config.ApplicationID)
 	oAuthTokenInfo := &common.OAuthTokenInfo{
 		Identity: true,
 		IdentityInfo: common.IdentityInfo{
@@ -88,7 +86,6 @@ func (azmsi *azAuthBlobMSI) getCredential() interface{} {
 	token, err := azmsi.fetchToken()
 	if err != nil {
 		// fmt.Println(token.AccessToken)
-		fmt.Println(azmsi.config.ObjectID)
 		log.Err("azAuthBlobMSI::getCredential : Failed to get credential [%s]", err.Error())
 		return nil
 	}
@@ -122,7 +119,6 @@ func (azmsi *azAuthBfsMSI) getCredential() interface{} {
 	token, err := azmsi.fetchToken()
 	if err != nil {
 		// fmt.Println(token.AccessToken)
-		fmt.Println(azmsi.config.ObjectID)
 		log.Err("azAuthBfsMSI::getCredential : Failed to get credential [%s]", err.Error())
 		return nil
 	}
