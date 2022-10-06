@@ -484,12 +484,12 @@ stages:
                   AgentName: "blobfuse-rhel8_6"
                   containerName: "test-cnt-rhel-86"
                   tags: 'fuse3'
-                RHEL-9.0:
-                  DistroVer: "RHEL-9.0"
-                  Description: "Red Hat Enterprise Linux 9.0"
-                  AgentName: "blobfuse-rhel9"
-                  containerName: "test-cnt-rhel-9"
-                  tags: 'fuse3'
+                # RHEL-9.0:
+                #   DistroVer: "RHEL-9.0"
+                #   Description: "Red Hat Enterprise Linux 9.0"
+                #   AgentName: "blobfuse-rhel9"
+                #   containerName: "test-cnt-rhel-9"
+                #   tags: 'fuse3'
             pool:
               name: "blobfuse-rhel-pool"
               demands:
