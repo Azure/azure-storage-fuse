@@ -410,90 +410,106 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 	return bb.RenameFile(source, target)
 }
 
+func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
+	log.Trace("BlockBlob::getAttrUsingRest : name %s", name)
+
+	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
+
+	if err != nil {
+		e := storeBlobErrToErr(err)
+		if e == ErrFileNotFound {
+			return attr, syscall.ENOENT
+		} else {
+			log.Err("BlockBlob::getAttrUsingRest : Failed to get blob properties for %s [%s]", name, err.Error())
+			return attr, err
+		}
+	}
+
+	// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
+	attr = &internal.ObjAttr{
+		Path:   name, // We don't need to strip the prefixPath here since we pass the input name
+		Name:   filepath.Base(name),
+		Size:   prop.ContentLength(),
+		Mode:   0,
+		Mtime:  prop.LastModified(),
+		Atime:  prop.LastModified(),
+		Ctime:  prop.LastModified(),
+		Crtime: prop.CreationTime(),
+		Flags:  internal.NewFileBitMap(),
+		MD5:    prop.ContentMD5(),
+	}
+
+	parseMetadata(attr, prop.NewMetadata())
+
+	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+	attr.Flags.Set(internal.PropFlagModeDefault)
+
+	return attr, nil
+}
+
+func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err error) {
+	log.Trace("BlockBlob::getAttrUsingList : name %s", name)
+
+	const maxFailCount = 20
+	failCount := 0
+	iteration := 0
+
+	var marker *string = nil
+	blobsRead := 0
+
+	for failCount < maxFailCount {
+		blobs, new_marker, err := bb.List(name, marker, common.MaxDirListCount)
+		if err != nil {
+			e := storeBlobErrToErr(err)
+			if e == ErrFileNotFound {
+				return attr, syscall.ENOENT
+			} else if e == InvalidPermission {
+				return attr, syscall.EPERM
+			} else {
+				log.Warn("BlockBlob::getAttrUsingList : Failed to list blob properties for %s [%s]", name, err.Error())
+				failCount++
+				continue
+			}
+		}
+		failCount = 0
+
+		for i, blob := range blobs {
+			log.Trace("BlockBlob::getAttrUsingList : Item %d Blob %s", i+blobsRead, blob.Name)
+			if blob.Path == name {
+				return blob, nil
+			}
+		}
+
+		marker = new_marker
+		iteration++
+		blobsRead += len(blobs)
+
+		log.Trace("BlockBlob::getAttrUsingList : So far retrieved %d objects in %d iterations", blobsRead, iteration)
+		if new_marker == nil || *new_marker == "" || failCount >= maxFailCount {
+			break
+		}
+	}
+
+	if err == nil {
+		log.Err("BlockBlob::getAttrUsingList : blob %s does not exist", name)
+		return nil, syscall.ENOENT
+	}
+
+	log.Err("BlockBlob::getAttrUsingList : Failed to list blob properties for %s [%s]", name, err.Error())
+	return nil, err
+}
+
 // GetAttr : Retrieve attributes of the blob
 func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("BlockBlob::GetAttr : name %s", name)
 
 	// To support virtual directories with no marker blob, we call list instead of get properties since list will not return a 404
 	if bb.Config.virtualDirectory {
-		const maxFailCount = 20
-		failCount := 0
-		iteration := 0
-
-		var marker *string = nil
-		blobsRead := 0
-		for {
-			blobs, new_marker, err := bb.List(name, marker, common.MaxDirListCount)
-			if err != nil {
-				e := storeBlobErrToErr(err)
-				if e == ErrFileNotFound {
-					return attr, syscall.ENOENT
-				} else if e == InvalidPermission {
-					return attr, syscall.EPERM
-				} else {
-					log.Warn("BlockBlob::GetAttr : Failed to list blob properties for %s [%s]", name, err.Error())
-					failCount++
-					continue
-				}
-			}
-
-			for i, blob := range blobs {
-				log.Trace("BlockBlob::GetAttr : Item %d Blob %s", i+blobsRead, blob.Name)
-				if blob.Path == name {
-					return blob, nil
-				}
-			}
-
-			marker = new_marker
-			iteration++
-			blobsRead += len(blobs)
-
-			log.Trace("BlockBlob::GetAttr : So far retrieved %d objects in %d iterations", blobsRead, iteration)
-			if new_marker == nil || *new_marker == "" || failCount >= maxFailCount {
-				break
-			}
-		}
-		if err == nil {
-			log.Err("BlockBlob::GetAttr : blob %s does not exist", name)
-			return attr, syscall.ENOENT
-
-		} else {
-			log.Err("BlockBlob::GetAttr : Failed to list blob properties for %s [%s]", name, err.Error())
-			return attr, err
-		}
-	} else {
-		blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-		prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
-
-		if err != nil {
-			e := storeBlobErrToErr(err)
-			if e == ErrFileNotFound {
-				return attr, syscall.ENOENT
-			} else {
-				log.Err("BlockBlob::GetAttr : Failed to get blob properties for %s [%s]", name, err.Error())
-				return attr, err
-			}
-		}
-
-		// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
-		attr = &internal.ObjAttr{
-			Path:   name, // We don't need to strip the prefixPath here since we pass the input name
-			Name:   filepath.Base(name),
-			Size:   prop.ContentLength(),
-			Mode:   0,
-			Mtime:  prop.LastModified(),
-			Atime:  prop.LastModified(),
-			Ctime:  prop.LastModified(),
-			Crtime: prop.CreationTime(),
-			Flags:  internal.NewFileBitMap(),
-			MD5:    prop.ContentMD5(),
-		}
-		parseMetadata(attr, prop.NewMetadata())
-		attr.Flags.Set(internal.PropFlagMetadataRetrieved)
-		attr.Flags.Set(internal.PropFlagModeDefault)
-
-		return attr, nil
+		return bb.getAttrUsingList(name)
 	}
+
+	return bb.getAttrUsingRest(name)
 }
 
 // List : Get a list of blobs matching the given prefix
