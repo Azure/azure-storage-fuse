@@ -134,21 +134,12 @@ func NewAzStorageConnection(cfg AzStorageConfig) AzConnection {
 		log.Err("NewAzStorageConnection : Invalid account type")
 	} else if cfg.authConfig.AccountType == EAccountType.BLOCK() {
 		stg := &BlockBlob{}
-		if err := stg.Configure(cfg); err != nil {
-			log.Err("NewAzStorageConnection : Failed to configure BlockBlob object [%s]", err.Error())
-			return nil
-		}
+		_ = stg.Configure(cfg)
 		return stg
 	} else if cfg.authConfig.AccountType == EAccountType.ADLS() {
 		stg := &Datalake{}
-		if err := stg.Configure(cfg); err != nil {
-			log.Err("NewAzStorageConnection : Failed to configure Datalake object [%s]", err.Error())
-			return nil
-		}
+		_ = stg.Configure(cfg)
 		return stg
-	} else {
-		log.Err("NewAzStorageConnection : Invalid account type %s", cfg.authConfig.AccountType)
-		return nil
 	}
 
 	return nil

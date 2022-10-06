@@ -178,9 +178,7 @@ stages:
           - script: |
               fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
-              --description "An user-space filesystem for interacting with Azure Storage" \
-              --before-install ./azure-storage-fuse/tools/preinstall.sh \
-              --after-install ./azure-storage-fuse/tools/postinstall.sh
+              --description "An user-space filesystem for interacting with Azure Storage"
               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(container_image)-x86-64.deb
               cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
