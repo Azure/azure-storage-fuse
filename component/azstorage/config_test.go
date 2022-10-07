@@ -269,9 +269,19 @@ func (s *configTestSuite) TestAuthModeMSI() {
 
 	opt.ResourceID = "123"
 	err = ParseAndValidateConfig(az, opt)
+	assert.NotNil(err)
+	opt.ApplicationID = ""
+
+	err = ParseAndValidateConfig(az, opt)
 	assert.Nil(err)
-	assert.Equal(az.stConfig.authConfig.ApplicationID, opt.ApplicationID)
 	assert.Equal(az.stConfig.authConfig.ResourceID, opt.ResourceID)
+
+	opt.ResourceID = ""
+	opt.ObjectID = "1234obj"
+
+	err = ParseAndValidateConfig(az, opt)
+	assert.Nil(err)
+	assert.Equal(az.stConfig.authConfig.ObjectID, opt.ObjectID)
 }
 
 func (s *configTestSuite) TestAuthModeSPN() {
