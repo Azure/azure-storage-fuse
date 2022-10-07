@@ -49,11 +49,10 @@ import (
 
 func getMonitors() []hminternal.Monitor {
 	compMap := map[string]bool{
-		hmcommon.BlobfuseStats:   hmcommon.NoBfsMon,
-		hmcommon.CpuProfiler:     hmcommon.NoCpuProf,
-		hmcommon.MemoryProfiler:  hmcommon.NoMemProf,
-		hmcommon.NetworkProfiler: hmcommon.NoNetProf,
-		hmcommon.FileCacheMon:    hmcommon.NoFileCacheMon,
+		hmcommon.BlobfuseStats:     hmcommon.NoBfsMon,
+		hmcommon.CpuMemoryProfiler: (hmcommon.NoCpuProf && hmcommon.NoMemProf),
+		hmcommon.NetworkProfiler:   hmcommon.NoNetProf,
+		hmcommon.FileCacheMon:      hmcommon.NoFileCacheMon,
 	}
 
 	comps := make([]hminternal.Monitor, 0)

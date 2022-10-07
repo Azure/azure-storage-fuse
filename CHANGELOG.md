@@ -1,8 +1,18 @@
 ## 2.0.0-preview.4 (WIP)
+**Breaking Changes**
+- Renamed ignore-open-flag config parameter to ignore-open-flags to match CLI parameter
+- Renamed health-monitor section in config file to health_monitor
+
+**Features**
+- Added support for health-monitor stop --pid=<pid> and health-monitor stop all commands
+- Added support to work with virtual directories without special marker directory using the virtual-directory config option.
+
 **Bug Fixes**
 - Auto detect auth mode based on storage config
 - Auto correct endpoint for public cloud
 - In case of invalid option or failure CLI to return non-zero return code
+- ignore-open-flags CLI parameter is now correctly read
+- [#921](https://github.com/Azure/azure-storage-fuse/issues/921): Mount using /etc/fstab fixed
 
 ## 2.0.0-preview.3  (2022-09-02)
 **Features**

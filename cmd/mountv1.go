@@ -44,6 +44,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
@@ -85,6 +86,7 @@ type blobfuseCliOptions struct {
 	retryDelayFactor  int32
 	httpProxy         string
 	httpsProxy        string
+	ignoreOpenFlags   bool
 }
 type ComponentsConfig []string
 type PipelineConfig struct {
@@ -233,6 +235,7 @@ var generateConfigCmd = &cobra.Command{
 			}
 			bfv2StorageConfigOptions.Endpoint = fmt.Sprintf("%s://%s.%s.core.windows.net", http, accountName, accountType)
 		}
+		bfv2StorageConfigOptions.VirtualDirectory = true
 
 		pConf := PipelineConfig{
 			bfv2ForegroundOption,
@@ -277,21 +280,14 @@ var generateConfigCmd = &cobra.Command{
 // `-o umask`: inverse of default permissions being set, so 0000 is 0777
 // `-d` : enable debug logs and foreground on
 func parseFuseConfig(config []string) error {
-	allowedFlags := "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
-
-	// there are only 8 available options for -o so if we have more we should throw
-	if len(config) > 8 {
-		return errors.New(allowedFlags)
-	}
-
 	for _, v := range config {
 		parameter := strings.Split(v, "=")
 		if len(parameter) > 2 || len(parameter) <= 0 {
-			return errors.New(allowedFlags)
+			return errors.New(common.FuseAllowedFlags)
 		}
 
 		v = strings.TrimSpace(v)
-		if v == "default_permissions" {
+		if ignoreFuseOptions(v) {
 			continue
 		} else if v == "allow_other" || v == "allow_other=true" {
 			bfv2AllowOtherOption = true
@@ -327,7 +323,7 @@ func parseFuseConfig(config []string) error {
 			perm := ^uint32(permission) & 777
 			bfv2FuseConfigOptions.DefaultPermission = perm
 		} else {
-			return errors.New(allowedFlags)
+			return errors.New(common.FuseAllowedFlags)
 		}
 	}
 
@@ -394,10 +390,9 @@ func convertBfConfigParameter(flags *pflag.FlagSet, configParameterKey string, c
 // helper method: converts cli options - cli options that overlap with config file take precedence
 func convertBfCliParameters(flags *pflag.FlagSet) error {
 	if flags.Lookup("set-content-type").Changed || flags.Lookup("ca-cert-file").Changed || flags.Lookup("basic-remount-check").Changed || flags.Lookup(
-		"background-download").Changed || flags.Lookup("cache-poll-timeout-msec").Changed || flags.Lookup("upload-modified-only").Changed ||
-		flags.Lookup("ignore-open-flags").Changed || flags.Lookup("debug-libcurl").Changed {
+		"background-download").Changed || flags.Lookup("cache-poll-timeout-msec").Changed || flags.Lookup("upload-modified-only").Changed || flags.Lookup("debug-libcurl").Changed {
 		logWriter, _ := syslog.New(syslog.LOG_WARNING, "")
-		_ = logWriter.Warning("one or more unsupported v1 parameters [set-content-type, ca-cert-file, basic-remount-check, background-download, cache-poll-timeout-msec, upload-modified-only, ignore-open-flags, debug-libcurl] have been passed, ignoring and proceeding to mount")
+		_ = logWriter.Warning("one or more unsupported v1 parameters [set-content-type, ca-cert-file, basic-remount-check, background-download, cache-poll-timeout-msec, upload-modified-only, debug-libcurl] have been passed, ignoring and proceeding to mount")
 	}
 
 	bfv2LoggingConfigOptions.Type = "syslog"
@@ -501,6 +496,9 @@ func convertBfCliParameters(flags *pflag.FlagSet) error {
 		bfv2FuseConfigOptions.EnableFuseTrace = bfConfCliOptions.fuseLogging
 		bfv2ForegroundOption = bfConfCliOptions.fuseLogging
 	}
+	if flags.Lookup("ignore-open-flags").Changed {
+		bfv2FuseConfigOptions.IgnoreOpenFlags = bfConfCliOptions.ignoreOpenFlags
+	}
 	return nil
 }
 
@@ -542,6 +540,7 @@ func init() {
 	generateConfigCmd.Flags().StringSliceVarP(&libfuseOptions, "o", "o", []string{}, "FUSE options.")
 	generateConfigCmd.Flags().BoolVarP(&bfConfCliOptions.fuseLogging, "d", "d", false, "Mount with foreground and FUSE logs on.")
 	generateConfigCmd.Flags().BoolVar(&convertConfigOnly, "convert-config-only", false, "Don't mount - only convert v1 configuration to v2.")
+	generateConfigCmd.Flags().BoolVar(&bfConfCliOptions.ignoreOpenFlags, "ignore-open-flags", false, "Flag to ignore open flags unsupported by blobfuse.")
 
 	// options that are not available in V2:
 	generateConfigCmd.Flags().Bool("set-content-type", false, "Turns on automatic 'content-type' property based on the file extension.")
@@ -550,7 +549,6 @@ func init() {
 	generateConfigCmd.Flags().Bool("background-download", false, "File download to run in the background on open call.")
 	generateConfigCmd.Flags().Uint64("cache-poll-timeout-msec", 0, "Time in milliseconds in order to poll for possible expired files awaiting cache eviction.")
 	generateConfigCmd.Flags().Bool("upload-modified-only", false, "Flag to turn off unnecessary uploads to storage.")
-	generateConfigCmd.Flags().Bool("ignore-open-flags", false, "Flag to ignore open flags unsupported by blobfuse.")
 	generateConfigCmd.Flags().Bool("debug-libcurl", false, "Flag to allow users to debug libcurl calls.")
 
 	// flags for gen1 mount

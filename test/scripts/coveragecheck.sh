@@ -20,7 +20,7 @@ file_check() {
         fileName=`echo $i | cut -d "(" -f1`
         percent=`echo $i | cut -d "(" -f2 | cut -d "%" -f1`
         percentValue=`expr $percent`
-        if [ 1 -eq "$(echo "${percentValue} < 80" | bc)" ]
+        if [ 1 -eq "$(echo "${percentValue} < 70" | bc)" ]
         then
             flag=1
             echo $fileName" : "$percentValue
@@ -28,7 +28,7 @@ file_check() {
     done
     if [ $flag -eq 1 ]
     then
-        echo "Code coverage below 80%"
+        echo "Code coverage below 70%"
         exit 1
     fi
     echo "Code coverage success"

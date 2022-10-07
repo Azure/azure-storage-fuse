@@ -273,6 +273,7 @@ const (
 	ErrFileAlreadyExists
 	InvalidRange
 	BlobIsUnderLease
+	InvalidPermission
 )
 
 // ErrStr : Store error to string mapping
@@ -297,6 +298,8 @@ func storeBlobErrToErr(err error) uint16 {
 			return InvalidRange
 		case azblob.ServiceCodeLeaseIDMissing:
 			return BlobIsUnderLease
+		case azblob.ServiceCodeInsufficientAccountPermissions:
+			return InvalidPermission
 		default:
 			return ErrUnknown
 		}

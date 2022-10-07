@@ -65,7 +65,13 @@ const (
 
 	MbToBytes  = 1024 * 1024
 	BfuseStats = "blobfuse_stats"
+
+	FuseAllowedFlags = "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
 )
+
+func FuseIgnoredFlags() []string {
+	return []string{"default_permissions", "rw", "dev", "nodev", "suid", "nosuid", "delay_connect", "uid", "gid", "auto", "noauto", "user", "nouser", "exec", "noexec"}
+}
 
 var Blobfuse2Version = Blobfuse2Version_()
 
