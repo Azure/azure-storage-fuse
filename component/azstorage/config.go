@@ -392,8 +392,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	case EAuthType.MSI():
 		az.stConfig.authConfig.AuthMode = EAuthType.MSI()
 		v := make(map[string]bool, 3)
-		if opt.ClientID != "" {
-			v[opt.ClientID] = true
+		if opt.ApplicationID != "" {
+			v[opt.ApplicationID] = true
 		}
 		if opt.ObjectID != "" {
 			v[opt.ObjectID] = true
