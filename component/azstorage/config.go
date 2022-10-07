@@ -167,6 +167,7 @@ type AzStorageOptions struct {
 	AuthResourceString      string `config:"auth-resource" yaml:"auth-resource,omitempty"`
 	UpdateMD5               bool   `config:"update-md5" yaml:"update-md5"`
 	ValidateMD5             bool   `config:"validate-md5" yaml:"validate-md5"`
+	VirtualDirectory        bool   `config:"virtual-directory" yaml:"virtual-directory"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -441,9 +442,9 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		log.Warn("unsupported v1 CLI parameter: debug-libcurl is not applicable in blobfuse2.")
 	}
 
-	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, Endpoint: %s, ListBlock: %d, MD5 : %v %v",
+	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, Endpoint: %s, ListBlock: %d, MD5 : %v %v, Virtual Directory: %v",
 		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,
-		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.cancelListForSeconds, az.stConfig.validateMD5, az.stConfig.updateMD5)
+		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.cancelListForSeconds, az.stConfig.validateMD5, az.stConfig.updateMD5, az.stConfig.virtualDirectory)
 
 	log.Info("ParseAndValidateConfig : Retry Config: Retry count %d, Max Timeout %d, BackOff Time %d, Max Delay %d",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay)
@@ -473,6 +474,8 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 	az.stConfig.ignoreAccessModifiers = !opt.FailUnsupportedOp
 	az.stConfig.validateMD5 = opt.ValidateMD5
 	az.stConfig.updateMD5 = opt.UpdateMD5
+
+	az.stConfig.virtualDirectory = opt.VirtualDirectory
 
 	// Auth related reconfig
 	switch opt.AuthMode {
