@@ -390,10 +390,6 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.SASKey = sanitizeSASKey(opt.SaSKey)
 	case EAuthType.MSI():
 		az.stConfig.authConfig.AuthMode = EAuthType.MSI()
-		if opt.ApplicationID == "" && opt.ResourceID == "" && opt.ObjectID == "" {
-			//lint:ignore ST1005 ignore
-			return errors.New("Application ID and Resource ID not provided")
-		}
 		v := make(map[string]bool, 3)
 		if opt.ClientID != "" {
 			v[opt.ClientID] = true
@@ -404,12 +400,12 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		if opt.ResourceID != "" {
 			v[opt.ResourceID] = true
 		}
-		if len(v) > 1 {
-			return errors.New("client ID, object ID and MSI resource ID are mutually exclusive")
+		if len(v) > 1 || len(v) == 0 {
+			return errors.New("client ID, object ID and MSI resource ID are mutually exclusive and one need to be provided")
 		}
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
 		az.stConfig.authConfig.ResourceID = opt.ResourceID
-
+		az.stConfig.authConfig.ObjectID = opt.ObjectID
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
 		if opt.ClientID == "" || opt.ClientSecret == "" || opt.TenantID == "" {
@@ -419,7 +415,6 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.ClientSecret = opt.ClientSecret
 		az.stConfig.authConfig.TenantID = opt.TenantID
-		az.stConfig.authConfig.ObjectID = opt.ObjectID
 
 	default:
 		log.Err("ParseAndValidateConfig : Invalid auth mode %s", opt.AuthMode)
