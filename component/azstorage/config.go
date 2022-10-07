@@ -401,7 +401,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		if opt.ResourceID != "" {
 			v[opt.ResourceID] = true
 		}
-		if len(v) > 1 || len(v) == 0 {
+		if len(v) != 1 {
 			return errors.New("client ID, object ID and MSI resource ID are mutually exclusive and one need to be provided")
 		}
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
