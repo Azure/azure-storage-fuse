@@ -111,6 +111,7 @@ azstorage:
   auth-resource: <resource string to be used during OAuth token retrieval>
   update-md5: true|false <set md5 sum on upload. Impacts performance. works only when file-cache component is part of the pipeline>
   validate-md5: true|false <validate md5 on download. Impacts performance. works only when file-cache component is part of the pipeline>
+  virtual-directory: true|false <support virtual directories without existence of a special marker blob>
 
 
 # Mount all configuration
