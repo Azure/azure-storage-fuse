@@ -410,9 +410,8 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 	return bb.RenameFile(source, target)
 }
 
-// GetAttr : Retrieve attributes of the blob
-func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
-	log.Trace("BlockBlob::GetAttr : name %s", name)
+func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
+	log.Trace("BlockBlob::getAttrUsingRest : name %s", name)
 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
@@ -422,7 +421,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		if e == ErrFileNotFound {
 			return attr, syscall.ENOENT
 		} else {
-			log.Err("BlockBlob::GetAttr : Failed to get blob properties for %s [%s]", name, err.Error())
+			log.Err("BlockBlob::getAttrUsingRest : Failed to get blob properties for %s [%s]", name, err.Error())
 			return attr, err
 		}
 	}
@@ -440,11 +439,77 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Flags:  internal.NewFileBitMap(),
 		MD5:    prop.ContentMD5(),
 	}
+
 	parseMetadata(attr, prop.NewMetadata())
+
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 	attr.Flags.Set(internal.PropFlagModeDefault)
 
 	return attr, nil
+}
+
+func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err error) {
+	log.Trace("BlockBlob::getAttrUsingList : name %s", name)
+
+	const maxFailCount = 20
+	failCount := 0
+	iteration := 0
+
+	var marker *string = nil
+	blobsRead := 0
+
+	for failCount < maxFailCount {
+		blobs, new_marker, err := bb.List(name, marker, common.MaxDirListCount)
+		if err != nil {
+			e := storeBlobErrToErr(err)
+			if e == ErrFileNotFound {
+				return attr, syscall.ENOENT
+			} else if e == InvalidPermission {
+				return attr, syscall.EPERM
+			} else {
+				log.Warn("BlockBlob::getAttrUsingList : Failed to list blob properties for %s [%s]", name, err.Error())
+				failCount++
+				continue
+			}
+		}
+		failCount = 0
+
+		for i, blob := range blobs {
+			log.Trace("BlockBlob::getAttrUsingList : Item %d Blob %s", i+blobsRead, blob.Name)
+			if blob.Path == name {
+				return blob, nil
+			}
+		}
+
+		marker = new_marker
+		iteration++
+		blobsRead += len(blobs)
+
+		log.Trace("BlockBlob::getAttrUsingList : So far retrieved %d objects in %d iterations", blobsRead, iteration)
+		if new_marker == nil || *new_marker == "" || failCount >= maxFailCount {
+			break
+		}
+	}
+
+	if err == nil {
+		log.Err("BlockBlob::getAttrUsingList : blob %s does not exist", name)
+		return nil, syscall.ENOENT
+	}
+
+	log.Err("BlockBlob::getAttrUsingList : Failed to list blob properties for %s [%s]", name, err.Error())
+	return nil, err
+}
+
+// GetAttr : Retrieve attributes of the blob
+func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
+	log.Trace("BlockBlob::GetAttr : name %s", name)
+
+	// To support virtual directories with no marker blob, we call list instead of get properties since list will not return a 404
+	if bb.Config.virtualDirectory {
+		return bb.getAttrUsingList(name)
+	}
+
+	return bb.getAttrUsingRest(name)
 }
 
 // List : Get a list of blobs matching the given prefix
@@ -511,6 +576,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			Ctime:  blobInfo.Properties.LastModified,
 			Crtime: dereferenceTime(blobInfo.Properties.CreationTime, blobInfo.Properties.LastModified),
 			Flags:  internal.NewFileBitMap(),
+			MD5:    blobInfo.Properties.ContentMD5,
 		}
 
 		parseMetadata(attr, blobInfo.Metadata)
@@ -525,7 +591,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		}
 	}
 
-	// If in case virtual directory exists but its corrosponding 0 byte file is not there holding hdi_isfolder then just iterating
+	// If in case virtual directory exists but its corresponding 0 byte file is not there holding hdi_isfolder then just iterating
 	// BlobItems will fail to identify that directory. In such cases BlobPrefixes help to list all directories
 	// dirList contains all dirs for which we got 0 byte meta file, so except those add rest to the list
 	for _, blobInfo := range listBlob.Segment.BlobPrefixes {
