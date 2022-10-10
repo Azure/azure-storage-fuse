@@ -97,6 +97,8 @@ stages:
               value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
             - name: BLOBFUSE2_STREAM_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
+            - name: BLOBFUSE2_STREAM_FILENAME_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_stream_filename.yaml'
             - name: BLOBFUSE2_ADLS_CFG
               value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
             - name: BLOBFUSE2_GTEST_CFG
@@ -182,6 +184,7 @@ stages:
                   test_stream: true
                   test_azurite: true
                   stream_config: $(BLOBFUSE2_STREAM_CFG)
+                  stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   spn_credential_config: $(BLOBFUSE2_SPN_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
@@ -216,6 +219,7 @@ stages:
                   test_stream: true
                   test_azurite: false
                   stream_config: $(BLOBFUSE2_STREAM_CFG)
+                  stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   spn_credential_config: $(BLOBFUSE2_SPN_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
