@@ -148,8 +148,8 @@ To learn about a specific command, just include the name of the command (For exa
     * `AZURE_STORAGE_AAD_ENDPOINT`: Specifies a custom AAD endpoint to authenticate against
     * `AZURE_STORAGE_SPN_CLIENT_SECRET`: Specifies the client secret for your application registration.
 - Proxy Server:
-    * `http_proxy`: The proxy server address. Example: http://10.1.22.4:8080/".    
-    * `https_proxy`: The proxy server address when https is turned off forcing http. Example: http://10.1.22.4:8080/".
+    * `http_proxy`: The proxy server address. Example: `10.1.22.4:8080`.    
+    * `https_proxy`: The proxy server address when https is turned off forcing http. Example: `10.1.22.4:8080`.
 
 ## Config file
 - See [this](./sampleFileCacheConfig.yaml) sample config file.
