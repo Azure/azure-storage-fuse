@@ -49,7 +49,7 @@ parameters:
     type: boolean
   - name: stream_config
     type: string
-  - stream_filename_config
+  - name: stream_filename_config
     type: string
   - name: test_azurite
     type: boolean
