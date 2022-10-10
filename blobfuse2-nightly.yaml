@@ -897,7 +897,7 @@ stages:
                   gopath: $(GOPATH)
                   installStep:
                     script: |
-                      sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse3 
+                      sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse fuse3 
                       wget https://rpmfind.net/linux/opensuse/distribution/leap/15.2/repo/oss/x86_64/fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm
                       sudo zypper -n --no-gpg-checks install fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm  
                     displayName: 'Install fuse'
