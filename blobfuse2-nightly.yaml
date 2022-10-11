@@ -478,7 +478,18 @@ stages:
                   AgentName: "blobfuse-rhel8_2"
                   containerName: "test-cnt-rhel-82"
                   tags: 'fuse3'
-
+                RHEL-8.6:
+                  DistroVer: "RHEL-8.6"
+                  Description: "Red Hat Enterprise Linux 8.6"
+                  AgentName: "blobfuse-rhel8_6"
+                  containerName: "test-cnt-rhel-86"
+                  tags: 'fuse3'
+                # RHEL-9.0:
+                #   DistroVer: "RHEL-9.0"
+                #   Description: "Red Hat Enterprise Linux 9.0"
+                #   AgentName: "blobfuse-rhel9"
+                #   containerName: "test-cnt-rhel-9"
+                #   tags: 'fuse3'
             pool:
               name: "blobfuse-rhel-pool"
               demands:
@@ -886,7 +897,7 @@ stages:
                   gopath: $(GOPATH)
                   installStep:
                     script: |
-                      sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse3 
+                      sudo zypper -n install git golang make cmake gcc gcc-c++ glibc-devel fuse fuse3 
                       wget https://rpmfind.net/linux/opensuse/distribution/leap/15.2/repo/oss/x86_64/fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm
                       sudo zypper -n --no-gpg-checks install fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm  
                     displayName: 'Install fuse'
