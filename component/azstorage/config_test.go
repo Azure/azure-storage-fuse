@@ -256,9 +256,8 @@ func (s *configTestSuite) TestAuthModeMSI() {
 	opt.AuthMode = "msi"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Nil(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.MSI())
-	assert.Contains(err.Error(), "object ID and MSI resource ID are mutually exclusive and one need to be provided")
 
 	opt.ApplicationID = "abc"
 	err = ParseAndValidateConfig(az, opt)
