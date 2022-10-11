@@ -238,7 +238,7 @@ steps:
         clone: false
         mountStep:
           script: |
-            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.stream_config }}
+            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.stream_filename_config }}
           displayName: 'E2E TEST: Mount container'
           timeoutInMinutes: 3
           continueOnError: false

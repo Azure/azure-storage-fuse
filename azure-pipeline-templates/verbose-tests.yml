@@ -120,7 +120,7 @@ steps:
     condition: ${{ parameters.test_stream }}
     continueOnError: false
       
-  - script: cat ${{ parameters.stream_config }}
+  - script: cat ${{ parameters.stream_filename_config }}
     displayName: Print Stream config file with Filename Caching
 
 # Create sas credential config file if we need to test it
