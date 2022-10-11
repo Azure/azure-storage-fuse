@@ -340,6 +340,7 @@ func (az *AzStorage) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	if err != nil {
 		return nil, err
 	}
+	handle.Mtime = time.Now()
 
 	azStatsCollector.PushEvents(createFile, options.Name, map[string]interface{}{mode: options.Mode.String()})
 
