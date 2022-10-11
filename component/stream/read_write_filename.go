@@ -79,6 +79,7 @@ func (rw *ReadWriteFilenameCache) CreateFile(options internal.CreateFileOptions)
 		if err != nil {
 			log.Err("Stream::CreateFile : error creating cache object %s [%s]", options.Name, err.Error())
 		}
+		handle.Mtime = time.Now()
 	}
 	return handle, err
 }
