@@ -248,6 +248,23 @@ func formatEndpointAccountType(endpoint string, account AccountType) string {
 	return correctedEndpoint
 }
 
+func validateMsiCOnfig(opt AzStorageOptions) error {
+	v := make(map[string]bool, 3)
+	if opt.ApplicationID != "" {
+		v[opt.ApplicationID] = true
+	}
+	if opt.ObjectID != "" {
+		v[opt.ObjectID] = true
+	}
+	if opt.ResourceID != "" {
+		v[opt.ResourceID] = true
+	}
+	if len(v) > 1 {
+		return errors.New("client ID, object ID and MSI resource ID are mutually exclusive and zero or one of the inputs need to be provided")
+	}
+	return nil
+}
+
 // ParseAndValidateConfig : Parse and validate config
 func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Trace("ParseAndValidateConfig : Parsing config")
@@ -391,18 +408,9 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.SASKey = sanitizeSASKey(opt.SaSKey)
 	case EAuthType.MSI():
 		az.stConfig.authConfig.AuthMode = EAuthType.MSI()
-		v := make(map[string]bool, 3)
-		if opt.ApplicationID != "" {
-			v[opt.ApplicationID] = true
-		}
-		if opt.ObjectID != "" {
-			v[opt.ObjectID] = true
-		}
-		if opt.ResourceID != "" {
-			v[opt.ResourceID] = true
-		}
-		if len(v) > 1 {
-			return errors.New("client ID, object ID and MSI resource ID are mutually exclusive and zero or one of the inputs need to be provided")
+		err := validateMsiCOnfig(opt)
+		if err != nil {
+			return err
 		}
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
 		az.stConfig.authConfig.ResourceID = opt.ResourceID
