@@ -248,7 +248,7 @@ func formatEndpointAccountType(endpoint string, account AccountType) string {
 	return correctedEndpoint
 }
 
-func validateMsiCOnfig(opt AzStorageOptions) error {
+func validateMsiConfig(opt AzStorageOptions) error {
 	v := make(map[string]bool, 3)
 	if opt.ApplicationID != "" {
 		v[opt.ApplicationID] = true
@@ -408,7 +408,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.SASKey = sanitizeSASKey(opt.SaSKey)
 	case EAuthType.MSI():
 		az.stConfig.authConfig.AuthMode = EAuthType.MSI()
-		err := validateMsiCOnfig(opt)
+		err := validateMsiConfig(opt)
 		if err != nil {
 			return err
 		}

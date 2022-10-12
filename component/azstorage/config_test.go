@@ -268,7 +268,7 @@ func (s *configTestSuite) TestAuthModeMSI() {
 
 	// test more than one credential passed for msi
 	opt.ResourceID = "123"
-	err = validateMsiCOnfig(opt)
+	err = validateMsiConfig(opt)
 	assert.NotNil(err)
 	opt.ApplicationID = ""
 

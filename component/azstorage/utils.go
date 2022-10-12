@@ -585,5 +585,5 @@ func autoDetectAuthMode(opt AzStorageOptions) string {
 		return "spn"
 	}
 
-	return "invalid_auth"
+	return "msi"
 }
