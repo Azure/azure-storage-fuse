@@ -8,7 +8,7 @@ logging:
 
 components:
   - libfuse
-  - stream
+  - file_cache
   - attr_cache
   - azstorage
 
@@ -17,10 +17,10 @@ libfuse:
   entry-expiration-sec: 120
   negative-entry-expiration-sec: 240
 
-stream:
-  block-size-mb: 8
-  blocks-per-file: 3
-  cache-size-mb: 1024
+file_cache:
+  path: /home/myuser/tempcache
+  timeout-sec: 120
+  max-size-mb: 4096
 
 attr_cache:
   timeout-sec: 7200
@@ -28,8 +28,8 @@ attr_cache:
 azstorage:
   type: block
   account-name: mystorageaccount
-  account-key: mystoragekey
+  sas: ?sv=<SAS_TOKEN>
   endpoint: https://mystorageaccount.blob.core.windows.net
-  mode: key
+  mode: sas
   container: mycontainer
  
