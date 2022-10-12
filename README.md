@@ -155,6 +155,8 @@ To learn about a specific command, just include the name of the command (For exa
 - See [this](./sampleFileCacheConfig.yaml) sample config file.
 - See [this](./setup/baseConfig.yaml) config file for a list and description of all possible configurable options in blobfuse2. 
 
+***Please note: do not use quotations `""` for any of the config parameters***
+
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
 az cli has a command to generate a sas token. Open a command prompt and make sure you are logged in to az cli. Run the following command and the sas token will be displayed in the command prompt.
