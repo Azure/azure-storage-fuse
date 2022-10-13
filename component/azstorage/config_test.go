@@ -146,14 +146,14 @@ func (s *configTestSuite) TestProtoType() {
 	config.SetBool(compName+".use-https", true)
 	opt.UseHTTPS = true
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Nil(err)
 	assert.Equal(az.stConfig.authConfig.UseHTTP, false)
 
 	config.SetBool(compName+".use-https", false)
 	opt.UseHTTPS = false
 	opt.AccountType = "adls"
 	err = ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Nil(err)
 	assert.Equal(az.stConfig.authConfig.UseHTTP, true)
 }
 
@@ -171,12 +171,12 @@ func (s *configTestSuite) TestProxyConfig() {
 
 	opt.HttpsProxyAddress = "127.0.0.1"
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Nil(err)
 	assert.Equal(az.stConfig.proxyAddress, opt.HttpsProxyAddress)
 
 	opt.HttpProxyAddress = "128.0.0.1"
 	err = ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Nil(err)
 	assert.Equal(az.stConfig.proxyAddress, opt.HttpProxyAddress)
 
 	config.SetBool(compName+".use-https", true)
@@ -190,7 +190,7 @@ func (s *configTestSuite) TestProxyConfig() {
 
 	opt.HttpsProxyAddress = "128.0.0.1"
 	err = ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Nil(err)
 	assert.Equal(az.stConfig.proxyAddress, opt.HttpsProxyAddress)
 }
 
@@ -203,8 +203,8 @@ func (s *configTestSuite) TestAuthModeNotSet() {
 	opt.Container = "abcd"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
-	assert.Contains(err.Error(), "invalid auth mode")
+	assert.Nil(err)
+	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.MSI())
 }
 
 func (s *configTestSuite) TestAuthModeKey() {
