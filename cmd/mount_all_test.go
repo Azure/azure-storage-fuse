@@ -47,48 +47,6 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// var configMountTest string = `
-// logging:
-//   type: syslog
-// default-working-dir: /tmp/blobfuse2
-// file_cache:
-//   path: /tmp/fileCachePath
-// libfuse:
-//   attribute-expiration-sec: 120
-//   entry-expiration-sec: 60
-// azstorage:
-//   account-name: myAccountName
-//   account-key: myAccountKey
-//   mode: key
-//   endpoint: myEndpoint
-//   container: myContainer
-// components:
-//   - libfuse
-//   - file_cache
-//   - attr_cache
-//   - azstorage
-// health_monitor:
-//   monitor-disable-list:
-//     - network_profiler
-//     - blobfuse_stats
-// `
-
-// var configMountLoopback string = `
-// logging:
-//   type: syslog
-// default-working-dir: /tmp/blobfuse2
-// components:
-//   - libfuse
-//   - loopbackfs
-// libfuse:
-//   attribute-expiration-sec: 120
-//   entry-expiration-sec: 60
-// loopbackfs:
-//   path: /tmp/bfuseloopback
-// `
-
-// var confFileMntTest string
-
 type mountAllTestSuite struct {
 	suite.Suite
 	assert *assert.Assertions
