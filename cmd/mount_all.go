@@ -114,6 +114,14 @@ func processCommand() error {
 		return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
 	}
 
+	if !config.IsSet("logging.file-path") {
+		options.Logging.LogFilePath = common.DefaultLogFilePath
+	}
+
+	if !config.IsSet("logging.level") {
+		options.Logging.LogLevel = "LOG_WARNING"
+	}
+
 	err = options.validate(true)
 	if err != nil {
 		return err
