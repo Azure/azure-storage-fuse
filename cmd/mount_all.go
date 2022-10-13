@@ -87,12 +87,29 @@ var mountAllCmd = &cobra.Command{
 }
 
 func processCommand() error {
-	err := parseConfig()
-	if err != nil {
-		return err
+	configFileExists := true
+
+	if options.ConfigFile == "" {
+		// Config file is not set in cli parameters
+		// Blobfuse2 defaults to config.yaml in current directory
+		// If the file does not exists then user might have configured required things in env variables
+		// Fall back to defaults and let components fail if all required env variables are not set.
+		_, err := os.Stat(common.DefaultConfigFilePath)
+		if err != nil && os.IsNotExist(err) {
+			configFileExists = false
+		} else {
+			options.ConfigFile = common.DefaultConfigFilePath
+		}
 	}
 
-	err = config.Unmarshal(&options)
+	if configFileExists {
+		err := parseConfig()
+		if err != nil {
+			return err
+		}
+	}
+
+	err := config.Unmarshal(&options)
 	if err != nil {
 		return fmt.Errorf("failed to unmarshal config [%s]", err.Error())
 	}
