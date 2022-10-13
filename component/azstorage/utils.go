@@ -575,7 +575,7 @@ func getMD5(fi *os.File) ([]byte, error) {
 }
 
 func autoDetectAuthMode(opt AzStorageOptions) string {
-	if opt.ApplicationID != "" || opt.ResourceID != "" {
+	if opt.ApplicationID != "" || opt.ResourceID != "" || opt.ObjectID != "" {
 		return "msi"
 	} else if opt.AccountKey != "" {
 		return "key"
@@ -585,5 +585,5 @@ func autoDetectAuthMode(opt AzStorageOptions) string {
 		return "spn"
 	}
 
-	return "invalid_auth"
+	return "msi"
 }

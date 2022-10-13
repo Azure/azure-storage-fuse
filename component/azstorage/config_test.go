@@ -146,14 +146,14 @@ func (s *configTestSuite) TestProtoType() {
 	config.SetBool(compName+".use-https", true)
 	opt.UseHTTPS = true
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Nil(err)
 	assert.Equal(az.stConfig.authConfig.UseHTTP, false)
 
 	config.SetBool(compName+".use-https", false)
 	opt.UseHTTPS = false
 	opt.AccountType = "adls"
 	err = ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Nil(err)
 	assert.Equal(az.stConfig.authConfig.UseHTTP, true)
 }
 
@@ -171,12 +171,12 @@ func (s *configTestSuite) TestProxyConfig() {
 
 	opt.HttpsProxyAddress = "127.0.0.1"
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Nil(err)
 	assert.Equal(az.stConfig.proxyAddress, opt.HttpsProxyAddress)
 
 	opt.HttpProxyAddress = "128.0.0.1"
 	err = ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Nil(err)
 	assert.Equal(az.stConfig.proxyAddress, opt.HttpProxyAddress)
 
 	config.SetBool(compName+".use-https", true)
@@ -190,7 +190,7 @@ func (s *configTestSuite) TestProxyConfig() {
 
 	opt.HttpsProxyAddress = "128.0.0.1"
 	err = ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Nil(err)
 	assert.Equal(az.stConfig.proxyAddress, opt.HttpsProxyAddress)
 }
 
@@ -203,8 +203,8 @@ func (s *configTestSuite) TestAuthModeNotSet() {
 	opt.Container = "abcd"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
-	assert.Contains(err.Error(), "invalid auth mode")
+	assert.Nil(err)
+	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.MSI())
 }
 
 func (s *configTestSuite) TestAuthModeKey() {
@@ -256,9 +256,8 @@ func (s *configTestSuite) TestAuthModeMSI() {
 	opt.AuthMode = "msi"
 
 	err := ParseAndValidateConfig(az, opt)
-	assert.NotNil(err)
+	assert.Nil(err)
 	assert.Equal(az.stConfig.authConfig.AuthMode, EAuthType.MSI())
-	assert.Contains(err.Error(), "Application ID and Resource ID not provided")
 
 	opt.ApplicationID = "abc"
 	err = ParseAndValidateConfig(az, opt)
@@ -267,11 +266,22 @@ func (s *configTestSuite) TestAuthModeMSI() {
 	assert.Equal(az.stConfig.authConfig.ApplicationID, opt.ApplicationID)
 	assert.Equal(az.stConfig.authConfig.ResourceID, "")
 
+	// test more than one credential passed for msi
 	opt.ResourceID = "123"
+	err = validateMsiConfig(opt)
+	assert.NotNil(err)
+	opt.ApplicationID = ""
+
 	err = ParseAndValidateConfig(az, opt)
 	assert.Nil(err)
-	assert.Equal(az.stConfig.authConfig.ApplicationID, opt.ApplicationID)
 	assert.Equal(az.stConfig.authConfig.ResourceID, opt.ResourceID)
+
+	opt.ResourceID = ""
+	opt.ObjectID = "1234obj"
+
+	err = ParseAndValidateConfig(az, opt)
+	assert.Nil(err)
+	assert.Equal(az.stConfig.authConfig.ObjectID, opt.ObjectID)
 }
 
 func (s *configTestSuite) TestAuthModeSPN() {
