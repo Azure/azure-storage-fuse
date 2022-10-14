@@ -149,12 +149,12 @@ stages:
 
         - script: |
             chmod 777 ./test/scripts/fio.sh
-            ./test/scripts/fio.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG) rw specl
+            ./test/scripts/fio.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG) rw csi
           displayName: 'FIO CSI Test'
           workingDirectory: $(WORK_DIR)
 
         - script: |
-            cat results_fio_randrw.txt
+            cat results_fio_rw.txt
           displayName: 'FIO CSI Results'
           workingDirectory: $(WORK_DIR)
 

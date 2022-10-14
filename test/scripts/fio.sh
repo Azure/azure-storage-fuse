@@ -7,6 +7,7 @@ tmpPath=$2
 v2configPath=$3
 v1configPath=$4
 testname=$5
+
 outputPath=results_fio_$testname.txt
 rm $outputPath
 
@@ -28,10 +29,12 @@ mkdir -p $mntPath
 mkdir -p $tmpPath
 
 fiocmd=""
-if [ "$6" == "specl" ]
+if [ "$6" == "csi" ]
 then
+echo "Special fio command."
 fiocmd='fio --randrepeat=0 --verify=0 --ioengine=libaio --lat_percentiles=1 --name=rw_mix --bs=4K --iodepth=64 --size=2G --readwrite=randrw --rwmixread=70 --time_based --ramp_time=10s --runtime=60s --filename=$mntPath/testfile4G'
 else
+echo "Regular fio command."
 fiocmd='fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=$testname --rwmixread=75 --size=4G --filename=$mntPath/testfile4G'
 fi
 
