@@ -149,15 +149,25 @@ stages:
 
         - script: |
             chmod 777 ./test/scripts/fio.sh
-            ./test/scripts/fio.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
-          displayName: 'FIO'
+            ./test/scripts/fio.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG) rw
+          displayName: 'FIO Sequential Test'
           workingDirectory: $(WORK_DIR)
 
         - script: |
-            cat results_fio.txt
-          displayName: 'FIO Results'
+            cat results_fio_rw.txt
+          displayName: 'FIO Sequential Results'
           workingDirectory: $(WORK_DIR)
 
+        - script: |
+            chmod 777 ./test/scripts/fio.sh
+            ./test/scripts/fio.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG) randrw
+          displayName: 'FIO Random Test'
+          workingDirectory: $(WORK_DIR)
+
+        - script: |
+            cat results_fio_randrw.txt
+          displayName: 'FIO Random Results'
+          workingDirectory: $(WORK_DIR)
         
 
 

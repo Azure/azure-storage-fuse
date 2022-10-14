@@ -6,7 +6,8 @@ mntPath=$1
 tmpPath=$2
 v2configPath=$3
 v1configPath=$4
-outputPath=results_fio.txt
+testname=$5
+outputPath=results_fio_$testname .txt
 rm $outputPath
 
 echo "| Case | latest v2 write IOPS | latest v2 read IOPS | v1 write IOPS | v2 read IOPS |" >> $outputPath
@@ -41,7 +42,7 @@ for i in {1..5};
 do 
 	echo "Blobfuse2 Run $i"
 
-    fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=$mntPath/testfile4G$i)
+    fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --rw=$testname --rwmixread=75 --size=4G --filename=$mntPath/testfile4G$i)
     echo $fio_result
     read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
     read_iops=$(echo $read_iops | tr '[:lower:]' '[:upper:]')
@@ -78,7 +79,7 @@ for i in {1..5};
 do 
 	echo "Blobfuse Run $i"
 
-    fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=rw --rwmixread=75 --size=4G --filename=$mntPath/testfile4G$i)
+    fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --rw=$testname --rwmixread=75 --size=4G --filename=$mntPath/testfile4G$i)
     echo $fio_result
     read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
     read_iops=$(echo $read_iops | tr '[:lower:]' '[:upper:]')
