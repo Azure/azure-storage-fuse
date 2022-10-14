@@ -27,6 +27,14 @@ rm -rf $tmpPath
 mkdir -p $mntPath
 mkdir -p $tmpPath
 
+fiocmd=""
+if [ "$6" == "specl" ]
+then
+fiocmd='fio --randrepeat=0 --verify=0 --ioengine=libaio --lat_percentiles=1 --name=rw_mix --bs=4K --iodepth=64 --size=2G --readwrite=randrw --rwmixread=70 --time_based --ramp_time=10s --runtime=60s --filename=$mntPath/testfile4G'
+else
+fiocmd='fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=$testname --rwmixread=75 --size=4G --filename=$mntPath/testfile4G'
+fi
+
 # Mount Blobfuse2
 ./blobfuse2 mount $mntPath --config-file=$v2configPath &
 if [ $? -ne 0 ]; then
@@ -38,11 +46,12 @@ ps -aux | grep blobfuse2
 sed_line=3
 blobfuse2_write_average=0
 blobfuse2_read_average=0
+
 for i in {1..5}; 
 do 
 	echo "Blobfuse2 Run $i"
 
-    fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --rw=$testname --rwmixread=75 --size=4G --filename=$mntPath/testfile4G$i)
+    fio_result=$($fiocmd$i)
     echo $fio_result
     read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
     read_iops=$(echo $read_iops | tr '[:lower:]' '[:upper:]')
@@ -79,7 +88,7 @@ for i in {1..5};
 do 
 	echo "Blobfuse Run $i"
 
-    fio_result=$(fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --rw=$testname --rwmixread=75 --size=4G --filename=$mntPath/testfile4G$i)
+    fio_result=$($fiocmd$i)
     echo $fio_result
     read_iops=$(echo $fio_result | sed -n "s/^.*read: IOPS=\s*\(\S*\),.*$/\1/p")
     read_iops=$(echo $read_iops | tr '[:lower:]' '[:upper:]')

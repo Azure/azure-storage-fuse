@@ -123,30 +123,8 @@ stages:
           displayName: "Generate v1 Config File"
           continueOnError: false
 
-        - script: |
-            chmod 777 ./test/scripts/run.sh
-            ./test/scripts/run.sh $(MOUNT_DIR)/run $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
-
-          displayName: 'Upload Download'
-          workingDirectory: $(WORK_DIR)
-
-        - script: |
-            cat results.txt
-          displayName: 'Upload Download Results'
-          workingDirectory: $(WORK_DIR)
-
-        - script: |
-            chmod 777 ./test/scripts/git_clone.sh
-            ./test/scripts/git_clone.sh $(MOUNT_DIR)/git $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
-
-          displayName: 'Git Clone'
-          workingDirectory: $(WORK_DIR)
-
-        - script: |
-            cat results_git_clone.txt
-          displayName: 'Git Clone Results'
-          workingDirectory: $(WORK_DIR)
-
+        # --------------------------------------------------------------------------------------------
+        # FIO Tests
         - script: |
             chmod 777 ./test/scripts/fio.sh
             ./test/scripts/fio.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG) rw
@@ -168,8 +146,46 @@ stages:
             cat results_fio_randrw.txt
           displayName: 'FIO Random Results'
           workingDirectory: $(WORK_DIR)
-        
 
+        - script: |
+            chmod 777 ./test/scripts/fio.sh
+            ./test/scripts/fio.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG) rw specl
+          displayName: 'FIO CSI Test'
+          workingDirectory: $(WORK_DIR)
+
+        - script: |
+            cat results_fio_randrw.txt
+          displayName: 'FIO CSI Results'
+          workingDirectory: $(WORK_DIR)
+
+        # --------------------------------------------------------------------------------------------
+        # Upload-DownloadFIO Tests
+        - script: |
+            chmod 777 ./test/scripts/run.sh
+            ./test/scripts/run.sh $(MOUNT_DIR)/run $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+
+          displayName: 'Upload Download'
+          workingDirectory: $(WORK_DIR)
+
+        - script: |
+            cat results.txt
+          displayName: 'Upload Download Results'
+          workingDirectory: $(WORK_DIR)
+
+        # --------------------------------------------------------------------------------------------
+        # Git clone test
+        - script: |
+            chmod 777 ./test/scripts/git_clone.sh
+            ./test/scripts/git_clone.sh $(MOUNT_DIR)/git $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+
+          displayName: 'Git Clone'
+          workingDirectory: $(WORK_DIR)
+
+        - script: |
+            cat results_git_clone.txt
+          displayName: 'Git Clone Results'
+          workingDirectory: $(WORK_DIR)
+        
 
 - stage: LongRunning
   dependsOn: ShortRunning
