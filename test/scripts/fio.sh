@@ -38,6 +38,10 @@ echo "Regular fio command."
 fiocmd='fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test--bs=4k --iodepth=64 --readwrite=$testname --rwmixread=75 --size=4G --filename=$mntPath/testfile4G'
 fi
 
+echo "Test command:"
+echo $fiocmd
+echo "."
+
 # Mount Blobfuse2
 ./blobfuse2 mount $mntPath --config-file=$v2configPath &
 if [ $? -ne 0 ]; then
