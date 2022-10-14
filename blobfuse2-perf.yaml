@@ -160,31 +160,31 @@ stages:
 
         # --------------------------------------------------------------------------------------------
         # Upload-DownloadFIO Tests
-        - script: |
-            chmod 777 ./test/scripts/run.sh
-            ./test/scripts/run.sh $(MOUNT_DIR)/run $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+        # - script: |
+        #     chmod 777 ./test/scripts/run.sh
+        #     ./test/scripts/run.sh $(MOUNT_DIR)/run $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
 
-          displayName: 'Upload Download'
-          workingDirectory: $(WORK_DIR)
+        #   displayName: 'Upload Download'
+        #   workingDirectory: $(WORK_DIR)
 
-        - script: |
-            cat results.txt
-          displayName: 'Upload Download Results'
-          workingDirectory: $(WORK_DIR)
+        # - script: |
+        #     cat results.txt
+        #   displayName: 'Upload Download Results'
+        #   workingDirectory: $(WORK_DIR)
 
         # --------------------------------------------------------------------------------------------
         # Git clone test
-        - script: |
-            chmod 777 ./test/scripts/git_clone.sh
-            ./test/scripts/git_clone.sh $(MOUNT_DIR)/git $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
+        # - script: |
+        #     chmod 777 ./test/scripts/git_clone.sh
+        #     ./test/scripts/git_clone.sh $(MOUNT_DIR)/git $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG)
 
-          displayName: 'Git Clone'
-          workingDirectory: $(WORK_DIR)
+        #   displayName: 'Git Clone'
+        #   workingDirectory: $(WORK_DIR)
 
-        - script: |
-            cat results_git_clone.txt
-          displayName: 'Git Clone Results'
-          workingDirectory: $(WORK_DIR)
+        # - script: |
+        #     cat results_git_clone.txt
+        #   displayName: 'Git Clone Results'
+        #   workingDirectory: $(WORK_DIR)
         
 
 - stage: LongRunning
