@@ -7,7 +7,7 @@ tmpPath=$2
 v2configPath=$3
 v1configPath=$4
 testname=$5
-outputPath=results_fio_$testname .txt
+outputPath=results_fio_$testname.txt
 rm $outputPath
 
 echo "| Case | latest v2 write IOPS | latest v2 read IOPS | v1 write IOPS | v2 read IOPS |" >> $outputPath
