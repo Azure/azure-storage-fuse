@@ -13,7 +13,7 @@ schedules:
 stages:
 - stage: ShortRunning
   jobs:
-    - job: UploadDownload_GitClone_FIO
+    - job: PerformanceEval
       timeoutInMinutes: 240
       strategy:
         matrix:
