@@ -199,7 +199,7 @@ func (suite *mountTestSuite) TestConfigFileNotProvided() {
 
 	op, err = executeCommandC(rootCmd, "mount", "all", mntDir)
 	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "failed to configure AzureStorage object")
+	suite.assert.Contains(op, "failed to get container list from storage")
 }
 
 func (suite *mountTestSuite) TestDefaultConfigFile() {
@@ -233,10 +233,6 @@ func (suite *mountTestSuite) TestDefaultConfigFile() {
 	op, err := executeCommandC(rootCmd, "mount", mntDir)
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to initialize new pipeline")
-
-	op, err = executeCommandC(rootCmd, "mount", "all", mntDir)
-	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "failed to get container list from storage")
 }
 
 func (suite *mountTestSuite) TestInvalidLogLevel() {
