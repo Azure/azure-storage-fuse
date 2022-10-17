@@ -171,7 +171,7 @@ func (suite *mountTestSuite) TestConfigFileNotFound() {
 	suite.assert.Contains(op, "invalid config file")
 	suite.assert.Contains(op, "no such file or directory")
 
-	op, err = executeCommandC(mountCmd, "all", mntDir, "--config-file=cfgNotFound.yaml")
+	op, err = executeCommandC(rootCmd, "mount", "all", mntDir, "--config-file=cfgNotFound.yaml")
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "invalid config file")
 	suite.assert.Contains(op, "no such file or directory")
