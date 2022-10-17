@@ -62,7 +62,7 @@ func (suite *mountAllTestSuite) SetupTest() {
 }
 
 func (suite *mountAllTestSuite) cleanupTest() {
-	resetCLIFlags(*mountCmd)
+	resetCLIFlags(*mountAllCmd)
 }
 
 // mount failure test where the mount directory does not exists
