@@ -116,6 +116,10 @@ func (suite *mountTestSuite) TestMountDirNotExists() {
 	op, err := executeCommandC(rootCmd, "mount", tempDir, fmt.Sprintf("--config-file=%s", confFileMntTest))
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "mount directory does not exists")
+
+	op, err = executeCommandC(rootCmd, "mount", "all", tempDir, fmt.Sprintf("--config-file=%s", confFileMntTest))
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "mount directory does not exists")
 }
 
 // mount failure test where the mount directory is not empty
@@ -140,6 +144,10 @@ func (suite *mountTestSuite) TestMountPathNotProvided() {
 	defer suite.cleanupTest()
 
 	op, err := executeCommandC(rootCmd, "mount", "", fmt.Sprintf("--config-file=%s", confFileMntTest))
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "mount path not provided")
+
+	op, err = executeCommandC(rootCmd, "mount", "all", "", fmt.Sprintf("--config-file=%s", confFileMntTest))
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "mount path not provided")
 }
