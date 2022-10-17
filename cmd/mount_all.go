@@ -148,7 +148,7 @@ func processCommand() error {
 	config.Set("mount-path", options.MountPath)
 
 	// Add this flag in config map so that other components be aware that we are running
-	// in 'mount all' command mode. This is used by azstorage component for certain cofig checks
+	// in 'mount all' command mode. This is used by azstorage component for certain config checks
 	config.SetBool("mount-all-containers", true)
 
 	log.Crit("Starting Blobfuse2 Mount All: %s", common.Blobfuse2Version)
@@ -176,7 +176,7 @@ func processCommand() error {
 
 	if len(containerList) > 0 {
 		containerList = filterAllowedContainerList(containerList)
-		err = mountAllContainers(containerList, options.ConfigFile, options.MountPath)
+		err = mountAllContainers(containerList, options.ConfigFile, options.MountPath, configFileExists)
 		if err != nil {
 			return err
 		}
@@ -262,7 +262,7 @@ func filterAllowedContainerList(containers []string) []string {
 }
 
 // mountAllContainers : Iterate allowed container list and create config file and mount path for them
-func mountAllContainers(containerList []string, configFile string, mountPath string) error {
+func mountAllContainers(containerList []string, configFile string, mountPath string, configFileExists bool) error {
 	// Now iterate filtered container list and prepare mount path, temp path, and config file for them
 	fileCachePath := viper.GetString("file_cache.path")
 
@@ -294,22 +294,26 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 		}
 
 		// NOTE : Add all the configs that need replacement based on container here
-
+		cliParams[1] = contMountPath
 		// If next instance is not mounted in background then mountall will hang up hence always mount in background
-		viper.Set("foreground", false)
-		viper.Set("azstorage.container", container)
-		viper.Set("file_cache.path", filepath.Join(fileCachePath, container))
+		if configFileExists {
+			viper.Set("foreground", false)
+			viper.Set("azstorage.container", container)
+			viper.Set("file_cache.path", filepath.Join(fileCachePath, container))
 
-		// Create config file with container specific configs
-		err := writeConfigFile(contConfigFile)
-		if err != nil {
-			return err
+			// Create config file with container specific configs
+			err := writeConfigFile(contConfigFile)
+			if err != nil {
+				return err
+			}
+			cliParams[2] = "--config-file=" + configFile
+		} else {
+			cliParams[2] = "--foreground=false"
+			cliParams[3] = "--container-name=" + container
+			cliParams[4] = "--tmp-path=" + filepath.Join(fileCachePath, container)
 		}
 
 		// Now that we have mount path and config file for this container fire a mount command for this one
-		cliParams[1] = contMountPath
-		cliParams[2] = "--config-file=" + contConfigFile
-
 		fmt.Println("Mounting container :", container, "to path :", contMountPath)
 		cmd := exec.Command(mountAllOpts.blobfuse2BinPath, cliParams...)
 

@@ -363,10 +363,12 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		return err
 	}
 
+	log.Debug("ParseAndValidateConfig : Getting auth type")
 	if opt.AuthMode == "" {
 		// Based on other config decide the auth mode
 		// for e.g. if sas token is set then mode shall be set to sas and if key is set then authmode shall be key
 		opt.AuthMode = autoDetectAuthMode(opt)
+		log.Debug("ParseAndValidateConfig : Auth type %s", opt.AuthMode)
 	}
 
 	var authType AuthType

@@ -558,6 +558,9 @@ func init() {
 	mountCmd.PersistentFlags().StringVar(&options.PassPhrase, "passphrase", "",
 		"Key to decrypt config file. Can also be specified by env-variable BLOBFUSE2_SECURE_CONFIG_PASSPHRASE.\nKey length shall be 16 (AES-128), 24 (AES-192), or 32 (AES-256) bytes in length.")
 
+	mountCmd.PersistentFlags().String("log-type", "syslog", "Type of logger to be used by the system. Set to syslog by default. Allowed values are silent|syslog|base.")
+	config.BindPFlag("logging.type", mountCmd.PersistentFlags().Lookup("log-type"))
+
 	mountCmd.PersistentFlags().String("log-level", "LOG_WARNING",
 		"Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG")
 	config.BindPFlag("logging.level", mountCmd.PersistentFlags().Lookup("log-level"))
