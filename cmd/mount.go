@@ -560,6 +560,9 @@ func init() {
 
 	mountCmd.PersistentFlags().String("log-type", "syslog", "Type of logger to be used by the system. Set to syslog by default. Allowed values are silent|syslog|base.")
 	config.BindPFlag("logging.type", mountCmd.PersistentFlags().Lookup("log-type"))
+	_ = mountCmd.RegisterFlagCompletionFunc("log-type", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		return []string{"silent", "base", "syslog"}, cobra.ShellCompDirectiveNoFileComp
+	})
 
 	mountCmd.PersistentFlags().String("log-level", "LOG_WARNING",
 		"Enables logs written to syslog. Set to LOG_WARNING by default. Allowed values are LOG_OFF|LOG_CRIT|LOG_ERR|LOG_WARNING|LOG_INFO|LOG_DEBUG")
