@@ -105,6 +105,7 @@ func (suite *mountTestSuite) SetupTest() {
 
 func (suite *mountTestSuite) cleanupTest() {
 	resetCLIFlags(*mountCmd)
+	resetCLIFlags(*mountAllCmd)
 }
 
 // mount failure test where the mount directory does not exists
@@ -166,6 +167,11 @@ func (suite *mountTestSuite) TestConfigFileNotFound() {
 	defer os.RemoveAll(mntDir)
 
 	op, err := executeCommandC(rootCmd, "mount", mntDir, "--config-file=cfgNotFound.yaml")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "invalid config file")
+	suite.assert.Contains(op, "no such file or directory")
+
+	op, err = executeCommandC(mountCmd, "all", mntDir, "--config-file=cfgNotFound.yaml")
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "invalid config file")
 	suite.assert.Contains(op, "no such file or directory")
