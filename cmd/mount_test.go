@@ -196,6 +196,10 @@ func (suite *mountTestSuite) TestConfigFileNotProvided() {
 	op, err := executeCommandC(rootCmd, "mount", mntDir)
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to initialize new pipeline")
+
+	op, err = executeCommandC(rootCmd, "mount", "all", mntDir)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to configure AzureStorage object")
 }
 
 func (suite *mountTestSuite) TestDefaultConfigFile() {
@@ -229,6 +233,10 @@ func (suite *mountTestSuite) TestDefaultConfigFile() {
 	op, err := executeCommandC(rootCmd, "mount", mntDir)
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to initialize new pipeline")
+
+	op, err = executeCommandC(rootCmd, "mount", "all", mntDir)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to get container list from storage")
 }
 
 func (suite *mountTestSuite) TestInvalidLogLevel() {
@@ -239,6 +247,10 @@ func (suite *mountTestSuite) TestInvalidLogLevel() {
 	defer os.RemoveAll(mntDir)
 
 	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "--log-level=debug")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "invalid log level")
+
+	op, err = executeCommandC(rootCmd, "mount", "all", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "--log-level=debug")
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "invalid log level")
 }
