@@ -120,14 +120,14 @@ func (suite *authTestSuite) validateStorageTest(testName string, stgConfig AzSto
 	assert := assert.New(suite.T())
 	stg := NewAzStorageConnection(stgConfig)
 	if stg == nil {
-		assert.Fail(testName + " : Failed to create Storage object")
+		assert.Fail(testName + " : Failed to create Storage object.")
 	}
 	if err := stg.SetupPipeline(); err != nil {
-		assert.Fail(testName + " : Failed to setup pipeline")
+		assert.Fail(testName + " : Failed to setup pipeline. " + err.Error())
 	}
 	err := stg.TestPipeline()
 	if err != nil {
-		assert.Fail(testName + " : Failed to TestPipeline")
+		assert.Fail(testName + " : Failed to TestPipeline. " + err.Error())
 	}
 }
 
