@@ -13,6 +13,7 @@
 - In case of invalid option or failure CLI to return non-zero return code
 - ignore-open-flags CLI parameter is now correctly read
 - [#921](https://github.com/Azure/azure-storage-fuse/issues/921): Mount using /etc/fstab fixed
+- Fixed a bug where mount all required a config file
 
 ## 2.0.0-preview.3  (2022-09-02)
 **Features**
