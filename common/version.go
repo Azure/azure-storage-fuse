@@ -40,7 +40,7 @@ import (
 )
 
 const Blobfuse2ListContainerURL = "https://blobfuse2.blob.core.windows.net/release"
-const BlobFuse2WarningsURL = "https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Security-Warnings"
+const BlobFuse2WarningsURL = "https://aka.ms/blobfuse2warnings"
 
 type Version struct {
 	segments []int64
