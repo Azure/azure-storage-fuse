@@ -1140,7 +1140,7 @@ stages:
             timeoutInMinutes: 60
             strategy:
               matrix:
-                Debian-9.0:
+                Debian-9.0-MSI:
                   DistroVer: "Debian9.0"
                   AgentName: "DEB 9.0"
                   Description: "Debian Linux 9.0 Gen 1"
@@ -1226,6 +1226,7 @@ stages:
                   container: $(containerName)
                   skip_msi: "false"
                   tags: $(tags)
+                  fuselib: $(fuselib)
               
               # BlockBlob MSI Test
               - script: |
