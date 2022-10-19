@@ -17,8 +17,8 @@ parameters:
     type: boolean
     default: false
   - name: quick_test
-    type: boolean
-    default: true
+    type: string
+    default: "true"
   - name: artifact_name
     type: string
   - name: verbose_log

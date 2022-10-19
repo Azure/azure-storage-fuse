@@ -23,7 +23,7 @@ parameters:
   - name: distro_name
     type: string
   - name: quick_test
-    type: boolean
+    type: string
     default: "true"
   - name: verbose_log
     type: boolean
