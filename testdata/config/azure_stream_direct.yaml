@@ -16,9 +16,7 @@ libfuse:
   ignore-open-flags: true
 
 stream:
-  block-size-mb: 4
-  max-buffers: 80
-  buffer-size-mb: 8
+  buffer-size-mb: 0
 
 attr_cache:
   timeout-sec: 3600
