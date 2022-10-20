@@ -5,7 +5,7 @@
 #   2. 'loopbackfs' is purely for testing and shall not be used in production configuration.
 #   3. 'stream' and 'file_cache' can not co-exist and config file shall have only one of them based on your use case.
 #   4. By default log level is set to 'log_warning' level and are redirected to syslog. 
-#      Either use 'base' logging or syslog filters to redirect logs to seperate file.
+#      Either use 'base' logging or syslog filters to redirect logs to separate file.
 #      To install syslog filter follow below steps:        
 #         sudo cp setup/11-blobfuse2.conf /etc/rsyslog.d/
 #         sudo cp setup/blobfuse2-logrotate /etc/logrotate.d/
