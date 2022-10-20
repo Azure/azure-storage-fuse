@@ -17,6 +17,9 @@
 #      Either you can disable 'writeback-cache', which might hurt the performance
 #      or you can configure blobfuse2 to ignore open flags given by user and make it work with ''writeback-cache'.
 #      'libfuse' sectoin below has both the configurations.
+#   7. If are you using 'allow-other: true' config then make user_allow_other is enable in /etc/fuse.conf file as 
+#      well otherwise mount will fail. By default /etc/fuse.conf will have this option disabled we just need to 
+#      enable it and save the file.
 # -----------------------------------------------------------------------------------------------------------------------
 
 
