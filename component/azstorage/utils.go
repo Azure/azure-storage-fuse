@@ -223,7 +223,7 @@ func getLogOptions(sdkLogging bool) pipeline.LogOptions {
 			// These URLs have '%' as part of their data like / replaced with %2F
 			// If we pass down message as first argument to our logging api, it assumes it to be
 			// a format specifier and treat each % in URL to be a type specifier this will
-			// result into log strings saying we have given %d but no integer as agrument.
+			// result into log strings saying we have given %d but no integer as argument.
 			// Only way to bypass this is to pass message as a second argument to logging method
 			// so that logging api does not treat it as format string.
 			switch logLevel {
