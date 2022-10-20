@@ -36,6 +36,7 @@ package azstorage
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -461,17 +462,31 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 
 	// Process the paths returned in this result segment (if the segment is empty, the loop body won't execute)
 	for _, pathInfo := range listPath.Paths {
-		mode, err := getFileMode(*pathInfo.Permissions)
-		if err != nil {
-			log.Err("Datalake::List : Failed to get file mode for %s [%s]", *pathInfo.Name, err.Error())
-			m := ""
-			return pathList, &m, err
+		var mode fs.FileMode
+		if pathInfo.Permissions != nil {
+			mode, err = getFileMode(*pathInfo.Permissions)
+			if err != nil {
+				log.Err("Datalake::List : Failed to get file mode for %s [%s]", *pathInfo.Name, err.Error())
+				m := ""
+				return pathList, &m, err
+			}
+		} else {
+			// This happens when a blob account is mounted with type:adls
+			log.Err("Datalake::List : Failed to get file permissions for %s", *pathInfo.Name)
+		}
+
+		var contentLength int64 = 0
+		if pathInfo.ContentLength != nil {
+			contentLength = *pathInfo.ContentLength
+		} else {
+			// This happens when a blob account is mounted with type:adls
+			log.Err("Datalake::List : Failed to get file length for %s", *pathInfo.Name)
 		}
 
 		attr := &internal.ObjAttr{
 			Path:   *pathInfo.Name,
 			Name:   filepath.Base(*pathInfo.Name),
-			Size:   *pathInfo.ContentLength,
+			Size:   contentLength,
 			Mode:   mode,
 			Mtime:  pathInfo.LastModifiedTime(),
 			Atime:  pathInfo.LastModifiedTime(),
