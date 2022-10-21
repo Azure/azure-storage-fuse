@@ -20,7 +20,7 @@ Only the users that are part of the group fuse, and the root user can run fuserm
 
 **2. Error: mount command successful but log shows 'Failed to init fuse'**
 
-If are you using 'allow-other: true' config then make sure  user_allow_other is enabled in /etc/fuse.conf file. By default /etc/fuse.conf will have this option disabled we just need to enable it and save the file.
+If are you using 'allow-other: true' config then make sure `user_allow_other` is enabled in /etc/fuse.conf file. By default /etc/fuse.conf will have this option disabled we just need to enable it and save the file.
 
 **3. failed to mount : failed to authenticate credentials for azstorage**
 There might be something wrong about the storage config, please double check the storage account name, account key and container/filesystem name. errno = 1**
