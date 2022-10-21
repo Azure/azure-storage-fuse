@@ -12,7 +12,7 @@
 #         sudo service rsyslog restart
 #   5. For non-HNS (flat namespace) accounts blobfuse expects special directory marker files to 
 #      exists in container to identify a directory. 
-#      If these files do not exists in container then 'virtual-directory: true' in 'azstorage' section is must
+#      If these files do not exist in container, then 'virtual-directory: true' in 'azstorage' section is required
 #   6. By default 'writeback-cache' is enabled for libfuse3 and this may result in append/write operations to fail.
 #      Either you can disable 'writeback-cache', which might hurt the performance
 #      or you can configure blobfuse2 to ignore open flags given by user and make it work with ''writeback-cache'.
