@@ -229,7 +229,7 @@ To make it work with writeback-cache : Add `ignore-open-flags: true` under libfu
 
 **9. Unable to list files/directories for non-HNS (flat-namespace) accounts**
 
-For non-HNS accounts blobfuse expects special directory marker files to exist in container to identify a directory. If these files do not exists then `virtual-directory: true` in `azstorage` section is required.
+For non-HNS accounts blobfuse expects special directory marker files to exist in container to identify a directory. If these files do not exist then `virtual-directory: true` in `azstorage` section is required.
 
 # Problems with build
 Make sure you have correctly setup your GO dev environment. Ensure you have installed fuse3/2 for example:
