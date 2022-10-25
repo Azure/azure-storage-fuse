@@ -548,6 +548,39 @@ stages:
                 VERBOSE_LOG: false
                 USE_HTTP: false
 
+            # stop health monitor binary associated with a given blobfuse2 pid
+            - script: |
+                rm -rf $(MOUNT_DIR)/*
+                rm -rf $(TEMP_DIR)/*
+                ./blobfuse2 unmount all
+
+                sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
+                ls -l /usr/local/bin/bfusemon*
+
+                ./blobfuse2 mount $(MOUNT_DIR) --config-file=/tmp/configAdlsProfilerTemp.yaml
+                sleep 10
+                ps -aux | grep blobfuse2
+                ps -aux | grep bfusemon
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/bfusemon_stop_pid.cov health-monitor stop --pid=`pidof blobfuse2`
+                ./blobfuse2 unmount all
+              workingDirectory: $(WORK_DIR)
+              displayName: "CLI : Health monitor stop pid"
+
+            # stop all health monitor binaries
+            - script: |
+                rm -rf $(MOUNT_DIR)/*
+                rm -rf $(TEMP_DIR)/*
+                ./blobfuse2 unmount all
+
+                ./blobfuse2 mount $(MOUNT_DIR) --config-file=/tmp/configAdlsProfilerTemp.yaml
+                sleep 10
+                ps -aux | grep blobfuse2
+                ps -aux | grep bfusemon
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/bfusemon_stop_all.cov health-monitor stop all
+                ./blobfuse2 unmount all
+              workingDirectory: $(WORK_DIR)
+              displayName: "CLI : Health monitor stop all"
+
             # -------------------------------------------------------
             # Coverage report consolidation
             - script: |
