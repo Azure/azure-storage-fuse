@@ -79,6 +79,8 @@ func (suite *hmonTestSuite) SetupTest() {
 
 func (suite *hmonTestSuite) cleanupTest() {
 	resetCLIFlags(*healthMonCmd)
+	resetCLIFlags(*healthMonStop)
+	resetCLIFlags(*healthMonStopAll)
 }
 
 func (suite *hmonTestSuite) TestValidateHmonOptions() {
@@ -136,7 +138,7 @@ func (suite *hmonTestSuite) TestHmonInvalidConfigFile() {
 	suite.assert.Contains(op, "no such file or directory")
 }
 
-func (suite *hmonTestSuite) TestHmonWithConfig() {
+func (suite *hmonTestSuite) TestHmonWithConfigFailure() {
 	defer suite.cleanupTest()
 
 	confFile, err := ioutil.TempFile("", "conf*.yaml")
@@ -153,19 +155,29 @@ func (suite *hmonTestSuite) TestHmonWithConfig() {
 	suite.assert.Contains(op, "failed to start health monitor")
 }
 
+func (suite *hmonTestSuite) TestHmonStopAllFailure() {
+	op, err := executeCommandC(rootCmd, "health-monitor", "stop", "all")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to stop all health monitor binaries")
+}
+
+func (suite *hmonTestSuite) TestHmonStopPidEmpty() {
+	op, err := executeCommandC(rootCmd, "health-monitor", "stop", "--pid=")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "pid of blobfuse2 process not given")
+}
+
+func (suite *hmonTestSuite) TestHmonStopPidInvalid() {
+	op, err := executeCommandC(rootCmd, "health-monitor", "stop", "--pid=12345")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to get health monitor pid")
+}
+
+func (suite *hmonTestSuite) TestHmonStopPidFailure() {
+	err := stop("12345")
+	suite.assert.NotNil(err)
+}
+
 func TestHealthMonitorCommand(t *testing.T) {
-	// confFile, err := ioutil.TempFile("", "conf*.yaml")
-	// if err != nil {
-	// 	t.Error("Failed to create config file")
-	// }
-	// confFileMntTest = confFile.Name()
-	// defer os.Remove(confFileMntTest)
-
-	// _, err = confFile.WriteString(configMountTest)
-	// if err != nil {
-	// 	t.Error("Failed to write to config file")
-	// }
-	// confFile.Close()
-
 	suite.Run(t, new(hmonTestSuite))
 }
