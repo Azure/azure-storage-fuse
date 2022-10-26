@@ -551,9 +551,10 @@ stages:
             # stop health monitor binary associated with a given blobfuse2 pid
             - script: |
                 ./blobfuse2 unmount all
+                sudo kill -9 `pidof blobfuse2.test`
+                sleep 5
                 rm -rf $(MOUNT_DIR)/*
                 rm -rf $(TEMP_DIR)/*
-                sudo kill -9 `pidof blobfuse2.test`
 
                 sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
                 ls -l /usr/local/bin/bfusemon*
@@ -571,9 +572,10 @@ stages:
             # stop all health monitor binaries
             - script: |
                 ./blobfuse2 unmount all
+                sudo kill -9 `pidof blobfuse2.test`
+                sleep 5
                 rm -rf $(MOUNT_DIR)/*
                 rm -rf $(TEMP_DIR)/*
-                sudo kill -9 `pidof blobfuse2.test`
 
                 cat /tmp/configAdlsProfilerTemp.yaml
                 ./blobfuse2 mount $(MOUNT_DIR) --config-file=/tmp/configAdlsProfilerTemp.yaml
