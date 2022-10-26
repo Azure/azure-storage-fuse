@@ -552,15 +552,15 @@ stages:
             - script: |
                 ./blobfuse2 unmount all
                 sudo kill -9 `pidof blobfuse2.test`
-                sleep 5
                 rm -rf $(MOUNT_DIR)/*
                 rm -rf $(TEMP_DIR)/*
+                mkdir -p $(MOUNT_DIR)/hmon_test
 
                 sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
                 ls -l /usr/local/bin/bfusemon*
 
                 cat /tmp/configAdlsProfilerTemp.yaml
-                ./blobfuse2 mount $(MOUNT_DIR) --config-file=/tmp/configAdlsProfilerTemp.yaml
+                ./blobfuse2 mount $(MOUNT_DIR)/hmon_test --config-file=/tmp/configAdlsProfilerTemp.yaml
                 sleep 10
                 ps -aux | grep blobfuse2
                 ps -aux | grep bfusemon
@@ -573,12 +573,12 @@ stages:
             - script: |
                 ./blobfuse2 unmount all
                 sudo kill -9 `pidof blobfuse2.test`
-                sleep 5
                 rm -rf $(MOUNT_DIR)/*
                 rm -rf $(TEMP_DIR)/*
+                mkdir -p $(MOUNT_DIR)/hmon_test
 
                 cat /tmp/configAdlsProfilerTemp.yaml
-                ./blobfuse2 mount $(MOUNT_DIR) --config-file=/tmp/configAdlsProfilerTemp.yaml
+                ./blobfuse2 mount $(MOUNT_DIR)/hmon_test --config-file=/tmp/configAdlsProfilerTemp.yaml
                 sleep 10
                 ps -aux | grep blobfuse2
                 ps -aux | grep bfusemon
