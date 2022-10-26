@@ -493,7 +493,7 @@ stages:
                 ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version2.cov version
                 ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version2.cov version --check
               workingDirectory: $(WORK_DIR)
-              displayName: "CLI : doc generation"
+              displayName: "CLI : version"
               timeoutInMinutes: 2
 
             # Simulate config change
@@ -550,13 +550,15 @@ stages:
 
             # stop health monitor binary associated with a given blobfuse2 pid
             - script: |
+                ./blobfuse2 unmount all
                 rm -rf $(MOUNT_DIR)/*
                 rm -rf $(TEMP_DIR)/*
-                ./blobfuse2 unmount all
+                sudo kill -9 `pidof blobfuse2.test`
 
                 sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
                 ls -l /usr/local/bin/bfusemon*
 
+                cat /tmp/configAdlsProfilerTemp.yaml
                 ./blobfuse2 mount $(MOUNT_DIR) --config-file=/tmp/configAdlsProfilerTemp.yaml
                 sleep 10
                 ps -aux | grep blobfuse2
@@ -568,10 +570,12 @@ stages:
 
             # stop all health monitor binaries
             - script: |
+                ./blobfuse2 unmount all
                 rm -rf $(MOUNT_DIR)/*
                 rm -rf $(TEMP_DIR)/*
-                ./blobfuse2 unmount all
+                sudo kill -9 `pidof blobfuse2.test`
 
+                cat /tmp/configAdlsProfilerTemp.yaml
                 ./blobfuse2 mount $(MOUNT_DIR) --config-file=/tmp/configAdlsProfilerTemp.yaml
                 sleep 10
                 ps -aux | grep blobfuse2
