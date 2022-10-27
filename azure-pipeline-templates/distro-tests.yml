@@ -180,7 +180,7 @@ steps:
         adls: false
         idstring: 'Distro BlockBlob with Stream Key Credentials'
         distro_name: ${{ parameters.distro_name }}
-        quick_test: true
+        quick_test: ${{ parameters.quick_test }}
         artifact_name: '${{ parameters.distro_name }}_block_stream_key.txt'
         verbose_log: ${{ parameters.verbose_log }}
         clone: false
@@ -232,7 +232,7 @@ steps:
         adls: false
         idstring: 'Distro BlockBlob with Stream with Filename Caching Key Credentials'
         distro_name: ${{ parameters.distro_name }}
-        quick_test: true
+        quick_test: ${{ parameters.quick_test }}
         artifact_name: '${{ parameters.distro_name }}_block_stream_key.txt'
         verbose_log: ${{ parameters.verbose_log }}
         clone: false
