@@ -231,6 +231,7 @@ steps:
         artifact_name: '${{ parameters.distro_name }}_block_stream_direct_key.txt'
         verbose_log: ${{ parameters.verbose_log }}
         clone: false
+        stream_direct_test: true
         mountStep:
           script: |
             ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.stream_config }}
@@ -325,6 +326,7 @@ steps:
         artifact_name: '${{ parameters.distro_name }}_block_stream_filename_direct_key.txt'
         verbose_log: ${{ parameters.verbose_log }}
         clone: false
+        stream_direct_test: true
         mountStep:
           script: |
             ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.stream_filename_config }}
