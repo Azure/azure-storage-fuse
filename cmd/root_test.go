@@ -99,7 +99,7 @@ func (suite *rootCmdSuite) TestCheckVersionExistsInvalidURL() {
 
 func (suite *rootCmdSuite) TestNoSecurityWarnings() {
 	defer suite.cleanupTest()
-	warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
+	warningsUrl := common.Blobfuse2HasSecurityWarningURL + common.Blobfuse2Version
 	found := checkVersionExists(warningsUrl)
 	suite.assert.False(found)
 }
@@ -111,22 +111,13 @@ func (suite *rootCmdSuite) TestGetRemoteVersionInvalidURL() {
 	suite.assert.NotNil(err)
 }
 
-func (suite *rootCmdSuite) TestGetRemoteVersionInvalidContainer() {
-	defer suite.cleanupTest()
-	latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest1/"
-	out, err := getRemoteVersion(latestVersionUrl)
-	suite.assert.Empty(out)
-	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "unable to get latest version")
-}
-
 func getDummyVersion() string {
 	return "1.0.0"
 }
 
 func (suite *rootCmdSuite) TestGetRemoteVersionValidContainer() {
 	defer suite.cleanupTest()
-	latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest/"
+	latestVersionUrl := common.Blobfuse2LatestReleaseURL
 	out, err := getRemoteVersion(latestVersionUrl)
 	suite.assert.NotEmpty(out)
 	suite.assert.Nil(err)

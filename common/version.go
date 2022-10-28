@@ -39,9 +39,11 @@ import (
 	"strings"
 )
 
-const Blobfuse2ListContainerURL = "https://blobfuse2.blob.core.windows.net/release"
-
-const BlobFuse2WarningsURL = "https://github.com/Azure/azure-storage-fuse/wiki/9.-Security-Warnings"
+const (
+	Blobfuse2LatestReleaseURL      = "https://github.com/Azure/azure-storage-fuse/releases/latest"
+	Blobfuse2HasSecurityWarningURL = "https://github.com/Azure/azure-storage-fuse/securitywarnings/"
+	BlobFuse2SecurityWarningsURL   = "https://aka.ms/blobfuse2warnings"
+)
 
 type Version struct {
 	segments []int64

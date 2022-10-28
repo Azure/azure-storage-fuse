@@ -37,7 +37,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -92,30 +91,44 @@ func checkVersionExists(versionUrl string) bool {
 
 // getRemoteVersion : From public container get the latest blobfuse version
 func getRemoteVersion(req string) (string, error) {
-	resp, err := http.Get(req)
+	// 'release/latest' page redirects URL to latest release tag
+	// here we are interested only in getting the redirection link and not the release tag contents
+	// hence disable the redirection and just get the redirection url which holds latest version string
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	resp, err := client.Get(req)
 	if err != nil {
 		log.Err("getRemoteVersion: error listing version file from container [%s]", err.Error())
 		return "", err
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Err("getRemoteVersion: error reading body of response [%s]", err.Error())
-		return "", err
+	// Get the redirection URL from response
+	body := resp.Header.Get("Location")
+	if body == "" {
+		log.Err("getRemoteVersion: error reading body of response")
+		return "", fmt.Errorf("failed to read body of response")
 	}
 
-	var versionList VersionFilesList
-	err = xml.Unmarshal(body, &versionList)
-	if err != nil {
-		log.Err("getRemoteVersion: error unmarshalling xml response [%s]", err.Error())
-		return "", err
+	// As this is URL we are interested only the last part of the string which is tag name
+	urlParts := strings.Split(body, "/")
+	if len(urlParts) <= 0 {
+		log.Err("getRemoteVersion: failed to parse latest version")
+		return "", fmt.Errorf("failed to parse latest version")
 	}
 
-	if len(versionList.Blobs) != 1 {
-		return "", fmt.Errorf("unable to get latest version")
+	versionName := urlParts[len(urlParts)-1]
+	if strings.HasPrefix(versionName, "blobfuse2-") {
+		// If string is prefixed with blobfuse2- and take rest of the string
+		versionName = strings.Join(strings.Split(versionName, "-")[1:], "-")
+	} else {
+		log.Err("getRemoteVersion: failed to parse latest version")
+		return "", fmt.Errorf("failed to parse latest version")
 	}
 
-	versionName := strings.Split(versionList.Blobs[0].Name, "/")[1]
 	return versionName, nil
 }
 
@@ -126,8 +139,7 @@ func beginDetectNewVersion() chan interface{} {
 	go func() {
 		defer close(completed)
 
-		latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest/"
-		remoteVersion, err := getRemoteVersion(latestVersionUrl)
+		remoteVersion, err := getRemoteVersion(common.Blobfuse2LatestReleaseURL)
 		if err != nil {
 			log.Err("beginDetectNewVersion: error getting latest version [%s]", err.Error())
 			completed <- err.Error()
@@ -155,11 +167,11 @@ func beginDetectNewVersion() chan interface{} {
 			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
 			log.Info("*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
 
-			warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
+			warningsUrl := common.Blobfuse2HasSecurityWarningURL + common.Blobfuse2Version
 			hasWarnings := checkVersionExists(warningsUrl)
 
 			if hasWarnings {
-				warningsPage := common.BlobFuse2WarningsURL + "#" + strings.ReplaceAll(common.Blobfuse2Version, ".", "")
+				warningsPage := common.BlobFuse2SecurityWarningsURL + "#" + strings.ReplaceAll(common.Blobfuse2Version, ".", "")
 				fmt.Fprintf(stderr, "Visit %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
 				log.Warn("Vist %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
 			}
