@@ -176,7 +176,7 @@ func (suite *dataValidationTestSuite) TestMediumFileData() {
 
 // data validation for large sized files
 func (suite *dataValidationTestSuite) TestLargeFileData() {
-	if strings.ToLower(streamDirectPtr) == "true" {
+	if strings.ToLower(streamDirectTest) == "true" {
 		fmt.Println("Skipping this test case for stream direct")
 		return
 	}
@@ -335,7 +335,7 @@ func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
 }
 
 func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
-	if strings.ToLower(streamDirectPtr) == "true" {
+	if strings.ToLower(streamDirectTest) == "true" {
 		fmt.Println("Skipping this test case for stream direct")
 		return
 	}
