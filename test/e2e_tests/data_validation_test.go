@@ -309,6 +309,10 @@ func (suite *dataValidationTestSuite) TestMultipleSmallFiles() {
 }
 
 func (suite *dataValidationTestSuite) TestMultipleMediumFiles() {
+	if strings.ToLower(streamDirectTest) == "true" {
+		fmt.Println("Skipping this test case for stream direct")
+		return
+	}
 	if strings.Contains(strings.ToUpper(distro), "RHEL") {
 		fmt.Println("Skipping this test case for RHEL")
 		return
