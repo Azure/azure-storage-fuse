@@ -493,7 +493,7 @@ stages:
                 ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version2.cov version
                 ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/version2.cov version --check
               workingDirectory: $(WORK_DIR)
-              displayName: "CLI : doc generation"
+              displayName: "CLI : version"
               timeoutInMinutes: 2
 
             # Simulate config change
@@ -548,12 +548,51 @@ stages:
                 VERBOSE_LOG: false
                 USE_HTTP: false
 
+            # stop health monitor binary associated with a given blobfuse2 pid
+            - script: |
+                ./blobfuse2 unmount all
+                sudo kill -9 `pidof blobfuse2.test`
+                rm -rf $(MOUNT_DIR)/*
+                rm -rf $(TEMP_DIR)/*
+                mkdir -p $(MOUNT_DIR)/hmon_test
+
+                sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
+                ls -l /usr/local/bin/bfusemon*
+
+                cat /tmp/configAdlsProfilerTemp.yaml
+                ./blobfuse2 mount $(MOUNT_DIR)/hmon_test --config-file=/tmp/configAdlsProfilerTemp.yaml
+                sleep 10
+                ps -aux | grep blobfuse2
+                ps -aux | grep bfusemon
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/bfusemon_stop_pid.cov health-monitor stop --pid=`pidof blobfuse2`
+                ./blobfuse2 unmount all
+              workingDirectory: $(WORK_DIR)
+              displayName: "CLI : Health monitor stop pid"
+
+            # stop all health monitor binaries
+            - script: |
+                ./blobfuse2 unmount all
+                sudo kill -9 `pidof blobfuse2.test`
+                rm -rf $(MOUNT_DIR)/*
+                rm -rf $(TEMP_DIR)/*
+                mkdir -p $(MOUNT_DIR)/hmon_test
+
+                cat /tmp/configAdlsProfilerTemp.yaml
+                ./blobfuse2 mount $(MOUNT_DIR)/hmon_test --config-file=/tmp/configAdlsProfilerTemp.yaml
+                sleep 10
+                ps -aux | grep blobfuse2
+                ps -aux | grep bfusemon
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/bfusemon_stop_all.cov health-monitor stop all
+                ./blobfuse2 unmount all
+              workingDirectory: $(WORK_DIR)
+              displayName: "CLI : Health monitor stop all"
+
             # -------------------------------------------------------
             # Coverage report consolidation
             - script: |
                 echo 'mode: count' > ./blobfuse2_coverage_raw.rpt
                 tail -q -n +2 ./*.cov >> ./blobfuse2_coverage_raw.rpt
-                cat ./blobfuse2_coverage_raw.rpt  | grep -v "cmd/health-monitor" | grep -v mock_component | grep -v base_component | grep -v loopback | grep -v tools | grep -v "common/log" | grep -v "common/exectime" | grep -v "internal/stats_manager" > ./blobfuse2_coverage.rpt 
+                cat ./blobfuse2_coverage_raw.rpt | grep -v mock_component | grep -v base_component | grep -v loopback | grep -v tools | grep -v "common/log" | grep -v "common/exectime" | grep -v "internal/stats_manager" > ./blobfuse2_coverage.rpt 
                 go tool cover -func blobfuse2_coverage.rpt  > ./blobfuse2_func_cover.rpt
                 go tool cover -html=./blobfuse2_coverage.rpt -o ./blobfuse2_coverage.html
                 go tool cover -html=./blobfuse2_ut.cov -o ./blobfuse2_ut.html
