@@ -151,6 +151,10 @@ func (suite *dataValidationTestSuite) TestSmallFileData() {
 
 // data validation for medium sized files
 func (suite *dataValidationTestSuite) TestMediumFileData() {
+	if strings.ToLower(fileTestDistroName) == "ubuntu-20.04" {
+		fmt.Println("Skipping this test case for stream direct")
+		return
+	}
 	fileName := "medium_data.txt"
 	localFilePath := suite.testLocalPath + "/" + fileName
 	remoteFilePath := suite.testMntPath + "/" + fileName
