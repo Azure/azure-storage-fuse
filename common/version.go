@@ -41,7 +41,7 @@ import (
 
 const (
 	Blobfuse2LatestReleaseURL      = "https://github.com/Azure/azure-storage-fuse/releases/latest"
-	Blobfuse2HasSecurityWarningURL = "https://github.com/Azure/azure-storage-fuse/securitywarnings/"
+	Blobfuse2HasSecurityWarningURL = "https://github.com/Azure/azure-storage-fuse/blob/main/securitywarnings/"
 	BlobFuse2SecurityWarningsURL   = "https://aka.ms/blobfuse2warnings"
 )
 
