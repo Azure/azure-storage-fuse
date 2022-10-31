@@ -44,3 +44,7 @@ stream:
   buffer-size-mb: 64
   file-caching: false
 ```
+
+### Disable Caching
+
+To disable caching and stream straight from Azure Storage, set all stream buffer configuration options to 0. 
