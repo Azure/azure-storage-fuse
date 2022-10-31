@@ -43,6 +43,7 @@ import (
 	"math/rand"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -52,6 +53,8 @@ import (
 var fileTestPathPtr string
 var fileTestAdlsPtr string
 var fileTestGitClonePtr string
+var fileTestStreamDirectPtr string
+var fileTestDistroName string
 
 type fileTestSuite struct {
 	suite.Suite
@@ -76,6 +79,8 @@ func initFileFlags() {
 	fileTestPathPtr = getFileTestFlag("mnt-path")
 	fileTestAdlsPtr = getFileTestFlag("adls")
 	fileTestGitClonePtr = getFileTestFlag("clone")
+	fileTestStreamDirectPtr = getFileTestFlag("stream-direct-test")
+	fileTestDistroName = getFileTestFlag("distro-name")
 }
 
 func getFileTestDirName(n int) string {
@@ -372,6 +377,10 @@ func (suite *fileTestSuite) TestFileChmod() {
 
 // # Create multiple med files
 func (suite *fileTestSuite) TestFileCreateMulti() {
+	if strings.ToLower(fileTestStreamDirectPtr) == "true" && strings.ToLower(fileTestDistroName) == "ubuntu-20.04" {
+		fmt.Println("Skipping this test case for stream direct")
+		return
+	}
 	dirName := suite.testPath + "/multi_dir"
 	err := os.Mkdir(dirName, 0777)
 	suite.Equal(nil, err)
