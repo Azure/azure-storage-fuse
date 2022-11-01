@@ -399,6 +399,8 @@ stages:
           # this being a self hosted agent we need to clean up installation once artifact post is done
           - script: |
               sudo dpkg -r --force-all blobfuse2*.deb
+              rm -rf /usr/bin/bfusemon
+              rm -rf /usr/bin/blobfuse2
             displayName: 'Un install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
 
