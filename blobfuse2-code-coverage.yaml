@@ -618,7 +618,7 @@ stages:
                 sleep 5
               workingDirectory: $(WORK_DIR)
               displayName: "Block Blob Coverage Proxy"
-			  
+
 			      # Config Generation (ADLS)
             - script: |
                 cd $(WORK_DIR)
