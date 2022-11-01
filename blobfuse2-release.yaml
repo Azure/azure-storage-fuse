@@ -212,6 +212,16 @@ stages:
               temp_dir: $(temp_dir)
               container: $(container)
 
+          # Create container for blobfuse and publish it
+          - script: |
+              sudo apt-get install $(tags) $(fuselib) -y
+              chmod 777 *.sh
+              ./dockerinstall.sh
+              ./buildcontainer.sh
+              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD)
+            displayName: "Create and publish container"
+            workingDirectory: $(work_dir)/docker
+
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
             inputs:
@@ -385,6 +395,14 @@ stages:
             inputs:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts' 
+
+          # this being a self hosted agent we need to clean up installation once artifact post is done
+          - script: |
+              sudo dpkg -r --force-all blobfuse2
+              rm -rf /usr/bin/bfusemon
+              rm -rf /usr/bin/blobfuse2
+            displayName: 'Un install Package'
+            workingDirectory: $(Build.ArtifactStagingDirectory)
 
       - job: Set_3
         timeoutInMinutes: 120
