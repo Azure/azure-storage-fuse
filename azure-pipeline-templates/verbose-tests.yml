@@ -64,7 +64,7 @@ parameters:
   - name: distro_name
     type: string
   - name: quick_test
-    type: string
+    type: boolean
     default: "true"
   - name: verbose_log
     type: boolean
