@@ -396,6 +396,12 @@ stages:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts' 
 
+          # this being a self hosted agent we need to clean up installation once artifact post is done
+          - script: |
+              sudo dpkg -r --force-all blobfuse2*.deb
+            displayName: 'Un install Package'
+            workingDirectory: $(Build.ArtifactStagingDirectory)
+
       - job: Set_3
         timeoutInMinutes: 120
         strategy:
