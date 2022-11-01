@@ -20,7 +20,7 @@ stream:
 
 attr_cache:
   timeout-sec: 3600
-  
+
 azstorage:
   type: { ACCOUNT_TYPE }
   endpoint: { ACCOUNT_ENDPOINT }
