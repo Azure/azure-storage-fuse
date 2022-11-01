@@ -619,7 +619,7 @@ stages:
               workingDirectory: $(WORK_DIR)
               displayName: "Block Blob Coverage Proxy"
 			  
-			 # Config Generation (ADLS)
+			      # Config Generation (ADLS)
             - script: |
                 cd $(WORK_DIR)
                 $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_ADLS_CFG)
