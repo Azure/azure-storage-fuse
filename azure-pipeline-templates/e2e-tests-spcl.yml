@@ -74,6 +74,6 @@ steps:
 
   - template: 'cleanup.yml'
     parameters:
-      working_dir: ${{ parameters.working_dir }}
+      working_dir: $(WORK_DIR)
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
