@@ -17,7 +17,6 @@ steps:
   - task: GoTool@0
     inputs:
       version: '1.16.2'
-    condition: ${{ parameters.hostedAgent }}
     displayName: "GoTool Setup"
 
   # Create directory structure and prepare to mount
