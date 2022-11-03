@@ -75,18 +75,18 @@ steps:
 
   # Creating necessary directories
   - script: |
-      sudo fusermount -u ${mount_dir}
-      sudo fusermount3 -u ${mount_dir}
-      rm -rf ${mount_dir}
-      mkdir -p ${mount_dir}
-      echo "Creating mount dir " ${mount_dir}
+      sudo fusermount -u $(MOUNT_DIR)
+      sudo fusermount3 -u $(MOUNT_DIR)
+      rm -rf $(MOUNT_DIR)
+      mkdir -p $(MOUNT_DIR)
+      echo "Creating mount dir " $(MOUNT_DIR)
     displayName: 'Create Mount directory'
     env:
-      mount_dir: ${{ parameters.mount_dir }}
+      mount_dir: $(MOUNT_DIR)
 
   - script: |
-      mkdir -p ${temp_dir}
-      echo "Creating temp dir " ${temp_dir}
+      mkdir -p $(TEMP_DIR)
+      echo "Creating temp dir " $(TEMP_DIR)
     displayName: "Create Cache directory"
     env:
-      temp_dir: ${{ parameters.temp_dir }}
+      temp_dir: $(TEMP_DIR)
