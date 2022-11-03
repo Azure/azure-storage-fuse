@@ -72,3 +72,21 @@ steps:
     displayName: 'Test binary'
     env:
       working_directory: $(WORK_DIR)
+
+  # Creating necessary directories
+  - script: |
+      sudo fusermount -u ${mount_dir}
+      sudo fusermount3 -u ${mount_dir}
+      rm -rf ${mount_dir}
+      mkdir -p ${mount_dir}
+      echo "Creating mount dir " ${mount_dir}
+    displayName: 'Create Mount directory'
+    env:
+      mount_dir: ${{ parameters.mount_dir }}
+
+  - script: |
+      mkdir -p ${temp_dir}
+      echo "Creating temp dir " ${temp_dir}
+    displayName: "Create Cache directory"
+    env:
+      temp_dir: ${{ parameters.temp_dir }}
