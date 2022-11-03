@@ -1018,41 +1018,43 @@ stages:
               md5sum $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
             displayName: 'List Artifacts'
 
+
+          # Send images for signing
+          - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
+            displayName: 'ESRP CodeSigning blobfuse2'
+            inputs:
+              ConnectedServiceName: 'ESRP Code signing for blobfuse2'
+              FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2'
+              Pattern: '*.rpm, *.deb'
+              signConfigType: inlineSignParams
+              VerboseLogin: true
+              inlineOperation: |
+                [
+                  {
+                    "KeyCode" : "$(ESRP_BLOBFUSE_KEY_CODE)",
+                    "OperationCode" : "LinuxSign",
+                    "Parameters" : {},
+                    "ToolName" : "sign",
+                    "ToolVersion" : "1.0"
+                  }
+                ]
+
+          # Validate signed images have md5sum changed
+          - script: |
+              chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
+              chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
+              rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/*.md
+              mv $(Build.ArtifactStagingDirectory)/blobfuse2/* $(Build.ArtifactStagingDirectory)/
+              rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/
+            displayName: 'Make Artifacts executable'
+
+          - script: |
+              sudo ls -lRt $(Build.ArtifactStagingDirectory)
+              md5sum $(Build.ArtifactStagingDirectory)/*.deb
+              md5sum $(Build.ArtifactStagingDirectory)/*.rpm
+            displayName: 'List Signed Artifacts'
+
           - ${{ if eq(parameters.post_release, true) }}:
-              # Send images for signing
-              - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
-                displayName: 'ESRP CodeSigning blobfuse2'
-                inputs:
-                  ConnectedServiceName: 'ESRP Code signing blobfuse'
-                  FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2'
-                  Pattern: '*.rpm, *.deb'
-                  signConfigType: inlineSignParams
-                  VerboseLogin: true
-                  inlineOperation: |
-                    [
-                      {
-                        "KeyCode" : "$(ESRP_BLOBFUSE_KEY_CODE)",
-                        "OperationCode" : "LinuxSign",
-                        "Parameters" : {},
-                        "ToolName" : "sign",
-                        "ToolVersion" : "1.0"
-                      }
-                    ]
-              # Validate signed images have md5sum changed
-              - script: |
-                  chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
-                  chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
-                  rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/*.md
-                  mv $(Build.ArtifactStagingDirectory)/blobfuse2/* $(Build.ArtifactStagingDirectory)/
-                  rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/
-                displayName: 'Make Artifacts executable'
-
-              - script: |
-                  sudo ls -lRt $(Build.ArtifactStagingDirectory)
-                  md5sum $(Build.ArtifactStagingDirectory)/*.deb
-                  md5sum $(Build.ArtifactStagingDirectory)/*.rpm
-                displayName: 'List Signed Artifacts'
-
               # Push signed images to artifact directory
               - task: PublishBuildArtifacts@1
                 inputs:
