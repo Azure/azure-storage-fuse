@@ -95,7 +95,7 @@ steps:
       - task: Go@0
         inputs:
           command: 'test'
-          arguments: '-v ./... --tags=unittest,${{ parameters.tags }} -coverprofile utcover.cov'
+          arguments: '-v -timeout=2h ./... --tags=unittest,${{ parameters.tags }} -coverprofile utcover.cov'
           workingDirectory: ${{ parameters.work_dir }}
         displayName: "Unit tests"
 
