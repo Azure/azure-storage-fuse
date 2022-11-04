@@ -101,14 +101,14 @@ BlobBlock* BlobStreamer::GetBlock(const char* file_name, uint64_t offset, Stream
         if (download_size > MAX_BLOCK_SIZE_FOR_SINGLE_READ && 
             obj->GetSize() > 0) 
         {
-            if ((start_offset + download_size) > obj->GetSize()) {
-                download_size = obj->GetSize() - start_offset;
-                if (download_size == 0) {
+            if ((start_offset + download_size) > obj->GetSize()) {                
+                if (obj->GetSize() <= start_offset) {
                     obj->UnLock();
                     syslog(LOG_ERR, "Failed to download block of %s with offset %lu.  Errno : (Out of range).\n", file_name, start_offset);
                     errno = 416;
                     return NULL;
                 }
+                download_size = obj->GetSize() - start_offset;
             }
         }
 
