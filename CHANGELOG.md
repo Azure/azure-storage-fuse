@@ -1,4 +1,8 @@
-## 2.0.0-preview.4 (WIP)
+## 2.0.0-preview.5 (WIP)
+**Bug Fixes**
+- 
+
+## 2.0.0-preview.4 (2022-11-03)
 **Breaking Changes**
 - Renamed ignore-open-flag config parameter to ignore-open-flags to match CLI parameter
 - Renamed health-monitor section in config file to health_monitor
