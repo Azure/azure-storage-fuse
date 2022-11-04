@@ -1496,7 +1496,7 @@ stages:
                 distro_name: $(imageName)
                 quick_test: false
                 verbose_log: ${{ parameters.verbose_log }}
-                clone: true
+                clone: false
                 stream_direct_test: false
                 # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
                 temp_dir: $(TEMP_DIR)
@@ -1566,7 +1566,7 @@ stages:
                 distro_name: $(imageName)
                 quick_test: false
                 verbose_log: ${{ parameters.verbose_log }}
-                clone: true
+                clone: false
                 stream_direct_test: true
                 # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
                 temp_dir: $(TEMP_DIR)
@@ -1636,7 +1636,7 @@ stages:
                 distro_name: $(imageName)
                 quick_test: false
                 verbose_log: ${{ parameters.verbose_log }}
-                clone: true
+                clone: false
                 stream_direct_test: false
                 # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
                 temp_dir: $(TEMP_DIR)
@@ -1706,7 +1706,7 @@ stages:
                 distro_name: $(imageName)
                 quick_test: false
                 verbose_log: ${{ parameters.verbose_log }}
-                clone: true
+                clone: false
                 stream_direct_test: true
                 # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
                 temp_dir: $(TEMP_DIR)
