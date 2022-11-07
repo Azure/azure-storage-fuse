@@ -69,6 +69,14 @@ steps:
       workingDirectory: ${{ parameters.working_directory }}
     displayName: "Go Build"
 
+  # Building our package
+  - task: Go@0
+    inputs:
+      command: 'build'
+      arguments: "-tags ${{ parameters.tags }} -o bfusemon ./tools/health-monitor/"
+      workingDirectory: ${{ parameters.working_directory }}
+    displayName: "Go Build bfusemon"
+    
   #Verification of built binary
   - script: |
       sudo chmod +x ${working_directory}/blobfuse2
@@ -123,6 +131,7 @@ steps:
       echo "\"file-sas\"": "\"$(AZTEST_FILE_SAS)\"", >> $cnfFile
       echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
+      echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
       echo "\"spn-client\"": "\"$(AZTEST_CLIENT)\"", >> $cnfFile
       echo "\"spn-tenant\"": "\"$(AZTEST_TENANT)\"", >> $cnfFile
       echo "\"spn-secret\"": "\"$(AZTEST_SECRET)\"", >> $cnfFile

@@ -1,7 +1,35 @@
-## 2.0.0-preview.3 (WIP)
+## 2.0.0-preview.5 (WIP)
+**Bug Fixes**
+- 
+
+## 2.0.0-preview.4 (2022-11-03)
+**Breaking Changes**
+- Renamed ignore-open-flag config parameter to ignore-open-flags to match CLI parameter
+- Renamed health-monitor section in config file to health_monitor
+
+**Features**
+- Added support for health-monitor stop --pid=<pid> and health-monitor stop all commands
+- Added support to work with virtual directories without special marker directory using the virtual-directory config option.
+
+**Bug Fixes**
+- Auto detect auth mode based on storage config
+- Auto correct endpoint for public cloud
+- In case of invalid option or failure CLI to return non-zero return code
+- ignore-open-flags CLI parameter is now correctly read
+- [#921](https://github.com/Azure/azure-storage-fuse/issues/921): Mount using /etc/fstab fixed
+- Fixed a bug where mount all required a config file
+- [#942](https://github.com/Azure/azure-storage-fuse/issues/942): List api failing when backend does not return any item but only a valid token
+- Fix bug in SDK trace logging which prints (MISSING) in log entries
+
+## 2.0.0-preview.3  (2022-09-02)
 **Features**
 - Added support for directory level SAS while mounting a subdirectory
 - Added support for displaying mount space utilization based on file cache consumption (for example when doing `df`)
+- Added support for updating MD5 sum on file upload
+- Added support for validating MD5 sum on download
+- Added backwards compatibility support for all blobfuse v1 CLI options
+- Added support to allow disabling writeback cache if a customer is opening a file with O_APPEND
+- Added support to ignore append flag on open when writeback cache is on
 
 **Bug Fixes**
 - Fixed a bug in parsing output of disk utilization summary

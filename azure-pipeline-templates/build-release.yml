@@ -32,7 +32,7 @@ steps:
   - task: Go@0
     inputs:
       command: 'build'
-      arguments: "-tags ${{ parameters.tags }}  -o blobfuse2"
+      arguments: "-tags ${{ parameters.tags }} -o blobfuse2"
       workingDirectory: ${{ parameters.work_dir }}
     displayName: 'Building Blobfuse2'
   
@@ -42,6 +42,22 @@ steps:
       ./blobfuse2 --version
     workingDirectory: ${{ parameters.work_dir }}
     displayName: "Test Binary built"
+    continueOnError: false
+
+  # Build the health-monitor binary
+  - script: |
+      chmod 755 build.sh
+      ./build.sh health
+    workingDirectory: ${{ parameters.work_dir }}
+    displayName: "Building health-monitor binary"
+    continueOnError: false
+  
+  # Verifying whether built binary is correct
+  - script: |
+      sudo chmod +x ./bfusemon
+      ./bfusemon --version
+    workingDirectory: ${{ parameters.work_dir }}
+    displayName: "Test bfusemon binary built"
     continueOnError: false
 
   # Run Unit tests if parameters is true
@@ -58,9 +74,12 @@ steps:
           echo "\"block-key\"": "\"$(AZTEST_BLOCK_KEY)\"", >> $cnfFile
           echo "\"adls-key\"": "\"$(AZTEST_ADLS_KEY)\"", >> $cnfFile
           echo "\"block-sas\"": "\"$(AZTEST_BLOCK_SAS)\"", >> $cnfFile
+          echo "\"block-cont-sas-ubn-18\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_18)\"", >> $cnfFile
+          echo "\"block-cont-sas-ubn-20\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_20)\"", >> $cnfFile
           echo "\"adls-sas\"": "\"$(AZTEST_ADLS_SAS)\"", >> $cnfFile
           echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
           echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
+          echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
           echo "\"spn-client\"": "\"$(AZTEST_CLIENT)\"", >> $cnfFile
           echo "\"spn-tenant\"": "\"$(AZTEST_TENANT)\"", >> $cnfFile
           echo "\"spn-secret\"": "\"$(AZTEST_SECRET)\"", >> $cnfFile
@@ -76,7 +95,7 @@ steps:
       - task: Go@0
         inputs:
           command: 'test'
-          arguments: '-v ./... --tags=unittest,${{ parameters.tags }} -coverprofile utcover.cov'
+          arguments: '-v -timeout=2h ./... --tags=unittest,${{ parameters.tags }} -coverprofile utcover.cov'
           workingDirectory: ${{ parameters.work_dir }}
         displayName: "Unit tests"
 

@@ -1,10 +1,16 @@
-# Common Mount Problems
-**Logging**
+# Logging
 
 Please ensure logging is turned on DEBUG mode when trying to reproduce an issue.
 This can help in many instances to understand what the underlying issue is.
 
 A useful setting in your configuration file to utilize when debugging is `sdk-trace: true` under the azstorage component. This will log all outgoing REST calls.
+
+# BlobFuse2 Health Monitor
+
+One of the biggest BlobFuse2 features is our brand new health monitor. It allows customers gain more insight into how their BlobFuse2 instance is behaving with the rest of their machine. Visit [here](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md) to set it up.
+
+
+# Common Mount Problems
 
 **1. Error: fusermount: failed to open /etc/fuse.conf: Permission denied**
 
@@ -12,7 +18,11 @@ Only the users that are part of the group fuse, and the root user can run fuserm
 
 ```sudo addgroup <user> fuse```
 
-**2. failed to mount : failed to authenticate credentials for azstorage**
+**2. Error: mount command successful but log shows 'Failed to init fuse'**
+
+If are you using 'allow-other: true' config then make sure `user_allow_other` is enabled in /etc/fuse.conf file. By default /etc/fuse.conf will have this option disabled we just need to enable it and save the file.
+
+**3. failed to mount : failed to authenticate credentials for azstorage**
 There might be something wrong about the storage config, please double check the storage account name, account key and container/filesystem name. errno = 1**
 
 Possible causes are:
@@ -24,32 +34,32 @@ Possible causes are:
 - DNS issues/timeouts - add the Storage account resolution to /etc/hosts to bypass the DNS lookup
 - If using a proxy endpoint - ensure that you use the correct transfer protocol HTTP vs HTTPS
 
-**3. For MSI or SPN auth, Http Status Code = 403 in the response. Authorization error**
+**4. For MSI or SPN auth, Http Status Code = 403 in the response. Authorization error**
 - Verify your storage account Access roles. Make sure you have both Contributor and Storage Blob Contributor roles for the MSI or SPN identity.
 - In the case of a private AAD endpoint (private MSI endpoitns) ensure that your env variables are configured correctly.
 
-**4. fusermount: mount failed: Operation not permitted (CentOS)**
+**5. fusermount: mount failed: Operation not permitted (CentOS)**
 
 fusermount is a privileged operation on CentOS by default. You may work around this changing the permissions of the fusermount operation:
 
     chown root /usr/bin/fusermount
     chmod u+s /usr/bin/fusermount
 
-**5. Cannot access mounted directory**
+**6. Cannot access mounted directory**
 
 FUSE allows mounting filesystem in user space, and is only accessible by the user mounting it. For instance, if you have mounted using root, but you are trying to access it with another user, you will fail to do so. In order to workaround this, you can use the non-secure, fuse option '--allow-other'.
 
     sudo blobfuse2 mount /home/myuser/mount_dir/ --config-file=config.yaml --allow-other
 
 
-**6. fusermount: command not found**
+**7. fusermount: command not found**
 
 You try to unmount the blob storage, but the recommended command is not found. Whilst `umount` may work instead, fusermount is the recommended method, so install the fuse package, for example on Ubuntu 20+:
     
     sudo apt install fuse3
 please note the fuse version (2 or 3) is dependent on the linux distribution you're using. Refer to fuse version for your distro.
 
-**7. Hangs while mounting to private link storage account**
+**8. Hangs while mounting to private link storage account**
 
 The Blobfuse2 config file should specify the accountName as the original Storage account name and not the privatelink storage account name. For Eg: myblobstorageaccount.blob.core.windows.net is correct while privatelink.myblobstorageaccount.blob.core.windows.net is wrong.
 If the config file is correct, please verify name resolution
@@ -82,7 +92,7 @@ a) DNS has Root Hits only – In this case is the best to have a forwarder confi
 b) DNS Forwarders to another DNS Server (not Azure Provided DNS) – In this case you need to create a conditional forwarder to original PaaS domain zone (i.e. Storage you should configure blob.core.windows.net conditional forwarder to 168.63.129.16). Keep in mind using that approach will make all DNS requests to storage account with or without private endpoint to be resolved by Azure Provided DNS. By having multiple Custom DNS Serves in Azure will help to get better high availability for requests coming from On-Prem.
 
 
-**8. Blobfuse2 killed by OOM**
+**9. Blobfuse2 killed by OOM**
 
 The "OOM Killer" or "Out of Memory Killer" is a process that the Linux kernel employs when the system is critically low on memory. Based on its algorithm it kills one or more process to free up some memory space. Blobfuse2 could be one such process. To investigate Blobfuse2 was killed by OOM or not run following command:
 
@@ -206,6 +216,20 @@ In such cases we have seen mounting through /etc/fstab works, because that execu
 
 To ensure that you don't have leftover files in your file cache temp dir, unmount rather than killing
 Blobfuse2. If Blobfuse2 is killed without unmounting you can also set `cleanup-on-start` in your config file on the next mount to clear the temp dir. 
+
+
+**8. Unable to modify existing file (error: invalid argument)**
+
+By default `writeback-cache` is enabled for libfuse3 and this may result in append/write operations to fail. Either you can disable writeback-cache, which might hurt the performance or you can configure blobfuse2 to ignore open flags given by user and make it work with writeback-cache.
+
+To disable writeback-cache : Add `disable-writeback-cache: true` under libfuse section in your config file.
+
+To make it work with writeback-cache : Add `ignore-open-flags: true` under libfuse section in your config file. 
+
+
+**9. Unable to list files/directories for non-HNS (flat-namespace) accounts**
+
+For non-HNS accounts blobfuse expects special directory marker files to exist in container to identify a directory. If these files do not exist then `virtual-directory: true` in `azstorage` section is required.
 
 # Problems with build
 Make sure you have correctly setup your GO dev environment. Ensure you have installed fuse3/2 for example:

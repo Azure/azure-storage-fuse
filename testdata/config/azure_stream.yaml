@@ -13,11 +13,12 @@ libfuse:
   attribute-expiration-sec: 0
   entry-expiration-sec: 0
   negative-entry-expiration-sec: 0
+  ignore-open-flags: true
 
 stream:
   block-size-mb: 4
-  handle-limit: 80
-  handle-buffer-size-mb: 8
+  max-buffers: 80
+  buffer-size-mb: 8
 
 attr_cache:
   timeout-sec: 3600

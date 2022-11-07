@@ -41,7 +41,7 @@ jobs:
     - task: Go@0
       inputs:
         command: 'get'
-        arguments: '-d'
+        arguments: '-d ./...'
         workingDirectory: './'
       displayName: "Get Dependencies"
 
@@ -79,6 +79,7 @@ jobs:
         echo "\"block-cont-sas-ubn-20\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_20)\"", >> $cnfFile
         echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
         echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
+        echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
         echo "\"spn-client\"": "\"$(AZTEST_CLIENT)\"", >> $cnfFile
         echo "\"spn-tenant\"": "\"$(AZTEST_TENANT)\"", >> $cnfFile
         echo "\"spn-secret\"": "\"$(AZTEST_SECRET)\"", >> $cnfFile
@@ -155,3 +156,11 @@ jobs:
         workingDirectory: ./
       displayName: 'Unit tests'
       continueOnError: false
+
+    - task: ComponentGovernanceComponentDetection@0
+      inputs:
+        scanType: 'Register'
+        verbosity: 'Verbose'
+        alertWarningLevel: 'High'
+      displayName: "Component governance"
+      condition: always()

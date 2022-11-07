@@ -54,6 +54,7 @@ type azAuthConfig struct {
 	// MSI config
 	ApplicationID string
 	ResourceID    string
+	ObjectID      string
 
 	// SPN config
 	TenantID                string

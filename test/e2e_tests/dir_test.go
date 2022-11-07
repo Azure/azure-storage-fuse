@@ -44,6 +44,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -64,6 +65,7 @@ var pathPtr string
 var adlsPtr string
 var fileSharePtr string
 var clonePtr string
+var streamDirectPtr string
 
 func regDirTestFlag(p *string, name string, value string, usage string) {
 	if flag.Lookup(name) == nil {
@@ -80,6 +82,7 @@ func initDirFlags() {
 	adlsPtr = getDirTestFlag("adls")
 	fileSharePtr = getDirTestFlag("fileshare")
 	clonePtr = getDirTestFlag("clone")
+	streamDirectPtr = getDirTestFlag("stream-direct-test")
 }
 
 func getTestDirName(n int) string {
@@ -368,6 +371,10 @@ func (suite *dirTestSuite) TestDirList() {
 
 // // # Rename directory with data
 func (suite *dirTestSuite) TestDirRenameFull() {
+	if strings.ToLower(streamDirectPtr) == "true" {
+		fmt.Println("Skipping this test case for stream direct")
+		return
+	}
 	dirName := suite.testPath + "/full_dir"
 	newName := suite.testPath + "/full_dir_rename"
 	fileName := dirName + "/test_file_"
@@ -427,6 +434,10 @@ func (suite *dirTestSuite) TestDirRenameFull() {
 // }
 
 func (suite *dirTestSuite) TestGitStash() {
+	if strings.ToLower(streamDirectPtr) == "true" {
+		fmt.Println("Skipping this test case for stream direct")
+		return
+	}
 	if clonePtr == "true" || clonePtr == "True" {
 		dirName := suite.testPath + "/stash"
 		tarName := suite.testPath + "/tardir.tar.gz"
@@ -448,12 +459,26 @@ func (suite *dirTestSuite) TestGitStash() {
 			suite.Contains(string(cliOut), "nothing to commit, working")
 		}
 
-		f, err := os.OpenFile("README.md", os.O_APPEND|os.O_WRONLY, 0644)
+		f, err := os.OpenFile("README.md", os.O_WRONLY, 0644)
 		suite.Equal(nil, err)
 		suite.NotZero(f)
-		_, err = f.WriteString("TestString")
+		info, err := f.Stat()
+		suite.Equal(nil, err)
+		_, err = f.WriteAt([]byte("TestString"), info.Size())
 		suite.Equal(nil, err)
 		_ = f.Close()
+
+		f, err = os.OpenFile("README.md", os.O_RDONLY, 0644)
+		suite.Equal(nil, err)
+		suite.NotZero(f)
+		new_info, err := f.Stat()
+		suite.Equal(nil, err)
+		suite.EqualValues(info.Size()+10, new_info.Size())
+		data := make([]byte, 10)
+		n, err := f.ReadAt(data, info.Size())
+		suite.Equal(nil, err)
+		suite.EqualValues(10, n)
+		suite.EqualValues("TestString", string(data))
 
 		cmd = exec.Command("git", "status")
 		cliOut, err = cmd.Output()

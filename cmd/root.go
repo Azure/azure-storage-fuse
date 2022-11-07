@@ -35,6 +35,7 @@ package cmd
 
 import (
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -66,10 +67,15 @@ var rootCmd = &cobra.Command{
 	Long:              "Blobfuse2 is an open source project developed to provide a virtual filesystem backed by the Azure Storage. It uses the fuse protocol to communicate with the Linux FUSE kernel module, and implements the filesystem operations using the Azure Storage REST APIs.",
 	Version:           common.Blobfuse2Version,
 	FlagErrorHandling: cobra.ExitOnError,
-	Run: func(cmd *cobra.Command, args []string) {
+	SilenceUsage:      true,
+	RunE: func(cmd *cobra.Command, args []string) error {
 		if !disableVersionCheck {
-			_ = VersionCheck()
+			err := VersionCheck()
+			if err != nil {
+				return err
+			}
 		}
+		return errors.New("missing command options\n\nDid you mean this?\n\tblobfuse2 mount\n\nRun 'blobfuse2 --help' for usage")
 	},
 }
 
@@ -77,30 +83,31 @@ var rootCmd = &cobra.Command{
 func checkVersionExists(versionUrl string) bool {
 	resp, err := http.Get(versionUrl)
 	if err != nil {
-		log.Err("checkVersionExists: error getting version file from container [%s]", err)
+		log.Err("checkVersionExists: error getting version file from container [%s]", err.Error())
 		return false
 	}
 
 	return resp.StatusCode != 404
 }
 
+// getRemoteVersion : From public container get the latest blobfuse version
 func getRemoteVersion(req string) (string, error) {
 	resp, err := http.Get(req)
 	if err != nil {
-		log.Err("getRemoteVersion: error listing version file from container [%s]", err)
+		log.Err("getRemoteVersion: error listing version file from container [%s]", err.Error())
 		return "", err
 	}
 
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
-		log.Err("getRemoteVersion: error reading body of response [%s]", err)
+		log.Err("getRemoteVersion: error reading body of response [%s]", err.Error())
 		return "", err
 	}
 
 	var versionList VersionFilesList
 	err = xml.Unmarshal(body, &versionList)
 	if err != nil {
-		log.Err("getRemoteVersion: error unmarshalling xml response [%s]", err)
+		log.Err("getRemoteVersion: error unmarshalling xml response [%s]", err.Error())
 		return "", err
 	}
 
@@ -112,6 +119,7 @@ func getRemoteVersion(req string) (string, error) {
 	return versionName, nil
 }
 
+// beginDetectNewVersion : Get latest release version and compare if user needs an upgrade or not
 func beginDetectNewVersion() chan interface{} {
 	completed := make(chan interface{})
 	stderr := os.Stderr
@@ -121,19 +129,22 @@ func beginDetectNewVersion() chan interface{} {
 		latestVersionUrl := common.Blobfuse2ListContainerURL + "?restype=container&comp=list&prefix=latest/"
 		remoteVersion, err := getRemoteVersion(latestVersionUrl)
 		if err != nil {
-			log.Err("beginDetectNewVersion: error getting latest version [%s]", err)
+			log.Err("beginDetectNewVersion: error getting latest version [%s]", err.Error())
+			completed <- err.Error()
 			return
 		}
 
 		local, err := common.ParseVersion(common.Blobfuse2Version)
 		if err != nil {
-			log.Err("beginDetectNewVersion: error parsing Blobfuse2Version [%s]", err)
+			log.Err("beginDetectNewVersion: error parsing Blobfuse2Version [%s]", err.Error())
+			completed <- err.Error()
 			return
 		}
 
 		remote, err := common.ParseVersion(remoteVersion)
 		if err != nil {
-			log.Err("beginDetectNewVersion: error parsing remoteVersion [%s]", err)
+			log.Err("beginDetectNewVersion: error parsing remoteVersion [%s]", err.Error())
+			completed <- err.Error()
 			return
 		}
 
@@ -141,22 +152,24 @@ func beginDetectNewVersion() chan interface{} {
 			executablePathSegments := strings.Split(strings.Replace(os.Args[0], "\\", "/", -1), "/")
 			executableName := executablePathSegments[len(executablePathSegments)-1]
 			log.Info("beginDetectNewVersion: A new version of Blobfuse2 is available. Current Version=%s, Latest Version=%s", common.Blobfuse2Version, remoteVersion)
-			fmt.Fprintf(stderr, "*** "+executableName+": A new version (%s) is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
-			log.Info("*** "+executableName+": A new version (%s) is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
+			fmt.Fprintf(stderr, "*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
+			log.Info("*** "+executableName+": A new version [%s] is available. Consider upgrading to latest version for bug-fixes & new features. ***\n", remoteVersion)
 
 			warningsUrl := common.Blobfuse2ListContainerURL + "/securitywarnings/" + common.Blobfuse2Version
 			hasWarnings := checkVersionExists(warningsUrl)
 
 			if hasWarnings {
 				warningsPage := common.BlobFuse2WarningsURL + "#" + strings.ReplaceAll(common.Blobfuse2Version, ".", "")
-				fmt.Fprintf(stderr, "Vist %s to see the list of vulnerabilities associated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
-				log.Warn("Vist %s to see the list of vulnerabilities associated with your current version (%s)\n", warningsPage, common.Blobfuse2Version)
+				fmt.Fprintf(stderr, "Visit %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
+				log.Warn("Vist %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
 			}
+			completed <- "A new version of Blobfuse2 is available"
 		}
 	}()
 	return completed
 }
 
+// VersionCheck : Start version check and wait for 8 seconds to complete otherwise just timeout and move on
 func VersionCheck() error {
 	select {
 	//either wait till this routine completes or timeout if it exceeds 8 secs
@@ -167,8 +180,90 @@ func VersionCheck() error {
 	return nil
 }
 
+// ignoreCommand : There are command implicitly added by cobra itself, while parsing we need to ignore these commands
+func ignoreCommand(cmdArgs []string) bool {
+	ignoreCmds := []string{"completion", "help"}
+	if len(cmdArgs) > 0 {
+		for _, c := range ignoreCmds {
+			if c == cmdArgs[0] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// parseArgs : Depending upon inputs are coming from /etc/fstab or CLI, parameter style may vary.
+//   /etc/fstab example : blobfuse2 mount <dir> -o suid,nodev,--config-file=config.yaml,--use-adls=true,allow_other
+//   cli command        : blobfuse2 mount <dir> -o suid,nodev --config-file=config.yaml --use-adls=true -o allow_other
+//   As we need to support both the ways, here we convert the /etc/fstab style (comma separated list) to standard cli ways
+func parseArgs(cmdArgs []string) []string {
+	// Ignore binary name, rest all are arguments to blobfuse2
+	cmdArgs = cmdArgs[1:]
+
+	cmd, _, err := rootCmd.Find(cmdArgs)
+	if err != nil && cmd == rootCmd && !ignoreCommand(cmdArgs) {
+		/* /etc/fstab has a standard format and it goes like "<binary> <mount point> <type> <options>"
+		 * as here we can not give any subcommand like "blobfuse2 mount" (giving this will assume mount is mount point)
+		 * we need to assume 'mount' being default sub command.
+		 * To do so, we just ignore the implicit commands handled by cobra and then try to check if input matches any of
+		 * our subcommands or not. If not, we assume user has executed mount command without specifying mount subcommand
+		 * so inject mount command in the cli options so that rest of the handling just assumes user gave mount subcommand.
+		 */
+		cmdArgs = append([]string{"mount"}, cmdArgs...)
+	}
+
+	// Check for /etc/fstab style inputs
+	args := make([]string, 0)
+	for i := 0; i < len(cmdArgs); i++ {
+		// /etc/fstab will give everything in comma separated list with -o option
+		if cmdArgs[i] == "-o" {
+			i++
+			if i < len(cmdArgs) {
+				bfuseArgs := make([]string, 0)
+				lfuseArgs := make([]string, 0)
+
+				// Check if ',' exists in arguments or not. If so we assume it might be coming from /etc/fstab
+				opts := strings.Split(cmdArgs[i], ",")
+				for _, o := range opts {
+					// If we got comma separated list then all blobfuse specific options needs to be extracted out
+					//  as those shall not be part of -o list which for us means libfuse options
+					if strings.HasPrefix(o, "--") {
+						bfuseArgs = append(bfuseArgs, o)
+					} else {
+						lfuseArgs = append(lfuseArgs, o)
+					}
+				}
+
+				// Extract and add libfuse options with -o
+				if len(lfuseArgs) > 0 {
+					args = append(args, "-o", strings.Join(lfuseArgs, ","))
+				}
+
+				// Extract and add blobfuse specific options sepratly
+				if len(bfuseArgs) > 0 {
+					args = append(args, bfuseArgs...)
+				}
+			}
+		} else {
+			// If any option is without -o then keep it as is (assuming its directly from cli)
+			args = append(args, cmdArgs[i])
+		}
+	}
+
+	return args
+}
+
+// Execute : Actual command execution starts from here
 func Execute() error {
-	return rootCmd.Execute()
+	parsedArgs := parseArgs(os.Args)
+	rootCmd.SetArgs(parsedArgs)
+
+	err := rootCmd.Execute()
+	if err != nil {
+		os.Exit(1)
+	}
+	return err
 }
 
 func init() {

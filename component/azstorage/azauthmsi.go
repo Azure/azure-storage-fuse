@@ -34,14 +34,14 @@
 package azstorage
 
 import (
+	"context"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
+	"github.com/Azure/azure-storage-azcopy/v10/common"
 	"github.com/Azure/azure-storage-blob-go/azblob"
-	"github.com/Azure/go-autorest/autorest/adal"
-	"github.com/Azure/go-autorest/autorest/azure"
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
@@ -53,29 +53,26 @@ type azAuthMSI struct {
 }
 
 // fetchToken : Generates a token based on the config
-func (azmsi *azAuthMSI) fetchToken() (*adal.ServicePrincipalToken, error) {
+func (azmsi *azAuthMSI) fetchToken() (*common.OAuthTokenInfo, error) {
 	// Resource string is fixed and has no relation with any of the user inputs
 	// This is not the resource URL, rather a way to identify the resource type and tenant
 	// There are two options in the structure datalake and storage but datalake is not populated
 	// and does not work in all types of clouds (US, German, China etc).
 	// resource := azure.PublicCloud.ResourceIdentifiers.Datalake
-	resource := azure.PublicCloud.ResourceIdentifiers.Storage
-	if azmsi.config.AuthResource != "" {
-		resource = azmsi.config.AuthResource
+	// resource := azure.PublicCloud.ResourceIdentifiers.Storage
+	oAuthTokenInfo := &common.OAuthTokenInfo{
+		Identity: true,
+		IdentityInfo: common.IdentityInfo{
+			ClientID: azmsi.config.ApplicationID,
+			ObjectID: azmsi.config.ObjectID,
+			MSIResID: azmsi.config.ResourceID},
 	}
-	log.Info("AzAuthMSI::fetchToken : Resource : %s", resource)
-
-	spt, err := adal.NewServicePrincipalTokenFromManagedIdentity(resource, &adal.ManagedIdentityOptions{
-		ClientID:           azmsi.config.ApplicationID,
-		IdentityResourceID: azmsi.config.ResourceID,
-	}, func(token adal.Token) error { return nil })
-
+	token, err := oAuthTokenInfo.GetNewTokenFromMSI(context.Background())
 	if err != nil {
-		log.Err("AzAuthMSI::fetchToken : Failed to generate MSI token (%s)", err.Error())
 		return nil, err
 	}
-
-	return spt, nil
+	oAuthTokenInfo.Token = *token
+	return oAuthTokenInfo, nil
 }
 
 type azAuthBlobMSI struct {
@@ -85,25 +82,28 @@ type azAuthBlobMSI struct {
 // GetCredential : Get MSI based credentials for blob
 func (azmsi *azAuthBlobMSI) getCredential() interface{} {
 	// Generate the token based on configured inputs
-	spt, err := azmsi.fetchToken()
+
+	token, err := azmsi.fetchToken()
 	if err != nil {
+		// fmt.Println(token.AccessToken)
+		log.Err("azAuthBlobMSI::getCredential : Failed to get credential [%s]", err.Error())
 		return nil
 	}
 
 	// Using token create the credential object, here also register a call back which refreshes the token
-	tc := azblob.NewTokenCredential(spt.Token().AccessToken, func(tc azblob.TokenCredential) time.Duration {
-		err := spt.Refresh()
+	tc := azblob.NewTokenCredential(token.AccessToken, func(tc azblob.TokenCredential) time.Duration {
+		newToken, err := token.Refresh(context.Background())
 		if err != nil {
-			log.Err("azAuthBlobMSI::getCredential : Failed to refresh token (%s)", err.Error())
+			log.Err("azAuthBlobMSI::getCredential : Failed to refresh token [%s]", err.Error())
 			return 0
 		}
 
 		// set the new token value
-		tc.SetToken(spt.Token().AccessToken)
-		log.Debug("azAuthBlobMSI::getCredential : MSI Token retrieved %s (%d)", spt.Token().AccessToken, spt.Token().Expires())
+		tc.SetToken(newToken.AccessToken)
+		log.Debug("azAuthBlobMSI::getCredential : MSI Token retrieved %s (%d)", newToken.AccessToken, newToken.Expires())
 
 		// Get the next token slightly before the current one expires
-		return time.Until(spt.Token().Expires()) - 10*time.Second
+		return time.Until(newToken.Expires()) - 10*time.Second
 	})
 
 	return tc
@@ -116,25 +116,27 @@ type azAuthBfsMSI struct {
 // GetCredential : Get MSI based credentials for datalake
 func (azmsi *azAuthBfsMSI) getCredential() interface{} {
 	// Generate the token based on configured inputs
-	spt, err := azmsi.fetchToken()
+	token, err := azmsi.fetchToken()
 	if err != nil {
+		// fmt.Println(token.AccessToken)
+		log.Err("azAuthBfsMSI::getCredential : Failed to get credential [%s]", err.Error())
 		return nil
 	}
 
 	// Using token create the credential object, here also register a call back which refreshes the token
-	tc := azbfs.NewTokenCredential(spt.Token().AccessToken, func(tc azbfs.TokenCredential) time.Duration {
-		err := spt.Refresh()
+	tc := azbfs.NewTokenCredential(token.AccessToken, func(tc azbfs.TokenCredential) time.Duration {
+		newToken, err := token.Refresh(context.Background())
 		if err != nil {
-			log.Err("azAuthBfsMSI::getCredential : Failed to refresh token (%s)", err.Error())
+			log.Err("azAuthBfsMSI::getCredential : Failed to refresh token [%s]", err.Error())
 			return 0
 		}
 
 		// set the new token value
-		tc.SetToken(spt.Token().AccessToken)
-		log.Debug("azAuthBfsMSI::getCredential : MSI Token retrieved %s (%d)", spt.Token().AccessToken, spt.Token().Expires())
+		tc.SetToken(newToken.AccessToken)
+		log.Debug("azAuthBfsMSI::getCredential : MSI Token retrieved %s (%d)", newToken.AccessToken, newToken.Expires())
 
 		// Get the next token slightly before the current one expires
-		return time.Until(spt.Token().Expires()) - 10*time.Second
+		return time.Until(newToken.Expires()) - 10*time.Second
 	})
 
 	return tc

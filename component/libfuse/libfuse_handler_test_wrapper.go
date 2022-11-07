@@ -224,9 +224,9 @@ func testOpenSyncDirectFlag(suite *libfuseTestSuite) {
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
 	mode := fs.FileMode(fuseFS.filePermission)
-	flags := C.O_RDWR & C.O_SYNC & C.__O_DIRECT & 0xffffffff
+	flags := C.O_RDWR & 0xffffffff
 	info := &C.fuse_file_info_t{}
-	info.flags = C.O_RDWR & C.O_SYNC & C.__O_DIRECT
+	info.flags = C.O_RDWR | C.O_SYNC | C.__O_DIRECT
 	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
 	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
 
@@ -234,6 +234,95 @@ func testOpenSyncDirectFlag(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), err)
 	suite.assert.Equal(C.int(0), info.flags&C.O_SYNC)
 	suite.assert.Equal(C.int(0), info.flags&C.__O_DIRECT)
+}
+
+// WriteBack caching enabled by default
+func testOpenAppendFlagDefault(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	info := &C.fuse_file_info_t{}
+	info.flags = C.O_RDWR | C.O_APPEND
+
+	err := libfuse_open(path, info)
+	suite.assert.Equal(C.int(-C.EINVAL), err)
+
+	info.flags = C.O_WRONLY | C.O_APPEND
+
+	err = libfuse_open(path, info)
+	suite.assert.Equal(C.int(-C.EINVAL), err)
+}
+
+func testOpenAppendFlagDisableWritebackCache(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	suite.cleanupTest() // clean up the default libfuse generated
+	config := "libfuse:\n  disable-writeback-cache: true\n"
+	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
+	suite.assert.True(suite.libfuse.disableWritebackCache)
+
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	mode := fs.FileMode(fuseFS.filePermission)
+	flags := C.O_RDWR | C.O_APPEND&0xffffffff
+	info := &C.fuse_file_info_t{}
+	info.flags = C.O_RDWR | C.O_APPEND
+	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
+	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+
+	err := libfuse_open(path, info)
+	suite.assert.Equal(C.int(0), err)
+
+	flags = C.O_WRONLY | C.O_APPEND&0xffffffff
+	info = &C.fuse_file_info_t{}
+	info.flags = C.O_WRONLY | C.O_APPEND
+	options = internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
+	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+
+	err = libfuse_open(path, info)
+	suite.assert.Equal(C.int(0), err)
+}
+
+func testOpenAppendFlagIgnoreAppendFlag(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	suite.cleanupTest() // clean up the default libfuse generated
+	config := "libfuse:\n  ignore-open-flags: true\n"
+	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
+	suite.assert.True(suite.libfuse.ignoreOpenFlags)
+
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+	mode := fs.FileMode(fuseFS.filePermission)
+	flags := C.O_RDWR & 0xffffffff
+	info := &C.fuse_file_info_t{}
+	info.flags = C.O_RDWR | C.O_APPEND
+	options := internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
+	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+
+	err := libfuse_open(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(C.int(0), info.flags&C.O_APPEND)
+
+	flags = C.O_RDWR & 0xffffffff
+	info = &C.fuse_file_info_t{}
+	info.flags = C.O_WRONLY | C.O_APPEND
+	options = internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
+	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+
+	err = libfuse_open(path, info)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(C.int(0), info.flags&C.O_APPEND)
+
+	flags = C.O_RDWR & 0xffffffff
+	info = &C.fuse_file_info_t{}
+	info.flags = C.O_WRONLY
+	options = internal.OpenFileOptions{Name: name, Flags: flags, Mode: mode}
+	suite.mock.EXPECT().OpenFile(options).Return(&handlemap.Handle{}, nil)
+
+	err = libfuse_open(path, info)
+	suite.assert.Equal(C.int(0), err)
 }
 
 func testOpenNotExists(suite *libfuseTestSuite) {

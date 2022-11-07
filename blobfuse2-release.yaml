@@ -40,16 +40,19 @@ stages:
         timeoutInMinutes: 120
         strategy:
           matrix:
-            Ubuntu-18:
-              vmImage: 'ubuntu-18.04'
+            Libfuse:
+              vmImage: 'ubuntu-20.04'
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
               container: 'test-cnt-ubn-18'
-            Ubuntu-20:
-              vmImage: 'ubuntu-20.04'
+              AgentName: "blobfuse-ubuntu20"
+            Libfuse3:
+              vmImage: 'ubuntu-22.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
-              container: 'test-cnt-ubn-20'
+              container: 'test-cnt-ubn-22'
+              AgentName: "blobfuse-ubuntu22"
+
         pool:
           vmImage: $(vmImage)
 
@@ -77,7 +80,7 @@ stages:
           # install dependencies required for compiling blobfuse
           - script: |
               sudo apt-get update --fix-missing
-              sudo apt-get install ruby-dev build-essential $(fuselib) -y
+              sudo apt-get install ruby-dev build-essential pkg-config cmake gcc g++ rpm $(fuselib) -y
               sudo gem install fpm -V
             displayName: "Installing Dependencies"
 
@@ -95,10 +98,10 @@ stages:
               mkdir -p pkgDir/usr/bin/
               mkdir -p pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/blobfuse2 pkgDir/usr/bin/blobfuse2
+              cp azure-storage-fuse/bfusemon pkgDir/usr/bin/bfusemon
               cp azure-storage-fuse/setup/baseConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleFileCacheConfig.yaml pkgDir/usr/share/blobfuse2/
               cp azure-storage-fuse/sampleStreamingConfig.yaml pkgDir/usr/share/blobfuse2/
-              cp azure-storage-fuse/tools/postinstall.sh pkgDir/usr/share/blobfuse2/
               mkdir -p pkgDir/etc/rsyslog.d
               mkdir -p pkgDir/etc/logrotate.d
               cp azure-storage-fuse/setup/11-blobfuse2.conf pkgDir/etc/rsyslog.d
@@ -136,24 +139,10 @@ stages:
     dependsOn: BuildArtifacts
     condition: succeeded('BuildArtifacts')
     jobs:
-      - job: Set_1
+      - job: Set_0
         timeoutInMinutes: 120
         strategy:
           matrix:
-            Ubuntu-18:
-              agentName: "blobfuse-ubuntu18"
-              vmImage: 'Ubuntu-18.04'
-              fuselib: 'libfuse-dev'
-              fuse-version: 'fuse'
-              tags: 'fuse2'
-              container: 'test-cnt-ubn-18'
-            Ubuntu-20:
-              agentName: "blobfuse-ubuntu20"
-              vmImage: 'Ubuntu-20.04'
-              fuse-version: 'fuse3'
-              fuselib: 'libfuse3-dev'
-              tags: 'fuse3'
-              container: 'test-cnt-ubn-20'
             Ubuntu-22:
               agentName: "blobfuse-ubuntu22"
               vmImage: 'Ubuntu-22.04'
@@ -163,6 +152,103 @@ stages:
               container: 'test-cnt-ubn-22'
         pool:
           vmImage: $(vmImage)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
+          - name: work_dir
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          - name: mount_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmp'
+          - name: temp_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmpcache'
+
+        steps:
+          - checkout: none
+
+          - task: GoTool@0
+            inputs:
+              version: '1.16.2'
+            displayName: "GoTool Setup"
+
+          - script: |
+              git clone https://github.com/Azure/azure-storage-fuse
+            displayName: 'Checkout Code'
+            workingDirectory: $(root_dir)
+
+          - script: |
+              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+            displayName: 'Checkout Branch'
+            workingDirectory: $(root_dir)/azure-storage-fuse
+
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Build Artifacts'
+            inputs:
+              artifactName: 'blobfuse2-temp'
+              downloadPath: $(root_dir)
+              itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.deb
+
+          - script: |
+              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
+            displayName: 'Rename Package'
+            workingDirectory: $(root_dir)/blobfuse2-temp
+
+          - script: |
+              sudo dpkg --info blobfuse2*.deb
+              sudo dpkg -i blobfuse2*.deb
+              sudo apt-get install $(fuse-version) build-essential -y
+            displayName: 'Install Package'
+            workingDirectory: $(Build.ArtifactStagingDirectory)
+
+          - template: 'azure-pipeline-templates/release-distro-tests.yml'
+            parameters:
+              root_dir: $(root_dir)
+              work_dir: $(work_dir)
+              mount_dir: $(mount_dir)
+              temp_dir: $(temp_dir)
+              container: $(container)
+
+          # Create container for blobfuse and publish it
+          - script: |
+              sudo apt-get install $(tags) $(fuselib) -y
+              chmod 777 *.sh
+              ./dockerinstall.sh
+              ./buildcontainer.sh
+              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD)
+            displayName: "Create and publish container"
+            workingDirectory: $(work_dir)/docker
+
+          # publishing the artifacts generated
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: 'blobfuse2'
+            displayName: 'Publish Artifacts' 
+
+      - job: Set_1
+        timeoutInMinutes: 120
+        strategy:
+          matrix:
+            Ubuntu-18:
+              vmImage: 'Ubuntu-18.04'
+              fuselib: 'libfuse-dev'
+              fuse-version: 'fuse'
+              tags: 'fuse2'
+              container: 'test-cnt-ubn-18'
+              AgentName: "blobfuse-ubuntu18"
+            Ubuntu-20:
+              vmImage: 'Ubuntu-20.04'
+              fuse-version: 'fuse3'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              container: 'test-cnt-ubn-20'
+              AgentName: "blobfuse-ubuntu20"
+
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
 
         variables:
           - group: NightlyBlobFuse
@@ -308,6 +394,14 @@ stages:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts' 
 
+          # this being a self hosted agent we need to clean up installation once artifact post is done
+          - script: |
+              sudo dpkg -r --force-all blobfuse2
+              rm -rf /usr/bin/bfusemon
+              rm -rf /usr/bin/blobfuse2
+            displayName: 'Un install Package'
+            workingDirectory: $(Build.ArtifactStagingDirectory)
+
       - job: Set_3
         timeoutInMinutes: 120
         strategy:
@@ -432,6 +526,20 @@ stages:
               fuse-version: 'fuse3'
               tags: 'fuse3'
               container: 'test-cnt-rhel-82'
+            RHEL-8.6:
+              agentName: "blobfuse-rhel8_6"
+              vmImage: 'RHEL-8.6'
+              fuselib: 'fuse fuse3-libs fuse3-devel'
+              fuse-version: 'fuse3'
+              tags: 'fuse3'
+              container: 'test-cnt-rhel-86'
+            # RHEL-9.0:
+            #   agentName: "blobfuse-rhel9"
+            #   vmImage: 'RHEL-9.0'
+            #   fuselib: 'fuse fuse3-libs fuse3-devel'
+            #   fuse-version: 'fuse3'
+            #   tags: 'fuse3'
+            #   container: 'test-cnt-rhel-9'                            
         
         pool:
           name: "blobfuse-rhel-pool"
@@ -908,41 +1016,43 @@ stages:
               md5sum $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
             displayName: 'List Artifacts'
 
+
+          # Send images for signing
+          - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
+            displayName: 'ESRP CodeSigning blobfuse2'
+            inputs:
+              ConnectedServiceName: 'ESRP Code signing for blobfuse2'
+              FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2'
+              Pattern: '*.rpm, *.deb'
+              signConfigType: inlineSignParams
+              VerboseLogin: true
+              inlineOperation: |
+                [
+                  {
+                    "KeyCode" : "$(ESRP_BLOBFUSE_KEY_CODE)",
+                    "OperationCode" : "LinuxSign",
+                    "Parameters" : {},
+                    "ToolName" : "sign",
+                    "ToolVersion" : "1.0"
+                  }
+                ]
+
+          # Validate signed images have md5sum changed
+          - script: |
+              chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
+              chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
+              rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/*.md
+              mv $(Build.ArtifactStagingDirectory)/blobfuse2/* $(Build.ArtifactStagingDirectory)/
+              rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/
+            displayName: 'Make Artifacts executable'
+
+          - script: |
+              sudo ls -lRt $(Build.ArtifactStagingDirectory)
+              md5sum $(Build.ArtifactStagingDirectory)/*.deb
+              md5sum $(Build.ArtifactStagingDirectory)/*.rpm
+            displayName: 'List Signed Artifacts'
+
           - ${{ if eq(parameters.post_release, true) }}:
-              # Send images for signing
-              - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
-                displayName: 'ESRP CodeSigning blobfuse2'
-                inputs:
-                  ConnectedServiceName: 'ESRP Code signing blobfuse'
-                  FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2'
-                  Pattern: '*.rpm, *.deb'
-                  signConfigType: inlineSignParams
-                  VerboseLogin: true
-                  inlineOperation: |
-                    [
-                      {
-                        "KeyCode" : "$(ESRP_BLOBFUSE_KEY_CODE)",
-                        "OperationCode" : "LinuxSign",
-                        "Parameters" : {},
-                        "ToolName" : "sign",
-                        "ToolVersion" : "1.0"
-                      }
-                    ]
-              # Validate signed images have md5sum changed
-              - script: |
-                  chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
-                  chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
-                  rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/*.md
-                  mv $(Build.ArtifactStagingDirectory)/blobfuse2/* $(Build.ArtifactStagingDirectory)/
-                  rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/
-                displayName: 'Make Artifacts executable'
-
-              - script: |
-                  sudo ls -lRt $(Build.ArtifactStagingDirectory)
-                  md5sum $(Build.ArtifactStagingDirectory)/*.deb
-                  md5sum $(Build.ArtifactStagingDirectory)/*.rpm
-                displayName: 'List Signed Artifacts'
-
               # Push signed images to artifact directory
               - task: PublishBuildArtifacts@1
                 inputs:
@@ -976,7 +1086,7 @@ stages:
     jobs:
       - job: UpdateVersion
         pool:
-          vmImage: 'ubuntu-18.04'
+          vmImage: 'ubuntu-20.04'
         variables:
           - group: NightlyBlobFuse
           - name: root_dir
@@ -1001,8 +1111,8 @@ stages:
               # install blobfuse2
               - script: |
                   cd $(Build.ArtifactStagingDirectory)/blobfuse2
-                  ls | grep ubuntu-18.04
-                  sudo apt-get install ./`ls | grep ubuntu-18.04` -y
+                  ls | grep -i ubuntu-20.04
+                  sudo apt-get install ./`ls | grep -i ubuntu-20.04` -y
                   blobfuse2 version
                 displayName: 'Installing blobfuse2'
 

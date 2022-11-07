@@ -10,9 +10,12 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 - Basic file system operations such as mkdir, opendir, readdir, rmdir, open, 
    read, create, write, close, unlink, truncate, stat, rename
 - Local caching to improve subsequent access times
-- Streaming to support reading large files
+- Streaming to support reading AND writing large files 
 - Parallel downloads and uploads to improve access time for large files
 - Multiple mounts to the same container for read-only workloads
+
+## _New BlobFuse2 Health Monitor_
+One of the biggest BlobFuse2 features is our brand new health monitor. It allows customers gain more insight into how their BlobFuse2 instance is behaving with the rest of their machine. Visit [here](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md) to set it up.
 
 ## Distinctive features compared to blobfuse (v1.x)
 - Blobfuse2 is fuse3 compatible (other than Ubuntu-18 and Debian-9, where it still runs with fuse2)
@@ -32,6 +35,9 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 - Option to dump logs to syslog or a file on disk
 - Support for config file encryption and mounting with an encrypted config file via a passphrase (CLI or environment variable) to decrypt the config file
 - CLI to check or update a parameter in the encrypted config
+- Set MD5 sum of a blob while uploading
+- Validate MD5 sum on download and fail file open on mismatch
+- Large file writing through write streaming
 
  ## Blobfuse2 performance compared to blobfuse(v1.x.x)
 - 'git clone' operation is 25% faster (tested with vscode repo cloning)
@@ -84,24 +90,40 @@ To learn about a specific command, just include the name of the command (For exa
 
 <!---TODO Add Usage for mount, unmount, etc--->
 ## CLI parameters
+- Note: Blobfuse2 accepts all CLI parameters that Blobfuse does, but may ignore parameters that are no longer applicable. 
 - General options
     * `--config-file=<PATH>`: The path to the config file.
     * `--log-level=<LOG_*>`: The level of logs to capture.
     * `--log-file-path=<PATH>`: The path for the log file.
     * `--foreground=true`: Mounts the system in foreground mode.
+    * `--read-only=true`: Mount container in read-only mode.
     * `--default-working-dir`: The default working directory to store log files and other blobfuse2 related information.
     * `--disable-version-check=true`: Disable the blobfuse2 version check.
+    * `----secure-config=true` : Config file is encrypted suing 'blobfuse2 secure` command.
+    * `----passphrase=<STRING>` : Passphrase used to encrypt/decrypt config file.
 - Attribute cache options
     * `--attr-cache-timeout=<TIMEOUT IN SECONDS>`: The timeout for the attribute cache entries.
     * `--no-symlinks=true`: To improve performance disable symlink support.
 - Storage options
     * `--container-name=<CONTAINER NAME>`: The container to mount.
+    * `--cancel-list-on-mount-seconds=<TIMEOUT IN SECONDS>`: Time for which list calls will be blocked after mount. ( prevent billing charges on mounting)
+    * `--virtual-directory=true` : Support virtual directories without existence of a special marker blob for block blob account.
 - File cache options
+    * `--file-cache-timeout=<TIMEOUT IN SECONDS>`: Timeout for which file is cached on local system.
     * `--tmp-path=<PATH>`: The path to the file cache.
+    * `--cache-size-mb=<SIZE IN MB>`: Amount of disk cache that can be used by blobfuse.
+    * `--high-disk-threshold=<PERCENTAGE>`: If local cache usage exceeds this, start early eviction of files from cache.
+    * `--low-disk-threshold=<PERCENTAGE>`: If local cache usage comes below this threshold then stop early eviction.
+- Stream options
+    * `--block-size-mb=<SIZE IN MB>`: Size of a block to be downloaded during streaming.
 - Fuse options
-    * `--read-only=true`: Mount container in read-only mode.
     * `--attr-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache inode attributes.
     * `--entry-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache directory listing.
+    * `--negative-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache non-existance of file or directory.
+    * `--allow-other`: Allow other users to have access this mount point.
+    * `--disable-writeback-cache=true`: Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.
+    * `--ignore-open-flags=true`: Ignore the append and write only flag since O_APPEND and O_WRONLY is not supported with writeback caching.
+
 
 ## Environment variables
 - General options
@@ -126,18 +148,24 @@ To learn about a specific command, just include the name of the command (For exa
     * `AZURE_STORAGE_AAD_ENDPOINT`: Specifies a custom AAD endpoint to authenticate against
     * `AZURE_STORAGE_SPN_CLIENT_SECRET`: Specifies the client secret for your application registration.
 - Proxy Server:
-    * `http_proxy`: The proxy server address. Example: http://10.1.22.4:8080/".    
-    * `https_proxy`: The proxy server address when https is turned off forcing http. Example: http://10.1.22.4:8080/".
+    * `http_proxy`: The proxy server address. Example: `10.1.22.4:8080`.    
+    * `https_proxy`: The proxy server address when https is turned off forcing http. Example: `10.1.22.4:8080`.
 
 ## Config file
 - See [this](./sampleFileCacheConfig.yaml) sample config file.
 - See [this](./setup/baseConfig.yaml) config file for a list and description of all possible configurable options in blobfuse2. 
 
+***Please note: do not use quotations `""` for any of the config parameters***
+
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
 az cli has a command to generate a sas token. Open a command prompt and make sure you are logged in to az cli. Run the following command and the sas token will be displayed in the command prompt.
 az storage container generate-sas --account-name <account name ex:myadlsaccount> --account-key <accountKey> -n <container name> --permissions dlrwac --start <today's date ex: 2021-03-26> --expiry <date greater than the current time ex:2021-03-28>
-
+- Why do I get EINVAL on opening a file with WRONLY or APPEND flags?
+To improve performance, Blobfuse2 by default enables writeback caching, which can produce unexpected behavior for files opened with WRONLY or APPEND flags, so Blobfuse2 returns EINVAL on open of a file with those flags. Either use disable-writeback-caching to turn off writeback caching (can potentially result in degraded performance) or ignore-open-flags (replace WRONLY with RDWR and ignore APPEND) based on your workload. 
+- How to mount blobfuse2 inside a container?
+Refer to 'docker' folder in this repo. It contains a sample 'Dockerfile'. If you wish to create your own container image, try 'buildandruncontainer.sh' script, it will create a container image and launch the container using current environment variables holding your storage account credentials.
+ 
 ## Un-Supported File system operations
 - mkfifo : fifo creation is not supported by blobfuse2 and this will result in "function not implemented" error
 - chown  : Change of ownership is not supported by Azure Storage hence Blobfuse2 does not support this.
@@ -147,9 +175,15 @@ az storage container generate-sas --account-name <account name ex:myadlsaccount>
 ## Un-Supported Scenarios
 - Blobfuse2 does not support overlapping mount paths. While running multiple instances of Blobfuse2 make sure each instance has a unique and non-overlapping mount point.
 - Blobfuse2 does not support co-existance with NFS on same mount path. Behaviour in this case is undefined.
+- For block blob accounts, where data is uploaded through other means, Blobfuse2 expects special directory marker files to exist in container. In absence of this
+  few file operations might not work. For e.g. if you have a blob 'A/B/c.txt' then special marker files shall exists for 'A' and 'A/B', otherwise opening of 'A/B/c.txt' will fail.
+  Once a 'ls' operation is done on these directories 'A' and 'A/B' you will be able to open 'A/B/c.txt' as well. Possible workaround to resolve this from your container is to either
+
+  create the directory marker files manually through portal or run 'mkdir' command for 'A' and 'A/B' from blobfuse. Refer [me](https://github.com/Azure/azure-storage-fuse/issues/866) 
+  for details on this.
 
 ## Limitations
-- In case of BlockBlob accounts, ACLs are not supported by Azure Storage so Blobfuse2 will bydefault return success for 'chmod' operation. However it will work fine for Gen2 (DataLake) accounts.
+- In case of BlockBlob accounts, ACLs are not supported by Azure Storage so Blobfuse2 will by default return success for 'chmod' operation. However it will work fine for Gen2 (DataLake) accounts.
 
 
 ### Syslog security warning

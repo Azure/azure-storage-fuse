@@ -70,6 +70,7 @@ steps:
     continueOnError: false
 
   - script: |
+      sleep 10s
       blobfuse2 unmount ${{ parameters.mount_dir }}
     displayName: 'Unmount Blob'
 
@@ -127,6 +128,7 @@ steps:
     continueOnError: false
 
   - script: |
+      sleep 10s
       blobfuse2 unmount ${{ parameters.mount_dir }}
     displayName: 'Unmount ADLS'
 

@@ -42,6 +42,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
@@ -51,6 +52,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/Azure/azure-storage-blob-go/azblob"
 )
@@ -115,7 +117,7 @@ func (bb *BlockBlob) NewCredentialKey(key, value string) (err error) {
 		// Update the endpoint url from the credential
 		bb.Endpoint, err = url.Parse(bb.Auth.getEndpoint())
 		if err != nil {
-			log.Err("BlockBlob::NewCredentialKey : Failed to form base endpoint url (%s)", err.Error())
+			log.Err("BlockBlob::NewCredentialKey : Failed to form base endpoint url [%s]", err.Error())
 			return errors.New("failed to form base endpoint url")
 		}
 
@@ -189,7 +191,7 @@ func (bb *BlockBlob) SetupPipeline() error {
 	// Get the endpoint url from the credential
 	bb.Endpoint, err = url.Parse(bb.Auth.getEndpoint())
 	if err != nil {
-		log.Err("BlockBlob::SetupPipeline : Failed to form base end point url (%s)", err.Error())
+		log.Err("BlockBlob::SetupPipeline : Failed to form base end point url [%s]", err.Error())
 		return errors.New("failed to form base end point url")
 	}
 
@@ -299,10 +301,10 @@ func (bb *BlockBlob) DeleteFile(name string) (err error) {
 			log.Err("BlockBlob::DeleteFile : %s does not exist", name)
 			return syscall.ENOENT
 		} else if serr == BlobIsUnderLease {
-			log.Err("BlockBlob::DeleteFile : %s is under lease (%s)", name, err.Error())
+			log.Err("BlockBlob::DeleteFile : %s is under lease [%s]", name, err.Error())
 			return syscall.EIO
 		} else {
-			log.Err("BlockBlob::DeleteFile : Failed to delete blob %s (%s)", name, err.Error())
+			log.Err("BlockBlob::DeleteFile : Failed to delete blob %s [%s]", name, err.Error())
 			return err
 		}
 	}
@@ -330,7 +332,7 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 		for _, blobInfo := range listBlob.Segment.BlobItems {
 			err = bb.DeleteFile(split(bb.Config.prefixPath, blobInfo.Name))
 			if err != nil {
-				log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s (%s)", blobInfo.Name, err.Error)
+				log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s [%s]", blobInfo.Name, err.Error)
 			}
 		}
 	}
@@ -351,7 +353,7 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 			log.Err("BlockBlob::RenameFile : %s does not exist", source)
 			return syscall.ENOENT
 		} else {
-			log.Err("BlockBlob::RenameFile : Failed to get blob properties for %s (%s)", source, err.Error())
+			log.Err("BlockBlob::RenameFile : Failed to get blob properties for %s [%s]", source, err.Error())
 			return err
 		}
 	}
@@ -360,7 +362,7 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 		prop.NewMetadata(), azblob.ModifiedAccessConditions{}, azblob.BlobAccessConditions{}, bb.Config.defaultTier, nil)
 
 	if err != nil {
-		log.Err("BlockBlob::RenameFile : Failed to start copy of file %s (%s)", source, err.Error())
+		log.Err("BlockBlob::RenameFile : Failed to start copy of file %s [%s]", source, err.Error())
 		return err
 	}
 
@@ -369,7 +371,7 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 		time.Sleep(time.Second * 1)
 		prop, err = newBlob.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
 		if err != nil {
-			log.Err("BlockBlob::RenameFile : CopyStats : Failed to get blob properties for %s (%s)", source, err.Error())
+			log.Err("BlockBlob::RenameFile : CopyStats : Failed to get blob properties for %s [%s]", source, err.Error())
 		}
 		copyStatus = prop.CopyStatus()
 	}
@@ -400,7 +402,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 			srcPath := split(bb.Config.prefixPath, blobInfo.Name)
 			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
 			if err != nil {
-				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s (%s)", srcPath, err.Error)
+				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
 			}
 		}
 	}
@@ -408,9 +410,8 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 	return bb.RenameFile(source, target)
 }
 
-// GetAttr : Retrieve attributes of the blob
-func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
-	log.Trace("BlockBlob::GetAttr : name %s", name)
+func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
+	log.Trace("BlockBlob::getAttrUsingRest : name %s", name)
 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
@@ -420,7 +421,7 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		if e == ErrFileNotFound {
 			return attr, syscall.ENOENT
 		} else {
-			log.Err("BlockBlob::GetAttr : Failed to get blob properties for %s (%s)", name, err.Error())
+			log.Err("BlockBlob::getAttrUsingRest : Failed to get blob properties for %s [%s]", name, err.Error())
 			return attr, err
 		}
 	}
@@ -436,12 +437,79 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Ctime:  prop.LastModified(),
 		Crtime: prop.CreationTime(),
 		Flags:  internal.NewFileBitMap(),
+		MD5:    prop.ContentMD5(),
 	}
+
 	parseMetadata(attr, prop.NewMetadata())
+
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 	attr.Flags.Set(internal.PropFlagModeDefault)
 
 	return attr, nil
+}
+
+func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err error) {
+	log.Trace("BlockBlob::getAttrUsingList : name %s", name)
+
+	const maxFailCount = 20
+	failCount := 0
+	iteration := 0
+
+	var marker *string = nil
+	blobsRead := 0
+
+	for failCount < maxFailCount {
+		blobs, new_marker, err := bb.List(name, marker, common.MaxDirListCount)
+		if err != nil {
+			e := storeBlobErrToErr(err)
+			if e == ErrFileNotFound {
+				return attr, syscall.ENOENT
+			} else if e == InvalidPermission {
+				return attr, syscall.EPERM
+			} else {
+				log.Warn("BlockBlob::getAttrUsingList : Failed to list blob properties for %s [%s]", name, err.Error())
+				failCount++
+				continue
+			}
+		}
+		failCount = 0
+
+		for i, blob := range blobs {
+			log.Trace("BlockBlob::getAttrUsingList : Item %d Blob %s", i+blobsRead, blob.Name)
+			if blob.Path == name {
+				return blob, nil
+			}
+		}
+
+		marker = new_marker
+		iteration++
+		blobsRead += len(blobs)
+
+		log.Trace("BlockBlob::getAttrUsingList : So far retrieved %d objects in %d iterations", blobsRead, iteration)
+		if new_marker == nil || *new_marker == "" || failCount >= maxFailCount {
+			break
+		}
+	}
+
+	if err == nil {
+		log.Err("BlockBlob::getAttrUsingList : blob %s does not exist", name)
+		return nil, syscall.ENOENT
+	}
+
+	log.Err("BlockBlob::getAttrUsingList : Failed to list blob properties for %s [%s]", name, err.Error())
+	return nil, err
+}
+
+// GetAttr : Retrieve attributes of the blob
+func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
+	log.Trace("BlockBlob::GetAttr : name %s", name)
+
+	// To support virtual directories with no marker blob, we call list instead of get properties since list will not return a 404
+	if bb.Config.virtualDirectory {
+		return bb.getAttrUsingList(name)
+	}
+
+	return bb.getAttrUsingRest(name)
 }
 
 // List : Get a list of blobs matching the given prefix
@@ -508,6 +576,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			Ctime:  blobInfo.Properties.LastModified,
 			Crtime: dereferenceTime(blobInfo.Properties.CreationTime, blobInfo.Properties.LastModified),
 			Flags:  internal.NewFileBitMap(),
+			MD5:    blobInfo.Properties.ContentMD5,
 		}
 
 		parseMetadata(attr, blobInfo.Metadata)
@@ -522,7 +591,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		}
 	}
 
-	// If in case virtual directory exists but its corrosponding 0 byte file is not there holding hdi_isfolder then just iterating
+	// If in case virtual directory exists but its corresponding 0 byte file is not there holding hdi_isfolder then just iterating
 	// BlobItems will fail to identify that directory. In such cases BlobPrefixes help to list all directories
 	// dirList contains all dirs for which we got 0 byte meta file, so except those add rest to the list
 	for _, blobInfo := range listBlob.Segment.BlobPrefixes {
@@ -555,12 +624,32 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	return blobList, listBlob.NextMarker.Val, nil
 }
 
+// track the progress of download of blobs where every 100MB of data downloaded is being tracked. It also tracks the completion of download
+func trackDownload(name string, bytesTransferred int64, count int64, downloadPtr *int64) {
+	if bytesTransferred >= (*downloadPtr)*100*common.MbToBytes || bytesTransferred == count {
+		(*downloadPtr)++
+		log.Debug("BlockBlob::trackDownload : Download: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
+
+		// send the download progress as an event
+		azStatsCollector.PushEvents(downloadProgress, name, map[string]interface{}{bytesTfrd: bytesTransferred, size: count})
+	}
+}
+
 // ReadToFile : Download a blob to a local file
 func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.File) (err error) {
 	log.Trace("BlockBlob::ReadToFile : name %s, offset : %d, count %d", name, offset, count)
 	//defer exectime.StatTimeCurrentBlock("BlockBlob::ReadToFile")()
 
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
+
+	var downloadPtr *int64 = new(int64)
+	*downloadPtr = 1
+
+	if common.MonitorBfs() {
+		bb.downloadOptions.Progress = func(bytesTransferred int64) {
+			trackDownload(name, bytesTransferred, count, downloadPtr)
+		}
+	}
 
 	defer log.TimeTrack(time.Now(), "BlockBlob::ReadToFile", name)
 	err = azblob.DownloadBlobToFile(context.Background(), blobURL, offset, count, fi, bb.downloadOptions)
@@ -570,8 +659,38 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 		if e == ErrFileNotFound {
 			return syscall.ENOENT
 		} else {
-			log.Err("BlockBlob::ReadToFile : Failed to download blob %s (%s)", name, err.Error())
+			log.Err("BlockBlob::ReadToFile : Failed to download blob %s [%s]", name, err.Error())
 			return err
+		}
+	} else {
+		log.Debug("BlockBlob::ReadToFile : Download complete of blob %v", name)
+
+		// store total bytes downloaded so far
+		azStatsCollector.UpdateStats(stats_manager.Increment, bytesDownloaded, count)
+	}
+
+	if bb.Config.validateMD5 {
+		// Compute md5 of local file
+		fileMD5, err := getMD5(fi)
+		if err != nil {
+			log.Warn("BlockBlob::ReadToFile : Failed to generate MD5 Sum for %s", name)
+		} else {
+			// Get latest properties from container to get the md5 of blob
+			prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
+			if err != nil {
+				log.Warn("BlockBlob::ReadToFile : Failed to get properties of blob %s [%s]", name, err.Error())
+			} else {
+				blobMD5 := prop.ContentMD5()
+				if blobMD5 == nil {
+					log.Warn("BlockBlob::ReadToFile : Failed to get MD5 Sum for blob %s", name)
+				} else {
+					// compare md5 and fail is not match
+					if !reflect.DeepEqual(fileMD5, blobMD5) {
+						log.Err("BlockBlob::ReadToFile : MD5 Sum mismatch %s", name)
+						return errors.New("md5 sum mismatch on download")
+					}
+				}
+			}
 		}
 	}
 
@@ -604,7 +723,7 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 			return buff, syscall.ERANGE
 		}
 
-		log.Err("BlockBlob::ReadBuffer : Failed to download blob %s (%s)", name, err.Error())
+		log.Err("BlockBlob::ReadBuffer : Failed to download blob %s [%s]", name, err.Error())
 		return buff, err
 	}
 
@@ -613,7 +732,7 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
 func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
-	log.Trace("BlockBlob::ReadInBuffer : name %s", name)
+	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, data, bb.downloadOptions)
 
@@ -625,7 +744,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 			return syscall.ERANGE
 		}
 
-		log.Err("BlockBlob::ReadInBuffer : Failed to download blob %s (%s)", name, err.Error())
+		log.Err("BlockBlob::ReadInBuffer : Failed to download blob %s [%s]", name, err.Error())
 		return err
 	}
 
@@ -667,8 +786,19 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 		}
 	}
 
-	log.Info("BlockBlob::calculateBlockSize : %s size %lu, blockSize %lu", name, fileSize, blockSize)
+	log.Info("BlockBlob::calculateBlockSize : %s size %v, blockSize %v", name, fileSize, blockSize)
 	return blockSize, nil
+}
+
+// track the progress of upload of blobs where every 100MB of data uploaded is being tracked. It also tracks the completion of upload
+func trackUpload(name string, bytesTransferred int64, count int64, uploadPtr *int64) {
+	if bytesTransferred >= (*uploadPtr)*100*common.MbToBytes || bytesTransferred == count {
+		(*uploadPtr)++
+		log.Debug("BlockBlob::trackUpload : Upload: Blob = %v, Bytes transferred = %v, Size = %v", name, bytesTransferred, count)
+
+		// send upload progress as event
+		azStatsCollector.PushEvents(uploadProgress, name, map[string]interface{}{bytesTfrd: bytesTransferred, size: count})
+	}
 }
 
 // WriteFromFile : Upload local file to blob
@@ -679,16 +809,19 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
 
+	var uploadPtr *int64 = new(int64)
+	*uploadPtr = 1
+
 	blockSize := bb.Config.blockSize
+	// get the size of the file
+	stat, err := fi.Stat()
+	if err != nil {
+		log.Err("BlockBlob::WriteFromFile : Failed to get file size %s [%s]", name, err.Error())
+		return err
+	}
+
 	// if the block size is not set then we configure it based on file size
 	if blockSize == 0 {
-		// get the size of the file
-		stat, err := fi.Stat()
-		if err != nil {
-			log.Err("BlockBlob::calculateBlockSize : Failed to get file size %s (%s)", name, err.Error())
-			return err
-		}
-
 		// based on file-size calculate block size
 		blockSize, err = bb.calculateBlockSize(name, stat.Size())
 		if err != nil {
@@ -696,25 +829,53 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		}
 	}
 
-	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, azblob.UploadToBlockBlobOptions{
+	// Compute md5 of this file is requested by user
+	// If file is uploaded in one shot (no blocks created) then server is populating md5 on upload automatically.
+	// hence we take cost of calculating md5 only for files which are bigger in size and which will be converted to blocks.
+	md5sum := []byte{}
+	if bb.Config.updateMD5 && stat.Size() >= azblob.BlockBlobMaxUploadBlobBytes {
+		md5sum, err = getMD5(fi)
+		if err != nil {
+			// Md5 sum generation failed so set nil while uploading
+			log.Warn("BlockBlob::WriteFromFile : Failed to generate md5 of %s", name)
+			md5sum = []byte{0}
+		}
+	}
+
+	uploadOptions := azblob.UploadToBlockBlobOptions{
 		BlockSize:      blockSize,
 		Parallelism:    bb.Config.maxConcurrency,
 		Metadata:       metadata,
 		BlobAccessTier: bb.Config.defaultTier,
 		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
 			ContentType: getContentType(name),
+			ContentMD5:  md5sum,
 		},
-	})
+	}
+	if common.MonitorBfs() && stat.Size() > 0 {
+		uploadOptions.Progress = func(bytesTransferred int64) {
+			trackUpload(name, bytesTransferred, stat.Size(), uploadPtr)
+		}
+	}
+
+	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, uploadOptions)
 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
 		if serr == BlobIsUnderLease {
-			log.Err("BlockBlob::WriteFromFile : %s is under a lease, can not update file (%s)", name, err.Error())
+			log.Err("BlockBlob::WriteFromFile : %s is under a lease, can not update file [%s]", name, err.Error())
 			return syscall.EIO
 		} else {
-			log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s (%s)", name, err.Error())
+			log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s [%s]", name, err.Error())
 		}
 		return err
+	} else {
+		log.Debug("BlockBlob::WriteFromFile : Upload complete of blob %v", name)
+
+		// store total bytes uploaded so far
+		if stat.Size() > 0 {
+			azStatsCollector.UpdateStats(stats_manager.Increment, bytesUploaded, stat.Size())
+		}
 	}
 
 	return nil
@@ -737,7 +898,7 @@ func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]string, da
 	})
 
 	if err != nil {
-		log.Err("BlockBlob::WriteFromBuffer : Failed to upload blob %s (%s)", name, err.Error())
+		log.Err("BlockBlob::WriteFromBuffer : Failed to upload blob %s [%s]", name, err.Error())
 		return err
 	}
 
@@ -821,7 +982,7 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 
 		err := bb.ReadInBuffer(name, blk.StartIndex, blk.EndIndex-blk.StartIndex, blk.Data)
 		if err != nil {
-			log.Err("BlockBlob::removeBlocks : Failed to remove blocks %s (%s)", name, err.Error())
+			log.Err("BlockBlob::removeBlocks : Failed to remove blocks %s [%s]", name, err.Error())
 		}
 
 	}
@@ -834,7 +995,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 	// log.Trace("BlockBlob::TruncateFile : name=%s, size=%d", name, size)
 	attr, err := bb.GetAttr(name)
 	if err != nil {
-		log.Err("BlockBlob::TruncateFile : Failed to get attributes of file %s (%s)", name, err.Error())
+		log.Err("BlockBlob::TruncateFile : Failed to get attributes of file %s [%s]", name, err.Error())
 		if err == syscall.ENOENT {
 			return err
 		}
@@ -843,13 +1004,13 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 	if size == 0 || attr.Size == 0 {
 		err := bb.WriteFromBuffer(name, nil, make([]byte, size))
 		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to set the %s to 0 bytes (%s)", name, err.Error())
+			log.Err("BlockBlob::TruncateFile : Failed to set the %s to 0 bytes [%s]", name, err.Error())
 		}
 		return err
 	}
 	bol, err := bb.GetFileBlockOffsets(name)
 	if err != nil {
-		log.Err("BlockBlob::TruncateFile : Failed to get block list of file %s (%s)", name, err.Error())
+		log.Err("BlockBlob::TruncateFile : Failed to get block list of file %s [%s]", name, err.Error())
 		return err
 	}
 	// if the file consists of blocks
@@ -964,7 +1125,7 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 			// fetch the blocks that will be impacted by the new changes so we can overwrite them
 			err = bb.ReadInBuffer(name, fileOffsets.BlockList[index].StartIndex, oldDataSize, oldDataBuffer)
 			if err != nil {
-				log.Err("BlockBlob::Write : Failed to read data in buffer %s (%s)", name, err.Error())
+				log.Err("BlockBlob::Write : Failed to read data in buffer %s [%s]", name, err.Error())
 			}
 		}
 		// this gives us where the offset with respect to the buffer that holds our old data - so we can start writing the new data
@@ -991,7 +1152,7 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 				nil,
 				bb.downloadOptions.ClientProvidedKeyOptions)
 			if err != nil {
-				log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to stage to blob %s at block %v (%s)", name, blockOffset, err.Error())
+				log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to stage to blob %s at block %v [%s]", name, blockOffset, err.Error())
 				return err
 			}
 			blockOffset = (blk.EndIndex - blk.StartIndex) + blockOffset
@@ -1006,7 +1167,7 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 		nil, // datalake doesn't support tags here
 		bb.downloadOptions.ClientProvidedKeyOptions)
 	if err != nil {
-		log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to commit block list to blob %s (%s)", name, err.Error())
+		log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to commit block list to blob %s [%s]", name, err.Error())
 		return err
 	}
 	return nil
@@ -1037,7 +1198,7 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 				nil,
 				bb.downloadOptions.ClientProvidedKeyOptions)
 			if err != nil {
-				log.Err("BlockBlob::StageAndCommit : Failed to stage to blob %s with ID %s at block %v (%s)", name, blk.Id, blk.StartIndex, err.Error())
+				log.Err("BlockBlob::StageAndCommit : Failed to stage to blob %s with ID %s at block %v [%s]", name, blk.Id, blk.StartIndex, err.Error())
 				return err
 			}
 			staged = true
@@ -1055,7 +1216,7 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 			nil, // datalake doesn't support tags here
 			bb.downloadOptions.ClientProvidedKeyOptions)
 		if err != nil {
-			log.Err("BlockBlob::StageAndCommit : Failed to commit block list to blob %s (%s)", name, err.Error())
+			log.Err("BlockBlob::StageAndCommit : Failed to commit block list to blob %s [%s]", name, err.Error())
 			return err
 		}
 		// update the etag

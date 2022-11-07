@@ -40,15 +40,17 @@ import (
 	"path/filepath"
 	"reflect"
 	"sync"
+	"time"
 
 	"github.com/JeffreyRichter/enum/enum"
 )
 
 // Standard config default values
 const (
+	blobfuse2Version_ = "2.0.0-preview.5"
+
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
-	Blobfuse2Version      = "2.0.0-preview.3"
 	FileSystemName        = "blobfuse2"
 
 	DefaultConfigFilePath = "config.yaml"
@@ -60,12 +62,31 @@ const (
 	DefaultFilePermissionBits       os.FileMode = 0755
 	DefaultDirectoryPermissionBits  os.FileMode = 0775
 	DefaultAllowOtherPermissionBits os.FileMode = 0777
+
+	MbToBytes  = 1024 * 1024
+	BfuseStats = "blobfuse_stats"
+
+	FuseAllowedFlags = "invalid FUSE options. Allowed FUSE configurations are: `-o attr_timeout=TIMEOUT`, `-o negative_timeout=TIMEOUT`, `-o entry_timeout=TIMEOUT` `-o allow_other`, `-o allow_root`, `-o umask=PERMISSIONS -o default_permissions`, `-o ro`"
 )
+
+func FuseIgnoredFlags() []string {
+	return []string{"default_permissions", "rw", "dev", "nodev", "suid", "nosuid", "delay_connect", "uid", "gid", "auto", "noauto", "user", "nouser", "exec", "noexec"}
+}
+
+var Blobfuse2Version = Blobfuse2Version_()
+
+func Blobfuse2Version_() string {
+	return blobfuse2Version_
+}
 
 var DefaultWorkDir = "$HOME/.blobfuse2"
 var DefaultLogFilePath = filepath.Join(DefaultWorkDir, "blobfuse2.log")
-var DefaultPipeline = []string{"libfuse", "file_cache", "attr_cache", "azstorage"}
-var DefaultStreamPipeline = []string{"libfuse", "stream", "attr_cache", "azstorage"}
+var StatsConfigFilePath = filepath.Join(DefaultWorkDir, "stats_monitor.cfg")
+
+var EnableMonitoring = false
+var BfsDisabled = false
+var TransferPipe = "/tmp/transferPipe"
+var PollingPipe = "/tmp/pollPipe"
 
 //LogLevel enum
 type LogLevel int
@@ -122,6 +143,7 @@ type LogConfig struct {
 	FileCount   uint64
 	FilePath    string
 	TimeTracker bool
+	Tag         string // logging tag which can be either blobfuse2 or bfusemon
 }
 
 // Flags for blocks
@@ -161,6 +183,8 @@ type BlockOffsetList struct {
 	BlockList     []*Block //blockId to offset mapping
 	Flags         BitMap16
 	BlockIdLength int64
+	Size          int64
+	Mtime         time.Time
 }
 
 // Dirty : Handle is dirty or not

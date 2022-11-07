@@ -36,6 +36,7 @@ package azstorage
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -109,7 +110,7 @@ func (dl *Datalake) NewCredentialKey(key, value string) (err error) {
 		// Update the endpoint url from the credential
 		dl.Endpoint, err = url.Parse(dl.Auth.getEndpoint())
 		if err != nil {
-			log.Err("Datalake::NewCredentialKey : Failed to form base endpoint url (%s)", err.Error())
+			log.Err("Datalake::NewCredentialKey : Failed to form base endpoint url [%s]", err.Error())
 			return errors.New("failed to form base endpoint url")
 		}
 
@@ -184,7 +185,7 @@ func (dl *Datalake) SetupPipeline() error {
 	// Get the endpoint url from the credential
 	dl.Endpoint, err = url.Parse(dl.Auth.getEndpoint())
 	if err != nil {
-		log.Err("Datalake::SetupPipeline : Failed to form base end point url (%s)", err.Error())
+		log.Err("Datalake::SetupPipeline : Failed to form base end point url [%s]", err.Error())
 		return errors.New("failed to form base end point url")
 	}
 
@@ -245,12 +246,12 @@ func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("Datalake::CreateFile : name %s", name)
 	err := dl.BlockBlob.CreateFile(name, mode)
 	if err != nil {
-		log.Err("Datalake::CreateFile : Failed to create file %s (%s)", name, err.Error())
+		log.Err("Datalake::CreateFile : Failed to create file %s [%s]", name, err.Error())
 		return err
 	}
 	err = dl.ChangeMod(name, mode)
 	if err != nil {
-		log.Err("Datalake::CreateFile : Failed to set permissions on file %s (%s)", name, err.Error())
+		log.Err("Datalake::CreateFile : Failed to set permissions on file %s [%s]", name, err.Error())
 		return err
 	}
 
@@ -265,7 +266,7 @@ func (dl *Datalake) CreateDirectory(name string) error {
 	_, err := directoryURL.Create(context.Background(), false)
 
 	if err != nil {
-		log.Err("Datalake::CreateDirectory : Failed to create directory %s (%s)", name, err.Error())
+		log.Err("Datalake::CreateDirectory : Failed to create directory %s [%s]", name, err.Error())
 		return err
 	}
 
@@ -290,10 +291,10 @@ func (dl *Datalake) DeleteFile(name string) (err error) {
 			log.Err("Datalake::DeleteFile : %s does not exist", name)
 			return syscall.ENOENT
 		} else if serr == BlobIsUnderLease {
-			log.Err("Datalake::DeleteFile : %s is under lease (%s)", name, err.Error())
+			log.Err("Datalake::DeleteFile : %s is under lease [%s]", name, err.Error())
 			return syscall.EIO
 		} else {
-			log.Err("Datalake::DeleteFile : Failed to delete file %s (%s)", name, err.Error())
+			log.Err("Datalake::DeleteFile : Failed to delete file %s [%s]", name, err.Error())
 			return err
 		}
 	}
@@ -314,7 +315,7 @@ func (dl *Datalake) DeleteDirectory(name string) (err error) {
 			log.Err("Datalake::DeleteDirectory : %s does not exist", name)
 			return syscall.ENOENT
 		} else {
-			log.Err("Datalake::DeleteDirectory : Failed to delete directory %s (%s)", name, err.Error())
+			log.Err("Datalake::DeleteDirectory : Failed to delete directory %s [%s]", name, err.Error())
 			return err
 		}
 	}
@@ -338,7 +339,7 @@ func (dl *Datalake) RenameFile(source string, target string) error {
 			log.Err("Datalake::RenameFile : %s does not exist", source)
 			return syscall.ENOENT
 		} else {
-			log.Err("Datalake::RenameFile : Failed to rename file %s to %s (%s)", source, target, err.Error())
+			log.Err("Datalake::RenameFile : Failed to rename file %s to %s [%s]", source, target, err.Error())
 			return err
 		}
 	}
@@ -362,7 +363,7 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 			log.Err("Datalake::RenameDirectory : %s does not exist", source)
 			return syscall.ENOENT
 		} else {
-			log.Err("Datalake::RenameDirectory : Failed to rename directory %s to %s (%s)", source, target, err.Error())
+			log.Err("Datalake::RenameDirectory : Failed to rename directory %s to %s [%s]", source, target, err.Error())
 			return err
 		}
 	}
@@ -382,7 +383,7 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		if e == ErrFileNotFound {
 			return attr, syscall.ENOENT
 		} else {
-			log.Err("Datalake::GetAttr : Failed to get path properties for %s (%s)", name, err.Error())
+			log.Err("Datalake::GetAttr : Failed to get path properties for %s [%s]", name, err.Error())
 			return attr, err
 		}
 	}
@@ -390,13 +391,13 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	lastModified, err := time.Parse(time.RFC1123, prop.LastModified())
 
 	if err != nil {
-		log.Err("Datalake::GetAttr : Failed to convert last modified time for %s (%s)", name, err.Error())
+		log.Err("Datalake::GetAttr : Failed to convert last modified time for %s [%s]", name, err.Error())
 		return attr, err
 	}
 
 	mode, err := getFileMode(prop.XMsPermissions())
 	if err != nil {
-		log.Err("Datalake::GetAttr : Failed to get file mode for %s (%s)", name, err.Error())
+		log.Err("Datalake::GetAttr : Failed to get file mode for %s [%s]", name, err.Error())
 		return attr, err
 	}
 
@@ -461,17 +462,31 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 
 	// Process the paths returned in this result segment (if the segment is empty, the loop body won't execute)
 	for _, pathInfo := range listPath.Paths {
-		mode, err := getFileMode(*pathInfo.Permissions)
-		if err != nil {
-			log.Err("Datalake::List : Failed to get file mode for %s (%s)", *pathInfo.Name, err.Error())
-			m := ""
-			return pathList, &m, err
+		var mode fs.FileMode
+		if pathInfo.Permissions != nil {
+			mode, err = getFileMode(*pathInfo.Permissions)
+			if err != nil {
+				log.Err("Datalake::List : Failed to get file mode for %s [%s]", *pathInfo.Name, err.Error())
+				m := ""
+				return pathList, &m, err
+			}
+		} else {
+			// This happens when a blob account is mounted with type:adls
+			log.Err("Datalake::List : Failed to get file permissions for %s", *pathInfo.Name)
+		}
+
+		var contentLength int64 = 0
+		if pathInfo.ContentLength != nil {
+			contentLength = *pathInfo.ContentLength
+		} else {
+			// This happens when a blob account is mounted with type:adls
+			log.Err("Datalake::List : Failed to get file length for %s", *pathInfo.Name)
 		}
 
 		attr := &internal.ObjAttr{
 			Path:   *pathInfo.Name,
 			Name:   filepath.Base(*pathInfo.Name),
-			Size:   *pathInfo.ContentLength,
+			Size:   contentLength,
 			Mode:   mode,
 			Mtime:  pathInfo.LastModifiedTime(),
 			Atime:  pathInfo.LastModifiedTime(),
@@ -554,7 +569,7 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 		if e == ErrFileNotFound {
 			return syscall.ENOENT
 		} else if err != nil {
-			log.Err("Datalake::ChangeMod : Failed to get mode of file %s (%s)", name, err.Error())
+			log.Err("Datalake::ChangeMod : Failed to get mode of file %s [%s]", name, err.Error())
 			return err
 		}
 	*/
@@ -565,7 +580,7 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 	if e == ErrFileNotFound {
 		return syscall.ENOENT
 	} else if err != nil {
-		log.Err("Datalake::ChangeMod : Failed to change mode of file %s to %s (%s)", name, mode, err.Error())
+		log.Err("Datalake::ChangeMod : Failed to change mode of file %s to %s [%s]", name, mode, err.Error())
 		return err
 	}
 
@@ -591,7 +606,7 @@ func (dl *Datalake) ChangeOwner(name string, _ int, _ int) error {
 	// if e == ErrFileNotFound {
 	// 	return syscall.ENOENT
 	// } else if err != nil {
-	// 	log.Err("Datalake::ChangeOwner : Failed to change ownership of file %s to %s (%s)", name, mode, err.Error())
+	// 	log.Err("Datalake::ChangeOwner : Failed to change ownership of file %s to %s [%s]", name, mode, err.Error())
 	// 	return err
 	// }
 	return syscall.ENOTSUP

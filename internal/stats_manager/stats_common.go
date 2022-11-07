@@ -31,19 +31,11 @@
    SOFTWARE
 */
 
-package test
+package stats_manager
 
-import (
-	"sync"
-
-	statc "github.com/Azure/azure-storage-fuse/v2/common/stats_collector"
+const (
+	// Stats collection operation types
+	Increment = "increment"
+	Decrement = "decrement"
+	Replace   = "replace"
 )
-
-func main() { //nolint
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	go statc.StartRESTServer(1234)
-
-	wg.Wait()
-}

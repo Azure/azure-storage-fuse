@@ -31,62 +31,63 @@
    SOFTWARE
 */
 
-package stats
+package common
 
 import (
-	"time"
+	"path/filepath"
 )
 
-// FuseStats : Stats for the fuse wrapper
-type FuseStats struct {
-	fileOpen   uint64
-	fileClose  uint64
-	fileRead   uint64
-	fileWrite  uint64
-	fileDelete uint64
-	fileRename uint64
+const (
+	BlobfuseStats     = "blobfuse_stats"
+	FileCacheMon      = "file_cache_monitor"
+	CpuProfiler       = "cpu_profiler"
+	MemoryProfiler    = "memory_profiler"
+	CpuMemoryProfiler = "cpu_mem_profiler"
+	NetworkProfiler   = "network_profiler"
 
-	readDir   uint64
-	deleteDir uint64
+	BfuseMon = "bfusemon"
+
+	OutputFileName      = "monitor"
+	OutputFileExtension = "json"
+	OutputFileCount     = 10
+	OutputFileSizeinMB  = 10
+)
+
+var (
+	Pid             string
+	BfsPollInterval int
+	ProcMonInterval int
+
+	NoBfsMon       bool
+	NoCpuProf      bool
+	NoMemProf      bool
+	NoNetProf      bool
+	NoFileCacheMon bool
+
+	TempCachePath string
+	MaxCacheSize  float64
+	OutputPath    string
+
+	CheckVersion bool
+)
+
+const BfuseMonitorVersion = "1.0.0-preview.1"
+
+var DefaultWorkDir = "$HOME/.blobfuse2"
+var DefaultLogFile = filepath.Join(DefaultWorkDir, "bfuseMonitor.log")
+
+type CacheEvent struct {
+	CacheEvent      string            `json:"cacheEvent"`
+	Path            string            `json:"path"`
+	IsDir           bool              `json:"isDir"`
+	CacheSize       int64             `json:"cacheSize"`
+	CacheConsumed   string            `json:"cacheConsumed"`
+	CacheFilesCnt   int64             `json:"cacheFilesCount"`
+	EvictedFilesCnt int64             `json:"evictedFilesCount"`
+	Value           map[string]string `json:"value"`
 }
 
-// AttrCacheStats : Stats for attribute cache layer
-type AttrCacheStats struct {
-	numFiles uint64
-}
-
-// FileCacheStats : Stats for file cache layer
-type FileCacheStats struct {
-	numFiles          uint64
-	cacheUsage        uint64
-	lastCacheEviction uint64
-}
-
-// StorageStats : Stats for storage layer
-type StorageStats struct {
-	fileOpen   uint64
-	fileClose  uint64
-	fileRead   uint64
-	fileWrite  uint64
-	fileDelete uint64
-	fileRename uint64
-
-	readDir   uint64
-	deleteDir uint64
-
-	download uint64
-	upload   uint64
-}
-
-// GlobalStats : Stats for global monitoring
-type GlobalStats struct {
-	mountTime time.Time
-}
-
-type Stats struct {
-	fuse      FuseStats
-	attrCache AttrCacheStats
-	fileCache FileCacheStats
-	storage   StorageStats
-	common    GlobalStats
+type CpuMemStat struct {
+	CpuUsage string
+	MemUsage string
 }
