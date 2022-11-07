@@ -174,7 +174,7 @@ func getAzFilePipelineOptions(conf AzStorageConfig) azfile.PipelineOptions {
 		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
 	}
 	telemetryOptions := azfile.TelemetryOptions{
-		Value: UserAgent + " (" + common.GetCurrentDistro() + ")",
+		Value: UserAgent() + " (" + common.GetCurrentDistro() + ")",
 	}
 
 	requestLogOptions := azfile.RequestLogOptions{
