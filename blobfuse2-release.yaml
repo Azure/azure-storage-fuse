@@ -48,7 +48,7 @@ stages:
               AgentName: "blobfuse-ubuntu20"
             Libfuse3:
               vmImage: 'ubuntu-20.04'
-              fuselib: 'libfuse3-dev'
+              fuselib: 'fuse3 libfuse3-dev'
               tags: 'fuse3'
               container: 'test-cnt-ubn-20'
               AgentName: "blobfuse-ubuntu20"
