@@ -875,7 +875,7 @@ func getFileAndDirFromPath(completePath string) (fileName string, dirPath string
 	return fileName, dirPath
 }
 
-// calculateRangeSize : calulates range size of the file based on file size
+// calculateRangeSize : calculates range size of the file based on file size
 func (fs *FileShare) calculateRangeSize(name string, fileSize int64) (rangeSize int64, err error) {
 	if fileSize > FileMaxSizeInBytes {
 		log.Err("FileShare::calculateRangeSize : buffer is too large to upload to an Azure file %s", name)
