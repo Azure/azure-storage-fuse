@@ -129,14 +129,17 @@ func (suite *dirTestSuite) TestDirCreateDuplicate() {
 // https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
 // https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *dirTestSuite) TestDirCreateSplChar() {
-	if !suite.fileShareTest {
-		dirName := suite.testPath + "/" + "@#$^&*()_+=-{}[]|?><.,~"
-		err := os.Mkdir(dirName, 0777)
-		suite.Equal(nil, err)
-
-		// cleanup
-		suite.dirTestCleanup([]string{dirName})
+	if suite.fileShareTest {
+		fmt.Println("Skipping this test case for file share")
+		return
 	}
+	dirName := suite.testPath + "/" + "@#$^&*()_+=-{}[]|?><.,~"
+	err := os.Mkdir(dirName, 0777)
+	suite.Equal(nil, err)
+
+	// cleanup
+	suite.dirTestCleanup([]string{dirName})
+
 }
 
 // # Create Directory with slash in name
@@ -144,14 +147,17 @@ func (suite *dirTestSuite) TestDirCreateSplChar() {
 // https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
 // https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *dirTestSuite) TestDirCreateSlashChar() {
-	if !suite.fileShareTest {
-		dirName := suite.testPath + "/" + "PRQ\\STUV"
-		err := os.Mkdir(dirName, 0777)
-		suite.Equal(nil, err)
-
-		// cleanup
-		suite.dirTestCleanup([]string{dirName})
+	if suite.fileShareTest {
+		fmt.Println("Skipping this test case for file share")
+		return
 	}
+	dirName := suite.testPath + "/" + "PRQ\\STUV"
+	err := os.Mkdir(dirName, 0777)
+	suite.Equal(nil, err)
+
+	// cleanup
+	suite.dirTestCleanup([]string{dirName})
+
 }
 
 // # Rename a directory

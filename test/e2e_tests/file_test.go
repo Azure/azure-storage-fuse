@@ -125,32 +125,35 @@ func (suite *fileTestSuite) TestFileCreateUtf8Char() {
 // https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
 // https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *fileTestSuite) TestFileCreatSpclChar() {
-	if !suite.fileShareTest {
-		speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
-		fileName := suite.testPath + "/" + speclChar
-
-		srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
-		suite.Equal(nil, err)
-		srcFile.Close()
-		time.Sleep(time.Second * 2)
-
-		_, err = os.Stat(fileName)
-		suite.Equal(nil, err)
-
-		files, err := ioutil.ReadDir(suite.testPath)
-		suite.Equal(nil, err)
-		suite.GreaterOrEqual(len(files), 1)
-
-		found := false
-		for _, file := range files {
-			if file.Name() == speclChar {
-				found = true
-			}
-		}
-		suite.Equal(true, found)
-
-		suite.fileTestCleanup([]string{fileName})
+	if suite.fileShareTest {
+		fmt.Println("Skipping this test case for file share")
+		return
 	}
+	speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
+	fileName := suite.testPath + "/" + speclChar
+
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	suite.Equal(nil, err)
+	srcFile.Close()
+	time.Sleep(time.Second * 2)
+
+	_, err = os.Stat(fileName)
+	suite.Equal(nil, err)
+
+	files, err := ioutil.ReadDir(suite.testPath)
+	suite.Equal(nil, err)
+	suite.GreaterOrEqual(len(files), 1)
+
+	found := false
+	for _, file := range files {
+		if file.Name() == speclChar {
+			found = true
+		}
+	}
+	suite.Equal(true, found)
+
+	suite.fileTestCleanup([]string{fileName})
+
 }
 
 func (suite *fileTestSuite) TestFileCreatEncodeChar() {
@@ -184,41 +187,44 @@ func (suite *fileTestSuite) TestFileCreatEncodeChar() {
 // https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
 // https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *fileTestSuite) TestFileCreateMultiSpclCharWithinSpclDir() {
-	if !suite.fileShareTest {
-		speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
-		speclDirName := suite.testPath + "/" + "abc%23%24%25efg-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत"
-		secFile := speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|\\abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|.txt"
-		fileName := speclDirName + "/" + speclChar
-
-		err := os.Mkdir(speclDirName, 0777)
-		suite.Equal(nil, err)
-
-		srcFile, err := os.OpenFile(secFile, os.O_CREATE, 0777)
-		suite.Equal(nil, err)
-		srcFile.Close()
-
-		srcFile, err = os.OpenFile(fileName, os.O_CREATE, 0777)
-		suite.Equal(nil, err)
-		srcFile.Close()
-		time.Sleep(time.Second * 2)
-
-		_, err = os.Stat(fileName)
-		suite.Equal(nil, err)
-
-		files, err := ioutil.ReadDir(speclDirName)
-		suite.Equal(nil, err)
-		suite.GreaterOrEqual(len(files), 1)
-
-		found := false
-		for _, file := range files {
-			if file.Name() == speclChar {
-				found = true
-			}
-		}
-		suite.Equal(true, found)
-
-		suite.fileTestCleanup([]string{fileName, secFile, speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|", speclDirName})
+	if suite.fileShareTest {
+		fmt.Println("Skipping this test case for file share")
+		return
 	}
+	speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
+	speclDirName := suite.testPath + "/" + "abc%23%24%25efg-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत"
+	secFile := speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|\\abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|.txt"
+	fileName := speclDirName + "/" + speclChar
+
+	err := os.Mkdir(speclDirName, 0777)
+	suite.Equal(nil, err)
+
+	srcFile, err := os.OpenFile(secFile, os.O_CREATE, 0777)
+	suite.Equal(nil, err)
+	srcFile.Close()
+
+	srcFile, err = os.OpenFile(fileName, os.O_CREATE, 0777)
+	suite.Equal(nil, err)
+	srcFile.Close()
+	time.Sleep(time.Second * 2)
+
+	_, err = os.Stat(fileName)
+	suite.Equal(nil, err)
+
+	files, err := ioutil.ReadDir(speclDirName)
+	suite.Equal(nil, err)
+	suite.GreaterOrEqual(len(files), 1)
+
+	found := false
+	for _, file := range files {
+		if file.Name() == speclChar {
+			found = true
+		}
+	}
+	suite.Equal(true, found)
+
+	suite.fileTestCleanup([]string{fileName, secFile, speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|", speclDirName})
+
 }
 
 func (suite *fileTestSuite) TestFileCreateLongName() {
@@ -234,15 +240,18 @@ func (suite *fileTestSuite) TestFileCreateLongName() {
 // https://docs.microsoft.com/en-us/rest/api/storageservices/create-directory
 // https://docs.microsoft.com/en-us/rest/api/storageservices/naming-and-referencing-shares--directories--files--and-metadata
 func (suite *fileTestSuite) TestFileCreateSlashName() {
-	if !suite.fileShareTest {
-		fileName := suite.testPath + "/abcd\\efg.txt"
-
-		srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
-		suite.Equal(nil, err)
-		srcFile.Close()
-
-		suite.fileTestCleanup([]string{fileName})
+	if suite.fileShareTest {
+		fmt.Println("Skipping this test case for file share")
+		return
 	}
+	fileName := suite.testPath + "/abcd\\efg.txt"
+
+	srcFile, err := os.OpenFile(fileName, os.O_CREATE, 0777)
+	suite.Equal(nil, err)
+	srcFile.Close()
+
+	suite.fileTestCleanup([]string{fileName})
+
 }
 
 func (suite *fileTestSuite) TestFileCreateLabel() {
