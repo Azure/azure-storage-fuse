@@ -59,7 +59,6 @@ steps:
       hostnamectl
     displayName: 'Print Agent Info'
 
-
   # Create directory structure and prepare to mount
   - ${{ parameters.installStep }}
   - script: |
@@ -145,7 +144,7 @@ steps:
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
 
-# STREAMING with filehandle
+  # STREAMING with filehandle
   - ${{ if eq(parameters.test_stream, true) }}:
     - script: |
         cd ${{ parameters.working_dir }}
@@ -197,7 +196,7 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
 
-# STREAMING with filehandle direct
+  # STREAMING with filehandle direct
   - ${{ if eq(parameters.test_stream, true) }}:
     - script: |
         cd ${{ parameters.working_dir }}
@@ -245,7 +244,7 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
 
-# STREAMING with filename
+  # STREAMING with filename
   - ${{ if eq(parameters.test_stream, true) }}:
     - script: |
         cd ${{ parameters.working_dir }}
@@ -292,7 +291,7 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
 
-# STREAMING with filename direct
+  # STREAMING with filename direct
   - ${{ if eq(parameters.test_stream, true) }}:
     - script: |
         cd ${{ parameters.working_dir }}
@@ -340,7 +339,7 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
 
-# ADLS Test
+  # ADLS Test
   - script: |
       cd ${{ parameters.working_dir }}
       ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_path }}

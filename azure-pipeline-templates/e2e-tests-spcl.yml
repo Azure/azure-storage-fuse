@@ -24,9 +24,16 @@ parameters:
     type: string
   - name: quick_test
     type: boolean
-    default: "true"
+    default: true
   - name: verbose_log
     type: boolean
+    default: false
+  - name: clone
+    type: boolean
+    default: false
+  - name: stream_direct_test
+    type: boolean
+    default: false
 
 steps:    
   - script: |
@@ -56,9 +63,17 @@ steps:
       quick_test: ${{ parameters.quick_test }}
       artifact_name: '${{ parameters.distro_name }}_${{ parameters.idstring }}.txt'
       verbose_log: ${{ parameters.verbose_log }}
+      clone: ${{ parameters.clone }}
+      stream_direct_test: ${{ parameters.stream_direct_test }}
       mountStep:
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(System.DefaultWorkingDirectory)
         displayName: 'E2E TEST : ${{ parameters.idstring }}'
         timeoutInMinutes: 3
         continueOnError: false
+
+  - template: 'cleanup.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
