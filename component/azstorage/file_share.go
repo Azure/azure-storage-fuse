@@ -737,8 +737,10 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 		if err != nil {
 			// Md5 sum generation failed so set nil while uploading
 			log.Warn("FileShare::WriteFromFile : Failed to generate md5 of %s", name)
-			md5sum = []byte{0}
+			md5sum = nil
 		}
+	} else {
+		md5sum = nil
 	}
 
 	uploadOptions := azfile.UploadToAzureFileOptions{
