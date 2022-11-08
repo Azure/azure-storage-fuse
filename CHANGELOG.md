@@ -10,6 +10,8 @@
 **Features**
 - Added support for health-monitor stop --pid=<pid> and health-monitor stop all commands
 - Added support to work with virtual directories without special marker directory using the virtual-directory config option.
+- Added support for object ID support for MSI credentials
+- Added support for system assigned IDs for MSI credentials
 
 **Bug Fixes**
 - Auto detect auth mode based on storage config
