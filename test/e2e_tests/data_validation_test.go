@@ -55,6 +55,7 @@ var dataValidationMntPathPtr string
 var dataValidationTempPathPtr string
 var dataValidationAdlsPtr string
 var quickTest string
+var streamDirectTest string
 var distro string
 
 var minBuff, medBuff, largeBuff, hugeBuff []byte
@@ -82,6 +83,7 @@ func initDataValidationFlags() {
 	dataValidationAdlsPtr = getDataValidationTestFlag("adls")
 	dataValidationTempPathPtr = getDataValidationTestFlag("tmp-path")
 	quickTest = getDataValidationTestFlag("quick-test")
+	streamDirectTest = getDataValidationTestFlag("stream-direct-test")
 	distro = getDataValidationTestFlag("distro-name")
 }
 
@@ -149,6 +151,10 @@ func (suite *dataValidationTestSuite) TestSmallFileData() {
 
 // data validation for medium sized files
 func (suite *dataValidationTestSuite) TestMediumFileData() {
+	if strings.ToLower(streamDirectTest) == "true" {
+		fmt.Println("Skipping this test case for stream direct")
+		return
+	}
 	fileName := "medium_data.txt"
 	localFilePath := suite.testLocalPath + "/" + fileName
 	remoteFilePath := suite.testMntPath + "/" + fileName
@@ -174,6 +180,10 @@ func (suite *dataValidationTestSuite) TestMediumFileData() {
 
 // data validation for large sized files
 func (suite *dataValidationTestSuite) TestLargeFileData() {
+	if strings.ToLower(streamDirectTest) == "true" {
+		fmt.Println("Skipping this test case for stream direct")
+		return
+	}
 	fileName := "large_data.txt"
 	localFilePath := suite.testLocalPath + "/" + fileName
 	remoteFilePath := suite.testMntPath + "/" + fileName
@@ -303,6 +313,10 @@ func (suite *dataValidationTestSuite) TestMultipleSmallFiles() {
 }
 
 func (suite *dataValidationTestSuite) TestMultipleMediumFiles() {
+	if strings.ToLower(streamDirectTest) == "true" {
+		fmt.Println("Skipping this test case for stream direct")
+		return
+	}
 	if strings.Contains(strings.ToUpper(distro), "RHEL") {
 		fmt.Println("Skipping this test case for RHEL")
 		return
@@ -314,6 +328,10 @@ func (suite *dataValidationTestSuite) TestMultipleMediumFiles() {
 }
 
 func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
+	if strings.ToLower(streamDirectTest) == "true" {
+		fmt.Println("Skipping this test case for stream direct")
+		return
+	}
 	if strings.Contains(strings.ToUpper(distro), "RHEL") {
 		fmt.Println("Skipping this test case for RHEL")
 		return
@@ -325,6 +343,10 @@ func (suite *dataValidationTestSuite) TestMultipleLargeFiles() {
 }
 
 func (suite *dataValidationTestSuite) TestMultipleHugeFiles() {
+	if strings.ToLower(streamDirectTest) == "true" {
+		fmt.Println("Skipping this test case for stream direct")
+		return
+	}
 	if strings.ToLower(quickTest) == "true" {
 		fmt.Println("Quick test is enabled. Skipping this test case")
 		return
@@ -408,5 +430,6 @@ func init() {
 	regDataValidationTestFlag(&dataValidationAdlsPtr, "adls", "", "Account is ADLS or not")
 	regDataValidationTestFlag(&dataValidationTempPathPtr, "tmp-path", "", "Cache dir path")
 	regDataValidationTestFlag(&quickTest, "quick-test", "true", "Run quick tests")
+	regDataValidationTestFlag(&streamDirectTest, "stream-direct-test", "false", "Run stream direct tests")
 	regDataValidationTestFlag(&distro, "distro-name", "", "Name of the distro")
 }

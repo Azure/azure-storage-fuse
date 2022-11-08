@@ -248,6 +248,23 @@ func formatEndpointAccountType(endpoint string, account AccountType) string {
 	return correctedEndpoint
 }
 
+func validateMsiConfig(opt AzStorageOptions) error {
+	v := make(map[string]bool, 3)
+	if opt.ApplicationID != "" {
+		v[opt.ApplicationID] = true
+	}
+	if opt.ObjectID != "" {
+		v[opt.ObjectID] = true
+	}
+	if opt.ResourceID != "" {
+		v[opt.ResourceID] = true
+	}
+	if len(v) > 1 {
+		return errors.New("client ID, object ID and MSI resource ID are mutually exclusive and zero or one of the inputs need to be provided")
+	}
+	return nil
+}
+
 // ParseAndValidateConfig : Parse and validate config
 func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Trace("ParseAndValidateConfig : Parsing config")
@@ -363,10 +380,12 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		return err
 	}
 
+	log.Debug("ParseAndValidateConfig : Getting auth type")
 	if opt.AuthMode == "" {
 		// Based on other config decide the auth mode
 		// for e.g. if sas token is set then mode shall be set to sas and if key is set then authmode shall be key
 		opt.AuthMode = autoDetectAuthMode(opt)
+		log.Debug("ParseAndValidateConfig : Auth type %s", opt.AuthMode)
 	}
 
 	var authType AuthType
@@ -391,13 +410,13 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.SASKey = sanitizeSASKey(opt.SaSKey)
 	case EAuthType.MSI():
 		az.stConfig.authConfig.AuthMode = EAuthType.MSI()
-		if opt.ApplicationID == "" && opt.ResourceID == "" {
-			//lint:ignore ST1005 ignore
-			return errors.New("Application ID and Resource ID not provided")
+		err := validateMsiConfig(opt)
+		if err != nil {
+			return err
 		}
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
 		az.stConfig.authConfig.ResourceID = opt.ResourceID
-
+		az.stConfig.authConfig.ObjectID = opt.ObjectID
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
 		if opt.ClientID == "" || opt.ClientSecret == "" || opt.TenantID == "" {
@@ -407,6 +426,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.ClientSecret = opt.ClientSecret
 		az.stConfig.authConfig.TenantID = opt.TenantID
+
 	default:
 		log.Err("ParseAndValidateConfig : Invalid auth mode %s", opt.AuthMode)
 		return errors.New("invalid auth mode")

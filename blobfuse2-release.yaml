@@ -47,16 +47,14 @@ stages:
               container: 'test-cnt-ubn-18'
               AgentName: "blobfuse-ubuntu20"
             Libfuse3:
-              vmImage: 'ubuntu-20.04'
+              vmImage: 'ubuntu-22.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
-              container: 'test-cnt-ubn-20'
-              AgentName: "blobfuse-ubuntu20"
+              container: 'test-cnt-ubn-22'
+              AgentName: "blobfuse-ubuntu22"
 
         pool:
-          name: "blobfuse-ubuntu-pool"
-          demands:
-            - ImageOverride -equals $(AgentName)
+          vmImage: $(vmImage)
 
         variables:
           - group: NightlyBlobFuse
@@ -211,6 +209,16 @@ stages:
               mount_dir: $(mount_dir)
               temp_dir: $(temp_dir)
               container: $(container)
+
+          # Create container for blobfuse and publish it
+          - script: |
+              sudo apt-get install $(tags) $(fuselib) -y
+              chmod 777 *.sh
+              ./dockerinstall.sh
+              ./buildcontainer.sh
+              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD)
+            displayName: "Create and publish container"
+            workingDirectory: $(work_dir)/docker
 
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
@@ -386,6 +394,14 @@ stages:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts' 
 
+          # this being a self hosted agent we need to clean up installation once artifact post is done
+          - script: |
+              sudo dpkg -r --force-all blobfuse2
+              rm -rf /usr/bin/bfusemon
+              rm -rf /usr/bin/blobfuse2
+            displayName: 'Un install Package'
+            workingDirectory: $(Build.ArtifactStagingDirectory)
+
       - job: Set_3
         timeoutInMinutes: 120
         strategy:
@@ -510,6 +526,20 @@ stages:
               fuse-version: 'fuse3'
               tags: 'fuse3'
               container: 'test-cnt-rhel-82'
+            RHEL-8.6:
+              agentName: "blobfuse-rhel8_6"
+              vmImage: 'RHEL-8.6'
+              fuselib: 'fuse fuse3-libs fuse3-devel'
+              fuse-version: 'fuse3'
+              tags: 'fuse3'
+              container: 'test-cnt-rhel-86'
+            # RHEL-9.0:
+            #   agentName: "blobfuse-rhel9"
+            #   vmImage: 'RHEL-9.0'
+            #   fuselib: 'fuse fuse3-libs fuse3-devel'
+            #   fuse-version: 'fuse3'
+            #   tags: 'fuse3'
+            #   container: 'test-cnt-rhel-9'                            
         
         pool:
           name: "blobfuse-rhel-pool"
@@ -986,41 +1016,43 @@ stages:
               md5sum $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
             displayName: 'List Artifacts'
 
+
+          # Send images for signing
+          - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
+            displayName: 'ESRP CodeSigning blobfuse2'
+            inputs:
+              ConnectedServiceName: 'ESRP Code signing for blobfuse2'
+              FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2'
+              Pattern: '*.rpm, *.deb'
+              signConfigType: inlineSignParams
+              VerboseLogin: true
+              inlineOperation: |
+                [
+                  {
+                    "KeyCode" : "$(ESRP_BLOBFUSE_KEY_CODE)",
+                    "OperationCode" : "LinuxSign",
+                    "Parameters" : {},
+                    "ToolName" : "sign",
+                    "ToolVersion" : "1.0"
+                  }
+                ]
+
+          # Validate signed images have md5sum changed
+          - script: |
+              chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
+              chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
+              rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/*.md
+              mv $(Build.ArtifactStagingDirectory)/blobfuse2/* $(Build.ArtifactStagingDirectory)/
+              rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/
+            displayName: 'Make Artifacts executable'
+
+          - script: |
+              sudo ls -lRt $(Build.ArtifactStagingDirectory)
+              md5sum $(Build.ArtifactStagingDirectory)/*.deb
+              md5sum $(Build.ArtifactStagingDirectory)/*.rpm
+            displayName: 'List Signed Artifacts'
+
           - ${{ if eq(parameters.post_release, true) }}:
-              # Send images for signing
-              - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
-                displayName: 'ESRP CodeSigning blobfuse2'
-                inputs:
-                  ConnectedServiceName: 'ESRP Code signing blobfuse'
-                  FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2'
-                  Pattern: '*.rpm, *.deb'
-                  signConfigType: inlineSignParams
-                  VerboseLogin: true
-                  inlineOperation: |
-                    [
-                      {
-                        "KeyCode" : "$(ESRP_BLOBFUSE_KEY_CODE)",
-                        "OperationCode" : "LinuxSign",
-                        "Parameters" : {},
-                        "ToolName" : "sign",
-                        "ToolVersion" : "1.0"
-                      }
-                    ]
-              # Validate signed images have md5sum changed
-              - script: |
-                  chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
-                  chmod 755 $(Build.ArtifactStagingDirectory)/blobfuse2/*.deb
-                  rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/*.md
-                  mv $(Build.ArtifactStagingDirectory)/blobfuse2/* $(Build.ArtifactStagingDirectory)/
-                  rm -rf $(Build.ArtifactStagingDirectory)/blobfuse2/
-                displayName: 'Make Artifacts executable'
-
-              - script: |
-                  sudo ls -lRt $(Build.ArtifactStagingDirectory)
-                  md5sum $(Build.ArtifactStagingDirectory)/*.deb
-                  md5sum $(Build.ArtifactStagingDirectory)/*.rpm
-                displayName: 'List Signed Artifacts'
-
               # Push signed images to artifact directory
               - task: PublishBuildArtifacts@1
                 inputs:

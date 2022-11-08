@@ -97,6 +97,8 @@ stages:
               value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
             - name: BLOBFUSE2_STREAM_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
+            - name: BLOBFUSE2_STREAM_FILENAME_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_stream_filename.yaml'
             - name: BLOBFUSE2_ADLS_CFG
               value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
             - name: BLOBFUSE2_GTEST_CFG
@@ -182,6 +184,7 @@ stages:
                   test_stream: true
                   test_azurite: true
                   stream_config: $(BLOBFUSE2_STREAM_CFG)
+                  stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   spn_credential_config: $(BLOBFUSE2_SPN_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
@@ -216,6 +219,7 @@ stages:
                   test_stream: true
                   test_azurite: false
                   stream_config: $(BLOBFUSE2_STREAM_CFG)
+                  stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   spn_credential_config: $(BLOBFUSE2_SPN_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
@@ -478,7 +482,18 @@ stages:
                   AgentName: "blobfuse-rhel8_2"
                   containerName: "test-cnt-rhel-82"
                   tags: 'fuse3'
-
+                RHEL-8.6:
+                  DistroVer: "RHEL-8.6"
+                  Description: "Red Hat Enterprise Linux 8.6"
+                  AgentName: "blobfuse-rhel8_6"
+                  containerName: "test-cnt-rhel-86"
+                  tags: 'fuse3'
+                # RHEL-9.0:
+                #   DistroVer: "RHEL-9.0"
+                #   Description: "Red Hat Enterprise Linux 9.0"
+                #   AgentName: "blobfuse-rhel9"
+                #   containerName: "test-cnt-rhel-9"
+                #   tags: 'fuse3'
             pool:
               name: "blobfuse-rhel-pool"
               demands:
@@ -685,6 +700,7 @@ stages:
                     displayName: 'Install fuse'
                   verbose_log: ${{ parameters.verbose_log }}
 
+          # Debian 9 self hosted Tests
           - job: Set_6
             timeoutInMinutes: 60
             strategy:
@@ -1119,6 +1135,162 @@ stages:
                   mount_dir: $(MOUNT_DIR)
                   temp_dir: $(TEMP_DIR)
               
+          # Debian 9 System assigned identity based MSI Tests
+          - job: Set_11
+            timeoutInMinutes: 60
+            strategy:
+              matrix:
+                Debian-9.0-MSI:
+                  DistroVer: "Debian9.0"
+                  AgentName: "DEB 9.0"
+                  Description: "Debian Linux 9.0 Gen 1"
+                  containerName: 'test-cnt-deb-9'
+                  fuselib: 'libfuse-dev'
+                  tags: 'fuse2'
+            pool:
+              name: 'Blobfuse Pool'
+              demands:
+                - Agent.Name -equals $(AgentName)
+
+            variables:
+              - group: NightlyBlobFuse
+              - name: ROOT_DIR
+                value: "/home/vsts/workv2"
+              - name: WORK_DIR
+                value: "/home/vsts/workv2/go/src/azure-storage-fuse"
+              - name: skipComponentGovernanceDetection
+                value: true
+              - name: MOUNT_DIR
+                value: "/home/vsts/workv2/blob_mnt"
+              - name: TEMP_DIR
+                value: "/home/vsts/workv2/blobfuse2tmp"
+              - name: BLOBFUSE2_CFG
+                value: "/home/vsts/workv2/blobfuse2.yaml"
+              - name: BLOBFUSE2_ADLS_CFG
+                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
+              - name: GOPATH
+                value: "/home/vsts/workv2/go"
+
+            # Distro Tests
+            steps:
+              - checkout: none
+
+              # Print the agent info 
+              - script: |
+                  echo $(Description)
+                  hostnamectl
+                displayName: 'Print Agent Info'
+              
+              # Install libfuse
+              - script: |
+                  sudo apt-get update --fix-missing
+                  sudo apt-get install $(fuselib) -y
+                displayName: 'Install Fuse'
+
+              # Prestart cleanup
+              - script: |
+                  sudo fusermount -u $(MOUNT_DIR)
+                  sudo kill -9 `pidof blobfuse2`
+                  sudo rm -rf $(ROOT_DIR)
+                displayName: 'PreBuild Cleanup'
+
+              # Create directory structure
+              - script: |
+                  sudo rm -rf $(ROOT_DIR)
+                  sudo mkdir -p $(ROOT_DIR)
+                  sudo chown -R `whoami` $(ROOT_DIR)
+                  chmod 777 $(ROOT_DIR)
+                  mkdir -p $(ROOT_DIR)/go/src
+                displayName: 'Create Directory Structure'
+
+              # Checkout the code  
+              - script: |
+                  git clone https://github.com/Azure/azure-storage-fuse
+                displayName: 'Checkout Code'
+                workingDirectory: $(ROOT_DIR)/go/src
+
+              # Pull the branch
+              - script: |
+                  git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+                displayName: 'Checkout Branch'
+                workingDirectory: $(WORK_DIR)
+
+              # Build the code
+              - template: 'azure-pipeline-templates/build.yml'
+                parameters:
+                  working_directory: $(WORK_DIR)
+                  root_dir: $(ROOT_DIR)
+                  mount_dir: $(MOUNT_DIR)
+                  temp_dir: $(TEMP_DIR)
+                  gopath: $(GOPATH)
+                  container: $(containerName)
+                  skip_msi: "false"
+                  tags: $(tags)
+                  fuselib: $(fuselib)
+              
+              # BlockBlob MSI Test
+              - script: |
+                  cd $(WORK_DIR)
+                  $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_msi_sysid.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+                displayName: "Create MSI Config File"
+                env:
+                  NIGHTLY_STO_BLOB_ACC_NAME: $(AZTEST_BLOCK_ACC_NAME) 
+                  VERBOSE_LOG: ${{ parameters.verbose_log }}
+                continueOnError: false
+
+              - script:
+                  cat $(BLOBFUSE2_CFG)
+                displayName: "Print config file"
+
+              # Mount the cntainer and run basic tests
+              - template: 'azure-pipeline-templates/verify-auth.yml'
+                parameters:
+                  working_dir: $(WORK_DIR)
+                  mount_dir: $(MOUNT_DIR)
+                  temp_dir: $(TEMP_DIR)
+                  idstring: 'BlockBlob MSI'
+                  distro_name: $(AgentName)
+                  mountStep:
+                    script: |
+                      $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
+                    displayName: 'AuthVerify MSI: Mount Container'
+                    continueOnError: false
+
+              # ADLS MSI Test
+              - script: |
+                  cd $(WORK_DIR)
+                  $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_msi_sysid.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+                displayName: "Create MSI Config File"
+                env:
+                  NIGHTLY_STO_BLOB_ACC_NAME: $(AZTEST_ADLS_ACC_NAME) 
+                  ACCOUNT_TYPE: 'adls'
+                  VERBOSE_LOG: ${{ parameters.verbose_log }}
+                continueOnError: false
+
+              - script:
+                  cat $(BLOBFUSE2_CFG)
+                displayName: "Print config file"
+
+              # Mount the cntainer and run basic tests
+              - template: 'azure-pipeline-templates/verify-auth.yml'
+                parameters:
+                  working_dir: $(WORK_DIR)
+                  mount_dir: $(MOUNT_DIR)
+                  temp_dir: $(TEMP_DIR)
+                  idstring: 'ADLS MSI'
+                  distro_name: $(AgentName)
+                  mountStep:
+                    script: |
+                      $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
+                    displayName: 'AuthVerify MSI: Mount Container'
+                    continueOnError: false
+
+              # Cleanup
+              - template: 'azure-pipeline-templates/cleanup.yml'
+                parameters:
+                  working_dir: $(WORK_DIR)
+                  mount_dir: $(MOUNT_DIR)
+                  temp_dir: $(TEMP_DIR)
 
   - ${{ if eq(parameters.data_validation, true) }}:
     - stage: DataValidation
@@ -1159,6 +1331,8 @@ stages:
               value: "/usr/pipeline/workv2/blobfuse2.yaml"
             - name: BLOBFUSE2_STREAM_CFG
               value: "/usr/pipeline/workv2/blobfuse2_stream.yaml"
+            - name: BLOBFUSE2_STREAM_FILENAME_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_stream_filename.yaml'
             - name: BLOBFUSE2_ADLS_CFG
               value: "/home/vsts/workv2/blobfuse2.adls.yaml"
             - name: GOPATH
@@ -1175,12 +1349,13 @@ stages:
                 mount_dir: $(MOUNT_DIR)
                 config_path: $(BLOBFUSE2_CFG)
                 stream_config: $(BLOBFUSE2_STREAM_CFG)
+                stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                 container: $(ContainerName)
                 blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
                 blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
                 adls_account_name: $(AZTEST_ADLS_ACC_NAME)
                 adls_account_key: $(AZTEST_ADLS_KEY)
-                distro_name: $(AgentName)
+                distro_name: $(imageName)
                 test_stream: true
                 quick_test: false
                 clone: true

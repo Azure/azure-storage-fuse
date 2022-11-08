@@ -128,7 +128,7 @@ func validateHMonOptions() error {
 	}
 
 	if len(configFile) == 0 {
-		errMsg += "config file not given. "
+		errMsg += "config file not given."
 	}
 
 	if len(errMsg) != 0 {

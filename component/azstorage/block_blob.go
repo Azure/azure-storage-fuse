@@ -786,7 +786,7 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 		}
 	}
 
-	log.Info("BlockBlob::calculateBlockSize : %s size %d, blockSize %d", name, fileSize, blockSize)
+	log.Info("BlockBlob::calculateBlockSize : %s size %v, blockSize %v", name, fileSize, blockSize)
 	return blockSize, nil
 }
 

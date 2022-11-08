@@ -15,6 +15,9 @@ parameters:
   - name: stream_config
     type: string
     default: ""
+  - name: stream_filename_config
+    type: string
+    default: ""
   - name: container
     type: string
   - name: installStep
@@ -142,7 +145,7 @@ steps:
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
 
-# STREAMING
+  # STREAMING with filehandle
   - ${{ if eq(parameters.test_stream, true) }}:
     - script: |
         cd ${{ parameters.working_dir }}
@@ -172,7 +175,7 @@ steps:
         adls: false
         idstring: 'Distro BlockBlob with Stream Key Credentials'
         distro_name: ${{ parameters.distro_name }}
-        quick_test: true
+        quick_test: ${{ parameters.quick_test }}
         artifact_name: '${{ parameters.distro_name }}_block_stream_key.txt'
         verbose_log: ${{ parameters.verbose_log }}
         clone: false
@@ -189,6 +192,56 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
 
+  # STREAMING with filehandle direct
+  - ${{ if eq(parameters.test_stream, true) }}:
+    - script: |
+        cd ${{ parameters.working_dir }}
+        ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_stream_direct.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.stream_config }}
+      displayName: 'Create Stream Direct Config File'
+      env:
+        NIGHTLY_STO_ACC_NAME: ${{ parameters.blob_account_name }}
+        NIGHTLY_STO_ACC_KEY: ${{ parameters.blob_account_key }}
+        ACCOUNT_TYPE: 'block'
+        ACCOUNT_ENDPOINT: 'https://${{ parameters.blob_account_name }}.blob.core.windows.net'
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+        USE_HTTP: false
+      continueOnError: false
+    
+    # Print config file
+    - script: |
+        cat ${{ parameters.stream_config }}
+      displayName: 'Print Stream Direct config file'
+
+    # Basic End to End test to check sanity on this distro
+    # Start End to End test on this distro
+    - template: 'e2e-tests.yml'
+      parameters:
+        working_dir: ${{ parameters.working_dir }}
+        mount_dir: ${{ parameters.mount_dir }}
+        temp_dir: ${{ parameters.temp_dir }}
+        adls: false
+        idstring: 'Distro BlockBlob with Stream Direct Key Credentials'
+        distro_name: ${{ parameters.distro_name }}
+        quick_test: ${{ parameters.quick_test }}
+        artifact_name: '${{ parameters.distro_name }}_block_stream_direct_key.txt'
+        verbose_log: ${{ parameters.verbose_log }}
+        clone: false
+        stream_direct_test: true
+        mountStep:
+          script: |
+            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.stream_config }}
+          displayName: 'E2E TEST: Mount container'
+          timeoutInMinutes: 3
+          continueOnError: false
+
+    - template: 'cleanup.yml'
+      parameters:
+        working_dir: ${{ parameters.working_dir }}
+        mount_dir: ${{ parameters.mount_dir }}
+        temp_dir: ${{ parameters.temp_dir }}
+
+  # STREAMING with file-cache
+  - ${{ if eq(parameters.test_stream, true) }}:
     - script: |
         cd ${{ parameters.working_dir }}
         ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_key_filestream.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.stream_config }}
@@ -215,12 +268,13 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
         adls: false
-        idstring: 'Distro BlockBlob with Stream Key Credentials'
+        idstring: 'Distro BlockBlob with Stream Direct Key Credentials'
         distro_name: ${{ parameters.distro_name }}
-        quick_test: true
-        artifact_name: '${{ parameters.distro_name }}_block_stream_key.txt'
+        quick_test: ${{ parameters.quick_test }}
+        artifact_name: '${{ parameters.distro_name }}_block_stream_direct_key.txt'
         verbose_log: ${{ parameters.verbose_log }}
         clone: false
+        stream_direct_test: true
         mountStep:
           script: |
             ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.stream_config }}
@@ -234,6 +288,103 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
 
+
+  # STREAMING with filename
+  - ${{ if eq(parameters.test_stream, true) }}:
+    - script: |
+        cd ${{ parameters.working_dir }}
+        ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_stream_filename.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.stream_filename_config }}
+      displayName: 'Create Stream with Filename caching Config File'
+      env:
+        NIGHTLY_STO_ACC_NAME: ${{ parameters.blob_account_name }}
+        NIGHTLY_STO_ACC_KEY: ${{ parameters.blob_account_key }}
+        ACCOUNT_TYPE: 'block'
+        ACCOUNT_ENDPOINT: 'https://${{ parameters.blob_account_name }}.blob.core.windows.net'
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+        USE_HTTP: false
+      continueOnError: false
+
+    # Print config file
+    - script: |
+        cat ${{ parameters.stream_filename_config }}
+      displayName: 'Print Stream with Filename caching config file'
+
+    # Basic End to End test to check sanity on this distro
+    # Start End to End test on this distro
+    - template: 'e2e-tests.yml'
+      parameters:
+        working_dir: ${{ parameters.working_dir }}
+        mount_dir: ${{ parameters.mount_dir }}
+        temp_dir: ${{ parameters.temp_dir }}
+        adls: false
+        idstring: 'Distro BlockBlob with Stream with Filename Caching Key Credentials'
+        distro_name: ${{ parameters.distro_name }}
+        quick_test: ${{ parameters.quick_test }}
+        artifact_name: '${{ parameters.distro_name }}_block_stream_filename_key.txt'
+        verbose_log: ${{ parameters.verbose_log }}
+        clone: false
+        mountStep:
+          script: |
+            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.stream_filename_config }}
+          displayName: 'E2E TEST: Mount container'
+          timeoutInMinutes: 3
+          continueOnError: false
+
+    - template: 'cleanup.yml'
+      parameters:
+        working_dir: ${{ parameters.working_dir }}
+        mount_dir: ${{ parameters.mount_dir }}
+        temp_dir: ${{ parameters.temp_dir }}
+
+  # STREAMING with filename direct
+  - ${{ if eq(parameters.test_stream, true) }}:
+    - script: |
+        cd ${{ parameters.working_dir }}
+        ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_stream_filename_direct.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.stream_filename_config }}
+      displayName: 'Create Stream with Filename caching Direct Config File'
+      env:
+        NIGHTLY_STO_ACC_NAME: ${{ parameters.blob_account_name }}
+        NIGHTLY_STO_ACC_KEY: ${{ parameters.blob_account_key }}
+        ACCOUNT_TYPE: 'block'
+        ACCOUNT_ENDPOINT: 'https://${{ parameters.blob_account_name }}.blob.core.windows.net'
+        VERBOSE_LOG: ${{ parameters.verbose_log }}
+        USE_HTTP: false
+      continueOnError: false
+
+    # Print config file
+    - script: |
+        cat ${{ parameters.stream_filename_config }}
+      displayName: 'Print Stream with Filename caching Direct config file'
+
+    # Basic End to End test to check sanity on this distro
+    # Start End to End test on this distro
+    - template: 'e2e-tests.yml'
+      parameters:
+        working_dir: ${{ parameters.working_dir }}
+        mount_dir: ${{ parameters.mount_dir }}
+        temp_dir: ${{ parameters.temp_dir }}
+        adls: false
+        idstring: 'Distro BlockBlob with Stream with Filename Caching Direct Key Credentials'
+        distro_name: ${{ parameters.distro_name }}
+        quick_test: ${{ parameters.quick_test }}
+        artifact_name: '${{ parameters.distro_name }}_block_stream_filename_direct_key.txt'
+        verbose_log: ${{ parameters.verbose_log }}
+        clone: false
+        stream_direct_test: true
+        mountStep:
+          script: |
+            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.stream_filename_config }}
+          displayName: 'E2E TEST: Mount container'
+          timeoutInMinutes: 3
+          continueOnError: false
+
+    - template: 'cleanup.yml'
+      parameters:
+        working_dir: ${{ parameters.working_dir }}
+        mount_dir: ${{ parameters.mount_dir }}
+        temp_dir: ${{ parameters.temp_dir }}
+
+  # ADLS Test
   - script: |
       cd ${{ parameters.working_dir }}
       ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_path }}

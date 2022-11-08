@@ -29,6 +29,7 @@ azstorage:
   type: block
   account-name: mystorageaccount
   account-key: mystoragekey
+  endpoint: https://mystorageaccount.blob.core.windows.net
   mode: key
   container: mycontainer
  

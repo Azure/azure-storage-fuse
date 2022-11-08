@@ -68,6 +68,7 @@ type storageTestConfiguration struct {
 	// AdlsDirSasUbn20    string `json:"adls-dir-sas-ubn-20"`
 	MsiAppId        string `json:"msi-appid"`
 	MsiResId        string `json:"msi-resid"`
+	MsiObjId        string `json:"msi-objid"`
 	SpnClientId     string `json:"spn-client"`
 	SpnTenantId     string `json:"spn-tenant"`
 	SpnClientSecret string `json:"spn-secret"`
@@ -119,14 +120,14 @@ func (suite *authTestSuite) validateStorageTest(testName string, stgConfig AzSto
 	assert := assert.New(suite.T())
 	stg := NewAzStorageConnection(stgConfig)
 	if stg == nil {
-		assert.Fail(testName + " : Failed to create Storage object")
+		assert.Fail(testName + " : Failed to create Storage object.")
 	}
 	if err := stg.SetupPipeline(); err != nil {
-		assert.Fail(testName + " : Failed to setup pipeline")
+		assert.Fail(testName + " : Failed to setup pipeline. " + err.Error())
 	}
 	err := stg.TestPipeline()
 	if err != nil {
-		assert.Fail(testName + " : Failed to TestPipeline")
+		assert.Fail(testName + " : Failed to TestPipeline. " + err.Error())
 	}
 }
 
@@ -629,6 +630,23 @@ func (suite *authTestSuite) TestBlockMsiResId() {
 			},
 		}
 		suite.validateStorageTest("TestBlockMsiResId", stgConfig)
+	}
+}
+
+func (suite *authTestSuite) TestBlockMsiObjId() {
+	defer suite.cleanupTest()
+	if !storageTestConfigurationParameters.SkipMsi {
+		stgConfig := AzStorageConfig{
+			container: storageTestConfigurationParameters.BlockContainer,
+			authConfig: azAuthConfig{
+				AuthMode:    EAuthType.MSI(),
+				AccountType: EAccountType.BLOCK(),
+				AccountName: storageTestConfigurationParameters.BlockAccount,
+				ObjectID:    storageTestConfigurationParameters.MsiObjId,
+				Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+			},
+		}
+		suite.validateStorageTest("TestBlockMsiObjId", stgConfig)
 	}
 }
 

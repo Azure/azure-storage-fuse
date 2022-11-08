@@ -298,6 +298,21 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	log.Debug("AzStorage::StreamDir : Retrieved %d objects with %s marker for Path %s", len(new_list), options.Token, path)
 
+	if new_marker != nil && *new_marker != "" {
+		log.Debug("AzStorage::StreamDir : next-marker %s for Path %s", *new_marker, path)
+		if len(new_list) == 0 {
+			/* In some customer scenario we have seen that new_list is empty but marker is not empty
+			   which means backend has not returned any items this time but there are more left.
+			   If we return back this empty list to libfuse layer it will assume listing has completed
+			   and will terminate the readdir call. As there are more items left on the server side we
+			   need to retry getting a list here.
+			*/
+			log.Warn("AzStorage::StreamDir : next-marker %s but current list is empty. Need to retry listing", *new_marker)
+			options.Token = *new_marker
+			return az.StreamDir(options)
+		}
+	}
+
 	// if path is empty, it means it is the root, relative to the mounted directory
 	if len(path) == 0 {
 		path = "/"
@@ -340,6 +355,7 @@ func (az *AzStorage) CreateFile(options internal.CreateFileOptions) (*handlemap.
 	if err != nil {
 		return nil, err
 	}
+	handle.Mtime = time.Now()
 
 	azStatsCollector.PushEvents(createFile, options.Name, map[string]interface{}{mode: options.Mode.String()})
 

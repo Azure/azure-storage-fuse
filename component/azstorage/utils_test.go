@@ -370,12 +370,12 @@ func (s *utilsTestSuite) TestAutoDetectAuthMode() {
 
 	var authType string
 	authType = autoDetectAuthMode(AzStorageOptions{})
-	assert.Equal(authType, "invalid_auth")
+	assert.Equal(authType, "msi")
 
 	var authType_ AuthType
 	err := authType_.Parse(authType)
 	assert.Nil(err)
-	assert.Equal(authType_, EAuthType.INVALID_AUTH())
+	assert.Equal(authType_, EAuthType.MSI())
 
 	authType = autoDetectAuthMode(AzStorageOptions{AccountKey: "abc"})
 	assert.Equal(authType, "key")
