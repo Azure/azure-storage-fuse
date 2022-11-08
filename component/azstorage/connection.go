@@ -142,10 +142,7 @@ func NewAzStorageConnection(cfg AzStorageConfig) AzConnection {
 		return stg
 	} else if cfg.authConfig.AccountType == EAccountType.FILE() {
 		stg := &FileShare{}
-		if err := stg.Configure(cfg); err != nil {
-			log.Err("NewAzStorageConnection : Failed to configure FileShare object (%s)", err.Error())
-			return nil
-		}
+		_ = stg.Configure(cfg)
 		return stg
 	}
 

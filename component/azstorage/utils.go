@@ -165,9 +165,9 @@ func getAzBfsPipelineOptions(conf AzStorageConfig) (azbfs.PipelineOptions, ste.X
 }
 
 // getAzFilePipelineOptions : Create pipeline options based on the config
-func getAzFilePipelineOptions(conf AzStorageConfig) azfile.PipelineOptions {
-	retryOptions := azfile.RetryOptions{
-		Policy:        azfile.RetryPolicyExponential,                   // Use exponential backoff as opposed to linear
+func getAzFilePipelineOptions(conf AzStorageConfig) (azfile.PipelineOptions, ste.XferRetryOptions) {
+	retryOptions := ste.XferRetryOptions{
+		Policy:        ste.RetryPolicyExponential,                      // Use exponential backoff as opposed to linear
 		MaxTries:      conf.maxRetries,                                 // Try at most 3 times to perform the operation (set to 1 to disable retries)
 		TryTimeout:    time.Second * time.Duration(conf.maxTimeout),    // Maximum time allowed for any single try
 		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)
@@ -184,22 +184,23 @@ func getAzFilePipelineOptions(conf AzStorageConfig) azfile.PipelineOptions {
 	if conf.proxyAddress == "" {
 		// If we did not set a proxy address in our config then use default settings
 		return azfile.PipelineOptions{
-			Log:        logOptions,
-			RequestLog: requestLogOptions,
+				Log:        logOptions,
+				RequestLog: requestLogOptions,
+				Telemetry:  telemetryOptions,
+			},
 			// Set RetryOptions to control how HTTP request are retried when retryable failures occur
-			Retry:     retryOptions,
-			Telemetry: telemetryOptions,
-		}
+			retryOptions
 	} else {
+		// TODO: File Share SDK to support proxy by allowing an HTTPSender to be set
 		// Else create custom HTTPClient to pass to the factory in order to set our proxy
 		// While creating new pipeline we need to provide the retry policy
 		return azfile.PipelineOptions{
-			Log:        logOptions,
-			RequestLog: requestLogOptions,
+				Log:        logOptions,
+				RequestLog: requestLogOptions,
+				Telemetry:  telemetryOptions,
+			},
 			// Set RetryOptions to control how HTTP request are retried when retryable failures occur
-			Retry:     retryOptions,
-			Telemetry: telemetryOptions,
-		}
+			retryOptions
 	}
 }
 
@@ -380,6 +381,10 @@ func storeFileErrToErr(err error) uint16 {
 			return ErrFileAlreadyExists
 		case azfile.ServiceCodeResourceNotFound:
 			return ErrFileNotFound
+		case azfile.ServiceCodeInvalidRange:
+			return InvalidRange
+		case azfile.ServiceCodeInsufficientAccountPermissions:
+			return InvalidPermission
 		default:
 			return ErrUnknown
 		}

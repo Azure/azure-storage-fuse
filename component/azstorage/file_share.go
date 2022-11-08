@@ -41,13 +41,17 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-pipeline-go/pipeline"
+	"github.com/Azure/azure-storage-azcopy/v10/ste"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
 
 	"github.com/Azure/azure-storage-file-go/azfile"
 )
@@ -66,10 +70,21 @@ type FileShare struct {
 	Service         azfile.ServiceURL
 	Share           azfile.ShareURL
 	downloadOptions azfile.DownloadFromAzureFileOptions
+	rangeLocks      common.KeyedMutex
 }
+
+// Verify that FileShare implements AzConnection interface
+var _ AzConnection = &FileShare{}
 
 func (fs *FileShare) Configure(cfg AzStorageConfig) error {
 	fs.Config = cfg
+
+	fs.downloadOptions = azfile.DownloadFromAzureFileOptions{
+		RangeSize:   fs.Config.blockSize,
+		Parallelism: fs.Config.maxConcurrency,
+		// This is also not set in Blobs, so first investigation needs to go into how this param is used
+		// TODO: MaxRetryRequestsPerRange: int(fs.Config.maxRetries)
+	}
 
 	return nil
 }
@@ -122,9 +137,28 @@ func (fs *FileShare) getCredential() azfile.Credential {
 	return cred.(azfile.Credential)
 }
 
+// NewPipeline creates a Pipeline using the specified credentials and options.
+func NewFilePipeline(c azfile.Credential, o azfile.PipelineOptions, ro ste.XferRetryOptions) pipeline.Pipeline {
+	// Closest to API goes first; closest to the wire goes last
+	f := []pipeline.Factory{
+		azfile.NewTelemetryPolicyFactory(o.Telemetry),
+		azfile.NewUniqueRequestIDPolicyFactory(),
+		ste.NewBlobXferRetryPolicyFactory(ro),
+	}
+	f = append(f, c)
+	f = append(f,
+		pipeline.MethodFactoryMarker(), // indicates at what stage in the pipeline the method factory is invoked
+		ste.NewRequestLogPolicyFactory(ste.RequestLogOptions{
+			LogWarningIfTryOverThreshold: o.RequestLog.LogWarningIfTryOverThreshold,
+			SyslogDisabled:               o.RequestLog.SyslogDisabled,
+		}))
+	// TODO: File Share SDK to support proxy by allowing an HTTPSender to be set
+	return pipeline.NewPipeline(f, pipeline.Options{HTTPSender: nil, Log: o.Log})
+}
+
 // SetupPipeline : Based on the config setup the ***URLs
 func (fs *FileShare) SetupPipeline() error {
-	log.Trace("Fileshare::SetupPipeline : Setting up")
+	log.Trace("FileShare::SetupPipeline : Setting up")
 	var err error
 
 	// Get the credential
@@ -135,7 +169,8 @@ func (fs *FileShare) SetupPipeline() error {
 	}
 
 	// Create a new pipeline
-	fs.Pipeline = azfile.NewPipeline(cred, getAzFilePipelineOptions(fs.Config)) // need to modify utils.go?
+	options, retryOptions := getAzFilePipelineOptions(fs.Config)
+	fs.Pipeline = NewFilePipeline(cred, options, retryOptions)
 	if fs.Pipeline == nil {
 		log.Err("FileShare::SetupPipeline : Failed to create pipeline object")
 		return errors.New("failed to create pipeline object")
@@ -214,15 +249,6 @@ func (fs *FileShare) SetPrefixPath(path string) error {
 	return nil
 }
 
-// Exists : Check whether or not a given file exists
-func (fs *FileShare) Exists(name string) bool {
-	log.Trace("FileShare::Exists : name %s", name)
-	if _, err := fs.GetAttr(name); err == syscall.ENOENT {
-		return false
-	}
-	return true
-}
-
 // CreateFile : Create a new file in the share/directory
 func (fs *FileShare) CreateFile(name string, mode os.FileMode) error {
 	log.Trace("FileShare::CreateFile : name %s", name)
@@ -291,7 +317,7 @@ func (fs *FileShare) DeleteFile(name string) (err error) {
 	return nil
 }
 
-// DeleteDirectory : Delete a virtual directory in the share
+// DeleteDirectory : Delete a directory in the share
 func (fs *FileShare) DeleteDirectory(name string) (err error) {
 	log.Trace("FileShare::DeleteDirectory : name %s", name)
 
@@ -312,7 +338,7 @@ func (fs *FileShare) DeleteDirectory(name string) (err error) {
 		for _, fileInfo := range listFile.FileItems {
 			err = fs.DeleteFile(filepath.Join(name, fileInfo.Name))
 			if err != nil {
-				log.Err("FileShare::DeleteDirectory : Failed to delete files  %s", err.Error())
+				log.Err("FileShare::DeleteDirectory : Failed to delete file %s [%s]", fileInfo.Name, err.Error())
 				return err
 			}
 		}
@@ -320,7 +346,7 @@ func (fs *FileShare) DeleteDirectory(name string) (err error) {
 		for _, dirInfo := range listFile.DirectoryItems {
 			err = fs.DeleteDirectory(filepath.Join(filepath.Join(fs.Config.prefixPath, name), dirInfo.Name))
 			if err != nil {
-				log.Err("FileShare::DeleteDirectory : Failed delete subdirectories  %s", err.Error())
+				log.Err("FileShare::DeleteDirectory : Failed delete subdirectory %s [%s]", dirInfo.Name, err.Error())
 				return err
 			}
 		}
@@ -418,6 +444,7 @@ func (fs *FileShare) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 			Ctime:  ctime,
 			Crtime: crtime,
 			Flags:  internal.NewFileBitMap(),
+			MD5:    prop.ContentMD5(),
 		}
 		parseMetadata(attr, prop.NewMetadata())
 		attr.Flags.Set(internal.PropFlagMetadataRetrieved)
@@ -485,7 +512,7 @@ func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*intern
 		azfile.ListFilesAndDirectoriesOptions{MaxResults: count})
 
 	if err != nil {
-		log.Err("File::List : Failed to list the container with the prefix %s", err.Error())
+		log.Err("FileShare::List : Failed to list the container with the prefix %s", err.Error())
 		return fileList, nil, err
 	}
 
@@ -503,6 +530,7 @@ func (fs *FileShare) List(prefix string, marker *string, count int32) ([]*intern
 			Ctime:  time.Now(),
 			Crtime: time.Now(),
 			Flags:  internal.NewFileBitMap(),
+			// Note : List does not return MD5 so we can not populate it. This is fine since MD5 is retrieved via get properties on read
 		}
 
 		attr.Flags.Set(internal.PropFlagModeDefault)
@@ -548,6 +576,15 @@ func (fs *FileShare) ReadToFile(name string, offset int64, count int64, fi *os.F
 	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
 
+	var downloadPtr *int64 = new(int64)
+	*downloadPtr = 1
+
+	if common.MonitorBfs() {
+		fs.downloadOptions.Progress = func(bytesTransferred int64) {
+			trackDownload(name, bytesTransferred, count, downloadPtr)
+		}
+	}
+
 	defer log.TimeTrack(time.Now(), "FileShare::ReadToFile", name)
 	_, err := azfile.DownloadAzureFileToFile(context.Background(), fileURL, fi, fs.downloadOptions)
 
@@ -558,6 +595,36 @@ func (fs *FileShare) ReadToFile(name string, offset int64, count int64, fi *os.F
 		} else {
 			log.Err("FileShare::ReadToFile : Failed to download file %s (%s)", name, err.Error())
 			return err
+		}
+	} else {
+		log.Debug("FileShare::ReadToFile : Download complete of file %v", name)
+
+		// store total bytes downloaded so far
+		azStatsCollector.UpdateStats(stats_manager.Increment, bytesDownloaded, count)
+	}
+
+	if fs.Config.validateMD5 {
+		// Compute md5 of local file
+		localFileMD5, err := getMD5(fi)
+		if err != nil {
+			log.Warn("FileShare::ReadToFile : Failed to generate MD5 Sum for %s", name)
+		} else {
+			// Get latest properties from container to get the md5 of file
+			prop, err := fileURL.GetProperties(context.Background())
+			if err != nil {
+				log.Warn("FileShare::ReadToFile : Failed to get properties of file %s [%s]", name, err.Error())
+			} else {
+				remoteFileMD5 := prop.ContentMD5()
+				if remoteFileMD5 == nil {
+					log.Warn("FileShare::ReadToFile : Failed to get MD5 Sum for file %s", name)
+				} else {
+					// compare md5 and fail is not match
+					if !reflect.DeepEqual(localFileMD5, remoteFileMD5) {
+						log.Err("FileShare::ReadToFile : MD5 Sum mismatch %s", name)
+						return errors.New("md5 sum mismatch on download")
+					}
+				}
+			}
 		}
 	}
 
@@ -642,34 +709,55 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 	fileURL := fs.Share.NewDirectoryURL(dirPath).NewFileURL(fileName)
 
 	defer log.TimeTrack(time.Now(), "FileShare::WriteFromFile", name)
-	var rangeSize int64
 
-	fileSize := fs.Config.blockSize
+	var uploadPtr *int64 = new(int64)
+	*uploadPtr = 1
+
+	rangeSize := fs.Config.blockSize
+	// get the size of the file
+	stat, err := fi.Stat()
+	if err != nil {
+		log.Err("FileShare::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
+		return err
+	}
 	// if the range size is not set then we configure it based on file size
-	if fileSize == 0 {
-		// get the size of the file
-		stat, err := fi.Stat()
-		if err != nil {
-			log.Err("FileShare::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
-			return err
-		}
-
+	if rangeSize == 0 {
 		// based on file-size calculate range size
 		rangeSize, err = fs.calculateRangeSize(name, stat.Size())
 		if err != nil {
-			log.Err("FileShare::WriteFromFile : Failed to get file size %s (%s)", name, err.Error())
+			log.Err("FileShare::WriteFromFile : Failed to get range size %s (%s)", name, err.Error())
 			return err
 		}
 	}
 
-	err := azfile.UploadFileToAzureFile(context.Background(), fi, fileURL, azfile.UploadToAzureFileOptions{
+	// Compute md5 of this file is requested by user
+	md5sum := []byte{}
+	if fs.Config.updateMD5 {
+		md5sum, err = getMD5(fi)
+		if err != nil {
+			// Md5 sum generation failed so set nil while uploading
+			log.Warn("FileShare::WriteFromFile : Failed to generate md5 of %s", name)
+			md5sum = []byte{0}
+		}
+	}
+
+	uploadOptions := azfile.UploadToAzureFileOptions{
 		RangeSize:   rangeSize,
 		Parallelism: fs.Config.maxConcurrency,
 		Metadata:    metadata,
 		FileHTTPHeaders: azfile.FileHTTPHeaders{
 			ContentType: getContentType(name),
+			ContentMD5:  md5sum,
 		},
-	})
+	}
+
+	if common.MonitorBfs() && stat.Size() > 0 {
+		uploadOptions.Progress = func(bytesTransferred int64) {
+			trackUpload(name, bytesTransferred, stat.Size(), uploadPtr)
+		}
+	}
+
+	err = azfile.UploadFileToAzureFile(context.Background(), fi, fileURL, uploadOptions)
 
 	if err != nil {
 		serr := storeFileErrToErr(err)
@@ -680,8 +768,14 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 			log.Err("FileShare::WriteFromFile : Failed to upload file %s (%s)", name, err.Error())
 		}
 		return err
-	}
+	} else {
+		log.Debug("BlockBlob::WriteFromFile : Upload complete of file %v", name)
 
+		// store total bytes uploaded so far
+		if stat.Size() > 0 {
+			azStatsCollector.UpdateStats(stats_manager.Increment, bytesUploaded, stat.Size())
+		}
+	}
 	return nil
 }
 
@@ -740,6 +834,10 @@ func (fs *FileShare) ChangeOwner(name string, _ int, _ int) error {
 
 // StageAndCommit : write data to an Azure file given a list of ranges
 func (fs *FileShare) StageAndCommit(name string, bol *common.BlockOffsetList) error {
+	// lock on the file name so that no stage and commit race condition occur causing failure
+	fileMtx := fs.rangeLocks.GetLock(name)
+	fileMtx.Lock()
+	defer fileMtx.Unlock()
 	log.Trace("FileShare::StageAndCommit : name %s", name)
 
 	fileName, dirPath := getFileAndDirFromPath(filepath.Join(fs.Config.prefixPath, name))

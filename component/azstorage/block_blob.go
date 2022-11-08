@@ -825,6 +825,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		// based on file-size calculate block size
 		blockSize, err = bb.calculateBlockSize(name, stat.Size())
 		if err != nil {
+			log.Err("BlockBlob::WriteFromFile : Failed to get block size %s (%s)", name, err.Error())
 			return err
 		}
 	}
