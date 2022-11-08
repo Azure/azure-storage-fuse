@@ -731,7 +731,7 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 	}
 
 	// Compute md5 of this file is requested by user
-	md5sum := []byte{}
+	var md5sum []byte = nil
 	if fs.Config.updateMD5 {
 		md5sum, err = getMD5(fi)
 		if err != nil {
@@ -739,8 +739,6 @@ func (fs *FileShare) WriteFromFile(name string, metadata map[string]string, fi *
 			log.Warn("FileShare::WriteFromFile : Failed to generate md5 of %s", name)
 			md5sum = nil
 		}
-	} else {
-		md5sum = nil
 	}
 
 	uploadOptions := azfile.UploadToAzureFileOptions{
