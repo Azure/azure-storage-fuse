@@ -36,15 +36,18 @@ package azstorage
 
 import (
 	"container/list"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math/rand"
 	"os"
 	"strings"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -186,6 +189,18 @@ func (s *fileTestSuite) TestDefault() {
 	s.assert.EqualValues(1, s.az.stConfig.backoffTime)
 	s.assert.EqualValues(3, s.az.stConfig.maxRetryDelay)
 	s.assert.Empty(s.az.stConfig.proxyAddress)
+}
+
+func (s *fileTestSuite) TestNoEndpoint() {
+	defer s.cleanupTest()
+	// Setup
+	s.tearDownTestHelper(false) // Don't delete the generated container.
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
+		storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+	s.setupTestHelper(config, s.container, true)
+
+	err := s.az.storage.TestPipeline()
+	s.assert.Nil(err)
 }
 
 func (s *fileTestSuite) TestListShares() {
@@ -1749,6 +1764,338 @@ func (s *fileTestSuite) TestGetFileBlockOffsetsRangedFile() {
 	s.assert.Nil(err)
 	s.assert.Len(offsetList.BlockList, 1)
 	s.assert.Zero(offsetList.Flags)
+}
+
+func (s *fileTestSuite) TestMD5SetOnUpload() {
+	defer s.cleanupTest()
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+	configs := []string{"", vdConfig}
+	for _, c := range configs {
+		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
+		s.tearDownTestHelper(false)
+		s.setupTestHelper(c, s.container, true)
+		testName := ""
+		if c != "" {
+			testName = "virtual-directory"
+		}
+		s.Run(testName, func() {
+			// Setup
+			s.tearDownTestHelper(false) // Don't delete the generated container.
+
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n",
+				storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+			s.setupTestHelper(config, s.container, true)
+
+			name := generateFileName()
+			f, err := os.Create(name)
+			s.assert.Nil(err)
+			s.assert.NotNil(f)
+
+			data := make([]byte, azblob.BlockBlobMaxUploadBlobBytes+1)
+			_, _ = rand.Read(data)
+
+			n, err := f.Write(data)
+			s.assert.Nil(err)
+			s.assert.EqualValues(n, azblob.BlockBlobMaxUploadBlobBytes+1)
+			_, _ = f.Seek(0, 0)
+
+			err = s.az.storage.WriteFromFile(name, nil, f)
+			s.assert.Nil(err)
+
+			prop, err := s.az.storage.GetAttr(name)
+			s.assert.Nil(err)
+			s.assert.NotEmpty(prop.MD5)
+
+			_, _ = f.Seek(0, 0)
+			localMD5, err := getMD5(f)
+			s.assert.Nil(err)
+			s.assert.EqualValues(localMD5, prop.MD5)
+
+			_ = s.az.storage.DeleteFile(name)
+			_ = f.Close()
+			_ = os.Remove(name)
+		})
+	}
+}
+
+func (s *fileTestSuite) TestMD5NotSetOnUpload() {
+	defer s.cleanupTest()
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+	configs := []string{"", vdConfig}
+	for _, c := range configs {
+		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
+		s.tearDownTestHelper(false)
+		s.setupTestHelper(c, s.container, true)
+		testName := ""
+		if c != "" {
+			testName = "virtual-directory"
+		}
+		s.Run(testName, func() {
+			// Setup
+			s.tearDownTestHelper(false) // Don't delete the generated container.
+
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: false\n",
+				storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+			s.setupTestHelper(config, s.container, true)
+
+			name := generateFileName()
+			f, err := os.Create(name)
+			s.assert.Nil(err)
+			s.assert.NotNil(f)
+
+			data := make([]byte, azblob.BlockBlobMaxUploadBlobBytes+1)
+			_, _ = rand.Read(data)
+
+			n, err := f.Write(data)
+			s.assert.Nil(err)
+			s.assert.EqualValues(n, azblob.BlockBlobMaxUploadBlobBytes+1)
+			_, _ = f.Seek(0, 0)
+
+			err = s.az.storage.WriteFromFile(name, nil, f)
+			s.assert.Nil(err)
+
+			prop, err := s.az.storage.GetAttr(name)
+			s.assert.Nil(err)
+			s.assert.Empty(prop.MD5)
+
+			_ = s.az.storage.DeleteFile(name)
+			_ = f.Close()
+			_ = os.Remove(name)
+		})
+	}
+}
+
+func (s *fileTestSuite) TestInvalidateMD5PostUpload() {
+	defer s.cleanupTest()
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+	configs := []string{"", vdConfig}
+	for _, c := range configs {
+		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
+		s.tearDownTestHelper(false)
+		s.setupTestHelper(c, s.container, true)
+		testName := ""
+		if c != "" {
+			testName = "virtual-directory"
+		}
+		s.Run(testName, func() {
+			// Setup
+			s.tearDownTestHelper(false) // Don't delete the generated container.
+
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: true\n",
+				storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+			s.setupTestHelper(config, s.container, true)
+
+			name := generateFileName()
+			f, err := os.Create(name)
+			s.assert.Nil(err)
+			s.assert.NotNil(f)
+
+			data := make([]byte, 100)
+			_, _ = rand.Read(data)
+
+			n, err := f.Write(data)
+			s.assert.Nil(err)
+			s.assert.EqualValues(n, 100)
+			_, _ = f.Seek(0, 0)
+
+			err = s.az.storage.WriteFromFile(name, nil, f)
+			s.assert.Nil(err)
+
+			blobURL := s.shareUrl.NewRootDirectoryURL().NewFileURL(name)
+			_, _ = blobURL.SetHTTPHeaders(context.Background(), azfile.FileHTTPHeaders{ContentMD5: []byte("blobfuse")})
+
+			prop, err := s.az.storage.GetAttr(name)
+			s.assert.Nil(err)
+			s.assert.NotEmpty(prop.MD5)
+
+			_, _ = f.Seek(0, 0)
+			localMD5, err := getMD5(f)
+			s.assert.Nil(err)
+			s.assert.NotEqualValues(localMD5, prop.MD5)
+
+			_ = s.az.storage.DeleteFile(name)
+			_ = f.Close()
+			_ = os.Remove(name)
+		})
+	}
+}
+
+func (s *fileTestSuite) TestValidateManualMD5OnRead() {
+	defer s.cleanupTest()
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+	configs := []string{"", vdConfig}
+	for _, c := range configs {
+		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
+		s.tearDownTestHelper(false)
+		s.setupTestHelper(c, s.container, true)
+		testName := ""
+		if c != "" {
+			testName = "virtual-directory"
+		}
+		s.Run(testName, func() {
+			// Setup
+			s.tearDownTestHelper(false) // Don't delete the generated container.
+
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: true\n",
+				storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+			s.setupTestHelper(config, s.container, true)
+
+			name := generateFileName()
+			f, err := os.Create(name)
+			s.assert.Nil(err)
+			s.assert.NotNil(f)
+
+			data := make([]byte, azblob.BlockBlobMaxUploadBlobBytes+1)
+			_, _ = rand.Read(data)
+
+			n, err := f.Write(data)
+			s.assert.Nil(err)
+			s.assert.EqualValues(n, azblob.BlockBlobMaxUploadBlobBytes+1)
+			_, _ = f.Seek(0, 0)
+
+			err = s.az.storage.WriteFromFile(name, nil, f)
+			s.assert.Nil(err)
+			_ = f.Close()
+			_ = os.Remove(name)
+
+			prop, err := s.az.storage.GetAttr(name)
+			s.assert.Nil(err)
+			s.assert.NotEmpty(prop.MD5)
+
+			f, err = os.Create(name)
+			s.assert.Nil(err)
+			s.assert.NotNil(f)
+
+			err = s.az.storage.ReadToFile(name, 0, azblob.BlockBlobMaxUploadBlobBytes+1, f)
+			s.assert.Nil(err)
+
+			_ = s.az.storage.DeleteFile(name)
+			_ = os.Remove(name)
+		})
+	}
+}
+
+func (s *fileTestSuite) TestInvalidMD5OnRead() {
+	defer s.cleanupTest()
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+	configs := []string{"", vdConfig}
+	for _, c := range configs {
+		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
+		s.tearDownTestHelper(false)
+		s.setupTestHelper(c, s.container, true)
+		testName := ""
+		if c != "" {
+			testName = "virtual-directory"
+		}
+		s.Run(testName, func() {
+			// Setup
+			s.tearDownTestHelper(false) // Don't delete the generated container.
+
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: true\n",
+				storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+			s.setupTestHelper(config, s.container, true)
+
+			name := generateFileName()
+			f, err := os.Create(name)
+			s.assert.Nil(err)
+			s.assert.NotNil(f)
+
+			data := make([]byte, 100)
+			_, _ = rand.Read(data)
+
+			n, err := f.Write(data)
+			s.assert.Nil(err)
+			s.assert.EqualValues(n, 100)
+			_, _ = f.Seek(0, 0)
+
+			err = s.az.storage.WriteFromFile(name, nil, f)
+			s.assert.Nil(err)
+			_ = f.Close()
+			_ = os.Remove(name)
+
+			blobURL := s.shareUrl.NewRootDirectoryURL().NewFileURL(name)
+			_, _ = blobURL.SetHTTPHeaders(context.Background(), azfile.FileHTTPHeaders{ContentMD5: []byte("blobfuse")})
+
+			prop, err := s.az.storage.GetAttr(name)
+			s.assert.Nil(err)
+			s.assert.NotEmpty(prop.MD5)
+
+			f, err = os.Create(name)
+			s.assert.Nil(err)
+			s.assert.NotNil(f)
+
+			err = s.az.storage.ReadToFile(name, 0, 100, f)
+			s.assert.NotNil(err)
+			s.assert.Contains(err.Error(), "md5 sum mismatch on download")
+
+			_ = s.az.storage.DeleteFile(name)
+			_ = os.Remove(name)
+		})
+	}
+}
+
+func (s *fileTestSuite) TestInvalidMD5OnReadNoVaildate() {
+	defer s.cleanupTest()
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+	configs := []string{"", vdConfig}
+	for _, c := range configs {
+		// This is a little janky but required since testify suite does not support running setup or clean up for subtests.
+		s.tearDownTestHelper(false)
+		s.setupTestHelper(c, s.container, true)
+		testName := ""
+		if c != "" {
+			testName = "virtual-directory"
+		}
+		s.Run(testName, func() {
+			// Setup
+			s.tearDownTestHelper(false) // Don't delete the generated container.
+
+			config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.file.core.windows.net/\n  type: file\n  account-key: %s\n  mode: key\n  container: %s\n  update-md5: true\n  validate-md5: false\n",
+				storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileAccount, storageTestConfigurationParameters.FileKey, s.container)
+			s.setupTestHelper(config, s.container, true)
+
+			name := generateFileName()
+			f, err := os.Create(name)
+			s.assert.Nil(err)
+			s.assert.NotNil(f)
+
+			data := make([]byte, 100)
+			_, _ = rand.Read(data)
+
+			n, err := f.Write(data)
+			s.assert.Nil(err)
+			s.assert.EqualValues(n, 100)
+			_, _ = f.Seek(0, 0)
+
+			err = s.az.storage.WriteFromFile(name, nil, f)
+			s.assert.Nil(err)
+			_ = f.Close()
+			_ = os.Remove(name)
+
+			blobURL := s.shareUrl.NewRootDirectoryURL().NewFileURL(name)
+			_, _ = blobURL.SetHTTPHeaders(context.Background(), azfile.FileHTTPHeaders{ContentMD5: []byte("blobfuse")})
+
+			prop, err := s.az.storage.GetAttr(name)
+			s.assert.Nil(err)
+			s.assert.NotEmpty(prop.MD5)
+
+			f, err = os.Create(name)
+			s.assert.Nil(err)
+			s.assert.NotNil(f)
+
+			err = s.az.storage.ReadToFile(name, 0, 100, f)
+			s.assert.Nil(err)
+
+			_ = s.az.storage.DeleteFile(name)
+			_ = os.Remove(name)
+		})
+	}
 }
 
 func TestFileShare(t *testing.T) {

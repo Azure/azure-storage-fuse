@@ -337,6 +337,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 			opt.Endpoint = fmt.Sprintf("%s.blob.core.windows.net", opt.AccountName)
 		} else if az.stConfig.authConfig.AccountType == EAccountType.ADLS() {
 			opt.Endpoint = fmt.Sprintf("%s.dfs.core.windows.net", opt.AccountName)
+		} else if az.stConfig.authConfig.AccountType == EAccountType.FILE() {
+			opt.Endpoint = fmt.Sprintf("%s.file.core.windows.net", opt.AccountName)
 		}
 	}
 	az.stConfig.authConfig.Endpoint = opt.Endpoint
