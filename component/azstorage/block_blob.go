@@ -595,7 +595,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	// over BlobItems will fail to identify that directory. In such cases BlobPrefixes help to list all directories
 	// dirList contains all dirs for which we got 0 byte meta file in this iteration, so exclude those and add rest to the list
 	// Note: Since listing is paginated, sometimes the marker file may come in a different iteration from the BlobPrefix. For such
-	// cases we manually call GetAttr to check the existance of the marker file.
+	// cases we manually call GetAttr to check the existence of the marker file.
 	for _, blobInfo := range listBlob.Segment.BlobPrefixes {
 		if _, ok := dirList[blobInfo.Name]; ok {
 			// marker file found in current iteration, skip adding the directory
