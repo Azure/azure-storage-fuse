@@ -1,6 +1,6 @@
 ## 2.0.0-preview.5 (WIP)
 **Bug Fixes**
-- 
+- Fixed a bug where sometimes a directory would list twice 
 
 ## 2.0.0-preview.4 (2022-11-03)
 **Breaking Changes**
