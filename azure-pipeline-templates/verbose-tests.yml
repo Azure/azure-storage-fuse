@@ -189,6 +189,7 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
         adls: ${{ parameters.adls }}
+        fileshare: ${{ parameters.fileshare }}
         idstring: ${{ parameters.service }} with Key Credentials
         distro_name: ${{ parameters.distro_name }}
         quick_test: ${{ parameters.quick_test }}
@@ -209,6 +210,7 @@ steps:
         temp_dir: ${{ parameters.temp_dir }}
         mount_dir: ${{ parameters.mount_dir }}
         adls: ${{ parameters.adls }}
+        fileshare: ${{ parameters.fileshare }}
         idstring: ${{ parameters.service }} with Streaming
         distro_name: ${{ parameters.distro_name }}
         quick_test: ${{ parameters.quick_test }}
@@ -229,6 +231,7 @@ steps:
         temp_dir: ${{ parameters.temp_dir }}
         mount_dir: ${{ parameters.mount_dir }}
         adls: ${{ parameters.adls }}
+        fileshare: ${{ parameters.fileshare }}
         idstring: ${{ parameters.service }} with Streaming with filename
         distro_name: ${{ parameters.distro_name }}
         quick_test: ${{ parameters.quick_test }}
@@ -249,6 +252,7 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
         adls: ${{ parameters.adls }}
+        fileshare: ${{ parameters.fileshare }}
         idstring: ${{ parameters.service }} with SAS Credentials
         distro_name: ${{ parameters.distro_name }}
         artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_sas.txt'
@@ -268,6 +272,7 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
         adls: ${{ parameters.adls }}
+        fileshare: ${{ parameters.fileshare }}
         idstring: ${{ parameters.service }} with SPN Credentials
         distro_name: ${{ parameters.distro_name }}
         artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_spn.txt'
@@ -295,6 +300,7 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
         adls: ${{ parameters.adls }}
+        fileshare: ${{ parameters.fileshare }}
         idstring: ${{ parameters.service }} with Azurite
         distro_name: ${{ parameters.distro_name }}
         quick_test: ${{ parameters.quick_test }}

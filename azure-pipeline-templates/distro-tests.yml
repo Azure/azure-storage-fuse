@@ -125,6 +125,7 @@ steps:
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
       adls: false
+      fileshare: false
       idstring: 'Distro BlockBlob with Key Credentials'
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
@@ -177,6 +178,7 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
         adls: false
+        fileshare: false
         idstring: 'Distro BlockBlob with Stream Key Credentials'
         distro_name: ${{ parameters.distro_name }}
         quick_test: ${{ parameters.quick_test }}
@@ -224,6 +226,7 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
         adls: false
+        fileshare: false
         idstring: 'Distro BlockBlob with Stream Direct Key Credentials'
         distro_name: ${{ parameters.distro_name }}
         quick_test: ${{ parameters.quick_test }}
@@ -272,6 +275,7 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
         adls: false
+        fileshare: false
         idstring: 'Distro BlockBlob with Stream with Filename Caching Key Credentials'
         distro_name: ${{ parameters.distro_name }}
         quick_test: ${{ parameters.quick_test }}
@@ -319,6 +323,7 @@ steps:
         mount_dir: ${{ parameters.mount_dir }}
         temp_dir: ${{ parameters.temp_dir }}
         adls: false
+        fileshare: false
         idstring: 'Distro BlockBlob with Stream with Filename Caching Direct Key Credentials'
         distro_name: ${{ parameters.distro_name }}
         quick_test: ${{ parameters.quick_test }}
@@ -371,6 +376,7 @@ steps:
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
       adls: true
+      fileshare: false
       idstring: 'Distro ADLS with Key Credentials'
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}

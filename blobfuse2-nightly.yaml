@@ -345,6 +345,7 @@ stages:
                   idstring: 'BlockBlob with Proxy and Key Credentials'
                   distro_name: $(imageName)
                   adls: false
+                  fileshare: false
                   artifact_name: 'blockblob_proxy_key.txt'
                   verbose_log: ${{ parameters.verbose_log }}
                   mountStep:
@@ -379,6 +380,7 @@ stages:
                   idstring: 'ADLS with Proxy and Key Credentials'
                   distro_name: $(imageName)
                   adls: true
+                  fileshare: false
                   artifact_name: 'adls_proxy_key.txt'
                   verbose_log: ${{ parameters.verbose_log }}
                   mountStep:

@@ -60,6 +60,7 @@ steps:
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
       adls: ${{ parameters.adls }}
+      fileshare: ${{ parameters.fileshare }}
       idstring: '${{ parameters.idstring }}'
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
