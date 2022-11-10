@@ -93,7 +93,6 @@ steps:
       container: $(containerName)
       idstring: block_blob_key
       adls: false
-      fileshare: false
       account_name: ${{ parameters.blob_account_name }}
       account_key: ${{ parameters.blob_account_key }}
       account_type: block
@@ -115,7 +114,6 @@ steps:
       container: $(containerName)
       idstring: adls_key
       adls: true
-      fileshare: false
       account_name: ${{ parameters.adls_account_name }}
       account_key: ${{ parameters.adls_account_key }}
       account_type: adls
