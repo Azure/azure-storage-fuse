@@ -296,6 +296,8 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 		// NOTE : Add all the configs that need replacement based on container here
 		cliParams[1] = contMountPath
 		// If next instance is not mounted in background then mountall will hang up hence always mount in background
+		viper.Set("mount-path", nil)
+		viper.Set("mount-all-containers", nil)
 		if configFileExists {
 			viper.Set("foreground", false)
 			viper.Set("azstorage.container", container)
@@ -306,7 +308,7 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 			if err != nil {
 				return err
 			}
-			cliParams[2] = "--config-file=" + configFile
+			cliParams[2] = "--config-file=" + contConfigFile
 		} else {
 			cliParams[2] = "--foreground=false"
 			cliParams[3] = "--container-name=" + container
