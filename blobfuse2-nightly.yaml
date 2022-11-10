@@ -68,13 +68,13 @@ stages:
 
           strategy:
             matrix:
-              Ubuntu-20:
+              Ubuntu-20-BlockBlob:
                 imageName: 'ubuntu-20.04'
                 containerName: 'test-cnt-ubn-20'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
-              Ubuntu-22:
+              Ubuntu-22-BlockBlob:
                 imageName: 'ubuntu-22.04'
                 containerName: 'test-cnt-ubn-22'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
@@ -203,13 +203,13 @@ stages:
 
           strategy:
             matrix:
-              Ubuntu-20:
+              Ubuntu-20-ADLS:
                 imageName: 'ubuntu-20.04'
                 containerName: 'test-cnt-ubn-20'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
-              Ubuntu-22:
+              Ubuntu-22-ADLS:
                 imageName: 'ubuntu-22.04'
                 containerName: 'test-cnt-ubn-22'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
