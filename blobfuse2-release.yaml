@@ -47,16 +47,14 @@ stages:
               container: 'test-cnt-ubn-18'
               AgentName: "blobfuse-ubuntu20"
             Libfuse3:
-              vmImage: 'ubuntu-20.04'
+              vmImage: 'ubuntu-22.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
-              container: 'test-cnt-ubn-20'
-              AgentName: "blobfuse-ubuntu20"
+              container: 'test-cnt-ubn-22'
+              AgentName: "blobfuse-ubuntu22"
 
         pool:
-          name: "blobfuse-ubuntu-pool"
-          demands:
-            - ImageOverride -equals $(AgentName)
+          vmImage: $(vmImage)
 
         variables:
           - group: NightlyBlobFuse

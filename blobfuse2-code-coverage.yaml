@@ -179,6 +179,7 @@ stages:
               workingDirectory: $(WORK_DIR)
               displayName: "Block Blob Coverage with profilers"
 
+            # Config Generation (ADLS)
             - script: |
                 cd $(WORK_DIR)
                 $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_ADLS_CFG)
@@ -192,7 +193,7 @@ stages:
               displayName: 'Create Config File - ADLS'
               continueOnError: false
 
-            # Code Coverage with e2e-tests for adls blob
+            # Code Coverage with e2e-tests for ADLS
             - script: |
                 rm -rf $(MOUNT_DIR)/*
                 rm -rf $(TEMP_DIR)/*
@@ -586,6 +587,86 @@ stages:
                 ./blobfuse2 unmount all
               workingDirectory: $(WORK_DIR)
               displayName: "CLI : Health monitor stop all"
+
+            # Start Proxy
+            - script: |
+                sudo apt-get update --fix-missing -y
+                sudo apt remove mitmproxy -y
+                sudo apt-get install python3-setuptools -y
+                sudo apt install python3-pip -y
+                sudo pip3 install mitmproxy
+                mitmdump -w proxy_logs.txt &
+              displayName: 'Install & Start Proxy'
+
+            # Configure Proxy cert & env
+            - script: |
+                sudo mkdir /usr/local/share/ca-certificates/extra
+                sudo cp ~/.mitmproxy/mitmproxy-ca-cert.cer /usr/local/share/ca-certificates/extra/mitmproxy-ca-cert.crt
+                sudo update-ca-certificates
+                export https_proxy="127.0.0.1:8080"
+                export http_proxy="127.0.0.1:8080"
+              displayName: 'Configure Proxy'
+
+            # Config Generation (Block Blob Proxy)
+            - script: |
+                cd $(WORK_DIR)
+                $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_proxy.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+              env:
+                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+                ACCOUNT_TYPE: 'block'
+                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+                VERBOSE_LOG: false
+                USE_HTTP: false
+              displayName: 'Create Config File - Block Blob Proxy'
+              workingDirectory: $(WORK_DIR)
+              continueOnError: false
+            
+            # Code Coverage with e2e-tests for block blob Proxy
+            - script: |
+                rm -rf $(MOUNT_DIR)/*
+                rm -rf $(TEMP_DIR)/*
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block_proxy.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
+                sleep 10
+                ps -aux | grep blobfuse2
+                rm -rf $(MOUNT_DIR)/*
+                cd test/e2e_tests
+                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
+                cd -
+                sudo fusermount -u $(MOUNT_DIR) 
+                sleep 5
+              workingDirectory: $(WORK_DIR)
+              displayName: "Block Blob Coverage Proxy"
+
+            # Config Generation (ADLS Proxy)
+            - script: |
+                cd $(WORK_DIR)
+                $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_proxy.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_ADLS_CFG)
+              env:
+                NIGHTLY_STO_ACC_NAME: $(AZTEST_ADLS_ACC_NAME)
+                NIGHTLY_STO_ACC_KEY:  $(AZTEST_ADLS_KEY)
+                ACCOUNT_TYPE: 'adls'
+                ACCOUNT_ENDPOINT: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net'
+                VERBOSE_LOG: false
+                USE_HTTP: false
+              displayName: 'Create Config File - ADLS Proxy'
+              continueOnError: false
+
+            # Code Coverage with e2e-tests for ADLS Proxy
+            - script: |
+                rm -rf $(MOUNT_DIR)/*
+                rm -rf $(TEMP_DIR)/*
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_adls_proxy.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_ADLS_CFG) --foreground=true &
+                sleep 10
+                ps -aux | grep blobfuse2
+                rm -rf $(MOUNT_DIR)/*
+                cd test/e2e_tests
+                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -adls=true -tmp-path=$(TEMP_DIR)
+                cd -
+                ./blobfuse2 unmount all
+                sleep 5
+              workingDirectory: $(WORK_DIR)
+              displayName: "ADLS Coverage Proxy"
 
             # -------------------------------------------------------
             # Coverage report consolidation
