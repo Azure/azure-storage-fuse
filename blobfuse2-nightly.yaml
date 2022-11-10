@@ -283,6 +283,7 @@ stages:
                 container: $(containerName)
                 tags: $(tags)
                 fuselib: $(fuselib)
+                skip_ut: true # Skip UT because Block Blob set runs it
 
             # -------------------------------------------------------
             - ${{ if eq(parameters.exhaustive_test, true) }}:    
