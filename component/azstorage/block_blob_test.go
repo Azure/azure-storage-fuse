@@ -757,6 +757,37 @@ func (s *blockBlobTestSuite) TestReadDirListBlocked() {
 	s.assert.EqualValues(0, len(entries)) // Since we block the list, it will return an empty list.
 }
 
+func (s *blockBlobTestSuite) TestStreamDirSmallCountNoDuplicates() {
+	defer s.cleanupTest()
+	// Setup
+	s.az.CreateFile(internal.CreateFileOptions{Name: "blob1.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "blob2.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "newblob1.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "newblob2.txt"})
+	s.az.CreateDir(internal.CreateDirOptions{Name: "myfolder"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "myfolder/newblobA.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "myfolder/newblobB.txt"})
+
+	var iteration int = 0
+	var marker string = ""
+	blobList := make([]*internal.ObjAttr, 0)
+
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: "/", Token: marker, Count: 1})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+
+	s.assert.EqualValues(5, len(blobList))
+}
+
 func (s *blockBlobTestSuite) TestRenameDir() {
 	defer s.cleanupTest()
 	// Test handling "dir" and "dir/"
