@@ -285,6 +285,7 @@ stages:
                 fuselib: $(fuselib)
 
             # -------------------------------------------------------
+            - ${{ if eq(parameters.exhaustive_test, true) }}:    
               - template: 'azure-pipeline-templates/verbose-tests.yml'
                 parameters:
                   service: 'ADLS'
