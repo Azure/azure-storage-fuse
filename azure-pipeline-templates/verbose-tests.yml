@@ -9,6 +9,8 @@ parameters:
     type: string 
   - name: adls
     type: boolean
+  - name: fileshare
+    type: boolean
   - name: account_name
     type: string
   - name: spn_account_name
@@ -316,6 +318,7 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       mount_dir: ${{ parameters.mount_dir }}
       adls: ${{ parameters.adls }}
+      fileshare: ${{ parameters.fileshare }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
       account_type: ${{ parameters.account_type }}
@@ -332,6 +335,7 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       mount_dir: ${{ parameters.mount_dir }}
       adls: ${{ parameters.adls }}
+      fileshare: ${{ parameters.fileshare }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
       account_type: ${{ parameters.account_type }}
@@ -348,6 +352,7 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       mount_dir: ${{ parameters.mount_dir }}
       adls: ${{ parameters.adls }}
+      fileshare: ${{ parameters.fileshare }}
       account_name: ${{ parameters.account_name }}
       account_key: ${{ parameters.account_key }}
       account_type: ${{ parameters.account_type }}

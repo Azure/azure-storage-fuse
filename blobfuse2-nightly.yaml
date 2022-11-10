@@ -162,6 +162,7 @@ stages:
                   account_type: 'block'
                   account_endpoint: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net' 
                   adls: false
+                  fileshare: false
                   account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
                   account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
                   account_sas: $(NIGHTLY_STO_ACC_SAS)
@@ -197,6 +198,7 @@ stages:
                   account_type: 'adls'
                   account_endpoint: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net' 
                   adls: true
+                  fileshare: false
                   account_name: $(AZTEST_ADLS_ACC_NAME)
                   account_key: $(AZTEST_ADLS_KEY)
                   account_sas: $(adlsSas)
@@ -1349,6 +1351,7 @@ stages:
                 container: $(containerName)
                 idstring: Block_Blob
                 adls: false
+                fileshare: false
                 account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
                 account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
                 account_type: block
@@ -1419,10 +1422,82 @@ stages:
                 container: $(containerName)
                 idstring: ADLS
                 adls: true
+                fileshare: false
                 account_name: $(AZTEST_ADLS_ACC_NAME)
                 account_key: $(AZTEST_ADLS_KEY)
                 account_type: adls
                 account_endpoint: https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net
+                distro_name: $(imageName)
+                quick_test: false
+                verbose_log: ${{ parameters.verbose_log }}
+                clone: true
+                stream_direct_test: false
+                # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+                temp_dir: $(TEMP_DIR)
+                mount_dir: $(MOUNT_DIR)
+
+  - ${{ if eq(parameters.data_validation, true) }}:
+    - stage: DataValidationFileShare
+      jobs:
+        # Ubuntu Tests
+        - job: Set_1
+          timeoutInMinutes: 300
+          strategy:
+            matrix:
+              Ubuntu-20:
+                imageName: 'ubuntu-20.04'
+                containerName: 'test-cnt-ubn-20'
+                fuselib: 'libfuse-dev'
+                tags: 'fuse2'
+              Ubuntu-22:
+                imageName: 'ubuntu-22.04'
+                containerName: 'test-cnt-ubn-22'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+          pool:
+            vmImage: $(imageName)
+
+          variables:
+            - group: NightlyBlobFuse
+            - name: ROOT_DIR
+              value: "/usr/pipeline/workv2"
+            - name: WORK_DIR
+              value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+            - name: skipComponentGovernanceDetection
+              value: true
+            - name: MOUNT_DIR
+              value: "/usr/pipeline/workv2/blob_mnt"
+            - name: TEMP_DIR
+              value: "/usr/pipeline/workv2/temp"
+            - name: BLOBFUSE2_CFG
+              value: "/usr/pipeline/workv2/blobfuse2.yaml"
+            - name: GOPATH
+              value: "/usr/pipeline/workv2/go"
+
+          steps:
+            - checkout: none
+
+            - template: 'azure-pipeline-templates/setup.yml'
+              parameters:
+                tags: $(tags)
+                installStep:
+                  script: |
+                    sudo apt-get update --fix-missing
+                    sudo apt-get install $(fuselib) -y
+                  displayName: 'Install fuse'
+
+            - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
+              parameters:
+                conf_template: azure_key.yaml
+                config_file: $(BLOBFUSE2_CFG)
+                container: $(containerName)
+                idstring: FILE
+                adls: false
+                fileshare: true
+                account_name: $(AZTEST_FILE_ACC_NAME)
+                account_key: $(AZTEST_FILE_KEY)
+                account_type: file
+                account_endpoint: https://$(AZTEST_FILE_ACC_NAME).file.core.windows.net
                 distro_name: $(imageName)
                 quick_test: false
                 verbose_log: ${{ parameters.verbose_log }}
@@ -1489,6 +1564,7 @@ stages:
                 container: $(containerName)
                 idstring: Stream_File_Handle
                 adls: false
+                fileshare: false
                 account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
                 account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
                 account_type: block
@@ -1559,6 +1635,7 @@ stages:
                 container: $(containerName)
                 idstring: Stream_File_Handle_Direct
                 adls: false
+                fileshare: false
                 account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
                 account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
                 account_type: block
@@ -1629,6 +1706,7 @@ stages:
                 container: $(containerName)
                 idstring: Stream_File_Name
                 adls: false
+                fileshare: false
                 account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
                 account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
                 account_type: block
@@ -1699,6 +1777,7 @@ stages:
                 container: $(containerName)
                 idstring: Stream_File_Name_Direct
                 adls: false
+                fileshare: false
                 account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
                 account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
                 account_type: block

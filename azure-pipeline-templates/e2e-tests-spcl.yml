@@ -13,6 +13,8 @@ parameters:
     type: string
   - name: adls
     type: boolean
+  - name: fileshare
+    type: boolean
   - name: account_name
     type: string
   - name: account_key
