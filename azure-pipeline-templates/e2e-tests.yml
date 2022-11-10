@@ -72,7 +72,7 @@ steps:
   - script: |
       tail -n 200 blobfuse2-logs.txt
     displayName: 'View Logs'
-    condition: always()
+    condition: failed()
 
   - script: |
       > blobfuse2-logs.txt
