@@ -1,6 +1,7 @@
 ## 2.0.0-preview.5 (WIP)
 **Bug Fixes**
-- Fixed a bug where sometimes a directory would list twice 
+- [#968](https://github.com/Azure/azure-storage-fuse/issues/968) Sometimes a directory would list twice for FNS account
+- [#972](https://github.com/Azure/azure-storage-fuse/issues/972) Mount all fails 
 
 ## 2.0.0-preview.4 (2022-11-03)
 **Breaking Changes**
