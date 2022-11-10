@@ -32,6 +32,10 @@ parameters:
     type: string
   - name: adls_account_key
     type: string
+  - name: file_account_name
+    type: string
+  - name: file_account_key
+    type: string
   - name: distro_name
     type: string
   - name: tags
@@ -395,6 +399,28 @@ steps:
       working_dir: ${{ parameters.working_dir }}
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
+
+  # File Share Test
+  - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
+    parameters:
+      conf_template: azure_key.yaml
+      config_file: $(BLOBFUSE2_CFG)
+      container: $(containerName)
+      idstring: file_key
+      adls: false
+      fileshare: true
+      account_name: ${{ parameters.file_account_name }}
+      account_key: ${{ parameters.file_account_key }}
+      account_type: file
+      account_endpoint: https://${{ parameters.file_account_name }}.file.core.windows.net
+      distro_name: ${{ parameters.distro_name }}
+      quick_test: ${{ parameters.quick_test }}
+      verbose_log: ${{ parameters.verbose_log }}
+      clone: ${{ parameters.clone }}
+      stream_direct_test: false
+      # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+      temp_dir: $(TEMP_DIR)
+      mount_dir: $(MOUNT_DIR)
 
 
   # Cleanup go tools dir  
