@@ -776,7 +776,7 @@ stages:
             - task: Go@0
               inputs:
                 command: 'test'
-                arguments: '-timeout 120m -v test/accoutcleanup/accountcleanup_test.go'
+                arguments: '-timeout 120m -v test/accountcleanup_container/accountcleanup_container_test.go'
                 workingDirectory:  $(WORK_DIR)
               displayName: 'Block Blob cleanup'
               timeoutInMinutes: 120
@@ -789,7 +789,7 @@ stages:
             - task: Go@0
               inputs:
                 command: 'test'
-                arguments: '-timeout 120m -v test/accoutcleanup/accountcleanup_test.go'
+                arguments: '-timeout 120m -v test/accountcleanup_container/accountcleanup_container_test.go'
                 workingDirectory:  $(WORK_DIR)
               displayName: 'Gen2 cleanup'
               timeoutInMinutes: 120
@@ -797,4 +797,17 @@ stages:
               env:
                 STORAGE_ACCOUNT_NAME: $(AZTEST_ADLS_ACC_NAME)
                 STORAGE_ACCOUNT_Key: $(AZTEST_ADLS_KEY)
+
+            # Run the file share cleanup
+            - task: Go@0
+              inputs:
+                command: 'test'
+                arguments: '-timeout 120m -v test/accountcleanup_share/accountcleanup_share_test.go'
+                workingDirectory:  $(WORK_DIR)
+              displayName: 'File Share cleanup'
+              timeoutInMinutes: 120
+              continueOnError: true
+              env:
+                STORAGE_ACCOUNT_NAME: $(AZTEST_FILE_ACC_NAME)
+                STORAGE_ACCOUNT_KEY: $(AZTEST_FILE_KEY)
 
