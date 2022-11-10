@@ -401,7 +401,7 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
 
   # File Share Test
-  - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
+  - template: 'e2e-tests-spcl.yml'
     parameters:
       conf_template: azure_key.yaml
       config_file: $(BLOBFUSE2_CFG)
