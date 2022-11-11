@@ -34,6 +34,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -264,7 +265,8 @@ func filterAllowedContainerList(containers []string) []string {
 // mountAllContainers : Iterate allowed container list and create config file and mount path for them
 func mountAllContainers(containerList []string, configFile string, mountPath string, configFileExists bool) error {
 	// Now iterate filtered container list and prepare mount path, temp path, and config file for them
-	fileCachePath := viper.GetString("file_cache.path")
+	fileCachePath := ""
+	_ = config.UnmarshalKey("file_cache.path", &fileCachePath)
 
 	// Generate slice containing all the argument which we need to pass to each mount command
 	cliParams := buildCliParamForMount()
@@ -276,12 +278,12 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 	}
 
 	// During mount all some extra config were set, we need to reset those now
-	viper.Set("mount-path", nil)
 	viper.Set("mount-all-containers", nil)
 
 	//configFileName := configFile[:(len(configFile) - len(ext))]
 	configFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), "config")
 
+	failCount := 0
 	for _, container := range containerList {
 		contMountPath := filepath.Join(mountPath, container)
 		contConfigFile := configFileName + "_" + container + ext
@@ -302,6 +304,7 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 
 		// If next instance is not mounted in background then mountall will hang up hence always mount in background
 		if configFileExists {
+			viper.Set("mount-path", contMountPath)
 			viper.Set("foreground", false)
 			viper.Set("azstorage.container", container)
 			viper.Set("file_cache.path", filepath.Join(fileCachePath, container))
@@ -319,16 +322,21 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 		}
 
 		// Now that we have mount path and config file for this container fire a mount command for this one
-		fmt.Println("Mounting container :", container, "to path :", contMountPath)
+		fmt.Println("Mounting container :", container, "to path ", contMountPath)
 		cmd := exec.Command(mountAllOpts.blobfuse2BinPath, cliParams...)
 
+		var errb bytes.Buffer
+		cmd.Stderr = &errb
 		cliOut, err := cmd.Output()
 		fmt.Println(string(cliOut))
+
 		if err != nil {
-			fmt.Printf("Failed to mount container %s : %s\n", container, err.Error())
+			fmt.Printf("Failed to mount container %s : %s\n", container, errb.String())
+			failCount++
 		}
 	}
 
+	fmt.Printf("%d of %d containers were successfully mounted\n", (len(containerList) - failCount), len(containerList))
 	return nil
 }
 
