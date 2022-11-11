@@ -1517,7 +1517,7 @@ stages:
                 distro_name: $(imageName)
                 quick_test: false
                 verbose_log: ${{ parameters.verbose_log }}
-                clone: true
+                clone: false # This test case takes too long with file share accounts. 
                 stream_direct_test: false
                 # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
                 temp_dir: $(TEMP_DIR)
