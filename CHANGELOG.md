@@ -5,6 +5,7 @@
 
 **Breaking Changes**
 - Defaults for retry policy changed. Max retries: 3 to 7, Retry delay 3600 to 900 seconds, Max retry delay 3 to 120 seconds
+
 ## 2.0.0-preview.4 (2022-11-03)
 **Breaking Changes**
 - Renamed ignore-open-flag config parameter to ignore-open-flags to match CLI parameter
