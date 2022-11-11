@@ -378,17 +378,7 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 	log.Trace("BlockBlob::RenameFile : %s -> %s done", source, target)
 
 	// Copy of the file is done so now delete the older file
-	err = bb.DeleteFile(source)
-	for retry := 0; retry < 3 && err == syscall.ENOENT; retry++ {
-		// Sometimes backend is able to copy source file to destination but when we try to delete the
-		// source files it returns back with ENOENT. If file was just created on backend it might happen
-		// that it has not been synced yet at all layers and hence delete is not able to find the source file
-		log.Trace("BlockBlob::RenameFile : %s -> %s, unable to find source. Retrying %d", source, target, retry)
-		time.Sleep(1 * time.Second)
-		err = bb.DeleteFile(source)
-	}
-
-	return err
+	return bb.DeleteFile(source)
 }
 
 // RenameDirectory : Rename the directory
