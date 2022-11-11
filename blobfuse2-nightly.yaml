@@ -430,11 +430,11 @@ stages:
                   account_name: $(AZTEST_FILE_ACC_NAME)
                   account_key: $(AZTEST_FILE_KEY)
                   account_sas: $(AZTEST_FILE_SAS)
-                  # spn_account_name: $(AZTEST_ADLS_ACC_NAME)
-                  # spn_account_endpoint: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net' 
-                  # client_id: $(AZTEST_CLIENT)
-                  # tenant_id: $(AZTEST_TENANT)
-                  # client_secret: $(AZTEST_SECRET)
+                  spn_account_name: ""
+                  spn_account_endpoint: ""
+                  client_id: ""
+                  tenant_id: ""
+                  client_secret: ""
                   container: $(containerName)
                   config: $(BLOBFUSE2_CFG)
                   working_dir: $(WORK_DIR)
@@ -451,8 +451,8 @@ stages:
                   stream_config: $(BLOBFUSE2_STREAM_CFG)
                   stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
-                  # spn_credential_config: $(BLOBFUSE2_SPN_CFG)
-                  # azurite_config: $(BLOBFUSE2_AZURITE_CFG)
+                  spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+                  azurite_config: $(BLOBFUSE2_AZURITE_CFG)
                   distro_name: $(imageName)
                   verbose_log: ${{ parameters.verbose_log }}
 
