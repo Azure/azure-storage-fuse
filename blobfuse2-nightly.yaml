@@ -330,10 +330,142 @@ stages:
                 mount_dir: $(MOUNT_DIR)
                 temp_dir: $(TEMP_DIR)
 
+        # Ubuntu Tests
+        - job: Set_3
+          timeoutInMinutes: 300
+
+          strategy:
+            matrix:
+              Ubuntu-20-ADLS:
+                imageName: 'ubuntu-20.04'
+                containerName: 'test-cnt-ubn-20'
+                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
+                fuselib: 'libfuse-dev'
+                tags: 'fuse2'
+              Ubuntu-22-ADLS:
+                imageName: 'ubuntu-22.04'
+                containerName: 'test-cnt-ubn-22'
+                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+          pool:
+            vmImage: $(imageName)
+
+          variables:
+            - group: NightlyBlobFuse
+            - name: MOUNT_DIR
+              value: '$(Pipeline.Workspace)/blob_mnt'
+            - name: TEMP_DIR
+              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+            - name: BLOBFUSE2_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+            - name: BLOBFUSE2_SAS_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
+            - name: BLOBFUSE2_SPN_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
+            - name: BLOBFUSE2_STREAM_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
+            - name: BLOBFUSE2_STREAM_FILENAME_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_stream_filename.yaml'
+            - name: BLOBFUSE2_ADLS_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+            - name: BLOBFUSE2_GTEST_CFG
+              value: '$(Pipeline.Workspace)/connection.yaml'
+            - name: BLOBFUSE2_AZURITE_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_azurite_config.yaml'
+            - name: BLOBFUSE2_STRESS_DIR
+              value: '$(Pipeline.Workspace)/blobfuse2_stress'
+            - name: DECODE_PERCENTS
+              value: false
+            - name: GOPATH
+              value: '$(Pipeline.Workspace)/go'
+            - name: ROOT_DIR
+              value: '$(System.DefaultWorkingDirectory)' 
+            - name: WORK_DIR
+              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+
+          steps:
+            - checkout: none
+
+            # Clone the repo
+            - script: |
+                git clone https://github.com/Azure/azure-storage-fuse
+              displayName: 'Checkout Code'
+              workingDirectory: $(ROOT_DIR)
+
+            # Checkout the branch
+            - script: |
+                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+              displayName: 'Checkout Branch'
+              workingDirectory: $(WORK_DIR)
+
+            - script: |
+                sudo apt-get update --fix-missing
+                sudo apt-get install $(fuselib) -y
+              displayName: 'Install libfuse'
+
+            # -------------------------------------------------------
+            # Pull and build the code
+            - template: 'azure-pipeline-templates/build.yml'
+              parameters:
+                working_directory: $(WORK_DIR)
+                root_dir: $(Pipeline.Workspace)
+                mount_dir: $(MOUNT_DIR)
+                temp_dir: $(TEMP_DIR)
+                gopath: $(GOPATH)
+                container: $(containerName)
+                tags: $(tags)
+                fuselib: $(fuselib)
+                skip_ut: true # Skip UT because Block Blob set runs it
+
+            # -------------------------------------------------------
+            - ${{ if eq(parameters.exhaustive_test, true) }}:    
+              - template: 'azure-pipeline-templates/verbose-tests.yml'
+                parameters:
+                  service: 'FileShare'
+                  account_type: 'file'
+                  account_endpoint: 'https://$(AZTEST_FILE_ACC_NAME).file.core.windows.net' 
+                  adls: false
+                  fileshare: true
+                  account_name: $(AZTEST_FILE_ACC_NAME)
+                  account_key: $(AZTEST_FILE_KEY)
+                  account_sas: $(AZTEST_FILE_SAS)
+                  # spn_account_name: $(AZTEST_ADLS_ACC_NAME)
+                  # spn_account_endpoint: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net' 
+                  # client_id: $(AZTEST_CLIENT)
+                  # tenant_id: $(AZTEST_TENANT)
+                  # client_secret: $(AZTEST_SECRET)
+                  container: $(containerName)
+                  config: $(BLOBFUSE2_CFG)
+                  working_dir: $(WORK_DIR)
+                  mount_dir: $(MOUNT_DIR)
+                  temp_dir: $(TEMP_DIR)
+                  stress_dir: $(BLOBFUSE2_STRESS_DIR)
+                  huge_container: 'testcnt'
+                  quick_stress: ${{ parameters.quick_stress }}
+                  test_key_credential: true
+                  test_sas_credential: true
+                  test_spn_credential: false
+                  test_stream: true
+                  test_azurite: false
+                  stream_config: $(BLOBFUSE2_STREAM_CFG)
+                  stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
+                  sas_credential_config: $(BLOBFUSE2_SAS_CFG)
+                  # spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+                  # azurite_config: $(BLOBFUSE2_AZURITE_CFG)
+                  distro_name: $(imageName)
+                  verbose_log: ${{ parameters.verbose_log }}
+
+            - template: azure-pipeline-templates/cleanup.yml
+              parameters:
+                working_dir: $(WORK_DIR)
+                mount_dir: $(MOUNT_DIR)
+                temp_dir: $(TEMP_DIR)
+
         - ${{ if eq(parameters.proxy_test, true) }}:
             # -----------------------------------------------------------
             # Ubuntu-20.04 Proxy tests
-          - job: Set_3
+          - job: Set_4
             timeoutInMinutes: 300
             strategy:
               matrix:
@@ -560,7 +692,7 @@ stages:
         
         - ${{ if eq(parameters.exhaustive_test, true) }}:
           # RHEL Tests
-          - job: Set_4
+          - job: Set_5
             timeoutInMinutes: 60
             strategy:
               matrix:
@@ -662,7 +794,7 @@ stages:
                   verbose_log: ${{ parameters.verbose_log }}
 
           # Centos Tests
-          - job: Set_5
+          - job: Set_6
             timeoutInMinutes: 60
             strategy:
               matrix:
@@ -742,7 +874,7 @@ stages:
                   verbose_log: ${{ parameters.verbose_log }}
 
           # Oracle Tests
-          - job: Set_6
+          - job: Set_7
             timeoutInMinutes: 60
             strategy:
               matrix:
@@ -807,7 +939,7 @@ stages:
                   verbose_log: ${{ parameters.verbose_log }}
 
           # Debian 9 self hosted Tests
-          - job: Set_7
+          - job: Set_8
             timeoutInMinutes: 60
             strategy:
               matrix:
@@ -870,7 +1002,7 @@ stages:
                   verbose_log: ${{ parameters.verbose_log }}
 
           # Debian Tests
-          - job: Set_8
+          - job: Set_9
             timeoutInMinutes: 60
             strategy:
               matrix:
@@ -955,7 +1087,7 @@ stages:
                   verbose_log: ${{ parameters.verbose_log }}
 
           # SUSE Tests
-          - job: Set_9
+          - job: Set_10
             timeoutInMinutes: 60
             strategy:
               matrix:
@@ -1021,7 +1153,7 @@ stages:
                   verbose_log: ${{ parameters.verbose_log }}
 
           # Mariner Tests
-          - job: Set_10
+          - job: Set_11
             timeoutInMinutes: 60
             strategy:
               matrix:
@@ -1091,7 +1223,7 @@ stages:
         - ${{ if eq(parameters.msi_test, true) }}:
           # -----------------------------------------------------------
           # Ubuntu-20.04 MSI tests
-          - job: Set_11
+          - job: Set_12
             timeoutInMinutes: 60
             strategy:
               matrix:
@@ -1250,7 +1382,7 @@ stages:
                   temp_dir: $(TEMP_DIR)
               
           # Debian 9 System assigned identity based MSI Tests
-          - job: Set_12
+          - job: Set_13
             timeoutInMinutes: 60
             strategy:
               matrix:
