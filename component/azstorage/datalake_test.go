@@ -159,10 +159,12 @@ func (s *datalakeTestSuite) TestDefault() {
 	s.assert.EqualValues(32, s.az.stConfig.maxConcurrency)
 	s.assert.EqualValues(AccessTiers["none"], s.az.stConfig.defaultTier)
 	s.assert.EqualValues(0, s.az.stConfig.cancelListForSeconds)
-	s.assert.EqualValues(3, s.az.stConfig.maxRetries)
-	s.assert.EqualValues(3600, s.az.stConfig.maxTimeout)
-	s.assert.EqualValues(1, s.az.stConfig.backoffTime)
-	s.assert.EqualValues(3, s.az.stConfig.maxRetryDelay)
+
+	s.assert.EqualValues(7, s.az.stConfig.maxRetries)
+	s.assert.EqualValues(900, s.az.stConfig.maxTimeout)
+	s.assert.EqualValues(0, s.az.stConfig.backoffTime)
+	s.assert.EqualValues(0, s.az.stConfig.maxRetryDelay)
+
 	s.assert.Empty(s.az.stConfig.proxyAddress)
 }
 

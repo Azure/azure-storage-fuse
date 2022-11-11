@@ -1,7 +1,11 @@
 ## 2.0.0-preview.5 (WIP)
 **Bug Fixes**
-- Fixed a bug where sometimes a directory would list twice
+- [#968](https://github.com/Azure/azure-storage-fuse/issues/968) Duplicate directory listing
+- [#964](https://github.com/Azure/azure-storage-fuse/issues/964) Rename for FNS account failing with source does not exists error
 - [#972](https://github.com/Azure/azure-storage-fuse/issues/972) Mount all fails 
+
+**Breaking Changes**
+- Defaults for retry policy changed. Max retries: 3 to 7, Retry delay 3600 to 900 seconds, Max retry delay 3 to 120 seconds
 
 ## 2.0.0-preview.4 (2022-11-03)
 **Breaking Changes**
