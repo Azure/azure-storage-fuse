@@ -336,13 +336,13 @@ stages:
 
           strategy:
             matrix:
-              Ubuntu-20-ADLS:
+              Ubuntu-20-FileShare:
                 imageName: 'ubuntu-20.04'
                 containerName: 'test-cnt-ubn-20'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
-              Ubuntu-22-ADLS:
+              Ubuntu-22-FileShare:
                 imageName: 'ubuntu-22.04'
                 containerName: 'test-cnt-ubn-22'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
