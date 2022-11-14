@@ -75,6 +75,7 @@ type mountOptions struct {
 	Logging           LogOptions     `config:"logging"`
 	Components        []string       `config:"components"`
 	Foreground        bool           `config:"foreground"`
+	NonEmpty          bool           `config:"nonempty"`
 	DefaultWorkingDir string         `config:"default-working-dir"`
 	CPUProfile        string         `config:"cpu-profile"`
 	MemProfile        string         `config:"mem-profile"`
@@ -313,7 +314,7 @@ var mountCmd = &cobra.Command{
 			options.Logging.LogLevel = "LOG_WARNING"
 		}
 
-		err = options.validate(skipNonEmpty)
+		err = options.validate(options.NonEmpty || skipNonEmpty)
 		if err != nil {
 			return err
 		}

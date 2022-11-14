@@ -375,8 +375,9 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 		}
 		copyStatus = prop.CopyStatus()
 	}
+
 	log.Trace("BlockBlob::RenameFile : %s -> %s done", source, target)
-	g
+
 	// Copy of the file is done so now delete the older file
 	err = bb.DeleteFile(source)
 	for retry := 0; retry < 3 && err == syscall.ENOENT; retry++ {
