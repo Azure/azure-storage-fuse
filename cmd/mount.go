@@ -266,6 +266,7 @@ var mountCmd = &cobra.Command{
 			options.Components = pipeline
 		}
 
+		skipNonEmpty := false
 		if config.IsSet("libfuse-options") {
 			for _, v := range options.LibfuseOptions {
 				parameter := strings.Split(v, "=")
@@ -288,6 +289,9 @@ var mountCmd = &cobra.Command{
 					config.Set("read-only", "true")
 				} else if v == "allow_root" {
 					config.Set("libfuse.default-permission", "700")
+				} else if v == "nonempty" {
+					skipNonEmpty = true
+					config.Set("nonempty", "true")
 				} else if strings.HasPrefix(v, "umask=") {
 					permission, err := strconv.ParseUint(parameter[1], 10, 32)
 					if err != nil {
@@ -309,7 +313,7 @@ var mountCmd = &cobra.Command{
 			options.Logging.LogLevel = "LOG_WARNING"
 		}
 
-		err = options.validate(false)
+		err = options.validate(skipNonEmpty)
 		if err != nil {
 			return err
 		}
