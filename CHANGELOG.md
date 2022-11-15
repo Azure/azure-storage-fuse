@@ -6,7 +6,7 @@
 - Added support for "-o nonempty" to mount on a non-empty mount path
 
 **Breaking Changes**
-- Defaults for retry policy changed. Max retries: 3 to 5, Retry delay 3600 to 900 seconds, Max retry delay 4 to 60 seconds
+- Defaults for retry policy changed. Max retries: 3 to 5, Retry delay: 3600 to 900 seconds, Max retry delay: 4 to 60 seconds
 
 **Features**
 - Added new CLI parameter "--subdirectory=" to mount only a subdirectory from given container 
