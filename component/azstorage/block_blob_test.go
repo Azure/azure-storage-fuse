@@ -279,10 +279,12 @@ func (s *blockBlobTestSuite) TestDefault() {
 	s.assert.EqualValues(32, s.az.stConfig.maxConcurrency)
 	s.assert.EqualValues(AccessTiers["none"], s.az.stConfig.defaultTier)
 	s.assert.EqualValues(0, s.az.stConfig.cancelListForSeconds)
-	s.assert.EqualValues(3, s.az.stConfig.maxRetries)
-	s.assert.EqualValues(3600, s.az.stConfig.maxTimeout)
-	s.assert.EqualValues(1, s.az.stConfig.backoffTime)
-	s.assert.EqualValues(3, s.az.stConfig.maxRetryDelay)
+
+	s.assert.EqualValues(5, s.az.stConfig.maxRetries)
+	s.assert.EqualValues(900, s.az.stConfig.maxTimeout)
+	s.assert.EqualValues(4, s.az.stConfig.backoffTime)
+	s.assert.EqualValues(60, s.az.stConfig.maxRetryDelay)
+
 	s.assert.Empty(s.az.stConfig.proxyAddress)
 }
 
@@ -755,6 +757,37 @@ func (s *blockBlobTestSuite) TestReadDirListBlocked() {
 	entries, err := s.az.ReadDir(internal.ReadDirOptions{Name: name})
 	s.assert.Nil(err)
 	s.assert.EqualValues(0, len(entries)) // Since we block the list, it will return an empty list.
+}
+
+func (s *blockBlobTestSuite) TestStreamDirSmallCountNoDuplicates() {
+	defer s.cleanupTest()
+	// Setup
+	s.az.CreateFile(internal.CreateFileOptions{Name: "blob1.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "blob2.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "newblob1.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "newblob2.txt"})
+	s.az.CreateDir(internal.CreateDirOptions{Name: "myfolder"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "myfolder/newblobA.txt"})
+	s.az.CreateFile(internal.CreateFileOptions{Name: "myfolder/newblobB.txt"})
+
+	var iteration int = 0
+	var marker string = ""
+	blobList := make([]*internal.ObjAttr, 0)
+
+	for {
+		new_list, new_marker, err := s.az.StreamDir(internal.StreamDirOptions{Name: "/", Token: marker, Count: 1})
+		s.assert.Nil(err)
+		blobList = append(blobList, new_list...)
+		marker = new_marker
+		iteration++
+
+		log.Debug("AzStorage::ReadDir : So far retrieved %d objects in %d iterations", len(blobList), iteration)
+		if new_marker == "" {
+			break
+		}
+	}
+
+	s.assert.EqualValues(5, len(blobList))
 }
 
 func (s *blockBlobTestSuite) TestRenameDir() {

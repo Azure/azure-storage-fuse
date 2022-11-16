@@ -83,6 +83,7 @@ typedef struct fuse_options
     bool    readonly;
     bool    allow_other;
     bool    trace_enable;
+    bool    non_empty;
 } fuse_options_t;
 
 

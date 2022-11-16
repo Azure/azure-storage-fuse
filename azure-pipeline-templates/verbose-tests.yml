@@ -176,6 +176,7 @@ steps:
     continueOnError: false
       
   - script: cat ${{ parameters.azurite_config }}
+    condition: ${{ parameters.test_azurite }}
     displayName: Print Azurite config file
 
 #--------------------------------------- Tests: End to end tests with different Storage configurations ------------------------------------------

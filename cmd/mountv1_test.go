@@ -800,7 +800,7 @@ func (suite *generateConfigTestSuite) TestLibfuseIgnoreOptions() {
 	// greater than 8 libfuse options
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o dev,suid")
+		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o dev,suid,nonempty")
 	suite.assert.Nil(err)
 }
 

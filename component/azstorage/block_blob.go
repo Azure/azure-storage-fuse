@@ -375,10 +375,27 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 		}
 		copyStatus = prop.CopyStatus()
 	}
+
 	log.Trace("BlockBlob::RenameFile : %s -> %s done", source, target)
 
 	// Copy of the file is done so now delete the older file
-	return bb.DeleteFile(source)
+	err = bb.DeleteFile(source)
+	for retry := 0; retry < 3 && err == syscall.ENOENT; retry++ {
+		// Sometimes backend is able to copy source file to destination but when we try to delete the
+		// source files it returns back with ENOENT. If file was just created on backend it might happen
+		// that it has not been synced yet at all layers and hence delete is not able to find the source file
+		log.Trace("BlockBlob::RenameFile : %s -> %s, unable to find source. Retrying %d", source, target, retry)
+		time.Sleep(1 * time.Second)
+		err = bb.DeleteFile(source)
+	}
+
+	if err == syscall.ENOENT {
+		// Even after 3 retries, 1 second apart if server returns 404 then source file no longer
+		// exists on the backend and its safe to assume rename was successful
+		err = nil
+	}
+
+	return err
 }
 
 // RenameDirectory : Rename the directory
@@ -591,28 +608,37 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		}
 	}
 
-	// If in case virtual directory exists but its corresponding 0 byte file is not there holding hdi_isfolder then just iterating
-	// BlobItems will fail to identify that directory. In such cases BlobPrefixes help to list all directories
-	// dirList contains all dirs for which we got 0 byte meta file, so except those add rest to the list
+	// In case virtual directory exists but its corresponding 0 byte marker file is not there holding hdi_isfolder then just iterating
+	// over BlobItems will fail to identify that directory. In such cases BlobPrefixes help to list all directories
+	// dirList contains all dirs for which we got 0 byte meta file in this iteration, so exclude those and add rest to the list
+	// Note: Since listing is paginated, sometimes the marker file may come in a different iteration from the BlobPrefix. For such
+	// cases we manually call GetAttr to check the existence of the marker file.
 	for _, blobInfo := range listBlob.Segment.BlobPrefixes {
-		if !dirList[blobInfo.Name] {
-			//log.Info("BlockBlob::List : meta file does not exists for dir %s", blobInfo.Name)
-			// For these dirs we get only the name and no other properties so hardcoding time to current time
-			name := strings.TrimSuffix(blobInfo.Name, "/")
-			attr := &internal.ObjAttr{
-				Path:  split(bb.Config.prefixPath, name),
-				Name:  filepath.Base(name),
-				Size:  4096,
-				Mode:  os.ModeDir,
-				Mtime: time.Now(),
-				Flags: internal.NewDirBitMap(),
+		if _, ok := dirList[blobInfo.Name]; ok {
+			// marker file found in current iteration, skip adding the directory
+			continue
+		} else {
+			// marker file not found in current iteration, so we need to manually check attributes via REST
+			_, err := bb.getAttrUsingRest(blobInfo.Name)
+			// marker file also not found via manual check, safe to add to list
+			if err == syscall.ENOENT {
+				// For these dirs we get only the name and no other properties so hardcoding time to current time
+				name := strings.TrimSuffix(blobInfo.Name, "/")
+				attr := &internal.ObjAttr{
+					Path:  split(bb.Config.prefixPath, name),
+					Name:  filepath.Base(name),
+					Size:  4096,
+					Mode:  os.ModeDir,
+					Mtime: time.Now(),
+					Flags: internal.NewDirBitMap(),
+				}
+				attr.Atime = attr.Mtime
+				attr.Crtime = attr.Mtime
+				attr.Ctime = attr.Mtime
+				attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+				attr.Flags.Set(internal.PropFlagModeDefault)
+				blobList = append(blobList, attr)
 			}
-			attr.Atime = attr.Mtime
-			attr.Crtime = attr.Mtime
-			attr.Ctime = attr.Mtime
-			attr.Flags.Set(internal.PropFlagMetadataRetrieved)
-			attr.Flags.Set(internal.PropFlagModeDefault)
-			blobList = append(blobList, attr)
 		}
 	}
 
