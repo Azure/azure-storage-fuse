@@ -375,6 +375,7 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 		}
 		copyStatus = prop.CopyStatus()
 	}
+
 	log.Trace("BlockBlob::RenameFile : %s -> %s done", source, target)
 
 	// Copy of the file is done so now delete the older file
@@ -386,6 +387,12 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 		log.Trace("BlockBlob::RenameFile : %s -> %s, unable to find source. Retrying %d", source, target, retry)
 		time.Sleep(1 * time.Second)
 		err = bb.DeleteFile(source)
+	}
+
+	if err == syscall.ENOENT {
+		// Even after 3 retries, 1 second apart if server returns 404 then source file no longer
+		// exists on the backend and its safe to assume rename was successful
+		err = nil
 	}
 
 	return err
