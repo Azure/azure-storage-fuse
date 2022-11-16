@@ -436,10 +436,10 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	// Retry policy configuration
 	// A user provided value of 0 doesn't make sense for MaxRetries, MaxTimeout, BackoffTime, or MaxRetryDelay.
 
-	az.stConfig.maxRetries = 7    // Max number of retry to be done  (default 4) (v1 : 0)
-	az.stConfig.maxTimeout = 900  // Max timeout for any single retry (default 1 min) (v1 : 60)
-	az.stConfig.backoffTime = 0   // Delay before any retry (exponential increase) (default 4 sec)
-	az.stConfig.maxRetryDelay = 0 // Maximum allowed delay before retry (default 120 sec) (v1 : 1.2)
+	az.stConfig.maxRetries = 5     // Max number of retry to be done  (default 4) (v1 : 0)
+	az.stConfig.maxTimeout = 900   // Max timeout for any single retry (default 1 min) (v1 : 60)
+	az.stConfig.backoffTime = 4    // Delay before any retry (exponential increase) (default 4 sec)
+	az.stConfig.maxRetryDelay = 60 // Maximum allowed delay before retry (default 120 sec) (v1 : 1.2)
 
 	if opt.MaxRetries != 0 {
 		az.stConfig.maxRetries = opt.MaxRetries

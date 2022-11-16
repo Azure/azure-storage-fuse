@@ -68,6 +68,7 @@ type Libfuse struct {
 	extensionPath         string
 	disableWritebackCache bool
 	ignoreOpenFlags       bool
+	nonEmptyMount         bool
 	lsFlags               common.BitMap16
 }
 
@@ -93,6 +94,7 @@ type LibfuseOptions struct {
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
 	DisableWritebackCache   bool   `config:"disable-writeback-cache" yaml:"-"`
 	IgnoreOpenFlags         bool   `config:"ignore-open-flags" yaml:"ignore-open-flags,omitempty"`
+	nonEmptyMount           bool   `config:"nonempty" yaml:"nonempty,omitempty"`
 }
 
 const compName = "libfuse"
@@ -169,6 +171,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.extensionPath = opt.ExtensionPath
 	lf.disableWritebackCache = opt.DisableWritebackCache
 	lf.ignoreOpenFlags = opt.IgnoreOpenFlags
+	lf.nonEmptyMount = opt.nonEmptyMount
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
@@ -242,14 +245,20 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return err
 	}
 
+	err = config.UnmarshalKey("nonempty", &conf.nonEmptyMount)
+	if err != nil {
+		log.Err("Libfuse::Configure : config error [unable to obtain nonempty]")
+		return err
+	}
+
 	err = lf.Validate(&conf)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [invalid config settings]")
 		return fmt.Errorf("config error in %s [invalid config settings]", lf.Name())
 	}
 
-	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags: %t",
-		lf.readOnly, lf.allowOther, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags)
+	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags: %t, nonempty %t",
+		lf.readOnly, lf.allowOther, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount)
 
 	return nil
 }

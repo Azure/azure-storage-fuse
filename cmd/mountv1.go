@@ -93,6 +93,7 @@ type PipelineConfig struct {
 	ForegroundOption            bool `yaml:"foreground,omitempty"`
 	ReadOnlyOption              bool `yaml:"read-only,omitempty"`
 	AllowOtherOption            bool `yaml:"allow-other,omitempty"`
+	NonEmptyMountOption         bool `yaml:"nonempty,omitempty"`
 	LogOptions                  `yaml:"logging,omitempty"`
 	libfuse.LibfuseOptions      `yaml:"libfuse,omitempty"`
 	stream.StreamOptions        `yaml:"stream,omitempty"`
@@ -115,6 +116,7 @@ var bfv2ComponentsConfigOptions ComponentsConfig
 var bfv2StreamConfigOptions stream.StreamOptions
 var bfv2ForegroundOption bool
 var bfv2ReadOnlyOption bool
+var bfv2NonEmptyMountOption bool
 var bfv2AllowOtherOption bool
 var useAttrCache bool
 var useStream bool
@@ -133,6 +135,7 @@ func resetOptions() {
 	bfv2StreamConfigOptions = stream.StreamOptions{}
 	bfv2ForegroundOption = false
 	bfv2ReadOnlyOption = false
+	bfv2NonEmptyMountOption = false
 	bfv2AllowOtherOption = false
 	useAttrCache = false
 	useStream = false
@@ -241,6 +244,7 @@ var generateConfigCmd = &cobra.Command{
 			bfv2ForegroundOption,
 			bfv2ReadOnlyOption,
 			bfv2AllowOtherOption,
+			bfv2NonEmptyMountOption,
 			bfv2LoggingConfigOptions,
 			bfv2FuseConfigOptions,
 			bfv2StreamConfigOptions,
@@ -293,6 +297,8 @@ func parseFuseConfig(config []string) error {
 			bfv2AllowOtherOption = true
 		} else if v == "allow_other=false" {
 			bfv2AllowOtherOption = false
+		} else if v == "nonempty" {
+			bfv2NonEmptyMountOption = true
 		} else if strings.HasPrefix(v, "attr_timeout=") {
 			timeout, err := strconv.ParseUint(parameter[1], 10, 32)
 			if err != nil {

@@ -108,6 +108,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--container-name=<CONTAINER NAME>`: The container to mount.
     * `--cancel-list-on-mount-seconds=<TIMEOUT IN SECONDS>`: Time for which list calls will be blocked after mount. ( prevent billing charges on mounting)
     * `--virtual-directory=true` : Support virtual directories without existence of a special marker blob for block blob account.
+    * `--subdirectory=<path>` : Subdirectory to mount instead of entire container.
 - File cache options
     * `--file-cache-timeout=<TIMEOUT IN SECONDS>`: Timeout for which file is cached on local system.
     * `--tmp-path=<PATH>`: The path to the file cache.

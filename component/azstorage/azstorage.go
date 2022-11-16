@@ -624,6 +624,9 @@ func init() {
 	virtualDir := config.AddBoolFlag("virtual-directory", false, "Support virtual directories without existence of a special marker blob.")
 	config.BindPFlag(compName+".virtual-directory", virtualDir)
 
+	subDirectory := config.AddStringFlag("subdirectory", "", "Mount only this sub-directory from given container.")
+	config.BindPFlag(compName+".subdirectory", subDirectory)
+
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})
