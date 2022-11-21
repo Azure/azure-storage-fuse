@@ -41,20 +41,22 @@ stages:
         strategy:
           matrix:
             Libfuse:
-              vmImage: 'ubuntu-20.04'
+              vmImage: 'ubuntu-18.04'
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
               container: 'test-cnt-ubn-18'
-              AgentName: "blobfuse-ubuntu20"
+              AgentName: "blobfuse-ubuntu18"
             Libfuse3:
-              vmImage: 'ubuntu-22.04'
+              vmImage: 'ubuntu-20.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
-              container: 'test-cnt-ubn-22'
-              AgentName: "blobfuse-ubuntu22"
+              container: 'test-cnt-ubn-20'
+              AgentName: "blobfuse-ubuntu20"
 
         pool:
-          vmImage: $(vmImage)
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(agentName)
 
         variables:
           - group: NightlyBlobFuse
@@ -83,6 +85,11 @@ stages:
               sudo apt-get install ruby-dev build-essential pkg-config cmake gcc g++ rpm $(fuselib) -y
               sudo gem install fpm -V
             displayName: "Installing Dependencies"
+
+          # get glibc version with which build is done
+          - script: |
+             ldd --version
+            displayName: "GLIBC Version"
 
           # build blobfuse2 and generate binary
           - template: 'azure-pipeline-templates/build-release.yml'
@@ -181,6 +188,11 @@ stages:
               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
             displayName: 'Checkout Branch'
             workingDirectory: $(root_dir)/azure-storage-fuse
+          
+          # get glibc version with which build is done
+          - script: |
+             ldd --version
+            displayName: "GLIBC Version"
 
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Build Artifacts'
@@ -278,6 +290,11 @@ stages:
               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
             displayName: 'Checkout Branch'
             workingDirectory: $(root_dir)/azure-storage-fuse
+          
+          # get glibc version with which build is done
+          - script: |
+             ldd --version
+            displayName: "GLIBC Version"
 
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Build Artifacts'
@@ -359,6 +376,11 @@ stages:
               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
             displayName: 'Checkout Branch'
             workingDirectory: $(root_dir)/azure-storage-fuse
+          
+          # get glibc version with which build is done
+          - script: |
+             ldd --version
+            displayName: "GLIBC Version"
 
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Build Artifacts'
@@ -459,6 +481,11 @@ stages:
               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
             displayName: 'Checkout Branch'
             workingDirectory: $(root_dir)/azure-storage-fuse
+          
+          # get glibc version with which build is done
+          - script: |
+             ldd --version
+            displayName: "GLIBC Version"
 
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Build Artifacts'
@@ -585,6 +612,11 @@ stages:
               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
             displayName: 'Checkout Branch'
             workingDirectory: $(root_dir)/azure-storage-fuse
+          
+          # get glibc version with which build is done
+          - script: |
+             ldd --version
+            displayName: "GLIBC Version"
 
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Build Artifacts'
@@ -687,6 +719,11 @@ stages:
               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
             displayName: 'Checkout Branch'
             workingDirectory: $(root_dir)/azure-storage-fuse
+          
+          # get glibc version with which build is done
+          - script: |
+             ldd --version
+            displayName: "GLIBC Version"
 
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Build Artifacts'
@@ -777,6 +814,11 @@ stages:
               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
             displayName: 'Checkout Branch'
             workingDirectory: $(root_dir)/azure-storage-fuse
+          
+          # get glibc version with which build is done
+          - script: |
+             ldd --version
+            displayName: "GLIBC Version"
 
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Build Artifacts'
@@ -862,6 +904,11 @@ stages:
               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
             displayName: 'Checkout Branch'
             workingDirectory: $(root_dir)/azure-storage-fuse
+          
+          # get glibc version with which build is done
+          - script: |
+             ldd --version
+            displayName: "GLIBC Version"
 
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Build Artifacts'
@@ -949,6 +996,11 @@ stages:
               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
             displayName: 'Checkout Branch'
             workingDirectory: $(root_dir)/azure-storage-fuse
+          
+          # get glibc version with which build is done
+          - script: |
+             ldd --version
+            displayName: "GLIBC Version"
 
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Build Artifacts'
