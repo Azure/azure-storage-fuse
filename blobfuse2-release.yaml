@@ -1082,6 +1082,7 @@ stages:
 
           - script: |
               sudo apt-get update
+              sudo apt-get install dotnet-sdk-6.0
             displayName: "Update depedencies"
             
           # Send images for signing
