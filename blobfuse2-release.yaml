@@ -295,6 +295,8 @@ stages:
           
           # get glibc version with which build is done
           - script: |
+             sudo apt update
+             sudo apt --fix-broken install
              ldd --version
             displayName: "GLIBC Version"
 
