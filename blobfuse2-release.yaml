@@ -1046,11 +1046,11 @@ stages:
     condition: succeeded('TestArtifacts')
     jobs:
       - job: ReleaseBlobfuse
-
-        matrix:
-          Ubuntu-20:
-            vmImage: 'Ubuntu-20.04'
-            AgentName: "blobfuse-ubuntu20"
+        strategy:
+          matrix:
+            Ubuntu-20:
+              vmImage: 'Ubuntu-20.04'
+              AgentName: "blobfuse-ubuntu20"
 
         pool:
           name: "blobfuse-ubuntu-pool"
