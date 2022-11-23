@@ -44,12 +44,14 @@ stages:
               vmImage: 'ubuntu-18.04'
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
+              depends: 'fuse'
               container: 'test-cnt-ubn-18'
               AgentName: "blobfuse-ubuntu18"
             Libfuse3:
               vmImage: 'ubuntu-20.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
+              depends: 'fuse3'
               container: 'test-cnt-ubn-20'
               AgentName: "blobfuse-ubuntu20"
 
@@ -119,7 +121,7 @@ stages:
           # using fpm tool for packaging of our binary & performing post-install operations
           # for additional information about fpm refer https://fpm.readthedocs.io/en/v1.13.1/
           - script: |
-              fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
+              fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags)-x86-64.deb
@@ -128,7 +130,7 @@ stages:
             displayName: 'Make deb Package'
 
           - script: |
-              fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
+              fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags)-x86-64.rpm
