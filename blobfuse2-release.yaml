@@ -1047,7 +1047,7 @@ stages:
     jobs:
       - job: ReleaseBlobfuse
         pool:
-          vmImage: 'ubuntu-20.04'
+          vmImage: 'ubuntu-22.04'
 
         variables:
           - group: NightlyBlobFuse
@@ -1074,8 +1074,7 @@ stages:
 
           - script: |
               sudo apt-get update
-              sudo apt-get install -y dotnet6
-            displayName: "Update dotNet for ESRP"
+            displayName: "Update depedencies"
             
           # Send images for signing
           - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
