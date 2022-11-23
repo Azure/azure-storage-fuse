@@ -1046,8 +1046,11 @@ stages:
     condition: succeeded('TestArtifacts')
     jobs:
       - job: ReleaseBlobfuse
+      
         pool:
-          vmImage: 'ubuntu-22.04'
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals blobfuse-ubuntu20
 
         variables:
           - group: NightlyBlobFuse
