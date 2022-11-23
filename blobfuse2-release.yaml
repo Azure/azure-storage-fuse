@@ -1072,7 +1072,11 @@ stages:
               md5sum $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
             displayName: 'List Artifacts'
 
-
+          - script: |
+              sudo apt-get update
+              sudo apt-get install -y dotnet6
+            displayName: "Update dotNet for ESRP"
+            
           # Send images for signing
           - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
             displayName: 'ESRP CodeSigning blobfuse2'
