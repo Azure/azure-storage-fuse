@@ -1046,9 +1046,9 @@ stages:
   - stage: ReleaseArtifacts
     dependsOn: TestArtifacts
     condition: succeeded('TestArtifacts')
-    timeoutInMinutes: 120
     jobs:
       - job: ReleaseBlobfuse
+        timeoutInMinutes: 120
         strategy:
           matrix:
             Ubuntu-20:
