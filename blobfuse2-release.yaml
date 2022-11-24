@@ -1034,6 +1034,7 @@ stages:
               mount_dir: $(mount_dir)
               temp_dir: $(temp_dir)
               container: $(container)
+              extras: "--foreground=true"
 
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
