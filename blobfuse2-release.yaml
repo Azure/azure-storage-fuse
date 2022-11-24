@@ -988,7 +988,8 @@ stages:
 
           - script: |
               sudo yum update -y
-              sudo yum install git -y
+              sudo yum install git fuse fuse-devel -y
+              sudo tdnf install build-essential git fuse fuse-devel -y
             displayName: 'Install Git'
 
           - script: |

@@ -44,6 +44,7 @@ steps:
 
   - script: |
       blobfuse2 unmount all 
+      sudo kill -9 `pidof blobfuse2`
       sudo fusermount -u ${{ parameters.mount_dir }}
       blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.root_dir }}/block_blob_config.yaml
     displayName: 'Mount Block Blob'
