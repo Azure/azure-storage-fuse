@@ -1053,7 +1053,9 @@ stages:
             Ubuntu-20:
               vmImage: 'Ubuntu-20.04'
               AgentName: "blobfuse-ubuntu20"
-
+            Ubuntu-22:
+              vmImage: 'Ubuntu-22.04'
+              AgentName: "blobfuse-ubuntu22"
         pool:
           name: "blobfuse-ubuntu-pool"
           demands:
