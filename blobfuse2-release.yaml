@@ -251,6 +251,7 @@ stages:
 
           # Create container for blobfuse and publish it
           - script: |
+              sudo apt-get install fuse3 libfuse3-dev -y
               chmod 777 *.sh
               ./dockerinstall.sh
               ./buildcontainer.sh
