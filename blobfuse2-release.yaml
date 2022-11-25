@@ -250,6 +250,7 @@ stages:
             displayName: 'Publish Artifacts' 
 
           # Create container for blobfuse and publish it
+          # This is running only on ubn-22 so its safe to assume its purely fuse3 based system
           - script: |
               sudo apt-get install fuse3 libfuse3-dev -y
               chmod 777 *.sh
