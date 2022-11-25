@@ -984,9 +984,7 @@ stages:
             displayName: "GoTool Setup"
 
           - script: |
-              sudo yum update -y
-              sudo yum install git fuse fuse-devel -y
-              sudo tdnf install build-essential git fuse fuse-devel -y
+              sudo tdnf install build-essential git fuse fuse-devel python36 -y
             displayName: 'Install Git'
 
           - script: |
