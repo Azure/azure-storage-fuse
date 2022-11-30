@@ -44,12 +44,14 @@ stages:
               vmImage: 'ubuntu-18.04'
               fuselib: 'libfuse-dev'
               tags: 'fuse2'
+              depends: 'fuse'
               container: 'test-cnt-ubn-18'
               AgentName: "blobfuse-ubuntu18"
             Libfuse3:
               vmImage: 'ubuntu-20.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
+              depends: 'fuse3'
               container: 'test-cnt-ubn-20'
               AgentName: "blobfuse-ubuntu20"
 
@@ -119,7 +121,7 @@ stages:
           # using fpm tool for packaging of our binary & performing post-install operations
           # for additional information about fpm refer https://fpm.readthedocs.io/en/v1.13.1/
           - script: |
-              fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
+              fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags)-x86-64.deb
@@ -128,7 +130,7 @@ stages:
             displayName: 'Make deb Package'
 
           - script: |
-              fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d fuse \
+              fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags)-x86-64.rpm
@@ -183,7 +185,6 @@ stages:
               git clone https://github.com/Azure/azure-storage-fuse
             displayName: 'Checkout Code'
             workingDirectory: $(root_dir)
-
           - script: |
               git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
             displayName: 'Checkout Branch'
@@ -193,7 +194,7 @@ stages:
           - script: |
              ldd --version
             displayName: "GLIBC Version"
-
+            
           - task: DownloadBuildArtifacts@0
             displayName: 'Download Build Artifacts'
             inputs:
@@ -206,14 +207,13 @@ stages:
               cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-temp
-
+            
           - script: |
               sudo dpkg --info blobfuse2*.deb
               sudo dpkg -i blobfuse2*.deb
               sudo apt-get install $(fuse-version) build-essential -y
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
-
           - template: 'azure-pipeline-templates/release-distro-tests.yml'
             parameters:
               root_dir: $(root_dir)
@@ -256,7 +256,6 @@ stages:
               tags: 'fuse3'
               container: 'test-cnt-ubn-20'
               AgentName: "blobfuse-ubuntu20"
-
         pool:
           name: "blobfuse-ubuntu-pool"
           demands:
@@ -293,6 +292,8 @@ stages:
           
           # get glibc version with which build is done
           - script: |
+             sudo apt update
+             sudo apt --fix-broken install
              ldd --version
             displayName: "GLIBC Version"
 
@@ -311,8 +312,8 @@ stages:
 
           - script: |
               sudo dpkg --info blobfuse2*.deb
-              sudo dpkg -i blobfuse2*.deb
               sudo apt-get install $(fuse-version) build-essential -y
+              sudo dpkg -i blobfuse2*.deb
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
 
@@ -983,8 +984,7 @@ stages:
             displayName: "GoTool Setup"
 
           - script: |
-              sudo yum update -y
-              sudo yum install git -y
+              sudo tdnf install build-essential git fuse fuse-devel python36 -y
             displayName: 'Install Git'
 
           - script: |
@@ -1029,6 +1029,7 @@ stages:
               mount_dir: $(mount_dir)
               temp_dir: $(temp_dir)
               container: $(container)
+              # extras: "--foreground=true"
 
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
@@ -1042,8 +1043,16 @@ stages:
     condition: succeeded('TestArtifacts')
     jobs:
       - job: ReleaseBlobfuse
+        timeoutInMinutes: 120
+        strategy:
+          matrix:
+            Ubuntu-22:
+              vmImage: 'Ubuntu-22.04'
+              AgentName: "blobfuse-ubuntu22"
         pool:
-          vmImage: 'ubuntu-20.04'
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
 
         variables:
           - group: NightlyBlobFuse
@@ -1068,7 +1077,15 @@ stages:
               md5sum $(Build.ArtifactStagingDirectory)/blobfuse2/*.rpm
             displayName: 'List Artifacts'
 
-
+          - script: |
+              sudo apt-get update
+              wget https://packages.microsoft.com/config/ubuntu/20.04/packages-microsoft-prod.deb 
+              sudo dpkg -i packages-microsoft-prod.deb 
+              sudo apt update 
+              sudo apt install apt-transport-https -y
+              sudo apt install dotnet-sdk-3.1 -y
+            displayName: "Update dependencies"
+            
           # Send images for signing
           - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
             displayName: 'ESRP CodeSigning blobfuse2'

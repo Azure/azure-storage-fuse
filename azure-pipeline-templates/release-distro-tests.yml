@@ -9,6 +9,9 @@ parameters:
     type: string
   - name: container
     type: string
+  - name: extras
+    type: string 
+    default: ""
 
 steps:
   - script: |
@@ -44,8 +47,9 @@ steps:
 
   - script: |
       blobfuse2 unmount all 
+      sudo kill -9 `pidof blobfuse2`
       sudo fusermount -u ${{ parameters.mount_dir }}
-      blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.root_dir }}/block_blob_config.yaml
+      blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.root_dir }}/block_blob_config.yaml ${{ parameters.extras}}
     displayName: 'Mount Block Blob'
     
     # Wait for some time to let the container come up

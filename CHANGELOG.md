@@ -1,4 +1,4 @@
-## 2.0.0-preview.5 (WIP)
+## 2.0.0-preview.5 (2022-11-30)
 **Bug Fixes**
 - [#968](https://github.com/Azure/azure-storage-fuse/issues/968) Duplicate directory listing
 - [#964](https://github.com/Azure/azure-storage-fuse/issues/964) Rename for FNS account failing with source does not exists error
