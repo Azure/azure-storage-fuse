@@ -1,5 +1,5 @@
-## 2.0.1-preview.1 (WIP)
-**Bug Fixes**
+## 2.0.1 (2022-12-02)
+- Copy of GA release of Blobfuse2. This release was necessary to ensure the GA version resolves ahead of the preview versions.
 
 ## 2.0.0 (2022-11-30) (GA release)
 **Bug Fixes**
