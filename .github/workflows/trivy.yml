@@ -53,8 +53,13 @@ jobs:
           chmod 777 *.sh
           ./dockerinstall.sh
           ./buildcontainer.sh
+          cp ../blobfuse2 /usr/local/bin
+
+       # Create container for blobfuse2
+      - name: Copy docker image
+        run: |
           export DOCK_TAG="azure-blobfuse2.`../blobfuse2 --version | cut -d " " -f 3`"
-          cd -
+          docker image ls
           docker save -o ./blobfuse2-dock $DOCK_TAG
 
       - name: Run Trivy vulnerability scanner
