@@ -54,30 +54,32 @@ jobs:
         run: |
           ldd --version
 
-       # Create container for blobfuse2
-      - name: Build container
+      #  # Create container for blobfuse2
+      # - name: Build container
+      #   run: |
+      #     sudo apt-get install fuse3 libfuse3-dev -y
+      #     chmod 777 *.sh
+      #     ./dockerinstall.sh
+      #     ./buildcontainer.sh
+      #     export DOCK_TAG="azure-blobfuse2.`../blobfuse2 --version | cut -d " " -f 3`"
+      #     docker save -o ./blobfuse2 $DOCK_TAG
+      #   displayName: "Build container"
+      #   workingDirectory: $(work_dir)/docker
+
+      - name: Build an image from Dockerfile
         run: |
-          sudo apt-get install fuse3 libfuse3-dev -y
-          chmod 777 *.sh
-          ./dockerinstall.sh
-          ./buildcontainer.sh
-          export DOCK_TAG="azure-blobfuse2.`../blobfuse2 --version | cut -d " " -f 3`"
-          docker save -o ./blobfuse2 $DOCK_TAG
-        displayName: "Build container"
-        workingDirectory: $(work_dir)/docker
+          export PUBLISH=true
+          export REGISTRY=test
+          export IMAGE_VERSION=latest
+          export DOCKER_CLI_EXPERIMENTAL=enabled
+          make container
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: '$(work_dir)/docker/blobfuse2'
+          image-ref: 'test/blob-csi:latest'
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
-          output: 'trivy-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,UNKNOWN'
-
-      - name: Upload Trivy scan results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v2
-        with:
-          sarif_file: 'trivy-results.sarif'
