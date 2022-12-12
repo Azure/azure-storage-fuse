@@ -35,10 +35,9 @@ jobs:
       
     steps:
       - name: Install GoLang
-        uses: GoTool@0
-        with:
-          version: '1.16.2'
-      
+        run: |
+          sudo apt-get install golang
+
       - name: Checkout Code
         run: |
           git clone https://github.com/Azure/azure-storage-fuse
