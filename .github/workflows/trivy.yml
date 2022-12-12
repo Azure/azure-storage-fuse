@@ -55,12 +55,12 @@ jobs:
           ./buildcontainer.sh
           export DOCK_TAG="azure-blobfuse2.`../blobfuse2 --version | cut -d " " -f 3`"
           cd -
-          docker save -o ./blobfuse2 $DOCK_TAG
+          docker save -o ./blobfuse2-dock $DOCK_TAG
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          image-ref: 'blobfuse2'
+          image-ref: './blobfuse2-dock'
           format: 'table'
           exit-code: '1'
           ignore-unfixed: true
