@@ -151,10 +151,10 @@ jobs:
 
     # Trivy Vulnerability check
     - script: |
-        trivy fs -i blobfuse2
+        trivy fs -s LOW,MEDIUM,HIGH,CRITICAL -i blobfuse2
       displayName: 'Trivy Check'
       workingDirectory: ./
-      
+
     # Running unit tests for fuse3 on ubn-20
     - task: Go@0
       inputs:
