@@ -55,7 +55,7 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: fs
-          input: './blobfuse2'
+          scan-ref: './blobfuse2'
           output: 'trivy-results-binary.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN'
 
