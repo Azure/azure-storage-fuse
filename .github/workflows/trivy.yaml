@@ -33,13 +33,15 @@ jobs:
 
       - name: Build Blobfuse2
         run: | 
-          sudo apt-get install fuse3 libfuse3-dev
+          sudo apt-get install fuse3 libfuse3-dev -y
+          cd azure-storage-fuse
           go build -o blobfuse2
+          ls -l
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@7b7aa264d83dc58691451798b4d117d53d21edfe
         with:
-          image-ref: 'blobfuse2'
+          image-ref: './azure-storage-fuse/blobfuse2'
           format: 'template'
           template: '@/contrib/sarif.tpl'
           output: 'trivy-results.sarif'
