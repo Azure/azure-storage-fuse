@@ -33,6 +33,7 @@ jobs:
 
       - name: Build Blobfuse2
         run: | 
+          sudo apt-get install fuse3 libfuse3-dev
           go build -o blobfuse2
 
       - name: Run Trivy vulnerability scanner
