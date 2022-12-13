@@ -39,7 +39,7 @@ jobs:
           format: 'sarif'
           output: 'trivy-results.sarif'
           severity: 'LOW,MEDIUM,HIGH,CRITICAL'
-          
+
       - name: List Issues
         run: |
           cat trivy-results.sarif
@@ -61,5 +61,7 @@ jobs:
           scan-type: fs
           scan-ref: './blobfuse2'
           ignore-unfixed: true
+          format: 'sarif'
+          output: 'trivy-results-binary.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'
 
