@@ -63,7 +63,11 @@ jobs:
           export DOCK_TAG="azure-blobfuse2.`blobfuse2 --version | cut -d " " -f 3`"
           echo $DOCK_TAG
           docker save -o /tmp/blobfuse2-dock $DOCK_TAG
-          ls -l 
+          ls -l /tmp/ 
+
+      - name: Validate image exists
+        run: |
+          ls -l /tmp/ 
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
