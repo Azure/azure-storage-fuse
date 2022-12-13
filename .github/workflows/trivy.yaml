@@ -31,19 +31,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      # - name: Run Trivy vulnerability scanner in repo mode
-      #   uses: aquasecurity/trivy-action@master
-      #   with:
-      #     scan-type: 'fs'
-      #     ignore-unfixed: true
-      #     format: 'sarif'
-      #     output: 'trivy-results.sarif'
-      #     severity: 'LOW,MEDIUM,HIGH,CRITICAL'
+      - name: Run Trivy vulnerability scanner in repo mode
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'LOW,MEDIUM,HIGH,CRITICAL'
 
-      # - name: Upload Trivy scan results to GitHub Security tab
-      #   uses: github/codeql-action/upload-sarif@v2
-      #   with:
-      #     sarif_file: 'trivy-results.sarif'
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
 
       - name: Build Blobfuse2
         run: | 
@@ -56,8 +56,10 @@ jobs:
         with:
           scan-type: fs
           scan-ref: './blobfuse2'
+          ignore-unfixed: true
+          format: 'sarif'
           output: 'trivy-results-binary.sarif'
-          severity: 'CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW'
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v2
