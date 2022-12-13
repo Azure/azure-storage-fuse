@@ -48,14 +48,13 @@ jobs:
       - name: Build Blobfuse2
         run: | 
           sudo apt-get install fuse3 libfuse3-dev -y
-          cd azure-storage-fuse
           go build -o blobfuse2
           ls -l
 
       - name: Run Trivy vulnerability scanner on binary
         uses: aquasecurity/trivy-action@master
         with:
-          input: './azure-storage-fuse/blobfuse2'
+          input: './blobfuse2'
           output: 'trivy-results-binary.sarif'
           severity: 'LOW,MEDIUM,HIGH,CRITICAL'
 
