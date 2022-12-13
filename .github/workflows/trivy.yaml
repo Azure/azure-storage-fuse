@@ -31,6 +31,20 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
+      - name: Run Trivy vulnerability scanner in repo mode
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          ignore-unfixed: true
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'LOW,MEDIUM,HIGH,CRITICAL'
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
       - name: Build Blobfuse2
         run: | 
           sudo apt-get install fuse3 libfuse3-dev -y
@@ -38,16 +52,15 @@ jobs:
           go build -o blobfuse2
           ls -l
 
-      - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@7b7aa264d83dc58691451798b4d117d53d21edfe
+      - name: Run Trivy vulnerability scanner on binary
+        uses: aquasecurity/trivy-action@master
         with:
-          image-ref: './azure-storage-fuse/blobfuse2'
-          format: 'template'
-          template: '@/contrib/sarif.tpl'
-          output: 'trivy-results.sarif'
-          severity: 'CRITICAL,HIGH'
+          input: './azure-storage-fuse/blobfuse2'
+          output: 'trivy-results-binary.sarif'
+          severity: 'LOW,MEDIUM,HIGH,CRITICAL'
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v2
         with:
-          sarif_file: 'trivy-results.sarif'
+          sarif_file: 'trivy-results-binary.sarif'
+
