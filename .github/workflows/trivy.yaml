@@ -65,3 +65,11 @@ jobs:
           output: 'trivy-results-binary.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'
 
+      - name: List Issues
+        run: |
+          cat trivy-results-binary.sarif
+
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results-binary.sarif'
