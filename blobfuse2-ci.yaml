@@ -149,6 +149,12 @@ jobs:
       failOnStderr: true
       workingDirectory: ./
 
+    # Trivy Vulnerability check
+    - script: |
+        trivy fs -i blobfuse2
+      displayName: 'Trivy Check'
+      workingDirectory: ./
+      
     # Running unit tests for fuse3 on ubn-20
     - task: Go@0
       inputs:
@@ -157,12 +163,6 @@ jobs:
         workingDirectory: ./
       displayName: 'Unit tests'
       continueOnError: false
-
-    # Trivy Vulnerability check
-    - script: |
-        trivy fs -i blobfuse2
-      displayName: 'Trivy Check'
-      workingDirectory: ./
 
     - task: ComponentGovernanceComponentDetection@0
       inputs:
