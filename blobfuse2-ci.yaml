@@ -149,11 +149,11 @@ jobs:
       failOnStderr: true
       workingDirectory: ./
 
-    # Trivy Vulnerability check
-    - script: |
-        trivy fs -s LOW,MEDIUM,HIGH,CRITICAL -i blobfuse2
-      displayName: 'Trivy Check'
-      workingDirectory: ./
+    # # Trivy Vulnerability check
+    # - script: |
+    #     trivy fs -s LOW,MEDIUM,HIGH,CRITICAL -i blobfuse2
+    #   displayName: 'Trivy Check'
+    #   workingDirectory: ./
 
     # Running unit tests for fuse3 on ubn-20
     - task: Go@0

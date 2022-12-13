@@ -51,12 +51,17 @@ jobs:
           go build -o blobfuse2
           ls -l
 
-      - name: Run Trivy vulnerability scanner on binary
+      - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
-          input: './blobfuse2'
+          scan-type: fs
+          scan-ref: './blobfuse2'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
           output: 'trivy-results-binary.sarif'
-          severity: 'LOW,MEDIUM,HIGH,CRITICAL'
+          severity: 'CRITICAL,HIGH,MEDIUM,LOW,UNKNOWN'
 
       - name: Upload Trivy scan results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v2
