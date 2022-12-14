@@ -235,7 +235,7 @@ For non-HNS accounts blobfuse expects special directory marker files to exist in
 
 Blobfuse2 supports both fuse2 and fuse3 compatible linux distros. In all linux distros kernel cached contents of file in its page-cache. As long as cache is valid read/write are served from cache and calls will not reach to file-system drivers (blobfuse in our case). This page-cache is invalidated when page is swapped-out, manually cleared by user through cli or file-system driver requests for it.
 
-In case of fuse2 compliant distros, libfuse does not support invalidating the page cache. Contents once cached will remain with kernel untill user manually clears the page-cache or kernel decides to swap it out. This means even if the file size or LMT has changed and blobfuse decided to refresh the content by redownloading the file, on read user will still get the stale contents.
+In case of fuse2 compliant distros, libfuse does not support invalidating the page cache. Contents once cached will remain with kernel until user manually clears the page-cache or kernel decides to swap it out. This means even if the file size or LMT has changed and blobfuse decided to refresh the content by redownloading the file, on read user will still get the stale contents.
 
 In case of fuse3 compliant distros, blobfuse configures libfuse to invalidate the page cache on file size or LMT change so this issue will not be hit.
 
