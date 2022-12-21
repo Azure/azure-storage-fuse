@@ -1,3 +1,6 @@
+## 2.0.2 (WIP)
+- Upgrade dependencies to resolve trivy scan failures.
+
 ## 2.0.1 (2022-12-02)
 - Copy of GA release of Blobfuse2. This release was necessary to ensure the GA version resolves ahead of the preview versions.
 
