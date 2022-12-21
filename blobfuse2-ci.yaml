@@ -51,11 +51,6 @@ jobs:
         sudo apt-get install $(fuselib) -y
       displayName: 'Install libfuse'
 
-    - script: |
-        wget https://github.com/aquasecurity/trivy/releases/download/v0.18.3/trivy_0.18.3_Linux-64bit.deb
-        sudo dpkg -i trivy_0.18.3_Linux-64bit.deb
-      displayName: "Install Trivy"
-
     - task: Go@0
       inputs:
         command: 'build'
@@ -147,12 +142,6 @@ jobs:
       displayName: 'Notice file check'
       condition: always()
       failOnStderr: true
-      workingDirectory: ./
-
-    # Trivy Vulnerability check
-    - script: |
-        trivy fs -s LOW,MEDIUM,HIGH,CRITICAL -i blobfuse2
-      displayName: 'Trivy Check'
       workingDirectory: ./
 
     # Running unit tests for fuse3 on ubn-20
