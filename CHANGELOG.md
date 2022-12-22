@@ -1,7 +1,8 @@
 ## 2.0.2 (WIP)
 **Bug Fixes**
-- [#999] Upgrade dependencies to resolve known CVEs.
-- [#1002] In case version check fails to connect to public container, dump a log to check network and proxy settings.
+- [#999](https://github.com/Azure/azure-storage-fuse/issues/999) Upgrade dependencies to resolve known CVEs.
+- [#1002](https://github.com/Azure/azure-storage-fuse/issues/1002) In case version check fails to connect to public container, dump a log to check network and proxy settings.
+
 ## 2.0.1 (2022-12-02)
 - Copy of GA release of Blobfuse2. This release was necessary to ensure the GA version resolves ahead of the preview versions.
 
