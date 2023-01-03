@@ -130,6 +130,9 @@ func beginDetectNewVersion() chan interface{} {
 		remoteVersion, err := getRemoteVersion(latestVersionUrl)
 		if err != nil {
 			log.Err("beginDetectNewVersion: error getting latest version [%s]", err.Error())
+			if strings.Contains(err.Error(), "no such host") {
+				log.Err("beginDetectNewVersion: check your network connection and proxy settings")
+			}
 			completed <- err.Error()
 			return
 		}
