@@ -411,6 +411,9 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Ctime:  lastModified,
 		Crtime: lastModified,
 		Flags:  internal.NewFileBitMap(),
+		MD5:    prop.ContentMD5(),
+		// Tier: prop.AccessTier(),
+		Type: prop.ContentType(),
 	}
 	parseProperties(attr, prop.XMsProperties())
 	if azbfs.PathResourceDirectory == azbfs.PathResourceType(prop.XMsResourceType()) {
@@ -493,7 +496,11 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 			Ctime:  pathInfo.LastModifiedTime(),
 			Crtime: pathInfo.LastModifiedTime(),
 			Flags:  internal.NewFileBitMap(),
+			MD5:    pathInfo.ContentMD5(),
+			//Tier:	pathInfo.AccessTier(),
+			//Type: pathInfo.ContenContentType(),
 		}
+
 		if pathInfo.IsDirectory != nil && *pathInfo.IsDirectory {
 			attr.Flags = internal.NewDirBitMap()
 			attr.Mode = attr.Mode | os.ModeDir

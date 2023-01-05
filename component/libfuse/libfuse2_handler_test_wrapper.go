@@ -668,3 +668,27 @@ func testUtimens(suite *libfuseTestSuite) {
 	err := libfuse2_utimens(path, nil)
 	suite.assert.Equal(C.int(0), err)
 }
+
+func testGetXAttr(suite *libfuseTestSuite) {
+	defer suite.cleanupTest()
+	name := "path"
+	path := C.CString("/" + name)
+	defer C.free(unsafe.Pointer(path))
+
+	data := make([]byte, 100)
+	cData := C.CString(string(data))
+	defer C.free(unsafe.Pointer(cData))
+
+	for _, xattr := range []string{XAttrMD5, XAttrTier, XAttrType, "user.x-ms-meta-abcd"} {
+		cxattr := C.CString(xattr)
+		suite.mock.EXPECT().GetAttr(internal.GetAttrOptions{Name: name}).Return(&internal.ObjAttr{}, nil)
+		err := libfuse_getxattr(path, cxattr, cData, C.size_t(100))
+		suite.assert.NotEqual(C.int(0), err)
+		C.free(unsafe.Pointer(cxattr))
+	}
+
+	cxattr := C.CString("abcde")
+	err := libfuse_getxattr(path, cxattr, cData, C.size_t(100))
+	suite.assert.NotEqual(C.int(0), err)
+	C.free(unsafe.Pointer(cxattr))
+}

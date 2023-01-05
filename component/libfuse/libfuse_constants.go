@@ -53,4 +53,10 @@ const (
 	source      = "Src"
 	dest        = "Dest"
 	trgt        = "Target"
+
+	XAttrPrefix     = "user.x-ms-"
+	XAttrMetaPrefix = "user.x-ms-meta-"
+	XAttrTier       = "user.x-ms-access-tier"
+	XAttrMD5        = "user.x-ms-content-md5"
+	XAttrType       = "user.x-ms-content-type"
 )

@@ -44,11 +44,13 @@ package libfuse
 // #include "extension_handler.h"
 import "C"
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
+	"strings"
 	"syscall"
 	"unsafe"
 
@@ -999,4 +1001,66 @@ func blobfuse_cache_update(path *C.char) C.int {
 	name = common.NormalizeObjectName(name)
 	go fuseFS.NextComponent().FileUsed(name) //nolint
 	return 0
+}
+
+// ----------------------- XATTR Specific code ------------------------------------
+// libfuse_getxattr retrieves the value of an extended attribute of a file
+//export libfuse_getxattr
+func libfuse_getxattr(path *C.char, attr *C.char, value *C.char, size C.size_t) C.int {
+	// We only support user.x-ms- extended attributes, for anything else return nodata
+	xattr := C.GoString(attr)
+	if !strings.HasPrefix(xattr, XAttrPrefix) {
+		log.Err("Libfuse::libfuse_getxattr : error reading extended attribute %s", xattr)
+		return -C.ENODATA
+	}
+
+	name := trimFusePath(path)
+	name = common.NormalizeObjectName(name)
+	if name == "" {
+		// No XATTR support for root
+		return 0
+	}
+
+	log.Trace("Libfuse::libfuse_getxattr : %s attr %s", name, xattr)
+
+	// Get attributes
+	blobAttr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
+	if err != nil {
+		// Unable to get attributes for this object
+		return -C.ENOENT
+	}
+
+	v := ""
+	// We only support user.x-ms- extended attributes
+	switch {
+	case xattr == XAttrMD5:
+		// x-ms-content-md5 exposes MD5 sum of the blob
+		v = hex.EncodeToString(blobAttr.MD5)
+	case xattr == XAttrTier:
+		// x-ms-access-tier exposes Tier of the blob
+		v = blobAttr.Tier
+	case xattr == XAttrType:
+		// x-ms-content-type exposes blob type
+		v = blobAttr.Type
+	case strings.Contains(xattr, XAttrMetaPrefix):
+		// x-ms-meta-*** is to extract specific metadata of the object
+		found := false
+		metaName := xattr[len(XAttrMetaPrefix):]
+		v, found = blobAttr.Metadata[metaName]
+		if !found {
+			return -C.ENODATA
+		}
+	default:
+		log.Err("Libfuse::libfuse_getxattr : invalid extended attribute %s, attr: %s", name, xattr)
+		return -C.ENODATA
+	}
+
+	data := (*[1 << 30]byte)(unsafe.Pointer(value))
+	if data == nil {
+		return 0
+	}
+
+	copy(data[:size-1], v)
+	data[len(v)] = 0
+	return C.int(len(v) + 1)
 }

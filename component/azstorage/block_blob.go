@@ -455,6 +455,8 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 		Crtime: prop.CreationTime(),
 		Flags:  internal.NewFileBitMap(),
 		MD5:    prop.ContentMD5(),
+		Tier:   prop.AccessTier(),
+		Type:   prop.ContentType(),
 	}
 
 	parseMetadata(attr, prop.NewMetadata())
@@ -594,6 +596,8 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			Crtime: dereferenceTime(blobInfo.Properties.CreationTime, blobInfo.Properties.LastModified),
 			Flags:  internal.NewFileBitMap(),
 			MD5:    blobInfo.Properties.ContentMD5,
+			Tier:   string(blobInfo.Properties.AccessTier),
+			Type:   *blobInfo.Properties.ContentType,
 		}
 
 		parseMetadata(attr, blobInfo.Metadata)

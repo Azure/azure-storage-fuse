@@ -114,6 +114,9 @@ extern int libfuse_readlink(char *path, char *buf, size_t size);
 extern int libfuse_fsync(char *path, int, fuse_file_info_t *fi);
 extern int libfuse_fsyncdir(char *path, int, fuse_file_info_t *);
 
+// Xattr get and list methods (set and remove are not supported for now)
+extern int libfuse_getxattr(char *path, char *name, char *value, size_t size);
+
 // chmod, chown and utimens are lib version specific so defined later
 
 #ifdef __FUSE2__
@@ -146,12 +149,11 @@ static int native_flush_file(char *path, fuse_file_info_t *fi);
 // -------------------------------------------------------------------------------------------------------------
 // Methods not implemented by blobfuse2
 
+//extern int libfuse_listxattr(char* path, char *list, size_t size);
+//extern int libfuse_setxattr(char *path, char *name, char *value, size_t size, int flags);
+//extern int libfuse_removexattr(char *path, char *name);
 // extern int libfuse_mknod(char *path, mode_t mode, dev_t dev);
 // extern int libfuse_link(char *from, char *to);
-// extern int libfuse_setxattr(char *path, char *name, char *value, size_t size, int flags);
-// extern int libfuse_getxattr(char *path, char *name, char *value, size_t size);
-// extern int libfuse_listxattr(char* path, char *list, size_t size);
-// extern int libfuse_removexattr(char *path, char *name);
 // extern int libfuse_access(char *path, int mask);
 // extern int libfuse_lock
 // extern int libfuse_bmap

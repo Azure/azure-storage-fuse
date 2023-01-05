@@ -115,6 +115,8 @@ static int populate_callbacks(fuse_operations_t *opt)
     opt->utimens    = (int (*)(const char *path, const timespec_t tv[2], fuse_file_info_t *fi))libfuse_utimens;
     #endif
 
+    opt->getxattr = (int (*)(const char *path, const char *name, char *value, size_t size))libfuse_getxattr;
+    
     return 0;
 }
 

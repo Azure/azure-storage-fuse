@@ -171,7 +171,7 @@ Refer to 'docker' folder in this repo. It contains a sample 'Dockerfile'. If you
 - mkfifo : fifo creation is not supported by blobfuse2 and this will result in "function not implemented" error
 - chown  : Change of ownership is not supported by Azure Storage hence Blobfuse2 does not support this.
 - Creation of device files or pipes is not supported by Blobfuse2.
-- Blobfuse2 does not support extended-attributes (x-attrs) operations
+- Blobfuse2 does not support extended-attributes (x-attrs) operations (remove, list, set). Only get is supported.
 
 ## Un-Supported Scenarios
 - Blobfuse2 does not support overlapping mount paths. While running multiple instances of Blobfuse2 make sure each instance has a unique and non-overlapping mount point.
@@ -185,7 +185,13 @@ Refer to 'docker' folder in this repo. It contains a sample 'Dockerfile'. If you
 
 ## Limitations
 - In case of BlockBlob accounts, ACLs are not supported by Azure Storage so Blobfuse2 will by default return success for 'chmod' operation. However it will work fine for Gen2 (DataLake) accounts.
+- In extended-attribute case, blobfuse2 supports only 'get' operation. Only below list of attributes are supported :
 
+    * "user.x-ms-content-md5" : MD5 Sum of the blob
+    * "user.x-ms-access-tier" : Blob access tier (supported only on block blob for now)
+    * "user.x-ms-content-type" : Blob content type (supported only on block blob for now)
+    * "user.x-ms-meta-\<meta-name\>" : Get specific metadata from Blob
+    * E.g. : attr -g "x-ms-access-tier" /usr/blobfuse2/abcd.txt
 
 ### Syslog security warning
 By default, Blobfuse2 will log to syslog. The default settings will, in some cases, log relevant file paths to syslog. 

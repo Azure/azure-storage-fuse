@@ -299,6 +299,10 @@ func (suite *libfuseTestSuite) TestUtimens() {
 	testUtimens(suite)
 }
 
+func (suite *libfuseTestSuite) TestGetXAttrs() {
+	testGetXAttr(suite)
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestLibfuseTestSuite(t *testing.T) {
