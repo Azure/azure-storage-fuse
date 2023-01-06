@@ -300,6 +300,18 @@ var mountCmd = &cobra.Command{
 					}
 					perm := ^uint32(permission) & 777
 					config.Set("libfuse.default-permission", fmt.Sprint(perm))
+				} else if strings.HasPrefix(v, "uid=") {
+					val, err := strconv.ParseUint(parameter[1], 10, 32)
+					if err != nil {
+						return fmt.Errorf("failed to parse uid [%s]", err.Error())
+					}
+					config.Set("libfuse.uid", fmt.Sprint(val))
+				} else if strings.HasPrefix(v, "gid=") {
+					val, err := strconv.ParseUint(parameter[1], 10, 32)
+					if err != nil {
+						return fmt.Errorf("failed to parse gid [%s]", err.Error())
+					}
+					config.Set("libfuse.gid", fmt.Sprint(val))
 				} else {
 					return errors.New(common.FuseAllowedFlags)
 				}
@@ -442,7 +454,8 @@ var mountCmd = &cobra.Command{
 
 func ignoreFuseOptions(opt string) bool {
 	for _, o := range common.FuseIgnoredFlags() {
-		if o == opt {
+		// Flags like uid and gid come with value so exact string match is not correct in that case.
+		if strings.HasPrefix(opt, o) {
 			return true
 		}
 	}

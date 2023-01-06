@@ -95,6 +95,8 @@ type LibfuseOptions struct {
 	DisableWritebackCache   bool   `config:"disable-writeback-cache" yaml:"-"`
 	IgnoreOpenFlags         bool   `config:"ignore-open-flags" yaml:"ignore-open-flags,omitempty"`
 	nonEmptyMount           bool   `config:"nonempty" yaml:"nonempty,omitempty"`
+	Uid                     uint32 `config:"uid" yaml:"uid,omitempty"`
+	Gid                     uint32 `config:"gid" yaml:"uid,omitempty"`
 }
 
 const compName = "libfuse"
@@ -210,6 +212,16 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		log.Err("Libfuse::Validate : config error [unable to obtain current user info]")
 		return nil
 	}
+
+	// if config.IsSet(compName + ".uid") {
+	// 	lf.ownerUID = opt.Uid
+	// }
+
+	// if config.IsSet(compName + ".gid") {
+	// 	lf.ownerGID = opt.Gid
+	// }
+
+	log.Info("Libfuse::Validate : UID %v, GID %v", lf.ownerUID, lf.ownerGID)
 
 	return nil
 }
