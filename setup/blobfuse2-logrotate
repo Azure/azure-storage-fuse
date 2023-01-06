@@ -1,5 +1,3 @@
-su root syslog
-
 /var/log/blobfuse2.log 
 /var/log/bfusemon.log
 /var/log/blobfuse2-rest.log {
