@@ -442,7 +442,8 @@ var mountCmd = &cobra.Command{
 
 func ignoreFuseOptions(opt string) bool {
 	for _, o := range common.FuseIgnoredFlags() {
-		if o == opt {
+		// Flags like uid and gid come with value so exact string match is not correct in that case.
+		if strings.HasPrefix(opt, o) {
 			return true
 		}
 	}
