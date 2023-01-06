@@ -44,6 +44,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -353,6 +354,44 @@ func (suite *fileTestSuite) TestFileGetStat() {
 	suite.Equal(false, stat.IsDir())
 	suite.Equal("test", stat.Name())
 	suite.LessOrEqual(modTineDiff.Hours(), float64(1))
+
+	suite.fileTestCleanup([]string{fileName})
+}
+
+// # Get xattr of a file
+func (suite *fileTestSuite) TestFileXAttr() {
+	fileName := suite.testPath + "/test"
+	f, err := os.Create(fileName)
+	suite.Equal(nil, err)
+	f.Close()
+	time.Sleep(time.Second * 3)
+
+	stat, err := os.Stat(fileName)
+	suite.Equal(nil, err)
+	suite.Equal(false, stat.IsDir())
+	suite.Equal("test", stat.Name())
+
+	// get xattr of the file
+	data := make([]byte, 100)
+	sz, err := syscall.Getxattr(fileName, "user.x-ms-content-md5", data)
+	suite.NotEqual(sz, 0)
+	suite.Nil(err)
+
+	sz, err = syscall.Getxattr(fileName, "user.x-ms-access-tier", data)
+	suite.NotEqual(sz, 0)
+	suite.Nil(err)
+
+	sz, err = syscall.Getxattr(fileName, "user.x-ms-content-type", data)
+	suite.NotEqual(sz, 0)
+	suite.Nil(err)
+
+	sz, err = syscall.Getxattr(fileName, "user.x-ms-abcd", data)
+	suite.LessOrEqual(sz, 0)
+	suite.NotNil(err)
+
+	sz, err = syscall.Getxattr(fileName, "user.abcd", data)
+	suite.LessOrEqual(sz, 0)
+	suite.NotNil(err)
 
 	suite.fileTestCleanup([]string{fileName})
 }
