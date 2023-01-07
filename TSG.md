@@ -240,6 +240,13 @@ In case of fuse2 compliant distros, libfuse does not support invalidating the pa
 In case of fuse3 compliant distros, blobfuse configures libfuse to invalidate the page cache on file size or LMT change so this issue will not be hit.
 
 If user is observing that list or stat call to file shows updated time or size but contents are not reflecting accordingly, first confirm with blobfuse logs that file was indeed downloaded afresh. If file-cache-timeout has not expired then blobfuse will keep using the current version of file persisted on temp cache and contents will not be refreshed. If blobfuse has downloaded the latest file and user still observes stale contents then clear the kernel page-cache manually using ```sysctl -w vm.drop_caches=3``` command.
+    
+If your workflow involves updating the file directly on container (not using blobfuse) and you wish to get latest contents on blobfuse mount then do the following (for fuse3 compliant linux distro only):
+    
+    - set all timeouts in libfuse section to 0 (entry, attribute, negative)
+    - remove attr_cache from your pipeline section in config
+    - set file-cache-timeout to 0
+    - in libfuse section of you config file add "disable-writeback-cache: true"
 
 # Problems with build
 Make sure you have correctly setup your GO dev environment. Ensure you have installed fuse3/2 for example:

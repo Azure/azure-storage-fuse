@@ -383,6 +383,50 @@ func (suite *mountTestSuite) TestMountUsingLoopbackFailure() {
 	suite.assert.Contains(op, "failed to daemonize application")
 }
 
+// fuse option parsing validation
+func (suite *mountTestSuite) TestFuseOptions() {
+	defer suite.cleanupTest()
+
+	type fuseOpt struct {
+		opt    string
+		ignore bool
+	}
+
+	opts := []fuseOpt{
+		{opt: "rw", ignore: true},
+		{opt: "dev", ignore: true},
+		{opt: "dev", ignore: true},
+		{opt: "nodev", ignore: true},
+		{opt: "suid", ignore: true},
+		{opt: "nosuid", ignore: true},
+		{opt: "delay_connect", ignore: true},
+		{opt: "uid=1000", ignore: true},
+		{opt: "gid=1000", ignore: true},
+		{opt: "auto", ignore: true},
+		{opt: "noauto", ignore: true},
+		{opt: "user", ignore: true},
+		{opt: "nouser", ignore: true},
+		{opt: "exec", ignore: true},
+		{opt: "noexec", ignore: true},
+
+		{opt: "allow_other", ignore: false},
+		{opt: "allow_other=true", ignore: false},
+		{opt: "allow_other=false", ignore: false},
+		{opt: "nonempty", ignore: false},
+		{opt: "attr_timeout=10", ignore: false},
+		{opt: "entry_timeout=10", ignore: false},
+		{opt: "negative_timeout=10", ignore: false},
+		{opt: "ro", ignore: false},
+		{opt: "allow_root", ignore: false},
+		{opt: "umask=777", ignore: false},
+	}
+
+	for _, val := range opts {
+		ret := ignoreFuseOptions(val.opt)
+		suite.assert.Equal(ret, val.ignore)
+	}
+}
+
 func TestMountCommand(t *testing.T) {
 	confFile, err := ioutil.TempFile("", "conf*.yaml")
 	if err != nil {
