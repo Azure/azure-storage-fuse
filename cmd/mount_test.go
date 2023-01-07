@@ -383,7 +383,7 @@ func (suite *mountTestSuite) TestMountUsingLoopbackFailure() {
 	suite.assert.Contains(op, "failed to daemonize application")
 }
 
-// fuse optoin parsing validation
+// fuse option parsing validation
 func (suite *mountTestSuite) TestFuseOptions() {
 	defer suite.cleanupTest()
 
