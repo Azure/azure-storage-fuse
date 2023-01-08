@@ -1,0 +1,1285 @@
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc979e47f8, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:a9757d7c-101e-0044-664c-23d5ce000000
+Time:2023-01-08T10:31:21.9957405Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc979e47f8?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [14ae35dc-9b85-4d3e-74c0-26d1c30cc59e]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:21 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:21 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [14ae35dc-9b85-4d3e-74c0-26d1c30cc59e]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [a9757d7c-101e-0044-664c-23d5ce000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : file3838aa36
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name file3838aa36
+Sun Jan  8 16:01:21 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name file3838aa36
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (1098)]: BlockBlob::Write : name file3838aa36 offset 0
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (478)]: AzStorage::CopyToFile : Read file file3838aa36
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (670)]: BlockBlob::ReadToFile : name file3838aa36, offset : 0, count 0
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_DEBUG [block_blob.go (696)]: BlockBlob::ReadToFile : Download complete of blob file3838aa36
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutcc50a56c6, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:6459ee51-901e-0077-3e4c-238ce3000000
+Time:2023-01-08T10:31:22.8398249Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutcc50a56c6?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [d5844922-3468-47a1-78a5-7e9a1819ec28]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:22 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:22 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [d5844922-3468-47a1-78a5-7e9a1819ec28]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [6459ee51-901e-0077-3e4c-238ce3000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : filefa604fdc
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name filefa604fdc
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name filefa604fdc
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (1098)]: BlockBlob::Write : name filefa604fdc offset 9
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (732)]: BlockBlob::ReadBuffer : name filefa604fdc
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (524)]: BlockBlob::GetAttr : name filefa604fdc
+Sun Jan  8 16:01:22 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (431)]: BlockBlob::getAttrUsingRest : name filefa604fdc
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name filefa604fdc
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (478)]: AzStorage::CopyToFile : Read file filefa604fdc
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (670)]: BlockBlob::ReadToFile : name filefa604fdc, offset : 0, count 0
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_DEBUG [block_blob.go (696)]: BlockBlob::ReadToFile : Download complete of blob filefa604fdc
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc877a50f5, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:23 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:0debba30-d01e-0070-7d4c-237a66000000
+Time:2023-01-08T10:31:24.0537000Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc877a50f5?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [d36f8942-20c7-41ac-47fb-131b00f295b8]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:23 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:23 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [d36f8942-20c7-41ac-47fb-131b00f295b8]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [0debba30-d01e-0070-7d4c-237a66000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : file2541cbc3
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name file2541cbc3
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name file2541cbc3
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (1098)]: BlockBlob::Write : name file2541cbc3 offset 45
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (478)]: AzStorage::CopyToFile : Read file file2541cbc3
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (670)]: BlockBlob::ReadToFile : name file2541cbc3, offset : 0, count 0
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_DEBUG [block_blob.go (696)]: BlockBlob::ReadToFile : Download complete of blob file2541cbc3
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc91112ce5, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:215b800f-c01e-002b-6d4c-237d1a000000
+Time:2023-01-08T10:31:24.8087796Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc91112ce5?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [0c9378cb-573c-4a7d-7e7f-2052331a2bdd]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:24 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:24 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [0c9378cb-573c-4a7d-7e7f-2052331a2bdd]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [215b800f-c01e-002b-6d4c-237d1a000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : file56c582d0
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name file56c582d0
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name file56c582d0
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (1098)]: BlockBlob::Write : name file56c582d0 offset 0
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (732)]: BlockBlob::ReadBuffer : name file56c582d0
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (524)]: BlockBlob::GetAttr : name file56c582d0
+Sun Jan  8 16:01:24 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (431)]: BlockBlob::getAttrUsingRest : name file56c582d0
+Sun Jan  8 16:01:25 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name file56c582d0
+Sun Jan  8 16:01:25 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (1098)]: BlockBlob::Write : name file56c582d0 offset 12
+Sun Jan  8 16:01:25 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (732)]: BlockBlob::ReadBuffer : name file56c582d0
+Sun Jan  8 16:01:25 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (524)]: BlockBlob::GetAttr : name file56c582d0
+Sun Jan  8 16:01:25 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (431)]: BlockBlob::getAttrUsingRest : name file56c582d0
+Sun Jan  8 16:01:25 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name file56c582d0
+Sun Jan  8 16:01:25 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (478)]: AzStorage::CopyToFile : Read file file56c582d0
+Sun Jan  8 16:01:25 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (670)]: BlockBlob::ReadToFile : name file56c582d0, offset : 0, count 0
+Sun Jan  8 16:01:25 IST 2023 : blobfuse2[7613] : LOG_DEBUG [block_blob.go (696)]: BlockBlob::ReadToFile : Download complete of blob file56c582d0
+Sun Jan  8 16:01:25 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc6e602c21, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:45e5ae13-601e-0087-654c-235c8d000000
+Time:2023-01-08T10:31:26.1278608Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc6e602c21?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [16a03fd6-181e-4239-70ae-bf8440d74dd4]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:26 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:25 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [16a03fd6-181e-4239-70ae-bf8440d74dd4]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [45e5ae13-601e-0087-654c-235c8d000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : filebec3a0e8
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name filebec3a0e8
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name filebec3a0e8
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (1098)]: BlockBlob::Write : name filebec3a0e8 offset 0
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (732)]: BlockBlob::ReadBuffer : name filebec3a0e8
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (524)]: BlockBlob::GetAttr : name filebec3a0e8
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (431)]: BlockBlob::getAttrUsingRest : name filebec3a0e8
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name filebec3a0e8
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (1098)]: BlockBlob::Write : name filebec3a0e8 offset 9
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (732)]: BlockBlob::ReadBuffer : name filebec3a0e8
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (524)]: BlockBlob::GetAttr : name filebec3a0e8
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (431)]: BlockBlob::getAttrUsingRest : name filebec3a0e8
+Sun Jan  8 16:01:26 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name filebec3a0e8
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (478)]: AzStorage::CopyToFile : Read file filebec3a0e8
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (670)]: BlockBlob::ReadToFile : name filebec3a0e8, offset : 0, count 0
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_DEBUG [block_blob.go (696)]: BlockBlob::ReadToFile : Download complete of blob filebec3a0e8
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc607b5680, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:27 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86ef737-901e-0038-6e4c-2348fb000000
+Time:2023-01-08T10:31:27.5912907Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc607b5680?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [8e97085b-dd15-4ee1-461b-3f036934144a]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:27 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:27 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [8e97085b-dd15-4ee1-461b-3f036934144a]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86ef737-901e-0038-6e4c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : filef9ccb448 size 0, blockSize 268435456
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : filef9ccb448 size 104857600, blockSize 268435456
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : filef9ccb448 size 524288000, blockSize 4194304
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : filef9ccb448 size 1073741824, blockSize 4194304
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : filef9ccb448 size 536870912000, blockSize 10737424
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : filef9ccb448 size 1099511627776, blockSize 21990240
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : filef9ccb448 size 109951162777600, blockSize 2199023256
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : filef9ccb448 size 208907209277440, blockSize 4178144192
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : filef9ccb448 size 209715200000000, blockSize 4194304000
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : filef9ccb448 size 1099511627776, blockSize 21990240
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : filef9ccb448 size 209715199999995, blockSize 4194304000
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (787)]: BlockBlob::calculateBlockSize : buffer is too large to upload to a block blob filef9ccb448
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (787)]: BlockBlob::calculateBlockSize : buffer is too large to upload to a block blob filef9ccb448
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : filef9ccb448 size 209711005696000, blockSize 4194220120
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (787)]: BlockBlob::calculateBlockSize : buffer is too large to upload to a block blob filef9ccb448
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (787)]: BlockBlob::calculateBlockSize : buffer is too large to upload to a block blob filef9ccb448
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc35ce7264, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86ef849-901e-0038-694c-2348fb000000
+Time:2023-01-08T10:31:28.1219789Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc35ce7264?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [ff92509b-02bc-4bb5-619e-7a116266be11]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:27 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [ff92509b-02bc-4bb5-619e-7a116266be11]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86ef849-901e-0038-694c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : filee2e590a9
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name filee2e590a9
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name filee2e590a9
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (519)]: AzStorage::Chmod : Change mod of file filee2e590a9
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (1260)]: BlockBlob::ChangeMod : name filee2e590a9
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutcdefc4187, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86ef880-901e-0038-1d4c-2348fb000000
+Time:2023-01-08T10:31:28.2289173Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutcdefc4187?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [76a294d8-5189-41fc-513c-4ea6655aeb5d]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [76a294d8-5189-41fc-513c-4ea6655aeb5d]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86ef880-901e-0038-1d4c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutcdefc4187, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : file36306564
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name file36306564
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name file36306564
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (519)]: AzStorage::Chmod : Change mod of file file36306564
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (1260)]: BlockBlob::ChangeMod : name file36306564
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc6f614bc7, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86ef8e4-901e-0038-7e4c-2348fb000000
+Time:2023-01-08T10:31:28.4208047Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc6f614bc7?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [3872c31e-1838-4d28-4429-69a360f5ba62]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [3872c31e-1838-4d28-4429-69a360f5ba62]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86ef8e4-901e-0038-7e4c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : file3c40f939
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name file3c40f939
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name file3c40f939
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (531)]: AzStorage::Chown : Change ownership of file file3c40f939 to 6-5
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (1274)]: BlockBlob::ChangeOwner : name file3c40f939
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc2980144f, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86ef92d-901e-0038-434c-2348fb000000
+Time:2023-01-08T10:31:28.5167494Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc2980144f?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [aea7f07f-e528-41b5-4f1b-27d4362c46ad]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [aea7f07f-e528-41b5-4f1b-27d4362c46ad]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86ef92d-901e-0038-434c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc2980144f, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : filea503d59a
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name filea503d59a
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name filea503d59a
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (531)]: AzStorage::Chown : Change ownership of file filea503d59a to 6-5
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (1274)]: BlockBlob::ChangeOwner : name filea503d59a
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc994e7f4c, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86ef9c3-901e-0038-554c-2348fb000000
+Time:2023-01-08T10:31:28.7026399Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc994e7f4c?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [1642d357-54b7-4606-717a-88ec8c9e6b12]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [1642d357-54b7-4606-717a-88ec8c9e6b12]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86ef9c3-901e-0038-554c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : filef888da3f
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name filef888da3f
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name filef888da3f
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (393)]: AzStorage::CloseFile : filef888da3f
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc6cf973fd, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86ef9e5-901e-0038-754c-2348fb000000
+Time:2023-01-08T10:31:28.8055792Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc6cf973fd?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [1076ec0e-babb-40ff-7761-6969b79c70c3]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [1076ec0e-babb-40ff-7761-6969b79c70c3]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86ef9e5-901e-0038-754c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (393)]: AzStorage::CloseFile : file46d26d72
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc4e6d6d98, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86ef9fc-901e-0038-0a4c-2348fb000000
+Time:2023-01-08T10:31:28.8745395Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc4e6d6d98?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [98a04f90-e33d-41a7-49e3-3c3dd627b5ca]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:28 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [98a04f90-e33d-41a7-49e3-3c3dd627b5ca]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86ef9fc-901e-0038-0a4c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : file667d66b3
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name file667d66b3
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name file667d66b3
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (483)]: AzStorage::CopyFromFile : Upload file file667d66b3
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (836)]: BlockBlob::WriteFromFile : name file667d66b3
+Sun Jan  8 16:01:28 IST 2023 : blobfuse2[7613] : LOG_INFO [block_blob.go (819)]: BlockBlob::calculateBlockSize : file667d66b3 size 9, blockSize 268435456
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_DEBUG [block_blob.go (903)]: BlockBlob::WriteFromFile : Upload complete of blob file667d66b3
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutce0ac7e69, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86efb07-901e-0038-074c-2348fb000000
+Time:2023-01-08T10:31:29.2463221Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutce0ac7e69?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [25e6a6d4-5e50-42b8-41fb-1aad4dad67e4]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:29 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:29 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [25e6a6d4-5e50-42b8-41fb-1aad4dad67e4]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86efb07-901e-0038-074c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (478)]: AzStorage::CopyToFile : Read file filea17e4e8e
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (670)]: BlockBlob::ReadToFile : name filea17e4e8e, offset : 0, count 0
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc488286da, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86efbb1-901e-0038-254c-2348fb000000
+Time:2023-01-08T10:31:29.5561422Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc488286da?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [911d70ad-7177-49d9-738a-2a80f667591f]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:29 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:29 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [911d70ad-7177-49d9-738a-2a80f667591f]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86efbb1-901e-0038-254c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_DEBUG [block_blob_test.go (366)]: dir980c5523
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (191)]: AzStorage::CreateDir : dir980c5523
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (274)]: BlockBlob::CreateDirectory : name dir980c5523
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dir980c5523
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_DEBUG [block_blob_test.go (366)]: dir769fc07f/
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (191)]: AzStorage::CreateDir : dir769fc07f/
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (274)]: BlockBlob::CreateDirectory : name dir769fc07f
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dir769fc07f
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutcedde4145, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86efc17-901e-0038-034c-2348fb000000
+Time:2023-01-08T10:31:29.7350360Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutcedde4145?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [a49edf6b-8e92-48af-7942-838d88e596ee]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:29 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:29 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [a49edf6b-8e92-48af-7942-838d88e596ee]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86efc17-901e-0038-034c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : filed73bd2f8
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name filed73bd2f8
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name filed73bd2f8
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc85cad4f1, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86efc4e-901e-0038-344c-2348fb000000
+Time:2023-01-08T10:31:29.8399752Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc85cad4f1?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [5feb03e7-3ff7-4831-4f0a-3d30537c540e]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:29 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:29 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [5feb03e7-3ff7-4831-4f0a-3d30537c540e]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86efc4e-901e-0038-344c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : file8f7cb7bb
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name file8f7cb7bb
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name file8f7cb7bb
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (489)]: AzStorage::CreateLink : Create symlink file36aacbf9 -> file8f7cb7bb
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (285)]: BlockBlob::CreateLink : file36aacbf9 -> file8f7cb7bb
+Sun Jan  8 16:01:29 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name file36aacbf9
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc4a29e309, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86efdbd-901e-0038-1c4c-2348fb000000
+Time:2023-01-08T10:31:30.2097585Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc4a29e309?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [e1e84d48-9749-4c1c-586f-4e55ae583326]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:30 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:30 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [e1e84d48-9749-4c1c-586f-4e55ae583326]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86efdbd-901e-0038-1c4c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutcd4bc92e8, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86efe24-901e-0038-014c-2348fb000000
+Time:2023-01-08T10:31:30.2837154Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutcd4bc92e8?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [cc88f8f8-52b7-4942-6639-1ef1c142d50f]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:30 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:30 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [cc88f8f8-52b7-4942-6639-1ef1c142d50f]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86efe24-901e-0038-014c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_DEBUG [block_blob_test.go (388)]: dirabe2962e
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (191)]: AzStorage::CreateDir : dirabe2962e
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (274)]: BlockBlob::CreateDirectory : name dirabe2962e
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dirabe2962e
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (204)]: AzStorage::DeleteDir : dirabe2962e
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (317)]: BlockBlob::DeleteDirectory : name dirabe2962e
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (294)]: BlockBlob::DeleteFile : name dirabe2962e
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_DEBUG [block_blob_test.go (388)]: dir4a053097/
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (191)]: AzStorage::CreateDir : dir4a053097/
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (274)]: BlockBlob::CreateDirectory : name dir4a053097
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dir4a053097
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (204)]: AzStorage::DeleteDir : dir4a053097/
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (317)]: BlockBlob::DeleteDirectory : name dir4a053097
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (294)]: BlockBlob::DeleteFile : name dir4a053097
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutcd8d17755, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86f00eb-901e-0038-2d4c-2348fb000000
+Time:2023-01-08T10:31:30.9223424Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutcd8d17755?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [42094010-db41-4a38-695d-0f16e00306e7]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:30 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:30 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [42094010-db41-4a38-695d-0f16e00306e7]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86f00eb-901e-0038-2d4c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (204)]: AzStorage::DeleteDir : dirf926ff25
+Sun Jan  8 16:01:30 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (317)]: BlockBlob::DeleteDirectory : name dirf926ff25
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (294)]: BlockBlob::DeleteFile : name dirf926ff25
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (301)]: BlockBlob::DeleteFile : dirf926ff25 does not exist
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc884988f4, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86f02b3-901e-0038-6c4c-2348fb000000
+Time:2023-01-08T10:31:31.3271056Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc884988f4?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [0d4421f1-8d13-4e61-525f-6d4014eeb8a7]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:31 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:31 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [0d4421f1-8d13-4e61-525f-6d4014eeb8a7]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86f02b3-901e-0038-6c4c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (191)]: AzStorage::CreateDir : dirfa8af860
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (274)]: BlockBlob::CreateDirectory : name dirfa8af860
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dirfa8af860
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (191)]: AzStorage::CreateDir : dirfa8af860/c1
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (274)]: BlockBlob::CreateDirectory : name dirfa8af860/c1
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dirfa8af860/c1
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : dirfa8af860/c1/gc1
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name dirfa8af860/c1/gc1
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dirfa8af860/c1/gc1
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : dirfa8af860/c2
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name dirfa8af860/c2
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dirfa8af860/c2
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (191)]: AzStorage::CreateDir : dirfa8af860b
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (274)]: BlockBlob::CreateDirectory : name dirfa8af860b
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dirfa8af860b
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : dirfa8af860b/c1
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name dirfa8af860b/c1
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dirfa8af860b/c1
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : dirfa8af860c
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name dirfa8af860c
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dirfa8af860c
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (204)]: AzStorage::DeleteDir : dirfa8af860
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (317)]: BlockBlob::DeleteDirectory : name dirfa8af860
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (294)]: BlockBlob::DeleteFile : name dirfa8af860/c1
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (294)]: BlockBlob::DeleteFile : name dirfa8af860/c1/gc1
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (294)]: BlockBlob::DeleteFile : name dirfa8af860/c2
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (294)]: BlockBlob::DeleteFile : name dirfa8af860
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutc63708412, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:31 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86f0519-901e-0038-3c4c-2348fb000000
+Time:2023-01-08T10:31:31.9647334Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutc63708412?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [dae9e9bf-b804-453d-7989-1675cf1aba3d]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:31 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:31 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [dae9e9bf-b804-453d-7989-1675cf1aba3d]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86f0519-901e-0038-3c4c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : file1c3817a8
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name file1c3817a8
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name file1c3817a8
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (402)]: AzStorage::DeleteFile : file1c3817a8
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (294)]: BlockBlob::DeleteFile : name file1c3817a8
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutcde143505, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86f06be-901e-0038-514c-2348fb000000
+Time:2023-01-08T10:31:32.3095314Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutcde143505?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [a6e23858-408a-4a2b-57f8-d907c75adf58]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:32 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:32 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [a6e23858-408a-4a2b-57f8-d907c75adf58]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86f06be-901e-0038-514c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (402)]: AzStorage::DeleteFile : filed811ae12
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (294)]: BlockBlob::DeleteFile : name filed811ae12
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (301)]: BlockBlob::DeleteFile : filed811ae12 does not exist
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutccfbe9341, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86f07a3-901e-0038-2d4c-2348fb000000
+Time:2023-01-08T10:31:32.4724362Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutccfbe9341?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [3af4b6aa-b488-4442-53ff-5eee6fa75560]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:32 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:32 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [3af4b6aa-b488-4442-53ff-5eee6fa75560]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86f07a3-901e-0038-2d4c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (191)]: AzStorage::CreateDir : dire5bf5071
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (274)]: BlockBlob::CreateDirectory : name dire5bf5071
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dire5bf5071
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (191)]: AzStorage::CreateDir : dire5bf5071/c1
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (274)]: BlockBlob::CreateDirectory : name dire5bf5071/c1
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dire5bf5071/c1
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : dire5bf5071/c1/gc1
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name dire5bf5071/c1/gc1
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dire5bf5071/c1/gc1
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : dire5bf5071/c2
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name dire5bf5071/c2
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dire5bf5071/c2
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (191)]: AzStorage::CreateDir : dire5bf5071b
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (274)]: BlockBlob::CreateDirectory : name dire5bf5071b
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dire5bf5071b
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : dire5bf5071b/c1
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name dire5bf5071b/c1
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dire5bf5071b/c1
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : dire5bf5071c
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name dire5bf5071c
+Sun Jan  8 16:01:32 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name dire5bf5071c
+Sun Jan  8 16:01:33 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path dire5bf5071
+Sun Jan  8 16:01:33 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (204)]: AzStorage::DeleteDir : c1
+Sun Jan  8 16:01:33 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (317)]: BlockBlob::DeleteDirectory : name c1
+Sun Jan  8 16:01:33 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (294)]: BlockBlob::DeleteFile : name c1/gc1
+Sun Jan  8 16:01:33 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (294)]: BlockBlob::DeleteFile : name c1
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (177)]: AzStorage::Stop : Stopping component azstorage
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (83)]: AzStorage::Configure : azstorage
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (270)]: ParseAndValidateConfig : Parsing config
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (372)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (376)]: ParseAndValidateConfig : sdk logging from the config file: false
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_TRACE [config.go (479)]: ParseAndReadDynamicConfig : Reparsing config
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_DEBUG [config.go (383)]: ParseAndValidateConfig : Getting auth type
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (467)]: ParseAndValidateConfig : Account: vikasfuseblob, Container: fuseutccd9413c7, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://vikasfuseblob.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: false
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_INFO [config.go (471)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_DEBUG [azauth.go (79)]: azAuth::getAzAuth : Account: vikasfuseblob, AccountType: BLOCK, Protocol: https, Endpoint: https://vikasfuseblob.blob.core.windows.net/
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc40e40)
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (154)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/vikas/code/golib/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.13.1-0.20210823171415-e7932f52ad61/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:e86f17ba-901e-0038-3e4c-2348fb000000
+Time:2023-01-08T10:31:38.1671076Z, Details: 
+   Code: ContainerNotFound
+   GET https://vikasfuseblob.blob.core.windows.net/fuseutccd9413c7?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.0.2-preview.1 (Ubuntu 18.04.6 LTS) Azure-Storage/0.14 (go1.16.3; linux)]
+   X-Ms-Client-Request-Id: [2b29c67b-6bdf-43f7-587d-36ab9c3bb985]
+   X-Ms-Date: [Sun, 08 Jan 2023 10:31:38 GMT]
+   X-Ms-Version: [2020-08-04]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Sun, 08 Jan 2023 10:31:37 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [2b29c67b-6bdf-43f7-587d-36ab9c3bb985]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [e86f17ba-901e-0038-3e4c-2348fb000000]
+   X-Ms-Version: [2020-08-04]
+
+
+]
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_ERR [azstorage.go (100)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (164)]: AzStorage::Start : Starting component azstorage
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_TRACE [azstorage.go (344)]: AzStorage::CreateFile : filef05fb6f1
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name filef05fb6f1
+Sun Jan  8 16:01:38 IST 2023 : blobfuse2[7613] : LOG_TRACE [block_blob.go (916)]: BlockBlob::WriteFromBuffer : name filef05fb6f1

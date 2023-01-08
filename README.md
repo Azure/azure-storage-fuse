@@ -188,8 +188,8 @@ Refer to 'docker' folder in this repo. It contains a sample 'Dockerfile'. If you
 - In extended-attribute case, blobfuse2 supports only 'get' operation. Only below list of attributes are supported :
 
     * "user.x-ms-content-md5" : MD5 Sum of the blob
-    * "user.x-ms-access-tier" : Blob access tier (supported only on block blob for now)
-    * "user.x-ms-content-type" : Blob content type (supported only on block blob for now)
+    * "user.x-ms-access-tier" : Blob access tier (supported only on non-HNS account)
+    * "user.x-ms-content-type" : Blob content type (supported only on non-HNS account)
     * "user.x-ms-meta-\<meta-name\>" : Get specific metadata from Blob
     * E.g. : attr -g "x-ms-access-tier" /usr/blobfuse2/abcd.txt
 
