@@ -1,3 +1,8 @@
+## 2.0.3-preview.1 (WIP)
+**Features**
+- Added support for getxattr command to retrieve md5sum, tier, blob-type and metadata.
+
+
 ## 2.0.2 (WIP)
 **Bug Fixes**
 - [#999](https://github.com/Azure/azure-storage-fuse/issues/999) Upgrade dependencies to resolve known CVEs.
@@ -5,8 +10,6 @@
 - [#1006](https://github.com/Azure/azure-storage-fuse/issues/1006) Remove user and group config from logrotate file.
 - [csi-driver #809](https://github.com/kubernetes-sigs/blob-csi-driver/issues/809) Fail to mount when uid/gid are provided on command line.
 
-**Features**
-- Added support for getxattr command to retrieve md5sum, tier, blob-type and metadata.
 
 ## 2.0.1 (2022-12-02)
 - Copy of GA release of Blobfuse2. This release was necessary to ensure the GA version resolves ahead of the preview versions.
