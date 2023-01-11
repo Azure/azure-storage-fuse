@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -442,7 +442,8 @@ var mountCmd = &cobra.Command{
 
 func ignoreFuseOptions(opt string) bool {
 	for _, o := range common.FuseIgnoredFlags() {
-		if o == opt {
+		// Flags like uid and gid come with value so exact string match is not correct in that case.
+		if strings.HasPrefix(opt, o) {
 			return true
 		}
 	}
