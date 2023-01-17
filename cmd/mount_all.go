@@ -317,8 +317,8 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 			cliParams[2] = "--config-file=" + contConfigFile
 		} else {
 			cliParams[2] = "--foreground=false"
-			cliParams = append(cliParams, "--container-name="+container)
-			cliParams = append(cliParams, "--tmp-path="+filepath.Join(fileCachePath, container))
+			updateCliParams(&cliParams, "container-name", container)
+			updateCliParams(&cliParams, "tmp-path", filepath.Join(fileCachePath, container))
 		}
 
 		// Now that we have mount path and config file for this container fire a mount command for this one
@@ -338,6 +338,16 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 
 	fmt.Printf("%d of %d containers were successfully mounted\n", (len(containerList) - failCount), len(containerList))
 	return nil
+}
+
+func updateCliParams(cliParams *[]string, key string, val string) {
+	for i := 3; i < len(*cliParams); i++ {
+		if strings.Contains((*cliParams)[i], "--"+key) {
+			(*cliParams)[i] = "--" + key + "=" + val
+			return
+		}
+	}
+	*cliParams = append(*cliParams, "--"+key+"="+val)
 }
 
 func writeConfigFile(contConfigFile string) error {
