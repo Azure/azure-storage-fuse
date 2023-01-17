@@ -317,8 +317,8 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 			cliParams[2] = "--config-file=" + contConfigFile
 		} else {
 			cliParams[2] = "--foreground=false"
-			cliParams[3] = "--container-name=" + container
-			cliParams[4] = "--tmp-path=" + filepath.Join(fileCachePath, container)
+			cliParams = append(cliParams, "--container-name="+container)
+			cliParams = append(cliParams, "--tmp-path="+filepath.Join(fileCachePath, container))
 		}
 
 		// Now that we have mount path and config file for this container fire a mount command for this one
