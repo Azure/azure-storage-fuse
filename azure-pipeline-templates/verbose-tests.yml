@@ -68,6 +68,8 @@ parameters:
     default: "true"
   - name: verbose_log
     type: boolean
+  - name: tags
+    type: string
 
 #--------------------------------------- Setup: End to end tests with different Storage configurations ------------------------------------------
 # Create key credential config file if we need to test it
@@ -382,6 +384,7 @@ steps:
       temp_dir: ${{ parameters.temp_dir }}
       config: ${{ parameters.config }}
       idstring: ${{ parameters.service }} Mount Test
+      tags: $(tags)
 
   - template: stress-test.yml
     parameters:

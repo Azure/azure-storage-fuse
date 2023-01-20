@@ -10,6 +10,8 @@ parameters:
   - name: idstring
     type: string
     default: ''
+  - name: tags
+    type: string
 
 steps:
 
@@ -24,7 +26,7 @@ steps:
   - task: Go@0
     inputs:
       command: 'test'
-      arguments: '-timeout=120m -p 1 -v test/mount_test/mount_test.go -args -working-dir=${{ parameters.working_dir }} -mnt-path=${{ parameters.mount_dir }} -config-file=${{parameters.config}}'
+      arguments: '-timeout=120m -p 1 -v test/mount_test/mount_test.go -args -working-dir=${{ parameters.working_dir }} -mnt-path=${{ parameters.mount_dir }} -config-file=${{parameters.config}} -tags=${{ parameters.tags }}'
       workingDirectory: ${{ parameters.working_dir }}
     displayName: 'MountTest: ${{ parameters.idstring }}'
     timeoutInMinutes: 120
