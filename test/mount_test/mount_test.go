@@ -245,9 +245,9 @@ func (suite *mountSuite) TestEnvVarMount() {
 	os.Setenv("AZURE_STORAGE_ACCOUNT_CONTAINER", viper.GetString("azstorage.container"))
 	os.Setenv("AZURE_STORAGE_ACCOUNT_TYPE", viper.GetString("azstorage.type"))
 
-	tempFile := viper.GetString("file_cache.path")
+	tempCachePath := viper.GetString("file_cache.path")
 
-	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--tmp-path="+tempFile)
+	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--tmp-path="+tempCachePath)
 	cliOut, err := mountCmd.Output()
 	fmt.Println(string(cliOut))
 	suite.Equal(0, len(cliOut))
@@ -263,6 +263,35 @@ func (suite *mountSuite) TestEnvVarMount() {
 
 	// unmount
 	blobfuseUnmount(suite, mntDir)
+
+	mountAllCmd := exec.Command(blobfuseBinary, "mount", "all", mntDir, "--tmp-path="+tempCachePath)
+	cliOut, err = mountAllCmd.Output()
+	fmt.Println(string(cliOut))
+	suite.NotEqual(0, len(cliOut))
+	suite.Equal(nil, err)
+
+	// wait for mount
+	time.Sleep(10 * time.Second)
+
+	// list blobfuse mounted directories
+	cliOut = listBlobfuseMounts(suite)
+	suite.NotEqual(0, len(cliOut))
+	suite.Contains(string(cliOut), mntDir)
+
+	// unmount
+	blobfuseUnmount(suite, mntDir)
+
+	err = os.RemoveAll(mntDir)
+	suite.Equal(nil, err)
+
+	err = os.RemoveAll(tempCachePath)
+	suite.Equal(nil, err)
+
+	err = os.Mkdir(mntDir, 0777)
+	suite.Equal(nil, err)
+
+	err = os.Mkdir(tempCachePath, 0777)
+	suite.Equal(nil, err)
 
 	os.Unsetenv("AZURE_STORAGE_ACCOUNT")
 	os.Unsetenv("AZURE_STORAGE_ACCESS_KEY")

@@ -1,5 +1,7 @@
 # Blobfuse2 Stream (Preview)
 
+_**If you're experiencing slow performance, please ensure your config file parameters are up to date as they have changed from preview to GA, please refer to the [base config file](https://github.com/Azure/azure-storage-fuse/blob/main/setup/baseConfig.yaml).**_
+
 ## About
 
 Blobfuse2 Stream is a feature which helps support reading and writing large files that will not fit in the file cache on the local disk. It also provides performance optimization for scenarios where only small portions of a file are accessed since the file does not have to be downloaded in full before reading or writing to it. It supports the following modes

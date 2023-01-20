@@ -4,6 +4,7 @@
 - [#1002](https://github.com/Azure/azure-storage-fuse/issues/1002) In case version check fails to connect to public container, dump a log to check network and proxy settings.
 - [#1006](https://github.com/Azure/azure-storage-fuse/issues/1006) Remove user and group config from logrotate file.
 - [csi-driver #809](https://github.com/kubernetes-sigs/blob-csi-driver/issues/809) Fail to mount when uid/gid are provided on command line.
+- [#1032](https://github.com/Azure/azure-storage-fuse/issues/1032) `mount all` CLI params parsing fix when no `config-file` and `tmp-path` is provided.
 - [#1015](https://github.com/Azure/azure-storage-fuse/issues/1015) Default value of `ignore-open-flags` config parameter changed to `true`
 
 ## 2.0.1 (2022-12-02)

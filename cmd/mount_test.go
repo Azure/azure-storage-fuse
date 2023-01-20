@@ -427,6 +427,26 @@ func (suite *mountTestSuite) TestFuseOptions() {
 	}
 }
 
+func (suite *mountTestSuite) TestUpdateCliParams() {
+	defer suite.cleanupTest()
+
+	cliParams := []string{"blobfuse2", "mount", "~/mntdir/", "--foreground=false"}
+
+	updateCliParams(&cliParams, "tmp-path", "tmpPath1")
+	suite.assert.Equal(len(cliParams), 5)
+	suite.assert.Equal(cliParams[4], "--tmp-path=tmpPath1")
+
+	updateCliParams(&cliParams, "container-name", "testCnt1")
+	suite.assert.Equal(len(cliParams), 6)
+	suite.assert.Equal(cliParams[5], "--container-name=testCnt1")
+
+	updateCliParams(&cliParams, "tmp-path", "tmpPath2")
+	updateCliParams(&cliParams, "container-name", "testCnt2")
+	suite.assert.Equal(len(cliParams), 6)
+	suite.assert.Equal(cliParams[4], "--tmp-path=tmpPath2")
+	suite.assert.Equal(cliParams[5], "--container-name=testCnt2")
+}
+
 func TestMountCommand(t *testing.T) {
 	confFile, err := ioutil.TempFile("", "conf*.yaml")
 	if err != nil {
