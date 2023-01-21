@@ -190,6 +190,7 @@ stages:
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
                   distro_name: $(imageName)
                   verbose_log: ${{ parameters.verbose_log }}
+                  tags: $(tags)
 
             - template: azure-pipeline-templates/cleanup.yml
               parameters:
@@ -321,6 +322,7 @@ stages:
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
                   distro_name: $(imageName)
                   verbose_log: ${{ parameters.verbose_log }}
+                  tags: $(tags)
 
             - template: azure-pipeline-templates/cleanup.yml
               parameters:

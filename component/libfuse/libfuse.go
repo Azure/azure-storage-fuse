@@ -220,7 +220,7 @@ func (lf *Libfuse) Configure(_ bool) error {
 	log.Trace("Libfuse::Configure : %s", lf.Name())
 
 	// >> If you do not need any config parameters remove below code and return nil
-	conf := LibfuseOptions{}
+	conf := LibfuseOptions{IgnoreOpenFlags: true}
 	err := config.UnmarshalKey(lf.Name(), &conf)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [invalid config attributes]")
@@ -300,6 +300,6 @@ func init() {
 	config.BindPFlag(compName+".fuse-trace", debug)
 	debug.Hidden = true
 
-	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", false, "Ignore unsupported open flags (APPEND, WRONLY) by blobfuse when writeback caching is enabled.")
+	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", true, "Ignore unsupported open flags (APPEND, WRONLY) by blobfuse when writeback caching is enabled.")
 	config.BindPFlag(compName+".ignore-open-flags", ignoreOpenFlags)
 }

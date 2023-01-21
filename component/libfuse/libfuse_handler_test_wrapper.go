@@ -236,9 +236,11 @@ func testOpenSyncDirectFlag(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), info.flags&C.__O_DIRECT)
 }
 
-// WriteBack caching enabled by default
+// WriteBack caching and ignore-open-flags enabled by default
 func testOpenAppendFlagDefault(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
+	suite.libfuse.ignoreOpenFlags = false
+
 	name := "path"
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))
