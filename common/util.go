@@ -263,5 +263,5 @@ func ExpandPath(path string) string {
 		path = filepath.Join(homeDir, path[2:])
 	}
 
-	return path
+	return os.ExpandEnv(path)
 }

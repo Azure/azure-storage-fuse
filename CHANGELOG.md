@@ -6,6 +6,8 @@
 - [csi-driver #809](https://github.com/kubernetes-sigs/blob-csi-driver/issues/809) Fail to mount when uid/gid are provided on command line.
 - [#1032](https://github.com/Azure/azure-storage-fuse/issues/1032) `mount all` CLI params parsing fix when no `config-file` and `tmp-path` is provided.
 - [#1015](https://github.com/Azure/azure-storage-fuse/issues/1015) Default value of `ignore-open-flags` config parameter changed to `true`
+- [#1036](https://github.com/Azure/azure-storage-fuse/issues/1036) Panic if user does not have a $HOME directory set.
+- [#1036](https://github.com/Azure/azure-storage-fuse/issues/1036) --default-working-dir not honoured for default log path.
 
 ## 2.0.1 (2022-12-02)
 - Copy of GA release of Blobfuse2. This release was necessary to ensure the GA version resolves ahead of the preview versions.

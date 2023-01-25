@@ -447,6 +447,43 @@ func (suite *mountTestSuite) TestUpdateCliParams() {
 	suite.assert.Equal(cliParams[5], "--container-name=testCnt2")
 }
 
+func (suite *mountTestSuite) TestMountOptionVaildate() {
+	defer suite.cleanupTest()
+	opts := &mountOptions{}
+
+	err := opts.validate(true)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "mount path not provided")
+
+	opts.MountPath, _ = os.UserHomeDir()
+	err = opts.validate(true)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "invalid log level")
+
+	opts.Logging.LogLevel = "log_junk"
+	err = opts.validate(true)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "invalid log level")
+
+	opts.Logging.LogLevel = "log_debug"
+	err = opts.validate(true)
+	suite.assert.Nil(err)
+	suite.assert.Empty(opts.Logging.LogFilePath)
+
+	opts.DefaultWorkingDir, _ = os.UserHomeDir()
+	err = opts.validate(true)
+	suite.assert.Nil(err)
+	suite.assert.Empty(opts.Logging.LogFilePath)
+	suite.assert.Equal(common.DefaultWorkDir, opts.DefaultWorkingDir)
+
+	opts.Logging.LogFilePath = common.DefaultLogFilePath
+	err = opts.validate(true)
+	suite.assert.Nil(err)
+	suite.assert.Contains(opts.Logging.LogFilePath, opts.DefaultWorkingDir)
+	suite.assert.Equal(common.DefaultWorkDir, opts.DefaultWorkingDir)
+	suite.assert.Equal(common.DefaultLogFilePath, opts.Logging.LogFilePath)
+}
+
 func TestMountCommand(t *testing.T) {
 	confFile, err := ioutil.TempFile("", "conf*.yaml")
 	if err != nil {
