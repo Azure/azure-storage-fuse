@@ -40,6 +40,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -383,6 +384,7 @@ func (suite *mountTestSuite) TestMountUsingLoopbackFailure() {
 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName))
 	suite.assert.Nil(err)
 
+	time.Sleep(5 * time.Second)
 	_, err = executeCommandC(rootCmd, "unmount", "all")
 	suite.assert.Nil(err)
 }
