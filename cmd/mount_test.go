@@ -106,6 +106,8 @@ func (suite *mountTestSuite) SetupTest() {
 func (suite *mountTestSuite) cleanupTest() {
 	resetCLIFlags(*mountCmd)
 	resetCLIFlags(*mountAllCmd)
+	common.DefaultWorkDir = "$HOME/.blobfuse2"
+	common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 }
 
 // mount failure test where the mount directory does not exists
