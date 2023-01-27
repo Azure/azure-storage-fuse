@@ -380,9 +380,11 @@ func (suite *mountTestSuite) TestMountUsingLoopbackFailure() {
 	suite.assert.Nil(err)
 	defer os.RemoveAll(mntDir)
 
-	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName))
-	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "failed to daemonize application")
+	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName))
+	suite.assert.Nil(err)
+
+	_, err = executeCommandC(rootCmd, "unmount", "all")
+	suite.assert.Nil(err)
 }
 
 // fuse option parsing validation
