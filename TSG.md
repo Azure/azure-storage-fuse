@@ -103,7 +103,7 @@ If Blobfuse2 pid is listed in the output then OOM has sent a SIGKILL to Blobfuse
 
 **10. Unable to access HNS enabled storage account behind a private end point**
 
-In your config file add `type: adls` under `azstorage` section in config file. Avoid using `endpoint` in your config file unless your storage account is behind a private endpoint. Blobfuse2 uses both blob and dfs endpoints to connect to storage account. User has to expose both these endpoints over private-endpoint for blobfuse2 to function properly.
+For HNS account, always add `type: adls` under `azstorage` section in your config file. Avoid using `endpoint` unless your storage account is behind a private endpoint. Blobfuse2 uses both blob and dfs endpoints to connect to storage account. User has to expose both these endpoints over private-endpoint for blobfuse2 to function properly.
 
 
 # Common Problems after a Successful Mount
