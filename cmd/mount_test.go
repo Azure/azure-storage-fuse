@@ -40,7 +40,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -365,29 +364,30 @@ func (suite *mountTestSuite) TestInvalidUmaskValue() {
 	suite.assert.Contains(op, "failed to parse umask")
 }
 
-func (suite *mountTestSuite) TestMountUsingLoopbackFailure() {
-	defer suite.cleanupTest()
+// This test mounts successfully and when unmount tests are running in parallel it fails those tests.
+// func (suite *mountTestSuite) TestMountUsingLoopbackFailure() {
+// 	defer suite.cleanupTest()
 
-	confFile, err := ioutil.TempFile("", "conf*.yaml")
-	suite.assert.Nil(err)
-	confFileName := confFile.Name()
-	defer os.Remove(confFileName)
+// 	confFile, err := ioutil.TempFile("", "conf*.yaml")
+// 	suite.assert.Nil(err)
+// 	confFileName := confFile.Name()
+// 	defer os.Remove(confFileName)
 
-	_, err = confFile.WriteString(configMountLoopback)
-	suite.assert.Nil(err)
-	confFile.Close()
+// 	_, err = confFile.WriteString(configMountLoopback)
+// 	suite.assert.Nil(err)
+// 	confFile.Close()
 
-	mntDir, err := ioutil.TempDir("", "mntdir")
-	suite.assert.Nil(err)
-	defer os.RemoveAll(mntDir)
+// 	mntDir, err := ioutil.TempDir("", "mntdir")
+// 	suite.assert.Nil(err)
+// 	defer os.RemoveAll(mntDir)
 
-	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName))
-	suite.assert.Nil(err)
+// 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName))
+// 	suite.assert.Nil(err)
 
-	time.Sleep(5 * time.Second)
-	_, err = executeCommandC(rootCmd, "unmount", "all")
-	suite.assert.Nil(err)
-}
+// 	time.Sleep(5 * time.Second)
+// 	_, err = executeCommandC(rootCmd, "unmount", "all")
+// 	suite.assert.Nil(err)
+// }
 
 // fuse option parsing validation
 func (suite *mountTestSuite) TestFuseOptions() {
