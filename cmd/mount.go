@@ -376,7 +376,7 @@ var mountCmd = &cobra.Command{
 			dmnCtx := &daemon.Context{
 				PidFileName: pidFileName,
 				PidFilePerm: 0644,
-				Umask:       027,
+				Umask:       022,
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
