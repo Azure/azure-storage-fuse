@@ -101,6 +101,11 @@ The "OOM Killer" or "Out of Memory Killer" is a process that the Linux kernel em
 If Blobfuse2 pid is listed in the output then OOM has sent a SIGKILL to Blobfuse2. If Blobfuse2 was not running as a service it will not restart automatically and user has to manually mount again. If this keeps happening then user need to monitor the system and investigate why system is getting low on memory. VM might need an upgrade here if the such high usage is expected.
 
 
+**10. Unable to access HNS enabled storage account behind a private end point**
+
+For HNS account, always add `type: adls` under `azstorage` section in your config file. Avoid using `endpoint` unless your storage account is behind a private endpoint. Blobfuse2 uses both blob and dfs endpoints to connect to storage account. User has to expose both these endpoints over private-endpoint for blobfuse2 to function properly.
+
+
 # Common Problems after a Successful Mount
 **1. Errno 24: Failed to open file /mnt/tmp/root/filex in file cache.  errno = 24 OR Too many files Open error**
 Errno 24 in Linux corresponds to 'Too many files open' error which can occur when an application opens more files than it is allowed on the system. Blobfuse2 typically allows 20 files less than the ulimit value set in Linux. Usually the Linux limit is 1024 per process (e.g. Blobfuse2 in this case will allow 1004 open file descriptors at a time). Recommended approach is to edit the /etc/security/limits.conf in Ubuntu and add these two lines, 
