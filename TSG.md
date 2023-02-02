@@ -105,6 +105,7 @@ If Blobfuse2 pid is listed in the output then OOM has sent a SIGKILL to Blobfuse
 
 For HNS account, always add `type: adls` under `azstorage` section in your config file. Avoid using `endpoint` unless your storage account is behind a private endpoint. Blobfuse2 uses both blob and dfs endpoints to connect to storage account. User has to expose both these endpoints over private-endpoint for blobfuse2 to function properly.
 
+To create a private-endpoint for DFS in Azure portal: Go to your storageaccount -> Networking -> Private Endpoint connections. Click + Private endpoint, fill in subscription, resourcegroup, Name, Network Interface Name and Region. Click next and under Target sub-resource select dfs. Click Virtual network and select virtual netork and Subnet. Click DNS. Select Yes for Integrate with private DNS. Select the subscription and resourcegroup for your private link DNS. Select Next, Next and select create
 
 # Common Problems after a Successful Mount
 **1. Errno 24: Failed to open file /mnt/tmp/root/filex in file cache.  errno = 24 OR Too many files Open error**
