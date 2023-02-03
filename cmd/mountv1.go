@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
 	"github.com/Azure/azure-storage-fuse/v2/component/azstorage"
 	"github.com/Azure/azure-storage-fuse/v2/component/file_cache"
@@ -153,7 +154,7 @@ var generateConfigCmd = &cobra.Command{
 		if !disableVersionCheck {
 			err := VersionCheck()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s", err.Error())
+				log.Err(err.Error())
 			}
 		}
 		resetOptions()

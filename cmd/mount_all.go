@@ -70,13 +70,6 @@ var mountAllCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if !disableVersionCheck {
-			err := VersionCheck()
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "%s", err.Error())
-			}
-		}
-
 		mountAllOpts.blobfuse2BinPath = os.Args[0]
 		options.MountPath = args[0]
 		return processCommand()
@@ -144,6 +137,13 @@ func processCommand() error {
 
 	if err != nil {
 		return fmt.Errorf("failed to initialize logger [%s]", err.Error())
+	}
+
+	if !disableVersionCheck {
+		err := VersionCheck()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "%s", err.Error())
+		}
 	}
 
 	config.Set("mount-path", options.MountPath)
