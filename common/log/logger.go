@@ -36,7 +36,6 @@ package log
 import (
 	"errors"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -227,17 +226,8 @@ func LogRotate() error {
 }
 
 func init() {
-	workDir := os.ExpandEnv(common.DefaultWorkDir)
-	err := os.MkdirAll(workDir, os.ModeDir|os.FileMode(0777))
-	if err != nil {
-		panic("Unable to create blobfuse2 temp directory for logs")
-	}
-
 	logObj, _ = NewLogger("syslog", common.LogConfig{
-		Level:       common.ELogLevel.LOG_DEBUG(),
-		FilePath:    os.ExpandEnv(common.DefaultLogFilePath),
-		MaxFileSize: common.DefaultMaxLogFileSize,
-		FileCount:   common.DefaultLogFileCount,
+		Level: common.ELogLevel.LOG_DEBUG(),
 	})
 }
 

@@ -158,7 +158,7 @@ func encryptConfigFile(saveConfig bool) ([]byte, error) {
 	if saveConfig {
 		outputFileName := ""
 		if secOpts.OutputFile == "" {
-			outputFileName = filepath.Join(os.ExpandEnv(common.DefaultWorkDir), filepath.Base(secOpts.ConfigFile))
+			outputFileName = filepath.Join(common.ExpandPath(common.DefaultWorkDir), filepath.Base(secOpts.ConfigFile))
 			outputFileName += SecureConfigExtension
 		} else {
 			outputFileName = secOpts.OutputFile

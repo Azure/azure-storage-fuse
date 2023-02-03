@@ -110,9 +110,22 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 	if err := common.ELogLevel.Parse(opt.Logging.LogLevel); err != nil {
 		return fmt.Errorf("invalid log level [%s]", err.Error())
 	}
-	opt.Logging.LogFilePath = os.ExpandEnv(opt.Logging.LogFilePath)
+
+	if opt.DefaultWorkingDir != "" {
+		common.DefaultWorkDir = opt.DefaultWorkingDir
+
+		if opt.Logging.LogFilePath == common.DefaultLogFilePath {
+			// If default-working-dir is set then default log path shall be set to that path
+			// Ignore if specific log-path is provided by user
+			opt.Logging.LogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
+		}
+
+		common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
+	}
+
+	opt.Logging.LogFilePath = common.ExpandPath(opt.Logging.LogFilePath)
 	if !common.DirectoryExists(filepath.Dir(opt.Logging.LogFilePath)) {
-		err := os.MkdirAll(filepath.Dir(opt.Logging.LogFilePath), os.FileMode(0666)|os.ModeDir)
+		err := os.MkdirAll(filepath.Dir(opt.Logging.LogFilePath), os.FileMode(0776)|os.ModeDir)
 		if err != nil {
 			return fmt.Errorf("invalid log file path [%s]", err.Error())
 		}
@@ -125,11 +138,6 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 
 	if opt.Logging.LogFileCount == 0 {
 		opt.Logging.LogFileCount = common.DefaultLogFileCount
-	}
-
-	if opt.DefaultWorkingDir != "" {
-		common.DefaultWorkDir = opt.DefaultWorkingDir
-		common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 	}
 
 	return nil
@@ -150,7 +158,7 @@ func OnConfigChange() {
 
 	err = log.SetConfig(common.LogConfig{
 		Level:       logLevel,
-		FilePath:    os.ExpandEnv(newLogOptions.LogFilePath),
+		FilePath:    common.ExpandPath(newLogOptions.LogFilePath),
 		MaxFileSize: newLogOptions.MaxLogFileSize,
 		FileCount:   newLogOptions.LogFileCount,
 		TimeTracker: newLogOptions.TimeTracker,
