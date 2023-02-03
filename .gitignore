@@ -20,3 +20,4 @@ test/manual_scripts/cachetest.go
 lint.log
 azure-storage-fuse
 bfusemon
+test/scripts/dirIterate.go
