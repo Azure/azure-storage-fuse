@@ -8,6 +8,10 @@
 - [#1015](https://github.com/Azure/azure-storage-fuse/issues/1015) Default value of `ignore-open-flags` config parameter changed to `true`.
 - [#1038](https://github.com/Azure/azure-storage-fuse/issues/1038) Changing default daemon permissions.
 
+**Breaking Changes**
+- If version check fails, mount/mountall/mountv1 command used to terminate. From this release they will dump a log on `stderr` and continue to mount.
+
+
 ## 2.0.1 (2022-12-02)
 - Copy of GA release of Blobfuse2. This release was necessary to ensure the GA version resolves ahead of the preview versions.
 

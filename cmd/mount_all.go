@@ -73,7 +73,7 @@ var mountAllCmd = &cobra.Command{
 		if !disableVersionCheck {
 			err := VersionCheck()
 			if err != nil {
-				return err
+				fmt.Fprintf(os.Stderr, "%s", err.Error())
 			}
 		}
 
