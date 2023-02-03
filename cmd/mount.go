@@ -115,7 +115,7 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 		common.DefaultWorkDir = opt.DefaultWorkingDir
 
 		if opt.Logging.LogFilePath == common.DefaultLogFilePath {
-			// If default-workng-dir is set then default log path shall be set to that path
+			// If default-working-dir is set then default log path shall be set to that path
 			// Ignore if specific log-path is provided by user
 			opt.Logging.LogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 		}
