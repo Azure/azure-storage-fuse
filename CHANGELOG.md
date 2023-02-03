@@ -11,7 +11,7 @@
 - [#1036](https://github.com/Azure/azure-storage-fuse/issues/1036) Respect --default-working-dir cli param and use it as default log file path.
 
 **Breaking Changes**
-- If version check fails, mount/mountall/mountv1 command used to terminate. From this release they will dump a log on `stderr` and continue to mount.
+- If version check fails due to public container not reachable, mount/mountall/mountv1 command used to terminate. From this release it will just emit a error log.
 
 
 ## 2.0.1 (2022-12-02)
