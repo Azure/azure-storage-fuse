@@ -142,7 +142,7 @@ func processCommand() error {
 	if !disableVersionCheck {
 		err := VersionCheck()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "%s", err.Error())
+			log.Err(err.Error())
 		}
 	}
 
