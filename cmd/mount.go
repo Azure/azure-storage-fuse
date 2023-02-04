@@ -221,13 +221,6 @@ var mountCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(_ *cobra.Command, args []string) error {
-		if !disableVersionCheck {
-			err := VersionCheck()
-			if err != nil {
-				return err
-			}
-		}
-
 		options.MountPath = common.ExpandPath(args[0])
 		configFileExists := true
 
@@ -343,6 +336,13 @@ var mountCmd = &cobra.Command{
 
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
+		}
+
+		if !disableVersionCheck {
+			err := VersionCheck()
+			if err != nil {
+				log.Err(err.Error())
+			}
 		}
 
 		if config.IsSet("invalidate-on-sync") {
