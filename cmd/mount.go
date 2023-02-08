@@ -131,7 +131,7 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 	if err != nil && os.IsNotExist(err) {
 		// create the default work dir
 		if err = os.MkdirAll(common.ExpandPath(common.DefaultWorkDir), 0777); err != nil {
-			return fmt.Errorf("failed to create deafult work dir [%s]", err.Error())
+			return fmt.Errorf("failed to create default work dir [%s]", err.Error())
 		}
 	}
 
