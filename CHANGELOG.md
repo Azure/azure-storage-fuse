@@ -11,7 +11,7 @@
 - [#1036](https://github.com/Azure/azure-storage-fuse/issues/1036) Respect --default-working-dir cli param and use it as default log file path.
 - If version check fails due to network issues, mount/mountall/mountv1 command used to terminate. From this release it will just emit an error log and mount will continue.
 - If default work directory does not exists, mount shall create it before daemonizing.
-
+- Default value of 'virtual-directory' is changed to true. If your data is created using Blobfuse or AzCopy pass this flag as false in mount command.
 
 ## 2.0.1 (2022-12-02)
 - Copy of GA release of Blobfuse2. This release was necessary to ensure the GA version resolves ahead of the preview versions.

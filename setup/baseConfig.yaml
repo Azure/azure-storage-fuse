@@ -1,6 +1,6 @@
 # MUST READ : 
 #   If you are creating a blobfuse2 config file using this kindly take care of below points 
-#   1. All boolean configs (true|false config) (except ignore-open-flags) are set to 'false' by default. 
+#   1. All boolean configs (true|false config) (except ignore-open-flags, virtual-directory) are set to 'false' by default. 
 #      No need to mention them in your config file unless you are setting them to true.
 #   2. 'loopbackfs' is purely for testing and shall not be used in production configuration.
 #   3. 'stream' and 'file_cache' can not co-exist and config file shall have only one of them based on your use case.
@@ -20,6 +20,9 @@
 #   7. If are you using 'allow-other: true' config then make sure user_allow_other is enabled in /etc/fuse.conf file as 
 #      well otherwise mount will fail. By default /etc/fuse.conf will have this option disabled we just need to 
 #      enable it and save the file.
+#   8. If data in your storage account (non-HNS) is created using Blobfuse or AzCopy then there are marker files present
+#      in your container to mark a directory. In such cases you can optimize your listing by setting 'virtual-directory'
+#      flag to false in mount command.
 # -----------------------------------------------------------------------------------------------------------------------
 
 

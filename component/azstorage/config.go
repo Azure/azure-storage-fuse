@@ -497,7 +497,11 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 	az.stConfig.validateMD5 = opt.ValidateMD5
 	az.stConfig.updateMD5 = opt.UpdateMD5
 
-	az.stConfig.virtualDirectory = opt.VirtualDirectory
+	if config.IsSet(compName + ".virtual-directory") {
+		az.stConfig.virtualDirectory = opt.VirtualDirectory
+	} else {
+		az.stConfig.virtualDirectory = true
+	}
 
 	// Auth related reconfig
 	switch opt.AuthMode {
