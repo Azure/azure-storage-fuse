@@ -1,4 +1,7 @@
-## 2.0.2 (WIP)
+## 2.0.3 (WIP)
+**Bug Fixes**
+
+## 2.0.2 (2022-02-23)
 **Bug Fixes**
 - [#999](https://github.com/Azure/azure-storage-fuse/issues/999) Upgrade dependencies to resolve known CVEs.
 - [#1002](https://github.com/Azure/azure-storage-fuse/issues/1002) In case version check fails to connect to public container, dump a log to check network and proxy settings.
