@@ -545,6 +545,33 @@ func (suite *fileTestSuite) TestCreateReadOnlyFile() {
 	}
 }
 
+// # Rename with special character in name
+func (suite *fileTestSuite) TestRenameSpecial() {
+	dirName := "Alcaldía"
+	newDirName := "Alδaδcaldía"
+	fileName := suite.testPath + "/" + dirName + "/" + "/भारत.txt"
+	newFileName := suite.testPath + "/" + dirName + "/" + "/भारतabcd.txt"
+
+	err := os.Mkdir(dirName, 0777)
+	suite.Equal(nil, err)
+
+	f, err := os.Create(fileName)
+	suite.Equal(nil, err)
+	f.Close()
+
+	err = os.Rename(fileName, newFileName)
+	suite.Equal(nil, err)
+
+	err = os.Rename(newFileName, fileName)
+	suite.Equal(nil, err)
+
+	err = os.Rename(dirName, newDirName)
+	suite.Equal(nil, err)
+
+	err = os.RemoveAll(dirName)
+	suite.Equal(nil, err)
+}
+
 // -------------- Main Method -------------------
 func TestFileTestSuite(t *testing.T) {
 	initFileFlags()
