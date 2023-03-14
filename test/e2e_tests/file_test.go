@@ -568,7 +568,7 @@ func (suite *fileTestSuite) TestRenameSpecial() {
 	err = os.Rename(dirName, newDirName)
 	suite.Equal(nil, err)
 
-	err = os.RemoveAll(dirName)
+	err = os.RemoveAll(newDirName)
 	suite.Equal(nil, err)
 }
 
