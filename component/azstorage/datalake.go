@@ -351,7 +351,7 @@ func (dl *Datalake) RenameFile(source string, target string) error {
 func (dl *Datalake) RenameDirectory(source string, target string) error {
 	log.Trace("Datalake::RenameDirectory : %s -> %s", source, target)
 
-	directoryURL := dl.Filesystem.NewDirectoryURL(filepath.Join(dl.Config.prefixPath, source))
+	directoryURL := dl.Filesystem.NewDirectoryURL(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
 
 	_, err := directoryURL.Rename(context.Background(),
 		azbfs.RenameDirectoryOptions{
