@@ -1,6 +1,6 @@
 ## 2.0.3 (WIP)
 **Bug Fixes**
-- [#1080](https://github.com/Azure/azure-storage-fuse/issues/1080) HNS rename flow does not ecode source path correctly.
+- [#1080](https://github.com/Azure/azure-storage-fuse/issues/1080) HNS rename flow does not encode source path correctly.
 
 ## 2.0.2 (2022-02-23)
 **Bug Fixes**
