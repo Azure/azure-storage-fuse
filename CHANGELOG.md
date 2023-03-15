@@ -2,6 +2,9 @@
 **Bug Fixes**
 - [#1080](https://github.com/Azure/azure-storage-fuse/issues/1080) HNS rename flow does not encode source path correctly.
 
+**Features**
+- Adding support to mount entire account when container name is not provided. Creation of new container or deletion of container is not supported as of now with this feature.
+
 ## 2.0.2 (2022-02-23)
 **Bug Fixes**
 - [#999](https://github.com/Azure/azure-storage-fuse/issues/999) Upgrade dependencies to resolve known CVEs.
