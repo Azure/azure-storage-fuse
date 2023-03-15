@@ -164,7 +164,7 @@ func beginDetectNewVersion() chan interface{} {
 			if hasWarnings {
 				warningsPage := common.BlobFuse2WarningsURL + "#" + strings.ReplaceAll(common.Blobfuse2Version, ".", "")
 				fmt.Fprintf(stderr, "Visit %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
-				log.Warn("Vist %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
+				log.Warn("Visit %s to see the list of vulnerabilities associated with your current version [%s]\n", warningsPage, common.Blobfuse2Version)
 			}
 			completed <- "A new version of Blobfuse2 is available"
 		}
