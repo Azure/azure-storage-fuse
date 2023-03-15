@@ -316,9 +316,9 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		log.Err("ParseAndValidateConfig : Failed to detect mount-all-container")
 	}
 
-	if !az.stConfig.mountAllContainers && opt.Container == "" {
-		return errors.New("container name not provided")
-	}
+	// if !az.stConfig.mountAllContainers && opt.Container == "" {
+	// 	return errors.New("container name not provided")
+	// }
 
 	az.stConfig.container = opt.Container
 
@@ -344,6 +344,10 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	// If subdirectory is mounted, take the prefix path
 	az.stConfig.prefixPath = opt.PrefixPath
+
+	if opt.Container == "" && opt.PrefixPath != "" {
+		return errors.New("container name is empty, can not use prefixpath")
+	}
 
 	// Block list call on mount for given amount of time
 	az.stConfig.cancelListForSeconds = opt.CancelListForSeconds

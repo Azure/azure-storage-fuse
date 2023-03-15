@@ -91,7 +91,8 @@ type AzConnection interface {
 	SetupPipeline() error
 	TestPipeline() error
 
-	ListContainers() ([]string, error)
+	ListContainers(int32) ([]string, error)
+	ListAccountRoot(*string, int32)([]*internal.ObjAttr, *string, error)
 
 	// This is just for test, shall not be used otherwise
 	SetPrefixPath(string) error

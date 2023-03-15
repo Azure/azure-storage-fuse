@@ -217,30 +217,44 @@ func (bb *BlockBlob) TestPipeline() error {
 		return nil
 	}
 
-	marker := (azblob.Marker{})
-	listBlob, err := bb.Container.ListBlobsHierarchySegment(context.Background(), marker, "/",
-		azblob.ListBlobsSegmentOptions{MaxResults: 2,
-			Prefix: bb.Config.prefixPath,
-		})
+	if bb.Config.container == "" {
+		listPath, err := bb.ListContainers(2)
+		if err != nil {
+			log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error)
+			return err
+		}
 
-	if err != nil {
-		log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error)
-		return err
-	}
+		if listPath == nil {
+			log.Info("BlockBlob::TestPipeline : Container list is empty")
+		}
+	} else {
+		marker := (azblob.Marker{})
+		listBlob, err := bb.Container.ListBlobsHierarchySegment(context.Background(), marker, "/",
+			azblob.ListBlobsSegmentOptions{MaxResults: 2,
+				Prefix: bb.Config.prefixPath,
+			})
 
-	if listBlob == nil {
-		log.Info("BlockBlob::TestPipeline : Container is empty")
+		if err != nil {
+			log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error)
+			return err
+		}
+
+		if listBlob == nil {
+			log.Info("BlockBlob::TestPipeline : Container is empty")
+		}
 	}
 	return nil
 }
 
-func (bb *BlockBlob) ListContainers() ([]string, error) {
+func (bb *BlockBlob) ListContainers(maxresults int32) ([]string, error) {
 	log.Trace("BlockBlob::ListContainers : Listing containers")
 	cntList := make([]string, 0)
 
 	marker := azblob.Marker{}
 	for marker.NotDone() {
-		resp, err := bb.Service.ListContainersSegment(context.Background(), marker, azblob.ListContainersSegmentOptions{})
+		resp, err := bb.Service.ListContainersSegment(context.Background(), marker, azblob.ListContainersSegmentOptions{
+			MaxResults: maxresults,
+		})
 		if err != nil {
 			log.Err("BlockBlob::ListContainers : Failed to get container list")
 			return cntList, err
@@ -529,6 +543,40 @@ func (bb *BlockBlob) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	return bb.getAttrUsingRest(name)
 }
 
+// ListAccountRoot : Get a list of all containers on this account
+// If count=0 - fetch max entries
+func (bb *BlockBlob) ListAccountRoot(marker *string, count int32) ([]*internal.ObjAttr, *string, error) {
+	log.Trace("BlockBlob::ListAccountRoot : Listing containers on root")
+	resp, err := bb.Service.ListContainersSegment(context.Background(), azblob.Marker{Val: marker}, azblob.ListContainersSegmentOptions{
+		MaxResults: count,
+	})
+	if err != nil {
+		log.Err("BlockBlob::ListAccountRoot : Failed to get container list")
+		return nil, nil, err
+	}
+
+	cntList := make([]*internal.ObjAttr, 0)
+	for _, v := range resp.ContainerItems {
+		attr := &internal.ObjAttr{
+			Path:   v.Name,
+			Name:   filepath.Base(v.Name),
+			Mode:   os.ModeDir,
+			Mtime:  v.Properties.LastModified,
+			Atime:  v.Properties.LastModified,
+			Ctime:  v.Properties.LastModified,
+			Crtime: v.Properties.LastModified,
+			Flags:  internal.NewDirBitMap(),
+			Size:   4096,
+		}
+		attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+		attr.Flags.Set(internal.PropFlagModeDefault)
+
+		cntList = append(cntList, attr)
+	}
+
+	return cntList, resp.NextMarker.Val, nil
+}
+
 // List : Get a list of blobs matching the given prefix
 // This fetches the list using a marker so the caller code should handle marker logic
 // If count=0 - fetch max entries
@@ -541,11 +589,23 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		}
 	}(marker))
 
-	blobList := make([]*internal.ObjAttr, 0)
-
 	if count == 0 {
 		count = common.MaxDirListCount
 	}
+
+	contrainerURL := &bb.Container
+	if bb.Config.container == "" {
+		if prefix == "" {
+			return bb.ListAccountRoot(marker, count)
+		} else {
+			result := strings.SplitN(prefix, "/", 2)
+			prefix = result[1]
+			newContrainerURL := bb.Service.NewContainerURL(result[0])
+			contrainerURL = &newContrainerURL
+		}
+	}
+
+	blobList := make([]*internal.ObjAttr, 0)
 
 	listPath := filepath.Join(bb.Config.prefixPath, prefix)
 	if (prefix != "" && prefix[len(prefix)-1] == '/') || (prefix == "" && bb.Config.prefixPath != "") {
@@ -553,7 +613,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	}
 
 	// Get a result segment starting with the blob indicated by the current Marker.
-	listBlob, err := bb.Container.ListBlobsHierarchySegment(context.Background(), azblob.Marker{Val: marker}, "/",
+	listBlob, err := contrainerURL.ListBlobsHierarchySegment(context.Background(), azblob.Marker{Val: marker}, "/",
 		azblob.ListBlobsSegmentOptions{MaxResults: count,
 			Prefix:  listPath,
 			Details: bb.listDetails,

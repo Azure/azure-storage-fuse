@@ -203,7 +203,7 @@ func (s *datalakeTestSuite) TestListContainers() {
 		defer f.Delete(ctx)
 	}
 
-	containers, err := s.az.ListContainers()
+	containers, err := s.az.ListContainers(0)
 
 	s.assert.Nil(err)
 	s.assert.NotNil(containers)

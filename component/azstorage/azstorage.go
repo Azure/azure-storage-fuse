@@ -180,8 +180,8 @@ func (az *AzStorage) Stop() error {
 }
 
 // ------------------------- Container listing -------------------------------------------
-func (az *AzStorage) ListContainers() ([]string, error) {
-	return az.storage.ListContainers()
+func (az *AzStorage) ListContainers(maxresults int32) ([]string, error) {
+	return az.storage.ListContainers(maxresults)
 }
 
 // ------------------------- Core Operations -------------------------------------------

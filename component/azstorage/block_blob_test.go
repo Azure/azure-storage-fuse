@@ -342,7 +342,7 @@ func (s *blockBlobTestSuite) TestListContainers() {
 		defer c.Delete(ctx, azblob.ContainerAccessConditions{})
 	}
 
-	containers, err := s.az.ListContainers()
+	containers, err := s.az.ListContainers(0)
 
 	s.assert.Nil(err)
 	s.assert.NotNil(containers)

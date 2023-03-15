@@ -209,7 +209,7 @@ func getContainerList() ([]string, error) {
 	}
 
 	// Get the list of containers from the component
-	containerList, err = azComponent.ListContainers()
+	containerList, err = azComponent.ListContainers(0)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get container list from storage [%s]", err.Error())
 	}

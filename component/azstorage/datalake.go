@@ -211,28 +211,40 @@ func (dl *Datalake) TestPipeline() error {
 		return nil
 	}
 
-	maxResults := int32(2)
-	listPath, err := dl.Filesystem.ListPaths(context.Background(),
-		azbfs.ListPathsFilesystemOptions{
-			Path:       &dl.Config.prefixPath,
-			Recursive:  false,
-			MaxResults: &maxResults,
-		})
+	if dl.Config.container == "" {
+		listPath, err := dl.ListContainers(2)
+		if err != nil {
+			log.Err("Datalake::TestPipeline : Failed to validate account with given auth %s", err.Error)
+			return err
+		}
 
-	if err != nil {
-		log.Err("Datalake::TestPipeline : Failed to validate account with given auth %s", err.Error)
-		return err
+		if listPath == nil {
+			log.Info("Datalake::TestPipeline : Container list is empty")
+		}
+	} else {
+		maxResults := int32(2)
+		listPath, err := dl.Filesystem.ListPaths(context.Background(),
+			azbfs.ListPathsFilesystemOptions{
+				Path:       &dl.Config.prefixPath,
+				Recursive:  false,
+				MaxResults: &maxResults,
+			})
+		if err != nil {
+			log.Err("Datalake::TestPipeline : Failed to validate account with given auth %s", err.Error)
+			return err
+		}
+
+		if listPath == nil {
+			log.Info("Datalake::TestPipeline : Filesystem is empty")
+		}
 	}
 
-	if listPath == nil {
-		log.Info("Datalake::TestPipeline : Filesystem is empty")
-	}
 	return dl.BlockBlob.TestPipeline()
 }
 
-func (dl *Datalake) ListContainers() ([]string, error) {
+func (dl *Datalake) ListContainers(maxresults int32) ([]string, error) {
 	log.Trace("Datalake::ListContainers : Listing containers")
-	return dl.BlockBlob.ListContainers()
+	return dl.BlockBlob.ListContainers(maxresults)
 }
 
 func (dl *Datalake) SetPrefixPath(path string) error {
@@ -422,6 +434,12 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	return attr, nil
 }
 
+// ListAccountRoot : Get a list of all containers on this account
+// If count=0 - fetch max entries
+func (dl *Datalake) ListAccountRoot(marker *string, count int32) ([]*internal.ObjAttr, *string, error) {
+	return dl.BlockBlob.ListAccountRoot(marker, count)
+}
+
 // List : Get a list of path matching the given prefix
 // This fetches the list using a marker so the caller code should handle marker logic
 // If count=0 - fetch max entries
@@ -434,11 +452,23 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 		}
 	}(marker))
 
-	pathList := make([]*internal.ObjAttr, 0)
-
 	if count == 0 {
 		count = common.MaxDirListCount
 	}
+
+	contrainerURL := &dl.Filesystem
+	if dl.Config.container == "" {
+		if prefix == "" {
+			return dl.ListAccountRoot(marker, count)
+		} else {
+			result := strings.SplitN(prefix, "/", 2)
+			prefix = result[1]
+			newContrainerURL := dl.Service.NewFileSystemURL(result[0])
+			contrainerURL = &newContrainerURL
+		}
+	}
+
+	pathList := make([]*internal.ObjAttr, 0)
 
 	prefixPath := filepath.Join(dl.Config.prefixPath, prefix)
 	if prefix != "" && prefix[len(prefix)-1] == '/' {
@@ -446,7 +476,7 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 	}
 
 	// Get a result segment starting with the path indicated by the current Marker.
-	listPath, err := dl.Filesystem.ListPaths(context.Background(),
+	listPath, err := contrainerURL.ListPaths(context.Background(),
 		azbfs.ListPathsFilesystemOptions{
 			Path:              &prefixPath,
 			Recursive:         false,
