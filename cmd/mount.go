@@ -49,6 +49,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -85,6 +86,7 @@ type mountOptions struct {
 	ProfilerPort      int            `config:"profiler-port"`
 	ProfilerIP        string         `config:"profiler-ip"`
 	MonitorOpt        monitorOptions `config:"health_monitor"`
+	WaitForMount      int            `config:"wait-for-mount"`
 
 	// v1 support
 	Streaming      bool     `config:"streaming"`
@@ -417,6 +419,11 @@ var mountCmd = &cobra.Command{
 				if err != nil {
 					return err
 				}
+			} else {
+				// Give some breather for child process to start
+				// If not given parent process immediatly exits and it may happen that child has not yet started
+				// in such cases if user tries to access or bind the mount it may become inconsistent state.
+				time.Sleep(time.Duration(options.WaitForMount) * time.Second)
 			}
 		} else {
 			if options.CPUProfile != "" {
@@ -636,6 +643,8 @@ func init() {
 	mountCmd.PersistentFlags().StringSliceVarP(&options.LibfuseOptions, "o", "o", []string{}, "FUSE options.")
 	config.BindPFlag("libfuse-options", mountCmd.PersistentFlags().ShorthandLookup("o"))
 	mountCmd.PersistentFlags().ShorthandLookup("o").Hidden = true
+
+	mountCmd.PersistentFlags().IntVar(&options.WaitForMount, "wait-for-mount", 0, "Wait for daemon to mount")
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)
