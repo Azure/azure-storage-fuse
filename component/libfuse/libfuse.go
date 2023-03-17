@@ -38,6 +38,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -214,9 +215,12 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		cmd.Stderr = &errb
 		cliOut, err := cmd.Output()
 		data := string(cliOut)
-		if err == nil && data[0] == '#' {
-			log.Err("Libfuse::Validate : config error [user_allow_other is not enabled in /etc/fuse.conf]")
-			return fmt.Errorf("user_allow_other is not enabled in /etc/fuse.conf")
+		if err == nil {
+			data = strings.TrimSpace(data)
+			if data == "" || data[0] == '#' {
+				log.Err("Libfuse::Validate : config error [user_allow_other is not enabled in /etc/fuse.conf]")
+				return fmt.Errorf("user_allow_other is not enabled in /etc/fuse.conf")
+			}
 		}
 	}
 
