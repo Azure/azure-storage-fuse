@@ -115,6 +115,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--cache-size-mb=<SIZE IN MB>`: Amount of disk cache that can be used by blobfuse.
     * `--high-disk-threshold=<PERCENTAGE>`: If local cache usage exceeds this, start early eviction of files from cache.
     * `--low-disk-threshold=<PERCENTAGE>`: If local cache usage comes below this threshold then stop early eviction.
+    * `--sync-to-flush` : Sync call will force upload a file to storage container
 - Stream options
     * `--block-size-mb=<SIZE IN MB>`: Size of a block to be downloaded during streaming.
 - Fuse options
