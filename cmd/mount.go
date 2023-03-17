@@ -644,7 +644,7 @@ func init() {
 	config.BindPFlag("libfuse-options", mountCmd.PersistentFlags().ShorthandLookup("o"))
 	mountCmd.PersistentFlags().ShorthandLookup("o").Hidden = true
 
-	mountCmd.PersistentFlags().IntVar(&options.WaitForMount, "wait-for-mount", 0, "Wait for daemon to mount")
+	mountCmd.PersistentFlags().IntVar(&options.WaitForMount, "wait-for-mount", 0, "Let parent process wait for given timeout before exit")
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)
