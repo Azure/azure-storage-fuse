@@ -421,8 +421,8 @@ var mountCmd = &cobra.Command{
 				}
 			} else {
 				// Give some breather for child process to start
-				// If not given parent process immediatly exits and it may happen that child has not yet started
-				// in such cases if user tries to access or bind the mount it may become inconsistent state.
+				// If not given, parent process immediately exits and it may happen that child has not yet started
+				// in such cases if user tries to access or bind the mount it may lead to an inconsistent state.
 				time.Sleep(time.Duration(options.WaitForMount) * time.Second)
 			}
 		} else {

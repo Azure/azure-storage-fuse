@@ -1,7 +1,7 @@
 ## 2.0.3 (WIP)
 **Bug Fixes**
 - [#1080](https://github.com/Azure/azure-storage-fuse/issues/1080) HNS rename flow does not encode source path correctly.
-- [#1079](https://github.com/Azure/azure-storage-fuse/issues/1079) Shell returns before daemon process mounts the container and if user tries to bind the mount it leads to inconsistent state.
+- [#1079](https://github.com/Azure/azure-storage-fuse/issues/1079) Shell returns before child process mounts the container and if user tries to bind the mount it leads to inconsistent state.
 
 ## 2.0.2 (2022-02-23)
 **Bug Fixes**
