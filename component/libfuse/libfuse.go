@@ -34,8 +34,10 @@
 package libfuse
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os/exec"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -204,6 +206,20 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		lf.negativeTimeout = defaultNegativeEntryExpiration
 	}
 
+	if lf.allowOther {
+		// Validate allow_other is enabled in fuse.conf file or not
+		cmd := exec.Command("bash", "-c", "cat /etc/fuse.conf | grep -i user_allow_other$")
+
+		var errb bytes.Buffer
+		cmd.Stderr = &errb
+		cliOut, err := cmd.Output()
+		data := string(cliOut)
+		if err == nil && data[0] == '#' {
+			log.Err("Libfuse::Validate : config error [user_allow_other is not enabled in /etc/fuse.conf]")
+			return fmt.Errorf("user_allow_other is not enabled in /etc/fuse.conf")
+		}
+	}
+
 	var err error
 	lf.ownerUID, lf.ownerGID, err = common.GetCurrentUser()
 	if err != nil {
@@ -254,7 +270,7 @@ func (lf *Libfuse) Configure(_ bool) error {
 	err = lf.Validate(&conf)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [invalid config settings]")
-		return fmt.Errorf("config error in %s [invalid config settings]", lf.Name())
+		return fmt.Errorf("%s config error %s", lf.Name(), err.Error())
 	}
 
 	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags: %t, nonempty %t",
