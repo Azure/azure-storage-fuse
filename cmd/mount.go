@@ -50,7 +50,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -433,7 +432,6 @@ var mountCmd = &cobra.Command{
 				sigchild := make(chan os.Signal, 1)
 				signal.Notify(sigchild, syscall.SIGCHLD)
 
-				var timeout = 2 * time.Second
 				for {
 					select {
 					case <-sigusr2:
@@ -442,10 +440,6 @@ var mountCmd = &cobra.Command{
 					case <-sigchild:
 						errMsg, _ := ioutil.ReadFile(dmnCtx.LogFileName)
 						return Destroy(fmt.Sprintf("fuse mount failed with error message: %s", errMsg))
-					case <-time.After(timeout):
-						log.Warn("fuse mount at %s did not complete within %s, please check later", options.MountPath, timeout.String())
-						fmt.Printf("Mount is in progress, please check later...\n")
-						return nil
 					}
 				}
 			}
