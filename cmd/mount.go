@@ -42,6 +42,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
@@ -49,6 +50,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -391,31 +393,60 @@ var mountCmd = &cobra.Command{
 
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
+			// redirect libfuse stderr to a temp file
+			f, err := ioutil.TempFile("", "libfuse_stderr_")
+			if err != nil {
+				log.Err("mount : failed to create temp file [%v]", err)
+				return Destroy(fmt.Sprintf("failed to create temp file [%s]", err.Error()))
+			}
 			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 			dmnCtx := &daemon.Context{
 				PidFileName: pidFileName,
 				PidFilePerm: 0644,
 				Umask:       022,
+				LogFileName: f.Name(),
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
-			daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
+			daemon.SetSigHandler(sigusrHandler(), syscall.SIGUSR1, syscall.SIGUSR2)
 			child, err := dmnCtx.Reborn()
 			if err != nil {
 				log.Err("mount : failed to daemonize application [%v]", err)
 				return Destroy(fmt.Sprintf("failed to daemonize application [%s]", err.Error()))
 			}
-
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
 			if child == nil {
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
 				go startDynamicProfiler()
-
 				err = runPipeline(pipeline, ctx)
 				if err != nil {
+					errMsg, _ := ioutil.ReadFile(dmnCtx.LogFileName)
+					log.Err("libfuse exit with error message: %s", errMsg)
 					return err
+				}
+			} else {
+				// set signal handler
+				sigusr2 := make(chan os.Signal, 1)
+				signal.Notify(sigusr2, syscall.SIGUSR2)
+				sigchild := make(chan os.Signal, 1)
+				signal.Notify(sigchild, syscall.SIGCHLD)
+
+				var timeout = 2 * time.Second
+				for {
+					select {
+					case <-sigusr2:
+						log.Info("fuse mount at %s succeed.", options.MountPath)
+						return nil
+					case <-sigchild:
+						errMsg, _ := ioutil.ReadFile(dmnCtx.LogFileName)
+						return Destroy(fmt.Sprintf("fuse mount failed with error message: %s", errMsg))
+					case <-time.After(timeout):
+						log.Warn("fuse mount at %s did not complete within %s, please check later", options.MountPath, timeout.String())
+						fmt.Printf("Mount is in progress, please check later...\n")
+						return nil
+					}
 				}
 			}
 		} else {
@@ -509,7 +540,7 @@ func startMonitor(pid int) {
 	}
 }
 
-func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
+func sigusrHandler() daemon.SignalHandlerFunc {
 	return func(sig os.Signal) error {
 		log.Crit("Mount::sigusrHandler : Signal %d received", sig)
 
