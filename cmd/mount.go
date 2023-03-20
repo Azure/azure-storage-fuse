@@ -50,6 +50,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -86,6 +87,7 @@ type mountOptions struct {
 	ProfilerPort      int            `config:"profiler-port"`
 	ProfilerIP        string         `config:"profiler-ip"`
 	MonitorOpt        monitorOptions `config:"health_monitor"`
+	WaitForMount      int            `config:"wait-for-mount"`
 
 	// v1 support
 	Streaming      bool     `config:"streaming"`
@@ -446,7 +448,10 @@ var mountCmd = &cobra.Command{
 					case <-sigchild:
 						errMsg, _ := ioutil.ReadFile(dmnCtx.LogFileName)
 						return Destroy(fmt.Sprintf("fuse mount failed with error message: %s", errMsg))
+					case <-time.After(time.Duration(options.WaitForMount) * time.Second):
+						return nil
 					}
+
 				}
 			}
 		} else {
@@ -667,6 +672,8 @@ func init() {
 	mountCmd.PersistentFlags().StringSliceVarP(&options.LibfuseOptions, "o", "o", []string{}, "FUSE options.")
 	config.BindPFlag("libfuse-options", mountCmd.PersistentFlags().ShorthandLookup("o"))
 	mountCmd.PersistentFlags().ShorthandLookup("o").Hidden = true
+
+	mountCmd.PersistentFlags().IntVar(&options.WaitForMount, "wait-for-mount", 0, "Let parent process wait for given timeout before exit")
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)

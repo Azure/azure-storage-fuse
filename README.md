@@ -99,8 +99,9 @@ To learn about a specific command, just include the name of the command (For exa
     * `--read-only=true`: Mount container in read-only mode.
     * `--default-working-dir`: The default working directory to store log files and other blobfuse2 related information.
     * `--disable-version-check=true`: Disable the blobfuse2 version check.
-    * `----secure-config=true` : Config file is encrypted suing 'blobfuse2 secure` command.
-    * `----passphrase=<STRING>` : Passphrase used to encrypt/decrypt config file.
+    * `--secure-config=true` : Config file is encrypted suing 'blobfuse2 secure` command.
+    * `--passphrase=<STRING>` : Passphrase used to encrypt/decrypt config file.
+    * `--wait-for-mount=<TIMEOUT IN SECONDS>` : Let parent process wait for given timeout before exit to ensure child has started. 
 - Attribute cache options
     * `--attr-cache-timeout=<TIMEOUT IN SECONDS>`: The timeout for the attribute cache entries.
     * `--no-symlinks=true`: To improve performance disable symlink support.
