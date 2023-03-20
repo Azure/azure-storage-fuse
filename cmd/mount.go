@@ -418,6 +418,7 @@ var mountCmd = &cobra.Command{
 				log.Err("mount : failed to daemonize application [%v]", err)
 				return Destroy(fmt.Sprintf("failed to daemonize application [%s]", err.Error()))
 			}
+
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
 			if child == nil {
 				defer dmnCtx.Release() // nolint
