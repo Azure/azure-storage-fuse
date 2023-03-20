@@ -1,3 +1,4 @@
+//go:build fuse2
 // +build fuse2
 
 /*
@@ -244,7 +245,9 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 	log.Trace("Libfuse::libfuse2_init : notifying parent")
 	ppid := syscall.Getppid()
 	if ppid != 1 {
-		syscall.Kill(ppid, syscall.SIGUSR2)
+		if err := syscall.Kill(ppid, syscall.SIGUSR2); err != nil {
+			log.Err("Libfuse::libfuse_init : failed to notify parent, error: %v", err)
+		}
 	}
 
 	log.Trace("Libfuse::libfuse2_init : init")

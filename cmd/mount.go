@@ -421,7 +421,9 @@ var mountCmd = &cobra.Command{
 				signal.Notify(sigchild, syscall.SIGCHLD)
 			} else { // execute in child only
 				daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
-				go daemon.ServeSignals()
+				go func() {
+					_ = daemon.ServeSignals()
+				}()
 			}
 
 			child, err := dmnCtx.Reborn()

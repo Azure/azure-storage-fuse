@@ -245,7 +245,9 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	log.Trace("Libfuse::libfuse_init : notifying parent")
 	ppid := syscall.Getppid()
 	if ppid != 1 {
-		syscall.Kill(ppid, syscall.SIGUSR2)
+		if err := syscall.Kill(ppid, syscall.SIGUSR2); err != nil {
+			log.Err("Libfuse::libfuse_init : failed to notify parent, error: %v", err)
+		}
 	}
 	
 	log.Trace("Libfuse::libfuse_init : init")
