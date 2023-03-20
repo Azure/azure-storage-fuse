@@ -412,7 +412,7 @@ var mountCmd = &cobra.Command{
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
-			daemon.SetSigHandler(sigusrHandler(), syscall.SIGUSR1, syscall.SIGUSR2)
+			daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
 			child, err := dmnCtx.Reborn()
 			if err != nil {
 				log.Err("mount : failed to daemonize application [%v]", err)
@@ -540,7 +540,7 @@ func startMonitor(pid int) {
 	}
 }
 
-func sigusrHandler() daemon.SignalHandlerFunc {
+func sigusrHandler(pipeline *internal.Pipeline, ctx context.Context) daemon.SignalHandlerFunc {
 	return func(sig os.Signal) error {
 		log.Crit("Mount::sigusrHandler : Signal %d received", sig)
 
