@@ -443,18 +443,13 @@ var mountCmd = &cobra.Command{
 					return err
 				}
 			} else {
-				for {
-					select {
-					case <-sigusr2:
-						log.Info("fuse mount at %s succeed.", options.MountPath)
-						return nil
-					case <-sigchild:
-						errMsg, _ := ioutil.ReadFile(dmnCtx.LogFileName)
-						return Destroy(fmt.Sprintf("fuse mount failed with error message: %s", errMsg))
-					case <-time.After(options.WaitForMount):
-						return nil
-					}
-
+				select {
+				case <-sigusr2:
+					log.Info("fuse mount at %s succeed.", options.MountPath)
+				case <-sigchild:
+					errMsg, _ := ioutil.ReadFile(dmnCtx.LogFileName)
+					return Destroy(fmt.Sprintf("fuse mount failed with error message: %s", errMsg))
+				case <-time.After(options.WaitForMount):
 				}
 			}
 		} else {
