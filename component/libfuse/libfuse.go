@@ -37,6 +37,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 
@@ -207,8 +208,9 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		lf.negativeTimeout = defaultNegativeEntryExpiration
 	}
 
-	if lf.allowOther {
-		// Validate allow_other is enabled in fuse.conf file or not
+	// When root user mounts, allow_other works even if its not set in /etc/fuse.conf file
+	// for other user libfuse init will fail. Adding a pre-condition here for validation
+	if lf.allowOther && 0 != os.Getuid() && 0 != os.Getgid() {
 		cmd := exec.Command("bash", "-c", "cat /etc/fuse.conf | grep -i user_allow_other$")
 
 		var errb bytes.Buffer
