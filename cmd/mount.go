@@ -423,6 +423,7 @@ var mountCmd = &cobra.Command{
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
 				go startDynamicProfiler()
+
 				err = runPipeline(pipeline, ctx)
 				if err != nil {
 					errMsg, _ := ioutil.ReadFile(dmnCtx.LogFileName)
