@@ -423,7 +423,14 @@ var mountCmd = &cobra.Command{
 				// Give some breather for child process to start
 				// If not given, parent process immediately exits and it may happen that child has not yet started
 				// in such cases if user tries to access or bind the mount it may lead to an inconsistent state.
-				time.Sleep(time.Duration(options.WaitForMount) * time.Second)
+				if options.WaitForMount > 0 {
+					// This if for plan-B in any case if child-parent signaling logic fails, user can always fall back to
+					// fixed amount of delay to give a chance for child process to start.
+					time.Sleep(time.Duration(options.WaitForMount) * time.Second)
+				} else {
+					// Handle child signaling process here
+
+				}
 			}
 		} else {
 			if options.CPUProfile != "" {
