@@ -241,7 +241,7 @@ func (lf *Libfuse) destroyFuse() error {
 //export libfuse2_init
 func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 	// fuse started processing requests, no error happened during mounting
-	log.Trace("Libfuse::libfuse_init : notifying parent")
+	log.Trace("Libfuse::libfuse2_init : notifying parent")
 	ppid := syscall.Getppid()
 	if ppid != 1 {
 		syscall.Kill(ppid, syscall.SIGUSR2)
