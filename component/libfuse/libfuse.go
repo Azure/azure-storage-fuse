@@ -223,6 +223,8 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 				log.Err("Libfuse::Validate : config error [user_allow_other is not enabled in /etc/fuse.conf]")
 				return fmt.Errorf("user_allow_other is not enabled in /etc/fuse.conf")
 			}
+		} else {
+			log.Err("Libfuse::Validate : failed to check fuse config file [%s]", err.Error())
 		}
 	}
 
