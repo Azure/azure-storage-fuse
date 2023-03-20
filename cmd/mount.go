@@ -87,7 +87,7 @@ type mountOptions struct {
 	ProfilerPort      int            `config:"profiler-port"`
 	ProfilerIP        string         `config:"profiler-ip"`
 	MonitorOpt        monitorOptions `config:"health_monitor"`
-	WaitForMount      int            `config:"wait-for-mount"`
+	WaitForMount      time.Duration  `config:"wait-for-mount"`
 
 	// v1 support
 	Streaming      bool     `config:"streaming"`
@@ -402,7 +402,9 @@ var mountCmd = &cobra.Command{
 				Umask:       022,
 			}
 
-			if !daemon.WasReborn() {
+			ctx, _ := context.WithCancel(context.Background()) //nolint
+			var sigusr2, sigchild chan os.Signal
+			if !daemon.WasReborn() { // execute in parent only
 				// redirect libfuse stderr to a temp file
 				f, err := ioutil.TempFile("", "libfuse_stderr_")
 				if err != nil {
@@ -411,10 +413,17 @@ var mountCmd = &cobra.Command{
 					defer os.Remove(f.Name())
 					dmnCtx.LogFileName = f.Name()
 				}
+
+				// set signal handler
+				sigusr2 = make(chan os.Signal, 1)
+				signal.Notify(sigusr2, syscall.SIGUSR2)
+				sigchild = make(chan os.Signal, 1)
+				signal.Notify(sigchild, syscall.SIGCHLD)
+			} else { // execute in child only
+				daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
+				go daemon.ServeSignals()
 			}
 
-			ctx, _ := context.WithCancel(context.Background()) //nolint
-			daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
 			child, err := dmnCtx.Reborn()
 			if err != nil {
 				log.Err("mount : failed to daemonize application [%v]", err)
@@ -434,12 +443,6 @@ var mountCmd = &cobra.Command{
 					return err
 				}
 			} else {
-				// set signal handler
-				sigusr2 := make(chan os.Signal, 1)
-				signal.Notify(sigusr2, syscall.SIGUSR2)
-				sigchild := make(chan os.Signal, 1)
-				signal.Notify(sigchild, syscall.SIGCHLD)
-
 				for {
 					select {
 					case <-sigusr2:
@@ -448,7 +451,7 @@ var mountCmd = &cobra.Command{
 					case <-sigchild:
 						errMsg, _ := ioutil.ReadFile(dmnCtx.LogFileName)
 						return Destroy(fmt.Sprintf("fuse mount failed with error message: %s", errMsg))
-					case <-time.After(time.Duration(options.WaitForMount) * time.Second):
+					case <-time.After(options.WaitForMount):
 						return nil
 					}
 
@@ -673,7 +676,7 @@ func init() {
 	config.BindPFlag("libfuse-options", mountCmd.PersistentFlags().ShorthandLookup("o"))
 	mountCmd.PersistentFlags().ShorthandLookup("o").Hidden = true
 
-	mountCmd.PersistentFlags().IntVar(&options.WaitForMount, "wait-for-mount", 0, "Let parent process wait for given timeout before exit")
+	mountCmd.PersistentFlags().DurationVar(&options.WaitForMount, "wait-for-mount", 5*time.Second, "Let parent process wait for given timeout before exit")
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)
