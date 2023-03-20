@@ -247,6 +247,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	if ppid != 1 {
 		syscall.Kill(ppid, syscall.SIGUSR2)
 	}
+	
 	log.Trace("Libfuse::libfuse_init : init")
 	C.populate_uid_gid()
 
