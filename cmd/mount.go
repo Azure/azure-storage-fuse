@@ -404,11 +404,11 @@ var mountCmd = &cobra.Command{
 				// redirect libfuse stderr to a temp file
 				f, err := ioutil.TempFile("", "libfuse_stderr_")
 				if err != nil {
-					log.Err("mount : failed to create temp file [%v]", err)
-					return Destroy(fmt.Sprintf("failed to create temp file [%s]", err.Error()))
+					log.Err("failed to create temp file for storing libfuse error log [%v]", err)
+				} else {
+					defer os.Remove(f.Name())
+					dmnCtx.LogFileName = f.Name()
 				}
-				defer os.Remove(f.Name())
-				dmnCtx.LogFileName = f.Name()
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
