@@ -392,19 +392,23 @@ var mountCmd = &cobra.Command{
 
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
-			// redirect libfuse stderr to a temp file
-			f, err := ioutil.TempFile("", "libfuse_stderr_")
-			if err != nil {
-				log.Err("mount : failed to create temp file [%v]", err)
-				return Destroy(fmt.Sprintf("failed to create temp file [%s]", err.Error()))
-			}
 			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
 			dmnCtx := &daemon.Context{
 				PidFileName: pidFileName,
 				PidFilePerm: 0644,
 				Umask:       022,
-				LogFileName: f.Name(),
+			}
+
+			if !daemon.WasReborn() {
+				// redirect libfuse stderr to a temp file
+				f, err := ioutil.TempFile("", "libfuse_stderr_")
+				if err != nil {
+					log.Err("mount : failed to create temp file [%v]", err)
+					return Destroy(fmt.Sprintf("failed to create temp file [%s]", err.Error()))
+				}
+				defer os.Remove(f.Name())
+				dmnCtx.LogFileName = f.Name()
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
