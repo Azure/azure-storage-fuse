@@ -284,6 +284,7 @@ var mountCmd = &cobra.Command{
 		}
 
 		skipNonEmpty := false
+
 		if config.IsSet("libfuse-options") {
 			for _, v := range options.LibfuseOptions {
 				parameter := strings.Split(v, "=")
