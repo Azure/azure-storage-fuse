@@ -397,10 +397,15 @@ var mountCmd = &cobra.Command{
 		if !options.Foreground {
 			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
+
+			pid := os.Getpid()
+			fname := fmt.Sprintf("/tmp/blobfuse2.%v", pid)
+
 			dmnCtx := &daemon.Context{
 				PidFileName: pidFileName,
 				PidFilePerm: 0644,
 				Umask:       022,
+				LogFileName: fname,
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
@@ -432,18 +437,10 @@ var mountCmd = &cobra.Command{
 				setGOConfig()
 				go startDynamicProfiler()
 
-				err = runPipeline(pipeline, ctx)
-				if err != nil {
-					pid := os.Getpid()
-					fname := fmt.Sprintf("/tmp/blobfuse2.%v", pid)
-					if err = ioutil.WriteFile(fname, []byte(err.Error()), 0777); err != nil {
-						log.Err("mount: failed to save mount failure logs [%s]", err.Error())
-					}
-
-					return err
-				}
-
+				return runPipeline(pipeline, ctx)
 			} else { // execute in parent only
+				defer os.Remove(fname)
+
 				select {
 				case <-sigusr2:
 					log.Info("mount: Child [%v] mounted successfully at %s", child.Pid, options.MountPath)
@@ -451,23 +448,20 @@ var mountCmd = &cobra.Command{
 				case <-sigchild:
 					// Get error string from the child
 					log.Info("mount: Child [%v] terminated from %s", child.Pid, options.MountPath)
-
-					fname := fmt.Sprintf("/tmp/blobfuse2.%v", child.Pid)
-
-					buff, err := ioutil.ReadFile(fname)
-					if err != nil {
-						log.Err("mount: failed to read child [%v] failure logs [%s]", child.Pid, err.Error())
-						return Destroy(fmt.Sprintf("failed to mount, please check logs [%s]", err.Error()))
-					} else {
-						_ = os.Remove(fname)
-						return Destroy(string(buff))
+					if dmnCtx.LogFileName != "" {
+						buff, err := ioutil.ReadFile(dmnCtx.LogFileName)
+						if err != nil {
+							log.Err("mount: failed to read child [%v] failure logs [%s]", child.Pid, err.Error())
+							return Destroy(fmt.Sprintf("failed to mount, please check logs [%s]", err.Error()))
+						} else {
+							return Destroy(string(buff))
+						}
 					}
 
 				case <-time.After(options.WaitForMount):
 					log.Info("mount: Child [%v : %s] status check timeout", child.Pid, options.MountPath)
 				}
 			}
-
 		} else {
 			if options.CPUProfile != "" {
 				os.Remove(options.CPUProfile)
@@ -490,6 +484,7 @@ var mountCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+
 			if options.MemProfile != "" {
 				os.Remove(options.MemProfile)
 				f, err := os.Create(options.MemProfile)
