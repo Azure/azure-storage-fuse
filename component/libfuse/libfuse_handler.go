@@ -241,16 +241,13 @@ func (lf *Libfuse) destroyFuse() error {
 
 //export libfuse_init
 func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Pointer) {
-	// fuse started processing requests, no error happened during mounting
-	log.Trace("Libfuse::libfuse_init : notifying parent")
-	ppid := syscall.Getppid()
-	if ppid != 1 {
-		if err := syscall.Kill(ppid, syscall.SIGUSR2); err != nil {
-			log.Err("Libfuse::libfuse_init : failed to notify parent, error: %v", err)
-		}
-	}
-	
 	log.Trace("Libfuse::libfuse_init : init")
+
+	log.Info("Libfuse::NotifyMountToParent : Notifying parent for successful mount")
+	if err := common.NotifyMountToParent(); err != nil {
+		log.Err("Libfuse::NotifyMountToParent : Failed to notify parent, error: [%v]", err)
+	}
+
 	C.populate_uid_gid()
 
 	log.Info("Libfuse::libfuse_init : Kernel Caps : %d", conn.capable)

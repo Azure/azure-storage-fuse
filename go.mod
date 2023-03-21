@@ -11,6 +11,7 @@ require (
 	github.com/JeffreyRichter/enum v0.0.0-20180725232043-2567042f9cda
 	github.com/fsnotify/fsnotify v1.4.9
 	github.com/golang/mock v1.6.0
+	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0 // indirect
 	github.com/mitchellh/mapstructure v1.4.1
 	github.com/montanaflynn/stats v0.6.6
 	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58
@@ -28,5 +29,3 @@ require (
 )
 
 replace github.com/spf13/cobra => github.com/gapra-msft/cobra v1.4.1-0.20220411185530-5b83e8ba06dd
-
-replace github.com/sevlyar/go-daemon => github.com/cvvz/go-daemon v0.1.5

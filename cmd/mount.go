@@ -403,20 +403,13 @@ var mountCmd = &cobra.Command{
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
-			var sigusr2, sigchild chan os.Signal
-			var pipeR, pipeW *os.File
-			if !daemon.WasReborn() { // execute in parent only
-				// redirect libfuse stderr to PIPE
-				var err error
-				pipeR, pipeW, err = os.Pipe()
-				if err != nil {
-					return Destroy(fmt.Sprintf("failed to create pipe [%s]", err.Error()))
-				}
-				dmnCtx.SetLogFile(pipeW)
 
-				// set signal handler
+			// Signal handlers for parent and child to communicate success or failures in mount
+			var sigusr2, sigchild chan os.Signal
+			if !daemon.WasReborn() { // execute in parent only
 				sigusr2 = make(chan os.Signal, 1)
 				signal.Notify(sigusr2, syscall.SIGUSR2)
+
 				sigchild = make(chan os.Signal, 1)
 				signal.Notify(sigchild, syscall.SIGCHLD)
 			} else { // execute in child only
@@ -431,28 +424,49 @@ var mountCmd = &cobra.Command{
 				log.Err("mount : failed to daemonize application [%v]", err)
 				return Destroy(fmt.Sprintf("failed to daemonize application [%s]", err.Error()))
 			}
+
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
-			if child == nil {
+			if child == nil { // execute in child only
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
 				go startDynamicProfiler()
 
 				err = runPipeline(pipeline, ctx)
 				if err != nil {
+					pid := os.Getpid()
+					fname := fmt.Sprintf("/tmp/blobfuse2.%v", pid)
+					if err = ioutil.WriteFile(fname, []byte(err.Error()), 0777); err != nil {
+						log.Err("mount: failed to save mount failure logs [%s]", err.Error())
+					}
+
 					return err
 				}
-			} else {
+
+			} else { // execute in parent only
 				select {
 				case <-sigusr2:
-					log.Info("libfuse mount at %s succeed.", options.MountPath)
+					log.Info("mount: Child [%v] mounted successfully at %s", child.Pid, options.MountPath)
+
 				case <-sigchild:
-					buf := make([]byte, 1024)
-					pipeR.Read(buf)
-					return Destroy(fmt.Sprintf("libfuse mount failed: %s", buf))
+					// Get error string from the child
+					log.Info("mount: Child [%v] terminated from %s", child.Pid, options.MountPath)
+
+					fname := fmt.Sprintf("/tmp/blobfuse2.%v", child.Pid)
+
+					buff, err := ioutil.ReadFile(fname)
+					if err != nil {
+						log.Err("mount: failed to read child [%v] failure logs [%s]", child.Pid, err.Error())
+						return Destroy(fmt.Sprintf("failed to mount, please check logs [%s]", err.Error()))
+					} else {
+						_ = os.Remove(fname)
+						return Destroy(string(buff))
+					}
+
 				case <-time.After(options.WaitForMount):
-					log.Warn("libfuse mount at %s timeout.", options.MountPath)
+					log.Info("mount: Child [%v : %s] status check timeout", child.Pid, options.MountPath)
 				}
 			}
+
 		} else {
 			if options.CPUProfile != "" {
 				os.Remove(options.CPUProfile)
