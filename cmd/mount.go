@@ -393,6 +393,8 @@ var mountCmd = &cobra.Command{
 			return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
 		}
 
+		common.ForegroundMount = options.Foreground
+
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
 			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
@@ -405,7 +407,7 @@ var mountCmd = &cobra.Command{
 				PidFileName: pidFileName,
 				PidFilePerm: 0644,
 				Umask:       022,
-				LogFileName: fname,
+				LogFileName: fname, // this will redirect stderr of child to given file
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
@@ -437,6 +439,8 @@ var mountCmd = &cobra.Command{
 				setGOConfig()
 				go startDynamicProfiler()
 
+				// In case of failure stderr will have the error emitted by child and parent will read
+				// those logs from the file set in daemon context
 				return runPipeline(pipeline, ctx)
 			} else { // execute in parent only
 				defer os.Remove(fname)
@@ -446,21 +450,22 @@ var mountCmd = &cobra.Command{
 					log.Info("mount: Child [%v] mounted successfully at %s", child.Pid, options.MountPath)
 
 				case <-sigchild:
-					// Get error string from the child
+					// Get error string from the child, stderr or child was redirected to a file
 					log.Info("mount: Child [%v] terminated from %s", child.Pid, options.MountPath)
-					if dmnCtx.LogFileName != "" {
-						buff, err := ioutil.ReadFile(dmnCtx.LogFileName)
-						if err != nil {
-							log.Err("mount: failed to read child [%v] failure logs [%s]", child.Pid, err.Error())
-							return Destroy(fmt.Sprintf("failed to mount, please check logs [%s]", err.Error()))
-						} else {
-							return Destroy(string(buff))
-						}
+
+					buff, err := ioutil.ReadFile(dmnCtx.LogFileName)
+					if err != nil {
+						log.Err("mount: failed to read child [%v] failure logs [%s]", child.Pid, err.Error())
+						return Destroy(fmt.Sprintf("failed to mount, please check logs [%s]", err.Error()))
+					} else {
+						return Destroy(string(buff))
 					}
 
 				case <-time.After(options.WaitForMount):
 					log.Info("mount: Child [%v : %s] status check timeout", child.Pid, options.MountPath)
 				}
+
+				_ = log.Destroy()
 			}
 		} else {
 			if options.CPUProfile != "" {
