@@ -254,7 +254,7 @@ func (lf *Libfuse) Configure(_ bool) error {
 	err = lf.Validate(&conf)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [invalid config settings]")
-		return fmt.Errorf("config error in %s [invalid config settings]", lf.Name())
+		return fmt.Errorf("%s config error %s", lf.Name(), err.Error())
 	}
 
 	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags: %t, nonempty %t",
