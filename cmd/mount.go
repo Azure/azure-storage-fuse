@@ -404,15 +404,15 @@ var mountCmd = &cobra.Command{
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
 			var sigusr2, sigchild chan os.Signal
+			var pipeR, pipeW *os.File
 			if !daemon.WasReborn() { // execute in parent only
-				// redirect libfuse stderr to a temp file
-				f, err := ioutil.TempFile("", "libfuse_stderr_")
+				// redirect libfuse stderr to PIPE
+				var err error
+				pipeR, pipeW, err = os.Pipe()
 				if err != nil {
-					log.Err("failed to create temp file for storing libfuse error log [%v]", err)
-				} else {
-					defer os.Remove(f.Name())
-					dmnCtx.LogFileName = f.Name()
+					return Destroy(fmt.Sprintf("failed to create pipe [%s]", err.Error()))
 				}
+				dmnCtx.SetLogFile(pipeW)
 
 				// set signal handler
 				sigusr2 = make(chan os.Signal, 1)
@@ -431,7 +431,6 @@ var mountCmd = &cobra.Command{
 				log.Err("mount : failed to daemonize application [%v]", err)
 				return Destroy(fmt.Sprintf("failed to daemonize application [%s]", err.Error()))
 			}
-
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
 			if child == nil {
 				defer dmnCtx.Release() // nolint
@@ -440,18 +439,18 @@ var mountCmd = &cobra.Command{
 
 				err = runPipeline(pipeline, ctx)
 				if err != nil {
-					errMsg, _ := ioutil.ReadFile(dmnCtx.LogFileName)
-					log.Err("libfuse exit with error message: %s", errMsg)
 					return err
 				}
 			} else {
 				select {
 				case <-sigusr2:
-					log.Info("fuse mount at %s succeed.", options.MountPath)
+					log.Info("libfuse mount at %s succeed.", options.MountPath)
 				case <-sigchild:
-					errMsg, _ := ioutil.ReadFile(dmnCtx.LogFileName)
-					return Destroy(fmt.Sprintf("fuse mount failed with error message: %s", errMsg))
+					buf := make([]byte, 1024)
+					pipeR.Read(buf)
+					return Destroy(fmt.Sprintf("libfuse mount failed: %s", buf))
 				case <-time.After(options.WaitForMount):
+					log.Warn("libfuse mount at %s timeout.", options.MountPath)
 				}
 			}
 		} else {
