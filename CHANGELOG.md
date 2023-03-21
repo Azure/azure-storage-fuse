@@ -1,6 +1,7 @@
 ## 2.0.3 (WIP)
 **Bug Fixes**
 - [#1080](https://github.com/Azure/azure-storage-fuse/issues/1080) HNS rename flow does not encode source path correctly.
+- [#1081](https://github.com/Azure/azure-storage-fuse/issues/1081) Blobfuse will exit with non-zero status code if allow_other option is used but not enabled in fuse config.
 
 ## 2.0.2 (2022-02-23)
 **Bug Fixes**
