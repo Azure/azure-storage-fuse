@@ -489,6 +489,12 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 	var marker *string = nil
 	blobsRead := 0
 
+	fileName := name
+	if bb.Config.container == "" && name != "" {
+		result := strings.SplitN(name, "/", 2)
+		fileName = result[1]
+	}
+
 	for failCount < maxFailCount {
 		blobs, new_marker, err := bb.List(name, marker, common.MaxDirListCount)
 		if err != nil {
@@ -507,7 +513,7 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 
 		for i, blob := range blobs {
 			log.Trace("BlockBlob::getAttrUsingList : Item %d Blob %s", i+blobsRead, blob.Name)
-			if blob.Path == name {
+			if blob.Path == fileName {
 				return blob, nil
 			}
 		}

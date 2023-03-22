@@ -387,7 +387,13 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("Datalake::GetAttr : name %s", name)
 
-	pathURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
+	fileName := name
+	if dl.Config.container == "" && name != "" {
+		result := strings.SplitN(name, "/", 2)
+		fileName = result[1]
+	}
+
+	pathURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, fileName))
 	prop, err := pathURL.GetProperties(context.Background())
 
 	if err != nil {
