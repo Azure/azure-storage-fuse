@@ -5,6 +5,9 @@
 - [#1079](https://github.com/Azure/azure-storage-fuse/issues/1079) Shell returns before child process mounts the container and if user tries to bind the mount it leads to inconsistent state.
 - If mount fails in forked child, blobfuse2 will return back with status error code.
 
+**Features**
+- Added new CLI parameter "--sync-to-flush". Once configured sync() call on file will force upload a file to storage container. As this is file handle based api, if file was not in file-cache it will first download and then upload the file. 
+
 
 ## 2.0.2 (2022-02-23)
 **Bug Fixes**

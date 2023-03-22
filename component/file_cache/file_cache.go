@@ -73,6 +73,7 @@ type FileCache struct {
 	mountPath       string
 	allowOther      bool
 	offloadIO       bool
+	syncToFlush     bool
 	maxCacheSize    float64
 
 	defaultPermission os.FileMode
@@ -101,6 +102,7 @@ type FileCacheOptions struct {
 	// v1 support
 	V1Timeout     uint32 `config:"file-cache-timeout-in-seconds" yaml:"-"`
 	EmptyDirCheck bool   `config:"empty-dir-check" yaml:"-"`
+	SyncToFlush   bool   `config:"sync-to-flush" yaml:"sync-to-flush,omitempty"`
 }
 
 const (
@@ -220,6 +222,7 @@ func (c *FileCache) Configure(_ bool) error {
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
 	c.maxCacheSize = conf.MaxSizeMB
+	c.syncToFlush = conf.SyncToFlush
 
 	c.tmpPath = common.ExpandPath(conf.TmpPath)
 	if c.tmpPath == "" {
@@ -286,6 +289,9 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 	if config.IsSet(compName + ".upload-modified-only") {
 		log.Warn("unsupported v1 CLI parameter: upload-modified-only is always true in blobfuse2.")
+	}
+	if config.IsSet(compName + ".sync-to-flush") {
+		log.Warn("Sync will upload current contents of file.")
 	}
 
 	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d",
@@ -1037,14 +1043,19 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 }
 
 func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
-	err := fc.NextComponent().SyncFile(options)
-	if err != nil {
-		log.Err("FileCache::SyncFile : %s failed", options.Handle.Path)
-		return err
+	if fc.syncToFlush {
+		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
+	} else {
+		err := fc.NextComponent().SyncFile(options)
+		if err != nil {
+			log.Err("FileCache::SyncFile : %s failed", options.Handle.Path)
+			return err
+		}
+
+		options.Handle.Flags.Set(handlemap.HandleFlagFSynced)
 	}
 
-	options.Handle.Flags.Set(handlemap.HandleFlagFSynced)
-	return err
+	return nil
 }
 
 // in SyncDir we're not going to clear the file cache for now
@@ -1412,8 +1423,10 @@ func init() {
 	config.BindPFlag(compName+".upload-modified-only", uploadModifiedOnly)
 	uploadModifiedOnly.Hidden = true
 
+	syncToFlush := config.AddBoolFlag("sync-to-flush", false, "Sync call on file will force a upload of the file.")
+	config.BindPFlag(compName+".sync-to-flush", syncToFlush)
+
 	config.RegisterFlagCompletionFunc("tmp-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault
 	})
-
 }
