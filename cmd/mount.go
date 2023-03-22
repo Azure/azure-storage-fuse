@@ -42,6 +42,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
@@ -49,6 +50,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -85,6 +87,7 @@ type mountOptions struct {
 	ProfilerPort      int            `config:"profiler-port"`
 	ProfilerIP        string         `config:"profiler-ip"`
 	MonitorOpt        monitorOptions `config:"health_monitor"`
+	WaitForMount      time.Duration  `config:"wait-for-mount"`
 
 	// v1 support
 	Streaming      bool     `config:"streaming"`
@@ -390,18 +393,40 @@ var mountCmd = &cobra.Command{
 			return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
 		}
 
+		common.ForegroundMount = options.Foreground
+
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
 			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
+
+			pid := os.Getpid()
+			fname := fmt.Sprintf("/tmp/blobfuse2.%v", pid)
+
 			dmnCtx := &daemon.Context{
 				PidFileName: pidFileName,
 				PidFilePerm: 0644,
 				Umask:       022,
+				LogFileName: fname, // this will redirect stderr of child to given file
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
-			daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
+
+			// Signal handlers for parent and child to communicate success or failures in mount
+			var sigusr2, sigchild chan os.Signal
+			if !daemon.WasReborn() { // execute in parent only
+				sigusr2 = make(chan os.Signal, 1)
+				signal.Notify(sigusr2, syscall.SIGUSR2)
+
+				sigchild = make(chan os.Signal, 1)
+				signal.Notify(sigchild, syscall.SIGCHLD)
+			} else { // execute in child only
+				daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
+				go func() {
+					_ = daemon.ServeSignals()
+				}()
+			}
+
 			child, err := dmnCtx.Reborn()
 			if err != nil {
 				log.Err("mount : failed to daemonize application [%v]", err)
@@ -409,15 +434,38 @@ var mountCmd = &cobra.Command{
 			}
 
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
-			if child == nil {
+			if child == nil { // execute in child only
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
 				go startDynamicProfiler()
 
-				err = runPipeline(pipeline, ctx)
-				if err != nil {
-					return err
+				// In case of failure stderr will have the error emitted by child and parent will read
+				// those logs from the file set in daemon context
+				return runPipeline(pipeline, ctx)
+			} else { // execute in parent only
+				defer os.Remove(fname)
+
+				select {
+				case <-sigusr2:
+					log.Info("mount: Child [%v] mounted successfully at %s", child.Pid, options.MountPath)
+
+				case <-sigchild:
+					// Get error string from the child, stderr or child was redirected to a file
+					log.Info("mount: Child [%v] terminated from %s", child.Pid, options.MountPath)
+
+					buff, err := ioutil.ReadFile(dmnCtx.LogFileName)
+					if err != nil {
+						log.Err("mount: failed to read child [%v] failure logs [%s]", child.Pid, err.Error())
+						return Destroy(fmt.Sprintf("failed to mount, please check logs [%s]", err.Error()))
+					} else {
+						return Destroy(string(buff))
+					}
+
+				case <-time.After(options.WaitForMount):
+					log.Info("mount: Child [%v : %s] status check timeout", child.Pid, options.MountPath)
 				}
+
+				_ = log.Destroy()
 			}
 		} else {
 			if options.CPUProfile != "" {
@@ -441,6 +489,7 @@ var mountCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+
 			if options.MemProfile != "" {
 				os.Remove(options.MemProfile)
 				f, err := os.Create(options.MemProfile)
@@ -637,6 +686,8 @@ func init() {
 	mountCmd.PersistentFlags().StringSliceVarP(&options.LibfuseOptions, "o", "o", []string{}, "FUSE options.")
 	config.BindPFlag("libfuse-options", mountCmd.PersistentFlags().ShorthandLookup("o"))
 	mountCmd.PersistentFlags().ShorthandLookup("o").Hidden = true
+
+	mountCmd.PersistentFlags().DurationVar(&options.WaitForMount, "wait-for-mount", 5*time.Second, "Let parent process wait for given timeout before exit")
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)
