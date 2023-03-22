@@ -99,8 +99,9 @@ To learn about a specific command, just include the name of the command (For exa
     * `--read-only=true`: Mount container in read-only mode.
     * `--default-working-dir`: The default working directory to store log files and other blobfuse2 related information.
     * `--disable-version-check=true`: Disable the blobfuse2 version check.
-    * `----secure-config=true` : Config file is encrypted suing 'blobfuse2 secure` command.
-    * `----passphrase=<STRING>` : Passphrase used to encrypt/decrypt config file.
+    * `--secure-config=true` : Config file is encrypted suing 'blobfuse2 secure` command.
+    * `--passphrase=<STRING>` : Passphrase used to encrypt/decrypt config file.
+    * `--wait-for-mount=<TIMEOUT IN SECONDS>` : Let parent process wait for given timeout before exit to ensure child has started. 
 - Attribute cache options
     * `--attr-cache-timeout=<TIMEOUT IN SECONDS>`: The timeout for the attribute cache entries.
     * `--no-symlinks=true`: To improve performance disable symlink support.
@@ -115,6 +116,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--cache-size-mb=<SIZE IN MB>`: Amount of disk cache that can be used by blobfuse.
     * `--high-disk-threshold=<PERCENTAGE>`: If local cache usage exceeds this, start early eviction of files from cache.
     * `--low-disk-threshold=<PERCENTAGE>`: If local cache usage comes below this threshold then stop early eviction.
+    * `--sync-to-flush` : Sync call will force upload a file to storage container
 - Stream options
     * `--block-size-mb=<SIZE IN MB>`: Size of a block to be downloaded during streaming.
 - Fuse options

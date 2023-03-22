@@ -1,6 +1,13 @@
 ## 2.0.3 (WIP)
 **Bug Fixes**
 - [#1080](https://github.com/Azure/azure-storage-fuse/issues/1080) HNS rename flow does not encode source path correctly.
+- [#1081](https://github.com/Azure/azure-storage-fuse/issues/1081) Blobfuse will exit with non-zero status code if allow_other option is used but not enabled in fuse config.
+- [#1079](https://github.com/Azure/azure-storage-fuse/issues/1079) Shell returns before child process mounts the container and if user tries to bind the mount it leads to inconsistent state.
+- If mount fails in forked child, blobfuse2 will return back with status error code.
+
+**Features**
+- Added new CLI parameter "--sync-to-flush". Once configured sync() call on file will force upload a file to storage container. As this is file handle based api, if file was not in file-cache it will first download and then upload the file. 
+
 
 **Features**
 - Adding support to mount entire account when container name is not provided. Creation of new container or deletion of container is not supported as of now with this feature.

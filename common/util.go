@@ -47,11 +47,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"gopkg.in/ini.v1"
 )
 
 var RootMount bool
+var ForegroundMount bool
 
 //IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {
@@ -264,4 +266,20 @@ func ExpandPath(path string) string {
 	}
 
 	return os.ExpandEnv(path)
+}
+
+// NotifyMountToParent : Send a signal to parent process about successful mount
+func NotifyMountToParent() error {
+	if !ForegroundMount {
+		ppid := syscall.Getppid()
+		if ppid > 1 {
+			if err := syscall.Kill(ppid, syscall.SIGUSR2); err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("failed to get parent pid, received : %v", ppid)
+		}
+	}
+
+	return nil
 }

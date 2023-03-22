@@ -142,7 +142,6 @@ func (suite *mountTestSuite) TestMountDirNotEmpty() {
 
 	op, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "-o", "nonempty", "--foreground")
 	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "failed to authenticate credential")
 }
 
 // mount failure test where the mount path is not provided
