@@ -70,7 +70,7 @@ const (
 )
 
 func FuseIgnoredFlags() []string {
-	return []string{"default_permissions", "rw", "dev", "nodev", "suid", "nosuid", "delay_connect", "uid", "gid", "auto", "noauto", "user", "nouser", "exec", "noexec"}
+	return []string{"default_permissions", "rw", "dev", "nodev", "suid", "nosuid", "delay_connect", "auto", "noauto", "user", "nouser", "exec", "noexec"}
 }
 
 var Blobfuse2Version = Blobfuse2Version_()
