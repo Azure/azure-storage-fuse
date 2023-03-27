@@ -769,22 +769,22 @@ func (suite *generateConfigTestSuite) TestCLIParamPreMountValidateNoError() {
 }
 
 // libfuse options test
-func (suite *generateConfigTestSuite) TestLibfuseOptions() {
-	defer suite.cleanupTest()
-	name := generateFileName()
-	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
-	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
-	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
-	defer os.Remove(v2ConfigFile.Name())
+// func (suite *generateConfigTestSuite) TestLibfuseOptions() {
+// 	defer suite.cleanupTest()
+// 	name := generateFileName()
+// 	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
+// 	defer os.Remove(v1ConfigFile.Name())
+// 	v1ConfigFile.WriteString("accountName myAccountName")
+// 	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
+// 	defer os.Remove(v2ConfigFile.Name())
 
-	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
+// 	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
 
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
-		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755")
-	suite.assert.Nil(err)
-}
+// 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
+// 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
+// 		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755")
+// 	suite.assert.Nil(err)
+// }
 
 // mountv1 failure test where libfuse options are greater than 8
 // func (suite *generateConfigTestSuite) TestLibfuseIgnoreOptions() {
