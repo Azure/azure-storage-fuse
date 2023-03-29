@@ -34,11 +34,12 @@
 package block_cache
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"context"
-	"fmt"
 )
 
 /* NOTES:
@@ -50,19 +51,24 @@ import (
 
 // Common structure for Component
 type BlockCache struct {
-    internal.BaseComponent
+	internal.BaseComponent
+
+	blockSizeMB uint32
+	memSizeMB   uint32
+
+	blockPool *BlockPool
 }
 
 // Structure defining your config parameters
 type BlockCacheOptions struct {
-	// e.g. var1 uint32 `config:"var1"`
+	BlockSize uint32 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	MemSize   uint32 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
 }
 
 const compName = "block_cache"
 
 //  Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &BlockCache{}
-
 
 func (c *BlockCache) Name() string {
 	return compName
@@ -79,11 +85,11 @@ func (c *BlockCache) SetNextComponent(nc internal.Component) {
 // Start : Pipeline calls this method to start the component functionality
 //  this shall not block the call otherwise pipeline will not start
 func (c *BlockCache) Start(ctx context.Context) error {
-    log.Trace("BlockCache::Start : Starting component %s", c.Name())
+	log.Trace("BlockCache::Start : Starting component %s", c.Name())
 
-    // BlockCache : start code goes here
+	// BlockCache : start code goes here
 
-    return nil
+	return nil
 }
 
 // Stop : Stop the component functionality and kill all threads started
@@ -105,11 +111,18 @@ func (c *BlockCache) Configure(_ bool) error {
 		log.Err("BlockCache::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("BlockCache: config error [invalid config attributes]")
 	}
-	// Extract values from 'conf' and store them as you wish here
+
+	c.blockSizeMB = conf.BlockSize
+	c.memSizeMB = conf.MemSize
+
+	c.blockPool = newBlockPool((uint64)(c.blockSizeMB*_1MB), (uint64)(c.memSizeMB*_1MB))
+	if c.blockPool == nil {
+		log.Err("BlockCache::Configure : fail to init block pool")
+		return fmt.Errorf("BlockCache: failed to init block pool")
+	}
 
 	return nil
 }
-
 
 // OnConfigChange : If component has registered, on config file change this method is called
 func (c *BlockCache) OnConfigChange() {
