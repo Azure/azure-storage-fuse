@@ -31,7 +31,7 @@
    SOFTWARE
 */
 
-package <component>
+package block_cache
 
 import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -49,61 +49,61 @@ import (
 */
 
 // Common structure for Component
-type <component_C> struct {
+type BlockCache struct {
     internal.BaseComponent
 }
 
 // Structure defining your config parameters
-type <component_C>Options struct {
+type BlockCacheOptions struct {
 	// e.g. var1 uint32 `config:"var1"`
 }
 
-const compName = "<component>"
+const compName = "block_cache"
 
 //  Verification to check satisfaction criteria with Component Interface
-var _ internal.Component = &<component_C>{}
+var _ internal.Component = &BlockCache{}
 
 
-func (c *<component_C>) Name() string {
+func (c *BlockCache) Name() string {
 	return compName
 }
 
-func (c *<component_C>) SetName(name string) {
+func (c *BlockCache) SetName(name string) {
 	c.BaseComponent.SetName(name)
 }
 
-func (c *<component_C>) SetNextComponent(nc internal.Component) {
+func (c *BlockCache) SetNextComponent(nc internal.Component) {
 	c.BaseComponent.SetNextComponent(nc)
 }
 
 // Start : Pipeline calls this method to start the component functionality
 //  this shall not block the call otherwise pipeline will not start
-func (c *<component_C>) Start(ctx context.Context) error {
-    log.Trace("<component_C>::Start : Starting component %s", c.Name())
+func (c *BlockCache) Start(ctx context.Context) error {
+    log.Trace("BlockCache::Start : Starting component %s", c.Name())
 
-    // <component_C> : start code goes here
+    // BlockCache : start code goes here
 
     return nil
 }
 
 // Stop : Stop the component functionality and kill all threads started
-func (c *<component_C>) Stop() error {
-	log.Trace("<component_C>::Stop : Stopping component %s", c.Name())
+func (c *BlockCache) Stop() error {
+	log.Trace("BlockCache::Stop : Stopping component %s", c.Name())
 
 	return nil
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
 //  Return failure if any config is not valid to exit the process
-func (c *<component_C>) Configure(_ bool) error {
-	log.Trace("<component_C>::Configure : %s", c.Name())
+func (c *BlockCache) Configure(_ bool) error {
+	log.Trace("BlockCache::Configure : %s", c.Name())
 
 	// >> If you do not need any config parameters remove below code and return nil
-	conf := <component_C>Options{}
+	conf := BlockCacheOptions{}
 	err := config.UnmarshalKey(c.Name(), &conf)
 	if err != nil {
-		log.Err("<component_C>::Configure : config error [invalid config attributes]")
-		return fmt.Errorf("<component_C>: config error [invalid config attributes]")
+		log.Err("BlockCache::Configure : config error [invalid config attributes]")
+		return fmt.Errorf("BlockCache: config error [invalid config attributes]")
 	}
 	// Extract values from 'conf' and store them as you wish here
 
@@ -112,20 +112,20 @@ func (c *<component_C>) Configure(_ bool) error {
 
 
 // OnConfigChange : If component has registered, on config file change this method is called
-func (c *<component_C>) OnConfigChange() {
+func (c *BlockCache) OnConfigChange() {
 }
 
 // ------------------------- Factory -------------------------------------------
 
 // Pipeline will call this method to create your object, initialize your variables here
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
-func New<component_C>Component() internal.Component {
-	comp := &<component_C>{}
+func NewBlockCacheComponent() internal.Component {
+	comp := &BlockCache{}
 	comp.SetName(compName)
 	return comp
 }
 
 // On init register this component to pipeline and supply your constructor
 func init() {
-	internal.AddComponent(compName, New<component_C>Component)
+	internal.AddComponent(compName, NewBlockCacheComponent)
 }
