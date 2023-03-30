@@ -153,6 +153,16 @@ func (handle *Handle) Cleanup() {
 	handle.Unlock()
 }
 
+// CleanupWithCallback : Delete all user defined parameter from handle
+func (handle *Handle) CleanupWithCallback(f func(interface{})) {
+	handle.Lock()
+	for key := range handle.values {
+		f(handle.values[key])
+		delete(handle.values, key)
+	}
+	handle.Unlock()
+}
+
 //defaultHandleMap holds a synchronized map[ HandleID ]*Handle
 var defaultHandleMap sync.Map
 var nextHandleID = *atomic.NewUint64(uint64(0))

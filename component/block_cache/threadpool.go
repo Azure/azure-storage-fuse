@@ -33,67 +33,74 @@
 
 package block_cache
 
-import (
-	"fmt"
-	"os"
-	"syscall"
-)
+import "sync"
 
-// block is a memory mapped buffer
-type block struct {
-	state  chan int
-	offset uint64
-	length int
-	data   []byte
+type ThreadPool struct {
+	// Number of workers running in this group
+	worker uint32
+
+	// Channel to close all the workers
+	close chan int
+
+	// Wait group to wait for all workers to finish
+	wg sync.WaitGroup
+
+	// Channel to hold pending requests
+	priorityCh chan interface{}
+	normalCh   chan interface{}
+
+	// Reader method that will actually read the data
+	reader func(interface{})
 }
 
-// newblock creates a new memory mapped buffer with the specified size
-func newblock(size uint64) (*block, error) {
-	prot, flags := syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE
-	addr, err := syscall.Mmap(-1, 0, int(size), prot, flags)
-
-	if err != nil {
-		return nil, os.NewSyscallError("Mmap", err)
+func newThreadPool(count uint32, reader func(interface{})) *ThreadPool {
+	return &ThreadPool{
+		worker:     count,
+		reader:     reader,
+		close:      make(chan int),
+		priorityCh: make(chan interface{}),
+		normalCh:   make(chan interface{}),
 	}
-
-	return &block{
-		data:   addr,
-		offset: 0,
-		length: 0,
-	}, nil
 }
 
-// delete cleans up the memory mapped buffer
-func (b *block) delete() error {
-	err := syscall.Munmap(b.data)
-	b.data = nil
-	if err != nil {
-		// if we get here, there is likely memory corruption.
-		return fmt.Errorf("Munmap error: %v", err)
+// Start all the workers
+func (t *ThreadPool) Start() {
+	for i := uint32(0); i < t.worker; i++ {
+		t.wg.Add(1)
+		go t.Do()
 	}
-
-	return nil
 }
 
-// mark this block is now ready for ops
-func (b *block) ready() {
-	b.state <- 1
-	b.state <- 2
+// Stop all the workers
+func (t *ThreadPool) Stop() {
+	for i := uint32(0); i < t.worker; i++ {
+		t.close <- 1
+	}
+	t.wg.Wait()
+	close(t.priorityCh)
+	close(t.normalCh)
 }
 
-// mark this block is ready to be reused now
-func (b *block) done() {
-	close(b.state)
+// Schedule the download of a block
+func (t *ThreadPool) Schedule(urgent bool, item interface{}) {
+	if urgent {
+		t.priorityCh <- item
+	} else {
+		t.normalCh <- item
+	}
 }
 
-// reinit the block by recreating its channel
-func (b *block) reinit() {
-	b.state = make(chan int, 2)
-	b.length = 0
-	b.offset = 0
-}
+func (t *ThreadPool) Do() {
+	defer t.wg.Done()
 
-func (b *block) size() uint64 {
-	s := cap(b.data)
-	return uint64(s)
+	for {
+		select {
+		case item := <-t.priorityCh:
+			t.reader(item)
+		case item := <-t.normalCh:
+			t.reader(item)
+		case <-t.close:
+			return
+		}
+	}
 }
