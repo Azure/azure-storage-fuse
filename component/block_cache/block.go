@@ -79,26 +79,17 @@ func (b *Block) Delete() error {
 
 // mark this Block is now ready for ops
 func (b *Block) ReadyForReading() {
-	if b.state != nil {
-		b.state <- 1
-		b.state <- 2
-	}
+	b.state <- 1
+	b.state <- 2
 }
 
 // mark this Block is ready to be reused now
 func (b *Block) ReadDone() {
-	if b.state != nil {
-		close(b.state)
-		b.state = nil
-	}
+	close(b.state)
 }
 
 // reinit the Block by recreating its channel
 func (b *Block) ReUse() {
-	if b.state != nil {
-		close(b.state)
-	}
-
 	b.state = make(chan int, 2)
 	b.length = 0
 	b.offset = 0
