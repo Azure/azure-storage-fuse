@@ -36,8 +36,8 @@ package block_cache
 const _1MB uint32 = (1024 * 1024)
 
 type BlockPool struct {
-	firstBlockCh chan *block
-	blocksCh     chan *block
+	firstBlockCh chan *Block
+	blocksCh     chan *Block
 
 	firstBlockSize uint64
 	blockSize      uint64
@@ -49,52 +49,55 @@ type BlockPool struct {
 	blocks      uint32
 }
 
-func newBlockPool(blockSize uint64, memSize uint64) *BlockPool {
+func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	firstBlockCount := (memSize * 20 / 100) / (blockSize * 8)
 	blockCount := (memSize * 80 / 100) / (blockSize)
 
 	return &BlockPool{
-		firstBlockCh:   make(chan *block, firstBlockCount),
+		firstBlockCh:   make(chan *Block, firstBlockCount),
 		firstBlockSize: blockSize * 8,
 		firstBlockMax:  uint32(firstBlockCount),
 		firstBlocks:    0,
 
-		blocksCh:  make(chan *block, blockCount),
+		blocksCh:  make(chan *Block, blockCount),
 		blockSize: blockSize,
 		blockMax:  uint32(blockCount),
 		blocks:    0,
 	}
 }
 
-// Get a block from the pool
+// Get a Block from the pool
 func (pool *BlockPool) expand(first bool) {
 	if first {
 		if pool.firstBlocks < pool.firstBlockMax {
-			// Time to allocate a new block
-			b, err := newblock(pool.firstBlockSize)
+			// Time to allocate a new Block
+			b, err := AllocateBlock(pool.firstBlockSize)
 			if err != nil {
 				return
 			}
+
 			pool.firstBlocks++
 			pool.firstBlockCh <- b
 			return
 		}
 	} else {
 		if pool.blocks < pool.blockMax {
-			// Time to allocate a new block
-			b, err := newblock(pool.blockSize)
+			// Time to allocate a new Block
+			b, err := AllocateBlock(pool.blockSize)
 			if err != nil {
 				return
 			}
+
 			pool.blocks++
 			pool.blocksCh <- b
+			return
 		}
 	}
 }
 
-// Get a block from the pool
-func (pool *BlockPool) Get(first bool) *block {
-	var b *block
+// Get a Block from the pool
+func (pool *BlockPool) Get(first bool) *Block {
+	var b *Block
 
 	if first && pool.firstBlockMax > 0 {
 		select {
@@ -112,26 +115,26 @@ func (pool *BlockPool) Get(first bool) *block {
 		}
 	}
 
-	b.reinit()
+	b.ReUse()
 	return b
 }
 
-// Release back the block to the pool
-func (pool *BlockPool) Release(b *block) {
-	if b.size() > pool.blockSize {
-		// This goes to the first block channel
+// Release back the Block to the pool
+func (pool *BlockPool) Release(b *Block) {
+	if b.Size() > pool.blockSize {
+		// This goes to the first Block channel
 		if pool.firstBlocks > pool.firstBlockMax {
 			pool.firstBlocks--
-			b.delete()
+			b.Delete()
 			return
 		}
 
 		pool.firstBlockCh <- b
 	} else {
-		// This goes to the first block channel
+		// This goes to the first Block channel
 		if pool.blocks > pool.blockMax {
 			pool.blocks--
-			b.delete()
+			b.Delete()
 			return
 		}
 

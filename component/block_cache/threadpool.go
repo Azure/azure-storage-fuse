@@ -76,6 +76,7 @@ func (t *ThreadPool) Stop() {
 	for i := uint32(0); i < t.worker; i++ {
 		t.close <- 1
 	}
+
 	t.wg.Wait()
 	close(t.priorityCh)
 	close(t.normalCh)

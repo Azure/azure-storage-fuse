@@ -35,65 +35,80 @@ package block_cache
 
 import (
 	"fmt"
-	"os"
 	"syscall"
 )
 
-// block is a memory mapped buffer
-type block struct {
-	state  chan int
+// Block is a memory mapped buffer with its state
+type Block struct {
 	offset uint64
-	length int
+	length uint64
+	state  chan int
 	data   []byte
 }
 
 // newblock creates a new memory mapped buffer with the specified size
-func newblock(size uint64) (*block, error) {
+func AllocateBlock(size uint64) (*Block, error) {
 	prot, flags := syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE
 	addr, err := syscall.Mmap(-1, 0, int(size), prot, flags)
 
 	if err != nil {
-		return nil, os.NewSyscallError("Mmap", err)
+		return nil, fmt.Errorf("mmap error: %v", err)
 	}
 
-	return &block{
+	return &Block{
 		data:   addr,
 		offset: 0,
 		length: 0,
+		state:  nil,
 	}, nil
+	// we do not create channel here, as that will be created when buffer is retreived
+	// reinit will always be called before use and that will create the channel as well.
 }
 
-// delete cleans up the memory mapped buffer
-func (b *block) delete() error {
+// Delete cleans up the memory mapped buffer
+func (b *Block) Delete() error {
 	err := syscall.Munmap(b.data)
 	b.data = nil
 	if err != nil {
 		// if we get here, there is likely memory corruption.
-		return fmt.Errorf("Munmap error: %v", err)
+		return fmt.Errorf("munmap error: %v", err)
 	}
 
 	return nil
 }
 
-// mark this block is now ready for ops
-func (b *block) ready() {
-	b.state <- 1
-	b.state <- 2
+// mark this Block is now ready for ops
+func (b *Block) ReadyForReading() {
+	if b.state != nil {
+		b.state <- 1
+		b.state <- 2
+	}
 }
 
-// mark this block is ready to be reused now
-func (b *block) done() {
-	close(b.state)
+// mark this Block is ready to be reused now
+func (b *Block) ReadDone() {
+	if b.state != nil {
+		close(b.state)
+		b.state = nil
+	}
 }
 
-// reinit the block by recreating its channel
-func (b *block) reinit() {
+// reinit the Block by recreating its channel
+func (b *Block) ReUse() {
+	if b.state != nil {
+		close(b.state)
+	}
+
 	b.state = make(chan int, 2)
 	b.length = 0
 	b.offset = 0
 }
 
-func (b *block) size() uint64 {
+func (b *Block) Size() uint64 {
 	s := cap(b.data)
 	return uint64(s)
+}
+
+func (b *Block) Offset() uint64 {
+	return b.offset
 }

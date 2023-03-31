@@ -65,7 +65,7 @@ type BlockCache struct {
 
 // Structure defining your config parameters
 type BlockCacheOptions struct {
-	BlockSize     uint32 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	BlockSize     uint32 `config:"Block-size-mb" yaml:"Block-size-mb,omitempty"`
 	MemSize       uint32 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
 	PrefetchCount uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
 	Workers       uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
@@ -74,8 +74,7 @@ type BlockCacheOptions struct {
 // One workitem to be scheduled
 type workItem struct {
 	handle *handlemap.Handle
-	offset uint64
-	val    *block
+	block  *Block
 }
 
 const compName = "block_cache"
@@ -96,21 +95,17 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 }
 
 // Start : Pipeline calls this method to start the component functionality
-//  this shall not block the call otherwise pipeline will not start
+//  this shall not Block the call otherwise pipeline will not start
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component %s", bc.Name())
-
 	bc.threadPool.Start()
-
 	return nil
 }
 
 // Stop : Stop the component functionality and kill all threads started
 func (bc *BlockCache) Stop() error {
 	log.Trace("BlockCache::Stop : Stopping component %s", bc.Name())
-
 	bc.threadPool.Stop()
-
 	return nil
 }
 
@@ -144,13 +139,13 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.workers = conf.Workers
 	bc.prefetch = conf.PrefetchCount
 
-	bc.blockPool = newBlockPool((uint64)(bc.blockSizeMB*_1MB), (uint64)(bc.memSizeMB*_1MB))
+	bc.blockPool = NewBlockPool((uint64)(bc.blockSizeMB*_1MB), (uint64)(bc.memSizeMB*_1MB))
 	if bc.blockPool == nil {
-		log.Err("BlockCache::Configure : fail to init block pool")
-		return fmt.Errorf("BlockCache: failed to init block pool")
+		log.Err("BlockCache::Configure : fail to init Block pool")
+		return fmt.Errorf("BlockCache: failed to init Block pool")
 	}
 
-	bc.threadPool = newThreadPool(bc.workers, bc.Download)
+	bc.threadPool = newThreadPool(bc.workers, bc.download)
 	if bc.threadPool == nil {
 		log.Err("BlockCache::Configure : fail to init thread pool")
 		return fmt.Errorf("BlockCache: failed to init thread pool")
@@ -176,7 +171,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	nextoffset := uint64(0)
 	count := uint64(0)
 	for i := uint32(0); i < bc.prefetch && int64(nextoffset) < handle.Size; i++ {
-		count, err = bc.LineupDownload(handle, nextoffset)
+		count, err = bc.lineupDownload(handle, nextoffset)
 		if err != nil {
 			log.Err(err.Error())
 			return nil, err
@@ -192,9 +187,13 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 
-	block := bc.GetBlock(options.Handle, uint64(options.Offset))
+	block := bc.getBlock(options.Handle, uint64(options.Offset))
 	if block == nil {
-		return 0, fmt.Errorf("BlockCache::ReadInBuffer : Failed to get the block %s # %v", options.Handle.Path, options.Offset)
+		return 0, fmt.Errorf("BlockCache::ReadInBuffer : Failed to get the Block %s # %v", options.Handle.Path, options.Offset)
+	}
+
+	if block.length == 0 {
+		return 0, fmt.Errorf("BlockCache::ReadInBuffer : This block does not have any data %s # %v", options.Handle.Path, options.Offset)
 	}
 
 	readOffset := uint64(options.Offset) - block.offset
@@ -207,99 +206,90 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("BlockCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 
 	options.Handle.CleanupWithCallback(func(item interface{}) {
-		bc.blockPool.Release(item.(workItem).val)
+		bc.blockPool.Release(item.(workItem).block)
 	})
 
 	return nil
 }
 
-// GetBlockID: From offset generate the block index
-func (bc *BlockCache) GetBlockID(offset uint64) uint64 {
-	if offset < bc.blockPool.firstBlockSize {
+// download : Method to download the given amount of data
+func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64) (uint64, error) {
+	item := workItem{
+		handle: handle,
+		block:  bc.blockPool.Get(offset == 0),
+	}
+
+	if item.block == nil {
+		return 0, fmt.Errorf("BlockCache::lineupDownload : Failed to schedule prefetch of %s # %v", handle.Path, offset)
+	}
+
+	item.block.offset = offset
+	handle.SetValue(fmt.Sprintf("%v", offset), item)
+	bc.threadPool.Schedule(offset == 0, item)
+	return item.block.Size(), nil
+}
+
+// download : Method to download the given amount of data
+func (bc *BlockCache) download(i interface{}) {
+	item := i.(workItem)
+	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
+		Handle: item.handle,
+		Offset: int64(item.block.offset),
+		Data:   item.block.data,
+	})
+
+	item.block.length = uint64(n)
+
+	if err != nil {
+		// Fail to read the data so just reschedule this request
+		log.Err("BlockCache::download : Failed to read %s from offset %v [%s]", item.handle.Path, item.block.Offset(), err.Error())
+		bc.threadPool.Schedule(false, item)
+	} else {
+		// Unblock readers of this Block
+		item.block.ReadyForReading()
+	}
+}
+
+// getBlockStartOffset: From offset generate the Block index
+func (bc *BlockCache) getBlockStartOffset(offset uint64) uint64 {
+	if offset < bc.blockPool.firstBlockSize && bc.blockPool.firstBlockMax > 0 {
 		return 0
 	}
 
 	return (offset / bc.blockPool.blockSize) * bc.blockPool.blockSize
 }
 
-// Download : Method to download the given amount of data
-func (bc *BlockCache) LineupDownload(handle *handlemap.Handle, offset uint64) (uint64, error) {
-	item := workItem{
-		handle: handle,
-		offset: offset,
-		val:    bc.blockPool.Get(offset == 0),
-	}
-
-	if item.val == nil {
-		return 0, fmt.Errorf("BlockCache::LineupDownload : Failed to schedule prefetch of %s # %v", handle.Path, offset)
-	}
-
-	handle.SetValue(fmt.Sprintf("%v", offset), item)
-
-	bc.threadPool.Schedule(offset == 0, item)
-
-	return item.val.size(), nil
-}
-
-// Download : Method to download the given amount of data
-func (bc *BlockCache) Download(i interface{}) {
-	item := i.(workItem)
-	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
-		Handle: item.handle,
-		Offset: int64(item.offset),
-		Data:   item.val.data,
-	})
-
-	item.val.length = n
-	item.val.offset = item.offset
-
-	if err != nil {
-		// Fail to read the data so just reschedule this request
-		log.Err("BlockCache::Download : Failed to read %s from offset %v [%s]", item.handle.Path, item.offset, err.Error())
-		bc.threadPool.Schedule(false, item)
-	} else {
-		// Unblock readers of this block
-		item.val.ready()
-	}
-}
-
-// GetBlock: From offset generate the block index and get the block
-func (bc *BlockCache) GetBlock(handle *handlemap.Handle, readoffset uint64) *block {
-	offset := bc.GetBlockID(readoffset)
+// getBlock: From offset generate the Block index and get the Block
+func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) *Block {
+	offset := bc.getBlockStartOffset(readoffset)
 	item, found := handle.GetValue(fmt.Sprintf("%v", offset))
 
 	if !found {
 		// This offset is not cached yet, so lineup the download
-		_, err := bc.LineupDownload(handle, offset)
+		_, err := bc.lineupDownload(handle, offset)
 		if err != nil {
-			log.Err("BlockCache::ReadInBuffer : Failed to schedule new block download%s # %v", handle.Path, offset)
+			log.Err("BlockCache::ReadInBuffer : Failed to schedule new Block download%s # %v", handle.Path, offset)
 			return nil
 		}
+
 		item, found = handle.GetValue(fmt.Sprintf("%v", offset))
 		if !found {
-			log.Err("BlockCache::ReadInBuffer : Something went wrong not able to find the block %s # %v", handle.Path, offset)
+			log.Err("BlockCache::ReadInBuffer : Something went wrong not able to find the Block %s # %v", handle.Path, offset)
 			return nil
 		}
 	}
 
-	block := item.(workItem).val
+	block := item.(workItem).block
 
 	// Wait for this block to complete the download
 	t := int(0)
-	select {
-	case t = <-block.state:
-		// This block is now ready to be read
-		break
-	default:
-		// channel is closed so just exit
-		break
-	}
+	t = <-block.state
 
 	if t == 1 {
-		// Block is ready and we are the first reader so its time to schedule the next block
+		// block is ready and we are the first reader so its time to schedule the next block
 		lastoffset, found := handle.GetValue("#")
 		if found && lastoffset.(uint64) < uint64(handle.Size) {
-			count, err := bc.LineupDownload(handle, lastoffset.(uint64))
+			count, err := bc.lineupDownload(handle, lastoffset.(uint64))
 			if err != nil {
 				log.Err(err.Error())
 			} else {
@@ -307,15 +297,18 @@ func (bc *BlockCache) GetBlock(handle *handlemap.Handle, readoffset uint64) *blo
 			}
 		}
 	} else if t == 2 {
-		// Block is ready and we are the second reader so its time to remove the second last block from here
+		block.ReadDone()
+
+		// block is ready and we are the second reader so its time to remove the second last block from here
 		if offset > bc.blockPool.blockSize*2 {
 			offset -= bc.blockPool.blockSize * 2
-			if offset < bc.blockPool.firstBlockSize {
+			if offset < bc.blockPool.firstBlockSize && bc.blockPool.firstBlockMax > 0 {
 				offset = 0
 			}
+
 			delItem, delFound := handle.GetValue(fmt.Sprintf("%v", offset))
 			if delFound {
-				bc.blockPool.Release(delItem.(workItem).val)
+				bc.blockPool.Release(delItem.(workItem).block)
 			}
 		}
 	}
