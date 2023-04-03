@@ -36,6 +36,7 @@ package block_cache
 import (
 	"context"
 	"fmt"
+	"io"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -187,26 +188,44 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 
-	block := bc.getBlock(options.Handle, uint64(options.Offset))
-	if block == nil {
-		return 0, fmt.Errorf("BlockCache::ReadInBuffer : Failed to get the Block %s # %v", options.Handle.Path, options.Offset)
+	dataRead := int(0)
+
+	for dataRead < len(options.Data) {
+
+		block, err := bc.getBlock(options.Handle, uint64(options.Offset))
+		if err != nil {
+			if err != io.EOF {
+				return 0, fmt.Errorf("BlockCache::ReadInBuffer : Failed to get the Block %s # %v [%v]", options.Handle.Path, options.Offset, err.Error())
+			} else {
+				return dataRead, err
+			}
+		}
+
+		if block == nil {
+			return dataRead, fmt.Errorf("BlockCache::ReadInBuffer : Failed to retreive block %s # %v", options.Handle.Path, options.Offset)
+		}
+
+		if block.length == 0 {
+			return dataRead, fmt.Errorf("BlockCache::ReadInBuffer : This block does not have any data %s # %v", options.Handle.Path, options.Offset)
+		}
+
+		readOffset := uint64(options.Offset) - block.offset
+		dataRead += copy(options.Data[dataRead:], block.data[readOffset:])
+
+		options.Offset += int64(dataRead)
 	}
 
-	if block.length == 0 {
-		return 0, fmt.Errorf("BlockCache::ReadInBuffer : This block does not have any data %s # %v", options.Handle.Path, options.Offset)
-	}
-
-	readOffset := uint64(options.Offset) - block.offset
-	n := copy(options.Data, block.data[readOffset:])
-	return n, nil
+	return dataRead, nil
 }
 
 // CloseFile: Flush the file and invalidate it from the cache.
 func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("BlockCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 
-	options.Handle.CleanupWithCallback(func(item interface{}) {
-		bc.blockPool.Release(item.(workItem).block)
+	options.Handle.CleanupWithCallback(func(key string, item interface{}) {
+		if key != "#" {
+			bc.blockPool.Release(item.(workItem).block)
+		}
 	})
 
 	return nil
@@ -260,7 +279,11 @@ func (bc *BlockCache) getBlockStartOffset(offset uint64) uint64 {
 }
 
 // getBlock: From offset generate the Block index and get the Block
-func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) *Block {
+func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Block, error) {
+	if readoffset >= uint64(handle.Size) {
+		return nil, io.EOF
+	}
+
 	offset := bc.getBlockStartOffset(readoffset)
 	item, found := handle.GetValue(fmt.Sprintf("%v", offset))
 
@@ -269,13 +292,13 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) *Blo
 		_, err := bc.lineupDownload(handle, offset)
 		if err != nil {
 			log.Err("BlockCache::ReadInBuffer : Failed to schedule new Block download%s # %v", handle.Path, offset)
-			return nil
+			return nil, fmt.Errorf("failed to schedule download")
 		}
 
 		item, found = handle.GetValue(fmt.Sprintf("%v", offset))
 		if !found {
 			log.Err("BlockCache::ReadInBuffer : Something went wrong not able to find the Block %s # %v", handle.Path, offset)
-			return nil
+			return nil, fmt.Errorf("not able to find block immediatly after scheudling")
 		}
 	}
 
@@ -313,7 +336,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) *Blo
 		}
 	}
 
-	return block
+	return block, nil
 }
 
 // ------------------------- Factory -------------------------------------------

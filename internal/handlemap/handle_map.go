@@ -154,10 +154,10 @@ func (handle *Handle) Cleanup() {
 }
 
 // CleanupWithCallback : Delete all user defined parameter from handle
-func (handle *Handle) CleanupWithCallback(f func(interface{})) {
+func (handle *Handle) CleanupWithCallback(f func(string, interface{})) {
 	handle.Lock()
 	for key := range handle.values {
-		f(handle.values[key])
+		f(key, handle.values[key])
 		delete(handle.values, key)
 	}
 	handle.Unlock()
