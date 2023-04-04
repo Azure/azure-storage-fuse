@@ -189,7 +189,6 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 
 	dataRead := int(0)
-
 	for dataRead < len(options.Data) {
 
 		block, err := bc.getBlock(options.Handle, uint64(options.Offset))
@@ -331,12 +330,24 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 
 			delItem, delFound := handle.GetValue(fmt.Sprintf("%v", offset))
 			if delFound {
-				bc.blockPool.Release(delItem.(workItem).block)
+				go bc.releaseBlock(delItem.(workItem).block)
+				handle.RemoveValue(fmt.Sprintf("%v", offset))
 			}
 		}
 	}
 
 	return block, nil
+}
+
+// releaseBlock: Release this block and add back to the pool
+func (bc *BlockCache) releaseBlock(b *Block) {
+	t := int(0)
+	t = <-b.state
+	if t == 0 {
+		bc.blockPool.Release(b)
+	} else {
+		log.Err("BlockCache::releaseBlock : Invalid state for block release")
+	}
 }
 
 // ------------------------- Factory -------------------------------------------
