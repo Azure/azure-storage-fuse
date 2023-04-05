@@ -40,10 +40,9 @@ import (
 
 // Block is a memory mapped buffer with its state
 type Block struct {
-	offset uint64
-	length uint64
-	state  chan int
-	data   []byte
+	id    uint64
+	state chan int
+	data  []byte
 }
 
 // newblock creates a new memory mapped buffer with the specified size
@@ -56,11 +55,11 @@ func AllocateBlock(size uint64) (*Block, error) {
 	}
 
 	return &Block{
-		data:   addr,
-		offset: 0,
-		length: 0,
-		state:  nil,
+		data:  addr,
+		state: nil,
+		id:    0,
 	}, nil
+
 	// we do not create channel here, as that will be created when buffer is retreived
 	// reinit will always be called before use and that will create the channel as well.
 }
@@ -77,29 +76,19 @@ func (b *Block) Delete() error {
 	return nil
 }
 
+// reinit the Block by recreating its channel
+func (b *Block) ReUse() {
+	b.state = make(chan int, 2)
+	b.id = 0
+}
+
 // mark this Block is now ready for ops
 func (b *Block) ReadyForReading() {
 	b.state <- 1
 	b.state <- 2
 }
 
-// mark this Block is ready to be reused now
-func (b *Block) ReadDone() {
+// mark this Block is ready to be read freely now without blocking
+func (b *Block) Unblock() {
 	close(b.state)
-}
-
-// reinit the Block by recreating its channel
-func (b *Block) ReUse() {
-	b.state = make(chan int, 2)
-	b.length = 0
-	b.offset = 0
-}
-
-func (b *Block) Size() uint64 {
-	s := cap(b.data)
-	return uint64(s)
-}
-
-func (b *Block) Offset() uint64 {
-	return b.offset
 }
