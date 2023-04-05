@@ -324,8 +324,8 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			delId := block.id - 3
 			delItem, delFound := handle.GetValue(fmt.Sprintf("%v", delId))
 			if delFound {
-				go bc.releaseBlock(delItem.(workItem).block)
 				handle.RemoveValue(fmt.Sprintf("%v", delId))
+				go bc.releaseBlock(delItem.(workItem).block)
 			}
 		}
 	}
