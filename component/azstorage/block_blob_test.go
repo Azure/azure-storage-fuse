@@ -498,7 +498,12 @@ func (s *blockBlobTestSuite) TestDeleteSubDirPrefixPath() {
 
 	s.az.storage.SetPrefixPath(base)
 
-	err := s.az.DeleteDir(internal.DeleteDirOptions{Name: "c1"})
+	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: "c1"})
+	s.assert.Nil(err)
+	s.assert.NotNil(attr)
+	s.assert.True(attr.IsDir())
+
+	err = s.az.DeleteDir(internal.DeleteDirOptions{Name: "c1"})
 	s.assert.Nil(err)
 
 	// a paths under c1 should be deleted

@@ -552,10 +552,17 @@ func split(prefixPath string, path string) string {
 		return path
 	}
 
-	paths := strings.Split(path, string(os.PathSeparator))
-	if paths[0] == prefixPath {
+	// Remove prefixpath from the given path
+	paths := strings.Split(path, prefixPath)
+	if paths[0] == "" {
 		paths = paths[1:]
 	}
+
+	// If result starts with "/" then remove that
+	if paths[0][0] == '/' {
+		paths[0] = paths[0][1:]
+	}
+
 	return filepath.Join(paths...)
 }
 

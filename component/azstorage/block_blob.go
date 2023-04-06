@@ -468,8 +468,6 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("BlockBlob::getAttrUsingList : name %s", name)
 
-	listPath := filepath.Join(bb.Config.prefixPath, name)
-
 	const maxFailCount = 20
 	failCount := 0
 	iteration := 0
@@ -495,7 +493,7 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 
 		for i, blob := range blobs {
 			log.Trace("BlockBlob::getAttrUsingList : Item %d Blob %s", i+blobsRead, blob.Name)
-			if blob.Path == listPath {
+			if blob.Path == name {
 				return blob, nil
 			}
 		}
