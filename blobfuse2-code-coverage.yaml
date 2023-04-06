@@ -626,7 +626,7 @@ stages:
             - script: |
                 rm -rf $(MOUNT_DIR)/*
                 rm -rf $(TEMP_DIR)/*
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block_proxy.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
+                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block_proxy.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --disable-compression=true --foreground=true &
                 sleep 10
                 ps -aux | grep blobfuse2
                 rm -rf $(MOUNT_DIR)/*
