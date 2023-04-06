@@ -43,6 +43,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -106,6 +107,8 @@ func (suite *mountTestSuite) SetupTest() {
 func (suite *mountTestSuite) cleanupTest() {
 	resetCLIFlags(*mountCmd)
 	resetCLIFlags(*mountAllCmd)
+	viper.Reset()
+
 	common.DefaultWorkDir = "$HOME/.blobfuse2"
 	common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 }

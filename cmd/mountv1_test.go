@@ -73,6 +73,7 @@ func (suite *generateConfigTestSuite) SetupTest() {
 
 func (suite *generateConfigTestSuite) cleanupTest() {
 	resetCLIFlags(*generateConfigCmd)
+	viper.Reset()
 }
 
 // Taken from cobra library's testing https://github.com/spf13/cobra/blob/master/command_test.go#L34
