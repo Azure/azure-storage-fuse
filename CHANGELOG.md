@@ -4,10 +4,13 @@
 - [#1081](https://github.com/Azure/azure-storage-fuse/issues/1081) Blobfuse will exit with non-zero status code if allow_other option is used but not enabled in fuse config.
 - [#1079](https://github.com/Azure/azure-storage-fuse/issues/1079) Shell returns before child process mounts the container and if user tries to bind the mount it leads to inconsistent state.
 - If mount fails in forked child, blobfuse2 will return back with status error code.
+- [#1100](https://github.com/Azure/azure-storage-fuse/issues/1100) If content-encoding is set in blob then transport layer compression shall be disabled.
+- Subdir mount is not able to list blobs correctly when virtual-directory is turned on.
 - Adding support to pass down uid/gid values supplied in mount to libfuse.
 
 **Features**
 - Added new CLI parameter "--sync-to-flush". Once configured sync() call on file will force upload a file to storage container. As this is file handle based api, if file was not in file-cache it will first download and then upload the file. 
+- Added new CLI parameter "--disable-compression". Disables content compression at transport layer. Required when content-encoding is set to 'gzip' in blob.
 
 
 ## 2.0.2 (2022-02-23)

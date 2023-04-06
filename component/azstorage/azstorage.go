@@ -627,6 +627,9 @@ func init() {
 	subDirectory := config.AddStringFlag("subdirectory", "", "Mount only this sub-directory from given container.")
 	config.BindPFlag(compName+".subdirectory", subDirectory)
 
+	disableCompression := config.AddBoolFlag("disable-compression", false, "Disable transport layer compression.")
+	config.BindPFlag(compName+".disable-compression", disableCompression)
+
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})
