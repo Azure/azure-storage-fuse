@@ -57,6 +57,16 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	}
 }
 
+// Recalculate the block size and pool size
+func (pool *BlockPool) ReSize(blockSize uint64, memSize uint64) {
+	blockCount := memSize / blockSize
+	pool.blockMax = uint32(blockCount)
+
+	for pool.blocks < pool.blockMax/2 {
+		pool.expand()
+	}
+}
+
 // Get a Block from the pool
 func (pool *BlockPool) expand() {
 	if pool.blocks < pool.blockMax {
@@ -73,14 +83,28 @@ func (pool *BlockPool) expand() {
 }
 
 // Get a Block from the pool
-func (pool *BlockPool) Get() *Block {
+func (pool *BlockPool) Get(wait bool) *Block {
 	var b *Block
 
 	select {
+	// Check if there is a buffer already available in the pool
 	case b = <-pool.blocksCh:
+		break
 	default:
+		// If not available try to allocate a new buffer and add to pool if possible
 		pool.expand()
-		b = <-pool.blocksCh
+		if !wait {
+			// Caller asked for immediate answer so even after expanding if its not possible return nil
+			select {
+			case b = <-pool.blocksCh:
+				break
+			default:
+				return nil
+			}
+		} else {
+			// Caller is ready to wait so block untill buffer is available
+			b = <-pool.blocksCh
+		}
 	}
 
 	b.ReUse()

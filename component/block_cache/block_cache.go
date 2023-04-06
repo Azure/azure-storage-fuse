@@ -155,6 +155,21 @@ func (bc *BlockCache) Configure(_ bool) error {
 	return nil
 }
 
+// OnConfigChange : When config file is changed, this will be called by pipeline. Refresh required config here
+func (bc *BlockCache) OnConfigChange() {
+	log.Trace("AzStorage::OnConfigChange : %s", bc.Name())
+
+	// >> If you do not need any config parameters remove below code and return nil
+	conf := BlockCacheOptions{}
+	err := config.UnmarshalKey(bc.Name(), &conf)
+	if err != nil {
+		log.Err("BlockCache::OnConfigChange : config error [invalid config attributes]")
+		return
+	}
+
+	bc.blockPool.ReSize((uint64)(conf.BlockSize*_1MB), (uint64)(conf.MemSize*_1MB))
+}
+
 // OpenFile: Makes the file available in the local cache for further file operations.
 func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("BlockCache::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
@@ -172,10 +187,9 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	nextoffset := uint64(0)
 	for i := 0; uint32(i) < bc.prefetch && int64(nextoffset) < handle.Size; i++ {
 		handle.SetValue("#", nextoffset)
-		err = bc.lineupDownload(handle, nextoffset)
-		if err != nil {
-			log.Err(err.Error())
-			return nil, err
+		success := bc.lineupDownload(handle, nextoffset, (i == 0))
+		if !success {
+			break
 		}
 		nextoffset += bc.blockPool.blockSize
 	}
@@ -228,14 +242,15 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 }
 
 // download : Method to download the given amount of data
-func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64) error {
+func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64, wait bool) bool {
 	item := workItem{
 		handle: handle,
-		block:  bc.blockPool.Get(),
+		block:  bc.blockPool.Get(wait),
 	}
 
 	if item.block == nil {
-		return fmt.Errorf("BlockCache::lineupDownload : Failed to schedule prefetch of %s # %v", handle.Path, offset)
+		log.Err("BlockCache::lineupDownload : Failed to schedule prefetch of %s # %v, block: %v", handle.Path, offset, wait)
+		return false
 	}
 
 	item.block.id = offset / bc.blockPool.blockSize
@@ -243,7 +258,7 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64) er
 	handle.SetValue(fmt.Sprintf("%v", item.block.id), item)
 	bc.threadPool.Schedule(offset == 0, item)
 
-	return nil
+	return true
 }
 
 // download : Method to download the given amount of data
@@ -286,9 +301,8 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 
 	if !found {
 		// This offset is not cached yet, so lineup the download
-		err := bc.lineupDownload(handle, readoffset)
-		if err != nil {
-			log.Err("BlockCache::ReadInBuffer : Failed to schedule new Block download%s # %v", handle.Path, index)
+		success := bc.lineupDownload(handle, readoffset, true)
+		if !success {
 			return nil, fmt.Errorf("failed to schedule download")
 		}
 
@@ -305,23 +319,21 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	t := int(0)
 	t = <-block.state
 
-	if t == 1 {
-		// block is ready and we are the first reader so its time to schedule the next block
+	if t == 2 {
+		block.Unblock()
+
+		// block is ready and we are the second reader so its time to schedule the next block
 		lastoffset, found := handle.GetValue("#")
 		if found && lastoffset.(uint64) < uint64(handle.Size) {
-			err := bc.lineupDownload(handle, lastoffset.(uint64))
-			if err != nil {
-				log.Err(err.Error())
-			} else {
+			success := bc.lineupDownload(handle, lastoffset.(uint64), false)
+			if success {
 				handle.SetValue("#", lastoffset.(uint64)+bc.blockPool.blockSize)
 			}
 		}
-	} else if t == 2 {
-		block.Unblock()
-
-		// block is ready and we are the second reader so its time to remove the second last block from here
-		if block.id >= 3 {
-			delId := block.id - 3
+	} else if t == 1 {
+		// block is ready and we are the first reader so its time to remove the second last block from here
+		if block.id >= 2 {
+			delId := block.id - 2
 			delItem, delFound := handle.GetValue(fmt.Sprintf("%v", delId))
 			if delFound {
 				handle.RemoveValue(fmt.Sprintf("%v", delId))
@@ -335,13 +347,8 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 
 // releaseBlock: Release this block and add back to the pool
 func (bc *BlockCache) releaseBlock(b *Block) {
-	t := int(0)
-	t = <-b.state
-	if t == 0 {
-		bc.blockPool.Release(b)
-	} else {
-		log.Err("BlockCache::releaseBlock : Invalid state for block release")
-	}
+	<-b.state
+	bc.blockPool.Release(b)
 }
 
 // ------------------------- Factory -------------------------------------------
@@ -351,6 +358,7 @@ func (bc *BlockCache) releaseBlock(b *Block) {
 func NewBlockCacheComponent() internal.Component {
 	comp := &BlockCache{}
 	comp.SetName(compName)
+	config.AddConfigChangeEventListener(comp)
 	return comp
 }
 
