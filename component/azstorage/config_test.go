@@ -340,6 +340,32 @@ func (s *configTestSuite) TestOtherFlags() {
 	assert.Equal(err.Error(), "SAS key not provided")
 }
 
+func (s *configTestSuite) TestCompressionType() {
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+	az := &AzStorage{}
+	opt := AzStorageOptions{}
+	opt.AccountName = "abcd"
+	opt.Container = "abcd"
+
+	err := ParseAndValidateConfig(az, opt)
+	assert.Nil(err)
+	assert.Equal(az.stConfig.disableCompression, false)
+
+	opt.DisableCompression = true
+	config.SetBool(compName+".disable-compression", true)
+	err = ParseAndValidateConfig(az, opt)
+	assert.Nil(err)
+	assert.Equal(az.stConfig.disableCompression, true)
+
+	opt.DisableCompression = false
+	config.SetBool(compName+".disable-compression", false)
+	err = ParseAndValidateConfig(az, opt)
+	assert.Nil(err)
+	assert.Equal(az.stConfig.disableCompression, false)
+
+}
+
 func (s *configTestSuite) TestInvalidSASRefresh() {
 	defer config.ResetConfig()
 	assert := assert.New(s.T())
