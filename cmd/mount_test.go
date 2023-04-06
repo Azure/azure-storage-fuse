@@ -281,39 +281,39 @@ func (suite *mountTestSuite) TestStreamAttrCacheOptionsV1() {
 }
 
 // libfuse options test
-// func (suite *mountTestSuite) TestLibfuseOptions() {
-// 	defer suite.cleanupTest()
+func (suite *mountTestSuite) TestLibfuseOptions() {
+	defer suite.cleanupTest()
 
-// 	mntDir, err := ioutil.TempDir("", "mntdir")
-// 	suite.assert.Nil(err)
-// 	defer os.RemoveAll(mntDir)
+	mntDir, err := ioutil.TempDir("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
 
-// 	tempLogDir := "/tmp/templogs_" + randomString(6)
-// 	defer os.RemoveAll(tempLogDir)
+	tempLogDir := "/tmp/templogs_" + randomString(6)
+	defer os.RemoveAll(tempLogDir)
 
-// 	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
-// 		fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"), "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check",
-// 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-// 		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755")
-// 	suite.assert.NotNil(err)
-// 	suite.assert.Contains(op, "failed to initialize new pipeline")
-// }
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
+		fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"), "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check",
+		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
+		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to initialize new pipeline")
+}
 
 // mount failure test where libfuse options are greater than 8
-// func (suite *mountTestSuite) TestLibfuseIgnoreOptions() {
-// 	defer suite.cleanupTest()
+func (suite *mountTestSuite) TestLibfuseIgnoreOptions() {
+	defer suite.cleanupTest()
 
-// 	mntDir, err := ioutil.TempDir("", "mntdir")
-// 	suite.assert.Nil(err)
-// 	defer os.RemoveAll(mntDir)
+	mntDir, err := ioutil.TempDir("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
 
-// 	// greater than 8 libfuse options
-// 	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
-// 		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-// 		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o suid,dev")
-// 	suite.assert.NotNil(err)
-// 	suite.assert.Contains(op, "failed to initialize new pipeline")
-// }
+	// greater than 8 libfuse options
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
+		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
+		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o suid,dev")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to initialize new pipeline")
+}
 
 // mount failure test where a libfuse option is incorrect
 func (suite *mountTestSuite) TestInvalidLibfuseOption() {
@@ -405,8 +405,6 @@ func (suite *mountTestSuite) TestFuseOptions() {
 		{opt: "suid", ignore: true},
 		{opt: "nosuid", ignore: true},
 		{opt: "delay_connect", ignore: true},
-		{opt: "uid=1000", ignore: false},
-		{opt: "gid=1000", ignore: false},
 		{opt: "auto", ignore: true},
 		{opt: "noauto", ignore: true},
 		{opt: "user", ignore: true},
@@ -424,6 +422,8 @@ func (suite *mountTestSuite) TestFuseOptions() {
 		{opt: "ro", ignore: false},
 		{opt: "allow_root", ignore: false},
 		{opt: "umask=777", ignore: false},
+		{opt: "uid=1000", ignore: false},
+		{opt: "gid=1000", ignore: false},
 	}
 
 	for _, val := range opts {
