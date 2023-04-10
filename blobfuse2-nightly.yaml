@@ -568,18 +568,18 @@ stages:
                   AgentName: "blobfuse-rhel7_5"
                   ContainerName: "test-cnt-rhel-75"
                   tags: 'fuse3'
-                RHEL-8.1:
-                  DistroVer: "RHEL-8.1"
-                  Description: "Red Hat Enterprise Linux 8.1"
-                  AgentName: "blobfuse-rhel8_1"
-                  containerName: "test-cnt-rhel-81"
-                  tags: 'fuse3'
-                RHEL-8.2:
-                  DistroVer: "RHEL-8.2"
-                  Description: "Red Hat Enterprise Linux 8.2"
-                  AgentName: "blobfuse-rhel8_2"
-                  containerName: "test-cnt-rhel-82"
-                  tags: 'fuse3'
+                # RHEL-8.1:
+                #   DistroVer: "RHEL-8.1"
+                #   Description: "Red Hat Enterprise Linux 8.1"
+                #   AgentName: "blobfuse-rhel8_1"
+                #   containerName: "test-cnt-rhel-81"
+                #   tags: 'fuse3'
+                # RHEL-8.2:
+                #   DistroVer: "RHEL-8.2"
+                #   Description: "Red Hat Enterprise Linux 8.2"
+                #   AgentName: "blobfuse-rhel8_2"
+                #   containerName: "test-cnt-rhel-82"
+                #   tags: 'fuse3'
                 RHEL-8.6:
                   DistroVer: "RHEL-8.6"
                   Description: "Red Hat Enterprise Linux 8.6"
