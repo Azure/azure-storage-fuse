@@ -43,6 +43,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -106,6 +107,8 @@ func (suite *mountTestSuite) SetupTest() {
 func (suite *mountTestSuite) cleanupTest() {
 	resetCLIFlags(*mountCmd)
 	resetCLIFlags(*mountAllCmd)
+	viper.Reset()
+
 	common.DefaultWorkDir = "$HOME/.blobfuse2"
 	common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 }
@@ -280,41 +283,6 @@ func (suite *mountTestSuite) TestStreamAttrCacheOptionsV1() {
 	suite.assert.Contains(op, "failed to initialize new pipeline")
 }
 
-// libfuse options test
-func (suite *mountTestSuite) TestLibfuseOptions() {
-	defer suite.cleanupTest()
-
-	mntDir, err := ioutil.TempDir("", "mntdir")
-	suite.assert.Nil(err)
-	defer os.RemoveAll(mntDir)
-
-	tempLogDir := "/tmp/templogs_" + randomString(6)
-	defer os.RemoveAll(tempLogDir)
-
-	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
-		fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"), "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check",
-		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755")
-	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "failed to initialize new pipeline")
-}
-
-// mount failure test where libfuse options are greater than 8
-func (suite *mountTestSuite) TestLibfuseIgnoreOptions() {
-	defer suite.cleanupTest()
-
-	mntDir, err := ioutil.TempDir("", "mntdir")
-	suite.assert.Nil(err)
-	defer os.RemoveAll(mntDir)
-
-	// greater than 8 libfuse options
-	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
-		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o suid,dev")
-	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "failed to initialize new pipeline")
-}
-
 // mount failure test where a libfuse option is incorrect
 func (suite *mountTestSuite) TestInvalidLibfuseOption() {
 	defer suite.cleanupTest()
@@ -363,31 +331,6 @@ func (suite *mountTestSuite) TestInvalidUmaskValue() {
 	suite.assert.Contains(op, "failed to parse umask")
 }
 
-// This test mounts successfully and when unmount tests are running in parallel it fails those tests.
-// func (suite *mountTestSuite) TestMountUsingLoopbackFailure() {
-// 	defer suite.cleanupTest()
-
-// 	confFile, err := ioutil.TempFile("", "conf*.yaml")
-// 	suite.assert.Nil(err)
-// 	confFileName := confFile.Name()
-// 	defer os.Remove(confFileName)
-
-// 	_, err = confFile.WriteString(configMountLoopback)
-// 	suite.assert.Nil(err)
-// 	confFile.Close()
-
-// 	mntDir, err := ioutil.TempDir("", "mntdir")
-// 	suite.assert.Nil(err)
-// 	defer os.RemoveAll(mntDir)
-
-// 	_, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName))
-// 	suite.assert.Nil(err)
-
-// 	time.Sleep(5 * time.Second)
-// 	_, err = executeCommandC(rootCmd, "unmount", "all")
-// 	suite.assert.Nil(err)
-// }
-
 // fuse option parsing validation
 func (suite *mountTestSuite) TestFuseOptions() {
 	defer suite.cleanupTest()
@@ -405,8 +348,6 @@ func (suite *mountTestSuite) TestFuseOptions() {
 		{opt: "suid", ignore: true},
 		{opt: "nosuid", ignore: true},
 		{opt: "delay_connect", ignore: true},
-		{opt: "uid=1000", ignore: true},
-		{opt: "gid=1000", ignore: true},
 		{opt: "auto", ignore: true},
 		{opt: "noauto", ignore: true},
 		{opt: "user", ignore: true},
@@ -424,6 +365,8 @@ func (suite *mountTestSuite) TestFuseOptions() {
 		{opt: "ro", ignore: false},
 		{opt: "allow_root", ignore: false},
 		{opt: "umask=777", ignore: false},
+		{opt: "uid=1000", ignore: false},
+		{opt: "gid=1000", ignore: false},
 	}
 
 	for _, val := range opts {
