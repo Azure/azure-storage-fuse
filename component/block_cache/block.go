@@ -48,6 +48,10 @@ type Block struct {
 
 // newblock creates a new memory mapped buffer with the specified size
 func AllocateBlock(size uint64) (*Block, error) {
+	if size == 0 {
+		return nil, fmt.Errorf("invalid size")
+	}
+
 	prot, flags := syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE
 	addr, err := syscall.Mmap(-1, 0, int(size), prot, flags)
 
@@ -68,6 +72,10 @@ func AllocateBlock(size uint64) (*Block, error) {
 
 // Delete cleans up the memory mapped buffer
 func (b *Block) Delete() error {
+	if b.data == nil {
+		return fmt.Errorf("invalid buffer")
+	}
+
 	err := syscall.Munmap(b.data)
 	b.data = nil
 	if err != nil {
@@ -86,15 +94,29 @@ func (b *Block) ReUse() {
 }
 
 // mark this Block is now ready for ops
-func (b *Block) ReadyForReading() {
+func (b *Block) ReadyForReading() error {
+	if b.state == nil {
+		return fmt.Errorf("block was never used")
+	}
+
+	if len(b.state) != 0 {
+		return fmt.Errorf("invalid state to mark it ready")
+	}
+
 	b.state <- 1
 	b.state <- 2
+
+	return nil
 }
 
 // mark this Block is ready to be read freely now without blocking
-func (b *Block) Unblock() {
-	if !b.closed {
-		close(b.state)
-		b.closed = true
+func (b *Block) Unblock() error {
+	if b.closed {
+		return fmt.Errorf("invalid state of block to unblock")
 	}
+
+	close(b.state)
+	b.closed = true
+
+	return nil
 }

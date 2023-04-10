@@ -1,3 +1,5 @@
+// +build !authtest
+
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -33,79 +35,76 @@
 
 package block_cache
 
-import "sync"
+import (
+	"testing"
 
-type ThreadPool struct {
-	// Number of workers running in this group
-	worker uint32
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
+)
 
-	// Channel to close all the workers
-	close chan int
-
-	// Wait group to wait for all workers to finish
-	wg sync.WaitGroup
-
-	// Channel to hold pending requests
-	priorityCh chan interface{}
-	normalCh   chan interface{}
-
-	// Reader method that will actually read the data
-	reader func(interface{})
+type threadPoolTestSuite struct {
+	suite.Suite
+	assert *assert.Assertions
 }
 
-func newThreadPool(count uint32, reader func(interface{})) *ThreadPool {
-	if count == 0 || reader == nil {
-		return nil
-	}
-
-	return &ThreadPool{
-		worker:     count,
-		reader:     reader,
-		close:      make(chan int),
-		priorityCh: make(chan interface{}),
-		normalCh:   make(chan interface{}),
-	}
+func (suite *threadPoolTestSuite) SetupTest() {
 }
 
-// Start all the workers
-func (t *ThreadPool) Start() {
-	for i := uint32(0); i < t.worker; i++ {
-		t.wg.Add(1)
-		go t.Do()
-	}
+func (suite *threadPoolTestSuite) cleanupTest() {
 }
 
-// Stop all the workers
-func (t *ThreadPool) Stop() {
-	for i := uint32(0); i < t.worker; i++ {
-		t.close <- 1
-	}
+func (suite *threadPoolTestSuite) TestCreate() {
+	suite.assert = assert.New(suite.T())
 
-	t.wg.Wait()
-	close(t.priorityCh)
-	close(t.normalCh)
+	tp := newThreadPool(0, nil)
+	suite.assert.Nil(tp)
+
+	tp = newThreadPool(1, nil)
+	suite.assert.Nil(tp)
+
+	tp = newThreadPool(1, func(interface{}) {})
+	suite.assert.NotNil(tp)
+	suite.assert.Equal(tp.worker, uint32(1))
 }
 
-// Schedule the download of a block
-func (t *ThreadPool) Schedule(urgent bool, item interface{}) {
-	if urgent {
-		t.priorityCh <- item
-	} else {
-		t.normalCh <- item
+func (suite *threadPoolTestSuite) TestStartStop() {
+	suite.assert = assert.New(suite.T())
+
+	r := func(i interface{}) {
+		suite.assert.Equal(i.(int), 1)
 	}
+	tp := newThreadPool(2, r)
+	suite.assert.NotNil(tp)
+	suite.assert.Equal(tp.worker, uint32(2))
+
+	tp.Start()
+	suite.assert.NotNil(tp.priorityCh)
+	suite.assert.NotNil(tp.normalCh)
+
+	tp.Stop()
 }
 
-func (t *ThreadPool) Do() {
-	defer t.wg.Done()
+func (suite *threadPoolTestSuite) TestSchedule() {
+	suite.assert = assert.New(suite.T())
 
-	for {
-		select {
-		case item := <-t.priorityCh:
-			t.reader(item)
-		case item := <-t.normalCh:
-			t.reader(item)
-		case <-t.close:
-			return
-		}
+	r := func(i interface{}) {
+		suite.assert.Equal(i.(int), 1)
 	}
+
+	tp := newThreadPool(2, r)
+	suite.assert.NotNil(tp)
+	suite.assert.Equal(tp.worker, uint32(2))
+
+	tp.Start()
+	suite.assert.NotNil(tp.priorityCh)
+	suite.assert.NotNil(tp.normalCh)
+
+	tp.Schedule(false, 1)
+	tp.Schedule(true, 1)
+
+	tp.Stop()
+}
+
+func TestThreadPoolSuite(t *testing.T) {
+	suite.Run(t, new(threadPoolTestSuite))
 }

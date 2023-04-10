@@ -33,8 +33,6 @@
 
 package block_cache
 
-import "github.com/Azure/azure-storage-fuse/v2/common/log"
-
 const _1MB uint32 = (1024 * 1024)
 
 type BlockPool struct {
@@ -45,15 +43,32 @@ type BlockPool struct {
 }
 
 func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
-	blockCount := memSize / blockSize
+	if blockSize == 0 || memSize < blockSize {
+		return nil
+	}
 
-	log.Info("BlockPool : %v blocks of %v size will be used", blockCount, blockSize)
+	blockCount := memSize / blockSize
 
 	return &BlockPool{
 		blocksCh:  make(chan *Block, blockCount),
 		blockSize: blockSize,
 		blockMax:  uint32(blockCount),
 		blocks:    0,
+	}
+}
+
+// Recalculate the block size and pool size
+func (pool *BlockPool) Terminate() {
+	close(pool.blocksCh)
+
+	if pool.blocks > 0 {
+		for {
+			b := <-pool.blocksCh
+			if b == nil {
+				break
+			}
+			b.Delete()
+		}
 	}
 }
 
