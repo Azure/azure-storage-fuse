@@ -283,25 +283,6 @@ func (suite *mountTestSuite) TestStreamAttrCacheOptionsV1() {
 	suite.assert.Contains(op, "failed to initialize new pipeline")
 }
 
-// libfuse options test
-func (suite *mountTestSuite) TestLibfuseOptions() {
-	defer suite.cleanupTest()
-
-	mntDir, err := ioutil.TempDir("", "mntdir")
-	suite.assert.Nil(err)
-	defer os.RemoveAll(mntDir)
-
-	tempLogDir := "/tmp/templogs_" + randomString(6)
-	defer os.RemoveAll(tempLogDir)
-
-	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
-		fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"), "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check",
-		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755")
-	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "failed to initialize new pipeline")
-}
-
 // mount failure test where libfuse options are greater than 8
 func (suite *mountTestSuite) TestLibfuseIgnoreOptions() {
 	defer suite.cleanupTest()
@@ -390,6 +371,25 @@ func (suite *mountTestSuite) TestInvalidUmaskValue() {
 // 	_, err = executeCommandC(rootCmd, "unmount", "all")
 // 	suite.assert.Nil(err)
 // }
+
+// libfuse options test
+func (suite *mountTestSuite) TestLibfuseOptions() {
+	defer suite.cleanupTest()
+
+	mntDir, err := ioutil.TempDir("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	tempLogDir := "/tmp/templogs_" + randomString(6)
+	defer os.RemoveAll(tempLogDir)
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
+		fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"), "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check",
+		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
+		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to initialize new pipeline")
+}
 
 // fuse option parsing validation
 func (suite *mountTestSuite) TestFuseOptions() {
