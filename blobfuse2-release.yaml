@@ -508,9 +508,9 @@ stages:
             workingDirectory: $(root_dir)/blobfuse2-temp
 
           - script: |
-              sudo dpkg --info blobfuse2*.deb
+              sudo dpkg --info blobfuse2*$(vmImage)*.deb
               sudo apt-get install $(fuse-version) build-essential -y
-              sudo dpkg -i blobfuse2*.deb
+              sudo dpkg -i ./blobfuse2*$(vmImage)*.deb
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
 
@@ -646,14 +646,14 @@ stages:
 
           - script: |
               sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
-              sudo rpm -qip blobfuse2*.rpm
+              sudo rpm -qip blobfuse2*$(vmImage)*.rpm
               sudo yum groupinstall "Development Tools" -y              
               if [[ $(agentName) == "blobfuse-rhel7_5" || $(agentName) == "blobfuse-rhel7_8" ]]; then
                 sudo yum install fuse fuse3-libs fuse3-devel fuse3 -y
               else
                 sudo yum install fuse fuse3-libs fuse3-devel fuse3 -y --nobest --allowerasing
               fi
-              sudo rpm -i blobfuse2*.rpm
+              sudo rpm -i blobfuse2*$(vmImage)*.rpm
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
 
