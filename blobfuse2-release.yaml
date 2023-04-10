@@ -499,8 +499,10 @@ stages:
               for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
               cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
               if [ $(agentName) == "blobfuse-debian10" ]; then
-                f=`ls *$(vmImage)*`
+                f=`ls ./blobfuse2*$(vmImage)*.deb`
                 cp "$f" $(sed 's:Debian-10:Debian-9:' <<< "$f")
+                cp ./blobfuse2*Debian-9*.deb $(Build.ArtifactStagingDirectory)
+                rm -rf ./blobfuse2*Debian-9*.deb
               fi
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-temp
