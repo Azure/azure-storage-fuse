@@ -539,13 +539,13 @@ stages:
               fuse-version: 'fuse3'
               tags: 'fuse3'
               container: 'test-cnt-rhel-75'
-            RHEL-7.8:
-              agentName: "blobfuse-rhel7_8"
-              vmImage: 'RHEL-7.8'
-              fuselib: 'fuse3-devel'
-              fuse-version: 'fuse3'
-              tags: 'fuse3'
-              container: 'test-cnt-rhel-78'
+            # RHEL-7.8:
+            #   agentName: "blobfuse-rhel7_8"
+            #   vmImage: 'RHEL-7.8'
+            #   fuselib: 'fuse3-devel'
+            #   fuse-version: 'fuse3'
+            #   tags: 'fuse3'
+            #   container: 'test-cnt-rhel-78'
             RHEL-8.1:
               agentName: "blobfuse-rhel8_1"
               vmImage: 'RHEL-8.1'
@@ -635,6 +635,12 @@ stages:
           - script: |
               for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
               cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
+              if [ $(agentName) == "blobfuse-rhel7_5" ]; then
+                f=`ls ./blobfuse2*$(vmImage)*.rpm`
+                cp "$f" $(sed 's:RHEL-7.5:RHEL-7.8:' <<< "$f")
+                cp ./blobfuse2*RHEL-7.8*.rpm $(Build.ArtifactStagingDirectory)
+                rm -rf ./blobfuse2*RHEL-7.8*.rpm
+              fi
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-temp
 
