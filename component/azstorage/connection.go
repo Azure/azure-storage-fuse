@@ -71,9 +71,10 @@ type AzStorageConfig struct {
 	ignoreAccessModifiers bool
 	mountAllContainers    bool
 
-	updateMD5        bool
-	validateMD5      bool
-	virtualDirectory bool
+	updateMD5          bool
+	validateMD5        bool
+	virtualDirectory   bool
+	disableCompression bool
 }
 
 type AzStorageConnection struct {
