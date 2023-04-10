@@ -331,99 +331,99 @@ stages:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts' 
 
-      - job: Set_2
-        timeoutInMinutes: 120
-        strategy:
-          matrix:
-            Debian-9.0:
-              agentName: "DEB 9.0"
-              vmImage: 'Debian-9.0'
-              fuselib: 'libfuse-dev'
-              fuse-version: 'fuse'
-              tags: 'fuse2'
-              container: 'test-cnt-deb-9'
+      # - job: Set_2
+      #   timeoutInMinutes: 120
+      #   strategy:
+      #     matrix:
+      #       Debian-9.0:
+      #         agentName: "DEB 9.0"
+      #         vmImage: 'Debian-9.0'
+      #         fuselib: 'libfuse-dev'
+      #         fuse-version: 'fuse'
+      #         tags: 'fuse2'
+      #         container: 'test-cnt-deb-9'
         
-        pool:
-          name: "BlobFuse Pool"
-          demands:
-            - Agent.Name -equals $(AgentName)
+      #   pool:
+      #     name: "BlobFuse Pool"
+      #     demands:
+      #       - Agent.Name -equals $(AgentName)
 
-        variables:
-          - group: NightlyBlobFuse
-          - name: root_dir
-            value: "/home/vsts/workv2"
-          - name: work_dir
-            value: "/home/vsts/workv2/go/src/azure-storage-fuse"
-          - name: mount_dir
-            value: "/home/vsts/workv2/blob_mnt"
-          - name: temp_dir
-            value: "/home/vsts/workv2/blobfuse2tmp"
+      #   variables:
+      #     - group: NightlyBlobFuse
+      #     - name: root_dir
+      #       value: "/home/vsts/workv2"
+      #     - name: work_dir
+      #       value: "/home/vsts/workv2/go/src/azure-storage-fuse"
+      #     - name: mount_dir
+      #       value: "/home/vsts/workv2/blob_mnt"
+      #     - name: temp_dir
+      #       value: "/home/vsts/workv2/blobfuse2tmp"
 
-        steps:
-          - checkout: none
+      #   steps:
+      #     - checkout: none
 
-          - task: GoTool@0
-            inputs:
-              version: '1.16.2'
-            displayName: "GoTool Setup"
+      #     - task: GoTool@0
+      #       inputs:
+      #         version: '1.16.2'
+      #       displayName: "GoTool Setup"
 
-          - script: |
-              sudo rm -rf $(root_dir)/azure-storage-fuse
-              git clone https://github.com/Azure/azure-storage-fuse
-            displayName: 'Checkout Code'
-            workingDirectory: $(root_dir)
+      #     - script: |
+      #         sudo rm -rf $(root_dir)/azure-storage-fuse
+      #         git clone https://github.com/Azure/azure-storage-fuse
+      #       displayName: 'Checkout Code'
+      #       workingDirectory: $(root_dir)
 
-          - script: |
-              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-            displayName: 'Checkout Branch'
-            workingDirectory: $(root_dir)/azure-storage-fuse
+      #     - script: |
+      #         git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+      #       displayName: 'Checkout Branch'
+      #       workingDirectory: $(root_dir)/azure-storage-fuse
           
-          # get glibc version with which build is done
-          - script: |
-             ldd --version
-            displayName: "GLIBC Version"
+      #     # get glibc version with which build is done
+      #     - script: |
+      #        ldd --version
+      #       displayName: "GLIBC Version"
 
-          - task: DownloadBuildArtifacts@0
-            displayName: 'Download Build Artifacts'
-            inputs:
-              artifactName: 'blobfuse2-temp'
-              downloadPath: $(root_dir)
-              itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.deb
+      #     - task: DownloadBuildArtifacts@0
+      #       displayName: 'Download Build Artifacts'
+      #       inputs:
+      #         artifactName: 'blobfuse2-temp'
+      #         downloadPath: $(root_dir)
+      #         itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.deb
 
-          - script: |
-              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
-              cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
-            displayName: 'Rename Package'
-            workingDirectory: $(root_dir)/blobfuse2-temp
+      #     - script: |
+      #         for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+      #         cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
+      #       displayName: 'Rename Package'
+      #       workingDirectory: $(root_dir)/blobfuse2-temp
 
-          - script: |
-              sudo dpkg --info blobfuse2*.deb
-              sudo dpkg -i blobfuse2*.deb
-              sudo apt-get install $(fuse-version) build-essential -y
-            displayName: 'Install Package'
-            workingDirectory: $(Build.ArtifactStagingDirectory)
+      #     - script: |
+      #         sudo dpkg --info blobfuse2*.deb
+      #         sudo dpkg -i blobfuse2*.deb
+      #         sudo apt-get install $(fuse-version) build-essential -y
+      #       displayName: 'Install Package'
+      #       workingDirectory: $(Build.ArtifactStagingDirectory)
 
-          - template: 'azure-pipeline-templates/release-distro-tests.yml'
-            parameters:
-              root_dir: $(root_dir)
-              work_dir: $(work_dir)
-              mount_dir: $(mount_dir)
-              temp_dir: $(temp_dir)
-              container: $(container)
+      #     - template: 'azure-pipeline-templates/release-distro-tests.yml'
+      #       parameters:
+      #         root_dir: $(root_dir)
+      #         work_dir: $(work_dir)
+      #         mount_dir: $(mount_dir)
+      #         temp_dir: $(temp_dir)
+      #         container: $(container)
 
-          # publishing the artifacts generated
-          - task: PublishBuildArtifacts@1
-            inputs:
-              artifactName: 'blobfuse2'
-            displayName: 'Publish Artifacts' 
+      #     # publishing the artifacts generated
+      #     - task: PublishBuildArtifacts@1
+      #       inputs:
+      #         artifactName: 'blobfuse2'
+      #       displayName: 'Publish Artifacts' 
 
-          # this being a self hosted agent we need to clean up installation once artifact post is done
-          - script: |
-              sudo dpkg -r --force-all blobfuse2
-              rm -rf /usr/bin/bfusemon
-              rm -rf /usr/bin/blobfuse2
-            displayName: 'Un install Package'
-            workingDirectory: $(Build.ArtifactStagingDirectory)
+      #     # this being a self hosted agent we need to clean up installation once artifact post is done
+      #     - script: |
+      #         sudo dpkg -r --force-all blobfuse2
+      #         rm -rf /usr/bin/bfusemon
+      #         rm -rf /usr/bin/blobfuse2
+      #       displayName: 'Un install Package'
+      #       workingDirectory: $(Build.ArtifactStagingDirectory)
 
       - job: Set_3
         timeoutInMinutes: 120
@@ -498,6 +498,10 @@ stages:
           - script: |
               for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
               cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
+              if [ $(agentName) == "blobfuse-debian10" ]; then
+                f=`ls *$(vmImage)*`
+                cp "$f" $(sed 's:Debian-10:Debian-9:' <<< "$f")
+              fi
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-temp
 
