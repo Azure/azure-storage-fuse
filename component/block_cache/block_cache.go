@@ -66,7 +66,7 @@ type BlockCache struct {
 
 // Structure defining your config parameters
 type BlockCacheOptions struct {
-	BlockSize     uint32 `config:"Block-size-mb" yaml:"Block-size-mb,omitempty"`
+	BlockSize     uint32 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	MemSize       uint32 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
 	PrefetchCount uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
 	Workers       uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
@@ -135,6 +135,22 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("BlockCache: config error [invalid config attributes]")
 	}
 
+	if !config.IsSet(compName + ".block-size-mb") {
+		conf.BlockSize = 8
+	}
+
+	if !config.IsSet(compName + ".mem-size-mb") {
+		conf.MemSize = 1024
+	}
+
+	if !config.IsSet(compName + ".prefetch") {
+		conf.PrefetchCount = 8
+	}
+
+	if !config.IsSet(compName + ".parallelism") {
+		conf.Workers = 32
+	}
+
 	bc.blockSizeMB = conf.BlockSize
 	bc.memSizeMB = conf.MemSize
 	bc.workers = conf.Workers
@@ -185,7 +201,8 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 	// Schedule the download of first N blocks for this file here
 	nextoffset := uint64(0)
-	for i := 0; uint32(i) < bc.prefetch && int64(nextoffset) < handle.Size; i++ {
+	prefetch := bc.blockPool.Available(bc.prefetch)
+	for i := 0; uint32(i) < prefetch && int64(nextoffset) < handle.Size; i++ {
 		handle.SetValue("#", nextoffset)
 		success := bc.lineupDownload(handle, nextoffset, (i == 0))
 		if !success {
@@ -325,9 +342,11 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 		// block is ready and we are the second reader so its time to schedule the next block
 		lastoffset, found := handle.GetValue("#")
 		if found && lastoffset.(uint64) < uint64(handle.Size) {
-			success := bc.lineupDownload(handle, lastoffset.(uint64), false)
-			if success {
-				handle.SetValue("#", lastoffset.(uint64)+bc.blockPool.blockSize)
+			if bc.blockPool.Available(1) > 0 {
+				success := bc.lineupDownload(handle, lastoffset.(uint64), false)
+				if success {
+					handle.SetValue("#", lastoffset.(uint64)+bc.blockPool.blockSize)
+				}
 			}
 		}
 	} else if t == 1 {

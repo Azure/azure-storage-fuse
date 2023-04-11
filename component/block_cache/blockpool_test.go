@@ -156,6 +156,55 @@ func (suite *blockpoolTestSuite) TestGetRelease() {
 	suite.assert.Equal(len(bp.blocksCh), 0)
 }
 
+func (suite *blockpoolTestSuite) TestAvailable() {
+	suite.assert = assert.New(suite.T())
+
+	bp := NewBlockPool(1, 10)
+	suite.assert.NotNil(bp)
+	suite.assert.NotNil(bp.blocksCh)
+	suite.assert.Equal(bp.blockMax, uint32(10))
+	suite.assert.Equal(bp.blockSize, uint64(1))
+	suite.assert.Equal(bp.blocks, uint32(0))
+
+	avail := bp.Available(5)
+	suite.assert.Equal(avail, uint32(5))
+
+	b := make([]*Block, 10)
+	suite.assert.NotNil(b)
+
+	for i := 0; i < 10; i++ {
+		b[i] = bp.Get(false)
+		suite.assert.NotNil(b[i])
+	}
+
+	for i := 0; i < 10; i++ {
+		bp.Release(b[i])
+	}
+
+	suite.assert.Equal(bp.blockMax, uint32(10))
+	suite.assert.Equal(bp.blocks, uint32(10))
+
+	avail = bp.Available(5)
+	suite.assert.Equal(avail, uint32(5))
+
+	for i := 0; i < 8; i++ {
+		b[i] = bp.Get(false)
+		suite.assert.NotNil(b[i])
+	}
+	avail = bp.Available(5)
+	suite.assert.Equal(avail, uint32(1))
+
+	for i := 8; i < 10; i++ {
+		b[i] = bp.Get(false)
+		suite.assert.NotNil(b[i])
+	}
+	avail = bp.Available(5)
+	suite.assert.Equal(avail, uint32(0))
+
+	bp.Terminate()
+	suite.assert.Equal(len(bp.blocksCh), 0)
+}
+
 func TestBlockPoolSuite(t *testing.T) {
 	suite.Run(t, new(blockpoolTestSuite))
 }
