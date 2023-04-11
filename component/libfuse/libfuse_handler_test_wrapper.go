@@ -186,6 +186,14 @@ func testCreate(suite *libfuseTestSuite) {
 
 	err := libfuse_create(path, 0775, info)
 	suite.assert.Equal(C.int(0), err)
+	
+	option := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(option).Return(&internal.ObjAttr{}, nil)
+	stbuf := &C.stat_t{}
+	err = libfuse_getattr(path, stbuf)
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(stbuf.st_mtim.tv_nsec, C.long(0))
+	suite.assert.NotEqual(stbuf.st_mtim.tv_sec, C.long(0))
 }
 
 func testCreateError(suite *libfuseTestSuite) {
