@@ -7,6 +7,7 @@
 - [#1100](https://github.com/Azure/azure-storage-fuse/issues/1100) If content-encoding is set in blob then transport layer compression shall be disabled.
 - Subdir mount is not able to list blobs correctly when virtual-directory is turned on.
 - Adding support to pass down uid/gid values supplied in mount to libfuse.
+- [#1102](https://github.com/Azure/azure-storage-fuse/issues/1102) Remove nanoseconds from file times as storage does not provide that  granularity.
 
 **Features**
 - Added new CLI parameter "--sync-to-flush". Once configured sync() call on file will force upload a file to storage container. As this is file handle based api, if file was not in file-cache it will first download and then upload the file. 
