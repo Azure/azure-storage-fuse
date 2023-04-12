@@ -343,13 +343,13 @@ func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
 	}
 
 	(*stbuf).st_atim.tv_sec = C.long(attr.Atime.Unix())
-	(*stbuf).st_atim.tv_nsec = C.long(attr.Atime.UnixNano())
+	(*stbuf).st_atim.tv_nsec = 0
 
 	(*stbuf).st_ctim.tv_sec = C.long(attr.Ctime.Unix())
-	(*stbuf).st_ctim.tv_nsec = C.long(attr.Ctime.UnixNano())
+	(*stbuf).st_ctim.tv_nsec = 0
 
 	(*stbuf).st_mtim.tv_sec = C.long(attr.Mtime.Unix())
-	(*stbuf).st_mtim.tv_nsec = C.long(attr.Mtime.UnixNano())
+	(*stbuf).st_mtim.tv_nsec = 0
 }
 
 // File System Operations
