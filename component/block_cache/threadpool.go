@@ -61,9 +61,9 @@ func newThreadPool(count uint32, reader func(interface{})) *ThreadPool {
 	return &ThreadPool{
 		worker:     count,
 		reader:     reader,
-		close:      make(chan int),
-		priorityCh: make(chan interface{}),
-		normalCh:   make(chan interface{}),
+		close:      make(chan int, count),
+		priorityCh: make(chan interface{}, count*2),
+		normalCh:   make(chan interface{}, count*5000),
 	}
 }
 
@@ -82,6 +82,8 @@ func (t *ThreadPool) Stop() {
 	}
 
 	t.wg.Wait()
+
+	close(t.close)
 	close(t.priorityCh)
 	close(t.normalCh)
 }

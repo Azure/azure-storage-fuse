@@ -1,3 +1,7 @@
+## 2.1.0 (WIP)
+**Features**
+- Block cache component added to support faster serial reads of large files with prefetching of blocks
+
 ## 2.0.3 (WIP)
 **Bug Fixes**
 - [#1080](https://github.com/Azure/azure-storage-fuse/issues/1080) HNS rename flow does not encode source path correctly.
