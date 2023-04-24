@@ -77,6 +77,8 @@ type FileCache struct {
 	maxCacheSize    float64
 
 	defaultPermission os.FileMode
+
+	checkLMT bool
 }
 
 // Structure defining your config parameters
@@ -103,6 +105,8 @@ type FileCacheOptions struct {
 	V1Timeout     uint32 `config:"file-cache-timeout-in-seconds" yaml:"-"`
 	EmptyDirCheck bool   `config:"empty-dir-check" yaml:"-"`
 	SyncToFlush   bool   `config:"sync-to-flush" yaml:"sync-to-flush,omitempty"`
+
+	CheckLMT bool `config:"check-lmt" yaml:"check-lmt,omitempty"`
 }
 
 const (
@@ -223,6 +227,7 @@ func (c *FileCache) Configure(_ bool) error {
 	c.offloadIO = conf.OffloadIO
 	c.maxCacheSize = conf.MaxSizeMB
 	c.syncToFlush = conf.SyncToFlush
+	c.checkLMT = conf.CheckLMT
 
 	c.tmpPath = common.ExpandPath(conf.TmpPath)
 	if c.tmpPath == "" {
@@ -730,9 +735,10 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 }
 
 // isDownloadRequired: Whether or not the file needs to be downloaded to local cache.
-func (fc *FileCache) isDownloadRequired(localPath string) (bool, bool) {
+func (fc *FileCache) isDownloadRequired(localPath string) (bool, bool, time.Time) {
 	fileExists := false
 	downloadRequired := false
+	lmt := time.Time{}
 
 	// The file is not cached
 	if !fc.policy.IsCached(localPath) {
@@ -754,6 +760,7 @@ func (fc *FileCache) isDownloadRequired(localPath string) (bool, bool) {
 		// container on the local disk by resetting last mod time of local disk with utimens)
 		// and hence last change time on local disk will then represent the download time.
 
+		lmt = finfo.ModTime()
 		if time.Since(finfo.ModTime()).Seconds() > fc.cacheTimeout &&
 			time.Since(time.Unix(stat.Ctim.Sec, stat.Ctim.Nsec)).Seconds() > fc.cacheTimeout {
 			log.Debug("FileCache::isDownloadRequired : %s not valid as per time checks", localPath)
@@ -769,7 +776,7 @@ func (fc *FileCache) isDownloadRequired(localPath string) (bool, bool) {
 		downloadRequired = true
 	}
 
-	return downloadRequired, fileExists
+	return downloadRequired, fileExists, lmt
 }
 
 // OpenFile: Makes the file available in the local cache for further file operations.
@@ -786,7 +793,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 	fc.policy.CacheValid(localPath)
 
-	downloadRequired, fileExists := fc.isDownloadRequired(localPath)
+	downloadRequired, fileExists, lmt := fc.isDownloadRequired(localPath)
 
 	if fileExists && flock.Count() > 0 {
 		// file exists in local cache and there is already an handle open for it
@@ -797,29 +804,6 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 	if downloadRequired {
 		log.Debug("FileCache::OpenFile : Need to re-download %s", options.Name)
-
-		if fileExists {
-			log.Debug("FileCache::OpenFile : Delete cached file %s", options.Name)
-
-			err := deleteFile(localPath)
-			if err != nil && !os.IsNotExist(err) {
-				log.Err("FileCache::OpenFile : Failed to delete old file %s", options.Name)
-			}
-		} else {
-			// Create the file if if doesn't already exist.
-			err := os.MkdirAll(filepath.Dir(localPath), fc.defaultPermission)
-			if err != nil {
-				log.Err("FileCache::OpenFile : error creating directory structure for file %s [%s]", options.Name, err.Error())
-				return nil, err
-			}
-		}
-
-		// Open the file in write mode.
-		f, err = os.OpenFile(localPath, os.O_CREATE|os.O_RDWR, options.Mode)
-		if err != nil {
-			log.Err("FileCache::OpenFile : error creating new file %s [%s]", options.Name, err.Error())
-			return nil, err
-		}
 
 		attrReceived := false
 		fileSize := int64(0)
@@ -832,48 +816,78 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			fileSize = int64(attr.Size)
 		}
 
-		if !attrReceived || fileSize > 0 {
-			// Download/Copy the file from storage to the local file.
-			err = fc.NextComponent().CopyToFile(
-				internal.CopyToFileOptions{
-					Name:   options.Name,
-					Offset: 0,
-					Count:  fileSize,
-					File:   f,
-				})
+		if fileExists {
+			if fc.checkLMT && !attr.Mtime.After(lmt) {
+				// File has not been modified at storage yet so no point in redownloading the file
+				log.Info("FileCache::OpenFile : File is not modified in source, so skippig redownload %s [A-%v : L-%v]", options.Name, attr.Mtime, lmt)
+				downloadRequired = false
+			} else {
+				log.Debug("FileCache::OpenFile : Delete cached file %s", options.Name)
+
+				err := deleteFile(localPath)
+				if err != nil && !os.IsNotExist(err) {
+					log.Err("FileCache::OpenFile : Failed to delete old file %s", options.Name)
+				}
+			}
+		} else {
+			// Create the file if if doesn't already exist.
+			err := os.MkdirAll(filepath.Dir(localPath), fc.defaultPermission)
 			if err != nil {
-				// File was created locally and now download has failed so we need to delete it back from local cache
-				log.Err("FileCache::OpenFile : error downloading file from storage %s [%s]", options.Name, err.Error())
-				_ = f.Close()
-				_ = os.Remove(localPath)
+				log.Err("FileCache::OpenFile : error creating directory structure for file %s [%s]", options.Name, err.Error())
 				return nil, err
 			}
 		}
 
-		log.Debug("FileCache::OpenFile : Download of %s is complete", options.Name)
-		f.Close()
+		if downloadRequired {
+			// Open the file in write mode.
+			f, err = os.OpenFile(localPath, os.O_CREATE|os.O_RDWR, options.Mode)
+			if err != nil {
+				log.Err("FileCache::OpenFile : error creating new file %s [%s]", options.Name, err.Error())
+				return nil, err
+			}
 
-		// After downloading the file, update the modified times and mode of the file.
-		fileMode := fc.defaultPermission
-		if attrReceived && !attr.IsModeDefault() {
-			fileMode = attr.Mode
+			if !attrReceived || fileSize > 0 {
+				// Download/Copy the file from storage to the local file.
+				err = fc.NextComponent().CopyToFile(
+					internal.CopyToFileOptions{
+						Name:   options.Name,
+						Offset: 0,
+						Count:  fileSize,
+						File:   f,
+					})
+				if err != nil {
+					// File was created locally and now download has failed so we need to delete it back from local cache
+					log.Err("FileCache::OpenFile : error downloading file from storage %s [%s]", options.Name, err.Error())
+					_ = f.Close()
+					_ = os.Remove(localPath)
+					return nil, err
+				}
+			}
+
+			log.Debug("FileCache::OpenFile : Download of %s is complete", options.Name)
+			f.Close()
+
+			// After downloading the file, update the modified times and mode of the file.
+			fileMode := fc.defaultPermission
+			if attrReceived && !attr.IsModeDefault() {
+				fileMode = attr.Mode
+			}
+
+			// If user has selected some non default mode in config then every local file shall be created with that mode only
+			err = os.Chmod(localPath, fileMode)
+			if err != nil {
+				log.Err("FileCache::OpenFile : Failed to change mode of file %s [%s]", options.Name, err.Error())
+			}
+			// TODO: When chown is supported should we update that?
+
+			// chtimes shall be the last api otherwise calling chmod/chown will update the last change time
+			err = os.Chtimes(localPath, attr.Atime, attr.Mtime)
+			if err != nil {
+				log.Err("FileCache::OpenFile : Failed to change times of file %s [%s]", options.Name, err.Error())
+			}
+
+			fileCacheStatsCollector.UpdateStats(stats_manager.Increment, dlFiles, (int64)(1))
 		}
-
-		// If user has selected some non default mode in config then every local file shall be created with that mode only
-		err = os.Chmod(localPath, fileMode)
-		if err != nil {
-			log.Err("FileCache::OpenFile : Failed to change mode of file %s [%s]", options.Name, err.Error())
-		}
-		// TODO: When chown is supported should we update that?
-
-		// chtimes shall be the last api otherwise calling chmod/chown will update the last change time
-		err = os.Chtimes(localPath, attr.Atime, attr.Mtime)
-		if err != nil {
-			log.Err("FileCache::OpenFile : Failed to change times of file %s [%s]", options.Name, err.Error())
-		}
-
-		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, dlFiles, (int64)(1))
-
 	} else {
 		log.Debug("FileCache::OpenFile : %s will be served from cache", options.Name)
 		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, cacheServed, (int64)(1))

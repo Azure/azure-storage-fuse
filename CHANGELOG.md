@@ -12,7 +12,12 @@
 **Features**
 - Added new CLI parameter "--sync-to-flush". Once configured sync() call on file will force upload a file to storage container. As this is file handle based api, if file was not in file-cache it will first download and then upload the file. 
 - Added new CLI parameter "--disable-compression". Disables content compression at transport layer. Required when content-encoding is set to 'gzip' in blob.
+- Add new config parameter 'check-lmt' in file-cache. On timeout local file was deleted and redownloaded. With this config set to true last-modified-time of file in local storage and container will be compared and redownload is done if file in container has changed.
 
+**New Config/CLI**
+- "--sync-to-flush" : CLI parameter to flush the file on fsync call instead of deleting it from local storage
+- "--disable-compression" : CLI parameter to disable content compression at transport layer.
+- "file_cache: check-lmt:false' : Config parameter to reduce redownloads of file if they have not been modified since last download.
 
 ## 2.0.2 (2022-02-23)
 **Bug Fixes**

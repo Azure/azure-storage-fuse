@@ -94,6 +94,7 @@ file_cache:
   policy-trace: true|false <generate eviction policy logs showing which files will expire soon>
   offload-io: true|false <by default libfuse will service reads/writes to files for better perf. Set to true to make file-cache component service read/write calls.>
   sync-to-flush: true|false <sync call to a file will force upload of the contents to storage account>
+  check-lmt: true|false <compare last-modified-time of file in local storage and container. If timeout-sec has expired and file has not been modified in container, continue using local file>
 
 # Attribute cache related configuration
 attr_cache:
