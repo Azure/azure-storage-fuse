@@ -1137,13 +1137,13 @@ stages:
               md5sum $(Build.ArtifactStagingDirectory)/*.rpm
             displayName: 'List Signed Artifacts'
 
-          - ${{ if eq(parameters.post_release, true) }}:
-              # Push signed images to artifact directory
-              - task: PublishBuildArtifacts@1
-                inputs:
-                  artifactName: 'blobfuse2-signed'
-                displayName: 'Publish Signed Artifacts'
+          # Push signed images to artifact directory
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: 'blobfuse2-signed'
+            displayName: 'Publish Signed Artifacts'
 
+          - ${{ if eq(parameters.post_release, true) }}:
               # add release tags & push to github
               - task: GithubRelease@1
                 inputs:
