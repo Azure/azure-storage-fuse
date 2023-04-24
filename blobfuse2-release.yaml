@@ -203,7 +203,7 @@ stages:
               itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.deb
 
           - script: |
-              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
               cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-temp
@@ -305,7 +305,7 @@ stages:
               itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.deb
 
           - script: |
-              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
               cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-temp
@@ -391,7 +391,7 @@ stages:
       #         itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.deb
 
       #     - script: |
-      #         for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+      #         for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
       #         cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
       #       displayName: 'Rename Package'
       #       workingDirectory: $(root_dir)/blobfuse2-temp
@@ -496,7 +496,7 @@ stages:
               itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.deb
 
           - script: |
-              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
               cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
               if [ $(agentName) == "blobfuse-debian10" ]; then
                 f=`ls ./blobfuse2*$(vmImage)*.deb`
@@ -633,7 +633,7 @@ stages:
               itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.rpm
 
           - script: |
-              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
               cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
               if [ $(agentName) == "blobfuse-rhel7_5" ]; then
                 f=`ls ./blobfuse2*$(vmImage)*.rpm`
@@ -750,7 +750,7 @@ stages:
               itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.rpm
 
           - script: |
-              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
               cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-temp
@@ -845,7 +845,7 @@ stages:
               itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.rpm
 
           - script: |
-              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
               cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-temp
@@ -935,7 +935,7 @@ stages:
               itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.rpm
 
           - script: |
-              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
               cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-temp
@@ -1026,7 +1026,7 @@ stages:
               itemPattern: blobfuse2-temp/blobfuse2*$(tags)*.rpm
 
           - script: |
-              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)-/-$(vmImage)-}"; done;
+              for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
               cp ./blobfuse2*$(vmImage)*.rpm $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-temp
