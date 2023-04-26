@@ -1,4 +1,4 @@
-## 2.0.3 (WIP)
+## 2.0.3 (2022-04-26)
 **Bug Fixes**
 - [#1080](https://github.com/Azure/azure-storage-fuse/issues/1080) HNS rename flow does not encode source path correctly.
 - [#1081](https://github.com/Azure/azure-storage-fuse/issues/1081) Blobfuse will exit with non-zero status code if allow_other option is used but not enabled in fuse config.
@@ -12,7 +12,6 @@
 **Features**
 - Added new CLI parameter "--sync-to-flush". Once configured sync() call on file will force upload a file to storage container. As this is file handle based api, if file was not in file-cache it will first download and then upload the file. 
 - Added new CLI parameter "--disable-compression". Disables content compression at transport layer. Required when content-encoding is set to 'gzip' in blob.
-
 
 ## 2.0.2 (2022-02-23)
 **Bug Fixes**
