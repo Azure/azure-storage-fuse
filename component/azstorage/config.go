@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -172,6 +172,7 @@ type AzStorageOptions struct {
 	UpdateMD5               bool   `config:"update-md5" yaml:"update-md5"`
 	ValidateMD5             bool   `config:"validate-md5" yaml:"validate-md5"`
 	VirtualDirectory        bool   `config:"virtual-directory" yaml:"virtual-directory"`
+	DisableCompression      bool   `config:"disable-compression" yaml:"disable-compression"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -441,10 +442,12 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	// Retry policy configuration
 	// A user provided value of 0 doesn't make sense for MaxRetries, MaxTimeout, BackoffTime, or MaxRetryDelay.
-	az.stConfig.maxRetries = 3
-	az.stConfig.maxTimeout = 3600
-	az.stConfig.backoffTime = 1
-	az.stConfig.maxRetryDelay = 3
+
+	az.stConfig.maxRetries = 5     // Max number of retry to be done  (default 4) (v1 : 0)
+	az.stConfig.maxTimeout = 900   // Max timeout for any single retry (default 1 min) (v1 : 60)
+	az.stConfig.backoffTime = 4    // Delay before any retry (exponential increase) (default 4 sec)
+	az.stConfig.maxRetryDelay = 60 // Maximum allowed delay before retry (default 120 sec) (v1 : 1.2)
+
 	if opt.MaxRetries != 0 {
 		az.stConfig.maxRetries = opt.MaxRetries
 	}
@@ -468,9 +471,9 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		log.Warn("unsupported v1 CLI parameter: debug-libcurl is not applicable in blobfuse2.")
 	}
 
-	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, Endpoint: %s, ListBlock: %d, MD5 : %v %v, Virtual Directory: %v",
+	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, Endpoint: %s, ListBlock: %d, MD5 : %v %v, Virtual Directory: %v, Disable Compression: %v",
 		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,
-		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.cancelListForSeconds, az.stConfig.validateMD5, az.stConfig.updateMD5, az.stConfig.virtualDirectory)
+		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.cancelListForSeconds, az.stConfig.validateMD5, az.stConfig.updateMD5, az.stConfig.virtualDirectory, az.stConfig.disableCompression)
 
 	log.Info("ParseAndValidateConfig : Retry Config: Retry count %d, Max Timeout %d, BackOff Time %d, Max Delay %d",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay)
@@ -501,7 +504,17 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 	az.stConfig.validateMD5 = opt.ValidateMD5
 	az.stConfig.updateMD5 = opt.UpdateMD5
 
-	az.stConfig.virtualDirectory = opt.VirtualDirectory
+	if config.IsSet(compName + ".virtual-directory") {
+		az.stConfig.virtualDirectory = opt.VirtualDirectory
+	} else {
+		az.stConfig.virtualDirectory = true
+	}
+
+	if config.IsSet(compName + ".disable-compression") {
+		az.stConfig.disableCompression = opt.DisableCompression
+	} else {
+		az.stConfig.disableCompression = DisableCompression
+	}
 
 	// Auth related reconfig
 	switch opt.AuthMode {

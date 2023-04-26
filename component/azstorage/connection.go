@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -71,9 +71,10 @@ type AzStorageConfig struct {
 	ignoreAccessModifiers bool
 	mountAllContainers    bool
 
-	updateMD5        bool
-	validateMD5      bool
-	virtualDirectory bool
+	updateMD5          bool
+	validateMD5        bool
+	virtualDirectory   bool
+	disableCompression bool
 }
 
 type AzStorageConnection struct {

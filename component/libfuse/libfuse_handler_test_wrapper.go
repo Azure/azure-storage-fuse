@@ -11,7 +11,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -186,6 +186,13 @@ func testCreate(suite *libfuseTestSuite) {
 
 	err := libfuse_create(path, 0775, info)
 	suite.assert.Equal(C.int(0), err)
+	option := internal.GetAttrOptions{Name: name}
+	suite.mock.EXPECT().GetAttr(option).Return(&internal.ObjAttr{}, nil)
+	stbuf := &C.stat_t{}
+	err = libfuse_getattr(path, stbuf, &C.fuse_file_info_t{})
+	suite.assert.Equal(C.int(0), err)
+	suite.assert.Equal(stbuf.st_mtim.tv_nsec, C.long(0))
+	suite.assert.NotEqual(stbuf.st_mtim.tv_sec, C.long(0))
 }
 
 func testCreateError(suite *libfuseTestSuite) {
@@ -236,9 +243,11 @@ func testOpenSyncDirectFlag(suite *libfuseTestSuite) {
 	suite.assert.Equal(C.int(0), info.flags&C.__O_DIRECT)
 }
 
-// WriteBack caching enabled by default
+// WriteBack caching and ignore-open-flags enabled by default
 func testOpenAppendFlagDefault(suite *libfuseTestSuite) {
 	defer suite.cleanupTest()
+	suite.libfuse.ignoreOpenFlags = false
+
 	name := "path"
 	path := C.CString("/" + name)
 	defer C.free(unsafe.Pointer(path))

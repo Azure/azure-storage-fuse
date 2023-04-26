@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -35,6 +35,7 @@ package azstorage
 
 import (
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
 
@@ -73,6 +74,45 @@ func (s *utilsTestSuite) TestContentType() {
 type contentTypeVal struct {
 	val    string
 	result string
+}
+
+func (s *utilsTestSuite) TestPrefixPathRemoval() {
+	assert := assert.New(s.T())
+
+	type PrefixPath struct {
+		prefix string
+		path   string
+		result string
+	}
+
+	var inputs = []PrefixPath{
+		{prefix: "", path: "abc.txt", result: "abc.txt"},
+		{prefix: "", path: "ABC", result: "ABC"},
+		{prefix: "", path: "ABC/DEF.txt", result: "ABC/DEF.txt"},
+		{prefix: "", path: "ABC/DEF/1.txt", result: "ABC/DEF/1.txt"},
+
+		{prefix: "ABC", path: "ABC/DEF/1.txt", result: "DEF/1.txt"},
+		{prefix: "ABC/", path: "ABC/DEF/1.txt", result: "DEF/1.txt"},
+		{prefix: "ABC", path: "ABC/DEF", result: "DEF"},
+		{prefix: "ABC/", path: "ABC/DEF", result: "DEF"},
+		{prefix: "ABC/", path: "ABC/DEF/G/H/1.txt", result: "DEF/G/H/1.txt"},
+
+		{prefix: "ABC/DEF", path: "ABC/DEF/1.txt", result: "1.txt"},
+		{prefix: "ABC/DEF/", path: "ABC/DEF/1.txt", result: "1.txt"},
+		{prefix: "ABC/DEF", path: "ABC/DEF/A/B/c.txt", result: "A/B/c.txt"},
+		{prefix: "ABC/DEF/", path: "ABC/DEF/A/B/c.txt", result: "A/B/c.txt"},
+
+		{prefix: "A/B/C/D/E", path: "A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
+		{prefix: "A/B/C/D/E/", path: "A/B/C/D/E/F/G/H/I/j.txt", result: "F/G/H/I/j.txt"},
+	}
+
+	for _, i := range inputs {
+		s.Run(filepath.Join(i.prefix, i.path), func() {
+			output := split(i.prefix, i.path)
+			assert.EqualValues(i.result, output)
+		})
+	}
+
 }
 
 func (s *utilsTestSuite) TestGetContentType() {

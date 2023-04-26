@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -36,7 +36,6 @@ package log
 import (
 	"errors"
 	"log"
-	"os"
 	"strings"
 	"time"
 
@@ -227,17 +226,8 @@ func LogRotate() error {
 }
 
 func init() {
-	workDir := os.ExpandEnv(common.DefaultWorkDir)
-	err := os.MkdirAll(workDir, os.ModeDir|os.FileMode(0777))
-	if err != nil {
-		panic("Unable to create blobfuse2 temp directory for logs")
-	}
-
 	logObj, _ = NewLogger("syslog", common.LogConfig{
-		Level:       common.ELogLevel.LOG_DEBUG(),
-		FilePath:    os.ExpandEnv(common.DefaultLogFilePath),
-		MaxFileSize: common.DefaultMaxLogFileSize,
-		FileCount:   common.DefaultLogFileCount,
+		Level: common.ELogLevel.LOG_DEBUG(),
 	})
 }
 

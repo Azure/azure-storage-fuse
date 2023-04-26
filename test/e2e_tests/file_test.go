@@ -11,7 +11,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -570,6 +570,33 @@ func (suite *fileTestSuite) TestCreateReadOnlyFile() {
 		suite.Equal(nil, err)
 		suite.fileTestCleanup([]string{fileName})
 	}
+}
+
+// # Rename with special character in name
+func (suite *fileTestSuite) TestRenameSpecial() {
+	dirName := suite.testPath + "/" + "Alcaldía"
+	newDirName := suite.testPath + "/" + "Alδaδcaldía"
+	fileName := dirName + "/" + "भारत.txt"
+	newFileName := dirName + "/" + "भारतabcd.txt"
+
+	err := os.Mkdir(dirName, 0777)
+	suite.Equal(nil, err)
+
+	f, err := os.Create(fileName)
+	suite.Equal(nil, err)
+	f.Close()
+
+	err = os.Rename(fileName, newFileName)
+	suite.Equal(nil, err)
+
+	err = os.Rename(newFileName, fileName)
+	suite.Equal(nil, err)
+
+	err = os.Rename(dirName, newDirName)
+	suite.Equal(nil, err)
+
+	err = os.RemoveAll(newDirName)
+	suite.Equal(nil, err)
 }
 
 // -------------- Main Method -------------------

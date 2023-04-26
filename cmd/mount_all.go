@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -34,6 +34,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
@@ -69,13 +70,6 @@ var mountAllCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if !disableVersionCheck {
-			err := VersionCheck()
-			if err != nil {
-				return err
-			}
-		}
-
 		mountAllOpts.blobfuse2BinPath = os.Args[0]
 		options.MountPath = args[0]
 		return processCommand()
@@ -143,6 +137,13 @@ func processCommand() error {
 
 	if err != nil {
 		return fmt.Errorf("failed to initialize logger [%s]", err.Error())
+	}
+
+	if !disableVersionCheck {
+		err := VersionCheck()
+		if err != nil {
+			log.Err(err.Error())
+		}
 	}
 
 	config.Set("mount-path", options.MountPath)
@@ -264,7 +265,8 @@ func filterAllowedContainerList(containers []string) []string {
 // mountAllContainers : Iterate allowed container list and create config file and mount path for them
 func mountAllContainers(containerList []string, configFile string, mountPath string, configFileExists bool) error {
 	// Now iterate filtered container list and prepare mount path, temp path, and config file for them
-	fileCachePath := viper.GetString("file_cache.path")
+	fileCachePath := ""
+	_ = config.UnmarshalKey("file_cache.path", &fileCachePath)
 
 	// Generate slice containing all the argument which we need to pass to each mount command
 	cliParams := buildCliParamForMount()
@@ -275,9 +277,13 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 		ext = ".yaml"
 	}
 
+	// During mount all some extra config were set, we need to reset those now
+	viper.Set("mount-all-containers", nil)
+
 	//configFileName := configFile[:(len(configFile) - len(ext))]
 	configFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), "config")
 
+	failCount := 0
 	for _, container := range containerList {
 		contMountPath := filepath.Join(mountPath, container)
 		contConfigFile := configFileName + "_" + container + ext
@@ -295,8 +301,10 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 
 		// NOTE : Add all the configs that need replacement based on container here
 		cliParams[1] = contMountPath
+
 		// If next instance is not mounted in background then mountall will hang up hence always mount in background
 		if configFileExists {
+			viper.Set("mount-path", contMountPath)
 			viper.Set("foreground", false)
 			viper.Set("azstorage.container", container)
 			viper.Set("file_cache.path", filepath.Join(fileCachePath, container))
@@ -306,25 +314,40 @@ func mountAllContainers(containerList []string, configFile string, mountPath str
 			if err != nil {
 				return err
 			}
-			cliParams[2] = "--config-file=" + configFile
+			cliParams[2] = "--config-file=" + contConfigFile
 		} else {
 			cliParams[2] = "--foreground=false"
-			cliParams[3] = "--container-name=" + container
-			cliParams[4] = "--tmp-path=" + filepath.Join(fileCachePath, container)
+			updateCliParams(&cliParams, "container-name", container)
+			updateCliParams(&cliParams, "tmp-path", filepath.Join(fileCachePath, container))
 		}
 
 		// Now that we have mount path and config file for this container fire a mount command for this one
-		fmt.Println("Mounting container :", container, "to path :", contMountPath)
+		fmt.Println("Mounting container :", container, "to path ", contMountPath)
 		cmd := exec.Command(mountAllOpts.blobfuse2BinPath, cliParams...)
 
+		var errb bytes.Buffer
+		cmd.Stderr = &errb
 		cliOut, err := cmd.Output()
 		fmt.Println(string(cliOut))
+
 		if err != nil {
-			fmt.Printf("Failed to mount container %s : %s\n", container, err.Error())
+			fmt.Printf("Failed to mount container %s : %s\n", container, errb.String())
+			failCount++
 		}
 	}
 
+	fmt.Printf("%d of %d containers were successfully mounted\n", (len(containerList) - failCount), len(containerList))
 	return nil
+}
+
+func updateCliParams(cliParams *[]string, key string, val string) {
+	for i := 3; i < len(*cliParams); i++ {
+		if strings.Contains((*cliParams)[i], "--"+key) {
+			(*cliParams)[i] = "--" + key + "=" + val
+			return
+		}
+	}
+	*cliParams = append(*cliParams, "--"+key+"="+val)
 }
 
 func writeConfigFile(contConfigFile string) error {

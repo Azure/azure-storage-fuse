@@ -101,6 +101,12 @@ The "OOM Killer" or "Out of Memory Killer" is a process that the Linux kernel em
 If Blobfuse2 pid is listed in the output then OOM has sent a SIGKILL to Blobfuse2. If Blobfuse2 was not running as a service it will not restart automatically and user has to manually mount again. If this keeps happening then user need to monitor the system and investigate why system is getting low on memory. VM might need an upgrade here if the such high usage is expected.
 
 
+**10. Unable to access HNS enabled storage account behind a private end point**
+
+For HNS account, always add `type: adls` under `azstorage` section in your config file. Avoid using `endpoint` unless your storage account is behind a private endpoint. Blobfuse2 uses both blob and dfs endpoints to connect to storage account. User has to expose both these endpoints over private-endpoint for blobfuse2 to function properly.
+
+To create a private-endpoint for DFS in Azure portal: Go to your storage account -> Networking -> Private Endpoint connections. Click `+ Private endpoint`, fill in Subscription, Resource Group, Name, Network Interface Name and Region. Click next and under Target sub-resource select `dfs`. Click Virtual network and select virtual network and Subnet. Click DNS. Select Yes for Integrate with private DNS. Select the Subscription and Resource Group for your private link DNS. Select Next, Next and select Create.
+
 # Common Problems after a Successful Mount
 **1. Errno 24: Failed to open file /mnt/tmp/root/filex in file cache.  errno = 24 OR Too many files Open error**
 Errno 24 in Linux corresponds to 'Too many files open' error which can occur when an application opens more files than it is allowed on the system. Blobfuse2 typically allows 20 files less than the ulimit value set in Linux. Usually the Linux limit is 1024 per process (e.g. Blobfuse2 in this case will allow 1004 open file descriptors at a time). Recommended approach is to edit the /etc/security/limits.conf in Ubuntu and add these two lines, 
@@ -230,6 +236,23 @@ To make it work with writeback-cache : Add `ignore-open-flags: true` under libfu
 **9. Unable to list files/directories for non-HNS (flat-namespace) accounts**
 
 For non-HNS accounts blobfuse expects special directory marker files to exist in container to identify a directory. If these files do not exist then `virtual-directory: true` in `azstorage` section is required.
+
+**10. File size and LMT are updated but file contents are not refreshed**
+
+Blobfuse2 supports both fuse2 and fuse3 compatible linux distros. In all linux distros kernel cached contents of file in its page-cache. As long as cache is valid read/write are served from cache and calls will not reach to file-system drivers (blobfuse in our case). This page-cache is invalidated when page is swapped-out, manually cleared by user through cli or file-system driver requests for it.
+
+In case of fuse2 compliant distros, libfuse does not support invalidating the page cache. Contents once cached will remain with kernel until user manually clears the page-cache or kernel decides to swap it out. This means even if the file size or LMT has changed and blobfuse decided to refresh the content by redownloading the file, on read user will still get the stale contents.
+
+In case of fuse3 compliant distros, blobfuse configures libfuse to invalidate the page cache on file size or LMT change so this issue will not be hit.
+
+If user is observing that list or stat call to file shows updated time or size but contents are not reflecting accordingly, first confirm with blobfuse logs that file was indeed downloaded afresh. If file-cache-timeout has not expired then blobfuse will keep using the current version of file persisted on temp cache and contents will not be refreshed. If blobfuse has downloaded the latest file and user still observes stale contents then clear the kernel page-cache manually using ```sysctl -w vm.drop_caches=3``` command.
+    
+If your workflow involves updating the file directly on container (not using blobfuse) and you wish to get latest contents on blobfuse mount then do the following (for fuse3 compliant linux distro only):
+    
+    - set all timeouts in libfuse section to 0 (entry, attribute, negative)
+    - remove attr_cache from your pipeline section in config
+    - set file-cache-timeout to 0
+    - in libfuse section of you config file add "disable-writeback-cache: true"
 
 # Problems with build
 Make sure you have correctly setup your GO dev environment. Ensure you have installed fuse3/2 for example:

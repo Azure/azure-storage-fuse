@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -623,6 +623,12 @@ func init() {
 
 	virtualDir := config.AddBoolFlag("virtual-directory", false, "Support virtual directories without existence of a special marker blob.")
 	config.BindPFlag(compName+".virtual-directory", virtualDir)
+
+	subDirectory := config.AddStringFlag("subdirectory", "", "Mount only this sub-directory from given container.")
+	config.BindPFlag(compName+".subdirectory", subDirectory)
+
+	disableCompression := config.AddBoolFlag("disable-compression", false, "Disable transport layer compression.")
+	config.BindPFlag(compName+".disable-compression", disableCompression)
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp

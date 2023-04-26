@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -375,10 +375,27 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 		}
 		copyStatus = prop.CopyStatus()
 	}
+
 	log.Trace("BlockBlob::RenameFile : %s -> %s done", source, target)
 
 	// Copy of the file is done so now delete the older file
-	return bb.DeleteFile(source)
+	err = bb.DeleteFile(source)
+	for retry := 0; retry < 3 && err == syscall.ENOENT; retry++ {
+		// Sometimes backend is able to copy source file to destination but when we try to delete the
+		// source files it returns back with ENOENT. If file was just created on backend it might happen
+		// that it has not been synced yet at all layers and hence delete is not able to find the source file
+		log.Trace("BlockBlob::RenameFile : %s -> %s, unable to find source. Retrying %d", source, target, retry)
+		time.Sleep(1 * time.Second)
+		err = bb.DeleteFile(source)
+	}
+
+	if err == syscall.ENOENT {
+		// Even after 3 retries, 1 second apart if server returns 404 then source file no longer
+		// exists on the backend and its safe to assume rename was successful
+		err = nil
+	}
+
+	return err
 }
 
 // RenameDirectory : Rename the directory

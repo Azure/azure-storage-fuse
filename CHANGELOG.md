@@ -1,6 +1,50 @@
-## 2.0.0-preview.5 (WIP)
+## 2.0.3 (2023-04-26)
 **Bug Fixes**
-- Fixed a bug where sometimes a directory would list twice 
+- [#1080](https://github.com/Azure/azure-storage-fuse/issues/1080) HNS rename flow does not encode source path correctly.
+- [#1081](https://github.com/Azure/azure-storage-fuse/issues/1081) Blobfuse will exit with non-zero status code if allow_other option is used but not enabled in fuse config.
+- [#1079](https://github.com/Azure/azure-storage-fuse/issues/1079) Shell returns before child process mounts the container and if user tries to bind the mount it leads to inconsistent state.
+- If mount fails in forked child, blobfuse2 will return back with status error code.
+- [#1100](https://github.com/Azure/azure-storage-fuse/issues/1100) If content-encoding is set in blob then transport layer compression shall be disabled.
+- Subdir mount is not able to list blobs correctly when virtual-directory is turned on.
+- Adding support to pass down uid/gid values supplied in mount to libfuse.
+- [#1102](https://github.com/Azure/azure-storage-fuse/issues/1102) Remove nanoseconds from file times as storage does not provide that  granularity.
+
+**Features**
+- Added new CLI parameter "--sync-to-flush". Once configured sync() call on file will force upload a file to storage container. As this is file handle based api, if file was not in file-cache it will first download and then upload the file. 
+- Added new CLI parameter "--disable-compression". Disables content compression at transport layer. Required when content-encoding is set to 'gzip' in blob.
+
+## 2.0.2 (2023-02-23)
+**Bug Fixes**
+- [#999](https://github.com/Azure/azure-storage-fuse/issues/999) Upgrade dependencies to resolve known CVEs.
+- [#1002](https://github.com/Azure/azure-storage-fuse/issues/1002) In case version check fails to connect to public container, dump a log to check network and proxy settings.
+- [#1006](https://github.com/Azure/azure-storage-fuse/issues/1006) Remove user and group config from logrotate file.
+- [csi-driver #809](https://github.com/kubernetes-sigs/blob-csi-driver/issues/809) Fail to mount when uid/gid are provided on command line.
+- [#1032](https://github.com/Azure/azure-storage-fuse/issues/1032) `mount all` CLI params parsing fix when no `config-file` and `tmp-path` is provided.
+- [#1015](https://github.com/Azure/azure-storage-fuse/issues/1015) Default value of `ignore-open-flags` config parameter changed to `true`.
+- [#1038](https://github.com/Azure/azure-storage-fuse/issues/1038) Changing default daemon permissions.
+- [#1036](https://github.com/Azure/azure-storage-fuse/issues/1036) Fix to avoid panic when $HOME dir is not set.
+- [#1036](https://github.com/Azure/azure-storage-fuse/issues/1036) Respect --default-working-dir cli param and use it as default log file path.
+- If version check fails due to network issues, mount/mountall/mountv1 command used to terminate. From this release it will just emit an error log and mount will continue.
+- If default work directory does not exists, mount shall create it before daemonizing.
+- Default value of 'virtual-directory' is changed to true. If your data is created using Blobfuse or AzCopy pass this flag as false in mount command.
+
+## 2.0.1 (2022-12-02)
+- Copy of GA release of Blobfuse2. This release was necessary to ensure the GA version resolves ahead of the preview versions.
+
+## 2.0.0 (2022-11-30) (GA release)
+**Bug Fixes**
+- [#968](https://github.com/Azure/azure-storage-fuse/issues/968) Duplicate directory listing
+- [#964](https://github.com/Azure/azure-storage-fuse/issues/964) Rename for FNS account failing with source does not exists error
+- [#972](https://github.com/Azure/azure-storage-fuse/issues/972) Mount all fails 
+- Added support for "-o nonempty" to mount on a non-empty mount path
+- [#985](https://github.com/Azure/azure-storage-fuse/pull/985) fuse required when installing blobfuse2 on a fuse3 supported system
+
+**Breaking Changes**
+- Defaults for retry policy changed. Max retries: 3 to 5, Retry delay: 3600 to 900 seconds, Max retry delay: 4 to 60 seconds
+
+**Features**
+- Added new CLI parameter "--subdirectory=" to mount only a subdirectory from given container 
+
 
 ## 2.0.0-preview.4 (2022-11-03)
 **Breaking Changes**

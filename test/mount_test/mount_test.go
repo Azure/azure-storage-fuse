@@ -11,7 +11,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -37,8 +37,10 @@ package mount_test
 
 import (
 	"bytes"
+	"crypto/rand"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,7 +53,7 @@ import (
 
 var blobfuseBinary string = "blobfuse2"
 var mntDir string = "mntdir"
-var configFile string
+var configFile, tags string
 
 type mountSuite struct {
 	suite.Suite
@@ -243,9 +245,9 @@ func (suite *mountSuite) TestEnvVarMount() {
 	os.Setenv("AZURE_STORAGE_ACCOUNT_CONTAINER", viper.GetString("azstorage.container"))
 	os.Setenv("AZURE_STORAGE_ACCOUNT_TYPE", viper.GetString("azstorage.type"))
 
-	tempFile := viper.GetString("file_cache.path")
+	tempCachePath := viper.GetString("file_cache.path")
 
-	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--tmp-path="+tempFile)
+	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--tmp-path="+tempCachePath)
 	cliOut, err := mountCmd.Output()
 	fmt.Println(string(cliOut))
 	suite.Equal(0, len(cliOut))
@@ -261,6 +263,35 @@ func (suite *mountSuite) TestEnvVarMount() {
 
 	// unmount
 	blobfuseUnmount(suite, mntDir)
+
+	mountAllCmd := exec.Command(blobfuseBinary, "mount", "all", mntDir, "--tmp-path="+tempCachePath)
+	cliOut, err = mountAllCmd.Output()
+	fmt.Println(string(cliOut))
+	suite.NotEqual(0, len(cliOut))
+	suite.Equal(nil, err)
+
+	// wait for mount
+	time.Sleep(10 * time.Second)
+
+	// list blobfuse mounted directories
+	cliOut = listBlobfuseMounts(suite)
+	suite.NotEqual(0, len(cliOut))
+	suite.Contains(string(cliOut), mntDir)
+
+	// unmount
+	blobfuseUnmount(suite, mntDir)
+
+	err = os.RemoveAll(mntDir)
+	suite.Equal(nil, err)
+
+	err = os.RemoveAll(tempCachePath)
+	suite.Equal(nil, err)
+
+	err = os.Mkdir(mntDir, 0777)
+	suite.Equal(nil, err)
+
+	err = os.Mkdir(tempCachePath, 0777)
+	suite.Equal(nil, err)
 
 	os.Unsetenv("AZURE_STORAGE_ACCOUNT")
 	os.Unsetenv("AZURE_STORAGE_ACCESS_KEY")
@@ -358,6 +389,78 @@ func (suite *mountSuite) TestEnvVarMount() {
 // 	os.Unsetenv("AZURE_STORAGE_ACCOUNT_TYPE")
 // }
 
+func mountAndValidate(suite *mountSuite, args ...string) {
+	// run mount command
+	args = append([]string{"mount", mntDir, "--config-file=" + configFile}, args...)
+	mountCmd := exec.Command(blobfuseBinary, args...)
+	cliOut, err := mountCmd.Output()
+	fmt.Println(string(cliOut))
+	suite.Equal(0, len(cliOut))
+	suite.Equal(nil, err)
+
+	// wait for mount
+	time.Sleep(10 * time.Second)
+
+	// validate mount
+	cliOut = listBlobfuseMounts(suite)
+	suite.NotEqual(0, len(cliOut))
+	suite.Contains(string(cliOut), mntDir)
+}
+
+func (suite *mountSuite) TestWriteBackCacheAndIgnoreOpenFlags() {
+	if tags != "fuse3" {
+		return
+	}
+
+	mountAndValidate(suite)
+
+	fileName := "testFile"
+	remoteFilePath := mntDir + "/" + fileName
+
+	// write to file in the local directory
+	buff := make([]byte, 200)
+	rand.Read(buff)
+	err := ioutil.WriteFile(remoteFilePath, buff, 0777)
+	suite.Nil(err)
+
+	// unmount
+	blobfuseUnmount(suite, mntDir)
+
+	mountAndValidate(suite, "--disable-writeback-cache=false", "--ignore-open-flags=false")
+	f, err := os.OpenFile(remoteFilePath, os.O_APPEND, 0777)
+	suite.NotNil(err)
+	suite.Nil(f)
+	blobfuseUnmount(suite, mntDir)
+
+	mountAndValidate(suite, "--disable-writeback-cache=true", "--ignore-open-flags=false")
+	f, err = os.OpenFile(remoteFilePath, os.O_APPEND, 0777)
+	suite.Nil(err)
+	suite.NotNil(f)
+	f.Close()
+	time.Sleep(2 * time.Second)
+	blobfuseUnmount(suite, mntDir)
+
+	mountAndValidate(suite, "--disable-writeback-cache=false", "--ignore-open-flags=true")
+	f, err = os.OpenFile(remoteFilePath, os.O_APPEND, 0777)
+	suite.Nil(err)
+	suite.NotNil(f)
+	f.Close()
+	time.Sleep(2 * time.Second)
+	blobfuseUnmount(suite, mntDir)
+
+	mountAndValidate(suite)
+	f, err = os.OpenFile(remoteFilePath, os.O_APPEND, 0777)
+	suite.Nil(err)
+	suite.NotNil(f)
+	f.Close()
+	time.Sleep(2 * time.Second)
+
+	err = os.RemoveAll(remoteFilePath)
+	suite.Nil(err)
+
+	blobfuseUnmount(suite, mntDir)
+}
+
 func TestMountSuite(t *testing.T) {
 	suite.Run(t, new(mountSuite))
 }
@@ -366,12 +469,14 @@ func TestMain(m *testing.M) {
 	workingDirPtr := flag.String("working-dir", "", "Directory containing the blobfuse binary")
 	pathPtr := flag.String("mnt-path", ".", "Mount Path of Container")
 	configPtr := flag.String("config-file", "", "Config file for mounting")
+	tagsPtr := flag.String("tags", "", "fuse version")
 
 	flag.Parse()
 
 	blobfuseBinary = filepath.Join(*workingDirPtr, blobfuseBinary)
 	mntDir = filepath.Join(*pathPtr, mntDir)
 	configFile = *configPtr
+	tags = *tagsPtr
 
 	err := os.RemoveAll(mntDir)
 	if err != nil {

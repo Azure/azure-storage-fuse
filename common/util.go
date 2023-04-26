@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -47,11 +47,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 
 	"gopkg.in/ini.v1"
 )
 
 var RootMount bool
+var ForegroundMount bool
 
 //IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {
@@ -263,5 +265,21 @@ func ExpandPath(path string) string {
 		path = filepath.Join(homeDir, path[2:])
 	}
 
-	return path
+	return os.ExpandEnv(path)
+}
+
+// NotifyMountToParent : Send a signal to parent process about successful mount
+func NotifyMountToParent() error {
+	if !ForegroundMount {
+		ppid := syscall.Getppid()
+		if ppid > 1 {
+			if err := syscall.Kill(ppid, syscall.SIGUSR2); err != nil {
+				return err
+			}
+		} else {
+			return fmt.Errorf("failed to get parent pid, received : %v", ppid)
+		}
+	}
+
+	return nil
 }

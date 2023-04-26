@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -42,6 +42,7 @@ import (
 	"net/http"
 	_ "net/http/pprof"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
@@ -49,6 +50,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -75,6 +77,7 @@ type mountOptions struct {
 	Logging           LogOptions     `config:"logging"`
 	Components        []string       `config:"components"`
 	Foreground        bool           `config:"foreground"`
+	NonEmpty          bool           `config:"nonempty"`
 	DefaultWorkingDir string         `config:"default-working-dir"`
 	CPUProfile        string         `config:"cpu-profile"`
 	MemProfile        string         `config:"mem-profile"`
@@ -84,6 +87,7 @@ type mountOptions struct {
 	ProfilerPort      int            `config:"profiler-port"`
 	ProfilerIP        string         `config:"profiler-ip"`
 	MonitorOpt        monitorOptions `config:"health_monitor"`
+	WaitForMount      time.Duration  `config:"wait-for-mount"`
 
 	// v1 support
 	Streaming      bool     `config:"streaming"`
@@ -109,9 +113,34 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 	if err := common.ELogLevel.Parse(opt.Logging.LogLevel); err != nil {
 		return fmt.Errorf("invalid log level [%s]", err.Error())
 	}
-	opt.Logging.LogFilePath = os.ExpandEnv(opt.Logging.LogFilePath)
+
+	if opt.DefaultWorkingDir != "" {
+		common.DefaultWorkDir = opt.DefaultWorkingDir
+
+		if opt.Logging.LogFilePath == common.DefaultLogFilePath {
+			// If default-working-dir is set then default log path shall be set to that path
+			// Ignore if specific log-path is provided by user
+			opt.Logging.LogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
+		}
+
+		common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
+	}
+
+	f, err := os.Stat(common.ExpandPath(common.DefaultWorkDir))
+	if err == nil && !f.IsDir() {
+		return fmt.Errorf("default work dir '%s' is not a directory", common.DefaultWorkDir)
+	}
+
+	if err != nil && os.IsNotExist(err) {
+		// create the default work dir
+		if err = os.MkdirAll(common.ExpandPath(common.DefaultWorkDir), 0777); err != nil {
+			return fmt.Errorf("failed to create default work dir [%s]", err.Error())
+		}
+	}
+
+	opt.Logging.LogFilePath = common.ExpandPath(opt.Logging.LogFilePath)
 	if !common.DirectoryExists(filepath.Dir(opt.Logging.LogFilePath)) {
-		err := os.MkdirAll(filepath.Dir(opt.Logging.LogFilePath), os.FileMode(0666)|os.ModeDir)
+		err := os.MkdirAll(filepath.Dir(opt.Logging.LogFilePath), os.FileMode(0776)|os.ModeDir)
 		if err != nil {
 			return fmt.Errorf("invalid log file path [%s]", err.Error())
 		}
@@ -124,11 +153,6 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 
 	if opt.Logging.LogFileCount == 0 {
 		opt.Logging.LogFileCount = common.DefaultLogFileCount
-	}
-
-	if opt.DefaultWorkingDir != "" {
-		common.DefaultWorkDir = opt.DefaultWorkingDir
-		common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 	}
 
 	return nil
@@ -149,7 +173,7 @@ func OnConfigChange() {
 
 	err = log.SetConfig(common.LogConfig{
 		Level:       logLevel,
-		FilePath:    os.ExpandEnv(newLogOptions.LogFilePath),
+		FilePath:    common.ExpandPath(newLogOptions.LogFilePath),
 		MaxFileSize: newLogOptions.MaxLogFileSize,
 		FileCount:   newLogOptions.LogFileCount,
 		TimeTracker: newLogOptions.TimeTracker,
@@ -212,13 +236,6 @@ var mountCmd = &cobra.Command{
 	Args:              cobra.ExactArgs(1),
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(_ *cobra.Command, args []string) error {
-		if !disableVersionCheck {
-			err := VersionCheck()
-			if err != nil {
-				return err
-			}
-		}
-
 		options.MountPath = common.ExpandPath(args[0])
 		configFileExists := true
 
@@ -266,6 +283,8 @@ var mountCmd = &cobra.Command{
 			options.Components = pipeline
 		}
 
+		skipNonEmpty := false
+
 		if config.IsSet("libfuse-options") {
 			for _, v := range options.LibfuseOptions {
 				parameter := strings.Split(v, "=")
@@ -288,6 +307,9 @@ var mountCmd = &cobra.Command{
 					config.Set("read-only", "true")
 				} else if v == "allow_root" {
 					config.Set("libfuse.default-permission", "700")
+				} else if v == "nonempty" {
+					skipNonEmpty = true
+					config.Set("nonempty", "true")
 				} else if strings.HasPrefix(v, "umask=") {
 					permission, err := strconv.ParseUint(parameter[1], 10, 32)
 					if err != nil {
@@ -295,6 +317,18 @@ var mountCmd = &cobra.Command{
 					}
 					perm := ^uint32(permission) & 777
 					config.Set("libfuse.default-permission", fmt.Sprint(perm))
+				} else if strings.HasPrefix(v, "uid=") {
+					val, err := strconv.ParseUint(parameter[1], 10, 32)
+					if err != nil {
+						return fmt.Errorf("failed to parse uid [%s]", err.Error())
+					}
+					config.Set("libfuse.uid", fmt.Sprint(val))
+				} else if strings.HasPrefix(v, "gid=") {
+					val, err := strconv.ParseUint(parameter[1], 10, 32)
+					if err != nil {
+						return fmt.Errorf("failed to parse gid [%s]", err.Error())
+					}
+					config.Set("libfuse.gid", fmt.Sprint(val))
 				} else {
 					return errors.New(common.FuseAllowedFlags)
 				}
@@ -309,7 +343,7 @@ var mountCmd = &cobra.Command{
 			options.Logging.LogLevel = "LOG_WARNING"
 		}
 
-		err = options.validate(false)
+		err = options.validate(options.NonEmpty || skipNonEmpty)
 		if err != nil {
 			return err
 		}
@@ -330,6 +364,13 @@ var mountCmd = &cobra.Command{
 
 		if err != nil {
 			return fmt.Errorf("failed to initialize logger [%s]", err.Error())
+		}
+
+		if !disableVersionCheck {
+			err := VersionCheck()
+			if err != nil {
+				log.Err(err.Error())
+			}
 		}
 
 		if config.IsSet("invalidate-on-sync") {
@@ -364,18 +405,40 @@ var mountCmd = &cobra.Command{
 			return Destroy(fmt.Sprintf("failed to initialize new pipeline [%s]", err.Error()))
 		}
 
+		common.ForegroundMount = options.Foreground
+
 		log.Info("mount: Mounting blobfuse2 on %s", options.MountPath)
 		if !options.Foreground {
 			pidFile := strings.Replace(options.MountPath, "/", "_", -1) + ".pid"
 			pidFileName := filepath.Join(os.ExpandEnv(common.DefaultWorkDir), pidFile)
+
+			pid := os.Getpid()
+			fname := fmt.Sprintf("/tmp/blobfuse2.%v", pid)
+
 			dmnCtx := &daemon.Context{
 				PidFileName: pidFileName,
 				PidFilePerm: 0644,
-				Umask:       027,
+				Umask:       022,
+				LogFileName: fname, // this will redirect stderr of child to given file
 			}
 
 			ctx, _ := context.WithCancel(context.Background()) //nolint
-			daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
+
+			// Signal handlers for parent and child to communicate success or failures in mount
+			var sigusr2, sigchild chan os.Signal
+			if !daemon.WasReborn() { // execute in parent only
+				sigusr2 = make(chan os.Signal, 1)
+				signal.Notify(sigusr2, syscall.SIGUSR2)
+
+				sigchild = make(chan os.Signal, 1)
+				signal.Notify(sigchild, syscall.SIGCHLD)
+			} else { // execute in child only
+				daemon.SetSigHandler(sigusrHandler(pipeline, ctx), syscall.SIGUSR1, syscall.SIGUSR2)
+				go func() {
+					_ = daemon.ServeSignals()
+				}()
+			}
+
 			child, err := dmnCtx.Reborn()
 			if err != nil {
 				log.Err("mount : failed to daemonize application [%v]", err)
@@ -383,15 +446,38 @@ var mountCmd = &cobra.Command{
 			}
 
 			log.Debug("mount: foreground disabled, child = %v", daemon.WasReborn())
-			if child == nil {
+			if child == nil { // execute in child only
 				defer dmnCtx.Release() // nolint
 				setGOConfig()
 				go startDynamicProfiler()
 
-				err = runPipeline(pipeline, ctx)
-				if err != nil {
-					return err
+				// In case of failure stderr will have the error emitted by child and parent will read
+				// those logs from the file set in daemon context
+				return runPipeline(pipeline, ctx)
+			} else { // execute in parent only
+				defer os.Remove(fname)
+
+				select {
+				case <-sigusr2:
+					log.Info("mount: Child [%v] mounted successfully at %s", child.Pid, options.MountPath)
+
+				case <-sigchild:
+					// Get error string from the child, stderr or child was redirected to a file
+					log.Info("mount: Child [%v] terminated from %s", child.Pid, options.MountPath)
+
+					buff, err := ioutil.ReadFile(dmnCtx.LogFileName)
+					if err != nil {
+						log.Err("mount: failed to read child [%v] failure logs [%s]", child.Pid, err.Error())
+						return Destroy(fmt.Sprintf("failed to mount, please check logs [%s]", err.Error()))
+					} else {
+						return Destroy(string(buff))
+					}
+
+				case <-time.After(options.WaitForMount):
+					log.Info("mount: Child [%v : %s] status check timeout", child.Pid, options.MountPath)
 				}
+
+				_ = log.Destroy()
 			}
 		} else {
 			if options.CPUProfile != "" {
@@ -415,6 +501,7 @@ var mountCmd = &cobra.Command{
 			if err != nil {
 				return err
 			}
+
 			if options.MemProfile != "" {
 				os.Remove(options.MemProfile)
 				f, err := os.Create(options.MemProfile)
@@ -437,7 +524,8 @@ var mountCmd = &cobra.Command{
 
 func ignoreFuseOptions(opt string) bool {
 	for _, o := range common.FuseIgnoredFlags() {
-		if o == opt {
+		// Flags like uid and gid come with value so exact string match is not correct in that case.
+		if strings.HasPrefix(opt, o) {
 			return true
 		}
 	}
@@ -610,6 +698,8 @@ func init() {
 	mountCmd.PersistentFlags().StringSliceVarP(&options.LibfuseOptions, "o", "o", []string{}, "FUSE options.")
 	config.BindPFlag("libfuse-options", mountCmd.PersistentFlags().ShorthandLookup("o"))
 	mountCmd.PersistentFlags().ShorthandLookup("o").Hidden = true
+
+	mountCmd.PersistentFlags().DurationVar(&options.WaitForMount, "wait-for-mount", 5*time.Second, "Let parent process wait for given timeout before exit")
 
 	config.AttachToFlagSet(mountCmd.PersistentFlags())
 	config.AttachFlagCompletions(mountCmd)

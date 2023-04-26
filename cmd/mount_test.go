@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -43,6 +43,7 @@ import (
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -106,6 +107,10 @@ func (suite *mountTestSuite) SetupTest() {
 func (suite *mountTestSuite) cleanupTest() {
 	resetCLIFlags(*mountCmd)
 	resetCLIFlags(*mountAllCmd)
+	viper.Reset()
+
+	common.DefaultWorkDir = "$HOME/.blobfuse2"
+	common.DefaultLogFilePath = filepath.Join(common.DefaultWorkDir, "blobfuse2.log")
 }
 
 // mount failure test where the mount directory does not exists
@@ -137,6 +142,9 @@ func (suite *mountTestSuite) TestMountDirNotEmpty() {
 	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest))
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "mount directory is not empty")
+
+	op, err = executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest), "-o", "nonempty", "--foreground")
+	suite.assert.NotNil(err)
 }
 
 // mount failure test where the mount path is not provided
@@ -275,41 +283,6 @@ func (suite *mountTestSuite) TestStreamAttrCacheOptionsV1() {
 	suite.assert.Contains(op, "failed to initialize new pipeline")
 }
 
-// libfuse options test
-func (suite *mountTestSuite) TestLibfuseOptions() {
-	defer suite.cleanupTest()
-
-	mntDir, err := ioutil.TempDir("", "mntdir")
-	suite.assert.Nil(err)
-	defer os.RemoveAll(mntDir)
-
-	tempLogDir := "/tmp/templogs_" + randomString(6)
-	defer os.RemoveAll(tempLogDir)
-
-	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
-		fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"), "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check",
-		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755")
-	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "failed to initialize new pipeline")
-}
-
-// mount failure test where libfuse options are greater than 8
-func (suite *mountTestSuite) TestLibfuseIgnoreOptions() {
-	defer suite.cleanupTest()
-
-	mntDir, err := ioutil.TempDir("", "mntdir")
-	suite.assert.Nil(err)
-	defer os.RemoveAll(mntDir)
-
-	// greater than 8 libfuse options
-	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileMntTest),
-		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o suid,dev")
-	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "failed to initialize new pipeline")
-}
-
 // mount failure test where a libfuse option is incorrect
 func (suite *mountTestSuite) TestInvalidLibfuseOption() {
 	defer suite.cleanupTest()
@@ -358,25 +331,105 @@ func (suite *mountTestSuite) TestInvalidUmaskValue() {
 	suite.assert.Contains(op, "failed to parse umask")
 }
 
-func (suite *mountTestSuite) TestMountUsingLoopbackFailure() {
+// fuse option parsing validation
+func (suite *mountTestSuite) TestFuseOptions() {
 	defer suite.cleanupTest()
 
-	confFile, err := ioutil.TempFile("", "conf*.yaml")
-	suite.assert.Nil(err)
-	confFileName := confFile.Name()
-	defer os.Remove(confFileName)
+	type fuseOpt struct {
+		opt    string
+		ignore bool
+	}
 
-	_, err = confFile.WriteString(configMountLoopback)
-	suite.assert.Nil(err)
-	confFile.Close()
+	opts := []fuseOpt{
+		{opt: "rw", ignore: true},
+		{opt: "dev", ignore: true},
+		{opt: "dev", ignore: true},
+		{opt: "nodev", ignore: true},
+		{opt: "suid", ignore: true},
+		{opt: "nosuid", ignore: true},
+		{opt: "delay_connect", ignore: true},
+		{opt: "auto", ignore: true},
+		{opt: "noauto", ignore: true},
+		{opt: "user", ignore: true},
+		{opt: "nouser", ignore: true},
+		{opt: "exec", ignore: true},
+		{opt: "noexec", ignore: true},
 
-	mntDir, err := ioutil.TempDir("", "mntdir")
-	suite.assert.Nil(err)
-	defer os.RemoveAll(mntDir)
+		{opt: "allow_other", ignore: false},
+		{opt: "allow_other=true", ignore: false},
+		{opt: "allow_other=false", ignore: false},
+		{opt: "nonempty", ignore: false},
+		{opt: "attr_timeout=10", ignore: false},
+		{opt: "entry_timeout=10", ignore: false},
+		{opt: "negative_timeout=10", ignore: false},
+		{opt: "ro", ignore: false},
+		{opt: "allow_root", ignore: false},
+		{opt: "umask=777", ignore: false},
+		{opt: "uid=1000", ignore: false},
+		{opt: "gid=1000", ignore: false},
+	}
 
-	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFileName))
+	for _, val := range opts {
+		ret := ignoreFuseOptions(val.opt)
+		suite.assert.Equal(ret, val.ignore)
+	}
+}
+
+func (suite *mountTestSuite) TestUpdateCliParams() {
+	defer suite.cleanupTest()
+
+	cliParams := []string{"blobfuse2", "mount", "~/mntdir/", "--foreground=false"}
+
+	updateCliParams(&cliParams, "tmp-path", "tmpPath1")
+	suite.assert.Equal(len(cliParams), 5)
+	suite.assert.Equal(cliParams[4], "--tmp-path=tmpPath1")
+
+	updateCliParams(&cliParams, "container-name", "testCnt1")
+	suite.assert.Equal(len(cliParams), 6)
+	suite.assert.Equal(cliParams[5], "--container-name=testCnt1")
+
+	updateCliParams(&cliParams, "tmp-path", "tmpPath2")
+	updateCliParams(&cliParams, "container-name", "testCnt2")
+	suite.assert.Equal(len(cliParams), 6)
+	suite.assert.Equal(cliParams[4], "--tmp-path=tmpPath2")
+	suite.assert.Equal(cliParams[5], "--container-name=testCnt2")
+}
+
+func (suite *mountTestSuite) TestMountOptionVaildate() {
+	defer suite.cleanupTest()
+	opts := &mountOptions{}
+
+	err := opts.validate(true)
 	suite.assert.NotNil(err)
-	suite.assert.Contains(op, "failed to daemonize application")
+	suite.assert.Contains(err.Error(), "mount path not provided")
+
+	opts.MountPath, _ = os.UserHomeDir()
+	err = opts.validate(true)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "invalid log level")
+
+	opts.Logging.LogLevel = "log_junk"
+	err = opts.validate(true)
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "invalid log level")
+
+	opts.Logging.LogLevel = "log_debug"
+	err = opts.validate(true)
+	suite.assert.Nil(err)
+	suite.assert.Empty(opts.Logging.LogFilePath)
+
+	opts.DefaultWorkingDir, _ = os.UserHomeDir()
+	err = opts.validate(true)
+	suite.assert.Nil(err)
+	suite.assert.Empty(opts.Logging.LogFilePath)
+	suite.assert.Equal(common.DefaultWorkDir, opts.DefaultWorkingDir)
+
+	opts.Logging.LogFilePath = common.DefaultLogFilePath
+	err = opts.validate(true)
+	suite.assert.Nil(err)
+	suite.assert.Contains(opts.Logging.LogFilePath, opts.DefaultWorkingDir)
+	suite.assert.Equal(common.DefaultWorkDir, opts.DefaultWorkingDir)
+	suite.assert.Equal(common.DefaultLogFilePath, opts.Logging.LogFilePath)
 }
 
 func TestMountCommand(t *testing.T) {

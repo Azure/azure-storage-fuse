@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -73,6 +73,8 @@ func (suite *generateConfigTestSuite) SetupTest() {
 
 func (suite *generateConfigTestSuite) cleanupTest() {
 	resetCLIFlags(*generateConfigCmd)
+	resetGenOneOptions()
+	viper.Reset()
 }
 
 // Taken from cobra library's testing https://github.com/spf13/cobra/blob/master/command_test.go#L34
@@ -92,6 +94,7 @@ func resetCLIFlags(cmd cobra.Command) {
 	cmd.Flags().VisitAll(func(f *pflag.Flag) {
 		f.Changed = false
 	})
+	viper.Reset()
 }
 
 func TestGenerateConfig(t *testing.T) {
@@ -764,43 +767,6 @@ func (suite *generateConfigTestSuite) TestCLIParamPreMountValidateNoError() {
 	download := "--pre-mount-validate=true"
 
 	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, download, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()))
-	suite.assert.Nil(err)
-}
-
-// libfuse options test
-func (suite *generateConfigTestSuite) TestLibfuseOptions() {
-	defer suite.cleanupTest()
-	name := generateFileName()
-	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
-	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
-	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
-	defer os.Remove(v2ConfigFile.Name())
-
-	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
-
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
-		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755")
-	suite.assert.Nil(err)
-}
-
-// mountv1 failure test where libfuse options are greater than 8
-func (suite *generateConfigTestSuite) TestLibfuseIgnoreOptions() {
-	defer suite.cleanupTest()
-	name := generateFileName()
-	v1ConfigFile, _ := ioutil.TempFile("", name+".tmp.cfg")
-	defer os.Remove(v1ConfigFile.Name())
-	v1ConfigFile.WriteString("accountName myAccountName")
-	v2ConfigFile, _ := ioutil.TempFile("", name+".tmp.yaml")
-	defer os.Remove(v2ConfigFile.Name())
-
-	outputFile := fmt.Sprintf("--output-file=%s", v2ConfigFile.Name())
-
-	// greater than 8 libfuse options
-	_, err := executeCommandC(rootCmd, "mountv1", "--convert-config-only=true", outputFile, fmt.Sprintf("--config-file=%s", v1ConfigFile.Name()),
-		"-o allow_other", "-o attr_timeout=120", "-o entry_timeout=120", "-o negative_timeout=120",
-		"-o ro", "-o allow_root", "-o default_permissions", "-o umask=755", "-o dev,suid")
 	suite.assert.Nil(err)
 }
 

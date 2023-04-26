@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -131,7 +131,24 @@ func (suite *utilTestSuite) TestMonitorBfs() {
 }
 
 func (suite *utilTestSuite) TestExpandPath() {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+
 	path := "~/a/b/c/d"
 	expandedPath := ExpandPath(path)
+	suite.assert.NotEqual(expandedPath, path)
 	suite.assert.Contains(expandedPath, path[2:])
+	suite.assert.Contains(expandedPath, homeDir)
+
+	path = "$HOME/a/b/c/d"
+	expandedPath = ExpandPath(path)
+	suite.assert.NotEqual(expandedPath, path)
+	suite.assert.Contains(expandedPath, path[5:])
+	suite.assert.Contains(expandedPath, homeDir)
+
+	path = "/a/b/c/d"
+	expandedPath = ExpandPath(path)
+	suite.assert.Equal(expandedPath, path)
 }

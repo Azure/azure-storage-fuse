@@ -99,8 +99,9 @@ To learn about a specific command, just include the name of the command (For exa
     * `--read-only=true`: Mount container in read-only mode.
     * `--default-working-dir`: The default working directory to store log files and other blobfuse2 related information.
     * `--disable-version-check=true`: Disable the blobfuse2 version check.
-    * `----secure-config=true` : Config file is encrypted suing 'blobfuse2 secure` command.
-    * `----passphrase=<STRING>` : Passphrase used to encrypt/decrypt config file.
+    * `--secure-config=true` : Config file is encrypted suing 'blobfuse2 secure` command.
+    * `--passphrase=<STRING>` : Passphrase used to encrypt/decrypt config file.
+    * `--wait-for-mount=<TIMEOUT IN SECONDS>` : Let parent process wait for given timeout before exit to ensure child has started. 
 - Attribute cache options
     * `--attr-cache-timeout=<TIMEOUT IN SECONDS>`: The timeout for the attribute cache entries.
     * `--no-symlinks=true`: To improve performance disable symlink support.
@@ -108,12 +109,16 @@ To learn about a specific command, just include the name of the command (For exa
     * `--container-name=<CONTAINER NAME>`: The container to mount.
     * `--cancel-list-on-mount-seconds=<TIMEOUT IN SECONDS>`: Time for which list calls will be blocked after mount. ( prevent billing charges on mounting)
     * `--virtual-directory=true` : Support virtual directories without existence of a special marker blob for block blob account.
+    * `--subdirectory=<path>` : Subdirectory to mount instead of entire container.
+    * `--disable-compression:false` : Disable content encoding negotiation with server. If blobs have 'content-encoding' set to 'gzip' then turn on this flag.
+    * `--use-adls=false` : Specify configured storage account is HNS enabled or not. This must be turned on when HNS enabled account is mounted.
 - File cache options
     * `--file-cache-timeout=<TIMEOUT IN SECONDS>`: Timeout for which file is cached on local system.
     * `--tmp-path=<PATH>`: The path to the file cache.
     * `--cache-size-mb=<SIZE IN MB>`: Amount of disk cache that can be used by blobfuse.
     * `--high-disk-threshold=<PERCENTAGE>`: If local cache usage exceeds this, start early eviction of files from cache.
     * `--low-disk-threshold=<PERCENTAGE>`: If local cache usage comes below this threshold then stop early eviction.
+    * `--sync-to-flush=false` : Sync call will force upload a file to storage container if this is set to true, otherwise it just evicts file from local cache.
 - Stream options
     * `--block-size-mb=<SIZE IN MB>`: Size of a block to be downloaded during streaming.
 - Fuse options

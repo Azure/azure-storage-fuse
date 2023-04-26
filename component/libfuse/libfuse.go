@@ -9,7 +9,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -68,6 +68,7 @@ type Libfuse struct {
 	extensionPath         string
 	disableWritebackCache bool
 	ignoreOpenFlags       bool
+	nonEmptyMount         bool
 	lsFlags               common.BitMap16
 }
 
@@ -93,6 +94,9 @@ type LibfuseOptions struct {
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
 	DisableWritebackCache   bool   `config:"disable-writeback-cache" yaml:"-"`
 	IgnoreOpenFlags         bool   `config:"ignore-open-flags" yaml:"ignore-open-flags,omitempty"`
+	nonEmptyMount           bool   `config:"nonempty" yaml:"nonempty,omitempty"`
+	Uid                     uint32 `config:"uid" yaml:"uid,omitempty"`
+	Gid                     uint32 `config:"gid" yaml:"uid,omitempty"`
 }
 
 const compName = "libfuse"
@@ -169,6 +173,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.extensionPath = opt.ExtensionPath
 	lf.disableWritebackCache = opt.DisableWritebackCache
 	lf.ignoreOpenFlags = opt.IgnoreOpenFlags
+	lf.nonEmptyMount = opt.nonEmptyMount
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
@@ -208,6 +213,15 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		return nil
 	}
 
+	if config.IsSet(compName + ".uid") {
+		lf.ownerUID = opt.Uid
+	}
+
+	if config.IsSet(compName + ".gid") {
+		lf.ownerGID = opt.Gid
+	}
+	log.Info("Libfuse::Validate : UID %v, GID %v", lf.ownerUID, lf.ownerGID)
+
 	return nil
 }
 
@@ -217,7 +231,7 @@ func (lf *Libfuse) Configure(_ bool) error {
 	log.Trace("Libfuse::Configure : %s", lf.Name())
 
 	// >> If you do not need any config parameters remove below code and return nil
-	conf := LibfuseOptions{}
+	conf := LibfuseOptions{IgnoreOpenFlags: true}
 	err := config.UnmarshalKey(lf.Name(), &conf)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [invalid config attributes]")
@@ -242,14 +256,20 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return err
 	}
 
+	err = config.UnmarshalKey("nonempty", &conf.nonEmptyMount)
+	if err != nil {
+		log.Err("Libfuse::Configure : config error [unable to obtain nonempty]")
+		return err
+	}
+
 	err = lf.Validate(&conf)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [invalid config settings]")
-		return fmt.Errorf("config error in %s [invalid config settings]", lf.Name())
+		return fmt.Errorf("%s config error %s", lf.Name(), err.Error())
 	}
 
-	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags: %t",
-		lf.readOnly, lf.allowOther, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags)
+	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags: %t, nonempty %t",
+		lf.readOnly, lf.allowOther, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount)
 
 	return nil
 }
@@ -291,6 +311,6 @@ func init() {
 	config.BindPFlag(compName+".fuse-trace", debug)
 	debug.Hidden = true
 
-	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", false, "Ignore unsupported open flags (APPEND, WRONLY) by blobfuse when writeback caching is enabled.")
+	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", true, "Ignore unsupported open flags (APPEND, WRONLY) by blobfuse when writeback caching is enabled.")
 	config.BindPFlag(compName+".ignore-open-flags", ignoreOpenFlags)
 }

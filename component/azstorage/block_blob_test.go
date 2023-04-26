@@ -11,7 +11,7 @@
 
    Licensed under the MIT License <http://opensource.org/licenses/MIT>.
 
-   Copyright © 2020-2022 Microsoft Corporation. All rights reserved.
+   Copyright © 2020-2023 Microsoft Corporation. All rights reserved.
    Author : <blobfusedev@microsoft.com>
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -279,10 +279,12 @@ func (s *blockBlobTestSuite) TestDefault() {
 	s.assert.EqualValues(32, s.az.stConfig.maxConcurrency)
 	s.assert.EqualValues(AccessTiers["none"], s.az.stConfig.defaultTier)
 	s.assert.EqualValues(0, s.az.stConfig.cancelListForSeconds)
-	s.assert.EqualValues(3, s.az.stConfig.maxRetries)
-	s.assert.EqualValues(3600, s.az.stConfig.maxTimeout)
-	s.assert.EqualValues(1, s.az.stConfig.backoffTime)
-	s.assert.EqualValues(3, s.az.stConfig.maxRetryDelay)
+
+	s.assert.EqualValues(5, s.az.stConfig.maxRetries)
+	s.assert.EqualValues(900, s.az.stConfig.maxTimeout)
+	s.assert.EqualValues(4, s.az.stConfig.backoffTime)
+	s.assert.EqualValues(60, s.az.stConfig.maxRetryDelay)
+
 	s.assert.Empty(s.az.stConfig.proxyAddress)
 }
 
@@ -496,7 +498,12 @@ func (s *blockBlobTestSuite) TestDeleteSubDirPrefixPath() {
 
 	s.az.storage.SetPrefixPath(base)
 
-	err := s.az.DeleteDir(internal.DeleteDirOptions{Name: "c1"})
+	attr, err := s.az.GetAttr(internal.GetAttrOptions{Name: "c1"})
+	s.assert.Nil(err)
+	s.assert.NotNil(attr)
+	s.assert.True(attr.IsDir())
+
+	err = s.az.DeleteDir(internal.DeleteDirOptions{Name: "c1"})
 	s.assert.Nil(err)
 
 	// a paths under c1 should be deleted
