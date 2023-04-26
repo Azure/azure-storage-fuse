@@ -110,7 +110,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--cancel-list-on-mount-seconds=<TIMEOUT IN SECONDS>`: Time for which list calls will be blocked after mount. ( prevent billing charges on mounting)
     * `--virtual-directory=true` : Support virtual directories without existence of a special marker blob for block blob account.
     * `--subdirectory=<path>` : Subdirectory to mount instead of entire container.
-    * `--disable-compression:false` : Disable content encoding negotiation with server. If blobs have content-type set to gzip then turn on this flag.
+    * `--disable-compression:false` : Disable content encoding negotiation with server. If blobs have 'content-encoding' set to 'gzip' then turn on this flag.
     * `--use-adls=false` : Specify configured storage account is HNS enabled or not. This must be turned on when HNS enabled account is mounted.
 - File cache options
     * `--file-cache-timeout=<TIMEOUT IN SECONDS>`: Timeout for which file is cached on local system.
