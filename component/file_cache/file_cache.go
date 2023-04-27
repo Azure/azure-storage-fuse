@@ -798,11 +798,13 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 		// If so, compare the lmt of file in local cache and once in container and redownload only if lmt of container is latest.
 		if attr.Mtime.After(lmt) {
 			// File has not been modified at storage yet so no point in redownloading the file
-			log.Info("FileCache::OpenFile : File is modified in container, so forcing redownload %s [A-%v : L-%v]", blobPath, attr.Mtime, lmt)
+			log.Info("FileCache::isDownloadRequired : File is modified in container, so forcing redownload %s [A-%v : L-%v]", blobPath, attr.Mtime, lmt)
 			downloadRequired = true
 
 			// As we have decided to continue using old file, we reset the timer to check again after refresh time interval
 			flock.SetDownloadTime()
+		} else {
+			log.Info("FileCache::isDownloadRequired : File in container is not latest, skip redownload %s [A-%v : L-%v]", blobPath, attr.Mtime, lmt)
 		}
 	}
 
