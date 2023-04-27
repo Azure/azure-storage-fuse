@@ -305,8 +305,9 @@ var mountCmd = &cobra.Command{
 					config.Set("libfuse.negative-entry-expiration-sec", parameter[1])
 				} else if v == "ro" || v == "ro=true" {
 					config.Set("read-only", "true")
-				} else if v == "allow_root" {
-					config.Set("libfuse.default-permission", "700")
+				} else if v == "allow_root" || v == "allow_root=true" {
+					config.Set("allow-root", "true")
+					// config.Set("libfuse.default-permission", "700")
 				} else if v == "nonempty" {
 					skipNonEmpty = true
 					config.Set("nonempty", "true")
