@@ -779,7 +779,7 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 	if fileExists && flock.Count() > 0 {
 		// file exists in local cache and there is already an handle open for it
 		// In this case we can not redownload the file from container
-		log.Info("FileCache::OpenFile : Need to re-download %s, but skipping as handle is already open", blobPath)
+		log.Info("FileCache::isDownloadRequired : Need to re-download %s, but skipping as handle is already open", blobPath)
 		downloadRequired = false
 	}
 
