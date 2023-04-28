@@ -1,3 +1,7 @@
+## 2.0.4 (WIP)
+**Bug Fixes**
+- [[#1116](https://github.com/Azure/azure-storage-fuse/issues/1116)] Relative path for tmp-cache is resulting into file read-write failure.
+
 ## 2.0.3 (2023-04-26)
 **Bug Fixes**
 - [#1080](https://github.com/Azure/azure-storage-fuse/issues/1080) HNS rename flow does not encode source path correctly.
