@@ -265,7 +265,9 @@ func ExpandPath(path string) string {
 		path = filepath.Join(homeDir, path[2:])
 	}
 
-	return os.ExpandEnv(path)
+	path = os.ExpandEnv(path)
+	path, _ = filepath.Abs(path)
+	return path
 }
 
 // NotifyMountToParent : Send a signal to parent process about successful mount

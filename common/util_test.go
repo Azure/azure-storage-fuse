@@ -136,6 +136,11 @@ func (suite *utilTestSuite) TestExpandPath() {
 		return
 	}
 
+	pwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
 	path := "~/a/b/c/d"
 	expandedPath := ExpandPath(path)
 	suite.assert.NotEqual(expandedPath, path)
@@ -151,4 +156,29 @@ func (suite *utilTestSuite) TestExpandPath() {
 	path = "/a/b/c/d"
 	expandedPath = ExpandPath(path)
 	suite.assert.Equal(expandedPath, path)
+
+	path = "./a"
+	expandedPath = ExpandPath(path)
+	suite.assert.NotEqual(expandedPath, path)
+	suite.assert.Contains(expandedPath, pwd)
+
+	path = "./a/../a/b/c/d/../../../a/b/c/d/.././a"
+	expandedPath = ExpandPath(path)
+	suite.assert.NotEqual(expandedPath, path)
+	suite.assert.Contains(expandedPath, pwd)
+
+	path = "~/a/../$HOME/a/b/c/d/../../../a/b/c/d/.././a"
+	expandedPath = ExpandPath(path)
+	suite.assert.NotEqual(expandedPath, path)
+	suite.assert.Contains(expandedPath, homeDir)
+
+	path = "$HOME/a/b/c/d/../../../a/b/c/d/.././a"
+	expandedPath = ExpandPath(path)
+	suite.assert.NotEqual(expandedPath, path)
+	suite.assert.Contains(expandedPath, homeDir)
+
+	path = "/$HOME/a/b/c/d/../../../a/b/c/d/.././a"
+	expandedPath = ExpandPath(path)
+	suite.assert.NotEqual(expandedPath, path)
+	suite.assert.Contains(expandedPath, homeDir)
 }
