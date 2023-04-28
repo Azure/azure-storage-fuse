@@ -62,6 +62,7 @@ type Libfuse struct {
 	entryExpiration       uint32
 	negativeTimeout       uint32
 	allowOther            bool
+	allowRoot             bool
 	ownerUID              uint32
 	ownerGID              uint32
 	traceEnable           bool
@@ -90,6 +91,7 @@ type LibfuseOptions struct {
 	NegativeEntryExpiration uint32 `config:"negative-entry-expiration-sec" yaml:"negative-entry-expiration-sec,omitempty"`
 	EnableFuseTrace         bool   `config:"fuse-trace" yaml:"fuse-trace,omitempty"`
 	allowOther              bool   `config:"allow-other" yaml:"-"`
+	allowRoot               bool   `config:"allow-root" yaml:"-"`
 	readOnly                bool   `config:"read-only" yaml:"-"`
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
 	DisableWritebackCache   bool   `config:"disable-writeback-cache" yaml:"-"`
@@ -170,6 +172,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.readOnly = opt.readOnly
 	lf.traceEnable = opt.EnableFuseTrace
 	lf.allowOther = opt.allowOther
+	lf.allowRoot = opt.allowRoot
 	lf.extensionPath = opt.ExtensionPath
 	lf.disableWritebackCache = opt.DisableWritebackCache
 	lf.ignoreOpenFlags = opt.IgnoreOpenFlags
@@ -256,6 +259,12 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return err
 	}
 
+	err = config.UnmarshalKey("allow-root", &conf.allowRoot)
+	if err != nil {
+		log.Err("Libfuse::Configure : config error [unable to obtain allow-root]")
+		return err
+	}
+
 	err = config.UnmarshalKey("nonempty", &conf.nonEmptyMount)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [unable to obtain nonempty]")
@@ -268,8 +277,8 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return fmt.Errorf("%s config error %s", lf.Name(), err.Error())
 	}
 
-	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags: %t, nonempty %t",
-		lf.readOnly, lf.allowOther, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount)
+	log.Info("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags: %t, nonempty %t",
+		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount)
 
 	return nil
 }

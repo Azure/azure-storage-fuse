@@ -82,6 +82,7 @@ typedef struct fuse_options
     int     negative_expiry;
     bool    readonly;
     bool    allow_other;
+    bool    allow_root;
     bool    trace_enable;
     bool    non_empty;
 } fuse_options_t;
