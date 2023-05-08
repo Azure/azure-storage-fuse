@@ -1,3 +1,4 @@
+//go:build !fuse2
 // +build !fuse2
 
 /*
