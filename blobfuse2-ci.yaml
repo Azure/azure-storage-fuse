@@ -9,6 +9,7 @@ pr:
 jobs:
   # Ubuntu based test suite
   - job: test
+    timeoutInMinutes: 150
     displayName: Build and Test on
     strategy:
       matrix:
