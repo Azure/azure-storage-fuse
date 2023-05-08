@@ -52,14 +52,14 @@ type Tree struct {
 	head *TreeNode
 }
 
-//NewTree returns a new Tree object with the head initialized to a default root TreeNode
+// NewTree returns a new Tree object with the head initialized to a default root TreeNode
 func NewTree() *Tree {
 	return &Tree{
 		head: NewTreeNode("root"),
 	}
 }
 
-//NewTreeNode returns a TreeNode initialized with the passed in string as name
+// NewTreeNode returns a TreeNode initialized with the passed in string as name
 func NewTreeNode(name string) *TreeNode {
 	return &TreeNode{
 		children: make(map[string]*TreeNode),
@@ -67,9 +67,9 @@ func NewTreeNode(name string) *TreeNode {
 	}
 }
 
-//Insert function is used to insert a new object into the tree
-//The key is specified as a dot separated hierarchical value
-//For eg. root.child1.child2
+// Insert function is used to insert a new object into the tree
+// The key is specified as a dot separated hierarchical value
+// For eg. root.child1.child2
 func (tree *Tree) Insert(key string, value interface{}) {
 	subKeys := strings.Split(key, ".")
 	curNode := tree.head
@@ -89,7 +89,7 @@ func (tree *Tree) Insert(key string, value interface{}) {
 	curNode.value = value
 }
 
-//Print is a utility function that prints the Tree in a level order fashion
+// Print is a utility function that prints the Tree in a level order fashion
 func (tree *Tree) Print() {
 	nodes := make([]*TreeNode, 0)
 	nodes = append(nodes, tree.head)
@@ -103,8 +103,8 @@ func (tree *Tree) Print() {
 	}
 }
 
-//GetSubTree returns the sub Tree that is present from the last child of the key passed in.
-//For eg. to retrieve the subtree starting from child2 the passed key can be root.child1.child2
+// GetSubTree returns the sub Tree that is present from the last child of the key passed in.
+// For eg. to retrieve the subtree starting from child2 the passed key can be root.child1.child2
 func (tree *Tree) GetSubTree(key string) *TreeNode {
 	subKeys := strings.Split(key, ".")
 	curNode := tree.head
@@ -117,7 +117,7 @@ func (tree *Tree) GetSubTree(key string) *TreeNode {
 	return curNode
 }
 
-//parseValue is a utility function that accepts a val and returns the parsed value of that type.
+// parseValue is a utility function that accepts a val and returns the parsed value of that type.
 func parseValue(val string, toType reflect.Kind) interface{} {
 	switch toType {
 	case reflect.Bool:
@@ -217,9 +217,9 @@ func parseValue(val string, toType reflect.Kind) interface{} {
 	}
 }
 
-//MergeWithKey is used to merge the contained tree with the object (obj) that is passed in as parameter.
-//getValue parameter is a function that accepts the value stored in a TreeNode and performs any business logic and returns the value that has to be placed in the obj parameter
-//it must also return true|false based on which the value will be set in the obj parameter.
+// MergeWithKey is used to merge the contained tree with the object (obj) that is passed in as parameter.
+// getValue parameter is a function that accepts the value stored in a TreeNode and performs any business logic and returns the value that has to be placed in the obj parameter
+// it must also return true|false based on which the value will be set in the obj parameter.
 func (tree *Tree) MergeWithKey(key string, obj interface{}, getValue func(val interface{}) (res interface{}, ok bool)) {
 	subTree := tree.GetSubTree(key)
 	if subTree == nil {
@@ -256,7 +256,7 @@ func (tree *Tree) MergeWithKey(key string, obj interface{}, getValue func(val in
 	}
 }
 
-//Merge performs the same function as MergeWithKey but at the root level
+// Merge performs the same function as MergeWithKey but at the root level
 func (tree *Tree) Merge(obj interface{}, getValue func(val interface{}) (res interface{}, ok bool)) {
 	subTree := tree.head
 	if subTree == nil {
@@ -293,7 +293,7 @@ func (tree *Tree) Merge(obj interface{}, getValue func(val interface{}) (res int
 	}
 }
 
-//isPrimitiveType is a utility function that returns true if the kind parameter is a primitive data type or not
+// isPrimitiveType is a utility function that returns true if the kind parameter is a primitive data type or not
 func isPrimitiveType(kind reflect.Kind) bool {
 	switch kind {
 	case reflect.Bool:
@@ -333,7 +333,7 @@ func isPrimitiveType(kind reflect.Kind) bool {
 	}
 }
 
-//assignToField is utility function to set the val to the passed field based on it's state
+// assignToField is utility function to set the val to the passed field based on it's state
 func assignToField(field reflect.Value, val interface{}) {
 	if field.CanSet() {
 		if reflect.TypeOf(val).Kind() == reflect.String {
@@ -347,7 +347,7 @@ func assignToField(field reflect.Value, val interface{}) {
 	}
 }
 
-//getIdxFromField is a utility function that returns the key to index into the map based on struct tags.
+// getIdxFromField is a utility function that returns the key to index into the map based on struct tags.
 func getIdxFromField(structField reflect.StructField) string {
 	idx := structField.Tag.Get(STRUCT_TAG)
 	if idx == "" {

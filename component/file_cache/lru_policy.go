@@ -200,7 +200,7 @@ func (p *lruPolicy) Name() string {
 	return "lru"
 }
 
-//  On validate name of the file was pushed on this channel so now update the LRU list
+// On validate name of the file was pushed on this channel so now update the LRU list
 func (p *lruPolicy) asyncCacheValid() {
 	for {
 		select {

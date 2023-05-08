@@ -402,11 +402,15 @@ func (s *blockBlobTestSuite) TestDeleteDir() {
 
 // Directory structure
 // a/
-//  a/c1/
-//   a/c1/gc1
-//	a/c2
+//
+//	 a/c1/
+//	  a/c1/gc1
+//		a/c2
+//
 // ab/
-//  ab/c1
+//
+//	ab/c1
+//
 // ac
 func generateNestedDirectory(path string) (*list.List, *list.List, *list.List) {
 	aPaths := list.New()

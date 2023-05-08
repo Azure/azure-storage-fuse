@@ -60,7 +60,7 @@ import (
 //Any of the bind functions can be put even in init function. Calling of ReadFromConfigFile is not necessary for binding.
 //Any reads must happen only after calling ReadFromConfigFile.
 
-//ConfigChangeEventHandler is the interface that must implemented by any object that wants to be notified of changes in the config file
+// ConfigChangeEventHandler is the interface that must implemented by any object that wants to be notified of changes in the config file
 type ConfigChangeEventHandler interface {
 	OnConfigChange()
 }
@@ -99,7 +99,7 @@ func SetConfigFile(configFilePath string) {
 	viper.SetConfigFile(userOptions.path)
 }
 
-//ReadFromConfigFile is used to the configFilePath and initialize viper object
+// ReadFromConfigFile is used to the configFilePath and initialize viper object
 func ReadFromConfigFile(configFilePath string) error {
 	userOptions.path = configFilePath
 	viper.SetConfigFile(userOptions.path)
@@ -120,7 +120,7 @@ func loadConfigFromBufferToViper(configData []byte) error {
 	return nil
 }
 
-//ReadFromConfigBuffer is used to the configFilePath and initialize viper object
+// ReadFromConfigBuffer is used to the configFilePath and initialize viper object
 func ReadFromConfigBuffer(configData []byte) error {
 	err := loadConfigFromBufferToViper(configData)
 	if err != nil {
@@ -170,7 +170,7 @@ func ReadConfigFromReader(reader io.Reader) error {
 	return nil
 }
 
-//AddConfigChangeEventListener function is used to register any ConfigChangeEventHandler
+// AddConfigChangeEventListener function is used to register any ConfigChangeEventHandler
 func AddConfigChangeEventListener(listener ConfigChangeEventHandler) {
 	userOptions.listeners = append(userOptions.listeners, listener)
 }
@@ -181,21 +181,25 @@ func OnConfigChange() {
 	}
 }
 
-//BindEnv binds the key parameter to a particular environment variable
-//For a hierarchical structure pass the keys separated by a .
-//For examples to access "name" field in the following structure:
-//		auth:
-//			name: value
+// BindEnv binds the key parameter to a particular environment variable
+// For a hierarchical structure pass the keys separated by a .
+// For examples to access "name" field in the following structure:
+//
+//	auth:
+//		name: value
+//
 // the key parameter should take on the value "auth.key"
 func BindEnv(key string, envVarName string) {
 	userOptions.envTree.Insert(key, envVarName)
 }
 
-//BindPFlag binds the key parameter to a particular flag
-//For a hierarchical structure pass the keys separated by a .
-//For examples to access "name" field in the following structure:
-//		auth:
-//			name: value
+// BindPFlag binds the key parameter to a particular flag
+// For a hierarchical structure pass the keys separated by a .
+// For examples to access "name" field in the following structure:
+//
+//	auth:
+//		name: value
+//
 // the key parameter should take on the value "auth.key"
 func BindPFlag(key string, flag *pflag.Flag) {
 	userOptions.flagTree.Insert(key, flag)
@@ -205,11 +209,13 @@ func BindPFlag(key string, flag *pflag.Flag) {
 //	return viper.BindPFlag(key, userOptions.flags.Lookup(name))
 //}
 
-//UnmarshalKey is used to obtain a subtree starting from the key parameter
-//For a hierarchical structure pass the keys separated by a .
-//For examples to access "name" field in the following structure:
-//		auth:
-//			name: value
+// UnmarshalKey is used to obtain a subtree starting from the key parameter
+// For a hierarchical structure pass the keys separated by a .
+// For examples to access "name" field in the following structure:
+//
+//	auth:
+//		name: value
+//
 // the key parameter should take on the value "auth.key"
 func UnmarshalKey(key string, obj interface{}) error {
 	err := viper.UnmarshalKey(key, obj, func(decodeConfig *mapstructure.DecoderConfig) { decodeConfig.TagName = STRUCT_TAG })
@@ -236,8 +242,8 @@ func UnmarshalKey(key string, obj interface{}) error {
 	return nil
 }
 
-//Unmarshal populates the passed object and all the exported fields.
-//use lower case attribute names to ignore a particular field
+// Unmarshal populates the passed object and all the exported fields.
+// use lower case attribute names to ignore a particular field
 func Unmarshal(obj interface{}) error {
 	err := viper.Unmarshal(obj, func(decodeConfig *mapstructure.DecoderConfig) { decodeConfig.TagName = STRUCT_TAG })
 	if err != nil {
@@ -287,7 +293,7 @@ func IsSet(key string) bool {
 	return node.value.(*pflag.Flag).Changed
 }
 
-//AttachToFlagSet is used to attach the flags in config to the cmd flags
+// AttachToFlagSet is used to attach the flags in config to the cmd flags
 func AttachToFlagSet(flagset *pflag.FlagSet) {
 	flagset.AddFlagSet(userOptions.flags)
 }
@@ -298,8 +304,8 @@ func AttachFlagCompletions(cmd *cobra.Command) {
 	}
 }
 
-//----------------------------------------------------------
-//Functions to add flags from a component
+// ----------------------------------------------------------
+// Functions to add flags from a component
 func AddStringFlag(name string, value string, usage string) *pflag.Flag {
 	userOptions.flags.String(name, value, usage)
 	return userOptions.flags.Lookup(name)

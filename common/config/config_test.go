@@ -130,7 +130,7 @@ template:
       app: web
 `
 
-//Function to test config reader when there is both env vars and cli flags that overlap config file.
+// Function to test config reader when there is both env vars and cli flags that overlap config file.
 func (suite *ConfigTestSuite) TestOverlapShadowConfigReader() {
 	defer suite.cleanupTest()
 	assert := assert.New(suite.T())
@@ -172,7 +172,7 @@ func (suite *ConfigTestSuite) TestOverlapShadowConfigReader() {
 
 }
 
-//Function to test only config file reader: testcase 2
+// Function to test only config file reader: testcase 2
 func (suite *ConfigTestSuite) TestPlainConfig2Reader() {
 	defer suite.cleanupTest()
 	assert := assert.New(suite.T())
@@ -261,7 +261,7 @@ func (suite *ConfigTestSuite) TestPlainConfig2Reader() {
 	assert.NotNil(err)
 }
 
-//Function to test only config file reader: testcase 1
+// Function to test only config file reader: testcase 1
 func (suite *ConfigTestSuite) TestPlainConfig1Reader() {
 	defer suite.cleanupTest()
 	assert := assert.New(suite.T())
@@ -315,7 +315,7 @@ func (suite *ConfigTestSuite) TestPlainConfig1Reader() {
 	assert.Empty(randOpts)
 }
 
-//Function to test config reader when there is environment variables that shadow config file
+// Function to test config reader when there is environment variables that shadow config file
 func (suite *ConfigTestSuite) TestEnvShadowedConfigReader() {
 	defer suite.cleanupTest()
 	assert := assert.New(suite.T())
@@ -353,7 +353,7 @@ func (suite *ConfigTestSuite) TestEnvShadowedConfigReader() {
 
 }
 
-//Function to test config reader when there is cli flags that shadow config file
+// Function to test config reader when there is cli flags that shadow config file
 func (suite *ConfigTestSuite) TestFlagShadowedConfigReader() {
 	defer suite.cleanupTest()
 	assert := assert.New(suite.T())
