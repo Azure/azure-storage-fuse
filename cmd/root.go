@@ -37,7 +37,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -98,7 +98,7 @@ func getRemoteVersion(req string) (string, error) {
 		return "", err
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Err("getRemoteVersion: error reading body of response [%s]", err.Error())
 		return "", err

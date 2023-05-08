@@ -38,7 +38,6 @@ package e2e_tests
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"os/exec"
@@ -311,7 +310,7 @@ func (suite *dirTestSuite) TestDirList() {
 	suite.Equal(nil, err)
 	srcFile.Close()
 
-	files, err := ioutil.ReadDir(testDir)
+	files, err := os.ReadDir(testDir)
 	suite.Equal(nil, err)
 	suite.Equal(4, len(files))
 
@@ -348,7 +347,7 @@ func (suite *dirTestSuite) TestDirList() {
 // 	})
 // 	suite.Equal(nil, err)
 
-// 	testFiles, err := ioutil.ReadDir(testDir)
+// 	testFiles, err := os.ReadDir(testDir)
 // 	suite.Equal(nil, err)
 // 	suite.Equal(4, len(testFiles))
 
@@ -374,7 +373,7 @@ func (suite *dirTestSuite) TestDirRenameFull() {
 
 	for i := 0; i < 10; i++ {
 		newFile := fileName + strconv.Itoa(i)
-		err := ioutil.WriteFile(newFile, suite.medBuff, 0777)
+		err := os.WriteFile(newFile, suite.medBuff, 0777)
 		suite.Equal(nil, err)
 	}
 

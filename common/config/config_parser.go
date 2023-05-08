@@ -36,7 +36,6 @@ package config
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"strings"
 	"time"
@@ -137,7 +136,7 @@ func WatchConfig() {
 	viper.OnConfigChange(func(e fsnotify.Event) {
 		log.Crit("WatchConfig : Config change detected")
 		if userOptions.secureConfig {
-			cipherText, err := ioutil.ReadFile(userOptions.path)
+			cipherText, err := os.ReadFile(userOptions.path)
 			if err != nil {
 				log.Err("WatchConfig : Failed to read encrypted config file [%s]", err.Error())
 				return

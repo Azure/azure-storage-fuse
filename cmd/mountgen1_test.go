@@ -35,7 +35,6 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -112,9 +111,9 @@ func TestGenOneConfig(t *testing.T) {
 
 func (suite *genOneConfigTestSuite) TestConfigCreation() {
 	defer suite.cleanupTest()
-	confFile, _ := ioutil.TempFile("", "conf*.yaml")
-	outFile, _ := ioutil.TempFile("", "adlsgen1fuse*.json")
-	mntDir, err := ioutil.TempDir("", "mntdir")
+	confFile, _ := os.CreateTemp("", "conf*.yaml")
+	outFile, _ := os.CreateTemp("", "adlsgen1fuse*.json")
+	mntDir, err := os.MkdirTemp("", "mntdir")
 
 	suite.assert.Nil(err)
 
@@ -145,9 +144,9 @@ func (suite *genOneConfigTestSuite) TestConfigCreation() {
 
 func (suite *genOneConfigTestSuite) TestInvalidConfig() {
 	defer suite.cleanupTest()
-	confFile, _ := ioutil.TempFile("", "conf*.yaml")
-	outFile, _ := ioutil.TempFile("", "adlsgen1fuse*.json")
-	mntDir, err := ioutil.TempDir("", "mntdir")
+	confFile, _ := os.CreateTemp("", "conf*.yaml")
+	outFile, _ := os.CreateTemp("", "adlsgen1fuse*.json")
+	mntDir, err := os.MkdirTemp("", "mntdir")
 
 	suite.assert.Nil(err)
 
@@ -164,9 +163,9 @@ func (suite *genOneConfigTestSuite) TestInvalidConfig() {
 
 func (suite *genOneConfigTestSuite) TestInvalidAuthMode() {
 	defer suite.cleanupTest()
-	confFile, _ := ioutil.TempFile("", "conf*.yaml")
-	outFile, _ := ioutil.TempFile("", "adlsgen1fuse*.json")
-	mntDir, err := ioutil.TempDir("", "mntdir")
+	confFile, _ := os.CreateTemp("", "conf*.yaml")
+	outFile, _ := os.CreateTemp("", "adlsgen1fuse*.json")
+	mntDir, err := os.MkdirTemp("", "mntdir")
 
 	suite.assert.Nil(err)
 
@@ -183,9 +182,9 @@ func (suite *genOneConfigTestSuite) TestInvalidAuthMode() {
 
 func (suite *genOneConfigTestSuite) TestGen1FuseMount() {
 	defer suite.cleanupTest()
-	confFile, _ := ioutil.TempFile("", "conf*.yaml")
-	outFile, _ := ioutil.TempFile("", "adlsgen1fuse*.json")
-	mntDir, err := ioutil.TempDir("", "mntdir")
+	confFile, _ := os.CreateTemp("", "conf*.yaml")
+	outFile, _ := os.CreateTemp("", "adlsgen1fuse*.json")
+	mntDir, err := os.MkdirTemp("", "mntdir")
 
 	suite.assert.Nil(err)
 

@@ -36,7 +36,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
@@ -145,7 +144,7 @@ func validateOptions() error {
 
 // encryptConfigFile: Encrypt config file using the passphrase provided by user
 func encryptConfigFile(saveConfig bool) ([]byte, error) {
-	plaintext, err := ioutil.ReadFile(secOpts.ConfigFile)
+	plaintext, err := os.ReadFile(secOpts.ConfigFile)
 	if err != nil {
 		return nil, err
 	}
@@ -172,7 +171,7 @@ func encryptConfigFile(saveConfig bool) ([]byte, error) {
 
 // decryptConfigFile: Decrypt config file using the passphrase provided by user
 func decryptConfigFile(saveConfig bool) ([]byte, error) {
-	cipherText, err := ioutil.ReadFile(secOpts.ConfigFile)
+	cipherText, err := os.ReadFile(secOpts.ConfigFile)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +199,7 @@ func decryptConfigFile(saveConfig bool) ([]byte, error) {
 
 // saveToFile: Save the newly generated config file and delete the source if requested
 func saveToFile(configFileName string, data []byte, deleteSource bool) error {
-	err := ioutil.WriteFile(configFileName, data, 0777)
+	err := os.WriteFile(configFileName, data, 0777)
 	if err != nil {
 		return err
 	}
