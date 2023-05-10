@@ -411,6 +411,11 @@ func (p *lruPolicy) deleteItem(name string) {
 	log.Trace("lruPolicy::deleteItem : Deleting %s", name)
 
 	azPath := strings.TrimPrefix(name, p.tmpPath)
+	if azPath == "" {
+		log.Err("lruPolicy::DeleteItem : Empty file name formed name : %s, tmpPath : %s", name, p.tmpPath)
+		return
+	}
+
 	if azPath[0] == '/' {
 		azPath = azPath[1:]
 	}
