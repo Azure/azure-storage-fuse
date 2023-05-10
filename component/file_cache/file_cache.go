@@ -741,8 +741,9 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 	fileExists := false
 	downloadRequired := false
 	lmt := time.Time{}
+	var stat *syscall.Stat_t = nil
 
-	// The file is not cached
+	// The file is not cached then we need to download
 	if !fc.policy.IsCached(localPath) {
 		log.Debug("FileCache::isDownloadRequired : %s not present in local cache policy", localPath)
 		downloadRequired = true
@@ -753,7 +754,7 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 		// The file exists in local cache
 		// The file needs to be downloaded if the cacheTimeout elapsed (check last change time and last modified time)
 		fileExists = true
-		stat := finfo.Sys().(*syscall.Stat_t)
+		stat = finfo.Sys().(*syscall.Stat_t)
 
 		// Deciding based on last modified time is not correct. Last modified time is based on the file was last written
 		// so if file was last written back to container 2 days back then even downloading it now shall represent the same date
@@ -794,13 +795,15 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 		}
 	}
 
-	if !downloadRequired && attr != nil {
+	if fc.refreshSec != 0 && !downloadRequired && attr != nil && stat != nil {
 		// We decided that based on lmt of file file-cache-timeout has not expired
 		// However, user has configured refresh time then check time has elapsed since last download time of file or not
 		// If so, compare the lmt of file in local cache and once in container and redownload only if lmt of container is latest.
-		if attr.Mtime.After(lmt) {
+		// If time matches but size does not then still we need to redownlaod the file.
+		if attr.Mtime.After(lmt) || stat.Size != attr.Size {
 			// File has not been modified at storage yet so no point in redownloading the file
-			log.Info("FileCache::isDownloadRequired : File is modified in container, so forcing redownload %s [A-%v : L-%v]", blobPath, attr.Mtime, lmt)
+			log.Info("FileCache::isDownloadRequired : File is modified in container, so forcing redownload %s [A-%v : L-%v] [A-%v : L-%v]",
+				blobPath, attr.Mtime, lmt, attr.Size, stat.Size)
 			downloadRequired = true
 
 			// As we have decided to continue using old file, we reset the timer to check again after refresh time interval

@@ -1552,7 +1552,7 @@ func (suite *fileCacheTestSuite) TestReadFileWithRefresh() {
 	suite.assert.Nil(err)
 
 	// Now wait for 5 seconds and we shall get the updated content on next read
-	err = os.WriteFile(suite.fake_storage_path+"/"+path, []byte("test data1"), 0777)
+	err = os.WriteFile(suite.fake_storage_path+"/"+path, []byte("test data123456"), 0777)
 	suite.assert.Nil(err)
 	time.Sleep(12 * time.Second)
 	f, err = suite.fileCache.OpenFile(options)
@@ -1560,7 +1560,7 @@ func (suite *fileCacheTestSuite) TestReadFileWithRefresh() {
 	suite.assert.False(f.Dirty())
 	n, err = suite.fileCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
 	suite.assert.Nil(err)
-	suite.assert.Equal(10, n)
+	suite.assert.Equal(15, n)
 	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
 	suite.assert.Nil(err)
 }
