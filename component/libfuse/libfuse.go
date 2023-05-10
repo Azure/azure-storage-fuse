@@ -71,6 +71,7 @@ type Libfuse struct {
 	ignoreOpenFlags       bool
 	nonEmptyMount         bool
 	lsFlags               common.BitMap16
+	maxFuseThreads        uint32
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -99,12 +100,14 @@ type LibfuseOptions struct {
 	nonEmptyMount           bool   `config:"nonempty" yaml:"nonempty,omitempty"`
 	Uid                     uint32 `config:"uid" yaml:"uid,omitempty"`
 	Gid                     uint32 `config:"gid" yaml:"uid,omitempty"`
+	MaxFuseThreads          uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
 }
 
 const compName = "libfuse"
 const defaultEntryExpiration = 120
 const defaultAttrExpiration = 120
 const defaultNegativeEntryExpiration = 120
+const defaultMaxFuseThreads = 128
 
 var fuseFS *Libfuse
 
@@ -224,6 +227,13 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	if config.IsSet(compName + ".gid") {
 		lf.ownerGID = opt.Gid
 	}
+
+	if config.IsSet(compName + ".max-fuse-threads") {
+		lf.maxFuseThreads = opt.MaxFuseThreads
+	} else {
+		lf.maxFuseThreads = defaultMaxFuseThreads
+	}
+
 	log.Info("Libfuse::Validate : UID %v, GID %v", lf.ownerUID, lf.ownerGID)
 
 	return nil
