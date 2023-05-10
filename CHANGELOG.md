@@ -3,6 +3,7 @@
 - Added new config parameter "max-fuse-threads" under "libfuse" config to control max threads allowed at libfuse layer.
 
 **Bug Fixes**
+- [#1116](https://github.com/Azure/azure-storage-fuse/issues/1116)] Relative path for tmp-cache is resulting into file read-write failure.
 
 ## 2.0.3 (2023-04-26)
 **Bug Fixes**
