@@ -418,7 +418,7 @@ func (suite *fileCacheTestSuite) TestStreamDirCase1() {
 	suite.assert.EqualValues(subdir, dir[3].Path)
 }
 
-//TODO: case3 requires more thought due to the way loopback fs is designed, specifically getAttr and streamDir
+// TODO: case3 requires more thought due to the way loopback fs is designed, specifically getAttr and streamDir
 func (suite *fileCacheTestSuite) TestStreamDirCase2() {
 	defer suite.cleanupTest()
 	// Setup

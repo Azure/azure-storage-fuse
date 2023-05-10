@@ -148,13 +148,13 @@ func asyncCloseFile(suite *streamTestSuite, closeFileOptions internal.CloseFileO
 
 // Assertion helpers  ========================================================================
 
-//assert that the block is cached
+// assert that the block is cached
 func assertBlockCached(suite *streamTestSuite, offset int64, handle *handlemap.Handle) {
 	_, found := handle.CacheObj.Get(offset)
 	suite.assert.Equal(found, true)
 }
 
-//assert the block is not cached and KeyNotFoundError is thrown
+// assert the block is not cached and KeyNotFoundError is thrown
 func assertBlockNotCached(suite *streamTestSuite, offset int64, handle *handlemap.Handle) {
 	_, found := handle.CacheObj.Get(offset)
 	suite.assert.Equal(found, false)

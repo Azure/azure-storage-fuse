@@ -37,7 +37,7 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -98,7 +98,7 @@ func getRemoteVersion(req string) (string, error) {
 		return "", err
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		log.Err("getRemoteVersion: error reading body of response [%s]", err.Error())
 		return "", err
@@ -197,9 +197,9 @@ func ignoreCommand(cmdArgs []string) bool {
 }
 
 // parseArgs : Depending upon inputs are coming from /etc/fstab or CLI, parameter style may vary.
-//   /etc/fstab example : blobfuse2 mount <dir> -o suid,nodev,--config-file=config.yaml,--use-adls=true,allow_other
-//   cli command        : blobfuse2 mount <dir> -o suid,nodev --config-file=config.yaml --use-adls=true -o allow_other
-//   As we need to support both the ways, here we convert the /etc/fstab style (comma separated list) to standard cli ways
+// -- /etc/fstab example : blobfuse2 mount <dir> -o suid,nodev,--config-file=config.yaml,--use-adls=true,allow_other
+// -- cli command        : blobfuse2 mount <dir> -o suid,nodev --config-file=config.yaml --use-adls=true -o allow_other
+// -- As we need to support both the ways, here we convert the /etc/fstab style (comma separated list) to standard cli ways
 func parseArgs(cmdArgs []string) []string {
 	// Ignore binary name, rest all are arguments to blobfuse2
 	cmdArgs = cmdArgs[1:]

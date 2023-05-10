@@ -40,7 +40,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-//   Test compoennts
+// Test compoennts
 type ComponentA struct {
 	BaseComponent
 }

@@ -14,7 +14,7 @@ then
             result=$(grep "+build" $i)
             if [ $? -ne 1 ]
             then
-                sed -i -e '3,32{R LICENSE' -e 'd}' $i
+                sed -i -e '5,32{R LICENSE' -e 'd}' $i
             else
                 sed -i -e '2,31{R LICENSE' -e 'd}' $i
             fi

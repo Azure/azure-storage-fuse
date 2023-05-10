@@ -1,3 +1,4 @@
+//go:build !unittest
 // +build !unittest
 
 /*
@@ -38,7 +39,6 @@ package stress_test
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -68,7 +68,7 @@ func downloadWorker(t *testing.T, id int, jobs <-chan string, results chan<- int
 			f, errFile := os.Open(item)
 			if errFile == nil {
 				f.Close()
-				_, _ = ioutil.ReadFile(item)
+				_, _ = os.ReadFile(item)
 				//t.Log(data)
 				//t.Log(".")
 				break
@@ -98,7 +98,7 @@ func uploadWorker(t *testing.T, id int, jobs <-chan workItem, results chan<- int
 			i := 0
 			var errFile error
 			for ; i < retryCount; i++ {
-				errFile = ioutil.WriteFile(item.baseDir+"/"+item.fileName+".tst", item.fileData, 0666)
+				errFile = os.WriteFile(item.baseDir+"/"+item.fileName+".tst", item.fileData, 0666)
 				if errFile == nil {
 					//t.Log(".")
 					break
