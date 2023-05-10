@@ -40,7 +40,6 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -55,9 +54,9 @@ import (
 var RootMount bool
 var ForegroundMount bool
 
-//IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
+// IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {
-	mntList, err := ioutil.ReadFile("/etc/mtab")
+	mntList, err := os.ReadFile("/etc/mtab")
 	if err != nil {
 		//fmt.Println("failed to read mount points : ", err.Error())
 		return false
@@ -84,7 +83,7 @@ func IsDirectoryMounted(path string) bool {
 	return false
 }
 
-//IsDirectoryEmpty is a utility function that returns true if the directory at that path is empty or not
+// IsDirectoryEmpty is a utility function that returns true if the directory at that path is empty or not
 func IsDirectoryEmpty(path string) bool {
 	f, _ := os.Open(path)
 	defer f.Close()
@@ -101,7 +100,7 @@ func IsDirectoryEmpty(path string) bool {
 	return false
 }
 
-//DirectoryExists is a utility function that returns true if the directory at that path exists and returns false if it does not exist.
+// DirectoryExists is a utility function that returns true if the directory at that path exists and returns false if it does not exist.
 func DirectoryExists(path string) bool {
 	_, err := os.Stat(path)
 
@@ -113,7 +112,7 @@ func DirectoryExists(path string) bool {
 	return true
 }
 
-//GetCurrentUser is a utility function that returns the UID and GID of the user that invokes the blobfuse2 command.
+// GetCurrentUser is a utility function that returns the UID and GID of the user that invokes the blobfuse2 command.
 func GetCurrentUser() (uint32, uint32, error) {
 	var (
 		currentUser      *user.User
@@ -257,6 +256,10 @@ func MonitorBfs() bool {
 
 // convert ~ to $HOME in path
 func ExpandPath(path string) string {
+	if path == "" {
+		return path
+	}
+
 	if strings.HasPrefix(path, "~/") {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
@@ -265,7 +268,9 @@ func ExpandPath(path string) string {
 		path = filepath.Join(homeDir, path[2:])
 	}
 
-	return os.ExpandEnv(path)
+	path = os.ExpandEnv(path)
+	path, _ = filepath.Abs(path)
+	return path
 }
 
 // NotifyMountToParent : Send a signal to parent process about successful mount

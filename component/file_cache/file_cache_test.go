@@ -418,7 +418,7 @@ func (suite *fileCacheTestSuite) TestStreamDirCase1() {
 	suite.assert.EqualValues(subdir, dir[3].Path)
 }
 
-//TODO: case3 requires more thought due to the way loopback fs is designed, specifically getAttr and streamDir
+// TODO: case3 requires more thought due to the way loopback fs is designed, specifically getAttr and streamDir
 func (suite *fileCacheTestSuite) TestStreamDirCase2() {
 	defer suite.cleanupTest()
 	// Setup
@@ -1512,6 +1512,57 @@ func (suite *fileCacheTestSuite) TestStatFS() {
 	suite.assert.Equal(ret, true)
 	suite.assert.Equal(err, nil)
 	suite.assert.NotEqual(stat, &syscall.Statfs_t{})
+}
+
+func (suite *fileCacheTestSuite) TestReadFileWithRefresh() {
+	defer suite.cleanupTest()
+	// Configure to create empty files so we create the file in storage
+	createEmptyFile := true
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  create-empty-file: %t\n  timeout-sec: 1000\n  refresh-sec: 10\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, createEmptyFile, suite.fake_storage_path)
+	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
+
+	path := "file"
+	err := os.WriteFile(suite.fake_storage_path+"/"+path, []byte("test data"), 0777)
+	suite.assert.Nil(err)
+
+	data := make([]byte, 20)
+	options := internal.OpenFileOptions{Name: path, Mode: 0777}
+
+	// Read file once and we shall get the same data
+	f, err := suite.fileCache.OpenFile(options)
+	suite.assert.Nil(err)
+	suite.assert.False(f.Dirty())
+	n, err := suite.fileCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
+	suite.assert.Nil(err)
+	suite.assert.Equal(9, n)
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	suite.assert.Nil(err)
+
+	// Modify the fil ein background but we shall still get the old data
+	err = os.WriteFile(suite.fake_storage_path+"/"+path, []byte("test data1"), 0777)
+	suite.assert.Nil(err)
+	f, err = suite.fileCache.OpenFile(options)
+	suite.assert.Nil(err)
+	suite.assert.False(f.Dirty())
+	n, err = suite.fileCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
+	suite.assert.Nil(err)
+	suite.assert.Equal(9, n)
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	suite.assert.Nil(err)
+
+	// Now wait for 5 seconds and we shall get the updated content on next read
+	err = os.WriteFile(suite.fake_storage_path+"/"+path, []byte("test data123456"), 0777)
+	suite.assert.Nil(err)
+	time.Sleep(12 * time.Second)
+	f, err = suite.fileCache.OpenFile(options)
+	suite.assert.Nil(err)
+	suite.assert.False(f.Dirty())
+	n, err = suite.fileCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: data})
+	suite.assert.Nil(err)
+	suite.assert.Equal(15, n)
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	suite.assert.Nil(err)
 }
 
 // In order for 'go test' to run this suite, we need to create

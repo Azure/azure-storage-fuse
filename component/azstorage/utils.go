@@ -295,7 +295,7 @@ func getLogOptions(sdkLogging bool) pipeline.LogOptions {
 	}
 }
 
-//    ----------- Store error code handling ---------------
+// ----------- Store error code handling ---------------
 const (
 	ErrNoErr uint16 = iota
 	ErrUnknown
@@ -375,7 +375,8 @@ func storeFileErrToErr(err error) uint16 {
 	return ErrNoErr
 }
 
-//    ----------- Metadata handling  ---------------
+//	----------- Metadata handling  ---------------
+//
 // Converts datalake properties to a metadata map
 func newMetadata(properties string) map[string]string {
 	metadata := make(map[string]string)
@@ -502,7 +503,8 @@ func populateContentType(newSet string) error { //nolint
 	return nil
 }
 
-//    ----------- Blob access tier type conversion  ---------------
+//	----------- Blob access tier type conversion  ---------------
+//
 // AccessTierMap : Store config to access tier mapping
 var AccessTiers = map[string]azblob.AccessTierType{
 	"none":    azblob.AccessTierNone,

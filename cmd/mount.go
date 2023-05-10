@@ -38,7 +38,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -201,7 +200,7 @@ func parseConfig() error {
 			return fmt.Errorf("no passphrase provided to decrypt the config file.\n Either use --passphrase cli option or store passphrase in BLOBFUSE2_SECURE_CONFIG_PASSPHRASE environment variable")
 		}
 
-		cipherText, err := ioutil.ReadFile(options.ConfigFile)
+		cipherText, err := os.ReadFile(options.ConfigFile)
 		if err != nil {
 			return fmt.Errorf("failed to read encrypted config file %s [%s]", options.ConfigFile, err.Error())
 		}
@@ -466,7 +465,7 @@ var mountCmd = &cobra.Command{
 					// Get error string from the child, stderr or child was redirected to a file
 					log.Info("mount: Child [%v] terminated from %s", child.Pid, options.MountPath)
 
-					buff, err := ioutil.ReadFile(dmnCtx.LogFileName)
+					buff, err := os.ReadFile(dmnCtx.LogFileName)
 					if err != nil {
 						log.Err("mount: failed to read child [%v] failure logs [%s]", child.Pid, err.Error())
 						return Destroy(fmt.Sprintf("failed to mount, please check logs [%s]", err.Error()))

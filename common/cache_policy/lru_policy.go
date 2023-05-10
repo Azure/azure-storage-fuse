@@ -41,13 +41,13 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
-//KeyPair: the list node containing both block key and cache block values
+// KeyPair: the list node containing both block key and cache block values
 type KeyPair struct {
 	key   int64
 	value *common.Block
 }
 
-//LRUCache definition for Least Recently Used Cache implementation
+// LRUCache definition for Least Recently Used Cache implementation
 type LRUCache struct {
 	sync.RWMutex
 	Capacity int64
@@ -56,7 +56,7 @@ type LRUCache struct {
 	Occupied int64
 }
 
-//NewLRUCache: creates a new LRUCache object with the defined capacity
+// NewLRUCache: creates a new LRUCache object with the defined capacity
 func NewLRUCache(capacity int64) *LRUCache {
 	return &LRUCache{
 		Capacity: capacity,
@@ -65,7 +65,7 @@ func NewLRUCache(capacity int64) *LRUCache {
 	}
 }
 
-//Get: returns the cache value stored for the key, cache hits the handle and moves the list pointer to front of the list
+// Get: returns the cache value stored for the key, cache hits the handle and moves the list pointer to front of the list
 func (cache *LRUCache) Get(bk int64) (*common.Block, bool) {
 	found := false
 	var cb *common.Block
@@ -77,7 +77,7 @@ func (cache *LRUCache) Get(bk int64) (*common.Block, bool) {
 	return cb, found
 }
 
-//Resize: resizes a cached block and adjusts occupied size
+// Resize: resizes a cached block and adjusts occupied size
 func (cache *LRUCache) Resize(bk, newEndIndex int64) bool {
 	var cb *common.Block
 	if node, ok := cache.Elements[bk]; ok {
@@ -90,7 +90,7 @@ func (cache *LRUCache) Resize(bk, newEndIndex int64) bool {
 	return false
 }
 
-//Put: Inserts the key,value pair in LRUCache. Return false if failed.
+// Put: Inserts the key,value pair in LRUCache. Return false if failed.
 func (cache *LRUCache) Put(key int64, value *common.Block) bool {
 	if cache.Occupied >= cache.Capacity {
 		evicted := cache.evict()
@@ -116,7 +116,7 @@ func (cache *LRUCache) Print() {
 	}
 }
 
-//Keys: returns all the keys present in LRUCache
+// Keys: returns all the keys present in LRUCache
 func (cache *LRUCache) Keys() []int64 {
 	var keys []int64
 	for k := range cache.Elements {
@@ -133,7 +133,7 @@ func (cache *LRUCache) LeastRecentlyUsed() *common.Block {
 	return getKeyPair(cache.List.Back()).value
 }
 
-//Remove: removes the entry for the respective key
+// Remove: removes the entry for the respective key
 func (cache *LRUCache) Remove(key int64) {
 	// get the keyPair associated with the blockKey
 	if node, ok := cache.Elements[key]; ok {
@@ -142,14 +142,14 @@ func (cache *LRUCache) Remove(key int64) {
 		defer nodeKeyPair.value.Unlock()
 		// remove from capacity
 		cache.Occupied -= nodeKeyPair.value.EndIndex - nodeKeyPair.value.StartIndex
-		//if handle is not provided then we're on the handle cache we can just remove it from cache
+		// if handle is not provided then we're on the handle cache we can just remove it from cache
 		nodeKeyPair.value.Data = nil
 		delete(cache.Elements, key)
 		cache.List.Remove(node)
 	}
 }
 
-//Purge: clears LRUCache
+// Purge: clears LRUCache
 func (cache *LRUCache) Purge() {
 	for _, bk := range cache.Keys() {
 		cache.Remove(bk)
@@ -160,7 +160,7 @@ func (cache *LRUCache) Purge() {
 }
 
 func getKeyPair(node *list.Element) KeyPair {
-	//uncast the keypair
+	// uncast the keypair
 	return node.Value.(*list.Element).Value.(KeyPair)
 }
 

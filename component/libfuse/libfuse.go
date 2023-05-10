@@ -71,6 +71,7 @@ type Libfuse struct {
 	ignoreOpenFlags       bool
 	nonEmptyMount         bool
 	lsFlags               common.BitMap16
+	maxFuseThreads        uint32
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -99,12 +100,14 @@ type LibfuseOptions struct {
 	nonEmptyMount           bool   `config:"nonempty" yaml:"nonempty,omitempty"`
 	Uid                     uint32 `config:"uid" yaml:"uid,omitempty"`
 	Gid                     uint32 `config:"gid" yaml:"uid,omitempty"`
+	MaxFuseThreads          uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
 }
 
 const compName = "libfuse"
 const defaultEntryExpiration = 120
 const defaultAttrExpiration = 120
 const defaultNegativeEntryExpiration = 120
+const defaultMaxFuseThreads = 128
 
 var fuseFS *Libfuse
 
@@ -119,7 +122,7 @@ var ignoreFiles = map[string]bool{
 	"autorun.inf":      true,
 }
 
-//  Verification to check satisfaction criteria with Component Interface
+// Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &Libfuse{}
 
 func (lf *Libfuse) Name() string {
@@ -135,7 +138,8 @@ func (lf *Libfuse) SetNextComponent(nc internal.Component) {
 }
 
 // Start : Pipeline calls this method to start the component functionality
-//  this shall not block the call otherwise pipeline will not start
+//
+//	this shall not block the call otherwise pipeline will not start
 func (lf *Libfuse) Start(ctx context.Context) error {
 	log.Trace("Libfuse::Start : Starting component %s", lf.Name())
 
@@ -223,13 +227,21 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	if config.IsSet(compName + ".gid") {
 		lf.ownerGID = opt.Gid
 	}
+
+	if config.IsSet(compName + ".max-fuse-threads") {
+		lf.maxFuseThreads = opt.MaxFuseThreads
+	} else {
+		lf.maxFuseThreads = defaultMaxFuseThreads
+	}
+
 	log.Info("Libfuse::Validate : UID %v, GID %v", lf.ownerUID, lf.ownerGID)
 
 	return nil
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-//  Return failure if any config is not valid to exit the process
+//
+//	Return failure if any config is not valid to exit the process
 func (lf *Libfuse) Configure(_ bool) error {
 	log.Trace("Libfuse::Configure : %s", lf.Name())
 

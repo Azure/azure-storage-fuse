@@ -738,7 +738,7 @@ stages:
               # Go tool installer
               - task: GoTool@0
                 inputs:
-                  version: '1.16.2'
+                  version: '1.19.9'
                 displayName: "Install Go Version"
 
               - script: |
@@ -822,7 +822,7 @@ stages:
               # Go tool installer
               - task: GoTool@0
                 inputs:
-                  version: '1.16.2'
+                  version: '1.19.9'
                 displayName: "Install Go Version"
 
               - script: |
@@ -897,7 +897,7 @@ stages:
               # Go tool installer
               - task: GoTool@0
                 inputs:
-                  version: '1.16.2'
+                  version: '1.19.9'
                 displayName: "Install Go Version"
 
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -971,7 +971,7 @@ stages:
               # Go tool installer
               - task: GoTool@0
                 inputs:
-                  version: '1.16.2'
+                  version: '1.19.9'
                 displayName: "Install Go Version"
 
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -1040,7 +1040,7 @@ stages:
               # Go tool installer
               - task: GoTool@0
                 inputs:
-                  version: '1.16.2'
+                  version: '1.19.9'
                 displayName: "Install Go Version"
 
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -1111,7 +1111,7 @@ stages:
               # Go tool installer
               - task: GoTool@0
                 inputs:
-                  version: '1.16.2'
+                  version: '1.19.9'
                 displayName: "Install Go Version"
 
               - template: 'azure-pipeline-templates/distro-tests.yml'
@@ -1859,7 +1859,7 @@ stages:
             - task: ShellScript@2
               inputs:
                 scriptPath: "$(WORK_DIR)/go_installer.sh"
-                args: "$(ROOT_DIR)/ 1.16.2"
+                args: "$(ROOT_DIR)/ 1.19.9"
               displayName: "GoTool Custom Setup"
 
             # Downloading Go dependency packages
