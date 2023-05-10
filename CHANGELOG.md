@@ -4,6 +4,7 @@
 - Added new config parameter 'refresh-sec' in 'file-cache'. When file-cache-timeout is set to a large value, this field can control when to refresh the file if file in container has changed.
 
 **Bug Fixes**
+- [#1116](https://github.com/Azure/azure-storage-fuse/issues/1116)] Relative path for tmp-cache is resulting into file read-write failure.
 
 ## 2.0.3 (2023-04-26)
 **Bug Fixes**

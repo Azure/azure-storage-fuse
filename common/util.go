@@ -256,6 +256,10 @@ func MonitorBfs() bool {
 
 // convert ~ to $HOME in path
 func ExpandPath(path string) string {
+	if path == "" {
+		return path
+	}
+
 	if strings.HasPrefix(path, "~/") {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {
@@ -264,7 +268,9 @@ func ExpandPath(path string) string {
 		path = filepath.Join(homeDir, path[2:])
 	}
 
-	return os.ExpandEnv(path)
+	path = os.ExpandEnv(path)
+	path, _ = filepath.Abs(path)
+	return path
 }
 
 // NotifyMountToParent : Send a signal to parent process about successful mount
