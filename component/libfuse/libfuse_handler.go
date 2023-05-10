@@ -1,3 +1,4 @@
+//go:build !fuse2
 // +build !fuse2
 
 /*
@@ -304,10 +305,10 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	}
 
 	// Max background thread on the fuse layer for high parallelism
-	conn.max_background = 128
+	conn.max_background = C.uint(fuseFS.maxFuseThreads)
 
 	// While reading a file let kernel do readahed for better perf
-	conn.max_readahead = (4 * 1024 * 1024)
+	conn.max_readahead = (8 * 1024 * 1024)
 	//conn.max_write = (4 * 1024 * 1024)
 	//conn.max_read =  (4 * 1024 * 1024)
 

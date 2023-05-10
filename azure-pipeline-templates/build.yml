@@ -41,7 +41,7 @@ steps:
   # GoTool task used only for Microsoft Hosted Agents to install Go-lang
   - task: GoTool@0
     inputs:
-      version: '1.16.2'
+      version: '1.19.9'
     condition: ${{ parameters.hostedAgent }}
     displayName: "GoTool Setup"
 
@@ -49,7 +49,7 @@ steps:
   - task: ShellScript@2
     inputs:
       scriptPath: "${{ parameters.working_directory }}/go_installer.sh"
-      args: "${{ parameters.root_dir }}/ 1.16.2"
+      args: "${{ parameters.root_dir }}/ 1.19.9"
     condition: not(${{parameters.hostedAgent }})
     displayName: "GoTool Custom Setup"
 

@@ -200,7 +200,7 @@ func (p *lruPolicy) Name() string {
 	return "lru"
 }
 
-//  On validate name of the file was pushed on this channel so now update the LRU list
+// On validate name of the file was pushed on this channel so now update the LRU list
 func (p *lruPolicy) asyncCacheValid() {
 	for {
 		select {
@@ -411,6 +411,11 @@ func (p *lruPolicy) deleteItem(name string) {
 	log.Trace("lruPolicy::deleteItem : Deleting %s", name)
 
 	azPath := strings.TrimPrefix(name, p.tmpPath)
+	if azPath == "" {
+		log.Err("lruPolicy::DeleteItem : Empty file name formed name : %s, tmpPath : %s", name, p.tmpPath)
+		return
+	}
+
 	if azPath[0] == '/' {
 		azPath = azPath[1:]
 	}

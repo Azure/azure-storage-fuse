@@ -78,7 +78,7 @@ const compName = "attr_cache"
 const maxFilesPerDir = 1000000 // 1 million max files to be cached per directory
 const maxTotalFiles = 10000000 // 10 million max files overall to be cached
 
-//  Verification to check satisfaction criteria with Component Interface
+// Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AttrCache{}
 
 func (ac *AttrCache) Name() string {
@@ -98,7 +98,8 @@ func (ac *AttrCache) Priority() internal.ComponentPriority {
 }
 
 // Start : Pipeline calls this method to start the component functionality
-//  this shall not block the call otherwise pipeline will not start
+//
+//	this shall not block the call otherwise pipeline will not start
 func (ac *AttrCache) Start(ctx context.Context) error {
 	log.Trace("AttrCache::Start : Starting component %s", ac.Name())
 
@@ -116,7 +117,8 @@ func (ac *AttrCache) Stop() error {
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-//  Return failure if any config is not valid to exit the process
+//
+//	Return failure if any config is not valid to exit the process
 func (ac *AttrCache) Configure(_ bool) error {
 	log.Trace("AttrCache::Configure : %s", ac.Name())
 

@@ -36,7 +36,6 @@ package cmd
 import (
 	"bytes"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -118,8 +117,8 @@ libfuse:
 
 func (suite *secureConfigTestSuite) TestSecureConfigEncrypt() {
 	defer suite.cleanupTest()
-	confFile, _ := ioutil.TempFile("", "conf*.yaml")
-	outFile, _ := ioutil.TempFile("", "conf*.yaml")
+	confFile, _ := os.CreateTemp("", "conf*.yaml")
+	outFile, _ := os.CreateTemp("", "conf*.yaml")
 
 	defer os.Remove(confFile.Name())
 	defer os.Remove(outFile.Name())
@@ -147,7 +146,7 @@ func (suite *secureConfigTestSuite) TestSecureConfigEncryptNoConfig() {
 
 func (suite *secureConfigTestSuite) TestSecureConfigEncryptNoKey() {
 	defer suite.cleanupTest()
-	confFile, _ := ioutil.TempFile("", "conf*.yaml")
+	confFile, _ := os.CreateTemp("", "conf*.yaml")
 
 	defer os.Remove(confFile.Name())
 
@@ -160,8 +159,8 @@ func (suite *secureConfigTestSuite) TestSecureConfigEncryptNoKey() {
 
 func (suite *secureConfigTestSuite) TestSecureConfigEncryptInvalidKey() {
 	defer suite.cleanupTest()
-	confFile, _ := ioutil.TempFile("", "conf*.yaml")
-	outFile, _ := ioutil.TempFile("", "conf*.yaml")
+	confFile, _ := os.CreateTemp("", "conf*.yaml")
+	outFile, _ := os.CreateTemp("", "conf*.yaml")
 
 	defer os.Remove(confFile.Name())
 	defer os.Remove(outFile.Name())
@@ -175,8 +174,8 @@ func (suite *secureConfigTestSuite) TestSecureConfigEncryptInvalidKey() {
 
 func (suite *secureConfigTestSuite) TestSecureConfigDecrypt() {
 	defer suite.cleanupTest()
-	confFile, _ := ioutil.TempFile("", "conf*.yaml")
-	outFile, _ := ioutil.TempFile("", "conf*.yaml")
+	confFile, _ := os.CreateTemp("", "conf*.yaml")
+	outFile, _ := os.CreateTemp("", "conf*.yaml")
 
 	defer os.Remove(confFile.Name())
 	defer os.Remove(outFile.Name())
@@ -208,7 +207,7 @@ func (suite *secureConfigTestSuite) TestSecureConfigDecryptNoConfig() {
 
 func (suite *secureConfigTestSuite) TestSecureConfigDecryptNoKey() {
 	defer suite.cleanupTest()
-	confFile, _ := ioutil.TempFile("", "conf*.yaml")
+	confFile, _ := os.CreateTemp("", "conf*.yaml")
 
 	defer os.Remove(confFile.Name())
 
@@ -221,8 +220,8 @@ func (suite *secureConfigTestSuite) TestSecureConfigDecryptNoKey() {
 
 func (suite *secureConfigTestSuite) TestSecureConfigGet() {
 	defer suite.cleanupTest()
-	confFile, _ := ioutil.TempFile("", "conf*.yaml")
-	outFile, _ := ioutil.TempFile("", "conf*.yaml")
+	confFile, _ := os.CreateTemp("", "conf*.yaml")
+	outFile, _ := os.CreateTemp("", "conf*.yaml")
 
 	defer os.Remove(confFile.Name())
 	defer os.Remove(outFile.Name())
@@ -239,8 +238,8 @@ func (suite *secureConfigTestSuite) TestSecureConfigGet() {
 
 func (suite *secureConfigTestSuite) TestSecureConfigGetInvalidKey() {
 	defer suite.cleanupTest()
-	confFile, _ := ioutil.TempFile("", "conf*.yaml")
-	outFile, _ := ioutil.TempFile("", "conf*.yaml")
+	confFile, _ := os.CreateTemp("", "conf*.yaml")
+	outFile, _ := os.CreateTemp("", "conf*.yaml")
 
 	defer os.Remove(confFile.Name())
 	defer os.Remove(outFile.Name())
@@ -257,8 +256,8 @@ func (suite *secureConfigTestSuite) TestSecureConfigGetInvalidKey() {
 
 func (suite *secureConfigTestSuite) TestSecureConfigSet() {
 	defer suite.cleanupTest()
-	confFile, _ := ioutil.TempFile("", "conf*.yaml")
-	outFile, _ := ioutil.TempFile("", "conf*.yaml")
+	confFile, _ := os.CreateTemp("", "conf*.yaml")
+	outFile, _ := os.CreateTemp("", "conf*.yaml")
 
 	defer os.Remove(confFile.Name())
 	defer os.Remove(outFile.Name())

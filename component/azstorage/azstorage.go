@@ -50,7 +50,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-//AzStorage Wrapper type around azure go-sdk (track-1)
+// AzStorage Wrapper type around azure go-sdk (track-1)
 type AzStorage struct {
 	internal.BaseComponent
 	storage     AzConnection
@@ -61,7 +61,7 @@ type AzStorage struct {
 
 const compName = "azstorage"
 
-//Verification to check satisfaction criteria with Component Interface
+// Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AzStorage{}
 
 var azStatsCollector *stats_manager.StatsCollector
