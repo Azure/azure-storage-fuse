@@ -38,6 +38,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -130,7 +131,7 @@ template:
       app: web
 `
 
-//Function to test config reader when there is both env vars and cli flags that overlap config file.
+// Function to test config reader when there is both env vars and cli flags that overlap config file.
 func (suite *ConfigTestSuite) TestOverlapShadowConfigReader() {
 	defer suite.cleanupTest()
 	assert := assert.New(suite.T())
@@ -172,7 +173,7 @@ func (suite *ConfigTestSuite) TestOverlapShadowConfigReader() {
 
 }
 
-//Function to test only config file reader: testcase 2
+// Function to test only config file reader: testcase 2
 func (suite *ConfigTestSuite) TestPlainConfig2Reader() {
 	defer suite.cleanupTest()
 	assert := assert.New(suite.T())
@@ -261,7 +262,7 @@ func (suite *ConfigTestSuite) TestPlainConfig2Reader() {
 	assert.NotNil(err)
 }
 
-//Function to test only config file reader: testcase 1
+// Function to test only config file reader: testcase 1
 func (suite *ConfigTestSuite) TestPlainConfig1Reader() {
 	defer suite.cleanupTest()
 	assert := assert.New(suite.T())
@@ -315,7 +316,7 @@ func (suite *ConfigTestSuite) TestPlainConfig1Reader() {
 	assert.Empty(randOpts)
 }
 
-//Function to test config reader when there is environment variables that shadow config file
+// Function to test config reader when there is environment variables that shadow config file
 func (suite *ConfigTestSuite) TestEnvShadowedConfigReader() {
 	defer suite.cleanupTest()
 	assert := assert.New(suite.T())
@@ -353,7 +354,7 @@ func (suite *ConfigTestSuite) TestEnvShadowedConfigReader() {
 
 }
 
-//Function to test config reader when there is cli flags that shadow config file
+// Function to test config reader when there is cli flags that shadow config file
 func (suite *ConfigTestSuite) TestFlagShadowedConfigReader() {
 	defer suite.cleanupTest()
 	assert := assert.New(suite.T())
@@ -404,6 +405,82 @@ func (suite *ConfigTestSuite) TestFlagShadowedConfigReader() {
 	assert.Nil(err)
 	assert.Equal(metaOptsTruth, metaOpts)
 
+}
+
+func (suite *ConfigTestSuite) TestAddFlags() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+
+	flag := AddBoolFlag("boolFlag", false, "")
+	assert.NotNil(flag)
+
+	flag = AddBoolPFlag("b", false, "")
+	assert.NotNil(flag)
+
+	flag = AddDurationFlag("durationFlag", 5, "")
+	assert.NotNil(flag)
+
+	flag = AddFloat64Flag("Float64Flag", 5.0, "")
+	assert.NotNil(flag)
+
+	flag = AddIntFlag("intFlag", 5.0, "")
+	assert.NotNil(flag)
+
+	flag = AddInt8Flag("int8Flag", 5.0, "")
+	assert.NotNil(flag)
+
+	flag = AddInt16Flag("int16Flag", 5.0, "")
+	assert.NotNil(flag)
+
+	flag = AddInt32Flag("int32Flag", 5.0, "")
+	assert.NotNil(flag)
+
+	flag = AddInt64Flag("int64Flag", 5.0, "")
+	assert.NotNil(flag)
+
+	flag = AddUintFlag("uintFlag", 5.0, "")
+	assert.NotNil(flag)
+
+	flag = AddUint8Flag("uint8Flag", 5.0, "")
+	assert.NotNil(flag)
+
+	flag = AddUint16Flag("uint16Flag", 5.0, "")
+	assert.NotNil(flag)
+
+	flag = AddUint32Flag("uint32Flag", 5.0, "")
+	assert.NotNil(flag)
+
+	flag = AddUint64Flag("uint64Flag", 5.0, "")
+	assert.NotNil(flag)
+
+	flag = AddStringFlag("stringFlag", "abc", "")
+	assert.NotNil(flag)
+
+	Set("abcd", "1234")
+	SetBool("flag", true)
+	BindPFlag("abcd", flag)
+	BindEnv("abcd", "CF_TEST_ABCD")
+}
+
+func (suite *ConfigTestSuite) TestConfigFileDescryption() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+
+	os.WriteFile("test.yaml", []byte(config2), 0644)
+	plaintext, err := os.ReadFile("test.yaml")
+	assert.Nil(err)
+	assert.NotEqual(plaintext, nil)
+
+	cipherText, err := common.EncryptData(plaintext, []byte("123123123123123123123123"))
+	assert.Nil(err)
+	err = os.WriteFile("test_enc.yaml", cipherText, 0644)
+	assert.Nil(err)
+
+	err = DecryptConfigFile("test_enc.yaml", "123123123123123123123123")
+	assert.Nil(err)
+
+	_ = os.Remove("test.yaml")
+	_ = os.Remove("test_enc.yaml")
 }
 
 func (suite *ConfigTestSuite) cleanupTest() {

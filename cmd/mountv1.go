@@ -38,7 +38,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log/syslog"
 	"os"
 	"strconv"
@@ -255,7 +254,7 @@ var generateConfigCmd = &cobra.Command{
 			bfv2ComponentsConfigOptions}
 
 		data, _ := yaml.Marshal(&pConf)
-		err2 := ioutil.WriteFile(outputFilePath, data, 0700)
+		err2 := os.WriteFile(outputFilePath, data, 0700)
 		if err2 != nil {
 			return fmt.Errorf("failed to write file [%s]", err2.Error())
 		}

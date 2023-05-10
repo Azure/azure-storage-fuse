@@ -119,7 +119,7 @@ const (
 	MB                      = 1024 * 1024
 )
 
-//  Verification to check satisfaction criteria with Component Interface
+// Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &FileCache{}
 
 var fileCacheStatsCollector *stats_manager.StatsCollector
@@ -141,7 +141,8 @@ func (c *FileCache) Priority() internal.ComponentPriority {
 }
 
 // Start : Pipeline calls this method to start the component functionality
-//  this shall not block the call otherwise pipeline will not start
+//
+//	this shall not block the call otherwise pipeline will not start
 func (c *FileCache) Start(ctx context.Context) error {
 	log.Trace("Starting component : %s", c.Name())
 
@@ -198,7 +199,8 @@ func (c *FileCache) TempCacheCleanup() error {
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-//  Return failure if any config is not valid to exit the process
+//
+//	Return failure if any config is not valid to exit the process
 func (c *FileCache) Configure(_ bool) error {
 	log.Trace("FileCache::Configure : %s", c.Name())
 

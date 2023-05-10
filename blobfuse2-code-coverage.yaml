@@ -752,7 +752,7 @@ stages:
             # GoTool task used only for Microsoft Hosted Agents to install Go-lang
             - task: GoTool@0
               inputs:
-                version: '1.16.2'
+                version: '1.19.9'
               displayName: "GoTool Setup"
 
             - script: |

@@ -1,3 +1,4 @@
+//go:build !unittest
 // +build !unittest
 
 /*
@@ -38,7 +39,6 @@ package benchmark_test
 import (
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -64,7 +64,7 @@ func createSingleFile(size float32, path string) (float64, error) {
 
 	start := time.Now()
 
-	err := ioutil.WriteFile(path, buffer, os.FileMode(0755))
+	err := os.WriteFile(path, buffer, os.FileMode(0755))
 	if err != nil {
 		return 0, err
 	}
