@@ -256,6 +256,10 @@ func MonitorBfs() bool {
 
 // convert ~ to $HOME in path
 func ExpandPath(path string) string {
+	if path == "" {
+		return path
+	}
+
 	if strings.HasPrefix(path, "~/") {
 		homeDir, err := os.UserHomeDir()
 		if err != nil {

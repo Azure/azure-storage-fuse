@@ -181,4 +181,8 @@ func (suite *utilTestSuite) TestExpandPath() {
 	expandedPath = ExpandPath(path)
 	suite.assert.NotEqual(expandedPath, path)
 	suite.assert.Contains(expandedPath, homeDir)
+
+	path = ""
+	expandedPath = ExpandPath(path)
+	suite.assert.Equal(expandedPath, path)
 }
