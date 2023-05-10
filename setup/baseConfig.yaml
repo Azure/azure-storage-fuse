@@ -95,6 +95,7 @@ file_cache:
   policy-trace: true|false <generate eviction policy logs showing which files will expire soon>
   offload-io: true|false <by default libfuse will service reads/writes to files for better perf. Set to true to make file-cache component service read/write calls.>
   sync-to-flush: true|false <sync call to a file will force upload of the contents to storage account>
+  refresh-sec: <number of seconds after which compare lmt of file in local cache and container and refresh file if container has the latest copy>
 
 # Attribute cache related configuration
 attr_cache:

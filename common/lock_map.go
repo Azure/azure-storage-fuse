@@ -35,13 +35,15 @@ package common
 
 import (
 	"sync"
+	"time"
 )
 
 // Lock item for each file
 type LockMapItem struct {
-	handleCount uint32
-	exLocked    bool
-	mtx         sync.Mutex
+	handleCount  uint32
+	exLocked     bool
+	mtx          sync.Mutex
+	downloadTime time.Time
 }
 
 // Map holding locks for all the files
@@ -104,4 +106,14 @@ func (l *LockMapItem) Dec() {
 // Get the current handle count
 func (l *LockMapItem) Count() uint32 {
 	return l.handleCount
+}
+
+// Set the download time of the file
+func (l *LockMapItem) SetDownloadTime() {
+	l.downloadTime = time.Now()
+}
+
+// Get the download time of the file
+func (l *LockMapItem) DownloadTime() time.Time {
+	return l.downloadTime
 }
