@@ -131,29 +131,37 @@ func ReadFromConfigBuffer(configData []byte) error {
 	return nil
 }
 
+func DecryptConfigFile(fileName string, passphrase string) error {
+	cipherText, err := os.ReadFile(fileName)
+	if err != nil {
+		return fmt.Errorf("Failed to read encrypted config file [%s]", err.Error())
+	}
+
+	if len(cipherText) == 0 {
+		return fmt.Errorf("Encrypted config file is empty")
+	}
+
+	plainText, err := common.DecryptData(cipherText, []byte(passphrase))
+	if err != nil {
+		return fmt.Errorf("Failed to decrypt config file [%s]", err.Error())
+	}
+
+	err = loadConfigFromBufferToViper(plainText)
+	if err != nil {
+		return fmt.Errorf("Failed to load decrypted config file [%s]", err.Error())
+	}
+
+	return nil
+}
+
 func WatchConfig() {
 	viper.WatchConfig()
-	viper.OnConfigChange(func(e fsnotify.Event) {
+	viper.OnConfigChange(func(_ fsnotify.Event) {
 		log.Crit("WatchConfig : Config change detected")
 		if userOptions.secureConfig {
-			cipherText, err := os.ReadFile(userOptions.path)
+			err := DecryptConfigFile(userOptions.path, userOptions.passphrase)
 			if err != nil {
-				log.Err("WatchConfig : Failed to read encrypted config file [%s]", err.Error())
-				return
-			}
-
-			if len(cipherText) == 0 {
-				return
-			}
-
-			plainText, err := common.DecryptData(cipherText, []byte(userOptions.passphrase))
-			if err != nil {
-				log.Err("WatchConfig : Failed to decrypt config file [%s]", err.Error())
-				return
-			}
-			err = loadConfigFromBufferToViper(plainText)
-			if err != nil {
-				log.Err("WatchConfig : Failed to load decrypted config file [%s]", err.Error())
+				log.Err("WatchConfig : %s", err.Error())
 				return
 			}
 		}
