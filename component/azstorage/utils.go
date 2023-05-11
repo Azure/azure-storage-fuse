@@ -153,31 +153,20 @@ func getAzFilePipelineOptions(conf AzStorageConfig) (azfile.PipelineOptions, ste
 		Value: UserAgent() + " (" + common.GetCurrentDistro() + ")",
 	}
 
+	sysLogDisabled := log.GetType() == "silent" // If logging is enabled, allow the SDK to log retries to syslog.
 	requestLogOptions := azfile.RequestLogOptions{
 		// TODO: We can potentially consider making LogWarningIfTryOverThreshold a user settable option. For now lets use the default
+		SyslogDisabled: sysLogDisabled,
 	}
 	logOptions := getLogOptions(conf.sdkTrace)
-	if conf.proxyAddress == "" {
-		// If we did not set a proxy address in our config then use default settings
-		return azfile.PipelineOptions{
-				Log:        logOptions,
-				RequestLog: requestLogOptions,
-				Telemetry:  telemetryOptions,
-			},
-			// Set RetryOptions to control how HTTP request are retried when retryable failures occur
-			retryOptions
-	} else {
-		// TODO: File Share SDK to support proxy by allowing an HTTPSender to be set
-		// Else create custom HTTPClient to pass to the factory in order to set our proxy
-		// While creating new pipeline we need to provide the retry policy
-		return azfile.PipelineOptions{
-				Log:        logOptions,
-				RequestLog: requestLogOptions,
-				Telemetry:  telemetryOptions,
-			},
-			// Set RetryOptions to control how HTTP request are retried when retryable failures occur
-			retryOptions
-	}
+	// Create custom HTTPClient to pass to the factory in order to set our proxy
+	return azfile.PipelineOptions{
+			Log:        logOptions,
+			RequestLog: requestLogOptions,
+			Telemetry:  telemetryOptions,
+		},
+		// Set RetryOptions to control how HTTP request are retried when retryable failures occur
+		retryOptions
 }
 
 // Create an HTTP Client with configured proxy
