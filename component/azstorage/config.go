@@ -127,6 +127,7 @@ const (
 	EnvAzStorageSpnTenantId        = "AZURE_STORAGE_SPN_TENANT_ID"
 	EnvAzStorageSpnClientId        = "AZURE_STORAGE_SPN_CLIENT_ID"
 	EnvAzStorageSpnClientSecret    = "AZURE_STORAGE_SPN_CLIENT_SECRET"
+	EnvAzStorageSpnFedTokenPath    = "AZURE_FEDERATED_TOKEN_FILE"
 	EnvAzStorageAadEndpoint        = "AZURE_STORAGE_AAD_ENDPOINT"
 	EnvAzStorageAuthType           = "AZURE_STORAGE_AUTH_TYPE"
 	EnvAzStorageBlobEndpoint       = "AZURE_STORAGE_BLOB_ENDPOINT"
@@ -147,6 +148,7 @@ type AzStorageOptions struct {
 	TenantID                string `config:"tenantid" yaml:"tenantid,omitempty"`
 	ClientID                string `config:"clientid" yaml:"clientid,omitempty"`
 	ClientSecret            string `config:"clientsecret" yaml:"clientsecret,omitempty"`
+	FedTokenPath            string `config:"fed-token-path" yaml:"fed-token-path,omitempty"`
 	ActiveDirectoryEndpoint string `config:"aadendpoint" yaml:"aadendpoint,omitempty"`
 	Endpoint                string `config:"endpoint" yaml:"endpoint,omitempty"`
 	AuthMode                string `config:"mode" yaml:"mode,omitempty"`
@@ -192,6 +194,8 @@ func RegisterEnvVariables() {
 	config.BindEnv("azstorage.tenantid", EnvAzStorageSpnTenantId)
 	config.BindEnv("azstorage.clientid", EnvAzStorageSpnClientId)
 	config.BindEnv("azstorage.clientsecret", EnvAzStorageSpnClientSecret)
+	config.BindEnv("azstorage.fed-token-path", EnvAzStorageSpnFedTokenPath)
+
 	config.BindEnv("azstorage.objid", EnvAzStorageIdentityObjectId)
 
 	config.BindEnv("azstorage.aadendpoint", EnvAzStorageAadEndpoint)
@@ -420,13 +424,14 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.ObjectID = opt.ObjectID
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
-		if opt.ClientID == "" || opt.ClientSecret == "" || opt.TenantID == "" {
+		if opt.ClientID == "" || (opt.ClientSecret == "" && opt.FedTokenPath == "") || opt.TenantID == "" {
 			//lint:ignore ST1005 ignore
 			return errors.New("Client ID, Tenant ID or Client Secret not provided")
 		}
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.ClientSecret = opt.ClientSecret
 		az.stConfig.authConfig.TenantID = opt.TenantID
+		az.stConfig.authConfig.FedTokenPath = opt.FedTokenPath
 
 	default:
 		log.Err("ParseAndValidateConfig : Invalid auth mode %s", opt.AuthMode)
