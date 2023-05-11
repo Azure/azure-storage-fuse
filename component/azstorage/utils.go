@@ -141,9 +141,9 @@ func getAzBfsPipelineOptions(conf AzStorageConfig) (azbfs.PipelineOptions, ste.X
 }
 
 // getAzFilePipelineOptions : Create pipeline options based on the config
-func getAzFilePipelineOptions(conf AzStorageConfig) (azfile.PipelineOptions, ste.XferRetryOptions) {
-	retryOptions := ste.XferRetryOptions{
-		Policy:        ste.RetryPolicyExponential,                      // Use exponential backoff as opposed to linear
+func getAzFilePipelineOptions(conf AzStorageConfig) (azfile.PipelineOptions, azfile.RetryOptions) {
+	retryOptions := azfile.RetryOptions{
+		Policy:        azfile.RetryPolicyExponential,                   // Use exponential backoff as opposed to linear
 		MaxTries:      conf.maxRetries,                                 // Try at most 3 times to perform the operation (set to 1 to disable retries)
 		TryTimeout:    time.Second * time.Duration(conf.maxTimeout),    // Maximum time allowed for any single try
 		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)

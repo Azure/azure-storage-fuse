@@ -138,22 +138,13 @@ func (fs *FileShare) getCredential() azfile.Credential {
 }
 
 // NewPipeline creates a Pipeline using the specified credentials and options.
-func NewFilePipeline(c azfile.Credential, o azfile.PipelineOptions, ro ste.XferRetryOptions) pipeline.Pipeline {
-	// Closest to API goes first; closest to the wire goes last
-	f := []pipeline.Factory{
-		azfile.NewTelemetryPolicyFactory(o.Telemetry),
-		azfile.NewUniqueRequestIDPolicyFactory(),
-		ste.NewBlobXferRetryPolicyFactory(ro),
-	}
-	f = append(f, c)
-	f = append(f,
-		pipeline.MethodFactoryMarker(), // indicates at what stage in the pipeline the method factory is invoked
-		ste.NewRequestLogPolicyFactory(ste.RequestLogOptions{
-			LogWarningIfTryOverThreshold: o.RequestLog.LogWarningIfTryOverThreshold,
-			SyslogDisabled:               o.RequestLog.SyslogDisabled,
-		}))
-	// TODO: File Share SDK to support proxy by allowing an HTTPSender to be set
-	return pipeline.NewPipeline(f, pipeline.Options{HTTPSender: nil, Log: o.Log})
+func NewFilePipeline(c azfile.Credential, o azfile.PipelineOptions, ro azfile.RetryOptions) pipeline.Pipeline {
+	return ste.NewFilePipeline(
+		c, o, ro,
+		nil,
+		ste.NewAzcopyHTTPClient(100),
+		nil,
+	)
 }
 
 // SetupPipeline : Based on the config setup the ***URLs
