@@ -468,7 +468,7 @@ stages:
         - ${{ if eq(parameters.proxy_test, true) }}:
             # -----------------------------------------------------------
             # Ubuntu-20.04 Proxy tests
-          - job: Set_3
+          - job: Set_4
             timeoutInMinutes: 300
             strategy:
               matrix:
@@ -695,7 +695,7 @@ stages:
         
         - ${{ if eq(parameters.exhaustive_test, true) }}:
           # RHEL Tests
-          - job: Set_4
+          - job: Set_5
             timeoutInMinutes: 60
             strategy:
               matrix:
@@ -780,7 +780,7 @@ stages:
                   verbose_log: ${{ parameters.verbose_log }}
 
           # Centos Tests
-          - job: Set_5
+          - job: Set_6
             timeoutInMinutes: 60
             strategy:
               matrix:
@@ -860,7 +860,7 @@ stages:
                   verbose_log: ${{ parameters.verbose_log }}
 
           # Oracle Tests
-          - job: Set_6
+          - job: Set_7
             timeoutInMinutes: 60
             strategy:
               matrix:
