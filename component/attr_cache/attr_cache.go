@@ -54,11 +54,12 @@ const defaultAttrCacheTimeout uint32 = (120)
 // Common structure for AttrCache Component
 type AttrCache struct {
 	internal.BaseComponent
-	cacheTimeout uint32
-	cacheOnList  bool
-	noSymlinks   bool
-	cacheMap     map[string]*attrCacheItem
-	cacheLock    sync.RWMutex
+	cacheTimeout  uint32
+	cacheOnList   bool
+	noSymlinks    bool
+	maxTotalFiles uint32
+	cacheMap      map[string]*attrCacheItem
+	cacheLock     sync.RWMutex
 }
 
 // Structure defining your config parameters
@@ -66,17 +67,19 @@ type AttrCacheOptions struct {
 	Timeout       uint32 `config:"timeout-sec" yaml:"timeout-sec,omitempty"`
 	NoCacheOnList bool   `config:"no-cache-on-list" yaml:"no-cache-on-list,omitempty"`
 	NoSymlinks    bool   `config:"no-symlinks" yaml:"no-symlinks,omitempty"`
-
+	
+	//maximum file attributes overall to be cached
+	MaxTotalFiles uint32 `config:"max-total-files" yaml:"max-total-files,omitempty"`
+	
 	// support v1
 	CacheOnList bool `config:"cache-on-list"`
 }
 
 const compName = "attr_cache"
 
-// for now caching only first 1 mil files in a directory
+// caching only first 5 mil files by default
 // caching more means increased memory usage of the process
-const maxFilesPerDir = 1000000 // 1 million max files to be cached per directory
-const maxTotalFiles = 10000000 // 10 million max files overall to be cached
+const defaultMaxTotalFiles = 5000000 // 5 million max files overall to be cached
 
 //  Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AttrCache{}
@@ -138,6 +141,12 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.cacheOnList = conf.CacheOnList
 	} else {
 		ac.cacheOnList = !conf.NoCacheOnList
+	}
+
+	if config.IsSet(compName + ".max-total-files") {
+		ac.maxTotalFiles = conf.MaxTotalFiles
+	} else {
+		ac.maxTotalFiles = defaultMaxTotalFiles
 	}
 
 	ac.noSymlinks = conf.NoSymlinks
@@ -262,9 +271,7 @@ func (ac *AttrCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	log.Trace("AttrCache::ReadDir : %s", options.Name)
 
 	pathList, token, err := ac.NextComponent().StreamDir(options)
-	if err == nil && options.Offset < maxFilesPerDir {
-		ac.cacheAttributes(pathList)
-	}
+	ac.cacheAttributes(pathList)
 
 	return pathList, token, err
 }
@@ -278,7 +285,8 @@ func (ac *AttrCache) cacheAttributes(pathList []*internal.ObjAttr) {
 		currTime := time.Now()
 
 		for _, attr := range pathList {
-			if len(ac.cacheMap) > maxTotalFiles {
+			if len(ac.cacheMap) > int(ac.maxTotalFiles) {
+				log.Debug("AttrCache::cacheAttributes : %s skipping adding path to attribute cache because it is full", pathList)
 				break
 			}
 
@@ -485,8 +493,10 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 
 	if err == nil {
 		// Retrieved attributes so cache them
-		if len(ac.cacheMap) < maxTotalFiles {
+		if len(ac.cacheMap) < int(ac.maxTotalFiles) {
 			ac.cacheMap[truncatedPath] = newAttrCacheItem(pathAttr, true, time.Now())
+		} else {
+			log.Debug("AttrCache::GetAttr : %s skipping adding to attribute cache because it is full", options.Name)
 		}
 	} else if err == syscall.ENOENT {
 		// Path does not exist so cache a no-entry item
@@ -569,12 +579,17 @@ func NewAttrCacheComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewAttrCacheComponent)
+	
 	attrCacheTimeout := config.AddUint32Flag("attr-cache-timeout", defaultAttrCacheTimeout, "attribute cache timeout")
 	config.BindPFlag(compName+".timeout-sec", attrCacheTimeout)
+	
 	noSymlinks := config.AddBoolFlag("no-symlinks", false, "whether or not symlinks should be supported")
 	config.BindPFlag(compName+".no-symlinks", noSymlinks)
 
 	cacheOnList := config.AddBoolFlag("cache-on-list", true, "Cache attributes on listing.")
 	config.BindPFlag(compName+".cache-on-list", cacheOnList)
 	cacheOnList.Hidden = true
+	
+	maxTotalFiles := config.AddUint32Flag("max-total-files", defaultMaxTotalFiles, "Max total file attributes in cache.")
+	config.BindPFlag(compName+".max-total-files", maxTotalFiles)
 }

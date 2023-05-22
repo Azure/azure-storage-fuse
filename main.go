@@ -35,6 +35,7 @@ package main
 
 import (
 	"github.com/Azure/azure-storage-fuse/v2/cmd"
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	_ "github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
@@ -43,4 +44,10 @@ import (
 
 func main() {
 	_ = cmd.Execute()
+    defer func() {
+        if panicErr := recover(); panicErr != nil {
+            log.Err("PANIC: %v", panicErr)
+            panic(panicErr)
+        }
+    }()
 }

@@ -79,6 +79,7 @@ var _ AzConnection = &BlockBlob{}
 
 const (
 	MaxBlocksSize = azblob.BlockBlobMaxStageBlockBytes * azblob.BlockBlobMaxBlocks
+	DefaultMaxDirListCount = 2
 )
 
 func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
@@ -474,9 +475,14 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 
 	var marker *string = nil
 	blobsRead := 0
+	
+	maxResultsForList := bb.Config.maxResultsForList
+	if maxResultsForList == 0 {
+		maxResultsForList = DefaultMaxDirListCount
+	}
 
 	for failCount < maxFailCount {
-		blobs, new_marker, err := bb.List(name, marker, common.MaxDirListCount)
+		blobs, new_marker, err := bb.List(name, marker, maxResultsForList)
 		if err != nil {
 			e := storeBlobErrToErr(err)
 			if e == ErrFileNotFound {

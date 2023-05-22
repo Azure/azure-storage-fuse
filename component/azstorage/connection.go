@@ -74,6 +74,7 @@ type AzStorageConfig struct {
 	updateMD5          bool
 	validateMD5        bool
 	virtualDirectory   bool
+	maxResultsForList  int32
 	disableCompression bool
 }
 
