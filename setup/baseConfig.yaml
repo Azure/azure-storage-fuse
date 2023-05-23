@@ -100,7 +100,7 @@ attr_cache:
   timeout-sec: <time attributes can be cached (in sec). Default - 120 sec>
   no-cache-on-list: true|false <do not cache attributes during listing, to optimize performance>
   no-symlinks: true|false <to improve performance disable symlink support. symlinks will be treated like regular files.>
-  max-total-files: <maximum number of files in the attribute cache at a time. Default - 5000000>
+  max-files: <maximum number of files in the attribute cache at a time. Default - 5000000>
   
 # Loopback configuration
 loopbackfs:

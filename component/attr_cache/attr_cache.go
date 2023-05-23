@@ -57,7 +57,7 @@ type AttrCache struct {
 	cacheTimeout  uint32
 	cacheOnList   bool
 	noSymlinks    bool
-	maxTotalFiles uint32
+	maxFiles      int
 	cacheMap      map[string]*attrCacheItem
 	cacheLock     sync.RWMutex
 }
@@ -69,7 +69,7 @@ type AttrCacheOptions struct {
 	NoSymlinks    bool   `config:"no-symlinks" yaml:"no-symlinks,omitempty"`
 	
 	//maximum file attributes overall to be cached
-	MaxTotalFiles uint32 `config:"max-total-files" yaml:"max-total-files,omitempty"`
+	MaxFiles int `config:"max-files" yaml:"max-files,omitempty"`
 	
 	// support v1
 	CacheOnList bool `config:"cache-on-list"`
@@ -79,7 +79,7 @@ const compName = "attr_cache"
 
 // caching only first 5 mil files by default
 // caching more means increased memory usage of the process
-const defaultMaxTotalFiles = 5000000 // 5 million max files overall to be cached
+const defaultMaxFiles = 5000000 // 5 million max files overall to be cached
 
 //  Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AttrCache{}
@@ -143,10 +143,10 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.cacheOnList = !conf.NoCacheOnList
 	}
 
-	if config.IsSet(compName + ".max-total-files") {
-		ac.maxTotalFiles = conf.MaxTotalFiles
+	if config.IsSet(compName + ".max-files") {
+		ac.maxFiles = conf.MaxFiles
 	} else {
-		ac.maxTotalFiles = defaultMaxTotalFiles
+		ac.maxFiles = defaultMaxFiles
 	}
 
 	ac.noSymlinks = conf.NoSymlinks
@@ -271,7 +271,9 @@ func (ac *AttrCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	log.Trace("AttrCache::ReadDir : %s", options.Name)
 
 	pathList, token, err := ac.NextComponent().StreamDir(options)
-	ac.cacheAttributes(pathList)
+	if err == nil && int(options.Offset) < ac.maxFiles {
+		ac.cacheAttributes(pathList)
+	}
 
 	return pathList, token, err
 }
@@ -285,7 +287,7 @@ func (ac *AttrCache) cacheAttributes(pathList []*internal.ObjAttr) {
 		currTime := time.Now()
 
 		for _, attr := range pathList {
-			if len(ac.cacheMap) > int(ac.maxTotalFiles) {
+			if len(ac.cacheMap) > ac.maxFiles {
 				log.Debug("AttrCache::cacheAttributes : %s skipping adding path to attribute cache because it is full", pathList)
 				break
 			}
@@ -493,7 +495,7 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 
 	if err == nil {
 		// Retrieved attributes so cache them
-		if len(ac.cacheMap) < int(ac.maxTotalFiles) {
+		if len(ac.cacheMap) < ac.maxFiles {
 			ac.cacheMap[truncatedPath] = newAttrCacheItem(pathAttr, true, time.Now())
 		} else {
 			log.Debug("AttrCache::GetAttr : %s skipping adding to attribute cache because it is full", options.Name)
@@ -589,7 +591,4 @@ func init() {
 	cacheOnList := config.AddBoolFlag("cache-on-list", true, "Cache attributes on listing.")
 	config.BindPFlag(compName+".cache-on-list", cacheOnList)
 	cacheOnList.Hidden = true
-	
-	maxTotalFiles := config.AddUint32Flag("max-total-files", defaultMaxTotalFiles, "Max total file attributes in cache.")
-	config.BindPFlag(compName+".max-total-files", maxTotalFiles)
 }
