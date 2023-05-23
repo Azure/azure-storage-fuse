@@ -271,7 +271,7 @@ func (ac *AttrCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	log.Trace("AttrCache::ReadDir : %s", options.Name)
 
 	pathList, token, err := ac.NextComponent().StreamDir(options)
-	if err == nil && int(options.Offset) < ac.maxFiles {
+	if err == nil {
 		ac.cacheAttributes(pathList)
 	}
 

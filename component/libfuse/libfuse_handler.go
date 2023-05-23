@@ -364,7 +364,7 @@ func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
 func libfuse_getattr(path *C.char, stbuf *C.stat_t, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse_getattr : %s", name)
+	// log.Trace("Libfuse::libfuse_getattr : %s", name)
 
 	// Return the default configuration for the root
 	if name == "" {

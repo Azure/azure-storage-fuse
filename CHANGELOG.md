@@ -12,6 +12,9 @@
 **Features**
 - Added new CLI parameter "--sync-to-flush". Once configured sync() call on file will force upload a file to storage container. As this is file handle based api, if file was not in file-cache it will first download and then upload the file. 
 - Added new CLI parameter "--disable-compression". Disables content compression at transport layer. Required when content-encoding is set to 'gzip' in blob.
+- Added new config "max-results-for-list" that allow users to change maximum results returned as part of list calls during getAttr.
+- Added new config "max-files" that allows users to change maximum files attributes that can be cached in attribute cache.
+- Ensures all panic errors are logged before blobfuse crashes. 
 
 
 ## 2.0.2 (2022-02-23)
