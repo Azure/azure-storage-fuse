@@ -504,11 +504,11 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 	} else {
 		az.stConfig.virtualDirectory = true
 	}
-	
+
 	if config.IsSet(compName + ".max-results-for-list") {
 		az.stConfig.maxResultsForList = opt.MaxResultsForList
 	}
-	
+
 	if config.IsSet(compName + ".disable-compression") {
 		az.stConfig.disableCompression = opt.DisableCompression
 	} else {

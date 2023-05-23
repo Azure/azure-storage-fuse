@@ -54,12 +54,12 @@ const defaultAttrCacheTimeout uint32 = (120)
 // Common structure for AttrCache Component
 type AttrCache struct {
 	internal.BaseComponent
-	cacheTimeout  uint32
-	cacheOnList   bool
-	noSymlinks    bool
-	maxFiles      int
-	cacheMap      map[string]*attrCacheItem
-	cacheLock     sync.RWMutex
+	cacheTimeout uint32
+	cacheOnList  bool
+	noSymlinks   bool
+	maxFiles     int
+	cacheMap     map[string]*attrCacheItem
+	cacheLock    sync.RWMutex
 }
 
 // Structure defining your config parameters
@@ -67,10 +67,10 @@ type AttrCacheOptions struct {
 	Timeout       uint32 `config:"timeout-sec" yaml:"timeout-sec,omitempty"`
 	NoCacheOnList bool   `config:"no-cache-on-list" yaml:"no-cache-on-list,omitempty"`
 	NoSymlinks    bool   `config:"no-symlinks" yaml:"no-symlinks,omitempty"`
-	
+
 	//maximum file attributes overall to be cached
 	MaxFiles int `config:"max-files" yaml:"max-files,omitempty"`
-	
+
 	// support v1
 	CacheOnList bool `config:"cache-on-list"`
 }
@@ -581,10 +581,10 @@ func NewAttrCacheComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewAttrCacheComponent)
-	
+
 	attrCacheTimeout := config.AddUint32Flag("attr-cache-timeout", defaultAttrCacheTimeout, "attribute cache timeout")
 	config.BindPFlag(compName+".timeout-sec", attrCacheTimeout)
-	
+
 	noSymlinks := config.AddBoolFlag("no-symlinks", false, "whether or not symlinks should be supported")
 	config.BindPFlag(compName+".no-symlinks", noSymlinks)
 
