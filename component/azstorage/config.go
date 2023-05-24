@@ -112,6 +112,9 @@ func (a *AccountType) Parse(s string) error {
 	return err
 }
 
+// default value for maximum results returned by a list API call
+const DefaultMaxResultsForList int32 = 2
+
 // Environment variable names
 // Here we are not reading MSI_ENDPOINT and MSI_SECRET as they are read by go-sdk directly
 // https://github.com/Azure/go-autorest/blob/a46566dfcbdc41e736295f94e9f690ceaf50094a/autorest/adal/token.go#L788
@@ -505,8 +508,10 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		az.stConfig.virtualDirectory = true
 	}
 
-	if config.IsSet(compName + ".max-results-for-list") {
+	if config.IsSet(compName+".max-results-for-list") && opt.MaxResultsForList > 0 {
 		az.stConfig.maxResultsForList = opt.MaxResultsForList
+	} else {
+		az.stConfig.maxResultsForList = DefaultMaxResultsForList
 	}
 
 	if config.IsSet(compName + ".disable-compression") {

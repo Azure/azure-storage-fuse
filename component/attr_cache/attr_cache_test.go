@@ -223,6 +223,17 @@ func (suite *attrCacheTestSuite) TestConfig() {
 	suite.assert.Equal(suite.attrCache.noSymlinks, true)
 }
 
+// Tests max files config
+func (suite *attrCacheTestSuite) TestConfigMaxFiles() {
+	defer suite.cleanupTest()
+	suite.cleanupTest() // clean up the default attr cache generated
+	cacheTimeout := 1
+	maxFiles := 10
+	config := fmt.Sprintf("attr_cache:\n  timeout-sec: %d\n  max-files: %d", cacheTimeout, maxFiles)
+	suite.setupTestHelper(config) // setup a new attr cache with a custom config (clean up will occur after the test as usual)
+	suite.assert.EqualValues(suite.attrCache.maxFiles, maxFiles)
+}
+
 func (suite *attrCacheTestSuite) TestConfigZero() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default attr cache generated

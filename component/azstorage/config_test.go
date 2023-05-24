@@ -194,6 +194,27 @@ func (s *configTestSuite) TestProxyConfig() {
 	assert.Equal(az.stConfig.proxyAddress, opt.HttpsProxyAddress)
 }
 
+
+func (s *configTestSuite) TestMaxResultsForList() {
+	defer config.ResetConfig()
+	assert := assert.New(s.T())
+	az := &AzStorage{}
+	opt := AzStorageOptions{}
+	opt.AccountName = "abcd"
+	opt.Container = "abcd"
+	
+	err := ParseAndValidateConfig(az, opt)
+	assert.Nil(err)
+	assert.Equal(az.stConfig.maxResultsForList, DefaultMaxResultsForList)
+	
+	
+	config.Set(compName+".max-results-for-list", "10")
+	opt.MaxResultsForList = 10
+	err = ParseAndValidateConfig(az, opt)
+	assert.Nil(err)
+	assert.Equal(az.stConfig.maxResultsForList, opt.MaxResultsForList)
+}
+
 func (s *configTestSuite) TestAuthModeNotSet() {
 	defer config.ResetConfig()
 	assert := assert.New(s.T())

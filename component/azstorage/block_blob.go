@@ -78,8 +78,7 @@ type BlockBlob struct {
 var _ AzConnection = &BlockBlob{}
 
 const (
-	MaxBlocksSize          = azblob.BlockBlobMaxStageBlockBytes * azblob.BlockBlobMaxBlocks
-	DefaultMaxDirListCount = 2
+	MaxBlocksSize = azblob.BlockBlobMaxStageBlockBytes * azblob.BlockBlobMaxBlocks
 )
 
 func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
@@ -477,9 +476,6 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 	blobsRead := 0
 
 	maxResultsForList := bb.Config.maxResultsForList
-	if maxResultsForList == 0 {
-		maxResultsForList = DefaultMaxDirListCount
-	}
 
 	for failCount < maxFailCount {
 		blobs, new_marker, err := bb.List(name, marker, maxResultsForList)
