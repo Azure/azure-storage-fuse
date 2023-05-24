@@ -475,10 +475,8 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 	var marker *string = nil
 	blobsRead := 0
 
-	maxResultsForList := bb.Config.maxResultsForList
-
 	for failCount < maxFailCount {
-		blobs, new_marker, err := bb.List(name, marker, maxResultsForList)
+		blobs, new_marker, err := bb.List(name, marker, bb.Config.maxResultsForList)
 		if err != nil {
 			e := storeBlobErrToErr(err)
 			if e == ErrFileNotFound {
