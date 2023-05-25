@@ -5,6 +5,7 @@
 
 **Bug Fixes**
 - [#1116](https://github.com/Azure/azure-storage-fuse/issues/1116)] Relative path for tmp-cache is resulting into file read-write failure.
+- [#1151](https://github.com/Azure/azure-storage-fuse/issues/1151)] Reason for unmount failure is not dispalyed in the console output.
 
 ## 2.0.3 (2023-04-26)
 **Bug Fixes**
