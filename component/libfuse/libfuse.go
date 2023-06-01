@@ -102,7 +102,7 @@ type LibfuseOptions struct {
 	Uid                     uint32 `config:"uid" yaml:"uid,omitempty"`
 	Gid                     uint32 `config:"gid" yaml:"uid,omitempty"`
 	MaxFuseThreads          uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
-	DirectIO                bool   `config:"direct_io" yaml:"direct_io,omitempty"`
+	DirectIO                bool   `config:"direct-io" yaml:"direct-io,omitempty"`
 }
 
 const compName = "libfuse"
