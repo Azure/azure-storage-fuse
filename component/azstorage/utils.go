@@ -587,3 +587,10 @@ func autoDetectAuthMode(opt AzStorageOptions) string {
 
 	return "msi"
 }
+
+func removeLeadingSlashes(s string) string {
+	for strings.HasPrefix(s, "/") {
+		s = strings.TrimLeft(s, "/")
+	}
+	return s
+}
