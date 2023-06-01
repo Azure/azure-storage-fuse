@@ -106,7 +106,7 @@ func (suite *libfuseTestSuite) TestConfigZero() {
 func (suite *libfuseTestSuite) TestConfigDefaultPermission() {
 	defer suite.cleanupTest()
 	suite.cleanupTest() // clean up the default libfuse generated
-	config := "read-only: true\nlibfuse:\n  default-permission: 0555\n  attribute-expiration-sec: 0\n  entry-expiration-sec: 0\n  negative-entry-expiration-sec: 0\n  fuse-trace: true\n   direct-io: true\n"
+	config := "read-only: true\nlibfuse:\n  default-permission: 0555\n  attribute-expiration-sec: 0\n  entry-expiration-sec: 0\n  negative-entry-expiration-sec: 0\n  fuse-trace: true\n  direct-io: true\n"
 	suite.setupTestHelper(config) // setup a new libfuse with a custom config (clean up will occur after the test as usual)
 
 	suite.assert.Equal(suite.libfuse.Name(), "libfuse")
