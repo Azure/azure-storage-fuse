@@ -312,6 +312,12 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	//conn.max_write = (4 * 1024 * 1024)
 	//conn.max_read =  (4 * 1024 * 1024)
 
+	// direct_io option is used to bypass the kernel cache. It disables the use of
+	// page cache (file content cache) in the kernel for the filesystem.
+	if fuseFS.directIO {
+		cfg.direct_io = C.int(1)
+	}
+
 	return nil
 }
 
