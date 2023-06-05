@@ -373,7 +373,7 @@ steps:
       account_key: ${{ parameters.account_key }}
       account_type: ${{ parameters.account_type }}
       account_endpoint: ${{ parameters.account_endpoint }}
-      idstring: "${{ parameters.service }} LRU policy create empty"
+      idstring: "${{ parameters.service }} Direct IO tests"
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
       verbose_log: ${{ parameters.verbose_log }}
