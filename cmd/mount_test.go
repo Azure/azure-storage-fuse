@@ -366,6 +366,7 @@ func (suite *mountTestSuite) TestFuseOptions() {
 		{opt: "umask=777", ignore: false},
 		{opt: "uid=1000", ignore: false},
 		{opt: "gid=1000", ignore: false},
+		{opt: "direct_io", ignore: false},
 	}
 
 	for _, val := range opts {

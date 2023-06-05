@@ -330,7 +330,7 @@ var mountCmd = &cobra.Command{
 					}
 					config.Set("libfuse.gid", fmt.Sprint(val))
 				} else if v == "direct_io" || v == "direct_io=true" {
-					config.Set("libfuse.direct_io", "true")
+					config.Set("libfuse.direct-io", "true")
 				} else {
 					return errors.New(common.FuseAllowedFlags)
 				}
