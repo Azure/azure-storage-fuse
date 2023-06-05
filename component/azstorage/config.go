@@ -348,7 +348,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	az.stConfig.authConfig.ActiveDirectoryEndpoint = formatEndpointProtocol(az.stConfig.authConfig.ActiveDirectoryEndpoint, false)
 
 	// If subdirectory is mounted, take the prefix path
-	az.stConfig.prefixPath = opt.PrefixPath
+	az.stConfig.prefixPath = removeLeadingSlashes(opt.PrefixPath)
 
 	// Block list call on mount for given amount of time
 	az.stConfig.cancelListForSeconds = opt.CancelListForSeconds
