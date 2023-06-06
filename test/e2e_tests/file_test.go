@@ -205,7 +205,7 @@ func (suite *fileTestSuite) TestFileCreateMultiSpclCharWithinSpclDir() {
 	}
 	suite.Equal(true, found)
 
-	suite.fileTestCleanup([]string{fileName, secFile, speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|", speclDirName})
+	suite.fileTestCleanup([]string{speclDirName})
 }
 
 func (suite *fileTestSuite) TestFileCreateLongName() {
