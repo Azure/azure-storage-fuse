@@ -72,6 +72,7 @@ type Libfuse struct {
 	nonEmptyMount         bool
 	lsFlags               common.BitMap16
 	maxFuseThreads        uint32
+	directIO              bool
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -101,6 +102,7 @@ type LibfuseOptions struct {
 	Uid                     uint32 `config:"uid" yaml:"uid,omitempty"`
 	Gid                     uint32 `config:"gid" yaml:"uid,omitempty"`
 	MaxFuseThreads          uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
+	DirectIO                bool   `config:"direct-io" yaml:"direct-io,omitempty"`
 }
 
 const compName = "libfuse"
@@ -181,6 +183,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.disableWritebackCache = opt.DisableWritebackCache
 	lf.ignoreOpenFlags = opt.IgnoreOpenFlags
 	lf.nonEmptyMount = opt.nonEmptyMount
+	lf.directIO = opt.DirectIO
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)

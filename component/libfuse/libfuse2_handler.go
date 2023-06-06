@@ -214,6 +214,13 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	if opts.readonly {
 		options += ",ro"
 	}
+
+	// direct_io option is used to bypass the kernel cache. It disables the use of
+	// page cache (file content cache) in the kernel for the filesystem.
+	if fuseFS.directIO {
+		options += ",direct_io"
+	}
+
 	// Why we pass -f
 	// CGo is not very good with handling forks - so if the user wants to run blobfuse in the
 	// background we fork on mount in GO (mount.go) and we just always force libfuse to mount in foreground
