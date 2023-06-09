@@ -202,13 +202,13 @@ stages:
           matrix:
             Ubuntu-20:
               DistroVer: "Ubn20_PERF"
-              AgentName: "UBN20-PERF"
+              AgentName: "blobfuse-ubuntu20"
               Description: "Blobfuse2 Perf Test"
 
         pool:
-          name: "Blobfuse Pool"
+          name: "blobfuse-perf-pool"
           demands:
-            - Agent.Name -equals $(AgentName)
+            - ImageOverride -equals $(AgentName)
 
         variables:
           - group: NightlyBlobFuse
