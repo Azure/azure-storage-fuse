@@ -87,7 +87,7 @@ func (pool *BlockPool) Terminate() {
 			if b == nil {
 				break
 			}
-			b.Delete()
+			_ = b.Delete()
 		}
 	}
 }
@@ -151,7 +151,7 @@ func (pool *BlockPool) Release(b *Block) {
 	// This goes to the first Block channel
 	if pool.blocks > pool.blockMax {
 		pool.blocks--
-		b.Delete()
+		_ = b.Delete()
 		return
 	}
 

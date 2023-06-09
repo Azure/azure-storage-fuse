@@ -80,7 +80,7 @@ type workItem struct {
 
 const compName = "block_cache"
 
-//  Verification to check satisfaction criteria with Component Interface
+// Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &BlockCache{}
 
 func (bc *BlockCache) Name() string {
@@ -96,7 +96,8 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 }
 
 // Start : Pipeline calls this method to start the component functionality
-//  this shall not Block the call otherwise pipeline will not start
+//
+//	this shall not Block the call otherwise pipeline will not start
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component %s", bc.Name())
 	bc.threadPool.Start()
@@ -111,7 +112,8 @@ func (bc *BlockCache) Stop() error {
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-//  Return failure if any config is not valid to exit the process
+//
+//	Return failure if any config is not valid to exit the process
 func (bc *BlockCache) Configure(_ bool) error {
 	log.Trace("BlockCache::Configure : %s", bc.Name())
 
@@ -299,7 +301,7 @@ func (bc *BlockCache) download(i interface{}) {
 	}
 
 	// Unblock readers of this Block
-	item.block.ReadyForReading()
+	_ = item.block.ReadyForReading()
 }
 
 // getBlockIndex: From offset get the block index
@@ -337,7 +339,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	t = <-block.state
 
 	if t == 2 {
-		block.Unblock()
+		_ = block.Unblock()
 
 		// block is ready and we are the second reader so its time to schedule the next block
 		lastoffset, found := handle.GetValue("#")

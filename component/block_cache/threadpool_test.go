@@ -1,3 +1,4 @@
+//go:build !authtest
 // +build !authtest
 
 /*
