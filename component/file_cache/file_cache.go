@@ -77,6 +77,8 @@ type FileCache struct {
 	maxCacheSize    float64
 
 	defaultPermission os.FileMode
+
+	refreshSec uint32
 }
 
 // Structure defining your config parameters
@@ -103,6 +105,8 @@ type FileCacheOptions struct {
 	V1Timeout     uint32 `config:"file-cache-timeout-in-seconds" yaml:"-"`
 	EmptyDirCheck bool   `config:"empty-dir-check" yaml:"-"`
 	SyncToFlush   bool   `config:"sync-to-flush" yaml:"sync-to-flush,omitempty"`
+
+	RefreshSec uint32 `config:"refresh-sec" yaml:"refresh-sec,omitempty"`
 }
 
 const (
@@ -115,7 +119,7 @@ const (
 	MB                      = 1024 * 1024
 )
 
-//  Verification to check satisfaction criteria with Component Interface
+// Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &FileCache{}
 
 var fileCacheStatsCollector *stats_manager.StatsCollector
@@ -137,7 +141,8 @@ func (c *FileCache) Priority() internal.ComponentPriority {
 }
 
 // Start : Pipeline calls this method to start the component functionality
-//  this shall not block the call otherwise pipeline will not start
+//
+//	this shall not block the call otherwise pipeline will not start
 func (c *FileCache) Start(ctx context.Context) error {
 	log.Trace("Starting component : %s", c.Name())
 
@@ -194,7 +199,8 @@ func (c *FileCache) TempCacheCleanup() error {
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-//  Return failure if any config is not valid to exit the process
+//
+//	Return failure if any config is not valid to exit the process
 func (c *FileCache) Configure(_ bool) error {
 	log.Trace("FileCache::Configure : %s", c.Name())
 
@@ -223,6 +229,7 @@ func (c *FileCache) Configure(_ bool) error {
 	c.offloadIO = conf.OffloadIO
 	c.maxCacheSize = conf.MaxSizeMB
 	c.syncToFlush = conf.SyncToFlush
+	c.refreshSec = conf.RefreshSec
 
 	c.tmpPath = common.ExpandPath(conf.TmpPath)
 	if c.tmpPath == "" {
@@ -294,8 +301,8 @@ func (c *FileCache) Configure(_ bool) error {
 		log.Warn("Sync will upload current contents of file.")
 	}
 
-	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d",
-		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold))
+	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v",
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec)
 
 	return nil
 }
@@ -730,11 +737,13 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 }
 
 // isDownloadRequired: Whether or not the file needs to be downloaded to local cache.
-func (fc *FileCache) isDownloadRequired(localPath string) (bool, bool) {
+func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock *common.LockMapItem) (bool, bool, *internal.ObjAttr) {
 	fileExists := false
 	downloadRequired := false
+	lmt := time.Time{}
+	var stat *syscall.Stat_t = nil
 
-	// The file is not cached
+	// The file is not cached then we need to download
 	if !fc.policy.IsCached(localPath) {
 		log.Debug("FileCache::isDownloadRequired : %s not present in local cache policy", localPath)
 		downloadRequired = true
@@ -745,7 +754,7 @@ func (fc *FileCache) isDownloadRequired(localPath string) (bool, bool) {
 		// The file exists in local cache
 		// The file needs to be downloaded if the cacheTimeout elapsed (check last change time and last modified time)
 		fileExists = true
-		stat := finfo.Sys().(*syscall.Stat_t)
+		stat = finfo.Sys().(*syscall.Stat_t)
 
 		// Deciding based on last modified time is not correct. Last modified time is based on the file was last written
 		// so if file was last written back to container 2 days back then even downloading it now shall represent the same date
@@ -754,6 +763,7 @@ func (fc *FileCache) isDownloadRequired(localPath string) (bool, bool) {
 		// container on the local disk by resetting last mod time of local disk with utimens)
 		// and hence last change time on local disk will then represent the download time.
 
+		lmt = finfo.ModTime()
 		if time.Since(finfo.ModTime()).Seconds() > fc.cacheTimeout &&
 			time.Since(time.Unix(stat.Ctim.Sec, stat.Ctim.Nsec)).Seconds() > fc.cacheTimeout {
 			log.Debug("FileCache::isDownloadRequired : %s not valid as per time checks", localPath)
@@ -769,7 +779,41 @@ func (fc *FileCache) isDownloadRequired(localPath string) (bool, bool) {
 		downloadRequired = true
 	}
 
-	return downloadRequired, fileExists
+	if fileExists && flock.Count() > 0 {
+		// file exists in local cache and there is already an handle open for it
+		// In this case we can not redownload the file from container
+		log.Info("FileCache::isDownloadRequired : Need to re-download %s, but skipping as handle is already open", blobPath)
+		downloadRequired = false
+	}
+
+	var attr *internal.ObjAttr = nil
+	if downloadRequired ||
+		(fc.refreshSec != 0 && time.Since(flock.DownloadTime()).Seconds() > float64(fc.refreshSec)) {
+		attr, err = fc.NextComponent().GetAttr(internal.GetAttrOptions{Name: blobPath})
+		if err != nil {
+			log.Err("FileCache::isDownloadRequired : Failed to get attr of %s [%s]", blobPath, err.Error())
+		}
+	}
+
+	if fc.refreshSec != 0 && !downloadRequired && attr != nil && stat != nil {
+		// We decided that based on lmt of file file-cache-timeout has not expired
+		// However, user has configured refresh time then check time has elapsed since last download time of file or not
+		// If so, compare the lmt of file in local cache and once in container and redownload only if lmt of container is latest.
+		// If time matches but size does not then still we need to redownlaod the file.
+		if attr.Mtime.After(lmt) || stat.Size != attr.Size {
+			// File has not been modified at storage yet so no point in redownloading the file
+			log.Info("FileCache::isDownloadRequired : File is modified in container, so forcing redownload %s [A-%v : L-%v] [A-%v : L-%v]",
+				blobPath, attr.Mtime, lmt, attr.Size, stat.Size)
+			downloadRequired = true
+
+			// As we have decided to continue using old file, we reset the timer to check again after refresh time interval
+			flock.SetDownloadTime()
+		} else {
+			log.Info("FileCache::isDownloadRequired : File in container is not latest, skip redownload %s [A-%v : L-%v]", blobPath, attr.Mtime, lmt)
+		}
+	}
+
+	return downloadRequired, fileExists, attr
 }
 
 // OpenFile: Makes the file available in the local cache for further file operations.
@@ -785,18 +829,15 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	defer flock.Unlock()
 
 	fc.policy.CacheValid(localPath)
-
-	downloadRequired, fileExists := fc.isDownloadRequired(localPath)
-
-	if fileExists && flock.Count() > 0 {
-		// file exists in local cache and there is already an handle open for it
-		// In this case we can not redownload the file from container
-		log.Info("FileCache::OpenFile : Need to re-download %s, but skipping as handle is already open", options.Name)
-		downloadRequired = false
-	}
+	downloadRequired, fileExists, attr := fc.isDownloadRequired(localPath, options.Name, flock)
 
 	if downloadRequired {
 		log.Debug("FileCache::OpenFile : Need to re-download %s", options.Name)
+
+		fileSize := int64(0)
+		if attr != nil {
+			fileSize = int64(attr.Size)
+		}
 
 		if fileExists {
 			log.Debug("FileCache::OpenFile : Delete cached file %s", options.Name)
@@ -821,18 +862,7 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			return nil, err
 		}
 
-		attrReceived := false
-		fileSize := int64(0)
-
-		attr, err := fc.NextComponent().GetAttr(internal.GetAttrOptions{Name: options.Name})
-		if err != nil {
-			log.Err("FileCache::OpenFile : Failed to get attr of %s [%s]", options.Name, err.Error())
-		} else {
-			attrReceived = true
-			fileSize = int64(attr.Size)
-		}
-
-		if !attrReceived || fileSize > 0 {
+		if fileSize > 0 {
 			// Download/Copy the file from storage to the local file.
 			err = fc.NextComponent().CopyToFile(
 				internal.CopyToFileOptions{
@@ -850,12 +880,15 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			}
 		}
 
+		// Update the last download time of this file
+		flock.SetDownloadTime()
+
 		log.Debug("FileCache::OpenFile : Download of %s is complete", options.Name)
 		f.Close()
 
 		// After downloading the file, update the modified times and mode of the file.
 		fileMode := fc.defaultPermission
-		if attrReceived && !attr.IsModeDefault() {
+		if attr != nil && !attr.IsModeDefault() {
 			fileMode = attr.Mode
 		}
 
@@ -866,14 +899,15 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 		}
 		// TODO: When chown is supported should we update that?
 
-		// chtimes shall be the last api otherwise calling chmod/chown will update the last change time
-		err = os.Chtimes(localPath, attr.Atime, attr.Mtime)
-		if err != nil {
-			log.Err("FileCache::OpenFile : Failed to change times of file %s [%s]", options.Name, err.Error())
+		if attr != nil {
+			// chtimes shall be the last api otherwise calling chmod/chown will update the last change time
+			err = os.Chtimes(localPath, attr.Atime, attr.Mtime)
+			if err != nil {
+				log.Err("FileCache::OpenFile : Failed to change times of file %s [%s]", options.Name, err.Error())
+			}
 		}
 
 		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, dlFiles, (int64)(1))
-
 	} else {
 		log.Debug("FileCache::OpenFile : %s will be served from cache", options.Name)
 		fileCacheStatsCollector.UpdateStats(stats_manager.Increment, cacheServed, (int64)(1))

@@ -448,6 +448,23 @@ func (s *utilsTestSuite) TestAutoDetectAuthMode() {
 	assert.Equal(authType, "sas")
 }
 
+func (s *utilsTestSuite) TestRemoveLeadingSlashes() {
+	assert := assert.New(s.T())
+	var inputs = []struct {
+		subdirectory string
+		result       string
+	}{
+		{subdirectory: "/abc/def", result: "abc/def"},
+		{subdirectory: "////abc/def/", result: "abc/def/"},
+		{subdirectory: "abc/def/", result: "abc/def/"},
+		{subdirectory: "", result: ""},
+	}
+
+	for _, i := range inputs {
+		assert.Equal(i.result, removeLeadingSlashes(i.subdirectory))
+	}
+}
+
 func TestUtilsTestSuite(t *testing.T) {
 	suite.Run(t, new(utilsTestSuite))
 }

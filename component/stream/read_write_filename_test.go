@@ -441,8 +441,8 @@ func (suite *streamTestSuite) TestFilenamePurgeOnClose() {
 }
 
 // ========================================================= Write tests =================================================================
-//TODO: need to add an assertion on the blocks for their start and end indices as we append to them
-//test appending to small file evicts older block if cache capacity full
+// TODO: need to add an assertion on the blocks for their start and end indices as we append to them
+// test appending to small file evicts older block if cache capacity full
 func (suite *streamTestSuite) TestFilenameWriteToSmallFileEviction() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()

@@ -110,13 +110,15 @@ To learn about a specific command, just include the name of the command (For exa
     * `--cancel-list-on-mount-seconds=<TIMEOUT IN SECONDS>`: Time for which list calls will be blocked after mount. ( prevent billing charges on mounting)
     * `--virtual-directory=true` : Support virtual directories without existence of a special marker blob for block blob account.
     * `--subdirectory=<path>` : Subdirectory to mount instead of entire container.
+    * `--disable-compression:false` : Disable content encoding negotiation with server. If blobs have 'content-encoding' set to 'gzip' then turn on this flag.
+    * `--use-adls=false` : Specify configured storage account is HNS enabled or not. This must be turned on when HNS enabled account is mounted.
 - File cache options
     * `--file-cache-timeout=<TIMEOUT IN SECONDS>`: Timeout for which file is cached on local system.
     * `--tmp-path=<PATH>`: The path to the file cache.
     * `--cache-size-mb=<SIZE IN MB>`: Amount of disk cache that can be used by blobfuse.
     * `--high-disk-threshold=<PERCENTAGE>`: If local cache usage exceeds this, start early eviction of files from cache.
     * `--low-disk-threshold=<PERCENTAGE>`: If local cache usage comes below this threshold then stop early eviction.
-    * `--sync-to-flush` : Sync call will force upload a file to storage container
+    * `--sync-to-flush=false` : Sync call will force upload a file to storage container if this is set to true, otherwise it just evicts file from local cache.
 - Stream options
     * `--block-size-mb=<SIZE IN MB>`: Size of a block to be downloaded during streaming.
 - Fuse options
@@ -187,8 +189,10 @@ Refer to 'docker' folder in this repo. It contains a sample 'Dockerfile'. If you
 
 ## Limitations
 - In case of BlockBlob accounts, ACLs are not supported by Azure Storage so Blobfuse2 will by default return success for 'chmod' operation. However it will work fine for Gen2 (DataLake) accounts.
+- When Blobfuse2 is mounted on a container, SYS_ADMIN privileges are required for it to interact with the fuse driver. If container is created without the privilege, mount will fail. Sample command to spawn a docker container is 
 
-
+    `docker run -it --rm --cap-add=SYS_ADMIN --device=/dev/fuse --security-opt apparmor:unconfined <environment variables> <docker image>`
+        
 ### Syslog security warning
 By default, Blobfuse2 will log to syslog. The default settings will, in some cases, log relevant file paths to syslog. 
 If this is sensitive information, turn off logging or set log-level to LOG_ERR.  

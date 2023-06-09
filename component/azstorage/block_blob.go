@@ -476,7 +476,7 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 	blobsRead := 0
 
 	for failCount < maxFailCount {
-		blobs, new_marker, err := bb.List(name, marker, common.MaxDirListCount)
+		blobs, new_marker, err := bb.List(name, marker, bb.Config.maxResultsForList)
 		if err != nil {
 			e := storeBlobErrToErr(err)
 			if e == ErrFileNotFound {
@@ -1193,7 +1193,8 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 		bb.blobAccCond,
 		bb.Config.defaultTier,
 		nil, // datalake doesn't support tags here
-		bb.downloadOptions.ClientProvidedKeyOptions)
+		bb.downloadOptions.ClientProvidedKeyOptions,
+		azblob.ImmutabilityPolicyOptions{})
 	if err != nil {
 		log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to commit block list to blob %s [%s]", name, err.Error())
 		return err
@@ -1242,7 +1243,8 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 			// azblob.BlobAccessConditions{ModifiedAccessConditions: azblob.ModifiedAccessConditions{IfMatch: bol.Etag}},
 			bb.Config.defaultTier,
 			nil, // datalake doesn't support tags here
-			bb.downloadOptions.ClientProvidedKeyOptions)
+			bb.downloadOptions.ClientProvidedKeyOptions,
+			azblob.ImmutabilityPolicyOptions{})
 		if err != nil {
 			log.Err("BlockBlob::StageAndCommit : Failed to commit block list to blob %s [%s]", name, err.Error())
 			return err

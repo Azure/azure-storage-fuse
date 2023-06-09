@@ -62,6 +62,7 @@ type Libfuse struct {
 	entryExpiration       uint32
 	negativeTimeout       uint32
 	allowOther            bool
+	allowRoot             bool
 	ownerUID              uint32
 	ownerGID              uint32
 	traceEnable           bool
@@ -70,6 +71,8 @@ type Libfuse struct {
 	ignoreOpenFlags       bool
 	nonEmptyMount         bool
 	lsFlags               common.BitMap16
+	maxFuseThreads        uint32
+	directIO              bool
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -90,6 +93,7 @@ type LibfuseOptions struct {
 	NegativeEntryExpiration uint32 `config:"negative-entry-expiration-sec" yaml:"negative-entry-expiration-sec,omitempty"`
 	EnableFuseTrace         bool   `config:"fuse-trace" yaml:"fuse-trace,omitempty"`
 	allowOther              bool   `config:"allow-other" yaml:"-"`
+	allowRoot               bool   `config:"allow-root" yaml:"-"`
 	readOnly                bool   `config:"read-only" yaml:"-"`
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
 	DisableWritebackCache   bool   `config:"disable-writeback-cache" yaml:"-"`
@@ -97,12 +101,15 @@ type LibfuseOptions struct {
 	nonEmptyMount           bool   `config:"nonempty" yaml:"nonempty,omitempty"`
 	Uid                     uint32 `config:"uid" yaml:"uid,omitempty"`
 	Gid                     uint32 `config:"gid" yaml:"uid,omitempty"`
+	MaxFuseThreads          uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
+	DirectIO                bool   `config:"direct-io" yaml:"direct-io,omitempty"`
 }
 
 const compName = "libfuse"
 const defaultEntryExpiration = 120
 const defaultAttrExpiration = 120
 const defaultNegativeEntryExpiration = 120
+const defaultMaxFuseThreads = 128
 
 var fuseFS *Libfuse
 
@@ -117,7 +124,7 @@ var ignoreFiles = map[string]bool{
 	"autorun.inf":      true,
 }
 
-//  Verification to check satisfaction criteria with Component Interface
+// Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &Libfuse{}
 
 func (lf *Libfuse) Name() string {
@@ -133,7 +140,8 @@ func (lf *Libfuse) SetNextComponent(nc internal.Component) {
 }
 
 // Start : Pipeline calls this method to start the component functionality
-//  this shall not block the call otherwise pipeline will not start
+//
+//	this shall not block the call otherwise pipeline will not start
 func (lf *Libfuse) Start(ctx context.Context) error {
 	log.Trace("Libfuse::Start : Starting component %s", lf.Name())
 
@@ -170,10 +178,12 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.readOnly = opt.readOnly
 	lf.traceEnable = opt.EnableFuseTrace
 	lf.allowOther = opt.allowOther
+	lf.allowRoot = opt.allowRoot
 	lf.extensionPath = opt.ExtensionPath
 	lf.disableWritebackCache = opt.DisableWritebackCache
 	lf.ignoreOpenFlags = opt.IgnoreOpenFlags
 	lf.nonEmptyMount = opt.nonEmptyMount
+	lf.directIO = opt.DirectIO
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
@@ -220,13 +230,21 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	if config.IsSet(compName + ".gid") {
 		lf.ownerGID = opt.Gid
 	}
+
+	if config.IsSet(compName + ".max-fuse-threads") {
+		lf.maxFuseThreads = opt.MaxFuseThreads
+	} else {
+		lf.maxFuseThreads = defaultMaxFuseThreads
+	}
+
 	log.Info("Libfuse::Validate : UID %v, GID %v", lf.ownerUID, lf.ownerGID)
 
 	return nil
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-//  Return failure if any config is not valid to exit the process
+//
+//	Return failure if any config is not valid to exit the process
 func (lf *Libfuse) Configure(_ bool) error {
 	log.Trace("Libfuse::Configure : %s", lf.Name())
 
@@ -256,6 +274,12 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return err
 	}
 
+	err = config.UnmarshalKey("allow-root", &conf.allowRoot)
+	if err != nil {
+		log.Err("Libfuse::Configure : config error [unable to obtain allow-root]")
+		return err
+	}
+
 	err = config.UnmarshalKey("nonempty", &conf.nonEmptyMount)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [unable to obtain nonempty]")
@@ -268,8 +292,8 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return fmt.Errorf("%s config error %s", lf.Name(), err.Error())
 	}
 
-	log.Info("Libfuse::Configure : read-only %t, allow-other %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags: %t, nonempty %t",
-		lf.readOnly, lf.allowOther, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount)
+	log.Info("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags: %t, nonempty %t",
+		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount)
 
 	return nil
 }

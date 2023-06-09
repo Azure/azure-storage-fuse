@@ -88,7 +88,7 @@ var BfsDisabled = false
 var TransferPipe = "/tmp/transferPipe"
 var PollingPipe = "/tmp/pollPipe"
 
-//LogLevel enum
+// LogLevel enum
 type LogLevel int
 
 var ELogLevel = LogLevel(0).INVALID()

@@ -67,6 +67,8 @@ libfuse:
   extension: <physical path to extension library>
   disable-writeback-cache: true|false <disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode. alternatively, you can set ignore-open-flags.>
   ignore-open-flags: true|false <ignore the append and write only flag since O_APPEND and O_WRONLY is not supported with writeback caching. alternatively, you can disable-writeback-cache. Default value is true>
+  max-fuse-threads: <number of threads allowed at libfuse layer for highly parallel operations, Default is 128>
+  direct-io: true|false <enable to bypass the kernel cache>
  
   # Streaming configuration
 stream:
@@ -94,12 +96,14 @@ file_cache:
   policy-trace: true|false <generate eviction policy logs showing which files will expire soon>
   offload-io: true|false <by default libfuse will service reads/writes to files for better perf. Set to true to make file-cache component service read/write calls.>
   sync-to-flush: true|false <sync call to a file will force upload of the contents to storage account>
+  refresh-sec: <number of seconds after which compare lmt of file in local cache and container and refresh file if container has the latest copy>
 
 # Attribute cache related configuration
 attr_cache:
   timeout-sec: <time attributes can be cached (in sec). Default - 120 sec>
   no-cache-on-list: true|false <do not cache attributes during listing, to optimize performance>
   no-symlinks: true|false <to improve performance disable symlink support. symlinks will be treated like regular files.>
+  max-files: <maximum number of files in the attribute cache at a time. Default - 5000000>
   
 # Loopback configuration
 loopbackfs:
@@ -145,6 +149,7 @@ azstorage:
   validate-md5: true|false <validate md5 on download. Impacts performance. works only when file-cache component is part of the pipeline>
   virtual-directory: true|false <support virtual directories without existence of a special marker blob>
   disable-compression: true|false <disable transport layer content encoding like gzip, set this flag to true if blobs have content-encoding set in container>
+  max-results-for-list: <maximum number of results returned in a single list API call while getting file attributes. Default - 2>
 
 # Mount all configuration
 mountall:

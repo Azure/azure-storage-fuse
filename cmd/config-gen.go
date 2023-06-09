@@ -35,7 +35,6 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"regexp"
 	"strings"
@@ -66,9 +65,9 @@ var generateTestConfig = &cobra.Command{
 		var err error
 
 		if strings.Contains(opts.configFilePath, templatesDir) {
-			templateConfig, err = ioutil.ReadFile(opts.configFilePath)
+			templateConfig, err = os.ReadFile(opts.configFilePath)
 		} else {
-			templateConfig, err = ioutil.ReadFile(templatesDir + opts.configFilePath)
+			templateConfig, err = os.ReadFile(templatesDir + opts.configFilePath)
 		}
 
 		if err != nil {
@@ -97,7 +96,7 @@ var generateTestConfig = &cobra.Command{
 		}
 
 		// write the config with the params to the output file
-		err = ioutil.WriteFile(opts.outputConfigPath, []byte(newConfig), 0700)
+		err = os.WriteFile(opts.outputConfigPath, []byte(newConfig), 0700)
 		if err != nil {
 			return fmt.Errorf("failed to write file [%s]", err.Error())
 		}

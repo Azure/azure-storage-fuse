@@ -35,7 +35,6 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -100,7 +99,7 @@ func (suite *docTestSuite) TestDocsGenerationError() {
 func (suite *docTestSuite) TestOutputDirIsFileError() {
 	defer suite.cleanupTest()
 
-	opFile, err := ioutil.TempFile("", "docfile*")
+	opFile, err := os.CreateTemp("", "docfile*")
 	suite.assert.Nil(err)
 	opFileName := opFile.Name()
 	opFile.Close()

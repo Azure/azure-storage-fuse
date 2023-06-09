@@ -17,7 +17,7 @@ steps:
   - task: ShellScript@2
     inputs:
       scriptPath: "${{ parameters.work_dir }}/go_installer.sh"
-      args: "${{ parameters.root_dir }}/ 1.16.2"
+      args: "${{ parameters.root_dir }}/ 1.19.9"
     displayName: "Installing Go tools"
 
   # Installing Blobfuse2 Dependencies via go get

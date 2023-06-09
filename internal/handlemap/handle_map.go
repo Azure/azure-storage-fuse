@@ -163,7 +163,7 @@ func (handle *Handle) CleanupWithCallback(f func(string, interface{})) {
 	handle.Unlock()
 }
 
-//defaultHandleMap holds a synchronized map[ HandleID ]*Handle
+// defaultHandleMap holds a synchronized map[ HandleID ]*Handle
 var defaultHandleMap sync.Map
 var nextHandleID = *atomic.NewUint64(uint64(0))
 
@@ -209,8 +209,8 @@ func Load(key HandleID) (*Handle, bool) {
 	return handle, true
 }
 
-//Store function must not be used in production application.
-//This is a utility function present only for test scenarios.
+// Store function must not be used in production application.
+// This is a utility function present only for test scenarios.
 func Store(key HandleID, path string, _ uintptr) *Handle {
 	handle := &Handle{
 		ID:   key,

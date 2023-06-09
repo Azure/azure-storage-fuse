@@ -57,6 +57,7 @@ type AttrCache struct {
 	cacheTimeout uint32
 	cacheOnList  bool
 	noSymlinks   bool
+	maxFiles     int
 	cacheMap     map[string]*attrCacheItem
 	cacheLock    sync.RWMutex
 }
@@ -67,18 +68,20 @@ type AttrCacheOptions struct {
 	NoCacheOnList bool   `config:"no-cache-on-list" yaml:"no-cache-on-list,omitempty"`
 	NoSymlinks    bool   `config:"no-symlinks" yaml:"no-symlinks,omitempty"`
 
+	//maximum file attributes overall to be cached
+	MaxFiles int `config:"max-files" yaml:"max-files,omitempty"`
+
 	// support v1
 	CacheOnList bool `config:"cache-on-list"`
 }
 
 const compName = "attr_cache"
 
-// for now caching only first 1 mil files in a directory
+// caching only first 5 mil files by default
 // caching more means increased memory usage of the process
-const maxFilesPerDir = 1000000 // 1 million max files to be cached per directory
-const maxTotalFiles = 10000000 // 10 million max files overall to be cached
+const defaultMaxFiles = 5000000 // 5 million max files overall to be cached
 
-//  Verification to check satisfaction criteria with Component Interface
+// Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &AttrCache{}
 
 func (ac *AttrCache) Name() string {
@@ -98,7 +101,8 @@ func (ac *AttrCache) Priority() internal.ComponentPriority {
 }
 
 // Start : Pipeline calls this method to start the component functionality
-//  this shall not block the call otherwise pipeline will not start
+//
+//	this shall not block the call otherwise pipeline will not start
 func (ac *AttrCache) Start(ctx context.Context) error {
 	log.Trace("AttrCache::Start : Starting component %s", ac.Name())
 
@@ -116,7 +120,8 @@ func (ac *AttrCache) Stop() error {
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-//  Return failure if any config is not valid to exit the process
+//
+//	Return failure if any config is not valid to exit the process
 func (ac *AttrCache) Configure(_ bool) error {
 	log.Trace("AttrCache::Configure : %s", ac.Name())
 
@@ -138,6 +143,12 @@ func (ac *AttrCache) Configure(_ bool) error {
 		ac.cacheOnList = conf.CacheOnList
 	} else {
 		ac.cacheOnList = !conf.NoCacheOnList
+	}
+
+	if config.IsSet(compName + ".max-files") {
+		ac.maxFiles = conf.MaxFiles
+	} else {
+		ac.maxFiles = defaultMaxFiles
 	}
 
 	ac.noSymlinks = conf.NoSymlinks
@@ -262,7 +273,7 @@ func (ac *AttrCache) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	log.Trace("AttrCache::ReadDir : %s", options.Name)
 
 	pathList, token, err := ac.NextComponent().StreamDir(options)
-	if err == nil && options.Offset < maxFilesPerDir {
+	if err == nil {
 		ac.cacheAttributes(pathList)
 	}
 
@@ -278,7 +289,8 @@ func (ac *AttrCache) cacheAttributes(pathList []*internal.ObjAttr) {
 		currTime := time.Now()
 
 		for _, attr := range pathList {
-			if len(ac.cacheMap) > maxTotalFiles {
+			if len(ac.cacheMap) > ac.maxFiles {
+				log.Debug("AttrCache::cacheAttributes : %s skipping adding path to attribute cache because it is full", pathList)
 				break
 			}
 
@@ -485,8 +497,10 @@ func (ac *AttrCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr
 
 	if err == nil {
 		// Retrieved attributes so cache them
-		if len(ac.cacheMap) < maxTotalFiles {
+		if len(ac.cacheMap) < ac.maxFiles {
 			ac.cacheMap[truncatedPath] = newAttrCacheItem(pathAttr, true, time.Now())
+		} else {
+			log.Debug("AttrCache::GetAttr : %s skipping adding to attribute cache because it is full", options.Name)
 		}
 	} else if err == syscall.ENOENT {
 		// Path does not exist so cache a no-entry item
@@ -569,8 +583,10 @@ func NewAttrCacheComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewAttrCacheComponent)
+
 	attrCacheTimeout := config.AddUint32Flag("attr-cache-timeout", defaultAttrCacheTimeout, "attribute cache timeout")
 	config.BindPFlag(compName+".timeout-sec", attrCacheTimeout)
+
 	noSymlinks := config.AddBoolFlag("no-symlinks", false, "whether or not symlinks should be supported")
 	config.BindPFlag(compName+".no-symlinks", noSymlinks)
 

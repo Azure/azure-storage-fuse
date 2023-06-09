@@ -127,11 +127,15 @@ func assertUntouched(suite *attrCacheTestSuite, path string) {
 
 // Directory structure
 // a/
-//  a/c1/
-//   a/c1/gc1
-//	a/c2
+//
+//	 a/c1/
+//	  a/c1/gc1
+//		a/c2
+//
 // ab/
-//  ab/c1
+//
+//	ab/c1
+//
 // ac
 func generateNestedDirectory(path string) (*list.List, *list.List, *list.List) {
 	aPaths := list.New()
@@ -221,6 +225,17 @@ func (suite *attrCacheTestSuite) TestConfig() {
 	suite.assert.EqualValues(suite.attrCache.cacheTimeout, 60)
 	suite.assert.Equal(suite.attrCache.cacheOnList, false)
 	suite.assert.Equal(suite.attrCache.noSymlinks, true)
+}
+
+// Tests max files config
+func (suite *attrCacheTestSuite) TestConfigMaxFiles() {
+	defer suite.cleanupTest()
+	suite.cleanupTest() // clean up the default attr cache generated
+	cacheTimeout := 1
+	maxFiles := 10
+	config := fmt.Sprintf("attr_cache:\n  timeout-sec: %d\n  max-files: %d", cacheTimeout, maxFiles)
+	suite.setupTestHelper(config) // setup a new attr cache with a custom config (clean up will occur after the test as usual)
+	suite.assert.EqualValues(suite.attrCache.maxFiles, maxFiles)
 }
 
 func (suite *attrCacheTestSuite) TestConfigZero() {

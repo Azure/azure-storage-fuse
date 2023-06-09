@@ -403,7 +403,7 @@ func (list *lfuList) get(key string) *dataNode {
 	}
 }
 
-//Requires Lock()
+// Requires Lock()
 func (list *lfuList) put(key string) {
 	if node, ok := list.dataNodeMap[key]; ok {
 		if list.cacheTimeout > 0 {
@@ -439,7 +439,7 @@ func (list *lfuList) put(key string) {
 	}
 }
 
-//Requires Lock()
+// Requires Lock()
 func (list *lfuList) delete(key string) {
 	if node, ok := list.dataNodeMap[key]; ok {
 		if list.cacheTimeout > 0 {

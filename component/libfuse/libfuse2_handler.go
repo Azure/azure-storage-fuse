@@ -107,6 +107,7 @@ func (lf *Libfuse) convertConfig() *C.fuse_options_t {
 	fuse_opts.negative_expiry = C.int(lf.negativeTimeout)
 	fuse_opts.readonly = C.bool(lf.readOnly)
 	fuse_opts.allow_other = C.bool(lf.allowOther)
+	fuse_opts.allow_root = C.bool(lf.allowRoot)
 	fuse_opts.trace_enable = C.bool(lf.traceEnable)
 	fuse_opts.non_empty = C.bool(lf.nonEmptyMount)
 	return fuse_opts
@@ -202,6 +203,10 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 		options += ",allow_other"
 	}
 
+	if opts.allow_root {
+		options += ",allow_root"
+	}
+
 	if opts.non_empty {
 		options += ",nonempty"
 	}
@@ -209,6 +214,13 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	if opts.readonly {
 		options += ",ro"
 	}
+
+	// direct_io option is used to bypass the kernel cache. It disables the use of
+	// page cache (file content cache) in the kernel for the filesystem.
+	if fuseFS.directIO {
+		options += ",direct_io"
+	}
+
 	// Why we pass -f
 	// CGo is not very good with handling forks - so if the user wants to run blobfuse in the
 	// background we fork on mount in GO (mount.go) and we just always force libfuse to mount in foreground
@@ -269,10 +281,10 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 	}
 
 	// Max background thread on the fuse layer for high parallelism
-	conn.max_background = 128
+	conn.max_background = C.uint(fuseFS.maxFuseThreads)
 
 	// While reading a file let kernel do readahed for better perf
-	conn.max_readahead = (4 * 1024 * 1024)
+	conn.max_readahead = (8 * 1024 * 1024)
 
 	return nil
 }

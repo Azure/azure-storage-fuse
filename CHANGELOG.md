@@ -2,7 +2,18 @@
 **Features**
 - Block cache component added to support faster serial reads of large files with prefetching of blocks
 
-## 2.0.3 (WIP)
+## 2.0.4 (WIP)
+**Features**
+- Added new config parameter "max-fuse-threads" under "libfuse" config to control max threads allowed at libfuse layer.
+- Added new config parameter 'refresh-sec' in 'file-cache'. When file-cache-timeout is set to a large value, this field can control when to refresh the file if file in container has changed.
+- Added FUSE option `direct_io` to bypass the kernel cache and perform direct I/O operations.
+
+**Bug Fixes**
+- [#1116](https://github.com/Azure/azure-storage-fuse/issues/1116)] Relative path for tmp-cache is resulting into file read-write failure.
+- [#1151](https://github.com/Azure/azure-storage-fuse/issues/1151)] Reason for unmount failure is not displayed in the console output.
+- Remove leading slashes from subdirectory name.
+
+## 2.0.3 (2023-04-26)
 **Bug Fixes**
 - [#1080](https://github.com/Azure/azure-storage-fuse/issues/1080) HNS rename flow does not encode source path correctly.
 - [#1081](https://github.com/Azure/azure-storage-fuse/issues/1081) Blobfuse will exit with non-zero status code if allow_other option is used but not enabled in fuse config.
@@ -12,13 +23,16 @@
 - Subdir mount is not able to list blobs correctly when virtual-directory is turned on.
 - Adding support to pass down uid/gid values supplied in mount to libfuse.
 - [#1102](https://github.com/Azure/azure-storage-fuse/issues/1102) Remove nanoseconds from file times as storage does not provide that  granularity.
+- [#1113](https://github.com/Azure/azure-storage-fuse/issues/1113) Allow-root option is not sent down to libfuse.
 
 **Features**
 - Added new CLI parameter "--sync-to-flush". Once configured sync() call on file will force upload a file to storage container. As this is file handle based api, if file was not in file-cache it will first download and then upload the file. 
 - Added new CLI parameter "--disable-compression". Disables content compression at transport layer. Required when content-encoding is set to 'gzip' in blob.
+- Added new config "max-results-for-list" that allow users to change maximum results returned as part of list calls during getAttr.
+- Added new config "max-files" that allows users to change maximum files attributes that can be cached in attribute cache.
+- Ensures all panic errors are logged before blobfuse crashes. 
 
-
-## 2.0.2 (2022-02-23)
+## 2.0.2 (2023-02-23)
 **Bug Fixes**
 - [#999](https://github.com/Azure/azure-storage-fuse/issues/999) Upgrade dependencies to resolve known CVEs.
 - [#1002](https://github.com/Azure/azure-storage-fuse/issues/1002) In case version check fails to connect to public container, dump a log to check network and proxy settings.
