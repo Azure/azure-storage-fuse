@@ -69,8 +69,8 @@ func (azspn *azAuthSPN) fetchToken() (*adal.ServicePrincipalToken, error) {
 	}
 
 	//  Generate the SPN token
-	//resourceURL := azspn.getEndpoint()
-	resourceURL := "https://storage.azure.com/.default"
+	// resourceURL := azspn.getEndpoint()
+	resourceURL := "https://storage.azure.com/"
 
 	spt, err := adal.NewServicePrincipalToken(*config, azspn.config.ClientID, azspn.config.ClientSecret, resourceURL)
 	if err != nil {
