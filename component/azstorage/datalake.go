@@ -382,6 +382,9 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		e := storeDatalakeErrToErr(err)
 		if e == ErrFileNotFound {
 			return attr, syscall.ENOENT
+		} else if e == InvalidPermission {
+			log.Err("Datalake::GetAttr : Insufficient permissions for %s [%s]", name, err.Error())
+			return attr, syscall.EACCES
 		} else {
 			log.Err("Datalake::GetAttr : Failed to get path properties for %s [%s]", name, err.Error())
 			return attr, err
