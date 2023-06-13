@@ -170,7 +170,9 @@ az storage container generate-sas --account-name <account name ex:myadlsaccount>
 To improve performance, Blobfuse2 by default enables writeback caching, which can produce unexpected behavior for files opened with WRONLY or APPEND flags, so Blobfuse2 returns EINVAL on open of a file with those flags. Either use disable-writeback-caching to turn off writeback caching (can potentially result in degraded performance) or ignore-open-flags (replace WRONLY with RDWR and ignore APPEND) based on your workload. 
 - How to mount blobfuse2 inside a container?
 Refer to 'docker' folder in this repo. It contains a sample 'Dockerfile'. If you wish to create your own container image, try 'buildandruncontainer.sh' script, it will create a container image and launch the container using current environment variables holding your storage account credentials.
- 
+- Why am I not able to see the updated contents of file(s), which were updated through means other than Blobfuse2 mount?
+If your use-case involves updating/uploading file(s) through other means and you wish to see the updated contents on Blobfuse2 mount then you need to disable kernel page-cache. `-o direct_io` CLI parameter is the option you need to use while mounting. Along with this, set `file-cache-timeout=0` and all other libfuse caching parameters should also be set to 0. User shall be aware that disabling kernel cache can result into more calls to Azure Storage which will have cost and performance implications. 
+
 ## Un-Supported File system operations
 - mkfifo : fifo creation is not supported by blobfuse2 and this will result in "function not implemented" error
 - chown  : Change of ownership is not supported by Azure Storage hence Blobfuse2 does not support this.
