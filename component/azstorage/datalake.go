@@ -458,9 +458,16 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 		})
 
 	if err != nil {
-		log.Err("Datalake::List : Failed to validate account with given auth %s", err.Error)
+		log.Err("Datalake::List : Failed to validate account with given auth %s", err.Error())
 		m := ""
-		return pathList, &m, err
+		e := storeDatalakeErrToErr(err)
+		if e == ErrFileNotFound { // TODO: should this be checked for list calls
+			return pathList, &m, syscall.ENOENT
+		} else if e == InvalidPermission {
+			return pathList, &m, syscall.EACCES
+		} else {
+			return pathList, &m, err
+		}
 	}
 
 	// Process the paths returned in this result segment (if the segment is empty, the loop body won't execute)
