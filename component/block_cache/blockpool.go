@@ -33,7 +33,9 @@
 
 package block_cache
 
-const _1MB uint32 = (1024 * 1024)
+import "github.com/Azure/azure-storage-fuse/v2/common/log"
+
+const _1MB uint64 = (1024 * 1024)
 
 type BlockPool struct {
 	blocksCh  chan *Block
@@ -44,6 +46,7 @@ type BlockPool struct {
 
 func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	if blockSize == 0 || memSize < blockSize {
+		log.Err("blockpool::NewBlockPool : blockSize : %v, memsize: %v", blockSize, memSize)
 		return nil
 	}
 

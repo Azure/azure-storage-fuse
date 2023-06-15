@@ -158,7 +158,10 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.workers = conf.Workers
 	bc.prefetch = conf.PrefetchCount
 
-	bc.blockPool = NewBlockPool((uint64)(bc.blockSizeMB*_1MB), (uint64)(bc.memSizeMB*_1MB))
+	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefeth %v",
+		bc.blockSizeMB, bc.memSizeMB, bc.workers, bc.prefetch)
+
+	bc.blockPool = NewBlockPool((uint64)(bc.blockSizeMB)*_1MB, (uint64)(bc.memSizeMB)*_1MB)
 	if bc.blockPool == nil {
 		log.Err("BlockCache::Configure : fail to init Block pool")
 		return fmt.Errorf("BlockCache: failed to init Block pool")
@@ -185,7 +188,7 @@ func (bc *BlockCache) OnConfigChange() {
 		return
 	}
 
-	bc.blockPool.ReSize((uint64)(conf.BlockSize*_1MB), (uint64)(conf.MemSize*_1MB))
+	bc.blockPool.ReSize((uint64)(conf.BlockSize)*_1MB, (uint64)(conf.MemSize)*_1MB)
 }
 
 // OpenFile: Makes the file available in the local cache for further file operations.
