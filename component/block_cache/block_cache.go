@@ -188,6 +188,12 @@ func (bc *BlockCache) OnConfigChange() {
 		return
 	}
 
+	if conf.BlockSize == 0 || conf.MemSize == 0 || conf.Workers == 0 {
+		log.Err("BlockCache::OnConfigChange : Invalid config attributes. block size %v, mem size %v, worker %v, prefeth %v",
+			conf.BlockSize, conf.MemSize, conf.Workers, conf.PrefetchCount)
+		return
+	}
+
 	bc.blockPool.ReSize((uint64)(conf.BlockSize)*_1MB, (uint64)(conf.MemSize)*_1MB)
 }
 
