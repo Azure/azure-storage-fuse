@@ -293,6 +293,9 @@ func (dl *Datalake) DeleteFile(name string) (err error) {
 		} else if serr == BlobIsUnderLease {
 			log.Err("Datalake::DeleteFile : %s is under lease [%s]", name, err.Error())
 			return syscall.EIO
+		} else if serr == InvalidPermission {
+			log.Err("Datalake::DeleteFile : Insufficient permissions for %s [%s]", name, err.Error())
+			return syscall.EACCES
 		} else {
 			log.Err("Datalake::DeleteFile : Failed to delete file %s [%s]", name, err.Error())
 			return err
@@ -586,12 +589,16 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 
 	newPerm := getACLPermissions(mode)
 	_, err := fileURL.SetAccessControl(context.Background(), azbfs.BlobFSAccessControl{Permissions: newPerm})
-	e := storeDatalakeErrToErr(err)
-	if e == ErrFileNotFound {
-		return syscall.ENOENT
-	} else if err != nil {
+	if err != nil {
 		log.Err("Datalake::ChangeMod : Failed to change mode of file %s to %s [%s]", name, mode, err.Error())
-		return err
+		e := storeDatalakeErrToErr(err)
+		if e == ErrFileNotFound {
+			return syscall.ENOENT
+		} else if e == InvalidPermission {
+			return syscall.EACCES
+		} else {
+			return err
+		}
 	}
 
 	return nil

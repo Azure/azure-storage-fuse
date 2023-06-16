@@ -787,7 +787,13 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		return -C.EIO
+		if err == syscall.ENOENT {
+			return -C.ENOENT
+		} else if err == syscall.EACCES {
+			return -C.EACCES
+		} else {
+			return -C.EIO
+		}
 	}
 
 	return 0
@@ -833,7 +839,13 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		return -C.EIO
+		if err == syscall.ENOENT {
+			return -C.ENOENT
+		} else if err == syscall.EACCES {
+			return -C.EACCES
+		} else {
+			return -C.EIO
+		}
 	}
 
 	handlemap.Delete(handle.ID)
@@ -858,6 +870,8 @@ func libfuse_unlink(path *C.char) C.int {
 		log.Err("Libfuse::libfuse_unlink : error deleting file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
+		} else if os.IsPermission(err) {
+			return -C.EACCES
 		}
 		return -C.EIO
 	}
@@ -1070,6 +1084,8 @@ func libfuse_chmod(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 		log.Err("Libfuse::libfuse_chmod : error in chmod of %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
+		} else if os.IsPermission(err) {
+			return -C.EACCES
 		}
 		return -C.EIO
 	}

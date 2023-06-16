@@ -895,6 +895,9 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		if serr == BlobIsUnderLease {
 			log.Err("BlockBlob::WriteFromFile : %s is under a lease, can not update file [%s]", name, err.Error())
 			return syscall.EIO
+		} else if serr == InvalidPermission {
+			log.Err("BlockBlob::WriteFromFile : Insufficient permissions for %s [%s]", name, err.Error())
+			return syscall.EACCES
 		} else {
 			log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s [%s]", name, err.Error())
 		}
