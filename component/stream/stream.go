@@ -116,7 +116,7 @@ func (st *Stream) Configure(_ bool) error {
 		conf.BufferSize = conf.BlockSize * uint64(conf.MaxBlocksPerFile)
 	}
 
-	if config.IsSet(compName + ".stream-cache-mb") {
+	if config.IsSet(compName+".stream-cache-mb") && conf.BufferSize > 0 {
 		conf.CachedObjLimit = conf.StreamCacheMb / conf.BufferSize
 		if conf.CachedObjLimit == 0 {
 			conf.CachedObjLimit = 1
