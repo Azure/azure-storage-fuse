@@ -37,6 +37,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -62,6 +63,7 @@ type BlockCache struct {
 
 	blockPool  *BlockPool
 	threadPool *ThreadPool
+	policy lruPolicy
 }
 
 // Structure defining your config parameters
@@ -73,8 +75,10 @@ type BlockCacheOptions struct {
 }
 
 // One workitem to be scheduled
-type workItem struct {
+type CacheNode struct {
+	lock *sync.RWMutex
 	handle *handlemap.Handle
+	name string
 	block  *Block
 }
 
@@ -100,6 +104,16 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 //	this shall not Block the call otherwise pipeline will not start
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component %s", bc.Name())
+	bc.policy = *NewLRUPolicy(cachePolicyConfig{
+		cacheTimeout: 10,
+		maxEviction: 100000,
+	})
+	
+	err := bc.policy.StartPolicy(bc.blockPool)
+	if err != nil {
+		return fmt.Errorf("config error in %s error [fail to start policy]", bc.policy.Name())
+	}
+	
 	bc.threadPool.Start()
 	return nil
 }
@@ -107,6 +121,7 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 // Stop : Stop the component functionality and kill all threads started
 func (bc *BlockCache) Stop() error {
 	log.Trace("BlockCache::Stop : Stopping component %s", bc.Name())
+	_ = bc.policy.ShutdownPolicy()
 	bc.threadPool.Stop()
 	return nil
 }
@@ -225,7 +240,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	dataRead := int(0)
 	for dataRead < len(options.Data) {
 
-		block, err := bc.getBlock(options.Handle, uint64(options.Offset))
+		node, err := bc.getBlock(options.Handle, uint64(options.Offset))
 		if err != nil {
 			if err != io.EOF {
 				return 0, fmt.Errorf("BlockCache::ReadInBuffer : Failed to get the Block %s # %v [%v]", options.Handle.Path, options.Offset, err.Error())
@@ -234,13 +249,18 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 			}
 		}
 
-		if block == nil {
+		if node.block == nil {
 			return dataRead, fmt.Errorf("BlockCache::ReadInBuffer : Failed to retreive block %s # %v", options.Handle.Path, options.Offset)
 		}
-
-		readOffset := uint64(options.Offset) - (block.id * bc.blockPool.blockSize)
-		dataRead += copy(options.Data[dataRead:], block.data[readOffset:])
-
+		
+		node.lock.RLock()
+		readOffset := uint64(options.Offset) - (node.block.id * bc.blockPool.blockSize)
+		dataRead += copy(options.Data[dataRead:], node.block.data[readOffset:])
+		node.lock.RUnlock()
+		
+		// Validate cache
+		bc.policy.CacheValid(node)
+		
 		options.Offset += int64(dataRead)
 	}
 
@@ -253,7 +273,7 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 
 	options.Handle.CleanupWithCallback(func(key string, item interface{}) {
 		if key != "#" {
-			bc.blockPool.Release(item.(workItem).block)
+			bc.policy.CachePurge(item.(*CacheNode))
 		}
 	})
 
@@ -262,7 +282,8 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 
 // download : Method to download the given amount of data
 func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64, wait bool) bool {
-	item := workItem{
+	item := &CacheNode{
+		lock: &sync.RWMutex{},
 		handle: handle,
 		block:  bc.blockPool.Get(wait),
 	}
@@ -273,8 +294,11 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64, wa
 	}
 
 	item.block.id = offset / bc.blockPool.blockSize
-
+	
+	item.name = fmt.Sprintf("%v::%v::%v", handle.Path, handle.ID, item.block.id)
+	
 	handle.SetValue(fmt.Sprintf("%v", item.block.id), item)
+	bc.policy.CacheValid(item)
 	bc.threadPool.Schedule(offset == 0, item)
 
 	return true
@@ -282,7 +306,7 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64, wa
 
 // download : Method to download the given amount of data
 func (bc *BlockCache) download(i interface{}) {
-	item := i.(workItem)
+	item := i.(*CacheNode)
 	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 		Handle: item.handle,
 		Offset: int64(item.block.id * bc.blockPool.blockSize),
@@ -310,7 +334,7 @@ func (bc *BlockCache) getBlockIndex(offset uint64) uint64 {
 }
 
 // getBlock: From offset generate the Block index and get the Block
-func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Block, error) {
+func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*CacheNode, error) {
 	if readoffset >= uint64(handle.Size) {
 		return nil, io.EOF
 	}
@@ -331,8 +355,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			return nil, fmt.Errorf("not able to find block immediatly after scheudling")
 		}
 	}
-
-	block := item.(workItem).block
+	block := item.(*CacheNode).block
 
 	// Wait for this block to complete the download
 	t := int(0)
@@ -354,22 +377,18 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	} else if t == 1 {
 		// block is ready and we are the first reader so its time to remove the second last block from here
 		if block.id >= 2 {
+			log.Err("!!!Deleting because of id-2: %v::%v", handle.ID, block.id - 2)
 			delId := block.id - 2
 			delItem, delFound := handle.GetValue(fmt.Sprintf("%v", delId))
 			if delFound {
-				handle.RemoveValue(fmt.Sprintf("%v", delId))
-				go bc.releaseBlock(delItem.(workItem).block)
+				delItem.(*CacheNode).lock.Lock()
+				bc.policy.CachePurge(delItem.(*CacheNode))
+				delItem.(*CacheNode).lock.Unlock()
 			}
 		}
 	}
 
-	return block, nil
-}
-
-// releaseBlock: Release this block and add back to the pool
-func (bc *BlockCache) releaseBlock(b *Block) {
-	<-b.state
-	bc.blockPool.Release(b)
+	return item.(*CacheNode), nil
 }
 
 // ------------------------- Factory -------------------------------------------

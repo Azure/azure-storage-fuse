@@ -92,6 +92,11 @@ func (pool *BlockPool) Terminate() {
 	}
 }
 
+// Available returns back how many of requested blocks can be made available approx
+func (pool *BlockPool) Usage() uint32 {
+       return (pool.blocks * 100) / pool.blockMax
+}
+
 // Recalculate the block size and pool size
 func (pool *BlockPool) ReSize(blockSize uint64, memSize uint64) {
 	blockCount := memSize / blockSize
