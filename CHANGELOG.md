@@ -13,6 +13,8 @@
 - [#1151](https://github.com/Azure/azure-storage-fuse/issues/1151) Reason for unmount failure is not displayed in the console output.
 - Remove leading slashes from subdirectory name.
 - [#1156](https://github.com/Azure/azure-storage-fuse/issues/1156) Reuse 'auth-resource' config to alter scope of SPN token.
+- [#1175](https://github.com/Azure/azure-storage-fuse/issues/1175) Divide by 0 exception in Stream in case of direct streaming option.
+
 ## 2.0.3 (2023-04-26)
 **Bug Fixes**
 - [#1080](https://github.com/Azure/azure-storage-fuse/issues/1080) HNS rename flow does not encode source path correctly.
