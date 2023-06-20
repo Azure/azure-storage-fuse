@@ -421,7 +421,11 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 	err := fuseFS.NextComponent().CreateDir(internal.CreateDirOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
 	if err != nil {
 		log.Err("Libfuse::libfuse_mkdir : Failed to create %s [%s]", name, err.Error())
-		return -C.EIO
+		if os.IsPermission(err) {
+			return -C.EACCES
+		} else {
+			return -C.EIO
+		}
 	}
 
 	libfuseStatsCollector.PushEvents(createDir, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})

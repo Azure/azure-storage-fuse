@@ -266,8 +266,14 @@ func (dl *Datalake) CreateDirectory(name string) error {
 	_, err := directoryURL.Create(context.Background(), false)
 
 	if err != nil {
-		log.Err("Datalake::CreateDirectory : Failed to create directory %s [%s]", name, err.Error())
-		return err
+		serr := storeDatalakeErrToErr(err)
+		if serr == InvalidPermission {
+			log.Err("Datalake::CreateDirectory : Insufficient permissions for %s [%s]", name, err.Error())
+			return syscall.EACCES
+		} else {
+			log.Err("Datalake::CreateDirectory : Failed to create directory %s [%s]", name, err.Error())
+			return err
+		}
 	}
 
 	return nil
