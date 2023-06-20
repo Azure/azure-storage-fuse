@@ -437,6 +437,9 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 		e := storeBlobErrToErr(err)
 		if e == ErrFileNotFound {
 			return attr, syscall.ENOENT
+		} else if e == InvalidPermission {
+			log.Err("BlockBlob::getAttrUsingRest : Insufficient permissions for %s [%s]", name, err.Error())
+			return attr, syscall.EACCES
 		} else {
 			log.Err("BlockBlob::getAttrUsingRest : Failed to get blob properties for %s [%s]", name, err.Error())
 			return attr, err
@@ -482,7 +485,8 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 			if e == ErrFileNotFound {
 				return attr, syscall.ENOENT
 			} else if e == InvalidPermission {
-				return attr, syscall.EPERM
+				log.Err("BlockBlob::getAttrUsingList : Insufficient permissions for %s [%s]", name, err.Error())
+				return attr, syscall.EACCES
 			} else {
 				log.Warn("BlockBlob::getAttrUsingList : Failed to list blob properties for %s [%s]", name, err.Error())
 				failCount++
@@ -891,6 +895,9 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 		if serr == BlobIsUnderLease {
 			log.Err("BlockBlob::WriteFromFile : %s is under a lease, can not update file [%s]", name, err.Error())
 			return syscall.EIO
+		} else if serr == InvalidPermission {
+			log.Err("BlockBlob::WriteFromFile : Insufficient permissions for %s [%s]", name, err.Error())
+			return syscall.EACCES
 		} else {
 			log.Err("BlockBlob::WriteFromFile : Failed to upload blob %s [%s]", name, err.Error())
 		}

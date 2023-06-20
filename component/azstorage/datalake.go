@@ -266,8 +266,14 @@ func (dl *Datalake) CreateDirectory(name string) error {
 	_, err := directoryURL.Create(context.Background(), false)
 
 	if err != nil {
-		log.Err("Datalake::CreateDirectory : Failed to create directory %s [%s]", name, err.Error())
-		return err
+		serr := storeDatalakeErrToErr(err)
+		if serr == InvalidPermission {
+			log.Err("Datalake::CreateDirectory : Insufficient permissions for %s [%s]", name, err.Error())
+			return syscall.EACCES
+		} else {
+			log.Err("Datalake::CreateDirectory : Failed to create directory %s [%s]", name, err.Error())
+			return err
+		}
 	}
 
 	return nil
@@ -293,6 +299,9 @@ func (dl *Datalake) DeleteFile(name string) (err error) {
 		} else if serr == BlobIsUnderLease {
 			log.Err("Datalake::DeleteFile : %s is under lease [%s]", name, err.Error())
 			return syscall.EIO
+		} else if serr == InvalidPermission {
+			log.Err("Datalake::DeleteFile : Insufficient permissions for %s [%s]", name, err.Error())
+			return syscall.EACCES
 		} else {
 			log.Err("Datalake::DeleteFile : Failed to delete file %s [%s]", name, err.Error())
 			return err
@@ -382,6 +391,9 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		e := storeDatalakeErrToErr(err)
 		if e == ErrFileNotFound {
 			return attr, syscall.ENOENT
+		} else if e == InvalidPermission {
+			log.Err("Datalake::GetAttr : Insufficient permissions for %s [%s]", name, err.Error())
+			return attr, syscall.EACCES
 		} else {
 			log.Err("Datalake::GetAttr : Failed to get path properties for %s [%s]", name, err.Error())
 			return attr, err
@@ -455,9 +467,16 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 		})
 
 	if err != nil {
-		log.Err("Datalake::List : Failed to validate account with given auth %s", err.Error)
+		log.Err("Datalake::List : Failed to validate account with given auth %s", err.Error())
 		m := ""
-		return pathList, &m, err
+		e := storeDatalakeErrToErr(err)
+		if e == ErrFileNotFound { // TODO: should this be checked for list calls
+			return pathList, &m, syscall.ENOENT
+		} else if e == InvalidPermission {
+			return pathList, &m, syscall.EACCES
+		} else {
+			return pathList, &m, err
+		}
 	}
 
 	// Process the paths returned in this result segment (if the segment is empty, the loop body won't execute)
@@ -576,12 +595,16 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 
 	newPerm := getACLPermissions(mode)
 	_, err := fileURL.SetAccessControl(context.Background(), azbfs.BlobFSAccessControl{Permissions: newPerm})
-	e := storeDatalakeErrToErr(err)
-	if e == ErrFileNotFound {
-		return syscall.ENOENT
-	} else if err != nil {
+	if err != nil {
 		log.Err("Datalake::ChangeMod : Failed to change mode of file %s to %s [%s]", name, mode, err.Error())
-		return err
+		e := storeDatalakeErrToErr(err)
+		if e == ErrFileNotFound {
+			return syscall.ENOENT
+		} else if e == InvalidPermission {
+			return syscall.EACCES
+		} else {
+			return err
+		}
 	}
 
 	return nil
