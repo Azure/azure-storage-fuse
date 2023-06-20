@@ -202,13 +202,13 @@ stages:
           matrix:
             Ubuntu-20:
               DistroVer: "Ubn20_PERF"
-              AgentName: "UBN20-PERF"
+              AgentName: "blobfuse-ubuntu20"
               Description: "Blobfuse2 Perf Test"
 
         pool:
-          name: "Blobfuse Pool"
+          name: "blobfuse-perf-pool"
           demands:
-            - Agent.Name -equals $(AgentName)
+            - ImageOverride -equals $(AgentName)
 
         variables:
           - group: NightlyBlobFuse
@@ -217,7 +217,7 @@ stages:
           - name: TEMP_DIR
             value: "/home/vsts/workv2/blobfuse2tmp"
           - name: BLOBFUSE2_CFG
-            value: "/home/tamer/blobfuse2.yaml"
+            value: "$(System.DefaultWorkingDirectory)/blobfuse2_manual_perf.yaml"
           - name: GOPATH
             value: "/home/vsts/workv2/go"
           - name: ROOT_DIR
@@ -227,6 +227,11 @@ stages:
 
         steps:
           - checkout: none
+
+          - script: |          
+              sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
+              sudo apt-get install fuse3 make cmake gcc g++ python3-setuptools python3-pip parallel fio -y -o Dpkg::Options::="--force-confnew"
+            displayName: 'Install libraries'
 
             # Prestart cleanup
           - script: |
@@ -270,10 +275,22 @@ stages:
 
           - script: |
               cd $(ROOT_DIR)
-              pip install numpy tensorflow
+              pip install numpy tensorflow Pillow
             displayName: "Install Python Dependencies"
             continueOnError: false
 
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_perf.yaml --container-name=cont1 --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+              cat $(BLOBFUSE2_CFG)
+            displayName: "Generate v2 Config File"
+            env:
+              NIGHTLY_STO_ACC_NAME: $(PERF_WEEKLY_STO_BLOB_ACC_NAME)
+              NIGHTLY_STO_ACC_KEY: $(PERF_WEEKLY_STO_BLOB_ACC_KEY)
+              ACCOUNT_TYPE: 'block'
+              ACCOUNT_ENDPOINT: 'https://$(PERF_WEEKLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+            continueOnError: false
+            
           - script: |
               cd $(ROOT_DIR)
               wget https://github.com/Azure/azure-storage-fuse/releases/download/blobfuse2-2.0.0-preview.1/blobfuse2-2.0.0-preview.1-ubuntu-20.04-x86-64.deb
