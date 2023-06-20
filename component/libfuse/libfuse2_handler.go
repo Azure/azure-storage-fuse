@@ -75,6 +75,7 @@ In those calls we will convert integer value back to a pointer and get our valid
 const (
 	C_ENOENT = int(-C.ENOENT)
 	C_EIO    = int(-C.EIO)
+	C_EACCES = int(-C.EACCES)
 )
 
 // Note: libfuse prepends "/" to the path.
@@ -361,7 +362,13 @@ func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
 	if err != nil {
 		//log.Err("Libfuse::libfuse2_getattr : Failed to get attributes of %s [%s]", name, err.Error())
-		return -C.ENOENT
+		if err == syscall.ENOENT {
+			return -C.ENOENT
+		} else if err == syscall.EACCES {
+			return -C.EACCES
+		} else {
+			return -C.EIO
+		}
 	}
 
 	// Populate stat
@@ -414,7 +421,11 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 	err := fuseFS.NextComponent().CreateDir(internal.CreateDirOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
 	if err != nil {
 		log.Err("Libfuse::libfuse_mkdir : Failed to create %s [%s]", name, err.Error())
-		return -C.EIO
+		if os.IsPermission(err) {
+			return -C.EACCES
+		} else {
+			return -C.EIO
+		}
 	}
 
 	libfuseStatsCollector.PushEvents(createDir, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
@@ -486,9 +497,11 @@ func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, o
 		})
 
 		if err != nil {
-			log.Err("Libfuse::libfuse2_readdir : Path %s, handle: %d, offset %d. Error in retrieval", handle.Path, handle.ID, off_64)
+			log.Err("Libfuse::libfuse2_readdir : Path %s, handle: %d, offset %d. Error in retrieval %s", handle.Path, handle.ID, off_64, err.Error())
 			if os.IsNotExist(err) {
 				return C.int(C_ENOENT)
+			} else if os.IsPermission(err) {
+				return C.int(C_EACCES)
 			} else {
 				return C.int(C_EIO)
 			}
@@ -626,6 +639,8 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		log.Err("Libfuse::libfuse_open : Failed to open %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
+		} else if os.IsPermission(err) {
+			return -C.EACCES
 		} else {
 			return -C.EIO
 		}
@@ -727,7 +742,13 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		return -C.EIO
+		if err == syscall.ENOENT {
+			return -C.ENOENT
+		} else if err == syscall.EACCES {
+			return -C.EACCES
+		} else {
+			return -C.EIO
+		}
 	}
 
 	return 0
@@ -773,7 +794,13 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
 	if err != nil {
 		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		return -C.EIO
+		if err == syscall.ENOENT {
+			return -C.ENOENT
+		} else if err == syscall.EACCES {
+			return -C.EACCES
+		} else {
+			return -C.EIO
+		}
 	}
 
 	handlemap.Delete(handle.ID)
@@ -798,6 +825,8 @@ func libfuse_unlink(path *C.char) C.int {
 		log.Err("Libfuse::libfuse_unlink : error deleting file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
+		} else if os.IsPermission(err) {
+			return -C.EACCES
 		}
 		return -C.EIO
 	}
@@ -1000,6 +1029,8 @@ func libfuse2_chmod(path *C.char, mode C.mode_t) C.int {
 		log.Err("Libfuse::libfuse2_chmod : error in chmod of %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
+		} else if os.IsPermission(err) {
+			return -C.EACCES
 		}
 		return -C.EIO
 	}
