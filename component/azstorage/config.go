@@ -136,6 +136,7 @@ const (
 	EnvHttpProxy                   = "http_proxy"
 	EnvHttpsProxy                  = "https_proxy"
 	EnvAzStorageAccountContainer   = "AZURE_STORAGE_ACCOUNT_CONTAINER"
+	EnvAzAuthResource              = "AZURE_STORAGE_AUTH_RESOURCE"
 )
 
 type AzStorageOptions struct {
@@ -208,6 +209,8 @@ func RegisterEnvVariables() {
 	config.BindEnv("azstorage.https-proxy", EnvHttpsProxy)
 
 	config.BindEnv("azstorage.container", EnvAzStorageAccountContainer)
+
+	config.BindEnv("azstorage.auth-resource", EnvAzAuthResource)
 }
 
 //    ----------- Config Parsing and Validation  ---------------
