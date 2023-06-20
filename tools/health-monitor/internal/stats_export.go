@@ -105,23 +105,23 @@ func (se *StatsExporter) Destroy() {
 	for i, op := range se.outputList {
 		jsonData, err := json.MarshalIndent(op, "", "\t")
 		if err != nil {
-			log.Err("stats_exporter::addToOutputFile : unable to marshal [%v]", err)
+			log.Err("stats_export::addToOutputFile : unable to marshal [%v]", err)
 		}
 
 		_, err = se.opFile.Write(jsonData)
 		if err != nil {
-			log.Err("stats_exporter::addToOutputFile : unable to write to file [%v]", err)
+			log.Err("stats_export::addToOutputFile : unable to write to file [%v]", err)
 		}
 
 		if i != len(se.outputList)-1 {
 			_, err := se.opFile.WriteString(",\n")
 			if err != nil {
-				log.Err("stats_exporter::NewStatsExporter : unable to write to file [%v]", err)
+				log.Err("stats_export::NewStatsExporter : unable to write to file [%v]", err)
 			}
 		} else {
 			_, err := se.opFile.WriteString("\n]")
 			if err != nil {
-				log.Err("stats_exporter::NewStatsExporter : unable to write to file [%v]", err)
+				log.Err("stats_export::NewStatsExporter : unable to write to file [%v]", err)
 			}
 		}
 	}
@@ -201,19 +201,19 @@ func (se *StatsExporter) checkInList(t string) int {
 func (se *StatsExporter) addToOutputFile(op *Output) error {
 	jsonData, err := json.MarshalIndent(op, "", "\t")
 	if err != nil {
-		log.Err("stats_exporter::addToOutputFile : unable to marshal [%v]", err)
+		log.Err("stats_export::addToOutputFile : unable to marshal [%v]", err)
 		return err
 	}
 
 	_, err = se.opFile.Write(jsonData)
 	if err != nil {
-		log.Err("stats_exporter::addToOutputFile : unable to write to file [%v]", err)
+		log.Err("stats_export::addToOutputFile : unable to write to file [%v]", err)
 		return err
 	}
 
 	err = se.checkOutputFile()
 	if err != nil {
-		log.Err("stats_exporter::addToOutputFile : [%v]", err)
+		log.Err("stats_export::addToOutputFile : [%v]", err)
 		return err
 	}
 
@@ -233,7 +233,7 @@ func (se *StatsExporter) checkOutputFile() error {
 	if sz >= hmcommon.OutputFileSizeinMB*common.MbToBytes {
 		_, err = se.opFile.WriteString("\n]")
 		if err != nil {
-			log.Err("stats_exporter::checkOutputFile : unable to write to file [%v]", err)
+			log.Err("stats_export::checkOutputFile : unable to write to file [%v]", err)
 			return err
 		}
 
@@ -249,7 +249,7 @@ func (se *StatsExporter) checkOutputFile() error {
 	} else {
 		_, err = se.opFile.WriteString(",\n")
 		if err != nil {
-			log.Err("stats_exporter::checkOutputFile : unable to write to file [%v]", err)
+			log.Err("stats_export::checkOutputFile : unable to write to file [%v]", err)
 			return err
 		}
 	}
@@ -290,7 +290,7 @@ func (se *StatsExporter) getNewFile() error {
 
 	_, err = se.opFile.WriteString("[")
 	if err != nil {
-		log.Err("stats_exporter::NewStatsExporter : unable to write to file [%v]", err)
+		log.Err("stats_export::NewStatsExporter : unable to write to file [%v]", err)
 		return err
 	}
 

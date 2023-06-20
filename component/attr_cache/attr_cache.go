@@ -270,7 +270,7 @@ func (ac *AttrCache) ReadDir(options internal.ReadDirOptions) (pathList []*inter
 
 // StreamDir : Optionally cache attributes of paths returned by next component
 func (ac *AttrCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
-	log.Trace("AttrCache::ReadDir : %s", options.Name)
+	log.Trace("AttrCache::StreamDir : %s", options.Name)
 
 	pathList, token, err := ac.NextComponent().StreamDir(options)
 	if err == nil {
@@ -370,7 +370,7 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 
 // WriteFile : Mark the file invalid
 func (ac *AttrCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-
+	log.Trace("AttrCache::WriteFile : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
 	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
 	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Handle.Path, RetrieveMetadata: true})
 	if err != nil {

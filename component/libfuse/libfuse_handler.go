@@ -377,7 +377,7 @@ func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
 func libfuse_getattr(path *C.char, stbuf *C.stat_t, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	// log.Trace("Libfuse::libfuse_getattr : %s", name)
+	log.Trace("Libfuse::libfuse_getattr : %s", name)
 
 	// Return the default configuration for the root
 	if name == "" {
@@ -393,7 +393,7 @@ func libfuse_getattr(path *C.char, stbuf *C.stat_t, fi *C.fuse_file_info_t) C.in
 	// Get attributes
 	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
 	if err != nil {
-		// log.Err("Libfuse::libfuse_getattr : Failed to get attributes of %s [%s]", name, err.Error())
+		log.Err("Libfuse::libfuse_getattr : Failed to get attributes of %s [%s]", name, err.Error())
 		if err == syscall.ENOENT {
 			return -C.ENOENT
 		} else if err == syscall.EACCES {
@@ -999,7 +999,7 @@ func libfuse_symlink(target *C.char, link *C.char) C.int {
 func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	//log.Trace("Libfuse::libfuse_readlink : Received for %s", name)
+	log.Trace("Libfuse::libfuse_readlink : Received for %s", name)
 
 	targetPath, err := fuseFS.NextComponent().ReadLink(internal.ReadLinkOptions{Name: name})
 	if err != nil {

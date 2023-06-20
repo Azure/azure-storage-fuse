@@ -186,7 +186,7 @@ func (r *ReadCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, err
 }
 
 func (r *ReadCache) CloseFile(options internal.CloseFileOptions) error {
-	// log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	err := r.NextComponent().CloseFile(options)
 	if err != nil {
 		log.Err("Stream::CloseFile : error closing file %s [%s]", options.Handle.Path, err.Error())
@@ -202,7 +202,7 @@ func (r *ReadCache) CloseFile(options internal.CloseFileOptions) error {
 }
 
 func (r *ReadCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
-	// log.Trace("AttrCache::GetAttr : %s", options.Name)
+	log.Trace("Stream::GetAttr : %s", options.Name)
 	return r.NextComponent().GetAttr(options)
 }
 
