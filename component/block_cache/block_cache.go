@@ -37,7 +37,10 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -62,6 +65,9 @@ type BlockCache struct {
 
 	blockPool  *BlockPool
 	threadPool *ThreadPool
+
+	fileLocks *common.LockMap
+	tmpPath   string
 }
 
 // Structure defining your config parameters
@@ -70,6 +76,7 @@ type BlockCacheOptions struct {
 	MemSize       uint32 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
 	PrefetchCount uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
 	Workers       uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
+	TmpPath       string `config:"path" yaml:"path,omitempty"`
 }
 
 // One workitem to be scheduled
@@ -108,6 +115,24 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 func (bc *BlockCache) Stop() error {
 	log.Trace("BlockCache::Stop : Stopping component %s", bc.Name())
 	bc.threadPool.Stop()
+
+	_ = bc.TempCacheCleanup()
+	return nil
+}
+
+func (bc *BlockCache) TempCacheCleanup() error {
+	log.Err("BlockCache::TempCacheCleanup : Cleaning up temp directory %s", bc.tmpPath)
+
+	dirents, err := os.ReadDir(bc.tmpPath)
+	if err != nil {
+		log.Err("BlockCache::TempCacheCleanup : Failed to list directory %s [%v]", bc.tmpPath, err.Error())
+		return nil
+	}
+
+	for _, entry := range dirents {
+		os.RemoveAll(filepath.Join(bc.tmpPath, entry.Name()))
+	}
+
 	return nil
 }
 
@@ -157,6 +182,23 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.memSizeMB = conf.MemSize
 	bc.workers = conf.Workers
 	bc.prefetch = conf.PrefetchCount
+
+	bc.tmpPath = common.ExpandPath(conf.TmpPath)
+	if bc.tmpPath == "" {
+		log.Err("BlockCache: config error [tmp-path not set]")
+		return fmt.Errorf("config error in %s error [tmp-path not set]", bc.Name())
+	}
+
+	// Extract values from 'conf' and store them as you wish here
+	_, err = os.Stat(bc.tmpPath)
+	if os.IsNotExist(err) {
+		log.Err("BlockCache: config error [tmp-path does not exist. attempting to create tmp-path.]")
+		err := os.Mkdir(bc.tmpPath, os.FileMode(0755))
+		if err != nil {
+			log.Err("BlockCache: config error creating directory after clean [%s]", err.Error())
+			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+		}
+	}
 
 	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefeth %v",
 		bc.blockSizeMB, bc.memSizeMB, bc.workers, bc.prefetch)
@@ -293,25 +335,69 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64, wa
 // download : Method to download the given amount of data
 func (bc *BlockCache) download(i interface{}) {
 	item := i.(workItem)
-	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
-		Handle: item.handle,
-		Offset: int64(item.block.id * bc.blockPool.blockSize),
-		Data:   item.block.data,
-	})
+	offset := int64(item.block.id * bc.blockPool.blockSize)
+	fileName := fmt.Sprintf("%s::%v", item.handle.Path, offset)
+	diskUsed := false
 
-	if err != nil {
-		// Fail to read the data so just reschedule this request
-		log.Err("BlockCache::download : Failed to read %s from offset %v [%s]", item.handle.Path, item.block.id, err.Error())
-		bc.threadPool.Schedule(false, item)
+	flock := bc.fileLocks.Get(fileName)
+	flock.Lock()
+	defer flock.Unlock()
+
+	localPath := filepath.Join(bc.tmpPath, fileName)
+	_, err := os.Stat(localPath)
+	if err == nil {
+		// File exists locally so read from there into buffer
+		f, err := os.Open(localPath)
+		if err == nil {
+			log.Info("BlockCache::download : Reading data from disk cache %s", fileName)
+			_, err = f.Read(item.block.data)
+			if err != nil {
+				log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
+			} else {
+				diskUsed = true
+			}
+		}
+		f.Close()
 	}
 
-	if n == 0 {
-		log.Err("BlockCache::download : Failed to read %s from offset %v [0 bytes read]", item.handle.Path, item.block.id)
-		bc.threadPool.Schedule(false, item)
+	if err != nil {
+		log.Info("BlockCache::download : Reading data from network %s", fileName)
+		n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
+			Handle: item.handle,
+			Offset: int64(item.block.id * bc.blockPool.blockSize),
+			Data:   item.block.data,
+		})
+
+		if err != nil {
+			// Fail to read the data so just reschedule this request
+			log.Err("BlockCache::download : Failed to read %s from offset %v [%s]", item.handle.Path, item.block.id, err.Error())
+			bc.threadPool.Schedule(false, item)
+			return
+		} else if n == 0 {
+			// No data read so just reschedule this request
+			log.Err("BlockCache::download : Failed to read %s from offset %v [0 bytes read]", item.handle.Path, item.block.id)
+			bc.threadPool.Schedule(false, item)
+			return
+		}
 	}
 
 	// Unblock readers of this Block
 	_ = item.block.ReadyForReading()
+
+	if !diskUsed {
+		// Dump this buffer to local file
+		f, err := os.Create(localPath)
+		if err == nil {
+			_, err := f.Write(item.block.data)
+			if err != nil {
+				log.Err("BlockCache::download : Failed to write %s to disk [%v]]", localPath, err.Error())
+				f.Close()
+				_ = os.Remove(localPath)
+			} else {
+				f.Close()
+			}
+		}
+	}
 }
 
 // getBlockIndex: From offset get the block index
@@ -387,7 +473,9 @@ func (bc *BlockCache) releaseBlock(b *Block) {
 // Pipeline will call this method to create your object, initialize your variables here
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
 func NewBlockCacheComponent() internal.Component {
-	comp := &BlockCache{}
+	comp := &BlockCache{
+		fileLocks: common.NewLockMap(),
+	}
 	comp.SetName(compName)
 	config.AddConfigChangeEventListener(comp)
 	return comp
