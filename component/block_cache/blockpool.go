@@ -140,7 +140,7 @@ func (pool *BlockPool) Get(wait bool) *Block {
 				return nil
 			}
 		} else {
-			// Caller is ready to wait so block untill buffer is available
+			// Caller is ready to wait so block until buffer is available
 			b = <-pool.blocksCh
 		}
 	}

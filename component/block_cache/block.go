@@ -66,7 +66,7 @@ func AllocateBlock(size uint64) (*Block, error) {
 		closed: true,
 	}, nil
 
-	// we do not create channel here, as that will be created when buffer is retreived
+	// we do not create channel here, as that will be created when buffer is retrieved
 	// reinit will always be called before use and that will create the channel as well.
 }
 

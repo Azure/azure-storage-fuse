@@ -244,7 +244,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		}
 
 		if block == nil {
-			return dataRead, fmt.Errorf("BlockCache::ReadInBuffer : Failed to retreive block %s # %v", options.Handle.Path, options.Offset)
+			return dataRead, fmt.Errorf("BlockCache::ReadInBuffer : Failed to retrieve block %s # %v", options.Handle.Path, options.Offset)
 		}
 
 		readOffset := uint64(options.Offset) - (block.id * bc.blockPool.blockSize)
@@ -338,7 +338,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 		item, found = handle.GetValue(fmt.Sprintf("%v", index))
 		if !found {
 			log.Err("BlockCache::ReadInBuffer : Something went wrong not able to find the Block %s # %v", handle.Path, index)
-			return nil, fmt.Errorf("not able to find block immediatly after scheudling")
+			return nil, fmt.Errorf("not able to find block immediately after scheudling")
 		}
 	}
 
