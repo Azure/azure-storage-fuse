@@ -370,7 +370,7 @@ func (ac *AttrCache) RenameFile(options internal.RenameFileOptions) error {
 
 // WriteFile : Mark the file invalid
 func (ac *AttrCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	log.Trace("AttrCache::WriteFile : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
+
 	// GetAttr on cache hit will serve from cache, on cache miss will serve from next component.
 	attr, err := ac.GetAttr(internal.GetAttrOptions{Name: options.Handle.Path, RetrieveMetadata: true})
 	if err != nil {

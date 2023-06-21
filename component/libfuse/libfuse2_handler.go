@@ -345,7 +345,7 @@ func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
 func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse2_getattr : %s", name)
+	//log.Trace("Libfuse::libfuse2_getattr : %s", name)
 
 	// Return the default configuration for the root
 	if name == "" {
@@ -361,7 +361,7 @@ func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 	// Get attributes
 	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
 	if err != nil {
-		log.Err("Libfuse::libfuse2_getattr : Failed to get attributes of %s [%s]", name, err.Error())
+		//log.Err("Libfuse::libfuse2_getattr : Failed to get attributes of %s [%s]", name, err.Error())
 		if err == syscall.ENOENT {
 			return -C.ENOENT
 		} else if err == syscall.EACCES {

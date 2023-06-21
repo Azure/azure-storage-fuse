@@ -522,7 +522,6 @@ func (fc *FileCache) ReadDir(options internal.ReadDirOptions) ([]*internal.ObjAt
 
 // StreamDir : Add local files to the list retrieved from storage container
 func (fc *FileCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
-	log.Trace("FileCache::StreamDir : name=%d, offset=%s", options.Name, options.Offset)
 	attrs, token, err := fc.NextComponent().StreamDir(options)
 
 	if token == "" {
@@ -1000,7 +999,6 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 
 // ReadFile: Read the local file
 func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) {
-	log.Trace("FileCache::ReadFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 	fc.policy.CacheValid(localPath)
@@ -1030,7 +1028,6 @@ func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) 
 
 // ReadInBuffer: Read the local file into a buffer
 func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	log.Trace("FileCache::ReadInBuffer : handle=%d, path=%s, offset=%d", options.Handle.ID, options.Handle.Path, options.Offset)
 	//defer exectime.StatTimeCurrentBlock("FileCache::ReadInBuffer")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 	f := options.Handle.GetFileObject()
@@ -1054,7 +1051,6 @@ func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, er
 
 // WriteFile: Write to the local file
 func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	log.Trace("FileCache::WriteFile : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
 	//defer exectime.StatTimeCurrentBlock("FileCache::WriteFile")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 	f := options.Handle.GetFileObject()

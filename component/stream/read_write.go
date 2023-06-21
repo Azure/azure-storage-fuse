@@ -97,7 +97,7 @@ func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap
 }
 
 func (rw *ReadWriteCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	log.Trace("Stream::ReadInBuffer : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
+	// log.Trace("Stream::ReadInBuffer : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
 	if !rw.StreamOnly && options.Handle.CacheObj.StreamOnly {
 		err := rw.createHandleCache(options.Handle)
 		if err != nil {
@@ -125,7 +125,7 @@ func (rw *ReadWriteCache) ReadInBuffer(options internal.ReadInBufferOptions) (in
 }
 
 func (rw *ReadWriteCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	log.Trace("Stream::WriteFile : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
+	// log.Trace("Stream::WriteFile : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
 	if !rw.StreamOnly && options.Handle.CacheObj.StreamOnly {
 		err := rw.createHandleCache(options.Handle)
 		if err != nil {
@@ -344,7 +344,7 @@ func (rw *ReadWriteCache) Stop() error {
 }
 
 func (rw *ReadWriteCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
-	log.Trace("Stream::GetAttr : %s", options.Name)
+	// log.Trace("AttrCache::GetAttr : %s", options.Name)
 	return rw.NextComponent().GetAttr(options)
 }
 

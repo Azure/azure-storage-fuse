@@ -424,12 +424,12 @@ func (az *AzStorage) RenameFile(options internal.RenameFileOptions) error {
 }
 
 func (az *AzStorage) ReadFile(options internal.ReadFileOptions) (data []byte, err error) {
-	log.Trace("AzStorage::ReadFile : Read %s", options.Handle.Path)
+	//log.Trace("AzStorage::ReadFile : Read %s", h.Path)
 	return az.storage.ReadBuffer(options.Handle.Path, 0, 0)
 }
 
 func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length int, err error) {
-	log.Trace("AzStorage::ReadInBuffer : Read %s from %d offset", options.Handle.Path, options.Offset)
+	//log.Trace("AzStorage::ReadInBuffer : Read %s from %d offset", h.Path, offset)
 
 	if options.Offset > atomic.LoadInt64(&options.Handle.Size) {
 		return 0, syscall.ERANGE
@@ -454,7 +454,6 @@ func (az *AzStorage) ReadInBuffer(options internal.ReadInBufferOptions) (length 
 }
 
 func (az *AzStorage) WriteFile(options internal.WriteFileOptions) (int, error) {
-	log.Trace("AzStorage::WriteFile : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
 	err := az.storage.Write(options)
 	return len(options.Data), err
 }
@@ -512,7 +511,7 @@ func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) 
 
 // Attribute operations
 func (az *AzStorage) GetAttr(options internal.GetAttrOptions) (attr *internal.ObjAttr, err error) {
-	log.Trace("AzStorage::GetAttr : Get attributes of file %s", options.Name)
+	//log.Trace("AzStorage::GetAttr : Get attributes of file %s", name)
 	return az.storage.GetAttr(options.Name)
 }
 

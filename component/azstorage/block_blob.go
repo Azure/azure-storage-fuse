@@ -762,7 +762,7 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 
 // ReadInBuffer : Download specific range from a file to a user provided buffer
 func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
-	log.Trace("BlockBlob::ReadInBuffer : name %s", name)
+	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, data, bb.downloadOptions)
 
@@ -1025,7 +1025,7 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 }
 
 func (bb *BlockBlob) TruncateFile(name string, size int64) error {
-	log.Trace("BlockBlob::TruncateFile : name=%s, size=%d", name, size)
+	// log.Trace("BlockBlob::TruncateFile : name=%s, size=%d", name, size)
 	attr, err := bb.GetAttr(name)
 	if err != nil {
 		log.Err("BlockBlob::TruncateFile : Failed to get attributes of file %s [%s]", name, err.Error())

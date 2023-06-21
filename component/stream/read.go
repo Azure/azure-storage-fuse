@@ -202,7 +202,7 @@ func (r *ReadCache) CloseFile(options internal.CloseFileOptions) error {
 }
 
 func (r *ReadCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
-	log.Trace("Stream::GetAttr : %s", options.Name)
+	// log.Trace("AttrCache::GetAttr : %s", options.Name)
 	return r.NextComponent().GetAttr(options)
 }
 

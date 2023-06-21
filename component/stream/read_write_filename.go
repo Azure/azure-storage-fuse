@@ -100,7 +100,7 @@ func (rw *ReadWriteFilenameCache) OpenFile(options internal.OpenFileOptions) (*h
 }
 
 func (rw *ReadWriteFilenameCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	log.Trace("Stream::ReadInBuffer : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
+	// log.Trace("Stream::ReadInBuffer : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
 	if !rw.StreamOnly && options.Handle.CacheObj.StreamOnly {
 		err := rw.createFileCache(options.Handle)
 		if err != nil {
@@ -126,7 +126,7 @@ func (rw *ReadWriteFilenameCache) ReadInBuffer(options internal.ReadInBufferOpti
 }
 
 func (rw *ReadWriteFilenameCache) WriteFile(options internal.WriteFileOptions) (int, error) {
-	log.Trace("Stream::WriteFile : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
+	// log.Trace("Stream::WriteFile : name=%s, handle=%d, offset=%d", options.Handle.Path, options.Handle.ID, options.Offset)
 	if !rw.StreamOnly && options.Handle.CacheObj.StreamOnly {
 		err := rw.createFileCache(options.Handle)
 		if err != nil {
@@ -269,7 +269,7 @@ func (rw *ReadWriteFilenameCache) Stop() error {
 
 // GetAttr : Try to serve the request from the attribute cache, otherwise cache attributes of the path returned by next component
 func (rw *ReadWriteFilenameCache) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, error) {
-	log.Trace("Stream::GetAttr : %s", options.Name)
+	// log.Trace("AttrCache::GetAttr : %s", options.Name)
 	attrs, err := rw.NextComponent().GetAttr(options)
 	if err != nil {
 		log.Err("Stream::GetAttr : error getting attributes %s [%s]", options.Name, err.Error())
