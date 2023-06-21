@@ -999,7 +999,7 @@ func libfuse_symlink(target *C.char, link *C.char) C.int {
 func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse_readlink : Received for %s", name)
+	//log.Trace("Libfuse::libfuse_readlink : Received for %s", name)
 
 	targetPath, err := fuseFS.NextComponent().ReadLink(internal.ReadLinkOptions{Name: name})
 	if err != nil {
