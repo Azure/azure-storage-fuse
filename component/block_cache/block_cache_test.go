@@ -86,7 +86,7 @@ func setupPipeline(cfg string) *testObj {
 	tobj := &testObj{fake_storage_path: getFakeStoragePath()}
 
 	if cfg == "" {
-		cfg = fmt.Sprintf("read-only: true\n\nloopbackfs:\n  path: %s\n\nblock_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 2\n  parallelism: 8\n", tobj.fake_storage_path)
+		cfg = fmt.Sprintf("read-only: true\n\nloopbackfs:\n  path: %s\n\nblock_cache:\n  block-size-mb: 1\n  mem-size-mb: 20\n  prefetch: 5\n  parallelism: 8\n", tobj.fake_storage_path)
 	} else {
 		cfg = fmt.Sprintf("%s\n\nloopbackfs:\n  path: %s\n", cfg, tobj.fake_storage_path)
 	}
@@ -229,7 +229,7 @@ func (suite *blockCacheTestSuite) TestOpenFilePreFetch() {
 	f.SetFileObject(h)
 
 	n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: buf})
-	suite.assert.NotNil(err)
+	suite.assert.Nil(err)
 	suite.assert.NotEqual(n, 0)
 	suite.assert.Equal(n, 2048)
 
@@ -272,7 +272,7 @@ func (suite *blockCacheTestSuite) TestOpenMultiblockFile() {
 	suite.assert.Equal(found, true)
 
 	n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: f, Offset: 0, Data: buf})
-	suite.assert.NotNil(err)
+	suite.assert.Nil(err)
 	suite.assert.NotEqual(n, 0)
 	suite.assert.Equal(uint32(n), buffSize)
 

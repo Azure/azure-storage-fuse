@@ -248,9 +248,10 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 		}
 
 		readOffset := uint64(options.Offset) - (block.id * bc.blockPool.blockSize)
-		dataRead += copy(options.Data[dataRead:], block.data[readOffset:])
+		bytesRead := copy(options.Data[dataRead:], block.data[readOffset:])
 
-		options.Offset += int64(dataRead)
+		options.Offset += int64(bytesRead)
+		dataRead += bytesRead
 	}
 
 	return dataRead, nil
