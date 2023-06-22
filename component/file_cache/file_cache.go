@@ -1083,6 +1083,7 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 }
 
 func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
+	log.Trace("FileCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	if fc.syncToFlush {
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 	} else {
