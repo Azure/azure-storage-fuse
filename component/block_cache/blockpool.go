@@ -60,6 +60,10 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	}
 }
 
+func (pool *BlockPool) Usage() uint32 {
+	return (pool.blocks * 100) / pool.blockMax
+}
+
 // Available returns back how many of requested blocks can be made available approx
 func (pool *BlockPool) Available(cnt uint32) uint32 {
 	// Calculate how much is possible at max to allocate and provide
