@@ -337,7 +337,7 @@ func (c *FileCache) StatFs() (*syscall.Statfs_t, bool, error) {
 	statfs := &syscall.Statfs_t{}
 	err := syscall.Statfs("/", statfs)
 	if err != nil {
-		log.Debug("FileCache: statfs err [%s].", err.Error())
+		log.Debug("FileCache::StatFs : statfs err [%s].", err.Error())
 		return nil, false, err
 	}
 	statfs.Blocks = uint64(maxCacheSize) / uint64(statfs.Frsize)
