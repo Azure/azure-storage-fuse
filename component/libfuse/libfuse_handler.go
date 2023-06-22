@@ -587,7 +587,7 @@ func libfuse_statfs(path *C.char, buf *C.statvfs_t) C.int {
 
 	attr, populated, err := fuseFS.NextComponent().StatFs()
 	if err != nil {
-		log.Err("Libfuse::libfuse_statfs: Failed to get stats %s [%s]", name, err.Error())
+		log.Err("Libfuse::libfuse_statfs : Failed to get stats %s [%s]", name, err.Error())
 		return -C.EIO
 	}
 
