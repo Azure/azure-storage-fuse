@@ -69,6 +69,7 @@ type Handle struct {
 	sync.RWMutex
 	FObj     *os.File // File object being represented by this handle
 	CacheObj *Cache   // Streaming layer cache for this handle
+	TempObj  any
 	ID       HandleID // Blobfuse assigned unique ID to this handle
 	Size     int64    // Size of the file being handled here
 	Mtime    time.Time
@@ -89,6 +90,7 @@ func NewHandle(path string) *Handle {
 		values:   make(map[string]interface{}),
 		CacheObj: nil,
 		FObj:     nil,
+		TempObj:  nil,
 	}
 }
 

@@ -66,9 +66,6 @@ func (suite *blockpoolTestSuite) TestAllocate() {
 	bp = NewBlockPool(1, 1)
 	suite.assert.NotNil(bp)
 	suite.assert.NotNil(bp.blocksCh)
-	suite.assert.Equal(bp.blockMax, uint32(1))
-	suite.assert.Equal(bp.blockSize, uint64(1))
-	suite.assert.Equal(bp.blocks, uint32(0))
 
 	bp.Terminate()
 	suite.assert.Equal(len(bp.blocksCh), 0)
@@ -80,36 +77,6 @@ func (suite *blockpoolTestSuite) TestResize() {
 	bp := NewBlockPool(1, 5)
 	suite.assert.NotNil(bp)
 	suite.assert.NotNil(bp.blocksCh)
-	suite.assert.Equal(bp.blockMax, uint32(5))
-	suite.assert.Equal(bp.blockSize, uint64(1))
-	suite.assert.Equal(bp.blocks, uint32(0))
-
-	bp.ReSize(1, 10)
-	suite.assert.Equal(bp.blockMax, uint32(10))
-	suite.assert.Equal(bp.blockSize, uint64(1))
-	suite.assert.Equal(bp.blocks, uint32(5))
-
-	bp.Terminate()
-	suite.assert.Equal(len(bp.blocksCh), 0)
-}
-
-func (suite *blockpoolTestSuite) TestExpand() {
-	suite.assert = assert.New(suite.T())
-
-	bp := NewBlockPool(1, 5)
-	suite.assert.NotNil(bp)
-	suite.assert.NotNil(bp.blocksCh)
-	suite.assert.Equal(bp.blockMax, uint32(5))
-	suite.assert.Equal(bp.blockSize, uint64(1))
-	suite.assert.Equal(bp.blocks, uint32(0))
-
-	for i := 0; i < 10; i++ {
-		bp.expand()
-	}
-
-	suite.assert.Equal(bp.blockMax, uint32(5))
-	suite.assert.Equal(bp.blockSize, uint64(1))
-	suite.assert.Equal(bp.blocks, uint32(5))
 
 	bp.Terminate()
 	suite.assert.Equal(len(bp.blocksCh), 0)
@@ -121,32 +88,16 @@ func (suite *blockpoolTestSuite) TestGetRelease() {
 	bp := NewBlockPool(1, 5)
 	suite.assert.NotNil(bp)
 	suite.assert.NotNil(bp.blocksCh)
-	suite.assert.Equal(bp.blockMax, uint32(5))
-	suite.assert.Equal(bp.blockSize, uint64(1))
-	suite.assert.Equal(bp.blocks, uint32(0))
 
 	b := bp.Get(true)
-	suite.assert.Equal(bp.blockMax, uint32(5))
-	suite.assert.Equal(bp.blockSize, uint64(1))
-	suite.assert.Equal(bp.blocks, uint32(1))
 	suite.assert.NotNil(b)
 
 	bp.Release(b)
 	suite.assert.Equal(len(bp.blocksCh), 1)
 
-	for i := 0; i < 10; i++ {
-		bp.expand()
-	}
-
-	suite.assert.Equal(bp.blockMax, uint32(5))
-	suite.assert.Equal(bp.blockSize, uint64(1))
-	suite.assert.Equal(bp.blocks, uint32(5))
 	suite.assert.Equal(len(bp.blocksCh), 5)
 
 	b = bp.Get(false)
-	suite.assert.Equal(bp.blockMax, uint32(5))
-	suite.assert.Equal(bp.blockSize, uint64(1))
-	suite.assert.Equal(bp.blocks, uint32(5))
 	suite.assert.NotNil(b)
 	suite.assert.Equal(len(bp.blocksCh), 4)
 
@@ -163,9 +114,6 @@ func (suite *blockpoolTestSuite) TestAvailable() {
 	bp := NewBlockPool(1, 10)
 	suite.assert.NotNil(bp)
 	suite.assert.NotNil(bp.blocksCh)
-	suite.assert.Equal(bp.blockMax, uint32(10))
-	suite.assert.Equal(bp.blockSize, uint64(1))
-	suite.assert.Equal(bp.blocks, uint32(0))
 
 	avail := bp.Available(5)
 	suite.assert.Equal(avail, uint32(5))
@@ -181,9 +129,6 @@ func (suite *blockpoolTestSuite) TestAvailable() {
 	for i := 0; i < 10; i++ {
 		bp.Release(b[i])
 	}
-
-	suite.assert.Equal(bp.blockMax, uint32(10))
-	suite.assert.Equal(bp.blocks, uint32(10))
 
 	avail = bp.Available(5)
 	suite.assert.Equal(avail, uint32(5))

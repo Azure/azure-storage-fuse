@@ -38,12 +38,18 @@ import (
 	"syscall"
 )
 
+const (
+	BlockReady uint16 = iota
+	BlockQueued
+)
+
 // Block is a memory mapped buffer with its state
 type Block struct {
+	offset uint64
 	id     uint64
-	closed bool
 	state  chan int
 	data   []byte
+	stage  uint16
 }
 
 // newblock creates a new memory mapped buffer with the specified size
@@ -60,10 +66,10 @@ func AllocateBlock(size uint64) (*Block, error) {
 	}
 
 	return &Block{
-		data:   addr,
-		state:  nil,
-		id:     0,
-		closed: true,
+		data:  addr,
+		state: nil,
+		id:    0,
+		stage: BlockReady,
 	}, nil
 
 	// we do not create channel here, as that will be created when buffer is retrieved
@@ -88,35 +94,19 @@ func (b *Block) Delete() error {
 
 // reinit the Block by recreating its channel
 func (b *Block) ReUse() {
-	b.state = make(chan int, 2)
 	b.id = 0
-	b.closed = false
+	b.stage = BlockReady
+	b.state = make(chan int, 2)
 }
 
 // mark this Block is now ready for ops
 func (b *Block) ReadyForReading() error {
-	if b.state == nil {
-		return fmt.Errorf("block was never used")
-	}
-
-	if len(b.state) != 0 {
-		return fmt.Errorf("invalid state to mark it ready")
-	}
-
 	b.state <- 1
-	b.state <- 2
-
 	return nil
 }
 
 // mark this Block is ready to be read freely now without blocking
 func (b *Block) Unblock() error {
-	if b.closed {
-		return fmt.Errorf("invalid state of block to unblock")
-	}
-
 	close(b.state)
-	b.closed = true
-
 	return nil
 }

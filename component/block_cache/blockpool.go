@@ -39,9 +39,7 @@ const _1MB uint64 = (1024 * 1024)
 
 type BlockPool struct {
 	blocksCh  chan *Block
-	blockSize uint64
-	blockMax  uint32
-	blocks    uint32
+	maxBlocks uint32
 }
 
 func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
@@ -50,27 +48,35 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 		return nil
 	}
 
-	blockCount := memSize / blockSize
+	blockCount := uint32(memSize / blockSize)
 
-	return &BlockPool{
+	pool := &BlockPool{
 		blocksCh:  make(chan *Block, blockCount),
-		blockSize: blockSize,
-		blockMax:  uint32(blockCount),
-		blocks:    0,
+		maxBlocks: uint32(blockCount),
 	}
+
+	for i := (uint32)(0); i < blockCount; i++ {
+		b, err := AllocateBlock(blockSize)
+		if err == nil {
+			return nil
+		}
+
+		pool.blocksCh <- b
+	}
+
+	return pool
 }
 
 func (pool *BlockPool) Usage() uint32 {
-	return (pool.blocks * 100) / pool.blockMax
+	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh))) * 100) / pool.maxBlocks
 }
 
 // Available returns back how many of requested blocks can be made available approx
 func (pool *BlockPool) Available(cnt uint32) uint32 {
 	// Calculate how much is possible at max to allocate and provide
-	possible := pool.blockMax - pool.blocks
-	possible += uint32(len(pool.blocksCh))
+	possible := (uint32)(len(pool.blocksCh))
 
-	percentAvailable := (possible * 100) / pool.blockMax
+	percentAvailable := (possible * 100) / pool.maxBlocks
 	if percentAvailable > 70 && possible > cnt {
 		return cnt
 	}
@@ -88,65 +94,29 @@ func (pool *BlockPool) Available(cnt uint32) uint32 {
 func (pool *BlockPool) Terminate() {
 	close(pool.blocksCh)
 
-	if pool.blocks > 0 {
-		for {
-			b := <-pool.blocksCh
-			if b == nil {
-				break
-			}
-			_ = b.Delete()
-		}
+	for {
+		b := <-pool.blocksCh
+		_ = b.Delete()
 	}
 }
 
-// Recalculate the block size and pool size
-func (pool *BlockPool) ReSize(blockSize uint64, memSize uint64) {
-	blockCount := memSize / blockSize
-	pool.blockMax = uint32(blockCount)
-
-	for pool.blocks < pool.blockMax/2 {
-		pool.expand()
-	}
+// Must Get a Block from the pool, wait untill something is free
+func (pool *BlockPool) MustGet() *Block {
+	b := <-pool.blocksCh
+	b.ReUse()
+	return b
 }
 
-// Get a Block from the pool
-func (pool *BlockPool) expand() {
-	if pool.blocks < pool.blockMax {
-		// Time to allocate a new Block
-		b, err := AllocateBlock(pool.blockSize)
-		if err != nil {
-			return
-		}
-
-		pool.blocks++
-		pool.blocksCh <- b
-		return
-	}
-}
-
-// Get a Block from the pool
-func (pool *BlockPool) Get(wait bool) *Block {
+// Must Get a Block from the pool, wait untill something is free
+func (pool *BlockPool) TryGet() *Block {
 	var b *Block
 
 	select {
-	// Check if there is a buffer already available in the pool
 	case b = <-pool.blocksCh:
 		break
 	default:
-		// If not available try to allocate a new buffer and add to pool if possible
-		pool.expand()
-		if !wait {
-			// Caller asked for immediate answer so even after expanding if its not possible return nil
-			select {
-			case b = <-pool.blocksCh:
-				break
-			default:
-				return nil
-			}
-		} else {
-			// Caller is ready to wait so block until buffer is available
-			b = <-pool.blocksCh
-		}
+		log.Err("BlockPool::Get : No blocks available in the pool")
+		return nil
 	}
 
 	b.ReUse()
@@ -156,11 +126,5 @@ func (pool *BlockPool) Get(wait bool) *Block {
 // Release back the Block to the pool
 func (pool *BlockPool) Release(b *Block) {
 	// This goes to the first Block channel
-	if pool.blocks > pool.blockMax {
-		pool.blocks--
-		_ = b.Delete()
-		return
-	}
-
 	pool.blocksCh <- b
 }

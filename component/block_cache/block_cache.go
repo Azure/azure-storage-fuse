@@ -65,19 +65,16 @@ import (
 type BlockCache struct {
 	internal.BaseComponent
 
-	blockSizeMB uint32
-
-	memSizeMB  uint32
-	memTimeout uint32
+	blockSizeMB uint64
+	memSizeMB   uint64
 
 	tmpPath     string
-	diskSizeMB  uint32
+	diskSizeMB  uint64
 	diskTimeout uint32
 
 	workers  uint32
 	prefetch uint32
 
-	memPolicy  *tlru.TLRU
 	diskPolicy *tlru.TLRU
 
 	blockPool  *BlockPool
@@ -92,13 +89,13 @@ type BlockCache struct {
 
 // Structure defining your config parameters
 type BlockCacheOptions struct {
-	BlockSize uint32 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	BlockSize uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 
-	MemSize    uint32 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
+	MemSize    uint64 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
 	MemTimeout uint32 `config:"mem-timeout-sec" yaml:"timeout-sec,omitempty"`
 
 	TmpPath     string `config:"path" yaml:"path,omitempty"`
-	DiskSize    uint32 `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
+	DiskSize    uint64 `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
 	DiskTimeout uint32 `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
 
 	PrefetchCount uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
@@ -107,9 +104,9 @@ type BlockCacheOptions struct {
 
 // One workitem to be scheduled
 type workItem struct {
-	handle     *handlemap.Handle
-	block      *Block
-	prefetched bool
+	handle   *handlemap.Handle
+	block    *Block
+	prefetch bool
 }
 
 const (
@@ -142,13 +139,7 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 
 	bc.threadPool.Start()
 
-	err := bc.memPolicy.Start()
-	if err != nil {
-		log.Err("BlockCache::Start : failed to start mempolicy [%s]", err.Error())
-		return fmt.Errorf("failed to start  mem-policy for block-cache")
-	}
-
-	err = bc.diskPolicy.Start()
+	err := bc.diskPolicy.Start()
 	if err != nil {
 		log.Err("BlockCache::Start : failed to start diskpolicy [%s]", err.Error())
 		return fmt.Errorf("failed to start  disk-policy for block-cache")
@@ -165,7 +156,6 @@ func (bc *BlockCache) Stop() error {
 	log.Trace("BlockCache::Stop : Stopping component %s", bc.Name())
 	bc.threadPool.Stop()
 
-	_ = bc.memPolicy.Stop()
 	_ = bc.diskPolicy.Stop()
 	_ = bc.TempCacheCleanup()
 
@@ -214,22 +204,18 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("BlockCache: config error [invalid config attributes]")
 	}
 
-	bc.blockSizeMB = 8
+	bc.blockSizeMB = uint64(8)
 	if config.IsSet(compName + ".block-size-mb") {
 		bc.blockSizeMB = conf.BlockSize
 
 	}
 
-	bc.memSizeMB = 4192
+	bc.memSizeMB = uint64(4192)
 	if config.IsSet(compName + ".mem-size-mb") {
 		bc.memSizeMB = conf.MemSize
 	}
-	bc.memTimeout = defaultTimeout
-	if config.IsSet(compName + ".mem-timeout-sec") {
-		bc.memTimeout = conf.MemTimeout
-	}
 
-	bc.diskSizeMB = 4192
+	bc.diskSizeMB = uint64(4192)
 	if config.IsSet(compName + ".disk-size-mb") {
 		bc.diskSizeMB = conf.DiskSize
 	}
@@ -265,10 +251,10 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefeth %v, disk path %v, max size %v, block timeout %v, disk timeout %v",
-		bc.blockSizeMB, bc.memSizeMB, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSizeMB, bc.memTimeout, bc.diskTimeout)
+	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefeth %v, disk path %v, max size %v, disk timeout %v",
+		bc.blockSizeMB, bc.memSizeMB, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSizeMB, bc.diskTimeout)
 
-	bc.blockPool = NewBlockPool((uint64)(bc.blockSizeMB)*_1MB, (uint64)(bc.memSizeMB)*_1MB)
+	bc.blockPool = NewBlockPool(bc.blockSizeMB*_1MB, bc.memSizeMB*_1MB)
 	if bc.blockPool == nil {
 		log.Err("BlockCache::Configure : fail to init Block pool")
 		return fmt.Errorf("BlockCache: failed to init Block pool")
@@ -280,13 +266,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("BlockCache: failed to init thread pool")
 	}
 
-	bc.memPolicy, err = tlru.New(bc.memSizeMB/bc.blockSizeMB, bc.memTimeout, bc.memEvict, 60, bc.checkBlockPool)
-	if err != nil {
-		log.Err("BlockCache::Configure : fail to create LRU for memory nodes [%s]", err.Error())
-		return fmt.Errorf("BlockCache: fail to create LRU for memory nodes")
-	}
-
-	bc.diskPolicy, err = tlru.New(bc.diskSizeMB/bc.blockSizeMB, bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
+	bc.diskPolicy, err = tlru.New(uint32(bc.diskSizeMB/bc.blockSizeMB), bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
 	if err != nil {
 		log.Err("BlockCache::Configure : fail to create LRU for memory nodes [%s]", err.Error())
 		return fmt.Errorf("BlockCache: fail to create LRU for memory nodes")
@@ -306,15 +286,6 @@ func (bc *BlockCache) OnConfigChange() {
 		log.Err("BlockCache::OnConfigChange : config error [invalid config attributes]")
 		return
 	}
-
-	if conf.BlockSize == 0 || conf.MemSize == 0 || conf.Workers == 0 {
-		log.Err("BlockCache::OnConfigChange : Invalid config attributes. block size %v, mem size %v, worker %v, prefeth %v",
-			conf.BlockSize, conf.MemSize, conf.Workers, conf.PrefetchCount)
-		return
-	}
-
-	bc.blockPool.ReSize((uint64)(conf.BlockSize)*_1MB, (uint64)(conf.MemSize)*_1MB)
-	bc.memSizeMB = conf.MemSize
 }
 
 // OpenFile: Makes the file available in the local cache for further file operations.
@@ -329,19 +300,44 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 	handle := handlemap.NewHandle(options.Name)
 	handle.Size = attr.Size
+	handle.Mtime = attr.Mtime
 
-	// Schedule the download of first N blocks for this file here
-	nextoffset := uint64(0)
-	prefetch := bc.blockPool.Available(bc.prefetch)
-	for i := 0; uint32(i) < prefetch && int64(nextoffset) < handle.Size; i++ {
-		success := bc.lineupDownload(handle, nextoffset, (i == 0))
-		if !success {
-			break
-		}
-		nextoffset += bc.blockPool.blockSize
+	// Set next offset to download to 0
+	handle.SetValue("#", (uint64)(0))
+
+	// Allocate a block pool object for this handle
+	// Acutal linked list to hold the nodes
+	blockList := list.New()
+	handle.TempObj = blockList
+
+	// Fill this local block pool with prefetch number of blocks
+	for i := uint32(0); i < bc.prefetch; i++ {
+		blockList.PushFront(bc.blockPool.MustGet())
 	}
 
 	return handle, nil
+}
+
+// CloseFile: Flush the file and invalidate it from the cache.
+func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
+	log.Trace("BlockCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+
+	i := uint32(0)
+
+	// Release the blocks that are in use and wipe out handle map
+	options.Handle.Cleanup()
+
+	// Relese the blocks that are not in use
+	blockList := options.Handle.TempObj.(*list.List)
+	for ; i < bc.prefetch; i++ {
+		node := blockList.Back()
+		block := blockList.Remove(node).(*Block)
+
+		block.ReUse()
+		bc.blockPool.Release(block)
+	}
+
+	return nil
 }
 
 // ReadInBuffer: Read the local file into a buffer
@@ -350,8 +346,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 	dataRead := int(0)
 	for dataRead < len(options.Data) {
-
-		node, err := bc.getBlock(options.Handle, uint64(options.Offset))
+		block, err := bc.getBlock(options.Handle, uint64(options.Offset))
 		if err != nil {
 			if err != io.EOF {
 				return 0, fmt.Errorf("BlockCache::ReadInBuffer : Failed to get the Block %s # %v [%v]", options.Handle.Path, options.Offset, err.Error())
@@ -360,156 +355,45 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 			}
 		}
 
-		if node == nil {
+		if block == nil {
 			return dataRead, fmt.Errorf("BlockCache::ReadInBuffer : Failed to retrieve block %s # %v", options.Handle.Path, options.Offset)
 		}
 
-		block := node.Value.(*workItem).block
-		readOffset := uint64(options.Offset) - (block.id * bc.blockPool.blockSize)
+		readOffset := uint64(options.Offset) - block.offset
 		bytesRead := copy(options.Data[dataRead:], block.data[readOffset:])
 
 		options.Offset += int64(bytesRead)
 		dataRead += bytesRead
 	}
 
+	options.Handle.OptCnt++
 	return dataRead, nil
 }
 
-// CloseFile: Flush the file and invalidate it from the cache.
-func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
-	log.Trace("BlockCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
-
-	options.Handle.CleanupWithCallback(func(key string, item interface{}) {
-		if key != "#" {
-			bc.memPolicy.Remove(item.(*list.Element))
-		}
-	})
-
-	return nil
-}
-
-// download : Method to download the given amount of data
-func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64, wait bool) bool {
-	item := &workItem{
-		handle:     handle,
-		block:      bc.blockPool.Get(wait),
-		prefetched: !wait,
-	}
-
-	if item.block == nil {
-		log.Err("BlockCache::lineupDownload : Failed to schedule prefetch of %s # %v, block: %v", handle.Path, offset, wait)
-		return false
-	}
-
-	item.block.id = offset / bc.blockPool.blockSize
-
-	node := bc.memPolicy.Add(item)
-	if node == nil {
-		log.Err("BlockCache::lineupDownload : Failed to push item to policy %s # %v, block: %v", handle.Path, offset, wait)
-		return false
-	}
-
-	bc.threadPool.Schedule(offset == 0, item)
-
-	return true
-}
-
-// download : Method to download the given amount of data
-func (bc *BlockCache) download(i interface{}) {
-	item := i.(*workItem)
-	offset := int64(item.block.id * uint64(bc.blockSizeMB))
-	fileName := fmt.Sprintf("%s::%v", item.handle.Path, offset)
-	diskUsed := false
-
-	flock := bc.fileLocks.Get(fileName)
-	flock.Lock()
-	defer flock.Unlock()
-
-	diskNode, found := bc.fileNodeMap.Load(fileName)
-	if !found {
-		diskNode = bc.diskPolicy.Add(fileName)
-		bc.fileNodeMap.Store(fileName, diskNode)
-	}
-
-	localPath := filepath.Join(bc.tmpPath, fileName)
-	_, err := os.Stat(localPath)
-	if err == nil {
-		// File exists locally so read from there into buffer
-		f, err := os.Open(localPath)
-		if err == nil {
-			log.Info("BlockCache::download : Reading data from disk cache %s", fileName)
-			_, err = f.Read(item.block.data)
-			if err != nil {
-				log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
-			} else {
-				diskUsed = true
-			}
-		}
-		f.Close()
-		bc.diskPolicy.Refresh(diskNode.(*list.Element))
-	}
-
-	if err != nil {
-		log.Info("BlockCache::download : Reading data from network %s", fileName)
-		n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
-			Handle: item.handle,
-			Offset: int64(item.block.id * bc.blockPool.blockSize),
-			Data:   item.block.data,
-		})
-
-		if err != nil {
-			// Fail to read the data so just reschedule this request
-			log.Err("BlockCache::download : Failed to read %s from offset %v [%s]", item.handle.Path, item.block.id, err.Error())
-			bc.threadPool.Schedule(false, item)
-			return
-		} else if n == 0 {
-			// No data read so just reschedule this request
-			log.Err("BlockCache::download : Failed to read %s from offset %v [0 bytes read]", item.handle.Path, item.block.id)
-			bc.threadPool.Schedule(false, item)
-			return
-		}
-	}
-
-	// Unblock readers of this Block
-	_ = item.block.ReadyForReading()
-
-	if !diskUsed {
-		// Dump this buffer to local file
-		f, err := os.Create(localPath)
-		if err == nil {
-			_, err := f.Write(item.block.data)
-			if err != nil {
-				log.Err("BlockCache::download : Failed to write %s to disk [%v]]", localPath, err.Error())
-				f.Close()
-				_ = os.Remove(localPath)
-			} else {
-				f.Close()
-				// Validate cache
-				bc.diskPolicy.Refresh(diskNode.(*list.Element))
-			}
-		}
-	}
-}
-
-// getBlockIndex: From offset get the block index
-func (bc *BlockCache) getBlockIndex(offset uint64) uint64 {
-	return offset / bc.blockPool.blockSize
-}
-
 // getBlock: From offset generate the Block index and get the Block
-func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*list.Element, error) {
+func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Block, error) {
 	if readoffset >= uint64(handle.Size) {
 		return nil, io.EOF
 	}
 
 	index := bc.getBlockIndex(readoffset)
-	node, found := handle.GetValue(fmt.Sprintf("%v", index))
 
+	handle.Lock()
+	node, found := handle.GetValue(fmt.Sprintf("%v", index))
 	if !found {
-		// This offset is not cached yet, so lineup the download
-		success := bc.lineupDownload(handle, readoffset, true)
-		if !success {
-			return nil, fmt.Errorf("failed to schedule download")
+		// If this is the first read request then prefetch all required nodes
+		val, _ := handle.GetValue("#")
+		if val.(uint64) == 0 {
+			// This is the first read for this file handle so start prefetching all the nodes
+			err := bc.startPrefetch(handle, index)
+			if err != nil {
+				log.Err(err.Error())
+				log.Err("BlockCache::getBlock : Unable to start prefetch %s # %v", handle.Path, readoffset)
+				return nil, fmt.Errorf("unable to start prefetch for this handle")
+			}
+		} else {
+			// This block is not present even after prefetch so lets download it now
+			bc.prepareBlock(handle, index, false)
 		}
 
 		node, found = handle.GetValue(fmt.Sprintf("%v", index))
@@ -519,44 +403,165 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*li
 		}
 	}
 
-	item := node.(*list.Element)
-	block := item.Value.(*workItem).block
+	handle.Unlock()
 
-	// Validate cache
-	bc.memPolicy.Refresh(item)
+	block := node.(*Block)
 
 	// Wait for this block to complete the download
 	t := int(0)
 	t = <-block.state
 
-	if t == 2 {
-		// block is ready and we are the second reader so its time to schedule the next block
-		lastoffset, found := handle.GetValue("#")
-		if found && lastoffset.(uint64) < uint64(handle.Size) {
-			if bc.blockPool.Available(1) > 0 {
-				_ = bc.lineupDownload(handle, lastoffset.(uint64), false)
-			}
-		}
-	} else if t == 1 {
+	if t == 1 {
 		// block is ready and we are the first reader so its time to remove the second last block from here
-		if block.id >= 2 {
-			delId := block.id - 2
-			delItem, delFound := handle.GetValue(fmt.Sprintf("%v", delId))
-			if delFound {
-				handle.RemoveValue(fmt.Sprintf("%v", delId))
-				bc.memPolicy.Remove(delItem.(*list.Element))
+		firstBlock := handle.TempObj.(*list.List).Front().Value.(*Block)
+		diff := (block.id - firstBlock.id)
+		if diff >= 2 {
+			handle.TempObj.(*list.List).Front().Value.(*Block).stage = BlockReady
+			val, _ := handle.GetValue("#")
+			bc.prepareBlock(handle, val.(uint64)+1, true)
+		}
+
+		block.Unblock()
+	}
+
+	return block, nil
+}
+
+// getBlockIndex: From offset get the block index
+func (bc *BlockCache) getBlockIndex(offset uint64) uint64 {
+	return offset / uint64(bc.blockSizeMB)
+}
+
+// prepareBlock: Get a block from teh list and prepare it for prefetch
+func (bc *BlockCache) prepareBlock(handle *handlemap.Handle, index uint64, prefetch bool) error {
+	offset := index * bc.blockSizeMB * _1MB
+	nodeList := handle.TempObj.(*list.List)
+
+	node := nodeList.Front()
+	block := node.Value.(*Block)
+
+	if block.stage == BlockReady {
+		block.ReUse()
+
+		block.id = index
+		block.offset = offset
+
+		bc.lineupDownload(handle, block, prefetch)
+		nodeList.PushBack(node)
+
+		handle.SetValue("#", (index+1)*bc.blockSizeMB*_1MB)
+		handle.SetValue(fmt.Sprintf("%v", index), block)
+
+	} else {
+		return fmt.Errorf("BlockCache::startPrefetch : Failed to get the block %s # %v", handle.Path, offset)
+	}
+
+	return nil
+}
+
+// startPrefetch: Start prefetchign the blocks from this offset
+func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64) error {
+	for i := uint32(0); i < bc.prefetch; i++ {
+		err := bc.prepareBlock(handle, index, i >= 3)
+		if err != nil {
+			return err
+		}
+		index++
+	}
+
+	return nil
+}
+
+// download : Method to download the given amount of data
+func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, prefetch bool) {
+	item := &workItem{
+		handle:   handle,
+		block:    block,
+		prefetch: prefetch,
+	}
+
+	block.stage = BlockQueued
+	bc.threadPool.Schedule(!prefetch, item)
+}
+
+// download : Method to download the given amount of data
+func (bc *BlockCache) download(i interface{}) {
+	item := i.(*workItem)
+	fileName := fmt.Sprintf("%s::%v", item.handle.Path, item.block.offset)
+
+	flock := bc.fileLocks.Get(fileName)
+	flock.Lock()
+	defer flock.Unlock()
+
+	// Update diskpolicy to reflect the new file
+	diskNode, found := bc.fileNodeMap.Load(fileName)
+	if !found {
+		diskNode = bc.diskPolicy.Add(fileName)
+		bc.fileNodeMap.Store(fileName, diskNode)
+	} else {
+		bc.diskPolicy.Refresh(diskNode.(*list.Element))
+	}
+
+	// Check local file exists for this offset and file combination or not
+	localPath := filepath.Join(bc.tmpPath, fileName)
+	_, err := os.Stat(localPath)
+
+	if err == nil {
+		// If file exists then read the block from the local file
+		f, err := os.Open(localPath)
+		if err != nil {
+			log.Err("BlockCache::download : Failed to open file %s [%s]", fileName, err.Error())
+			_ = os.Remove(localPath)
+		} else {
+			log.Info("BlockCache::download : Reading data from disk cache %s", fileName)
+
+			_, err = f.Read(item.block.data)
+			if err != nil {
+				log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
+				_ = os.Remove(localPath)
 			}
+
+			f.Close()
+			_ = item.block.ReadyForReading()
+
+			return
 		}
 	}
 
-	return item, nil
-}
+	// If file does not exists then download the block from the remote storage
+	log.Info("BlockCache::download : Downloading data from remote storage %s", fileName)
+	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
+		Handle: item.handle,
+		Offset: int64(item.block.offset),
+		Data:   item.block.data,
+	})
 
-// memEvict: Callback when a node from memory expires
-func (bc *BlockCache) memEvict(node *list.Element) {
-	item := node.Value.(*workItem)
-	item.handle.RemoveValue(fmt.Sprintf("%v", item.block.id))
-	bc.blockPool.Release(item.block)
+	if err != nil {
+		// Fail to read the data so just reschedule this request
+		log.Err("BlockCache::download : Failed to read %s from offset %v [%s]", item.handle.Path, item.block.id, err.Error())
+		bc.threadPool.Schedule(false, item)
+		return
+	} else if n == 0 {
+		// No data read so just reschedule this request
+		log.Err("BlockCache::download : Failed to read %s from offset %v [0 bytes read]", item.handle.Path, item.block.id)
+		bc.threadPool.Schedule(false, item)
+		return
+	}
+
+	_ = item.block.ReadyForReading()
+
+	// Dump this buffer to local file
+	f, err := os.Create(localPath)
+	if err == nil {
+		_, err := f.Write(item.block.data)
+		if err != nil {
+			log.Err("BlockCache::download : Failed to write %s to disk [%v]]", localPath, err.Error())
+			_ = os.Remove(localPath)
+		}
+
+		f.Close()
+		bc.diskPolicy.Refresh(diskNode.(*list.Element))
+	}
 }
 
 // diskEvict: Callback when a node from disk expires
@@ -571,25 +576,6 @@ func (bc *BlockCache) diskEvict(node *list.Element) {
 	if err != nil {
 		log.Err("blockCache::diskEvict : Failed to remove %s [%s]", localPath, err.Error())
 	}
-}
-
-// checkBlockPool: Callback to check usage of block pool and decide whether eviction is needed
-func (bc *BlockCache) checkBlockPool() bool {
-	usage := bc.blockPool.Usage()
-
-	if bc.maxPoolUsageHit {
-		if usage > MIN_POOL_USAGE {
-			return true
-		}
-		bc.maxPoolUsageHit = false
-	} else {
-		if bc.blockPool.Usage() > MAX_POOL_USAGE {
-			bc.maxPoolUsageHit = true
-			return true
-		}
-	}
-
-	return false
 }
 
 // checkDiskUsage: Callback to check usage of disk and decide whether eviction is needed

@@ -66,7 +66,6 @@ func (suite *blockTestSuite) TestAllocate() {
 	suite.assert.NotNil(b)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(b.data)
-	suite.assert.Equal(b.closed, true)
 	suite.assert.Equal(b.id, uint64(0))
 
 	_ = b.Delete()
@@ -79,7 +78,6 @@ func (suite *blockTestSuite) TestAllocateBig() {
 	suite.assert.NotNil(b)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(b.data)
-	suite.assert.Equal(b.closed, true)
 	suite.assert.Equal(cap(b.data), 100*1024*1024)
 
 	b.Delete()
@@ -130,7 +128,6 @@ func (suite *blockTestSuite) TestResuse() {
 
 	b.ReUse()
 	suite.assert.NotNil(b.state)
-	suite.assert.Equal(b.closed, false)
 
 	_ = b.Delete()
 }
@@ -146,17 +143,14 @@ func (suite *blockTestSuite) TestReadyForReading() {
 	err = b.ReadyForReading()
 	suite.assert.NotNil(err)
 	suite.assert.Nil(b.state)
-	suite.assert.Equal(b.closed, true)
 	suite.assert.Contains(err.Error(), "block was never used")
 
 	b.ReUse()
 	suite.assert.NotNil(b.state)
-	suite.assert.Equal(b.closed, false)
 
 	err = b.ReadyForReading()
 	suite.assert.Nil(err)
 	suite.assert.NotNil(b.state)
-	suite.assert.Equal(b.closed, false)
 	suite.assert.Equal(len(b.state), 2)
 
 	<-b.state
@@ -182,17 +176,14 @@ func (suite *blockTestSuite) TestUnBlock() {
 
 	b.ReUse()
 	suite.assert.NotNil(b.state)
-	suite.assert.Equal(b.closed, false)
 
 	err = b.ReadyForReading()
 	suite.assert.Nil(err)
 	suite.assert.NotNil(b.state)
-	suite.assert.Equal(b.closed, false)
 	suite.assert.Equal(len(b.state), 2)
 
 	err = b.Unblock()
 	suite.assert.Nil(err)
-	suite.assert.Equal(b.closed, true)
 
 	<-b.state
 	suite.assert.Equal(len(b.state), 1)
