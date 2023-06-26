@@ -65,11 +65,11 @@ import (
 type BlockCache struct {
 	internal.BaseComponent
 
-	blockSizeMB uint64
-	memSizeMB   uint64
+	blockSize uint64
+	memSize   uint64
 
 	tmpPath     string
-	diskSizeMB  uint64
+	diskSize    uint64
 	diskTimeout uint32
 
 	workers  uint32
@@ -204,27 +204,27 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("BlockCache: config error [invalid config attributes]")
 	}
 
-	bc.blockSizeMB = uint64(8)
+	bc.blockSize = uint64(64) * _1MB
 	if config.IsSet(compName + ".block-size-mb") {
-		bc.blockSizeMB = conf.BlockSize
+		bc.blockSize = conf.BlockSize * _1MB
 
 	}
 
-	bc.memSizeMB = uint64(4192)
+	bc.memSize = uint64(4192) * _1MB
 	if config.IsSet(compName + ".mem-size-mb") {
-		bc.memSizeMB = conf.MemSize
+		bc.memSize = conf.MemSize * _1MB
 	}
 
-	bc.diskSizeMB = uint64(4192)
+	bc.diskSize = uint64(4192) * _1MB
 	if config.IsSet(compName + ".disk-size-mb") {
-		bc.diskSizeMB = conf.DiskSize
+		bc.diskSize = conf.DiskSize * _1MB
 	}
 	bc.diskTimeout = defaultTimeout
 	if config.IsSet(compName + ".disk-timeout-sec") {
 		bc.diskTimeout = conf.DiskTimeout
 	}
 
-	bc.prefetch = 8
+	bc.prefetch = 10
 	if config.IsSet(compName + ".prefetch") {
 		bc.prefetch = conf.PrefetchCount
 	}
@@ -252,9 +252,9 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefeth %v, disk path %v, max size %v, disk timeout %v",
-		bc.blockSizeMB, bc.memSizeMB, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSizeMB, bc.diskTimeout)
+		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout)
 
-	bc.blockPool = NewBlockPool(bc.blockSizeMB*_1MB, bc.memSizeMB*_1MB)
+	bc.blockPool = NewBlockPool(bc.blockSize, bc.memSize)
 	if bc.blockPool == nil {
 		log.Err("BlockCache::Configure : fail to init Block pool")
 		return fmt.Errorf("BlockCache: failed to init Block pool")
@@ -266,7 +266,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("BlockCache: failed to init thread pool")
 	}
 
-	bc.diskPolicy, err = tlru.New(uint32(bc.diskSizeMB/bc.blockSizeMB), bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
+	bc.diskPolicy, err = tlru.New(uint32(bc.diskSize/bc.blockSize), bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
 	if err != nil {
 		log.Err("BlockCache::Configure : fail to create LRU for memory nodes [%s]", err.Error())
 		return fmt.Errorf("BlockCache: fail to create LRU for memory nodes")
@@ -387,6 +387,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			// This is the first read for this file handle so start prefetching all the nodes
 			err := bc.startPrefetch(handle, index)
 			if err != nil {
+				handle.Unlock()
 				log.Err(err.Error())
 				log.Err("BlockCache::getBlock : Unable to start prefetch %s # %v", handle.Path, readoffset)
 				return nil, fmt.Errorf("unable to start prefetch for this handle")
@@ -398,6 +399,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 
 		node, found = handle.GetValue(fmt.Sprintf("%v", index))
 		if !found {
+			handle.Unlock()
 			log.Err("BlockCache::ReadInBuffer : Something went wrong not able to find the Block %s # %v", handle.Path, index)
 			return nil, fmt.Errorf("not able to find block immediately after scheudling")
 		}
@@ -418,7 +420,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 		if diff >= 2 {
 			handle.TempObj.(*list.List).Front().Value.(*Block).stage = BlockReady
 			val, _ := handle.GetValue("#")
-			bc.prepareBlock(handle, val.(uint64)+1, true)
+			bc.prepareBlock(handle, val.(uint64), true)
 		}
 
 		block.Unblock()
@@ -429,12 +431,12 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 
 // getBlockIndex: From offset get the block index
 func (bc *BlockCache) getBlockIndex(offset uint64) uint64 {
-	return offset / uint64(bc.blockSizeMB)
+	return offset / bc.blockSize
 }
 
 // prepareBlock: Get a block from teh list and prepare it for prefetch
 func (bc *BlockCache) prepareBlock(handle *handlemap.Handle, index uint64, prefetch bool) error {
-	offset := index * bc.blockSizeMB * _1MB
+	offset := index * bc.blockSize
 	nodeList := handle.TempObj.(*list.List)
 
 	node := nodeList.Front()
@@ -447,9 +449,9 @@ func (bc *BlockCache) prepareBlock(handle *handlemap.Handle, index uint64, prefe
 		block.offset = offset
 
 		bc.lineupDownload(handle, block, prefetch)
-		nodeList.PushBack(node)
+		nodeList.MoveToBack(node)
 
-		handle.SetValue("#", (index+1)*bc.blockSizeMB*_1MB)
+		handle.SetValue("#", (index + 1))
 		handle.SetValue(fmt.Sprintf("%v", index), block)
 
 	} else {
@@ -487,7 +489,7 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 // download : Method to download the given amount of data
 func (bc *BlockCache) download(i interface{}) {
 	item := i.(*workItem)
-	fileName := fmt.Sprintf("%s::%v", item.handle.Path, item.block.offset)
+	fileName := fmt.Sprintf("%s::%v", item.handle.Path, item.block.id)
 
 	flock := bc.fileLocks.Get(fileName)
 	flock.Lock()
@@ -581,7 +583,7 @@ func (bc *BlockCache) diskEvict(node *list.Element) {
 // checkDiskUsage: Callback to check usage of disk and decide whether eviction is needed
 func (bc *BlockCache) checkDiskUsage() bool {
 	data := getUsage(bc.tmpPath)
-	usage := uint32((data * 100) / float64(bc.diskSizeMB))
+	usage := uint32((data * 100) / float64(bc.diskSize))
 
 	if bc.maxDiskUsageHit {
 		if usage > MIN_POOL_USAGE {

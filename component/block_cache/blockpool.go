@@ -57,7 +57,7 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 
 	for i := (uint32)(0); i < blockCount; i++ {
 		b, err := AllocateBlock(blockSize)
-		if err == nil {
+		if err != nil {
 			return nil
 		}
 
