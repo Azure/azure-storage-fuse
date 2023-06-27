@@ -96,7 +96,7 @@ func (azmsi *azAuthMSI) fetchTokenFromCLI() (*common.OAuthTokenInfo, error) {
 		commandLine += " --tenant " + azmsi.config.TenantID
 	}
 
-	var cliCmd *exec.Cmd = nil
+	var cliCmd *exec.Cmd
 	cliCmd = exec.CommandContext(context.Background(), "/bin/sh", "-c", commandLine)
 	cliCmd.Dir = "/bin"
 	cliCmd.Env = os.Environ()
@@ -189,8 +189,6 @@ func (azmsi *azAuthBlobMSI) getCredential() interface{} {
 	}
 
 	var tc azblob.TokenCredential
-	tc = nil
-
 	if norefresh {
 		log.Info("azAuthBlobMSI::getCredential : MSI Token over CLI retrieved %s (%d)", token.AccessToken, token.Expires())
 		// We are running in cli mode so token can not be refreshed, on expiry just get the new token
@@ -265,8 +263,6 @@ func (azmsi *azAuthBfsMSI) getCredential() interface{} {
 	}
 
 	var tc azbfs.TokenCredential
-	tc = nil
-
 	if norefresh {
 		log.Info("azAuthBfsMSI::getCredential : MSI Token over CLI retrieved %s (%d)", token.AccessToken, token.Expires())
 		// We are running in cli mode so token can not be refreshed, on expiry just get the new token
