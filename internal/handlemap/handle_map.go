@@ -135,6 +135,13 @@ func (handle *Handle) GetValue(key string) (interface{}, bool) {
 	return val, ok
 }
 
+// GetValue : Retrieve user defined parameter from handle
+func (handle *Handle) RemoveValue(key string) (interface{}, bool) {
+	val, ok := handle.values[key]
+	delete(handle.values, key)
+	return val, ok
+}
+
 // Cleanup : Delete all user defined parameter from handle
 func (handle *Handle) Cleanup() {
 	for key := range handle.values {
