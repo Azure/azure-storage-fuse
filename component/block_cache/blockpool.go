@@ -33,13 +33,15 @@
 
 package block_cache
 
+import "sync/atomic"
+
 const _1MB uint32 = (1024 * 1024)
 
 type BlockPool struct {
 	blocksCh  chan *Block
 	blockSize uint64
 	blockMax  uint32
-	blocks    uint32
+	blocks    int32
 }
 
 func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
@@ -49,22 +51,27 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 
 	blockCount := memSize / blockSize
 
-	return &BlockPool{
+	pool := &BlockPool{
 		blocksCh:  make(chan *Block, blockCount),
 		blockSize: blockSize,
 		blockMax:  uint32(blockCount),
-		blocks:    0,
 	}
+	
+	for len(pool.blocksCh) < int(pool.blockMax) {
+		pool.expand()
+	}
+	
+	return pool
 }
 
 // Available returns back how many of requested blocks can be made available approx
-func (pool *BlockPool) Available(cnt uint32) uint32 {
+func (pool *BlockPool) Available(cnt int32) int32 {
 	// Calculate how much is possible at max to allocate and provide
-	possible := pool.blockMax - pool.blocks
-	possible += uint32(len(pool.blocksCh))
+	possible := int32(pool.blockMax) - atomic.LoadInt32(&pool.blocks)
+	possible += int32(len(pool.blocksCh))
 
-	percentAvailable := (possible * 100) / pool.blockMax
-	if percentAvailable > 70 && possible > cnt {
+	percentAvailable := (possible * 100) / int32(pool.blockMax)
+	if percentAvailable > 30 && possible > cnt {
 		return cnt
 	}
 
@@ -81,7 +88,7 @@ func (pool *BlockPool) Available(cnt uint32) uint32 {
 func (pool *BlockPool) Terminate() {
 	close(pool.blocksCh)
 
-	if pool.blocks > 0 {
+	if atomic.LoadInt32(&pool.blocks) > 0 {
 		for {
 			b := <-pool.blocksCh
 			if b == nil {
@@ -93,8 +100,8 @@ func (pool *BlockPool) Terminate() {
 }
 
 // Available returns back how many of requested blocks can be made available approx
-func (pool *BlockPool) Usage() uint32 {
-       return (pool.blocks * 100) / pool.blockMax
+func (pool *BlockPool) Usage() int32 {
+       return int32(len(pool.blocksCh)*100) / int32(pool.blockMax)
 }
 
 // Recalculate the block size and pool size
@@ -102,23 +109,21 @@ func (pool *BlockPool) ReSize(blockSize uint64, memSize uint64) {
 	blockCount := memSize / blockSize
 	pool.blockMax = uint32(blockCount)
 
-	for pool.blocks < pool.blockMax/2 {
-		pool.expand()
-	}
+	pool.expand()
+	
 }
 
 // Get a Block from the pool
 func (pool *BlockPool) expand() {
-	if pool.blocks < pool.blockMax {
+	if atomic.LoadInt32(&pool.blocks) < int32(pool.blockMax) {
 		// Time to allocate a new Block
 		b, err := AllocateBlock(pool.blockSize)
 		if err != nil {
 			return
 		}
 
-		pool.blocks++
+		atomic.AddInt32(&pool.blocks, 1)
 		pool.blocksCh <- b
-		return
 	}
 }
 
@@ -153,12 +158,6 @@ func (pool *BlockPool) Get(wait bool) *Block {
 
 // Release back the Block to the pool
 func (pool *BlockPool) Release(b *Block) {
-	// This goes to the first Block channel
-	if pool.blocks > pool.blockMax {
-		pool.blocks--
-		_ = b.Delete()
-		return
-	}
-
+	atomic.AddInt32(&pool.blocks, -1)
 	pool.blocksCh <- b
 }

@@ -77,6 +77,8 @@ type Handle struct {
 	Flags    common.BitMap16        // Various states of the file
 	Path     string                 // Always holds path relative to mount dir
 	values   map[string]interface{} // Map to hold other info if application wants to store
+	BlockPool interface{}
+	Prefetched chan int
 }
 
 func NewHandle(path string) *Handle {

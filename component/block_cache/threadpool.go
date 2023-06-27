@@ -62,7 +62,7 @@ func newThreadPool(count uint32, reader func(interface{})) *ThreadPool {
 		worker:     count,
 		reader:     reader,
 		close:      make(chan int, count),
-		priorityCh: make(chan interface{}, count*2),
+		priorityCh: make(chan interface{}, count*5000),
 		normalCh:   make(chan interface{}, count*5000),
 	}
 }

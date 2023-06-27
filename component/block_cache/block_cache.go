@@ -37,8 +37,11 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"sync"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -63,7 +66,9 @@ type BlockCache struct {
 
 	blockPool  *BlockPool
 	threadPool *ThreadPool
-	policy lruPolicy
+
+	fileLocks *common.LockMap
+	tmpPath   string
 }
 
 // Structure defining your config parameters
@@ -72,13 +77,18 @@ type BlockCacheOptions struct {
 	MemSize       uint32 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
 	PrefetchCount uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
 	Workers       uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
+	TmpPath       string `config:"path" yaml:"path,omitempty"`
 }
-
 // One workitem to be scheduled
 type CacheNode struct {
 	lock *sync.RWMutex
 	handle *handlemap.Handle
 	name string
+	block  *Block
+}
+// One workitem to be scheduled
+type workItem struct {
+	handle *handlemap.Handle
 	block  *Block
 }
 
@@ -104,16 +114,6 @@ func (bc *BlockCache) SetNextComponent(nc internal.Component) {
 //	this shall not Block the call otherwise pipeline will not start
 func (bc *BlockCache) Start(ctx context.Context) error {
 	log.Trace("BlockCache::Start : Starting component %s", bc.Name())
-	bc.policy = *NewLRUPolicy(cachePolicyConfig{
-		cacheTimeout: 10,
-		maxEviction: 100000,
-	})
-	
-	err := bc.policy.StartPolicy(bc.blockPool)
-	if err != nil {
-		return fmt.Errorf("config error in %s error [fail to start policy]", bc.policy.Name())
-	}
-	
 	bc.threadPool.Start()
 	return nil
 }
@@ -121,8 +121,25 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 // Stop : Stop the component functionality and kill all threads started
 func (bc *BlockCache) Stop() error {
 	log.Trace("BlockCache::Stop : Stopping component %s", bc.Name())
-	_ = bc.policy.ShutdownPolicy()
 	bc.threadPool.Stop()
+
+	_ = bc.TempCacheCleanup()
+	return nil
+}
+
+func (bc *BlockCache) TempCacheCleanup() error {
+	log.Err("BlockCache::TempCacheCleanup : Cleaning up temp directory %s", bc.tmpPath)
+
+	dirents, err := os.ReadDir(bc.tmpPath)
+	if err != nil {
+		log.Err("BlockCache::TempCacheCleanup : Failed to list directory %s [%v]", bc.tmpPath, err.Error())
+		return nil
+	}
+
+	for _, entry := range dirents {
+		os.RemoveAll(filepath.Join(bc.tmpPath, entry.Name()))
+	}
+
 	return nil
 }
 
@@ -173,6 +190,26 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.workers = conf.Workers
 	bc.prefetch = conf.PrefetchCount
 
+	bc.tmpPath = common.ExpandPath(conf.TmpPath)
+	if bc.tmpPath == "" {
+		log.Err("BlockCache: config error [tmp-path not set]")
+		return fmt.Errorf("config error in %s error [tmp-path not set]", bc.Name())
+	}
+
+	// Extract values from 'conf' and store them as you wish here
+	_, err = os.Stat(bc.tmpPath)
+	if os.IsNotExist(err) {
+		log.Err("BlockCache: config error [tmp-path does not exist. attempting to create tmp-path.]")
+		err := os.Mkdir(bc.tmpPath, os.FileMode(0755))
+		if err != nil {
+			log.Err("BlockCache: config error creating directory after clean [%s]", err.Error())
+			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+		}
+	}
+
+	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v",
+		bc.blockSizeMB, bc.memSizeMB, bc.workers, bc.prefetch)
+
 	bc.blockPool = NewBlockPool((uint64)(bc.blockSizeMB*_1MB), (uint64)(bc.memSizeMB*_1MB))
 	if bc.blockPool == nil {
 		log.Err("BlockCache::Configure : fail to init Block pool")
@@ -200,6 +237,12 @@ func (bc *BlockCache) OnConfigChange() {
 		return
 	}
 
+	if conf.BlockSize == 0 || conf.MemSize == 0 || conf.Workers == 0 {
+		log.Err("BlockCache::OnConfigChange : Invalid config attributes. block size %v, mem size %v, worker %v, prefeth %v",
+			conf.BlockSize, conf.MemSize, conf.Workers, conf.PrefetchCount)
+		return
+	}
+
 	bc.blockPool.ReSize((uint64)(conf.BlockSize*_1MB), (uint64)(conf.MemSize*_1MB))
 }
 
@@ -215,32 +258,50 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 	handle := handlemap.NewHandle(options.Name)
 	handle.Size = attr.Size
-
-	// Schedule the download of first N blocks for this file here
-	nextoffset := uint64(0)
-	prefetch := bc.blockPool.Available(bc.prefetch)
-	for i := 0; uint32(i) < prefetch && int64(nextoffset) < handle.Size; i++ {
-		handle.SetValue("#", nextoffset)
-		success := bc.lineupDownload(handle, nextoffset, (i == 0))
-		if !success {
-			break
-		}
-		nextoffset += bc.blockPool.blockSize
+	poolSize := bc.blockSizeMB*_1MB*(bc.prefetch + 2)
+	handle.BlockPool = NewBlockPool((uint64)(bc.blockSizeMB*_1MB), (uint64)(poolSize))
+	if handle.BlockPool == nil {
+		log.Err("BlockCache::Configure : fail to init Block pool")
+		return nil, fmt.Errorf("BlockCache: failed to init Block pool")
 	}
+	
+	handle.Prefetched = make(chan int)
+	// Schedule the download of first N blocks for this file here
+	//nextoffset := uint64(0)
+	
 
-	handle.SetValue("#", nextoffset)
+	//handle.SetValue("#", nextoffset)
 
 	return handle, nil
 }
 
 // ReadInBuffer: Read the local file into a buffer
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
-	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
 
+	// block is ready and we are the second reader so its time to schedule the next block
+	_, found := options.Handle.GetValue("#")
+	if !found {
+		nextoffset := uint64(0)
+		// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
+		prefetch := options.Handle.BlockPool.(*BlockPool).Available(int32(bc.prefetch - 2))
+		log.Err("*^**Prefetchting %v blocks for handle: %v", bc.prefetch - 2, options.Handle.ID)
+		for i := 0; int32(i) < prefetch && int64(nextoffset) < options.Handle.Size; i++ {
+			options.Handle.SetValue("#", nextoffset)
+			success := bc.lineupDownload(options.Handle, nextoffset, true)
+			if !success {
+				break
+			}
+			nextoffset += bc.blockPool.blockSize
+		}
+		options.Handle.SetValue("#", nextoffset)
+		close(options.Handle.Prefetched)
+	}
+	// Wait for prefetch to be completed before serving any reads
+	<- options.Handle.Prefetched
 	dataRead := int(0)
 	for dataRead < len(options.Data) {
 
-		node, err := bc.getBlock(options.Handle, uint64(options.Offset))
+		block, err := bc.getBlock(options.Handle, uint64(options.Offset))
 		if err != nil {
 			if err != io.EOF {
 				return 0, fmt.Errorf("BlockCache::ReadInBuffer : Failed to get the Block %s # %v [%v]", options.Handle.Path, options.Offset, err.Error())
@@ -249,21 +310,17 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 			}
 		}
 
-		if node.block == nil {
-			return dataRead, fmt.Errorf("BlockCache::ReadInBuffer : Failed to retreive block %s # %v", options.Handle.Path, options.Offset)
+		if block == nil {
+			return dataRead, fmt.Errorf("BlockCache::ReadInBuffer : Failed to retrieve block %s # %v", options.Handle.Path, options.Offset)
 		}
-		
-		node.lock.RLock()
-		readOffset := uint64(options.Offset) - (node.block.id * bc.blockPool.blockSize)
-		dataRead += copy(options.Data[dataRead:], node.block.data[readOffset:])
-		node.lock.RUnlock()
-		
-		// Validate cache
-		bc.policy.CacheValid(node)
-		
-		options.Offset += int64(dataRead)
-	}
 
+		readOffset := uint64(options.Offset) - (block.id * bc.blockPool.blockSize)
+		bytesRead := copy(options.Data[dataRead:], block.data[readOffset:])
+
+		options.Offset += int64(bytesRead)
+		dataRead += bytesRead
+	}
+	//log.Err("^*^ReadInBuffer done handle: %v offset: %v size: %v, dataRead: %v", options.Handle.ID, options.Offset, len(options.Data), dataRead)
 	return dataRead, nil
 }
 
@@ -273,7 +330,7 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 
 	options.Handle.CleanupWithCallback(func(key string, item interface{}) {
 		if key != "#" {
-			bc.policy.CachePurge(item.(*CacheNode))
+			options.Handle.BlockPool.(*BlockPool).Release(item.(workItem).block)
 		}
 	})
 
@@ -282,50 +339,103 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 
 // download : Method to download the given amount of data
 func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64, wait bool) bool {
-	item := &CacheNode{
-		lock: &sync.RWMutex{},
-		handle: handle,
-		block:  bc.blockPool.Get(wait),
+	if !wait {
+		log.Err("Pretching %v::%v", handle.ID, offset)
 	}
+	
+	index := bc.getBlockIndex(offset)
+	_, found := handle.GetValue(fmt.Sprintf("%v", index))
+	if !found {
+		item := workItem{
+			handle: handle,
+			block:  handle.BlockPool.(*BlockPool).Get(wait),
+		}
 
-	if item.block == nil {
-		log.Err("BlockCache::lineupDownload : Failed to schedule prefetch of %s # %v, block: %v", handle.Path, offset, wait)
-		return false
+		if item.block == nil {
+			log.Err("BlockCache::lineupDownload : Failed to schedule prefetch of %s # %v, block: %v", handle.Path, offset, wait)
+			return false
+		}
+
+		item.block.id = offset / bc.blockPool.blockSize
+
+		// block is ready and we are the second reader so its time to schedule the next block
+		lastoffset, _ := handle.GetValue("#")
+		log.Err("Liningupdownload for %v::%v offset: %v, lastoffset: %v", handle.ID, item.block.id, offset, lastoffset)
+		handle.SetValue(fmt.Sprintf("%v", item.block.id), item)
+		bc.threadPool.Schedule(offset == 0, item)
+	} else {
+		log.Err("Cache missed earlier not liningup download: %v::%v::%v", handle.ID, index, offset)
 	}
-
-	item.block.id = offset / bc.blockPool.blockSize
 	
-	item.name = fmt.Sprintf("%v::%v::%v", handle.Path, handle.ID, item.block.id)
-	
-	handle.SetValue(fmt.Sprintf("%v", item.block.id), item)
-	bc.policy.CacheValid(item)
-	bc.threadPool.Schedule(offset == 0, item)
-
 	return true
 }
 
 // download : Method to download the given amount of data
 func (bc *BlockCache) download(i interface{}) {
-	item := i.(*CacheNode)
-	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
-		Handle: item.handle,
-		Offset: int64(item.block.id * bc.blockPool.blockSize),
-		Data:   item.block.data,
-	})
+	item := i.(workItem)
+	offset := int64(item.block.id * bc.blockPool.blockSize)
+	fileName := fmt.Sprintf("%s::%v", item.handle.Path, offset)
+	diskUsed := false
 
-	if err != nil {
-		// Fail to read the data so just reschedule this request
-		log.Err("BlockCache::download : Failed to read %s from offset %v [%s]", item.handle.Path, item.block.id, err.Error())
-		bc.threadPool.Schedule(false, item)
+	flock := bc.fileLocks.Get(fileName)
+	flock.Lock()
+	defer flock.Unlock()
+
+	localPath := filepath.Join(bc.tmpPath, fileName)
+	_, err := os.Stat(localPath)
+	if err == nil {
+		// File exists locally so read from there into buffer
+		f, err := os.Open(localPath)
+		if err == nil {
+			log.Info("BlockCache::download : Reading data from disk cache %s", fileName)
+			_, err = f.Read(item.block.data)
+			if err != nil {
+				log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
+			} else {
+				diskUsed = true
+			}
+		}
+		f.Close()
 	}
+	
+	if err != nil {
+		log.Info("BlockCache::download : Reading data from network %s", fileName)
+		n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
+			Handle: item.handle,
+			Offset: int64(item.block.id * bc.blockPool.blockSize),
+			Data:   item.block.data,
+		})
 
-	if n == 0 {
-		log.Err("BlockCache::download : Failed to read %s from offset %v [0 bytes read]", item.handle.Path, item.block.id)
-		bc.threadPool.Schedule(false, item)
+		if err != nil {
+			// Fail to read the data so just reschedule this request
+			log.Err("BlockCache::download : Failed to read %s from offset %v [%s]", item.handle.Path, item.block.id, err.Error())
+			bc.threadPool.Schedule(false, item)
+			return
+		} else if n == 0 {
+			// No data read so just reschedule this request
+			log.Err("BlockCache::download : Failed to read %s from offset %v [0 bytes read]", item.handle.Path, item.block.id)
+			bc.threadPool.Schedule(false, item)
+			return
+		}
 	}
 
 	// Unblock readers of this Block
 	_ = item.block.ReadyForReading()
+
+	if !diskUsed {
+		// Dump this buffer to local file
+		f, err := os.Create(localPath)
+		if err == nil {
+			_, err := f.Write(item.block.data)
+			if err != nil {
+				log.Err("BlockCache::download : Failed to write %s to disk [%v]]", localPath, err.Error())
+				f.Close()
+				_ = os.Remove(localPath)
+			} else {
+				f.Close()
+			}
+		}
+	}
 }
 
 // getBlockIndex: From offset get the block index
@@ -334,7 +444,7 @@ func (bc *BlockCache) getBlockIndex(offset uint64) uint64 {
 }
 
 // getBlock: From offset generate the Block index and get the Block
-func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*CacheNode, error) {
+func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Block, error) {
 	if readoffset >= uint64(handle.Size) {
 		return nil, io.EOF
 	}
@@ -343,6 +453,9 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Ca
 	item, found := handle.GetValue(fmt.Sprintf("%v", index))
 
 	if !found {
+		// block is ready and we are the second reader so its time to schedule the next block
+		lastoffset, _ := handle.GetValue("#")
+		log.Err("Offset not cached: %v::%v lastOffset: %v, blockId: %v", handle.ID, readoffset, lastoffset, index)
 		// This offset is not cached yet, so lineup the download
 		success := bc.lineupDownload(handle, readoffset, true)
 		if !success {
@@ -352,28 +465,28 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Ca
 		item, found = handle.GetValue(fmt.Sprintf("%v", index))
 		if !found {
 			log.Err("BlockCache::ReadInBuffer : Something went wrong not able to find the Block %s # %v", handle.Path, index)
-			return nil, fmt.Errorf("not able to find block immediatly after scheudling")
+			return nil, fmt.Errorf("not able to find block immediately after scheudling")
 		}
 	}
-	block := item.(*CacheNode).block
+
+	block := item.(workItem).block
 
 	// Wait for this block to complete the download
 	t := int(0)
 	t = <-block.state
 
 	if t == 2 {
-		_ = block.Unblock()
-
 		// block is ready and we are the second reader so its time to schedule the next block
 		lastoffset, found := handle.GetValue("#")
 		if found && lastoffset.(uint64) < uint64(handle.Size) {
 			if bc.blockPool.Available(1) > 0 {
-				success := bc.lineupDownload(handle, lastoffset.(uint64), false)
+				success := bc.lineupDownload(handle, lastoffset.(uint64), true)
 				if success {
 					handle.SetValue("#", lastoffset.(uint64)+bc.blockPool.blockSize)
 				}
 			}
 		}
+		_ = block.Unblock()
 	} else if t == 1 {
 		// block is ready and we are the first reader so its time to remove the second last block from here
 		if block.id >= 2 {
@@ -381,14 +494,17 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Ca
 			delId := block.id - 2
 			delItem, delFound := handle.GetValue(fmt.Sprintf("%v", delId))
 			if delFound {
-				delItem.(*CacheNode).lock.Lock()
-				bc.policy.CachePurge(delItem.(*CacheNode))
-				delItem.(*CacheNode).lock.Unlock()
+				log.Err("!!!delItem Found: %v::%v free: %v/%v", handle.ID, block.id - 2, len(handle.BlockPool.(*BlockPool).blocksCh), handle.BlockPool.(*BlockPool).blockMax, /*atomic.LoadInt32(&bc.blockPool.blocks)*/)
+				handle.RemoveValue(fmt.Sprintf("%v", delId))
+				<-delItem.(workItem).block.state
+				handle.BlockPool.(*BlockPool).Release(delItem.(workItem).block)
+			} else {
+				log.Err("!!!delItem not found: %v::%v free: %v/%v", handle.ID, block.id - 2, len(handle.BlockPool.(*BlockPool).blocksCh), handle.BlockPool.(*BlockPool).blockMax, /*atomic.LoadInt32(&bc.blockPool.blocks)*/)
 			}
 		}
 	}
 
-	return item.(*CacheNode), nil
+	return block, nil
 }
 
 // ------------------------- Factory -------------------------------------------
@@ -396,7 +512,9 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Ca
 // Pipeline will call this method to create your object, initialize your variables here
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
 func NewBlockCacheComponent() internal.Component {
-	comp := &BlockCache{}
+	comp := &BlockCache{
+		fileLocks: common.NewLockMap(),
+	}
 	comp.SetName(compName)
 	config.AddConfigChangeEventListener(comp)
 	return comp
