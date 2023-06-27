@@ -96,8 +96,7 @@ func (azmsi *azAuthMSI) fetchTokenFromCLI() (*common.OAuthTokenInfo, error) {
 		commandLine += " --tenant " + azmsi.config.TenantID
 	}
 
-	var cliCmd *exec.Cmd
-	cliCmd = exec.CommandContext(context.Background(), "/bin/sh", "-c", commandLine)
+	cliCmd := exec.CommandContext(context.Background(), "/bin/sh", "-c", commandLine)
 	cliCmd.Dir = "/bin"
 	cliCmd.Env = os.Environ()
 
