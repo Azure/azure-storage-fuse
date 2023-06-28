@@ -174,6 +174,7 @@ type AzStorageOptions struct {
 	VirtualDirectory        bool   `config:"virtual-directory" yaml:"virtual-directory"`
 	MaxResultsForList       int32  `config:"max-results-for-list" yaml:"max-results-for-list"`
 	DisableCompression      bool   `config:"disable-compression" yaml:"disable-compression"`
+	Telemetry               string `config:"telemetry" yaml:"telemetry"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -355,6 +356,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	// Block list call on mount for given amount of time
 	az.stConfig.cancelListForSeconds = opt.CancelListForSeconds
+
+	az.stConfig.telemetry = opt.Telemetry
 
 	httpProxyProvided := opt.HttpProxyAddress != ""
 	httpsProxyProvided := opt.HttpsProxyAddress != ""

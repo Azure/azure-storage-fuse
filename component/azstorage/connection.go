@@ -76,6 +76,8 @@ type AzStorageConfig struct {
 	virtualDirectory   bool
 	maxResultsForList  int32
 	disableCompression bool
+
+	telemetry string
 }
 
 type AzStorageConnection struct {

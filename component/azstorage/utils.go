@@ -90,7 +90,7 @@ func getAzBlobPipelineOptions(conf AzStorageConfig) (azblob.PipelineOptions, ste
 		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
 	}
 	telemetryOptions := azblob.TelemetryOptions{
-		Value: "APN/1.0 vibhansa/1.0 testapp/2.0 " + UserAgent() + " (" + common.GetCurrentDistro() + ")",
+		Value: conf.telemetry + " " + UserAgent() + " (" + common.GetCurrentDistro() + ")",
 	}
 
 	sysLogDisabled := log.GetType() == "silent" // If logging is enabled, allow the SDK to log retries to syslog.
@@ -120,10 +120,9 @@ func getAzBfsPipelineOptions(conf AzStorageConfig) (azbfs.PipelineOptions, ste.X
 		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)
 		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
 	}
-	telemetryOptions := azblob.TelemetryOptions{
-		Value: "APN/1.0 vibhansa/1.0 testapp/2.0 " + UserAgent() + " (" + common.GetCurrentDistro() + ")",
+	telemetryOptions := azbfs.TelemetryOptions{
+		Value: conf.telemetry + " " + UserAgent() + " (" + common.GetCurrentDistro() + ")",
 	}
-
 	sysLogDisabled := log.GetType() == "silent" // If logging is enabled, allow the SDK to log retries to syslog.
 	requestLogOptions := azbfs.RequestLogOptions{
 		// TODO: We can potentially consider making LogWarningIfTryOverThreshold a user settable option. For now lets use the default
