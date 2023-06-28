@@ -42,8 +42,8 @@ import (
 )
 
 const (
-	MAX_POOL_USAGE uint32 = 80
-	MIN_POOL_USAGE uint32 = 50
+	MAX_POOL_USAGE int32 = 80
+	MIN_POOL_USAGE int32 = 50
 )
 
 type cachePolicyConfig struct {
@@ -93,8 +93,8 @@ const (
 	// Check for block expiry in below number of seconds
 	CacheTimeoutCheckInterval = 5
 
-	// Check for pool usage in below number of minutes
-	PoolUsageCheckInterval = 10
+	// Check for pool usage in below number of seconds
+	PoolUsageCheckInterval = 30
 )
 
 func NewLRUPolicy(cfg cachePolicyConfig) *lruPolicy {
@@ -280,7 +280,7 @@ func (p *lruPolicy) clearCache() {
 			if pUsage > MAX_POOL_USAGE {
 				continueDeletion := true
 				for continueDeletion {
-					log.Err("@@@lruPolicy::ClearCache : High threshold reached %f > %f", pUsage, MAX_POOL_USAGE)
+					log.Err("[[[]]]lruPolicy::ClearCache : High threshold reached %f > %f", pUsage, MAX_POOL_USAGE)
 
 					cleanupCount++
 					p.updateMarker()
@@ -288,7 +288,7 @@ func (p *lruPolicy) clearCache() {
 
 					pUsage := p.blockPool.Usage()
 					if pUsage < MIN_POOL_USAGE || cleanupCount >= 3 {
-						log.Err("@@@lruPolicy::ClearCache : Threshold stablized %f > %f", pUsage, MIN_POOL_USAGE)
+						log.Err("[[[]]]lruPolicy::ClearCache : Threshold stablized %f > %f", pUsage, MIN_POOL_USAGE)
 						continueDeletion = false
 					}
 				}
@@ -408,9 +408,7 @@ func (p *lruPolicy) deleteItem(node *CacheNode) {
 
 	node.lock.Lock()
 	defer node.lock.Unlock()
-	log.Err("QQQQQQQ stateLen: %v", len(node.block.state))
 	<- node.block.state
-	log.Err("WWWWWWW stateLen: %v", len(node.block.state))
 	node.handle.RemoveValue(fmt.Sprintf("%v", node.block.id))
 	p.blockPool.Release(node.block)
 	
