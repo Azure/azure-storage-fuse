@@ -1,4 +1,10 @@
 
+# To create ramdisk
+# sudo mkdir -p /mnt/ramdisk
+# sudo chmod 777 /mnt/ramdisk
+# sudo mount -t tmpfs -o rw,size=4G tmpfs /mnt/ramdisk
+
+
 SERVICE="blobfuse2"
 SCRIPT="longhaul.sh"
 
@@ -36,7 +42,7 @@ else
 	echo "`date` :: Re-Starting blobfuse2 *******************" >> ./longhaul2.log
 	rm -rf /home/vibhansa/blob_mnt2/*
 	sudo fusermount -u ~/blob_mnt2
-	rm -rf /mnt/ramdisk2/*
+	rm -rf /mnt/ramdisk/*
 	./blobfuse2 mount ~/blob_mnt2 --config-file=./config.yaml
 	sleep 2
 
