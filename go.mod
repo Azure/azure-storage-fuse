@@ -1,6 +1,6 @@
 module github.com/Azure/azure-storage-fuse/v2
 
-go 1.19
+go 1.20
 
 require (
 	github.com/Azure/azure-pipeline-go v0.2.4-0.20220425205405-09e6f201e1e4
