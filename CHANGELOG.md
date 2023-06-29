@@ -13,6 +13,7 @@
 - [#1161](https://github.com/Azure/azure-storage-fuse/issues/1161) Add more verbose logs for pipeline init failures
 - Return permission denied error for `AuthorizationPermissionMismatch` error from service.
 - [#1187](https://github.com/Azure/azure-storage-fuse/issues/1187) File-cache path will be created recursively, if it does not exist.
+- Resolved bug related to constant 5% CPU usage even where there is no activity on the system.
 
 ## 2.0.3 (2023-04-26)
 **Bug Fixes**

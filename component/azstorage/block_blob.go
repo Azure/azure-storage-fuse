@@ -48,6 +48,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
+	azcopyCommon "github.com/Azure/azure-storage-azcopy/v10/common"
 	"github.com/Azure/azure-storage-azcopy/v10/ste"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -172,6 +173,10 @@ func NewBlobPipeline(c azblob.Credential, o azblob.PipelineOptions, ro ste.XferR
 func (bb *BlockBlob) SetupPipeline() error {
 	log.Trace("BlockBlob::SetupPipeline : Setting up")
 	var err error
+
+	// This is a hack right now to disable the input watcher thread which continuously monitors this config to change
+	// Running this thread wild increases the CPU usage by 5% even when there is no acitivity in the system
+	azcopyCommon.GetLifecycleMgr().EnableInputWatcher()
 
 	// Get the credential
 	cred := bb.getCredential()
