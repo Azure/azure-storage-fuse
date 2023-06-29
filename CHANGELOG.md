@@ -12,7 +12,7 @@
 - [#1175](https://github.com/Azure/azure-storage-fuse/issues/1175) Divide by 0 exception in Stream in case of direct streaming option.
 - [#1161](https://github.com/Azure/azure-storage-fuse/issues/1161) Add more verbose logs for pipeline init failures
 - Return permission denied error for `AuthorizationPermissionMismatch` error from service.
-- [#1187](https://github.com/Azure/azure-storage-fuse/issues/1187) File-cache shall create path recursively, if cache directory does not exists.
+- [#1187](https://github.com/Azure/azure-storage-fuse/issues/1187) File-cache path will be created recursively, if it does not exist.
 
 ## 2.0.3 (2023-04-26)
 **Bug Fixes**
