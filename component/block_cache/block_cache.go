@@ -406,18 +406,19 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 				for nodeList.Len() > MIN_PREFETCH {
 					node := nodeList.Front()
 					block := nodeList.Remove(node).(*Block)
+					handle.RemoveValue(fmt.Sprintf("%v", block.id))
 
 					log.Info("BlockCache::getBlock : handle %v [%s] has random read behaviour, releasing additional blocks %v[%v]", block.id, block.offset)
 
 					block.ReUse()
 					bc.blockPool.Release(block)
 				}
-
-				nodeList.Front().Value.(*Block).stage = BlockReady
 			}
 
 			// This block is not present even after prefetch so lets download it now
-			handle.TempObj.(*list.List).Front().Value.(*Block).stage = BlockReady
+			firstBlock := handle.TempObj.(*list.List).Front().Value.(*Block)
+			handle.RemoveValue(fmt.Sprintf("%v", firstBlock.id))
+			firstBlock.stage = BlockReady
 			bc.prepareBlock(handle, index, false)
 			handle.OptCnt++
 		}
@@ -472,7 +473,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			}
 
 			val, _ := handle.GetValue("#")
-			_ = bc.startPrefetch(handle, val.(uint64)+1, cnt)
+			_ = bc.startPrefetch(handle, val.(uint64), cnt)
 		}
 
 		handle.Unlock()
