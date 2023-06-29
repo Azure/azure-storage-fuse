@@ -174,8 +174,8 @@ func (bb *BlockBlob) SetupPipeline() error {
 	log.Trace("BlockBlob::SetupPipeline : Setting up")
 	var err error
 
-	// This is a hack right now to disable the input watcher thread which continuously monitors this config to change
-	// Running this thread wild increases the CPU usage by 5% even when there is no activity in the system
+	// This is a workaround right now to disable the input watcher thread which continuously monitors below config to change
+	// Running this thread continuously increases the CPU usage by 5% even when there is no activity on blobfuse2 mount path
 	azcopyCommon.GetLifecycleMgr().EnableInputWatcher()
 
 	// Get the credential
