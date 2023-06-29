@@ -175,7 +175,7 @@ func (bb *BlockBlob) SetupPipeline() error {
 	var err error
 
 	// This is a hack right now to disable the input watcher thread which continuously monitors this config to change
-	// Running this thread wild increases the CPU usage by 5% even when there is no acitivity in the system
+	// Running this thread wild increases the CPU usage by 5% even when there is no activity in the system
 	azcopyCommon.GetLifecycleMgr().EnableInputWatcher()
 
 	// Get the credential
