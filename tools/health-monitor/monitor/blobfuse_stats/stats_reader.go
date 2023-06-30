@@ -79,7 +79,7 @@ func (bfs *BlobfuseStats) Monitor() error {
 func (bfs *BlobfuseStats) ExportStats(timestamp string, st interface{}) {
 	se, err := hminternal.NewStatsExporter()
 	if err != nil || se == nil {
-		log.Err("stats_reader::ExportStats : Error in creating stats exporter instance [%v]", err)
+		log.Err("StatsReader::ExportStats : Error in creating stats exporter instance [%v]", err)
 		return
 	}
 

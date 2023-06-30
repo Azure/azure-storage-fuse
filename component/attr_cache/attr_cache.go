@@ -270,7 +270,7 @@ func (ac *AttrCache) ReadDir(options internal.ReadDirOptions) (pathList []*inter
 
 // StreamDir : Optionally cache attributes of paths returned by next component
 func (ac *AttrCache) StreamDir(options internal.StreamDirOptions) ([]*internal.ObjAttr, string, error) {
-	log.Trace("AttrCache::ReadDir : %s", options.Name)
+	log.Trace("AttrCache::StreamDir : %s", options.Name)
 
 	pathList, token, err := ac.NextComponent().StreamDir(options)
 	if err == nil {

@@ -84,7 +84,7 @@ func (rw *ReadWriteFilenameCache) CreateFile(options internal.CreateFileOptions)
 }
 
 func (rw *ReadWriteFilenameCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
-	// log.Trace("Stream::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
+	log.Trace("Stream::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
 	handle, err := rw.NextComponent().OpenFile(options)
 	if err != nil {
 		log.Err("Stream::OpenFile : error failed to open file %s [%s]", options.Name, err.Error())
@@ -177,11 +177,11 @@ func (rw *ReadWriteFilenameCache) RenameFile(options internal.RenameFileOptions)
 }
 
 func (rw *ReadWriteFilenameCache) CloseFile(options internal.CloseFileOptions) error {
-	// log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	// try to flush again to make sure it's cleaned up
 	err := rw.FlushFile(internal.FlushFileOptions(options))
 	if err != nil {
-		log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
+		log.Err("Stream::CloseFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
 		return err
 	}
 	if !rw.StreamOnly {
@@ -195,7 +195,7 @@ func (rw *ReadWriteFilenameCache) CloseFile(options internal.CloseFileOptions) e
 }
 
 func (rw *ReadWriteFilenameCache) FlushFile(options internal.FlushFileOptions) error {
-	// log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	log.Trace("Stream::FlushFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	if options.Handle.Dirty() {
 		err := rw.NextComponent().FlushFile(options)
 		if err != nil {
