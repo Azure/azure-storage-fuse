@@ -1,9 +1,12 @@
+## 2.0.5-preview.1 (WIP)
+**Features**
+- On AML compute cluster MSI authentication is now supported (this will use the identity assigned to compute cluster)
 ## 2.0.4 (WIP)
 **Features**
 - Added new config parameter "max-fuse-threads" under "libfuse" config to control max threads allowed at libfuse layer.
 - Added new config parameter 'refresh-sec' in 'file-cache'. When file-cache-timeout is set to a large value, this field can control when to refresh the file if file in container has changed.
 - Added FUSE option `direct_io` to bypass the kernel cache and perform direct I/O operations.
-- On AML compute cluster MSI authentication is now supported (this will use the identity assigned to compute cluster)
+
 
 **Bug Fixes**
 - [#1116](https://github.com/Azure/azure-storage-fuse/issues/1116) Relative path for tmp-cache is resulting into file read-write failure.
@@ -13,6 +16,8 @@
 - [#1175](https://github.com/Azure/azure-storage-fuse/issues/1175) Divide by 0 exception in Stream in case of direct streaming option.
 - [#1161](https://github.com/Azure/azure-storage-fuse/issues/1161) Add more verbose logs for pipeline init failures
 - Return permission denied error for `AuthorizationPermissionMismatch` error from service.
+- [#1187](https://github.com/Azure/azure-storage-fuse/issues/1187) File-cache path will be created recursively, if it does not exist.
+- Resolved bug related to constant 5% CPU usage even where there is no activity on the blobfuse2 mounted path.
 
 ## 2.0.3 (2023-04-26)
 **Bug Fixes**
