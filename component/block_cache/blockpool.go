@@ -66,6 +66,9 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 
 // Available returns back how many of requested blocks can be made available approx
 func (pool *BlockPool) Available(cnt int32) int32 {
+	if cnt < 0 {
+		return 0
+	}
 	// Calculate how much is possible at max to allocate and provide
 	possible := int32(pool.blockMax) - atomic.LoadInt32(&pool.blocks)
 	possible += int32(len(pool.blocksCh))

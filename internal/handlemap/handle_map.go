@@ -34,6 +34,7 @@
 package handlemap
 
 import (
+	"container/list"
 	"os"
 	"sync"
 	"time"
@@ -79,6 +80,7 @@ type Handle struct {
 	values   map[string]interface{} // Map to hold other info if application wants to store
 	BlockPool interface{}
 	Prefetched chan int
+	blockList   *list.List
 }
 
 func NewHandle(path string) *Handle {
@@ -91,7 +93,25 @@ func NewHandle(path string) *Handle {
 		values:   make(map[string]interface{}),
 		CacheObj: nil,
 		FObj:     nil,
+		blockList: list.New(),
 	}
+}
+
+// Push block Id to the blockList front
+func (handle *Handle) PushFrontBlock(value interface{}) {
+	handle.Lock()
+	handle.blockList.PushFront(value)
+	handle.Unlock()
+}
+
+
+// Pop block id from blockList back
+func (handle *Handle) PopBackBlock() interface{} {
+	handle.Lock()
+	defer handle.Unlock()
+	node := handle.blockList.Back()
+	handle.blockList.Remove(node)
+	return node.Value
 }
 
 // Dirty : Handle is dirty or not
