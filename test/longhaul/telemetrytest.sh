@@ -13,6 +13,7 @@ do
                 echo "Un-Mounting Blobfuse2"
                 ./blobfuse2 unmount all
                 rm -rf ~/blob_mnt2/*
+                rm -rf ~/blob_mnt2/.*
                 rm -rf /mnt/ramdisk/*
 
                 echo "Mounting Blobfuse2"
