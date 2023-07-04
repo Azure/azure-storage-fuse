@@ -7,11 +7,11 @@ do
         do
                 echo "Running with : " $line
 
-                rm -rf /home/vibhansa/blob_mnt2/stress
-                rm -rf /home/vibhansa/blob_mnt2/myfile*
+                rm -rf ~/blob_mnt2/stress*
+                rm -rf ~/blob_mnt2/myfile*
 
                 ./blobfuse2 unmount all
-
+                rm -rf ~/blob_mnt2/*
                 rm -rf /mnt/ramdisk/*
 
                 ./blobfuse2 mount ~/blob_mnt2 --config-file=./config.yaml --file-cache-timeout=0 --telemetry="$line"
