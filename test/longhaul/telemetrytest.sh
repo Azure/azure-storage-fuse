@@ -10,10 +10,12 @@ do
                 rm -rf ~/blob_mnt2/stress*
                 rm -rf ~/blob_mnt2/myfile*
 
+                echo "Un-Mounting Blobfuse2"
                 ./blobfuse2 unmount all
                 rm -rf ~/blob_mnt2/*
                 rm -rf /mnt/ramdisk/*
 
+                echo "Mounting Blobfuse2"
                 ./blobfuse2 mount ~/blob_mnt2 --config-file=./config.yaml --file-cache-timeout=0 --telemetry="$line"
                 sleep 2
 
