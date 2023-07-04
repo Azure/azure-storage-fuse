@@ -247,7 +247,7 @@ func (c *FileCache) Configure(_ bool) error {
 	_, err = os.Stat(c.tmpPath)
 	if os.IsNotExist(err) {
 		log.Err("FileCache: config error [tmp-path does not exist. attempting to create tmp-path.]")
-		err := os.Mkdir(c.tmpPath, os.FileMode(0755))
+		err := os.MkdirAll(c.tmpPath, os.FileMode(0755))
 		if err != nil {
 			log.Err("FileCache: config error creating directory after clean [%s]", err.Error())
 			return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
