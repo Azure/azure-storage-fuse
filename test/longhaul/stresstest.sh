@@ -2,15 +2,14 @@
 
 # Small file test
 echo "Creating small files"
-for i in {1..2000}; do echo $i; done | parallel --will-cite -j 20 'head -c 1M < /dev/zero > /home/vibhansa/blob_mnt2/myfile_small_{}'
+for i in {1..500}; do echo $i; done | parallel --will-cite -j 20 'head -c 50M < /dev/random > /home/vibhansa/blob_mnt2/myfile_small_{}'
 sleep 5
 
 echo "Reading small files"
-for i in {1..2000}; do echo $i; done | parallel --will-cite -j 20 'hexdump /home/vibhansa/blob_mnt2/myfile_small_{} > /dev/null'
+for i in {1..500}; do echo $i; done | parallel --will-cite -j 20 'hexdump /home/vibhansa/blob_mnt2/myfile_small_{} > /dev/null'
 sleep 5
 
-rm -rf /home/vibhansa/blob_mnt2/myfile_small*
-
+rm -rf /home/vibhansa/blob_mnt2/myfile_small_*
 
 
 # Medium file test

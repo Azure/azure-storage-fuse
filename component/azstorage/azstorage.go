@@ -635,6 +635,9 @@ func init() {
 	disableCompression := config.AddBoolFlag("disable-compression", false, "Disable transport layer compression.")
 	config.BindPFlag(compName+".disable-compression", disableCompression)
 
+	telemetry := config.AddBoolFlag("telemetry", false, "Additional telemetry information.")
+	config.BindPFlag(compName+".telemetry", telemetry)
+
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})
