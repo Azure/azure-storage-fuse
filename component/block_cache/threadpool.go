@@ -47,7 +47,6 @@ type ThreadPool struct {
 
 	// Channel to hold pending requests
 	priorityCh chan interface{}
-	normalCh   chan interface{}
 
 	// Reader method that will actually read the data
 	reader func(interface{})
@@ -63,7 +62,6 @@ func newThreadPool(count uint32, reader func(interface{})) *ThreadPool {
 		reader:     reader,
 		close:      make(chan int, count),
 		priorityCh: make(chan interface{}, count*5000),
-		normalCh:   make(chan interface{}, count*5000),
 	}
 }
 
@@ -85,16 +83,11 @@ func (t *ThreadPool) Stop() {
 
 	close(t.close)
 	close(t.priorityCh)
-	close(t.normalCh)
 }
 
 // Schedule the download of a block
-func (t *ThreadPool) Schedule(urgent bool, item interface{}) {
-	if urgent {
-		t.priorityCh <- item
-	} else {
-		t.normalCh <- item
-	}
+func (t *ThreadPool) Schedule(item interface{}) {
+	t.priorityCh <- item
 }
 
 func (t *ThreadPool) Do() {
@@ -103,8 +96,6 @@ func (t *ThreadPool) Do() {
 	for {
 		select {
 		case item := <-t.priorityCh:
-			t.reader(item)
-		case item := <-t.normalCh:
 			t.reader(item)
 		case <-t.close:
 			return

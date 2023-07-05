@@ -77,6 +77,7 @@ type BlockCache struct {
 	
 	fileLocks *common.LockMap
 	fileNodeMap     sync.Map
+	maxDiskUsageHit bool
 	
 	tmpPath   string
 	diskSize    uint64
@@ -108,6 +109,7 @@ const (
 	defaultTimeout        = 120
 	defaultDiskSize       = 4192
 	MAX_POOL_USAGE uint32 = 95
+	MIN_POOL_USAGE uint32 = 50
 	MIN_PREFETCH          = 5
 	MIN_RANDREAD          = 10
 )
@@ -266,19 +268,6 @@ func (bc *BlockCache) Configure(_ bool) error {
 	return nil
 }
 
-// OnConfigChange : When config file is changed, this will be called by pipeline. Refresh required config here
-func (bc *BlockCache) OnConfigChange() {
-	log.Trace("AzStorage::OnConfigChange : %s", bc.Name())
-
-	// >> If you do not need any config parameters remove below code and return nil
-	conf := BlockCacheOptions{}
-	err := config.UnmarshalKey(bc.Name(), &conf)
-	if err != nil {
-		log.Err("BlockCache::OnConfigChange : config error [invalid config attributes]")
-		return
-	}
-}
-
 // OpenFile: Makes the file available in the local cache for further file operations.
 func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("BlockCache::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
@@ -315,7 +304,8 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 			options.Handle.BlockPool.(*BlockPool).Release(item.(workItem).block)
 		}
 	})
-
+	
+	// TODO: Figure out release of unread blocks
 	return nil
 }
 
@@ -323,22 +313,20 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	// Only one thread should begin prefetch per handle, all other read calls will wait here until prefetch is completed
 	// and channel is closed.
-	<- options.Handle.Prefetched
+	t := 0
+	t = <- options.Handle.Prefetched
 	
 	// Ensure we are the first thread to reach here.
-	_, found := options.Handle.GetValue("#")
-	if !found {
+	if t == 1 {
 		nextoffset := uint64(options.Offset)
-		prefetch := options.Handle.BlockPool.(*BlockPool).Available(int32(bc.prefetch - 2))
-		for i := 0; int32(i) < prefetch && int64(nextoffset) < options.Handle.Size; i++ {
-			options.Handle.SetValue("#", nextoffset)
-			success := bc.lineupDownload(options.Handle, nextoffset, true)
+		for i := 0; int32(i) < int32(bc.prefetch - 2) && int64(nextoffset) < options.Handle.Size; i++ {
+			success := bc.lineupDownload(options.Handle, nextoffset)
 			if !success {
 				break
 			}
 			nextoffset += bc.blockSize
+			options.Handle.SetValue("#", nextoffset)
 		}
-		options.Handle.SetValue("#", nextoffset)
 		close(options.Handle.Prefetched)
 	}
 
@@ -367,17 +355,17 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 }
 
 // download : Method to download the given amount of data
-func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64, wait bool) bool {
+func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64) bool {
 	index := bc.getBlockIndex(offset)
 	_, found := handle.GetValue(fmt.Sprintf("%v", index))
 	if !found {
 		item := workItem{
 			handle: handle,
-			block:  handle.BlockPool.(*BlockPool).Get(wait),
+			block:  handle.BlockPool.(*BlockPool).Get(),
 		}
 
 		if item.block == nil {
-			log.Err("BlockCache::lineupDownload : Failed to schedule prefetch of %s # %v, block: %v", handle.Path, offset, wait)
+			log.Err("BlockCache::lineupDownload : Failed to schedule prefetch of %s # %v, block: %v", handle.Path, offset, item.block.id)
 			return false
 		}
 
@@ -385,7 +373,7 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64, wa
 
 		handle.SetValue(fmt.Sprintf("%v", item.block.id), item)
 		handle.PushFrontBlock(index)
-		bc.threadPool.Schedule(offset == 0, item)
+		bc.threadPool.Schedule(item)
 	} else {
 		log.Debug("Cache missed earlier not liningup download: %v::%v::%v", handle.ID, index, offset)
 	}
@@ -441,12 +429,12 @@ func (bc *BlockCache) download(i interface{}) {
 		if err != nil {
 			// Fail to read the data so just reschedule this request
 			log.Err("BlockCache::download : Failed to read %s from offset %v [%s]", item.handle.Path, item.block.id, err.Error())
-			bc.threadPool.Schedule(false, item)
+			bc.threadPool.Schedule(item)
 			return
 		} else if n == 0 {
 			// No data read so just reschedule this request
 			log.Err("BlockCache::download : Failed to read %s from offset %v [0 bytes read]", item.handle.Path, item.block.id)
-			bc.threadPool.Schedule(false, item)
+			bc.threadPool.Schedule(item)
 			return
 		}
 	}
@@ -484,14 +472,9 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	index := bc.getBlockIndex(readoffset)
 	item, found := handle.GetValue(fmt.Sprintf("%v", index))
 
-	// Keep track if the items we prefetched are being used. If this block is read out of order, we will not
-	// prefetch the next block. This will keep blocks available for sequential reads and allow random reads to not 
-	// crash.
-	isCached := found
-	
 	if !found {
 		// This offset is not cached yet, so lineup the download
-		success := bc.lineupDownload(handle, readoffset, true)
+		success := bc.lineupDownload(handle, readoffset)
 		if !success {
 			return nil, fmt.Errorf("failed to schedule download")
 		}
@@ -511,34 +494,32 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 
 	if t == 2 {
 		// Block is ready and we are the second reader so its time to schedule the next block.
-		// We need to ensure we only prefetch for blocks which were read from cache in order to ensure
-		// random reads do not lead to unused prefetches.
-		if isCached {
-			lastoffset, found := handle.GetValue("#")
-			if found && lastoffset.(uint64) < uint64(handle.Size) {
-				success := bc.lineupDownload(handle, lastoffset.(uint64), true)
-				if success {
-					handle.SetValue("#", lastoffset.(uint64)+bc.blockSize)
-				}
+		lastoffset, found := handle.GetValue("#")
+		if found && lastoffset.(uint64) < uint64(handle.Size) {
+			success := bc.lineupDownload(handle, lastoffset.(uint64))
+			if success {
+				handle.SetValue("#", lastoffset.(uint64)+bc.blockSize)
 			}
-		} else {
-			log.Debug("Skipping prefetch for this block because it was read out of order")
 		}
+		
 		_ = block.Unblock()
 	} else if t == 1 {
-		// block is ready and we are the first reader so its time to release the oldest block
+		// block is ready and we are the first reader so its time to release the oldest block.
 		if block.id >= 2 {
-			delId := handle.PopBackBlock()
-			delItem, delFound := handle.GetValue(fmt.Sprintf("%v", delId))
-			if delFound {
-				handle.RemoveValue(fmt.Sprintf("%v", delId))
-				<-delItem.(workItem).block.state
-				handle.BlockPool.(*BlockPool).Release(delItem.(workItem).block)
-			}
+			ReleaseBlock(handle)
 		}
 	}
-
 	return block, nil
+}
+
+func ReleaseBlock(handle *handlemap.Handle) {
+	delId := handle.PopBackBlock()
+	delItem, delFound := handle.GetValue(fmt.Sprintf("%v", delId))
+	if delFound {
+		handle.RemoveValue(fmt.Sprintf("%v", delId))
+		<-delItem.(workItem).block.state
+		handle.BlockPool.(*BlockPool).Release(delItem.(workItem).block)
+	}
 }
 
 // diskEvict: Callback when a node from disk expires
@@ -556,11 +537,24 @@ func (bc *BlockCache) diskEvict(node *list.Element) {
 }
 
 // checkDiskUsage: Callback to check usage of disk and decide whether eviction is needed
+// we start to evict from disk as soon as usage hits max limit and continue to evict until
+// usage drops below the min limit.
 func (bc *BlockCache) checkDiskUsage() bool {
 	data := getUsage(bc.tmpPath)
 	usage := uint32((data * 100) / float64(bc.diskSize))
 
-	return usage < MAX_POOL_USAGE
+	if bc.maxDiskUsageHit {
+		if usage > MIN_POOL_USAGE {
+			return true
+		}
+		bc.maxDiskUsageHit = false
+	} else {
+		if usage > MAX_POOL_USAGE {
+			bc.maxDiskUsageHit = true
+			return true
+		}
+	}
+	return false
 }
 
 
@@ -619,7 +613,6 @@ func NewBlockCacheComponent() internal.Component {
 		fileLocks: common.NewLockMap(),
 	}
 	comp.SetName(compName)
-	config.AddConfigChangeEventListener(comp)
 	return comp
 }
 

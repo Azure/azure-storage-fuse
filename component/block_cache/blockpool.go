@@ -33,7 +33,9 @@
 
 package block_cache
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+)
 
 const _1MB uint32 = (1024 * 1024)
 
@@ -64,29 +66,6 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	return pool
 }
 
-// Available returns back how many of requested blocks can be made available approx
-func (pool *BlockPool) Available(cnt int32) int32 {
-	if cnt < 0 {
-		return 0
-	}
-	// Calculate how much is possible at max to allocate and provide
-	possible := int32(pool.blockMax) - atomic.LoadInt32(&pool.blocks)
-	possible += int32(len(pool.blocksCh))
-
-	percentAvailable := (possible * 100) / int32(pool.blockMax)
-	if percentAvailable > 30 && possible > cnt {
-		return cnt
-	}
-
-	avail := (cnt * percentAvailable) / 100
-
-	if avail >= possible {
-		return 0
-	}
-
-	return avail
-}
-
 // Recalculate the block size and pool size
 func (pool *BlockPool) Terminate() {
 	close(pool.blocksCh)
@@ -100,20 +79,6 @@ func (pool *BlockPool) Terminate() {
 			_ = b.Delete()
 		}
 	}
-}
-
-// Available returns back how many of requested blocks can be made available approx
-func (pool *BlockPool) Usage() int32 {
-       return int32(len(pool.blocksCh)*100) / int32(pool.blockMax)
-}
-
-// Recalculate the block size and pool size
-func (pool *BlockPool) ReSize(blockSize uint64, memSize uint64) {
-	blockCount := memSize / blockSize
-	pool.blockMax = uint32(blockCount)
-
-	pool.expand()
-	
 }
 
 // Get a Block from the pool
@@ -131,7 +96,7 @@ func (pool *BlockPool) expand() {
 }
 
 // Get a Block from the pool
-func (pool *BlockPool) Get(wait bool) *Block {
+func (pool *BlockPool) Get() *Block {
 	var b *Block
 
 	select {
@@ -141,18 +106,9 @@ func (pool *BlockPool) Get(wait bool) *Block {
 	default:
 		// If not available try to allocate a new buffer and add to pool if possible
 		pool.expand()
-		if !wait {
-			// Caller asked for immediate answer so even after expanding if its not possible return nil
-			select {
-			case b = <-pool.blocksCh:
-				break
-			default:
-				return nil
-			}
-		} else {
-			// Caller is ready to wait so block untill buffer is available
-			b = <-pool.blocksCh
-		}
+	
+		// Caller is ready to wait so block untill buffer is available
+		b = <-pool.blocksCh
 	}
 
 	b.ReUse()

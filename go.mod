@@ -65,6 +65,7 @@ require (
 	github.com/spf13/cast v1.5.0 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/subosito/gotenv v1.4.2 // indirect
+	github.com/vibhansa-msft/tlru v0.0.0-20230621165448-dbd42234ad22 // indirect
 	github.com/wastore/keychain v0.0.0-20180920053336-f2c902a3d807 // indirect
 	github.com/wastore/keyctl v0.3.1 // indirect
 	go.opencensus.io v0.24.0 // indirect
