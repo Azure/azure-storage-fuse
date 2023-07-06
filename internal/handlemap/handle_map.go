@@ -99,19 +99,20 @@ func NewHandle(path string) *Handle {
 
 // Push block Id to the blockList front
 func (handle *Handle) PushFrontBlock(value interface{}) {
-	handle.Lock()
 	handle.blockList.PushFront(value)
-	handle.Unlock()
 }
 
 
 // Pop block id from blockList back
 func (handle *Handle) PopBackBlock() interface{} {
-	handle.Lock()
-	defer handle.Unlock()
 	node := handle.blockList.Back()
 	handle.blockList.Remove(node)
 	return node.Value
+}
+
+// Pop block id from blockList back
+func (handle *Handle) BlockPeek() interface{} {
+	return handle.blockList.Back().Value
 }
 
 // Dirty : Handle is dirty or not
@@ -146,43 +147,33 @@ func (handle *Handle) FD() int {
 
 // SetValue : Store user defined parameter inside handle
 func (handle *Handle) SetValue(key string, value interface{}) {
-	handle.Lock()
 	handle.values[key] = value
-	handle.Unlock()
 }
 
 // GetValue : Retrieve user defined parameter from handle
 func (handle *Handle) GetValue(key string) (interface{}, bool) {
-	handle.RLock()
 	val, ok := handle.values[key]
-	handle.RUnlock()
 	return val, ok
 }
 
 // RemoveValue : Delete user defined parameter from handle
 func (handle *Handle) RemoveValue(key string) {
-	handle.Lock()
 	delete(handle.values, key)
-	handle.Unlock()
 }
 
 // Cleanup : Delete all user defined parameter from handle
 func (handle *Handle) Cleanup() {
-	handle.Lock()
 	for key := range handle.values {
 		delete(handle.values, key)
 	}
-	handle.Unlock()
 }
 
 // CleanupWithCallback : Delete all user defined parameter from handle
 func (handle *Handle) CleanupWithCallback(f func(string, interface{})) {
-	handle.Lock()
 	for key := range handle.values {
 		f(key, handle.values[key])
 		delete(handle.values, key)
 	}
-	handle.Unlock()
 }
 
 // defaultHandleMap holds a synchronized map[ HandleID ]*Handle

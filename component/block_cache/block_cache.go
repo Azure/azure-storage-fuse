@@ -316,6 +316,9 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	t := 0
 	t = <- options.Handle.Prefetched
 	
+	options.Handle.Lock()
+	defer options.Handle.Unlock()
+	
 	// Ensure we are the first thread to reach here.
 	if t == 1 {
 		nextoffset := uint64(options.Offset)
@@ -377,7 +380,7 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, offset uint64) bo
 	} else {
 		log.Debug("Cache missed earlier not liningup download: %v::%v::%v", handle.ID, index, offset)
 	}
-	
+
 	return true
 }
 
@@ -407,7 +410,6 @@ func (bc *BlockCache) download(i interface{}) {
 		// File exists locally so read from there into buffer
 		f, err := os.Open(localPath)
 		if err == nil {
-			log.Info("BlockCache::download : Reading data from disk cache %s", fileName)
 			_, err = f.Read(item.block.data)
 			if err != nil {
 				log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
@@ -419,7 +421,6 @@ func (bc *BlockCache) download(i interface{}) {
 	}
 	
 	if err != nil {
-		log.Info("BlockCache::download : Reading data from network %s", fileName)
 		n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 			Handle: item.handle,
 			Offset: int64(item.block.id * bc.blockSize),
@@ -472,6 +473,11 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	index := bc.getBlockIndex(readoffset)
 	item, found := handle.GetValue(fmt.Sprintf("%v", index))
 
+	// Keep track if the items we prefetched are being used. If this block is read out of order, we will not
+	// prefetch the next block. This will keep blocks available for sequential reads and allow random reads to not 
+	// crash.
+	isCached := found
+	
 	if !found {
 		// This offset is not cached yet, so lineup the download
 		success := bc.lineupDownload(handle, readoffset)
@@ -492,23 +498,30 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	t := int(0)
 	t = <-block.state
 
-	if t == 2 {
+	if t == 1 {
 		// Block is ready and we are the second reader so its time to schedule the next block.
-		lastoffset, found := handle.GetValue("#")
-		if found && lastoffset.(uint64) < uint64(handle.Size) {
-			success := bc.lineupDownload(handle, lastoffset.(uint64))
-			if success {
-				handle.SetValue("#", lastoffset.(uint64)+bc.blockSize)
+		// We need to ensure we only prefetch for blocks which were read from cache in order to ensure
+		// random reads do not lead to unused prefetches.
+		if isCached {
+			lastoffset, found := handle.GetValue("#")
+			if found && lastoffset.(uint64) < uint64(handle.Size) {
+				success := bc.lineupDownload(handle, lastoffset.(uint64))
+				if success {
+					handle.SetValue("#", lastoffset.(uint64)+bc.blockSize)
+				}
 			}
+		} else {
+			log.Debug("Skipping prefetch due to random block read offset: %v", readoffset)
 		}
-		
-		_ = block.Unblock()
-	} else if t == 1 {
+
 		// block is ready and we are the first reader so its time to release the oldest block.
-		if block.id >= 2 {
+		if handle.BlockPeek().(uint64) != block.id {
 			ReleaseBlock(handle)
 		}
+
+		_ = block.Unblock()
 	}
+
 	return block, nil
 }
 

@@ -88,7 +88,7 @@ func (b *Block) Delete() error {
 
 // reinit the Block by recreating its channel
 func (b *Block) ReUse() {
-	b.state = make(chan int, 2)
+	b.state = make(chan int, 1)
 	b.id = 0
 	b.closed = false
 }
@@ -104,8 +104,6 @@ func (b *Block) ReadyForReading() error {
 	}
 
 	b.state <- 1
-	b.state <- 2
-
 	return nil
 }
 

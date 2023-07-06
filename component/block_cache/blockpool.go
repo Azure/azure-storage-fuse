@@ -60,7 +60,14 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	}
 	
 	for len(pool.blocksCh) < int(pool.blockMax) {
-		pool.expand()
+		// Time to allocate a new Block
+		b, err := AllocateBlock(pool.blockSize)
+		if err != nil {
+			return nil
+		}
+
+		atomic.AddInt32(&pool.blocks, 1)
+		pool.blocksCh <- b
 	}
 	
 	return pool
@@ -82,34 +89,8 @@ func (pool *BlockPool) Terminate() {
 }
 
 // Get a Block from the pool
-func (pool *BlockPool) expand() {
-	if atomic.LoadInt32(&pool.blocks) < int32(pool.blockMax) {
-		// Time to allocate a new Block
-		b, err := AllocateBlock(pool.blockSize)
-		if err != nil {
-			return
-		}
-
-		atomic.AddInt32(&pool.blocks, 1)
-		pool.blocksCh <- b
-	}
-}
-
-// Get a Block from the pool
 func (pool *BlockPool) Get() *Block {
-	var b *Block
-
-	select {
-	// Check if there is a buffer already available in the pool
-	case b = <-pool.blocksCh:
-		break
-	default:
-		// If not available try to allocate a new buffer and add to pool if possible
-		pool.expand()
-	
-		// Caller is ready to wait so block untill buffer is available
-		b = <-pool.blocksCh
-	}
+	b := <-pool.blocksCh
 
 	b.ReUse()
 	return b
