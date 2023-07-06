@@ -46,7 +46,7 @@ const (
 // Block is a memory mapped buffer with its state
 type Block struct {
 	offset uint64
-	id     uint64
+	id     int64
 	state  chan int
 	data   []byte
 	stage  uint16
@@ -68,7 +68,7 @@ func AllocateBlock(size uint64) (*Block, error) {
 	return &Block{
 		data:  addr,
 		state: nil,
-		id:    0,
+		id:    -1,
 		stage: BlockReady,
 	}, nil
 
@@ -94,7 +94,7 @@ func (b *Block) Delete() error {
 
 // reinit the Block by recreating its channel
 func (b *Block) ReUse() {
-	b.id = 0
+	b.id = -1
 	b.stage = BlockReady
 	b.state = make(chan int, 2)
 }
