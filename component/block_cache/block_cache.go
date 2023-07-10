@@ -106,6 +106,7 @@ type workItem struct {
 	handle   *handlemap.Handle
 	block    *Block
 	prefetch bool
+	failCnt  int32
 }
 
 const (
@@ -388,7 +389,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 
 			// This is the first read for this file handle so start prefetching all the nodes
 			err := bc.startPrefetch(handle, index, MIN_PREFETCH, false)
-			if err != nil {
+			if err != nil && err != io.EOF {
 				log.Err("BlockCache::getBlock : Unable to start prefetch %s (%v : %v) [%s]", handle.Path, readoffset, index, err.Error())
 				return nil, fmt.Errorf("unable to start prefetch for this handle")
 			}
@@ -483,7 +484,7 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, force
 	log.Info("BlockCache::refreshBlock : Request to download %v : %s (%v : %v)", handle.ID, handle.Path, index, prefetch)
 
 	offset := index * bc.blockSize
-	if int64(offset) > handle.Size {
+	if int64(offset) >= handle.Size {
 		return io.EOF
 	}
 
@@ -540,6 +541,7 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 		handle:   handle,
 		block:    block,
 		prefetch: prefetch,
+		failCnt:  0,
 	}
 
 	block.stage = BlockQueued
@@ -604,14 +606,22 @@ func (bc *BlockCache) download(i interface{}) {
 		Data:   item.block.data,
 	})
 
+	if item.failCnt > 3 {
+		// If we failed to read the data 3 times then just give up
+		log.Err("BlockCache::download : 3 attempts to download a block have failed %v : %s (%v %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
+		return
+	}
+
 	if err != nil {
 		// Fail to read the data so just reschedule this request
 		log.Err("BlockCache::download : Failed to read %s from offset %v [%s]", item.handle.Path, item.block.id, err.Error())
+		item.failCnt++
 		bc.threadPool.Schedule(false, item)
 		return
 	} else if n == 0 {
 		// No data read so just reschedule this request
 		log.Err("BlockCache::download : Failed to read %s from offset %v [0 bytes read]", item.handle.Path, item.block.id)
+		item.failCnt++
 		bc.threadPool.Schedule(false, item)
 		return
 	}
