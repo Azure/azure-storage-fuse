@@ -481,7 +481,7 @@ func (bc *BlockCache) getBlockIndex(offset uint64) uint64 {
 
 // refreshBlock: Get a block from teh list and prepare it for prefetch
 func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, force bool, prefetch bool) error {
-	log.Info("BlockCache::refreshBlock : Request to download %v : %s (%v : %v)", handle.ID, handle.Path, index, prefetch)
+	//log.Info("BlockCache::refreshBlock : Request to download %v : %s (%v : %v)", handle.ID, handle.Path, index, prefetch)
 
 	offset := index * bc.blockSize
 	if int64(offset) >= handle.Size {
