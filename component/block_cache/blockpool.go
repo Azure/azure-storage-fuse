@@ -115,7 +115,6 @@ func (pool *BlockPool) TryGet() *Block {
 	case b = <-pool.blocksCh:
 		break
 	default:
-		log.Err("BlockPool::Get : No blocks available in the pool")
 		return nil
 	}
 
