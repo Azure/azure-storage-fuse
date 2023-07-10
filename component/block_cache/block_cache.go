@@ -340,6 +340,10 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 
 // ReadInBuffer: Read the local file into a buffer
 func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
+	if options.Offset >= options.Handle.Size {
+		return 0, io.EOF
+	}
+
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
 
@@ -479,6 +483,10 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, force
 	log.Info("BlockCache::refreshBlock : Request to download %v : %s (%v : %v)", handle.ID, handle.Path, index, prefetch)
 
 	offset := index * bc.blockSize
+	if int64(offset) > handle.Size {
+		return io.EOF
+	}
+
 	nodeList := handle.TempObj.(*list.List)
 
 	node := nodeList.Front()
