@@ -390,12 +390,12 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			// This is the first read for this file handle so start prefetching all the nodes
 			err := bc.startPrefetch(handle, index, MIN_PREFETCH, false)
 			if err != nil && err != io.EOF {
-				log.Err("BlockCache::getBlock : Unable to start prefetch %s (%v : %v) [%s]", handle.Path, readoffset, index, err.Error())
+				log.Err("BlockCache::getBlock : Unable to start prefetch %v : %s (%v : %v) [%s]", handle.ID, handle.Path, readoffset, index, err.Error())
 				return nil, fmt.Errorf("unable to start prefetch for this handle")
 			}
 		} else {
 			handle.OptCnt++
-			log.Info("BlockCache::getBlock : Unable to get block %v : %s (%v) Random opt %v", handle.ID, handle.Path, index, handle.OptCnt)
+			log.Info("BlockCache::getBlock : Unable to get block %v : %s (%v : %v) Rand Opt %v", handle.ID, handle.Path, readoffset, index, handle.OptCnt)
 
 			// This block is not present even after prefetch so lets download it now
 			err := bc.refreshBlock(handle, index, true, false)
@@ -677,11 +677,13 @@ func (bc *BlockCache) checkDiskUsage() bool {
 		}
 	}
 
+	log.Debug("BlockCache::checkDiskUsage : current disk usage : %fMB %v%%", data, usage)
+	log.Debug("BlockCache::checkDiskUsage : current cache usage : %v%%", bc.blockPool.Usage())
 	return false
 }
 
 func getUsage(path string) float64 {
-	log.Trace("cachePolicy::getCacheUsage : %s", path)
+	//log.Trace("cachePolicy::getCacheUsage : %s", path)
 
 	var currSize float64
 	var out bytes.Buffer
@@ -722,7 +724,6 @@ func getUsage(path string) float64 {
 		currSize = parsed * 1024 * 1024
 	}
 
-	log.Debug("BlockCache::getCacheUsage : current cache usage : %fMB", currSize)
 	return currSize
 }
 
