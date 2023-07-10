@@ -572,7 +572,7 @@ func (bc *BlockCache) download(i interface{}) {
 				log.Err("BlockCache::download : Failed to open file %s [%s]", fileName, err.Error())
 				_ = os.Remove(localPath)
 			} else {
-				log.Info("BlockCache::download : Reading data from disk cache %s", fileName)
+				//log.Info("BlockCache::download : Reading data from disk cache %s", fileName)
 
 				_, err = f.Read(item.block.data)
 				if err != nil {
@@ -589,7 +589,7 @@ func (bc *BlockCache) download(i interface{}) {
 	}
 
 	// If file does not exists then download the block from the remote storage
-	log.Info("BlockCache::download : Downloading data from remote storage %s", fileName)
+	//log.Info("BlockCache::download : Downloading data from remote storage %s", fileName)
 	n, err := bc.NextComponent().ReadInBuffer(internal.ReadInBufferOptions{
 		Handle: item.handle,
 		Offset: int64(item.block.offset),
