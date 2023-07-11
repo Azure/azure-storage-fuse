@@ -441,14 +441,8 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 		//log.Info("BlockCache::getBlock : First reader for the block hit %v : %s (%v)", handle.ID, handle.Path, index)
 		if !bc.noPrefetch {
 			// block is ready and we are the first reader so its time to remove the second last block from here
-			if handle.Buffers.Cooked.Len() > 0 {
-				headBlock := handle.Buffers.Cooked.Front().Value.(*Block)
-				diff := (block.id - headBlock.id)
-				if diff >= 2 {
-					if handle.OptCnt < MIN_RANDREAD {
-						prefetchCnt = MIN_PREFETCH
-					}
-				}
+			if handle.OptCnt < MIN_RANDREAD {
+				prefetchCnt = MIN_PREFETCH
 			}
 		}
 		_ = handle.Buffers.Cooking.Remove(block.node)
@@ -459,7 +453,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	nodeList := handle.Buffers.Cooked
 	cnt := uint32(0)
 	if prefetchCnt > 0 {
-		if nodeList.Len() < int(bc.prefetch) {
+		if (nodeList.Len() + handle.Buffers.Cooking.Len()) < int(bc.prefetch) {
 			for i := 0; i < prefetchCnt && nodeList.Len() < int(bc.prefetch); i++ {
 				block := bc.blockPool.TryGet()
 				if block != nil {
@@ -471,7 +465,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			cnt = 1
 		}
 
-		//log.Info("BlockCache::getBlock : Go for prefetch of %v blocks %v : %s (%v)", cnt, handle.ID, handle.Path, index)
+		log.Err("BlockCache::getBlock : Go for prefetch of %v blocks for %v : %s (%v)", cnt, handle.ID, handle.Path, index)
 		val, _ := handle.GetValue("#")
 		_ = bc.startPrefetch(handle, val.(uint64), cnt, true)
 	} else if handle.OptCnt > MIN_RANDREAD && nodeList.Len() > MIN_PREFETCH {
@@ -518,13 +512,11 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, force
 	}
 
 	node := nodeList.Front()
-	block := node.Value.(*Block)
-
-	//log.Info("BlockCache::refreshBlock : Time to enqueue %v : %s (%v)", handle.ID, handle.Path, index)
-
-	if force || block.id == -1 {
+	if node != nil {
+		block := node.Value.(*Block)
+		//log.Info("BlockCache::refreshBlock : Time to enqueue %v : %s (%v)", handle.ID, handle.Path, index)
 		if block.id != -1 {
-			//log.Info("BlockCache::refreshBlock : Removing %v block for %v : %s", block.id, handle.ID, handle.Path)
+			log.Err("BlockCache::refreshBlock : Removing %v block for %v : %s", block.id, handle.ID, handle.Path)
 			handle.RemoveValue(fmt.Sprintf("%v", block.id))
 		}
 
@@ -551,7 +543,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, coun
 	for i := uint32(0); i < count; i++ {
 		_, found := handle.GetValue(fmt.Sprintf("%v", index))
 		if !found {
-			err := bc.refreshBlock(handle, index, false, prefetch && (i == 0))
+			err := bc.refreshBlock(handle, index, false, prefetch || i > 0)
 			if err != nil {
 				return err
 			}
