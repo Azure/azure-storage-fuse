@@ -237,6 +237,9 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.prefetch = conf.PrefetchCount
 		if bc.prefetch == 0 {
 			bc.noPrefetch = true
+		} else if conf.PrefetchCount < MIN_PREFETCH {
+			log.Err("BlockCache::Configure : Prefetch count can not be less then %v", MIN_PREFETCH)
+			return fmt.Errorf("BlockCache: invalid config for prefetch count")
 		}
 	}
 

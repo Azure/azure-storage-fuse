@@ -5,6 +5,8 @@
     - Only read-only mounts will support block-cache
 - On AML compute cluster MSI authentication is now supported (this will use the identity assigned to compute cluster) 
 
+## 2.0.5 (WIP)
+
 ## 2.0.4 (2023-07-03)
 **Features**
 - Added new config parameter "max-fuse-threads" under "libfuse" config to control max threads allowed at libfuse layer.
