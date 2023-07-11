@@ -308,12 +308,16 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 
 	// Allocate a block pool object for this handle
 	// Acutal linked list to hold the nodes
-	blockList := list.New()
-	handle.TempObj = blockList
+	handle.Buffers = &handlemap.Buffers{
+		Cooked:  list.New(),
+		Cooking: list.New(),
+	}
 
 	// Fill this local block pool with prefetch number of blocks
 	for i := 0; i < MIN_PREFETCH; i++ {
-		blockList.PushFront(bc.blockPool.MustGet())
+		block := bc.blockPool.MustGet()
+		node := handle.Buffers.Cooked.PushFront(block)
+		block.node = node
 	}
 
 	return handle, nil
@@ -326,15 +330,26 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 	// Release the blocks that are in use and wipe out handle map
 	options.Handle.Cleanup()
 
-	// Relese the blocks that are not in use
-	blockList := options.Handle.TempObj.(*list.List)
+	// Release the buffers which are still under download after they have been written
+	blockList := options.Handle.Buffers.Cooking
 	node := blockList.Front()
+	for ; node != nil; node = blockList.Front() {
+		block := blockList.Remove(node).(*Block)
+		_ = <-block.state
+		block.ReUse()
+		bc.blockPool.Release(block)
+	}
+	options.Handle.Buffers.Cooking = nil
+
+	// Relese the blocks that are ready to be reused
+	blockList = options.Handle.Buffers.Cooked
+	node = blockList.Front()
 	for ; node != nil; node = blockList.Front() {
 		block := blockList.Remove(node).(*Block)
 		block.ReUse()
 		bc.blockPool.Release(block)
 	}
-	options.Handle.TempObj = nil
+	options.Handle.Buffers.Cooked = nil
 
 	return nil
 }
@@ -423,26 +438,29 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 		//log.Info("BlockCache::getBlock : First reader for the block hit %v : %s (%v)", handle.ID, handle.Path, index)
 		if !bc.noPrefetch {
 			// block is ready and we are the first reader so its time to remove the second last block from here
-			headBlock := handle.TempObj.(*list.List).Front().Value.(*Block)
-			diff := (block.id - headBlock.id)
-			if diff >= 2 {
-				if handle.OptCnt < MIN_RANDREAD {
-					prefetchCnt = MIN_PREFETCH
-					headBlock.stage = BlockReady
+			if handle.Buffers.Cooked.Len() > 0 {
+				headBlock := handle.Buffers.Cooked.Front().Value.(*Block)
+				diff := (block.id - headBlock.id)
+				if diff >= 2 {
+					if handle.OptCnt < MIN_RANDREAD {
+						prefetchCnt = MIN_PREFETCH
+					}
 				}
 			}
 		}
+		_ = handle.Buffers.Cooking.Remove(block.node)
+		block.node = handle.Buffers.Cooked.PushBack(block)
 		block.Unblock()
 	}
 
-	nodeList := handle.TempObj.(*list.List)
+	nodeList := handle.Buffers.Cooked
 	cnt := uint32(0)
 	if prefetchCnt > 0 {
 		if nodeList.Len() < int(bc.prefetch) {
 			for i := 0; i < prefetchCnt && nodeList.Len() < int(bc.prefetch); i++ {
 				block := bc.blockPool.TryGet()
 				if block != nil {
-					nodeList.PushFront(block)
+					block.node = nodeList.PushFront(block)
 					cnt++
 				}
 			}
@@ -463,6 +481,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			block := nodeList.Remove(node).(*Block)
 			if block.id != int64(index) {
 				handle.RemoveValue(fmt.Sprintf("%v", block.id))
+				block.node = nil
 				block.ReUse()
 				bc.blockPool.Release(block)
 				cnt++
@@ -481,21 +500,26 @@ func (bc *BlockCache) getBlockIndex(offset uint64) uint64 {
 
 // refreshBlock: Get a block from teh list and prepare it for prefetch
 func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, force bool, prefetch bool) error {
-	//log.Info("BlockCache::refreshBlock : Request to download %v : %s (%v : %v)", handle.ID, handle.Path, index, prefetch)
+	log.Err("BlockCache::refreshBlock : Request to download %v : %s (%v : %v)", handle.ID, handle.Path, index, prefetch)
 
 	offset := index * bc.blockSize
 	if int64(offset) >= handle.Size {
 		return io.EOF
 	}
 
-	nodeList := handle.TempObj.(*list.List)
+	nodeList := handle.Buffers.Cooked
+	if nodeList.Len() == 0 && force {
+		block := bc.blockPool.MustGet()
+		node := handle.Buffers.Cooked.PushFront(block)
+		block.node = node
+	}
 
 	node := nodeList.Front()
 	block := node.Value.(*Block)
 
 	//log.Info("BlockCache::refreshBlock : Time to enqueue %v : %s (%v)", handle.ID, handle.Path, index)
 
-	if force || block.stage == BlockReady || block.id == -1 {
+	if force || block.id == -1 {
 		if block.id != -1 {
 			//log.Info("BlockCache::refreshBlock : Removing %v block for %v : %s", block.id, handle.ID, handle.Path)
 			handle.RemoveValue(fmt.Sprintf("%v", block.id))
@@ -524,7 +548,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, coun
 	for i := uint32(0); i < count; i++ {
 		_, found := handle.GetValue(fmt.Sprintf("%v", index))
 		if !found {
-			err := bc.refreshBlock(handle, index, false, prefetch)
+			err := bc.refreshBlock(handle, index, false, prefetch && (i == 0))
 			if err != nil {
 				return err
 			}
@@ -544,7 +568,8 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 		failCnt:  0,
 	}
 
-	block.stage = BlockQueued
+	_ = handle.Buffers.Cooked.Remove(block.node)
+	block.node = handle.Buffers.Cooking.PushFront(block)
 	bc.threadPool.Schedule(!prefetch, item)
 }
 

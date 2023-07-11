@@ -34,6 +34,7 @@
 package handlemap
 
 import (
+	"container/list"
 	"os"
 	"sync"
 	"time"
@@ -65,11 +66,16 @@ type Cache struct {
 	HandleCount int64
 }
 
+type Buffers struct {
+	Cooked  *list.List
+	Cooking *list.List
+}
+
 type Handle struct {
 	sync.RWMutex
 	FObj     *os.File // File object being represented by this handle
 	CacheObj *Cache   // Streaming layer cache for this handle
-	TempObj  any
+	Buffers  *Buffers
 	ID       HandleID // Blobfuse assigned unique ID to this handle
 	Size     int64    // Size of the file being handled here
 	Mtime    time.Time
@@ -90,7 +96,7 @@ func NewHandle(path string) *Handle {
 		values:   make(map[string]interface{}),
 		CacheObj: nil,
 		FObj:     nil,
-		TempObj:  nil,
+		Buffers:  nil,
 	}
 }
 

@@ -34,13 +34,9 @@
 package block_cache
 
 import (
+	"container/list"
 	"fmt"
 	"syscall"
-)
-
-const (
-	BlockReady uint16 = iota
-	BlockQueued
 )
 
 // Block is a memory mapped buffer with its state
@@ -49,7 +45,7 @@ type Block struct {
 	id     int64
 	state  chan int
 	data   []byte
-	stage  uint16
+	node   *list.Element
 }
 
 // newblock creates a new memory mapped buffer with the specified size
@@ -69,7 +65,7 @@ func AllocateBlock(size uint64) (*Block, error) {
 		data:  addr,
 		state: nil,
 		id:    -1,
-		stage: BlockReady,
+		node:  nil,
 	}, nil
 
 	// we do not create channel here, as that will be created when buffer is retrieved
@@ -95,7 +91,6 @@ func (b *Block) Delete() error {
 // reinit the Block by recreating its channel
 func (b *Block) ReUse() {
 	b.id = -1
-	b.stage = BlockReady
 	b.state = make(chan int, 2)
 }
 
