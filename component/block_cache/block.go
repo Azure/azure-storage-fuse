@@ -31,14 +31,82 @@
    SOFTWARE
 */
 
-package cmd
+package block_cache
 
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/stream"
+	"fmt"
+	"syscall"
 )
+
+const (
+	BlockReady uint16 = iota
+	BlockQueued
+)
+
+// Block is a memory mapped buffer with its state
+type Block struct {
+	offset uint64
+	id     int64
+	state  chan int
+	data   []byte
+	stage  uint16
+}
+
+// newblock creates a new memory mapped buffer with the specified size
+func AllocateBlock(size uint64) (*Block, error) {
+	if size == 0 {
+		return nil, fmt.Errorf("invalid size")
+	}
+
+	prot, flags := syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_ANON|syscall.MAP_PRIVATE
+	addr, err := syscall.Mmap(-1, 0, int(size), prot, flags)
+
+	if err != nil {
+		return nil, fmt.Errorf("mmap error: %v", err)
+	}
+
+	return &Block{
+		data:  addr,
+		state: nil,
+		id:    -1,
+		stage: BlockReady,
+	}, nil
+
+	// we do not create channel here, as that will be created when buffer is retrieved
+	// reinit will always be called before use and that will create the channel as well.
+}
+
+// Delete cleans up the memory mapped buffer
+func (b *Block) Delete() error {
+	if b.data == nil {
+		return fmt.Errorf("invalid buffer")
+	}
+
+	err := syscall.Munmap(b.data)
+	b.data = nil
+	if err != nil {
+		// if we get here, there is likely memory corruption.
+		return fmt.Errorf("munmap error: %v", err)
+	}
+
+	return nil
+}
+
+// reinit the Block by recreating its channel
+func (b *Block) ReUse() {
+	b.id = -1
+	b.stage = BlockReady
+	b.state = make(chan int, 2)
+}
+
+// mark this Block is now ready for ops
+func (b *Block) ReadyForReading() error {
+	b.state <- 1
+	return nil
+}
+
+// mark this Block is ready to be read freely now without blocking
+func (b *Block) Unblock() error {
+	close(b.state)
+	return nil
+}

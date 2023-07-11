@@ -1,7 +1,11 @@
-## 2.0.5-preview.1 (WIP)
+## 2.1.0-preview.1 (WIP)
 **Features**
-- On AML compute cluster MSI authentication is now supported (this will use the identity assigned to compute cluster)
-## 2.0.4 (WIP)
+- Block cache component added to support faster serial reads of large files with prefetching of blocks
+    - As of now only one file single threaded read is faster
+    - Only read-only mounts will support block-cache
+- On AML compute cluster MSI authentication is now supported (this will use the identity assigned to compute cluster) 
+
+## 2.0.4 (2023-07-03)
 **Features**
 - Added new config parameter "max-fuse-threads" under "libfuse" config to control max threads allowed at libfuse layer.
 - Added new config parameter 'refresh-sec' in 'file-cache'. When file-cache-timeout is set to a large value, this field can control when to refresh the file if file in container has changed.

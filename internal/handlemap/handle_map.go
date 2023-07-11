@@ -69,6 +69,7 @@ type Handle struct {
 	sync.RWMutex
 	FObj     *os.File // File object being represented by this handle
 	CacheObj *Cache   // Streaming layer cache for this handle
+	TempObj  any
 	ID       HandleID // Blobfuse assigned unique ID to this handle
 	Size     int64    // Size of the file being handled here
 	Mtime    time.Time
@@ -89,6 +90,7 @@ func NewHandle(path string) *Handle {
 		values:   make(map[string]interface{}),
 		CacheObj: nil,
 		FObj:     nil,
+		TempObj:  nil,
 	}
 }
 
@@ -124,33 +126,27 @@ func (handle *Handle) FD() int {
 
 // SetValue : Store user defined parameter inside handle
 func (handle *Handle) SetValue(key string, value interface{}) {
-	handle.Lock()
 	handle.values[key] = value
-	handle.Unlock()
 }
 
 // GetValue : Retrieve user defined parameter from handle
 func (handle *Handle) GetValue(key string) (interface{}, bool) {
-	handle.RLock()
 	val, ok := handle.values[key]
-	handle.RUnlock()
 	return val, ok
 }
 
-// RemoveValue : Delete user defined parameter from handle
-func (handle *Handle) RemoveValue(key string) {
-	handle.Lock()
+// GetValue : Retrieve user defined parameter from handle
+func (handle *Handle) RemoveValue(key string) (interface{}, bool) {
+	val, ok := handle.values[key]
 	delete(handle.values, key)
-	handle.Unlock()
+	return val, ok
 }
 
 // Cleanup : Delete all user defined parameter from handle
 func (handle *Handle) Cleanup() {
-	handle.Lock()
 	for key := range handle.values {
 		delete(handle.values, key)
 	}
-	handle.Unlock()
 }
 
 // defaultHandleMap holds a synchronized map[ HandleID ]*Handle

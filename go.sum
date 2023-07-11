@@ -285,6 +285,8 @@ github.com/stretchr/testify v1.8.4 h1:CcVxjf3Q8PM0mHUKJCdn+eZZtm5yQwehR5yeSVQQcU
 github.com/stretchr/testify v1.8.4/go.mod h1:sz/lmYIOXD/1dqDmKjjqLyZ2RngseejIcXlSw2iwfAo=
 github.com/subosito/gotenv v1.4.2 h1:X1TuBLAMDFbaTAChgCBLu3DU3UPyELpnF2jjJ2cz/S8=
 github.com/subosito/gotenv v1.4.2/go.mod h1:ayKnFf/c6rvx/2iiLrJUk1e6plDbT3edrFNGqEflhK0=
+github.com/vibhansa-msft/tlru v0.0.0-20230621165448-dbd42234ad22 h1:PwqTV6gPLW3m7H47Wv0xkj47OLPnoOoFzvPInqv9mAo=
+github.com/vibhansa-msft/tlru v0.0.0-20230621165448-dbd42234ad22/go.mod h1:7G2C64UXEWNr8oUzspzcrymxCjD9fKAKTGbL7zO2GW8=
 github.com/wastore/keychain v0.0.0-20180920053336-f2c902a3d807 h1:Uzh85j0tl46Sf2OOx1wDePSWkz3Eq8XdCFkLXqaX8Bg=
 github.com/wastore/keychain v0.0.0-20180920053336-f2c902a3d807/go.mod h1:zI8umr7xnBSyT9ZJ8wn48RiQ0EWXo4xmYLNw9FQvC9w=
 github.com/wastore/keyctl v0.3.1 h1:wMkYW9y9jGbQ1ARBLGLwnDdbgrkbuSeuIQeHy+BZOU0=

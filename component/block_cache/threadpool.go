@@ -31,14 +31,83 @@
    SOFTWARE
 */
 
-package cmd
+package block_cache
 
-import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/stream"
-)
+import "sync"
+
+type ThreadPool struct {
+	// Number of workers running in this group
+	worker uint32
+
+	// Channel to close all the workers
+	close chan int
+
+	// Wait group to wait for all workers to finish
+	wg sync.WaitGroup
+
+	// Channel to hold pending requests
+	priorityCh chan interface{}
+	normalCh   chan interface{}
+
+	// Reader method that will actually read the data
+	reader func(interface{})
+}
+
+func newThreadPool(count uint32, reader func(interface{})) *ThreadPool {
+	if count == 0 || reader == nil {
+		return nil
+	}
+
+	return &ThreadPool{
+		worker:     count,
+		reader:     reader,
+		close:      make(chan int, count),
+		priorityCh: make(chan interface{}, count*2),
+		normalCh:   make(chan interface{}, count*5000),
+	}
+}
+
+// Start all the workers
+func (t *ThreadPool) Start() {
+	for i := uint32(0); i < t.worker; i++ {
+		t.wg.Add(1)
+		go t.Do()
+	}
+}
+
+// Stop all the workers
+func (t *ThreadPool) Stop() {
+	for i := uint32(0); i < t.worker; i++ {
+		t.close <- 1
+	}
+
+	t.wg.Wait()
+
+	close(t.close)
+	close(t.priorityCh)
+	close(t.normalCh)
+}
+
+// Schedule the download of a block
+func (t *ThreadPool) Schedule(urgent bool, item interface{}) {
+	if urgent {
+		t.priorityCh <- item
+	} else {
+		t.normalCh <- item
+	}
+}
+
+func (t *ThreadPool) Do() {
+	defer t.wg.Done()
+
+	for {
+		select {
+		case item := <-t.priorityCh:
+			t.reader(item)
+		case item := <-t.normalCh:
+			t.reader(item)
+		case <-t.close:
+			return
+		}
+	}
+}

@@ -1,3 +1,6 @@
+//go:build !authtest
+// +build !authtest
+
 /*
     _____           _____   _____   ____          ______  _____  ------
    |     |  |      |     | |     | |     |     | |       |            |
@@ -31,14 +34,78 @@
    SOFTWARE
 */
 
-package cmd
+package block_cache
 
 import (
-	_ "github.com/Azure/azure-storage-fuse/v2/component/attr_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/azstorage"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/block_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/file_cache"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/libfuse"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/loopback"
-	_ "github.com/Azure/azure-storage-fuse/v2/component/stream"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
+
+type threadPoolTestSuite struct {
+	suite.Suite
+	assert *assert.Assertions
+}
+
+func (suite *threadPoolTestSuite) SetupTest() {
+}
+
+func (suite *threadPoolTestSuite) cleanupTest() {
+}
+
+func (suite *threadPoolTestSuite) TestCreate() {
+	suite.assert = assert.New(suite.T())
+
+	tp := newThreadPool(0, nil)
+	suite.assert.Nil(tp)
+
+	tp = newThreadPool(1, nil)
+	suite.assert.Nil(tp)
+
+	tp = newThreadPool(1, func(interface{}) {})
+	suite.assert.NotNil(tp)
+	suite.assert.Equal(tp.worker, uint32(1))
+}
+
+func (suite *threadPoolTestSuite) TestStartStop() {
+	suite.assert = assert.New(suite.T())
+
+	r := func(i interface{}) {
+		suite.assert.Equal(i.(int), 1)
+	}
+	tp := newThreadPool(2, r)
+	suite.assert.NotNil(tp)
+	suite.assert.Equal(tp.worker, uint32(2))
+
+	tp.Start()
+	suite.assert.NotNil(tp.priorityCh)
+	suite.assert.NotNil(tp.normalCh)
+
+	tp.Stop()
+}
+
+func (suite *threadPoolTestSuite) TestSchedule() {
+	suite.assert = assert.New(suite.T())
+
+	r := func(i interface{}) {
+		suite.assert.Equal(i.(int), 1)
+	}
+
+	tp := newThreadPool(2, r)
+	suite.assert.NotNil(tp)
+	suite.assert.Equal(tp.worker, uint32(2))
+
+	tp.Start()
+	suite.assert.NotNil(tp.priorityCh)
+	suite.assert.NotNil(tp.normalCh)
+
+	tp.Schedule(false, 1)
+	tp.Schedule(true, 1)
+
+	tp.Stop()
+}
+
+func TestThreadPoolSuite(t *testing.T) {
+	suite.Run(t, new(threadPoolTestSuite))
+}
