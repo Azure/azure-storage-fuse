@@ -237,8 +237,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.prefetch = conf.PrefetchCount
 		if bc.prefetch == 0 {
 			bc.noPrefetch = true
-		} else if conf.PrefetchCount < MIN_PREFETCH {
-			log.Err("BlockCache::Configure : Prefetch count can not be less then %v", MIN_PREFETCH)
+		} else if conf.PrefetchCount <= (MIN_PREFETCH * 2) {
+			log.Err("BlockCache::Configure : Prefetch count can not be less then %v", (MIN_PREFETCH*2)+1)
 			return fmt.Errorf("BlockCache: invalid config for prefetch count")
 		}
 	}
@@ -317,11 +317,11 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	}
 
 	// Fill this local block pool with prefetch number of blocks
-	for i := 0; i < MIN_PREFETCH; i++ {
-		block := bc.blockPool.MustGet()
-		node := handle.Buffers.Cooked.PushFront(block)
-		block.node = node
-	}
+	// for i := 0; i < MIN_PREFETCH; i++ {
+	// 	block := bc.blockPool.MustGet()
+	// 	node := handle.Buffers.Cooked.PushFront(block)
+	// 	block.node = node
+	// }
 
 	return handle, nil
 }
@@ -338,7 +338,7 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 	node := blockList.Front()
 	for ; node != nil; node = blockList.Front() {
 		block := blockList.Remove(node).(*Block)
-		_ = <-block.state
+		<-block.state
 		block.ReUse()
 		bc.blockPool.Release(block)
 	}
@@ -406,17 +406,17 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			log.Info("BlockCache::getBlock : Starting the prefetch %v : %s (%v : %v)", handle.ID, handle.Path, readoffset, index)
 
 			// This is the first read for this file handle so start prefetching all the nodes
-			err := bc.startPrefetch(handle, index, MIN_PREFETCH, false)
+			err := bc.startPrefetch(handle, index, false)
 			if err != nil && err != io.EOF {
 				log.Err("BlockCache::getBlock : Unable to start prefetch %v : %s (%v : %v) [%s]", handle.ID, handle.Path, readoffset, index, err.Error())
 				return nil, fmt.Errorf("unable to start prefetch for this handle")
 			}
 		} else {
 			handle.OptCnt++
-			log.Info("BlockCache::getBlock : Unable to get block %v : %s (%v : %v) Rand Opt %v", handle.ID, handle.Path, readoffset, index, handle.OptCnt)
+			log.Err("BlockCache::getBlock : Unable to get block %v : %s (%v : %v) Rand Opt %v", handle.ID, handle.Path, readoffset, index, handle.OptCnt)
 
 			// This block is not present even after prefetch so lets download it now
-			err := bc.refreshBlock(handle, index, true, false)
+			err := bc.startPrefetch(handle, index, false)
 			if err != nil {
 				log.Err("BlockCache::getBlock : Unable to start prefetch %v : %s (%v : %v) [%s]", handle.ID, handle.Path, readoffset, index, err.Error())
 				return nil, fmt.Errorf("unable to start prefetch for this handle")
@@ -433,58 +433,18 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	block := node.(*Block)
 
 	// Wait for this block to complete the download
-	prefetchCnt := 0
 	t := int(0)
 	t = <-block.state
 
 	if t == 1 {
 		//log.Info("BlockCache::getBlock : First reader for the block hit %v : %s (%v)", handle.ID, handle.Path, index)
-		if !bc.noPrefetch {
-			// block is ready and we are the first reader so its time to remove the second last block from here
-			if handle.OptCnt < MIN_RANDREAD {
-				prefetchCnt = MIN_PREFETCH
-			}
+		val, _ := handle.GetValue("#")
+		if handle.OptCnt <= MIN_RANDREAD {
+			_ = bc.startPrefetch(handle, val.(uint64), true)
 		}
 		_ = handle.Buffers.Cooking.Remove(block.node)
 		block.node = handle.Buffers.Cooked.PushBack(block)
 		block.Unblock()
-	}
-
-	nodeList := handle.Buffers.Cooked
-	cnt := uint32(0)
-	if prefetchCnt > 0 {
-		if (nodeList.Len() + handle.Buffers.Cooking.Len()) < int(bc.prefetch) {
-			for i := 0; i < prefetchCnt && nodeList.Len() < int(bc.prefetch); i++ {
-				block := bc.blockPool.TryGet()
-				if block != nil {
-					block.node = nodeList.PushFront(block)
-					cnt++
-				}
-			}
-		} else {
-			cnt = 1
-		}
-
-		log.Err("BlockCache::getBlock : Go for prefetch of %v blocks for %v : %s (%v)", cnt, handle.ID, handle.Path, index)
-		val, _ := handle.GetValue("#")
-		_ = bc.startPrefetch(handle, val.(uint64), cnt, true)
-	} else if handle.OptCnt > MIN_RANDREAD && nodeList.Len() > MIN_PREFETCH {
-		// There might be excess blocks in the list.
-		// As this file is in random read mode now, release the excess buffers
-		log.Info("BlockCache::getBlock : Cleanup excessive blocks  %v : %s (%v)", handle.ID, handle.Path, index)
-		node := nodeList.Front()
-
-		for ; node != nil && nodeList.Len() > MIN_PREFETCH; node = nodeList.Front() {
-			block := nodeList.Remove(node).(*Block)
-			if block.id != int64(index) {
-				handle.RemoveValue(fmt.Sprintf("%v", block.id))
-				block.node = nil
-				block.ReUse()
-				bc.blockPool.Release(block)
-				cnt++
-			}
-		}
-		log.Info("BlockCache::getBlock : Cleanup excessive blocks  %v : %s (%v blocks removed)", handle.ID, handle.Path, cnt)
 	}
 
 	return block, nil
@@ -495,8 +455,78 @@ func (bc *BlockCache) getBlockIndex(offset uint64) uint64 {
 	return offset / bc.blockSize
 }
 
+// startPrefetch: Start prefetchign the blocks from this offset
+func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, prefetch bool) error {
+	currentCnt := handle.Buffers.Cooked.Len() + handle.Buffers.Cooking.Len()
+	cnt := uint32(0)
+
+	if handle.OptCnt > MIN_RANDREAD {
+		if currentCnt > MIN_PREFETCH {
+			// This handle is having lot of random reads
+			// There might be excess blocks in the list.
+			// As this file is in random read mode now, release the excess buffers
+			log.Err("BlockCache::startPrefetch : Cleanup excessive blocks  %v : %s (%v)", handle.ID, handle.Path, index)
+
+			// As this is random read move all in process blocks to cooked list
+			nodeList := handle.Buffers.Cooking
+			node := nodeList.Front()
+			for ; node != nil; node = nodeList.Front() {
+				block := handle.Buffers.Cooking.Remove(node).(*Block)
+				block.node = handle.Buffers.Cooked.PushFront(block)
+			}
+
+			delCnt := 0
+
+			// Now remove excess blocks from cooked list
+			nodeList = handle.Buffers.Cooked
+			node = nodeList.Front()
+			for ; node != nil && currentCnt > MIN_PREFETCH; node = nodeList.Front() {
+				block := node.Value.(*Block)
+				_ = nodeList.Remove(node)
+				handle.RemoveValue(fmt.Sprintf("%v", block.id))
+				block.node = nil
+				block.ReUse()
+				bc.blockPool.Release(block)
+				delCnt++
+				currentCnt--
+			}
+			log.Err("BlockCache::startPrefetch : Cleanup excessive blocks  %v : %s (%v blocks removed)", handle.ID, handle.Path, delCnt)
+		}
+		cnt = 1
+	} else {
+		// This handle is having sequential reads so far
+		// Allocate more buffers if required here
+		for ; currentCnt < int(bc.prefetch) && cnt < MIN_PREFETCH; currentCnt++ {
+			block := bc.blockPool.TryGet()
+			if block != nil {
+				block.node = handle.Buffers.Cooked.PushFront(block)
+				cnt++
+			}
+		}
+
+		if cnt == 0 {
+			cnt = 1
+		}
+	}
+
+	for i := uint32(0); i < cnt; i++ {
+		// Revalidate this node does not exists in the block map
+		_, found := handle.GetValue(fmt.Sprintf("%v", index))
+		if !found {
+			// Block not found so lets push it for download
+			err := bc.refreshBlock(handle, index, prefetch || i > 0)
+			if err != nil {
+				return err
+			}
+			index++
+		}
+	}
+
+	return nil
+}
+
 // refreshBlock: Get a block from teh list and prepare it for prefetch
-func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, force bool, prefetch bool) error {
+func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefetch bool) error {
 	log.Err("BlockCache::refreshBlock : Request to download %v : %s (%v : %v)", handle.ID, handle.Path, index, prefetch)
 
 	offset := index * bc.blockSize
@@ -505,10 +535,9 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, force
 	}
 
 	nodeList := handle.Buffers.Cooked
-	if nodeList.Len() == 0 && force {
+	if nodeList.Len() == 0 && !prefetch {
 		block := bc.blockPool.MustGet()
-		node := handle.Buffers.Cooked.PushFront(block)
-		block.node = node
+		block.node = handle.Buffers.Cooked.PushFront(block)
 	}
 
 	node := nodeList.Front()
@@ -516,7 +545,7 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, force
 		block := node.Value.(*Block)
 		//log.Info("BlockCache::refreshBlock : Time to enqueue %v : %s (%v)", handle.ID, handle.Path, index)
 		if block.id != -1 {
-			log.Err("BlockCache::refreshBlock : Removing %v block for %v : %s", block.id, handle.ID, handle.Path)
+			log.Err("BlockCache::refreshBlock : Removing block id %v for %v : %s", block.id, handle.ID, handle.Path)
 			handle.RemoveValue(fmt.Sprintf("%v", block.id))
 		}
 
@@ -525,30 +554,10 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, force
 		block.id = int64(index)
 		block.offset = offset
 
-		nodeList.MoveToBack(node)
 		handle.SetValue(fmt.Sprintf("%v", index), block)
 		handle.SetValue("#", (index + 1))
-
+		nodeList.MoveToBack(node)
 		bc.lineupDownload(handle, block, prefetch)
-	} else {
-		log.Err("BlockCache::refreshBlock : Failed to get the block %v : %s (%v : %v)", handle.ID, handle.Path, offset, index)
-		return fmt.Errorf("failed to get block")
-	}
-
-	return nil
-}
-
-// startPrefetch: Start prefetchign the blocks from this offset
-func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, count uint32, prefetch bool) error {
-	for i := uint32(0); i < count; i++ {
-		_, found := handle.GetValue(fmt.Sprintf("%v", index))
-		if !found {
-			err := bc.refreshBlock(handle, index, false, prefetch || i > 0)
-			if err != nil {
-				return err
-			}
-			index++
-		}
 	}
 
 	return nil
@@ -602,17 +611,16 @@ func (bc *BlockCache) download(i interface{}) {
 				log.Err("BlockCache::download : Failed to open file %s [%s]", fileName, err.Error())
 				_ = os.Remove(localPath)
 			} else {
-				//log.Info("BlockCache::download : Reading data from disk cache %s", fileName)
-
 				_, err = f.Read(item.block.data)
 				if err != nil {
 					log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
+					f.Close()
 					_ = os.Remove(localPath)
 				}
 
 				f.Close()
 				_ = item.block.ReadyForReading()
-
+				log.Err("BlockCache::download : Reading data from disk cache %s block %v complete", fileName, item.block.id)
 				return
 			}
 		}
@@ -646,8 +654,6 @@ func (bc *BlockCache) download(i interface{}) {
 		return
 	}
 
-	_ = item.block.ReadyForReading()
-
 	if bc.tmpPath != "" {
 		// Dump this buffer to local file
 		f, err := os.Create(localPath)
@@ -662,6 +668,10 @@ func (bc *BlockCache) download(i interface{}) {
 			bc.diskPolicy.Refresh(diskNode.(*list.Element))
 		}
 	}
+
+	_ = item.block.ReadyForReading()
+	log.Err("BlockCache::download : Reading data from network %s block %v complete", fileName, item.block.id)
+
 }
 
 // diskEvict: Callback when a node from disk expires
