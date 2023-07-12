@@ -37,24 +37,36 @@ import "github.com/Azure/azure-storage-fuse/v2/common/log"
 
 const _1MB uint64 = (1024 * 1024)
 
+// BlockPool is a pool of Blocks
 type BlockPool struct {
-	blocksCh  chan *Block
+	// Channel holding free blocks
+	blocksCh chan *Block
+
+	// Size of each block this pool holds
+	blockSize uint64
+
+	// Number of block that this pool can handle at max
 	maxBlocks uint32
 }
 
+// NewBlockPool allocates a new pool of blocks
 func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
+	// Ignore if config is invalid
 	if blockSize == 0 || memSize < blockSize {
 		log.Err("blockpool::NewBlockPool : blockSize : %v, memsize: %v", blockSize, memSize)
 		return nil
 	}
 
+	// Calculate how many blocks can be allocated
 	blockCount := uint32(memSize / blockSize)
 
 	pool := &BlockPool{
 		blocksCh:  make(chan *Block, blockCount),
 		maxBlocks: uint32(blockCount),
+		blockSize: blockSize,
 	}
 
+	// Preallocate all blocks so that during runtime we do not spend CPU cycles on this
 	for i := (uint32)(0); i < blockCount; i++ {
 		b, err := AllocateBlock(blockSize)
 		if err != nil {
@@ -67,47 +79,44 @@ func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
 	return pool
 }
 
-func (pool *BlockPool) Usage() uint32 {
-	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh))) * 100) / pool.maxBlocks
-}
-
-// Available returns back how many of requested blocks can be made available approx
-func (pool *BlockPool) Available(cnt uint32) uint32 {
-	// Calculate how much is possible at max to allocate and provide
-	possible := (uint32)(len(pool.blocksCh))
-
-	percentAvailable := (possible * 100) / pool.maxBlocks
-	if percentAvailable > 70 && possible > cnt {
-		return cnt
-	}
-
-	avail := (cnt * percentAvailable) / 100
-
-	if avail >= possible {
-		return 0
-	}
-
-	return avail
-}
-
-// Recalculate the block size and pool size
+// Terminate ends the block pool life
 func (pool *BlockPool) Terminate() {
 	close(pool.blocksCh)
 
+	// Release back the memory allocated to each block
 	for {
 		b := <-pool.blocksCh
 		_ = b.Delete()
 	}
 }
 
-// Must Get a Block from the pool, wait untill something is free
+// Usage provides % usage of this block pool
+func (pool *BlockPool) Usage() uint32 {
+	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh))) * 100) / pool.maxBlocks
+}
+
+// MustGet a Block from the pool, wait untill something is free
 func (pool *BlockPool) MustGet() *Block {
-	b := <-pool.blocksCh
+	var b *Block = nil
+	var err error
+
+	if len(pool.blocksCh) == 0 {
+		// There are no free blocks so we must allocate one and return here
+		// As the consumer of the pool needs a block immeidately
+		log.Info("BlockPool::MustGet : No free blocks, allocating a new one")
+		b, err = AllocateBlock(pool.blockSize)
+		if err != nil {
+			return nil
+		}
+	} else {
+		b = <-pool.blocksCh
+	}
+
 	b.ReUse()
 	return b
 }
 
-// Must Get a Block from the pool, wait untill something is free
+// TryGet a Block from the pool, return back if nothing is available
 func (pool *BlockPool) TryGet() *Block {
 	var b *Block
 
@@ -118,12 +127,12 @@ func (pool *BlockPool) TryGet() *Block {
 		return nil
 	}
 
+	// Mark the buffer ready for reuse now
 	b.ReUse()
 	return b
 }
 
 // Release back the Block to the pool
 func (pool *BlockPool) Release(b *Block) {
-	// This goes to the first Block channel
 	pool.blocksCh <- b
 }

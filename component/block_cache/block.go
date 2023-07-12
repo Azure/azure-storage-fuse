@@ -39,16 +39,16 @@ import (
 	"syscall"
 )
 
-// Block is a memory mapped buffer with its state
+// Block is a memory mapped buffer with its state to hold data
 type Block struct {
-	offset uint64
-	id     int64
-	state  chan int
-	data   []byte
-	node   *list.Element
+	offset uint64        // Start offset of the data this block holds
+	id     int64         // Id of the block i.e. (offset / block size)
+	state  chan int      // Channel depicting data has been read for this block or not
+	data   []byte        // Data read from blob
+	node   *list.Element // node representation of this block in the list inside handle
 }
 
-// newblock creates a new memory mapped buffer with the specified size
+// AllocateBlock creates a new memory mapped buffer for the given size
 func AllocateBlock(size uint64) (*Block, error) {
 	if size == 0 {
 		return nil, fmt.Errorf("invalid size")
@@ -88,20 +88,20 @@ func (b *Block) Delete() error {
 	return nil
 }
 
-// reinit the Block by recreating its channel
+// ReUse reinits the Block by recreating its channel
 func (b *Block) ReUse() {
 	b.id = -1
+	b.offset = 0
+	b.node = nil
 	b.state = make(chan int, 2)
 }
 
-// mark this Block is now ready for ops
-func (b *Block) ReadyForReading() error {
+// ReadyForReading marks this Block is now ready for reading by its first reader (data download completed)
+func (b *Block) ReadyForReading() {
 	b.state <- 1
-	return nil
 }
 
-// mark this Block is ready to be read freely now without blocking
-func (b *Block) Unblock() error {
+// Unblock marks this Block is ready to be read in parllel now
+func (b *Block) Unblock() {
 	close(b.state)
-	return nil
 }

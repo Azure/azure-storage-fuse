@@ -35,6 +35,7 @@ package block_cache
 
 import "sync"
 
+// ThreadPool is a group of workers that can be used to execute a task
 type ThreadPool struct {
 	// Number of workers running in this group
 	worker uint32
@@ -53,6 +54,7 @@ type ThreadPool struct {
 	reader func(interface{})
 }
 
+// newThreadPool creates a new thread pool
 func newThreadPool(count uint32, reader func(interface{})) *ThreadPool {
 	if count == 0 || reader == nil {
 		return nil
@@ -67,15 +69,18 @@ func newThreadPool(count uint32, reader func(interface{})) *ThreadPool {
 	}
 }
 
-// Start all the workers
+// Start all the workers and wait till they start receiving requests
 func (t *ThreadPool) Start() {
+	// 10% threds will listne only on high priority channel
+	highPriority := (t.worker * 10) / 100
+
 	for i := uint32(0); i < t.worker; i++ {
 		t.wg.Add(1)
-		go t.Do()
+		go t.Do(i < highPriority)
 	}
 }
 
-// Stop all the workers
+// Stop all the workers threads
 func (t *ThreadPool) Stop() {
 	for i := uint32(0); i < t.worker; i++ {
 		t.close <- 1
@@ -90,6 +95,8 @@ func (t *ThreadPool) Stop() {
 
 // Schedule the download of a block
 func (t *ThreadPool) Schedule(urgent bool, item interface{}) {
+	// urgent specifies the priority of this task.
+	// true menas high priority and false means low priority
 	if urgent {
 		t.priorityCh <- item
 	} else {
@@ -97,17 +104,31 @@ func (t *ThreadPool) Schedule(urgent bool, item interface{}) {
 	}
 }
 
-func (t *ThreadPool) Do() {
+// Do is the core task to be executed by each worker thread
+func (t *ThreadPool) Do(priority bool) {
 	defer t.wg.Done()
 
-	for {
-		select {
-		case item := <-t.priorityCh:
-			t.reader(item)
-		case item := <-t.normalCh:
-			t.reader(item)
-		case <-t.close:
-			return
+	if priority {
+		// This thread will work only on high priority channel
+		for {
+			select {
+			case item := <-t.priorityCh:
+				t.reader(item)
+			case <-t.close:
+				return
+			}
+		}
+	} else {
+		// This thread will work only on both high and low priority channel
+		for {
+			select {
+			case item := <-t.priorityCh:
+				t.reader(item)
+			case item := <-t.normalCh:
+				t.reader(item)
+			case <-t.close:
+				return
+			}
 		}
 	}
 }
