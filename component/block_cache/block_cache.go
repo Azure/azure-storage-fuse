@@ -413,7 +413,7 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 			}
 		} else {
 			handle.OptCnt++
-			log.Err("BlockCache::getBlock : Unable to get block %v : %s (%v : %v) Rand Opt %v", handle.ID, handle.Path, readoffset, index, handle.OptCnt)
+			//log.Err("BlockCache::getBlock : Unable to get block %v : %s (%v : %v) Rand Opt %v", handle.ID, handle.Path, readoffset, index, handle.OptCnt)
 
 			// This block is not present even after prefetch so lets download it now
 			err := bc.startPrefetch(handle, index, false)
@@ -465,7 +465,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 			// This handle is having lot of random reads
 			// There might be excess blocks in the list.
 			// As this file is in random read mode now, release the excess buffers
-			log.Err("BlockCache::startPrefetch : Cleanup excessive blocks  %v : %s (%v)", handle.ID, handle.Path, index)
+			log.Debug("BlockCache::startPrefetch : Cleanup excessive blocks  %v : %s (%v)", handle.ID, handle.Path, index)
 
 			// As this is random read move all in process blocks to cooked list
 			nodeList := handle.Buffers.Cooking
@@ -490,7 +490,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 				delCnt++
 				currentCnt--
 			}
-			log.Err("BlockCache::startPrefetch : Cleanup excessive blocks  %v : %s (%v blocks removed)", handle.ID, handle.Path, delCnt)
+			log.Debug("BlockCache::startPrefetch : Cleanup excessive blocks  %v : %s (%v blocks removed)", handle.ID, handle.Path, delCnt)
 		}
 		cnt = 1
 	} else {
@@ -527,7 +527,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 
 // refreshBlock: Get a block from teh list and prepare it for prefetch
 func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefetch bool) error {
-	log.Err("BlockCache::refreshBlock : Request to download %v : %s (%v : %v)", handle.ID, handle.Path, index, prefetch)
+	//log.Err("BlockCache::refreshBlock : Request to download %v : %s (%v : %v)", handle.ID, handle.Path, index, prefetch)
 
 	offset := index * bc.blockSize
 	if int64(offset) >= handle.Size {
@@ -545,7 +545,7 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefe
 		block := node.Value.(*Block)
 		//log.Info("BlockCache::refreshBlock : Time to enqueue %v : %s (%v)", handle.ID, handle.Path, index)
 		if block.id != -1 {
-			log.Err("BlockCache::refreshBlock : Removing block id %v for %v : %s", block.id, handle.ID, handle.Path)
+			//log.Err("BlockCache::refreshBlock : Removing block id %v for %v : %s", block.id, handle.ID, handle.Path)
 			handle.RemoveValue(fmt.Sprintf("%v", block.id))
 		}
 
@@ -620,7 +620,7 @@ func (bc *BlockCache) download(i interface{}) {
 
 				f.Close()
 				_ = item.block.ReadyForReading()
-				log.Err("BlockCache::download : Reading data from disk cache %s block %v complete", fileName, item.block.id)
+				//log.Err("BlockCache::download : Reading data from disk cache %s block %v complete", fileName, item.block.id)
 				return
 			}
 		}
@@ -642,13 +642,13 @@ func (bc *BlockCache) download(i interface{}) {
 
 	if err != nil {
 		// Fail to read the data so just reschedule this request
-		log.Err("BlockCache::download : Failed to read %s from offset %v [%s]", item.handle.Path, item.block.id, err.Error())
+		log.Err("BlockCache::download : Failed to read %v : %s from offset %v [%s]", item.handle.ID, item.handle.Path, item.block.id, err.Error())
 		item.failCnt++
 		bc.threadPool.Schedule(false, item)
 		return
 	} else if n == 0 {
 		// No data read so just reschedule this request
-		log.Err("BlockCache::download : Failed to read %s from offset %v [0 bytes read]", item.handle.Path, item.block.id)
+		log.Err("BlockCache::download : Failed to read %v : %s from offset %v [0 bytes read]", item.handle.ID, item.handle.Path, item.block.id)
 		item.failCnt++
 		bc.threadPool.Schedule(false, item)
 		return
@@ -670,7 +670,7 @@ func (bc *BlockCache) download(i interface{}) {
 	}
 
 	_ = item.block.ReadyForReading()
-	log.Err("BlockCache::download : Reading data from network %s block %v complete", fileName, item.block.id)
+	//log.Err("BlockCache::download : Reading data from network %s block %v complete", fileName, item.block.id)
 
 }
 
@@ -707,8 +707,8 @@ func (bc *BlockCache) checkDiskUsage() bool {
 		}
 	}
 
-	log.Debug("BlockCache::checkDiskUsage : current disk usage : %fMB %v%%", data, usage)
-	log.Debug("BlockCache::checkDiskUsage : current cache usage : %v%%", bc.blockPool.Usage())
+	log.Info("BlockCache::checkDiskUsage : current disk usage : %fMB %v%%", data, usage)
+	log.Info("BlockCache::checkDiskUsage : current cache usage : %v%%", bc.blockPool.Usage())
 	return false
 }
 
