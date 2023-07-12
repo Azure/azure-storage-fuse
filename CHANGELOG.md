@@ -3,6 +3,8 @@
 - Block cache component added to support faster serial reads of large files with prefetching of blocks
     - As of now only one file single threaded read is faster
     - Only read-only mounts will support block-cache
+- Adaptive prefetching to support random reads without incurring extra network cost
+- Block cache with disk backup to reduce network cost if same blocks are read again
 - On AML compute cluster MSI authentication is now supported (this will use the identity assigned to compute cluster) 
 
 ## 2.0.5 (WIP)
