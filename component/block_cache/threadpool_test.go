@@ -37,7 +37,9 @@
 package block_cache
 
 import (
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
@@ -74,6 +76,7 @@ func (suite *threadPoolTestSuite) TestStartStop() {
 	r := func(i interface{}) {
 		suite.assert.Equal(i.(int), 1)
 	}
+
 	tp := newThreadPool(2, r)
 	suite.assert.NotNil(tp)
 	suite.assert.Equal(tp.worker, uint32(2))
@@ -103,8 +106,36 @@ func (suite *threadPoolTestSuite) TestSchedule() {
 	tp.Schedule(false, 1)
 	tp.Schedule(true, 1)
 
+	time.Sleep(1 * time.Second)
 	tp.Stop()
 }
+
+func (suite *threadPoolTestSuite) TestPrioritySchedule() {
+	suite.assert = assert.New(suite.T())
+
+	callbackCnt := int32(0)
+	r := func(i interface{}) {
+		suite.assert.Equal(i.(int), 5)
+		atomic.AddInt32(&callbackCnt, 1)
+	}
+
+	tp := newThreadPool(10, r)
+	suite.assert.NotNil(tp)
+	suite.assert.Equal(tp.worker, uint32(10))
+
+	tp.Start()
+	suite.assert.NotNil(tp.priorityCh)
+	suite.assert.NotNil(tp.normalCh)
+
+	for i := 0 ; i < 100; i++ {
+		tp.Schedule(i < 20, 5)
+	}
+
+	time.Sleep(1 * time.Second)
+	suite.assert.Equal(callbackCnt, int32(100))
+	tp.Stop()
+}
+
 
 func TestThreadPoolSuite(t *testing.T) {
 	suite.Run(t, new(threadPoolTestSuite))

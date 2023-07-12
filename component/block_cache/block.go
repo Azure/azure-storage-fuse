@@ -92,8 +92,7 @@ func (b *Block) Delete() error {
 func (b *Block) ReUse() {
 	b.id = -1
 	b.offset = 0
-	b.node = nil
-	b.state = make(chan int, 2)
+	b.state = make(chan int, 1)
 }
 
 // ReadyForReading marks this Block is now ready for reading by its first reader (data download completed)

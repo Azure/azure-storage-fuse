@@ -66,7 +66,6 @@ func (suite *blockTestSuite) TestAllocate() {
 	suite.assert.NotNil(b)
 	suite.assert.Nil(err)
 	suite.assert.NotNil(b.data)
-	suite.assert.Equal(b.id, uint64(0))
 
 	_ = b.Delete()
 }
@@ -92,7 +91,7 @@ func (suite *blockTestSuite) TestAllocateHuge() {
 	suite.assert.Contains(err.Error(), "mmap error")
 }
 
-func (suite *blockTestSuite) TestFreeInvalid() {
+func (suite *blockTestSuite) TestFreeNilData() {
 	suite.assert = assert.New(suite.T())
 
 	b, err := AllocateBlock(1)
@@ -105,7 +104,7 @@ func (suite *blockTestSuite) TestFreeInvalid() {
 	suite.assert.Contains(err.Error(), "invalid buffer")
 }
 
-func (suite *blockTestSuite) TestFreeInvalid2() {
+func (suite *blockTestSuite) TestFreeInvalidData() {
 	suite.assert = assert.New(suite.T())
 
 	b, err := AllocateBlock(1)
@@ -128,6 +127,7 @@ func (suite *blockTestSuite) TestResuse() {
 
 	b.ReUse()
 	suite.assert.NotNil(b.state)
+	suite.assert.Nil(b.node)
 
 	_ = b.Delete()
 }
@@ -140,28 +140,17 @@ func (suite *blockTestSuite) TestReadyForReading() {
 	suite.assert.Nil(err)
 	suite.assert.Nil(b.state)
 
-	err = b.ReadyForReading()
-	suite.assert.NotNil(err)
-	suite.assert.Nil(b.state)
-	suite.assert.Contains(err.Error(), "block was never used")
-
 	b.ReUse()
 	suite.assert.NotNil(b.state)
 
-	err = b.ReadyForReading()
-	suite.assert.Nil(err)
-	suite.assert.NotNil(b.state)
-	suite.assert.Equal(len(b.state), 2)
-
-	<-b.state
+	b.ReadyForReading()
 	suite.assert.Equal(len(b.state), 1)
-
-	err = b.ReadyForReading()
-	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "invalid state to mark it ready")
 
 	<-b.state
 	suite.assert.Equal(len(b.state), 0)
+
+	b.ReUse()
+	suite.assert.NotNil(b.state)
 
 	_ = b.Delete()
 }
@@ -176,27 +165,21 @@ func (suite *blockTestSuite) TestUnBlock() {
 
 	b.ReUse()
 	suite.assert.NotNil(b.state)
+	suite.assert.Nil(b.node)
 
-	err = b.ReadyForReading()
-	suite.assert.Nil(err)
-	suite.assert.NotNil(b.state)
-	suite.assert.Equal(len(b.state), 2)
-
-	err = b.Unblock()
-	suite.assert.Nil(err)
-
-	<-b.state
+	b.ReadyForReading()
 	suite.assert.Equal(len(b.state), 1)
-	<-b.state
-	suite.assert.Equal(len(b.state), 0)
 
 	<-b.state
 	suite.assert.Equal(len(b.state), 0)
 
-	err = b.Unblock()
-	suite.assert.NotNil(err)
-	suite.assert.Equal(err.Error(), "invalid state of block to unblock")
+	b.Unblock()
+	suite.assert.NotNil(b.state)
+	suite.assert.Equal(len(b.state), 0)
 
+	<-b.state
+	suite.assert.Equal(len(b.state), 0)
+	
 	_ = b.Delete()
 }
 

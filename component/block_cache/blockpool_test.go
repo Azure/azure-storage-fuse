@@ -71,30 +71,19 @@ func (suite *blockpoolTestSuite) TestAllocate() {
 	suite.assert.Equal(len(bp.blocksCh), 0)
 }
 
-func (suite *blockpoolTestSuite) TestResize() {
-	suite.assert = assert.New(suite.T())
-
-	bp := NewBlockPool(1, 5)
-	suite.assert.NotNil(bp)
-	suite.assert.NotNil(bp.blocksCh)
-
-	bp.Terminate()
-	suite.assert.Equal(len(bp.blocksCh), 0)
-}
-
 func (suite *blockpoolTestSuite) TestGetRelease() {
 	suite.assert = assert.New(suite.T())
 
 	bp := NewBlockPool(1, 5)
 	suite.assert.NotNil(bp)
 	suite.assert.NotNil(bp.blocksCh)
+	suite.assert.Equal(len(bp.blocksCh), 5)
 
 	b := bp.MustGet()
 	suite.assert.NotNil(b)
+	suite.assert.Equal(len(bp.blocksCh), 4)
 
 	bp.Release(b)
-	suite.assert.Equal(len(bp.blocksCh), 1)
-
 	suite.assert.Equal(len(bp.blocksCh), 5)
 
 	b = bp.TryGet()
@@ -108,33 +97,64 @@ func (suite *blockpoolTestSuite) TestGetRelease() {
 	suite.assert.Equal(len(bp.blocksCh), 0)
 }
 
-func (suite *blockpoolTestSuite) TestAvailable() {
+func (suite *blockpoolTestSuite) TestUsage() {
 	suite.assert = assert.New(suite.T())
 
-	bp := NewBlockPool(1, 10)
+	bp := NewBlockPool(1, 5)
 	suite.assert.NotNil(bp)
 	suite.assert.NotNil(bp.blocksCh)
+	suite.assert.Equal(len(bp.blocksCh), 5)
 
-	b := make([]*Block, 10)
+	var blocks[] *Block
+	b := bp.MustGet()
 	suite.assert.NotNil(b)
+	blocks = append(blocks, b)
 
-	for i := 0; i < 10; i++ {
-		b[i] = bp.TryGet()
-		suite.assert.NotNil(b[i])
+	usage := bp.Usage()
+	suite.assert.Equal(usage, uint32(20))
+
+	b = bp.TryGet()
+	suite.assert.NotNil(b)
+	blocks = append(blocks, b)
+
+	usage = bp.Usage()
+	suite.assert.Equal(usage, uint32(40))
+	
+	for _, blk := range blocks {
+		bp.Release(blk)
 	}
 
-	for i := 0; i < 10; i++ {
-		bp.Release(b[i])
+	bp.Terminate()
+	suite.assert.Equal(len(bp.blocksCh), 0)
+}
+
+func (suite *blockpoolTestSuite) TestBufferExhaution() {
+	suite.assert = assert.New(suite.T())
+
+	bp := NewBlockPool(1, 5)
+	suite.assert.NotNil(bp)
+	suite.assert.NotNil(bp.blocksCh)
+	suite.assert.Equal(len(bp.blocksCh), 5)
+
+	var blocks[] *Block
+	for i := 0; i < 5; i++{
+		b := bp.MustGet()
+		suite.assert.NotNil(b)
+		blocks = append(blocks, b)
 	}
 
-	for i := 0; i < 8; i++ {
-		b[i] = bp.TryGet()
-		suite.assert.NotNil(b[i])
-	}
+	usage := bp.Usage()
+	suite.assert.Equal(usage, uint32(100))
 
-	for i := 8; i < 10; i++ {
-		b[i] = bp.TryGet()
-		suite.assert.NotNil(b[i])
+	b := bp.TryGet()
+	suite.assert.Nil(b)
+
+	b = bp.MustGet()
+	suite.assert.NotNil(b)
+	blocks = append(blocks, b)
+
+	for _, blk := range blocks {
+		bp.Release(blk)
 	}
 
 	bp.Terminate()
