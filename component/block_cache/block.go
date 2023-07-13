@@ -97,7 +97,12 @@ func (b *Block) ReUse() {
 
 // ReadyForReading marks this Block is now ready for reading by its first reader (data download completed)
 func (b *Block) ReadyForReading() {
-	b.state <- 1
+	select {
+	case b.state <- 1:
+		break
+	default:
+		break
+	}
 }
 
 // Unblock marks this Block is ready to be read in parllel now

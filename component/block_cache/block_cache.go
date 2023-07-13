@@ -395,20 +395,20 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 
 // getBlock: From offset generate the Block index and get the Block corrosponding to it
 /* Base logic of getBlock:
-		Check if the given block is already available or not
-		if not
-			if this is the first read for this file start prefetching of blocks from given offset
-			if this is not first read, consider this to be a random read case and start prefetch from given offset
-				once the random read count reaches a limit, this prefetching will be turned off
-			in either case this prefetching will add the block index to the map
-			so search the map again now
-		Once block is availble
-		if you are first reader of this block
-			its time to prefetch next block(s) based on how much we can prefetch
-			Once you queue  up the required prefetch mark this block as open to read
-			so that others can come and freely read this block
-			First reader here has responsibility to remove an old used block and lineup download for next blocks
-		Return this block once prefetch is queued and block is marked open for all
+Check if the given block is already available or not
+if not
+	if this is the first read for this file start prefetching of blocks from given offset
+	if this is not first read, consider this to be a random read case and start prefetch from given offset
+		once the random read count reaches a limit, this prefetching will be turned off
+	in either case this prefetching will add the block index to the map
+	so search the map again now
+Once block is availble
+if you are first reader of this block
+	its time to prefetch next block(s) based on how much we can prefetch
+	Once you queue  up the required prefetch mark this block as open to read
+	so that others can come and freely read this block
+	First reader here has responsibility to remove an old used block and lineup download for next blocks
+Return this block once prefetch is queued and block is marked open for all
 */
 func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Block, error) {
 	if readoffset >= uint64(handle.Size) {
@@ -500,6 +500,10 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 			// As this is random read move all in process blocks to free list
 			nodeList := handle.Buffers.Cooking
 			node := nodeList.Front()
+
+			// CAUTION: This thread remvoes blocks from cooking list and add to cooked list
+			// this means some of these blocks might be still under download
+			// if any such block is deleted, there might be a crash if later download thread tries to push 1 to its channel
 			for ; node != nil; node = nodeList.Front() {
 				block := handle.Buffers.Cooking.Remove(node).(*Block)
 				block.node = handle.Buffers.Cooked.PushFront(block)
@@ -509,7 +513,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 			delCnt := 0
 			nodeList = handle.Buffers.Cooked
 			node = nodeList.Front()
-		
+
 			for ; node != nil && currentCnt > MIN_PREFETCH; node = nodeList.Front() {
 				block := node.Value.(*Block)
 				_ = nodeList.Remove(node)
@@ -607,7 +611,7 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefe
 		handle.SetValue("#", (index + 1))
 
 		bc.lineupDownload(handle, block, prefetch)
-	} 
+	}
 
 	return nil
 }

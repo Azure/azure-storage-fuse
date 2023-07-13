@@ -86,6 +86,9 @@ func (pool *BlockPool) Terminate() {
 	// Release back the memory allocated to each block
 	for {
 		b := <-pool.blocksCh
+		if b == nil {
+			break
+		}
 		_ = b.Delete()
 	}
 }
@@ -98,31 +101,35 @@ func (pool *BlockPool) Usage() uint32 {
 // MustGet a Block from the pool, wait untill something is free
 func (pool *BlockPool) MustGet() *Block {
 	var b *Block = nil
-	var err error
 
-	if len(pool.blocksCh) == 0 {
+	select {
+	case b = <-pool.blocksCh:
+		break
+
+	default:
 		// There are no free blocks so we must allocate one and return here
 		// As the consumer of the pool needs a block immeidately
 		log.Info("BlockPool::MustGet : No free blocks, allocating a new one")
+		var err error
 		b, err = AllocateBlock(pool.blockSize)
 		if err != nil {
 			return nil
 		}
-	} else {
-		b = <-pool.blocksCh
 	}
 
+	// Mark the buffer ready for reuse now
 	b.ReUse()
 	return b
 }
 
 // TryGet a Block from the pool, return back if nothing is available
 func (pool *BlockPool) TryGet() *Block {
-	var b *Block
+	var b *Block = nil
 
 	select {
 	case b = <-pool.blocksCh:
 		break
+
 	default:
 		return nil
 	}
@@ -134,5 +141,10 @@ func (pool *BlockPool) TryGet() *Block {
 
 // Release back the Block to the pool
 func (pool *BlockPool) Release(b *Block) {
-	pool.blocksCh <- b
+	select {
+	case pool.blocksCh <- b:
+		break
+	default:
+		_ = b.Delete()
+	}
 }
