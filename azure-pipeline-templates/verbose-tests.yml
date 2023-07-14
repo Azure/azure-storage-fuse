@@ -415,8 +415,7 @@ steps:
       distro_name: ${{ parameters.distro_name }}
       mountStep:
         script: >
-          ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }}
-          --default-working-dir=${{ parameters.working_dir }}
+          ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }} --default-working-dir=${{ parameters.working_dir }}
         displayName: 'StressTest: Mount'
         timeoutInMinutes: 3
         continueOnError: false

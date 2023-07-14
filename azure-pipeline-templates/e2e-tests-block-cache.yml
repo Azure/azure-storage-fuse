@@ -1,0 +1,114 @@
+parameters:
+  - name: conf_template
+    type: string
+  - name: config_file
+    type: string
+  - name: container
+    type: string
+  - name: temp_dir
+    type: string
+  - name: mount_dir
+    type: string    
+  - name: idstring
+    type: string
+  - name: adls
+    type: boolean
+  - name: account_name
+    type: string
+  - name: account_key
+    type: string
+  - name: account_type
+    type: string
+  - name: account_endpoint
+  - name: distro_name
+    type: string
+  - name: quick_test
+    type: boolean
+    default: true
+  - name: verbose_log
+    type: boolean
+    default: false
+  - name: clone
+    type: boolean
+    default: false
+  - name: stream_direct_test
+    type: boolean
+    default: false
+
+steps:    
+  - script: |
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+    displayName: 'Create Config File for RW mount'
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    continueOnError: false
+
+  - script:
+      cat ${{ parameters.config_file }}
+    displayName: 'Print config file'
+
+  - template: 'mount.yml'
+    parameters:
+      working_dir: ${{ parameters.working_dir }}
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      prefix: ${{ parameters.idstring }}
+      mountStep: 
+        script: |
+          ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }} --default-working-dir=${{ parameters.working_dir }}
+
+  - script: |
+      for i in {100,200,500,1024,2048}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > ${{ parameters.mount_dir }}/myfile_{}'
+      ls -l ${{ parameters.mount_dir }}/myfile_*
+    displayName: 'Generate data'
+
+  - script: |
+      md5sum ${{ parameters.mount_dir }}/myfile_*' > ${{ parameters.working_dir }}/md5sum_file_cache.txt
+    displayName: 'Generate md5Sum with File-Cache'
+
+  - script: |
+      ${{ parameters.working_dir }}/blobfuse2 unmount all
+    displayName: 'Unmount RW mount'
+
+  - script: |
+      $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_bc.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.config_file }}
+    displayName: 'Create Config File for RO mount'
+    env:
+      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
+      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    continueOnError: false
+
+  - template: 'mount.yml'
+    parameters:
+      working_dir: ${{ parameters.working_dir }}
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      prefix: ${{ parameters.idstring }}
+      mountStep: 
+        script: |
+          ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }} --default-working-dir=${{ parameters.working_dir }} -o ro
+
+  - script: |
+      md5sum ${{ parameters.mount_dir }}/myfile_*' > ${{ parameters.working_dir }}/md5sum_block_cache.txt
+    displayName: 'Generate md5Sum with Block-Cache'
+
+  - script: |
+      ${{ parameters.working_dir }}/blobfuse2 unmount all
+    displayName: 'Unmount RO mount'
+
+  - script: |
+      diff ${{ parameters.working_dir }}/md5sum_block_cache.txt ${{ parameters.working_dir }}/md5sum_file_cache.txt
+    displayName: 'Generate md5Sum with Block-Cache'
+
+  - template: 'cleanup.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
