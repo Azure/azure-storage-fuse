@@ -165,7 +165,7 @@ func (suite *blockCacheTestSuite) TestEmpty() {
 	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
 	suite.assert.EqualValues(tobj.blockCache.blockSize, 16*_1MB)
 	suite.assert.EqualValues(tobj.blockCache.memSize, 4192*_1MB)
-	suite.assert.EqualValues(tobj.blockCache.diskSize, 4192*_1MB)
+	suite.assert.EqualValues(tobj.blockCache.diskSize, 4192)
 	suite.assert.EqualValues(tobj.blockCache.diskTimeout, defaultTimeout)
 	suite.assert.EqualValues(tobj.blockCache.workers, 128)
 	suite.assert.EqualValues(tobj.blockCache.prefetch, MIN_PREFETCH)
@@ -221,7 +221,7 @@ func (suite *blockCacheTestSuite) TestManualConfig() {
 	suite.assert.EqualValues(tobj.blockCache.blockSize, 16*_1MB)
 	suite.assert.EqualValues(tobj.blockCache.memSize, 500*_1MB)
 	suite.assert.EqualValues(tobj.blockCache.workers, 10)
-	suite.assert.EqualValues(tobj.blockCache.diskSize, 100*_1MB)
+	suite.assert.EqualValues(tobj.blockCache.diskSize, 100)
 	suite.assert.EqualValues(tobj.blockCache.diskTimeout, 5)
 	suite.assert.EqualValues(tobj.blockCache.prefetch, 12)
 	suite.assert.EqualValues(tobj.blockCache.workers, 10)
@@ -394,6 +394,54 @@ func (suite *blockCacheTestSuite) TestFileReadRandom() {
 	tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
 	suite.assert.Nil(h.Buffers.Cooked)
 	suite.assert.Nil(h.Buffers.Cooking)
+}
+
+func (suite *blockCacheTestSuite) TestDiskUsageCheck() {
+	tobj, err := setupPipeline("")
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+
+	suite.assert.Less(getUsage(tobj.disk_cache_path), float64(1.0))
+	suite.assert.Equal(tobj.blockCache.checkDiskUsage(), false)
+
+	// Default disk size is 50MB
+	data := make([]byte, 5*_1MB)
+	_, _ = rand.Read(data)
+
+	type diskusagedata struct {
+		name     string
+		diskflag bool
+	}
+
+	localfiles := make([]diskusagedata, 0)
+	for i := 0; i < 7; i++ {
+		fname := randomString(5)
+		diskFile := filepath.Join(tobj.disk_cache_path, fname)
+		localfiles = append(localfiles, diskusagedata{name: diskFile, diskflag: false})
+	}
+
+	for i := 7; i < 13; i++ {
+		fname := randomString(5)
+		diskFile := filepath.Join(tobj.disk_cache_path, fname)
+		localfiles = append(localfiles, diskusagedata{name: diskFile, diskflag: true})
+	}
+
+	for i := 0; i < 13; i++ {
+		ioutil.WriteFile(localfiles[i].name, data, 0777)
+		suite.assert.Equal(tobj.blockCache.checkDiskUsage(), localfiles[i].diskflag)
+	}
+
+	for i := 0; i < 13; i++ {
+		localfiles[i].diskflag = i < 8
+	}
+
+	for i := 0; i < 13; i++ {
+		os.Remove(localfiles[i].name)
+		//fmt.Printf("%d : %v (%v : %v)\n", i, localfiles[i].name, localfiles[i].diskflag, tobj.blockCache.checkDiskUsage())
+		suite.assert.Equal(tobj.blockCache.checkDiskUsage(), localfiles[i].diskflag)
+	}
 }
 
 // In order for 'go test' to run this suite, we need to create

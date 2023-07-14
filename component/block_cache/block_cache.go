@@ -220,9 +220,9 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.memSize = conf.MemSize * _1MB
 	}
 
-	bc.diskSize = uint64(4192) * _1MB
+	bc.diskSize = uint64(4192)
 	if config.IsSet(compName + ".disk-size-mb") {
-		bc.diskSize = conf.DiskSize * _1MB
+		bc.diskSize = conf.DiskSize
 	}
 	bc.diskTimeout = defaultTimeout
 	if config.IsSet(compName + ".disk-timeout-sec") {
@@ -265,7 +265,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
-	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefeth %v, disk path %v, max size %v, disk timeout %v",
+	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefeth %v, disk path %v, max size %vMB, disk timeout %v",
 		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout)
 
 	bc.blockPool = NewBlockPool(bc.blockSize, bc.memSize)
@@ -281,7 +281,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	if bc.tmpPath != "" {
-		bc.diskPolicy, err = tlru.New(uint32(bc.diskSize/bc.blockSize), bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
+		bc.diskPolicy, err = tlru.New(uint32((bc.diskSize*_1MB)/bc.blockSize), bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
 		if err != nil {
 			log.Err("BlockCache::Configure : fail to create LRU for memory nodes [%s]", err.Error())
 			return fmt.Errorf("BlockCache: fail to create LRU for memory nodes")
@@ -754,7 +754,7 @@ func (bc *BlockCache) checkDiskUsage() bool {
 		}
 		bc.maxDiskUsageHit = false
 	} else {
-		if bc.blockPool.Usage() > MAX_POOL_USAGE {
+		if usage > MAX_POOL_USAGE {
 			bc.maxDiskUsageHit = true
 			return true
 		}
