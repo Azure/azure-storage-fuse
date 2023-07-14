@@ -98,7 +98,7 @@ func (pool *BlockPool) Usage() uint32 {
 	return ((pool.maxBlocks - (uint32)(len(pool.blocksCh))) * 100) / pool.maxBlocks
 }
 
-// MustGet a Block from the pool, wait untill something is free
+// MustGet a Block from the pool, wait until something is free
 func (pool *BlockPool) MustGet() *Block {
 	var b *Block = nil
 
@@ -108,7 +108,7 @@ func (pool *BlockPool) MustGet() *Block {
 
 	default:
 		// There are no free blocks so we must allocate one and return here
-		// As the consumer of the pool needs a block immeidately
+		// As the consumer of the pool needs a block immediately
 		log.Info("BlockPool::MustGet : No free blocks, allocating a new one")
 		var err error
 		b, err = AllocateBlock(pool.blockSize)

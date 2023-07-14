@@ -310,7 +310,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	handle.SetValue("#", (uint64)(0))
 
 	// Allocate a block pool object for this handle
-	// Acutal linked list to hold the nodes
+	// Actual linked list to hold the nodes
 	handle.Buffers = &handlemap.Buffers{
 		Cooked:  list.New(), // List to hold free blocks
 		Cooking: list.New(), // List to hold blocks still under download
@@ -340,7 +340,7 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 	}
 	options.Handle.Buffers.Cooking = nil
 
-	// Relese the blocks that are ready to be reused
+	// Release the blocks that are ready to be reused
 	blockList = options.Handle.Buffers.Cooked
 	node = blockList.Front()
 	for ; node != nil; node = blockList.Front() {
@@ -366,7 +366,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
 
-	// Keep getting next blocks untill you read the request amount of data
+	// Keep getting next blocks until you read the request amount of data
 	dataRead := int(0)
 	for dataRead < len(options.Data) {
 		block, err := bc.getBlock(options.Handle, uint64(options.Offset))
@@ -398,7 +398,7 @@ if not
 		once the random read count reaches a limit, this prefetching will be turned off
 	in either case this prefetching will add the block index to the map
 	so search the map again now
-Once block is availble
+Once block is available
 if you are first reader of this block
 	its time to prefetch next block(s) based on how much we can prefetch
 	Once you queue  up the required prefetch mark this block as open to read
@@ -497,7 +497,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 			nodeList := handle.Buffers.Cooking
 			node := nodeList.Front()
 
-			// CAUTION: This thread remvoes blocks from cooking list and add to cooked list
+			// CAUTION: This thread removes blocks from cooking list and add to cooked list
 			// this means some of these blocks might be still under download
 			// if any such block is deleted, there might be a crash if later download thread tries to push 1 to its channel
 			for ; node != nil; node = nodeList.Front() {
@@ -531,7 +531,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 		cnt = 1
 	} else {
 		// This handle is having sequential reads so far
-		// Allocate more buffers if required untill we hit the prefetch cound limit
+		// Allocate more buffers if required until we hit the prefetch count limit
 		for ; currentCnt < int(bc.prefetch) && cnt < MIN_PREFETCH; currentCnt++ {
 			block := bc.blockPool.TryGet()
 			if block != nil {
@@ -563,7 +563,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 	return nil
 }
 
-// refreshBlock: Get a block from teh list and prepare it for download
+// refreshBlock: Get a block from the list and prepare it for download
 func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefetch bool) error {
 	log.Debug("BlockCache::refreshBlock : Request to download %v=>%s (index %v, prefetch %v)", handle.ID, handle.Path, index, prefetch)
 
@@ -589,7 +589,7 @@ func (bc *BlockCache) refreshBlock(handle *handlemap.Handle, index uint64, prefe
 
 	node := nodeList.Front()
 	if node != nil {
-		// Now there is atleast one free block available in the list
+		// Now there is at least one free block available in the list
 		block := node.Value.(*Block)
 
 		if block.id != -1 {

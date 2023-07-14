@@ -71,7 +71,7 @@ func newThreadPool(count uint32, reader func(interface{})) *ThreadPool {
 
 // Start all the workers and wait till they start receiving requests
 func (t *ThreadPool) Start() {
-	// 10% threds will listne only on high priority channel
+	// 10% threads will listne only on high priority channel
 	highPriority := (t.worker * 10) / 100
 
 	for i := uint32(0); i < t.worker; i++ {
@@ -96,7 +96,7 @@ func (t *ThreadPool) Stop() {
 // Schedule the download of a block
 func (t *ThreadPool) Schedule(urgent bool, item interface{}) {
 	// urgent specifies the priority of this task.
-	// true menas high priority and false means low priority
+	// true means high priority and false means low priority
 	if urgent {
 		t.priorityCh <- item
 	} else {
