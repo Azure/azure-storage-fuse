@@ -179,7 +179,7 @@ func (suite *blockTestSuite) TestUnBlock() {
 
 	<-b.state
 	suite.assert.Equal(len(b.state), 0)
-	
+
 	_ = b.Delete()
 }
 

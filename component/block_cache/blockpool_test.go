@@ -105,7 +105,7 @@ func (suite *blockpoolTestSuite) TestUsage() {
 	suite.assert.NotNil(bp.blocksCh)
 	suite.assert.Equal(len(bp.blocksCh), 5)
 
-	var blocks[] *Block
+	var blocks []*Block
 	b := bp.MustGet()
 	suite.assert.NotNil(b)
 	blocks = append(blocks, b)
@@ -119,7 +119,7 @@ func (suite *blockpoolTestSuite) TestUsage() {
 
 	usage = bp.Usage()
 	suite.assert.Equal(usage, uint32(40))
-	
+
 	for _, blk := range blocks {
 		bp.Release(blk)
 	}
@@ -136,8 +136,8 @@ func (suite *blockpoolTestSuite) TestBufferExhaution() {
 	suite.assert.NotNil(bp.blocksCh)
 	suite.assert.Equal(len(bp.blocksCh), 5)
 
-	var blocks[] *Block
-	for i := 0; i < 5; i++{
+	var blocks []*Block
+	for i := 0; i < 5; i++ {
 		b := bp.MustGet()
 		suite.assert.NotNil(b)
 		blocks = append(blocks, b)

@@ -127,7 +127,7 @@ func (suite *threadPoolTestSuite) TestPrioritySchedule() {
 	suite.assert.NotNil(tp.priorityCh)
 	suite.assert.NotNil(tp.normalCh)
 
-	for i := 0 ; i < 100; i++ {
+	for i := 0; i < 100; i++ {
 		tp.Schedule(i < 20, 5)
 	}
 
@@ -135,7 +135,6 @@ func (suite *threadPoolTestSuite) TestPrioritySchedule() {
 	suite.assert.Equal(callbackCnt, int32(100))
 	tp.Stop()
 }
-
 
 func TestThreadPoolSuite(t *testing.T) {
 	suite.Run(t, new(threadPoolTestSuite))
