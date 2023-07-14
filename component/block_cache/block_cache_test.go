@@ -270,6 +270,132 @@ func (suite *blockCacheTestSuite) TestFileOpneClose() {
 	suite.assert.Nil(h.Buffers.Cooking)
 }
 
+func (suite *blockCacheTestSuite) TestFileRead() {
+	tobj, err := setupPipeline("")
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+
+	fileName := "bc.tst"
+	stroagePath := filepath.Join(tobj.fake_storage_path, fileName)
+	data := make([]byte, 50*_1MB)
+	_, _ = rand.Read(data)
+	ioutil.WriteFile(stroagePath, data, 0777)
+
+	options := internal.OpenFileOptions{Name: fileName}
+	h, err := tobj.blockCache.OpenFile(options)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(50*_1MB))
+	suite.assert.NotNil(h.Buffers.Cooked)
+	suite.assert.NotNil(h.Buffers.Cooking)
+
+	data = make([]byte, 1000)
+
+	// Read beyond end of file
+	n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: int64((50 * _1MB) + 1), Data: data})
+	suite.assert.NotNil(err)
+	suite.assert.Equal(n, 0)
+	suite.assert.Contains(err.Error(), "EOF")
+
+	// Read exactly at last offset
+	n, err = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: int64(50 * _1MB), Data: data})
+	suite.assert.NotNil(err)
+	suite.assert.Equal(n, 0)
+	suite.assert.Contains(err.Error(), "EOF")
+
+	n, err = tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: 0, Data: data})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, 1000)
+
+	cnt := h.Buffers.Cooked.Len() + h.Buffers.Cooking.Len()
+	suite.assert.Equal(cnt, MIN_PREFETCH*2)
+
+	tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(h.Buffers.Cooked)
+	suite.assert.Nil(h.Buffers.Cooking)
+}
+
+func (suite *blockCacheTestSuite) TestFileReadSerial() {
+	tobj, err := setupPipeline("")
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+
+	fileName := "bc.tst"
+	stroagePath := filepath.Join(tobj.fake_storage_path, fileName)
+	data := make([]byte, 50*_1MB)
+	_, _ = rand.Read(data)
+	ioutil.WriteFile(stroagePath, data, 0777)
+
+	options := internal.OpenFileOptions{Name: fileName}
+	h, err := tobj.blockCache.OpenFile(options)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(50*_1MB))
+	suite.assert.NotNil(h.Buffers.Cooked)
+	suite.assert.NotNil(h.Buffers.Cooking)
+
+	data = make([]byte, 1000)
+
+	totaldata := uint64(0)
+	for {
+		n, err := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: int64(totaldata), Data: data})
+		totaldata += uint64(n)
+		if err != nil {
+			break
+		}
+		suite.assert.LessOrEqual(n, 1000)
+	}
+
+	suite.assert.Equal(totaldata, uint64(50*_1MB))
+	cnt := h.Buffers.Cooked.Len() + h.Buffers.Cooking.Len()
+	suite.assert.Equal(cnt, 12)
+
+	tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(h.Buffers.Cooked)
+	suite.assert.Nil(h.Buffers.Cooking)
+}
+
+func (suite *blockCacheTestSuite) TestFileReadRandom() {
+	tobj, err := setupPipeline("")
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+
+	fileName := "bc.tst"
+	stroagePath := filepath.Join(tobj.fake_storage_path, fileName)
+	data := make([]byte, 100*_1MB)
+	_, _ = rand.Read(data)
+	ioutil.WriteFile(stroagePath, data, 0777)
+
+	options := internal.OpenFileOptions{Name: fileName}
+	h, err := tobj.blockCache.OpenFile(options)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(100*_1MB))
+	suite.assert.NotNil(h.Buffers.Cooked)
+	suite.assert.NotNil(h.Buffers.Cooking)
+
+	data = make([]byte, 100)
+	max := int64(100 * _1MB)
+	for i := 0; i < 50; i++ {
+		offset := rand.Int63n(max)
+		n, _ := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: offset, Data: data})
+		suite.assert.LessOrEqual(n, 1000)
+	}
+
+	cnt := h.Buffers.Cooked.Len() + h.Buffers.Cooking.Len()
+	suite.assert.Equal(cnt, 5)
+
+	tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(h.Buffers.Cooked)
+	suite.assert.Nil(h.Buffers.Cooking)
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestBlockCacheTestSuite(t *testing.T) {
