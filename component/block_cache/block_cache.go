@@ -83,15 +83,11 @@ type BlockCache struct {
 
 // Structure defining your config parameters
 type BlockCacheOptions struct {
-	BlockSize uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-
-	MemSize    uint64 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
-	MemTimeout uint32 `config:"mem-timeout-sec" yaml:"timeout-sec,omitempty"`
-
-	TmpPath     string `config:"path" yaml:"path,omitempty"`
-	DiskSize    uint64 `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
-	DiskTimeout uint32 `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
-
+	BlockSize     uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	MemSize       uint64 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
+	TmpPath       string `config:"path" yaml:"path,omitempty"`
+	DiskSize      uint64 `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
+	DiskTimeout   uint32 `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
 	PrefetchCount uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
 	Workers       uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
 }
