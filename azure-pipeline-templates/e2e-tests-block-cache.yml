@@ -59,7 +59,7 @@ steps:
       prefix: ${{ parameters.idstring }}
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }} --default-working-dir=$(WORK_DIR)
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
 
   - script: |
       for i in {100,200,500,1024,2048}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > ${{ parameters.mount_dir }}/myfile_{}'
@@ -93,7 +93,7 @@ steps:
       prefix: ${{ parameters.idstring }}
       mountStep: 
         script: |
-          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config }} --default-working-dir=$(WORK_DIR) -o ro
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro
 
   - script: |
       md5sum ${{ parameters.mount_dir }}/myfile_*' > $(WORK_DIR)/md5sum_block_cache.txt
