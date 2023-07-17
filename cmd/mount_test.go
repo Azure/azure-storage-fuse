@@ -87,7 +87,29 @@ loopbackfs:
   path: /tmp/bfuseloopback
 `
 
-var confFileMntTest string
+var configPriorityTest string = `
+logging:
+  type: syslog
+default-working-dir: /tmp/blobfuse2
+file_cache:
+  path: /tmp/fileCachePath
+libfuse:
+  attribute-expiration-sec: 120
+  entry-expiration-sec: 60
+azstorage:
+  account-name: myAccountName
+  account-key: myAccountKey
+  mode: key
+  endpoint: myEndpoint
+  container: myContainer
+components:
+  - file_cache
+  - libfuse
+  - attr_cache
+  - azstorage
+`
+
+var confFileMntTest, confFilePriorityTest string
 
 type mountTestSuite struct {
 	suite.Suite
@@ -203,6 +225,29 @@ func (suite *mountTestSuite) TestConfigFileNotProvided() {
 	op, err := executeCommandC(rootCmd, "mount", mntDir)
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to initialize new pipeline")
+}
+
+// mount failure test where config file has components in wrong order
+func (suite *mountTestSuite) TestComponentPrioritySetWrong() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	confFile, err := os.CreateTemp("", "conf*.yaml")
+	suite.assert.Nil(err)
+	confFilePriorityTest = confFile.Name()
+	defer os.Remove(confFilePriorityTest)
+
+	_, err = confFile.WriteString(configPriorityTest)
+	suite.assert.Nil(err)
+	confFile.Close()
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--config-file=%s", confFilePriorityTest))
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "failed to initialize new pipeline")
+	suite.assert.Contains(op, "component libfuse is out of order")
 }
 
 func (suite *mountTestSuite) TestDefaultConfigFile() {
