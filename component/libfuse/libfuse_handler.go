@@ -215,13 +215,18 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	if opts.readonly {
 		options += ",ro"
 	}
+
+	if !fuseFS.directIO {
+		options += ",kernel_cache"
+	}
+
 	// Why we pass -f
 	// CGo is not very good with handling forks - so if the user wants to run blobfuse in the
 	// background we fork on mount in GO (mount.go) and we just always force libfuse to mount in foreground
 	arguments = append(arguments, "blobfuse2",
 		C.GoString(opts.mount_path),
 		"-o", options,
-		"-f", "-ofsname=blobfuse2", "-okernel_cache") // "-omax_read=4194304"
+		"-f", "-ofsname=blobfuse2") // "-omax_read=4194304"
 
 	if opts.trace_enable {
 		arguments = append(arguments, "-d")
@@ -317,6 +322,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	// page cache (file content cache) in the kernel for the filesystem.
 	if fuseFS.directIO {
 		cfg.direct_io = C.int(1)
+		log.Debug("Libfuse::libfuse_init : direct_io = true")
 	}
 
 	return nil
