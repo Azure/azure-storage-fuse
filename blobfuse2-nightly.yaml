@@ -209,12 +209,12 @@ stages:
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
-          pool:
-            vmImage: $(imageName)
-
+          
           parameters:
-            arch: arm64
-            os: linux
+            pool:
+              vmImage: $(imageName)
+              arch: arm64
+              os: linux
 
           variables:
             - group: NightlyBlobFuse
