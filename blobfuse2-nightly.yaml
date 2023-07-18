@@ -210,11 +210,10 @@ stages:
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
           
-          parameters:
-            pool:
-              vmImage: $(imageName)
-            arch: arm64
-            os: linux
+          pool:
+            vmImage: $(imageName)
+          arch: arm64
+          os: linux
 
           variables:
             - group: NightlyBlobFuse
