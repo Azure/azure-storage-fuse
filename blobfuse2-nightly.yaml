@@ -213,7 +213,7 @@ stages:
           pool:
             name: "blobfuse-ubn-arm64-pool"
             demands:
-              - ImageOverride -equals $(agentName)
+              - ImageOverride -equals $(imageName)
 
           variables:
             - group: NightlyBlobFuse
