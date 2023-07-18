@@ -213,8 +213,8 @@ stages:
           parameters:
             pool:
               vmImage: $(imageName)
-              arch: arm64
-              os: linux
+            arch: arm64
+            os: linux
 
           variables:
             - group: NightlyBlobFuse
