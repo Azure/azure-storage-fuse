@@ -204,16 +204,16 @@ stages:
           strategy:
             matrix:
               Ubuntu-22-ARM64-BlockBlob:
-                imageName: 'ubuntu-22.04'
-                containerName: 'test-cnt-ubn-22'
+                imageName: 'blobfuse-ubn22-arm64'
+                containerName: 'test-cnt-ubn-22-arm64'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
           
           pool:
-            vmImage: $(imageName)
-          arch: arm64
-          os: linux
+            name: "blobfuse-ubn-arm64-pool"
+            demands:
+              - ImageOverride -equals $(agentName)
 
           variables:
             - group: NightlyBlobFuse
