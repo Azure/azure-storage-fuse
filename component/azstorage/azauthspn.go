@@ -70,21 +70,26 @@ func (azspn *azAuthSPN) fetchToken() (*adal.ServicePrincipalToken, error) {
 		return nil, err
 	}
 
+	//  Create the resource URL
+	resourceURL := azspn.config.AuthResource
+	if resourceURL == "" {
+		resourceURL = azspn.getEndpoint()
+	}
+
 	//  Generate the SPN token
 	var spt *adal.ServicePrincipalToken
-	resourceURL := azspn.getEndpoint()
-	if azspn.config.FedTokenPath != "" {
+	if azspn.config.OAuthTokenFilePath != "" {
 		log.Trace("AzAuthSPN::fetchToken : Going for fedrated token flow.")
 
-		jwtCallback := func() (string, error) {
-			jwt, err := os.ReadFile(azspn.config.FedTokenPath)
+		tokenReader := func() (string, error) {
+			token, err := os.ReadFile(azspn.config.OAuthTokenFilePath)
 			if err != nil {
-				return "", fmt.Errorf("failed to read a file with a federated token: %w", err)
+				return "", fmt.Errorf("failed to read OAuth token file %s [%v]", azspn.config.OAuthTokenFilePath, err.Error())
 			}
-			return string(jwt), nil
+			return string(token), nil
 		}
 
-		spt, err = adal.NewServicePrincipalTokenFromFederatedTokenCallback(*config, azspn.config.ClientID, jwtCallback, resourceURL)
+		spt, err = adal.NewServicePrincipalTokenFromFederatedTokenCallback(*config, azspn.config.ClientID, tokenReader, resourceURL)
 		if err != nil {
 			log.Err("AzAuthSPN::fetchToken : Failed to generate token for SPN [%s]", err.Error())
 			return nil, err

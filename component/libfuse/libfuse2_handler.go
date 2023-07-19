@@ -75,6 +75,7 @@ In those calls we will convert integer value back to a pointer and get our valid
 const (
 	C_ENOENT = int(-C.ENOENT)
 	C_EIO    = int(-C.EIO)
+	C_EACCES = int(-C.EACCES)
 )
 
 // Note: libfuse prepends "/" to the path.
@@ -214,6 +215,13 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	if opts.readonly {
 		options += ",ro"
 	}
+
+	// direct_io option is used to bypass the kernel cache. It disables the use of
+	// page cache (file content cache) in the kernel for the filesystem.
+	if fuseFS.directIO {
+		options += ",direct_io"
+	}
+
 	// Why we pass -f
 	// CGo is not very good with handling forks - so if the user wants to run blobfuse in the
 	// background we fork on mount in GO (mount.go) and we just always force libfuse to mount in foreground
@@ -284,7 +292,7 @@ func libfuse2_init(conn *C.fuse_conn_info_t) (res unsafe.Pointer) {
 
 //export libfuse_destroy
 func libfuse_destroy(data unsafe.Pointer) {
-	log.Trace("Libfuse::libfuse_destroy : destroy")
+	log.Trace("Libfuse::libfuse2_destroy : destroy")
 }
 
 func (lf *Libfuse) fillStat(attr *internal.ObjAttr, stbuf *C.stat_t) {
@@ -354,7 +362,13 @@ func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 	attr, err := fuseFS.NextComponent().GetAttr(internal.GetAttrOptions{Name: name})
 	if err != nil {
 		//log.Err("Libfuse::libfuse2_getattr : Failed to get attributes of %s [%s]", name, err.Error())
-		return -C.ENOENT
+		if err == syscall.ENOENT {
+			return -C.ENOENT
+		} else if err == syscall.EACCES {
+			return -C.EACCES
+		} else {
+			return -C.EIO
+		}
 	}
 
 	// Populate stat
@@ -368,11 +382,11 @@ func libfuse2_getattr(path *C.char, stbuf *C.stat_t) C.int {
 func libfuse_statfs(path *C.char, buf *C.statvfs_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse_statfs : %s", name)
+	log.Trace("Libfuse::libfuse2_statfs : %s", name)
 
 	attr, populated, err := fuseFS.NextComponent().StatFs()
 	if err != nil {
-		log.Err("Libfuse::libfuse_statfs: Failed to get stats %s [%s]", name, err.Error())
+		log.Err("Libfuse::libfuse2_statfs: Failed to get stats %s [%s]", name, err.Error())
 		return -C.EIO
 	}
 
@@ -402,12 +416,16 @@ func libfuse_statfs(path *C.char, buf *C.statvfs_t) C.int {
 func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse_mkdir : %s", name)
+	log.Trace("Libfuse::libfuse2_mkdir : %s", name)
 
 	err := fuseFS.NextComponent().CreateDir(internal.CreateDirOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
 	if err != nil {
-		log.Err("Libfuse::libfuse_mkdir : Failed to create %s [%s]", name, err.Error())
-		return -C.EIO
+		log.Err("Libfuse::libfuse2_mkdir : Failed to create %s [%s]", name, err.Error())
+		if os.IsPermission(err) {
+			return -C.EACCES
+		} else {
+			return -C.EIO
+		}
 	}
 
 	libfuseStatsCollector.PushEvents(createDir, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
@@ -426,7 +444,7 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 		name = name + "/"
 	}
 
-	log.Trace("Libfuse::libfuse_opendir : %s", name)
+	log.Trace("Libfuse::libfuse2_opendir : %s", name)
 
 	handle := handlemap.NewHandle(name)
 
@@ -450,7 +468,7 @@ func libfuse_opendir(path *C.char, fi *C.fuse_file_info_t) C.int {
 //export libfuse_releasedir
 func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
-	log.Trace("Libfuse::libfuse_releasedir : %s, handle: %d", handle.Path, handle.ID)
+	log.Trace("Libfuse::libfuse2_releasedir : %s, handle: %d", handle.Path, handle.ID)
 
 	handle.Cleanup()
 	handlemap.Delete(handle.ID)
@@ -479,9 +497,11 @@ func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, o
 		})
 
 		if err != nil {
-			log.Err("Libfuse::libfuse2_readdir : Path %s, handle: %d, offset %d. Error in retrieval", handle.Path, handle.ID, off_64)
+			log.Err("Libfuse::libfuse2_readdir : Path %s, handle: %d, offset %d. Error in retrieval %s", handle.Path, handle.ID, off_64, err.Error())
 			if os.IsNotExist(err) {
 				return C.int(C_ENOENT)
+			} else if os.IsPermission(err) {
+				return C.int(C_EACCES)
 			} else {
 				return C.int(C_EIO)
 			}
@@ -530,7 +550,7 @@ func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, o
 func libfuse_rmdir(path *C.char) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse_rmdir : %s", name)
+	log.Trace("Libfuse::libfuse2_rmdir : %s", name)
 
 	empty := fuseFS.NextComponent().IsDirEmpty(internal.IsDirEmptyOptions{Name: name})
 	if !empty {
@@ -539,7 +559,7 @@ func libfuse_rmdir(path *C.char) C.int {
 
 	err := fuseFS.NextComponent().DeleteDir(internal.DeleteDirOptions{Name: name})
 	if err != nil {
-		log.Err("Libfuse::libfuse_rmdir : Failed to delete %s [%s]", name, err.Error())
+		log.Err("Libfuse::libfuse2_rmdir : Failed to delete %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
 		} else {
@@ -561,11 +581,11 @@ func libfuse_rmdir(path *C.char) C.int {
 func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse_create : %s", name)
+	log.Trace("Libfuse::libfuse2_create : %s", name)
 
 	handle, err := fuseFS.NextComponent().CreateFile(internal.CreateFileOptions{Name: name, Mode: fs.FileMode(uint32(mode) & 0xffffffff)})
 	if err != nil {
-		log.Err("Libfuse::libfuse_create : Failed to create %s [%s]", name, err.Error())
+		log.Err("Libfuse::libfuse2_create : Failed to create %s [%s]", name, err.Error())
 		if os.IsExist(err) {
 			return -C.EEXIST
 		} else {
@@ -578,7 +598,7 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 	if !handle.Cached() {
 		ret_val.fd = 0
 	}
-	log.Trace("Libfuse::libfuse_create : %s, handle %d", name, handle.ID)
+	log.Trace("Libfuse::libfuse2_create : %s, handle %d", name, handle.ID)
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 
 	libfuseStatsCollector.PushEvents(createFile, name, map[string]interface{}{md: fs.FileMode(uint32(mode) & 0xffffffff)})
@@ -595,11 +615,11 @@ func libfuse_create(path *C.char, mode C.mode_t, fi *C.fuse_file_info_t) C.int {
 func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse_open : %s", name)
+	log.Trace("Libfuse::libfuse2_open : %s", name)
 	// TODO: Should this sit behind a user option? What if we change something to support these in the future?
 	// Mask out SYNC and DIRECT flags since write operation will fail
 	if fi.flags&C.O_SYNC != 0 || fi.flags&C.__O_DIRECT != 0 {
-		log.Err("Libfuse::libfuse_open : Reset flags for open %s, fi.flags %X", name, fi.flags)
+		log.Err("Libfuse::libfuse2_open : Reset flags for open %s, fi.flags %X", name, fi.flags)
 		// Blobfuse2 does not support the SYNC or DIRECT flag. If a user application passes this flag on to blobfuse2
 		// and we open the file with this flag, subsequent write operations wlil fail with "Invalid argument" error.
 		// Mask them out here in the open call so that write works.
@@ -616,9 +636,11 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 		})
 
 	if err != nil {
-		log.Err("Libfuse::libfuse_open : Failed to open %s [%s]", name, err.Error())
+		log.Err("Libfuse::libfuse2_open : Failed to open %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
+		} else if os.IsPermission(err) {
+			return -C.EACCES
 		} else {
 			return -C.EIO
 		}
@@ -629,7 +651,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	if !handle.Cached() {
 		ret_val.fd = 0
 	}
-	log.Trace("Libfuse::libfuse_open : %s, handle %d", name, handle.ID)
+	log.Trace("Libfuse::libfuse2_open : %s, handle %d", name, handle.ID)
 	fi.fh = C.ulong(uintptr(unsafe.Pointer(ret_val)))
 
 	// increment open file handles count
@@ -667,7 +689,7 @@ func libfuse_read(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.f
 		err = nil
 	}
 	if err != nil {
-		log.Err("Libfuse::libfuse_read : error reading file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+		log.Err("Libfuse::libfuse2_read : error reading file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		return -C.EIO
 	}
 
@@ -692,7 +714,7 @@ func libfuse_write(path *C.char, buf *C.char, size C.size_t, off C.off_t, fi *C.
 		})
 
 	if err != nil {
-		log.Err("Libfuse::libfuse_write : error writing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+		log.Err("Libfuse::libfuse2_write : error writing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
 		return -C.EIO
 	}
 
@@ -706,7 +728,7 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 
-	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
+	log.Trace("Libfuse::libfuse2_flush : %s, handle: %d", handle.Path, handle.ID)
 
 	// If the file handle is not dirty, there is no need to flush
 	if fileHandle.dirty != 0 {
@@ -719,8 +741,14 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	err := fuseFS.NextComponent().FlushFile(internal.FlushFileOptions{Handle: handle})
 	if err != nil {
-		log.Err("Libfuse::libfuse_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		return -C.EIO
+		log.Err("Libfuse::libfuse2_flush : error flushing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+		if err == syscall.ENOENT {
+			return -C.ENOENT
+		} else if err == syscall.EACCES {
+			return -C.EACCES
+		} else {
+			return -C.EIO
+		}
 	}
 
 	return 0
@@ -756,7 +784,7 @@ func libfuse2_truncate(path *C.char, off C.off_t) C.int {
 func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
-	log.Trace("Libfuse::libfuse_release : %s, handle: %d", handle.Path, handle.ID)
+	log.Trace("Libfuse::libfuse2_release : %s, handle: %d", handle.Path, handle.ID)
 
 	// If the file handle is dirty then file-cache needs to flush this file
 	if fileHandle.dirty != 0 {
@@ -765,8 +793,14 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 
 	err := fuseFS.NextComponent().CloseFile(internal.CloseFileOptions{Handle: handle})
 	if err != nil {
-		log.Err("Libfuse::libfuse_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
-		return -C.EIO
+		log.Err("Libfuse::libfuse2_release : error closing file %s, handle: %d [%s]", handle.Path, handle.ID, err.Error())
+		if err == syscall.ENOENT {
+			return -C.ENOENT
+		} else if err == syscall.EACCES {
+			return -C.EACCES
+		} else {
+			return -C.EIO
+		}
 	}
 
 	handlemap.Delete(handle.ID)
@@ -784,13 +818,15 @@ func libfuse_release(path *C.char, fi *C.fuse_file_info_t) C.int {
 func libfuse_unlink(path *C.char) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse_unlink : %s", name)
+	log.Trace("Libfuse::libfuse2_unlink : %s", name)
 
 	err := fuseFS.NextComponent().DeleteFile(internal.DeleteFileOptions{Name: name})
 	if err != nil {
-		log.Err("Libfuse::libfuse_unlink : error deleting file %s [%s]", name, err.Error())
+		log.Err("Libfuse::libfuse2_unlink : error deleting file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
+		} else if os.IsPermission(err) {
+			return -C.EACCES
 		}
 		return -C.EIO
 	}
@@ -884,11 +920,11 @@ func libfuse_symlink(target *C.char, link *C.char) C.int {
 	name = common.NormalizeObjectName(name)
 	targetPath := C.GoString(target)
 	targetPath = common.NormalizeObjectName(targetPath)
-	log.Trace("Libfuse::libfuse_symlink : Received for %s -> %s", name, targetPath)
+	log.Trace("Libfuse::libfuse2_symlink : Received for %s -> %s", name, targetPath)
 
 	err := fuseFS.NextComponent().CreateLink(internal.CreateLinkOptions{Name: name, Target: targetPath})
 	if err != nil {
-		log.Err("Libfuse::libfuse_symlink : error linking file %s -> %s [%s]", name, targetPath, err.Error())
+		log.Err("Libfuse::libfuse2_symlink : error linking file %s -> %s [%s]", name, targetPath, err.Error())
 		return -C.EIO
 	}
 
@@ -908,7 +944,7 @@ func libfuse_readlink(path *C.char, buf *C.char, size C.size_t) C.int {
 
 	targetPath, err := fuseFS.NextComponent().ReadLink(internal.ReadLinkOptions{Name: name})
 	if err != nil {
-		log.Err("Libfuse::libfuse_readlink : error reading link file %s [%s]", name, err.Error())
+		log.Err("Libfuse::libfuse2_readlink : error reading link file %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
 		}
@@ -934,7 +970,7 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 
 	fileHandle := (*C.file_handle_t)(unsafe.Pointer(uintptr(fi.fh)))
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
-	log.Trace("Libfuse::libfuse_fsync : %s, handle: %d", handle.Path, handle.ID)
+	log.Trace("Libfuse::libfuse2_fsync : %s, handle: %d", handle.Path, handle.ID)
 
 	options := internal.SyncFileOptions{Handle: handle}
 	// If the datasync parameter is non-zero, then only the user data should be flushed, not the metadata.
@@ -942,7 +978,7 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 
 	err := fuseFS.NextComponent().SyncFile(options)
 	if err != nil {
-		log.Err("Libfuse::libfuse_fsync : error syncing file %s [%s]", handle.Path, err.Error())
+		log.Err("Libfuse::libfuse2_fsync : error syncing file %s [%s]", handle.Path, err.Error())
 		return -C.EIO
 	}
 
@@ -958,7 +994,7 @@ func libfuse_fsync(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 func libfuse_fsyncdir(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.int {
 	name := trimFusePath(path)
 	name = common.NormalizeObjectName(name)
-	log.Trace("Libfuse::libfuse_fsyncdir : %s", name)
+	log.Trace("Libfuse::libfuse2_fsyncdir : %s", name)
 
 	options := internal.SyncDirOptions{Name: name}
 	// If the datasync parameter is non-zero, then only the user data should be flushed, not the metadata.
@@ -966,7 +1002,7 @@ func libfuse_fsyncdir(path *C.char, datasync C.int, fi *C.fuse_file_info_t) C.in
 
 	err := fuseFS.NextComponent().SyncDir(options)
 	if err != nil {
-		log.Err("Libfuse::libfuse_fsyncdir : error syncing dir %s [%s]", name, err.Error())
+		log.Err("Libfuse::libfuse2_fsyncdir : error syncing dir %s [%s]", name, err.Error())
 		return -C.EIO
 	}
 
@@ -993,6 +1029,8 @@ func libfuse2_chmod(path *C.char, mode C.mode_t) C.int {
 		log.Err("Libfuse::libfuse2_chmod : error in chmod of %s [%s]", name, err.Error())
 		if os.IsNotExist(err) {
 			return -C.ENOENT
+		} else if os.IsPermission(err) {
+			return -C.EACCES
 		}
 		return -C.EIO
 	}

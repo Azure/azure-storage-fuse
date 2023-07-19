@@ -175,7 +175,7 @@ func (suite *fileTestSuite) TestFileCreatEncodeChar() {
 func (suite *fileTestSuite) TestFileCreateMultiSpclCharWithinSpclDir() {
 	speclChar := "abcd%23ABCD%34123-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत.txt"
 	speclDirName := suite.testPath + "/" + "abc%23%24%25efg-._~!$&'()*+,;=!@ΣΑΠΦΩ$भारत"
-	secFile := speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|\\abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|.txt"
+	secFile := speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|.txt"
 	fileName := speclDirName + "/" + speclChar
 
 	err := os.Mkdir(speclDirName, 0777)
@@ -205,7 +205,7 @@ func (suite *fileTestSuite) TestFileCreateMultiSpclCharWithinSpclDir() {
 	}
 	suite.Equal(true, found)
 
-	suite.fileTestCleanup([]string{fileName, secFile, speclDirName + "/" + "abcd123~!@#$%^&*()_+=-{}][\":;'?><,.|", speclDirName})
+	suite.fileTestCleanup([]string{speclDirName})
 }
 
 func (suite *fileTestSuite) TestFileCreateLongName() {
@@ -224,7 +224,7 @@ func (suite *fileTestSuite) TestFileCreateSlashName() {
 	suite.Equal(nil, err)
 	srcFile.Close()
 
-	suite.fileTestCleanup([]string{fileName})
+	suite.fileTestCleanup([]string{fileName, suite.testPath + "/abcd"})
 }
 
 func (suite *fileTestSuite) TestFileCreateLabel() {

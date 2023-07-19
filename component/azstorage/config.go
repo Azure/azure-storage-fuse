@@ -112,28 +112,32 @@ func (a *AccountType) Parse(s string) error {
 	return err
 }
 
+// default value for maximum results returned by a list API call
+const DefaultMaxResultsForList int32 = 2
+
 // Environment variable names
 // Here we are not reading MSI_ENDPOINT and MSI_SECRET as they are read by go-sdk directly
 // https://github.com/Azure/go-autorest/blob/a46566dfcbdc41e736295f94e9f690ceaf50094a/autorest/adal/token.go#L788
 // newServicePrincipalTokenFromMSI : reads them directly from env
 const (
-	EnvAzStorageAccount            = "AZURE_STORAGE_ACCOUNT"
-	EnvAzStorageAccountType        = "AZURE_STORAGE_ACCOUNT_TYPE"
-	EnvAzStorageAccessKey          = "AZURE_STORAGE_ACCESS_KEY"
-	EnvAzStorageSasToken           = "AZURE_STORAGE_SAS_TOKEN"
-	EnvAzStorageIdentityClientId   = "AZURE_STORAGE_IDENTITY_CLIENT_ID"
-	EnvAzStorageIdentityResourceId = "AZURE_STORAGE_IDENTITY_RESOURCE_ID"
-	EnvAzStorageIdentityObjectId   = "AZURE_STORAGE_IDENTITY_OBJECT_ID"
-	EnvAzStorageSpnTenantId        = "AZURE_STORAGE_SPN_TENANT_ID"
-	EnvAzStorageSpnClientId        = "AZURE_STORAGE_SPN_CLIENT_ID"
-	EnvAzStorageSpnClientSecret    = "AZURE_STORAGE_SPN_CLIENT_SECRET"
-	EnvAzStorageSpnFedTokenPath    = "AZURE_FEDERATED_TOKEN_FILE"
-	EnvAzStorageAadEndpoint        = "AZURE_STORAGE_AAD_ENDPOINT"
-	EnvAzStorageAuthType           = "AZURE_STORAGE_AUTH_TYPE"
-	EnvAzStorageBlobEndpoint       = "AZURE_STORAGE_BLOB_ENDPOINT"
-	EnvHttpProxy                   = "http_proxy"
-	EnvHttpsProxy                  = "https_proxy"
-	EnvAzStorageAccountContainer   = "AZURE_STORAGE_ACCOUNT_CONTAINER"
+	EnvAzStorageAccount               = "AZURE_STORAGE_ACCOUNT"
+	EnvAzStorageAccountType           = "AZURE_STORAGE_ACCOUNT_TYPE"
+	EnvAzStorageAccessKey             = "AZURE_STORAGE_ACCESS_KEY"
+	EnvAzStorageSasToken              = "AZURE_STORAGE_SAS_TOKEN"
+	EnvAzStorageIdentityClientId      = "AZURE_STORAGE_IDENTITY_CLIENT_ID"
+	EnvAzStorageIdentityResourceId    = "AZURE_STORAGE_IDENTITY_RESOURCE_ID"
+	EnvAzStorageIdentityObjectId      = "AZURE_STORAGE_IDENTITY_OBJECT_ID"
+	EnvAzStorageSpnTenantId           = "AZURE_STORAGE_SPN_TENANT_ID"
+	EnvAzStorageSpnClientId           = "AZURE_STORAGE_SPN_CLIENT_ID"
+	EnvAzStorageSpnClientSecret       = "AZURE_STORAGE_SPN_CLIENT_SECRET"
+	EnvAzStorageSpnOAuthTokenFilePath = "AZURE_OAUTH_TOKEN_FILE"
+	EnvAzStorageAadEndpoint           = "AZURE_STORAGE_AAD_ENDPOINT"
+	EnvAzStorageAuthType              = "AZURE_STORAGE_AUTH_TYPE"
+	EnvAzStorageBlobEndpoint          = "AZURE_STORAGE_BLOB_ENDPOINT"
+	EnvHttpProxy                      = "http_proxy"
+	EnvHttpsProxy                     = "https_proxy"
+	EnvAzStorageAccountContainer      = "AZURE_STORAGE_ACCOUNT_CONTAINER"
+	EnvAzAuthResource                 = "AZURE_STORAGE_AUTH_RESOURCE"
 )
 
 type AzStorageOptions struct {
@@ -148,7 +152,7 @@ type AzStorageOptions struct {
 	TenantID                string `config:"tenantid" yaml:"tenantid,omitempty"`
 	ClientID                string `config:"clientid" yaml:"clientid,omitempty"`
 	ClientSecret            string `config:"clientsecret" yaml:"clientsecret,omitempty"`
-	FedTokenPath            string `config:"fed-token-path" yaml:"fed-token-path,omitempty"`
+	OAuthTokenFilePath      string `config:"oauth-token-path" yaml:"oauth-token-path,omitempty"`
 	ActiveDirectoryEndpoint string `config:"aadendpoint" yaml:"aadendpoint,omitempty"`
 	Endpoint                string `config:"endpoint" yaml:"endpoint,omitempty"`
 	AuthMode                string `config:"mode" yaml:"mode,omitempty"`
@@ -170,6 +174,7 @@ type AzStorageOptions struct {
 	UpdateMD5               bool   `config:"update-md5" yaml:"update-md5"`
 	ValidateMD5             bool   `config:"validate-md5" yaml:"validate-md5"`
 	VirtualDirectory        bool   `config:"virtual-directory" yaml:"virtual-directory"`
+	MaxResultsForList       int32  `config:"max-results-for-list" yaml:"max-results-for-list"`
 	DisableCompression      bool   `config:"disable-compression" yaml:"disable-compression"`
 
 	// v1 support
@@ -194,7 +199,7 @@ func RegisterEnvVariables() {
 	config.BindEnv("azstorage.tenantid", EnvAzStorageSpnTenantId)
 	config.BindEnv("azstorage.clientid", EnvAzStorageSpnClientId)
 	config.BindEnv("azstorage.clientsecret", EnvAzStorageSpnClientSecret)
-	config.BindEnv("azstorage.fed-token-path", EnvAzStorageSpnFedTokenPath)
+	config.BindEnv("azstorage.oauth-token-path", EnvAzStorageSpnOAuthTokenFilePath)
 
 	config.BindEnv("azstorage.objid", EnvAzStorageIdentityObjectId)
 
@@ -208,6 +213,8 @@ func RegisterEnvVariables() {
 	config.BindEnv("azstorage.https-proxy", EnvHttpsProxy)
 
 	config.BindEnv("azstorage.container", EnvAzStorageAccountContainer)
+
+	config.BindEnv("azstorage.auth-resource", EnvAzAuthResource)
 }
 
 //    ----------- Config Parsing and Validation  ---------------
@@ -309,7 +316,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	if opt.BlockSize != 0 {
 		if opt.BlockSize > azblob.BlockBlobMaxStageBlockBytes {
-			log.Err("block size is too large. Block size has to be smaller than %s Bytes", azblob.BlockBlobMaxStageBlockBytes)
+			log.Err("ParseAndValidateConfig : Block size is too large. Block size has to be smaller than %s Bytes", azblob.BlockBlobMaxStageBlockBytes)
 			return errors.New("block size is too large")
 		}
 		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024
@@ -348,7 +355,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	az.stConfig.authConfig.ActiveDirectoryEndpoint = formatEndpointProtocol(az.stConfig.authConfig.ActiveDirectoryEndpoint, false)
 
 	// If subdirectory is mounted, take the prefix path
-	az.stConfig.prefixPath = opt.PrefixPath
+	az.stConfig.prefixPath = removeLeadingSlashes(opt.PrefixPath)
 
 	// Block list call on mount for given amount of time
 	az.stConfig.cancelListForSeconds = opt.CancelListForSeconds
@@ -424,14 +431,14 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.ObjectID = opt.ObjectID
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
-		if opt.ClientID == "" || (opt.ClientSecret == "" && opt.FedTokenPath == "") || opt.TenantID == "" {
+		if opt.ClientID == "" || (opt.ClientSecret == "" && opt.OAuthTokenFilePath == "") || opt.TenantID == "" {
 			//lint:ignore ST1005 ignore
 			return errors.New("Client ID, Tenant ID or Client Secret not provided")
 		}
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.ClientSecret = opt.ClientSecret
 		az.stConfig.authConfig.TenantID = opt.TenantID
-		az.stConfig.authConfig.FedTokenPath = opt.FedTokenPath
+		az.stConfig.authConfig.OAuthTokenFilePath = opt.OAuthTokenFilePath
 
 	default:
 		log.Err("ParseAndValidateConfig : Invalid auth mode %s", opt.AuthMode)
@@ -470,9 +477,9 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		log.Warn("unsupported v1 CLI parameter: debug-libcurl is not applicable in blobfuse2.")
 	}
 
-	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, Endpoint: %s, ListBlock: %d, MD5 : %v %v, Virtual Directory: %v, Disable Compression: %v",
+	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, Endpoint: %s, ListBlock: %d, MD5 : %v %v, Virtual Directory: %v, Max Results For List %v, Disable Compression: %v",
 		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,
-		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.cancelListForSeconds, az.stConfig.validateMD5, az.stConfig.updateMD5, az.stConfig.virtualDirectory, az.stConfig.disableCompression)
+		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.cancelListForSeconds, az.stConfig.validateMD5, az.stConfig.updateMD5, az.stConfig.virtualDirectory, az.stConfig.maxResultsForList, az.stConfig.disableCompression)
 
 	log.Info("ParseAndValidateConfig : Retry Config: Retry count %d, Max Timeout %d, BackOff Time %d, Max Delay %d",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay)
@@ -507,6 +514,12 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		az.stConfig.virtualDirectory = opt.VirtualDirectory
 	} else {
 		az.stConfig.virtualDirectory = true
+	}
+
+	if config.IsSet(compName+".max-results-for-list") && opt.MaxResultsForList > 0 {
+		az.stConfig.maxResultsForList = opt.MaxResultsForList
+	} else {
+		az.stConfig.maxResultsForList = DefaultMaxResultsForList
 	}
 
 	if config.IsSet(compName + ".disable-compression") {

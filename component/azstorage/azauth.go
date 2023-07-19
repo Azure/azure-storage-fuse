@@ -60,7 +60,7 @@ type azAuthConfig struct {
 	TenantID                string
 	ClientID                string
 	ClientSecret            string
-	FedTokenPath            string
+	OAuthTokenFilePath      string
 	ActiveDirectoryEndpoint string
 
 	Endpoint     string

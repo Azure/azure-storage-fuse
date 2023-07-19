@@ -152,6 +152,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `AZURE_STORAGE_SPN_TENANT_ID`: Specifies the tenant ID for your application registration
     * `AZURE_STORAGE_AAD_ENDPOINT`: Specifies a custom AAD endpoint to authenticate against
     * `AZURE_STORAGE_SPN_CLIENT_SECRET`: Specifies the client secret for your application registration.
+    * `AZURE_STORAGE_AUTH_RESOURCE` : Scope to be used while requesting for token.
 - Proxy Server:
     * `http_proxy`: The proxy server address. Example: `10.1.22.4:8080`.    
     * `https_proxy`: The proxy server address when https is turned off forcing http. Example: `10.1.22.4:8080`.
@@ -170,7 +171,9 @@ az storage container generate-sas --account-name <account name ex:myadlsaccount>
 To improve performance, Blobfuse2 by default enables writeback caching, which can produce unexpected behavior for files opened with WRONLY or APPEND flags, so Blobfuse2 returns EINVAL on open of a file with those flags. Either use disable-writeback-caching to turn off writeback caching (can potentially result in degraded performance) or ignore-open-flags (replace WRONLY with RDWR and ignore APPEND) based on your workload. 
 - How to mount blobfuse2 inside a container?
 Refer to 'docker' folder in this repo. It contains a sample 'Dockerfile'. If you wish to create your own container image, try 'buildandruncontainer.sh' script, it will create a container image and launch the container using current environment variables holding your storage account credentials.
- 
+- Why am I not able to see the updated contents of file(s), which were updated through means other than Blobfuse2 mount?
+If your use-case involves updating/uploading file(s) through other means and you wish to see the updated contents on Blobfuse2 mount then you need to disable kernel page-cache. `-o direct_io` CLI parameter is the option you need to use while mounting. Along with this, set `file-cache-timeout=0` and all other libfuse caching parameters should also be set to 0. User shall be aware that disabling kernel cache can result into more calls to Azure Storage which will have cost and performance implications. 
+
 ## Un-Supported File system operations
 - mkfifo : fifo creation is not supported by blobfuse2 and this will result in "function not implemented" error
 - chown  : Change of ownership is not supported by Azure Storage hence Blobfuse2 does not support this.
@@ -189,8 +192,10 @@ Refer to 'docker' folder in this repo. It contains a sample 'Dockerfile'. If you
 
 ## Limitations
 - In case of BlockBlob accounts, ACLs are not supported by Azure Storage so Blobfuse2 will by default return success for 'chmod' operation. However it will work fine for Gen2 (DataLake) accounts.
+- When Blobfuse2 is mounted on a container, SYS_ADMIN privileges are required for it to interact with the fuse driver. If container is created without the privilege, mount will fail. Sample command to spawn a docker container is 
 
-
+    `docker run -it --rm --cap-add=SYS_ADMIN --device=/dev/fuse --security-opt apparmor:unconfined <environment variables> <docker image>`
+        
 ### Syslog security warning
 By default, Blobfuse2 will log to syslog. The default settings will, in some cases, log relevant file paths to syslog. 
 If this is sensitive information, turn off logging or set log-level to LOG_ERR.  

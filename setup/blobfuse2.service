@@ -2,11 +2,10 @@
 Description=A virtual file system adapter for Azure Blob storage.
 After=network-online.target
 Requires=network-online.target
-WorkingDirectory=/home/AzureUser/azure-storage-fuse
-User=AzureUser
 
 [Service]
-
+WorkingDirectory=/home/AzureUser/azure-storage-fuse
+User=AzureUser
 # Configures the mountpoint.<path/to/the/mounting/point>
 Environment=BlobMountingPoint=/home/AzureUser/mntblobfuse
 # Configures the tmp location for the cache. Always configure the fastest disk (SSD or ramdisk) for best performance.

@@ -247,7 +247,7 @@ func (c *FileCache) Configure(_ bool) error {
 	_, err = os.Stat(c.tmpPath)
 	if os.IsNotExist(err) {
 		log.Err("FileCache: config error [tmp-path does not exist. attempting to create tmp-path.]")
-		err := os.Mkdir(c.tmpPath, os.FileMode(0755))
+		err := os.MkdirAll(c.tmpPath, os.FileMode(0755))
 		if err != nil {
 			log.Err("FileCache: config error creating directory after clean [%s]", err.Error())
 			return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
@@ -737,7 +737,7 @@ func (fc *FileCache) DeleteFile(options internal.DeleteFileOptions) error {
 }
 
 // isDownloadRequired: Whether or not the file needs to be downloaded to local cache.
-func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock *common.LockMapItem) (bool, bool, *internal.ObjAttr) {
+func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock *common.LockMapItem) (bool, bool, *internal.ObjAttr, error) {
 	fileExists := false
 	downloadRequired := false
 	lmt := time.Time{}
@@ -786,6 +786,7 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 		downloadRequired = false
 	}
 
+	err = nil // reset err variable
 	var attr *internal.ObjAttr = nil
 	if downloadRequired ||
 		(fc.refreshSec != 0 && time.Since(flock.DownloadTime()).Seconds() > float64(fc.refreshSec)) {
@@ -813,7 +814,7 @@ func (fc *FileCache) isDownloadRequired(localPath string, blobPath string, flock
 		}
 	}
 
-	return downloadRequired, fileExists, attr
+	return downloadRequired, fileExists, attr, err
 }
 
 // OpenFile: Makes the file available in the local cache for further file operations.
@@ -829,7 +830,12 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 	defer flock.Unlock()
 
 	fc.policy.CacheValid(localPath)
-	downloadRequired, fileExists, attr := fc.isDownloadRequired(localPath, options.Name, flock)
+	downloadRequired, fileExists, attr, err := fc.isDownloadRequired(localPath, options.Name, flock)
+
+	// return err in case of authorization permission mismatch
+	if err != nil && err == syscall.EACCES {
+		return nil, err
+	}
 
 	if downloadRequired {
 		log.Debug("FileCache::OpenFile : Need to re-download %s", options.Name)
@@ -1077,6 +1083,7 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 }
 
 func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
+	log.Trace("FileCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	if fc.syncToFlush {
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 	} else {

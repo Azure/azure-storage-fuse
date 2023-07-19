@@ -329,6 +329,8 @@ var mountCmd = &cobra.Command{
 						return fmt.Errorf("failed to parse gid [%s]", err.Error())
 					}
 					config.Set("libfuse.gid", fmt.Sprint(val))
+				} else if v == "direct_io" || v == "direct_io=true" {
+					config.Set("libfuse.direct-io", "true")
 				} else {
 					return errors.New(common.FuseAllowedFlags)
 				}

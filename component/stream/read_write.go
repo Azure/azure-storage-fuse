@@ -208,7 +208,7 @@ func (rw *ReadWriteCache) RenameFile(options internal.RenameFileOptions) error {
 }
 
 func (rw *ReadWriteCache) FlushFile(options internal.FlushFileOptions) error {
-	// log.Trace("Stream::FlushFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	log.Trace("Stream::FlushFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	if rw.StreamOnly || options.Handle.CacheObj.StreamOnly {
 		return nil
 	}
@@ -224,11 +224,11 @@ func (rw *ReadWriteCache) FlushFile(options internal.FlushFileOptions) error {
 }
 
 func (rw *ReadWriteCache) CloseFile(options internal.CloseFileOptions) error {
-	// log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	log.Trace("Stream::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 	// try to flush again to make sure it's cleaned up
 	err := rw.FlushFile(internal.FlushFileOptions(options))
 	if err != nil {
-		log.Err("Stream::FlushFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
+		log.Err("Stream::CloseFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
 		return err
 	}
 	if !rw.StreamOnly && !options.Handle.CacheObj.StreamOnly {
@@ -325,7 +325,7 @@ func (rw *ReadWriteCache) RenameDirectory(options internal.RenameDirOptions) err
 
 // Stop : Stop the component functionality and kill all threads started
 func (rw *ReadWriteCache) Stop() error {
-	log.Trace("Stopping component : %s", rw.Name())
+	log.Trace("Stream::Stop : stopping component : %s", rw.Name())
 	if !rw.StreamOnly {
 		handleMap := handlemap.GetHandles()
 		handleMap.Range(func(key, value interface{}) bool {
