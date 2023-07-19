@@ -1,4 +1,7 @@
 ## 2.0.5 (WIP)
+**Features**
+- In case of MSI based authentication, user shall provide object-id of the identity and respect-acl flag for file-system to work with ACLs assigned to the given identity instead of general permissions.
+
 
 ## 2.0.4 (2023-07-03)
 **Features**
