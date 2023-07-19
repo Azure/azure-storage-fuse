@@ -76,6 +76,7 @@ type AzStorageConfig struct {
 	virtualDirectory   bool
 	maxResultsForList  int32
 	disableCompression bool
+	respectACL         bool
 }
 
 type AzStorageConnection struct {

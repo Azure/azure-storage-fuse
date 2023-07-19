@@ -636,6 +636,9 @@ func init() {
 	disableCompression := config.AddBoolFlag("disable-compression", false, "Disable transport layer compression.")
 	config.BindPFlag(compName+".disable-compression", disableCompression)
 
+	resepectACL := config.AddBoolFlag("respect-acl", false, "Match ObjectID in ACL against the one used for authentication.")
+	config.BindPFlag(compName+".respect-acl", resepectACL)
+
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})
