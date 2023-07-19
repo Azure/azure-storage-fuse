@@ -273,14 +273,6 @@ stages:
                 sudo apt-get install $(fuselib) -y
               displayName: 'Install libfuse'
 
-            # Downloading Go dependency packages
-            - task: Go@0
-              inputs:
-                command: 'get'
-                arguments: '-d'
-                workingDirectory: $(WORK_DIR)
-              displayName: "Go Get"
-
             # -------------------------------------------------------
             # Pull and build the code
             - template: 'azure-pipeline-templates/build.yml'
