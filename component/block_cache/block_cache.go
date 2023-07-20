@@ -168,7 +168,7 @@ func (bc *BlockCache) TempCacheCleanup() error {
 		return nil
 	}
 
-	log.Err("BlockCache::TempCacheCleanup : Cleaning up temp directory %s", bc.tmpPath)
+	log.Info("BlockCache::TempCacheCleanup : Cleaning up temp directory %s", bc.tmpPath)
 
 	dirents, err := os.ReadDir(bc.tmpPath)
 	if err != nil {
