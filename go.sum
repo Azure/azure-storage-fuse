@@ -49,8 +49,8 @@ dmitri.shuralyov.com/gpu/mtl v0.0.0-20190408044501-666a987793e9/go.mod h1:H6x//7
 github.com/Azure/azure-pipeline-go v0.2.3/go.mod h1:x841ezTBIMG6O3lAcl8ATHnsOPVl2bqk7S3ta6S6u4k=
 github.com/Azure/azure-pipeline-go v0.2.4-0.20220425205405-09e6f201e1e4 h1:hDJImUzpTAeIw/UasFUUDB/+UsZm5Q/6x2/jKKvEUiw=
 github.com/Azure/azure-pipeline-go v0.2.4-0.20220425205405-09e6f201e1e4/go.mod h1:x841ezTBIMG6O3lAcl8ATHnsOPVl2bqk7S3ta6S6u4k=
-github.com/Azure/azure-storage-azcopy/v10 v10.19.0 h1:KABXaqKAi6irjeiGVolmisJsHrOjCtzpXhxVKM+/+eA=
-github.com/Azure/azure-storage-azcopy/v10 v10.19.0/go.mod h1:TUB6fvsBwrBW1S6mDQU+ecIA3JtUBOVpfGntT5bVqrc=
+github.com/Azure/azure-storage-azcopy/v10 v10.19.1-0.20230717101935-ab8ff0a85e48 h1:wFGbKERZQHivqPPN4foUtXpO9s8WvrsZXuUVwbDpBOY=
+github.com/Azure/azure-storage-azcopy/v10 v10.19.1-0.20230717101935-ab8ff0a85e48/go.mod h1:TUB6fvsBwrBW1S6mDQU+ecIA3JtUBOVpfGntT5bVqrc=
 github.com/Azure/azure-storage-blob-go v0.15.0 h1:rXtgp8tN1p29GvpGgfJetavIG0V7OgcSXPpwp3tx6qk=
 github.com/Azure/azure-storage-blob-go v0.15.0/go.mod h1:vbjsVbX0dlxnRc4FFMPsS9BsJWPcne7GB7onqlPvz58=
 github.com/Azure/azure-storage-file-go v0.6.1-0.20201111053559-3c1754dc00a5 h1:aHEvBM4oXIWSTOVdL55nCYXO0Cl7ie3Ui5xMQhLVez8=

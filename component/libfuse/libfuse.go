@@ -139,6 +139,10 @@ func (lf *Libfuse) SetNextComponent(nc internal.Component) {
 	lf.BaseComponent.SetNextComponent(nc)
 }
 
+func (lf *Libfuse) Priority() internal.ComponentPriority {
+	return internal.EComponentPriority.Producer()
+}
+
 // Start : Pipeline calls this method to start the component functionality
 //
 //	this shall not block the call otherwise pipeline will not start
