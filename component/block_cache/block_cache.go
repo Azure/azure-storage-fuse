@@ -79,17 +79,19 @@ type BlockCache struct {
 	fileNodeMap     sync.Map        // Map holding files that are there in our cache
 	maxDiskUsageHit bool            // Flag to indicate if we have hit max disk usage
 	noPrefetch      bool            // Flag to indicate if prefetch is disabled
+	prefetchOnOpen  bool            // Start prefetching on file open call instead of waiting for first read
 }
 
 // Structure defining your config parameters
 type BlockCacheOptions struct {
-	BlockSize     uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	MemSize       uint64 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
-	TmpPath       string `config:"path" yaml:"path,omitempty"`
-	DiskSize      uint64 `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
-	DiskTimeout   uint32 `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
-	PrefetchCount uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
-	Workers       uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
+	BlockSize      uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	MemSize        uint64 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
+	TmpPath        string `config:"path" yaml:"path,omitempty"`
+	DiskSize       uint64 `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
+	DiskTimeout    uint32 `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
+	PrefetchCount  uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
+	Workers        uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
+	PrefetchOnOpen bool   `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
 }
 
 // One workitem to be scheduled
@@ -229,6 +231,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.diskTimeout = conf.DiskTimeout
 	}
 
+	bc.prefetchOnOpen = conf.PrefetchOnOpen
 	bc.prefetch = MIN_PREFETCH
 	bc.noPrefetch = false
 
@@ -314,6 +317,10 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	handle.Buffers = &handlemap.Buffers{
 		Cooked:  list.New(), // List to hold free blocks
 		Cooking: list.New(), // List to hold blocks still under download
+	}
+
+	if bc.prefetchOnOpen {
+		bc.startPrefetch(handle, 0, false)
 	}
 
 	return handle, nil
@@ -824,4 +831,23 @@ func NewBlockCacheComponent() internal.Component {
 // On init register this component to pipeline and supply your constructor
 func init() {
 	internal.AddComponent(compName, NewBlockCacheComponent)
+
+	blockSizeMb := config.AddUint64Flag("block-cache-block-size", 0, "Size (in MB) of a block to be downloaded for block-cache.")
+	config.BindPFlag(compName+".block-size-mb", blockSizeMb)
+
+	blockPoolMb := config.AddUint64Flag("block-cache-pool-size", 0, "Size (in MB) of total memory preallocated for block-cache.")
+	config.BindPFlag(compName+".mem-size-mb", blockPoolMb)
+
+	blockCachePath := config.AddStringFlag("block-cache-path", "", "Path to store downloaded blocks.")
+	config.BindPFlag(compName+".path", blockCachePath)
+
+	blockDiskMb := config.AddUint64Flag("block-cache-disk-size", 0, "Size (in MB) of total disk capacity that block-cache can use.")
+	config.BindPFlag(compName+".disk-size-mb", blockDiskMb)
+
+	blockCachePrefetch := config.AddUint32Flag("block-cache-prefetch", 0, "Max number of blocks to prefetch.")
+	config.BindPFlag(compName+".prefetch", blockCachePrefetch)
+
+	blockCachePrefetchOnOpen := config.AddBoolFlag("block-cache-prefetch-on-open", false, "Start prefetching on open or wait for first read.")
+	config.BindPFlag(compName+".prefetch-on-open", blockCachePrefetchOnOpen)
+
 }
