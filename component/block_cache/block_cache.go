@@ -320,7 +320,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	}
 
 	if bc.prefetchOnOpen {
-		bc.startPrefetch(handle, 0, false)
+		_ = bc.startPrefetch(handle, 0, false)
 	}
 
 	return handle, nil
