@@ -59,7 +59,7 @@ steps:
       command: 'get'
       arguments: '-d'
       workingDirectory: ${{ parameters.working_directory }}
-    displayName: "Go Get"
+    displayName: "Go Get EE"
 
   # Building our package
   - task: Go@0

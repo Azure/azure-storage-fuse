@@ -1778,7 +1778,7 @@ stages:
             - task: Go@0
               inputs:
                 command: 'get'
-                arguments: '-d ./...'
+                arguments: '-d'
                 workingDirectory: $(WORK_DIR)
               displayName: "Go Get"
 
