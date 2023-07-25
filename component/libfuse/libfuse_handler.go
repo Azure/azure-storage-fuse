@@ -39,7 +39,7 @@ package libfuse
 // CFLAGS: compile time flags -D object file creation. D= Define
 // LFLAGS: loader flags link library -l binary file. l=link -ldl is for the extension to dynamically link
 
-// #cgo CFLAGS: -DFUSE_USE_VERSION=35 -D_FILE_OFFSET_BITS=64
+// #cgo CFLAGS: -DFUSE_USE_VERSION=39 -D_FILE_OFFSET_BITS=64
 // #cgo LDFLAGS: -lfuse3 -ldl
 // #include "libfuse_wrapper.h"
 // #include "extension_handler.h"
@@ -310,8 +310,8 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 
 	// While reading a file let kernel do readahed for better perf
 	conn.max_readahead = (8 * 1024 * 1024)
-	//conn.max_write = (4 * 1024 * 1024)
-	//conn.max_read =  (4 * 1024 * 1024)
+	conn.max_write = (1 * 1024 * 1024)
+	conn.max_read = (1 * 1024 * 1024)
 
 	// direct_io option is used to bypass the kernel cache. It disables the use of
 	// page cache (file content cache) in the kernel for the filesystem.
