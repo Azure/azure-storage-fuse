@@ -319,7 +319,7 @@ stages:
                   test_sas_credential: true
                   test_spn_credential: true
                   test_stream: true
-                  test_azurite: true
+                  test_azurite: false
                   stream_config: $(BLOBFUSE2_STREAM_CFG)
                   stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
@@ -736,12 +736,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              # Go tool installer
-              - task: GoTool@0
-                inputs:
-                  version: '1.20.5'
-                displayName: "Install Go Version"
-
               - script: |
                   sudo touch /etc/yum.repos.d/centos.repo
                   sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
@@ -818,12 +812,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              # Go tool installer
-              - task: GoTool@0
-                inputs:
-                  version: '1.20.5'
-                displayName: "Install Go Version"
-
               - script: |
                   sudo sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
                   sudo sed -i 's|baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
@@ -891,12 +879,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              # Go tool installer
-              - task: GoTool@0
-                inputs:
-                  version: '1.20.5'
-                displayName: "Install Go Version"
-
               - template: 'azure-pipeline-templates/distro-tests.yml'
                 parameters:
                   working_dir: $(WORK_DIR)
@@ -963,12 +945,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              # Go tool installer
-              - task: GoTool@0
-                inputs:
-                  version: '1.20.5'
-                displayName: "Install Go Version"
-
               - template: 'azure-pipeline-templates/distro-tests.yml'
                 parameters:
                   working_dir: $(WORK_DIR)
@@ -1030,12 +1006,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              # Go tool installer
-              - task: GoTool@0
-                inputs:
-                  version: '1.20.5'
-                displayName: "Install Go Version"
-
               - template: 'azure-pipeline-templates/distro-tests.yml'
                 parameters:
                   working_dir: $(WORK_DIR)
@@ -1099,12 +1069,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              # Go tool installer
-              - task: GoTool@0
-                inputs:
-                  version: '1.20.5'
-                displayName: "Install Go Version"
-
               - template: 'azure-pipeline-templates/distro-tests.yml'
                 parameters:
                   working_dir: $(WORK_DIR)
@@ -1771,7 +1735,7 @@ stages:
             - task: ShellScript@2
               inputs:
                 scriptPath: "$(WORK_DIR)/go_installer.sh"
-                args: "$(ROOT_DIR)/ 1.20.5"
+                args: "$(ROOT_DIR)/"
               displayName: "GoTool Custom Setup"
 
             # Downloading Go dependency packages

@@ -14,13 +14,6 @@ steps:
       hostnamectl
     displayName: 'Print Agent Info'
 
-  # Custom script to install Go-lang
-  - task: ShellScript@2
-    inputs:
-      scriptPath: "${{ parameters.working_directory }}/go_installer.sh"
-      args: "${{ parameters.root_dir }}/"
-    displayName: "GoTool Custom Setup"
-
   # Create directory structure and prepare to mount
   - ${{ parameters.installStep }}
   - script: |
@@ -42,6 +35,13 @@ steps:
       git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
     displayName: 'Checkout Branch'
     workingDirectory: $(WORK_DIR)
+ 
+  # Custom script to install Go-lang
+  - task: ShellScript@2
+    inputs:
+      scriptPath: "${{ parameters.working_directory }}/go_installer.sh"
+      args: "${{ parameters.root_dir }}/"
+    displayName: "GoTool Custom Setup"
 
   # Downloading Go dependency packages
   - task: Go@0

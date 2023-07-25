@@ -32,12 +32,14 @@ jobs:
 
     steps:
     - checkout: self
-
-    - task: GoTool@0
+    
+    # Custom script to install Go-lang
+    - task: ShellScript@2
       inputs:
-        version: '1.20.5'
-      displayName: "Select Go Version"
-
+        scriptPath: "${{ parameters.working_directory }}/go_installer.sh"
+        args: "${{ parameters.root_dir }}/"
+      displayName: "GoTool Custom Setup"
+      
     - task: Go@0
       inputs:
         command: 'get'
