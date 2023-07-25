@@ -36,8 +36,8 @@ jobs:
     # Custom script to install Go-lang
     - task: ShellScript@2
       inputs:
-        scriptPath: "${{ parameters.working_directory }}/go_installer.sh"
-        args: "${{ parameters.root_dir }}/"
+        scriptPath: "./go_installer.sh"
+        args: "./"
       displayName: "GoTool Custom Setup"
       
     - task: Go@0
