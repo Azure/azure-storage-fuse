@@ -35,7 +35,7 @@ steps:
   # Install fuse and build the code
   - script: |
       sudo apt-get update --fix-missing
-      sudo apt-get install ${{ parameters.tags }} ${{ parameters.fuselib }} gcc -y
+      sudo apt-get install ${{ parameters.fuselib }} gcc -y
     displayName: 'Install libfuse'
 
   - task: Go@0
