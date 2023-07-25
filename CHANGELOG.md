@@ -1,4 +1,6 @@
 ## 2.0.5 (WIP)
+**Bug Fixes**
+- [#1207](https://github.com/Azure/azure-storage-fuse/issues/1207) Fix log-rotate script.
 
 ## 2.0.4 (2023-07-03)
 **Features**
