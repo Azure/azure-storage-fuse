@@ -40,28 +40,28 @@ jobs:
 
     
   - job: test_ARM64
-      displayName: Build and Test on
-      strategy:
-        matrix:
-          Ubuntu-22-ARM64-BlockBlob:
-            imageName: 'blobfuse-ubn22-arm64'
-            containerName: 'test-cnt-ubn-22-arm64'
-            fuselib: 'libfuse3-dev'
-            tags: 'fuse3'
-            adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+    displayName: Build and Test on
+    strategy:
+      matrix:
+        Ubuntu-22-ARM64-BlockBlob:
+          imageName: 'blobfuse-ubn22-arm64'
+          containerName: 'test-cnt-ubn-22-arm64'
+          fuselib: 'libfuse3-dev'
+          tags: 'fuse3'
+          adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+  
+    pool:
+      name: "blobfuse-ubn-arm64-pool"
+      demands:
+        - ImageOverride -equals $(imageName)
     
-      pool:
-        name: "blobfuse-ubn-arm64-pool"
-        demands:
-          - ImageOverride -equals $(imageName)
+    variables:
+      - group: NightlyBlobFuse
       
-      variables:
-        - group: NightlyBlobFuse
-        
-      steps:
-      # ----------------------------------------------------------------
-        - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
-          parameters:
-            container: $(containerName)
-            tags: $(tags)
-            fuselib: $(fuselib)    
+    steps:
+    # ----------------------------------------------------------------
+      - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
+        parameters:
+          container: $(containerName)
+          tags: $(tags)
+          fuselib: $(fuselib)    
