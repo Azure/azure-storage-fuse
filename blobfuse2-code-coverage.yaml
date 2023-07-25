@@ -749,11 +749,12 @@ stages:
           steps:
             - checkout: none
 
-            # GoTool task used only for Microsoft Hosted Agents to install Go-lang
-            - task: GoTool@0
+            # Custom script to install Go-lang
+            - task: ShellScript@2
               inputs:
-                version: '1.20.5'
-              displayName: "GoTool Setup"
+                scriptPath: "${{ parameters.working_directory }}/go_installer.sh"
+                args: "${{ parameters.root_dir }}/"
+              displayName: "GoTool Custom Setup"
 
             - script: |
                 sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"

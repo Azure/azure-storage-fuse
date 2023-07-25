@@ -38,19 +38,11 @@ steps:
     displayName: 'Libfuse Setup'
     condition: eq('${{ parameters.hostedAgent }}', true)
 
-  # GoTool task used only for Microsoft Hosted Agents to install Go-lang
-  - task: GoTool@0
-    inputs:
-      version: '1.20.5'
-    condition: ${{ parameters.hostedAgent }}
-    displayName: "GoTool Setup"
-
-  # Alternative custom script for Self-Hosted agents to install Go-lang
+  # Custom script to install Go-lang
   - task: ShellScript@2
     inputs:
       scriptPath: "${{ parameters.working_directory }}/go_installer.sh"
-      args: "${{ parameters.root_dir }}/ 1.20.5"
-    condition: not(${{parameters.hostedAgent }})
+      args: "${{ parameters.root_dir }}/"
     displayName: "GoTool Custom Setup"
 
   # Downloading Go dependency packages
