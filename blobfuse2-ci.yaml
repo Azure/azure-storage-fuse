@@ -28,8 +28,7 @@ jobs:
     pool:
       vmImage: $(imageName)
     variables:
-      - group: NightlyBlobFuse
-      - 
+      - group: NightlyBlobFuse 
 
     steps:
     # ----------------------------------------------------------------
@@ -55,10 +54,10 @@ jobs:
         name: "blobfuse-ubn-arm64-pool"
         demands:
           - ImageOverride -equals $(imageName)
+      
       variables:
         - group: NightlyBlobFuse
-        -         
-
+        
       steps:
       # ----------------------------------------------------------------
         - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
