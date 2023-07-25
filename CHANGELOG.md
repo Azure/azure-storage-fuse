@@ -2,6 +2,10 @@
 **Features**
 - Added support to read OAuth token from a user provided file path.
 
+**Bug Fixes**
+- Fix priority level check of components to reject invalid pipeline entries.
+-[#1196](https://github.com/Azure/azure-storage-fuse/issues/1196) 100% CPU usage in 2.0.4 fixed
+
 ## 2.0.4 (2023-07-03)
 **Features**
 - Added new config parameter "max-fuse-threads" under "libfuse" config to control max threads allowed at libfuse layer.
