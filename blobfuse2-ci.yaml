@@ -9,7 +9,7 @@ pr:
 jobs:
   # Ubuntu based test suite
   - job: test
-    displayName: Build and Test on
+    displayName: CI on
     strategy:
       matrix:
         Ubuntu-20:
@@ -40,10 +40,10 @@ jobs:
 
     
   - job: test_ARM64
-    displayName: Build and Test on
+    displayName: CI on
     strategy:
       matrix:
-        Ubuntu-22-ARM64-BlockBlob:
+        Ubuntu-22-ARM64:
           imageName: 'blobfuse-ubn22-arm64'
           containerName: 'test-cnt-ubn-22-arm64'
           fuselib: 'libfuse3-dev'
@@ -64,4 +64,5 @@ jobs:
         parameters:
           container: $(containerName)
           tags: $(tags)
-          fuselib: $(fuselib)    
+          fuselib: $(fuselib)  
+          skip_fmt: false  

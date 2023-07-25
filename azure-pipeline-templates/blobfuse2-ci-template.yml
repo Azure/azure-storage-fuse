@@ -11,6 +11,9 @@ parameters:
   - name: proxy_address
     type: string
     default: ""    
+  - name: skip_fmt
+    type: boolean
+    default: true
 
 steps:
   - checkout: self
@@ -32,7 +35,7 @@ steps:
   # Install fuse and build the code
   - script: |
       sudo apt-get update --fix-missing
-      sudo apt-get install ${{ parameters.fuselib }} -y
+      sudo apt-get install ${{ parameters.tags }} ${{ parameters.fuselib }} gcc -y
     displayName: 'Install libfuse'
 
   - task: Go@0
@@ -109,7 +112,7 @@ steps:
   - script: |
       gofmt -s -l -d . | tee >&2
     displayName: 'Go Format Check'
-    condition: always()
+    condition: eq(${{ parameters.skip_fmt }}, true)
     failOnStderr: true
     workingDirectory: ./
 
