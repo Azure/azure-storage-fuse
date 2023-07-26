@@ -66,4 +66,3 @@ jobs:
           tags: $(tags)
           fuselib: $(fuselib)  
           skip_fmt: false  
-          adlsSas: $(adlsSas)
