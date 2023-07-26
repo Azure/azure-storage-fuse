@@ -120,23 +120,24 @@ const DefaultMaxResultsForList int32 = 2
 // https://github.com/Azure/go-autorest/blob/a46566dfcbdc41e736295f94e9f690ceaf50094a/autorest/adal/token.go#L788
 // newServicePrincipalTokenFromMSI : reads them directly from env
 const (
-	EnvAzStorageAccount            = "AZURE_STORAGE_ACCOUNT"
-	EnvAzStorageAccountType        = "AZURE_STORAGE_ACCOUNT_TYPE"
-	EnvAzStorageAccessKey          = "AZURE_STORAGE_ACCESS_KEY"
-	EnvAzStorageSasToken           = "AZURE_STORAGE_SAS_TOKEN"
-	EnvAzStorageIdentityClientId   = "AZURE_STORAGE_IDENTITY_CLIENT_ID"
-	EnvAzStorageIdentityResourceId = "AZURE_STORAGE_IDENTITY_RESOURCE_ID"
-	EnvAzStorageIdentityObjectId   = "AZURE_STORAGE_IDENTITY_OBJECT_ID"
-	EnvAzStorageSpnTenantId        = "AZURE_STORAGE_SPN_TENANT_ID"
-	EnvAzStorageSpnClientId        = "AZURE_STORAGE_SPN_CLIENT_ID"
-	EnvAzStorageSpnClientSecret    = "AZURE_STORAGE_SPN_CLIENT_SECRET"
-	EnvAzStorageAadEndpoint        = "AZURE_STORAGE_AAD_ENDPOINT"
-	EnvAzStorageAuthType           = "AZURE_STORAGE_AUTH_TYPE"
-	EnvAzStorageBlobEndpoint       = "AZURE_STORAGE_BLOB_ENDPOINT"
-	EnvHttpProxy                   = "http_proxy"
-	EnvHttpsProxy                  = "https_proxy"
-	EnvAzStorageAccountContainer   = "AZURE_STORAGE_ACCOUNT_CONTAINER"
-	EnvAzAuthResource              = "AZURE_STORAGE_AUTH_RESOURCE"
+	EnvAzStorageAccount               = "AZURE_STORAGE_ACCOUNT"
+	EnvAzStorageAccountType           = "AZURE_STORAGE_ACCOUNT_TYPE"
+	EnvAzStorageAccessKey             = "AZURE_STORAGE_ACCESS_KEY"
+	EnvAzStorageSasToken              = "AZURE_STORAGE_SAS_TOKEN"
+	EnvAzStorageIdentityClientId      = "AZURE_STORAGE_IDENTITY_CLIENT_ID"
+	EnvAzStorageIdentityResourceId    = "AZURE_STORAGE_IDENTITY_RESOURCE_ID"
+	EnvAzStorageIdentityObjectId      = "AZURE_STORAGE_IDENTITY_OBJECT_ID"
+	EnvAzStorageSpnTenantId           = "AZURE_STORAGE_SPN_TENANT_ID"
+	EnvAzStorageSpnClientId           = "AZURE_STORAGE_SPN_CLIENT_ID"
+	EnvAzStorageSpnClientSecret       = "AZURE_STORAGE_SPN_CLIENT_SECRET"
+	EnvAzStorageSpnOAuthTokenFilePath = "AZURE_OAUTH_TOKEN_FILE"
+	EnvAzStorageAadEndpoint           = "AZURE_STORAGE_AAD_ENDPOINT"
+	EnvAzStorageAuthType              = "AZURE_STORAGE_AUTH_TYPE"
+	EnvAzStorageBlobEndpoint          = "AZURE_STORAGE_BLOB_ENDPOINT"
+	EnvHttpProxy                      = "http_proxy"
+	EnvHttpsProxy                     = "https_proxy"
+	EnvAzStorageAccountContainer      = "AZURE_STORAGE_ACCOUNT_CONTAINER"
+	EnvAzAuthResource                 = "AZURE_STORAGE_AUTH_RESOURCE"
 )
 
 type AzStorageOptions struct {
@@ -151,6 +152,7 @@ type AzStorageOptions struct {
 	TenantID                string `config:"tenantid" yaml:"tenantid,omitempty"`
 	ClientID                string `config:"clientid" yaml:"clientid,omitempty"`
 	ClientSecret            string `config:"clientsecret" yaml:"clientsecret,omitempty"`
+	OAuthTokenFilePath      string `config:"oauth-token-path" yaml:"oauth-token-path,omitempty"`
 	ActiveDirectoryEndpoint string `config:"aadendpoint" yaml:"aadendpoint,omitempty"`
 	Endpoint                string `config:"endpoint" yaml:"endpoint,omitempty"`
 	AuthMode                string `config:"mode" yaml:"mode,omitempty"`
@@ -197,6 +199,8 @@ func RegisterEnvVariables() {
 	config.BindEnv("azstorage.tenantid", EnvAzStorageSpnTenantId)
 	config.BindEnv("azstorage.clientid", EnvAzStorageSpnClientId)
 	config.BindEnv("azstorage.clientsecret", EnvAzStorageSpnClientSecret)
+	config.BindEnv("azstorage.oauth-token-path", EnvAzStorageSpnOAuthTokenFilePath)
+
 	config.BindEnv("azstorage.objid", EnvAzStorageIdentityObjectId)
 
 	config.BindEnv("azstorage.aadendpoint", EnvAzStorageAadEndpoint)
@@ -427,13 +431,14 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		az.stConfig.authConfig.ObjectID = opt.ObjectID
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
-		if opt.ClientID == "" || opt.ClientSecret == "" || opt.TenantID == "" {
+		if opt.ClientID == "" || (opt.ClientSecret == "" && opt.OAuthTokenFilePath == "") || opt.TenantID == "" {
 			//lint:ignore ST1005 ignore
 			return errors.New("Client ID, Tenant ID or Client Secret not provided")
 		}
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.ClientSecret = opt.ClientSecret
 		az.stConfig.authConfig.TenantID = opt.TenantID
+		az.stConfig.authConfig.OAuthTokenFilePath = opt.OAuthTokenFilePath
 
 	default:
 		log.Err("ParseAndValidateConfig : Invalid auth mode %s", opt.AuthMode)
