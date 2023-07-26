@@ -45,7 +45,7 @@ jobs:
       matrix:
         Ubuntu-22-ARM64:
           imageName: 'blobfuse-ubn22-arm64'
-          containerName: 'test-cnt-ubn-22-arm64'
+          containerName: 'test-cnt-ubn-22'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
@@ -66,3 +66,4 @@ jobs:
           tags: $(tags)
           fuselib: $(fuselib)  
           skip_fmt: false  
+          adlsSas: $(adlsSas)

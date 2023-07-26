@@ -14,6 +14,8 @@ parameters:
   - name: skip_fmt
     type: boolean
     default: true
+  - name: adlsSas
+    type: string
 
 steps:
   - checkout: self
@@ -59,7 +61,7 @@ steps:
       echo "\"block-sas\"": "\"$(AZTEST_BLOCK_SAS)\"", >> $cnfFile
       echo "\"block-cont-sas-ubn-18\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_18)\"", >> $cnfFile
       echo "\"block-cont-sas-ubn-20\"": "\"$(AZTEST_BLOCK_CONT_SAS_UBN_20)\"", >> $cnfFile
-      echo "\"adls-sas\"": "\"$(adlsSas)\"", >> $cnfFile
+      echo "\"adls-sas\"": "\"${{ parameters.adlsSas }}\"", >> $cnfFile
       echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
       echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
