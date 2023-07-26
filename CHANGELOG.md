@@ -1,7 +1,12 @@
 ## 2.0.5 (WIP)
 **Features**
-- In case of MSI based authentication, user shall provide object-id of the identity and respect-acl flag for file-system to work with ACLs assigned to the given identity instead of general permissions.
+- In case of MSI based authentication, user shall provide object-id of the identity and respect-acl flag for file-system to work with ACLs assigned to the given identity instead of permissions.
+- Added support to read OAuth token from a user given file.
 
+**Bug Fixes**
+- Fix priority level check of components to reject invalid pipeline entries.
+- [#1196](https://github.com/Azure/azure-storage-fuse/issues/1196) 100% CPU usage in 2.0.4 fixed
+- [#1207](https://github.com/Azure/azure-storage-fuse/issues/1207) Fix log-rotate script.
 
 ## 2.0.4 (2023-07-03)
 **Features**
