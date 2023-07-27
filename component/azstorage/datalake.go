@@ -430,7 +430,7 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	}
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 
-	if dl.Config.respectACL && dl.Config.authConfig.ObjectID != "" {
+	if dl.Config.HonourACL && dl.Config.authConfig.ObjectID != "" {
 		acl, err := pathURL.GetAccessControl(context.Background())
 		if err != nil {
 			// Just ignore the error here as rest of the attributes have been retrieved

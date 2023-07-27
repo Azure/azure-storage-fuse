@@ -176,7 +176,7 @@ type AzStorageOptions struct {
 	VirtualDirectory        bool   `config:"virtual-directory" yaml:"virtual-directory"`
 	MaxResultsForList       int32  `config:"max-results-for-list" yaml:"max-results-for-list"`
 	DisableCompression      bool   `config:"disable-compression" yaml:"disable-compression"`
-	RespectACL              bool   `config:"respect-acl" yaml:"respect-acl"`
+	HonourACL               bool   `config:"honour-acl" yaml:"honour-acl"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -530,10 +530,10 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		az.stConfig.disableCompression = DisableCompression
 	}
 
-	if config.IsSet(compName + ".respect-acl") {
-		az.stConfig.respectACL = opt.RespectACL
+	if config.IsSet(compName + ".honour-acl") {
+		az.stConfig.HonourACL = opt.HonourACL
 	} else {
-		az.stConfig.respectACL = false
+		az.stConfig.HonourACL = false
 	}
 
 	// Auth related reconfig
