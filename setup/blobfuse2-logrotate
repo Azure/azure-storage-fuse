@@ -11,7 +11,7 @@
 	delaycompress
 	sharedscripts
 	postrotate
-		/usr/lib/rsyslog/rsyslog-rotate
+		systemctl kill -s HUP rsyslog.service
 	endscript
 }
 
