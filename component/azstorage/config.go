@@ -176,6 +176,7 @@ type AzStorageOptions struct {
 	VirtualDirectory        bool   `config:"virtual-directory" yaml:"virtual-directory"`
 	MaxResultsForList       int32  `config:"max-results-for-list" yaml:"max-results-for-list"`
 	DisableCompression      bool   `config:"disable-compression" yaml:"disable-compression"`
+	HonourACL               bool   `config:"honour-acl" yaml:"honour-acl"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -407,6 +408,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		return errors.New("invalid auth type")
 	}
 
+	az.stConfig.authConfig.ObjectID = opt.ObjectID
+
 	switch authType {
 	case EAuthType.KEY():
 		az.stConfig.authConfig.AuthMode = EAuthType.KEY()
@@ -428,7 +431,6 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 		az.stConfig.authConfig.ApplicationID = opt.ApplicationID
 		az.stConfig.authConfig.ResourceID = opt.ResourceID
-		az.stConfig.authConfig.ObjectID = opt.ObjectID
 	case EAuthType.SPN():
 		az.stConfig.authConfig.AuthMode = EAuthType.SPN()
 		if opt.ClientID == "" || (opt.ClientSecret == "" && opt.OAuthTokenFilePath == "") || opt.TenantID == "" {
@@ -526,6 +528,12 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		az.stConfig.disableCompression = opt.DisableCompression
 	} else {
 		az.stConfig.disableCompression = DisableCompression
+	}
+
+	if config.IsSet(compName + ".honour-acl") {
+		az.stConfig.HonourACL = opt.HonourACL
+	} else {
+		az.stConfig.HonourACL = false
 	}
 
 	// Auth related reconfig
