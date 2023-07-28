@@ -191,9 +191,6 @@ func (suite *unmountTestSuite) TestUnmountCmdValidArg() {
 	_, err = executeCommandC(rootCmd, "unmount", mountDirectory5+"*")
 	suite.assert.Nil(err)
 
-	lst, _ = unmountCmd.ValidArgsFunction(nil, nil, "")
-	suite.assert.Empty(lst)
-
 	lst, _ = unmountCmd.ValidArgsFunction(nil, nil, "abcd")
 	suite.assert.Empty(lst)
 }

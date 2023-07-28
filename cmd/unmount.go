@@ -70,7 +70,7 @@ var unmountCmd = &cobra.Command{
 		} else {
 			err := unmountBlobfuse2(args[0])
 			if err != nil {
-				return fmt.Errorf("failed to unmount %s [%s]", args[0], err.Error())
+				return err
 			}
 		}
 
@@ -86,27 +86,30 @@ var unmountCmd = &cobra.Command{
 }
 
 // Attempts to unmount the directory and returns true if the operation succeeded
-func unmountBlobfuse2(mntPath string) (retErr error) {
+func unmountBlobfuse2(mntPath string) error {
 	unmountCmd := []string{"fusermount3", "fusermount"}
 
+	var errb bytes.Buffer
+	var err error
 	for idx, cmd := range unmountCmd {
 		cliOut := exec.Command(cmd, "-u", mntPath)
-		var errb bytes.Buffer
 		cliOut.Stderr = &errb
-		_, err := cliOut.Output()
+		_, err = cliOut.Output()
 
-		if err != nil {
-			if strings.Contains(err.Error(), "executable file not found") && idx == 1 {
-				log.Err("unmountBlobfuse2 : failed to unmount (%s : %s)", err.Error(), errb.String())
-				retErr = fmt.Errorf("%s", errb.String()+" "+err.Error())
-			}
-		} else {
+		if err == nil {
 			fmt.Println("Successfully unmounted", mntPath)
 			return nil
 		}
+
+		if !strings.Contains(err.Error(), "executable file not found") {
+			log.Err("unmountBlobfuse2 : failed to unmount (%s : %s)", err.Error(), errb.String())
+			break
+		} else if idx == 1 {
+			break
+		}
 	}
 
-	return retErr
+	return fmt.Errorf("%s", errb.String()+" "+err.Error())
 }
 
 func init() {
