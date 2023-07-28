@@ -122,6 +122,8 @@ func (p *lruPolicy) StartPolicy() error {
 
 	// Only start the timeoutMonitor if evictTime is non-zero.
 	// If evictTime=0, we delete on invalidate so there is no need for a timeout monitor signal to be sent.
+	log.Info("lruPolicy::StartPolicy : Policy set with %v timeout", p.cacheTimeout)
+
 	if p.cacheTimeout != 0 {
 		p.cacheTimeoutMonitor = time.Tick(time.Duration(time.Duration(p.cacheTimeout) * time.Second))
 	}
@@ -230,6 +232,7 @@ func (p *lruPolicy) cacheValidate(name string) {
 			deleted: false,
 		}
 		p.nodeMap.Store(name, node)
+		log.Debug("lruPolicy::cacheValidate : Added %s to nodemap", name)
 	} else {
 		node = val.(*lruNode)
 	}
@@ -317,6 +320,7 @@ func (p *lruPolicy) removeNode(name string) {
 	}
 
 	p.nodeMap.Delete(name)
+	log.Debug("lruPolicy::removeNode : Deleted %s from nodemap", name)
 
 	p.Lock()
 	defer p.Unlock()
