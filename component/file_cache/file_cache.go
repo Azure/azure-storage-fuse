@@ -309,6 +309,8 @@ func (c *FileCache) Configure(_ bool) error {
 
 // OnConfigChange : If component has registered, on config file change this method is called
 func (c *FileCache) OnConfigChange() {
+	log.Trace("FileCache::OnConfigChange : %s", c.Name())
+
 	conf := FileCacheOptions{}
 	err := config.UnmarshalKey(compName, &conf)
 	if err != nil {

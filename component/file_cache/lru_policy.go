@@ -170,6 +170,10 @@ func (p *lruPolicy) CacheInvalidate(name string) {
 	// will be clean so we we need to try deleting the file.
 	_, found := p.nodeMap.Load(name)
 	if p.cacheTimeout == 0 || !found {
+		if p.cacheTimeout != 0 {
+			log.Info("lruPolicy::CacheInvalidate : %s not present in map", name)
+		}
+
 		p.CachePurge(name)
 	}
 }
