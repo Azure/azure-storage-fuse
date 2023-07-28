@@ -1469,6 +1469,10 @@ func init() {
 	config.BindPFlag(compName+".upload-modified-only", uploadModifiedOnly)
 	uploadModifiedOnly.Hidden = true
 
+	cachePolicy := config.AddStringFlag("file-cache-policy", "lru", "Cache eviction policy.")
+	config.BindPFlag(compName+".policy", cachePolicy)
+	cachePolicy.Hidden = true
+
 	syncToFlush := config.AddBoolFlag("sync-to-flush", false, "Sync call on file will force a upload of the file.")
 	config.BindPFlag(compName+".sync-to-flush", syncToFlush)
 
