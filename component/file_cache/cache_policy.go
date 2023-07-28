@@ -78,7 +78,7 @@ type cachePolicy interface {
 }
 
 // getUsage: The current cache usage in MB
-func getUsage(path string) float64 {
+func getUsage(path string) (float64, error) {
 	log.Trace("cachePolicy::getCacheUsage : %s", path)
 
 	var currSize float64
@@ -94,19 +94,20 @@ func getUsage(path string) float64 {
 	err := cmd.Run()
 	if err != nil {
 		log.Err("cachePolicy::getCacheUsage : error running du [%s]", err.Error())
-		return 0
+		return 0, err
 	}
 
 	size := strings.Split(out.String(), "\t")[0]
 	if size == "0" {
-		return 0
+		return 0, fmt.Errorf("failed to parse du output")
 	}
+
 	// some OS's use "," instead of "." that will not work for float parsing - replace it
 	size = strings.Replace(size, ",", ".", 1)
 	parsed, err := strconv.ParseFloat(size[:len(size)-1], 64)
 	if err != nil {
 		log.Err("cachePolicy::getCacheUsage : error parsing folder size [%s]", err.Error())
-		return 0
+		return 0, fmt.Errorf("failed to parse du output")
 	}
 
 	switch size[len(size)-1] {
@@ -121,7 +122,7 @@ func getUsage(path string) float64 {
 	}
 
 	log.Debug("cachePolicy::getCacheUsage : current cache usage : %fMB", currSize)
-	return currSize
+	return currSize, nil
 }
 
 // getUsagePercentage:  The current cache usage as a percentage of the maxSize
@@ -130,7 +131,7 @@ func getUsagePercentage(path string, maxSize float64) float64 {
 		return 0
 	}
 
-	currSize := getUsage(path)
+	currSize, _ := getUsage(path)
 	usagePercent := (currSize / float64(maxSize)) * 100
 	log.Debug("cachePolicy::getUsagePercentage : current cache usage : %f%%", usagePercent)
 
