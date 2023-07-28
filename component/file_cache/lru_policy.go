@@ -175,18 +175,7 @@ func (p *lruPolicy) CacheValid(name string) {
 func (p *lruPolicy) CacheInvalidate(name string) {
 	log.Trace("lruPolicy::CacheInvalidate : %s", name)
 
-	// We check if the file is not in the nodeMap to deal with the case
-	// where timeout is 0 and there are multiple handles open to the file.
-	// When the first close comes, we will remove the entry from the map
-	// and attempt to delete the file. This deletion will fail (and be skipped)
-	// since there are other open handles. When the last close comes in, the map
-	// will be clean so we we need to try deleting the file.
-	_, found := p.nodeMap.Load(name)
-	if p.cacheTimeout == 0 || !found {
-		if p.cacheTimeout != 0 {
-			log.Info("lruPolicy::CacheInvalidate : %s not present in map", name)
-		}
-
+	if p.cacheTimeout == 0 {
 		p.CachePurge(name)
 	}
 }
