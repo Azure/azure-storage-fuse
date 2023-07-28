@@ -944,22 +944,36 @@ stages:
 
             variables:
               - group: NightlyBlobFuse
-              - name: ROOT_DIR
-                value: "/usr/pipeline/workv2"
-              - name: WORK_DIR
-                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
-              - name: skipComponentGovernanceDetection
-                value: true
               - name: MOUNT_DIR
-                value: "/usr/pipeline/workv2/blob_mnt"
+                value: '$(Pipeline.Workspace)/blob_mnt'
               - name: TEMP_DIR
-                value: "/usr/pipeline/workv2/temp"
+                value: '$(Pipeline.Workspace)/blobfuse2_tmp'
               - name: BLOBFUSE2_CFG
-                value: "/usr/pipeline/workv2/blobfuse2.yaml"
+                value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+              - name: BLOBFUSE2_SAS_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
+              - name: BLOBFUSE2_SPN_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
+              - name: BLOBFUSE2_STREAM_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
+              - name: BLOBFUSE2_STREAM_FILENAME_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2_stream_filename.yaml'
               - name: BLOBFUSE2_ADLS_CFG
-                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
+                value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+              - name: BLOBFUSE2_GTEST_CFG
+                value: '$(Pipeline.Workspace)/connection.yaml'
+              - name: BLOBFUSE2_AZURITE_CFG
+                value: '$(Pipeline.Workspace)/blobfuse2_azurite_config.yaml'
+              - name: BLOBFUSE2_STRESS_DIR
+                value: '$(Pipeline.Workspace)/blobfuse2_stress'
+              - name: DECODE_PERCENTS
+                value: false
               - name: GOPATH
-                value: "/usr/pipeline/workv2/go"
+                value: '$(Pipeline.Workspace)/go'
+              - name: ROOT_DIR
+                value: '$(System.DefaultWorkingDirectory)' 
+              - name: WORK_DIR
+                value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
             steps:
               # Go tool installer
@@ -968,27 +982,42 @@ stages:
                   version: '1.20.5'
                 displayName: "Install Go Version"
 
-              - template: 'azure-pipeline-templates/distro-tests.yml'
-                parameters:
-                  working_dir: $(WORK_DIR)
-                  root_dir: $(ROOT_DIR)
-                  temp_dir: $(TEMP_DIR)
-                  mount_dir: $(MOUNT_DIR)
-                  config_path: $(BLOBFUSE2_CFG)
-                  container: $(ContainerName)
-                  blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                  blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                  adls_account_name: $(AZTEST_ADLS_ACC_NAME)
-                  adls_account_key: $(AZTEST_ADLS_KEY)
-                  distro_name: $(AgentName)
-                  tags: $(tags)
-                  fuselib: $(fuselib)
-                  gopath: $(GOPATH)
-                  installStep:
-                    script: |
-                      sudo tdnf install build-essential git fuse fuse-devel python36 -y
-                    displayName: 'Install fuse'
-                  verbose_log: ${{ parameters.verbose_log }}
+              - ${{ if eq(parameters.exhaustive_test, true) }}:    
+                - template: 'azure-pipeline-templates/verbose-tests.yml'
+                  parameters:
+                    service: 'BlockBlob'
+                    account_type: 'block'
+                    account_endpoint: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net' 
+                    adls: false
+                    account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+                    account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+                    account_sas: $(NIGHTLY_STO_ACC_SAS)
+                    spn_account_name: $(AZTEST_BLOCK_ACC_NAME)
+                    spn_account_endpoint: 'https://$(AZTEST_BLOCK_ACC_NAME).blob.core.windows.net' 
+                    client_id: $(AZTEST_CLIENT)
+                    tenant_id: $(AZTEST_TENANT)
+                    client_secret: $(AZTEST_SECRET)
+                    container: $(containerName)
+                    config: $(BLOBFUSE2_CFG)
+                    working_dir: $(WORK_DIR)
+                    mount_dir: $(MOUNT_DIR)
+                    temp_dir: $(TEMP_DIR)
+                    stress_dir: $(BLOBFUSE2_STRESS_DIR)
+                    huge_container: 'testcnt1'
+                    quick_stress: ${{ parameters.quick_stress }}
+                    test_key_credential: true 
+                    test_sas_credential: true
+                    test_spn_credential: true
+                    test_stream: true
+                    test_azurite: true
+                    stream_config: $(BLOBFUSE2_STREAM_CFG)
+                    stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
+                    sas_credential_config: $(BLOBFUSE2_SAS_CFG)
+                    spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+                    azurite_config: $(BLOBFUSE2_AZURITE_CFG)
+                    distro_name: $(imageName)
+                    verbose_log: ${{ parameters.verbose_log }}
+                    tags: $(tags)
 
         - ${{ if eq(parameters.msi_test, true) }}:
           # -----------------------------------------------------------
