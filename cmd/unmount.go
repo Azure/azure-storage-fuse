@@ -91,8 +91,8 @@ func unmountBlobfuse2(mntPath string) error {
 
 	var errb bytes.Buffer
 	var err error
-	for idx, cmd := range unmountCmd {
-		cliOut := exec.Command(cmd, "-u", mntPath)
+	for _, umntCmd := range unmountCmd {
+		cliOut := exec.Command(umntCmd, "-u", mntPath)
 		cliOut.Stderr = &errb
 		_, err = cliOut.Output()
 
@@ -103,8 +103,6 @@ func unmountBlobfuse2(mntPath string) error {
 
 		if !strings.Contains(err.Error(), "executable file not found") {
 			log.Err("unmountBlobfuse2 : failed to unmount (%s : %s)", err.Error(), errb.String())
-			break
-		} else if idx == 1 {
 			break
 		}
 	}
