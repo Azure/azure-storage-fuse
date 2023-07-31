@@ -77,6 +77,9 @@ type cachePolicy interface {
 	Name() string // The name of the policy
 }
 
+var duPath []string = []string{"/usr/bin/du", "/usr/local/bin/du", "/usr/sbin/du", "/usr/local/sbin/du", "/sbin/du", "/bin/du"}
+var selectedDuPath string = ""
+
 // getUsage: The current cache usage in MB
 func getUsage(path string) (float64, error) {
 	log.Trace("cachePolicy::getCacheUsage : %s", path)
@@ -84,11 +87,27 @@ func getUsage(path string) (float64, error) {
 	var currSize float64
 	var out bytes.Buffer
 
+	if selectedDuPath == "" {
+		selectedDuPath = "-"
+		for _, dup := range duPath {
+			_, err := os.Stat(dup)
+			if err == nil {
+				selectedDuPath = dup
+				break
+			}
+		}
+	}
+
+	if selectedDuPath == "-" {
+		log.Err("cachePolicy::getCacheUsage : error finding du in any configured path")
+		return 0, fmt.Errorf("failed to find du")
+	}
+
 	// du - estimates file space usage
 	// https://man7.org/linux/man-pages/man1/du.1.html
 	// Note: We cannot just pass -BM as a parameter here since it will result in less accurate estimates of the size of the path
 	// (i.e. du will round up to 1M if the path is smaller than 1M).
-	cmd := exec.Command("du", "-sh", path)
+	cmd := exec.Command(selectedDuPath, "-sh", path)
 	cmd.Stdout = &out
 
 	err := cmd.Run()
