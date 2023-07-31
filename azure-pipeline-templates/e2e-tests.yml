@@ -50,7 +50,9 @@ steps:
 
   - script: |
       out=`pidstat -p \`pidof blobfuse2\` -u 2 10  | tail -n 1`
+      echo $out
       outData=($out)
+      echo $outData
       echo "CPU usage is : ${outspl[7]}"
       if [ ${outspl[7]} > 5 ]
       then
