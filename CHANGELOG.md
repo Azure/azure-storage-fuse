@@ -7,7 +7,7 @@
 - Fix priority level check of components to reject invalid pipeline entries.
 - [#1196](https://github.com/Azure/azure-storage-fuse/issues/1196) 100% CPU usage in 2.0.4 fixed
 - [#1207](https://github.com/Azure/azure-storage-fuse/issues/1207) Fix log-rotate script.
-- Unmount command was looking for `fusermount` while on fuse3 systems it shall be looking for `fusermount3`.
+- Unmount command was looking for `fusermount` while on fuse3 systems it should be looking for `fusermount3`.
 - If `du` command is not found skip checking for disk usage in LRU policy.
 - V1 flag of `file-cache-timeout-in-seconds` not interpreted correctly by V2 and causing eviction policy to assume its 0. 
 
