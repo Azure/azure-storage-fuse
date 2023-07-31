@@ -52,7 +52,7 @@ steps:
       out=`pidstat -p \`pidof blobfuse2\` -u 2 10  | tail -n 1`
       outData=($out)
       echo "CPU usage is : ${outspl[7]}"
-      if [ ${outspl[7]} \> 5 ]
+      if [ ${outspl[7]} > 5 ]
       then
         exit 1
       fi
