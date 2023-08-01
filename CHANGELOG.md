@@ -7,6 +7,7 @@
 - Fix priority level check of components to reject invalid pipeline entries.
 - [#1196](https://github.com/Azure/azure-storage-fuse/issues/1196) 100% CPU usage in 2.0.4 fixed
 - [#1207](https://github.com/Azure/azure-storage-fuse/issues/1207) Fix log-rotate script.
+- Fix uid/gid parsing in case of `mountv1` command.
 
 ## 2.0.4 (2023-07-03)
 **Features**
