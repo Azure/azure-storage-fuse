@@ -89,8 +89,16 @@ func getAzBlobPipelineOptions(conf AzStorageConfig) (azblob.PipelineOptions, ste
 		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)
 		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
 	}
+
+	telemetryValue := conf.telemetry
+	if telemetryValue != "" {
+		telemetryValue += " "
+	}
+
+	telemetryValue += UserAgent() + " (" + common.GetCurrentDistro() + ")"
+
 	telemetryOptions := azblob.TelemetryOptions{
-		Value: UserAgent() + " (" + common.GetCurrentDistro() + ")",
+		Value: telemetryValue,
 	}
 
 	sysLogDisabled := log.GetType() == "silent" // If logging is enabled, allow the SDK to log retries to syslog.
@@ -120,9 +128,17 @@ func getAzBfsPipelineOptions(conf AzStorageConfig) (azbfs.PipelineOptions, ste.X
 		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)
 		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
 	}
-	telemetryOptions := azbfs.TelemetryOptions{
-		Value: UserAgent() + " (" + common.GetCurrentDistro() + ")",
+
+	telemetryValue := conf.telemetry
+	if telemetryValue != "" {
+		telemetryValue += " "
 	}
+
+	telemetryValue += UserAgent() + " (" + common.GetCurrentDistro() + ")"
+	telemetryOptions := azbfs.TelemetryOptions{
+		Value: telemetryValue,
+	}
+
 	sysLogDisabled := log.GetType() == "silent" // If logging is enabled, allow the SDK to log retries to syslog.
 	requestLogOptions := azbfs.RequestLogOptions{
 		// TODO: We can potentially consider making LogWarningIfTryOverThreshold a user settable option. For now lets use the default

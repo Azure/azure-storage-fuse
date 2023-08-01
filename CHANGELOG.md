@@ -11,6 +11,7 @@
 - If `du` command is not found skip checking for disk usage in LRU cache-eviction policy.
 - V1 flag of `file-cache-timeout-in-seconds` not interpreted correctly by V2 and causing eviction policy to assume its 0. 
 - If `du` is not found on standard path try paths where it can potentially be found.
+- Fix uid/gid marshalling for `mountv1` command, which was resulting in panic.
 
 ## 2.0.4 (2023-07-03)
 **Features**
