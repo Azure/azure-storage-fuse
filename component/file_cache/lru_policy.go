@@ -75,6 +75,9 @@ type lruPolicy struct {
 
 	// Channel to check for file eviction based on file-cache timeout
 	cacheTimeoutMonitor <-chan time.Time
+
+	// DU utility was found on the path or not
+	duPresent bool
 }
 
 const (
@@ -99,6 +102,7 @@ func NewLRUPolicy(cfg cachePolicyConfig) cachePolicy {
 			name:  "##",
 			usage: -1,
 		},
+		duPresent: false,
 	}
 
 	return obj
@@ -118,10 +122,21 @@ func (p *lruPolicy) StartPolicy() error {
 	p.deleteEvent = make(chan string, 1000)
 	p.validateChan = make(chan string, 10000)
 
-	p.diskUsageMonitor = time.Tick(time.Duration(DiskUsageCheckInterval * time.Minute))
+	_, err := getUsage(p.tmpPath)
+	if err == nil {
+		p.duPresent = true
+	} else {
+		log.Err("lruPolicy::StartPolicy : 'du' command not found, disabling disk usage checks")
+	}
+
+	if p.duPresent {
+		p.diskUsageMonitor = time.Tick(time.Duration(DiskUsageCheckInterval * time.Minute))
+	}
 
 	// Only start the timeoutMonitor if evictTime is non-zero.
 	// If evictTime=0, we delete on invalidate so there is no need for a timeout monitor signal to be sent.
+	log.Info("lruPolicy::StartPolicy : Policy set with %v timeout", p.cacheTimeout)
+
 	if p.cacheTimeout != 0 {
 		p.cacheTimeoutMonitor = time.Tick(time.Duration(time.Duration(p.cacheTimeout) * time.Second))
 	}

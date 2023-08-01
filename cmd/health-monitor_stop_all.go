@@ -38,6 +38,8 @@ import (
 	"os/exec"
 
 	"github.com/spf13/cobra"
+
+	hmcommon "github.com/Azure/azure-storage-fuse/v2/tools/health-monitor/common"
 )
 
 var healthMonStopAll = &cobra.Command{
@@ -57,7 +59,7 @@ var healthMonStopAll = &cobra.Command{
 
 // Attempts to kill all health monitors
 func stopAll() error {
-	cliOut := exec.Command("killall", "bfusemon")
+	cliOut := exec.Command("killall", hmcommon.BfuseMon)
 	_, err := cliOut.Output()
 	if err != nil {
 		return err

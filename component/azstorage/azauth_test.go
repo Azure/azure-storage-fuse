@@ -710,6 +710,33 @@ func (suite *authTestSuite) TestBlockInvalidSpn() {
 	}
 }
 
+func (suite *authTestSuite) TestBlockInvalidTokenPathSpn() {
+	defer suite.cleanupTest()
+
+	_ = os.WriteFile("newtoken.txt", []byte("abcdef"), 0777)
+	defer os.Remove("newtoken.txt")
+
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:           EAuthType.SPN(),
+			AccountType:        EAccountType.BLOCK(),
+			AccountName:        storageTestConfigurationParameters.BlockAccount,
+			ClientID:           storageTestConfigurationParameters.SpnClientId,
+			TenantID:           storageTestConfigurationParameters.SpnTenantId,
+			ClientSecret:       "",
+			Endpoint:           generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+			OAuthTokenFilePath: "newtoken.txt",
+		},
+	}
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	if stg == nil {
+		assert.Fail("TestBlockInvalidSpn : Failed to create Storage object")
+	}
+	_ = stg.SetupPipeline()
+}
+
 func (suite *authTestSuite) TestBlockSpn() {
 	defer suite.cleanupTest()
 	stgConfig := AzStorageConfig{

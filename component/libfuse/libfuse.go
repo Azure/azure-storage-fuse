@@ -302,10 +302,6 @@ func (lf *Libfuse) Configure(_ bool) error {
 	return nil
 }
 
-// OnConfigChange : If component has registered, on config file change this method is called
-func (lf *Libfuse) OnConfigChange() {
-}
-
 // ------------------------- Factory -------------------------------------------
 
 // Pipeline will call this method to create your object, initialize your variables here
