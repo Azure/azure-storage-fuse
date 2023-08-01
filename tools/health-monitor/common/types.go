@@ -45,7 +45,7 @@ const (
 	CpuMemoryProfiler = "cpu_mem_profiler"
 	NetworkProfiler   = "network_profiler"
 
-	BfuseMon = "/usr/bin/bfusemon"
+	BfuseMon = "bfusemon"
 
 	OutputFileName      = "monitor"
 	OutputFileExtension = "json"
