@@ -172,6 +172,7 @@ func (az *AzStorage) Start(ctx context.Context) error {
 
 	// This is a workaround right now to disable the input watcher thread which continuously monitors below config to change
 	// Running this thread continuously increases the CPU usage by 5% even when there is no activity on blobfuse2 mount path
+	// Lifecycle manager init is commented in the "blobfuse2-cpu-usage" branch. Blobfuse2 imports azcopy from this branch.
 	azcopyCommon.GetLifecycleMgr().EnableInputWatcher()
 
 	return nil
@@ -637,6 +638,11 @@ func init() {
 
 	telemetry := config.AddStringFlag("telemetry", "", "Additional telemetry information.")
 	config.BindPFlag(compName+".telemetry", telemetry)
+	telemetry.Hidden = true
+
+	honourACL := config.AddBoolFlag("honour-acl", false, "Match ObjectID in ACL against the one used for authentication.")
+	config.BindPFlag(compName+".honour-acl", honourACL)
+	honourACL.Hidden = true
 
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp

@@ -386,7 +386,6 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 
 	pathURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
 	prop, err := pathURL.GetProperties(context.Background())
-
 	if err != nil {
 		e := storeDatalakeErrToErr(err)
 		if e == ErrFileNotFound {
@@ -430,6 +429,21 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		attr.Mode = attr.Mode | os.ModeDir
 	}
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+
+	if dl.Config.HonourACL && dl.Config.authConfig.ObjectID != "" {
+		acl, err := pathURL.GetAccessControl(context.Background())
+		if err != nil {
+			// Just ignore the error here as rest of the attributes have been retrieved
+			log.Err("Datalake::GetAttr : Failed to get ACL for %s [%s]", name, err.Error())
+		} else {
+			mode, err := getFileModeFromACL(dl.Config.authConfig.ObjectID, acl.ACL, acl.Owner)
+			if err != nil {
+				log.Err("Datalake::GetAttr : Failed to get file mode from ACL for %s [%s]", name, err.Error())
+			} else {
+				attr.Mode = mode
+			}
+		}
+	}
 
 	return attr, nil
 }

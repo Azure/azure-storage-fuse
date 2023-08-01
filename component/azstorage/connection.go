@@ -78,6 +78,7 @@ type AzStorageConfig struct {
 	disableCompression bool
 
 	telemetry string
+	HonourACL bool
 }
 
 type AzStorageConnection struct {
