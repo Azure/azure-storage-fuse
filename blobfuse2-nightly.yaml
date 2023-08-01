@@ -936,7 +936,13 @@ stages:
                   ContainerName: "test-cnt-mari-1"
                   fuselib: 'libfuse-dev'
                   tags: 'fuse2'
-
+                Mariner2:
+                  DistroVer: "Mariner2"
+                  Description: "CBL-Mariner2 Linux"
+                  AgentName: "blobfuse-mariner2"
+                  ContainerName: "test-cnt-mari-2"
+                  fuselib: 'libfuse3-dev'
+                  tags: 'fuse3'
             pool:
               name: "blobfuse-mariner-pool"
               demands:
