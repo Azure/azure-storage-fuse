@@ -1,4 +1,6 @@
-## 2.0.5 (WIP)
+## 2.0.6 (WIP)
+
+## 2.0.5 (2023-08-23)
 **Features**
 - In case of MSI based authentication, user shall provide object-id of the identity and honour-acl flag for file-system to work with ACLs assigned to the given identity instead of permissions.
 - Added support to read OAuth token from a user given file.
