@@ -176,6 +176,7 @@ type AzStorageOptions struct {
 	VirtualDirectory        bool   `config:"virtual-directory" yaml:"virtual-directory"`
 	MaxResultsForList       int32  `config:"max-results-for-list" yaml:"max-results-for-list"`
 	DisableCompression      bool   `config:"disable-compression" yaml:"disable-compression"`
+	Telemetry               string `config:"telemetry" yaml:"telemetry"`
 	HonourACL               bool   `config:"honour-acl" yaml:"honour-acl"`
 
 	// v1 support
@@ -361,6 +362,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	// Block list call on mount for given amount of time
 	az.stConfig.cancelListForSeconds = opt.CancelListForSeconds
 
+	az.stConfig.telemetry = opt.Telemetry
+
 	httpProxyProvided := opt.HttpProxyAddress != ""
 	httpsProxyProvided := opt.HttpsProxyAddress != ""
 
@@ -485,6 +488,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	log.Info("ParseAndValidateConfig : Retry Config: Retry count %d, Max Timeout %d, BackOff Time %d, Max Delay %d",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay)
+
+	log.Info("ParseAndValidateConfig : Telemetry : %s", az.stConfig.telemetry)
 
 	return nil
 }

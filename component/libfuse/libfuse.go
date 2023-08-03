@@ -100,7 +100,7 @@ type LibfuseOptions struct {
 	IgnoreOpenFlags         bool   `config:"ignore-open-flags" yaml:"ignore-open-flags,omitempty"`
 	nonEmptyMount           bool   `config:"nonempty" yaml:"nonempty,omitempty"`
 	Uid                     uint32 `config:"uid" yaml:"uid,omitempty"`
-	Gid                     uint32 `config:"gid" yaml:"uid,omitempty"`
+	Gid                     uint32 `config:"gid" yaml:"gid,omitempty"`
 	MaxFuseThreads          uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
 	DirectIO                bool   `config:"direct-io" yaml:"direct-io,omitempty"`
 }
@@ -300,10 +300,6 @@ func (lf *Libfuse) Configure(_ bool) error {
 		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount)
 
 	return nil
-}
-
-// OnConfigChange : If component has registered, on config file change this method is called
-func (lf *Libfuse) OnConfigChange() {
 }
 
 // ------------------------- Factory -------------------------------------------
