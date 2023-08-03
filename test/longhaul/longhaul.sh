@@ -8,6 +8,9 @@
 SERVICE="blobfuse2"
 SCRIPT="longhaul.sh"
 
+# To create ramdisk
+# sudo mount -t tmpfs -o rw,size=4G tmpfs /mnt/ramdisk
+
 cd /home/vibhansa/go/src/azure-storage-fuse/
 
 if pgrep -x "$SERVICE" > /dev/null
@@ -29,18 +32,23 @@ then
 	
 		rm -rf /home/vibhansa/blob_mnt2/stress	
 		rm -rf /home/vibhansa/blob_mnt2/myfile*
+		
 		#go test -timeout 120m -v ./test/stress_test/stress_test.go -args -mnt-path=/home/vibhansa/blob_mnt2 -quick=false 2&> ./stress.log
 		./test/longhaul/stresstest.sh
 		echo "`whoami` : `date` :: Ending stress test " >> ./longhaul2.log
 		cp  ./longhaul2.log  /home/vibhansa/blob_mnt2/
 		cp ./stress.log /home/vibhansa/blob_mnt2/
+		
 		sleep 30
+
+		rm -rf /mnt/ramdisk/*
 		rm -rf /home/vibhansa/blob_mnt2/stress	
 		sudo rm -rf /var/log/blob*.gz
 	fi
 else
 	echo "`date` :: Re-Starting blobfuse2 *******************" >> ./longhaul2.log
 	rm -rf /home/vibhansa/blob_mnt2/*
+	rm -rf /mnt/ramdisk/*
 	sudo fusermount -u ~/blob_mnt2
 	rm -rf /mnt/ramdisk/*
 	./blobfuse2 mount ~/blob_mnt2 --config-file=./config.yaml
@@ -53,7 +61,7 @@ else
 	echo "`date`: Restart : `./blobfuse2 --version`" >> ./restart2.log
 
 	# Send email that blobfuse2 has crashed
-	echo "Blobfuse2 Failure" | mail -s "Blobfuse2 Restart" -A ./restart2.log -a "From: longhaul@blobfuse.com" <mail id here>
+	echo "Blobfuse2 Failure" | mail -s "Blobfuse2 Restart" -A ./restart2.log -a "From: longhaul@blobfuse.com" vibhansa@microsoft.com
 	
 	cp /var/log/blobfuse2.log /home/vibhansa/blob_mnt2/
 	cp ./longhaul2.log  /home/vibhansa/blob_mnt2/

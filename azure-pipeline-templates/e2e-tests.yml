@@ -48,6 +48,21 @@ steps:
       exit $?
     displayName: 'Verify Mount'
 
+  - script: |
+      out=`pidstat -p \`pidof blobfuse2\` -u 2 5  | tail -n 1`
+      outData=($out)
+      cpu=${outData[7]}
+      echo "CPU is :" $cpu
+      
+      if [[ $cpu > 5 ]]
+      then
+        echo "CPU usage is high"
+        exit 1
+      else
+        echo "CPU usage is low"
+      fi
+    displayName: 'CPU Usage test'
+
   - task: Go@0
     inputs:
       command: 'test'

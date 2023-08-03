@@ -74,7 +74,7 @@ libfuse:
   # Streaming configuration
 stream:
   # If block-size-mb, blocks-per-file or cache-size-mb are 0, the stream component will not cache blocks. 
-  block-size-mb: <for read only mode - size of each block to be cached in memory while streaming (in MB). For read/write - size of newly created blocks. Default - 0 MB>
+  block-size-mb: <for read only mode size of each block to be cached in memory while streaming (in MB). For read/write size of newly created blocks. Default - 0 MB>
   max-buffers: <total number of buffers to store blocks in. Default - 0 MB>
   buffer-size-mb: <size for each buffer. Default - 0>
   file-caching: <read/write mode file level caching or handle level caching. Default - false (handle level caching ON)>
@@ -140,6 +140,7 @@ azstorage:
   tenantid: <storage account tenant id for SPN>
   clientid: <storage account client id for SPN>
   clientsecret: <storage account client secret for SPN>
+  oauth-token-path: <path to file containing the OAuth token>
   # Optional
   use-http: true|false <use http instead of https for storage connection>
   aadendpoint: <storage account custom aad endpoint>
@@ -162,7 +163,9 @@ azstorage:
   virtual-directory: true|false <support virtual directories without existence of a special marker blob>
   disable-compression: true|false <disable transport layer content encoding like gzip, set this flag to true if blobs have content-encoding set in container>
   max-results-for-list: <maximum number of results returned in a single list API call while getting file attributes. Default - 2>
-
+  telemetry : <additional information that customer want to push in user-agent>
+  honour-acl: true|false <honour ACLs on files and directories when mounted using MSI Auth and object-ID is provided in config>
+  
 # Mount all configuration
 mountall:
   # allowlist takes precedence over denylist in case of conflicts

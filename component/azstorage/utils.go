@@ -89,8 +89,16 @@ func getAzBlobPipelineOptions(conf AzStorageConfig) (azblob.PipelineOptions, ste
 		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)
 		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
 	}
+
+	telemetryValue := conf.telemetry
+	if telemetryValue != "" {
+		telemetryValue += " "
+	}
+
+	telemetryValue += UserAgent() + " (" + common.GetCurrentDistro() + ")"
+
 	telemetryOptions := azblob.TelemetryOptions{
-		Value: UserAgent() + " (" + common.GetCurrentDistro() + ")",
+		Value: telemetryValue,
 	}
 
 	sysLogDisabled := log.GetType() == "silent" // If logging is enabled, allow the SDK to log retries to syslog.
@@ -120,9 +128,17 @@ func getAzBfsPipelineOptions(conf AzStorageConfig) (azbfs.PipelineOptions, ste.X
 		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)
 		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
 	}
-	telemetryOptions := azbfs.TelemetryOptions{
-		Value: UserAgent() + " (" + common.GetCurrentDistro() + ")",
+
+	telemetryValue := conf.telemetry
+	if telemetryValue != "" {
+		telemetryValue += " "
 	}
+
+	telemetryValue += UserAgent() + " (" + common.GetCurrentDistro() + ")"
+	telemetryOptions := azbfs.TelemetryOptions{
+		Value: telemetryValue,
+	}
+
 	sysLogDisabled := log.GetType() == "silent" // If logging is enabled, allow the SDK to log retries to syslog.
 	requestLogOptions := azbfs.RequestLogOptions{
 		// TODO: We can potentially consider making LogWarningIfTryOverThreshold a user settable option. For now lets use the default
@@ -507,6 +523,57 @@ func writePermission(sb *strings.Builder, permitted bool, permission rune) {
 	} else {
 		sb.WriteRune('-')
 	}
+}
+
+// Called by x method
+// How to interpret the mask and name user acl : https://learn.microsoft.com/en-us/azure/storage/blobs/data-lake-storage-access-control
+func getFileModeFromACL(objid string, acl string, owner string) (os.FileMode, error) {
+	var mode os.FileMode = 0
+	if acl == "" {
+		return mode, fmt.Errorf("empty permissions from the service")
+	}
+
+	extractPermission := func(acl string, key string) string {
+		idx := strings.Index(acl, key) + len(key)
+		return acl[idx : idx+3]
+	}
+
+	extractNamedUserACL := func(acl string, objid string) string {
+		key := fmt.Sprintf("user:%s:", objid)
+		idx := strings.Index(acl, key) + len(key)
+		if idx == -1 {
+			return "---"
+		}
+
+		userACL := acl[idx : idx+3]
+		mask := extractPermission(acl, "mask::")
+
+		permissions := ""
+		for i, c := range userACL {
+			if userACL[i] == mask[i] {
+				permissions += string(c)
+			} else {
+				permissions += "-"
+			}
+		}
+
+		return permissions
+	}
+
+	// Sample string : user::rwx,user:objid1:r--,user:objid2:r--,group::r--,mask::r-x,other::rwx:
+	permissions := ""
+	if owner == objid {
+		// Owner of this blob is the authenticated object id so extract the user permissions from the ACL directly
+		permissions = extractPermission(acl, "user::")
+	} else {
+		// Owner of this blob is not the authenticated object id, search object id exists in the ACL
+		permissions = extractNamedUserACL(acl, objid)
+	}
+
+	permissions += extractPermission(acl, "group::")
+	permissions += extractPermission(acl, "other::")
+
+	return getFileMode(permissions)
 }
 
 // Called by x method
