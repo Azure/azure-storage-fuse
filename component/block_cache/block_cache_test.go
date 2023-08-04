@@ -403,7 +403,8 @@ func (suite *blockCacheTestSuite) TestDiskUsageCheck() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(tobj.blockCache)
 
-	suite.assert.Less(getUsage(tobj.disk_cache_path), float64(1.0))
+	usage, _ := common.GetUsage(tobj.disk_cache_path)
+	suite.assert.Less(usage, float64(1.0))
 	suite.assert.Equal(tobj.blockCache.checkDiskUsage(), false)
 
 	// Default disk size is 50MB

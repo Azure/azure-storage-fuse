@@ -34,16 +34,12 @@
 package block_cache
 
 import (
-	"bytes"
 	"container/list"
 	"context"
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -758,7 +754,7 @@ func (bc *BlockCache) diskEvict(node *list.Element) {
 
 // checkDiskUsage : Callback to check usage of disk and decide whether eviction is needed
 func (bc *BlockCache) checkDiskUsage() bool {
-	data := getUsage(bc.tmpPath)
+	data, _ := common.GetUsage(bc.tmpPath)
 	usage := uint32((data * 100) / float64(bc.diskSize))
 
 	if bc.maxDiskUsageHit {
@@ -778,52 +774,7 @@ func (bc *BlockCache) checkDiskUsage() bool {
 	return false
 }
 
-// getUsage : Compute current disk usage
-func getUsage(path string) float64 {
-	var currSize float64
-	var out bytes.Buffer
-
-	// du - estimates file space usage
-	// https://man7.org/linux/man-pages/man1/du.1.html
-	// Note: We cannot just pass -BM as a parameter here since it will result in less accurate estimates of the size of the path
-	// (i.e. du will round up to 1M if the path is smaller than 1M).
-	cmd := exec.Command("du", "-sh", path)
-	cmd.Stdout = &out
-
-	err := cmd.Run()
-	if err != nil {
-		log.Err("BlockCache::getCacheUsage : error running du [%s]", err.Error())
-		return 0
-	}
-
-	size := strings.Split(out.String(), "\t")[0]
-	if size == "0" {
-		return 0
-	}
-	// some OS's use "," instead of "." that will not work for float parsing - replace it
-	size = strings.Replace(size, ",", ".", 1)
-	parsed, err := strconv.ParseFloat(size[:len(size)-1], 64)
-	if err != nil {
-		log.Err("BlockCache::getCacheUsage : error parsing folder size [%s]", err.Error())
-		return 0
-	}
-
-	switch size[len(size)-1] {
-	case 'K':
-		currSize = parsed / float64(1024)
-	case 'M':
-		currSize = parsed
-	case 'G':
-		currSize = parsed * 1024
-	case 'T':
-		currSize = parsed * 1024 * 1024
-	}
-
-	return currSize
-}
-
 // ------------------------- Factory -------------------------------------------
-
 // Pipeline will call this method to create your object, initialize your variables here
 // << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
 func NewBlockCacheComponent() internal.Component {

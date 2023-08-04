@@ -39,6 +39,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
@@ -122,7 +123,7 @@ func (p *lruPolicy) StartPolicy() error {
 	p.deleteEvent = make(chan string, 1000)
 	p.validateChan = make(chan string, 10000)
 
-	_, err := getUsage(p.tmpPath)
+	_, err := common.GetUsage(p.tmpPath)
 	if err == nil {
 		p.duPresent = true
 	} else {
