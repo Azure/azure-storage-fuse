@@ -385,7 +385,7 @@ func (suite *blockCacheTestSuite) TestFileReadRandom() {
 	for i := 0; i < 50; i++ {
 		offset := rand.Int63n(max)
 		n, _ := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: offset, Data: data})
-		suite.assert.LessOrEqual(n, 1000)
+		suite.assert.LessOrEqual(n, 100)
 	}
 
 	cnt := h.Buffers.Cooked.Len() + h.Buffers.Cooking.Len()
