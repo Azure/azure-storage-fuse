@@ -45,6 +45,6 @@ steps:
     timeoutInMinutes: 30
     displayName: '${{ parameters.prefix }}: PreStart Cleanup'
     continueOnError: true
-    condition: eq( ${{ parameters.ro_mount }}, false)
+    condition: eq( ${{ parameters.ro_mount }}, false )
     env:
       mount_dir: ${{ parameters.mount_dir }}
