@@ -319,7 +319,11 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		Cooking: list.New(), // List to hold blocks still under download
 	}
 
-	if bc.prefetchOnOpen {
+	if handle.Size < int64(bc.blockSize) {
+		// File is small and can fit in one block itself
+		_ = bc.refreshBlock(handle, 0, false)
+	} else if bc.prefetchOnOpen {
+		// Prefetch to start on open
 		_ = bc.startPrefetch(handle, 0, false)
 	}
 
@@ -467,7 +471,9 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 		if handle.OptCnt <= MIN_RANDREAD {
 			// So far this file has been read sequentially so prefetch more
 			val, _ := handle.GetValue("#")
-			_ = bc.startPrefetch(handle, val.(uint64), true)
+			if int64(val.(uint64)*bc.blockSize) < handle.Size {
+				_ = bc.startPrefetch(handle, val.(uint64), true)
+			}
 		}
 
 		// This block was moved to in-process queue as download is complete lets move it back to normal queue
