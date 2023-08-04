@@ -52,6 +52,11 @@ parameters:
     type: boolean
     default: true
 
+  - name: block_cache_validation
+    displayName: 'Block Cache Validation Test'
+    type: boolean
+    default: true
+
   - name: verbose_log
     displayName: 'Verbose Log'
     type: boolean
@@ -1152,7 +1157,7 @@ stages:
                   temp_dir: $(TEMP_DIR)
 
 
-  - ${{ if eq(parameters.data_validation, true) }}:
+  - ${{ if eq(parameters.block_cache_validation, true) }}:
     - stage: DataValidationBlockCache
       jobs:
         # Ubuntu Tests
