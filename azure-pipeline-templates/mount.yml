@@ -10,6 +10,9 @@ parameters:
   - name: prefix
     type: string
     default: 'Test'
+  - name: ro_mount
+    type: boolean
+    default: false    
 
 steps:
 
@@ -42,5 +45,6 @@ steps:
     timeoutInMinutes: 30
     displayName: '${{ parameters.prefix }}: PreStart Cleanup'
     continueOnError: true
+    condition: eq( ${{ parameters.ro_mount }} != true)
     env:
       mount_dir: ${{ parameters.mount_dir }}

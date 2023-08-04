@@ -91,6 +91,7 @@ steps:
       mount_dir: ${{ parameters.mount_dir }}
       temp_dir: ${{ parameters.temp_dir }}
       prefix: ${{ parameters.idstring }}
+      ro_mount: true
       mountStep: 
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR) -o ro
@@ -105,6 +106,9 @@ steps:
 
   - script: |
       diff $(WORK_DIR)/md5sum_block_cache.txt $(WORK_DIR)/md5sum_file_cache.txt
+      if [ $? -ne 0 ]; then
+        exit 1
+      fi
     displayName: 'Generate md5Sum with Block-Cache'
 
   - template: 'cleanup.yml'
