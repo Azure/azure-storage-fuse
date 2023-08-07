@@ -548,7 +548,7 @@ stages:
               fuselib: 'fuse fuse3-libs fuse3-devel'
               fuse-version: 'fuse3'
               tags: 'fuse3'
-              container: 'test-cnt-rhel9'
+              container: 'test-cnt-rhel-9'
               
         pool:
           name: "blobfuse-rhel-pool"
