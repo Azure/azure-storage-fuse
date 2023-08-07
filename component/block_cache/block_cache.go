@@ -90,14 +90,6 @@ type BlockCacheOptions struct {
 	PrefetchOnOpen bool   `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
 }
 
-// One workitem to be scheduled
-type workItem struct {
-	handle   *handlemap.Handle // Handle to which this item belongs
-	block    *Block            // Block to hold data for this item
-	prefetch bool              // Flag marking this is a prefetch request or not
-	failCnt  int32             // How many times this item has failed to download
-}
-
 const (
 	compName              = "block_cache"
 	defaultTimeout        = 120
@@ -639,8 +631,7 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 }
 
 // download : Method to download the given amount of data
-func (bc *BlockCache) download(i interface{}) {
-	item := i.(*workItem)
+func (bc *BlockCache) download(item *workItem) {
 	fileName := fmt.Sprintf("%s::%v", item.handle.Path, item.block.id)
 
 	// filename_blockindex is the key for the lock

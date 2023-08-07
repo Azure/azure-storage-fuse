@@ -33,7 +33,11 @@
 
 package block_cache
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+)
 
 // ThreadPool is a group of workers that can be used to execute a task
 type ThreadPool struct {
@@ -47,15 +51,23 @@ type ThreadPool struct {
 	wg sync.WaitGroup
 
 	// Channel to hold pending requests
-	priorityCh chan interface{}
-	normalCh   chan interface{}
+	priorityCh chan *workItem
+	normalCh   chan *workItem
 
 	// Reader method that will actually read the data
-	reader func(interface{})
+	reader func(*workItem)
+}
+
+// One workitem to be scheduled
+type workItem struct {
+	handle   *handlemap.Handle // Handle to which this item belongs
+	block    *Block            // Block to hold data for this item
+	prefetch bool              // Flag marking this is a prefetch request or not
+	failCnt  int32             // How many times this item has failed to download
 }
 
 // newThreadPool creates a new thread pool
-func newThreadPool(count uint32, reader func(interface{})) *ThreadPool {
+func newThreadPool(count uint32, reader func(*workItem)) *ThreadPool {
 	if count == 0 || reader == nil {
 		return nil
 	}
@@ -64,8 +76,8 @@ func newThreadPool(count uint32, reader func(interface{})) *ThreadPool {
 		worker:     count,
 		reader:     reader,
 		close:      make(chan int, count),
-		priorityCh: make(chan interface{}, count*2),
-		normalCh:   make(chan interface{}, count*5000),
+		priorityCh: make(chan *workItem, count*2),
+		normalCh:   make(chan *workItem, count*5000),
 	}
 }
 
@@ -94,7 +106,7 @@ func (t *ThreadPool) Stop() {
 }
 
 // Schedule the download of a block
-func (t *ThreadPool) Schedule(urgent bool, item interface{}) {
+func (t *ThreadPool) Schedule(urgent bool, item *workItem) {
 	// urgent specifies the priority of this task.
 	// true means high priority and false means low priority
 	if urgent {
