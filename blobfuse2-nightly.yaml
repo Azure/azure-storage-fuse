@@ -1001,9 +1001,9 @@ stages:
                   installStep:
                     script: |
                       if [ $(AgentName) == "blobfuse-mariner" ]; then
-                        sudo tdnf install build-essential git fuse fuse-devel python36 -y
+                        sudo tdnf install gcc build-essential git fuse fuse-devel python36 -y
                       else 
-                        sudo tdnf install build-essential git fuse fuse-devel python3 -y
+                        sudo tdnf install gcc build-essential git fuse3 fuse3-devel python3 -y
                       fi
                     displayName: 'Install fuse'
                   verbose_log: ${{ parameters.verbose_log }}
