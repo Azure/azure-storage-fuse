@@ -4,6 +4,10 @@ parameters:
   - name: tags
     type: string
     default: "null"
+  - name: working_directory
+    type: string
+  - name: root_dir
+    type: string 
 
 steps:
   - checkout: none
