@@ -1801,6 +1801,12 @@ stages:
                   continueOnError: false
 
             - script: |
+                sudo ps -aux | grep bfusemon
+              displayName: 'Print bfusemon Process info'
+              env:
+                mount_dir: $(MOUNT_DIR)
+
+            - script: |
                 touch $(MOUNT_DIR)/h1.txt
                 echo "123456" > $(MOUNT_DIR)/h2.txt
                 cp *.md $(MOUNT_DIR)/
@@ -1817,12 +1823,6 @@ stages:
                 cat $(WORK_DIR)/monitor_*.json
               displayName: "Print bfusemon output"
               workingDirectory: $(WORK_DIR)
-
-            - script: |
-                sudo ps -aux | grep bfusemon
-              displayName: 'Print bfusemon Process info'
-              env:
-                mount_dir: $(MOUNT_DIR)
 
             - template: 'azure-pipeline-templates/cleanup.yml'
               parameters:
