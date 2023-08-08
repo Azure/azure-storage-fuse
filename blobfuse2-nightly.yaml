@@ -1000,7 +1000,11 @@ stages:
                   gopath: $(GOPATH)
                   installStep:
                     script: |
-                      sudo tdnf install build-essential git fuse fuse-devel python36 -y
+                      if [ $(AgentName) == "blobfuse-mariner" ]; then
+                        sudo tdnf install build-essential git fuse fuse-devel python36 -y
+                      else 
+                        sudo tdnf install build-essential git fuse fuse-devel python3 -y
+                      fi
                     displayName: 'Install fuse'
                   verbose_log: ${{ parameters.verbose_log }}
 
