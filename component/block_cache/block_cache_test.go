@@ -81,14 +81,14 @@ func randomString(length int) string {
 
 func getFakeStoragePath() string {
 	rand := randomString(8)
-	fake_storage_path := filepath.Join(home_dir, "fake_storage"+rand)
+	fake_storage_path := filepath.Join("/tmp", "fake_storage"+rand)
 	_ = os.Mkdir(fake_storage_path, 0777)
 	return fake_storage_path
 }
 
 func setupPipeline(cfg string) (*testObj, error) {
 	rand := randomString(8)
-	fake_storage_path := filepath.Join(home_dir, "fake_storage"+rand)
+	fake_storage_path := filepath.Join("/tmp", "fake_storage"+rand)
 	_ = os.Mkdir(fake_storage_path, 0777)
 
 	tobj := &testObj{
