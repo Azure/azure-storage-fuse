@@ -398,7 +398,7 @@ stages:
               for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
               cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
               if [ $(AgentName) == "blobfuse-ubuntu18" ]; then
-                echo "Generating for Debain 9/10"
+                echo "Generating for Debian 9/10"
                 f=`ls ./blobfuse2*$(vmImage)*.deb`
                 cp "$f" $(sed 's:Ubuntu-18.04:Debian-9.0:' <<< "$f")
                 cp "$f" $(sed 's:Ubuntu-18.04:Debian-10.0:' <<< "$f")
@@ -406,7 +406,7 @@ stages:
                 ls -l $(Build.ArtifactStagingDirectory)
                 rm -rf ./blobfuse2*Debian-*.deb
               else
-                echo "Generating for Debain 11"
+                echo "Generating for Debian 11"
                 f=`ls ./blobfuse2*$(vmImage)*.deb`
                 cp "$f" $(sed 's:Ubuntu-20.04:Debian-11.0:' <<< "$f")
                 cp ./blobfuse2*Debian-*.deb $(Build.ArtifactStagingDirectory)
