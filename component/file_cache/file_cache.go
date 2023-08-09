@@ -1308,6 +1308,15 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 	}
 
 	fc.policy.CachePurge(localSrcPath)
+
+	if fc.cacheTimeout == 0 {
+		// Destination file needs to be deleted immediately
+		fc.policy.CachePurge(localDstPath)
+	} else {
+		// Add destination file to cache, it will be removed on timeout
+		fc.policy.CacheValid(localDstPath)
+	}
+
 	return nil
 }
 

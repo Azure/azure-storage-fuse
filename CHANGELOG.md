@@ -1,4 +1,5 @@
 ## 2.0.6 (WIP)
+- Fix to evict the destination file from local cache post rename file operation.
 
 ## 2.0.5 (2023-08-02)
 **Features**
