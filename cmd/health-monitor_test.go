@@ -167,13 +167,13 @@ func (suite *hmonTestSuite) TestHmonStopPidEmpty() {
 }
 
 func (suite *hmonTestSuite) TestHmonStopPidInvalid() {
-	op, err := executeCommandC(rootCmd, "health-monitor", "stop", "--pid=-12345")
+	op, err := executeCommandC(rootCmd, "health-monitor", "stop", "--pid=12345")
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to get health monitor pid")
 }
 
 func (suite *hmonTestSuite) TestHmonStopPidFailure() {
-	err := stop("-12345")
+	err := stop("54321")
 	suite.assert.NotNil(err)
 }
 
