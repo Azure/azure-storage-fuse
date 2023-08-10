@@ -310,7 +310,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	if handle.Size < int64(bc.blockSize) {
 		// File is small and can fit in one block itself
 		_ = bc.refreshBlock(handle, 0, false)
-	} else if bc.prefetchOnOpen {
+	} else if bc.prefetchOnOpen && !bc.noPrefetch {
 		// Prefetch to start on open
 		_ = bc.startPrefetch(handle, 0, false)
 	}
@@ -625,7 +625,10 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 	}
 
 	// Remove this block from free block list and add to in-process list
-	_ = handle.Buffers.Cooked.Remove(block.node)
+	if block.node != nil {
+		_ = handle.Buffers.Cooked.Remove(block.node)
+	}
+
 	block.node = handle.Buffers.Cooking.PushFront(block)
 
 	// Send the work item to worker pool to schedule download

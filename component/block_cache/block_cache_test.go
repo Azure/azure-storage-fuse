@@ -391,6 +391,49 @@ func (suite *blockCacheTestSuite) TestFileReadRandom() {
 	suite.assert.Nil(h.Buffers.Cooking)
 }
 
+func (suite *blockCacheTestSuite) TestFileReadRandomNoPrefetch() {
+	tobj, err := setupPipeline("")
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+
+	// Set the no prefetch mode here
+	tobj.blockCache.noPrefetch = true
+	tobj.blockCache.prefetch = 0
+
+	fileName := "bc.tst"
+	stroagePath := filepath.Join(tobj.fake_storage_path, fileName)
+	data := make([]byte, 100*_1MB)
+	_, _ = rand.Read(data)
+	ioutil.WriteFile(stroagePath, data, 0777)
+
+	options := internal.OpenFileOptions{Name: fileName}
+	h, err := tobj.blockCache.OpenFile(options)
+	suite.assert.Nil(err)
+	suite.assert.NotNil(h)
+	suite.assert.Equal(h.Size, int64(100*_1MB))
+	suite.assert.NotNil(h.Buffers.Cooked)
+	suite.assert.NotNil(h.Buffers.Cooking)
+
+	data = make([]byte, 100)
+	max := int64(100 * _1MB)
+	for i := 0; i < 50; i++ {
+		offset := rand.Int63n(max)
+		n, _ := tobj.blockCache.ReadInBuffer(internal.ReadInBufferOptions{Handle: h, Offset: offset, Data: data})
+		suite.assert.Equal(h.Buffers.Cooked.Len(), 1)
+		suite.assert.Equal(h.Buffers.Cooking.Len(), 0)
+		suite.assert.LessOrEqual(n, 100)
+	}
+
+	cnt := h.Buffers.Cooked.Len() + h.Buffers.Cooking.Len()
+	suite.assert.Equal(cnt, 1)
+
+	tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(h.Buffers.Cooked)
+	suite.assert.Nil(h.Buffers.Cooking)
+}
+
 func (suite *blockCacheTestSuite) TestDiskUsageCheck() {
 	tobj, err := setupPipeline("")
 	defer tobj.cleanupPipeline()
