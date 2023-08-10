@@ -79,21 +79,16 @@ func randomString(length int) string {
 	return fmt.Sprintf("%x", b)[:length]
 }
 
-func getFakeStoragePath() string {
-	rand := randomString(8)
-	fake_storage_path := filepath.Join("/tmp", "fake_storage"+rand)
-	_ = os.Mkdir(fake_storage_path, 0777)
-	return fake_storage_path
+func getFakeStoragePath(base string) string {
+	tmp_path := filepath.Join(home_dir, base+randomString(8))
+	_ = os.Mkdir(tmp_path, 0777)
+	return tmp_path
 }
 
 func setupPipeline(cfg string) (*testObj, error) {
-	rand := randomString(8)
-	fake_storage_path := filepath.Join("/tmp", "fake_storage"+rand)
-	_ = os.Mkdir(fake_storage_path, 0777)
-
 	tobj := &testObj{
-		fake_storage_path: getFakeStoragePath(),
-		disk_cache_path:   getFakeStoragePath(),
+		fake_storage_path: getFakeStoragePath("block_cache"),
+		disk_cache_path:   getFakeStoragePath("fake_storage"),
 	}
 
 	if cfg == "" {
