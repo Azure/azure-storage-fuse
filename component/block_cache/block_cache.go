@@ -501,9 +501,10 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 			// CAUTION: This thread removes blocks from cooking list and add to cooked list
 			// this means some of these blocks might be still under download
 			// if any such block is deleted, there might be a crash if later download thread tries to push 1 to its channel
-			for ; node != nil; node = nodeList.Front() {
+			for i := 0; node != nil && i < MIN_PREFETCH-1; node = nodeList.Front() {
 				block := handle.Buffers.Cooking.Remove(node).(*Block)
-				block.node = handle.Buffers.Cooked.PushFront(block)
+				block.node = handle.Buffers.Cooked.PushBack(block)
+				i++
 			}
 
 			// Now remove excess blocks from cooked list
@@ -511,6 +512,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 			nodeList = handle.Buffers.Cooked
 			node = nodeList.Front()
 
+			currentCnt := handle.Buffers.Cooked.Len()
 			for ; node != nil && currentCnt > MIN_PREFETCH; node = nodeList.Front() {
 				block := node.Value.(*Block)
 				_ = nodeList.Remove(node)
