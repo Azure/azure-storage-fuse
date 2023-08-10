@@ -749,12 +749,12 @@ func (bc *BlockCache) checkDiskUsage() bool {
 	usage := uint32((data * 100) / float64(bc.diskSize))
 
 	if bc.maxDiskUsageHit {
-		if usage > MIN_POOL_USAGE {
+		if usage >= MIN_POOL_USAGE {
 			return true
 		}
 		bc.maxDiskUsageHit = false
 	} else {
-		if usage > MAX_POOL_USAGE {
+		if usage >= MAX_POOL_USAGE {
 			bc.maxDiskUsageHit = true
 			return true
 		}

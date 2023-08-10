@@ -413,16 +413,10 @@ func (suite *blockCacheTestSuite) TestDiskUsageCheck() {
 	}
 
 	localfiles := make([]diskusagedata, 0)
-	for i := 0; i < 7; i++ {
+	for i := 0; i < 13; i++ {
 		fname := randomString(5)
 		diskFile := filepath.Join(tobj.disk_cache_path, fname)
-		localfiles = append(localfiles, diskusagedata{name: diskFile, diskflag: false})
-	}
-
-	for i := 7; i < 13; i++ {
-		fname := randomString(5)
-		diskFile := filepath.Join(tobj.disk_cache_path, fname)
-		localfiles = append(localfiles, diskusagedata{name: diskFile, diskflag: true})
+		localfiles = append(localfiles, diskusagedata{name: diskFile, diskflag: i >= 7})
 	}
 
 	for i := 0; i < 13; i++ {

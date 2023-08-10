@@ -328,7 +328,7 @@ func GetUsage(path string) (float64, error) {
 
 	size := strings.Split(out.String(), "\t")[0]
 	if size == "0" {
-		return 0, fmt.Errorf("failed to parse du output")
+		return 0, nil
 	}
 
 	// some OS's use "," instead of "." that will not work for float parsing - replace it
