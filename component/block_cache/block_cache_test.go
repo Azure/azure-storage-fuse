@@ -398,7 +398,8 @@ func (suite *blockCacheTestSuite) TestDiskUsageCheck() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(tobj.blockCache)
 
-	usage, _ := common.GetUsage(tobj.disk_cache_path)
+	usage, err := common.GetUsage(tobj.disk_cache_path)
+	suite.assert.Nil(err)
 	suite.assert.Less(usage, float64(1.0))
 	suite.assert.Equal(tobj.blockCache.checkDiskUsage(), false)
 
@@ -426,6 +427,9 @@ func (suite *blockCacheTestSuite) TestDiskUsageCheck() {
 
 	for i := 0; i < 13; i++ {
 		ioutil.WriteFile(localfiles[i].name, data, 0777)
+		usage, err := common.GetUsage(tobj.disk_cache_path)
+		suite.assert.Nil(err)
+		fmt.Printf("%d : %v (%v : %v) Usage %v\n", i, localfiles[i].name, localfiles[i].diskflag, tobj.blockCache.checkDiskUsage(), usage)
 		suite.assert.Equal(tobj.blockCache.checkDiskUsage(), localfiles[i].diskflag)
 	}
 
@@ -435,7 +439,9 @@ func (suite *blockCacheTestSuite) TestDiskUsageCheck() {
 
 	for i := 0; i < 13; i++ {
 		os.Remove(localfiles[i].name)
-		//fmt.Printf("%d : %v (%v : %v)\n", i, localfiles[i].name, localfiles[i].diskflag, tobj.blockCache.checkDiskUsage())
+		usage, err := common.GetUsage(tobj.disk_cache_path)
+		suite.assert.Nil(err)
+		fmt.Printf("%d : %v (%v : %v) Usage %v\n", i, localfiles[i].name, localfiles[i].diskflag, tobj.blockCache.checkDiskUsage(), usage)
 		suite.assert.Equal(tobj.blockCache.checkDiskUsage(), localfiles[i].diskflag)
 	}
 }
