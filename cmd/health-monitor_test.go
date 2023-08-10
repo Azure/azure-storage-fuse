@@ -35,8 +35,11 @@ package cmd
 
 import (
 	"fmt"
+	"math/rand"
 	"os"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -68,6 +71,19 @@ type hmonTestSuite struct {
 	assert *assert.Assertions
 }
 
+func generateRandomPID() string {
+	rand.Seed(time.Now().UnixNano())
+	var randpid int
+	for i := 0; i <= 5; i++ {
+		randpid = rand.Intn(9000) + 1000
+		_, err := os.FindProcess(randpid)
+		if err != nil {
+			break
+		}
+	}
+	return strconv.Itoa(randpid)
+}
+
 func (suite *hmonTestSuite) SetupTest() {
 	suite.assert = assert.New(suite.T())
 	err := log.SetDefaultLogger("silent", common.LogConfig{Level: common.ELogLevel.LOG_DEBUG()})
@@ -93,7 +109,7 @@ func (suite *hmonTestSuite) TestValidateHmonOptions() {
 	suite.assert.Contains(err.Error(), "pid of blobfuse2 process not given")
 	suite.assert.Contains(err.Error(), "config file not given")
 
-	pid = "12345"
+	pid = generateRandomPID()
 	configFile = "config.yaml"
 	err = validateHMonOptions()
 	suite.assert.Nil(err)
@@ -131,7 +147,7 @@ func (suite *hmonTestSuite) TestHmonInvalidOptions() {
 func (suite *hmonTestSuite) TestHmonInvalidConfigFile() {
 	defer suite.cleanupTest()
 
-	op, err := executeCommandC(rootCmd, "health-monitor", "--pid=12345", "--config-file=cfgNotFound.yaml")
+	op, err := executeCommandC(rootCmd, "health-monitor", fmt.Sprintf("--pid=%s", generateRandomPID()), "--config-file=cfgNotFound.yaml")
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "invalid config file")
 	suite.assert.Contains(op, "no such file or directory")
@@ -149,7 +165,7 @@ func (suite *hmonTestSuite) TestHmonWithConfigFailure() {
 	suite.assert.Nil(err)
 	confFile.Close()
 
-	op, err := executeCommandC(rootCmd, "health-monitor", "--pid=12345", fmt.Sprintf("--config-file=%s", cfgFileHmonTest))
+	op, err := executeCommandC(rootCmd, "health-monitor", fmt.Sprintf("--pid=%s", generateRandomPID()), fmt.Sprintf("--config-file=%s", cfgFileHmonTest))
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to start health monitor")
 }
@@ -167,13 +183,13 @@ func (suite *hmonTestSuite) TestHmonStopPidEmpty() {
 }
 
 func (suite *hmonTestSuite) TestHmonStopPidInvalid() {
-	op, err := executeCommandC(rootCmd, "health-monitor", "stop", "--pid=12345")
+	op, err := executeCommandC(rootCmd, "health-monitor", "stop", fmt.Sprintf("--pid=%s", generateRandomPID()))
 	suite.assert.NotNil(err)
 	suite.assert.Contains(op, "failed to get health monitor pid")
 }
 
 func (suite *hmonTestSuite) TestHmonStopPidFailure() {
-	err := stop("54321")
+	err := stop(generateRandomPID())
 	suite.assert.NotNil(err)
 }
 
