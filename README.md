@@ -179,7 +179,7 @@ If your use-case involves updating/uploading file(s) through other means and you
 - chown  : Change of ownership is not supported by Azure Storage hence Blobfuse2 does not support this.
 - Creation of device files or pipes is not supported by Blobfuse2.
 - Blobfuse2 does not support extended-attributes (x-attrs) operations
-- Blobfuse2 does not support lseek() operatoin on directory handles. No error is thrown but it will not work as expected.
+- Blobfuse2 does not support lseek() operation on directory handles. No error is thrown but it will not work as expected.
 
 ## Un-Supported Scenarios
 - Blobfuse2 does not support overlapping mount paths. While running multiple instances of Blobfuse2 make sure each instance has a unique and non-overlapping mount point.
