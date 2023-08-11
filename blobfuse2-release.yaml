@@ -28,6 +28,12 @@ parameters:
     displayName: 'Update Version'
     type: boolean
     default: false
+  
+  - name: root_dir
+    type: string
+
+  - name: working_directory
+    type: string
 
 # Do not trigger this pipeline automatically
 trigger: none
