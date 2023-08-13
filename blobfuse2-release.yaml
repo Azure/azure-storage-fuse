@@ -153,7 +153,7 @@ stages:
               tags: 'fuse3'
               depends: 'fuse3'
               container: 'test-cnt-ubn-20-arm64'
-              AgentName: "blobfuse-ubuntu20"
+              AgentName: "blobfuse-ubn20-arm64"
 
         pool:
           name: "blobfuse-ubn-arm64-pool"
