@@ -148,12 +148,12 @@ stages:
         strategy:
           matrix:
             Libfuse3:
-              vmImage: 'ubuntu-20.04'
+              vmImage: 'ubuntu-22.04'
               fuselib: 'libfuse3-dev'
               tags: 'fuse3'
               depends: 'fuse3'
-              container: 'test-cnt-ubn-20-arm64'
-              AgentName: 'blobfuse-ubn20-arm64'
+              container: 'test-cnt-ubn-22-arm64'
+              AgentName: 'blobfuse-ubn22-arm64'
 
         pool:
           name: "blobfuse-ubn-arm64-pool"
