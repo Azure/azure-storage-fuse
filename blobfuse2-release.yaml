@@ -497,34 +497,34 @@ stages:
             inputs:
               artifactName: 'blobfuse2-signed'
               downloadPath: $(root_dir)
-              itemPattern: blobfuse2-signed/blobfuse2*$(tags).xdeb
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.deb
 
           - script: |
-              for f in ./blobfuse2*$(tags)x86_64.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
-              cp ./blobfuse2*$(vmImage)*x86_64.deb $(Build.ArtifactStagingDirectory)
+              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
+              cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
               if [ $(AgentName) == "blobfuse-ubuntu18" ]; then
                 echo "Generating for Debian 9/10"
-                f=`ls ./blobfuse2*$(vmImage)*x86_64.deb`
+                f=`ls ./blobfuse2*$(vmImage)*.deb`
                 cp "$f" $(sed 's:Ubuntu-18.04:Debian-9.0:' <<< "$f")
                 cp "$f" $(sed 's:Ubuntu-18.04:Debian-10.0:' <<< "$f")
-                cp ./blobfuse2*Debian-x86_64.deb $(Build.ArtifactStagingDirectory)
+                cp ./blobfuse2*Debian-*.deb $(Build.ArtifactStagingDirectory)
                 ls -l $(Build.ArtifactStagingDirectory)
-                rm -rf ./blobfuse2*Debian-*x86_64.deb
+                rm -rf ./blobfuse2*Debian-*.deb
               else
                 echo "Generating for Debian 11"
-                f=`ls ./blobfuse2*$(vmImage)*x86_64.deb`
+                f=`ls ./blobfuse2*$(vmImage)*.deb`
                 cp "$f" $(sed 's:Ubuntu-20.04:Debian-11.0:' <<< "$f")
-                cp ./blobfuse2*Debian-*x86_64.deb $(Build.ArtifactStagingDirectory)
+                cp ./blobfuse2*Debian-*.deb $(Build.ArtifactStagingDirectory)
                 ls -l $(Build.ArtifactStagingDirectory)
-                rm -rf ./blobfuse2*Debian-*x86_64.deb
+                rm -rf ./blobfuse2*Debian-*.deb
               fi
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-signed
 
           - script: |
-              sudo dpkg --info blobfuse2*x86_64.deb
+              sudo dpkg --info blobfuse2*.deb
               sudo apt-get install $(fuse-version) build-essential -y
-              sudo dpkg -i blobfuse2*x86_64.deb
+              sudo dpkg -i blobfuse2*.deb
             displayName: 'Install Package'
             workingDirectory: $(Build.ArtifactStagingDirectory)
 
@@ -601,18 +601,11 @@ stages:
             inputs:
               artifactName: 'blobfuse2-signed'
               downloadPath: $(root_dir)
-              itemPattern: blobfuse2-signed/blobfuse2*$(tags)arm64.deb
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*arm64.deb
 
           - script: |
-              for f in ./blobfuse2*$(tags)arm64.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
-              cp ./blobfuse2*$(vmImage)arm64.deb $(Build.ArtifactStagingDirectory)
-                echo "Generating for Debian 11"
-                f=`ls ./blobfuse2*$(vmImage)arm64.deb`
-                cp "$f" $(sed 's:Ubuntu-22.04:Debian-11.0:' <<< "$f")
-                cp ./blobfuse2*Debian-arm64.deb $(Build.ArtifactStagingDirectory)
-                ls -l $(Build.ArtifactStagingDirectory)
-                rm -rf ./blobfuse2*Debian-arm64.deb
-              fi
+              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
+              cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
             displayName: 'Rename Package'
             workingDirectory: $(root_dir)/blobfuse2-signed
 
@@ -824,7 +817,7 @@ stages:
             inputs:
               artifactName: 'blobfuse2-signed'
               downloadPath: $(root_dir)
-              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*.rpm
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.rpm
 
           - script: |
               for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
@@ -943,7 +936,7 @@ stages:
             inputs:
               artifactName: 'blobfuse2-signed'
               downloadPath: $(root_dir)
-              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*.rpm
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.rpm
 
           - script: |
               for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
@@ -1040,7 +1033,7 @@ stages:
             inputs:
               artifactName: 'blobfuse2-signed'
               downloadPath: $(root_dir)
-              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*.rpm
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.rpm
 
           - script: |
               for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
@@ -1132,7 +1125,7 @@ stages:
             inputs:
               artifactName: 'blobfuse2-signed'
               downloadPath: $(root_dir)
-              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*.rpm
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.rpm
 
           - script: |
               for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
@@ -1225,7 +1218,7 @@ stages:
             inputs:
               artifactName: 'blobfuse2-signed'
               downloadPath: $(root_dir)
-              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*.rpm
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.rpm
 
           - script: |
               for f in ./blobfuse2*$(tags)*.rpm; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
