@@ -143,7 +143,7 @@ stages:
               artifactName: 'blobfuse2-temp'
             displayName: 'Publish Artifacts' 
 
-      - job: Set_1_ARM
+      - job: Set_2_ARM
         timeoutInMinutes: 120
         strategy:
           matrix:
@@ -224,7 +224,7 @@ stages:
               fpm -s dir -t deb -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" 
-              mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).aarch64.deb
+              mv ./blobfuse2*.deb ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).arm64.deb
               cp ./blobfuse2*.deb $(Build.ArtifactStagingDirectory)
             workingDirectory: $(root_dir)
             displayName: 'Make deb Package'
@@ -541,6 +541,111 @@ stages:
             inputs:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts' 
+
+      - job: Set_1_ARM
+        timeoutInMinutes: 120
+        strategy:
+          matrix:
+            Ubuntu-22-ARM64:
+              vmImage: 'Ubuntu-22.04'
+              fuse-version: 'fuse3'
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
+              container: 'test-cnt-ubn-22-arm64'
+              AgentName: "blobfuse-ubn22-arm64"
+        pool:
+          name: "blobfuse-ubn-arm64-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
+
+        variables:
+          - group: NightlyBlobFuse
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
+          - name: work_dir
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+          - name: mount_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmp'
+          - name: temp_dir
+            value: '$(System.DefaultWorkingDirectory)/fusetmpcache'
+
+        steps:
+          - checkout: none
+
+          - script: |
+              git clone https://github.com/Azure/azure-storage-fuse
+            displayName: 'Checkout Code'
+            workingDirectory: $(root_dir)
+      
+          - script: |
+              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+            displayName: 'Checkout Branch'
+            workingDirectory: $(root_dir)/azure-storage-fuse
+          
+          # Custom script to install Go-lang
+          - task: ShellScript@2
+            inputs:
+              scriptPath: "$(work_dir)/go_installer.sh"
+              args: "$(root_dir)/"
+            displayName: "GoTool Custom Setup"
+
+          # get glibc version with which build is done
+          - script: |
+             sudo apt update
+             sudo apt --fix-broken install
+             ldd --version
+            displayName: "GLIBC Version"
+
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Build Artifacts'
+            inputs:
+              artifactName: 'blobfuse2-signed'
+              downloadPath: $(root_dir)
+              itemPattern: blobfuse2-signed/blobfuse2*$(tags)arm64.deb
+
+          - script: |
+              for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
+              cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
+              if [ $(AgentName) == "blobfuse-ubuntu18" ]; then
+                echo "Generating for Debian 9/10"
+                f=`ls ./blobfuse2*$(vmImage)aarch64.deb`
+                cp "$f" $(sed 's:Ubuntu-18.04:Debian-9.0:' <<< "$f")
+                cp "$f" $(sed 's:Ubuntu-18.04:Debian-10.0:' <<< "$f")
+                cp ./blobfuse2*Debian-*.deb $(Build.ArtifactStagingDirectory)
+                ls -l $(Build.ArtifactStagingDirectory)
+                rm -rf ./blobfuse2*Debian-*.deb
+              else
+                echo "Generating for Debian 11"
+                f=`ls ./blobfuse2*$(vmImage)*.deb`
+                cp "$f" $(sed 's:Ubuntu-20.04:Debian-11.0:' <<< "$f")
+                cp ./blobfuse2*Debian-*.deb $(Build.ArtifactStagingDirectory)
+                ls -l $(Build.ArtifactStagingDirectory)
+                rm -rf ./blobfuse2*Debian-*.deb
+              fi
+            displayName: 'Rename Package'
+            workingDirectory: $(root_dir)/blobfuse2-signed
+
+          - script: |
+              sudo dpkg --info blobfuse2*.deb
+              sudo apt-get install $(fuse-version) build-essential -y
+              sudo dpkg -i blobfuse2*.deb
+            displayName: 'Install Package'
+            workingDirectory: $(Build.ArtifactStagingDirectory)
+
+          - template: 'azure-pipeline-templates/release-distro-tests.yml'
+            parameters:
+              root_dir: $(root_dir)
+              work_dir: $(work_dir)
+              mount_dir: $(mount_dir)
+              temp_dir: $(temp_dir)
+              container: $(container)
+
+          # publishing the artifacts generated
+          - task: PublishBuildArtifacts@1
+            inputs:
+              artifactName: 'blobfuse2'
+            displayName: 'Publish Artifacts' 
+
 
       # - job: Set_3
       #   timeoutInMinutes: 120

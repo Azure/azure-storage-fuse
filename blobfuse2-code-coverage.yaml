@@ -769,8 +769,8 @@ stages:
             # Custom script to install Go-lang
             - task: ShellScript@2
               inputs:
-                scriptPath: "${{ parameters.working_directory }}/go_installer.sh"
-                args: "${{ parameters.root_dir }}/"
+                scriptPath: "$(work_dir)/go_installer.sh"
+                args: "$(root_dir)/"
               displayName: "GoTool Custom Setup"
           
             # Run the block blob cleanup
