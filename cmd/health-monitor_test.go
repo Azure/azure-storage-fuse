@@ -75,7 +75,7 @@ func generateRandomPID() string {
 	rand.Seed(time.Now().UnixNano())
 	var randpid int
 	for i := 0; i <= 5; i++ {
-		randpid = rand.Intn(9000) + 1000
+		randpid = rand.Intn(90000) + 10000
 		_, err := os.FindProcess(randpid)
 		if err != nil {
 			break
