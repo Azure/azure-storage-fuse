@@ -669,7 +669,7 @@ stages:
               container: 'test-cnt-rhel-9-arm64'
               
         pool:
-          name: "blobfuse-rhel-arm64-pool"
+          name: "blobfuse-ubn-arm64-pool"
           demands:
             - ImageOverride -equals $(agentName)
 
