@@ -271,7 +271,7 @@ stages:
             - script: |
                 sudo apt-get update --fix-missing
                 sudo apt-get install $(tags) $(fuselib) gcc -y 
-              displayName: 'Install Fuse'
+              displayName: 'Install fuse'
 
             # -------------------------------------------------------
             # Pull and build the code
@@ -534,7 +534,7 @@ stages:
             - script: |
                 sudo apt-get update --fix-missing
                 sudo apt-get install $(fuselib) gcc -y
-              displayName: 'Install libfuse'
+              displayName: 'Install fuse'
 
             # -------------------------------------------------------
             # Pull and build the code
@@ -974,7 +974,7 @@ stages:
                       if [ $(AgentName) == "blobfuse-centos8" ]; then
                         sudo yum install gcc gcc-c++ make git fuse fuse3 fuse3-devel python36 -y --nobest --allowerasing
                       else
-                        sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y
+                        sudo yum install gcc gcc-c++ make git fuse3 fuse3-devel python36 -y --nobest
                       fi
                     displayName: 'Install fuse'
                   verbose_log: ${{ parameters.verbose_log }}
