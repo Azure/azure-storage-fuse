@@ -467,7 +467,7 @@ stages:
                 mount_dir: $(MOUNT_DIR)
                 temp_dir: $(TEMP_DIR)
 
-        - job: Set_2
+        - job: Set_2_ARM
           timeoutInMinutes: 300
 
           strategy:
