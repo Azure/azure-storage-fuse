@@ -533,7 +533,7 @@ stages:
 
             - script: |
                 sudo apt-get update --fix-missing
-                sudo apt-get install $(fuselib) -y
+                sudo apt-get install $(fuselib) gcc -y
               displayName: 'Install libfuse'
 
             # -------------------------------------------------------
