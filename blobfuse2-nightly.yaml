@@ -474,8 +474,8 @@ stages:
             matrix:
               Ubuntu-22-ARM64-ADLS:
                 imageName: 'blobfuse-ubn22-arm64'
-                containerName: 'test-cnt-ubn-22'
-                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+                containerName: 'test-cnt-ubn-22-arm64'
+                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
           pool:
