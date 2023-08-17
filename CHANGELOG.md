@@ -8,7 +8,7 @@
 - On AML compute cluster MSI authentication is now supported (this will use the identity assigned to compute cluster) 
 - User can choose to start prefetching on open or on first read.
 
-## 2.0.6 (WIP)
+**Bug Fixes**
 - Fix to evict the destination file from local cache post rename file operation.
 
 ## 2.0.5 (2023-08-02)
