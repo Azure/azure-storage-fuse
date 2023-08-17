@@ -28,7 +28,7 @@ jobs:
     pool:
       vmImage: $(imageName)
     variables:
-      - group: NightlyBlobFuse 
+      - group: NightlyBlobFuse
 
     steps:
     # ----------------------------------------------------------------
