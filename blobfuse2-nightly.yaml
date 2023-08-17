@@ -198,6 +198,143 @@ stages:
                 mount_dir: $(MOUNT_DIR)
                 temp_dir: $(TEMP_DIR)
 
+        - job: Set_1_ARM
+          timeoutInMinutes: 300
+
+          strategy:
+            matrix:
+              Ubuntu-22-ARM64-BlockBlob:
+                imageName: 'blobfuse-ubn22-arm64'
+                containerName: 'test-cnt-ubn-22-arm64'
+                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+          
+          pool:
+            name: "blobfuse-ubn-arm64-pool"
+            demands:
+              - ImageOverride -equals $(imageName)
+
+          variables:
+            - group: NightlyBlobFuse
+            - name: MOUNT_DIR
+              value: '$(Pipeline.Workspace)/blob_mnt'
+            - name: TEMP_DIR
+              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+            - name: BLOBFUSE2_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+            - name: BLOBFUSE2_SAS_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
+            - name: BLOBFUSE2_SPN_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
+            - name: BLOBFUSE2_STREAM_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
+            - name: BLOBFUSE2_STREAM_FILENAME_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_stream_filename.yaml'
+            - name: BLOBFUSE2_ADLS_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+            - name: BLOBFUSE2_GTEST_CFG
+              value: '$(Pipeline.Workspace)/connection.yaml'
+            - name: BLOBFUSE2_AZURITE_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_azurite_config.yaml'
+            - name: BLOBFUSE2_STRESS_DIR
+              value: '$(Pipeline.Workspace)/blobfuse2_stress'
+            - name: DECODE_PERCENTS
+              value: false
+            - name: GOPATH
+              value: '$(Pipeline.Workspace)/go'
+            - name: ROOT_DIR
+              value: '$(System.DefaultWorkingDirectory)' 
+            - name: WORK_DIR
+              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+
+          steps:
+            - checkout: none
+
+            - script: |
+                hostnamectl
+              displayName: 'Host info'
+              workingDirectory: $(ROOT_DIR)
+
+            # Clone the repo
+            - script: |
+                git clone https://github.com/Azure/azure-storage-fuse
+              displayName: 'Checkout Code'
+              workingDirectory: $(ROOT_DIR)
+
+            # Checkout the branch
+            - script: |
+                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+              displayName: 'Checkout Branch'
+              workingDirectory: $(WORK_DIR)
+
+            - script: |
+                sudo apt-get update --fix-missing
+                sudo apt-get install $(tags) $(fuselib) gcc -y 
+              displayName: 'Install fuse'
+
+            # -------------------------------------------------------
+            # Pull and build the code
+            - template: 'azure-pipeline-templates/build.yml'
+              parameters:
+                working_directory: $(WORK_DIR)
+                root_dir: $(Pipeline.Workspace)
+                mount_dir: $(MOUNT_DIR)
+                temp_dir: $(TEMP_DIR)
+                gopath: $(GOPATH)
+                container: $(containerName)
+                tags: $(tags)
+                fuselib: $(fuselib)
+
+            # -------------------------------------------------------
+            - template: 'azure-pipeline-templates/invalid-command-tests.yml'
+              parameters:
+                working_dir: $(WORK_DIR)
+                mount_dir: $(MOUNT_DIR)
+
+            - ${{ if eq(parameters.exhaustive_test, true) }}:    
+              - template: 'azure-pipeline-templates/verbose-tests.yml'
+                parameters:
+                  service: 'BlockBlob'
+                  account_type: 'block'
+                  account_endpoint: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net' 
+                  adls: false
+                  account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+                  account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+                  account_sas: $(NIGHTLY_STO_ACC_SAS)
+                  spn_account_name: $(AZTEST_BLOCK_ACC_NAME)
+                  spn_account_endpoint: 'https://$(AZTEST_BLOCK_ACC_NAME).blob.core.windows.net' 
+                  client_id: $(AZTEST_CLIENT)
+                  tenant_id: $(AZTEST_TENANT)
+                  client_secret: $(AZTEST_SECRET)
+                  container: $(containerName)
+                  config: $(BLOBFUSE2_CFG)
+                  working_dir: $(WORK_DIR)
+                  mount_dir: $(MOUNT_DIR)
+                  temp_dir: $(TEMP_DIR)
+                  stress_dir: $(BLOBFUSE2_STRESS_DIR)
+                  huge_container: 'testcnt1'
+                  quick_stress: ${{ parameters.quick_stress }}
+                  test_key_credential: true 
+                  test_sas_credential: true
+                  test_spn_credential: true
+                  test_stream: true
+                  test_azurite: false
+                  stream_config: $(BLOBFUSE2_STREAM_CFG)
+                  stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
+                  sas_credential_config: $(BLOBFUSE2_SAS_CFG)
+                  spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+                  azurite_config: $(BLOBFUSE2_AZURITE_CFG)
+                  distro_name: $(imageName)
+                  verbose_log: ${{ parameters.verbose_log }}
+                  tags: $(tags)
+
+            - template: azure-pipeline-templates/cleanup.yml
+              parameters:
+                working_dir: $(WORK_DIR)
+                mount_dir: $(MOUNT_DIR)
+                temp_dir: $(TEMP_DIR)
+
         # Ubuntu Tests
         - job: Set_2
           timeoutInMinutes: 300
@@ -329,6 +466,134 @@ stages:
                 working_dir: $(WORK_DIR)
                 mount_dir: $(MOUNT_DIR)
                 temp_dir: $(TEMP_DIR)
+
+        - job: Set_2_ARM
+          timeoutInMinutes: 300
+
+          strategy:
+            matrix:
+              Ubuntu-22-ARM64-ADLS:
+                imageName: 'blobfuse-ubn22-arm64'
+                containerName: 'test-cnt-ubn-22-arm64'
+                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+          pool:
+            name: "blobfuse-ubn-arm64-pool"
+            demands:
+              - ImageOverride -equals $(imageName)
+
+          variables:
+            - group: NightlyBlobFuse
+            - name: MOUNT_DIR
+              value: '$(Pipeline.Workspace)/blob_mnt'
+            - name: TEMP_DIR
+              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+            - name: BLOBFUSE2_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+            - name: BLOBFUSE2_SAS_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
+            - name: BLOBFUSE2_SPN_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
+            - name: BLOBFUSE2_STREAM_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
+            - name: BLOBFUSE2_STREAM_FILENAME_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_stream_filename.yaml'
+            - name: BLOBFUSE2_ADLS_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
+            - name: BLOBFUSE2_GTEST_CFG
+              value: '$(Pipeline.Workspace)/connection.yaml'
+            - name: BLOBFUSE2_AZURITE_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_azurite_config.yaml'
+            - name: BLOBFUSE2_STRESS_DIR
+              value: '$(Pipeline.Workspace)/blobfuse2_stress'
+            - name: DECODE_PERCENTS
+              value: false
+            - name: GOPATH
+              value: '$(Pipeline.Workspace)/go'
+            - name: ROOT_DIR
+              value: '$(System.DefaultWorkingDirectory)' 
+            - name: WORK_DIR
+              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+
+          steps:
+            - checkout: none
+
+            # Clone the repo
+            - script: |
+                git clone https://github.com/Azure/azure-storage-fuse
+              displayName: 'Checkout Code'
+              workingDirectory: $(ROOT_DIR)
+
+            # Checkout the branch
+            - script: |
+                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+              displayName: 'Checkout Branch'
+              workingDirectory: $(WORK_DIR)
+
+            - script: |
+                sudo apt-get update --fix-missing
+                sudo apt-get install $(fuselib) gcc -y
+              displayName: 'Install fuse'
+
+            # -------------------------------------------------------
+            # Pull and build the code
+            - template: 'azure-pipeline-templates/build.yml'
+              parameters:
+                working_directory: $(WORK_DIR)
+                root_dir: $(Pipeline.Workspace)
+                mount_dir: $(MOUNT_DIR)
+                temp_dir: $(TEMP_DIR)
+                gopath: $(GOPATH)
+                container: $(containerName)
+                tags: $(tags)
+                fuselib: $(fuselib)
+                skip_ut: true # Skip UT because Block Blob set runs it
+
+            # -------------------------------------------------------
+            - ${{ if eq(parameters.exhaustive_test, true) }}:    
+              - template: 'azure-pipeline-templates/verbose-tests.yml'
+                parameters:
+                  service: 'ADLS'
+                  account_type: 'adls'
+                  account_endpoint: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net' 
+                  adls: true
+                  account_name: $(AZTEST_ADLS_ACC_NAME)
+                  account_key: $(AZTEST_ADLS_KEY)
+                  account_sas: $(adlsSas)
+                  spn_account_name: $(AZTEST_ADLS_ACC_NAME)
+                  spn_account_endpoint: 'https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net' 
+                  client_id: $(AZTEST_CLIENT)
+                  tenant_id: $(AZTEST_TENANT)
+                  client_secret: $(AZTEST_SECRET)
+                  container: $(containerName)
+                  config: $(BLOBFUSE2_ADLS_CFG)
+                  working_dir: $(WORK_DIR)
+                  mount_dir: $(MOUNT_DIR)
+                  temp_dir: $(TEMP_DIR)
+                  stress_dir: $(BLOBFUSE2_STRESS_DIR)
+                  huge_container: 'testcnt'
+                  quick_stress: ${{ parameters.quick_stress }}
+                  test_key_credential: true
+                  test_sas_credential: true
+                  test_spn_credential: true
+                  test_stream: true
+                  test_azurite: false
+                  stream_config: $(BLOBFUSE2_STREAM_CFG)
+                  stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
+                  sas_credential_config: $(BLOBFUSE2_SAS_CFG)
+                  spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+                  azurite_config: $(BLOBFUSE2_AZURITE_CFG)
+                  distro_name: $(imageName)
+                  verbose_log: ${{ parameters.verbose_log }}
+                  tags: $(tags)
+
+            - template: azure-pipeline-templates/cleanup.yml
+              parameters:
+                working_dir: $(WORK_DIR)
+                mount_dir: $(MOUNT_DIR)
+                temp_dir: $(TEMP_DIR)
+
 
         - ${{ if eq(parameters.proxy_test, true) }}:
             # -----------------------------------------------------------
@@ -605,12 +870,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              # Go tool installer
-              - task: GoTool@0
-                inputs:
-                  version: '1.20.5'
-                displayName: "Install Go Version"
-
               - script: |
                   sudo touch /etc/yum.repos.d/centos.repo
                   sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
@@ -689,12 +948,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              # Go tool installer
-              - task: GoTool@0
-                inputs:
-                  version: '1.20.5'
-                displayName: "Install Go Version"
-
               - script: |
                   sudo sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-*
                   sudo sed -i 's|baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-*
@@ -762,12 +1015,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              # Go tool installer
-              - task: GoTool@0
-                inputs:
-                  version: '1.20.5'
-                displayName: "Install Go Version"
-
               - template: 'azure-pipeline-templates/distro-tests.yml'
                 parameters:
                   working_dir: $(WORK_DIR)
@@ -901,12 +1148,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              # Go tool installer
-              - task: GoTool@0
-                inputs:
-                  version: '1.20.5'
-                displayName: "Install Go Version"
-
               - template: 'azure-pipeline-templates/distro-tests.yml'
                 parameters:
                   working_dir: $(WORK_DIR)
@@ -976,12 +1217,6 @@ stages:
                 value: "/usr/pipeline/workv2/go"
 
             steps:
-              # Go tool installer
-              - task: GoTool@0
-                inputs:
-                  version: '1.20.5'
-                displayName: "Install Go Version"
-
               - template: 'azure-pipeline-templates/distro-tests.yml'
                 parameters:
                   working_dir: $(WORK_DIR)
@@ -1057,8 +1292,8 @@ stages:
               
               # Install libfuse
               - script: |
-                  sudo apt-get install make cmake gcc g++ libfuse3-dev fuse3 -y -o Dpkg::Options::="--force-confnew"
                   sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
+                  sudo apt-get install make cmake gcc g++ libfuse3-dev fuse3 -y -o Dpkg::Options::="--force-confnew"  
                 displayName: 'Install Fuse'
 
               # Prestart cleanup
@@ -1652,7 +1887,7 @@ stages:
             - task: ShellScript@2
               inputs:
                 scriptPath: "$(WORK_DIR)/go_installer.sh"
-                args: "$(ROOT_DIR)/ 1.20.5"
+                args: "$(ROOT_DIR)/"
               displayName: "GoTool Custom Setup"
 
             # Downloading Go dependency packages
