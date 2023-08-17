@@ -7,6 +7,7 @@
 - Block cache with disk backup to reduce network cost if same blocks are read again
 - On AML compute cluster MSI authentication is now supported (this will use the identity assigned to compute cluster) 
 - User can choose to start prefetching on open or on first read.
+- Added support for ARM64 architecture.
 
 **Bug Fixes**
 - Fix to evict the destination file from local cache post rename file operation.
@@ -15,7 +16,6 @@
 **Features**
 - In case of MSI based authentication, user shall provide object-id of the identity and honour-acl flag for file-system to work with ACLs assigned to the given identity instead of permissions.
 - Added support to read OAuth token from a user given file.
-- Added support for ARM64 architecture.
 
 **Bug Fixes**
 - Fixed priority level check of components to reject invalid pipeline entries.
