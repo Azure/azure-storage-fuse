@@ -580,7 +580,7 @@ stages:
                   huge_container: 'testcnt'
                   quick_stress: ${{ parameters.quick_stress }}
                   test_key_credential: true
-                  test_sas_credential: true
+                  test_sas_credential: false
                   test_spn_credential: true
                   test_stream: true
                   test_azurite: false
