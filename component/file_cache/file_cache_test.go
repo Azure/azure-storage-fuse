@@ -1234,6 +1234,92 @@ func (suite *fileCacheTestSuite) TestRenameFileCase2() {
 	suite.assert.True(os.IsNotExist(err))
 }
 
+func (suite *fileCacheTestSuite) TestRenameFileAndCacheCleanup() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 10\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
+
+	src := "source1"
+	dst := "destination2"
+	createHandle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: src, Mode: 0666})
+	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: createHandle})
+	openHandle, _ := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: src, Mode: 0666})
+
+	// Path should be in the file cache
+	_, err := os.Stat(suite.cache_path + "/" + src)
+	suite.assert.True(err == nil || os.IsExist(err))
+	// Path should be in fake storage
+	_, err = os.Stat(suite.fake_storage_path + "/" + src)
+	suite.assert.True(err == nil || os.IsExist(err))
+
+	// RenameFile
+	err = suite.fileCache.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
+	suite.assert.Nil(err)
+	// Path in fake storage and file cache should be updated
+	_, err = os.Stat(suite.cache_path + "/" + src) // Src does not exist
+	suite.assert.True(os.IsNotExist(err))
+	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall exists in cache
+	suite.assert.True(err == nil || os.IsExist(err))
+	_, err = os.Stat(suite.fake_storage_path + "/" + src) // Src does not exist
+	suite.assert.True(os.IsNotExist(err))
+	_, err = os.Stat(suite.fake_storage_path + "/" + dst) // Dst does exist
+	suite.assert.True(err == nil || os.IsExist(err))
+
+	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: openHandle})
+
+	time.Sleep(5 * time.Second)                    // Check once before the cache cleanup that file exists
+	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall exists in cache
+	suite.assert.True(err == nil || os.IsExist(err))
+
+	time.Sleep(8 * time.Second)                    // Wait for the cache cleanup to occur
+	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall not exists in cache
+	suite.assert.True(err == nil || os.IsNotExist(err))
+}
+
+func (suite *fileCacheTestSuite) TestRenameFileAndCacheCleanupWithNoTimeout() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  timeout-sec: 0\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
+
+	src := "source1"
+	dst := "destination2"
+	createHandle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: src, Mode: 0666})
+	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: createHandle})
+	openHandle, _ := suite.fileCache.OpenFile(internal.OpenFileOptions{Name: src, Mode: 0666})
+
+	// Path should be in the file cache
+	_, err := os.Stat(suite.cache_path + "/" + src)
+	suite.assert.True(err == nil || os.IsExist(err))
+	// Path should be in fake storage
+	_, err = os.Stat(suite.fake_storage_path + "/" + src)
+	suite.assert.True(err == nil || os.IsExist(err))
+
+	// RenameFile
+	err = suite.fileCache.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
+	suite.assert.Nil(err)
+	// Path in fake storage and file cache should be updated
+	_, err = os.Stat(suite.cache_path + "/" + src) // Src does not exist
+	suite.assert.True(os.IsNotExist(err))
+	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall exists in cache
+	suite.assert.True(err == nil || os.IsExist(err))
+	_, err = os.Stat(suite.fake_storage_path + "/" + src) // Src does not exist
+	suite.assert.True(os.IsNotExist(err))
+	_, err = os.Stat(suite.fake_storage_path + "/" + dst) // Dst does exist
+	suite.assert.True(err == nil || os.IsExist(err))
+
+	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: openHandle})
+
+	time.Sleep(1 * time.Second)                    // Wait for the cache cleanup to occur
+	_, err = os.Stat(suite.cache_path + "/" + dst) // Dst shall not exists in cache
+	suite.assert.True(err == nil || os.IsNotExist(err))
+}
+
 func (suite *fileCacheTestSuite) TestTruncateFileNotInCache() {
 	defer suite.cleanupTest()
 	// Setup
