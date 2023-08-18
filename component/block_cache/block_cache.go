@@ -496,29 +496,33 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 
 			// As this is random read move all in process blocks to free list
 			nodeList := handle.Buffers.Cooking
+			currentCnt = nodeList.Len()
 			node := nodeList.Front()
 
-			// CAUTION: This thread removes blocks from cooking list and add to cooked list
-			// this means some of these blocks might be still under download
-			// if any such block is deleted, there might be a crash if later download thread tries to push 1 to its channel
-			for i := 0; node != nil && i < MIN_PREFETCH-1; node = nodeList.Front() {
+			for i := 0; node != nil && i < currentCnt; {
 				// Test whether this block is already downloaded or still under download
-				block := handle.Buffers.Cooking.Remove(node).(*Block)
+				block := node.Value.(*Block)
 				i++
 
 				select {
 				case <-block.state:
 					// Block is downloaded so it's safe to reuse this one
+					// Remove it from cooking list and push it back to cooked list
+					delNode := node
+					node = node.Next()
+					_ = nodeList.Remove(delNode)
+
 					block.node = handle.Buffers.Cooked.PushBack(block)
 				default:
 					// Block is still under download so can not reuse this
-					block.node = handle.Buffers.Cooking.PushBack(block)
+					// Leave this here and move to next node in list
+					node = node.Next()
 				}
 			}
 
 			// Now remove excess blocks from cooked list
 			nodeList = handle.Buffers.Cooked
-			currentCnt := nodeList.Len()
+			currentCnt = nodeList.Len()
 			node = nodeList.Front()
 
 			for ; node != nil && currentCnt > MIN_PREFETCH; node = nodeList.Front() {
