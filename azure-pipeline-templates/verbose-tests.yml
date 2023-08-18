@@ -90,6 +90,7 @@ steps:
       
   - script: cat ${{ parameters.config }}
     displayName: Print config file
+    condition: ${{ parameters.test_key_credential }}
 
 # Stream e2e
   - script: |
@@ -107,6 +108,7 @@ steps:
       
   - script: cat ${{ parameters.stream_config }}
     displayName: Print Stream config file with Handle Level Caching
+    condition: ${{ parameters.test_stream }}
 
 # Stream e2e filename level caching
   - script: |
@@ -124,6 +126,7 @@ steps:
       
   - script: cat ${{ parameters.stream_filename_config }}
     displayName: Print Stream config file with Filename Caching
+    condition: ${{ parameters.test_stream }}
 
 # Create sas credential config file if we need to test it
   - script: |
@@ -141,6 +144,7 @@ steps:
       
   - script: cat ${{ parameters.sas_credential_config }}
     displayName: Print SAS config file
+    condition: ${{ parameters.test_sas_credential }}
 
 # Create spn credential config file if we need to test it
   - script: |
@@ -160,6 +164,7 @@ steps:
       
   - script: cat ${{ parameters.spn_credential_config }}
     displayName: Print SPN config file
+    condition: ${{ parameters.test_spn_credential }}
 
   # Create azurite config file if we need to test it
   - script: |
