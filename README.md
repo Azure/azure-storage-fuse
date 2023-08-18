@@ -5,6 +5,10 @@ This is the next generation [blobfuse](https://github.com/Azure/azure-storage-fu
 
 Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is used within its limits documented here. Blobfuse2 supports both reads and writes however, it does not guarantee continuous sync of data written to storage using other APIs or other mounts of Blobfuse2. For data integrity it is recommended that multiple sources do not modify the same blob/file. Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/feature requests/questions.
 
+##  NOTICE
+- We have seen some customer issues around files getting corrupted when `streaming` is used in write mode. Kindly avoid using this feature for write while we investigate and resolve it.
+## Supported Platforms
+Visit [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supported-Platforms) page to see list of supported linux distros.
 ## Features
 - Mount an Azure storage blob container or datalake file system on Linux.
 - Basic file system operations such as mkdir, opendir, readdir, rmdir, open, 
