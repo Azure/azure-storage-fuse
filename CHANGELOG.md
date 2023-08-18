@@ -1,16 +1,16 @@
-## 2.1.0-preview.2 (WIP)
+## 2.1.0 (WIP)
 **Features**
+- Added support for ARM64 architecture.
 - Block cache component added to support faster serial reads of large files with prefetching of blocks
     - As of now only one file single threaded read is faster
     - Only read-only mounts will support block-cache
 - Adaptive prefetching to support random reads without incurring extra network cost
 - Block cache with disk backup to reduce network cost if same blocks are read again
 - On AML compute cluster MSI authentication is now supported (this will use the identity assigned to compute cluster) 
-- User can choose to start prefetching on open or on first read.
-- Added support for ARM64 architecture.
 
 **Bug Fixes**
 - Fix to evict the destination file from local cache post rename file operation.
+- With fstab if `$PATH` is not populated corrected, try to find out correct path for `du`
 
 ## 2.0.5 (2023-08-02)
 **Features**
