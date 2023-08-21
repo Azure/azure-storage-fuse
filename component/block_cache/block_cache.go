@@ -499,24 +499,19 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 			currentCnt = nodeList.Len()
 			node := nodeList.Front()
 
-			for i := 0; node != nil && i < currentCnt; {
+			for i := 0; node != nil && i < currentCnt; node = nodeList.Front() {
 				// Test whether this block is already downloaded or still under download
-				block := node.Value.(*Block)
+				block := handle.Buffers.Cooking.Remove(node).(*Block)
+				block.node = nil
 				i++
 
 				select {
 				case <-block.state:
 					// Block is downloaded so it's safe to reuse this one
-					// Remove it from cooking list and push it back to cooked list
-					delNode := node
-					node = node.Next()
-					_ = nodeList.Remove(delNode)
-
 					block.node = handle.Buffers.Cooked.PushBack(block)
 				default:
 					// Block is still under download so can not reuse this
-					// Leave this here and move to next node in list
-					node = node.Next()
+					block.node = handle.Buffers.Cooking.PushBack(block)
 				}
 			}
 
