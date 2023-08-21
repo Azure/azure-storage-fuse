@@ -220,9 +220,6 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	// page cache (file content cache) in the kernel for the filesystem.
 	if fuseFS.directIO {
 		options += ",direct_io"
-		if fuseFS.kernelCache {
-			options += ",kernel_cache"
-		}
 	} else {
 		options += ",kernel_cache"
 	}

@@ -73,7 +73,6 @@ type Libfuse struct {
 	lsFlags               common.BitMap16
 	maxFuseThreads        uint32
 	directIO              bool
-	kernelCache           bool
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -104,7 +103,6 @@ type LibfuseOptions struct {
 	Gid                     uint32 `config:"gid" yaml:"gid,omitempty"`
 	MaxFuseThreads          uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
 	DirectIO                bool   `config:"direct-io" yaml:"direct-io,omitempty"`
-	KernelCache             bool   `config:"kernel-cache" yaml:"kernel-cache,omitempty"`
 }
 
 const compName = "libfuse"
@@ -190,7 +188,6 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.ignoreOpenFlags = opt.IgnoreOpenFlags
 	lf.nonEmptyMount = opt.nonEmptyMount
 	lf.directIO = opt.DirectIO
-	lf.kernelCache = opt.KernelCache
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
@@ -340,10 +337,4 @@ func init() {
 
 	ignoreOpenFlags := config.AddBoolFlag("ignore-open-flags", true, "Ignore unsupported open flags (APPEND, WRONLY) by blobfuse when writeback caching is enabled.")
 	config.BindPFlag(compName+".ignore-open-flags", ignoreOpenFlags)
-
-	// this CLI option can be used to enable kernel_cache only when direct_io is also enabled.
-	// NOTE: this is a hidden flag and can be removed later.
-	kernelCache := config.AddBoolFlag("kernel-cache", false, "Enable kernel_cache along with direct_io FUSE option.")
-	config.BindPFlag(compName+".kernel-cache", kernelCache)
-	kernelCache.Hidden = true
 }

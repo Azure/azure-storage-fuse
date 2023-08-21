@@ -216,7 +216,7 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 		options += ",ro"
 	}
 
-	if !fuseFS.directIO || fuseFS.kernelCache {
+	if !fuseFS.directIO {
 		options += ",kernel_cache"
 	}
 
@@ -323,10 +323,6 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	if fuseFS.directIO {
 		cfg.direct_io = C.int(1)
 		log.Debug("Libfuse::libfuse_init : direct_io = true")
-	}
-
-	if fuseFS.kernelCache {
-		log.Debug("Libfuse::libfuse_init : kernel_cache = true")
 	}
 
 	return nil
