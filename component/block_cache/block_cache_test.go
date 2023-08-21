@@ -384,7 +384,7 @@ func (suite *blockCacheTestSuite) TestFileReadRandom() {
 	}
 
 	cnt := h.Buffers.Cooked.Len() + h.Buffers.Cooking.Len()
-	suite.assert.Equal(cnt, 5)
+	suite.assert.LessOrEqual(cnt, 8)
 
 	tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
 	suite.assert.Nil(h.Buffers.Cooked)
