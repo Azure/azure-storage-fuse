@@ -10,7 +10,7 @@
 
 **Bug Fixes**
 - Fix to evict the destination file from local cache post rename file operation.
-- With fstab if `$PATH` is not populated corrected, try to find out correct path for `du`
+- If `$PATH` is not populated correctly, find out correct path for `du` command.
 - Disable `kernel_cache` and `writeback_cache` when `direct_io` is set.
 - Fix FUSE CLI parameter parsing, where CLI overrides parameters provided in config file.
 
