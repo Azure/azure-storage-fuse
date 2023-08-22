@@ -322,7 +322,6 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	// page cache (file content cache) in the kernel for the filesystem.
 	if fuseFS.directIO {
 		cfg.direct_io = C.int(1)
-		log.Debug("Libfuse::libfuse_init : direct_io = true")
 	}
 
 	return nil
