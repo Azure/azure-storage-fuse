@@ -297,16 +297,16 @@ var mountCmd = &cobra.Command{
 				} else if v == "allow_other" || v == "allow_other=true" {
 					config.Set("allow-other", "true")
 				} else if strings.HasPrefix(v, "attr_timeout=") {
-					config.Set("libfuse.attribute-expiration-sec", parameter[1])
+					config.Set("lfuse.attribute-expiration-sec", parameter[1])
 				} else if strings.HasPrefix(v, "entry_timeout=") {
-					config.Set("libfuse.entry-expiration-sec", parameter[1])
+					config.Set("lfuse.entry-expiration-sec", parameter[1])
 				} else if strings.HasPrefix(v, "negative_timeout=") {
-					config.Set("libfuse.negative-entry-expiration-sec", parameter[1])
+					config.Set("lfuse.negative-entry-expiration-sec", parameter[1])
 				} else if v == "ro" || v == "ro=true" {
 					config.Set("read-only", "true")
 				} else if v == "allow_root" || v == "allow_root=true" {
 					config.Set("allow-root", "true")
-					// config.Set("libfuse.default-permission", "700")
+					// config.Set("lfuse.default-permission", "700")
 				} else if v == "nonempty" {
 					skipNonEmpty = true
 					config.Set("nonempty", "true")
@@ -316,21 +316,21 @@ var mountCmd = &cobra.Command{
 						return fmt.Errorf("failed to parse umask [%s]", err.Error())
 					}
 					perm := ^uint32(permission) & 777
-					config.Set("libfuse.default-permission", fmt.Sprint(perm))
+					config.Set("lfuse.default-permission", fmt.Sprint(perm))
 				} else if strings.HasPrefix(v, "uid=") {
 					val, err := strconv.ParseUint(parameter[1], 10, 32)
 					if err != nil {
 						return fmt.Errorf("failed to parse uid [%s]", err.Error())
 					}
-					config.Set("libfuse.uid", fmt.Sprint(val))
+					config.Set("lfuse.uid", fmt.Sprint(val))
 				} else if strings.HasPrefix(v, "gid=") {
 					val, err := strconv.ParseUint(parameter[1], 10, 32)
 					if err != nil {
 						return fmt.Errorf("failed to parse gid [%s]", err.Error())
 					}
-					config.Set("libfuse.gid", fmt.Sprint(val))
+					config.Set("lfuse.gid", fmt.Sprint(val))
 				} else if v == "direct_io" || v == "direct_io=true" {
-					config.Set("libfuse.direct-io", "true")
+					config.Set("lfuse.direct-io", "true")
 				} else {
 					return errors.New(common.FuseAllowedFlags)
 				}

@@ -259,6 +259,12 @@ func (lf *Libfuse) Configure(_ bool) error {
 		log.Err("Libfuse::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("config error in %s [invalid config attributes]", lf.Name())
 	}
+
+	err = config.UnmarshalKey("lfuse", &conf)
+	if err != nil {
+		log.Err("Libfuse::Configure : config error [invalid config attributes: %s]", err.Error())
+		return fmt.Errorf("config error in lfuse [invalid config attributes]")
+	}
 	// Extract values from 'conf' and store them as you wish here
 
 	err = config.UnmarshalKey("mount-path", &conf.mountPath)
