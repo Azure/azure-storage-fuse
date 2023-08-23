@@ -259,6 +259,12 @@ func (lf *Libfuse) Configure(_ bool) error {
 		log.Err("Libfuse::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("config error in %s [invalid config attributes]", lf.Name())
 	}
+
+	err = config.UnmarshalKey("lfuse", &conf)
+	if err != nil {
+		log.Err("Libfuse::Configure : config error [invalid config attributes: %s]", err.Error())
+		return fmt.Errorf("config error in lfuse [invalid config attributes]")
+	}
 	// Extract values from 'conf' and store them as you wish here
 
 	err = config.UnmarshalKey("mount-path", &conf.mountPath)
@@ -296,8 +302,8 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return fmt.Errorf("%s config error %s", lf.Name(), err.Error())
 	}
 
-	log.Info("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags: %t, nonempty %t",
-		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount)
+	log.Info("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t",
+		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO)
 
 	return nil
 }
