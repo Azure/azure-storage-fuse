@@ -507,8 +507,12 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 
 				select {
 				case <-block.state:
-					// Block is downloaded so it's safe to reuse this one
+					// As we are first reader of this block here its important to unblock any future readers on this block
+					block.Unblock()
+
+					// Block is downloaded so it's safe to ready it for reuse
 					block.node = handle.Buffers.Cooked.PushBack(block)
+
 				default:
 					// Block is still under download so can not reuse this
 					block.node = handle.Buffers.Cooking.PushBack(block)
