@@ -1,11 +1,23 @@
 ## 2.1.0 (WIP)
+**Features**
+- Added support for ARM64 architecture.
+- Block cache component added to support faster serial reads of large files with prefetching of blocks
+    - As of now only one file single threaded read is faster
+    - Only read-only mounts will support block-cache
+- Adaptive prefetching to support random reads without incurring extra network cost
+- Block cache with disk backup to reduce network cost if same blocks are read again
+- On AML compute cluster MSI authentication is now supported (this will use the identity assigned to compute cluster) 
+
+**Bug Fixes**
 - Fix to evict the destination file from local cache post rename file operation.
+- If `$PATH` is not populated correctly, find out correct path for `du` command.
+- Disable `kernel_cache` and `writeback_cache` when `direct_io` is set.
+- Fix FUSE CLI parameter parsing, where CLI overrides parameters provided in config file.
 
 ## 2.0.5 (2023-08-02)
 **Features**
 - In case of MSI based authentication, user shall provide object-id of the identity and honour-acl flag for file-system to work with ACLs assigned to the given identity instead of permissions.
 - Added support to read OAuth token from a user given file.
-- Added support for ARM64 architecture.
 
 **Bug Fixes**
 - Fixed priority level check of components to reject invalid pipeline entries.
@@ -22,6 +34,7 @@
 - Added new config parameter "max-fuse-threads" under "libfuse" config to control max threads allowed at libfuse layer.
 - Added new config parameter 'refresh-sec' in 'file-cache'. When file-cache-timeout is set to a large value, this field can control when to refresh the file if file in container has changed.
 - Added FUSE option `direct_io` to bypass the kernel cache and perform direct I/O operations.
+
 
 **Bug Fixes**
 - [#1116](https://github.com/Azure/azure-storage-fuse/issues/1116) Relative path for tmp-cache is resulting into file read-write failure.

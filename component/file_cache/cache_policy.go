@@ -34,13 +34,8 @@
 package file_cache
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
-	"strings"
-	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -78,113 +73,20 @@ type cachePolicy interface {
 	Name() string // The name of the policy
 }
 
-var duPath []string = []string{"/usr/bin/du", "/usr/local/bin/du", "/usr/sbin/du", "/usr/local/sbin/du", "/sbin/du", "/bin/du"}
-var selectedDuPath string = ""
-
-// getUsage: The current cache usage in MB
-func getUsage(path string) (float64, error) {
-	log.Trace("cachePolicy::getCacheUsage : %s", path)
-
-	var currSize float64
-	var out bytes.Buffer
-
-	if selectedDuPath == "" {
-		selectedDuPath = "-"
-		for _, dup := range duPath {
-			_, err := os.Stat(dup)
-			if err == nil {
-				selectedDuPath = dup
-				break
-			}
-		}
-	}
-
-	if selectedDuPath == "-" {
-		log.Err("cachePolicy::getCacheUsage : error finding du in any configured path")
-		return 0, fmt.Errorf("failed to find du")
-	}
-
-	// du - estimates file space usage
-	// https://man7.org/linux/man-pages/man1/du.1.html
-	// Note: We cannot just pass -BM as a parameter here since it will result in less accurate estimates of the size of the path
-	// (i.e. du will round up to 1M if the path is smaller than 1M).
-	cmd := exec.Command(selectedDuPath, "-sh", path)
-	cmd.Stdout = &out
-
-	err := cmd.Run()
-	if err != nil {
-		log.Err("cachePolicy::getCacheUsage : error running du [%s]", err.Error())
-		return 0, err
-	}
-
-	size := strings.Split(out.String(), "\t")[0]
-	if size == "0" {
-		return 0, fmt.Errorf("failed to parse du output")
-	}
-
-	// some OS's use "," instead of "." that will not work for float parsing - replace it
-	size = strings.Replace(size, ",", ".", 1)
-	parsed, err := strconv.ParseFloat(size[:len(size)-1], 64)
-	if err != nil {
-		log.Err("cachePolicy::getCacheUsage : error parsing folder size [%s]", err.Error())
-		return 0, fmt.Errorf("failed to parse du output")
-	}
-
-	switch size[len(size)-1] {
-	case 'K':
-		currSize = parsed / float64(1024)
-	case 'M':
-		currSize = parsed
-	case 'G':
-		currSize = parsed * 1024
-	case 'T':
-		currSize = parsed * 1024 * 1024
-	}
-
-	log.Debug("cachePolicy::getCacheUsage : current cache usage : %fMB", currSize)
-	return currSize, nil
-}
-
-var currentUID int = -1
-
-// getDiskUsageFromStatfs: Current disk usage of temp path
-func getDiskUsageFromStatfs(path string) (float64, float64) {
-	// We need to compute the disk usage percentage for the temp path
-	var stat syscall.Statfs_t
-	err := syscall.Statfs(path, &stat)
-	if err != nil {
-		log.Err("cachePolicy::getUsagePercentage : error getting statfs [%s]", err.Error())
-		return 0, 0
-	}
-
-	if currentUID == -1 {
-		currentUID = os.Getuid()
-	}
-
-	var availableSpace uint64 = 0
-	if currentUID == 0 {
-		// Sudo  has mounted
-		availableSpace = stat.Bfree * uint64(stat.Frsize)
-	} else {
-		// non Sudo has mounted
-		availableSpace = stat.Bavail * uint64(stat.Frsize)
-	}
-
-	totalSpace := stat.Blocks * uint64(stat.Frsize)
-	usedSpace := float64(totalSpace - availableSpace)
-	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100
-}
-
 // getUsagePercentage:  The current cache usage as a percentage of the maxSize
 func getUsagePercentage(path string, maxSize float64) float64 {
 	var currSize float64 = 0
 	var usagePercent float64 = 0
+	var err error
 
 	if maxSize == 0 {
-		currSize, usagePercent = getDiskUsageFromStatfs(path)
+		err, currSize, usagePercent = common.GetDiskUsageFromStatfs(path)
+		if err != nil {
+			log.Err("cachePolicy::getUsagePercentage : failed to get disk usage for %s [%v]", path, err.Error)
+		}
 	} else {
 		// We need to compuate % usage of temp directory against configured limit
-		currSize, _ = getUsage(path)
+		currSize, _ = common.GetUsage(path)
 		usagePercent = (currSize / float64(maxSize)) * 100
 	}
 

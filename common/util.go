@@ -35,12 +35,14 @@ package common
 
 import (
 	"bufio"
+	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strconv"
@@ -287,4 +289,94 @@ func NotifyMountToParent() error {
 	}
 
 	return nil
+}
+
+var duPath []string = []string{"/usr/bin/du", "/usr/local/bin/du", "/usr/sbin/du", "/usr/local/sbin/du", "/sbin/du", "/bin/du"}
+var selectedDuPath string = ""
+
+// GetUsage: The current disk usage in MB
+func GetUsage(path string) (float64, error) {
+	var currSize float64
+	var out bytes.Buffer
+
+	if selectedDuPath == "" {
+		selectedDuPath = "-"
+		for _, dup := range duPath {
+			_, err := os.Stat(dup)
+			if err == nil {
+				selectedDuPath = dup
+				break
+			}
+		}
+	}
+
+	if selectedDuPath == "-" {
+		return 0, fmt.Errorf("failed to find du")
+	}
+
+	// du - estimates file space usage
+	// https://man7.org/linux/man-pages/man1/du.1.html
+	// Note: We cannot just pass -BM as a parameter here since it will result in less accurate estimates of the size of the path
+	// (i.e. du will round up to 1M if the path is smaller than 1M).
+	cmd := exec.Command(selectedDuPath, "-sh", path)
+	cmd.Stdout = &out
+
+	err := cmd.Run()
+	if err != nil {
+		return 0, err
+	}
+
+	size := strings.Split(out.String(), "\t")[0]
+	if size == "0" {
+		return 0, nil
+	}
+
+	// some OS's use "," instead of "." that will not work for float parsing - replace it
+	size = strings.Replace(size, ",", ".", 1)
+	parsed, err := strconv.ParseFloat(size[:len(size)-1], 64)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse du output")
+	}
+
+	switch size[len(size)-1] {
+	case 'K':
+		currSize = parsed / float64(1024)
+	case 'M':
+		currSize = parsed
+	case 'G':
+		currSize = parsed * 1024
+	case 'T':
+		currSize = parsed * 1024 * 1024
+	}
+
+	return currSize, nil
+}
+
+var currentUID int = -1
+
+// GetDiskUsageFromStatfs: Current disk usage of temp path
+func GetDiskUsageFromStatfs(path string) (error, float64, float64) {
+	// We need to compute the disk usage percentage for the temp path
+	var stat syscall.Statfs_t
+	err := syscall.Statfs(path, &stat)
+	if err != nil {
+		return err, 0, 0
+	}
+
+	if currentUID == -1 {
+		currentUID = os.Getuid()
+	}
+
+	var availableSpace uint64 = 0
+	if currentUID == 0 {
+		// Sudo  has mounted
+		availableSpace = stat.Bfree * uint64(stat.Frsize)
+	} else {
+		// non Sudo has mounted
+		availableSpace = stat.Bavail * uint64(stat.Frsize)
+	}
+
+	totalSpace := stat.Blocks * uint64(stat.Frsize)
+	usedSpace := float64(totalSpace - availableSpace)
+	return nil, usedSpace, float64(usedSpace) / float64(totalSpace) * 100
 }

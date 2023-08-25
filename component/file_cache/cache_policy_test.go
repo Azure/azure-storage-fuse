@@ -69,7 +69,7 @@ func (suite *cachePolicyTestSuite) TestGetUsage() {
 	f, _ := os.Create(cache_path + "/test")
 	data := make([]byte, 1024*1024)
 	f.Write(data)
-	result, _ := getUsage(cache_path)
+	result, _ := common.GetUsage(cache_path)
 	suite.assert.Equal(float64(1), math.Floor(result))
 	f.Close()
 }
