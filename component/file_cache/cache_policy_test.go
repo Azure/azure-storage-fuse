@@ -71,17 +71,25 @@ func (suite *cachePolicyTestSuite) TestGetUsage() {
 	f.Write(data)
 	result, _ := getUsage(cache_path)
 	suite.assert.Equal(float64(1), math.Floor(result))
+	f.Close()
 }
 
 func (suite *cachePolicyTestSuite) TestGetUsagePercentage() {
 	defer suite.cleanupTest()
-	f, _ := os.Create(cache_path + "/test")
 	data := make([]byte, 1024*1024)
+
+	f, _ := os.Create(cache_path + "/test")
 	f.Write(data)
 	result := getUsagePercentage(cache_path, 4)
 	// since the value might defer a little distro to distro
 	suite.assert.GreaterOrEqual(result, float64(25))
 	suite.assert.LessOrEqual(result, float64(30))
+	f.Close()
+
+	result = getUsagePercentage("/", 0)
+	// since the value might defer a little distro to distro
+	suite.assert.GreaterOrEqual(result, float64(0))
+	suite.assert.LessOrEqual(result, float64(80))
 }
 
 func (suite *cachePolicyTestSuite) TestDeleteFile() {
@@ -89,6 +97,7 @@ func (suite *cachePolicyTestSuite) TestDeleteFile() {
 	f, _ := os.Create(cache_path + "/test")
 	result := deleteFile(f.Name() + "not_exist")
 	suite.assert.Equal(nil, result)
+	f.Close()
 }
 
 func TestCachePolicyTestSuite(t *testing.T) {

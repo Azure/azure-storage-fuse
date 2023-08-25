@@ -40,6 +40,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -144,14 +145,49 @@ func getUsage(path string) (float64, error) {
 	return currSize, nil
 }
 
-// getUsagePercentage:  The current cache usage as a percentage of the maxSize
-func getUsagePercentage(path string, maxSize float64) float64 {
-	if maxSize == 0 {
-		return 0
+var currentUID int = -1
+
+// getDiskUsageFromStatfs: Current disk usage of temp path
+func getDiskUsageFromStatfs(path string) (float64, float64) {
+	// We need to compute the disk usage percentage for the temp path
+	var stat syscall.Statfs_t
+	err := syscall.Statfs(path, &stat)
+	if err != nil {
+		log.Err("cachePolicy::getUsagePercentage : error getting statfs [%s]", err.Error())
+		return 0, 0
 	}
 
-	currSize, _ := getUsage(path)
-	usagePercent := (currSize / float64(maxSize)) * 100
+	if currentUID == -1 {
+		currentUID = os.Getuid()
+	}
+
+	var availableSpace uint64 = 0
+	if currentUID == 0 {
+		// Sudo  has mounted
+		availableSpace = stat.Bfree * uint64(stat.Frsize)
+	} else {
+		// non Sudo has mounted
+		availableSpace = stat.Bavail * uint64(stat.Frsize)
+	}
+
+	totalSpace := stat.Blocks * uint64(stat.Frsize)
+	usedSpace := float64(totalSpace - availableSpace)
+	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100
+}
+
+// getUsagePercentage:  The current cache usage as a percentage of the maxSize
+func getUsagePercentage(path string, maxSize float64) float64 {
+	var currSize float64 = 0
+	var usagePercent float64 = 0
+
+	if maxSize == 0 {
+		currSize, usagePercent = getDiskUsageFromStatfs(path)
+	} else {
+		// We need to compuate % usage of temp directory against configured limit
+		currSize, _ = getUsage(path)
+		usagePercent = (currSize / float64(maxSize)) * 100
+	}
+
 	log.Debug("cachePolicy::getUsagePercentage : current cache usage : %f%%", usagePercent)
 
 	fileCacheStatsCollector.UpdateStats(stats_manager.Replace, cacheUsage, fmt.Sprintf("%f MB", currSize))
