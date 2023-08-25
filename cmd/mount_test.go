@@ -327,6 +327,22 @@ func (suite *mountTestSuite) TestStreamAttrCacheOptionsV1() {
 	suite.assert.Contains(op, "failed to initialize new pipeline")
 }
 
+func (suite *mountTestSuite) TestBlockCacheMountWithoutRO() {
+	defer suite.cleanupTest()
+
+	mntDir, err := os.MkdirTemp("", "mntdir")
+	suite.assert.Nil(err)
+	defer os.RemoveAll(mntDir)
+
+	tempLogDir := "/tmp/templogs_" + randomString(6)
+	defer os.RemoveAll(tempLogDir)
+
+	op, err := executeCommandC(rootCmd, "mount", mntDir, fmt.Sprintf("--log-file-path=%s", tempLogDir+"/blobfuse2.log"),
+		"--block-cache", "--use-attr-cache", "--invalidate-on-sync", "--pre-mount-validate", "--basic-remount-check")
+	suite.assert.NotNil(err)
+	suite.assert.Contains(op, "filesystem is not mounted in read-only mode")
+}
+
 // mount failure test where a libfuse option is incorrect
 func (suite *mountTestSuite) TestInvalidLibfuseOption() {
 	defer suite.cleanupTest()

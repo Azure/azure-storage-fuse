@@ -52,6 +52,11 @@ parameters:
     type: boolean
     default: true
 
+  - name: block_cache_validation
+    displayName: 'Block Cache Validation Test'
+    type: boolean
+    default: true
+
   - name: verbose_log
     displayName: 'Verbose Log'
     type: boolean
@@ -575,7 +580,7 @@ stages:
                   huge_container: 'testcnt'
                   quick_stress: ${{ parameters.quick_stress }}
                   test_key_credential: true
-                  test_sas_credential: true
+                  test_sas_credential: false
                   test_spn_credential: true
                   test_stream: true
                   test_azurite: false
@@ -1403,6 +1408,72 @@ stages:
                   working_dir: $(WORK_DIR)
                   mount_dir: $(MOUNT_DIR)
                   temp_dir: $(TEMP_DIR)
+
+
+  - ${{ if eq(parameters.block_cache_validation, true) }}:
+    - stage: DataValidationBlockCache
+      jobs:
+        # Ubuntu Tests
+        - job: Set_1
+          timeoutInMinutes: 300
+          strategy:
+            matrix:
+              Ubuntu-22:
+                imageName: 'ubuntu-22.04'
+                containerName: 'test-cnt-ubn-22'
+                fuselib: 'libfuse3-dev'
+                tags: 'fuse3'
+          pool:
+            vmImage: $(imageName)
+
+          variables:
+            - group: NightlyBlobFuse
+            - name: ROOT_DIR
+              value: "/usr/pipeline/workv2"
+            - name: WORK_DIR
+              value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+            - name: skipComponentGovernanceDetection
+              value: true
+            - name: MOUNT_DIR
+              value: "/usr/pipeline/workv2/blob_mnt"
+            - name: TEMP_DIR
+              value: "/usr/pipeline/workv2/temp"
+            - name: BLOBFUSE2_CFG
+              value: "/usr/pipeline/workv2/blobfuse2.yaml"
+            - name: GOPATH
+              value: "/usr/pipeline/workv2/go"
+
+          steps:
+            - checkout: none
+
+            - template: 'azure-pipeline-templates/setup.yml'
+              parameters:
+                tags: $(tags)
+                installStep:
+                  script: |
+                    sudo apt-get update --fix-missing
+                    sudo apt-get install $(fuselib) -y
+                  displayName: 'Install fuse'
+
+            - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
+              parameters:
+                conf_template: azure_key.yaml
+                config_file: $(BLOBFUSE2_CFG)
+                container: $(containerName)
+                idstring: Block_Blob
+                adls: false
+                account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+                account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+                account_type: block
+                account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
+                distro_name: $(imageName)
+                quick_test: false
+                verbose_log: ${{ parameters.verbose_log }}
+                clone: true
+                stream_direct_test: false
+                # TODO: These can be removed one day and replace all instances of ${{ parameters.temp_dir }} with $(TEMP_DIR) since it is a global variable
+                temp_dir: $(TEMP_DIR)
+                mount_dir: $(MOUNT_DIR)
 
   - ${{ if eq(parameters.data_validation, true) }}:
     - stage: DataValidationBlob

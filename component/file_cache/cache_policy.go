@@ -34,12 +34,8 @@
 package file_cache
 
 import (
-	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
-	"strconv"
-	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -77,80 +73,13 @@ type cachePolicy interface {
 	Name() string // The name of the policy
 }
 
-var duPath []string = []string{"/usr/bin/du", "/usr/local/bin/du", "/usr/sbin/du", "/usr/local/sbin/du", "/sbin/du", "/bin/du"}
-var selectedDuPath string = ""
-
-// getUsage: The current cache usage in MB
-func getUsage(path string) (float64, error) {
-	log.Trace("cachePolicy::getCacheUsage : %s", path)
-
-	var currSize float64
-	var out bytes.Buffer
-
-	if selectedDuPath == "" {
-		selectedDuPath = "-"
-		for _, dup := range duPath {
-			_, err := os.Stat(dup)
-			if err == nil {
-				selectedDuPath = dup
-				break
-			}
-		}
-	}
-
-	if selectedDuPath == "-" {
-		log.Err("cachePolicy::getCacheUsage : error finding du in any configured path")
-		return 0, fmt.Errorf("failed to find du")
-	}
-
-	// du - estimates file space usage
-	// https://man7.org/linux/man-pages/man1/du.1.html
-	// Note: We cannot just pass -BM as a parameter here since it will result in less accurate estimates of the size of the path
-	// (i.e. du will round up to 1M if the path is smaller than 1M).
-	cmd := exec.Command(selectedDuPath, "-sh", path)
-	cmd.Stdout = &out
-
-	err := cmd.Run()
-	if err != nil {
-		log.Err("cachePolicy::getCacheUsage : error running du [%s]", err.Error())
-		return 0, err
-	}
-
-	size := strings.Split(out.String(), "\t")[0]
-	if size == "0" {
-		return 0, fmt.Errorf("failed to parse du output")
-	}
-
-	// some OS's use "," instead of "." that will not work for float parsing - replace it
-	size = strings.Replace(size, ",", ".", 1)
-	parsed, err := strconv.ParseFloat(size[:len(size)-1], 64)
-	if err != nil {
-		log.Err("cachePolicy::getCacheUsage : error parsing folder size [%s]", err.Error())
-		return 0, fmt.Errorf("failed to parse du output")
-	}
-
-	switch size[len(size)-1] {
-	case 'K':
-		currSize = parsed / float64(1024)
-	case 'M':
-		currSize = parsed
-	case 'G':
-		currSize = parsed * 1024
-	case 'T':
-		currSize = parsed * 1024 * 1024
-	}
-
-	log.Debug("cachePolicy::getCacheUsage : current cache usage : %fMB", currSize)
-	return currSize, nil
-}
-
 // getUsagePercentage:  The current cache usage as a percentage of the maxSize
 func getUsagePercentage(path string, maxSize float64) float64 {
 	if maxSize == 0 {
 		return 0
 	}
 
-	currSize, _ := getUsage(path)
+	currSize, _ := common.GetUsage(path)
 	usagePercent := (currSize / float64(maxSize)) * 100
 	log.Debug("cachePolicy::getUsagePercentage : current cache usage : %f%%", usagePercent)
 
