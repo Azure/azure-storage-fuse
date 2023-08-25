@@ -92,6 +92,7 @@ type mountOptions struct {
 	Streaming      bool     `config:"streaming"`
 	AttrCache      bool     `config:"use-attr-cache"`
 	LibfuseOptions []string `config:"libfuse-options"`
+	BlockCache     bool     `config:"block-cache"`
 }
 
 var options mountOptions
@@ -268,6 +269,8 @@ var mountCmd = &cobra.Command{
 
 			if config.IsSet("streaming") && options.Streaming {
 				pipeline = append(pipeline, "stream")
+			} else if config.IsSet("block-cache") && options.BlockCache {
+				pipeline = append(pipeline, "block_cache")
 			} else {
 				pipeline = append(pipeline, "file_cache")
 			}
@@ -680,6 +683,10 @@ func init() {
 	mountCmd.Flags().BoolVar(&options.Streaming, "streaming", false, "Enable Streaming.")
 	config.BindPFlag("streaming", mountCmd.Flags().Lookup("streaming"))
 	mountCmd.Flags().Lookup("streaming").Hidden = true
+
+	mountCmd.Flags().BoolVar(&options.BlockCache, "block-cache", false, "Enable Block-Cache.")
+	config.BindPFlag("block-cache", mountCmd.Flags().Lookup("block-cache"))
+	mountCmd.Flags().Lookup("block-cache").Hidden = true
 
 	mountCmd.Flags().BoolVar(&options.AttrCache, "use-attr-cache", true, "Use attribute caching.")
 	config.BindPFlag("use-attr-cache", mountCmd.Flags().Lookup("use-attr-cache"))

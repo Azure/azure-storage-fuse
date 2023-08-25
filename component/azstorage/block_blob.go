@@ -764,7 +764,9 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
 	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, data, bb.downloadOptions)
+	opt := bb.downloadOptions
+	opt.BlockSize = len
+	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, data, opt)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)

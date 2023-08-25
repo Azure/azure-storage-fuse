@@ -127,6 +127,13 @@ To learn about a specific command, just include the name of the command (For exa
     * `--sync-to-flush=false` : Sync call will force upload a file to storage container if this is set to true, otherwise it just evicts file from local cache.
 - Stream options
     * `--block-size-mb=<SIZE IN MB>`: Size of a block to be downloaded during streaming.
+- Block-Cache options
+    * `--block-cache-block-size=<SIZE IN MB>`: Size of a block to be downloaded as a unit.
+    * `--block-cache-pool-size=<SIZE IN MB>`: Size of pool to be used for caching. This limits total memory used by block-cache.
+    * `--block-cache-path=<PATH>`: Path where downloaded blocks will be persisted. Not providing this parameter will disable the disk caching.
+    * `--block-cache-disk-size=<SIZE IN MB>`: Disk space to be used for caching.
+    * `--block-cache-prefetch=<Number of blocks>`: Number of blocks to prefetch at max when sequential reads are in progress.
+    * `--block-cache-prefetch-on-open=true`: Start prefetching on open system call instead of waiting for first read. Enhances perf if file is read sequentially from offset 0.
 - Fuse options
     * `--attr-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache inode attributes.
     * `--entry-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache directory listing.
