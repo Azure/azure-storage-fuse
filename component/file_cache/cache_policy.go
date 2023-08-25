@@ -75,8 +75,8 @@ type cachePolicy interface {
 
 // getUsagePercentage:  The current cache usage as a percentage of the maxSize
 func getUsagePercentage(path string, maxSize float64) float64 {
-	var currSize float64 = 0
-	var usagePercent float64 = 0
+	var currSize float64
+	var usagePercent float64
 	var err error
 
 	if maxSize == 0 {

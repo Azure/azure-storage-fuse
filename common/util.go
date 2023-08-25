@@ -367,7 +367,7 @@ func GetDiskUsageFromStatfs(path string) (error, float64, float64) {
 		currentUID = os.Getuid()
 	}
 
-	var availableSpace uint64 = 0
+	var availableSpace uint64
 	if currentUID == 0 {
 		// Sudo  has mounted
 		availableSpace = stat.Bfree * uint64(stat.Frsize)
