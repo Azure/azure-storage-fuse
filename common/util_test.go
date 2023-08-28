@@ -186,3 +186,46 @@ func (suite *utilTestSuite) TestExpandPath() {
 	expandedPath = ExpandPath(path)
 	suite.assert.Equal(expandedPath, path)
 }
+
+func (suite *utilTestSuite) TestGetUSage() {
+	pwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	dirName := filepath.Join(pwd, "util_test")
+	err = os.Mkdir(dirName, 0777)
+	suite.assert.Nil(err)
+
+	data := make([]byte, 1024*1024)
+	err = os.WriteFile(dirName+"/1.txt", data, 0777)
+	suite.assert.Nil(err)
+
+	err = os.WriteFile(dirName+"/2.txt", data, 0777)
+	suite.assert.Nil(err)
+
+	usage, err := GetUsage(dirName)
+	suite.assert.Nil(err)
+	suite.assert.GreaterOrEqual(2, int(usage))
+	suite.assert.LessOrEqual(3, int(usage))
+
+	_ = os.RemoveAll(dirName)
+}
+
+func (suite *utilTestSuite) TestGetDiskUsage() {
+	pwd, err := os.Getwd()
+	if err != nil {
+		return
+	}
+
+	dirName := filepath.Join(pwd, "util_test", "a", "b", "c")
+	err = os.MkdirAll(dirName, 0777)
+	suite.assert.Nil(err)
+
+	usage, usagePercent, err := GetDiskUsageFromStatfs(dirName)
+	suite.assert.Nil(err)
+	suite.assert.NotEqual(usage, 0)
+	suite.assert.NotEqual(usagePercent, 0)
+	suite.assert.NotEqual(usagePercent, 100)
+	_ = os.RemoveAll(filepath.Join(pwd, "util_test"))
+}
