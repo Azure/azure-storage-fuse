@@ -220,6 +220,8 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	// page cache (file content cache) in the kernel for the filesystem.
 	if fuseFS.directIO {
 		options += ",direct_io"
+	} else {
+		options += ",kernel_cache"
 	}
 
 	// Why we pass -f
@@ -228,7 +230,7 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 	arguments = append(arguments, "blobfuse2",
 		C.GoString(opts.mount_path),
 		"-o", options,
-		"-f", "-ofsname=blobfuse2", "-okernel_cache")
+		"-f", "-ofsname=blobfuse2")
 	if opts.trace_enable {
 		arguments = append(arguments, "-d")
 	}
@@ -480,7 +482,11 @@ func libfuse_releasedir(path *C.char, fi *C.fuse_file_info_t) C.int {
 //export libfuse2_readdir
 func libfuse2_readdir(_ *C.char, buf unsafe.Pointer, filler C.fuse_fill_dir_t, off C.off_t, fi *C.fuse_file_info_t) C.int {
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fi.fh)))
+
+	handle.RLock()
 	val, found := handle.GetValue("cache")
+	handle.RUnlock()
+
 	if !found {
 		return C.int(C_EIO)
 	}
