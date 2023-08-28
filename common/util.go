@@ -355,12 +355,12 @@ func GetUsage(path string) (float64, error) {
 var currentUID int = -1
 
 // GetDiskUsageFromStatfs: Current disk usage of temp path
-func GetDiskUsageFromStatfs(path string) (error, float64, float64) {
+func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	// We need to compute the disk usage percentage for the temp path
 	var stat syscall.Statfs_t
 	err := syscall.Statfs(path, &stat)
 	if err != nil {
-		return err, 0, 0
+		return 0, 0, err
 	}
 
 	if currentUID == -1 {
@@ -378,5 +378,5 @@ func GetDiskUsageFromStatfs(path string) (error, float64, float64) {
 
 	totalSpace := stat.Blocks * uint64(stat.Frsize)
 	usedSpace := float64(totalSpace - availableSpace)
-	return nil, usedSpace, float64(usedSpace) / float64(totalSpace) * 100
+	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100, nil
 }
