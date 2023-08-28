@@ -13,6 +13,7 @@
 - If `$PATH` is not populated correctly, find out correct path for `du` command.
 - Disable `kernel_cache` and `writeback_cache` when `direct_io` is set.
 - Fix FUSE CLI parameter parsing, where CLI overrides parameters provided in config file.
+- [#1226](https://github.com/Azure/azure-storage-fuse/issues/1226) If max disk-cache size is not configured, check the available disk space to kick-in early eviction.
 - [#1230](https://github.com/Azure/azure-storage-fuse/issues/1230) Truncate file locally and then upload instead of downloading it again.
 
 ## 2.0.5 (2023-08-02)
