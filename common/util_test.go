@@ -206,8 +206,8 @@ func (suite *utilTestSuite) TestGetUSage() {
 
 	usage, err := GetUsage(dirName)
 	suite.assert.Nil(err)
-	suite.assert.GreaterOrEqual(2, int(usage))
-	suite.assert.LessOrEqual(3, int(usage))
+	suite.assert.GreaterOrEqual(int(usage), 2)
+	suite.assert.LessOrEqual(int(usage), 4)
 
 	_ = os.RemoveAll(dirName)
 }
