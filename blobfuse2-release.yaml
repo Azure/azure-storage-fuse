@@ -429,6 +429,7 @@ stages:
               chmod 777 *.sh
               ./dockerinstall.sh
               ./buildcontainer.sh
+              ./buildcontainer_alpine.sh
               ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD)
             displayName: "Create and publish container"
             workingDirectory: $(work_dir)/docker
