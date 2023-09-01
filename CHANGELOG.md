@@ -1,4 +1,11 @@
-## 2.1.0 (WIP)
+## 2.1.1 (WIP)
+**Features**
+- Publish Alpine based docker imgae to azure container registry.
+
+**Bug Fixes**
+
+
+## 2.1.0 (2023-08-31)
 **Features**
 - Added support for ARM64 architecture.
 - Block cache component added to support faster serial reads of large files with prefetching of blocks
