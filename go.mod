@@ -88,5 +88,5 @@ require (
 
 replace github.com/spf13/cobra => github.com/gapra-msft/cobra v1.4.1-0.20220411185530-5b83e8ba06dd
 
-// Take AzCopy dependcy on this branch only
+// Take AzCopy dependencyon this branch only
 // go get github.com/Azure/azure-storage-azcopy/v10@ab8ff0a85e48ea781a8051b23a05dbf4def2c17c
