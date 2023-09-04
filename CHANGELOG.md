@@ -1,4 +1,10 @@
-## 2.1.0 (WIP)
+## 2.1.1 (WIP)
+**Features**
+
+**Bug Fixes**
+- RMAN does a sync call after every file upload and then reads file back. Disable deletion from local-cache using a flag to optimize this workflow.
+
+## 2.1.0 (2023-08-31)
 **Features**
 - Added support for ARM64 architecture.
 - Block cache component added to support faster serial reads of large files with prefetching of blocks
