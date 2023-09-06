@@ -1,3 +1,12 @@
+## 2.1.1 (WIP)
+**Features**
+
+**Bug Fixes**
+- Fixed the case sensitivity of content type for file extensions.
+
+**Optimizations**
+- File is not downloaded in file_cache when truncate flag is received.
+
 ## 2.1.0 (WIP)
 **Features**
 - Added support for ARM64 architecture.
