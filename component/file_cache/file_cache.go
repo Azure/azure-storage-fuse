@@ -873,6 +873,10 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 			return nil, err
 		}
 
+		if options.Flags&os.O_TRUNC != 0 {
+			fileSize = 0
+		}
+
 		if fileSize > 0 {
 			// Download/Copy the file from storage to the local file.
 			err = fc.NextComponent().CopyToFile(
