@@ -1328,33 +1328,45 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	log.Trace("FileCache::TruncateFile : name=%s, size=%d", options.Name, options.Size)
 
-	flock := fc.fileLocks.Get(options.Name)
-	flock.Lock()
-	defer flock.Unlock()
+	// If you call truncate CLI command from shell it always sends an open call first followed by truncate
+	// But if you call the truncate method from a C/C++ code then open is not hit and only truncate comes
 
-	err := fc.NextComponent().TruncateFile(options)
-	err = fc.validateStorageError(options.Name, err, "TruncateFile", true)
-	if err != nil {
-		log.Err("FileCache::TruncateFile : %s failed to truncate [%s]", options.Name, err.Error())
-		return err
+	var h *handlemap.Handle = nil
+	var err error = nil
+
+	if options.Size == 0 {
+		// If size is 0 then no need to download any file we can just create an empty file
+		h, err = fc.CreateFile(internal.CreateFileOptions{Name: options.Name, Mode: fc.defaultPermission})
+		if err != nil {
+			log.Err("FileCache::TruncateFile : Error creating file %s [%s]", options.Name, err.Error())
+			return err
+		}
+	} else {
+		// If size is not 0 then we need to open the file and then truncate it
+		// Open will force download if file was not present in local system
+		h, err = fc.OpenFile(internal.OpenFileOptions{Name: options.Name, Flags: os.O_RDWR, Mode: fc.defaultPermission})
+		if err != nil {
+			log.Err("FileCache::TruncateFile : Error opening file %s [%s]", options.Name, err.Error())
+			return err
+		}
 	}
 
 	// Update the size of the file in the local cache
 	localPath := filepath.Join(fc.tmpPath, options.Name)
-	info, err := os.Stat(localPath)
-	if err == nil || os.IsExist(err) {
-		fc.policy.CacheValid(localPath)
+	fc.policy.CacheValid(localPath)
 
-		if info.Size() != options.Size {
-			err = os.Truncate(localPath, options.Size)
-			if err != nil {
-				log.Err("FileCache::TruncateFile : error truncating cached file %s [%s]", localPath, err.Error())
-				return err
-			}
-		}
+	// Truncate the file created in local system
+	err = os.Truncate(localPath, options.Size)
+	if err != nil {
+		log.Err("FileCache::TruncateFile : error truncating cached file %s [%s]", localPath, err.Error())
+		_ = fc.CloseFile(internal.CloseFileOptions{Handle: h})
+		return err
 	}
 
-	return nil
+	// Mark the handle as dirty so that close of this file will force an upload
+	h.Flags.Set(handlemap.HandleFlagDirty)
+
+	return fc.CloseFile(internal.CloseFileOptions{Handle: h})
 }
 
 // Chmod : Update the file with its new permissions

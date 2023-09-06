@@ -28,7 +28,7 @@ One of the biggest BlobFuse2 features is our brand new health monitor. It allows
 - Support for higher service version offering latest and greatest of azure storage features (supported by azure go-sdk)
 - Set blob tier while uploading the data to storage
 - Attribute cache invalidation based on timeout
-- For flat namesepce accounts, user can configure default permissions for files and folders
+- For flat namespace accounts, user can configure default permissions for files and folders
 - Improved cache eviction algorithm for file cache to control disk footprint of blobfuse2
 - Improved cache eviction algorithm for streamed buffers to control memory footprint of blobfuse2
 - Utility to convert blobfuse CLI and config parameters to a blobfuse2 compatible config for easy migration
