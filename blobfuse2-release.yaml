@@ -296,7 +296,7 @@ stages:
           - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
             displayName: 'ESRP CodeSigning blobfuse2'
             inputs:
-              ConnectedServiceName: 'ESRP Code signing for blobfuse2'
+              ConnectedServiceName: 'PMC ESRP Blobfuse2 Signing'
               FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-temp'
               Pattern: '*.rpm, *.deb'
               signConfigType: inlineSignParams
