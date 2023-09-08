@@ -1,9 +1,12 @@
 ## 2.1.1 (WIP)
 **Features**
-- Publish Alpine based docker imgae to azure container registry.
+- Alpine based docker imgae publish to Azure Container Registry.
 
 **Bug Fixes**
+- [#1237](https://github.com/Azure/azure-storage-fuse/issues/1237) Fixed the case sensitivity of content type for file extensions.
 
+**Optimizations**
+- Optimized file-cache to skip download when O_TRUNC flag is provided in open call.
 
 ## 2.1.0 (2023-08-31)
 **Features**
