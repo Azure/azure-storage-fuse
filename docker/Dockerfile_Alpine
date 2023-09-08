@@ -1,4 +1,4 @@
-# Create container based on Ubuntu-22.04 Jammy Jellyfish image
+# Create container based on latest Alpine image
 FROM alpine:latest
 
 #Define arg to determine whether to build for fuse2 or fuse3
