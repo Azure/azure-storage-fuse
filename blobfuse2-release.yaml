@@ -293,7 +293,7 @@ stages:
             displayName: "Update dependencies"
             
           # Send images for signing
-          - task: EsrpCodeSigning@3
+          - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
             displayName: 'ESRP CodeSigning blobfuse2'
             inputs:
               ConnectedServiceName: 'PMC ESRP Blobfuse2 Signing'
@@ -307,13 +307,10 @@ stages:
                     "KeyCode" : "$(ESRP_BLOBFUSE_KEY_CODE)",
                     "OperationCode" : "LinuxSign",
                     "Parameters" : {},
-                    "ToolName" : "signtool.exe",
+                    "ToolName" : "sign",
                     "ToolVersion" : "1.0"
                   }
                 ]
-              SessionTimeout: '60'
-              MaxConcurrency: '50'
-              MaxRetryAttempts: '5'
 
           # Validate signed images have md5sum changed
           - script: |
