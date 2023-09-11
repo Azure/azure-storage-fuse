@@ -1416,7 +1416,10 @@ stages:
           - task: PipAuthenticate@1
             inputs:
               artifactFeeds: 'BlobFuse/Blobfuse'
-          - script: pip install pmc-cli
+
+          - script: |
+              pip install pmc-cli
+            displayName: 'Install pmc-cli'
 
           - task: DownloadSecureFile@1
             name: pmcCertificate
@@ -1431,12 +1434,13 @@ stages:
               secureFile: 'settings.toml'
 
           - script: |
-              ls -lh $(pmcCertificate.secureFilePath)
-              ls -lh $(settings.secureFilePath)
+              cat $(pmcCertificate.secureFilePath)
+              cat $(settings.secureFilePath)
             displayName: 'Config Files'
 
           - script: |
               pmc --version
+              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo list --limit 1
             displayName: 'Test PMC installation'
           
 
