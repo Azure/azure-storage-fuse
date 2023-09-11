@@ -1404,18 +1404,10 @@ stages:
         steps:
           - checkout: none
 
-          - script: |
-              hostnamectl
-            displayName: 'hostnamectl'
-
-          # - script: |
-          #     sudo apt-get install python3 -y
-          #     python3 --version
-          #   displayName: 'Installing Python'
-
           - task: PipAuthenticate@1
             inputs:
               artifactFeeds: 'BlobFuse/Blobfuse'
+            displayName: 'Connect to PMC artifact'
 
           - script: |
               pip install pmc-cli
@@ -1423,7 +1415,7 @@ stages:
 
           - task: DownloadSecureFile@1
             name: pmcCertificate
-            displayName: 'Download PMC PEM file'
+            displayName: 'Download pmc pem file'
             inputs:
               secureFile: 'blobfusebuildvault-blobfuse-release-pmc1-20230911.pem'
 
@@ -1434,14 +1426,38 @@ stages:
               secureFile: 'settings.toml'
 
           - script: |
-              cat $(pmcCertificate.secureFilePath)
-              cat $(settings.secureFilePath)
-            displayName: 'Config Files'
-
-          - script: |
               pmc --version
               pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo list --limit 1
+              if [ $? -ne 0 ]; then
+                exit 1
+              fi
             displayName: 'Test PMC installation'
+
+          # download artifacts that need to be published
+          - task: DownloadBuildArtifacts@0
+            displayName: 'Download Signed Artifacts'
+            inputs:
+              artifactName: 'blobfuse2-signed'
+              downloadPath: $(Build.ArtifactStagingDirectory)
+
+          - script: |
+              sudo ls -lRt $(Build.ArtifactStagingDirectory)
+            displayName: 'List Artifacts'
+
+          - script: |
+              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) package upload blobfuse2*fuse3.x86_64.rpm
+              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) package upload blobfuse2*fuse3.aarch64.rpm
+            displayName: 'Upload packages'
+            workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+
+          - script: |
+              fuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.rpm`
+              echo "Fuse3 AMD RPM ID: $fuse3AmdRpm
+
+              fuse3ArmRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.aarch64.rpm`
+              echo "Fuse3 ARM RPM ID: $fuse3ArmRpm
+            displayName: 'Add to repository'
+            workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
           
 
 
