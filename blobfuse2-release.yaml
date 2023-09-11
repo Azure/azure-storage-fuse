@@ -1426,7 +1426,7 @@ stages:
 
           - task: DownloadSecureFile@1
             name: settings
-            displayName: 'Download settings.toml'
+            displayName: 'Download settings file'
             inputs:
               secureFile: 'settings.toml'
 
