@@ -758,118 +758,6 @@ stages:
             inputs:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts'
-
-      # - job: Set_3
-      #   timeoutInMinutes: 120
-      #   strategy:
-      #     matrix:
-      #       Debian-10.0:
-      #         agentName: "blobfuse-debian10"
-      #         vmImage: 'Debian-10.0'
-      #         fuselib: 'libfuse-dev'
-      #         fuse-version: 'fuse'
-      #         tags: 'fuse2'
-      #         container: 'test-cnt-deb-10'
-      #       Debian-11.0:
-      #         agentName: "blobfuse-debian11"
-      #         vmImage: 'Debian-11.0'
-      #         fuse-version: 'fuse3'
-      #         fuselib: 'libfuse3-dev'
-      #         tags: 'fuse3'
-      #         container: 'test-cnt-deb-11'
-        
-      #   pool:
-      #     name: "blobfuse-debian-pool"
-      #     demands:
-      #       - ImageOverride -equals $(agentName)
-
-      #   variables:
-      #     - group: NightlyBlobFuse
-      #     - name: root_dir
-      #       value: '$(System.DefaultWorkingDirectory)'
-      #     - name: work_dir
-      #       value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-      #     - name: mount_dir
-      #       value: '$(System.DefaultWorkingDirectory)/fusetmp'
-      #     - name: temp_dir
-      #       value: '$(System.DefaultWorkingDirectory)/fusetmpcache'
-
-      #   steps:
-      #     - checkout: none
-
-      #     - task: GoTool@0
-      #       inputs:
-      #         version: '1.20.5'
-      #       displayName: "GoTool Setup"
-
-      #     - script: |
-      #         sudo apt-get update -y
-      #         sudo apt-get install git -y
-      #       displayName: 'Install Git'
-
-      #     - script: |
-      #         git clone https://github.com/Azure/azure-storage-fuse
-      #       displayName: 'Checkout Code'
-      #       workingDirectory: $(root_dir)
-
-      #     - script: |
-      #         git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-      #       displayName: 'Checkout Branch'
-      #       workingDirectory: $(root_dir)/azure-storage-fuse
-          
-      #     # get glibc version with which build is done
-      #     - script: |
-      #        ldd --version
-      #       displayName: "GLIBC Version"
-
-      #     - task: DownloadBuildArtifacts@0
-      #       displayName: 'Download Build Artifacts'
-      #       inputs:
-      #         artifactName: 'blobfuse2-signed'
-      #         downloadPath: $(root_dir)
-      #         itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.deb
-
-      #     - script: |
-      #         ls -l
-      #         result=$(ls -1 | wc -l)
-      #         if [ $result -ne 1 ]; then
-      #           exit 1
-      #         fi
-      #       displayName: 'List Downloaded Package'
-      #       workingDirectory: $(root_dir)/blobfuse2-signed
-
-      #     - script: |
-      #         for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
-      #         cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
-      #         if [ $(agentName) == "blobfuse-debian10" ]; then
-      #           f=`ls ./blobfuse2*$(vmImage)*.deb`
-      #           cp "$f" $(sed 's:Debian-10:Debian-9:' <<< "$f")
-      #           cp ./blobfuse2*Debian-9*.deb $(Build.ArtifactStagingDirectory)
-      #           rm -rf ./blobfuse2*Debian-9*.deb
-      #         fi
-      #       displayName: 'Rename Package'
-      #       workingDirectory: $(root_dir)/blobfuse2-signed
-
-      #     - script: |
-      #         sudo dpkg --info blobfuse2*$(vmImage)*.deb
-      #         sudo apt-get install $(fuse-version) build-essential -y
-      #         sudo dpkg -i ./blobfuse2*$(vmImage)*.deb
-      #       displayName: 'Install Package'
-      #       workingDirectory: $(Build.ArtifactStagingDirectory)
-
-      #     - template: 'azure-pipeline-templates/release-distro-tests.yml'
-      #       parameters:
-      #         root_dir: $(root_dir)
-      #         work_dir: $(work_dir)
-      #         mount_dir: $(mount_dir)
-      #         temp_dir: $(temp_dir)
-      #         container: $(container)
-
-      #     # publishing the artifacts generated
-      #     - task: PublishBuildArtifacts@1
-      #       inputs:
-      #         artifactName: 'blobfuse2'
-      #       displayName: 'Publish Artifacts'
             
       - job: Set_4
         timeoutInMinutes: 120
@@ -1500,7 +1388,59 @@ stages:
                   isDraft: ${{ parameters.draft }}
                   isPreRelease: ${{ parameters.prerelease }}
                   assetUploadMode: replace
-                  
+
+  - stage: PublishArtifcats
+    # dependsOn: UpdateLatestVersion
+    # condition: succeeded('UpdateLatestVersion')
+    jobs:
+      - job: Publish Artifacts
+        pool:
+          vmImage: 'ubuntu-22.04'
+        variables:
+          - group: NightlyBlobFuse
+          - name: root_dir
+            value: '$(System.DefaultWorkingDirectory)'
+        
+        steps:
+          - checkout: none
+
+          - script: |
+              hostnamectl
+            displayName: 'hostnamectl'
+
+          # - script: |
+          #     sudo apt-get install python3 -y
+          #     python3 --version
+          #   displayName: 'Installing Python'
+
+          - task: PipAuthenticate@1
+            inputs:
+              artifactFeeds: 'BlobFuse/Blobfuse'
+          - script: pip install pmc-cli
+
+          - task: DownloadSecureFile@1
+            name: pmcCertificate
+            displayName: 'Download PMC PEM file'
+            inputs:
+              secureFile: 'blobfusebuildvault-blobfuse-release-pmc1-20230911.pem'
+
+          - task: DownloadSecureFile@1
+            name: settings
+            displayName: 'Download settings.toml'
+            inputs:
+              secureFile: 'settings.toml'
+
+          - script: |
+              ls -lh $(pmcCertificate.secureFilePath)
+              ls -lh $(settings.secureFilePath)
+            displayName: 'Config Files'
+
+          - script: |
+              pmc --version
+            displayName: 'Test PMC installation'
+          
+
+
   - stage: UpdateLatestVersion
     dependsOn: ReleaseArtifacts
     condition: succeeded('ReleaseArtifacts')
