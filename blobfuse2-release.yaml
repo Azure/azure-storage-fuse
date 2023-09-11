@@ -1393,7 +1393,7 @@ stages:
     # dependsOn: UpdateLatestVersion
     # condition: succeeded('UpdateLatestVersion')
     jobs:
-      - job: Publish Artifacts
+      - job: PublishArtifacts
         pool:
           vmImage: 'ubuntu-22.04'
         variables:
@@ -1426,7 +1426,7 @@ stages:
 
           - task: DownloadSecureFile@1
             name: settings
-            displayName: 'Download settings file'
+            displayName: 'Download settings.toml file'
             inputs:
               secureFile: 'settings.toml'
 
