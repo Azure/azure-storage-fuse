@@ -1469,16 +1469,16 @@ stages:
               echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
 
               # RHEL 9.0 AMD64
-              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages $fuse3AmdRpm microsoft-rhel9.0-testing-prod-yum
+              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages $fuse3AmdRpm microsoft-rhel9.0-prod-yum
 
               # RHEL 9.0 ARM64
-              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages $fuse3ArmRpm microsoft-rhel9.0-testing-prod-yum
+              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages $fuse3ArmRpm microsoft-rhel9.0-prod-yum
             displayName: 'Add to repository'
             workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
 
           - script: |
               # RHEL 9.0, both AMD and ARM
-              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish microsoft-rhel9.0-testing-prod-yum
+              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish microsoft-rhel9.0-prod-yum
             displayName: 'Publish the repository'
           
   - stage: UpdateLatestVersion
