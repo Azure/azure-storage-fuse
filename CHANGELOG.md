@@ -2,7 +2,11 @@
 **Features**
 
 **Bug Fixes**
-- RMAN does a sync call after every file upload and then reads file back. Disable deletion from local-cache using a flag to optimize this workflow.
+- [#1237](https://github.com/Azure/azure-storage-fuse/issues/1237) Fixed the case sensitivity of content type for file extensions.
+- [#1230](https://github.com/Azure/azure-storage-fuse/issues/1230) Disable deletion of files from local-cache on sync. Use `--ignore-sync` cli option to enable this.
+
+**Optimizations**
+- Optimized file-cache to skip download when O_TRUNC flag is provided in open call.
 
 ## 2.1.0 (2023-08-31)
 **Features**
