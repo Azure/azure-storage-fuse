@@ -1441,15 +1441,15 @@ stages:
               displayName: 'Test PMC installation'
 
             # download artifacts that need to be published
-            - task: DownloadBuildArtifacts@0
-              displayName: 'Download Signed Artifacts'
-              inputs:
-                artifactName: 'blobfuse2-signed'
-                downloadPath: $(Build.ArtifactStagingDirectory)
+            # - task: DownloadBuildArtifacts@0
+            #   displayName: 'Download Signed Artifacts'
+            #   inputs:
+            #     artifactName: 'blobfuse2-signed'
+            #     downloadPath: $(Build.ArtifactStagingDirectory)
 
-            - script: |
-                sudo ls -lRt $(Build.ArtifactStagingDirectory)
-              displayName: 'List Artifacts'
+            # - script: |
+            #     sudo ls -lRt $(Build.ArtifactStagingDirectory)
+            #   displayName: 'List Artifacts'
 
             # - script: |
             #     pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) package upload blobfuse2-signed
