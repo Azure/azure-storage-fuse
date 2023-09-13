@@ -14,6 +14,11 @@ parameters:
     type: boolean
     default: false
 
+  - name: publish_artifacts
+    displayName: 'Publish Artifacts to Linux Repos'
+    type: boolean
+    default: false
+
   - name: draft
     displayName: 'Post as Draft Release'
     type: boolean
@@ -1389,112 +1394,113 @@ stages:
                   isPreRelease: ${{ parameters.prerelease }}
                   assetUploadMode: replace
 
-  - stage: PublishArtifcats
-    # dependsOn: UpdateLatestVersion
-    # condition: succeeded('UpdateLatestVersion')
-    jobs:
-      - job: PublishArtifacts
-        timeoutInMinutes: 120
-        pool:
-          vmImage: 'ubuntu-22.04'
-        variables:
-          - group: NightlyBlobFuse
-          - name: root_dir
-            value: '$(System.DefaultWorkingDirectory)'
-        
-        steps:
-          - checkout: none
-
-          - task: PipAuthenticate@1
-            inputs:
-              artifactFeeds: 'BlobFuse/Blobfuse'
-            displayName: 'Connect to PMC artifact'
-
-          - script: |
-              pip install pmc-cli
-            displayName: 'Install pmc-cli'
-
-          - task: DownloadSecureFile@1
-            name: pmcCertificate
-            displayName: 'Download pmc pem file'
-            inputs:
-              secureFile: 'blobfusebuildvault-blobfuse-release-pmc1-20230911.pem'
-
-          - task: DownloadSecureFile@1
-            name: settings
-            displayName: 'Download settings.toml file'
-            inputs:
-              secureFile: 'settings.toml'
-
-          - script: |
-              pmc --version
-              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo list --limit 1
-              if [ $? -ne 0 ]; then
-                exit 1
-              fi
-            displayName: 'Test PMC installation'
-
-          # download artifacts that need to be published
-          - task: DownloadBuildArtifacts@0
-            displayName: 'Download Signed Artifacts'
-            inputs:
-              artifactName: 'blobfuse2-signed'
-              downloadPath: $(Build.ArtifactStagingDirectory)
-
-          - script: |
-              sudo ls -lRt $(Build.ArtifactStagingDirectory)
-            displayName: 'List Artifacts'
-
-          - script: |
-              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) package upload blobfuse2-signed
-            displayName: 'Upload packages'
-            workingDirectory: $(Build.ArtifactStagingDirectory)/
-
-          - script: |
-              wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/sourav/pmc/setup/packages.csv -O packages.csv
-              cat ./packages.csv
-            displayName: 'Fetch packages.csv'
-            workingDirectory: $(Build.ArtifactStagingDirectory)/
-
-          - script: |
-              fuse3AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.deb`
-              echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
-
-              fuse3ArmDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.arm64.deb`
-              echo "Fuse3 ARM DEB ID: $fuse3ArmDeb"
-
-              fuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.rpm`
-              echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
-
-              fuse3ArmRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.aarch64.rpm`
-              echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
-
-              fuse2AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.deb`
-              echo "Fuse2 AMD DEB ID: $fuse2AmdDeb"
-
-              fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
-              echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
-
-              while IFS=, read -r distro fuseArchType repoName releaseName; do
-                echo "Uploading packages for $distro"
-                echo "pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages ${!fuseArchType} $repoName $releaseName"
-              done < <(tail -n +3 ../packages.csv)
-            displayName: 'Add uploaded packages to repository'
-            workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
-
-          - script: |
-              while IFS=, read -r distro fuseArchType repoName releaseName; do
-                if [[ $fuseArchType == *"Arm"* ]] 
-                then
-                  echo "Skipping for ARM type on $distro"
-                else
-                  echo "Publishing for $distro"
-                  echo "pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish $repoName"
-                fi
-              done < <(tail -n +3 ../packages.csv)
-            displayName: 'Publish the repository'
-            workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+  - ${{ if eq(parameters.publish_artifacts, true) }}:
+    - stage: PublishArtifcats
+      dependsOn: ReleaseArtifacts
+      condition: succeeded('ReleaseArtifacts')
+      jobs:
+        - job: PublishArtifacts
+          timeoutInMinutes: 120
+          pool:
+            vmImage: 'ubuntu-22.04'
+          variables:
+            - group: NightlyBlobFuse
+            - name: root_dir
+              value: '$(System.DefaultWorkingDirectory)'
           
+          steps:
+            - checkout: none
+
+            - task: PipAuthenticate@1
+              inputs:
+                artifactFeeds: 'BlobFuse/Blobfuse'
+              displayName: 'Connect to PMC artifact'
+
+            - script: |
+                pip install pmc-cli
+              displayName: 'Install pmc-cli'
+
+            - task: DownloadSecureFile@1
+              name: pmcCertificate
+              displayName: 'Download pmc pem file'
+              inputs:
+                secureFile: 'blobfusebuildvault-blobfuse-release-pmc1-20230911.pem'
+
+            - task: DownloadSecureFile@1
+              name: settings
+              displayName: 'Download settings.toml file'
+              inputs:
+                secureFile: 'settings.toml'
+
+            - script: |
+                pmc --version
+                pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo list --limit 1
+                if [ $? -ne 0 ]; then
+                  exit 1
+                fi
+              displayName: 'Test PMC installation'
+
+            # download artifacts that need to be published
+            - task: DownloadBuildArtifacts@0
+              displayName: 'Download Signed Artifacts'
+              inputs:
+                artifactName: 'blobfuse2-signed'
+                downloadPath: $(Build.ArtifactStagingDirectory)
+
+            - script: |
+                sudo ls -lRt $(Build.ArtifactStagingDirectory)
+              displayName: 'List Artifacts'
+
+            - script: |
+                pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) package upload blobfuse2-signed
+              displayName: 'Upload packages'
+              workingDirectory: $(Build.ArtifactStagingDirectory)/
+
+            - script: |
+                wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/sourav/pmc/setup/packages.csv -O packages.csv
+                cat ./packages.csv
+              displayName: 'Fetch packages.csv'
+              workingDirectory: $(Build.ArtifactStagingDirectory)/
+
+            - script: |
+                fuse3AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.deb`
+                echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
+
+                fuse3ArmDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.arm64.deb`
+                echo "Fuse3 ARM DEB ID: $fuse3ArmDeb"
+
+                fuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.rpm`
+                echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
+
+                fuse3ArmRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.aarch64.rpm`
+                echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
+
+                fuse2AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.deb`
+                echo "Fuse2 AMD DEB ID: $fuse2AmdDeb"
+
+                fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
+                echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
+
+                while IFS=, read -r distro fuseArchType repoName releaseName; do
+                  echo "Uploading packages for $distro"
+                  echo "pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages ${!fuseArchType} $repoName $releaseName"
+                done < <(tail -n +3 ../packages.csv)
+              displayName: 'Add uploaded packages to repository'
+              workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+
+            - script: |
+                while IFS=, read -r distro fuseArchType repoName releaseName; do
+                  if [[ $fuseArchType == *"Arm"* ]] 
+                  then
+                    echo "Skipping for ARM type on $distro"
+                  else
+                    echo "Publishing for $distro"
+                    echo "pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish $repoName"
+                  fi
+                done < <(tail -n +3 ../packages.csv)
+              displayName: 'Publish the repository'
+              workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+            
   - stage: UpdateLatestVersion
     dependsOn: ReleaseArtifacts
     condition: succeeded('ReleaseArtifacts')
