@@ -1,5 +1,5 @@
 # Do not remove these comments
-# Format of the file : <Distro Name>,<Fuse Verison, Achitecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
+# Format of the file : <Distro Name>,<Fuse Version, Architecture, File Type>,<Repo Name>,<Release Name(for deb repos only)>
 Ubuntu-18.04,fuse2AmdDeb,microsoft-ubuntu-bionic-prod-apt,bionic
 Ubuntu-20.04,fuse3AmdDeb,microsoft-ubuntu-focal-prod-apt,focal
 Ubuntu-22.04,fuse3AmdDeb,microsoft-ubuntu-jammy-prod-apt,jammy
