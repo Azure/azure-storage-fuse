@@ -1394,6 +1394,7 @@ stages:
     # condition: succeeded('UpdateLatestVersion')
     jobs:
       - job: PublishArtifacts
+        timeoutInMinutes: 120
         pool:
           vmImage: 'ubuntu-22.04'
         variables:
@@ -1450,6 +1451,12 @@ stages:
             workingDirectory: $(Build.ArtifactStagingDirectory)/
 
           - script: |
+              wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/sourav/pmc/setup/packages.csv -O packages.csv
+              cat ./packages.csv
+            displayName: 'Fetch packages.csv'
+            workingDirectory: $(Build.ArtifactStagingDirectory)/
+
+          - script: |
               fuse3AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.deb`
               echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
 
@@ -1468,18 +1475,25 @@ stages:
               fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
               echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
 
-              # RHEL 9.0 AMD64
-              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages $fuse3AmdRpm microsoft-rhel9.0-prod-yum
-
-              # RHEL 9.0 ARM64
-              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages $fuse3ArmRpm microsoft-rhel9.0-prod-yum
-            displayName: 'Add to repository'
+              while IFS=, read -r distro fuseArchType repoName releaseName; do
+                echo "Uploading packages for $distro"
+                echo "pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages ${!fuseArchType} $repoName $releaseName"
+              done < <(tail -n +3 ../packages.csv)
+            displayName: 'Add uploaded packages to repository'
             workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
 
           - script: |
-              # RHEL 9.0, both AMD and ARM
-              pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish microsoft-rhel9.0-prod-yum
+              while IFS=, read -r distro fuseArchType repoName releaseName; do
+                if [[ $fuseArchType == *"Arm"* ]] 
+                then
+                  echo "Skipping for ARM type on $distro"
+                else
+                  echo "Publishing for $distro"
+                  echo "pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish $repoName"
+                fi
+              done < <(tail -n +3 ../packages.csv)
             displayName: 'Publish the repository'
+            workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
           
   - stage: UpdateLatestVersion
     dependsOn: ReleaseArtifacts
