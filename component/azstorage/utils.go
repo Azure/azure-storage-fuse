@@ -442,7 +442,7 @@ var ContentTypes = map[string]string{
 
 // getContentType : Based on the file extension retrieve the content type to be set
 func getContentType(key string) string {
-	value, found := ContentTypes[filepath.Ext(key)]
+	value, found := ContentTypes[strings.ToLower(filepath.Ext(key))]
 	if found {
 		return value
 	}

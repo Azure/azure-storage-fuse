@@ -1,4 +1,14 @@
-## 2.1.0 (WIP)
+## 2.1.1 (WIP)
+**Features**
+
+**Bug Fixes**
+- [#1237](https://github.com/Azure/azure-storage-fuse/issues/1237) Fixed the case sensitivity of content type for file extensions.
+- [#1230](https://github.com/Azure/azure-storage-fuse/issues/1230) Disable deletion of files from local-cache on sync. Use `--ignore-sync` cli option to enable this.
+
+**Optimizations**
+- Optimized file-cache to skip download when O_TRUNC flag is provided in open call.
+
+## 2.1.0 (2023-08-31)
 **Features**
 - Added support for ARM64 architecture.
 - Block cache component added to support faster serial reads of large files with prefetching of blocks
