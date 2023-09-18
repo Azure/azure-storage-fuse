@@ -429,7 +429,7 @@ stages:
               chmod 777 *.sh
               ./dockerinstall.sh
               ./buildcontainer.sh Dockerfile x86_64
-              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD)
+              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) x84_64
             displayName: "Create and publish container"
             workingDirectory: $(work_dir)/docker
 
@@ -656,7 +656,7 @@ stages:
               chmod 777 *.sh
               ./dockerinstall.sh
               ./buildcontainer.sh DockerfileARM arm64
-              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD)
+              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) arm64
             displayName: "Create and publish container"
             workingDirectory: $(work_dir)/docker
 
