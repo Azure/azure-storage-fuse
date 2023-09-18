@@ -17,7 +17,7 @@ cp ../setup/11-blobfuse2.conf ./
 cp ../setup/blobfuse2-logrotate ./
 
 ver=`./blobfuse2 --version | cut -d " " -f 3`
-tag="azure-alpine-blobfuse2.$ver"
+tag="azure-mariner-blobfuse2.$ver"
 
 # Cleanup older container image from docker
 docker image rm $tag -f
@@ -26,10 +26,10 @@ docker image rm $tag -f
 if [ "$1" == "fuse2" ]
 then
 	echo "Build container for libfuse"
-	docker build -t $tag -f Dockerfile_Alpine . --build-arg FUSE2=TRUE
+	docker build -t $tag -f Dockerfile_Mariner . --build-arg FUSE2=TRUE
 else
 	echo "Build container for libfuse3"
-	docker build -t $tag -f Dockerfile_Alpine .
+	docker build -t $tag -f Dockerfile_Mariner .
 fi
  
 # Image build is executed so we can clean up temp executable from here

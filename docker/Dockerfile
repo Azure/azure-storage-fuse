@@ -1,5 +1,5 @@
 # Create container based on Ubuntu-22.04 Jammy Jellyfish image
-FROM ubuntu:latest
+FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04 
 
 #Define arg to determine whether to build for fuse2 or fuse3
 ARG FUSE2

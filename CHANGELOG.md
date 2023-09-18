@@ -1,6 +1,6 @@
 ## 2.1.1 (WIP)
 **Features**
-- Alpine based docker image publish to Azure Container Registry.
+- Mariner based docker image publish to Azure Container Registry.
 
 **Bug Fixes**
 - [#1237](https://github.com/Azure/azure-storage-fuse/issues/1237) Fixed the case sensitivity of content type for file extensions.
