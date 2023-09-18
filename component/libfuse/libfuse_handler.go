@@ -316,7 +316,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	conn.max_background = C.uint(fuseFS.maxFuseThreads)
 
 	// While reading a file let kernel do readahed for better perf
-	conn.max_readahead = (1 * 1024 * 1024)
+	conn.max_readahead = (4 * 1024 * 1024)
 	conn.max_read = (1 * 1024 * 1024)
 	conn.max_write = (1 * 1024 * 1024)
 
