@@ -1,9 +1,6 @@
 # Create container based on Ubuntu-22.04 Jammy Jellyfish image
 FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04 
 
-#Define arg to determine whether to build for fuse2 or fuse3
-ARG FUSE2
-
 # Create directory to hold samples
 RUN mkdir -p /usr/share/blobfuse2
 
@@ -14,9 +11,8 @@ COPY ./config.yaml /usr/share/blobfuse2/
 # Install fuse library
 RUN \
 	apt update && \
-	apt-get install -y ca-certificates vim rsyslog
-
-RUN if [ "$FUSE2" = "TRUE" ] ; then apt-get install -y fuse ; else apt-get install -y fuse3 ; fi 
+	apt-get install -y ca-certificates vim rsyslog && \
+	apt-get install -y fuse3
 
 RUN echo "user_allow_other" >> /etc/fuse.conf
 
