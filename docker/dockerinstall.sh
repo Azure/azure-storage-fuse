@@ -32,3 +32,12 @@ docker images rm azure-blobfuse2 -f
 
 # List docker instances running
 docker container ls
+
+
+# Resolve permission issues to connect to docker socket
+sudo groupadd docker
+sudo usermod -aG docker $USER
+sudo chown root:docker /var/run/docker.sock
+sudo chown "$USER":"$USER" /home/"$USER"/.docker -R
+sudo chmod g+rwx "$HOME/.docker" -R
+sudo service docker restart
