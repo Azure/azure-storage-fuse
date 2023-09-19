@@ -1,5 +1,5 @@
 # Create container based on Ubuntu-22.04 Jammy Jellyfish image
-FROM mcr.microsoft.com/mirror/docker/library/ubuntu:22.04 
+FROM --platform=linux/arm64 mcr.microsoft.com/mirror/docker/library/ubuntu:22.04 
 
 # Create directory to hold samples
 RUN mkdir -p /usr/share/blobfuse2
