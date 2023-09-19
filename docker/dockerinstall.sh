@@ -21,14 +21,25 @@ sudo apt-get update
 sudo apt-get install docker-ce docker-ce-cli containerd.io docker-compose-plugin -y
 sudo apt-get update
 
+# Resolve permission issues to connect to docker socket
+sudo groupadd docker
+sudo usermod -aG docker $USER
+sudo chown root:docker /var/run/docker.sock
+sudo chown "$USER":"$USER" /home/"$USER"/.docker -R
+sudo chmod g+rwx "$HOME/.docker" -R
+
+# Delete old blobfuse2 image
+docker rmi `docker images | grep blobfuse | cut -d " " -f1`
+
+# Remove existing images
+docker system prune -f
+
 # Start docker service
 sudo service docker start
 
 # List docker container images
 docker images ls
 
-# Delete old blobfuse2 image
-docker images rm azure-blobfuse2 -f
-
 # List docker instances running
 docker container ls
+
