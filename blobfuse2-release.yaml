@@ -435,6 +435,8 @@ stages:
               ./dockerinstall.sh
               ./buildcontainer.sh Dockerfile x86_64
               ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) x86_64
+              ./buildcontainer.sh DockerfileMariner mariner-x86_64
+              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) mariner-x86_64
             displayName: "Create and publish container"
             workingDirectory: $(work_dir)/docker
 
