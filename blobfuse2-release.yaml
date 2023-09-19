@@ -654,7 +654,7 @@ stages:
               mount_dir: $(mount_dir)
               temp_dir: $(temp_dir)
               container: $(container)
-          
+              
           # Create container for blobfuse and publish it
           - script: |
               sudo apt-get install $(tags) $(fuselib) -y
@@ -662,7 +662,7 @@ stages:
               ./dockerinstall.sh
               ./buildcontainer.sh DockerfileARM arm64
               ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) arm64
-            displayName: "Create and publish container"
+            displayName: "Create and publish ARM container"
             workingDirectory: $(work_dir)/docker
 
           # publishing the artifacts generated
