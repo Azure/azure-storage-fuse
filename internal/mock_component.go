@@ -298,18 +298,6 @@ func (mr *MockComponentMockRecorder) GetAttr(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAttr", reflect.TypeOf((*MockComponent)(nil).GetAttr), arg0)
 }
 
-// InvalidateObject mocks base method.
-func (m *MockComponent) InvalidateObject(arg0 string) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "InvalidateObject", arg0)
-}
-
-// InvalidateObject indicates an expected call of InvalidateObject.
-func (mr *MockComponentMockRecorder) InvalidateObject(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "InvalidateObject", reflect.TypeOf((*MockComponent)(nil).InvalidateObject), arg0)
-}
-
 // GetFileBlockOffsets mocks base method.
 func (m *MockComponent) GetFileBlockOffsets(arg0 GetFileBlockOffsetsOptions) (*common.BlockOffsetList, error) {
 	m.ctrl.T.Helper()

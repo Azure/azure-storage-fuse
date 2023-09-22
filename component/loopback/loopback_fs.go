@@ -459,9 +459,6 @@ func (lfs *LoopbackFS) Chown(options internal.ChownOptions) error {
 	return os.Chown(path, options.Owner, options.Group)
 }
 
-func (lfs *LoopbackFS) InvalidateObject(_ string) {
-}
-
 func NewLoopbackFSComponent() internal.Component {
 	lfs := &LoopbackFS{}
 	lfs.SetName(compName)

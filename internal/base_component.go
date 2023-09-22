@@ -310,12 +310,6 @@ func (base *BaseComponent) Chown(options ChownOptions) error {
 	return nil
 }
 
-func (base *BaseComponent) InvalidateObject(name string) {
-	if base.next != nil {
-		base.next.InvalidateObject(name)
-	}
-}
-
 func (base *BaseComponent) FileUsed(name string) error {
 	if base.next != nil {
 		return base.next.FileUsed(name)
