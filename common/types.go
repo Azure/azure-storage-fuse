@@ -151,6 +151,7 @@ const (
 	BlockFlagUnknown uint16 = iota
 	DirtyBlock
 	TruncatedBlock
+	RemoveBlocks
 )
 
 type Block struct {
@@ -170,6 +171,10 @@ func (block *Block) Dirty() bool {
 // Truncated : block created on a truncate operation
 func (block *Block) Truncated() bool {
 	return block.Flags.IsSet(TruncatedBlock)
+}
+
+func (block *Block) Remove() bool {
+	return block.Flags.IsSet(RemoveBlocks)
 }
 
 // Flags for block offset list
