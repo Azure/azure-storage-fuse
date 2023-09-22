@@ -74,6 +74,7 @@ type FileCache struct {
 	allowOther      bool
 	offloadIO       bool
 	syncToFlush     bool
+	syncToDelete    bool
 	maxCacheSize    float64
 
 	defaultPermission os.FileMode
@@ -105,6 +106,7 @@ type FileCacheOptions struct {
 	V1Timeout     uint32 `config:"file-cache-timeout-in-seconds" yaml:"-"`
 	EmptyDirCheck bool   `config:"empty-dir-check" yaml:"-"`
 	SyncToFlush   bool   `config:"sync-to-flush" yaml:"sync-to-flush,omitempty"`
+	SyncNoOp      bool   `config:"ignore-sync" yaml:"ignore-sync,omitempty"`
 
 	RefreshSec uint32 `config:"refresh-sec" yaml:"refresh-sec,omitempty"`
 }
@@ -229,6 +231,7 @@ func (c *FileCache) Configure(_ bool) error {
 	c.offloadIO = conf.OffloadIO
 	c.maxCacheSize = conf.MaxSizeMB
 	c.syncToFlush = conf.SyncToFlush
+	c.syncToDelete = !conf.SyncNoOp
 	c.refreshSec = conf.RefreshSec
 
 	c.tmpPath = common.ExpandPath(conf.TmpPath)
@@ -322,6 +325,8 @@ func (c *FileCache) OnConfigChange() {
 	c.policyTrace = conf.EnablePolicyTrace
 	c.offloadIO = conf.OffloadIO
 	c.maxCacheSize = conf.MaxSizeMB
+	c.syncToFlush = conf.SyncToFlush
+	c.syncToDelete = !conf.SyncNoOp
 	_ = c.policy.UpdateConfig(c.GetPolicyConfig(conf))
 }
 
@@ -1039,6 +1044,8 @@ func (fc *FileCache) ReadFile(options internal.ReadFileOptions) ([]byte, error) 
 func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::ReadInBuffer")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
+	log.Debug("FileCache::ReadInBuffer : Reading %v bytes from %s", len(options.Data), options.Handle.Path)
+
 	f := options.Handle.GetFileObject()
 	if f == nil {
 		log.Err("FileCache::ReadInBuffer : error [couldn't find fd in handle] %s", options.Handle.Path)
@@ -1062,6 +1069,8 @@ func (fc *FileCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, er
 func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 	//defer exectime.StatTimeCurrentBlock("FileCache::WriteFile")()
 	// The file should already be in the cache since CreateFile/OpenFile was called before and a shared lock was acquired.
+	log.Debug("FileCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
+
 	f := options.Handle.GetFileObject()
 	if f == nil {
 		log.Err("FileCache::WriteFile : error [couldn't find fd in handle] %s", options.Handle.Path)
@@ -1095,7 +1104,7 @@ func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("FileCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	if fc.syncToFlush {
 		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
-	} else {
+	} else if fc.syncToDelete {
 		err := fc.NextComponent().SyncFile(options)
 		if err != nil {
 			log.Err("FileCache::SyncFile : %s failed", options.Handle.Path)
@@ -1500,6 +1509,9 @@ func init() {
 
 	syncToFlush := config.AddBoolFlag("sync-to-flush", false, "Sync call on file will force a upload of the file.")
 	config.BindPFlag(compName+".sync-to-flush", syncToFlush)
+
+	ignoreSync := config.AddBoolFlag("ignore-sync", false, "Just ignore sync call and do not invalidate locally cached file.")
+	config.BindPFlag(compName+".ignore-sync", ignoreSync)
 
 	config.RegisterFlagCompletionFunc("tmp-path", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveDefault

@@ -39,7 +39,7 @@ package libfuse
 // CFLAGS: compile time flags -D object file creation. D= Define
 // LFLAGS: loader flags link library -l binary file. l=link -ldl is for the extension to dynamically link
 
-// #cgo CFLAGS: -DFUSE_USE_VERSION=35 -D_FILE_OFFSET_BITS=64
+// #cgo CFLAGS: -DFUSE_USE_VERSION=39 -D_FILE_OFFSET_BITS=64
 // #cgo LDFLAGS: -lfuse3 -ldl
 // #include "libfuse_wrapper.h"
 // #include "extension_handler.h"
@@ -216,6 +216,8 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 		options += ",ro"
 	}
 
+	options += ",max_read=1048576"
+
 	if !fuseFS.directIO {
 		options += ",kernel_cache"
 	}
@@ -253,7 +255,7 @@ func (lf *Libfuse) destroyFuse() error {
 
 //export libfuse_init
 func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Pointer) {
-	log.Trace("Libfuse::libfuse_init : init")
+	log.Trace("Libfuse::libfuse_init : init (read : %v, write %v, read-ahead %v)", conn.max_read, conn.max_write, conn.max_readahead)
 
 	log.Info("Libfuse::NotifyMountToParent : Notifying parent for successful mount")
 	if err := common.NotifyMountToParent(); err != nil {
@@ -314,9 +316,9 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	conn.max_background = C.uint(fuseFS.maxFuseThreads)
 
 	// While reading a file let kernel do readahed for better perf
-	conn.max_readahead = (8 * 1024 * 1024)
-	//conn.max_write = (4 * 1024 * 1024)
-	//conn.max_read =  (4 * 1024 * 1024)
+	conn.max_readahead = (4 * 1024 * 1024)
+	conn.max_read = (1 * 1024 * 1024)
+	conn.max_write = (1 * 1024 * 1024)
 
 	// direct_io option is used to bypass the kernel cache. It disables the use of
 	// page cache (file content cache) in the kernel for the filesystem.

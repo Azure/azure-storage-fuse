@@ -14,6 +14,11 @@ parameters:
     type: boolean
     default: false
 
+  - name: publish_artifacts
+    displayName: 'Publish Artifacts to Linux Repos'
+    type: boolean
+    default: false
+
   - name: draft
     displayName: 'Post as Draft Release'
     type: boolean
@@ -296,7 +301,7 @@ stages:
           - task: SFP.build-tasks.custom-build-task-1.EsrpCodeSigning@1
             displayName: 'ESRP CodeSigning blobfuse2'
             inputs:
-              ConnectedServiceName: 'ESRP Code signing for blobfuse2'
+              ConnectedServiceName: 'PMC ESRP Blobfuse2 Signing'
               FolderPath: '$(Build.ArtifactStagingDirectory)/blobfuse2-temp'
               Pattern: '*.rpm, *.deb'
               signConfigType: inlineSignParams
@@ -428,8 +433,10 @@ stages:
               sudo apt-get install $(tags) $(fuselib) -y
               chmod 777 *.sh
               ./dockerinstall.sh
-              ./buildcontainer.sh
-              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD)
+              ./buildcontainer.sh Dockerfile x86_64
+              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) x86_64
+              ./buildcontainer.sh DockerfileMariner mariner-x86_64
+              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) mariner-x86_64
             displayName: "Create and publish container"
             workingDirectory: $(work_dir)/docker
 
@@ -649,6 +656,16 @@ stages:
               mount_dir: $(mount_dir)
               temp_dir: $(temp_dir)
               container: $(container)
+              
+          # Create container for blobfuse and publish it
+          - script: |
+              sudo apt-get install $(tags) $(fuselib) -y
+              chmod 777 *.sh
+              ./dockerinstall.sh
+              ./buildcontainer.sh DockerfileARM arm64
+              ./publishcontainer.sh $(AZTEST_DOCKER_REG_USER)  $(AZTEST_DOCKER_REG_PWD) arm64
+            displayName: "Create and publish ARM container"
+            workingDirectory: $(work_dir)/docker
 
           # publishing the artifacts generated
           - task: PublishBuildArtifacts@1
@@ -758,118 +775,6 @@ stages:
             inputs:
               artifactName: 'blobfuse2'
             displayName: 'Publish Artifacts'
-
-      # - job: Set_3
-      #   timeoutInMinutes: 120
-      #   strategy:
-      #     matrix:
-      #       Debian-10.0:
-      #         agentName: "blobfuse-debian10"
-      #         vmImage: 'Debian-10.0'
-      #         fuselib: 'libfuse-dev'
-      #         fuse-version: 'fuse'
-      #         tags: 'fuse2'
-      #         container: 'test-cnt-deb-10'
-      #       Debian-11.0:
-      #         agentName: "blobfuse-debian11"
-      #         vmImage: 'Debian-11.0'
-      #         fuse-version: 'fuse3'
-      #         fuselib: 'libfuse3-dev'
-      #         tags: 'fuse3'
-      #         container: 'test-cnt-deb-11'
-        
-      #   pool:
-      #     name: "blobfuse-debian-pool"
-      #     demands:
-      #       - ImageOverride -equals $(agentName)
-
-      #   variables:
-      #     - group: NightlyBlobFuse
-      #     - name: root_dir
-      #       value: '$(System.DefaultWorkingDirectory)'
-      #     - name: work_dir
-      #       value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
-      #     - name: mount_dir
-      #       value: '$(System.DefaultWorkingDirectory)/fusetmp'
-      #     - name: temp_dir
-      #       value: '$(System.DefaultWorkingDirectory)/fusetmpcache'
-
-      #   steps:
-      #     - checkout: none
-
-      #     - task: GoTool@0
-      #       inputs:
-      #         version: '1.20.5'
-      #       displayName: "GoTool Setup"
-
-      #     - script: |
-      #         sudo apt-get update -y
-      #         sudo apt-get install git -y
-      #       displayName: 'Install Git'
-
-      #     - script: |
-      #         git clone https://github.com/Azure/azure-storage-fuse
-      #       displayName: 'Checkout Code'
-      #       workingDirectory: $(root_dir)
-
-      #     - script: |
-      #         git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-      #       displayName: 'Checkout Branch'
-      #       workingDirectory: $(root_dir)/azure-storage-fuse
-          
-      #     # get glibc version with which build is done
-      #     - script: |
-      #        ldd --version
-      #       displayName: "GLIBC Version"
-
-      #     - task: DownloadBuildArtifacts@0
-      #       displayName: 'Download Build Artifacts'
-      #       inputs:
-      #         artifactName: 'blobfuse2-signed'
-      #         downloadPath: $(root_dir)
-      #         itemPattern: blobfuse2-signed/blobfuse2*$(tags)*x86_64.deb
-
-      #     - script: |
-      #         ls -l
-      #         result=$(ls -1 | wc -l)
-      #         if [ $result -ne 1 ]; then
-      #           exit 1
-      #         fi
-      #       displayName: 'List Downloaded Package'
-      #       workingDirectory: $(root_dir)/blobfuse2-signed
-
-      #     - script: |
-      #         for f in ./blobfuse2*$(tags)*.deb; do mv -v "$f" "${f/-$(tags)./-$(vmImage).}"; done;
-      #         cp ./blobfuse2*$(vmImage)*.deb $(Build.ArtifactStagingDirectory)
-      #         if [ $(agentName) == "blobfuse-debian10" ]; then
-      #           f=`ls ./blobfuse2*$(vmImage)*.deb`
-      #           cp "$f" $(sed 's:Debian-10:Debian-9:' <<< "$f")
-      #           cp ./blobfuse2*Debian-9*.deb $(Build.ArtifactStagingDirectory)
-      #           rm -rf ./blobfuse2*Debian-9*.deb
-      #         fi
-      #       displayName: 'Rename Package'
-      #       workingDirectory: $(root_dir)/blobfuse2-signed
-
-      #     - script: |
-      #         sudo dpkg --info blobfuse2*$(vmImage)*.deb
-      #         sudo apt-get install $(fuse-version) build-essential -y
-      #         sudo dpkg -i ./blobfuse2*$(vmImage)*.deb
-      #       displayName: 'Install Package'
-      #       workingDirectory: $(Build.ArtifactStagingDirectory)
-
-      #     - template: 'azure-pipeline-templates/release-distro-tests.yml'
-      #       parameters:
-      #         root_dir: $(root_dir)
-      #         work_dir: $(work_dir)
-      #         mount_dir: $(mount_dir)
-      #         temp_dir: $(temp_dir)
-      #         container: $(container)
-
-      #     # publishing the artifacts generated
-      #     - task: PublishBuildArtifacts@1
-      #       inputs:
-      #         artifactName: 'blobfuse2'
-      #       displayName: 'Publish Artifacts'
             
       - job: Set_4
         timeoutInMinutes: 120
@@ -1500,7 +1405,114 @@ stages:
                   isDraft: ${{ parameters.draft }}
                   isPreRelease: ${{ parameters.prerelease }}
                   assetUploadMode: replace
-                  
+
+  - ${{ if eq(parameters.publish_artifacts, true) }}:
+    - stage: PublishArtifcats
+      dependsOn: ReleaseArtifacts
+      condition: succeeded('ReleaseArtifacts')
+      jobs:
+        - job: PublishArtifacts
+          timeoutInMinutes: 120
+          pool:
+            vmImage: 'ubuntu-22.04'
+          variables:
+            - group: NightlyBlobFuse
+            - name: root_dir
+              value: '$(System.DefaultWorkingDirectory)'
+          
+          steps:
+            - checkout: none
+
+            - task: PipAuthenticate@1
+              inputs:
+                artifactFeeds: 'BlobFuse/Blobfuse'
+              displayName: 'Connect to PMC artifact'
+
+            - script: |
+                pip install pmc-cli
+              displayName: 'Install pmc-cli'
+
+            - task: DownloadSecureFile@1
+              name: pmcCertificate
+              displayName: 'Download pmc pem file'
+              inputs:
+                secureFile: 'blobfusebuildvault-blobfuse-release-pmc1-20230911.pem'
+
+            - task: DownloadSecureFile@1
+              name: settings
+              displayName: 'Download settings.toml file'
+              inputs:
+                secureFile: 'settings.toml'
+
+            - script: |
+                pmc --version
+                pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo list --limit 1
+                if [ $? -ne 0 ]; then
+                  exit 1
+                fi
+              displayName: 'Test PMC installation'
+
+            # download artifacts that need to be published
+            - task: DownloadBuildArtifacts@0
+              displayName: 'Download Signed Artifacts'
+              inputs:
+                artifactName: 'blobfuse2-signed'
+                downloadPath: $(Build.ArtifactStagingDirectory)
+
+            - script: |
+                sudo ls -lRt $(Build.ArtifactStagingDirectory)
+              displayName: 'List Artifacts'
+
+            - script: |
+                pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) package upload blobfuse2-signed
+              displayName: 'Upload packages'
+              workingDirectory: $(Build.ArtifactStagingDirectory)/
+
+            - script: |
+                wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/`echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`/setup/packages.csv -O packages.csv
+                cat ./packages.csv
+              displayName: 'Fetch packages.csv'
+              workingDirectory: $(Build.ArtifactStagingDirectory)/
+
+            - script: |
+                fuse3AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.deb`
+                echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
+
+                fuse3ArmDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.arm64.deb`
+                echo "Fuse3 ARM DEB ID: $fuse3ArmDeb"
+
+                fuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.rpm`
+                echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
+
+                fuse3ArmRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.aarch64.rpm`
+                echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
+
+                fuse2AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.deb`
+                echo "Fuse2 AMD DEB ID: $fuse2AmdDeb"
+
+                fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
+                echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
+
+                while IFS=, read -r distro fuseArchType repoName releaseName; do
+                  echo "Uploading packages for $distro"
+                  pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages ${!fuseArchType} $repoName $releaseName
+                done < <(tail -n +3 ../packages.csv)
+              displayName: 'Add uploaded packages to repository'
+              workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+
+            - script: |
+                while IFS=, read -r distro fuseArchType repoName releaseName; do
+                  if [[ $fuseArchType == *"Arm"* ]] 
+                  then
+                    echo "Skipping for ARM type on $distro"
+                  else
+                    echo "Publishing for $distro"
+                    pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish $repoName
+                  fi
+                done < <(tail -n +3 ../packages.csv)
+              displayName: 'Publish the repository'
+              workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+            
   - stage: UpdateLatestVersion
     dependsOn: ReleaseArtifacts
     condition: succeeded('ReleaseArtifacts')
