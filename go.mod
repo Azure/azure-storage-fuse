@@ -4,7 +4,7 @@ go 1.20
 
 require (
 	github.com/Azure/azure-pipeline-go v0.2.4-0.20220425205405-09e6f201e1e4
-	github.com/Azure/azure-storage-azcopy/v10 v10.19.1-0.20230717101935-ab8ff0a85e48
+	github.com/Azure/azure-storage-azcopy/v10 v10.19.1-0.20230922105010-921333dc17ce
 	github.com/Azure/azure-storage-blob-go v0.15.0
 	github.com/Azure/go-autorest/autorest v0.11.29
 	github.com/Azure/go-autorest/autorest/adal v0.9.23
@@ -87,6 +87,8 @@ require (
 )
 
 replace github.com/spf13/cobra => github.com/gapra-msft/cobra v1.4.1-0.20220411185530-5b83e8ba06dd
+
+//replace github.com/Azure/azure-storage-azcopy/v10 v10.19.1-0.20230717101935-ab8ff0a85e48 => <local path>/azure-storage-azcopy
 
 // Take AzCopy dependencyon this branch only
 // go get github.com/Azure/azure-storage-azcopy/v10@ab8ff0a85e48ea781a8051b23a05dbf4def2c17c
