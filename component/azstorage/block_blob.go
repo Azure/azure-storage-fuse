@@ -1090,6 +1090,10 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 				bol = bb.removeBlocks(bol, size, name)
 			} else if size > attr.Size {
 				_, err = bb.createNewBlocks(bol, bol.BlockList[len(bol.BlockList)-1].EndIndex, size-attr.Size)
+				if err != nil {
+					log.Err("BlockBlob::TruncateFile : Failed to create new blocks for file %s", name, err.Error())
+					return err
+				}
 			}
 			err = bb.StageAndCommit(name, bol)
 			if err != nil {
@@ -1179,6 +1183,10 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		// case 3?
 		if exceedsFileBlocks {
 			newBufferSize, err = bb.createNewBlocks(fileOffsets, offset, length)
+			if err != nil {
+				log.Err("BlockBlob::Write : Failed to create new blocks for file %s", name, err.Error())
+				return err
+			}
 		}
 		// buffer that holds that pre-existing data in those blocks we're interested in
 		oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
