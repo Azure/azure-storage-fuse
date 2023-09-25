@@ -992,11 +992,11 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 		if int64(len(blockList.BlockList))+(length/blockSize) > azblob.BlockBlobMaxBlocks {
 			blockSize = length / azblob.BlockBlobMaxBlocks
 			if blockSize > azblob.BlockBlobMaxStageBlockBytes {
-				return 0, errors.New("Cannot accomodate data within the block limit")
+				return 0, errors.New("Cannot accommodate data within the block limit")
 			}
 		}
 	} else if int64(len(blockList.BlockList))+(length/blockSize) > azblob.BlockBlobMaxBlocks {
-		return 0, errors.New("Cannot accomodate data within the block limit with configured block-size")
+		return 0, errors.New("Cannot accommodate data within the block limit with configured block-size")
 	}
 
 	// BufferSize is the size of the buffer that will go beyond our current blob (appended)
