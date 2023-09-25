@@ -4,7 +4,7 @@
 - [#1230](https://github.com/Azure/azure-storage-fuse/issues/1230) Disable deletion of files from local-cache on sync. Use `--ignore-sync` cli option to enable this.
 - Rename API for HNS account now works with user delegation SAS
 - SAS token is redacted in logs for rename api over dfs endpoint
-- Allow user to configure custome AAD endpoint using MSI_ENPOINT environment variable for MSI based authentication
+- Allow user to configure custom AAD endpoint using MSI_ENPOINT environment variable for MSI based authentication
 
 **Optimizations**
 - Optimized file-cache to skip download when O_TRUNC flag is provided in open call.
