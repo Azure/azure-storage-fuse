@@ -987,15 +987,16 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, length int64) (int64, error) {
 	blockSize := bb.Config.blockSize
 	prevIndex := blockList.BlockList[len(blockList.BlockList)-1].EndIndex
+	numOfBlocks := int64(len(blockList.BlockList))
 	if blockSize == 0 {
 		blockSize = (16 * 1024 * 1024)
-		if int64(len(blockList.BlockList))+(length/blockSize) > azblob.BlockBlobMaxBlocks {
-			blockSize = length / azblob.BlockBlobMaxBlocks
+		if numOfBlocks+(length/blockSize) > azblob.BlockBlobMaxBlocks {
+			blockSize = length / (azblob.BlockBlobMaxBlocks - numOfBlocks)
 			if blockSize > azblob.BlockBlobMaxStageBlockBytes {
 				return 0, errors.New("Cannot accommodate data within the block limit")
 			}
 		}
-	} else if int64(len(blockList.BlockList))+(length/blockSize) > azblob.BlockBlobMaxBlocks {
+	} else if numOfBlocks+(length/blockSize) > azblob.BlockBlobMaxBlocks {
 		return 0, errors.New("Cannot accommodate data within the block limit with configured block-size")
 	}
 
@@ -1031,7 +1032,7 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 
 	}
 	blk := blockList.BlockList[index]
-	blk.Flags.Set(common.RemoveBlocks)
+	blk.Flags.Set(common.RemovedBlocks)
 	blockList.BlockList = blockList.BlockList[:index+1]
 
 	return blockList
@@ -1264,7 +1265,7 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 			}
 			staged = true
 			blk.Flags.Clear(common.DirtyBlock)
-		} else if blk.Remove() {
+		} else if blk.Removed() {
 			staged = true
 		}
 	}
