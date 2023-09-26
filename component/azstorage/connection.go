@@ -130,6 +130,9 @@ type AzConnection interface {
 	TruncateFile(string, int64) error
 	StageAndCommit(name string, bol *common.BlockOffsetList) error
 
+	StageBlock(string, []byte) (string, error)
+	CommitBlocks(string, []string) error
+
 	NewCredentialKey(_, _ string) error
 }
 

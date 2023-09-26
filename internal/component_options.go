@@ -189,6 +189,16 @@ type ChownOptions struct {
 	Group int
 }
 
+type StageDataOptions struct {
+	Name string
+	Data []byte
+}
+
+type CommitDataOptions struct {
+	Name string
+	List []string
+}
+
 func TruncateDirName(name string) string {
 	if len(name) == 0 {
 		return ""

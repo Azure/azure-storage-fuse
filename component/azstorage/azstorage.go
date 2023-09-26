@@ -543,6 +543,14 @@ func (az *AzStorage) FlushFile(options internal.FlushFileOptions) error {
 	return az.storage.StageAndCommit(options.Handle.Path, options.Handle.CacheObj.BlockOffsetList)
 }
 
+func (az *AzStorage) StageData(opt internal.StageDataOptions) (string, error) {
+	return az.storage.StageBlock(opt.Name, opt.Data)
+}
+
+func (az *AzStorage) CommitData(opt internal.CommitDataOptions) error {
+	return az.storage.CommitBlocks(opt.Name, opt.List)
+}
+
 // TODO : Below methods are pending to be implemented
 // SetAttr(string, internal.ObjAttr) error
 // UnlinkFile(string) error

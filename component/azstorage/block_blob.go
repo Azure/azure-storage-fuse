@@ -1289,3 +1289,49 @@ func (bb *BlockBlob) ChangeOwner(name string, _ int, _ int) error {
 	// This is not currently supported for a flat namespace account
 	return syscall.ENOTSUP
 }
+
+// StageBlock : stages a block and returns its blockid
+func (bb *BlockBlob) StageBlock(name string, data []byte) (string, error) {
+	log.Trace("BlockBlob::StageBlock : name %s", name)
+
+	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+
+	_, err := blobURL.StageBlock(context.Background(),
+		id,
+		bytes.NewReader(data),
+		bb.blobAccCond.LeaseAccessConditions,
+		nil,
+		bb.downloadOptions.ClientProvidedKeyOptions)
+
+	if err != nil {
+		log.Err("BlockBlob::StageBlock : Failed to stage to blob %s with ID %s [%s]", name, id, err.Error())
+		return "", err
+	}
+
+	return id, nil
+}
+
+// CommitBlocks : persists the block list
+func (bb *BlockBlob) CommitBlocks(name string, blockList []string) error {
+	log.Trace("BlockBlob::CommitBlocks : name %s", name)
+
+	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	_, err := blobURL.CommitBlockList(context.Background(),
+		blockList,
+		azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
+		nil,
+		bb.blobAccCond,
+		// azblob.BlobAccessConditions{ModifiedAccessConditions: azblob.ModifiedAccessConditions{IfMatch: bol.Etag}},
+		bb.Config.defaultTier,
+		nil, // datalake doesn't support tags here
+		bb.downloadOptions.ClientProvidedKeyOptions,
+		azblob.ImmutabilityPolicyOptions{})
+
+	if err != nil {
+		log.Err("BlockBlob::CommitBlocks : Failed to commit block list to blob %s [%s]", name, err.Error())
+		return err
+	}
+
+	return nil
+}

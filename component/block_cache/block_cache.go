@@ -40,7 +40,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
+	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -179,21 +181,8 @@ func (bc *BlockCache) TempCacheCleanup() error {
 func (bc *BlockCache) Configure(_ bool) error {
 	log.Trace("BlockCache::Configure : %s", bc.Name())
 
-	readonly := false
-	err := config.UnmarshalKey("read-only", &readonly)
-	if err != nil {
-		log.Err("BlockCache::Configure : config error [unable to obtain read-only]")
-		return fmt.Errorf("BlockCache: unable to obtain read-only")
-	}
-
-	// Currently we support readonly mode
-	if !readonly {
-		log.Err("BlockCache::Configure : config error [filesystem is not mounted in read-only mode]")
-		return fmt.Errorf("BlockCache: filesystem is not mounted in read-only mode")
-	}
-
 	conf := BlockCacheOptions{}
-	err = config.UnmarshalKey(bc.Name(), &conf)
+	err := config.UnmarshalKey(bc.Name(), &conf)
 	if err != nil {
 		log.Err("BlockCache::Configure : config error [invalid config attributes]")
 		return fmt.Errorf("BlockCache: config error [invalid config attributes]")
@@ -282,6 +271,23 @@ func (bc *BlockCache) Configure(_ bool) error {
 	return nil
 }
 
+// CreateFile: Create a new file
+func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
+	log.Trace("BlockCache::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
+
+	_, err := bc.NextComponent().CreateFile(options)
+	if err != nil {
+		log.Err("BlockCache::CreateFile : Failed to create file %s", options.Name)
+		return nil, err
+	}
+
+	handle := handlemap.NewHandle(options.Name)
+	handle.Size = 0
+	handle.Mtime = time.Now()
+
+	return handle, nil
+}
+
 // OpenFile: Create a handle for the file user has requested to open
 func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Handle, error) {
 	log.Trace("BlockCache::OpenFile : name=%s, flags=%d, mode=%s", options.Name, options.Flags, options.Mode)
@@ -318,9 +324,28 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	return handle, nil
 }
 
+// FlushFile: Flush the local file to storage
+func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
+	log.Trace("BlockCache::FlushFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+
+	options.Handle.Lock()
+	defer options.Handle.Unlock()
+
+	return bc.commitBlocks(options.Handle)
+}
+
 // CloseFile: File is closed by application so release all the blocks and submit back to blockPool
 func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 	log.Trace("BlockCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+
+	if options.Handle.Dirty() {
+		log.Info("BlockCache::CloseFile : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
+		err := bc.FlushFile(internal.FlushFileOptions{Handle: options.Handle}) //nolint
+		if err != nil {
+			log.Err("FileCache::CloseFile : failed to flush file %s", options.Handle.Path)
+			return err
+		}
+	}
 
 	// Release the blocks that are in use and wipe out handle map
 	options.Handle.Cleanup()
@@ -741,6 +766,167 @@ func (bc *BlockCache) download(item *workItem) {
 
 	// Just mark the block that download is complete
 	item.block.ReadyForReading()
+}
+
+// WriteFile: Write to the local file
+func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) {
+	log.Debug("BlockCache::WriteFile : Writing %v bytes from %s", len(options.Data), options.Handle.Path)
+
+	options.Handle.Lock()
+	defer options.Handle.Unlock()
+
+	// Keep getting next blocks until you read the request amount of data
+	dataWritten := int(0)
+	for dataWritten < len(options.Data) {
+		block, err := bc.getOrCreateBlock(options.Handle, uint64(options.Offset))
+		if err != nil {
+			// Failed to get block for writing
+			log.Err("BlockCache::WriteFile : Unable to allocate block for %s [%s]", options.Handle.Path, err.Error())
+			return dataWritten, err
+		}
+
+		// Copy the incoming data to block
+		writeOffset := uint64(options.Offset) - block.offset
+		bytesWritten := copy(block.data[writeOffset:], options.Data[dataWritten:])
+
+		// Mark this block has been updated
+		block.Dirty()
+
+		// Move offset forward in case we need to copy more data
+		options.Offset += int64(bytesWritten)
+		dataWritten += bytesWritten
+	}
+
+	return dataWritten, nil
+}
+
+func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) (*Block, error) {
+	// Check the given block index is already available or not
+	index := bc.getBlockIndex(offset)
+	log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
+
+	node, found := handle.GetValue(fmt.Sprintf("%v", index))
+	if !found {
+		// Either the block is not fetched yet or offset goes beyond the file size
+		if offset >= uint64(handle.Size) {
+			// We we trying to append data to end of file
+			block := bc.blockPool.MustGet()
+			if block == nil {
+				log.Err("BlockCache::getOrCreateBlock : Unable to allocate block %v=>%s (index %v)", handle.ID, handle.Path, index)
+				return nil, fmt.Errorf("unable to allocate block")
+			}
+
+			// Add this new block to list and make an entry for the index for subsequent writes
+			block.node = handle.Buffers.Cooked.PushBack(block)
+			block.Unblock()
+			handle.SetValue(fmt.Sprintf("%v", index), block)
+
+			// As we are creating new blocks here, we need to push the block for upload and remove them from list here
+			if handle.Buffers.Cooked.Len() > int(bc.prefetch) {
+				err := bc.stageBlocks(handle, 1, true)
+				if err != nil {
+					log.Err("BlockCache::getOrCreateBlock : Unable to stage blocks for %s [%s]", handle.Path, err.Error())
+				}
+			}
+
+			return block, nil
+		} else {
+			// We are writing somewhere in between so just fetch this block
+			return bc.getBlock(handle, offset)
+		}
+	} else {
+		// We have the block now which we wish to write
+		return node.(*Block), nil
+	}
+}
+
+// Stage the given number of blocks from this handle
+func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int, removeStaged bool) error {
+	log.Debug("BlockCache::stageBlocks : Stageing blocks for %s, cnt %v", handle.Path, cnt)
+
+	nodeList := handle.Buffers.Cooked
+	node := nodeList.Front()
+
+	for node != nil && cnt > 0 {
+		nextNode := node.Next()
+		block := node.Value.(*Block)
+		stageSuccess := false
+
+		if block.IsDirty() {
+			// This block is updated so we need to stage it now
+			id, err := bc.NextComponent().StageData(internal.StageDataOptions{Name: handle.Path, Data: block.data})
+			if err != nil {
+				log.Err("BlockCache::stageBlocks : Failed to stage block %v=>%s (index %v) [%s]", handle.ID, handle.Path, block.id, err.Error())
+			} else {
+				stageSuccess = true
+				block.NoMoreDirty()
+
+				// Add this id to the block id list in the handle which will be used for CommitData call
+				var listMap map[int64]string
+				lst, found := handle.GetValue("blockList")
+				if !found {
+					listMap = make(map[int64]string, 0)
+				} else {
+					listMap = lst.(map[int64]string)
+				}
+				listMap[block.id] = id
+				handle.SetValue("blockList", listMap)
+			}
+
+			if removeStaged && stageSuccess {
+				handle.RemoveValue(fmt.Sprintf("%v", block.id))
+				block.ReUse()
+				nodeList.Remove(node)
+				bc.blockPool.Release(block)
+				cnt--
+			}
+		}
+
+		node = nextNode
+	}
+
+	return nil
+}
+
+// Stage the given number of blocks from this handle
+func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
+	log.Debug("BlockCache::commitBlocks : Stageing blocks for %s", handle.Path)
+
+	// First stage all the blocks which are not yet staged
+	err := bc.stageBlocks(handle, -1, false)
+	if err != nil {
+		log.Err("BlockCache::commitBlocks : Failed to stage blocks for %s [%s]", handle.Path, err.Error())
+		return err
+	}
+
+	// Generate the block id list order now
+	list, found := handle.GetValue("blockList")
+	if !found {
+		// There is no block id list in this handle which implies there were no write operaitons here
+		return nil
+	}
+
+	listMap := list.(map[int64]string)
+	offsets := make([]int64, 0)
+	blockIdList := make([]string, 0)
+
+	for k := range listMap {
+		offsets = append(offsets, k)
+	}
+	sort.Slice(offsets, func(i, j int) bool { return offsets[i] < offsets[j] })
+
+	for i := 0; i < len(offsets); i++ {
+		blockIdList = append(blockIdList, listMap[offsets[i]])
+	}
+
+	// Commit the block list now
+	err = bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIdList})
+	if err != nil {
+		log.Err("BlockCache::commitBlocks : Failed to commit blocks for %s [%s]", handle.Path, err.Error())
+		return err
+	}
+
+	return nil
 }
 
 // diskEvict : Callback when a node from disk expires

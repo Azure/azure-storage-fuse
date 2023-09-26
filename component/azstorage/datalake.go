@@ -648,3 +648,13 @@ func (dl *Datalake) ChangeOwner(name string, _ int, _ int) error {
 	// }
 	return syscall.ENOTSUP
 }
+
+// StageBlock : stages a block and returns its blockid
+func (dl *Datalake) StageBlock(name string, data []byte) (string, error) {
+	return dl.BlockBlob.StageBlock(name, data)
+}
+
+// CommitBlocks : persists the block list
+func (dl *Datalake) CommitBlocks(name string, blockList []string) error {
+	return dl.BlockBlob.CommitBlocks(name, blockList)
+}

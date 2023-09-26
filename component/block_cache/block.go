@@ -44,6 +44,7 @@ type Block struct {
 	offset uint64        // Start offset of the data this block holds
 	id     int64         // Id of the block i.e. (offset / block size)
 	state  chan int      // Channel depicting data has been read for this block or not
+	dirty  bool          // Dirty flag to indicate if this block has been modified
 	data   []byte        // Data read from blob
 	node   *list.Element // node representation of this block in the list inside handle
 }
@@ -108,4 +109,19 @@ func (b *Block) ReadyForReading() {
 // Unblock marks this Block is ready to be read in parllel now
 func (b *Block) Unblock() {
 	close(b.state)
+}
+
+// Mark this block as dirty as it has been modified
+func (b *Block) Dirty() {
+	b.dirty = true
+}
+
+// Mark this block as dirty as it has been modified
+func (b *Block) NoMoreDirty() {
+	b.dirty = false
+}
+
+// Check if this block has been modified or not
+func (b *Block) IsDirty() bool {
+	return b.dirty
 }
