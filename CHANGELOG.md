@@ -10,6 +10,9 @@
 - Optimized file-cache to skip download when O_TRUNC flag is provided in open call.
 - Refresh token 5 minutes before the expiry instead of last 10 seconds.
 
+**Features**
+- Sync in stream mode will force upload the file to storage container.
+
 ## 2.1.0 (2023-08-31)
 **Features**
 - Added support for ARM64 architecture.

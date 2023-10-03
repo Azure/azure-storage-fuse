@@ -189,6 +189,10 @@ func (st *Stream) GetAttr(options internal.GetAttrOptions) (*internal.ObjAttr, e
 	return st.cache.GetAttr(options)
 }
 
+func (st *Stream) SyncFile(options internal.SyncFileOptions) error {
+	return st.cache.SyncFile(options)
+}
+
 // ------------------------- Factory -------------------------------------------
 
 // Pipeline will call this method to create your object, initialize your variables here

@@ -52,6 +52,7 @@ type StreamConnection interface {
 	FlushFile(internal.FlushFileOptions) error
 	GetAttr(internal.GetAttrOptions) (*internal.ObjAttr, error)
 	CloseFile(options internal.CloseFileOptions) error
+	SyncFile(options internal.SyncFileOptions) error
 	Stop() error
 }
 
