@@ -41,6 +41,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -302,6 +303,11 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	handle.Size = attr.Size
 	handle.Mtime = attr.Mtime
 
+	// If file is opened in truncate mode then we can set the file size to 0
+	if options.Flags&os.O_TRUNC != 0 {
+		handle.Size = 0
+	}
+
 	// Set next offset to download as 0
 	// We may not download this if first read starts with some other offset
 	handle.SetValue("#", (uint64)(0))
@@ -342,7 +348,7 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 		log.Info("BlockCache::CloseFile : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
 		err := bc.FlushFile(internal.FlushFileOptions{Handle: options.Handle}) //nolint
 		if err != nil {
-			log.Err("FileCache::CloseFile : failed to flush file %s", options.Handle.Path)
+			log.Err("BlockCache::CloseFile : failed to flush file %s", options.Handle.Path)
 			return err
 		}
 	}
@@ -797,6 +803,10 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		dataWritten += bytesWritten
 	}
 
+	if dataWritten > 0 {
+		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
+	}
+
 	return dataWritten, nil
 }
 
@@ -893,7 +903,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	log.Debug("BlockCache::commitBlocks : Stageing blocks for %s", handle.Path)
 
 	// First stage all the blocks which are not yet staged
-	err := bc.stageBlocks(handle, -1, false)
+	err := bc.stageBlocks(handle, 50000, false)
 	if err != nil {
 		log.Err("BlockCache::commitBlocks : Failed to stage blocks for %s [%s]", handle.Path, err.Error())
 		return err
@@ -964,6 +974,111 @@ func (bc *BlockCache) checkDiskUsage() bool {
 	log.Info("BlockCache::checkDiskUsage : current disk usage : %fMB %v%%", data, usage)
 	log.Info("BlockCache::checkDiskUsage : current cache usage : %v%%", bc.blockPool.Usage())
 	return false
+}
+
+// invalidateDirectory: Recursively invalidates a directory in the file cache.
+func (bc *BlockCache) invalidateDirectory(name string) {
+	log.Trace("BlockCache::invalidateDirectory : %s", name)
+
+	if bc.tmpPath != "" {
+		return
+	}
+
+	localPath := filepath.Join(bc.tmpPath, name)
+	_ = os.RemoveAll(localPath)
+}
+
+// DeleteDir: Recursively invalidate the directory and its children
+func (bc *BlockCache) DeleteDir(options internal.DeleteDirOptions) error {
+	log.Trace("BlockCache::DeleteDir : %s", options.Name)
+
+	err := bc.NextComponent().DeleteDir(options)
+	if err != nil {
+		log.Err("BlockCache::DeleteDir : %s failed", options.Name)
+	}
+
+	go bc.invalidateDirectory(options.Name)
+	return err
+}
+
+// RenameDir: Recursively invalidate the source directory and its children
+func (bc *BlockCache) RenameDir(options internal.RenameDirOptions) error {
+	log.Trace("BlockCache::RenameDir : src=%s, dst=%s", options.Src, options.Dst)
+
+	err := bc.NextComponent().RenameDir(options)
+	if err != nil {
+		log.Err("BlockCache::RenameDir : error %s [%s]", options.Src, err.Error())
+		return err
+	}
+
+	go bc.invalidateDirectory(options.Src)
+	return nil
+}
+
+// DeleteFile: Invalidate the file in local cache.
+func (bc *BlockCache) DeleteFile(options internal.DeleteFileOptions) error {
+	log.Trace("BlockCache::DeleteFile : name=%s", options.Name)
+
+	flock := bc.fileLocks.Get(options.Name)
+	flock.Lock()
+	defer flock.Unlock()
+
+	err := bc.NextComponent().DeleteFile(options)
+	if err != nil {
+		log.Err("BlockCache::DeleteFile : error  %s [%s]", options.Name, err.Error())
+		return err
+	}
+
+	localPath := filepath.Join(bc.tmpPath, options.Name)
+	files, err := filepath.Glob(localPath + "*")
+	if err == nil {
+		for _, f := range files {
+			if err := os.Remove(f); err != nil {
+				break
+			}
+		}
+	}
+
+	return err
+}
+
+// RenameFile: Invalidate the file in local cache.
+func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
+	log.Trace("BlockCache::RenameFile : src=%s, dst=%s", options.Src, options.Dst)
+
+	sflock := bc.fileLocks.Get(options.Src)
+	sflock.Lock()
+	defer sflock.Unlock()
+
+	dflock := bc.fileLocks.Get(options.Dst)
+	dflock.Lock()
+	defer dflock.Unlock()
+
+	err := bc.NextComponent().RenameFile(options)
+	if err != nil {
+		log.Err("BlockCache::RenameFile : %s failed to rename file [%s]", options.Src, err.Error())
+		return err
+	}
+
+	localSrcPath := filepath.Join(bc.tmpPath, options.Src)
+	localDstPath := filepath.Join(bc.tmpPath, options.Dst)
+
+	files, err := filepath.Glob(localSrcPath + "*")
+	if err == nil {
+		for _, f := range files {
+			err = os.Rename(f, strings.Replace(f, localSrcPath, localDstPath, 1))
+			if err != nil {
+				break
+			}
+		}
+	}
+
+	return err
+}
+
+func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
+	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+	return bc.commitBlocks(options.Handle)
 }
 
 // ------------------------- Factory -------------------------------------------
