@@ -267,6 +267,18 @@ func (suite *streamTestSuite) TestFlushFile() {
 	suite.assert.Equal(nil, err)
 }
 
+func (suite *streamTestSuite) TestSyncFile() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 16\n  max-buffers: 4\n"
+	suite.setupTestHelper(config, true)
+	handle1 := &handlemap.Handle{Size: 2, Path: fileNames[0]}
+	syncFileOptions := internal.SyncFileOptions{Handle: handle1}
+
+	err := suite.stream.SyncFile(syncFileOptions)
+	suite.assert.Equal(nil, err)
+}
+
 func (suite *streamTestSuite) TestReadDeleteDir() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()
