@@ -20,7 +20,7 @@ int main()
 
     printf("Reading before flush\n");
     r = fread(data, 1, 200, rfp);
-    printf("Bytes read before flush (not expec) : %d\n", r);
+    printf("Bytes read before flush (not exp) : %d\n", r);
 
     printf("Flushing\n");
     fflush(wfp);
