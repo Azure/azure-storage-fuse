@@ -131,7 +131,7 @@ func (azspn *azAuthBlobSPN) getCredential() interface{} {
 		log.Debug("azAuthBlobSPN::getCredential : SPN Token retrieved %s (%d)", spt.Token().AccessToken, spt.Token().Expires())
 
 		// Get the next token slightly before the current one expires
-		return time.Until(spt.Token().Expires()) - 10*time.Second
+		return time.Until(spt.Token().Expires()) - 5*time.Minute
 	})
 
 	return tc
@@ -163,7 +163,7 @@ func (azspn *azAuthBfsSPN) getCredential() interface{} {
 		log.Debug("azAuthBfsSPN::getCredential : SPN Token retrieved %s (%d)", spt.Token().AccessToken, spt.Token().Expires())
 
 		// Get the next token slightly before the current one expires
-		return time.Until(spt.Token().Expires()) - 10*time.Second
+		return time.Until(spt.Token().Expires()) - 5*time.Minute
 	})
 
 	return tc
