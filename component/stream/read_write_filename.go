@@ -484,7 +484,7 @@ func (rw *ReadWriteFilenameCache) SyncFile(options internal.SyncFileOptions) err
 
 	err := rw.FlushFile(internal.FlushFileOptions(options))
 	if err != nil {
-		log.Err("Stream::CloseFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
+		log.Err("Stream::SyncFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
 		return err
 	}
 
