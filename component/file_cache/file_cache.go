@@ -1371,6 +1371,16 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 	// If you call truncate CLI command from shell it always sends an open call first followed by truncate
 	// But if you call the truncate method from a C/C++ code then open is not hit and only truncate comes
 
+	if fc.diskHighWaterMark != 0 {
+		currSize, err := common.GetUsage(fc.tmpPath)
+		if err == nil {
+			if (currSize + float64(options.Size)) > fc.diskHighWaterMark {
+				log.Err("FileCache::TruncateFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSize, options.Name)
+				return syscall.ENOSPC
+			}
+		}
+	}
+
 	var h *handlemap.Handle = nil
 	var err error = nil
 
