@@ -12,6 +12,7 @@
 
 **Features**
 - Sync in stream mode will force upload the file to storage container.
+- Fail `Open` and `Write` operations with file-cache if the file size exceeds the high threshold set with local cache limits. 
 
 ## 2.1.0 (2023-08-31)
 **Features**
