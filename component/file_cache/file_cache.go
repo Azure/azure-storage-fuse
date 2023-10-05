@@ -1100,7 +1100,9 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 
 	if fc.diskHighWaterMark != 0 {
 		currSize, err := common.GetUsage(fc.tmpPath)
-		if err == nil {
+		if err != nil {
+			log.Err("FileCache::WriteFile : error getting current usage of cache [%s]", err.Error())
+		} else {
 			if (currSize + float64(len(options.Data))) > fc.diskHighWaterMark {
 				log.Err("FileCache::WriteFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSize, options.Handle.Path)
 				return 0, syscall.ENOSPC
@@ -1373,7 +1375,9 @@ func (fc *FileCache) TruncateFile(options internal.TruncateFileOptions) error {
 
 	if fc.diskHighWaterMark != 0 {
 		currSize, err := common.GetUsage(fc.tmpPath)
-		if err == nil {
+		if err != nil {
+			log.Err("FileCache::TruncateFile : error getting current usage of cache [%s]", err.Error())
+		} else {
 			if (currSize + float64(options.Size)) > fc.diskHighWaterMark {
 				log.Err("FileCache::TruncateFile : cache size limit reached [%f] failed to open %s", fc.maxCacheSize, options.Name)
 				return syscall.ENOSPC
