@@ -1738,6 +1738,69 @@ func (suite *fileCacheTestSuite) TestReadFileWithRefresh() {
 	suite.assert.Nil(err)
 }
 
+func (suite *fileCacheTestSuite) TestHardLimitOnSize() {
+	defer suite.cleanupTest()
+	// Configure to create empty files so we create the file in storage
+	config := fmt.Sprintf("file_cache:\n  path: %s\n  offload-io: true\n  hard-limit: true\n  max-size-mb: 2\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
+	suite.setupTestHelper(config) // setup a new file cache with a custom config (teardown will occur after the test as usual)
+
+	data := make([]byte, 3*MB)
+	pathbig := "filebig"
+	err := os.WriteFile(suite.fake_storage_path+"/"+pathbig, data, 0777)
+	suite.assert.Nil(err)
+
+	data = make([]byte, 1*MB)
+	pathsmall := "filesmall"
+	err = os.WriteFile(suite.fake_storage_path+"/"+pathsmall, data, 0777)
+	suite.assert.Nil(err)
+
+	// try opening small file
+	options := internal.OpenFileOptions{Name: pathsmall, Mode: 0777}
+	f, err := suite.fileCache.OpenFile(options)
+	suite.assert.Nil(err)
+	suite.assert.False(f.Dirty())
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	suite.assert.Nil(err)
+
+	// try opening bigger file which shall fail due to hardlimit
+	options = internal.OpenFileOptions{Name: pathbig, Mode: 0777}
+	f, err = suite.fileCache.OpenFile(options)
+	suite.assert.NotNil(err)
+	suite.assert.Nil(f)
+	suite.assert.Equal(err, syscall.ENOSPC)
+
+	// try writing a small file
+	options1 := internal.CreateFileOptions{Name: pathsmall + "_new", Mode: 0777}
+	f, err = suite.fileCache.CreateFile(options1)
+	suite.assert.Nil(err)
+	data = make([]byte, 1*MB)
+	n, err := suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: f, Offset: 0, Data: data})
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, 1*MB)
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	suite.assert.Nil(err)
+
+	// try writing a bigger file
+	options1 = internal.CreateFileOptions{Name: pathbig + "_new", Mode: 0777}
+	f, err = suite.fileCache.CreateFile(options1)
+	suite.assert.Nil(err)
+	data = make([]byte, 3*MB)
+	n, err = suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: f, Offset: 0, Data: data})
+	suite.assert.NotNil(err)
+	suite.assert.Equal(n, 0)
+	err = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: f})
+	suite.assert.Nil(err)
+
+	// try opening small file
+	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: pathsmall, Size: 1 * MB})
+	suite.assert.Nil(err)
+
+	// try opening small file
+	err = suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: pathsmall, Size: 3 * MB})
+	suite.assert.NotNil(err)
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestFileCacheTestSuite(t *testing.T) {
