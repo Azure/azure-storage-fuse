@@ -109,6 +109,20 @@ func (suite *streamTestSuite) TestStreamOnlyFlushFile() {
 	suite.assert.Equal(suite.stream.StreamOnly, true)
 }
 
+func (suite *streamTestSuite) TestStreamOnlySyncFile() {
+	defer suite.cleanupTest()
+	suite.cleanupTest()
+	// set handle limit to 1
+	config := "stream:\n  block-size-mb: 4\n  buffer-size-mb: 0\n  max-buffers: 10\n"
+	suite.setupTestHelper(config, false)
+
+	handle1 := &handlemap.Handle{Size: 2, Path: fileNames[0]}
+	syncFileOptions := internal.SyncFileOptions{Handle: handle1}
+
+	_ = suite.stream.SyncFile(syncFileOptions)
+	suite.assert.Equal(suite.stream.StreamOnly, true)
+}
+
 func (suite *streamTestSuite) TestStreamOnlyCreateFile() {
 	defer suite.cleanupTest()
 	suite.cleanupTest()

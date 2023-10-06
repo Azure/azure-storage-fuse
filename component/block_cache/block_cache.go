@@ -419,7 +419,7 @@ func (bc *BlockCache) ReadInBuffer(options internal.ReadInBufferOptions) (int, e
 	return dataRead, nil
 }
 
-// getBlock: From offset generate the Block index and get the Block corrosponding to it
+// getBlock: From offset generate the Block index and get the Block corresponding to it
 /* Base logic of getBlock:
 Check if the given block is already available or not
 if not

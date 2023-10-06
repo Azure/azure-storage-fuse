@@ -240,3 +240,7 @@ func (r *ReadCache) CreateFile(options internal.CreateFileOptions) (*handlemap.H
 	return nil, syscall.ENOTSUP
 
 }
+
+func (r *ReadCache) SyncFile(_ internal.SyncFileOptions) error {
+	return nil
+}

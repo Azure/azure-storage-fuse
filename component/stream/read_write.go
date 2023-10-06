@@ -507,3 +507,15 @@ func (rw *ReadWriteCache) readWriteBlocks(handle *handlemap.Handle, offset int64
 	}
 	return dataRead, nil
 }
+
+func (rw *ReadWriteCache) SyncFile(options internal.SyncFileOptions) error {
+	log.Trace("ReadWriteCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+
+	err := rw.FlushFile(internal.FlushFileOptions(options))
+	if err != nil {
+		log.Err("Stream::SyncFile : error flushing file %s [%s]", options.Handle.Path, err.Error())
+		return err
+	}
+
+	return nil
+}
