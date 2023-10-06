@@ -286,6 +286,7 @@ func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap
 	handle.Size = 0
 	handle.Mtime = time.Now()
 
+	bc.prepareHandleForBlockCache(handle)
 	return handle, nil
 }
 
@@ -300,25 +301,18 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	}
 
 	handle := handlemap.NewHandle(options.Name)
-	handle.Size = attr.Size
 	handle.Mtime = attr.Mtime
 
 	// If file is opened in truncate mode then we can set the file size to 0
 	if options.Flags&os.O_TRUNC != 0 {
 		handle.Size = 0
+	} else {
+		handle.Size = attr.Size
 	}
 
-	// Set next offset to download as 0
-	// We may not download this if first read starts with some other offset
-	handle.SetValue("#", (uint64)(0))
+	bc.prepareHandleForBlockCache(handle)
 
-	// Allocate a block pool object for this handle
-	// Actual linked list to hold the nodes
-	handle.Buffers = &handlemap.Buffers{
-		Cooked:  list.New(), // List to hold free blocks
-		Cooking: list.New(), // List to hold blocks still under download
-	}
-
+	// This shall be done after the refresh only as this will populate the queues created by above method
 	if handle.Size < int64(bc.blockSize) {
 		// File is small and can fit in one block itself
 		_ = bc.refreshBlock(handle, 0, false)
@@ -330,6 +324,23 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	return handle, nil
 }
 
+func (bc *BlockCache) prepareHandleForBlockCache(handle *handlemap.Handle) {
+	// Allocate a block pool object for this handle
+	// Actual linked list to hold the nodes
+	handle.Buffers = &handlemap.Buffers{
+		Cooked:  list.New(), // List to hold free blocks
+		Cooking: list.New(), // List to hold blocks still under download
+	}
+
+	// Create map to hold the block-ids for this file
+	listMap := make(map[int64]string, 0)
+	handle.SetValue("blockList", listMap)
+
+	// Set next offset to download as 0
+	// We may not download this if first read starts with some other offset
+	handle.SetValue("#", (uint64)(0))
+}
+
 // FlushFile: Flush the local file to storage
 func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	log.Trace("BlockCache::FlushFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
@@ -337,7 +348,14 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
 
-	return bc.commitBlocks(options.Handle)
+	err := bc.commitBlocks(options.Handle)
+	if err != nil {
+		log.Err("BlockCache::FlushFile : Failed to commit blocks for %s [%s]", options.Handle.Path, err.Error())
+		return err
+	}
+
+	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
+	return nil
 }
 
 // CloseFile: File is closed by application so release all the blocks and submit back to blockPool
@@ -828,12 +846,15 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 			// Add this new block to list and make an entry for the index for subsequent writes
 			block.node = handle.Buffers.Cooked.PushBack(block)
+			block.id = int64(index)
+			block.offset = index * bc.blockSize
 			block.Unblock()
+
 			handle.SetValue(fmt.Sprintf("%v", index), block)
 
 			// As we are creating new blocks here, we need to push the block for upload and remove them from list here
 			if handle.Buffers.Cooked.Len() > int(bc.prefetch) {
-				err := bc.stageBlocks(handle, 1, true)
+				err, _ := bc.stageBlocks(handle, 1, true)
 				if err != nil {
 					log.Err("BlockCache::getOrCreateBlock : Unable to stage blocks for %s [%s]", handle.Path, err.Error())
 				}
@@ -851,51 +872,48 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 }
 
 // Stage the given number of blocks from this handle
-func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int, removeStaged bool) error {
+func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int, removeStaged bool) (error, int) {
 	log.Debug("BlockCache::stageBlocks : Stageing blocks for %s, cnt %v", handle.Path, cnt)
 
 	nodeList := handle.Buffers.Cooked
 	node := nodeList.Front()
+	stageFailrueCnt := 0
+
+	lst, _ := handle.GetValue("blockList")
+	listMap := lst.(map[int64]string)
 
 	for node != nil && cnt > 0 {
 		nextNode := node.Next()
 		block := node.Value.(*Block)
-		stageSuccess := false
+		goodToRemove := true
 
 		if block.IsDirty() {
 			// This block is updated so we need to stage it now
-			id, err := bc.NextComponent().StageData(internal.StageDataOptions{Name: handle.Path, Data: block.data})
+			id, err := bc.NextComponent().StageData(internal.StageDataOptions{Name: handle.Path, Data: block.data, IdLen: 16})
 			if err != nil {
 				log.Err("BlockCache::stageBlocks : Failed to stage block %v=>%s (index %v) [%s]", handle.ID, handle.Path, block.id, err.Error())
+				goodToRemove = false
+				stageFailrueCnt++
 			} else {
-				stageSuccess = true
 				block.NoMoreDirty()
-
-				// Add this id to the block id list in the handle which will be used for CommitData call
-				var listMap map[int64]string
-				lst, found := handle.GetValue("blockList")
-				if !found {
-					listMap = make(map[int64]string, 0)
-				} else {
-					listMap = lst.(map[int64]string)
-				}
 				listMap[block.id] = id
 				handle.SetValue("blockList", listMap)
 			}
-
-			if removeStaged && stageSuccess {
-				handle.RemoveValue(fmt.Sprintf("%v", block.id))
-				block.ReUse()
-				nodeList.Remove(node)
-				bc.blockPool.Release(block)
-				cnt--
-			}
 		}
 
+		// Either this block was not dirty or it has been staged successfully
+		if goodToRemove {
+			handle.RemoveValue(fmt.Sprintf("%v", block.id))
+			block.ReUse()
+			nodeList.Remove(node)
+			bc.blockPool.Release(block)
+		}
+
+		cnt--
 		node = nextNode
 	}
 
-	return nil
+	return nil, stageFailrueCnt
 }
 
 // Stage the given number of blocks from this handle
@@ -903,20 +921,16 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	log.Debug("BlockCache::commitBlocks : Stageing blocks for %s", handle.Path)
 
 	// First stage all the blocks which are not yet staged
-	err := bc.stageBlocks(handle, 50000, false)
-	if err != nil {
+	err, cnt := bc.stageBlocks(handle, 50000, false)
+	if err != nil || cnt != 0 {
 		log.Err("BlockCache::commitBlocks : Failed to stage blocks for %s [%s]", handle.Path, err.Error())
 		return err
 	}
 
 	// Generate the block id list order now
-	list, found := handle.GetValue("blockList")
-	if !found {
-		// There is no block id list in this handle which implies there were no write operaitons here
-		return nil
-	}
-
+	list, _ := handle.GetValue("blockList")
 	listMap := list.(map[int64]string)
+
 	offsets := make([]int64, 0)
 	blockIdList := make([]string, 0)
 

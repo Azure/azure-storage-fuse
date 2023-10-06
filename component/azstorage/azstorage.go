@@ -544,7 +544,7 @@ func (az *AzStorage) FlushFile(options internal.FlushFileOptions) error {
 }
 
 func (az *AzStorage) StageData(opt internal.StageDataOptions) (string, error) {
-	return az.storage.StageBlock(opt.Name, opt.Data)
+	return az.storage.StageBlock(opt.Name, opt.Data, opt.IdLen)
 }
 
 func (az *AzStorage) CommitData(opt internal.CommitDataOptions) error {

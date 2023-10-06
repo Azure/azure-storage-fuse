@@ -1291,10 +1291,10 @@ func (bb *BlockBlob) ChangeOwner(name string, _ int, _ int) error {
 }
 
 // StageBlock : stages a block and returns its blockid
-func (bb *BlockBlob) StageBlock(name string, data []byte) (string, error) {
+func (bb *BlockBlob) StageBlock(name string, data []byte, idLen int64) (string, error) {
 	log.Trace("BlockBlob::StageBlock : name %s", name)
 
-	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(idLen))
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 
 	_, err := blobURL.StageBlock(context.Background(),
