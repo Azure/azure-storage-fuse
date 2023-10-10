@@ -286,6 +286,7 @@ func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap
 	handle.Size = 0
 	handle.Mtime = time.Now()
 
+	handle.Flags.Set(handlemap.HandleFlagDirty)
 	bc.prepareHandleForBlockCache(handle)
 	return handle, nil
 }
@@ -1092,6 +1093,10 @@ func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 
 func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
+
+	options.Handle.Lock()
+	defer options.Handle.Unlock()
+
 	return bc.commitBlocks(options.Handle)
 }
 
