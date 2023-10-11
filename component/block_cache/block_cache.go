@@ -845,6 +845,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			block := bc.blockPool.MustGet()
 			if block == nil {
 				log.Err("BlockCache::getOrCreateBlock : Unable to allocate block %v=>%s (index %v)", handle.ID, handle.Path, index)
+				bc.freeUploadedBlock(handle, true)
 				return nil, fmt.Errorf("unable to allocate block")
 			}
 
@@ -897,25 +898,34 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int, removeStage
 		node = nextNode
 	}
 
+	bc.freeUploadedBlock(handle, false)
+	return nil
+}
+
+func (bc *BlockCache) freeUploadedBlock(handle *handlemap.Handle, force bool) {
 	// Check the cooked list and any block is uploaded then remove that from the list
-	nodeList = handle.Buffers.Cooked
-	node = nodeList.Front()
-	for node != nil && cnt > 0 {
+	nodeList := handle.Buffers.Cooked
+	if !force && ((nodeList.Len() + handle.Buffers.Cooking.Len()) < int(bc.prefetch)) {
+		return
+	}
+
+	node := nodeList.Front()
+
+	for node != nil {
 		block := node.Value.(*Block)
 		select {
 		case <-block.state:
+			log.Debug("BlockCache::freeUploadedBlock : Freeing block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
 			handle.RemoveValue(fmt.Sprintf("%v", block.id))
 			nodeList.Remove(node)
 			block.node = nil
 			block.ReUse()
 			bc.blockPool.Release(block)
 		default:
-			return nil
+			return
 		}
 		node = node.Next()
 	}
-
-	return nil
 }
 
 // lineupUpload : Create a work item and schedule the upload
