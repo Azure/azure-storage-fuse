@@ -169,15 +169,6 @@ func (suite *blockCacheTestSuite) TestEmpty() {
 	suite.assert.NotNil(tobj.blockCache.threadPool)
 }
 
-func (suite *blockCacheTestSuite) TestNonROMount() {
-	emptyConfig := "read-only: false"
-	tobj, err := setupPipeline(emptyConfig)
-
-	suite.assert.NotNil(err)
-	suite.assert.Nil(tobj)
-	suite.assert.Contains(err.Error(), "filesystem is not mounted in read-only mode")
-}
-
 func (suite *blockCacheTestSuite) TestInvalidPrefetchCount() {
 	cfg := "read-only: true\n\nblock_cache:\n  block-size-mb: 16\n  mem-size-mb: 500\n  prefetch: 8\n  parallelism: 10\n  path: abcd\n  disk-size-mb: 100\n  disk-timeout-sec: 5"
 	tobj, err := setupPipeline(cfg)

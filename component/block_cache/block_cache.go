@@ -36,6 +36,7 @@ package block_cache
 import (
 	"container/list"
 	"context"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"os"
@@ -94,13 +95,14 @@ type BlockCacheOptions struct {
 }
 
 const (
-	compName              = "block_cache"
-	defaultTimeout        = 120
-	MAX_POOL_USAGE uint32 = 80
-	MIN_POOL_USAGE uint32 = 50
-	MIN_PREFETCH          = 5
-	MIN_RANDREAD          = 10
-	MAX_FAIL_CNT          = 3
+	compName               = "block_cache"
+	defaultTimeout         = 120
+	MAX_POOL_USAGE  uint32 = 80
+	MIN_POOL_USAGE  uint32 = 50
+	MIN_PREFETCH           = 5
+	MIN_WRITE_BLOCK        = 3
+	MIN_RANDREAD           = 10
+	MAX_FAIL_CNT           = 3
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -255,7 +257,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("BlockCache: failed to init Block pool")
 	}
 
-	bc.threadPool = newThreadPool(bc.workers, bc.download)
+	bc.threadPool = newThreadPool(bc.workers, bc.download, bc.upload)
 	if bc.threadPool == nil {
 		log.Err("BlockCache::Configure : fail to init thread pool")
 		return fmt.Errorf("BlockCache: failed to init thread pool")
@@ -682,6 +684,7 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 		block:    block,
 		prefetch: prefetch,
 		failCnt:  0,
+		upload:   false,
 	}
 
 	// Remove this block from free block list and add to in-process list
@@ -741,7 +744,7 @@ func (bc *BlockCache) download(item *workItem) {
 				f.Close()
 				// We have read the data from disk so there is no need to go over network
 				// Just mark the block that download is complete
-				item.block.ReadyForReading()
+				item.block.Ready()
 				return
 			}
 		}
@@ -790,7 +793,7 @@ func (bc *BlockCache) download(item *workItem) {
 	}
 
 	// Just mark the block that download is complete
-	item.block.ReadyForReading()
+	item.block.Ready()
 }
 
 // WriteFile: Write to the local file
@@ -846,7 +849,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			}
 
 			// Add this new block to list and make an entry for the index for subsequent writes
-			block.node = handle.Buffers.Cooked.PushBack(block)
+			block.node = handle.Buffers.Cooking.PushBack(block)
 			block.id = int64(index)
 			block.offset = index * bc.blockSize
 			block.Unblock()
@@ -854,8 +857,8 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			handle.SetValue(fmt.Sprintf("%v", index), block)
 
 			// As we are creating new blocks here, we need to push the block for upload and remove them from list here
-			if handle.Buffers.Cooked.Len() > int(bc.prefetch) {
-				err, _ := bc.stageBlocks(handle, 1, true)
+			if handle.Buffers.Cooking.Len() > MIN_WRITE_BLOCK {
+				err := bc.stageBlocks(handle, 1, true)
 				if err != nil {
 					log.Err("BlockCache::getOrCreateBlock : Unable to stage blocks for %s [%s]", handle.Path, err.Error())
 				}
@@ -873,12 +876,11 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 }
 
 // Stage the given number of blocks from this handle
-func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int, removeStaged bool) (error, int) {
+func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int, removeStaged bool) error {
 	log.Debug("BlockCache::stageBlocks : Stageing blocks for %s, cnt %v", handle.Path, cnt)
 
-	nodeList := handle.Buffers.Cooked
+	nodeList := handle.Buffers.Cooking
 	node := nodeList.Front()
-	stageFailrueCnt := 0
 
 	lst, _ := handle.GetValue("blockList")
 	listMap := lst.(map[int64]string)
@@ -886,35 +888,110 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int, removeStage
 	for node != nil && cnt > 0 {
 		nextNode := node.Next()
 		block := node.Value.(*Block)
-		goodToRemove := true
 
 		if block.IsDirty() {
-			// This block is updated so we need to stage it now
-			id, err := bc.NextComponent().StageData(internal.StageDataOptions{Name: handle.Path, Data: block.data, IdLen: 16})
-			if err != nil {
-				log.Err("BlockCache::stageBlocks : Failed to stage block %v=>%s (index %v) [%s]", handle.ID, handle.Path, block.id, err.Error())
-				goodToRemove = false
-				stageFailrueCnt++
-			} else {
-				block.NoMoreDirty()
-				listMap[block.id] = id
-				handle.SetValue("blockList", listMap)
-			}
-		}
-
-		// Either this block was not dirty or it has been staged successfully
-		if goodToRemove {
-			handle.RemoveValue(fmt.Sprintf("%v", block.id))
-			block.ReUse()
-			nodeList.Remove(node)
-			bc.blockPool.Release(block)
+			bc.lineupUpload(handle, block, listMap)
 		}
 
 		cnt--
 		node = nextNode
 	}
 
-	return nil, stageFailrueCnt
+	// Check the cooked list and any block is uploaded then remove that from the list
+	nodeList = handle.Buffers.Cooked
+	node = nodeList.Front()
+	for node != nil && cnt > 0 {
+		block := node.Value.(*Block)
+		select {
+		case <-block.state:
+			handle.RemoveValue(fmt.Sprintf("%v", block.id))
+			nodeList.Remove(node)
+			block.node = nil
+			block.ReUse()
+			bc.blockPool.Release(block)
+		default:
+			return nil
+		}
+		node = node.Next()
+	}
+
+	return nil
+}
+
+// lineupUpload : Create a work item and schedule the upload
+func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]string) {
+	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	listMap[block.id] = id
+
+	item := &workItem{
+		handle:   handle,
+		block:    block,
+		prefetch: false,
+		failCnt:  0,
+		upload:   true,
+		blockId:  id,
+	}
+
+	// Remove this block from free block list and add to in-process list
+	if block.node != nil {
+		_ = handle.Buffers.Cooking.Remove(block.node)
+	}
+
+	block.node = handle.Buffers.Cooked.PushBack(block)
+
+	// Send the work item to worker pool to schedule download
+	bc.threadPool.Schedule(false, item)
+}
+
+// upload : Method to stage the given amount of data
+func (bc *BlockCache) upload(item *workItem) {
+	fileName := fmt.Sprintf("%s::%v", item.handle.Path, item.block.id)
+
+	// filename_blockindex is the key for the lock
+	// this ensure that at a given time a block from a file is downloaded only once across all open handles
+	flock := bc.fileLocks.Get(fileName)
+	flock.Lock()
+	defer flock.Unlock()
+
+	var diskNode any
+	localPath := ""
+
+	// This block is updated so we need to stage it now
+	err := bc.NextComponent().StageData(internal.StageDataOptions{Name: item.handle.Path, Data: item.block.data, Id: item.blockId})
+	if err != nil {
+		// Fail to write the data so just reschedule this request
+		log.Err("BlockCache::upload : Failed to write %v=>%s from offset %v [%s]", item.handle.ID, item.handle.Path, item.block.id, err.Error())
+		item.failCnt++
+
+		if item.failCnt > MAX_FAIL_CNT {
+			// If we failed to write the data 3 times then just give up
+			log.Err("BlockCache::upload : 3 attempts to upload a block have failed %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
+			return
+		}
+
+		bc.threadPool.Schedule(false, item)
+		return
+	}
+
+	item.block.NoMoreDirty()
+
+	if bc.tmpPath != "" {
+		// Dump this block to local disk cache
+		f, err := os.Create(localPath)
+		if err == nil {
+			_, err := f.Write(item.block.data)
+			if err != nil {
+				log.Err("BlockCache::upload : Failed to write %s to disk [%v]", localPath, err.Error())
+				_ = os.Remove(localPath)
+			}
+
+			f.Close()
+			bc.diskPolicy.Refresh(diskNode.(*list.Element))
+		}
+	}
+
+	// Just mark the block that download is complete
+	item.block.Ready()
 }
 
 // Stage the given number of blocks from this handle
@@ -922,8 +999,8 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	log.Debug("BlockCache::commitBlocks : Stageing blocks for %s", handle.Path)
 
 	// First stage all the blocks which are not yet staged
-	err, cnt := bc.stageBlocks(handle, 50000, false)
-	if err != nil || cnt != 0 {
+	err := bc.stageBlocks(handle, 50000, false)
+	if err != nil {
 		log.Err("BlockCache::commitBlocks : Failed to stage blocks for %s [%s]", handle.Path, err.Error())
 		return err
 	}

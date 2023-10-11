@@ -56,6 +56,9 @@ type ThreadPool struct {
 
 	// Reader method that will actually read the data
 	reader func(*workItem)
+
+	// Writer method that will actually write the data
+	writer func(*workItem)
 }
 
 // One workitem to be scheduled
@@ -64,10 +67,12 @@ type workItem struct {
 	block    *Block            // Block to hold data for this item
 	prefetch bool              // Flag marking this is a prefetch request or not
 	failCnt  int32             // How many times this item has failed to download
+	upload   bool              // Flag marking this is a upload request or not
+	blockId  string            // BlockId of the block
 }
 
 // newThreadPool creates a new thread pool
-func newThreadPool(count uint32, reader func(*workItem)) *ThreadPool {
+func newThreadPool(count uint32, reader func(*workItem), writer func(*workItem)) *ThreadPool {
 	if count == 0 || reader == nil {
 		return nil
 	}
@@ -75,6 +80,7 @@ func newThreadPool(count uint32, reader func(*workItem)) *ThreadPool {
 	return &ThreadPool{
 		worker:     count,
 		reader:     reader,
+		writer:     writer,
 		close:      make(chan int, count),
 		priorityCh: make(chan *workItem, count*2),
 		normalCh:   make(chan *workItem, count*5000),
@@ -125,7 +131,11 @@ func (t *ThreadPool) Do(priority bool) {
 		for {
 			select {
 			case item := <-t.priorityCh:
-				t.reader(item)
+				if item.upload {
+					t.writer(item)
+				} else {
+					t.reader(item)
+				}
 			case <-t.close:
 				return
 			}
@@ -135,9 +145,17 @@ func (t *ThreadPool) Do(priority bool) {
 		for {
 			select {
 			case item := <-t.priorityCh:
-				t.reader(item)
+				if item.upload {
+					t.writer(item)
+				} else {
+					t.reader(item)
+				}
 			case item := <-t.normalCh:
-				t.reader(item)
+				if item.upload {
+					t.writer(item)
+				} else {
+					t.reader(item)
+				}
 			case <-t.close:
 				return
 			}

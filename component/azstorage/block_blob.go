@@ -1291,12 +1291,10 @@ func (bb *BlockBlob) ChangeOwner(name string, _ int, _ int) error {
 }
 
 // StageBlock : stages a block and returns its blockid
-func (bb *BlockBlob) StageBlock(name string, data []byte, idLen int64) (string, error) {
+func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 	log.Trace("BlockBlob::StageBlock : name %s", name)
 
-	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(idLen))
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-
 	_, err := blobURL.StageBlock(context.Background(),
 		id,
 		bytes.NewReader(data),
@@ -1306,10 +1304,10 @@ func (bb *BlockBlob) StageBlock(name string, data []byte, idLen int64) (string, 
 
 	if err != nil {
 		log.Err("BlockBlob::StageBlock : Failed to stage to blob %s with ID %s [%s]", name, id, err.Error())
-		return "", err
+		return err
 	}
 
-	return id, nil
+	return nil
 }
 
 // CommitBlocks : persists the block list

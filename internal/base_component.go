@@ -324,11 +324,11 @@ func (base *BaseComponent) StatFs() (*syscall.Statfs_t, bool, error) {
 	return nil, false, nil
 }
 
-func (base *BaseComponent) StageData(opt StageDataOptions) (string, error) {
+func (base *BaseComponent) StageData(opt StageDataOptions) error {
 	if base.next != nil {
 		return base.next.StageData(opt)
 	}
-	return "", nil
+	return nil
 }
 
 func (base *BaseComponent) CommitData(opt CommitDataOptions) error {

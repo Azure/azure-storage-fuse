@@ -132,7 +132,7 @@ func (suite *blockTestSuite) TestResuse() {
 	_ = b.Delete()
 }
 
-func (suite *blockTestSuite) TestReadyForReading() {
+func (suite *blockTestSuite) TestReady() {
 	suite.assert = assert.New(suite.T())
 
 	b, err := AllocateBlock(1)
@@ -143,7 +143,7 @@ func (suite *blockTestSuite) TestReadyForReading() {
 	b.ReUse()
 	suite.assert.NotNil(b.state)
 
-	b.ReadyForReading()
+	b.Ready()
 	suite.assert.Equal(len(b.state), 1)
 
 	<-b.state
@@ -167,7 +167,7 @@ func (suite *blockTestSuite) TestUnBlock() {
 	suite.assert.NotNil(b.state)
 	suite.assert.Nil(b.node)
 
-	b.ReadyForReading()
+	b.Ready()
 	suite.assert.Equal(len(b.state), 1)
 
 	<-b.state

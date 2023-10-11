@@ -96,8 +96,8 @@ func (b *Block) ReUse() {
 	b.state = make(chan int, 1)
 }
 
-// ReadyForReading marks this Block is now ready for reading by its first reader (data download completed)
-func (b *Block) ReadyForReading() {
+// Ready marks this Block is now ready for reading by its first reader (data download completed)
+func (b *Block) Ready() {
 	select {
 	case b.state <- 1:
 		break

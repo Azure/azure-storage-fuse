@@ -138,6 +138,6 @@ type Component interface {
 	FileUsed(name string) error
 	StatFs() (*syscall.Statfs_t, bool, error)
 
-	StageData(StageDataOptions) (string, error)
+	StageData(StageDataOptions) error
 	CommitData(CommitDataOptions) error
 }

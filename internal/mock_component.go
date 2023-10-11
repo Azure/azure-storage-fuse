@@ -648,12 +648,11 @@ func (mr *MockComponentMockRecorder) FileUsed(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FileUsed", reflect.TypeOf((*MockComponent)(nil).FileUsed), arg0)
 }
 
-func (m *MockComponent) StageData(arg0 StageDataOptions) (string, error) {
+func (m *MockComponent) StageData(arg0 StageDataOptions) (error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StageData", arg0)
-	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	return ret1
 }
 
 func (m *MockComponent) CommitData(arg0 CommitDataOptions) error {
