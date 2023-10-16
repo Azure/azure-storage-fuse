@@ -37,6 +37,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io"
+	"os"
 	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -87,12 +88,18 @@ func (rw *ReadWriteCache) OpenFile(options internal.OpenFileOptions) (*handlemap
 		log.Err("Stream::OpenFile : error failed to open file %s [%s]", options.Name, err.Error())
 		return handle, err
 	}
+
+	if options.Flags&os.O_TRUNC != 0 {
+		handle.Size = 0
+	}
+
 	if !rw.StreamOnly {
 		err = rw.createHandleCache(handle)
 		if err != nil {
 			log.Err("Stream::OpenFile : error failed to create cache object %s [%s]", options.Name, err.Error())
 		}
 	}
+
 	return handle, err
 }
 
@@ -371,9 +378,16 @@ func (rw *ReadWriteCache) createHandleCache(handle *handlemap.Handle) error {
 	opts := internal.GetFileBlockOffsetsOptions{
 		Name: handle.Path,
 	}
-	offsets, err := rw.NextComponent().GetFileBlockOffsets(opts)
-	if err != nil {
-		return err
+	var offsets *common.BlockOffsetList
+	var err error
+	if handle.Size == 0 {
+		offsets = &common.BlockOffsetList{}
+		offsets.Flags.Set(common.SmallFile)
+	} else {
+		offsets, err = rw.NextComponent().GetFileBlockOffsets(opts)
+		if err != nil {
+			return err
+		}
 	}
 	handle.CacheObj.BlockOffsetList = offsets
 	// if its a small file then download the file in its entirety if there is memory available, otherwise stream only
