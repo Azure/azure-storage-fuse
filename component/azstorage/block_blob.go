@@ -990,13 +990,13 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 	numOfBlocks := int64(len(blockList.BlockList))
 	if blockSize == 0 {
 		blockSize = (16 * 1024 * 1024)
-		if numOfBlocks+(length/blockSize) > azblob.BlockBlobMaxBlocks {
-			blockSize = length / (azblob.BlockBlobMaxBlocks - numOfBlocks)
+		if math.Ceil((float64)(numOfBlocks+(length/blockSize))) > azblob.BlockBlobMaxBlocks {
+			blockSize = int64(math.Ceil((float64)(length / (azblob.BlockBlobMaxBlocks - numOfBlocks))))
 			if blockSize > azblob.BlockBlobMaxStageBlockBytes {
 				return 0, errors.New("Cannot accommodate data within the block limit")
 			}
 		}
-	} else if numOfBlocks+(length/blockSize) > azblob.BlockBlobMaxBlocks {
+	} else if math.Ceil((float64)(numOfBlocks+(length/blockSize))) > azblob.BlockBlobMaxBlocks {
 		return 0, errors.New("Cannot accommodate data within the block limit with configured block-size")
 	}
 
@@ -1107,17 +1107,15 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 }
 
 func (bb *BlockBlob) HandleSmallFile(name string, size int64, originalSize int64) ([]byte, error) {
-	var data []byte
+	var data = make([]byte, size)
 	var err error
 	if size > originalSize {
-		data, err = bb.ReadBuffer(name, 0, 0)
+		err = bb.ReadInBuffer(name, 0, 0, data)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 		}
-		addData := make([]byte, (size - originalSize))
-		data = append(data, addData...)
 	} else {
-		data, err = bb.ReadBuffer(name, 0, size)
+		err = bb.ReadInBuffer(name, 0, size, data)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 		}

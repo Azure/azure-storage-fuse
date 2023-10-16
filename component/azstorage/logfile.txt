@@ -1,0 +1,318 @@
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_TRACE [azstorage.go (84)]: AzStorage::Configure : azstorage
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_TRACE [config.go (284)]: ParseAndValidateConfig : Parsing config
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_INFO [config.go (388)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_INFO [config.go (392)]: ParseAndValidateConfig : sdk logging from the config file: false
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_TRACE [config.go (499)]: ParseAndReadDynamicConfig : Reparsing config
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_DEBUG [config.go (399)]: ParseAndValidateConfig : Getting auth type
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_INFO [config.go (485)]: ParseAndValidateConfig : Account: anushrutiteststorage, Container: test-cnt, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://anushrutiteststorage.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: true, Max Results For List 2, Disable Compression: false
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_INFO [config.go (489)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_INFO [config.go (492)]: ParseAndValidateConfig : Telemetry : 
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_DEBUG [azauth.go (80)]: azAuth::getAzAuth : Account: anushrutiteststorage, AccountType: BLOCK, Protocol: https, Endpoint: https://anushrutiteststorage.blob.core.windows.net/
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Mon Oct 16 11:52:32 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Mon Oct 16 11:52:33 IST 2023 : blobfuse2[59095] : LOG_TRACE [azstorage.go (165)]: AzStorage::Start : Starting component azstorage
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_TRACE [azstorage.go (183)]: AzStorage::Stop : Stopping component azstorage
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_TRACE [azstorage.go (84)]: AzStorage::Configure : azstorage
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_TRACE [config.go (284)]: ParseAndValidateConfig : Parsing config
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_INFO [config.go (388)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_INFO [config.go (392)]: ParseAndValidateConfig : sdk logging from the config file: false
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_TRACE [config.go (499)]: ParseAndReadDynamicConfig : Reparsing config
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_DEBUG [config.go (399)]: ParseAndValidateConfig : Getting auth type
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_INFO [config.go (485)]: ParseAndValidateConfig : Account: anushrutiteststorage, Container: test-cnt, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://anushrutiteststorage.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: true, Max Results For List 2, Disable Compression: false
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_INFO [config.go (489)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_INFO [config.go (492)]: ParseAndValidateConfig : Telemetry : 
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_DEBUG [azauth.go (80)]: azAuth::getAzAuth : Account: anushrutiteststorage, AccountType: BLOCK, Protocol: https, Endpoint: https://anushrutiteststorage.blob.core.windows.net/
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Mon Oct 16 11:52:34 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Mon Oct 16 11:52:35 IST 2023 : blobfuse2[59095] : LOG_TRACE [azstorage.go (165)]: AzStorage::Start : Starting component azstorage
+Mon Oct 16 11:52:35 IST 2023 : blobfuse2[59095] : LOG_TRACE [azstorage.go (350)]: AzStorage::CreateFile : fileb89256d6
+Mon Oct 16 11:52:35 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name fileb89256d6
+Mon Oct 16 11:52:35 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (921)]: BlockBlob::WriteFromBuffer : name fileb89256d6
+Mon Oct 16 11:52:35 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (1131)]: BlockBlob::Write : name fileb89256d6 offset 0
+Mon Oct 16 11:52:35 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (732)]: BlockBlob::ReadBuffer : name fileb89256d6
+Mon Oct 16 11:52:35 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (526)]: BlockBlob::GetAttr : name fileb89256d6
+Mon Oct 16 11:52:35 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (472)]: BlockBlob::getAttrUsingList : name fileb89256d6
+Mon Oct 16 11:52:35 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (540)]: BlockBlob::List : prefix fileb89256d6, marker 
+Mon Oct 16 11:52:36 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (499)]: BlockBlob::getAttrUsingList : Item 0 Blob fileb89256d6
+Mon Oct 16 11:52:36 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (921)]: BlockBlob::WriteFromBuffer : name fileb89256d6
+Mon Oct 16 11:52:41 IST 2023 : blobfuse2[59095] : LOG_TRACE [azstorage.go (473)]: AzStorage::TruncateFile : fileb89256d6 to 20971520 bytes
+Mon Oct 16 11:52:41 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (526)]: BlockBlob::GetAttr : name fileb89256d6
+Mon Oct 16 11:52:41 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (472)]: BlockBlob::getAttrUsingList : name fileb89256d6
+Mon Oct 16 11:52:41 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (540)]: BlockBlob::List : prefix fileb89256d6, marker 
+Mon Oct 16 11:52:41 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (499)]: BlockBlob::getAttrUsingList : Item 0 Blob fileb89256d6
+Mon Oct 16 11:52:45 IST 2023 : blobfuse2[59095] : LOG_TRACE [block_blob.go (921)]: BlockBlob::WriteFromBuffer : name fileb89256d6
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_TRACE [azstorage.go (84)]: AzStorage::Configure : azstorage
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_TRACE [config.go (284)]: ParseAndValidateConfig : Parsing config
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_INFO [config.go (388)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_INFO [config.go (392)]: ParseAndValidateConfig : sdk logging from the config file: false
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_TRACE [config.go (499)]: ParseAndReadDynamicConfig : Reparsing config
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_DEBUG [config.go (399)]: ParseAndValidateConfig : Getting auth type
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_INFO [config.go (485)]: ParseAndValidateConfig : Account: anushrutiteststorage, Container: test-cnt, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://anushrutiteststorage.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: true, Max Results For List 2, Disable Compression: false
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_INFO [config.go (489)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_INFO [config.go (492)]: ParseAndValidateConfig : Telemetry : 
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_DEBUG [azauth.go (80)]: azAuth::getAzAuth : Account: anushrutiteststorage, AccountType: BLOCK, Protocol: https, Endpoint: https://anushrutiteststorage.blob.core.windows.net/
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Mon Oct 16 11:53:48 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_TRACE [azstorage.go (165)]: AzStorage::Start : Starting component azstorage
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_TRACE [azstorage.go (183)]: AzStorage::Stop : Stopping component azstorage
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_TRACE [azstorage.go (84)]: AzStorage::Configure : azstorage
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_TRACE [config.go (284)]: ParseAndValidateConfig : Parsing config
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_INFO [config.go (388)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_INFO [config.go (392)]: ParseAndValidateConfig : sdk logging from the config file: false
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_TRACE [config.go (499)]: ParseAndReadDynamicConfig : Reparsing config
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_DEBUG [config.go (399)]: ParseAndValidateConfig : Getting auth type
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_INFO [config.go (485)]: ParseAndValidateConfig : Account: anushrutiteststorage, Container: test-cnt, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://anushrutiteststorage.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: true, Max Results For List 2, Disable Compression: false
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_INFO [config.go (489)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_INFO [config.go (492)]: ParseAndValidateConfig : Telemetry : 
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_DEBUG [azauth.go (80)]: azAuth::getAzAuth : Account: anushrutiteststorage, AccountType: BLOCK, Protocol: https, Endpoint: https://anushrutiteststorage.blob.core.windows.net/
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Mon Oct 16 11:53:50 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Mon Oct 16 11:53:51 IST 2023 : blobfuse2[59379] : LOG_TRACE [azstorage.go (165)]: AzStorage::Start : Starting component azstorage
+Mon Oct 16 11:53:51 IST 2023 : blobfuse2[59379] : LOG_TRACE [azstorage.go (350)]: AzStorage::CreateFile : file6117078e
+Mon Oct 16 11:53:51 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name file6117078e
+Mon Oct 16 11:53:51 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (921)]: BlockBlob::WriteFromBuffer : name file6117078e
+Mon Oct 16 11:53:51 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (1131)]: BlockBlob::Write : name file6117078e offset 0
+Mon Oct 16 11:53:51 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (732)]: BlockBlob::ReadBuffer : name file6117078e
+Mon Oct 16 11:53:51 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (526)]: BlockBlob::GetAttr : name file6117078e
+Mon Oct 16 11:53:51 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (472)]: BlockBlob::getAttrUsingList : name file6117078e
+Mon Oct 16 11:53:51 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (540)]: BlockBlob::List : prefix file6117078e, marker 
+Mon Oct 16 11:53:52 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (499)]: BlockBlob::getAttrUsingList : Item 0 Blob file6117078e
+Mon Oct 16 11:53:52 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (921)]: BlockBlob::WriteFromBuffer : name file6117078e
+Mon Oct 16 11:53:54 IST 2023 : blobfuse2[59379] : LOG_TRACE [azstorage.go (473)]: AzStorage::TruncateFile : file6117078e to 20971520 bytes
+Mon Oct 16 11:53:54 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (526)]: BlockBlob::GetAttr : name file6117078e
+Mon Oct 16 11:53:54 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (472)]: BlockBlob::getAttrUsingList : name file6117078e
+Mon Oct 16 11:53:54 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (540)]: BlockBlob::List : prefix file6117078e, marker 
+Mon Oct 16 11:53:55 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (499)]: BlockBlob::getAttrUsingList : Item 0 Blob file6117078e
+Mon Oct 16 11:53:59 IST 2023 : blobfuse2[59379] : LOG_TRACE [block_blob.go (921)]: BlockBlob::WriteFromBuffer : name file6117078e
+Mon Oct 16 11:54:12 IST 2023 : blobfuse2[59379] : LOG_TRACE [azstorage.go (183)]: AzStorage::Stop : Stopping component azstorage
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_TRACE [azstorage.go (84)]: AzStorage::Configure : azstorage
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_TRACE [config.go (284)]: ParseAndValidateConfig : Parsing config
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_INFO [config.go (388)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_INFO [config.go (392)]: ParseAndValidateConfig : sdk logging from the config file: false
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_TRACE [config.go (499)]: ParseAndReadDynamicConfig : Reparsing config
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_DEBUG [config.go (399)]: ParseAndValidateConfig : Getting auth type
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_INFO [config.go (485)]: ParseAndValidateConfig : Account: anushrutiteststorage, Container: test-cnt, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://anushrutiteststorage.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: true, Max Results For List 2, Disable Compression: false
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_INFO [config.go (489)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_INFO [config.go (492)]: ParseAndValidateConfig : Telemetry : 
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_DEBUG [azauth.go (80)]: azAuth::getAzAuth : Account: anushrutiteststorage, AccountType: BLOCK, Protocol: https, Endpoint: https://anushrutiteststorage.blob.core.windows.net/
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Mon Oct 16 11:59:17 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc4e360)
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_ERR [azstorage.go (155)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/anubhuti/go/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.15.0/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:3afa9305-101e-003f-09fa-ffe463000000
+Time:2023-10-16T06:29:18.3251118Z, Details: 
+   Code: ContainerNotFound
+   GET https://anushrutiteststorage.blob.core.windows.net/test-cnt?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.1.1-preview.1 (Ubuntu 20.04.6 LTS) Azure-Storage/0.15 (go1.19.10; linux)]
+   X-Ms-Client-Request-Id: [0fa330f1-64b2-47e2-6d2e-d16ac2c6809d]
+   X-Ms-Date: [Mon, 16 Oct 2023 06:29:17 GMT]
+   X-Ms-Version: [2020-10-02]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Mon, 16 Oct 2023 06:29:18 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [0fa330f1-64b2-47e2-6d2e-d16ac2c6809d]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [3afa9305-101e-003f-09fa-ffe463000000]
+   X-Ms-Version: [2020-10-02]
+
+
+]
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_ERR [azstorage.go (101)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_TRACE [azstorage.go (165)]: AzStorage::Start : Starting component azstorage
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_TRACE [azstorage.go (183)]: AzStorage::Stop : Stopping component azstorage
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_TRACE [azstorage.go (84)]: AzStorage::Configure : azstorage
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_TRACE [config.go (284)]: ParseAndValidateConfig : Parsing config
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_INFO [config.go (388)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_INFO [config.go (392)]: ParseAndValidateConfig : sdk logging from the config file: false
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_TRACE [config.go (499)]: ParseAndReadDynamicConfig : Reparsing config
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_DEBUG [config.go (399)]: ParseAndValidateConfig : Getting auth type
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_INFO [config.go (485)]: ParseAndValidateConfig : Account: anushrutiteststorage, Container: test-cnt, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://anushrutiteststorage.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: true, Max Results For List 2, Disable Compression: false
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_INFO [config.go (489)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_INFO [config.go (492)]: ParseAndValidateConfig : Telemetry : 
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_DEBUG [azauth.go (80)]: azAuth::getAzAuth : Account: anushrutiteststorage, AccountType: BLOCK, Protocol: https, Endpoint: https://anushrutiteststorage.blob.core.windows.net/
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Mon Oct 16 11:59:18 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Mon Oct 16 11:59:19 IST 2023 : blobfuse2[59752] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc4e360)
+Mon Oct 16 11:59:19 IST 2023 : blobfuse2[59752] : LOG_ERR [azstorage.go (155)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/anubhuti/go/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.15.0/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:eff1a292-f01e-0018-44fa-fff3a7000000
+Time:2023-10-16T06:29:19.5184526Z, Details: 
+   Code: ContainerNotFound
+   GET https://anushrutiteststorage.blob.core.windows.net/test-cnt?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.1.1-preview.1 (Ubuntu 20.04.6 LTS) Azure-Storage/0.15 (go1.19.10; linux)]
+   X-Ms-Client-Request-Id: [164c7150-ff5d-4bc5-7e3b-85d3f7f97a7d]
+   X-Ms-Date: [Mon, 16 Oct 2023 06:29:18 GMT]
+   X-Ms-Version: [2020-10-02]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Mon, 16 Oct 2023 06:29:18 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [164c7150-ff5d-4bc5-7e3b-85d3f7f97a7d]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [eff1a292-f01e-0018-44fa-fff3a7000000]
+   X-Ms-Version: [2020-10-02]
+
+
+]
+Mon Oct 16 11:59:19 IST 2023 : blobfuse2[59752] : LOG_ERR [azstorage.go (101)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Mon Oct 16 11:59:19 IST 2023 : blobfuse2[59752] : LOG_TRACE [azstorage.go (165)]: AzStorage::Start : Starting component azstorage
+Mon Oct 16 11:59:19 IST 2023 : blobfuse2[59752] : LOG_TRACE [azstorage.go (350)]: AzStorage::CreateFile : file4655282e
+Mon Oct 16 11:59:19 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name file4655282e
+Mon Oct 16 11:59:19 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (921)]: BlockBlob::WriteFromBuffer : name file4655282e
+Mon Oct 16 11:59:20 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (1131)]: BlockBlob::Write : name file4655282e offset 0
+Mon Oct 16 11:59:20 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (732)]: BlockBlob::ReadBuffer : name file4655282e
+Mon Oct 16 11:59:20 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (526)]: BlockBlob::GetAttr : name file4655282e
+Mon Oct 16 11:59:20 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (472)]: BlockBlob::getAttrUsingList : name file4655282e
+Mon Oct 16 11:59:20 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (540)]: BlockBlob::List : prefix file4655282e, marker 
+Mon Oct 16 11:59:20 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (499)]: BlockBlob::getAttrUsingList : Item 0 Blob file4655282e
+Mon Oct 16 11:59:20 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (921)]: BlockBlob::WriteFromBuffer : name file4655282e
+Mon Oct 16 11:59:24 IST 2023 : blobfuse2[59752] : LOG_TRACE [azstorage.go (473)]: AzStorage::TruncateFile : file4655282e to 10485760 bytes
+Mon Oct 16 11:59:24 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (526)]: BlockBlob::GetAttr : name file4655282e
+Mon Oct 16 11:59:24 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (472)]: BlockBlob::getAttrUsingList : name file4655282e
+Mon Oct 16 11:59:24 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (540)]: BlockBlob::List : prefix file4655282e, marker 
+Mon Oct 16 11:59:24 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (499)]: BlockBlob::getAttrUsingList : Item 0 Blob file4655282e
+Mon Oct 16 11:59:29 IST 2023 : blobfuse2[59752] : LOG_TRACE [block_blob.go (921)]: BlockBlob::WriteFromBuffer : name file4655282e
+Mon Oct 16 11:59:34 IST 2023 : blobfuse2[59752] : LOG_TRACE [azstorage.go (183)]: AzStorage::Stop : Stopping component azstorage
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_TRACE [azstorage.go (84)]: AzStorage::Configure : azstorage
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_TRACE [config.go (284)]: ParseAndValidateConfig : Parsing config
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_INFO [config.go (388)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_INFO [config.go (392)]: ParseAndValidateConfig : sdk logging from the config file: false
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_TRACE [config.go (499)]: ParseAndReadDynamicConfig : Reparsing config
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_DEBUG [config.go (399)]: ParseAndValidateConfig : Getting auth type
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_INFO [config.go (485)]: ParseAndValidateConfig : Account: anushrutiteststorage, Container: test-cnt, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://anushrutiteststorage.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: true, Max Results For List 2, Disable Compression: false
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_INFO [config.go (489)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_INFO [config.go (492)]: ParseAndValidateConfig : Telemetry : 
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_DEBUG [azauth.go (80)]: azAuth::getAzAuth : Account: anushrutiteststorage, AccountType: BLOCK, Protocol: https, Endpoint: https://anushrutiteststorage.blob.core.windows.net/
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Mon Oct 16 11:59:45 IST 2023 : blobfuse2[59923] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc4e360)
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_ERR [azstorage.go (155)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/anubhuti/go/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.15.0/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:cc10a4f9-a01e-0015-4ffa-ff3b73000000
+Time:2023-10-16T06:29:46.1226837Z, Details: 
+   Code: ContainerNotFound
+   GET https://anushrutiteststorage.blob.core.windows.net/test-cnt?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.1.1-preview.1 (Ubuntu 20.04.6 LTS) Azure-Storage/0.15 (go1.19.10; linux)]
+   X-Ms-Client-Request-Id: [39d4f686-1732-4b73-6c5a-fce8d61237c1]
+   X-Ms-Date: [Mon, 16 Oct 2023 06:29:45 GMT]
+   X-Ms-Version: [2020-10-02]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Mon, 16 Oct 2023 06:29:45 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [39d4f686-1732-4b73-6c5a-fce8d61237c1]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [cc10a4f9-a01e-0015-4ffa-ff3b73000000]
+   X-Ms-Version: [2020-10-02]
+
+
+]
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_ERR [azstorage.go (101)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_TRACE [azstorage.go (165)]: AzStorage::Start : Starting component azstorage
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_TRACE [azstorage.go (183)]: AzStorage::Stop : Stopping component azstorage
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_TRACE [azstorage.go (84)]: AzStorage::Configure : azstorage
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_TRACE [config.go (284)]: ParseAndValidateConfig : Parsing config
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_INFO [config.go (388)]: ParseAndValidateConfig : using the following proxy address from the config file: 
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_INFO [config.go (392)]: ParseAndValidateConfig : sdk logging from the config file: false
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_TRACE [config.go (499)]: ParseAndReadDynamicConfig : Reparsing config
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_DEBUG [config.go (399)]: ParseAndValidateConfig : Getting auth type
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_INFO [config.go (485)]: ParseAndValidateConfig : Account: anushrutiteststorage, Container: test-cnt, AccountType: BLOCK, Auth: KEY, Prefix: , Endpoint: https://anushrutiteststorage.blob.core.windows.net/, ListBlock: 0, MD5 : false false, Virtual Directory: true, Max Results For List 2, Disable Compression: false
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_INFO [config.go (489)]: ParseAndValidateConfig : Retry Config: Retry count 5, Max Timeout 900, BackOff Time 4, Max Delay 60
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_INFO [config.go (492)]: ParseAndValidateConfig : Telemetry : 
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_TRACE [block_blob.go (173)]: BlockBlob::SetupPipeline : Setting up
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_TRACE [block_blob.go (135)]: BlockBlob::getCredential : Getting credential
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_DEBUG [azauth.go (80)]: azAuth::getAzAuth : Account: anushrutiteststorage, AccountType: BLOCK, Protocol: https, Endpoint: https://anushrutiteststorage.blob.core.windows.net/
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_TRACE [block_blob.go (260)]: BlockBlob::SetPrefixPath : path 
+Mon Oct 16 11:59:46 IST 2023 : blobfuse2[59923] : LOG_TRACE [block_blob.go (209)]: BlockBlob::TestPipeline : Validating
+Mon Oct 16 11:59:47 IST 2023 : blobfuse2[59923] : LOG_ERR [block_blob.go (227)]: BlockBlob::TestPipeline : Failed to validate account with given auth %!s(func() string=0xc4e360)
+Mon Oct 16 11:59:47 IST 2023 : blobfuse2[59923] : LOG_ERR [azstorage.go (155)]: AzStorage::configureAndTest : Failed to validate credentials [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/anubhuti/go/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.15.0/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:b50084b4-c01e-0061-6efa-ff0f83000000
+Time:2023-10-16T06:29:47.2795349Z, Details: 
+   Code: ContainerNotFound
+   GET https://anushrutiteststorage.blob.core.windows.net/test-cnt?comp=list&delimiter=%2F&maxresults=2&restype=container&timeout=901
+   Authorization: REDACTED
+   User-Agent: [Azure-Storage-Fuse/2.1.1-preview.1 (Ubuntu 20.04.6 LTS) Azure-Storage/0.15 (go1.19.10; linux)]
+   X-Ms-Client-Request-Id: [8bdf5838-2b38-40be-67ca-9c402e171739]
+   X-Ms-Date: [Mon, 16 Oct 2023 06:29:46 GMT]
+   X-Ms-Version: [2020-10-02]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Mon, 16 Oct 2023 06:29:46 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [8bdf5838-2b38-40be-67ca-9c402e171739]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [b50084b4-c01e-0061-6efa-ff0f83000000]
+   X-Ms-Version: [2020-10-02]
+
+
+]
+Mon Oct 16 11:59:47 IST 2023 : blobfuse2[59923] : LOG_ERR [azstorage.go (101)]: AzStorage::Configure : Failed to validate storage account [failed to authenticate credentials for azstorage]
+Mon Oct 16 11:59:47 IST 2023 : blobfuse2[59923] : LOG_TRACE [azstorage.go (165)]: AzStorage::Start : Starting component azstorage
+Mon Oct 16 11:59:47 IST 2023 : blobfuse2[59923] : LOG_TRACE [azstorage.go (350)]: AzStorage::CreateFile : file80833059
+Mon Oct 16 11:59:47 IST 2023 : blobfuse2[59923] : LOG_TRACE [block_blob.go (267)]: BlockBlob::CreateFile : name file80833059
+Mon Oct 16 11:59:47 IST 2023 : blobfuse2[59923] : LOG_TRACE [block_blob.go (921)]: BlockBlob::WriteFromBuffer : name file80833059
+Mon Oct 16 11:59:47 IST 2023 : blobfuse2[59923] : LOG_ERR [block_blob.go (936)]: BlockBlob::WriteFromBuffer : Failed to upload blob file80833059 [-> github.com/Azure/azure-storage-blob-go/azblob.newStorageError, /home/anubhuti/go/pkg/mod/github.com/!azure/azure-storage-blob-go@v0.15.0/azblob/zc_storage_error.go:42
+===== RESPONSE ERROR (ServiceCode=ContainerNotFound) =====
+Description=The specified container does not exist.
+RequestId:b500862e-c01e-0061-49fa-ff0f83000000
+Time:2023-10-16T06:29:47.7442742Z, Details: 
+   Code: ContainerNotFound
+   PUT https://anushrutiteststorage.blob.core.windows.net/test-cnt/file80833059?timeout=901
+   Authorization: REDACTED
+   Content-Length: [0]
+   User-Agent: [Azure-Storage-Fuse/2.1.1-preview.1 (Ubuntu 20.04.6 LTS) Azure-Storage/0.15 (go1.19.10; linux)]
+   X-Ms-Blob-Cache-Control: []
+   X-Ms-Blob-Content-Disposition: []
+   X-Ms-Blob-Content-Encoding: []
+   X-Ms-Blob-Content-Language: []
+   X-Ms-Blob-Content-Type: [application/octet-stream]
+   X-Ms-Blob-Type: [BlockBlob]
+   X-Ms-Client-Request-Id: [c7be5bbb-05ce-426b-722b-9e6d40687c21]
+   X-Ms-Date: [Mon, 16 Oct 2023 06:29:47 GMT]
+   X-Ms-Version: [2020-10-02]
+   --------------------------------------------------------------------------------
+   RESPONSE Status: 404 The specified container does not exist.
+   Content-Length: [225]
+   Content-Type: [application/xml]
+   Date: [Mon, 16 Oct 2023 06:29:47 GMT]
+   Server: [Windows-Azure-Blob/1.0 Microsoft-HTTPAPI/2.0]
+   X-Ms-Client-Request-Id: [c7be5bbb-05ce-426b-722b-9e6d40687c21]
+   X-Ms-Error-Code: [ContainerNotFound]
+   X-Ms-Request-Id: [b500862e-c01e-0061-49fa-ff0f83000000]
+   X-Ms-Version: [2020-10-02]
+
+
+]
+Mon Oct 16 11:59:47 IST 2023 : blobfuse2[59923] : LOG_TRACE [azstorage.go (183)]: AzStorage::Stop : Stopping component azstorage
