@@ -257,8 +257,8 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	if (uint64(bc.prefetch) * uint64(bc.blockSize)) > bc.memSize {
-		log.Err("BlockCache::Configure : config error [memory limit too low for cofigured prefetch]")
-		return fmt.Errorf("config error in %s [memory limit too low for cofigured prefetch]", bc.Name())
+		log.Err("BlockCache::Configure : config error [memory limit too low for configured prefetch]")
+		return fmt.Errorf("config error in %s [memory limit too low for configured prefetch]", bc.Name())
 	}
 
 	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefeth %v, disk path %v, max size %vMB, disk timeout %v",

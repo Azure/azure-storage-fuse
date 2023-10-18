@@ -193,7 +193,7 @@ func (suite *blockCacheTestSuite) TestInvalidMemoryLimitPrefetchCount() {
 	defer tobj.cleanupPipeline()
 
 	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "[memory limit too low for cofigured prefetch")
+	suite.assert.Contains(err.Error(), "[memory limit too low for configured prefetch")
 }
 
 func (suite *blockCacheTestSuite) TestNoPrefetchConfig() {
