@@ -188,7 +188,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	err := config.UnmarshalKey(bc.Name(), &conf)
 	if err != nil {
 		log.Err("BlockCache::Configure : config error [invalid config attributes]")
-		return fmt.Errorf("BlockCache: config error [invalid config attributes]")
+		return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 	}
 
 	bc.blockSize = uint64(16) * _1MB
@@ -221,7 +221,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 			bc.noPrefetch = true
 		} else if conf.PrefetchCount <= (MIN_PREFETCH * 2) {
 			log.Err("BlockCache::Configure : Prefetch count can not be less then %v", (MIN_PREFETCH*2)+1)
-			return fmt.Errorf("BlockCache: invalid config for prefetch count")
+			return fmt.Errorf("config error in %s [invalid prefetch count]", bc.Name())
 		}
 	}
 
@@ -248,26 +248,31 @@ func (bc *BlockCache) Configure(_ bool) error {
 		}
 	}
 
+	if (uint64(bc.prefetch) * uint64(bc.blockSize)) > bc.memSize {
+		log.Err("BlockCache::Configure : config error [memory limit too low for configured prefetch]")
+		return fmt.Errorf("config error in %s [memory limit too low for configured prefetch]", bc.Name())
+	}
+
 	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefeth %v, disk path %v, max size %vMB, disk timeout %v",
 		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout)
 
 	bc.blockPool = NewBlockPool(bc.blockSize, bc.memSize)
 	if bc.blockPool == nil {
 		log.Err("BlockCache::Configure : fail to init Block pool")
-		return fmt.Errorf("BlockCache: failed to init Block pool")
+		return fmt.Errorf("config error in %s [fail to init block pool]", bc.Name())
 	}
 
 	bc.threadPool = newThreadPool(bc.workers, bc.download, bc.upload)
 	if bc.threadPool == nil {
 		log.Err("BlockCache::Configure : fail to init thread pool")
-		return fmt.Errorf("BlockCache: failed to init thread pool")
+		return fmt.Errorf("config error in %s [fail to init thread pool]", bc.Name())
 	}
 
 	if bc.tmpPath != "" {
 		bc.diskPolicy, err = tlru.New(uint32((bc.diskSize*_1MB)/bc.blockSize), bc.diskTimeout, bc.diskEvict, 60, bc.checkDiskUsage)
 		if err != nil {
 			log.Err("BlockCache::Configure : fail to create LRU for memory nodes [%s]", err.Error())
-			return fmt.Errorf("BlockCache: fail to create LRU for memory nodes")
+			return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 		}
 	}
 
