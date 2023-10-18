@@ -184,7 +184,16 @@ func (suite *blockCacheTestSuite) TestInvalidPrefetchCount() {
 	defer tobj.cleanupPipeline()
 
 	suite.assert.NotNil(err)
-	suite.assert.Contains(err.Error(), "invalid config for prefetch count")
+	suite.assert.Contains(err.Error(), "invalid prefetch count")
+}
+
+func (suite *blockCacheTestSuite) TestInvalidMemoryLimitPrefetchCount() {
+	cfg := "read-only: true\n\nblock_cache:\n  block-size-mb: 16\n  mem-size-mb: 320\n  prefetch: 50\n  parallelism: 10\n  path: abcd\n  disk-size-mb: 100\n  disk-timeout-sec: 5"
+	tobj, err := setupPipeline(cfg)
+	defer tobj.cleanupPipeline()
+
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "[memory limit too low for configured prefetch")
 }
 
 func (suite *blockCacheTestSuite) TestNoPrefetchConfig() {
