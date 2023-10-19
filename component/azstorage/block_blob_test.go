@@ -149,7 +149,6 @@ func uploadReaderAtToBlockBlob(ctx context.Context, reader io.ReaderAt, readerSi
 						progressLock.Unlock()
 					})
 			}
-
 			// Block IDs are unique values to avoid issue if 2+ clients are uploading blocks
 			// at the same time causing PutBlockList to get a mix of blocks from all the clients.
 			blockIDList[blockNum] = base64.StdEncoding.EncodeToString(newUUID().bytes())
@@ -221,7 +220,7 @@ func (s *blockBlobTestSuite) setupTestHelper(configuration string, container str
 	s.container = container
 	if configuration == "" {
 		configuration = fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-			storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
+			storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, storageTestConfigurationParameters.BlockContainer)
 	}
 	s.config = configuration
 
@@ -934,6 +933,7 @@ func (s *blockBlobTestSuite) TestCreateFile() {
 	s.assert.NotNil(h)
 	s.assert.EqualValues(name, h.Path)
 	s.assert.EqualValues(0, h.Size)
+	time.Sleep(10)
 	// File should be in the account
 	file := s.containerUrl.NewBlobURL(name)
 	props, err := file.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
@@ -1104,7 +1104,8 @@ func (s *blockBlobTestSuite) TestReadFile() {
 	defer s.cleanupTest()
 	// Setup
 	name := generateFileName()
-	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	h, err := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	s.assert.Nil(err)
 	testData := "test data"
 	data := []byte(testData)
 	s.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
@@ -1235,7 +1236,7 @@ func (s *blockBlobTestSuite) TestTruncateSmallFileSmaller() {
 	s.assert.Nil(err)
 	s.assert.EqualValues(truncatedLength, resp.ContentLength())
 	output, _ := io.ReadAll(resp.Body(azblob.RetryReaderOptions{}))
-	s.assert.EqualValues(testData[:truncatedLength], output)
+	s.assert.EqualValues(testData[:truncatedLength], output[:])
 }
 
 func (s *blockBlobTestSuite) TestTruncateChunkedFileSmaller() {
@@ -1341,10 +1342,10 @@ func (s *blockBlobTestSuite) TestTruncateChunkedFileBigger() {
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	truncatedLength := 15
+	truncatedLength := 15 * 1024 * 1024
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
-		BlockSize: 4,
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 256*1024*1024, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 8 * 1024 * 1024,
 	})
 	s.assert.Nil(err)
 
@@ -3139,6 +3140,85 @@ func (s *blockBlobTestSuite) TestInvalidMD5OnReadNoVaildate() {
 // 	s.assert.EqualValues(testData, output)
 // 	s.az.CloseFile(internal.CloseFileOptions{Handle: h})
 // }
+
+func (suite *blockBlobTestSuite) TestTruncateSmallFileToSmaller() {
+	suite.TestTruncateFileToSmaller(20*MB, 10*MB)
+}
+
+func (suite *blockBlobTestSuite) TestTruncateSmallFileToLarger() {
+	suite.TestTruncateFileToLarger(10*MB, 20*MB)
+}
+
+func (suite *blockBlobTestSuite) TestTruncateBlockFileToSmaller() {
+	suite.TestTruncateFileToSmaller(300*MB, 290*MB)
+}
+
+func (suite *blockBlobTestSuite) TestTruncateBlockFileToLarger() {
+	suite.TestTruncateFileToLarger(290*MB, 300*MB)
+}
+
+func (suite *blockBlobTestSuite) TestTruncateNoBlockFileToLarger() {
+	suite.TestTruncateFileToLarger(200*MB, 300*MB)
+}
+
+func (suite *blockBlobTestSuite) TestTruncateFileToSmaller(size int, truncatedLength int) {
+	defer suite.cleanupTest()
+	// Setup
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, storageTestConfigurationParameters.BlockContainer)
+	// // This is a little janky but required since testify suite does not support running setup or clean up for subtests.
+
+	suite.tearDownTestHelper(false)
+	suite.setupTestHelper(vdConfig, storageTestConfigurationParameters.BlockContainer, true)
+
+	name := generateFileName()
+	h, err := suite.az.CreateFile(internal.CreateFileOptions{Name: name})
+	suite.assert.Nil(err)
+
+	data := make([]byte, size)
+	suite.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+
+	err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	suite.assert.Nil(err)
+
+	// Blob should have updated data
+	file := suite.containerUrl.NewBlobURL(name)
+	resp, err := file.Download(ctx, 0, int64(truncatedLength), azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
+	suite.assert.Nil(err)
+	suite.assert.EqualValues(truncatedLength, resp.ContentLength())
+	output, _ := io.ReadAll(resp.Body(azblob.RetryReaderOptions{}))
+	suite.assert.EqualValues(data[:truncatedLength], output[:])
+}
+
+func (suite *blockBlobTestSuite) TestTruncateFileToLarger(size int, truncatedLength int) {
+	defer suite.cleanupTest()
+	// Setup
+	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, storageTestConfigurationParameters.BlockContainer)
+	// // This is a little janky but required since testify suite does not support running setup or clean up for subtests.
+
+	suite.tearDownTestHelper(false)
+	suite.setupTestHelper(vdConfig, storageTestConfigurationParameters.BlockContainer, true)
+
+	name := generateFileName()
+	h, err := suite.az.CreateFile(internal.CreateFileOptions{Name: name})
+	suite.assert.Nil(err)
+
+	data := make([]byte, size)
+	suite.az.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data})
+
+	err = suite.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: int64(truncatedLength)})
+	suite.assert.Nil(err)
+
+	// Blob should have updated data
+	file := suite.containerUrl.NewBlobURL(name)
+	resp, err := file.Download(ctx, 0, int64(truncatedLength), azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
+	suite.assert.Nil(err)
+	suite.assert.EqualValues(truncatedLength, resp.ContentLength())
+	output, _ := io.ReadAll(resp.Body(azblob.RetryReaderOptions{}))
+	suite.assert.EqualValues(data[:], output[:size])
+
+}
 
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
