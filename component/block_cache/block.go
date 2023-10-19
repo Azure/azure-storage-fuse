@@ -41,12 +41,13 @@ import (
 
 // Block is a memory mapped buffer with its state to hold data
 type Block struct {
-	offset uint64        // Start offset of the data this block holds
-	id     int64         // Id of the block i.e. (offset / block size)
-	state  chan int      // Channel depicting data has been read for this block or not
-	dirty  bool          // Dirty flag to indicate if this block has been modified
-	data   []byte        // Data read from blob
-	node   *list.Element // node representation of this block in the list inside handle
+	offset   uint64        // Start offset of the data this block holds
+	id       int64         // Id of the block i.e. (offset / block size)
+	endIndex uint64        // Length of the data this block holds
+	state    chan int      // Channel depicting data has been read for this block or not
+	dirty    bool          // Dirty flag to indicate if this block has been modified
+	data     []byte        // Data read from blob
+	node     *list.Element // node representation of this block in the list inside handle
 }
 
 // AllocateBlock creates a new memory mapped buffer for the given size
@@ -93,6 +94,12 @@ func (b *Block) Delete() error {
 func (b *Block) ReUse() {
 	b.id = -1
 	b.offset = 0
+	b.endIndex = 0
+	b.state = make(chan int, 1)
+}
+
+// Uploading marks buffer is under upload
+func (b *Block) Uploading() {
 	b.state = make(chan int, 1)
 }
 
