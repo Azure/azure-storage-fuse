@@ -122,6 +122,12 @@ func (azspn *azAuthBlobSPN) getCredential() interface{} {
 	tc := azblob.NewTokenCredential(spt.Token().AccessToken, func(tc azblob.TokenCredential) time.Duration {
 		spt, err = azspn.fetchToken()
 		if err != nil {
+			log.Err("azAuthBlobSPN::getCredential : Failed to fetch SPN token [%s]", err.Error())
+			return 0
+		}
+
+		err = spt.Refresh()
+		if err != nil {
 			log.Err("azAuthBlobSPN::getCredential : Failed to refresh SPN token [%s]", err.Error())
 			return 0
 		}
@@ -132,6 +138,9 @@ func (azspn *azAuthBlobSPN) getCredential() interface{} {
 
 		// Get the next token slightly before the current one expires
 		return time.Until(spt.Token().Expires()) - 5*time.Second
+
+		// Test code to expire token every 30 seconds
+		// return time.Until(time.Now()) + 30*time.Second
 	})
 
 	return tc
@@ -154,6 +163,12 @@ func (azspn *azAuthBfsSPN) getCredential() interface{} {
 	tc := azbfs.NewTokenCredential(spt.Token().AccessToken, func(tc azbfs.TokenCredential) time.Duration {
 		spt, err = azspn.fetchToken()
 		if err != nil {
+			log.Err("azAuthBfsSPN::getCredential : Failed to fetch SPN token [%s]", err.Error())
+			return 0
+		}
+
+		err = spt.Refresh()
+		if err != nil {
 			log.Err("azAuthBfsSPN::getCredential : Failed to refresh SPN token [%s]", err.Error())
 			return 0
 		}
@@ -164,6 +179,9 @@ func (azspn *azAuthBfsSPN) getCredential() interface{} {
 
 		// Get the next token slightly before the current one expires
 		return time.Until(spt.Token().Expires()) - 5*time.Second
+
+		// Test code to expire token every 30 seconds
+		// return time.Until(time.Now()) + 30*time.Second
 	})
 
 	return tc

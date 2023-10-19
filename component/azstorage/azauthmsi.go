@@ -215,7 +215,13 @@ func (azmsi *azAuthBlobMSI) getCredential() interface{} {
 		log.Info("azAuthBlobMSI::getCredential : MSI Token retrieved %s (%d)", token.AccessToken, token.Expires())
 		// Using token create the credential object, here also register a call back which refreshes the token
 		tc = azblob.NewTokenCredential(token.AccessToken, func(tc azblob.TokenCredential) time.Duration {
-			newToken, err := azmsi.fetchToken(msi_endpoint)
+			token, err := azmsi.fetchToken(msi_endpoint)
+			if err != nil {
+				log.Err("azAuthBlobMSI::getCredential : Failed to fetch token [%s]", err.Error())
+				return 0
+			}
+
+			newToken, err := token.Refresh(context.Background())
 			if err != nil {
 				log.Err("azAuthBlobMSI::getCredential : Failed to refresh token [%s]", err.Error())
 				return 0
@@ -294,9 +300,15 @@ func (azmsi *azAuthBfsMSI) getCredential() interface{} {
 		log.Info("azAuthBfsMSI::getCredential : MSI Token retrieved %s (%d)", token.AccessToken, token.Expires())
 		// Using token create the credential object, here also register a call back which refreshes the token
 		tc = azbfs.NewTokenCredential(token.AccessToken, func(tc azbfs.TokenCredential) time.Duration {
-			newToken, err := azmsi.fetchToken(msi_endpoint)
+			token, err := azmsi.fetchToken(msi_endpoint)
 			if err != nil {
-				log.Err("azAuthBfsMSI::getCredential : Failed to refresh token [%s]", err.Error())
+				log.Err("azAuthBlobMSI::getCredential : Failed to fetch token [%s]", err.Error())
+				return 0
+			}
+
+			newToken, err := token.Refresh(context.Background())
+			if err != nil {
+				log.Err("azAuthBlobMSI::getCredential : Failed to refresh token [%s]", err.Error())
 				return 0
 			}
 
