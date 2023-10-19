@@ -933,7 +933,7 @@ func (s *blockBlobTestSuite) TestCreateFile() {
 	s.assert.NotNil(h)
 	s.assert.EqualValues(name, h.Path)
 	s.assert.EqualValues(0, h.Size)
-	time.Sleep(10)
+
 	// File should be in the account
 	file := s.containerUrl.NewBlobURL(name)
 	props, err := file.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
@@ -1342,10 +1342,10 @@ func (s *blockBlobTestSuite) TestTruncateChunkedFileBigger() {
 	s.az.CreateFile(internal.CreateFileOptions{Name: name})
 	testData := "test data"
 	data := []byte(testData)
-	truncatedLength := 15 * 1024 * 1024
+	truncatedLength := 15
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 256*1024*1024, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
-		BlockSize: 8 * 1024 * 1024,
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		BlockSize: 4,
 	})
 	s.assert.Nil(err)
 
