@@ -302,13 +302,13 @@ func (azmsi *azAuthBfsMSI) getCredential() interface{} {
 		tc = azbfs.NewTokenCredential(token.AccessToken, func(tc azbfs.TokenCredential) time.Duration {
 			token, err := azmsi.fetchToken(msi_endpoint)
 			if err != nil {
-				log.Err("azAuthBlobMSI::getCredential : Failed to fetch token [%s]", err.Error())
+				log.Err("azAuthBfsMSI::getCredential : Failed to fetch token [%s]", err.Error())
 				return 0
 			}
 
 			newToken, err := token.Refresh(context.Background())
 			if err != nil {
-				log.Err("azAuthBlobMSI::getCredential : Failed to refresh token [%s]", err.Error())
+				log.Err("azAuthBfsMSI::getCredential : Failed to refresh token [%s]", err.Error())
 				return 0
 			}
 
