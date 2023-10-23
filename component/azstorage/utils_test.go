@@ -168,6 +168,7 @@ func (s *utilsTestSuite) TestGetContentType() {
 		{val: "a.cSS", result: "text/css"},
 		{val: "a.Mp4", result: "video/mp4"},
 		{val: "a.JPG", result: "image/jpeg"},
+		{val: "a.usdz", result: "application/zip"},
 	}
 	for _, i := range inputs {
 		s.Run(i.val, func() {
