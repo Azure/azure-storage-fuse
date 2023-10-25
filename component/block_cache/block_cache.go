@@ -847,7 +847,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) (*Block, error) {
 	// Check the given block index is already available or not
 	index := bc.getBlockIndex(offset)
-	log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
+	//log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
 
 	var block *Block
 	var err error
@@ -910,7 +910,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 // Stage the given number of blocks from this handle
 func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
-	log.Debug("BlockCache::stageBlocks : Stageing blocks for %s, cnt %v", handle.Path, cnt)
+	//log.Debug("BlockCache::stageBlocks : Stageing blocks for %s, cnt %v", handle.Path, cnt)
 
 	nodeList := handle.Buffers.Cooking
 	node := nodeList.Front()
@@ -990,7 +990,7 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 					cnt--
 				}
 			default:
-				log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block still under upload skipping it. block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
+				//log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block still under upload skipping it. block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
 			}
 		}
 
