@@ -176,6 +176,11 @@ To learn about a specific command, just include the name of the command (For exa
 
 ***Please note: do not use quotations `""` for any of the config parameters***
 
+## Choosing Between File Cache and Stream Modes
+Please refer to this diagram to decide on whether to use the file cache or streaming.
+
+![alt text](./config.png?raw=true "File Cache vs. Streaming")
+
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
 az cli has a command to generate a sas token. Open a command prompt and make sure you are logged in to az cli. Run the following command and the sas token will be displayed in the command prompt.
