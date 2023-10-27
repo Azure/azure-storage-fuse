@@ -188,6 +188,8 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.ignoreOpenFlags = opt.IgnoreOpenFlags
 	lf.nonEmptyMount = opt.nonEmptyMount
 	lf.directIO = opt.DirectIO
+	lf.ownerGID = opt.Gid
+	lf.ownerUID = opt.Uid
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
@@ -220,19 +222,14 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		lf.negativeTimeout = defaultNegativeEntryExpiration
 	}
 
-	var err error
-	lf.ownerUID, lf.ownerGID, err = common.GetCurrentUser()
-	if err != nil {
-		log.Err("Libfuse::Validate : config error [unable to obtain current user info]")
-		return nil
-	}
-
-	if config.IsSet(compName + ".uid") {
-		lf.ownerUID = opt.Uid
-	}
-
-	if config.IsSet(compName + ".gid") {
-		lf.ownerGID = opt.Gid
+	if !(config.IsSet(compName+".uid") || config.IsSet(compName+".gid") ||
+		config.IsSet("lfuse.uid") || config.IsSet("lfuse.gid")) {
+		var err error
+		lf.ownerUID, lf.ownerGID, err = common.GetCurrentUser()
+		if err != nil {
+			log.Err("Libfuse::Validate : config error [unable to obtain current user info]")
+			return nil
+		}
 	}
 
 	if config.IsSet(compName + ".max-fuse-threads") {

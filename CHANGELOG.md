@@ -6,6 +6,7 @@
 - SAS token is redacted in logs for rename api over dfs endpoint
 - Allow user to configure custom AAD endpoint using MSI_ENPOINT environment variable for MSI based authentication
 - Fail mount if block-cache prefetch count exceeds the defined memory limits.
+- uid/gid supplied as CLI parameters will be shown as actual user/group while listing files.
 
 **Optimizations**
 - Optimized file-cache to skip download when O_TRUNC flag is provided in open call.
