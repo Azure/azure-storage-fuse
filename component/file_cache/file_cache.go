@@ -1317,6 +1317,29 @@ func (fc *FileCache) RenameFile(options internal.RenameFileOptions) error {
 	dflock.Lock()
 	defer dflock.Unlock()
 
+	// check if the source file has a dirty handle
+	var dirtySrcHandle *handlemap.Handle
+	handlemap.GetHandles().Range(
+		func(key any, value any) bool {
+			handle := value.(*handlemap.Handle)
+			if options.Src == handle.Path && handle.Dirty() {
+				dirtySrcHandle = value.(*handlemap.Handle)
+				return false
+			} else {
+				return true
+			}
+		},
+	)
+	if dirtySrcHandle != nil {
+		log.Warn("FileCache::RenameFile : src=%s has a dirty file handle. Flushing...", options.Src)
+		flushErr := fc.FlushFile(internal.FlushFileOptions{Handle: dirtySrcHandle})
+		if flushErr != nil {
+			log.Err("FileCache::RenameFile : Flushing dirty src=%s failed. Here's why: %v", options.Src, flushErr)
+			// abort rename to avoid losing data
+			return flushErr
+		}
+	}
+
 	err := fc.NextComponent().RenameFile(options)
 	err = fc.validateStorageError(options.Src, err, "RenameFile", false)
 	if err != nil {
