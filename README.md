@@ -177,12 +177,12 @@ To learn about a specific command, just include the name of the command (For exa
 ***Please note: do not use quotations `""` for any of the config parameters***
 
 ## Choosing Between File Cache and Stream Modes
-Please refer to this diagram to decide on whether to use the file cache or streaming.
+Please refer to this diagram to decide on whether to use the file cache or streaming. Sample config file URLs are below the diagram.
 
 ![alt text](./config_decision_tree.png?raw=true "File Cache vs. Streaming")
 
-- [Sample File Cache Config](./sampleFileCacheConfig.yaml).
-- [Sample Stream Config](./sampleStreamingConfig.yaml) sample config file.
+- [Sample File Cache Config](./sampleFileCacheConfig.yaml)
+- [Sample Stream Config](./sampleStreamingConfig.yaml)
 
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
