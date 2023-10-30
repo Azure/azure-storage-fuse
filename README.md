@@ -181,6 +181,9 @@ Please refer to this diagram to decide on whether to use the file cache or strea
 
 ![alt text](./config_decision_tree.png?raw=true "File Cache vs. Streaming")
 
+- [Sample File Cache Config](./sampleFileCacheConfig.yaml).
+- [Sample Stream Config](./sampleStreamingConfig.yaml) sample config file.
+
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
 az cli has a command to generate a sas token. Open a command prompt and make sure you are logged in to az cli. Run the following command and the sas token will be displayed in the command prompt.
