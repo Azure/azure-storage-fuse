@@ -179,7 +179,7 @@ To learn about a specific command, just include the name of the command (For exa
 ## Choosing Between File Cache and Stream Modes
 Please refer to this diagram to decide on whether to use the file cache or streaming.
 
-![alt text](./config.png?raw=true "File Cache vs. Streaming")
+![alt text](./config_decision_tree.png?raw=true "File Cache vs. Streaming")
 
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
