@@ -220,7 +220,7 @@ func (s *blockBlobTestSuite) setupTestHelper(configuration string, container str
 	s.container = container
 	if configuration == "" {
 		configuration = fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-			storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, storageTestConfigurationParameters.BlockContainer)
+			storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
 	}
 	s.config = configuration
 
