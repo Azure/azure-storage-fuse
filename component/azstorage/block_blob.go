@@ -990,13 +990,13 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 	numOfBlocks := int64(len(blockList.BlockList))
 	if blockSize == 0 {
 		blockSize = (16 * 1024 * 1024)
-		if math.Ceil((float64)(numOfBlocks+(length/blockSize))) > azblob.BlockBlobMaxBlocks {
-			blockSize = int64(math.Ceil((float64)(length / (azblob.BlockBlobMaxBlocks - numOfBlocks))))
+		if math.Ceil((float64)(numOfBlocks)+(float64)(length)/(float64)(blockSize)) > azblob.BlockBlobMaxBlocks {
+			blockSize = int64(math.Ceil((float64)(length) / (float64)(azblob.BlockBlobMaxBlocks-numOfBlocks)))
 			if blockSize > azblob.BlockBlobMaxStageBlockBytes {
 				return 0, errors.New("Cannot accommodate data within the block limit")
 			}
 		}
-	} else if math.Ceil((float64)(numOfBlocks+(length/blockSize))) > azblob.BlockBlobMaxBlocks {
+	} else if math.Ceil((float64)(numOfBlocks)+(float64)(length)/(float64)(blockSize)) > azblob.BlockBlobMaxBlocks {
 		return 0, errors.New("Cannot accommodate data within the block limit with configured block-size")
 	}
 
