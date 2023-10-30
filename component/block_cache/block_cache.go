@@ -1095,7 +1095,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		log.Debug("BlockCache::commitBlocks : Preparing blocklist for %v=>%s (%v :  %v)", handle.ID, handle.Path, i, listMap[offsets[i]])
 	}
 
-	log.Debug("BlockCache::commitBlocks : Commiting blocks for %s", handle.Path)
+	log.Debug("BlockCache::commitBlocks : Committing blocks for %s", handle.Path)
 
 	// Commit the block list now
 	err = bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIdList})
