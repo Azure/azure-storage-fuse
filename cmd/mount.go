@@ -309,17 +309,15 @@ var mountCmd = &cobra.Command{
 					config.Set("read-only", "true")
 				} else if v == "allow_root" || v == "allow_root=true" {
 					config.Set("allow-root", "true")
-					// config.Set("lfuse.default-permission", "700")
 				} else if v == "nonempty" {
 					skipNonEmpty = true
 					config.Set("nonempty", "true")
 				} else if strings.HasPrefix(v, "umask=") {
-					permission, err := strconv.ParseUint(parameter[1], 10, 32)
+					umask, err := strconv.ParseUint(parameter[1], 10, 32)
 					if err != nil {
 						return fmt.Errorf("failed to parse umask [%s]", err.Error())
 					}
-					perm := ^uint32(permission) & 777
-					config.Set("lfuse.default-permission", fmt.Sprint(perm))
+					config.Set("lfuse.umask", fmt.Sprint(umask))
 				} else if strings.HasPrefix(v, "uid=") {
 					val, err := strconv.ParseUint(parameter[1], 10, 32)
 					if err != nil {
