@@ -383,7 +383,7 @@ func (rw *ReadWriteCache) createHandleCache(handle *handlemap.Handle) error {
 	}
 	var offsets *common.BlockOffsetList
 	var err error
-	if handle.Size == 0 && file_created == false {
+	if handle.Size == 0 && !file_created {
 		offsets = &common.BlockOffsetList{}
 		offsets.Flags.Set(common.SmallFile)
 	} else {
