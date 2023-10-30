@@ -53,7 +53,11 @@ One of the biggest BlobFuse2 features is our brand new health monitor. It allows
 
 
 ## Download Blobfuse2
-You can install Blobfuse2 by cloning this repository. In the workspace root execute `go build` to build the binary. 
+You can install Blobfuse2 by cloning this repository. In the workspace root execute below commands to build the binary.
+
+- sudo apt install fuse3 libfuse3-dev gcc
+- go build -o blobfuse2
+
 
 <!-- ## Find Help
 For complete guidance, visit any of these articles
