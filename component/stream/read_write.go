@@ -48,8 +48,6 @@ import (
 	"github.com/pbnjay/memory"
 )
 
-var file_created = false
-
 type ReadWriteCache struct {
 	*Stream
 	StreamConnection
@@ -75,7 +73,6 @@ func (rw *ReadWriteCache) CreateFile(options internal.CreateFileOptions) (*handl
 		return handle, err
 	}
 	if !rw.StreamOnly {
-		file_created = true
 		err = rw.createHandleCache(handle)
 		if err != nil {
 			log.Err("Stream::CreateFile : error creating cache object %s [%s]", options.Name, err.Error())
@@ -383,7 +380,7 @@ func (rw *ReadWriteCache) createHandleCache(handle *handlemap.Handle) error {
 	}
 	var offsets *common.BlockOffsetList
 	var err error
-	if handle.Size == 0 && !file_created {
+	if handle.Size == 0 {
 		offsets = &common.BlockOffsetList{}
 		offsets.Flags.Set(common.SmallFile)
 	} else {
