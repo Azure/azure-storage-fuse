@@ -111,6 +111,8 @@ func (lf *Libfuse) convertConfig() *C.fuse_options_t {
 	fuse_opts.allow_root = C.bool(lf.allowRoot)
 	fuse_opts.trace_enable = C.bool(lf.traceEnable)
 	fuse_opts.non_empty = C.bool(lf.nonEmptyMount)
+	fuse_opts.umask = C.int(lf.umask)
+
 	return fuse_opts
 }
 
@@ -214,6 +216,10 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 
 	if opts.readonly {
 		options += ",ro"
+	}
+
+	if opts.umask != 0 {
+		options += fmt.Sprintf(",umask=%04d", opts.umask)
 	}
 
 	options += ",max_read=1048576"
