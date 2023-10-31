@@ -220,7 +220,7 @@ func (s *blockBlobTestSuite) setupTestHelper(configuration string, container str
 	s.container = container
 	if configuration == "" {
 		configuration = fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true",
-			storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, storageTestConfigurationParameters.BlockContainer)
+			storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container)
 	}
 	s.config = configuration
 
@@ -3142,34 +3142,34 @@ func (s *blockBlobTestSuite) TestInvalidMD5OnReadNoVaildate() {
 // }
 
 func (suite *blockBlobTestSuite) TestTruncateSmallFileToSmaller() {
-	suite.TestTruncateFileToSmaller(20*MB, 10*MB)
+	suite.UtilityFunctionTestTruncateFileToSmaller(20*MB, 10*MB)
 }
 
 func (suite *blockBlobTestSuite) TestTruncateSmallFileToLarger() {
-	suite.TestTruncateFileToLarger(10*MB, 20*MB)
+	suite.UtilityFunctionTruncateFileToLarger(10*MB, 20*MB)
 }
 
 func (suite *blockBlobTestSuite) TestTruncateBlockFileToSmaller() {
-	suite.TestTruncateFileToSmaller(300*MB, 290*MB)
+	suite.UtilityFunctionTestTruncateFileToSmaller(300*MB, 290*MB)
 }
 
 func (suite *blockBlobTestSuite) TestTruncateBlockFileToLarger() {
-	suite.TestTruncateFileToLarger(290*MB, 300*MB)
+	suite.UtilityFunctionTruncateFileToLarger(290*MB, 300*MB)
 }
 
 func (suite *blockBlobTestSuite) TestTruncateNoBlockFileToLarger() {
-	suite.TestTruncateFileToLarger(200*MB, 300*MB)
+	suite.UtilityFunctionTruncateFileToLarger(200*MB, 300*MB)
 }
 
-func (suite *blockBlobTestSuite) TestTruncateFileToSmaller(size int, truncatedLength int) {
+func (suite *blockBlobTestSuite) UtilityFunctionTestTruncateFileToSmaller(size int, truncatedLength int) {
 	defer suite.cleanupTest()
 	// Setup
 	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, storageTestConfigurationParameters.BlockContainer)
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, suite.container)
 	// // This is a little janky but required since testify suite does not support running setup or clean up for subtests.
 
 	suite.tearDownTestHelper(false)
-	suite.setupTestHelper(vdConfig, storageTestConfigurationParameters.BlockContainer, true)
+	suite.setupTestHelper(vdConfig, suite.container, true)
 
 	name := generateFileName()
 	h, err := suite.az.CreateFile(internal.CreateFileOptions{Name: name})
@@ -3190,15 +3190,15 @@ func (suite *blockBlobTestSuite) TestTruncateFileToSmaller(size int, truncatedLe
 	suite.assert.EqualValues(data[:truncatedLength], output[:])
 }
 
-func (suite *blockBlobTestSuite) TestTruncateFileToLarger(size int, truncatedLength int) {
+func (suite *blockBlobTestSuite) UtilityFunctionTruncateFileToLarger(size int, truncatedLength int) {
 	defer suite.cleanupTest()
 	// Setup
 	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, storageTestConfigurationParameters.BlockContainer)
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, suite.container)
 	// // This is a little janky but required since testify suite does not support running setup or clean up for subtests.
 
 	suite.tearDownTestHelper(false)
-	suite.setupTestHelper(vdConfig, storageTestConfigurationParameters.BlockContainer, true)
+	suite.setupTestHelper(vdConfig, suite.container, true)
 
 	name := generateFileName()
 	h, err := suite.az.CreateFile(internal.CreateFileOptions{Name: name})
