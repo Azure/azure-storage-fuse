@@ -1,5 +1,6 @@
 ## 2.1.2 (WIP)
 **Bug Fixes**
+- sync-to-flush was only setting the dirty flag, now it will force upload the file contents to container.
 
 ## 2.1.1 (2023-10-31)
 **Bug Fixes**
