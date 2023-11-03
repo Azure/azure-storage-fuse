@@ -129,21 +129,21 @@ func (suite *dataValidationTestSuite) TestFileOverwriteWithEchoCommand() {
 	err := os.Chdir(dataValidationMntPathPtr)
 
 	text := "Hello, this is a test."
-	command := "echo \"" + text + "\" > test.txt"
+	command := "echo \"" + text + "\" > TESTFORECHO.txt"
 	cmd := exec.Command("/bin/bash", "-c", command)
 	_, err = cmd.Output()
 	suite.Equal(err, nil)
 
-	data, err := os.ReadFile("test.txt")
+	data, err := os.ReadFile("TESTFORECHO.txt")
 	suite.Equal(string(data), text+"\n")
 
 	newtext := "End of test."
-	newcommand := "echo \"" + newtext + "\" > test.txt"
+	newcommand := "echo \"" + newtext + "\" > TESTFORECHO.txt"
 	newcmd := exec.Command("/bin/bash", "-c", newcommand)
 	_, err = newcmd.Output()
 	suite.Equal(err, nil)
 
-	data, err = os.ReadFile("test.txt")
+	data, err = os.ReadFile("TESTFORECHO.txt")
 	suite.Equal(string(data), newtext+"\n")
 }
 
