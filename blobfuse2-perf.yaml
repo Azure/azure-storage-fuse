@@ -13,7 +13,7 @@ parameters:
   - name: resnet_test
     displayName: 'ResNet50 Test'
     type: boolean
-    default: true
+    default: false
 
 
 stages:
