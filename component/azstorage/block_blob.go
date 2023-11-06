@@ -732,7 +732,6 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 	log.Trace("BlockBlob::ReadBuffer : name %s, offset %v, len %v", name, offset, len)
 	var buff []byte
 	if len == 0 {
-		len = azblob.CountToEnd
 		attr, err := bb.GetAttr(name)
 		if err != nil {
 			return buff, err
