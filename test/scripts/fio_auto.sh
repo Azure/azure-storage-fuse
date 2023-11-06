@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# for i in {1024,2048,4096,5192,102400,519200,1024000}; do dd if=/dev/urandom of=./$i.data bs=1M count=$i; done
+
 mntPath=$1
 
 while IFS=, read -r thread block file; do
@@ -30,12 +32,17 @@ while IFS=, read -r thread block file; do
         # Print process summary to validte blobfuse2 is indeed mounted
         ps -aux | grep blobfuse2
 
-        time fio fio_temp.cfg --output fio_result.csv --output-format csv
+        # Run sequential read test
+        time fio fio_temp.cfg --output fio_result_$file$i.csv --output-format csv
+
+        # Unmount Blobfuse2
+        ./blobfuse2 unmount all
 
     done
-   
+
 done < <(tail -n +3 ./test/scripts/fio_tests.csv)
 
+cat fio_result_*.csv 
 
 
 
