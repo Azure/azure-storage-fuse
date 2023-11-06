@@ -34,6 +34,9 @@ parameters:
   - name: stream_direct_test
     type: boolean
     default: false
+  - name: enable_symlink_adls
+    type: boolean
+    default: false
 
 steps:    
   - script: |
@@ -65,6 +68,7 @@ steps:
       verbose_log: ${{ parameters.verbose_log }}
       clone: ${{ parameters.clone }}
       stream_direct_test: ${{ parameters.stream_direct_test }}
+      enable_symlink_adls: ${{ parameters.enable_symlink_adls }}
       mountStep:
         script: |
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(System.DefaultWorkingDirectory)
