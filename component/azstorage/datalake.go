@@ -550,7 +550,7 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 		// to fetch metadata properties.
 		// Any method that populates the metadata should set the attribute flag.
 		// Alternatively, if you want Datalake list paths to return metadata/properties as well.
-		// pass CLI paramater --no-symlinks=false in the mount command.
+		// pass CLI parameter --no-symlinks=false in the mount command.
 		pathList = append(pathList, attr)
 	}
 
