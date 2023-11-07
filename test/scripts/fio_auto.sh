@@ -9,7 +9,7 @@ mntPath=$1
 if [[ $2 == 1 ]]
 then
     echo "Going for data creation"
-    v2configPath="config_block.yaml"
+    v2configPath="./config_block.yaml"
     ./blobfuse2 mount $mntPath --config-file=$v2configPath 
     if [ $? -ne 0 ]; then
         exit 1
@@ -34,7 +34,7 @@ fi
 
 
 # Execute the Sequential read FIO test
-for v2configPath in "config_block.yaml" "config_file.yaml";
+for v2configPath in "./config_block.yaml" "./config_file.yaml";
 do
     while IFS=, read -r thread block file; do
         echo "
