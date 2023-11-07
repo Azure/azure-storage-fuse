@@ -516,7 +516,7 @@ func (suite *dirTestSuite) TestGitStash() {
 
 func (suite *dirTestSuite) TestReadDirLink() {
 	if suite.adlsTest && strings.ToLower(enableSymlinkADLS) != "true" {
-		fmt.Printf("Skipping this test case for adls : %v, enable-symlink-adls : %v", suite.adlsTest, enableSymlinkADLS)
+		fmt.Printf("Skipping this test case for adls : %v, enable-symlink-adls : %v\n", suite.adlsTest, enableSymlinkADLS)
 		return
 	}
 

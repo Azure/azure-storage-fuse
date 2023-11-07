@@ -522,7 +522,7 @@ func (suite *fileTestSuite) TestLinkDeleteReadTarget() {
 
 func (suite *fileTestSuite) TestListDirReadLink() {
 	if suite.adlsTest && strings.ToLower(fileTestEnableSymlinkADLS) != "true" {
-		fmt.Printf("Skipping this test case for adls : %v, enable-symlink-adls : %v", suite.adlsTest, fileTestEnableSymlinkADLS)
+		fmt.Printf("Skipping this test case for adls : %v, enable-symlink-adls : %v\n", suite.adlsTest, fileTestEnableSymlinkADLS)
 		return
 	}
 
