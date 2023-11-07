@@ -11,7 +11,7 @@ if [[ $2 == 1 ]]
 then
     echo "Going for data creation"
     v2configPath="./config_block.yaml"
-    ./blobfuse2 mount $mntPath --config-file=$v2configPath 
+    ./blobfuse2 mount $mntPath --config-file=$v2configPath --block-cache-block-size=32
     if [ $? -ne 0 ]; then
         exit 1
     fi
@@ -23,7 +23,7 @@ then
     ps -aux | grep blobfuse2
 
     mkdir $mntPath/$dataPath
-    
+
     for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
     do
         echo "Creating: " $file
@@ -56,7 +56,7 @@ do
             echo "Blobfuse2 Run $i with $thread threads, $block block size, $file file size"
             
             # Mount Blobfuse2
-            ./blobfuse2 mount $mntPath --config-file=$v2configPath
+            ./blobfuse2 mount $mntPath --config-file=$v2configPath --block-cache-prefetch-on-open=true --block-cache-block-size=$block
             if [ $? -ne 0 ]; then
                 exit 1
             fi
