@@ -384,6 +384,25 @@ steps:
       verbose_log: ${{ parameters.verbose_log }}
 
 
+  - template: e2e-tests-spcl.yml
+    parameters:
+      conf_template: azure_key_symlink.yaml
+      config_file: ${{ parameters.config }}
+      container: ${{ parameters.container }}
+      temp_dir: ${{ parameters.temp_dir }}
+      mount_dir: ${{ parameters.mount_dir }}
+      adls: ${{ parameters.adls }}
+      account_name: ${{ parameters.account_name }}
+      account_key: ${{ parameters.account_key }}
+      account_type: ${{ parameters.account_type }}
+      account_endpoint: ${{ parameters.account_endpoint }}
+      idstring: "${{ parameters.service }} Symlink config tests"
+      distro_name: ${{ parameters.distro_name }}
+      quick_test: ${{ parameters.quick_test }}
+      verbose_log: ${{ parameters.verbose_log }}
+      enable_symlink_adls: true
+
+
 #--------------------------------------- Setup: End to end tests with different File Cache configurations ------------------------------------------
   - script: |
       cd ${{ parameters.working_dir }}

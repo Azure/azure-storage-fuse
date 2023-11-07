@@ -53,17 +53,20 @@ import (
 
 type dirTestSuite struct {
 	suite.Suite
-	testPath string
-	adlsTest bool
-	minBuff  []byte
-	medBuff  []byte
-	hugeBuff []byte
+	testPath      string
+	adlsTest      bool
+	testCachePath string
+	minBuff       []byte
+	medBuff       []byte
+	hugeBuff      []byte
 }
 
 var pathPtr string
+var tempPathPtr string
 var adlsPtr string
 var clonePtr string
 var streamDirectPtr string
+var enableSymlinkADLS string
 
 func regDirTestFlag(p *string, name string, value string, usage string) {
 	if flag.Lookup(name) == nil {
@@ -78,8 +81,10 @@ func getDirTestFlag(name string) string {
 func initDirFlags() {
 	pathPtr = getDirTestFlag("mnt-path")
 	adlsPtr = getDirTestFlag("adls")
+	tempPathPtr = getDirTestFlag("tmp-path")
 	clonePtr = getDirTestFlag("clone")
 	streamDirectPtr = getDirTestFlag("stream-direct-test")
+	enableSymlinkADLS = getDirTestFlag("enable-symlink-adls")
 }
 
 func getTestDirName(n int) string {
@@ -509,6 +514,70 @@ func (suite *dirTestSuite) TestGitStash() {
 	}
 }
 
+func (suite *dirTestSuite) TestReadDirLink() {
+	if suite.adlsTest && strings.ToLower(enableSymlinkADLS) != "true" {
+		fmt.Printf("Skipping this test case for adls : %v, enable-symlink-adls : %v\n", suite.adlsTest, enableSymlinkADLS)
+		return
+	}
+
+	dirName := suite.testPath + "/test_hns"
+	err := os.Mkdir(dirName, 0777)
+	suite.Nil(err)
+
+	fileName := dirName + "/small_file.txt"
+	f, err := os.Create(fileName)
+	suite.Nil(err)
+	f.Close()
+
+	err = os.WriteFile(fileName, suite.minBuff, 0777)
+	suite.Nil(err)
+
+	symName := suite.testPath + "/dirlink.lnk"
+	err = os.Symlink(dirName, symName)
+	suite.Nil(err)
+
+	dl, err := os.ReadDir(suite.testPath)
+	suite.Nil(err)
+	suite.Greater(len(dl), 0)
+
+	// list operation on symlink
+	dirLinkList, err := os.ReadDir(symName)
+	suite.Nil(err)
+	suite.Greater(len(dirLinkList), 0)
+
+	dirList, err := os.ReadDir(dirName)
+	suite.Nil(err)
+	suite.Greater(len(dirList), 0)
+
+	suite.Equal(len(dirLinkList), len(dirList))
+
+	// comparing list values since they are sorted by file name
+	for i := range dirLinkList {
+		suite.Equal(dirLinkList[i].Name(), dirList[i].Name())
+	}
+
+	// temp cache cleanup
+	suite.dirTestCleanup([]string{suite.testCachePath + "/test_hns/small_file.txt", suite.testCachePath + "/dirlink.lnk"})
+
+	data1, err := os.ReadFile(symName + "/small_file.txt")
+	suite.Nil(err)
+	suite.Equal(len(data1), len(suite.minBuff))
+
+	// temp cache cleanup
+	suite.dirTestCleanup([]string{suite.testCachePath + "/test_hns/small_file.txt", suite.testCachePath + "/dirlink.lnk"})
+
+	data2, err := os.ReadFile(fileName)
+	suite.Nil(err)
+	suite.Equal(len(data2), len(suite.minBuff))
+
+	// validating data
+	suite.Equal(data1, data2)
+
+	suite.dirTestCleanup([]string{dirName})
+	err = os.Remove(symName)
+	suite.Equal(nil, err)
+}
+
 // -------------- Main Method -------------------
 func TestDirTestSuite(t *testing.T) {
 	initDirFlags()
@@ -520,9 +589,15 @@ func TestDirTestSuite(t *testing.T) {
 
 	// Generate random test dir name where our End to End test run is contained
 	testDirName := getTestDirName(10)
+	fmt.Println(testDirName)
 
 	// Create directory for testing the End to End test on mount path
 	dirTest.testPath = pathPtr + "/" + testDirName
+	fmt.Println(dirTest.testPath)
+
+	dirTest.testCachePath = tempPathPtr + "/" + testDirName
+	fmt.Println(dirTest.testCachePath)
+
 	if adlsPtr == "true" || adlsPtr == "True" {
 		fmt.Println("ADLS Testing...")
 		dirTest.adlsTest = true
@@ -554,5 +629,7 @@ func TestDirTestSuite(t *testing.T) {
 func init() {
 	regDirTestFlag(&pathPtr, "mnt-path", "", "Mount Path of Container")
 	regDirTestFlag(&adlsPtr, "adls", "", "Account is ADLS or not")
-	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enable or not")
+	regDirTestFlag(&clonePtr, "clone", "", "Git clone test is enable or not")
+	regDirTestFlag(&tempPathPtr, "tmp-path", "", "Cache dir path")
+	regDirTestFlag(&enableSymlinkADLS, "enable-symlink-adls", "false", "Enable symlink support for ADLS accounts")
 }
