@@ -3,6 +3,7 @@
 
 
 mntPath=$1
+dataPath="fio_sample"
 
 #------------------------------------------------------------------------------------------------------------------
 # Create the data set
@@ -21,10 +22,11 @@ then
     # Print process summary to validte blobfuse2 is indeed mounted
     ps -aux | grep blobfuse2
 
+    mkdir $mntPath/$dataPath
     for file in $(cat fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
     do
         echo "Creating: " $file
-        dd if=/dev/urandom of=$mntPath/$file.data bs=1M count=$file
+        time dd if=/dev/urandom of=$mntPath/$dataPath/$file.data bs=1M count=$file
     done
     ./blobfuse2 unmount all
 else
@@ -43,7 +45,7 @@ do
         size=${file}M
         bs=${block}M
         rw=read
-        filename=$mntPath/$file.data
+        filename=$mntPath/$dataPath/$file.data
         numjobs=$thread
         [job]
         name=seq_read" > fio_temp.cfg
