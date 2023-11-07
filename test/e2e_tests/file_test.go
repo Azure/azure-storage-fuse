@@ -51,18 +51,21 @@ import (
 )
 
 var fileTestPathPtr string
+var fileTestTempPathPtr string
 var fileTestAdlsPtr string
 var fileTestGitClonePtr string
 var fileTestStreamDirectPtr string
 var fileTestDistroName string
+var fileTestEnableSymlinkADLS string
 
 type fileTestSuite struct {
 	suite.Suite
-	testPath string
-	adlsTest bool
-	minBuff  []byte
-	medBuff  []byte
-	hugeBuff []byte
+	testPath      string
+	adlsTest      bool
+	testCachePath string
+	minBuff       []byte
+	medBuff       []byte
+	hugeBuff      []byte
 }
 
 func regFileTestFlag(p *string, name string, value string, usage string) {
@@ -78,9 +81,11 @@ func getFileTestFlag(name string) string {
 func initFileFlags() {
 	fileTestPathPtr = getFileTestFlag("mnt-path")
 	fileTestAdlsPtr = getFileTestFlag("adls")
+	fileTestTempPathPtr = getFileTestFlag("tmp-path")
 	fileTestGitClonePtr = getFileTestFlag("clone")
 	fileTestStreamDirectPtr = getFileTestFlag("stream-direct-test")
 	fileTestDistroName = getFileTestFlag("distro-name")
+	fileTestEnableSymlinkADLS = getFileTestFlag("enable-symlink-adls")
 }
 
 func getFileTestDirName(n int) string {
@@ -515,6 +520,50 @@ func (suite *fileTestSuite) TestLinkDeleteReadTarget() {
 	suite.Equal(nil, err)
 }
 
+func (suite *fileTestSuite) TestListDirReadLink() {
+	if suite.adlsTest && strings.ToLower(fileTestEnableSymlinkADLS) != "true" {
+		fmt.Printf("Skipping this test case for adls : %v, enable-symlink-adls : %v\n", suite.adlsTest, fileTestEnableSymlinkADLS)
+		return
+	}
+
+	fileName := suite.testPath + "/small_hns.txt"
+	f, err := os.Create(fileName)
+	suite.Nil(err)
+	f.Close()
+
+	err = os.WriteFile(fileName, suite.minBuff, 0777)
+	suite.Nil(err)
+
+	symName := suite.testPath + "/small_hns.lnk"
+	err = os.Symlink(fileName, symName)
+	suite.Nil(err)
+
+	dl, err := os.ReadDir(suite.testPath)
+	suite.Nil(err)
+	suite.Greater(len(dl), 0)
+
+	// temp cache cleanup
+	suite.fileTestCleanup([]string{suite.testCachePath + "/small_hns.txt", suite.testCachePath + "/small_hns.lnk"})
+
+	data1, err := os.ReadFile(symName)
+	suite.Nil(err)
+	suite.Equal(len(data1), len(suite.minBuff))
+
+	// temp cache cleanup
+	suite.fileTestCleanup([]string{suite.testCachePath + "/small_hns.txt", suite.testCachePath + "/small_hns.lnk"})
+
+	data2, err := os.ReadFile(fileName)
+	suite.Nil(err)
+	suite.Equal(len(data2), len(suite.minBuff))
+
+	// validating data
+	suite.Equal(data1, data2)
+
+	suite.fileTestCleanup([]string{fileName})
+	err = os.Remove(symName)
+	suite.Equal(nil, err)
+}
+
 /*
 func (suite *fileTestSuite) TestReadOnlyFile() {
 	if suite.adlsTest == true {
@@ -588,6 +637,10 @@ func TestFileTestSuite(t *testing.T) {
 	// Create directory for testing the End to End test on mount path
 	fileTest.testPath = fileTestPathPtr + "/" + testDirName
 	fmt.Println(fileTest.testPath)
+
+	fileTest.testCachePath = fileTestTempPathPtr + "/" + testDirName
+	fmt.Println(fileTest.testCachePath)
+
 	if fileTestAdlsPtr == "true" || fileTestAdlsPtr == "True" {
 		fmt.Println("ADLS Testing...")
 		fileTest.adlsTest = true
@@ -619,4 +672,6 @@ func init() {
 	regFileTestFlag(&fileTestPathPtr, "mnt-path", "", "Mount Path of Container")
 	regFileTestFlag(&fileTestAdlsPtr, "adls", "", "Account is ADLS or not")
 	regFileTestFlag(&fileTestGitClonePtr, "clone", "", "Git clone test is enable or not")
+	regFileTestFlag(&fileTestTempPathPtr, "tmp-path", "", "Cache dir path")
+	regFileTestFlag(&fileTestEnableSymlinkADLS, "enable-symlink-adls", "false", "Enable symlink support for ADLS accounts")
 }

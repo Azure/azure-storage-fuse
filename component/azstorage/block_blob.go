@@ -729,19 +729,17 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 
 // ReadBuffer : Download a specific range from a blob to a buffer
 func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, error) {
-	log.Trace("BlockBlob::ReadBuffer : name %s", name)
+	log.Trace("BlockBlob::ReadBuffer : name %s, offset %v, len %v", name, offset, len)
 	var buff []byte
 	if len == 0 {
-		len = azblob.CountToEnd
 		attr, err := bb.GetAttr(name)
 		if err != nil {
 			return buff, err
 		}
-		buff = make([]byte, attr.Size)
-	} else {
-		buff = make([]byte, len)
+		len = attr.Size - offset
 	}
 
+	buff = make([]byte, len)
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, buff, bb.downloadOptions)
 
