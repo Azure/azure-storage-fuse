@@ -47,11 +47,7 @@ import (
 
 // Standard config default values
 const (
-<<<<<<< HEAD
 	blobfuse2Version_ = "2.2.0-preview.1"
-=======
-	blobfuse2Version_ = "2.1.2"
->>>>>>> origin/main
 
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
