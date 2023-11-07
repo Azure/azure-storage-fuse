@@ -65,7 +65,8 @@ do
             ps -aux | grep blobfuse2
 
             # Run sequential read test
-            time fio fio_temp.cfg --output fio_result_$file$i.csv --output-format csv
+            time fio fio_temp.cfg 
+            #--output fio_result_$file$i.csv --output-format csv
 
             # Unmount Blobfuse2
             ./blobfuse2 unmount all
