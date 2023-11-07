@@ -430,7 +430,7 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	}
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 
-	if dl.Config.HonourACL && dl.Config.authConfig.ObjectID != "" {
+	if dl.Config.honourACL && dl.Config.authConfig.ObjectID != "" {
 		acl, err := pathURL.GetAccessControl(context.Background())
 		if err != nil {
 			// Just ignore the error here as rest of the attributes have been retrieved
@@ -495,41 +495,52 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 
 	// Process the paths returned in this result segment (if the segment is empty, the loop body won't execute)
 	for _, pathInfo := range listPath.Paths {
-		var mode fs.FileMode
-		if pathInfo.Permissions != nil {
-			mode, err = getFileMode(*pathInfo.Permissions)
+		var attr *internal.ObjAttr
+
+		if dl.Config.disableSymlink {
+			var mode fs.FileMode
+			if pathInfo.Permissions != nil {
+				mode, err = getFileMode(*pathInfo.Permissions)
+				if err != nil {
+					log.Err("Datalake::List : Failed to get file mode for %s [%s]", *pathInfo.Name, err.Error())
+					m := ""
+					return pathList, &m, err
+				}
+			} else {
+				// This happens when a blob account is mounted with type:adls
+				log.Err("Datalake::List : Failed to get file permissions for %s", *pathInfo.Name)
+			}
+
+			var contentLength int64 = 0
+			if pathInfo.ContentLength != nil {
+				contentLength = *pathInfo.ContentLength
+			} else {
+				// This happens when a blob account is mounted with type:adls
+				log.Err("Datalake::List : Failed to get file length for %s", *pathInfo.Name)
+			}
+
+			attr = &internal.ObjAttr{
+				Path:   *pathInfo.Name,
+				Name:   filepath.Base(*pathInfo.Name),
+				Size:   contentLength,
+				Mode:   mode,
+				Mtime:  pathInfo.LastModifiedTime(),
+				Atime:  pathInfo.LastModifiedTime(),
+				Ctime:  pathInfo.LastModifiedTime(),
+				Crtime: pathInfo.LastModifiedTime(),
+				Flags:  internal.NewFileBitMap(),
+			}
+			if pathInfo.IsDirectory != nil && *pathInfo.IsDirectory {
+				attr.Flags = internal.NewDirBitMap()
+				attr.Mode = attr.Mode | os.ModeDir
+			}
+		} else {
+			attr, err = dl.GetAttr(*pathInfo.Name)
 			if err != nil {
-				log.Err("Datalake::List : Failed to get file mode for %s [%s]", *pathInfo.Name, err.Error())
+				log.Err("Datalake::List : Failed to get properties for %s [%s]", *pathInfo.Name, err.Error())
 				m := ""
 				return pathList, &m, err
 			}
-		} else {
-			// This happens when a blob account is mounted with type:adls
-			log.Err("Datalake::List : Failed to get file permissions for %s", *pathInfo.Name)
-		}
-
-		var contentLength int64 = 0
-		if pathInfo.ContentLength != nil {
-			contentLength = *pathInfo.ContentLength
-		} else {
-			// This happens when a blob account is mounted with type:adls
-			log.Err("Datalake::List : Failed to get file length for %s", *pathInfo.Name)
-		}
-
-		attr := &internal.ObjAttr{
-			Path:   *pathInfo.Name,
-			Name:   filepath.Base(*pathInfo.Name),
-			Size:   contentLength,
-			Mode:   mode,
-			Mtime:  pathInfo.LastModifiedTime(),
-			Atime:  pathInfo.LastModifiedTime(),
-			Ctime:  pathInfo.LastModifiedTime(),
-			Crtime: pathInfo.LastModifiedTime(),
-			Flags:  internal.NewFileBitMap(),
-		}
-		if pathInfo.IsDirectory != nil && *pathInfo.IsDirectory {
-			attr.Flags = internal.NewDirBitMap()
-			attr.Mode = attr.Mode | os.ModeDir
 		}
 
 		// Note: Datalake list paths does not return metadata/properties.
@@ -538,6 +549,8 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 		// If this flag is not set the attribute cache will call get attributes
 		// to fetch metadata properties.
 		// Any method that populates the metadata should set the attribute flag.
+		// Alternatively, if you want Datalake list paths to return metadata/properties as well.
+		// pass CLI parameter --no-symlinks=false in the mount command.
 		pathList = append(pathList, attr)
 	}
 

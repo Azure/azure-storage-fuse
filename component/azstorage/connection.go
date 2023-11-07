@@ -77,8 +77,9 @@ type AzStorageConfig struct {
 	maxResultsForList  int32
 	disableCompression bool
 
-	telemetry string
-	HonourACL bool
+	telemetry      string
+	honourACL      bool
+	disableSymlink bool
 }
 
 type AzStorageConnection struct {

@@ -1,4 +1,9 @@
-## 2.1.1 (WIP)
+## 2.1.2 (WIP)
+**Bug Fixes**
+- [#1243](https://github.com/Azure/azure-storage-fuse/issues/1243) Fixed issue where symlink was not working for ADLS accounts.
+- [#1259](https://github.com/Azure/azure-storage-fuse/issues/1259) sync-to-flush will force upload the file contents to container.
+
+## 2.1.1 (2023-10-31)
 **Bug Fixes**
 - [#1237](https://github.com/Azure/azure-storage-fuse/issues/1237) Fixed the case sensitivity of content type for file extensions.
 - [#1230](https://github.com/Azure/azure-storage-fuse/issues/1230) Disable deletion of files from local-cache on sync. Use `--ignore-sync` cli option to enable this.
