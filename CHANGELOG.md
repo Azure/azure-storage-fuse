@@ -1,5 +1,6 @@
 ## 2.1.2 (WIP)
 **Bug Fixes**
+- [#1243](https://github.com/Azure/azure-storage-fuse/issues/1243) Fixed issue where symlink was not working for ADLS accounts.
 
 ## 2.1.1 (2023-10-31)
 **Bug Fixes**
