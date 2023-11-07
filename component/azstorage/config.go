@@ -489,7 +489,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Info("ParseAndValidateConfig : Retry Config: Retry count %d, Max Timeout %d, BackOff Time %d, Max Delay %d",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay)
 
-	log.Info("ParseAndValidateConfig : Telemetry : %s", az.stConfig.telemetry)
+	log.Info("ParseAndValidateConfig : Telemetry : %s, Honour ACL: %v, disable symlink: %v", az.stConfig.telemetry, az.stConfig.honourACL, az.stConfig.disableSymlink)
 
 	return nil
 }
@@ -536,9 +536,20 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 	}
 
 	if config.IsSet(compName + ".honour-acl") {
-		az.stConfig.HonourACL = opt.HonourACL
+		az.stConfig.honourACL = opt.HonourACL
 	} else {
-		az.stConfig.HonourACL = false
+		az.stConfig.honourACL = false
+	}
+
+	if config.IsSet("attr_cache.no-symlinks") {
+		err := config.UnmarshalKey("attr_cache.no-symlinks", &az.stConfig.disableSymlink)
+		if err != nil {
+			az.stConfig.disableSymlink = true
+			log.Err("ParseAndReadDynamicConfig : Failed to unmarshal attr_cache.no-symlinks")
+		}
+	} else {
+		// by default symlink will be disabled
+		az.stConfig.disableSymlink = true
 	}
 
 	// Auth related reconfig
