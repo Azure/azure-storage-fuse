@@ -736,12 +736,10 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 		if err != nil {
 			return buff, err
 		}
-		buff = make([]byte, attr.Size)
-		len = attr.Size
-	} else {
-		buff = make([]byte, len)
+		len = attr.Size - offset
 	}
 
+	buff = make([]byte, len)
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, buff, bb.downloadOptions)
 
