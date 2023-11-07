@@ -703,6 +703,22 @@ func (suite *fileCacheTestSuite) TestSyncFile() {
 	// Path should not be in file cache
 	_, err = os.Stat(suite.cache_path + "/" + path)
 	suite.assert.True(os.IsNotExist(err))
+
+	path = "file.fsync"
+	suite.fileCache.syncToFlush = true
+	handle, err = suite.fileCache.CreateFile(internal.CreateFileOptions{Name: path, Mode: 0777})
+	suite.assert.Nil(err)
+	_, err = suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	suite.assert.Nil(err)
+	suite.assert.Equal(handle.Dirty(), true)
+	err = suite.fileCache.SyncFile(internal.SyncFileOptions{Handle: handle})
+	suite.assert.Nil(err)
+	suite.assert.Equal(handle.Dirty(), false)
+	_, err = os.Stat(suite.fake_storage_path + "/" + path)
+	suite.assert.True(err == nil || os.IsExist(err))
+
+	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	suite.fileCache.syncToFlush = false
 }
 
 func (suite *fileCacheTestSuite) TestDeleteFile() {
