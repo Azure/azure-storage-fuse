@@ -961,7 +961,7 @@ func (suite *fileCacheTestSuite) TestReadInBufferNoFlush() {
 	// Setup
 	file := "file16"
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
-	testData := "test data1"
+	testData := "test data"
 	data := []byte(testData)
 	suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
 
@@ -979,7 +979,7 @@ func (suite *fileCacheTestSuite) TestReadInBuffer() {
 	// Setup
 	file := "file17"
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
-	testData := "test data2"
+	testData := "test data"
 	data := []byte(testData)
 	suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
 	suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
@@ -1011,7 +1011,7 @@ func (suite *fileCacheTestSuite) TestWriteFile() {
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
 
 	handle.Flags.Clear(handlemap.HandleFlagDirty) // Technically create file will mark it as dirty, we just want to check write file updates the dirty flag, so temporarily set this to false
-	testData := "test data3"
+	testData := "test data"
 	data := []byte(testData)
 	length, err := suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
 
@@ -1059,7 +1059,7 @@ func (suite *fileCacheTestSuite) TestFlushFile() {
 	// Setup
 	file := "file22"
 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
-	testData := "test data4"
+	testData := "test data"
 	data := []byte(testData)
 	suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
 
