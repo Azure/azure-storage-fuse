@@ -126,24 +126,25 @@ func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteF
 
 // Test correct overwrite of file using echo command
 func (suite *dataValidationTestSuite) TestFileOverwriteWithEchoCommand() {
-	err := os.Chdir(dataValidationMntPathPtr)
-
+	remoteFilePath := filepath.Join(suite.testMntPath, "TESTFORECHO.txt")
 	text := "Hello, this is a test."
-	command := "echo \"" + text + "\" > TESTFORECHO.txt"
+	command := "echo \"" + text + "\" > " + remoteFilePath
 	cmd := exec.Command("/bin/bash", "-c", command)
-	_, err = cmd.Output()
+	_, err := cmd.Output()
 	suite.Equal(err, nil)
 
-	data, err := os.ReadFile("TESTFORECHO.txt")
+	data, err := os.ReadFile(remoteFilePath)
+	suite.Nil(err)
 	suite.Equal(string(data), text+"\n")
 
 	newtext := "End of test."
-	newcommand := "echo \"" + newtext + "\" > TESTFORECHO.txt"
+	newcommand := "echo \"" + newtext + "\" > " + remoteFilePath
 	newcmd := exec.Command("/bin/bash", "-c", newcommand)
 	_, err = newcmd.Output()
 	suite.Equal(err, nil)
 
-	data, err = os.ReadFile("TESTFORECHO.txt")
+	data, err = os.ReadFile(remoteFilePath)
+	suite.Nil(err)
 	suite.Equal(string(data), newtext+"\n")
 }
 
