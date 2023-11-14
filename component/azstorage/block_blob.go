@@ -424,7 +424,11 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		}
 	}
 
-	return bb.RenameFile(source, target)
+	err := bb.RenameFile(source, target)
+	if err == syscall.ENOENT {
+		err = nil
+	}
+	return err
 }
 
 func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
