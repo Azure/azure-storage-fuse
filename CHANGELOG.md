@@ -3,6 +3,7 @@
 - [#1243](https://github.com/Azure/azure-storage-fuse/issues/1243) Fixed issue where symlink was not working for ADLS accounts.
 - [#1259](https://github.com/Azure/azure-storage-fuse/issues/1259) sync-to-flush will force upload the file contents to container.
 - Instead of refresh token, retreieve a fresh token on each expiry and randomize the refresh interval to support multi-instance deployment.
+
 ## 2.1.1 (2023-10-31)
 **Bug Fixes**
 - [#1237](https://github.com/Azure/azure-storage-fuse/issues/1237) Fixed the case sensitivity of content type for file extensions.

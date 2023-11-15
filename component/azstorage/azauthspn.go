@@ -54,6 +54,10 @@ type azAuthSPN struct {
 	azAuthBase
 }
 
+func getNextExpiryTimerSPN(spt *adal.ServicePrincipalToken) time.Duration {
+	return time.Until(spt.Token().Expires()) - 5*time.Second
+}
+
 func (azspn *azAuthSPN) getAADEndpoint() string {
 	if azspn.config.ActiveDirectoryEndpoint != "" {
 		return azspn.config.ActiveDirectoryEndpoint
@@ -120,11 +124,11 @@ func (azspn *azAuthBlobSPN) getCredential() interface{} {
 
 	// Using token create the credential object, here also register a call back which refreshes the token
 	tc := azblob.NewTokenCredential(spt.Token().AccessToken, func(tc azblob.TokenCredential) time.Duration {
-		spt, err = azspn.fetchToken()
-		if err != nil {
-			log.Err("azAuthBlobSPN::getCredential : Failed to fetch SPN token [%s]", err.Error())
-			return 0
-		}
+		// spt, err = azspn.fetchToken()
+		// if err != nil {
+		// 	log.Err("azAuthBlobSPN::getCredential : Failed to fetch SPN token [%s]", err.Error())
+		// 	return 0
+		// }
 
 		err = spt.Refresh()
 		if err != nil {
@@ -137,7 +141,7 @@ func (azspn *azAuthBlobSPN) getCredential() interface{} {
 		log.Debug("azAuthBlobSPN::getCredential : SPN Token retrieved %s (%d)", spt.Token().AccessToken, spt.Token().Expires())
 
 		// Get the next token slightly before the current one expires
-		return time.Until(spt.Token().Expires()) - 5*time.Second
+		return getNextExpiryTimerSPN(spt)
 
 		// Test code to expire token every 30 seconds
 		// return time.Until(time.Now()) + 30*time.Second
@@ -161,11 +165,11 @@ func (azspn *azAuthBfsSPN) getCredential() interface{} {
 
 	// Using token create the credential object, here also register a call back which refreshes the token
 	tc := azbfs.NewTokenCredential(spt.Token().AccessToken, func(tc azbfs.TokenCredential) time.Duration {
-		spt, err = azspn.fetchToken()
-		if err != nil {
-			log.Err("azAuthBfsSPN::getCredential : Failed to fetch SPN token [%s]", err.Error())
-			return 0
-		}
+		// spt, err = azspn.fetchToken()
+		// if err != nil {
+		// 	log.Err("azAuthBfsSPN::getCredential : Failed to fetch SPN token [%s]", err.Error())
+		// 	return 0
+		// }
 
 		err = spt.Refresh()
 		if err != nil {
@@ -178,7 +182,7 @@ func (azspn *azAuthBfsSPN) getCredential() interface{} {
 		log.Debug("azAuthBfsSPN::getCredential : SPN Token retrieved %s (%d)", spt.Token().AccessToken, spt.Token().Expires())
 
 		// Get the next token slightly before the current one expires
-		return time.Until(spt.Token().Expires()) - 5*time.Second
+		return getNextExpiryTimerSPN(spt)
 
 		// Test code to expire token every 30 seconds
 		// return time.Until(time.Now()) + 30*time.Second
