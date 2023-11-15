@@ -53,7 +53,11 @@ One of the biggest BlobFuse2 features is our brand new health monitor. It allows
 
 
 ## Download Blobfuse2
-You can install Blobfuse2 by cloning this repository. In the workspace root execute `go build` to build the binary. 
+You can install Blobfuse2 by cloning this repository. In the workspace root execute below commands to build the binary.
+
+- sudo apt install fuse3 libfuse3-dev gcc
+- go build -o blobfuse2
+
 
 <!-- ## Find Help
 For complete guidance, visit any of these articles
@@ -175,6 +179,14 @@ To learn about a specific command, just include the name of the command (For exa
 - See [this](./setup/baseConfig.yaml) config file for a list and description of all possible configurable options in blobfuse2. 
 
 ***Please note: do not use quotations `""` for any of the config parameters***
+
+## Choosing Between File Cache and Stream Modes
+Please refer to this diagram to decide on whether to use the file cache or streaming. Sample config file URLs are below the diagram.
+
+![alt text](./config_decision_tree.png?raw=true "File Cache vs. Streaming")
+
+- [Sample File Cache Config](./sampleFileCacheConfig.yaml)
+- [Sample Stream Config](./sampleStreamingConfig.yaml)
 
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
