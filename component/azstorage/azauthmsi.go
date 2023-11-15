@@ -207,7 +207,6 @@ func (azmsi *azAuthBlobMSI) getCredential() interface{} {
 				newToken, err := azmsi.fetchTokenFromCLI()
 				if err != nil {
 					log.Err("azAuthBlobMSI::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
-					failCount++
 					time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
 					continue
 				}
@@ -236,7 +235,6 @@ func (azmsi *azAuthBlobMSI) getCredential() interface{} {
 				newToken, err := token.Refresh(context.Background())
 				if err != nil {
 					log.Err("azAuthBlobMSI::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
-					failCount++
 					time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
 					continue
 				}
@@ -304,7 +302,6 @@ func (azmsi *azAuthBfsMSI) getCredential() interface{} {
 				newToken, err := azmsi.fetchTokenFromCLI()
 				if err != nil {
 					log.Err("azAuthBfsMSI::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
-					failCount++
 					time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
 					continue
 				}
@@ -332,7 +329,6 @@ func (azmsi *azAuthBfsMSI) getCredential() interface{} {
 				newToken, err := token.Refresh(context.Background())
 				if err != nil {
 					log.Err("azAuthBfsMSI::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
-					failCount++
 					time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
 					continue
 				}

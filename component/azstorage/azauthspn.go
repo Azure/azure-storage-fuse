@@ -134,7 +134,6 @@ func (azspn *azAuthBlobSPN) getCredential() interface{} {
 			err = spt.Refresh()
 			if err != nil {
 				log.Err("azAuthBfsSPN::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
-				failCount++
 				time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
 				continue
 			}
@@ -180,7 +179,6 @@ func (azspn *azAuthBfsSPN) getCredential() interface{} {
 			err = spt.Refresh()
 			if err != nil {
 				log.Err("azAuthBfsSPN::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
-				failCount++
 				time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
 				continue
 			}
