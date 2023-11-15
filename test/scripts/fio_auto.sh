@@ -16,10 +16,10 @@ then
         exit 1
     fi
 
-    # Wait for mount to stablize
+    # Wait for mount to stabilize
     sleep 3
 
-    # Print process summary to validte blobfuse2 is indeed mounted
+    # Print process summary to validate blobfuse2 is indeed mounted
     ps -aux | grep blobfuse2
 
     mkdir $mntPath/$dataPath
@@ -61,10 +61,10 @@ do
                 exit 1
             fi
 
-            # Wait for mount to stablize
+            # Wait for mount to stabilize
             sleep 3
 
-            # Print process summary to validte blobfuse2 is indeed mounted
+            # Print process summary to validate blobfuse2 is indeed mounted
             ps -aux | grep blobfuse2
 
             # Run sequential read test
