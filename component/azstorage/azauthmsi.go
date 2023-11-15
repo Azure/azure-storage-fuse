@@ -62,7 +62,8 @@ type azAuthMSI struct {
 }
 
 func getNextExpiryTimer(token *adal.Token) time.Duration {
-	return time.Until(token.Expires()) - (time.Duration(5+rand.Intn(120)) * time.Second)
+	delay := time.Duration(5+rand.Intn(120)) * time.Second
+	return time.Until(token.Expires()) - delay
 }
 
 // fetchToken : Generates a token based on the config

@@ -56,7 +56,8 @@ type azAuthSPN struct {
 }
 
 func getNextExpiryTimerSPN(spt *adal.ServicePrincipalToken) time.Duration {
-	return time.Until(spt.Token().Expires()) - (time.Duration(5+rand.Intn(120)) * time.Second)
+	delay := time.Duration(5+rand.Intn(120)) * time.Second
+	return time.Until(spt.Token().Expires()) - delay
 }
 
 func (azspn *azAuthSPN) getAADEndpoint() string {
