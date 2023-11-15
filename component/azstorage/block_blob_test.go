@@ -922,6 +922,48 @@ func (s *blockBlobTestSuite) TestRenameDirError() {
 	s.assert.NotNil(err)
 }
 
+func (s *blockBlobTestSuite) TestRenameDirWithoutMarker() {
+	defer s.cleanupTest()
+	src := generateDirectoryName()
+	dst := generateDirectoryName()
+
+	for i := 0; i < 5; i++ {
+		blockBlobURL := s.containerUrl.NewBlockBlobURL(fmt.Sprintf("%s/blob%v", src, i))
+		testData := "test data"
+		data := []byte(testData)
+		// upload blob
+		_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), int64(len(data)), blockBlobURL, azblob.UploadToBlockBlobOptions{})
+		s.assert.Nil(err)
+
+		_, err = blockBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+		s.assert.Nil(err)
+	}
+
+	err := s.az.RenameDir(internal.RenameDirOptions{Src: src, Dst: dst})
+	s.assert.Nil(err)
+
+	for i := 0; i < 5; i++ {
+		srcBlobURL := s.containerUrl.NewBlockBlobURL(fmt.Sprintf("%s/blob%v", src, i))
+		dstBlobURL := s.containerUrl.NewBlockBlobURL(fmt.Sprintf("%s/blob%v", dst, i))
+
+		_, err = srcBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+		s.assert.NotNil(err)
+
+		_, err = dstBlobURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+		s.assert.Nil(err)
+	}
+
+	// verify that the marker blob does not exist for both source and destination directory
+	srcDirURL := s.containerUrl.NewBlockBlobURL(src)
+	dstDirURL := s.containerUrl.NewBlockBlobURL(dst)
+
+	_, err = srcDirURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+	s.assert.NotNil(err)
+
+	_, err = dstDirURL.GetProperties(ctx, azblob.BlobAccessConditions{}, azblob.ClientProvidedKeyOptions{})
+	s.assert.NotNil(err)
+}
+
 func (s *blockBlobTestSuite) TestCreateFile() {
 	defer s.cleanupTest()
 	// Setup
