@@ -3,6 +3,7 @@
 - [#1243](https://github.com/Azure/azure-storage-fuse/issues/1243) Fixed issue where symlink was not working for ADLS accounts.
 - [#1259](https://github.com/Azure/azure-storage-fuse/issues/1259) sync-to-flush will force upload the file contents to container.
 - [#1285](https://github.com/Azure/azure-storage-fuse/issues/1285) Rename directory fails for blob accounts when marker blob does not exist for source directory.
+- Randomize token refresh interval for MSI and SPN to support multi-instance deployment.
 
 ## 2.1.1 (2023-10-31)
 **Bug Fixes**
