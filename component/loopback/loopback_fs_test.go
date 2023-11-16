@@ -283,6 +283,24 @@ func (suite *LoopbackFSTestSuite) TestGetAttr() {
 	assert.Equal(attr.IsDir(), info.IsDir())
 }
 
+func (suite *LoopbackFSTestSuite) TestStageAndCommitData() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+
+	err := suite.lfs.StageData(internal.StageDataOptions{Name: "testBlock", Data: []byte(loremText), Id: "123"})
+	assert.Nil(err)
+
+	err = suite.lfs.StageData(internal.StageDataOptions{Name: "testBlock", Data: []byte(loremText), Id: "456"})
+	assert.Nil(err)
+
+	err = suite.lfs.StageData(internal.StageDataOptions{Name: "testBlock", Data: []byte(loremText), Id: "789"})
+	assert.Nil(err)
+
+	blockList := []string{"123", "789", "456"}
+	err = suite.lfs.CommitData(internal.CommitDataOptions{Name: "testBlock", List: blockList})
+	assert.Nil(err)
+}
+
 func TestLoopbackFSTestSuite(t *testing.T) {
 	suite.Run(t, new(LoopbackFSTestSuite))
 }

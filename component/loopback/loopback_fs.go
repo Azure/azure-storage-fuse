@@ -459,6 +459,43 @@ func (lfs *LoopbackFS) Chown(options internal.ChownOptions) error {
 	return os.Chown(path, options.Owner, options.Group)
 }
 
+func (lfs *LoopbackFS) StageData(options internal.StageDataOptions) error {
+	log.Trace("LoopbackFS::StageData : name=%s, id=%s", options.Name, options.Id)
+	path := filepath.Join(lfs.path, options.Name+"_"+options.Id)
+	return os.WriteFile(path, options.Data, 0777)
+}
+
+func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
+	log.Trace("LoopbackFS::StageData : name=%s", options.Name)
+
+	mainFilepath := filepath.Join(lfs.path, options.Name)
+
+	blob, err := os.Create(mainFilepath)
+	if err != nil {
+		log.Err("LoopbackFS::CommitData : error opening [%s]", err)
+		return err
+	}
+
+	for _, id := range options.List {
+		path := filepath.Join(lfs.path, options.Name+"_"+id)
+		block, _ := os.OpenFile(path, os.O_RDONLY, os.FileMode(0666))
+
+		info, _ := block.Stat()
+		data := make([]byte, info.Size())
+		n, err := block.Read(data)
+		if int64(n) != info.Size() {
+			log.Err("LoopbackFS::CommitData : error [could not read entire file]")
+			return err
+		}
+		_, _ = blob.Write(data)
+
+		_ = block.Close()
+		_ = os.Remove(path)
+	}
+	_ = blob.Close()
+	return nil
+}
+
 func NewLoopbackFSComponent() internal.Component {
 	lfs := &LoopbackFS{}
 	lfs.SetName(compName)
