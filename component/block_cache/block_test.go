@@ -183,6 +183,59 @@ func (suite *blockTestSuite) TestUnBlock() {
 	_ = b.Delete()
 }
 
+func (suite *blockTestSuite) TestWriter() {
+	suite.assert = assert.New(suite.T())
+
+	b, err := AllocateBlock(1)
+	suite.assert.NotNil(b)
+	suite.assert.Nil(err)
+	suite.assert.Nil(b.state)
+	suite.assert.Nil(b.node)
+	suite.assert.False(b.IsDirty())
+
+	b.ReUse()
+	suite.assert.NotNil(b.state)
+	suite.assert.Nil(b.node)
+	suite.assert.Zero(b.offset)
+	suite.assert.Zero(b.endIndex)
+	suite.assert.Equal(b.id, int64(-1))
+	suite.assert.False(b.IsDirty())
+
+	b.Ready()
+	suite.assert.Equal(len(b.state), 1)
+
+	<-b.state
+	suite.assert.Equal(len(b.state), 0)
+
+	b.Unblock()
+	suite.assert.NotNil(b.state)
+	suite.assert.Equal(len(b.state), 0)
+
+	b.Uploading()
+	suite.assert.NotNil(b.state)
+
+	b.Dirty()
+	suite.assert.True(b.IsDirty())
+
+	b.NoMoreDirty()
+	suite.assert.False(b.IsDirty())
+
+	b.Ready()
+	suite.assert.Equal(len(b.state), 1)
+
+	<-b.state
+	suite.assert.Equal(len(b.state), 0)
+
+	b.Unblock()
+	suite.assert.NotNil(b.state)
+	suite.assert.Equal(len(b.state), 0)
+
+	<-b.state
+	suite.assert.Equal(len(b.state), 0)
+
+	_ = b.Delete()
+}
+
 func TestBlockSuite(t *testing.T) {
 	suite.Run(t, new(blockTestSuite))
 }
