@@ -402,6 +402,7 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 	log.Trace("BlockBlob::RenameDirectory : %s -> %s", source, target)
 
+	srcDirPresent := false
 	for marker := (azblob.Marker{}); marker.NotDone(); {
 		listBlob, err := bb.Container.ListBlobsFlatSegment(context.Background(), marker,
 			azblob.ListBlobsSegmentOptions{MaxResults: common.MaxDirListCount,
@@ -416,6 +417,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlob.Segment.BlobItems {
+			srcDirPresent = true
 			srcPath := split(bb.Config.prefixPath, blobInfo.Name)
 			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
 			if err != nil {
@@ -424,7 +426,13 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		}
 	}
 
-	return bb.RenameFile(source, target)
+	err := bb.RenameFile(source, target)
+	// check if the marker blob for source directory does not exist but
+	// blobs were present in it, which were renamed earlier
+	if err == syscall.ENOENT && srcDirPresent {
+		err = nil
+	}
+	return err
 }
 
 func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {

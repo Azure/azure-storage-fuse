@@ -39,6 +39,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"os/exec"
 	"strings"
@@ -58,6 +59,11 @@ var _ azAuth = &azAuthBfsMSI{}
 
 type azAuthMSI struct {
 	azAuthBase
+}
+
+func getNextExpiryTimer(token *adal.Token) time.Duration {
+	delay := time.Duration(5+rand.Intn(120)) * time.Second
+	return time.Until(token.Expires()) - delay
 }
 
 // fetchToken : Generates a token based on the config
@@ -198,35 +204,51 @@ func (azmsi *azAuthBlobMSI) getCredential() interface{} {
 		log.Info("azAuthBlobMSI::getCredential : MSI Token over CLI retrieved %s (%d)", token.AccessToken, token.Expires())
 		// We are running in cli mode so token can not be refreshed, on expiry just get the new token
 		tc = azblob.NewTokenCredential(token.AccessToken, func(tc azblob.TokenCredential) time.Duration {
-			newToken, err := azmsi.fetchTokenFromCLI()
-			if err != nil {
-				log.Err("azAuthBlobMSI::getCredential : Failed to refresh token [%s]", err.Error())
-				return 0
+			for failCount := 0; failCount < 5; failCount++ {
+				newToken, err := azmsi.fetchTokenFromCLI()
+				if err != nil {
+					log.Err("azAuthBlobMSI::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
+					time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
+					continue
+				}
+
+				// set the new token value
+				tc.SetToken(newToken.AccessToken)
+				log.Debug("azAuthBlobMSI::getCredential : MSI Token retrieved %s (%d)", newToken.AccessToken, newToken.Expires())
+
+				// Get the next token slightly before the current one expires
+				return getNextExpiryTimer(&newToken.Token)
+
 			}
-
-			// set the new token value
-			tc.SetToken(newToken.AccessToken)
-			log.Debug("azAuthBlobMSI::getCredential : MSI Token retrieved %s (%d)", newToken.AccessToken, newToken.Expires())
-
-			// Get the next token slightly before the current one expires
-			return time.Until(newToken.Expires()) - 5*time.Minute
+			log.Err("azAuthBlobMSI::getCredential : Failed to refresh token bailing out.")
+			return 0
 		})
 	} else {
 		log.Info("azAuthBlobMSI::getCredential : MSI Token retrieved %s (%d)", token.AccessToken, token.Expires())
 		// Using token create the credential object, here also register a call back which refreshes the token
 		tc = azblob.NewTokenCredential(token.AccessToken, func(tc azblob.TokenCredential) time.Duration {
-			newToken, err := token.Refresh(context.Background())
-			if err != nil {
-				log.Err("azAuthBlobMSI::getCredential : Failed to refresh token [%s]", err.Error())
-				return 0
+			// token, err := azmsi.fetchToken(msi_endpoint)
+			// if err != nil {
+			// 	log.Err("azAuthBlobMSI::getCredential : Failed to fetch token [%s]", err.Error())
+			// 	return 0
+			// }
+			for failCount := 0; failCount < 5; failCount++ {
+				newToken, err := token.Refresh(context.Background())
+				if err != nil {
+					log.Err("azAuthBlobMSI::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
+					time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
+					continue
+				}
+
+				// set the new token value
+				tc.SetToken(newToken.AccessToken)
+				log.Debug("azAuthBlobMSI::getCredential : MSI Token retrieved %s (%d)", newToken.AccessToken, newToken.Expires())
+
+				// Get the next token slightly before the current one expires
+				return getNextExpiryTimer(newToken)
 			}
-
-			// set the new token value
-			tc.SetToken(newToken.AccessToken)
-			log.Debug("azAuthBlobMSI::getCredential : MSI Token retrieved %s (%d)", newToken.AccessToken, newToken.Expires())
-
-			// Get the next token slightly before the current one expires
-			return time.Until(newToken.Expires()) - 5*time.Minute
+			log.Err("azAuthBlobMSI::getCredential : Failed to refresh token bailing out.")
+			return 0
 		})
 	}
 
@@ -277,35 +299,50 @@ func (azmsi *azAuthBfsMSI) getCredential() interface{} {
 		log.Info("azAuthBfsMSI::getCredential : MSI Token over CLI retrieved %s (%d)", token.AccessToken, token.Expires())
 		// We are running in cli mode so token can not be refreshed, on expiry just get the new token
 		tc = azbfs.NewTokenCredential(token.AccessToken, func(tc azbfs.TokenCredential) time.Duration {
-			newToken, err := azmsi.fetchTokenFromCLI()
-			if err != nil {
-				log.Err("azAuthBfsMSI::getCredential : Failed to refresh token [%s]", err.Error())
-				return 0
+			for failCount := 0; failCount < 5; failCount++ {
+				newToken, err := azmsi.fetchTokenFromCLI()
+				if err != nil {
+					log.Err("azAuthBfsMSI::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
+					time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
+					continue
+				}
+
+				// set the new token value
+				tc.SetToken(newToken.AccessToken)
+				log.Debug("azAuthBfsMSI::getCredential : MSI Token retrieved %s (%d)", newToken.AccessToken, newToken.Expires())
+
+				// Get the next token slightly before the current one expires
+				return getNextExpiryTimer(&newToken.Token)
 			}
-
-			// set the new token value
-			tc.SetToken(newToken.AccessToken)
-			log.Debug("azAuthBfsMSI::getCredential : MSI Token retrieved %s (%d)", newToken.AccessToken, newToken.Expires())
-
-			// Get the next token slightly before the current one expires
-			return time.Until(newToken.Expires()) - 5*time.Minute
+			log.Err("azAuthBfsMSI::getCredential : Failed to refresh token bailing out.")
+			return 0
 		})
 	} else {
 		log.Info("azAuthBfsMSI::getCredential : MSI Token retrieved %s (%d)", token.AccessToken, token.Expires())
 		// Using token create the credential object, here also register a call back which refreshes the token
 		tc = azbfs.NewTokenCredential(token.AccessToken, func(tc azbfs.TokenCredential) time.Duration {
-			newToken, err := token.Refresh(context.Background())
-			if err != nil {
-				log.Err("azAuthBfsMSI::getCredential : Failed to refresh token [%s]", err.Error())
-				return 0
+			// token, err := azmsi.fetchToken(msi_endpoint)
+			// if err != nil {
+			// 	log.Err("azAuthBfsMSI::getCredential : Failed to fetch token [%s]", err.Error())
+			// 	return 0
+			// }
+			for failCount := 0; failCount < 5; failCount++ {
+				newToken, err := token.Refresh(context.Background())
+				if err != nil {
+					log.Err("azAuthBfsMSI::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
+					time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
+					continue
+				}
+
+				// set the new token value
+				tc.SetToken(newToken.AccessToken)
+				log.Debug("azAuthBfsMSI::getCredential : MSI Token retrieved %s (%d)", newToken.AccessToken, newToken.Expires())
+
+				// Get the next token slightly before the current one expires
+				return getNextExpiryTimer(newToken)
 			}
-
-			// set the new token value
-			tc.SetToken(newToken.AccessToken)
-			log.Debug("azAuthBfsMSI::getCredential : MSI Token retrieved %s (%d)", newToken.AccessToken, newToken.Expires())
-
-			// Get the next token slightly before the current one expires
-			return time.Until(newToken.Expires()) - 5*time.Minute
+			log.Err("azAuthBfsMSI::getCredential : Failed to refresh token bailing out.")
+			return 0
 		})
 	}
 
