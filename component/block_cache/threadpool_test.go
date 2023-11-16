@@ -136,6 +136,39 @@ func (suite *threadPoolTestSuite) TestPrioritySchedule() {
 	tp.Stop()
 }
 
+func (suite *threadPoolTestSuite) TestPriorityScheduleWithWriter() {
+	suite.assert = assert.New(suite.T())
+
+	callbackRCnt := int32(0)
+	callbackWCnt := int32(0)
+	r := func(i *workItem) {
+		suite.assert.Equal(i.failCnt, int32(5))
+		atomic.AddInt32(&callbackRCnt, 1)
+	}
+
+	w := func(i *workItem) {
+		suite.assert.Equal(i.failCnt, int32(5))
+		atomic.AddInt32(&callbackWCnt, 1)
+	}
+
+	tp := newThreadPool(10, r, w)
+	suite.assert.NotNil(tp)
+	suite.assert.Equal(tp.worker, uint32(10))
+
+	tp.Start()
+	suite.assert.NotNil(tp.priorityCh)
+	suite.assert.NotNil(tp.normalCh)
+
+	for i := 0; i < 100; i++ {
+		tp.Schedule(i < 20, &workItem{failCnt: 5, upload: true, blockId: "test"})
+	}
+
+	time.Sleep(1 * time.Second)
+	suite.assert.Equal(callbackWCnt, int32(100))
+	suite.assert.Equal(callbackRCnt, int32(0))
+	tp.Stop()
+}
+
 func TestThreadPoolSuite(t *testing.T) {
 	suite.Run(t, new(threadPoolTestSuite))
 }
