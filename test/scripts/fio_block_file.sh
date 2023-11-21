@@ -34,12 +34,15 @@ readcmd=`echo fio --randrepeat=1 --ioengine=libaio --gtod_reduce=1 --name=test -
 blobfuse2_write_average=0
 blobfuse2_read_average=0
 
+./blobfuse2 unmount all
+
 for v2configPath in $fileConfigPath $blockConfigPath;
 do
     sed_line=3
     for i in {1..5}; 
     do 
         # Mount Blobfuse2
+        rm -rf $mntPath/*
         ./blobfuse2 mount $mntPath --config-file=$v2configPath &
         if [ $? -ne 0 ]; then
             exit 1
@@ -62,7 +65,7 @@ do
         (( sed_line++ ))
         blobfuse2_write_average=$(( $blobfuse2_write_average + $write_iops ))
 
-        sudo fusermount3 -u $mntPath
+        ./blobfuse2 unmount all
         echo "========================================================="
     done
 
@@ -70,6 +73,7 @@ do
     for i in {1..5}; 
     do 
         # Mount Blobfuse2
+        rm -rf $mntPath/*
         ./blobfuse2 mount $mntPath --config-file=$v2configPath &
         if [ $? -ne 0 ]; then
             exit 1
@@ -92,7 +96,7 @@ do
         (( sed_line++ ))
         blobfuse2_read_average=$(( $blobfuse2_read_average + $read_iops ))
 
-        sudo fusermount3 -u $mntPath
+        ./blobfuse2 unmount all
         echo "========================================================="
     done
 

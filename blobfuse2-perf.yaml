@@ -151,6 +151,7 @@ stages:
         # FIO Tests
         - script: |
             chmod 777 ./test/scripts/fio_block_file.sh
+            rm -rf $(MOUNT_DIR)/fio/*
             ./test/scripts/fio_block_file.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_FILE_CFG) $(BLOBFUSE2_BLOCK_CFG) rw
           displayName: 'FIO Sequential Test (File vs Block)'
           workingDirectory: $(WORK_DIR)
@@ -162,6 +163,7 @@ stages:
 
         - script: |
             chmod 777 ./test/scripts/fio.sh
+            rm -rf $(MOUNT_DIR)/fio/*
             ./test/scripts/fio.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG) rw
           displayName: 'FIO Sequential Test'
           workingDirectory: $(WORK_DIR)
@@ -173,6 +175,7 @@ stages:
 
         - script: |
             chmod 777 ./test/scripts/fio.sh
+            rm -rf $(MOUNT_DIR)/fio/*
             ./test/scripts/fio.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG) randrw
           displayName: 'FIO Random Test'
           workingDirectory: $(WORK_DIR)
@@ -184,6 +187,7 @@ stages:
 
         - script: |
             chmod 777 ./test/scripts/fio.sh
+            rm -rf $(MOUNT_DIR)/fio/*
             ./test/scripts/fio.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_CFG) $(BLOBFUSE_CFG) rw csi
           displayName: 'FIO CSI Test'
           workingDirectory: $(WORK_DIR)
