@@ -59,6 +59,7 @@ do
 
         echo "Creating: " $file
         dd if=/dev/urandom of=$mntPath/$dataPath/$v2configPath$file.data bs=1M count=$file 2> temp.tst
+        cat temp.tst
         write_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
         write_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
         
@@ -104,6 +105,7 @@ do
         sleep 3
 
         dd of=/dev/null if=$mntPath/$dataPath/$v2configPath$file.data bs=${block}M count=$file 2> temp.tst
+        cat temp.tst
         read_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
         read_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
 
@@ -162,6 +164,7 @@ do
         sleep 3
 
         fio_result=`fio fio_temp.cfg | tail -1`
+        echo $fio_result
         read_bw=$(echo $fio_result | sed -e "s/^.*\(bw=[^ ,]*\).*$/\1/" | cut -d "=" -f 2 | cut -d "/" -f1)
         read_time=$(echo $fio_result | sed -e "s/^.*\(run=[^ ,]*\).*$/\1/" | cut -d "-" -f 2)
 
