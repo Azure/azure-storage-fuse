@@ -8,6 +8,10 @@ blockConfigPath=$4
 
 dataPath="fio_sample"
 
+# Create mount directory if it does not exists already
+mkdir -p $mntPath
+chmod 777 $mntPath
+
 # ------------------------------------------------------------------------------------------------------------------
 ./blobfuse2 unmount all
 
