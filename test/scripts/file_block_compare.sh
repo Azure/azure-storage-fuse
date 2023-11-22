@@ -81,7 +81,7 @@ echo "| Block Size (MB) | File Size (MB) | Block Cache Speed | Block Cache Time 
 echo "| -- | -- | -- | -- | -- | -- |" >> $outputPath
 
 # Generate the test case data
-while IFS=, read -r thread block file; do
+while IFS=, read -r block file; do
     echo "| ${block} | ${file} |" >> $outputPath
 done < <(cat ./test/scripts/fio_tests.csv  | tail -n +3 | cut -d "," -f2,3 | sort -u)
 
@@ -107,7 +107,7 @@ do
         read_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
         read_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
 
-        sed -i "${sed_line}s/$/ ${read_bw} | ${read_time} |/" $outputPath
+        sed -i "${sed_line}s/$/ ${read_speed} | ${read_time} |/" $outputPath
         (( sed_line++ ))
 
         # Unmount Blobfuse2
@@ -175,3 +175,16 @@ done
 echo "| -- | -- | -- | -- | -- | -- | -- |" >> $outputPath
 cat $outputPath
 # ------------------------------------------------------------------------------------------------------------------
+
+
+# Post run cleanup
+rm -rf temp*.tst
+rm -rf fio*.cfg
+
+echo "Cleaning up data"
+./blobfuse2 mount $mntPath --config-file=$fileConfigPath --tmp-path=$tmpPath --file-cache-timeout=0
+sleep 3
+rm -rf $mntPath/$dataPath/*
+mkdir $mntPath/$dataPath
+./blobfuse2 unmount all
+rm -rf $tmpPath/*
