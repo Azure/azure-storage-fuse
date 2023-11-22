@@ -49,16 +49,17 @@ do
 
     fileBaseName=$(basename $v2configPath | cut -d "." -f1)
 
+    ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+
+    # Wait for mount to stabilize
+    sleep 3
+
     for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
     do
-        ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
-
-        # Wait for mount to stabilize
-        sleep 3
-
+        
         echo "Creating: " $file
         dd if=/dev/urandom of=$mntPath/$dataPath/${fileBaseName}_${file}.data bs=1M count=$file 2> temp.tst
         cat temp.tst
@@ -67,9 +68,9 @@ do
         
         sed -i "${sed_line}s/$/ ${write_speed} | ${write_time} |/" $outputPath
         (( sed_line++ ))
-
-        ./blobfuse2 unmount all
     done
+    ./blobfuse2 unmount all
+
 done
 echo "| -- | -- | -- |" >> $outputPath
 cat $outputPath
@@ -96,17 +97,17 @@ do
 
     fileBaseName=$(basename $v2configPath | cut -d "." -f1)
 
+    # Mount Blobfuse2
+    ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+
+    # Wait for mount to stabilize
+    sleep 3
+
     while IFS=, read -r block file; do
         echo "Blobfuse2 Run with $block block size, $file file size"
-        
-        # Mount Blobfuse2
-        ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
-
-        # Wait for mount to stabilize
-        sleep 3
 
         dd of=/dev/null if=$mntPath/$dataPath/${fileBaseName}_${file}.data bs=${block}M count=$file 2> temp.tst
         cat temp.tst
@@ -115,10 +116,9 @@ do
 
         sed -i "${sed_line}s/$/ ${read_speed} | ${read_time} |/" $outputPath
         (( sed_line++ ))
-
-        # Unmount Blobfuse2
-        ./blobfuse2 unmount all
     done < <(cat ./test/scripts/fio_tests.csv  | tail -n +3 | cut -d "," -f2,3 | sort -u)
+    
+    ./blobfuse2 unmount all
 done
 echo "| -- | -- | -- | -- | -- | -- |" >> $outputPath
 cat $outputPath
@@ -145,6 +145,15 @@ do
     echo "Running read test with $v2configPath"
 
     fileBaseName=$(basename $v2configPath | cut -d "." -f1)
+        
+    # Mount Blobfuse2
+    ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
+    if [ $? -ne 0 ]; then
+        exit 1
+    fi
+
+    # Wait for mount to stabilize
+    sleep 3
 
     while IFS=, read -r thread block file; do
         echo "
@@ -159,15 +168,6 @@ do
         name=seq_read" > fio_temp.cfg
 
         echo "Blobfuse2 Run with $thread threads, $block block size, $file file size"
-        
-        # Mount Blobfuse2
-        ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
-        if [ $? -ne 0 ]; then
-            exit 1
-        fi
-
-        # Wait for mount to stabilize
-        sleep 3
 
         fio_result=`fio fio_temp.cfg | tail -1`
         echo $fio_result
@@ -176,10 +176,9 @@ do
 
         sed -i "${sed_line}s/$/ ${read_bw} | ${read_time} |/" $outputPath
         (( sed_line++ ))
-
-        # Unmount Blobfuse2
-        ./blobfuse2 unmount all
     done < <(tail -n +3 ./test/scripts/fio_tests.csv)
+
+    ./blobfuse2 unmount all
 done
 echo "| -- | -- | -- | -- | -- | -- | -- |" >> $outputPath
 cat $outputPath
