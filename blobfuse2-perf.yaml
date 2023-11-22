@@ -89,8 +89,9 @@ stages:
             sudo chown -R `whoami` $(ROOT_DIR)
             chmod 777 $(ROOT_DIR)
             mkdir -p $(ROOT_DIR)/go/src
-            mkdir -p $(TEMP_DIR)
-            chmod 777 $(TEMP_DIR)
+            sudo mkdir -p $(TEMP_DIR)
+            sudo chown -R `whoami` $(TEMP_DIR)
+            sudo chmod 777 $(TEMP_DIR)
           displayName: 'Create Directory Structure'
     
         # Checkout the code  
@@ -308,8 +309,9 @@ stages:
               sudo chown -R `whoami` $(ROOT_DIR)
               chmod 777 $(ROOT_DIR)
               mkdir -p $(ROOT_DIR)/go/src
-              mkdir -p $(TEMP_DIR)
-              chmod 777 $(TEMP_DIR)
+              sudo mkdir -p $(TEMP_DIR)
+              sudo chown -R `whoami` $(TEMP_DIR)
+              sudo chmod 777 $(TEMP_DIR)
             displayName: 'Create Directory Structure'
       
           # Checkout the code  
