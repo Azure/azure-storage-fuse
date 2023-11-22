@@ -21,7 +21,7 @@ echo "Cleaning up old data"
 ./blobfuse2 mount $mntPath --config-file=$fileConfigPath --tmp-path=$tmpPath --file-cache-timeout=0
 sleep 3
 rm -rf $mntPath/$dataPath/*
-mkdir $mntPath/$dataPath
+mkdir -p $mntPath/$dataPath
 ./blobfuse2 unmount all
 
 rm -rf $tmpPath/*
@@ -47,6 +47,8 @@ do
     sed_line=3
     echo "Running creation with $v2configPath"
 
+    fileBaseName=$(basename $v2configPath | cut -d "." -f1)
+
     for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
     do
         ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
@@ -58,7 +60,7 @@ do
         sleep 3
 
         echo "Creating: " $file
-        dd if=/dev/urandom of=$mntPath/$dataPath/$v2configPath$file.data bs=1M count=$file 2> temp.tst
+        dd if=/dev/urandom of=$mntPath/$dataPath/${fileBaseName}_${file}.data bs=1M count=$file 2> temp.tst
         cat temp.tst
         write_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
         write_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
@@ -92,6 +94,8 @@ do
     sed_line=3
     echo "Running read test with $v2configPath"
 
+    fileBaseName=$(basename $v2configPath | cut -d "." -f1)
+
     while IFS=, read -r block file; do
         echo "Blobfuse2 Run with $block block size, $file file size"
         
@@ -104,7 +108,7 @@ do
         # Wait for mount to stabilize
         sleep 3
 
-        dd of=/dev/null if=$mntPath/$dataPath/$v2configPath$file.data bs=${block}M count=$file 2> temp.tst
+        dd of=/dev/null if=$mntPath/$dataPath/${fileBaseName}_${file}.data bs=${block}M count=$file 2> temp.tst
         cat temp.tst
         read_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
         read_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
@@ -140,6 +144,8 @@ do
     sed_line=3
     echo "Running read test with $v2configPath"
 
+    fileBaseName=$(basename $v2configPath | cut -d "." -f1)
+
     while IFS=, read -r thread block file; do
         echo "
         [global]
@@ -147,7 +153,7 @@ do
         size=${file}M
         bs=${block}M
         rw=read
-        filename=$mntPath/$dataPath/$v2configPath$file.data
+        filename=$mntPath/$dataPath/${fileBaseName}_${file}.data
         numjobs=$thread
         [job]
         name=seq_read" > fio_temp.cfg
