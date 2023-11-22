@@ -18,7 +18,7 @@ chmod 777 $mntPath
 # ------------------------------------------------------------------------------------------------------------------
 # Clean up for new test
 echo "Cleaning up old data"
-./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
+./blobfuse2 mount $mntPath --config-file=$fileConfigPath --tmp-path=$tmpPath --file-cache-timeout=0
 sleep 3
 rm -rf $mntPath/$dataPath/*
 mkdir $mntPath/$dataPath
