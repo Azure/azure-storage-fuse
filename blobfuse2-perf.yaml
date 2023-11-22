@@ -165,10 +165,19 @@ stages:
 
         - script: |
             echo "Write test results"
+            echo "-----------------------------------------------------------------------------"
             cat file_block_write.txt
-            echo "----------------------"
-            echo "Read test results"
+            echo .
+            echo "-----------------------------------------------------------------------------"
+            echo "Read test results with dd"
+            cat file_block_read_dd.txt
+            echo .
+            echo "-----------------------------------------------------------------------------"
+            echo "Read test results with FIO"
+            echo "-----------------------------------------------------------------------------"
             cat file_block_read.txt
+            echo .
+            echo "-----------------------------------------------------------------------------"
           displayName: 'Block-File Compare Test'
           workingDirectory: $(WORK_DIR)
 
