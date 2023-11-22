@@ -38,7 +38,7 @@ stages:
         - name: MOUNT_DIR
           value: "/home/vsts/workv2/blobfuse2mnt"
         - name: TEMP_DIR
-          value: "/home/vsts/workv2/blobfuse2tmp"
+          value: "/mnt/blobfuse2tmp"
         - name: BLOBFUSE2_CFG
           value: "$(System.DefaultWorkingDirectory)/blobfuse2_manual_perf.yaml"
         - name: BLOBFUSE2_FILE_CFG
@@ -89,6 +89,8 @@ stages:
             sudo chown -R `whoami` $(ROOT_DIR)
             chmod 777 $(ROOT_DIR)
             mkdir -p $(ROOT_DIR)/go/src
+            mkdir -p $(TEMP_DIR)
+            chmod 777 $(TEMP_DIR)
           displayName: 'Create Directory Structure'
     
         # Checkout the code  
@@ -274,7 +276,7 @@ stages:
           - name: MOUNT_DIR
             value: "/home/vsts/workv2/blob_mnt"
           - name: TEMP_DIR
-            value: "/home/vsts/workv2/blobfuse2tmp"
+            value: "/mnt/blobfuse2tmp"
           - name: BLOBFUSE2_CFG
             value: "$(System.DefaultWorkingDirectory)/blobfuse2_manual_perf.yaml"
           - name: GOPATH
@@ -306,6 +308,8 @@ stages:
               sudo chown -R `whoami` $(ROOT_DIR)
               chmod 777 $(ROOT_DIR)
               mkdir -p $(ROOT_DIR)/go/src
+              mkdir -p $(TEMP_DIR)
+              chmod 777 $(TEMP_DIR)
             displayName: 'Create Directory Structure'
       
           # Checkout the code  
