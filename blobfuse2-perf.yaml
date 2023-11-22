@@ -148,19 +148,25 @@ stages:
           continueOnError: false
 
         # --------------------------------------------------------------------------------------------
-        # FIO Tests
+        # Block vs File Tests
         - script: |
-            chmod 777 ./test/scripts/fio_block_file.sh
+            chmod 777 ./test/scripts/file_block_compare.sh
             rm -rf $(MOUNT_DIR)/fio/*
-            ./test/scripts/fio_block_file.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_FILE_CFG) $(BLOBFUSE2_BLOCK_CFG) rw
-          displayName: 'FIO Sequential Test (File vs Block)'
+            ./test/scripts/file_block_compare.sh $(MOUNT_DIR)/fio $(TEMP_DIR) $(BLOBFUSE2_FILE_CFG) $(BLOBFUSE2_BLOCK_CFG) rw
+          displayName: 'Block-File Compare Test'
           workingDirectory: $(WORK_DIR)
 
         - script: |
-            cat results_fio_fb.txt
-          displayName: 'FIO Sequential Results'
+            echo "Write test results"
+            cat file_block_write.txt
+            echo "----------------------"
+            echo "Read test results"
+            cat file_block_read.txt
+          displayName: 'Block-File Compare Test'
           workingDirectory: $(WORK_DIR)
 
+        # --------------------------------------------------------------------------------------------
+        # FIO Tests
         - script: |
             chmod 777 ./test/scripts/fio.sh
             rm -rf $(MOUNT_DIR)/fio/*
