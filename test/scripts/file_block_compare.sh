@@ -18,7 +18,7 @@ chmod 777 $mntPath
 # ------------------------------------------------------------------------------------------------------------------
 # Clean up for new test
 echo "Cleaning up old data"
-./blobfuse2 mount $mntPath --config-file=$v2configPath --block-cache-block-size=32 --file-cache-timeout=0
+./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
 sleep 3
 rm -rf $mntPath/$dataPath/*
 mkdir $mntPath/$dataPath
@@ -48,7 +48,7 @@ then
         sed_line=3
 
         echo "Running creation with $v2configPath"
-        ./blobfuse2 mount $mntPath --config-file=$v2configPath --block-cache-block-size=32 --file-cache-timeout=0
+        ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
         if [ $? -ne 0 ]; then
             exit 1
         fi
@@ -109,7 +109,7 @@ do
         echo "Blobfuse2 Run with $thread threads, $block block size, $file file size"
         
         # Mount Blobfuse2
-        ./blobfuse2 mount $mntPath --config-file=$v2configPath --block-cache-prefetch-on-open=true --block-cache-block-size=$block --file-cache-timeout=0
+        ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
         if [ $? -ne 0 ]; then
             exit 1
         fi
