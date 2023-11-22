@@ -167,7 +167,10 @@ azstorage:
   max-results-for-list: <maximum number of results returned in a single list API call while getting file attributes. Default - 2>
   telemetry : <additional information that customer want to push in user-agent>
   honour-acl: true|false <honour ACLs on files and directories when mounted using MSI Auth and object-ID is provided in config>
-  
+  cpk-enabled: true|false <enable client provided key encryption>
+  cpk-encryption-key: <customer provided base64-encoded AES-256 encryption key value>
+  cpk-encryption-key-sha256:  <customer provided base64-encoded sha256 of the encryption key>
+
 # Mount all configuration
 mountall:
   # allowlist takes precedence over denylist in case of conflicts

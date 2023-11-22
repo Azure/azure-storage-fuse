@@ -67,14 +67,17 @@ type storageTestConfiguration struct {
 	AdlsSas            string `json:"adls-sas"`
 	// AdlsDirSasUbn18    string `json:"adls-dir-sas-ubn-18"`
 	// AdlsDirSasUbn20    string `json:"adls-dir-sas-ubn-20"`
-	MsiAppId        string `json:"msi-appid"`
-	MsiResId        string `json:"msi-resid"`
-	MsiObjId        string `json:"msi-objid"`
-	SpnClientId     string `json:"spn-client"`
-	SpnTenantId     string `json:"spn-tenant"`
-	SpnClientSecret string `json:"spn-secret"`
-	SkipMsi         bool   `json:"skip-msi"`
-	ProxyAddress    string `json:"proxy-address"`
+	MsiAppId               string `json:"msi-appid"`
+	MsiResId               string `json:"msi-resid"`
+	MsiObjId               string `json:"msi-objid"`
+	SpnClientId            string `json:"spn-client"`
+	SpnTenantId            string `json:"spn-tenant"`
+	SpnClientSecret        string `json:"spn-secret"`
+	SkipMsi                bool   `json:"skip-msi"`
+	ProxyAddress           string `json:"proxy-address"`
+	CPKEnabled             bool   `json:"cpk-enabled"`
+	CPKEncryptionKey       string `json:"cpk-encryption-key"`
+	CPKEncryptionKeySha256 string `json:"cpk-encryption-key-sha256"`
 }
 
 var storageTestConfigurationParameters storageTestConfiguration

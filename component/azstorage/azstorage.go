@@ -644,6 +644,9 @@ func init() {
 	config.BindPFlag(compName+".honour-acl", honourACL)
 	honourACL.Hidden = true
 
+	cpkEnabled := config.AddBoolFlag("cpk-enabled", false, "Enable client provided key.")
+	config.BindPFlag(compName+".cpk-enabled", cpkEnabled)
+
 	config.RegisterFlagCompletionFunc("container-name", func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	})
