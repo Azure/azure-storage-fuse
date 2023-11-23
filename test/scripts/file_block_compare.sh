@@ -57,17 +57,20 @@ do
     # Wait for mount to stabilize
     sleep 3
 
+    sudo sysctl -w vm.drop_caches=3
     for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
     do
         
         echo "Creating: " $file
         dd if=/dev/urandom of=$mntPath/$dataPath/${fileBaseName}_${file}.data bs=1M count=$file 2> temp.tst
-        cat temp.tst
+        # cat temp.tst
         write_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
         write_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
         
         sed -i "${sed_line}s/$/ ${write_speed} | ${write_time} |/" $outputPath
         (( sed_line++ ))
+
+        sleep 2
     done
     ./blobfuse2 unmount all
 
@@ -81,13 +84,14 @@ cat $outputPath
 # Generate report format
 echo "Going for Read tests with dd"
 outputPath="./file_block_read_dd.txt"
-echo "| Block Size (MB) | File Size (MB) | Block Cache Speed | Block Cache Time | File Cache Speed | File Cache Time |" > $outputPath
-echo "| -- | -- | -- | -- | -- | -- |" >> $outputPath
+echo "| File Size (MB) | Block Cache Speed | Block Cache Time | File Cache Speed | File Cache Time |" > $outputPath
+echo "| -- | -- | -- | -- | -- |" >> $outputPath
 
 # Generate the test case data
-while IFS=, read -r block file; do
-    echo "| ${block} | ${file} |" >> $outputPath
-done < <(cat ./test/scripts/fio_tests.csv  | tail -n +3 | cut -d "," -f2,3 | sort -u)
+for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
+do
+    echo "| ${file} |" >> $outputPath
+done 
 
 # Execute the Sequential read FIO test
 for v2configPath in $blockConfigPath $fileConfigPath;
@@ -105,18 +109,23 @@ do
 
     # Wait for mount to stabilize
     sleep 3
+    sudo sysctl -w vm.drop_caches=3
 
-    while IFS=, read -r block file; do
+    for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
+    do
         echo "Blobfuse2 Run with $block block size, $file file size"
 
-        dd of=/dev/null if=$mntPath/$dataPath/${fileBaseName}_${file}.data bs=${block}M count=$file 2> temp.tst
-        cat temp.tst
+        dd of=/dev/null if=$mntPath/$dataPath/${fileBaseName}_${file}.data bs=1M count=$file 2> temp.tst
+        # cat temp.tst
+        
         read_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
         read_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
 
         sed -i "${sed_line}s/$/ ${read_speed} | ${read_time} |/" $outputPath
         (( sed_line++ ))
-    done < <(cat ./test/scripts/fio_tests.csv  | tail -n +3 | cut -d "," -f2,3 | sort -u)
+
+        sleep 2
+    done 
     
     ./blobfuse2 unmount all
 done
@@ -156,6 +165,9 @@ do
     sleep 3
 
     while IFS=, read -r thread block file; do
+    
+    	sudo sysctl -w vm.drop_caches=3
+
         echo "
         [global]
         ioengine=sync
@@ -176,6 +188,8 @@ do
 
         sed -i "${sed_line}s/$/ ${read_bw} | ${read_time} |/" $outputPath
         (( sed_line++ ))
+
+        sleep 2
     done < <(tail -n +3 ./test/scripts/fio_tests.csv)
 
     ./blobfuse2 unmount all

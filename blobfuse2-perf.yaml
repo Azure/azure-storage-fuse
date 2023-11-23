@@ -20,7 +20,7 @@ stages:
 - stage: ShortRunning
   jobs:
     - job: PerformanceEval
-      timeoutInMinutes: 240
+      timeoutInMinutes: 2800 # two day timeout
       strategy:
         matrix:
           Ubuntu-20:
