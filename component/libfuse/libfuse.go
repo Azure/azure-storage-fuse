@@ -73,6 +73,7 @@ type Libfuse struct {
 	lsFlags               common.BitMap16
 	maxFuseThreads        uint32
 	directIO              bool
+	umask                 uint32
 }
 
 // To support pagination in readdir calls this structure holds a block of items for a given directory
@@ -103,6 +104,7 @@ type LibfuseOptions struct {
 	Gid                     uint32 `config:"gid" yaml:"gid,omitempty"`
 	MaxFuseThreads          uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
 	DirectIO                bool   `config:"direct-io" yaml:"direct-io,omitempty"`
+	Umask                   uint32 `config:"umask" yaml:"umask,omitempty"`
 }
 
 const compName = "libfuse"
@@ -188,6 +190,9 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.ignoreOpenFlags = opt.IgnoreOpenFlags
 	lf.nonEmptyMount = opt.nonEmptyMount
 	lf.directIO = opt.DirectIO
+	lf.ownerGID = opt.Gid
+	lf.ownerUID = opt.Uid
+	lf.umask = opt.Umask
 
 	if opt.allowOther {
 		lf.dirPermission = uint(common.DefaultAllowOtherPermissionBits)
@@ -202,37 +207,32 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 		}
 	}
 
-	if config.IsSet(compName + ".entry-expiration-sec") {
+	if config.IsSet(compName+".entry-expiration-sec") || config.IsSet("lfuse.entry-expiration-sec") {
 		lf.entryExpiration = opt.EntryExpiration
 	} else {
 		lf.entryExpiration = defaultEntryExpiration
 	}
 
-	if config.IsSet(compName + ".attribute-expiration-sec") {
+	if config.IsSet(compName+".attribute-expiration-sec") || config.IsSet("lfuse.attribute-expiration-sec") {
 		lf.attributeExpiration = opt.AttributeExpiration
 	} else {
 		lf.attributeExpiration = defaultAttrExpiration
 	}
 
-	if config.IsSet(compName + ".negative-entry-expiration-sec") {
+	if config.IsSet(compName+".negative-entry-expiration-sec") || config.IsSet("lfuse.negative-entry-expiration-sec") {
 		lf.negativeTimeout = opt.NegativeEntryExpiration
 	} else {
 		lf.negativeTimeout = defaultNegativeEntryExpiration
 	}
 
-	var err error
-	lf.ownerUID, lf.ownerGID, err = common.GetCurrentUser()
-	if err != nil {
-		log.Err("Libfuse::Validate : config error [unable to obtain current user info]")
-		return nil
-	}
-
-	if config.IsSet(compName + ".uid") {
-		lf.ownerUID = opt.Uid
-	}
-
-	if config.IsSet(compName + ".gid") {
-		lf.ownerGID = opt.Gid
+	if !(config.IsSet(compName+".uid") || config.IsSet(compName+".gid") ||
+		config.IsSet("lfuse.uid") || config.IsSet("lfuse.gid")) {
+		var err error
+		lf.ownerUID, lf.ownerGID, err = common.GetCurrentUser()
+		if err != nil {
+			log.Err("Libfuse::Validate : config error [unable to obtain current user info]")
+			return nil
+		}
 	}
 
 	if config.IsSet(compName + ".max-fuse-threads") {

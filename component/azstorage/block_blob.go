@@ -402,6 +402,7 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 	log.Trace("BlockBlob::RenameDirectory : %s -> %s", source, target)
 
+	srcDirPresent := false
 	for marker := (azblob.Marker{}); marker.NotDone(); {
 		listBlob, err := bb.Container.ListBlobsFlatSegment(context.Background(), marker,
 			azblob.ListBlobsSegmentOptions{MaxResults: common.MaxDirListCount,
@@ -416,6 +417,7 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlob.Segment.BlobItems {
+			srcDirPresent = true
 			srcPath := split(bb.Config.prefixPath, blobInfo.Name)
 			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
 			if err != nil {
@@ -424,7 +426,13 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 		}
 	}
 
-	return bb.RenameFile(source, target)
+	err := bb.RenameFile(source, target)
+	// check if the marker blob for source directory does not exist but
+	// blobs were present in it, which were renamed earlier
+	if err == syscall.ENOENT && srcDirPresent {
+		err = nil
+	}
+	return err
 }
 
 func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
@@ -729,19 +737,17 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 
 // ReadBuffer : Download a specific range from a blob to a buffer
 func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, error) {
-	log.Trace("BlockBlob::ReadBuffer : name %s", name)
+	log.Trace("BlockBlob::ReadBuffer : name %s, offset %v, len %v", name, offset, len)
 	var buff []byte
 	if len == 0 {
-		len = azblob.CountToEnd
 		attr, err := bb.GetAttr(name)
 		if err != nil {
 			return buff, err
 		}
-		buff = make([]byte, attr.Size)
-	} else {
-		buff = make([]byte, len)
+		len = attr.Size - offset
 	}
 
+	buff = make([]byte, len)
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, buff, bb.downloadOptions)
 
@@ -984,12 +990,22 @@ func (bb *BlockBlob) createBlock(blockIdLength, startIndex, size int64) *common.
 }
 
 // create new blocks based on the offset and total length we're adding to the file
-func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, length int64) int64 {
+func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, length int64) (int64, error) {
 	blockSize := bb.Config.blockSize
 	prevIndex := blockList.BlockList[len(blockList.BlockList)-1].EndIndex
+	numOfBlocks := int64(len(blockList.BlockList))
 	if blockSize == 0 {
 		blockSize = (16 * 1024 * 1024)
+		if math.Ceil((float64)(numOfBlocks)+(float64)(length)/(float64)(blockSize)) > azblob.BlockBlobMaxBlocks {
+			blockSize = int64(math.Ceil((float64)(length) / (float64)(azblob.BlockBlobMaxBlocks-numOfBlocks)))
+			if blockSize > azblob.BlockBlobMaxStageBlockBytes {
+				return 0, errors.New("Cannot accommodate data within the block limit")
+			}
+		}
+	} else if math.Ceil((float64)(numOfBlocks)+(float64)(length)/(float64)(blockSize)) > azblob.BlockBlobMaxBlocks {
+		return 0, errors.New("Cannot accommodate data within the block limit with configured block-size")
 	}
+
 	// BufferSize is the size of the buffer that will go beyond our current blob (appended)
 	var bufferSize int64
 	for i := prevIndex; i < offset+length; i += blockSize {
@@ -999,7 +1015,7 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 		// reset the counter to determine if there are leftovers at the end
 		bufferSize += blkSize
 	}
-	return bufferSize
+	return bufferSize, nil
 }
 
 func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64, name string) *common.BlockOffsetList {
@@ -1021,8 +1037,10 @@ func (bb *BlockBlob) removeBlocks(blockList *common.BlockOffsetList, size int64,
 		}
 
 	}
-
+	blk := blockList.BlockList[index]
+	blk.Flags.Set(common.RemovedBlocks)
 	blockList.BlockList = blockList.BlockList[:index+1]
+
 	return blockList
 }
 
@@ -1043,56 +1061,72 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 		}
 		return err
 	}
-	bol, err := bb.GetFileBlockOffsets(name)
-	if err != nil {
-		log.Err("BlockBlob::TruncateFile : Failed to get block list of file %s [%s]", name, err.Error())
-		return err
-	}
-	// if the file consists of blocks
-	if !bol.SmallFile() {
-		if size > attr.Size {
-			bb.createNewBlocks(bol, bol.BlockList[len(bol.BlockList)-1].EndIndex, size-attr.Size)
-		} else if size < attr.Size {
-			bol = bb.removeBlocks(bol, size, name)
-		}
-		err = bb.StageAndCommit(name, bol)
-		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to truncate file %s", name, err.Error())
-			return err
-		}
-	} else {
-		// if its a small file (no blocks)
-		data, err := bb.ReadBuffer(name, 0, 0)
+
+	//If new size is less than 256MB
+	if size < azblob.BlockBlobMaxUploadBlobBytes {
+		data, err := bb.HandleSmallFile(name, size, attr.Size)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
 			return err
 		}
-		if size > attr.Size {
-			// if expanding - convert the file to blocks
-			blk := &common.Block{
-				StartIndex: 0,
-				EndIndex:   attr.Size,
-				Data:       data,
-				Id:         base64.StdEncoding.EncodeToString(common.NewUUID().Bytes()),
-			}
-			blk.Flags.Set(common.DirtyBlock)
-			bol.Flags.Clear(common.SmallFile)
-
-			bol.BlockList = append(bol.BlockList, blk)
-			bol.BlockIdLength = common.GetIdLength(blk.Id)
-			bb.createNewBlocks(bol, bol.BlockList[len(bol.BlockList)-1].EndIndex, size-attr.Size)
-		} else if size < attr.Size {
-			// if shrinking just adjust the size
-			data = data[0:size]
-			return bb.WriteFromBuffer(name, nil, data)
-		}
-		err = bb.StageAndCommit(name, bol)
+		err = bb.WriteFromBuffer(name, nil, data)
 		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to truncate file %s", name, err.Error())
+			log.Err("BlockBlob::TruncateFile : Failed to write from buffer file %s", name, err.Error())
 			return err
 		}
+	} else {
+		bol, err := bb.GetFileBlockOffsets(name)
+		if err != nil {
+			log.Err("BlockBlob::TruncateFile : Failed to get block list of file %s [%s]", name, err.Error())
+			return err
+		}
+		if bol.SmallFile() {
+			data, err := bb.HandleSmallFile(name, size, attr.Size)
+			if err != nil {
+				log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
+				return err
+			}
+			err = bb.WriteFromBuffer(name, nil, data)
+			if err != nil {
+				log.Err("BlockBlob::TruncateFile : Failed to write from buffer file %s", name, err.Error())
+				return err
+			}
+		} else {
+			if size < attr.Size {
+				bol = bb.removeBlocks(bol, size, name)
+			} else if size > attr.Size {
+				_, err = bb.createNewBlocks(bol, bol.BlockList[len(bol.BlockList)-1].EndIndex, size-attr.Size)
+				if err != nil {
+					log.Err("BlockBlob::TruncateFile : Failed to create new blocks for file %s", name, err.Error())
+					return err
+				}
+			}
+			err = bb.StageAndCommit(name, bol)
+			if err != nil {
+				log.Err("BlockBlob::TruncateFile : Failed to stage and commit file %s", name, err.Error())
+				return err
+			}
+		}
 	}
+
 	return nil
+}
+
+func (bb *BlockBlob) HandleSmallFile(name string, size int64, originalSize int64) ([]byte, error) {
+	var data = make([]byte, size)
+	var err error
+	if size > originalSize {
+		err = bb.ReadInBuffer(name, 0, 0, data)
+		if err != nil {
+			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
+		}
+	} else {
+		err = bb.ReadInBuffer(name, 0, size, data)
+		if err != nil {
+			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())
+		}
+	}
+	return data, err
 }
 
 // Write : write data at given offset to a blob
@@ -1152,7 +1186,11 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 		newBufferSize := int64(0)
 		// case 3?
 		if exceedsFileBlocks {
-			newBufferSize = bb.createNewBlocks(fileOffsets, offset, length)
+			newBufferSize, err = bb.createNewBlocks(fileOffsets, offset, length)
+			if err != nil {
+				log.Err("BlockBlob::Write : Failed to create new blocks for file %s", name, err.Error())
+				return err
+			}
 		}
 		// buffer that holds that pre-existing data in those blocks we're interested in
 		oldDataBuffer := make([]byte, oldDataSize+newBufferSize)
@@ -1239,6 +1277,8 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 			}
 			staged = true
 			blk.Flags.Clear(common.DirtyBlock)
+		} else if blk.Removed() {
+			staged = true
 		}
 	}
 	if staged {

@@ -124,6 +124,36 @@ func (suite *dataValidationTestSuite) validateData(localFilePath string, remoteF
 
 // -------------- Data Validation Tests -------------------
 
+// Test correct overwrite of file using echo command
+func (suite *dataValidationTestSuite) TestFileOverwriteWithEchoCommand() {
+
+	if strings.Contains(strings.ToUpper(distro), "UBUNTU-20.04") {
+		fmt.Println("Skipping this test case for UBUNTU-20.04")
+		return
+	}
+
+	remoteFilePath := filepath.Join(suite.testMntPath, "TESTFORECHO.txt")
+	text := "Hello, this is a test."
+	command := "echo \"" + text + "\" > " + remoteFilePath
+	cmd := exec.Command("/bin/bash", "-c", command)
+	_, err := cmd.Output()
+	suite.Equal(err, nil)
+
+	data, err := os.ReadFile(remoteFilePath)
+	suite.Nil(err)
+	suite.Equal(string(data), text+"\n")
+
+	newtext := "End of test."
+	newcommand := "echo \"" + newtext + "\" > " + remoteFilePath
+	newcmd := exec.Command("/bin/bash", "-c", newcommand)
+	_, err = newcmd.Output()
+	suite.Equal(err, nil)
+
+	data, err = os.ReadFile(remoteFilePath)
+	suite.Nil(err)
+	suite.Equal(string(data), newtext+"\n")
+}
+
 // data validation for small sized files
 func (suite *dataValidationTestSuite) TestSmallFileData() {
 	fileName := "small_data.txt"

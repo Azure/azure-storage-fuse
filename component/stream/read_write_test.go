@@ -643,14 +643,12 @@ func (suite *streamTestSuite) TestCreateFile() {
 
 	handle1 := &handlemap.Handle{Size: 0, Path: fileNames[0]}
 	createFileoptions := internal.CreateFileOptions{Name: handle1.Path, Mode: 0777}
-	getFileBlockOffsetsOptions := internal.GetFileBlockOffsetsOptions{Name: fileNames[0]}
 	bol := &common.BlockOffsetList{
 		BlockList: []*common.Block{},
 	}
 	bol.Flags.Set(common.SmallFile)
 
 	suite.mock.EXPECT().CreateFile(createFileoptions).Return(handle1, nil)
-	suite.mock.EXPECT().GetFileBlockOffsets(getFileBlockOffsetsOptions).Return(bol, nil)
 	_, _ = suite.stream.CreateFile(createFileoptions)
 	assertHandleNotStreamOnly(suite, handle1)
 }

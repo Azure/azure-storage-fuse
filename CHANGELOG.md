@@ -1,4 +1,13 @@
-## 2.1.1 (WIP)
+## 2.1.2 (2023-11-17)
+**Bug Fixes**
+- [#1243](https://github.com/Azure/azure-storage-fuse/issues/1243) Fixed issue where symlink was not working for ADLS accounts.
+- [#1259](https://github.com/Azure/azure-storage-fuse/issues/1259) sync-to-flush will force upload the file contents to container.
+- [#1285](https://github.com/Azure/azure-storage-fuse/issues/1285) Rename directory fails for blob accounts when marker blob does not exist for source directory.
+- [#1284](https://github.com/Azure/azure-storage-fuse/issues/1284) Fixed truncate behaviour for streaming write.
+- [#1142](https://github.com/Azure/azure-storage-fuse/issues/1142) Fixed truncate behaviour for streaming write.
+- Randomize token refresh interval for MSI and SPN to support multi-instance deployment.
+
+## 2.1.1 (2023-10-31)
 **Bug Fixes**
 - [#1237](https://github.com/Azure/azure-storage-fuse/issues/1237) Fixed the case sensitivity of content type for file extensions.
 - [#1230](https://github.com/Azure/azure-storage-fuse/issues/1230) Disable deletion of files from local-cache on sync. Use `--ignore-sync` cli option to enable this.
@@ -6,6 +15,8 @@
 - SAS token is redacted in logs for rename api over dfs endpoint
 - Allow user to configure custom AAD endpoint using MSI_ENPOINT environment variable for MSI based authentication
 - Fail mount if block-cache prefetch count exceeds the defined memory limits.
+- uid/gid supplied as CLI parameters will be shown as actual user/group while listing files.
+- Corrected handling of `umask` libfuse option.
 
 **Optimizations**
 - Optimized file-cache to skip download when O_TRUNC flag is provided in open call.

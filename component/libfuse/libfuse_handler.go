@@ -111,6 +111,8 @@ func (lf *Libfuse) convertConfig() *C.fuse_options_t {
 	fuse_opts.allow_root = C.bool(lf.allowRoot)
 	fuse_opts.trace_enable = C.bool(lf.traceEnable)
 	fuse_opts.non_empty = C.bool(lf.nonEmptyMount)
+	fuse_opts.umask = C.int(lf.umask)
+
 	return fuse_opts
 }
 
@@ -214,6 +216,10 @@ func populateFuseArgs(opts *C.fuse_options_t, args *C.fuse_args_t) (*C.fuse_opti
 
 	if opts.readonly {
 		options += ",ro"
+	}
+
+	if opts.umask != 0 {
+		options += fmt.Sprintf(",umask=%04d", opts.umask)
 	}
 
 	options += ",max_read=1048576"
@@ -788,7 +794,6 @@ func libfuse_flush(path *C.char, fi *C.fuse_file_info_t) C.int {
 	handle := (*handlemap.Handle)(unsafe.Pointer(uintptr(fileHandle.obj)))
 	log.Trace("Libfuse::libfuse_flush : %s, handle: %d", handle.Path, handle.ID)
 
-	// If the file handle is not dirty, there is no need to flush
 	// If the file handle is not dirty, there is no need to flush
 	if fileHandle.dirty != 0 {
 		handle.Flags.Set(handlemap.HandleFlagDirty)

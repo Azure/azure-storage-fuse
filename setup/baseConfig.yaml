@@ -162,7 +162,7 @@ azstorage:
   auth-resource: <resource string to be used during OAuth token retrieval>
   update-md5: true|false <set md5 sum on upload. Impacts performance. works only when file-cache component is part of the pipeline>
   validate-md5: true|false <validate md5 on download. Impacts performance. works only when file-cache component is part of the pipeline>
-  virtual-directory: true|false <support virtual directories without existence of a special marker blob>
+  virtual-directory: true|false <support virtual directories without existence of a special marker blob. Default - true>
   disable-compression: true|false <disable transport layer content encoding like gzip, set this flag to true if blobs have content-encoding set in container>
   max-results-for-list: <maximum number of results returned in a single list API call while getting file attributes. Default - 2>
   telemetry : <additional information that customer want to push in user-agent>
