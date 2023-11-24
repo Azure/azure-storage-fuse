@@ -57,16 +57,19 @@ do
     # Wait for mount to stabilize
     sleep 3
 
-    sudo sysctl -w vm.drop_caches=3
     for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
     do
+        sudo sysctl -w vm.drop_caches=3
         
         echo "Creating: " $file
         dd if=/dev/urandom of=$mntPath/$dataPath/${fileBaseName}_${file}.data bs=1M count=$file 2> temp.tst
-        # cat temp.tst
+        
         write_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
         write_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
         
+        cat temp.tst
+        cat "Write Speed ${write_speed} Write Time ${write_time}"
+
         sed -i "${sed_line}s/$/ ${write_speed}/s | ${write_time} |/" $outputPath
         (( sed_line++ ))
 
@@ -127,10 +130,12 @@ do
         echo "Blobfuse2 Run with $thread threads, $block block size, $file file size"
 
         fio_result=`fio fio_temp.cfg | tail -1`
-        echo $fio_result
         read_bw=$(echo $fio_result | sed -e "s/^.*\(bw=[^ ,]*\).*$/\1/" | cut -d "=" -f 2 | cut -d "/" -f1)
         read_time=$(echo $fio_result | sed -e "s/^.*\(run=[^ ,]*\).*$/\1/" | cut -d "-" -f 2)
 
+        echo $fio_result
+        echo "Read Speed ${read_bw} Read Time ${read_time}"
+        
         sed -i "${sed_line}s/$/ ${read_bw} | ${read_time} |/" $outputPath
         (( sed_line++ ))
 
