@@ -1,3 +1,7 @@
+## 2.1.3 (Unreleased)
+**Bug Fixes**
+- Invalidate attribute cache entry on `PathAlreadyExists` error in create directory operation.
+
 ## 2.1.2 (2023-11-17)
 **Bug Fixes**
 - [#1243](https://github.com/Azure/azure-storage-fuse/issues/1243) Fixed issue where symlink was not working for ADLS accounts.
