@@ -430,6 +430,8 @@ func libfuse_mkdir(path *C.char, mode C.mode_t) C.int {
 		log.Err("Libfuse::libfuse2_mkdir : Failed to create %s [%s]", name, err.Error())
 		if os.IsPermission(err) {
 			return -C.EACCES
+		} else if os.IsExist(err) {
+			return -C.EEXIST
 		} else {
 			return -C.EIO
 		}

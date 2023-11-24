@@ -232,7 +232,7 @@ func (ac *AttrCache) CreateDir(options internal.CreateDirOptions) error {
 	log.Trace("AttrCache::CreateDir : %s", options.Name)
 	err := ac.NextComponent().CreateDir(options)
 
-	if err == nil {
+	if err == nil || err == syscall.EEXIST {
 		ac.cacheLock.RLock()
 		defer ac.cacheLock.RUnlock()
 		ac.invalidatePath(options.Name)
