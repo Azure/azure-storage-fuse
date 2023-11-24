@@ -67,7 +67,7 @@ do
         write_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
         write_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
         
-        sed -i "${sed_line}s/$/ ${write_speed} | ${write_time} |/" $outputPath
+        sed -i "${sed_line}s/$/ ${write_speed}/s | ${write_time} |/" $outputPath
         (( sed_line++ ))
 
         sleep 2
@@ -77,61 +77,6 @@ do
 done
 echo "| -- | -- | -- |" >> $outputPath
 cat $outputPath
-
-# ------------------------------------------------------------------------------------------------------------------
-
-# Read test with dd command
-# Generate report format
-echo "Going for Read tests with dd"
-outputPath="./file_block_read_dd.txt"
-echo "| File Size (MB) | Block Cache Speed | Block Cache Time | File Cache Speed | File Cache Time |" > $outputPath
-echo "| -- | -- | -- | -- | -- |" >> $outputPath
-
-# Generate the test case data
-for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
-do
-    echo "| ${file} |" >> $outputPath
-done 
-
-# Execute the Sequential read FIO test
-for v2configPath in $blockConfigPath $fileConfigPath;
-do
-    sed_line=3
-    echo "Running read test with $v2configPath"
-
-    fileBaseName=$(basename $v2configPath | cut -d "." -f1)
-
-    # Mount Blobfuse2
-    ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
-    if [ $? -ne 0 ]; then
-        exit 1
-    fi
-
-    # Wait for mount to stabilize
-    sleep 3
-    sudo sysctl -w vm.drop_caches=3
-
-    for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
-    do
-        echo "Blobfuse2 Run with $block block size, $file file size"
-
-        dd of=/dev/null if=$mntPath/$dataPath/${fileBaseName}_${file}.data bs=1M count=$file 2> temp.tst
-        # cat temp.tst
-        
-        read_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
-        read_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
-
-        sed -i "${sed_line}s/$/ ${read_speed} | ${read_time} |/" $outputPath
-        (( sed_line++ ))
-
-        sleep 2
-    done 
-    
-    ./blobfuse2 unmount all
-done
-echo "| -- | -- | -- | -- | -- | -- |" >> $outputPath
-cat $outputPath
-
 
 # ------------------------------------------------------------------------------------------------------------------
 
@@ -196,6 +141,67 @@ do
 done
 echo "| -- | -- | -- | -- | -- | -- | -- |" >> $outputPath
 cat $outputPath
+# ------------------------------------------------------------------------------------------------------------------
+
+
+# Read test with dd command
+# Generate report format
+
+# NOTE : Commenting DD based read case as dd tends to be random in nature as in it tries to read multiple blocks
+# from different positions in parlallel. This is not a sequential read test. Doing random read on 100gb file will be
+# very slow and will not be a good test case for blobfuse2.
+
+# echo "Going for Read tests with dd"
+# outputPath="./file_block_read_dd.txt"
+# echo "| File Size (MB) | Block Cache Speed | Block Cache Time | File Cache Speed | File Cache Time |" > $outputPath
+# echo "| -- | -- | -- | -- | -- |" >> $outputPath
+
+# # Generate the test case data
+# for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
+# do
+#     echo "| ${file} |" >> $outputPath
+# done 
+
+# # Execute the Sequential read FIO test
+# for v2configPath in $blockConfigPath $fileConfigPath;
+# do
+#     sed_line=3
+#     echo "Running read test with $v2configPath"
+
+#     fileBaseName=$(basename $v2configPath | cut -d "." -f1)
+
+#     # Mount Blobfuse2
+#     ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
+#     if [ $? -ne 0 ]; then
+#         exit 1
+#     fi
+
+#     # Wait for mount to stabilize
+#     sleep 3
+#     sudo sysctl -w vm.drop_caches=3
+
+#     for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
+#     do
+#         echo "Blobfuse2 Run with $block block size, $file file size"
+
+#         dd of=/dev/null if=$mntPath/$dataPath/${fileBaseName}_${file}.data bs=1M count=$file 2> temp.tst
+#         # cat temp.tst
+        
+#         read_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
+#         read_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
+
+#         sed -i "${sed_line}s/$/ ${read_speed} | ${read_time} |/" $outputPath
+#         (( sed_line++ ))
+
+#         sleep 2
+#     done 
+    
+#     ./blobfuse2 unmount all
+# done
+# echo "| -- | -- | -- | -- | -- | -- |" >> $outputPath
+# cat $outputPath
+
+
 # ------------------------------------------------------------------------------------------------------------------
 
 
