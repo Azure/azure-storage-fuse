@@ -270,6 +270,9 @@ func (dl *Datalake) CreateDirectory(name string) error {
 		if serr == InvalidPermission {
 			log.Err("Datalake::CreateDirectory : Insufficient permissions for %s [%s]", name, err.Error())
 			return syscall.EACCES
+		} else if serr == ErrFileAlreadyExists {
+			log.Err("Datalake::CreateDirectory : Path already exists for %s [%s]", name, err.Error())
+			return syscall.EEXIST
 		} else {
 			log.Err("Datalake::CreateDirectory : Failed to create directory %s [%s]", name, err.Error())
 			return err
