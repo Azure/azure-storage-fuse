@@ -46,6 +46,7 @@ type Block struct {
 	endIndex uint64        // Length of the data this block holds
 	state    chan int      // Channel depicting data has been read for this block or not
 	dirty    bool          // Dirty flag to indicate if this block has been modified
+	failed   bool          // Failed flag to indicate download of this block has failed
 	data     []byte        // Data read from blob
 	node     *list.Element // node representation of this block in the list inside handle
 }
@@ -64,10 +65,12 @@ func AllocateBlock(size uint64) (*Block, error) {
 	}
 
 	return &Block{
-		data:  addr,
-		state: nil,
-		id:    -1,
-		node:  nil,
+		data:   addr,
+		state:  nil,
+		id:     -1,
+		node:   nil,
+		failed: false,
+		dirty:  false,
 	}, nil
 
 	// we do not create channel here, as that will be created when buffer is retrieved
@@ -95,6 +98,8 @@ func (b *Block) ReUse() {
 	b.id = -1
 	b.offset = 0
 	b.endIndex = 0
+	b.dirty = false
+	b.failed = false
 	b.state = make(chan int, 1)
 }
 
@@ -131,4 +136,14 @@ func (b *Block) NoMoreDirty() {
 // Check if this block has been modified or not
 func (b *Block) IsDirty() bool {
 	return b.dirty
+}
+
+// Mark this block as failed
+func (b *Block) Failed() {
+	b.failed = true
+}
+
+// Check this block as failed
+func (b *Block) IsFailed() bool {
+	return b.failed
 }

@@ -772,7 +772,11 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	opt := bb.downloadOptions
 	opt.BlockSize = len
-	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, data, opt)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	err := azblob.DownloadBlobToBuffer(ctx, blobURL, offset, len, data, opt)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)

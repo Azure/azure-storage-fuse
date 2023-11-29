@@ -512,6 +512,17 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	t = <-block.state
 
 	if t == 1 {
+		if block.IsFailed() {
+			log.Err("BlockCache::getBlock : Failed to download block %v=>%s (offset %v, index %v)", handle.ID, handle.Path, readoffset, index)
+
+			// Remove this node from handle so that next read retries to download the block again
+			_ = handle.Buffers.Cooking.Remove(block.node)
+			handle.RemoveValue(fmt.Sprintf("%v", block.id))
+			block.ReUse()
+			bc.blockPool.Release(block)
+			return nil, fmt.Errorf("failed to download block")
+		}
+
 		// Download complete and you are first reader of this block
 		if handle.OptCnt <= MIN_RANDREAD {
 			// So far this file has been read sequentially so prefetch more
@@ -549,7 +560,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 
 		if currentCnt > MIN_PREFETCH {
 			// As this file is in random read mode now, release the excess buffers. Just keep 5 buffers for it to work
-			log.Debug("BlockCache::startPrefetch : Cleanup excessive blocks  %v=>%s index %v", handle.ID, handle.Path, index)
+			log.Info("BlockCache::startPrefetch : Cleanup excessive blocks  %v=>%s index %v", handle.ID, handle.Path, index)
 
 			// As this is random read move all in process blocks to free list
 			nodeList := handle.Buffers.Cooking
@@ -766,6 +777,8 @@ func (bc *BlockCache) download(item *workItem) {
 	if item.failCnt > MAX_FAIL_CNT {
 		// If we failed to read the data 3 times then just give up
 		log.Err("BlockCache::download : 3 attempts to download a block have failed %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
+		item.block.Failed()
+		item.block.Ready()
 		return
 	}
 
@@ -975,9 +988,14 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 			_, open := <-block.state
 			if open {
 				log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block upload complete block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-				safeToRemove = true
+				if block.IsFailed() {
+					_ = handle.Buffers.Cooked.Remove(block.node)
+					block.node = handle.Buffers.Cooking.PushFront(block)
+				} else {
+					safeToRemove = true
+					cnt--
+				}
 				block.Unblock()
-				cnt--
 			}
 		} else {
 			// Check upload is complete or not but do not wait for it to complete
@@ -985,9 +1003,14 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 			case _, open := <-block.state:
 				if open {
 					log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block upload complete block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-					safeToRemove = true
+					if block.IsFailed() {
+						_ = handle.Buffers.Cooked.Remove(block.node)
+						block.node = handle.Buffers.Cooking.PushFront(block)
+					} else {
+						safeToRemove = true
+						cnt--
+					}
 					block.Unblock()
-					cnt--
 				}
 			default:
 				//log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block still under upload skipping it. block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
@@ -1031,6 +1054,8 @@ func (bc *BlockCache) upload(item *workItem) {
 		if item.failCnt > MAX_FAIL_CNT {
 			// If we failed to write the data 3 times then just give up
 			log.Err("BlockCache::upload : 3 attempts to upload a block have failed %v=>%s (index %v, offset %v)", item.handle.ID, item.handle.Path, item.block.id, item.block.offset)
+			item.block.Failed()
+			item.block.Ready()
 			return
 		}
 

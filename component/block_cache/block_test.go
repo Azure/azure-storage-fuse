@@ -217,6 +217,9 @@ func (suite *blockTestSuite) TestWriter() {
 	b.Dirty()
 	suite.assert.True(b.IsDirty())
 
+	b.Failed()
+	suite.assert.True(b.IsDirty())
+
 	b.NoMoreDirty()
 	suite.assert.False(b.IsDirty())
 
