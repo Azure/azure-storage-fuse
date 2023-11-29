@@ -171,14 +171,15 @@ stages:
           workingDirectory: $(WORK_DIR)
 
         - script: |
-            echo "Write test results"
+            echo "-----------------------------------------------------------------------------"        
+            echo "Write test results with dd"
             echo "-----------------------------------------------------------------------------"
             cat file_block_write.txt
             echo .
-            echo "-----------------------------------------------------------------------------"
-            echo "Read test results with dd"
-            cat file_block_read_dd.txt
-            echo .
+            # echo "-----------------------------------------------------------------------------"
+            # echo "Read test results with dd"
+            # cat file_block_read_dd.txt
+            # echo .
             echo "-----------------------------------------------------------------------------"
             echo "Read test results with FIO"
             echo "-----------------------------------------------------------------------------"

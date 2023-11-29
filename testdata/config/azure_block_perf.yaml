@@ -17,9 +17,9 @@ libfuse:
   ignore-open-flags: true
 
 block_cache:
-  block-size-mb: 32
+  block-size-mb: 16
   mem-size-mb: 4096
-  prefetch: 28
+  prefetch: 120
   parallelism: 128
   prefetch-on-open: true
 
