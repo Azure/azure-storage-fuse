@@ -37,18 +37,27 @@ import (
 	"container/list"
 	"fmt"
 	"syscall"
+
+	"github.com/Azure/azure-storage-fuse/v2/common"
+)
+
+// Various flags denoting state of a block
+const (
+	BlockFlagFresh  uint16 = iota
+	BlockFlagDirty         // Block has been written and data is not persisted yet
+	BlockFlagFailed        // Block upload/download has failed
+	BlockFlagSynced        // Block has been synced to the container
 )
 
 // Block is a memory mapped buffer with its state to hold data
 type Block struct {
-	offset   uint64        // Start offset of the data this block holds
-	id       int64         // Id of the block i.e. (offset / block size)
-	endIndex uint64        // Length of the data this block holds
-	state    chan int      // Channel depicting data has been read for this block or not
-	dirty    bool          // Dirty flag to indicate if this block has been modified
-	failed   bool          // Failed flag to indicate download of this block has failed
-	data     []byte        // Data read from blob
-	node     *list.Element // node representation of this block in the list inside handle
+	offset   uint64          // Start offset of the data this block holds
+	id       int64           // Id of the block i.e. (offset / block size)
+	endIndex uint64          // Length of the data this block holds
+	state    chan int        // Channel depicting data has been read for this block or not
+	flags    common.BitMap16 // Various states of the block
+	data     []byte          // Data read from blob
+	node     *list.Element   // node representation of this block in the list inside handle
 }
 
 // AllocateBlock creates a new memory mapped buffer for the given size
@@ -64,17 +73,17 @@ func AllocateBlock(size uint64) (*Block, error) {
 		return nil, fmt.Errorf("mmap error: %v", err)
 	}
 
-	return &Block{
-		data:   addr,
-		state:  nil,
-		id:     -1,
-		node:   nil,
-		failed: false,
-		dirty:  false,
-	}, nil
+	block := &Block{
+		data:  addr,
+		state: nil,
+		id:    -1,
+		node:  nil,
+	}
 
 	// we do not create channel here, as that will be created when buffer is retrieved
 	// reinit will always be called before use and that will create the channel as well.
+	block.flags.Set(BlockFlagFresh)
+	return block, nil
 }
 
 // Delete cleans up the memory mapped buffer
@@ -96,10 +105,10 @@ func (b *Block) Delete() error {
 // ReUse reinits the Block by recreating its channel
 func (b *Block) ReUse() {
 	b.id = -1
+	b.node = nil
 	b.offset = 0
 	b.endIndex = 0
-	b.dirty = false
-	b.failed = false
+	b.flags.Set(BlockFlagFresh)
 	b.state = make(chan int, 1)
 }
 
@@ -125,25 +134,40 @@ func (b *Block) Unblock() {
 
 // Mark this block as dirty as it has been modified
 func (b *Block) Dirty() {
-	b.dirty = true
+	b.flags.Set(BlockFlagDirty)
 }
 
 // Mark this block as dirty as it has been modified
 func (b *Block) NoMoreDirty() {
-	b.dirty = false
+	b.flags.Clear(BlockFlagDirty)
 }
 
 // Check if this block has been modified or not
 func (b *Block) IsDirty() bool {
-	return b.dirty
+	return b.flags.IsSet(BlockFlagDirty)
 }
 
 // Mark this block as failed
 func (b *Block) Failed() {
-	b.failed = true
+	b.flags.Set(BlockFlagFailed)
 }
 
 // Check this block as failed
 func (b *Block) IsFailed() bool {
-	return b.failed
+	return b.flags.IsSet(BlockFlagFailed)
+}
+
+// Mark this block as synced to storage
+func (b *Block) Synced() {
+	b.flags.Set(BlockFlagSynced)
+}
+
+// Mark this block as not synced to storage
+func (b *Block) ClearSynced() {
+	b.flags.Clear(BlockFlagSynced)
+}
+
+// Check this block is synced to storage
+func (b *Block) IsSynced() bool {
+	return b.flags.IsSet(BlockFlagSynced)
 }

@@ -70,7 +70,7 @@ do
         cat temp.tst
         cat "Write Speed ${write_speed} Write Time ${write_time}"
 
-        sed -i "${sed_line}s/$/ ${write_speed}/s | ${write_time} |/" $outputPath
+        sed -i "${sed_line}s/$/ ${write_speed}\/s | ${write_time} |/" $outputPath
         (( sed_line++ ))
 
         sleep 2
@@ -138,8 +138,6 @@ do
         
         sed -i "${sed_line}s/$/ ${read_bw} | ${read_time} |/" $outputPath
         (( sed_line++ ))
-
-        sleep 2
     done < <(tail -n +3 ./test/scripts/fio_tests.csv)
 
     ./blobfuse2 unmount all
@@ -195,7 +193,7 @@ cat $outputPath
 #         read_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
 #         read_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
 
-#         sed -i "${sed_line}s/$/ ${read_speed} | ${read_time} |/" $outputPath
+#         sed -i "${sed_line}s/$/ ${read_speed}\/s | ${read_time} |/" $outputPath
 #         (( sed_line++ ))
 
 #         sleep 2

@@ -208,6 +208,11 @@ func (lfs *LoopbackFS) RenameDir(options internal.RenameDirOptions) error {
 
 func (lfs *LoopbackFS) CreateFile(options internal.CreateFileOptions) (*handlemap.Handle, error) {
 	log.Trace("LoopbackFS::CreateFile : name=%s", options.Name)
+
+	if options.Name == "FailThis" {
+		return nil, fmt.Errorf("LoopbackFS::CreateFile : Failed to create file %s", options.Name)
+	}
+
 	path := filepath.Join(lfs.path, options.Name)
 
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_TRUNC, options.Mode)
@@ -461,7 +466,7 @@ func (lfs *LoopbackFS) Chown(options internal.ChownOptions) error {
 
 func (lfs *LoopbackFS) StageData(options internal.StageDataOptions) error {
 	log.Trace("LoopbackFS::StageData : name=%s, id=%s", options.Name, options.Id)
-	path := filepath.Join(lfs.path, options.Name+"_"+options.Id)
+	path := fmt.Sprintf("%s_%d_%s", filepath.Join(lfs.path, options.Name), options.Offset, strings.ReplaceAll(options.Id, "/", "_"))
 	return os.WriteFile(path, options.Data, 0777)
 }
 
@@ -470,30 +475,50 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 
 	mainFilepath := filepath.Join(lfs.path, options.Name)
 
-	blob, err := os.Create(mainFilepath)
+	blob, err := os.OpenFile(mainFilepath, os.O_RDWR, os.FileMode(0777))
 	if err != nil {
 		log.Err("LoopbackFS::CommitData : error opening [%s]", err)
 		return err
 	}
 
-	for _, id := range options.List {
-		path := filepath.Join(lfs.path, options.Name+"_"+id)
-		block, _ := os.OpenFile(path, os.O_RDONLY, os.FileMode(0666))
+	for idx, id := range options.List {
+		path := fmt.Sprintf("%s_%d_%s", filepath.Join(lfs.path, options.Name), idx, strings.ReplaceAll(id, "/", "_"))
+		info, err := os.Lstat(path)
+		if err == nil {
+			block, err := os.OpenFile(path, os.O_RDONLY, os.FileMode(0666))
+			if err != nil {
+				return err
+			}
 
-		info, _ := block.Stat()
-		data := make([]byte, info.Size())
-		n, err := block.Read(data)
-		if int64(n) != info.Size() {
-			log.Err("LoopbackFS::CommitData : error [could not read entire file]")
+			data := make([]byte, info.Size())
+			n, err := block.Read(data)
+			if int64(n) != info.Size() {
+				log.Err("LoopbackFS::CommitData : error [could not read entire file]")
+				return err
+			}
+
+			n, err = blob.WriteAt(data, int64(idx*(int)(options.BlockSize)))
+			if err != nil {
+				return err
+			}
+			if int64(n) != info.Size() {
+				log.Err("LoopbackFS::CommitData : error [could not write file]")
+				return err
+			}
+
+			err = block.Close()
+			if err != nil {
+				return err
+			}
+
+			_ = os.Remove(path)
+		} else if !os.IsNotExist(err) {
 			return err
 		}
-		_, _ = blob.Write(data)
-
-		_ = block.Close()
-		_ = os.Remove(path)
 	}
-	_ = blob.Close()
-	return nil
+
+	err = blob.Close()
+	return err
 }
 
 func NewLoopbackFSComponent() internal.Component {

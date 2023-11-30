@@ -190,14 +190,16 @@ type ChownOptions struct {
 }
 
 type StageDataOptions struct {
-	Name string
-	Id   string
-	Data []byte
+	Name   string
+	Id     string
+	Offset uint64
+	Data   []byte
 }
 
 type CommitDataOptions struct {
-	Name string
-	List []string
+	Name      string
+	List      []string
+	BlockSize uint64
 }
 
 func TruncateDirName(name string) string {

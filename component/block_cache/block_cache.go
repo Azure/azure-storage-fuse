@@ -314,9 +314,14 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 	// If file is opened in truncate mode then we can set the file size to 0
 	if options.Flags&os.O_TRUNC != 0 {
 		handle.Size = 0
+		handle.Flags.Set(handlemap.HandleFlagDirty)
 	} else {
 		handle.Size = attr.Size
 	}
+
+	// TODO : If there is read-write flag in the file then we need to
+	// get the existing block list and also validate block size of file is matching configured block size here or not
+	// Till this check comes in, block-cache shall be used only to create new files and not edit existing files
 
 	bc.prepareHandleForBlockCache(handle)
 
@@ -750,7 +755,7 @@ func (bc *BlockCache) download(item *workItem) {
 				log.Err("BlockCache::download : Failed to open file %s [%s]", fileName, err.Error())
 				_ = os.Remove(localPath)
 			} else {
-				_, err = f.Read(item.block.data)
+				n, err := f.Read(item.block.data)
 				if err != nil {
 					log.Err("BlockCache::download : Failed to read data from disk cache %s [%s]", fileName, err.Error())
 					f.Close()
@@ -760,6 +765,8 @@ func (bc *BlockCache) download(item *workItem) {
 				f.Close()
 				// We have read the data from disk so there is no need to go over network
 				// Just mark the block that download is complete
+
+				item.block.endIndex = item.block.offset + uint64(n)
 				item.block.Ready()
 				return
 			}
@@ -848,6 +855,10 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 		if block.endIndex < uint64(options.Offset) {
 			block.endIndex = uint64(options.Offset)
 		}
+
+		if block.endIndex > uint64(options.Handle.Size) {
+			options.Handle.Size = int64(block.endIndex)
+		}
 	}
 
 	if dataWritten > 0 {
@@ -868,37 +879,29 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 	node, found := handle.GetValue(fmt.Sprintf("%v", index))
 	if !found {
 		// Either the block is not fetched yet or offset goes beyond the file size
+		block = bc.blockPool.MustGet()
+		if block == nil {
+			log.Err("BlockCache::getOrCreateBlock : Unable to allocate block %v=>%s (index %v)", handle.ID, handle.Path, index)
+			bc.waitAndFreeUploadedBlocks(handle, 1, true)
+			return nil, fmt.Errorf("unable to allocate block")
+		}
+
+		block.node = handle.Buffers.Cooking.PushBack(block)
+		block.id = int64(index)
+		block.offset = index * bc.blockSize
+
 		if offset >= uint64(handle.Size) {
 			// We we trying to append data to end of file
-			block = bc.blockPool.MustGet()
-			if block == nil {
-				log.Err("BlockCache::getOrCreateBlock : Unable to allocate block %v=>%s (index %v)", handle.ID, handle.Path, index)
-				bc.waitAndFreeUploadedBlocks(handle, 1, true)
-				return nil, fmt.Errorf("unable to allocate block")
-			}
-
-			// Add this new block to list and make an entry for the index for subsequent writes
-			block.node = handle.Buffers.Cooking.PushBack(block)
-			block.id = int64(index)
-			block.offset = index * bc.blockSize
 			block.endIndex = block.offset
-			block.Unblock()
-
-			handle.SetValue(fmt.Sprintf("%v", index), block)
 		} else {
 			// We are writing somewhere in between so just fetch this block
-			block, err = bc.getBlock(handle, offset)
-			if err != nil {
-				return nil, err
-			}
+			bc.lineupDownload(handle, block, false)
 
-			// GetBlock will push the block in cooked list but writing assumes block to be in cooking queue
-			if block.node != nil {
-				_ = handle.Buffers.Cooked.Remove(block.node)
-			}
-
-			block.node = handle.Buffers.Cooking.PushBack(block)
+			// Now wait for download to complete
+			<-block.state
 		}
+		block.Unblock()
+		handle.SetValue(fmt.Sprintf("%v", index), block)
 
 		// As we are creating new blocks here, we need to push the block for upload and remove them from list here
 		if handle.Buffers.Cooking.Len() > MIN_WRITE_BLOCK {
@@ -916,6 +919,16 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 	} else {
 		// We have the block now which we wish to write
 		block = node.(*Block)
+
+		// If the block was staged earlier then we are overwriting it here so move it back to cooking queue
+		if block.IsSynced() {
+			if block.node != nil {
+				_ = handle.Buffers.Cooked.Remove(block.node)
+			}
+
+			block.node = handle.Buffers.Cooking.PushBack(block)
+			block.ClearSynced()
+		}
 	}
 
 	return block, nil
@@ -948,8 +961,11 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 
 // lineupUpload : Create a work item and schedule the upload
 func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]string) {
-	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-	listMap[block.id] = id
+	id := listMap[block.id]
+	if id == "" {
+		id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+		listMap[block.id] = id
+	}
 
 	item := &workItem{
 		handle:   handle,
@@ -1024,7 +1040,6 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 			block.node = nil
 			block.ReUse()
 			bc.blockPool.Release(block)
-
 		}
 
 		node = nextNode
@@ -1043,9 +1058,10 @@ func (bc *BlockCache) upload(item *workItem) {
 
 	// This block is updated so we need to stage it now
 	err := bc.NextComponent().StageData(internal.StageDataOptions{
-		Name: item.handle.Path,
-		Data: item.block.data[0 : item.block.endIndex-item.block.offset],
-		Id:   item.blockId})
+		Name:   item.handle.Path,
+		Data:   item.block.data[0 : item.block.endIndex-item.block.offset],
+		Offset: uint64(item.block.id),
+		Id:     item.blockId})
 	if err != nil {
 		// Fail to write the data so just reschedule this request
 		log.Err("BlockCache::upload : Failed to write %v=>%s from offset %v [%s]", item.handle.ID, item.handle.Path, item.block.id, err.Error())
@@ -1086,6 +1102,7 @@ func (bc *BlockCache) upload(item *workItem) {
 		}
 	}
 
+	item.block.Synced()
 	item.block.NoMoreDirty()
 	item.block.Ready()
 }
@@ -1123,7 +1140,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	log.Debug("BlockCache::commitBlocks : Committing blocks for %s", handle.Path)
 
 	// Commit the block list now
-	err = bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIdList})
+	err = bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIdList, BlockSize: bc.blockSize})
 	if err != nil {
 		log.Err("BlockCache::commitBlocks : Failed to commit blocks for %s [%s]", handle.Path, err.Error())
 		return err
