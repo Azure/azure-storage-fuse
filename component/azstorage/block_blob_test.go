@@ -192,12 +192,12 @@ func (s *blockBlobTestSuite) SetupTest() {
 	}
 	_ = log.SetDefaultLogger("base", cfg)
 
-	// homeDir, err := os.UserHomeDir()
-	// if err != nil {
-	// 	fmt.Println("Unable to get home directory")
-	// 	os.Exit(1)
-	// }
-	cfgFile, err := os.Open("./azuretest.json")
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Println("Unable to get home directory")
+		os.Exit(1)
+	}
+	cfgFile, err := os.Open(homeDir + "/azuretest.json")
 	if err != nil {
 		fmt.Println("Unable to open config file")
 		os.Exit(1)
@@ -3197,6 +3197,9 @@ func (s *blockBlobTestSuite) TestDownloadBlobWithCPKEnabled() {
 
 	err = s.az.storage.ReadToFile(name, 0, int64(len(data)), f)
 	s.assert.Nil(err)
+	fileData, err := os.ReadFile(name)
+	s.assert.Nil(err)
+	s.assert.EqualValues(data, fileData)
 
 	buf := make([]byte, len(data))
 	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf)
