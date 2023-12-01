@@ -847,6 +847,7 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 
 		// Mark this block has been updated
 		block.Dirty()
+		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 
 		// Move offset forward in case we need to copy more data
 		options.Offset += int64(bytesWritten)
@@ -854,15 +855,8 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 
 		if block.endIndex < uint64(options.Offset) {
 			block.endIndex = uint64(options.Offset)
-		}
-
-		if block.endIndex > uint64(options.Handle.Size) {
 			options.Handle.Size = int64(block.endIndex)
 		}
-	}
-
-	if dataWritten > 0 {
-		options.Handle.Flags.Set(handlemap.HandleFlagDirty)
 	}
 
 	return dataWritten, nil
@@ -890,10 +884,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		block.id = int64(index)
 		block.offset = index * bc.blockSize
 
-		if offset >= uint64(handle.Size) {
-			// We we trying to append data to end of file
-			block.endIndex = block.offset
-		} else {
+		if offset < uint64(handle.Size) {
 			// We are writing somewhere in between so just fetch this block
 			bc.lineupDownload(handle, block, false)
 
@@ -997,6 +988,12 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 	for node != nil && cnt > 0 {
 		nextNode := node.Next()
 		block := node.Value.(*Block)
+
+		if block.id == -1 {
+			// ignore this block and move ahead
+			node = nextNode
+			continue
+		}
 
 		safeToRemove := false
 		if wait {
