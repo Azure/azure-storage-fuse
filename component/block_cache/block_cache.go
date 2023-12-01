@@ -806,6 +806,12 @@ func (bc *BlockCache) download(item *workItem) {
 	item.block.endIndex = item.block.offset + uint64(n)
 
 	if bc.tmpPath != "" {
+		err := os.MkdirAll(filepath.Dir(localPath), 0777)
+		if err != nil {
+			log.Err("BlockCache::download : error creating directory structure for file %s [%s]", localPath, err.Error())
+			return
+		}
+
 		// Dump this block to local disk cache
 		f, err := os.Create(localPath)
 		if err == nil {
@@ -1079,6 +1085,12 @@ func (bc *BlockCache) upload(item *workItem) {
 	if bc.tmpPath != "" {
 		localPath := filepath.Join(bc.tmpPath, fileName)
 
+		err := os.MkdirAll(filepath.Dir(localPath), 0777)
+		if err != nil {
+			log.Err("BlockCache::upload : error creating directory structure for file %s [%s]", localPath, err.Error())
+			return
+		}
+
 		// Dump this block to local disk cache
 		f, err := os.Create(localPath)
 		if err == nil {
@@ -1187,7 +1199,7 @@ func (bc *BlockCache) checkDiskUsage() bool {
 func (bc *BlockCache) invalidateDirectory(name string) {
 	log.Trace("BlockCache::invalidateDirectory : %s", name)
 
-	if bc.tmpPath != "" {
+	if bc.tmpPath == "" {
 		return
 	}
 
@@ -1202,9 +1214,10 @@ func (bc *BlockCache) DeleteDir(options internal.DeleteDirOptions) error {
 	err := bc.NextComponent().DeleteDir(options)
 	if err != nil {
 		log.Err("BlockCache::DeleteDir : %s failed", options.Name)
+		return err
 	}
 
-	go bc.invalidateDirectory(options.Name)
+	bc.invalidateDirectory(options.Name)
 	return err
 }
 
@@ -1218,7 +1231,7 @@ func (bc *BlockCache) RenameDir(options internal.RenameDirOptions) error {
 		return err
 	}
 
-	go bc.invalidateDirectory(options.Src)
+	bc.invalidateDirectory(options.Src)
 	return nil
 }
 
