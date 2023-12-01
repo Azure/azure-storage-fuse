@@ -105,7 +105,6 @@ func (b *Block) Delete() error {
 // ReUse reinits the Block by recreating its channel
 func (b *Block) ReUse() {
 	b.id = -1
-	b.node = nil
 	b.offset = 0
 	b.endIndex = 0
 	b.flags.Set(BlockFlagFresh)
