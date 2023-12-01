@@ -138,8 +138,8 @@ const (
 	EnvHttpsProxy                     = "https_proxy"
 	EnvAzStorageAccountContainer      = "AZURE_STORAGE_ACCOUNT_CONTAINER"
 	EnvAzAuthResource                 = "AZURE_STORAGE_AUTH_RESOURCE"
-	EnvCPK_ENCRYPTION_KEY             = "CPK_ENCRYPTION_KEY"
-	EnvCPK_ENCRYPTION_KEY_SHA256      = "CPK_ENCRYPTION_KEY_SHA256"
+	EnvCpkEncryptionKey               = "CPK_ENCRYPTION_KEY"
+	EnvCpkEncryptionKeySha256         = "CPK_ENCRYPTION_KEY_SHA256"
 )
 
 type AzStorageOptions struct {
@@ -223,8 +223,8 @@ func RegisterEnvVariables() {
 
 	config.BindEnv("azstorage.auth-resource", EnvAzAuthResource)
 
-	config.BindEnv("azstorage.cpk-encryption-key", EnvCPK_ENCRYPTION_KEY)
-	config.BindEnv("azstorage.cpk-encryption-key-sha256", EnvCPK_ENCRYPTION_KEY_SHA256)
+	config.BindEnv("azstorage.cpk-encryption-key", EnvCpkEncryptionKey)
+	config.BindEnv("azstorage.cpk-encryption-key-sha256", EnvCpkEncryptionKeySha256)
 
 }
 

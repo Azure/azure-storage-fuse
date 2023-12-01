@@ -40,6 +40,7 @@ import (
 	"bytes"
 	"container/list"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -191,12 +192,12 @@ func (s *blockBlobTestSuite) SetupTest() {
 	}
 	_ = log.SetDefaultLogger("base", cfg)
 
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Println("Unable to get home directory")
-		os.Exit(1)
-	}
-	cfgFile, err := os.Open(homeDir + "/azuretest.json")
+	// homeDir, err := os.UserHomeDir()
+	// if err != nil {
+	// 	fmt.Println("Unable to get home directory")
+	// 	os.Exit(1)
+	// }
+	cfgFile, err := os.Open("./azuretest.json")
 	if err != nil {
 		fmt.Println("Unable to open config file")
 		os.Exit(1)
@@ -296,6 +297,16 @@ func randomString(length int) string {
 
 func generateContainerName() string {
 	return "fuseutc" + randomString(8)
+}
+
+func generateCPKInfo() (CPKEncryptionKey string, CPKEncryptionKeySha256 string) {
+	key := make([]byte, 32)
+	rand.Read(key)
+	CPKEncryptionKey = base64.StdEncoding.EncodeToString(key)
+	hash := sha256.New()
+	hash.Write(key)
+	CPKEncryptionKeySha256 = base64.StdEncoding.EncodeToString(hash.Sum(nil))
+	return CPKEncryptionKey, CPKEncryptionKeySha256
 }
 
 func generateDirectoryName() string {
@@ -3159,14 +3170,15 @@ func (s *blockBlobTestSuite) TestInvalidMD5OnReadNoVaildate() {
 func (s *blockBlobTestSuite) TestDownloadBlobWithCPKEnabled() {
 	defer s.cleanupTest()
 	s.tearDownTestHelper(false)
+	CPKEncryptionKey, CPKEncryptionKeySha256 := generateCPKInfo()
 
 	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container, storageTestConfigurationParameters.CPKEncryptionKey, storageTestConfigurationParameters.CPKEncryptionKeySha256)
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container, CPKEncryptionKey, CPKEncryptionKeySha256)
 	s.setupTestHelper(config, s.container, false)
 
 	blobCPKOpt := azblob.ClientProvidedKeyOptions{
-		EncryptionKey:       &storageTestConfigurationParameters.CPKEncryptionKey,
-		EncryptionKeySha256: &storageTestConfigurationParameters.CPKEncryptionKeySha256,
+		EncryptionKey:       &CPKEncryptionKey,
+		EncryptionKeySha256: &CPKEncryptionKeySha256,
 		EncryptionAlgorithm: "AES256",
 	}
 	name := generateFileName()
@@ -3202,13 +3214,15 @@ func (s *blockBlobTestSuite) TestUploadBlobWithCPKEnabled() {
 	defer s.cleanupTest()
 	s.tearDownTestHelper(false)
 
+	CPKEncryptionKey, CPKEncryptionKeySha256 := generateCPKInfo()
+
 	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n  account-key: %s\n  mode: key\n  container: %s\n",
-		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.CPKEncryptionKey, storageTestConfigurationParameters.CPKEncryptionKeySha256, storageTestConfigurationParameters.BlockKey, s.container)
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, CPKEncryptionKey, CPKEncryptionKeySha256, storageTestConfigurationParameters.BlockKey, s.container)
 	s.setupTestHelper(config, s.container, false)
 
 	blobCPKOpt := azblob.ClientProvidedKeyOptions{
-		EncryptionKey:       &storageTestConfigurationParameters.CPKEncryptionKey,
-		EncryptionKeySha256: &storageTestConfigurationParameters.CPKEncryptionKeySha256,
+		EncryptionKey:       &CPKEncryptionKey,
+		EncryptionKeySha256: &CPKEncryptionKeySha256,
 		EncryptionAlgorithm: "AES256",
 	}
 	name1 := generateFileName()

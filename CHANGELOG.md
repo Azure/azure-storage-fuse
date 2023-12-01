@@ -2,6 +2,9 @@
 **Bug Fixes**
 - Invalidate attribute cache entry on `PathAlreadyExists` error in create directory operation.
 
+**Features**
+- Support CPK for block storage accounts.
+
 ## 2.1.2 (2023-11-17)
 **Bug Fixes**
 - [#1243](https://github.com/Azure/azure-storage-fuse/issues/1243) Fixed issue where symlink was not working for ADLS accounts.
@@ -28,7 +31,7 @@
 
 **Features**
 - Sync in stream mode will force upload the file to storage container.
-- Fail `Open` and `Write` operations with file-cache if the file size exceeds the high threshold set with local cache limits. 
+- Fail `Open` and `Write` operations with file-cache if the file size exceeds the high threshold set with local cache limits.
 
 ## 2.1.0 (2023-08-31)
 **Features**

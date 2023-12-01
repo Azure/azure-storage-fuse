@@ -85,10 +85,14 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 	bb.Config = cfg
 
 	bb.blobAccCond = azblob.BlobAccessConditions{}
-	bb.blobCPKOpt = azblob.ClientProvidedKeyOptions{
-		EncryptionKey:       &bb.Config.cpkEncryptionKey,
-		EncryptionKeySha256: &bb.Config.cpkEncryptionKeySha256,
-		EncryptionAlgorithm: "AES256",
+	if bb.Config.cpkEnabled {
+		bb.blobCPKOpt = azblob.ClientProvidedKeyOptions{
+			EncryptionKey:       &bb.Config.cpkEncryptionKey,
+			EncryptionKeySha256: &bb.Config.cpkEncryptionKeySha256,
+			EncryptionAlgorithm: "AES256",
+		}
+	} else {
+		bb.blobCPKOpt = azblob.ClientProvidedKeyOptions{}
 	}
 
 	bb.downloadOptions = azblob.DownloadFromBlobOptions{
