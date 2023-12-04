@@ -21,9 +21,9 @@ block_cache:
   
   path: block_cache
   disk-size-mb: 4192  
-  disk-timeout-sec: 120
+  disk-timeout-sec: 30
 
-  prefetch: 12
+  prefetch: 120
   parallelism: 128
 
 attr_cache:
