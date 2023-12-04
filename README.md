@@ -145,6 +145,8 @@ To learn about a specific command, just include the name of the command (For exa
     * `--allow-other`: Allow other users to have access this mount point.
     * `--disable-writeback-cache=true`: Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.
     * `--ignore-open-flags=true`: Ignore the append and write only flag since O_APPEND and O_WRONLY is not supported with writeback caching.
+- CPK options
+    * `--cpk-enabled=true`: Allows mounting containers with cpk. Use config file or env variables to set cpk encryption key and cpk encryption key sha.
 
 
 ## Environment variables
@@ -173,6 +175,10 @@ To learn about a specific command, just include the name of the command (For exa
 - Proxy Server:
     * `http_proxy`: The proxy server address. Example: `10.1.22.4:8080`.    
     * `https_proxy`: The proxy server address when https is turned off forcing http. Example: `10.1.22.4:8080`.
+- CPK options: 
+    * `AZURE_STORAGE_CPK_ENCRYPTION_KEY`: Customer provided base64-encoded AES-256 encryption key value.
+    * `AZURE_STORAGE_CPK_ENCRYPTION_KEY_SHA256`: Base64-encoded SHA256 of the cpk encryption key.
+
 
 ## Config file
 - See [this](./sampleFileCacheConfig.yaml) sample config file.
