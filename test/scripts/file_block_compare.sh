@@ -216,6 +216,5 @@ echo "Cleaning up data"
 ./blobfuse2 mount $mntPath --config-file=$fileConfigPath --tmp-path=$tmpPath --file-cache-timeout=0
 sleep 3
 rm -rf $mntPath/$dataPath/*
-mkdir $mntPath/$dataPath
 ./blobfuse2 unmount all
 rm -rf $tmpPath/*
