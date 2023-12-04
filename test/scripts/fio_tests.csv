@@ -1,7 +1,6 @@
 #Do not remove these comments
 # Format of test case : <Thread count>,<Block size>,<File size in MB>
-1,8,1
-1,8,4
+1,8,8
 1,8,10
 1,8,50
 1,8,100
@@ -16,8 +15,7 @@
 1,16,10240
 1,16,102400
 1,16,204800
-8,8,1
-8,8,4
+8,8,8
 8,8,10
 8,8,50
 8,8,100

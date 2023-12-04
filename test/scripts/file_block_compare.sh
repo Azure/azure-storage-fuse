@@ -68,7 +68,7 @@ do
         write_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
         
         cat temp.tst
-        cat "Write Speed ${write_speed} Write Time ${write_time}"
+        echo "Write Speed ${write_speed} Write Time ${write_time}"
 
         sed -i "${sed_line}s/$/ ${write_speed}\/s | ${write_time} |/" $outputPath
         (( sed_line++ ))
