@@ -136,7 +136,9 @@ steps:
     displayName: 'Unmount RW mount'
 
   - script: |
-      diff $(WORK_DIR)/md5sum_block_cache_write.txt $(WORK_DIR)/md5sum_file_cache.txt
+      cat $(WORK_DIR)/md5sum_block_cache_write.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_block_cache_write.txt1
+      cat $(WORK_DIR)/md5sum_file_cache.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_file_cache.txt1
+      diff $(WORK_DIR)/md5sum_block_cache_write.txt1 $(WORK_DIR)/md5sum_file_cache.txt1
       if [ $? -ne 0 ]; then
         exit 1
       fi
