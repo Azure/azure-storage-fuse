@@ -82,6 +82,7 @@ func AllocateBlock(size uint64) (*Block, error) {
 
 	// we do not create channel here, as that will be created when buffer is retrieved
 	// reinit will always be called before use and that will create the channel as well.
+	block.flags.Reset()
 	block.flags.Set(BlockFlagFresh)
 	return block, nil
 }
@@ -107,6 +108,7 @@ func (b *Block) ReUse() {
 	b.id = -1
 	b.offset = 0
 	b.endIndex = 0
+	b.flags.Reset()
 	b.flags.Set(BlockFlagFresh)
 	b.state = make(chan int, 1)
 }

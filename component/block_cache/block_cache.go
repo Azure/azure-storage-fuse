@@ -878,15 +878,19 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 	node, found := handle.GetValue(fmt.Sprintf("%v", index))
 	if !found {
+		// If too many buffers are piled up for this file then try to evict some of those which are already uploaded
+		if handle.Buffers.Cooked.Len()+handle.Buffers.Cooking.Len() >= int(bc.prefetch) {
+			bc.waitAndFreeUploadedBlocks(handle, 1)
+		}
+
 		// Either the block is not fetched yet or offset goes beyond the file size
 		block = bc.blockPool.MustGet()
 		if block == nil {
 			log.Err("BlockCache::getOrCreateBlock : Unable to allocate block %v=>%s (index %v)", handle.ID, handle.Path, index)
-			bc.waitAndFreeUploadedBlocks(handle, 1, true)
 			return nil, fmt.Errorf("unable to allocate block")
 		}
 
-		block.node = handle.Buffers.Cooking.PushBack(block)
+		block.node = nil
 		block.id = int64(index)
 		block.offset = index * bc.blockSize
 
@@ -896,9 +900,12 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 
 			// Now wait for download to complete
 			<-block.state
+		} else {
+			block.node = handle.Buffers.Cooking.PushBack(block)
 		}
-		block.Unblock()
+
 		handle.SetValue(fmt.Sprintf("%v", index), block)
+		block.Unblock()
 
 		// As we are creating new blocks here, we need to push the block for upload and remove them from list here
 		if handle.Buffers.Cooking.Len() > MIN_WRITE_BLOCK {
@@ -906,11 +913,6 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 			if err != nil {
 				log.Err("BlockCache::getOrCreateBlock : Unable to stage blocks for %s [%s]", handle.Path, err.Error())
 			}
-		}
-
-		// If there multiple blocks being staged then try to evict the buffers from blocks which are already uploaded.
-		if handle.Buffers.Cooked.Len()+handle.Buffers.Cooking.Len() >= int(bc.prefetch) {
-			bc.waitAndFreeUploadedBlocks(handle, 1, false)
 		}
 
 	} else {
@@ -973,79 +975,57 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 		blockId:  id,
 	}
 
-	log.Debug("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
+	log.Debug("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v)", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
+
+	if (block.endIndex - block.offset) == 0 {
+		log.Err("BlockCache::lineupUpload : Upload block %v=>%s (index %v, offset %v, data %v) 0 byte block formed", handle.ID, handle.Path, block.id, block.offset, (block.endIndex - block.offset))
+	}
 
 	// Remove this block from free block list and add to in-process list
 	if block.node != nil {
 		_ = handle.Buffers.Cooking.Remove(block.node)
 	}
-
 	block.node = handle.Buffers.Cooked.PushBack(block)
+
 	block.Uploading()
 
 	// Send the work item to worker pool to schedule download
 	bc.threadPool.Schedule(false, item)
 }
 
-func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt int, wait bool) {
+func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt int) {
 	nodeList := handle.Buffers.Cooked
 	node := nodeList.Front()
+	nextNode := node
 
-	for node != nil && cnt > 0 {
-		nextNode := node.Next()
+	for nextNode != nil && cnt > 0 {
+		node = nextNode
+		nextNode = node.Next()
+
 		block := node.Value.(*Block)
-
 		if block.id == -1 {
-			// ignore this block and move ahead
-			node = nextNode
+			// ignore this block and move ahead, but this shall never happen
+			log.Err("BlockCache::waitAndFreeUploadedBlocks : Invalid block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
 			continue
 		}
 
-		safeToRemove := false
-		if wait {
-			// Wait till upload is complete and then close the write buff channel
-			_, open := <-block.state
-			if open {
-				log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block upload complete block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-				if block.IsFailed() {
-					_ = handle.Buffers.Cooked.Remove(block.node)
-					block.node = handle.Buffers.Cooking.PushFront(block)
-				} else {
-					safeToRemove = true
-					cnt--
-				}
-				block.Unblock()
-			}
-		} else {
-			// Check upload is complete or not but do not wait for it to complete
-			select {
-			case _, open := <-block.state:
-				if open {
-					log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block upload complete block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-					if block.IsFailed() {
-						_ = handle.Buffers.Cooked.Remove(block.node)
-						block.node = handle.Buffers.Cooking.PushFront(block)
-					} else {
-						safeToRemove = true
-						cnt--
-					}
-					block.Unblock()
-				}
-			default:
-				//log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block still under upload skipping it. block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-			}
-		}
+		// Wait for upload of this block to complete
+		<-block.state
+		block.Unblock()
 
-		if safeToRemove && handle.Buffers.Cooked.Len() > MIN_WRITE_BLOCK {
-			log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block cleanup for block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-			handle.RemoveValue(fmt.Sprintf("%v", block.id))
-			nodeList.Remove(node)
-			block.node = nil
-			block.ReUse()
-			bc.blockPool.Release(block)
+		if block.IsFailed() {
+			_ = handle.Buffers.Cooked.Remove(block.node)
+			block.node = handle.Buffers.Cooking.PushFront(block)
+			continue
 		}
+		cnt--
 
-		node = nextNode
+		log.Debug("BlockCache::waitAndFreeUploadedBlocks : Block cleanup for block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
+		handle.RemoveValue(fmt.Sprintf("%v", block.id))
+		nodeList.Remove(node)
+		block.node = nil
+		block.ReUse()
+		bc.blockPool.Release(block)
 	}
 }
 
@@ -1088,7 +1068,7 @@ func (bc *BlockCache) upload(item *workItem) {
 		err := os.MkdirAll(filepath.Dir(localPath), 0777)
 		if err != nil {
 			log.Err("BlockCache::upload : error creating directory structure for file %s [%s]", localPath, err.Error())
-			return
+			goto return_safe
 		}
 
 		// Dump this block to local disk cache
@@ -1098,6 +1078,7 @@ func (bc *BlockCache) upload(item *workItem) {
 			if err != nil {
 				log.Err("BlockCache::upload : Failed to write %s to disk [%v]", localPath, err.Error())
 				_ = os.Remove(localPath)
+				goto return_safe
 			}
 
 			f.Close()
@@ -1111,6 +1092,7 @@ func (bc *BlockCache) upload(item *workItem) {
 		}
 	}
 
+return_safe:
 	item.block.Synced()
 	item.block.NoMoreDirty()
 	item.block.Ready()
@@ -1120,14 +1102,26 @@ func (bc *BlockCache) upload(item *workItem) {
 func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	log.Debug("BlockCache::commitBlocks : Stageing blocks for %s", handle.Path)
 
-	// First stage all the blocks which are not yet staged
-	err := bc.stageBlocks(handle, 50000)
-	if err != nil {
-		log.Err("BlockCache::commitBlocks : Failed to stage blocks for %s [%s]", handle.Path, err.Error())
-		return err
+	// Make three attempts to upload all pending blocks
+	cnt := 0
+	for cnt = 0; cnt < 3; cnt++ {
+		if handle.Buffers.Cooking.Len() == 0 {
+			break
+		}
+
+		err := bc.stageBlocks(handle, 50000)
+		if err != nil {
+			log.Err("BlockCache::commitBlocks : Failed to stage blocks for %s [%s]", handle.Path, err.Error())
+			return err
+		}
+
+		bc.waitAndFreeUploadedBlocks(handle, 50000)
 	}
 
-	bc.waitAndFreeUploadedBlocks(handle, 50000, true)
+	if cnt == 3 {
+		log.Err("BlockCache::commitBlocks : Failed to stage blocks for %s after 3 attempts", handle.Path)
+		return fmt.Errorf("failed to stage blocks")
+	}
 
 	// Generate the block id list order now
 	list, _ := handle.GetValue("blockList")
@@ -1149,7 +1143,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	log.Debug("BlockCache::commitBlocks : Committing blocks for %s", handle.Path)
 
 	// Commit the block list now
-	err = bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIdList, BlockSize: bc.blockSize})
+	err := bc.NextComponent().CommitData(internal.CommitDataOptions{Name: handle.Path, List: blockIdList, BlockSize: bc.blockSize})
 	if err != nil {
 		log.Err("BlockCache::commitBlocks : Failed to commit blocks for %s [%s]", handle.Path, err.Error())
 		return err
