@@ -122,6 +122,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--subdirectory=<path>` : Subdirectory to mount instead of entire container.
     * `--disable-compression:false` : Disable content encoding negotiation with server. If blobs have 'content-encoding' set to 'gzip' then turn on this flag.
     * `--use-adls=false` : Specify configured storage account is HNS enabled or not. This must be turned on when HNS enabled account is mounted.
+    * `--cpk-enabled=true`: Allows mounting containers with cpk. Use config file or env variables to set cpk encryption key and cpk encryption key sha.
 - File cache options
     * `--file-cache-timeout=<TIMEOUT IN SECONDS>`: Timeout for which file is cached on local system.
     * `--tmp-path=<PATH>`: The path to the file cache.
@@ -145,8 +146,6 @@ To learn about a specific command, just include the name of the command (For exa
     * `--allow-other`: Allow other users to have access this mount point.
     * `--disable-writeback-cache=true`: Disallow libfuse to buffer write requests if you must strictly open files in O_WRONLY or O_APPEND mode.
     * `--ignore-open-flags=true`: Ignore the append and write only flag since O_APPEND and O_WRONLY is not supported with writeback caching.
-- CPK options
-    * `--cpk-enabled=true`: Allows mounting containers with cpk. Use config file or env variables to set cpk encryption key and cpk encryption key sha.
 
 
 ## Environment variables
