@@ -1,6 +1,7 @@
 ## 2.1.3 (Unreleased)
 **Bug Fixes**
 - Invalidate attribute cache entry on `PathAlreadyExists` error in create directory operation.
+- When `$HOME` environment variable is not present, use the current directory.
 
 ## 2.1.2 (2023-11-17)
 **Bug Fixes**
