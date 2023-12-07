@@ -49,6 +49,7 @@ do
 
     fileBaseName=$(basename $v2configPath | cut -d "." -f1)
 
+    rm -rf $tmpPath/*
     ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
     if [ $? -ne 0 ]; then
         exit 1
@@ -104,7 +105,8 @@ do
     fileBaseName=$(basename $v2configPath | cut -d "." -f1)
         
     # Mount Blobfuse2
-    ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
+    rm -rf $tmpPath/*
+    ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0 --block-cache-path=$tmpPath --block-cache-disk-size=4096
     if [ $? -ne 0 ]; then
         exit 1
     fi
