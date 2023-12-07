@@ -40,6 +40,7 @@ import (
 	"bytes"
 	"container/list"
 	"context"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -296,6 +297,16 @@ func randomString(length int) string {
 
 func generateContainerName() string {
 	return "fuseutc" + randomString(8)
+}
+
+func generateCPKInfo() (CPKEncryptionKey string, CPKEncryptionKeySha256 string) {
+	key := make([]byte, 32)
+	rand.Read(key)
+	CPKEncryptionKey = base64.StdEncoding.EncodeToString(key)
+	hash := sha256.New()
+	hash.Write(key)
+	CPKEncryptionKeySha256 = base64.StdEncoding.EncodeToString(hash.Sum(nil))
+	return CPKEncryptionKey, CPKEncryptionKeySha256
 }
 
 func generateDirectoryName() string {
@@ -3154,6 +3165,112 @@ func (s *blockBlobTestSuite) TestInvalidMD5OnReadNoVaildate() {
 			_ = os.Remove(name)
 		})
 	}
+}
+
+func (s *blockBlobTestSuite) TestDownloadBlobWithCPKEnabled() {
+	defer s.cleanupTest()
+	s.tearDownTestHelper(false)
+	CPKEncryptionKey, CPKEncryptionKeySha256 := generateCPKInfo()
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockKey, s.container, CPKEncryptionKey, CPKEncryptionKeySha256)
+	s.setupTestHelper(config, s.container, false)
+
+	blobCPKOpt := azblob.ClientProvidedKeyOptions{
+		EncryptionKey:       &CPKEncryptionKey,
+		EncryptionKeySha256: &CPKEncryptionKeySha256,
+		EncryptionAlgorithm: "AES256",
+	}
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+
+	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 100, s.containerUrl.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+		ClientProvidedKeyOptions: blobCPKOpt,
+	})
+	s.assert.Nil(err)
+
+	f, err := os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	err = s.az.storage.ReadToFile(name, 0, int64(len(data)), f)
+	s.assert.Nil(err)
+	fileData, err := os.ReadFile(name)
+	s.assert.Nil(err)
+	s.assert.EqualValues(data, fileData)
+
+	buf := make([]byte, len(data))
+	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf)
+	s.assert.Nil(err)
+	s.assert.EqualValues(data, buf)
+
+	rbuf, err := s.az.storage.ReadBuffer(name, 0, int64(len(data)))
+	s.assert.Nil(err)
+	s.assert.EqualValues(data, rbuf)
+	_ = s.az.storage.DeleteFile(name)
+	_ = os.Remove(name)
+}
+
+func (s *blockBlobTestSuite) TestUploadBlobWithCPKEnabled() {
+	defer s.cleanupTest()
+	s.tearDownTestHelper(false)
+
+	CPKEncryptionKey, CPKEncryptionKeySha256 := generateCPKInfo()
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n  account-key: %s\n  mode: key\n  container: %s\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, CPKEncryptionKey, CPKEncryptionKeySha256, storageTestConfigurationParameters.BlockKey, s.container)
+	s.setupTestHelper(config, s.container, false)
+
+	blobCPKOpt := azblob.ClientProvidedKeyOptions{
+		EncryptionKey:       &CPKEncryptionKey,
+		EncryptionKeySha256: &CPKEncryptionKeySha256,
+		EncryptionAlgorithm: "AES256",
+	}
+	name1 := generateFileName()
+	f, err := os.Create(name1)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	testData := "test data"
+	data := []byte(testData)
+	_, err = f.Write(data)
+	s.assert.Nil(err)
+	_, _ = f.Seek(0, 0)
+
+	err = s.az.storage.WriteFromFile(name1, nil, f)
+	s.assert.Nil(err)
+
+	file := s.containerUrl.NewBlobURL(name1)
+
+	attr, err := s.az.storage.(*BlockBlob).GetAttr(name1)
+	s.assert.Nil(err)
+	s.assert.NotNil(attr)
+	resp, err := file.Download(ctx, 0, int64(len(data)), azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
+	s.assert.NotNil(err)
+	s.assert.Nil(resp)
+
+	resp, err = file.Download(ctx, 0, int64(len(data)), azblob.BlobAccessConditions{}, false, blobCPKOpt)
+	s.assert.Nil(err)
+	s.assert.NotNil(resp)
+
+	name2 := generateFileName()
+	err = s.az.storage.WriteFromBuffer(name2, nil, data)
+	s.assert.Nil(err)
+
+	file = s.containerUrl.NewBlobURL(name2)
+	resp, err = file.Download(ctx, 0, int64(len(data)), azblob.BlobAccessConditions{}, false, azblob.ClientProvidedKeyOptions{})
+	s.assert.NotNil(err)
+	s.assert.Nil(resp)
+
+	resp, err = file.Download(ctx, 0, int64(len(data)), azblob.BlobAccessConditions{}, false, blobCPKOpt)
+	s.assert.NotNil(resp)
+	s.assert.Nil(err)
+
+	_ = s.az.storage.DeleteFile(name1)
+	_ = s.az.storage.DeleteFile(name2)
+	_ = os.Remove(name1)
 }
 
 // func (s *blockBlobTestSuite) TestRAGRS() {
