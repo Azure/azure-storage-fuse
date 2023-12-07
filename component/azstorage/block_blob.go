@@ -85,11 +85,20 @@ func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 	bb.Config = cfg
 
 	bb.blobAccCond = azblob.BlobAccessConditions{}
-	bb.blobCPKOpt = azblob.ClientProvidedKeyOptions{}
+	if bb.Config.cpkEnabled {
+		bb.blobCPKOpt = azblob.ClientProvidedKeyOptions{
+			EncryptionKey:       &bb.Config.cpkEncryptionKey,
+			EncryptionKeySha256: &bb.Config.cpkEncryptionKeySha256,
+			EncryptionAlgorithm: "AES256",
+		}
+	} else {
+		bb.blobCPKOpt = azblob.ClientProvidedKeyOptions{}
+	}
 
 	bb.downloadOptions = azblob.DownloadFromBlobOptions{
-		BlockSize:   bb.Config.blockSize,
-		Parallelism: bb.Config.maxConcurrency,
+		BlockSize:                bb.Config.blockSize,
+		Parallelism:              bb.Config.maxConcurrency,
+		ClientProvidedKeyOptions: bb.blobCPKOpt,
 	}
 
 	bb.listDetails = azblob.BlobListingDetails{
@@ -889,6 +898,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 			ContentType: getContentType(name),
 			ContentMD5:  md5sum,
 		},
+		ClientProvidedKeyOptions: bb.blobCPKOpt,
 	}
 	if common.MonitorBfs() && stat.Size() > 0 {
 		uploadOptions.Progress = func(bytesTransferred int64) {
@@ -936,6 +946,7 @@ func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]string, da
 		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
 			ContentType: getContentType(name),
 		},
+		ClientProvidedKeyOptions: bb.blobCPKOpt,
 	})
 
 	if err != nil {

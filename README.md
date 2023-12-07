@@ -122,6 +122,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--subdirectory=<path>` : Subdirectory to mount instead of entire container.
     * `--disable-compression:false` : Disable content encoding negotiation with server. If blobs have 'content-encoding' set to 'gzip' then turn on this flag.
     * `--use-adls=false` : Specify configured storage account is HNS enabled or not. This must be turned on when HNS enabled account is mounted.
+    * `--cpk-enabled=true`: Allows mounting containers with cpk. Use config file or env variables to set cpk encryption key and cpk encryption key sha.
 - File cache options
     * `--file-cache-timeout=<TIMEOUT IN SECONDS>`: Timeout for which file is cached on local system.
     * `--tmp-path=<PATH>`: The path to the file cache.
@@ -173,6 +174,10 @@ To learn about a specific command, just include the name of the command (For exa
 - Proxy Server:
     * `http_proxy`: The proxy server address. Example: `10.1.22.4:8080`.    
     * `https_proxy`: The proxy server address when https is turned off forcing http. Example: `10.1.22.4:8080`.
+- CPK options: 
+    * `AZURE_STORAGE_CPK_ENCRYPTION_KEY`: Customer provided base64-encoded AES-256 encryption key value.
+    * `AZURE_STORAGE_CPK_ENCRYPTION_KEY_SHA256`: Base64-encoded SHA256 of the cpk encryption key.
+
 
 ## Config file
 - See [this](./sampleFileCacheConfig.yaml) sample config file.
