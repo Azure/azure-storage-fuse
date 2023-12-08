@@ -324,6 +324,14 @@ func (base *BaseComponent) StatFs() (*syscall.Statfs_t, bool, error) {
 	return nil, false, nil
 }
 
+func (base *BaseComponent) GetCommittedBlockList(name string) (*CommittedBlockList, error) {
+	if base.next != nil {
+		return base.next.GetCommittedBlockList(name)
+	}
+
+	return nil, nil
+}
+
 func (base *BaseComponent) StageData(opt StageDataOptions) error {
 	if base.next != nil {
 		return base.next.StageData(opt)

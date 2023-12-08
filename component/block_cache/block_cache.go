@@ -319,11 +319,32 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		handle.Size = attr.Size
 	}
 
-	// TODO : If there is read-write flag in the file then we need to
-	// get the existing block list and also validate block size of file is matching configured block size here or not
-	// Till this check comes in, block-cache shall be used only to create new files and not edit existing files
-
 	bc.prepareHandleForBlockCache(handle)
+
+	if options.Flags&os.O_RDONLY == 0 {
+		// File is not opened in read-only mode so we need to get the list of blocks and validate the size
+		// As there can be a potential write on this file, currently configured block size and block size of the file in container
+		// has to match otherwise it will corrupt the file. Fail the open call if this is not the case.
+		blockList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
+		if err != nil {
+			log.Err("BlockCache::OpenFile : Failed to get block list of %s [%s]", options.Name, err.Error())
+			return nil, err
+		}
+
+		lst, _ := handle.GetValue("blockList")
+		listMap := lst.(map[int64]string)
+
+		listLen := len(*blockList)
+		for idx, block := range *blockList {
+			listMap[int64(idx)] = block.Id
+			// All blocks shall of same size otherwise fail the open call
+			// Last block is allowed to be of smaller size as it can be partial block
+			if block.Size != bc.blockSize && idx != (listLen-1) {
+				log.Err("BlockCache::OpenFile : Block size mismatch for %s [block: %v, size: %v]", options.Name, block.Id, block.Size)
+				return nil, fmt.Errorf("block size mismatch for %s", options.Name)
+			}
+		}
+	}
 
 	// This shall be done after the refresh only as this will populate the queues created by above method
 	if handle.Size < int64(bc.blockSize) {

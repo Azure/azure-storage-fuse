@@ -131,6 +131,7 @@ type AzConnection interface {
 	TruncateFile(string, int64) error
 	StageAndCommit(name string, bol *common.BlockOffsetList) error
 
+	GetCommittedBlockList(string) (*internal.CommittedBlockList, error)
 	StageBlock(string, []byte, string) error
 	CommitBlocks(string, []string) error
 

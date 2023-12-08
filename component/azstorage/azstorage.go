@@ -543,6 +543,10 @@ func (az *AzStorage) FlushFile(options internal.FlushFileOptions) error {
 	return az.storage.StageAndCommit(options.Handle.Path, options.Handle.CacheObj.BlockOffsetList)
 }
 
+func (az *AzStorage) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
+	return az.storage.GetCommittedBlockList(name)
+}
+
 func (az *AzStorage) StageData(opt internal.StageDataOptions) error {
 	return az.storage.StageBlock(opt.Name, opt.Data, opt.Id)
 }

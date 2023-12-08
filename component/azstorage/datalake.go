@@ -662,6 +662,11 @@ func (dl *Datalake) ChangeOwner(name string, _ int, _ int) error {
 	return syscall.ENOTSUP
 }
 
+// GetCommittedBlockList : Get the list of committed blocks
+func (dl *Datalake) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
+	return dl.BlockBlob.GetCommittedBlockList(name)
+}
+
 // StageBlock : stages a block and returns its blockid
 func (dl *Datalake) StageBlock(name string, data []byte, id string) error {
 	return dl.BlockBlob.StageBlock(name, data, id)

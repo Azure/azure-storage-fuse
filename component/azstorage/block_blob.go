@@ -955,17 +955,21 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 	var blockOffset int64 = 0
 	blockList := common.BlockOffsetList{}
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+
 	storageBlockList, err := blobURL.GetBlockList(
 		context.Background(), azblob.BlockListCommitted, bb.blobAccCond.LeaseAccessConditions)
+
 	if err != nil {
 		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s ", name, err.Error())
 		return &common.BlockOffsetList{}, err
 	}
+
 	// if block list empty its a small file
 	if len(storageBlockList.CommittedBlocks) == 0 {
 		blockList.Flags.Set(common.SmallFile)
 		return &blockList, nil
 	}
+
 	for _, block := range storageBlockList.CommittedBlocks {
 		blk := &common.Block{
 			Id:         block.Name,
@@ -1332,6 +1336,38 @@ func (bb *BlockBlob) ChangeOwner(name string, _ int, _ int) error {
 
 	// This is not currently supported for a flat namespace account
 	return syscall.ENOTSUP
+}
+
+// GetCommittedBlockList : Get the list of committed blocks
+func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
+	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+
+	storageBlockList, err := blobURL.GetBlockList(
+		context.Background(), azblob.BlockListCommitted, bb.blobAccCond.LeaseAccessConditions)
+
+	if err != nil {
+		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s ", name, err.Error())
+		return nil, err
+	}
+
+	// if block list empty its a small file
+	if len(storageBlockList.CommittedBlocks) == 0 {
+		return nil, nil
+	}
+
+	blockList := make(internal.CommittedBlockList, 0)
+	startOffset := int64(0)
+	for _, block := range storageBlockList.CommittedBlocks {
+		blk := internal.CommittedBlock{
+			Id:     block.Name,
+			Offset: startOffset,
+			Size:   uint64(block.Size),
+		}
+		startOffset += block.Size
+		blockList = append(blockList, blk)
+	}
+
+	return &blockList, nil
 }
 
 // StageBlock : stages a block and returns its blockid

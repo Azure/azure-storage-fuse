@@ -648,16 +648,39 @@ func (mr *MockComponentMockRecorder) FileUsed(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "FileUsed", reflect.TypeOf((*MockComponent)(nil).FileUsed), arg0)
 }
 
+func (m *MockComponent) GetCommittedBlockList(arg0 string) (*CommittedBlockList, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetCommittedBlockList", arg0)
+	ret0, _ := ret[0].(*CommittedBlockList)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (mr *MockComponentMockRecorder) GetCommittedBlockList(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCommittedBlockList", reflect.TypeOf((*MockComponent)(nil).TruncateFile), arg0)
+}
+
 func (m *MockComponent) StageData(arg0 StageDataOptions) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "StageData", arg0)
-	ret1, _ := ret[1].(error)
+	ret1, _ := ret[0].(error)
 	return ret1
+}
+
+func (mr *MockComponentMockRecorder) StageData(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "StageData", reflect.TypeOf((*MockComponent)(nil).TruncateFile), arg0)
 }
 
 func (m *MockComponent) CommitData(arg0 CommitDataOptions) error {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "CommitData", arg0)
-	ret0, _ := ret[1].(error)
+	ret0, _ := ret[0].(error)
 	return ret0
+}
+
+func (mr *MockComponentMockRecorder) CommitData(arg0 interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CommitData", reflect.TypeOf((*MockComponent)(nil).TruncateFile), arg0)
 }
