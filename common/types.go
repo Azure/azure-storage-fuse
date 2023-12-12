@@ -305,3 +305,13 @@ func GetIdLength(id string) int64 {
 	existingBlockId, _ := base64.StdEncoding.DecodeString(id)
 	return int64(len(existingBlockId))
 }
+
+func init() {
+	val, present := os.LookupEnv("HOME")
+	if !present {
+		val = "./"
+	}
+	DefaultWorkDir = filepath.Join(val, ".blobfuse2")
+	DefaultLogFilePath = filepath.Join(DefaultWorkDir, "blobfuse2.log")
+	StatsConfigFilePath = filepath.Join(DefaultWorkDir, "stats_monitor.cfg")
+}

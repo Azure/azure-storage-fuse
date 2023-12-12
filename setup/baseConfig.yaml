@@ -73,10 +73,10 @@ libfuse:
  
   # Streaming configuration
 stream:
-  # If block-size-mb, blocks-per-file or cache-size-mb are 0, the stream component will not cache blocks. 
+  # If block-size-mb, max-buffers or buffer-size-mb are 0, the stream component will not cache blocks. 
   block-size-mb: <for read only mode size of each block to be cached in memory while streaming (in MB). For read/write size of newly created blocks. Default - 0 MB>
-  max-buffers: <total number of buffers to store blocks in. Default - 0 MB>
-  buffer-size-mb: <size for each buffer. Default - 0>
+  max-buffers: <total number of buffers to store blocks in. Default - 0>
+  buffer-size-mb: <size for each buffer. Default - 0 MB>
   file-caching: <read/write mode file level caching or handle level caching. Default - false (handle level caching ON)>
 
 # Block cache related configuration
@@ -167,7 +167,10 @@ azstorage:
   max-results-for-list: <maximum number of results returned in a single list API call while getting file attributes. Default - 2>
   telemetry : <additional information that customer want to push in user-agent>
   honour-acl: true|false <honour ACLs on files and directories when mounted using MSI Auth and object-ID is provided in config>
-  
+  cpk-enabled: true|false <enable client provided key encryption>
+  cpk-encryption-key: <customer provided base64-encoded AES-256 encryption key value>
+  cpk-encryption-key-sha256:  <customer provided base64-encoded sha256 of the encryption key>
+
 # Mount all configuration
 mountall:
   # allowlist takes precedence over denylist in case of conflicts
