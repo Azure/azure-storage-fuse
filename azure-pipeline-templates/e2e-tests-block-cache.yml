@@ -174,6 +174,23 @@ steps:
     displayName: 'Upload local files'
 
   - script: |
+      md5sum $(WORK_DIR)/localfile* > $(WORK_DIR)/md5sum_local_modified.txt
+      md5sum ${{ parameters.mount_dir }}/remotefile* > $(WORK_DIR)/md5sum_remote_modified.txt
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_local_modified.txt
+      cat $(WORK_DIR)/md5sum_local_modified.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_local_modified.txt1
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_remote_modified.txt
+      cat $(WORK_DIR)/md5sum_remote_modified.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_remote_modified.txt1
+      echo "----------------------------------------------"
+      diff $(WORK_DIR)/md5sum_local_modified.txt1 $(WORK_DIR)/md5sum_remote_modified.txt1
+      if [ $? -ne 0 ]; then
+        exit 1
+      fi
+      rm -rf $(WORK_DIR)/localfile*
+    displayName: 'Compare MD5 before modification'
+
+  - script: |
       for i in {100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'echo "abcd" >>  $(WORK_DIR)/localfile{}'
       md5sum $(WORK_DIR)/localfile* > $(WORK_DIR)/md5sum_local_modified.txt
     displayName: 'Modify local files'
