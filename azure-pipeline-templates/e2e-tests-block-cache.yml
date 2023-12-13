@@ -105,6 +105,11 @@ steps:
     displayName: 'Unmount RO mount'
 
   - script: |
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_block_cache.txt
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_file_cache.txt
+      echo "----------------------------------------------"
       diff $(WORK_DIR)/md5sum_block_cache.txt $(WORK_DIR)/md5sum_file_cache.txt
       if [ $? -ne 0 ]; then
         exit 1
@@ -136,8 +141,13 @@ steps:
     displayName: 'Unmount RW mount'
 
   - script: |
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_block_cache_write.txt
       cat $(WORK_DIR)/md5sum_block_cache_write.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_block_cache_write.txt1
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_file_cache.txt
       cat $(WORK_DIR)/md5sum_file_cache.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_file_cache.txt1
+      echo "----------------------------------------------"
       diff $(WORK_DIR)/md5sum_block_cache_write.txt1 $(WORK_DIR)/md5sum_file_cache.txt1
       if [ $? -ne 0 ]; then
         exit 1
@@ -174,8 +184,13 @@ steps:
     displayName: 'Modify remote files'
 
   - script: |
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_local_modified.txt
       cat $(WORK_DIR)/md5sum_local_modified.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_local_modified.txt1
+      echo "----------------------------------------------"
+      cat $(WORK_DIR)/md5sum_remote_modified.txt
       cat $(WORK_DIR)/md5sum_remote_modified.txt | cut -d " " -f1 > $(WORK_DIR)/md5sum_remote_modified.txt1
+      echo "----------------------------------------------"
       diff $(WORK_DIR)/md5sum_local_modified.txt1 $(WORK_DIR)/md5sum_remote_modified.txt1
       if [ $? -ne 0 ]; then
         exit 1
