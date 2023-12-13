@@ -144,6 +144,43 @@ steps:
       fi
     displayName: 'Compare md5Sum'
 
+  - template: 'mount.yml'
+    parameters:
+      working_dir: $(WORK_DIR)
+      mount_dir: ${{ parameters.mount_dir }}
+      temp_dir: ${{ parameters.temp_dir }}
+      prefix: ${{ parameters.idstring }}
+      ro_mount: true
+      mountStep: 
+        script: |
+          $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
+
+  - script: |
+      for i in {100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom >  $(WORK_DIR)/localfile{}'
+    displayName: 'Generate local files'
+
+  - script: |
+      for i in {100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'cp  $(WORK_DIR)/localfile{} ${{ parameters.mount_dir }}/remotefile{}'
+    displayName: 'Upload local files'
+
+  - script: |
+      for i in {100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'echo "abcd" >  $(WORK_DIR)/localfile{}'
+      md5sum $(WORK_DIR)/localfile* > $(WORK_DIR)/md5sum_local_modified.txt
+    displayName: 'Modify local files'
+
+  - script: |
+      for i in {100,200,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'echo "abcd" > ${{ parameters.mount_dir }}/remotefile{}'
+      md5sum ${{ parameters.mount_dir }}/remotefile* > $(WORK_DIR)/md5sum_remote_modified.txt
+    displayName: 'Modify remote files'
+
+  - script: |
+      diff $(WORK_DIR)/md5sum_local_modified.txt $(WORK_DIR)/md5sum_remote_modified.txt
+      if [ $? -ne 0 ]; then
+        exit 1
+      fi
+      rm -rf $(WORK_DIR)/localfile*
+    displayName: 'Compare MD5 of modified files'
+
   - template: 'cleanup.yml'
     parameters:
       working_dir: $(WORK_DIR)
