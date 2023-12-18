@@ -1006,6 +1006,7 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 	block.node = handle.Buffers.Cooked.PushBack(block)
 
 	block.Uploading()
+	block.flags.Clear(BlockFlagFailed)
 
 	// Send the work item to worker pool to schedule download
 	bc.threadPool.Schedule(false, item)
@@ -1032,6 +1033,7 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 		block.Unblock()
 
 		if block.IsFailed() {
+			log.Err("BlockCache::waitAndFreeUploadedBlocks : Failed to upload block, posting back to cooking list %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
 			_ = handle.Buffers.Cooked.Remove(block.node)
 			block.node = handle.Buffers.Cooking.PushFront(block)
 			continue
