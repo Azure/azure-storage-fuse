@@ -323,7 +323,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		// As there can be a potential write on this file, currently configured block size and block size of the file in container
 		// has to match otherwise it will corrupt the file. Fail the open call if this is not the case.
 		blockList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
-		if err != nil {
+		if err != nil || blockList == nil {
 			log.Err("BlockCache::OpenFile : Failed to get block list of %s [%s]", options.Name, err.Error())
 			return nil, err
 		}

@@ -1385,8 +1385,11 @@ func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBloc
 func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 	log.Trace("BlockBlob::StageBlock : name %s", name)
 
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	_, err := blobURL.StageBlock(context.Background(),
+	_, err := blobURL.StageBlock(ctx,
 		id,
 		bytes.NewReader(data),
 		bb.blobAccCond.LeaseAccessConditions,
@@ -1405,8 +1408,11 @@ func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 func (bb *BlockBlob) CommitBlocks(name string, blockList []string) error {
 	log.Trace("BlockBlob::CommitBlocks : name %s", name)
 
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	_, err := blobURL.CommitBlockList(context.Background(),
+	_, err := blobURL.CommitBlockList(ctx,
 		blockList,
 		azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
 		nil,
