@@ -2,15 +2,18 @@ trigger:
 - main
 
 pool:
-  vmImage: 'windows-latest'  # or 'ubuntu-latest' for Linux VM
+  vmImage: 'ubuntu-latest'  # or 'ubuntu-latest' for Linux VM
+
+variables:
+  - group: NightlyBlobFuse  # Ensure this variable group is defined and provides necessary variables
+  - name: azureSubscriptionId
+    value: 'ba45b233-e2ef-4169-8808-49eb0d8eba0d'  # Replace with your subscription ID
 
 jobs:
 - job: DeployComputeInstance
   displayName: 'Deploy Compute Instance with Public IP'
   variables:
-    - group: NightlyBlobFuse  # Ensure this variable group is defined and provides necessary variables
-    - name: azureSubscriptionId
-      value: 'ba45b233-e2ef-4169-8808-49eb0d8eba0d'  # Replace with your subscription ID
+    azureSubscriptionId: $(azureSubscriptionId)  # Use the variable for Azure subscription
 
   steps:
   - task: UseDotNet@2
@@ -19,8 +22,9 @@ jobs:
       version: '3.x'
 
   - task: AzurePowerShell@5
+    displayName: 'Azure PowerShell Script'
     inputs:
-      azureSubscription: $(azureSubscriptionId)  # Use the variable for Azure subscription
+      azureSubscription: $(azureSubscriptionId)
       ScriptType: 'InlineScript'
       Inline: |
         # Connect to Azure Machine Learning workspace
@@ -35,12 +39,3 @@ jobs:
         # Update the compute instance properties to enable public IP address
         $compute.Properties.PublicIpAddressConfiguration = "Enabled"
         $compute | Update-AzMachineLearningCompute -Force
-
-      env:
-        TENANT_ID: $(AZTEST_TENANT)
-        SERVICE_PRINCIPAL_ID: $(AZTEST_CLIENT)
-        SERVICE_PRINCIPAL_CERT_THUMBPRINT: $(AZTEST_SECRET)
-        SUBSCRIPTION_ID: ba45b233-e2ef-4169-8808-49eb0d8eba0d # Use the variable for Azure subscription
-        RESOURCE_GROUP_NAME: 'anuresource'
-        AML_WORKSPACE_NAME: 'anu-perf-testing'
-        COMPUTE_INSTANCE_NAME: 'ashruti1'
