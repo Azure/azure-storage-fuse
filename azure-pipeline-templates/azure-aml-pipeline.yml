@@ -2,7 +2,7 @@ trigger:
 - main
 
 pool:
-  vmImage: 'windows-latest'  # or 'ubuntu-latest' for Linux VM
+  vmImage: 'ubuntu-latest'  # or 'ubuntu-latest' for Linux VM
 
 variables:
   azureSubscriptionId: 'ba45b233-e2ef-4169-8808-49eb0d8eba0d'  # Replace with your subscription ID
