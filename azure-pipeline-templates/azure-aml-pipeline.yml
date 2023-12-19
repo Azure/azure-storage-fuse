@@ -8,7 +8,9 @@ jobs:
 - job: DeployComputeInstance
   displayName: 'Deploy Compute Instance with Public IP'
   variables:
-    - group: NightlyBlobFuse
+    - group: NightlyBlobFuse  # Ensure this variable group is defined and provides necessary variables
+    - name: azureSubscriptionId
+      value: 'ba45b233-e2ef-4169-8808-49eb0d8eba0d'  # Replace with your subscription ID
 
   steps:
   - task: UseDotNet@2
@@ -18,7 +20,7 @@ jobs:
 
   - task: AzurePowerShell@5
     inputs:
-      azureSubscription: 'aml-connection'
+      azureSubscription: $(azureSubscriptionId)  # Use the variable for Azure subscription
       ScriptType: 'InlineScript'
       Inline: |
         # Connect to Azure Machine Learning workspace
@@ -38,7 +40,7 @@ jobs:
         TENANT_ID: $(AZTEST_TENANT)
         SERVICE_PRINCIPAL_ID: $(AZTEST_CLIENT)
         SERVICE_PRINCIPAL_CERT_THUMBPRINT: $(AZTEST_SECRET)
-        SUBSCRIPTION_ID: ba45b233-e2ef-4169-8808-49eb0d8eba0d
+        SUBSCRIPTION_ID: ba45b233-e2ef-4169-8808-49eb0d8eba0d # Use the variable for Azure subscription
         RESOURCE_GROUP_NAME: 'anuresource'
         AML_WORKSPACE_NAME: 'anu-perf-testing'
         COMPUTE_INSTANCE_NAME: 'ashruti1'
