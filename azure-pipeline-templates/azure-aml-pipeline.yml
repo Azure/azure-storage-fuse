@@ -2,18 +2,15 @@ trigger:
 - main
 
 pool:
-  vmImage: 'ubuntu-latest'  # or 'ubuntu-latest' for Linux VM
+  vmImage: 'windows-latest'  # or 'ubuntu-latest' for Linux VM
 
 variables:
-  - group: NightlyBlobFuse  # Ensure this variable group is defined and provides necessary variables
-  - name: azureSubscriptionId
-    value: 'ba45b233-e2ef-4169-8808-49eb0d8eba0d'  # Replace with your subscription ID
+  azureSubscriptionId: 'ba45b233-e2ef-4169-8808-49eb0d8eba0d'  # Replace with your subscription ID
 
 jobs:
 - job: DeployComputeInstance
   displayName: 'Deploy Compute Instance with Public IP'
   variables:
-    azureSubscriptionId: $(azureSubscriptionId)  # Use the variable for Azure subscription
     TENANT_ID: $(AZTEST_TENANT)
     SERVICE_PRINCIPAL_ID: $(AZTEST_CLIENT)
     SERVICE_PRINCIPAL_CERT_THUMBPRINT: $(AZTEST_SECRET)
@@ -41,4 +38,8 @@ jobs:
 
         # Create a compute instance
         $computeConfig = New-AzMachineLearningCompute -ResourceGroupName $env:RESOURCE_GROUP_NAME -WorkspaceName $env:AML_WORKSPACE_NAME -Name $env:COMPUTE_INSTANCE_NAME -VmSize 'Standard_DS3_v2' -MinNodeCount 1 -MaxNodeCount 1 -IdleSecondsBeforeScaleDown 300
-        $compute = Get-AzMachineLearningCompute -ResourceGroupName $env:RESOURCE_GROUP_NAME -WorkspaceName $env:AML_WORKSPACE
+        $compute = Get-AzMachineLearningCompute -ResourceGroupName $env:RESOURCE_GROUP_NAME -WorkspaceName $env:AML_WORKSPACE_NAME -Name $env:COMPUTE_INSTANCE_NAME
+
+        # Update the compute instance properties to enable public IP address
+        $compute.Properties.PublicIpAddressConfiguration = "Enabled"
+        $compute | Update-AzMachineLearningCompute -Force
