@@ -14,6 +14,13 @@ jobs:
   displayName: 'Deploy Compute Instance with Public IP'
   variables:
     azureSubscriptionId: $(azureSubscriptionId)  # Use the variable for Azure subscription
+    TENANT_ID: $(AZTEST_TENANT)
+    SERVICE_PRINCIPAL_ID: $(AZTEST_CLIENT)
+    SERVICE_PRINCIPAL_CERT_THUMBPRINT: $(AZTEST_SECRET)
+    SUBSCRIPTION_ID: $(azureSubscriptionId)  # Use the variable for Azure subscription
+    RESOURCE_GROUP_NAME: 'anuresource'
+    AML_WORKSPACE_NAME: 'anu-perf-testing'
+    COMPUTE_INSTANCE_NAME: 'ashruti1'
 
   steps:
   - task: UseDotNet@2
@@ -34,8 +41,4 @@ jobs:
 
         # Create a compute instance
         $computeConfig = New-AzMachineLearningCompute -ResourceGroupName $env:RESOURCE_GROUP_NAME -WorkspaceName $env:AML_WORKSPACE_NAME -Name $env:COMPUTE_INSTANCE_NAME -VmSize 'Standard_DS3_v2' -MinNodeCount 1 -MaxNodeCount 1 -IdleSecondsBeforeScaleDown 300
-        $compute = Get-AzMachineLearningCompute -ResourceGroupName $env:RESOURCE_GROUP_NAME -WorkspaceName $env:AML_WORKSPACE_NAME -Name $env:COMPUTE_INSTANCE_NAME
-
-        # Update the compute instance properties to enable public IP address
-        $compute.Properties.PublicIpAddressConfiguration = "Enabled"
-        $compute | Update-AzMachineLearningCompute -Force
+        $compute = Get-AzMachineLearningCompute -ResourceGroupName $env:RESOURCE_GROUP_NAME -WorkspaceName $env:AML_WORKSPACE
