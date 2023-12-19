@@ -18,6 +18,7 @@ jobs:
     RESOURCE_GROUP_NAME: 'anuresource'
     AML_WORKSPACE_NAME: 'anu-perf-testing'
     COMPUTE_INSTANCE_NAME: 'ashruti1'
+    service-connection: 'amlws-conn'
 
   steps:
   - task: UseDotNet@2
@@ -28,7 +29,7 @@ jobs:
   - task: AzurePowerShell@5
     displayName: 'Azure PowerShell Script'
     inputs:
-      azureSubscription: $(azureSubscriptionId)
+      azureSubscription: $(service-connection)
       ScriptType: 'InlineScript'
       Inline: |
         # Connect to Azure Machine Learning workspace
