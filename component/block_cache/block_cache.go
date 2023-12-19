@@ -1003,10 +1003,10 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 	if block.node != nil {
 		_ = handle.Buffers.Cooking.Remove(block.node)
 	}
-	block.node = handle.Buffers.Cooked.PushBack(block)
 
 	block.Uploading()
 	block.flags.Clear(BlockFlagFailed)
+	block.node = handle.Buffers.Cooked.PushBack(block)
 
 	// Send the work item to worker pool to schedule download
 	bc.threadPool.Schedule(false, item)
