@@ -18,7 +18,7 @@ jobs:
 
   - task: AzurePowerShell@5
     inputs:
-      azureSubscription: '<your-service-connection-name>'
+      azureSubscription: 'aml-connection'
       ScriptType: 'InlineScript'
       Inline: |
         # Connect to Azure Machine Learning workspace
