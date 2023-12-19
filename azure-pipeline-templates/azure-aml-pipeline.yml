@@ -1,0 +1,44 @@
+trigger:
+- main
+
+pool:
+  vmImage: 'windows-latest'  # or 'ubuntu-latest' for Linux VM
+
+jobs:
+- job: DeployComputeInstance
+  displayName: 'Deploy Compute Instance with Public IP'
+  variables:
+    - group: NightlyBlobFuse
+
+  steps:
+  - task: UseDotNet@2
+    inputs:
+      packageType: 'sdk'
+      version: '3.x'
+
+  - task: AzurePowerShell@5
+    inputs:
+      azureSubscription: '<your-service-connection-name>'
+      ScriptType: 'InlineScript'
+      Inline: |
+        # Connect to Azure Machine Learning workspace
+        Connect-AzAccount -ServicePrincipal -TenantId $env:TENANT_ID -ApplicationId $env:SERVICE_PRINCIPAL_ID -CertificateThumbprint $env:SERVICE_PRINCIPAL_CERT_THUMBPRINT
+        Set-AzContext -Subscription $env:SUBSCRIPTION_ID
+        $amlWorkspace = Get-AzMachineLearningWorkspace -ResourceGroupName $env:RESOURCE_GROUP_NAME -Name $env:AML_WORKSPACE_NAME
+
+        # Create a compute instance
+        $computeConfig = New-AzMachineLearningCompute -ResourceGroupName $env:RESOURCE_GROUP_NAME -WorkspaceName $env:AML_WORKSPACE_NAME -Name $env:COMPUTE_INSTANCE_NAME -VmSize 'Standard_DS3_v2' -MinNodeCount 1 -MaxNodeCount 1 -IdleSecondsBeforeScaleDown 300
+        $compute = Get-AzMachineLearningCompute -ResourceGroupName $env:RESOURCE_GROUP_NAME -WorkspaceName $env:AML_WORKSPACE_NAME -Name $env:COMPUTE_INSTANCE_NAME
+
+        # Update the compute instance properties to enable public IP address
+        $compute.Properties.PublicIpAddressConfiguration = "Enabled"
+        $compute | Update-AzMachineLearningCompute -Force
+
+      env:
+        TENANT_ID: $(AZTEST_TENANT)
+        SERVICE_PRINCIPAL_ID: $(AZTEST_CLIENT)
+        SERVICE_PRINCIPAL_CERT_THUMBPRINT: $(AZTEST_SECRET)
+        SUBSCRIPTION_ID: ba45b233-e2ef-4169-8808-49eb0d8eba0d
+        RESOURCE_GROUP_NAME: 'anuresource'
+        AML_WORKSPACE_NAME: 'anu-perf-testing'
+        COMPUTE_INSTANCE_NAME: 'ashruti1'
