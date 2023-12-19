@@ -44,3 +44,4 @@ jobs:
         # Update the compute instance properties to enable public IP address
         $compute.Properties.PublicIpAddressConfiguration = "Enabled"
         $compute | Update-AzMachineLearningCompute -Force
+      azurePowerShellVersion: 'LatestVersion'  # Specify the desired Azure PowerShell version
