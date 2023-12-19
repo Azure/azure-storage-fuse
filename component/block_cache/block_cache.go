@@ -1022,14 +1022,11 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 		nextNode = node.Next()
 
 		block := node.Value.(*Block)
-		if block.id == -1 {
-			// ignore this block and move ahead, but this shall never happen
-			log.Err("BlockCache::waitAndFreeUploadedBlocks : Invalid block %v=>%s (index %v, offset %v)", handle.ID, handle.Path, block.id, block.offset)
-			continue
+		if block.id != -1 {
+			// Wait for upload of this block to complete
+			<-block.state
 		}
 
-		// Wait for upload of this block to complete
-		<-block.state
 		block.Unblock()
 
 		if block.IsFailed() {
@@ -1139,8 +1136,17 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 	}
 
 	if cnt == 3 {
-		log.Err("BlockCache::commitBlocks : Failed to stage blocks for %s after 3 attempts", handle.Path)
-		return fmt.Errorf("failed to stage blocks")
+		nodeList := handle.Buffers.Cooking
+		node := nodeList.Front()
+		for node != nil {
+			block := node.Value.(*Block)
+			node = node.Next()
+
+			if block.IsDirty() {
+				log.Err("BlockCache::commitBlocks : Failed to stage blocks for %s after 3 attempts", handle.Path)
+				return fmt.Errorf("failed to stage blocks")
+			}
+		}
 	}
 
 	// Generate the block id list order now
