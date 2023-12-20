@@ -34,6 +34,8 @@ jobs:
       Inline: |
 
         Write-Host "$env:TENANT_ID"
+
+        az ml workspace show -n $env:AML_WORKSPACE_NAME -g $env:RESOURCE_GROUP_NAME
         
         # Connect to Azure Machine Learning workspace
         Connect-AzAccount -ServicePrincipal -TenantId $env:TENANT_ID -ApplicationId $env:SERVICE_PRINCIPAL_ID -CertificateThumbprint $env:SERVICE_PRINCIPAL_CERT_THUMBPRINT
