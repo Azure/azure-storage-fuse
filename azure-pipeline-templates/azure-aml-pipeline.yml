@@ -34,6 +34,7 @@ jobs:
       Inline: |
 
         Write-Host "$env:TENANT_ID"
+        az login --service-principal -u $env:SERVICE_PRINCIPAL_ID -p $env:SERVICE_PRINCIPAL_CERT_THUMBPRINT --tenant $env:TENANT_ID
         az extension add -n ml
         az ml workspace show -n $env:AML_WORKSPACE_NAME -g $env:RESOURCE_GROUP_NAME
         
