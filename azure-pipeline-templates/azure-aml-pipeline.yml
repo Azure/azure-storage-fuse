@@ -32,6 +32,10 @@ jobs:
       azureSubscription: $(service-connection)
       ScriptType: 'InlineScript'
       Inline: |
+        Write-Host "TENANT_ID: $($env:TENANT_ID)"
+        Write-Host "AZTEST_TENANT: $(AZTEST_TENANT)"
+        Write-Host "AZTEST_CLIENT: $(AZTEST_CLIENT)"
+        
         # Connect to Azure Machine Learning workspace
         Connect-AzAccount -ServicePrincipal -TenantId $env:TENANT_ID -ApplicationId $env:SERVICE_PRINCIPAL_ID -CertificateThumbprint $env:SERVICE_PRINCIPAL_CERT_THUMBPRINT
         Set-AzContext -Subscription $env:SUBSCRIPTION_ID
