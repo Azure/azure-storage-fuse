@@ -12,7 +12,7 @@ jobs:
 - job: DeployComputeInstance
   displayName: 'Deploy Compute Instance with Public IP'
   variables:
-    TENANT_ID: $(AZTEST_TENANT)
+    TENANT_ID: '72f988bf-86f1-41af-91ab-2d7cd011db47'
     SERVICE_PRINCIPAL_ID: $(AZTEST_CLIENT)
     SERVICE_PRINCIPAL_CERT_THUMBPRINT: $(AZTEST_SECRET)
     SUBSCRIPTION_ID: $(azureSubscriptionId)  # Use the variable for Azure subscription
