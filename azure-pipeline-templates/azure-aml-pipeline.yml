@@ -34,7 +34,7 @@ jobs:
       Inline: |
 
         Write-Host "$env:TENANT_ID"
-
+        az extension add -n ml
         az ml workspace show -n $env:AML_WORKSPACE_NAME -g $env:RESOURCE_GROUP_NAME
         
         # Connect to Azure Machine Learning workspace
