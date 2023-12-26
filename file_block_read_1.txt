@@ -1,0 +1,13 @@
+| Thread | Block Size (MB) | File Size (MB) | Block Cache Speed | Block Cache Time | File Cache Speed | File Cache Time | AML Speed | AML Time |
+| -- | -- | -- | -- | -- | -- | -- | -- | -- |
+| 1 | 8 | 8 | 45.2MiB | 177msec | 45.5MiB | 176msec | 46.8MiB | 171msec |
+| 1 | 8 | 10 | 33.8MiB | 237msec | 58.8MiB | 136msec | 89.9MiB | 89msec |
+| 1 | 8 | 50 | 139MiB | 346msec | 166MiB | 289msec | 230MiB | 209msec |
+| 1 | 8 | 100 | 247MiB | 389msec | 276MiB | 348msec | 508MiB | 189msec |
+| 1 | 8 | 1024 | 557MiB | 1839msec | 662MiB | 1546msec | 638MiB | 1605msec |
+| 1 | 16 | 1024 | 1641MiB | 624msec | 647MiB | 1582msec | 459MiB | 2233msec |
+| 1 | 8 | 4096 | 799MiB | 5125msec | 702MiB | 5832msec | 807MiB | 5075msec |
+| 1 | 16 | 4096 | 1820MiB | 2251msec | 661MiB | 6198msec | 902MiB | 4539msec |
+| 1 | 16 | 10240 | 1025MiB | 9991msec | 675MiB | 15178msec | 988MiB | 10361msec |
+| 1 | 16 | 102400 | 1273MiB | 80466msec | 601MiB | 170451msec | 953MiB | 107422msec |
+| -- | -- | -- | -- | -- | -- | -- | -- | -- |

@@ -1,0 +1,53 @@
+allow-other: true
+
+# dynamic-profile: true
+# cpu-profile: cpu.pprof
+# mem-profile: memheap.pprof
+
+logging:
+  # type: base
+  # level: log_debug
+  # file-path: /home/azureuser/cloudfiles/code/Users/ashruti/azure-storage-fuse/blobfuse2.log
+
+components:
+  - libfuse
+  - file_cache
+  # - block_cache
+  - attr_cache
+  - azstorage
+
+libfuse:
+  attribute-expiration-sec: 120
+  entry-expiration-sec: 120
+  negative-entry-expiration-sec: 240
+
+block_cache:
+  block-size-mb: 8
+  mem-size-mb: 8192
+  path: /tmp/tempcache
+  disk-size-mb: 4192
+  # disk-timeout-sec: <default disk cache eviction timeout (in sec). Default - 120 sec>
+  prefetch: 100
+  parallelism: 120
+  # prefetch-on-open: true|false <prefetch blocks on open. This shall be used only when user application is going to read file from offset 0> 
+
+file_cache:
+  path: /tmp/tempcache
+  timeout-sec: 18000
+  cleanup-on-start: true
+  allow-non-empty-temp: true
+  # max-size-mb: 1
+  # offload-io: true
+
+attr_cache:
+  timeout-sec: 3600
+
+azstorage:
+  type: block
+  account-name: xxxxxxx
+  account-key: XXXXXXXXXXXXXXXXXXXXXX
+  endpoint: https://xxxxxxx.blob.core.windows.net
+  mode: key
+  container: xxxxxxx
+
+ 

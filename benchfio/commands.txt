@@ -1,0 +1,5 @@
+For file_compare scipt in azure-storage-fuse
+./test/scripts/file_block_compare.sh /tmp/mntdir /tmp/tempcache /home/azureuser/cloudfiles/code/Users/ashruti/fio-plot/bench_fio/file_cache.yaml /home/azureuser/cloudfiles/code/Users/ashruti/fio-plot/bench_fio/block_cache.yaml /tmp/tmp74g9qt4q
+
+For benchfio 
+python3 __main__.py --target /tmp/mntdir/sample1G --type file --iodepth 1 8 16 --numjobs 1 2 4 8 --mode read write randwrite randread --output Blobfuse -b 8M --size 20M --destructive

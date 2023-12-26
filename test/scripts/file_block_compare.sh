@@ -6,23 +6,20 @@ tmpPath=$2
 fileConfigPath=$3
 blockConfigPath=$4
 
-dataPath="fio_sample"
-
 # Create mount directory if it does not exists already
 mkdir -p $mntPath
 chmod 777 $mntPath
 
 # ------------------------------------------------------------------------------------------------------------------
-./blobfuse2 unmount all
+blobfuse2 unmount all
 
 # ------------------------------------------------------------------------------------------------------------------
 # Clean up for new test
 echo "Cleaning up old data"
-./blobfuse2 mount $mntPath --config-file=$fileConfigPath --tmp-path=$tmpPath --file-cache-timeout=0
+blobfuse2 mount $mntPath --config-file=$fileConfigPath --tmp-path=$tmpPath --file-cache-timeout=0
 sleep 3
-rm -rf $mntPath/$dataPath/*
-mkdir -p $mntPath/$dataPath
-./blobfuse2 unmount all
+rm -rf $mntPath/*
+blobfuse2 unmount all
 
 rm -rf $tmpPath/*
 
@@ -36,7 +33,7 @@ echo "| File Size (MB) | Block Cache Speed | Block Cache Time | File Cache Speed
 echo "| -- | -- | -- | -- | -- |" >> $outputPath
 
 # Fill the test case data
-for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
+for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -gu);
 do
     echo "| ${file} |" >> $outputPath
 done
@@ -47,23 +44,23 @@ do
     sed_line=3
     echo "Running creation with $v2configPath"
 
+    mntPath=$1
     fileBaseName=$(basename $v2configPath | cut -d "." -f1)
 
-    ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
+    blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
     if [ $? -ne 0 ]; then
         exit 1
     fi
-
     # Wait for mount to stabilize
     sleep 3
 
-    for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
+    for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -gu);
     do
         sudo sysctl -w vm.drop_caches=3
         
         echo "Creating: " $file
-        dd if=/dev/urandom of=$mntPath/$dataPath/${fileBaseName}_${file}.data bs=1M count=$file 2> temp.tst
-        
+        dd if=/dev/urandom of=$mntPath/${fileBaseName}_${file}.data bs=1M count=$file 2> temp.tst
+
         write_speed=`cat temp.tst | tail -1 | rev | cut -d " " -f1,2 | rev | cut -d "/" -f1`
         write_time=`cat temp.tst | tail -1 |  cut -d "," -f3`
         
@@ -75,10 +72,12 @@ do
 
         sleep 2
     done
-    ./blobfuse2 unmount all
+    blobfuse2 unmount all
+
+    sleep 3
 
 done
-echo "| -- | -- | -- |" >> $outputPath
+echo "| -- | -- | -- | -- | -- | -- | -- |" >> $outputPath
 cat $outputPath
 
 # ------------------------------------------------------------------------------------------------------------------
@@ -87,8 +86,8 @@ cat $outputPath
 # Generate report format
 echo "Going for Read tests"
 outputPath="./file_block_read.txt"
-echo "| Thread | Block Size (MB) | File Size (MB) | Block Cache Speed | Block Cache Time | File Cache Speed | File Cache Time |" > $outputPath
-echo "| -- | -- | -- | -- | -- | -- | -- |" >> $outputPath
+echo "| Thread | Block Size (MB) | File Size (MB) | Block Cache Speed | Block Cache Time | File Cache Speed | File Cache Time | AML Speed | AML Time |" > $outputPath
+echo "| -- | -- | -- | -- | -- | -- | -- | -- | -- |" >> $outputPath
 
 # Generate the test case data
 while IFS=, read -r thread block file; do
@@ -96,24 +95,35 @@ while IFS=, read -r thread block file; do
 done < <(tail -n +3 ./test/scripts/fio_tests.csv)
 
 # Execute the Sequential read FIO test
-for v2configPath in $blockConfigPath $fileConfigPath;
+for v2configPath in $blockConfigPath $fileConfigPath "AML";
 do
     sed_line=3
     echo "Running read test with $v2configPath"
 
-    fileBaseName=$(basename $v2configPath | cut -d "." -f1)
-        
-    # Mount Blobfuse2
-    ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
-    if [ $? -ne 0 ]; then
-        exit 1
+    if [ "$v2configPath" != "AML" ]
+    then    
+        fileBaseName=$(basename $v2configPath | cut -d "." -f1)
+        mntPath=$1
+        # Mount Blobfuse2
+        blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
+        if [ $? -ne 0 ]; then
+            exit 1
+        fi
+        name="Blobfuse2"
+        # Wait for mount to stabilize
+        sleep 3
+    else 
+        # fileBaseName=$(basename $blockConfigPath | cut -d "." -f1)
+        echo "Running for AML fuse"
+        fileBaseName=$(basename $blockConfigPath | cut -d "." -f1)
+        mntPath=$5
+        name=$v2configPath
     fi
 
-    # Wait for mount to stabilize
-    sleep 3
-
     while IFS=, read -r thread block file; do
-    
+  
+        echo "FILESIZE: $file"
+
     	sudo sysctl -w vm.drop_caches=3
 
         echo "
@@ -122,12 +132,12 @@ do
         size=${file}M
         bs=${block}M
         rw=read
-        filename=$mntPath/$dataPath/${fileBaseName}_${file}.data
+        filename=${mntPath}/${fileBaseName}_${file}.data
         numjobs=$thread
         [job]
         name=seq_read" > fio_temp.cfg
 
-        echo "Blobfuse2 Run with $thread threads, $block block size, $file file size"
+        echo "$name Run with $thread threads, $block block size, $file file size"
 
         fio_result=`fio fio_temp.cfg | tail -1`
         read_bw=$(echo $fio_result | sed -e "s/^.*\(bw=[^ ,]*\).*$/\1/" | cut -d "=" -f 2 | cut -d "/" -f1)
@@ -140,9 +150,10 @@ do
         (( sed_line++ ))
     done < <(tail -n +3 ./test/scripts/fio_tests.csv)
 
-    ./blobfuse2 unmount all
+    blobfuse2 unmount all
+    sleep 3
 done
-echo "| -- | -- | -- | -- | -- | -- | -- |" >> $outputPath
+echo "| -- | -- | -- | -- | -- | -- | -- | -- | -- |" >> $outputPath
 cat $outputPath
 # ------------------------------------------------------------------------------------------------------------------
 
@@ -160,7 +171,7 @@ cat $outputPath
 # echo "| -- | -- | -- | -- | -- |" >> $outputPath
 
 # # Generate the test case data
-# for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
+# for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -gu);
 # do
 #     echo "| ${file} |" >> $outputPath
 # done 
@@ -174,7 +185,7 @@ cat $outputPath
 #     fileBaseName=$(basename $v2configPath | cut -d "." -f1)
 
 #     # Mount Blobfuse2
-#     ./blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
+#     blobfuse2 mount $mntPath --config-file=$v2configPath --tmp-path=$tmpPath --file-cache-timeout=0
 #     if [ $? -ne 0 ]; then
 #         exit 1
 #     fi
@@ -183,7 +194,7 @@ cat $outputPath
 #     sleep 3
 #     sudo sysctl -w vm.drop_caches=3
 
-#     for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -u);
+#     for file in $(cat ./test/scripts/fio_tests.csv  | cut -d "," -f3 | tail -n +3 | sort -gu);
 #     do
 #         echo "Blobfuse2 Run with $block block size, $file file size"
 
@@ -199,7 +210,7 @@ cat $outputPath
 #         sleep 2
 #     done 
     
-#     ./blobfuse2 unmount all
+#     blobfuse2 unmount all
 # done
 # echo "| -- | -- | -- | -- | -- | -- |" >> $outputPath
 # cat $outputPath
@@ -209,12 +220,13 @@ cat $outputPath
 
 
 # Post run cleanup
-rm -rf temp*.tst
-rm -rf fio*.cfg
+# rm -rf temp*.tst
+# rm -rf fio*.cfg
 
+mntPath=$1
 echo "Cleaning up data"
-./blobfuse2 mount $mntPath --config-file=$fileConfigPath --tmp-path=$tmpPath --file-cache-timeout=0
+blobfuse2 mount $mntPath --config-file=$fileConfigPath --tmp-path=$tmpPath --file-cache-timeout=0
 sleep 3
-rm -rf $mntPath/$dataPath/*
-./blobfuse2 unmount all
+rm -rf $mntPath/*
+blobfuse2 unmount all
 rm -rf $tmpPath/*
