@@ -192,12 +192,12 @@ steps:
     displayName: 'Compare MD5 before modification'
 
   - script: |
-      for i in {1,2,3,5,10,100,101,200,500,1000,1024,2048,4096}; do echo $i; done | cat $(WORK_DIR)/additionaldata.data >>  $(WORK_DIR)/localfile$i'
+      for i in {1,2,3,5,10,100,101,200,500,1000,1024,2048,4096}; do echo $i; done | cat $(WORK_DIR)/additionaldata.data >>  $(WORK_DIR)/localfile$i
       ls -lh  $(WORK_DIR)/localfile*
     displayName: 'Modify local files'
 
   - script: |
-      for i in {1,2,3,5,10,100,101,200,500,1000,1024,2048,4096}; do echo $i; done | cat $(WORK_DIR)/additionaldata.data >> ${{ parameters.mount_dir }}/remotefile$i'
+      for i in {1,2,3,5,10,100,101,200,500,1000,1024,2048,4096}; do echo $i; done | cat $(WORK_DIR)/additionaldata.data >> ${{ parameters.mount_dir }}/remotefile$i
       ls -lh ${{ parameters.mount_dir }}/remotefile*
     displayName: 'Modify remote files'
 
