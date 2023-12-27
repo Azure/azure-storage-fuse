@@ -167,10 +167,12 @@ steps:
           $(WORK_DIR)/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.config_file }} --default-working-dir=$(WORK_DIR)
 
   - script: |
+      rm -rf $(WORK_DIR)/localfile*
       for i in {1,2,3,5,10,100,101,200,500,1000,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom >  $(WORK_DIR)/localfile{}'
     displayName: 'Generate local files'
 
   - script: |
+      rm -rf ${{ parameters.mount_dir }}/remotefile*
       for i in {1,2,3,5,10,100,101,200,500,1000,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'cp  $(WORK_DIR)/localfile{} ${{ parameters.mount_dir }}/remotefile{}'
     displayName: 'Upload local files'
 
@@ -188,16 +190,16 @@ steps:
       if [ $? -ne 0 ]; then
         exit 1
       fi
-      head -c 10M < /dev/urandom >  $(WORK_DIR)/additionaldata.data
+      head -c 13M < /dev/urandom >  $(WORK_DIR)/additionaldata.data
     displayName: 'Compare MD5 before modification'
 
   - script: |
-      for i in {1,2,3,5,10,100,101,200,500,1000,1024,2048,4096}; do echo $i; done | cat $(WORK_DIR)/additionaldata.data >>  $(WORK_DIR)/localfile$i
+      for i in {1,2,3,5,10,100,101,200,500,1000,1024,2048,4096}; do echo $i; done | parallel --will-cite -j 5 'cat  $(WORK_DIR)/additionaldata >> $(WORK_DIR)/localfile{}' 
       ls -lh  $(WORK_DIR)/localfile*
     displayName: 'Modify local files'
 
   - script: |
-      for i in {1,2,3,5,10,100,101,200,500,1000,1024,2048,4096}; do echo $i; done | cat $(WORK_DIR)/additionaldata.data >> ${{ parameters.mount_dir }}/remotefile$i
+      for i in {1,2,3,5,10,100,101,200,500,1000,1024,2048,4096}; do echo $i; done |  parallel --will-cite -j 5 'cat  $(WORK_DIR)/additionaldata >> ${{ parameters.mount_dir }}/remotefile{}'
       ls -lh ${{ parameters.mount_dir }}/remotefile*
     displayName: 'Modify remote files'
 
