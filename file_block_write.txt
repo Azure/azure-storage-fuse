@@ -1,11 +1,3 @@
-| File Size (MB) | Block Cache Speed | Block Cache Time | File Cache Speed | File Cache Time |
-| -- | -- | -- | -- | -- |
-| 8 | 23.1 MB/s |  0.362387 s | 29.9 MB/s |  0.280947 s |
-| 10 | 34.3 MB/s |  0.305476 s | 46.2 MB/s |  0.227142 s |
-| 50 | 120 MB/s |  0.438273 s | 68.0 MB/s |  0.770687 s |
-| 100 | 132 MB/s |  0.796524 s | 69.1 MB/s |  1.51785 s |
-| 1024 | 263 MB/s |  4.08405 s | 233 MB/s |  4.61242 s |
-| 4096 | 292 MB/s |  14.7328 s | 240 MB/s |  17.914 s |
-| 10240 | 300 MB/s |  35.8211 s | 236 MB/s |  45.5604 s |
-| 102400 | 304 MB/s |  353.212 s | 215 MB/s |  500.176 s |
+| File Size (MB) | Block Cache Speed | Block Cache Time | File Cache Speed | File Cache Time | NFS Speed | NFS Time |
 | -- | -- | -- | -- | -- | -- | -- |
+| 10 |

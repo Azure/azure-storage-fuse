@@ -1,13 +1,13 @@
 | Thread | Block Size (MB) | File Size (MB) | Block Cache Speed | Block Cache Time | File Cache Speed | File Cache Time | AML Speed | AML Time |
 | -- | -- | -- | -- | -- | -- | -- | -- | -- |
-| 1 | 8 | 8 | 49.4MiB | 162msec | 44.2MiB | 181msec | 38.5MiB | 208msec |
-| 1 | 8 | 10 | 53.7MiB | 149msec | 45.7MiB | 175msec | 43.2MiB | 185msec |
-| 1 | 8 | 50 | 136MiB | 354msec | 194MiB | 248msec | 216MiB | 222msec |
-| 1 | 8 | 100 | 235MiB | 409msec | 284MiB | 338msec | 434MiB | 221msec |
-| 1 | 8 | 1024 | 527MiB | 1942msec | 673MiB | 1522msec | 769MiB | 1331msec |
-| 1 | 16 | 1024 | 1710MiB | 599msec | 619MiB | 1653msec | 629MiB | 1627msec |
-| 1 | 8 | 4096 | 770MiB | 5320msec | 698MiB | 5871msec | 789MiB | 5194msec |
-| 1 | 16 | 4096 | 1852MiB | 2212msec | 654MiB | 6266msec | 793MiB | 5166msec |
-| 1 | 16 | 10240 | 978MiB | 10474msec | 663MiB | 15446msec | 877MiB | 11677msec |
-| 1 | 16 | 102400 | 1121MiB | 91339msec | 630MiB | 162479msec | Run status group 0 (all jobs): | Run status group 0 (all jobs): |
+| 1 | 8 | 8 | 42.8MiB | 187msec | 35.1MiB | 228msec | 51.3MiB | 156msec |
+| 1 | 8 | 10 | 70.8MiB | 113msec | 35.7MiB | 224msec | 46.2MiB | 173msec |
+| 1 | 8 | 50 | 143MiB | 336msec | 181MiB | 265msec | 203MiB | 237msec |
+| 1 | 8 | 100 | 253MiB | 380msec | 306MiB | 314msec | 440MiB | 218msec |
+| 1 | 8 | 1024 | 614MiB | 1667msec | 623MiB | 1644msec | 554MiB | 1847msec |
+| 1 | 16 | 1024 | 1724MiB | 594msec | 589MiB | 1740msec | 632MiB | 1619msec |
+| 1 | 8 | 4096 | 919MiB | 4459msec | 661MiB | 6195msec | 817MiB | 5011msec |
+| 1 | 16 | 4096 | 1819MiB | 2252msec | 623MiB | 6572msec | 832MiB | 4921msec |
+| 1 | 16 | 10240 | 1125MiB | 9103msec | 633MiB | 16178msec | 863MiB | 11863msec |
+| 1 | 16 | 102400 | 1222MiB | 83772msec | 563MiB | 181844msec | 845MiB | 121192msec |
 | -- | -- | -- | -- | -- | -- | -- | -- | -- |
