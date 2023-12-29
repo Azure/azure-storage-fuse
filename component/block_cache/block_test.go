@@ -233,12 +233,6 @@ func (suite *blockTestSuite) TestWriter() {
 	suite.assert.NotNil(b.state)
 	suite.assert.Equal(len(b.state), 0)
 
-	b.Synced()
-	suite.assert.True(b.IsSynced())
-
-	b.ClearSynced()
-	suite.assert.False(b.IsSynced())
-
 	<-b.state
 	suite.assert.Equal(len(b.state), 0)
 

@@ -43,10 +43,12 @@ import (
 
 // Various flags denoting state of a block
 const (
-	BlockFlagFresh  uint16 = iota
-	BlockFlagDirty         // Block has been written and data is not persisted yet
-	BlockFlagFailed        // Block upload/download has failed
-	BlockFlagSynced        // Block has been synced to the container
+	BlockFlagFresh       uint16 = iota
+	BlockFlagDownloading        // Block is being downloaded
+	BlockFlagUploading          // Block is being uploaded
+	BlockFlagDirty              // Block has been written and data is not persisted yet
+	BlockFlagSynced             // Block has been written and data is persisted
+	BlockFlagFailed             // Block upload/download has failed
 )
 
 // Block is a memory mapped buffer with its state to hold data
@@ -156,19 +158,4 @@ func (b *Block) Failed() {
 // Check this block as failed
 func (b *Block) IsFailed() bool {
 	return b.flags.IsSet(BlockFlagFailed)
-}
-
-// Mark this block as synced to storage
-func (b *Block) Synced() {
-	b.flags.Set(BlockFlagSynced)
-}
-
-// Mark this block as not synced to storage
-func (b *Block) ClearSynced() {
-	b.flags.Clear(BlockFlagSynced)
-}
-
-// Check this block is synced to storage
-func (b *Block) IsSynced() bool {
-	return b.flags.IsSet(BlockFlagSynced)
 }

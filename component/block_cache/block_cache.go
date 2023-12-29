@@ -535,6 +535,8 @@ func (bc *BlockCache) getBlock(handle *handlemap.Handle, readoffset uint64) (*Bl
 	t = <-block.state
 
 	if t == 1 {
+		block.flags.Clear(BlockFlagDownloading)
+
 		if block.IsFailed() {
 			log.Err("BlockCache::getBlock : Failed to download block %v=>%s (offset %v, index %v)", handle.ID, handle.Path, readoffset, index)
 
@@ -599,6 +601,7 @@ func (bc *BlockCache) startPrefetch(handle *handlemap.Handle, index uint64, pref
 				select {
 				case <-block.state:
 					// As we are first reader of this block here its important to unblock any future readers on this block
+					block.flags.Clear(BlockFlagDownloading)
 					block.Unblock()
 
 					// Block is downloaded so it's safe to ready it for reuse
@@ -732,6 +735,7 @@ func (bc *BlockCache) lineupDownload(handle *handlemap.Handle, block *Block, pre
 	}
 
 	block.node = handle.Buffers.Cooking.PushFront(block)
+	block.flags.Set(BlockFlagDownloading)
 
 	// Send the work item to worker pool to schedule download
 	bc.threadPool.Schedule(!prefetch, item)
@@ -923,6 +927,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		}
 
 		handle.SetValue(fmt.Sprintf("%v", index), block)
+		block.flags.Clear(BlockFlagDownloading)
 		block.Unblock()
 
 		// As we are creating new blocks here, we need to push the block for upload and remove them from list here
@@ -938,13 +943,17 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		block = node.(*Block)
 
 		// If the block was staged earlier then we are overwriting it here so move it back to cooking queue
-		if block.IsSynced() {
+		if block.flags.IsSet(BlockFlagSynced) {
 			if block.node != nil {
 				_ = handle.Buffers.Cooked.Remove(block.node)
 			}
 
 			block.node = handle.Buffers.Cooking.PushBack(block)
-			block.ClearSynced()
+			block.flags.Clear(BlockFlagSynced)
+		} else if block.flags.IsSet(BlockFlagDownloading) {
+			<-block.state
+			block.flags.Clear(BlockFlagDownloading)
+			block.Unblock()
 		}
 	}
 
@@ -978,11 +987,11 @@ func (bc *BlockCache) stageBlocks(handle *handlemap.Handle, cnt int) error {
 
 // lineupUpload : Create a work item and schedule the upload
 func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listMap map[int64]string) {
-	id := listMap[block.id]
-	if id == "" {
-		id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
-		listMap[block.id] = id
-	}
+	// id := listMap[block.id]
+	// if id == "" {
+	id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+	listMap[block.id] = id
+	//}
 
 	item := &workItem{
 		handle:   handle,
@@ -1006,6 +1015,7 @@ func (bc *BlockCache) lineupUpload(handle *handlemap.Handle, block *Block, listM
 
 	block.Uploading()
 	block.flags.Clear(BlockFlagFailed)
+	block.flags.Set(BlockFlagUploading)
 	block.node = handle.Buffers.Cooked.PushBack(block)
 
 	// Send the work item to worker pool to schedule download
@@ -1025,6 +1035,7 @@ func (bc *BlockCache) waitAndFreeUploadedBlocks(handle *handlemap.Handle, cnt in
 		if block.id != -1 {
 			// Wait for upload of this block to complete
 			<-block.state
+			block.flags.Clear(BlockFlagUploading)
 		}
 
 		block.Unblock()
@@ -1110,7 +1121,7 @@ func (bc *BlockCache) upload(item *workItem) {
 	}
 
 return_safe:
-	item.block.Synced()
+	item.block.flags.Set(BlockFlagSynced)
 	item.block.NoMoreDirty()
 	item.block.Ready()
 }
