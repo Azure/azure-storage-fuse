@@ -1184,13 +1184,6 @@ stages:
             timeoutInMinutes: 60
             strategy:
               matrix:
-                Mariner:
-                  DistroVer: "Mariner"
-                  Description: "CBL-Mariner Linux"
-                  AgentName: "blobfuse-mariner"
-                  ContainerName: "test-cnt-mari-1"
-                  fuselib: 'libfuse-dev'
-                  tags: 'fuse2'
                 Mariner2:
                   DistroVer: "Mariner2"
                   Description: "CBL-Mariner2 Linux"
@@ -1241,11 +1234,7 @@ stages:
                   gopath: $(GOPATH)
                   installStep:
                     script: |
-                      if [ $(AgentName) == "blobfuse-mariner" ]; then
-                        sudo tdnf install gcc build-essential git fuse fuse-devel python36 -y
-                      else 
                         sudo tdnf install gcc build-essential git fuse3 fuse3-devel python3 -y
-                      fi
                     displayName: 'Install fuse'
                   verbose_log: ${{ parameters.verbose_log }}
 
