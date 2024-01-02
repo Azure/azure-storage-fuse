@@ -568,6 +568,18 @@ func (ac *AttrCache) Chown(options internal.ChownOptions) error {
 	return err
 }
 
+func (ac *AttrCache) CommitData(options internal.CommitDataOptions) error {
+	log.Trace("AttrCache::CommitData : %s", options.Name)
+	err := ac.NextComponent().CommitData(options)
+	if err == nil {
+		ac.cacheLock.RLock()
+		defer ac.cacheLock.RUnlock()
+
+		ac.invalidatePath(options.Name)
+	}
+	return err
+}
+
 // ------------------------- Factory -------------------------------------------
 
 // Pipeline will call this method to create your object, initialize your variables here

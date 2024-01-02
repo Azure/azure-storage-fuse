@@ -916,7 +916,7 @@ func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) 
 		block.id = int64(index)
 		block.offset = index * bc.blockSize
 
-		if offset < uint64(handle.Size) {
+		if block.offset < uint64(handle.Size) {
 			// We are writing somewhere in between so just fetch this block
 			bc.lineupDownload(handle, block, false)
 
