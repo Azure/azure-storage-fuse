@@ -26,14 +26,14 @@ stages:
           timeoutInMinutes: 300
           strategy:
             matrix:
-              Ubuntu-18:
+              Ubuntu-20:
                 AgentName: 'blobfuse-ubuntu20'
                 imageName: 'ubuntu-20.04'
                 containerName: 'test-cnt-ubn-20'
                 fuselib: 'libfuse-dev'
                 fuselib2: 'fuse'
                 tags: 'fuse2'
-              Ubuntu-20:
+              Ubuntu-22:
                 AgentName: 'blobfuse-ubuntu22'
                 imageName: 'ubuntu-22.04'
                 containerName: 'test-cnt-ubn-22'
