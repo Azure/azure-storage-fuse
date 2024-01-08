@@ -521,6 +521,29 @@ func (lfs *LoopbackFS) CommitData(options internal.CommitDataOptions) error {
 	return err
 }
 
+func (lfs *LoopbackFS) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
+	mainFilepath := filepath.Join(lfs.path, name)
+
+	info, err := os.Lstat(mainFilepath)
+	if err != nil {
+		return nil, err
+	}
+
+	blockSize := uint64(1 * 1024 * 1024)
+	blocks := info.Size() / (int64)(blockSize)
+	list := make(internal.CommittedBlockList, 0)
+
+	for i := int64(0); i < blocks; i++ {
+		list = append(list, internal.CommittedBlock{
+			Id:     fmt.Sprintf("%d", i),
+			Offset: i * (int64)(blockSize),
+			Size:   blockSize,
+		})
+	}
+
+	return &list, nil
+}
+
 func NewLoopbackFSComponent() internal.Component {
 	lfs := &LoopbackFS{}
 	lfs.SetName(compName)

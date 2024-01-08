@@ -168,7 +168,7 @@ func (bc *BlockCache) TempCacheCleanup() error {
 	dirents, err := os.ReadDir(bc.tmpPath)
 	if err != nil {
 		log.Err("BlockCache::TempCacheCleanup : Failed to list directory %s [%v]", bc.tmpPath, err.Error())
-		return nil
+		return fmt.Errorf("failed to list directory %s", bc.tmpPath)
 	}
 
 	for _, entry := range dirents {
