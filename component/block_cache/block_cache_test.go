@@ -741,6 +741,9 @@ func (suite *blockCacheTestSuite) TestWritefileWithAppend() {
 	suite.assert.Equal(h.Size, int64(len(data)))
 	suite.assert.True(h.Dirty())
 
+	err = tobj.blockCache.SyncFile(internal.SyncFileOptions{Handle: h})
+	suite.assert.Nil(err)
+
 	err = tobj.blockCache.FlushFile(internal.FlushFileOptions{Handle: h})
 	suite.assert.Nil(err)
 	suite.assert.False(h.Dirty())
