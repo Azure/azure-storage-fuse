@@ -59,14 +59,14 @@ type azAuthBlobSPNT2 struct {
 }
 
 // getServiceClient : returns SPN based service client for blob
-func (azspn *azAuthBlobSPNT2) getServiceClient() (interface{}, error) {
+func (azspn *azAuthBlobSPNT2) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
 	cred, err := azspn.getTokenCredential()
 	if err != nil {
 		log.Err("azAuthBlobSPN::getServiceClient : Failed to get token credential from SPN [%s]", err.Error())
 		return nil, err
 	}
 
-	svcClient, err := service.NewClient(azspn.config.Endpoint, cred, nil)
+	svcClient, err := service.NewClient(azspn.config.Endpoint, cred, getAzBlobServiceClientOptions(stConfig))
 	if err != nil {
 		log.Err("azAuthBlobSPN::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
@@ -79,14 +79,14 @@ type azAuthDatalakeSPN struct {
 }
 
 // getServiceClient : returns SPN based service client for datalake
-func (azspn *azAuthDatalakeSPN) getServiceClient() (interface{}, error) {
+func (azspn *azAuthDatalakeSPN) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
 	cred, err := azspn.getTokenCredential()
 	if err != nil {
 		log.Err("azAuthDatalakeSPN::getServiceClient : Failed to get token credential from SPN [%s]", err.Error())
 		return nil, err
 	}
 
-	svcClient, err := serviceBfs.NewClient(azspn.config.Endpoint, cred, nil)
+	svcClient, err := serviceBfs.NewClient(azspn.config.Endpoint, cred, getAzDatalakeServiceClientOptions(stConfig))
 	if err != nil {
 		log.Err("azAuthDatalakeSPN::getServiceClient : Failed to create service client [%s]", err.Error())
 	}

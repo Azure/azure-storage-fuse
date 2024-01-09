@@ -49,6 +49,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	azlog "github.com/Azure/azure-sdk-for-go/sdk/azcore/log"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
+	serviceBfs "github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/service"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -108,7 +113,7 @@ func getAzBlobPipelineOptions(conf AzStorageConfig) (azblob.PipelineOptions, ste
 	}
 	logOptions := getLogOptions(conf.sdkTrace)
 	// Create custom HTTPClient to pass to the factory in order to set our proxy
-	var pipelineHTTPClient = newBlobfuse2HttpClient(conf)
+	var pipelineHTTPClient = newBlobfuse2HttpClient(&conf)
 	return azblob.PipelineOptions{
 			Log:        logOptions,
 			RequestLog: requestLogOptions,
@@ -146,7 +151,7 @@ func getAzBfsPipelineOptions(conf AzStorageConfig) (azbfs.PipelineOptions, ste.X
 	}
 	logOptions := getLogOptions(conf.sdkTrace)
 	// Create custom HTTPClient to pass to the factory in order to set our proxy
-	var pipelineHTTPClient = newBlobfuse2HttpClient(conf)
+	var pipelineHTTPClient = newBlobfuse2HttpClient(&conf)
 	return azbfs.PipelineOptions{
 			Log:        logOptions,
 			RequestLog: requestLogOptions,
@@ -157,9 +162,82 @@ func getAzBfsPipelineOptions(conf AzStorageConfig) (azbfs.PipelineOptions, ste.X
 		retryOptions
 }
 
+// getAzStorageClientOptions : Create client options based on the config
+func getAzStorageClientOptions(conf *AzStorageConfig) azcore.ClientOptions {
+	retryOptions := policy.RetryOptions{
+		MaxRetries:    conf.maxRetries,                                 // Try at most 3 times to perform the operation (set to 1 to disable retries)
+		TryTimeout:    time.Second * time.Duration(conf.maxTimeout),    // Maximum time allowed for any single try
+		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)
+		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
+	}
+
+	telemetryValue := conf.telemetry
+	if telemetryValue != "" {
+		telemetryValue += " "
+	}
+	telemetryValue += UserAgent() + " (" + common.GetCurrentDistro() + ")"
+
+	telemetryOptions := policy.TelemetryOptions{
+		ApplicationID: telemetryValue,
+	}
+
+	logOptions := getSDKLogOptions()
+
+	transportOptions := newBlobfuse2HttpClient(conf)
+
+	return azcore.ClientOptions{
+		Retry:     retryOptions,
+		Telemetry: telemetryOptions,
+		Logging:   logOptions,
+		Transport: transportOptions,
+	}
+}
+
+// getAzBlobServiceClientOptions : Create azblob service client options based on the config
+func getAzBlobServiceClientOptions(conf *AzStorageConfig) *service.ClientOptions {
+	return &service.ClientOptions{
+		ClientOptions: getAzStorageClientOptions(conf),
+	}
+}
+
+// getAzDatalakeServiceClientOptions : Create azdatalake service client options based on the config
+func getAzDatalakeServiceClientOptions(conf *AzStorageConfig) *serviceBfs.ClientOptions {
+	return &serviceBfs.ClientOptions{
+		ClientOptions: getAzStorageClientOptions(conf),
+	}
+}
+
+// getLogOptions : to configure the SDK logging policy
+func getSDKLogOptions() policy.LogOptions {
+	if log.GetType() == "silent" {
+		return policy.LogOptions{}
+	} else {
+		// TODO: check which headers and query params should not be redacted
+		return policy.LogOptions{
+			AllowedHeaders:     []string{"x-ms-version"},
+			AllowedQueryParams: []string{},
+		}
+	}
+}
+
+// setSDKLogListener : log the requests and responses.
+// It is disabled if,
+//   - logging type is silent
+//   - sdk-trace is false
+//   - logging level is less than debug
+func setSDKLogListener(sdkLogging bool) {
+	if log.GetType() == "silent" || !sdkLogging || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
+		return
+	}
+	_ = log.GetLogLevel() < common.ELogLevel.LOG_DEBUG()
+	azlog.SetListener(func(cls azlog.Event, msg string) {
+		log.Debug("SDK : %s", msg)
+	})
+}
+
 // Create an HTTP Client with configured proxy
 // TODO: More configurations for other http client parameters?
-func newBlobfuse2HttpClient(conf AzStorageConfig) *http.Client {
+func newBlobfuse2HttpClient(conf *AzStorageConfig) *http.Client {
 	var ProxyURL func(req *http.Request) (*url.URL, error) = func(req *http.Request) (*url.URL, error) {
 		// If a proxy address is passed return
 		var proxyURL url.URL = url.URL{

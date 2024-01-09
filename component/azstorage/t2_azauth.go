@@ -69,7 +69,7 @@ type azAuthConfig struct {
 
 // azAuth : Interface to define a generic authentication type
 type azAuthT2 interface {
-	getServiceClient() (interface{}, error)
+	getServiceClient(stConfig *AzStorageConfig) (interface{}, error)
 }
 
 // getAzAuth returns a new AzAuth

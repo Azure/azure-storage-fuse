@@ -60,13 +60,13 @@ type azAuthBlobSAST2 struct {
 }
 
 // getServiceClient : returns SAS based service client for blob
-func (azsas *azAuthBlobSAST2) getServiceClient() (interface{}, error) {
+func (azsas *azAuthBlobSAST2) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
 	if azsas.config.SASKey == "" {
 		log.Err("azAuthBlobSAS::getServiceClient : SAS key for account is empty, cannot authenticate user")
 		return nil, errors.New("sas key for account is empty, cannot authenticate user")
 	}
 
-	svcClient, err := service.NewClientWithNoCredential(azsas.getEndpoint(), nil)
+	svcClient, err := service.NewClientWithNoCredential(azsas.getEndpoint(), getAzBlobServiceClientOptions(stConfig))
 	if err != nil {
 		log.Err("azAuthBlobSAS::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
@@ -79,13 +79,13 @@ type azAuthDatalakeSAS struct {
 }
 
 // getServiceClient : returns SAS based service client for datalake
-func (azsas *azAuthDatalakeSAS) getServiceClient() (interface{}, error) {
+func (azsas *azAuthDatalakeSAS) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
 	if azsas.config.SASKey == "" {
 		log.Err("azAuthDatalakeSAS::getServiceClient : SAS key for account is empty, cannot authenticate user")
 		return nil, errors.New("sas key for account is empty, cannot authenticate user")
 	}
 
-	svcClient, err := serviceBfs.NewClientWithNoCredential(azsas.getEndpoint(), nil)
+	svcClient, err := serviceBfs.NewClientWithNoCredential(azsas.getEndpoint(), getAzDatalakeServiceClientOptions(stConfig))
 	if err != nil {
 		log.Err("azAuthDatalakeSAS::getServiceClient : Failed to create service client [%s]", err.Error())
 	}

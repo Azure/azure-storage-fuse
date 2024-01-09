@@ -59,14 +59,14 @@ type azAuthBlobMSIT2 struct {
 }
 
 // getServiceClient : returns MSI based service client for blob
-func (azmsi *azAuthBlobMSIT2) getServiceClient() (interface{}, error) {
+func (azmsi *azAuthBlobMSIT2) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
 	cred, err := azmsi.getTokenCredential()
 	if err != nil {
 		log.Err("azAuthBlobMSI::getServiceClient : Failed to get token credential from MSI [%s]", err.Error())
 		return nil, err
 	}
 
-	svcClient, err := service.NewClient(azmsi.config.Endpoint, cred, nil)
+	svcClient, err := service.NewClient(azmsi.config.Endpoint, cred, getAzBlobServiceClientOptions(stConfig))
 	if err != nil {
 		log.Err("azAuthBlobMSI::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
@@ -79,14 +79,14 @@ type azAuthDatalakeMSI struct {
 }
 
 // getServiceClient : returns MSI based service client for datalake
-func (azmsi *azAuthDatalakeMSI) getServiceClient() (interface{}, error) {
+func (azmsi *azAuthDatalakeMSI) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
 	cred, err := azmsi.getTokenCredential()
 	if err != nil {
 		log.Err("azAuthDatalakeMSI::getServiceClient : Failed to get token credential from MSI [%s]", err.Error())
 		return nil, err
 	}
 
-	svcClient, err := serviceBfs.NewClient(azmsi.config.Endpoint, cred, nil)
+	svcClient, err := serviceBfs.NewClient(azmsi.config.Endpoint, cred, getAzDatalakeServiceClientOptions(stConfig))
 	if err != nil {
 		log.Err("azAuthDatalakeMSI::getServiceClient : Failed to create service client [%s]", err.Error())
 	}
