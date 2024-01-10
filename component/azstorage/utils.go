@@ -226,17 +226,20 @@ func getSDKLogOptions() policy.LogOptions {
 //   - sdk-trace is false
 //   - logging level is less than debug
 func setSDKLogListener(sdkLogging bool) {
+	// TODO: set/reset listener on dynamic config change
 	if log.GetType() == "silent" || !sdkLogging || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
-		return
+		// reset listener
+		azlog.SetListener(nil)
+	} else {
+		azlog.SetListener(func(cls azlog.Event, msg string) {
+			log.Debug("SDK : %s", msg)
+		})
 	}
-	_ = log.GetLogLevel() < common.ELogLevel.LOG_DEBUG()
-	azlog.SetListener(func(cls azlog.Event, msg string) {
-		log.Debug("SDK : %s", msg)
-	})
 }
 
 // Create an HTTP Client with configured proxy
 // TODO: More configurations for other http client parameters?
+// TODO: configure http.Client
 func newBlobfuse2HttpClient(conf *AzStorageConfig) *http.Client {
 	var ProxyURL func(req *http.Request) (*url.URL, error) = func(req *http.Request) (*url.URL, error) {
 		// If a proxy address is passed return
