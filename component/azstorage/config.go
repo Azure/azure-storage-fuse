@@ -504,7 +504,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	log.Info("ParseAndValidateConfig : Account: %s, Container: %s, AccountType: %s, Auth: %s, Prefix: %s, Endpoint: %s, ListBlock: %d, MD5 : %v %v, Virtual Directory: %v, Max Results For List %v, Disable Compression: %v, CPK Enabled: %v",
 		az.stConfig.authConfig.AccountName, az.stConfig.container, az.stConfig.authConfig.AccountType, az.stConfig.authConfig.AuthMode,
 		az.stConfig.prefixPath, az.stConfig.authConfig.Endpoint, az.stConfig.cancelListForSeconds, az.stConfig.validateMD5, az.stConfig.updateMD5, az.stConfig.virtualDirectory, az.stConfig.maxResultsForList, az.stConfig.disableCompression, az.stConfig.cpkEnabled)
-	log.Info("ParseAndValidateConfig : UseHTTP: %t, BlockSize: %d, MaxConcurrency: %d, DefaultTier: %s, CancelListForSeconds: %d, ProxyAddress: %s, FailUnsupportedOp: %t, mountAllContainers: %t", az.stConfig.authConfig.UseHTTP, az.stConfig.blockSize, az.stConfig.maxConcurrency, az.stConfig.defaultTier, az.stConfig.cancelListForSeconds, az.stConfig.proxyAddress, az.stConfig.ignoreAccessModifiers, az.stConfig.mountAllContainers)
+	log.Info("ParseAndValidateConfig : UseHTTP: %t, BlockSize: %d, MaxConcurrency: %d, DefaultTier: %s, FailUnsupportedOp: %t, mountAllContainers: %t", az.stConfig.authConfig.UseHTTP, az.stConfig.blockSize, az.stConfig.maxConcurrency, az.stConfig.defaultTier, az.stConfig.ignoreAccessModifiers, az.stConfig.mountAllContainers)
 	log.Info("ParseAndValidateConfig : Retry Config: Retry count %d, Max Timeout %d, BackOff Time %d, Max Delay %d",
 		az.stConfig.maxRetries, az.stConfig.maxTimeout, az.stConfig.backoffTime, az.stConfig.maxRetryDelay)
 
