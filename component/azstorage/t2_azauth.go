@@ -33,20 +33,48 @@
 
 package azstorage
 
-import (
-	"github.com/Azure/azure-storage-fuse/v2/common/log"
-)
+import "github.com/Azure/azure-storage-fuse/v2/common/log"
+
+// AzAuthConfig : Config to authenticate to storage
+type azAuthConfig struct {
+	// Account
+	AccountName string
+	UseHTTP     bool
+	AccountType AccountType
+	AuthMode    AuthType
+
+	// Key config
+	AccountKey string
+
+	// SAS config
+	SASKey string
+
+	// MSI config
+	ApplicationID string
+	ResourceID    string
+	ObjectID      string
+
+	// SPN config
+	TenantID                string
+	ClientID                string
+	ClientSecret            string
+	OAuthTokenFilePath      string
+	ActiveDirectoryEndpoint string
+
+	Endpoint     string
+	AuthResource string
+}
+
+// TODO: remove T2 suffix
 
 // azAuth : Interface to define a generic authentication type
-type azAuth interface {
-	getEndpoint() string
-	setOption(key, value string)
-	getCredential() interface{}
+type azAuthT2 interface {
+	getServiceClient(stConfig *AzStorageConfig) (interface{}, error)
 }
 
 // getAzAuth returns a new AzAuth
 // config: Defines the AzAuthConfig
-func getAzAuth(config azAuthConfig) azAuth {
+func getAzAuthT2(config azAuthConfig) azAuthT2 {
 	log.Debug("azAuth::getAzAuth : Account: %s, AccountType: %s, Protocol: %s, Endpoint: %s",
 		config.AccountName,
 		config.AccountType,
@@ -59,85 +87,77 @@ func getAzAuth(config azAuthConfig) azAuth {
 		config.Endpoint)
 
 	if EAccountType.BLOCK() == config.AccountType {
-		return getAzAuthBlob(config)
+		return getAzBlobAuth(config)
 	} else if EAccountType.ADLS() == config.AccountType {
-		return getAzAuthBfs(config)
+		return getAzDatalakeAuth(config)
 	}
 	return nil
 }
 
-func getAzAuthBlob(config azAuthConfig) azAuth {
-	base := azAuthBase{config: config}
+func getAzBlobAuth(config azAuthConfig) azAuthT2 {
+	base := azAuthBaseT2{config: config}
 	if config.AuthMode == EAuthType.KEY() {
-		return &azAuthBlobKey{
-			azAuthKey{
-				azAuthBase: base,
+		return &azAuthBlobKeyT2{
+			azAuthKeyT2{
+				azAuthBaseT2: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.SAS() {
-		return &azAuthBlobSAS{
-			azAuthSAS{
-				azAuthBase: base,
+		return &azAuthBlobSAST2{
+			azAuthSAST2{
+				azAuthBaseT2: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.MSI() {
-		return &azAuthBlobMSI{
-			azAuthMSI{
-				azAuthBase: base,
+		return &azAuthBlobMSIT2{
+			azAuthMSIT2{
+				azAuthBaseT2: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.SPN() {
-		return &azAuthBlobSPN{
-			azAuthSPN{
-				azAuthBase: base,
+		return &azAuthBlobSPNT2{
+			azAuthSPNT2{
+				azAuthBaseT2: base,
 			},
 		}
 	} else {
-		log.Crit("azAuth::getAzAuthBlob : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
+		log.Crit("azAuth::getAzBlobAuth : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
 	}
 	return nil
 }
 
-func getAzAuthBfs(config azAuthConfig) azAuth {
-	base := azAuthBase{config: config}
+func getAzDatalakeAuth(config azAuthConfig) azAuthT2 {
+	base := azAuthBaseT2{config: config}
 	if config.AuthMode == EAuthType.KEY() {
-		return &azAuthBfsKey{
-			azAuthKey{
-				azAuthBase: base,
+		return &azAuthDatalakeKey{
+			azAuthKeyT2{
+				azAuthBaseT2: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.SAS() {
-		return &azAuthBfsSAS{
-			azAuthSAS{
-				azAuthBase: base,
+		return &azAuthDatalakeSAS{
+			azAuthSAST2{
+				azAuthBaseT2: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.MSI() {
-		return &azAuthBfsMSI{
-			azAuthMSI{
-				azAuthBase: base,
+		return &azAuthDatalakeMSI{
+			azAuthMSIT2{
+				azAuthBaseT2: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.SPN() {
-		return &azAuthBfsSPN{
-			azAuthSPN{
-				azAuthBase: base,
+		return &azAuthDatalakeSPN{
+			azAuthSPNT2{
+				azAuthBaseT2: base,
 			},
 		}
 	} else {
-		log.Crit("azAuth::getAzAuthBfs : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
+		log.Crit("azAuth::getAzDatalakeAuth : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
 	}
 	return nil
 }
 
-type azAuthBase struct {
+type azAuthBaseT2 struct {
 	config azAuthConfig
-}
-
-// SetOption : Sets any optional information for the auth.
-func (base *azAuthBase) setOption(_, _ string) {}
-
-// GetEndpoint : Gets the endpoint
-func (base *azAuthBase) getEndpoint() string {
-	return base.config.Endpoint
 }

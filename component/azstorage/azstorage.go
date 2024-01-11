@@ -142,6 +142,9 @@ func (az *AzStorage) configureAndTest(isParent bool) error {
 		return err
 	}
 
+	// set SDK log listener to log the requests and responses
+	setSDKLogListener(az.stConfig.sdkTrace)
+
 	err = az.storage.SetPrefixPath(az.stConfig.prefixPath)
 	if err != nil {
 		log.Err("AzStorage::configureAndTest : Failed to set prefix path [%s]", err.Error())
