@@ -140,7 +140,7 @@ func (suite *mountSuite) TestMountDirNotExists() {
 }
 
 // mount failure test where the mount directory is not empty
-func (suite *mountSuite) TestMountDirNotEmpty() {
+func (suite *mountSuite) TestMountDirNotEmptyFailure() {
 	tempDir := filepath.Join(mntDir, "tempdir")
 	_ = os.Mkdir(tempDir, 0777)
 	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--config-file="+configFile)
@@ -160,6 +160,32 @@ func (suite *mountSuite) TestMountDirNotEmpty() {
 
 	// unmount
 	blobfuseUnmount(suite, "Nothing to unmount")
+}
+
+// mount non-empty directory using nonempty flag
+func (suite *mountSuite) TestMountDirNotEmptySuccess() {
+	tempDir := filepath.Join(mntDir, "tempdir")
+	_ = os.Mkdir(tempDir, 0777)
+
+	mountCmd := exec.Command(blobfuseBinary, "mount", mntDir, "--config-file="+configFile, "-o", "nonempty")
+	cliOut, err := mountCmd.Output()
+	suite.Equal(0, len(cliOut))
+	suite.Equal(nil, err)
+
+	// wait for mount
+	time.Sleep(10 * time.Second)
+
+	// validate mount
+	cliOut = listBlobfuseMounts(suite)
+	suite.NotEqual(0, len(cliOut))
+	suite.Contains(string(cliOut), mntDir)
+
+	remountCheck(suite)
+
+	// unmount
+	blobfuseUnmount(suite, mntDir)
+
+	os.RemoveAll(tempDir)
 }
 
 // mount failure test where the mount path is not provided
@@ -477,6 +503,10 @@ func TestMain(m *testing.M) {
 	mntDir = filepath.Join(*pathPtr, mntDir)
 	configFile = *configPtr
 	tags = *tagsPtr
+
+	blobfuseBinary = filepath.Join("/home/sourav/go/src/azure-storage-fuse", blobfuseBinary)
+	mntDir = filepath.Join("/home/sourav/gen1mnt", mntDir)
+	configFile = "/home/sourav/go/src/azure-storage-fuse/config.yaml"
 
 	err := os.RemoveAll(mntDir)
 	if err != nil {
