@@ -106,8 +106,8 @@ func (opt *mountOptions) validate(skipEmptyMount bool) error {
 		return fmt.Errorf("mount directory does not exists")
 	} else if common.IsDirectoryMounted(opt.MountPath) {
 		return fmt.Errorf("directory is already mounted")
-	} else if !skipEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
-		return fmt.Errorf("mount directory is not empty")
+		// } else if !skipEmptyMount && !common.IsDirectoryEmpty(opt.MountPath) {
+		// 	return fmt.Errorf("mount directory is not empty")
 	}
 
 	if err := common.ELogLevel.Parse(opt.Logging.LogLevel); err != nil {
