@@ -84,7 +84,6 @@ typedef struct fuse_options
     bool    allow_other;
     bool    allow_root;
     bool    trace_enable;
-    bool    non_empty;
     int     umask;
 } fuse_options_t;
 

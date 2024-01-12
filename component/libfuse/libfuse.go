@@ -69,7 +69,6 @@ type Libfuse struct {
 	extensionPath         string
 	disableWritebackCache bool
 	ignoreOpenFlags       bool
-	nonEmptyMount         bool
 	lsFlags               common.BitMap16
 	maxFuseThreads        uint32
 	directIO              bool
@@ -99,7 +98,6 @@ type LibfuseOptions struct {
 	ExtensionPath           string `config:"extension" yaml:"extension,omitempty"`
 	DisableWritebackCache   bool   `config:"disable-writeback-cache" yaml:"-"`
 	IgnoreOpenFlags         bool   `config:"ignore-open-flags" yaml:"ignore-open-flags,omitempty"`
-	nonEmptyMount           bool   `config:"nonempty" yaml:"nonempty,omitempty"`
 	Uid                     uint32 `config:"uid" yaml:"uid,omitempty"`
 	Gid                     uint32 `config:"gid" yaml:"gid,omitempty"`
 	MaxFuseThreads          uint32 `config:"max-fuse-threads" yaml:"max-fuse-threads,omitempty"`
@@ -188,7 +186,6 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 	lf.extensionPath = opt.ExtensionPath
 	lf.disableWritebackCache = opt.DisableWritebackCache
 	lf.ignoreOpenFlags = opt.IgnoreOpenFlags
-	lf.nonEmptyMount = opt.nonEmptyMount
 	lf.directIO = opt.DirectIO
 	lf.ownerGID = opt.Gid
 	lf.ownerUID = opt.Uid
@@ -290,20 +287,14 @@ func (lf *Libfuse) Configure(_ bool) error {
 		return err
 	}
 
-	err = config.UnmarshalKey("nonempty", &conf.nonEmptyMount)
-	if err != nil {
-		log.Err("Libfuse::Configure : config error [unable to obtain nonempty]")
-		return err
-	}
-
 	err = lf.Validate(&conf)
 	if err != nil {
 		log.Err("Libfuse::Configure : config error [invalid config settings]")
 		return fmt.Errorf("%s config error %s", lf.Name(), err.Error())
 	}
 
-	log.Info("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, nonempty %t, direct_io %t",
-		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.nonEmptyMount, lf.directIO)
+	log.Info("Libfuse::Configure : read-only %t, allow-other %t, allow-root %t, default-perm %d, entry-timeout %d, attr-time %d, negative-timeout %d, ignore-open-flags %t, direct_io %t",
+		lf.readOnly, lf.allowOther, lf.allowRoot, lf.filePermission, lf.entryExpiration, lf.attributeExpiration, lf.negativeTimeout, lf.ignoreOpenFlags, lf.directIO)
 
 	return nil
 }
