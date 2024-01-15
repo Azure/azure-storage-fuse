@@ -504,10 +504,6 @@ func TestMain(m *testing.M) {
 	configFile = *configPtr
 	tags = *tagsPtr
 
-	blobfuseBinary = filepath.Join("/home/sourav/go/src/azure-storage-fuse", blobfuseBinary)
-	mntDir = filepath.Join("/home/sourav/gen1mnt", mntDir)
-	configFile = "/home/sourav/go/src/azure-storage-fuse/config.yaml"
-
 	err := os.RemoveAll(mntDir)
 	if err != nil {
 		fmt.Println("Could not cleanup mount directory before testing")
