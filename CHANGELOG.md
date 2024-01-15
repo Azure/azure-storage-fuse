@@ -2,7 +2,7 @@
 **Bug Fixes**
 - Invalidate attribute cache entry on `PathAlreadyExists` error in create directory operation.
 - When `$HOME` environment variable is not present, use the current directory.
-- Fixed mount failure on nonempty mount path.
+- Fixed mount failure on nonempty mount path for fuse3.
 
 **Features**
 - Support CPK for block storage accounts.
