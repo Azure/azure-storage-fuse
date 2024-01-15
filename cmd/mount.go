@@ -308,13 +308,11 @@ var mountCmd = &cobra.Command{
 				} else if v == "allow_root" || v == "allow_root=true" {
 					config.Set("allow-root", "true")
 				} else if v == "nonempty" || v == "nonempty=true" {
-					// -o nonempty mount option has been removed from FUSE and
+					// For fuse3, -o nonempty mount option has been removed and
 					// mounting over non-empty directories is now always allowed.
+					// For fuse2, this option is supported.
 					options.NonEmpty = true
-				} else if v == "nonempty=false" {
-					// if nonempty flag is enabled in config and disabled in cli, then
-					// cli option is given preference over config.
-					options.NonEmpty = false
+					config.Set("nonempty", "true")
 				} else if strings.HasPrefix(v, "umask=") {
 					umask, err := strconv.ParseUint(parameter[1], 10, 32)
 					if err != nil {
