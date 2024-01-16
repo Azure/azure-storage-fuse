@@ -35,6 +35,7 @@ steps:
   - script: |
       sudo apt-get update --fix-missing
       sudo apt-get install ${{ parameters.fuselib }} -y
+      fusermount -V
     displayName: 'Libfuse Setup'
     condition: eq('${{ parameters.hostedAgent }}', true)
 
