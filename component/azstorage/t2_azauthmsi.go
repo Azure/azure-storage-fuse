@@ -50,7 +50,19 @@ type azAuthMSIT2 struct {
 }
 
 func (azmsi *azAuthMSIT2) getTokenCredential() (azcore.TokenCredential, error) {
-	cred, err := azidentity.NewManagedIdentityCredential(nil)
+	opts := azmsi.getAzIdentityClientOptions()
+
+	msiOpts := &azidentity.ManagedIdentityCredentialOptions{
+		ClientOptions: opts,
+	}
+
+	if azmsi.config.ApplicationID != "" {
+		msiOpts.ID = (azidentity.ClientID)(azmsi.config.ApplicationID)
+	} else if azmsi.config.ResourceID != "" {
+		msiOpts.ID = (azidentity.ResourceID)(azmsi.config.ResourceID)
+	}
+
+	cred, err := azidentity.NewManagedIdentityCredential(msiOpts)
 	return cred, err
 }
 

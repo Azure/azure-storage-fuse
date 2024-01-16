@@ -49,30 +49,30 @@ type azAuthSPNT2 struct {
 	azAuthBaseT2
 }
 
-func (azspn *azAuthSPNT2) getIdentityOptions() *azcore.ClientOptions {
-	opts := &azcore.ClientOptions{}
-	return opts
-}
-
 func (azspn *azAuthSPNT2) getTokenCredential() (azcore.TokenCredential, error) {
 	var cred azcore.TokenCredential
 	var err error
+
+	clOpts := azspn.getAzIdentityClientOptions()
 	if azspn.config.OAuthTokenFilePath != "" {
 		log.Trace("AzAuthSPN::getTokenCredential : Going for fedrated token flow")
-		opts := &azidentity.WorkloadIdentityCredentialOptions{
+
+		cred, err = azidentity.NewWorkloadIdentityCredential(&azidentity.WorkloadIdentityCredentialOptions{
+			ClientOptions: clOpts,
 			ClientID:      azspn.config.ClientID,
 			TenantID:      azspn.config.TenantID,
 			TokenFilePath: azspn.config.OAuthTokenFilePath,
-		}
-
-		cred, err = azidentity.NewWorkloadIdentityCredential(opts)
+		})
 		if err != nil {
 			log.Err("AzAuthSPN::getTokenCredential : Failed to generate token for SPN [%s]", err.Error())
 			return nil, err
 		}
 	} else {
 		log.Trace("AzAuthSPN::getTokenCredential : Using client secret for fetching token")
-		cred, err = azidentity.NewClientSecretCredential(azspn.config.TenantID, azspn.config.ClientID, azspn.config.ClientSecret, nil)
+
+		cred, err = azidentity.NewClientSecretCredential(azspn.config.TenantID, azspn.config.ClientID, azspn.config.ClientSecret, &azidentity.ClientSecretCredentialOptions{
+			ClientOptions: clOpts,
+		})
 		if err != nil {
 			log.Err("AzAuthSPN::getTokenCredential : Failed to generate token for SPN [%s]", err.Error())
 			return nil, err
