@@ -50,6 +50,7 @@ import (
 	"time"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	azlog "github.com/Azure/azure-sdk-for-go/sdk/azcore/log"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
@@ -350,6 +351,17 @@ func getLogOptions(sdkLogging bool) pipeline.LogOptions {
 			}(log.GetLogLevel())
 			return level <= currentLogLevel
 		},
+	}
+}
+
+// getCloudConfiguration : returns cloud configuration type on the basis of endpoint
+func getCloudConfiguration(endpoint string) cloud.Configuration {
+	if strings.Contains(endpoint, "core.chinacloudapi.cn") {
+		return cloud.AzureChina
+	} else if strings.Contains(endpoint, "core.usgovcloudapi.net") {
+		return cloud.AzureGovernment
+	} else {
+		return cloud.AzurePublic
 	}
 }
 

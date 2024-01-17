@@ -168,19 +168,19 @@ type azAuthBaseT2 struct {
 
 // TODO: check ActiveDirectoryEndpoint and AuthResource part
 func (base *azAuthBaseT2) getAzIdentityClientOptions() azcore.ClientOptions {
-	opts := azcore.ClientOptions{}
-	if base.config.ActiveDirectoryEndpoint != "" || base.config.AuthResource != "" {
-		opts.Cloud = cloud.AzurePublic
-		if base.config.ActiveDirectoryEndpoint != "" {
-			log.Debug("azAuthBase::getAzIdentityClientOptions : ActiveDirectoryAuthorityHost = %s", base.config.ActiveDirectoryEndpoint)
-			opts.Cloud.ActiveDirectoryAuthorityHost = base.config.ActiveDirectoryEndpoint
-		}
-		if base.config.AuthResource != "" {
-			if val, ok := opts.Cloud.Services[cloud.ResourceManager]; ok {
-				log.Debug("azAuthBase::getAzIdentityClientOptions : AuthResource = %s", base.config.AuthResource)
-				val.Endpoint = base.config.AuthResource
-				opts.Cloud.Services[cloud.ResourceManager] = val
-			}
+	opts := azcore.ClientOptions{
+		Cloud: getCloudConfiguration(base.config.Endpoint),
+	}
+
+	if base.config.ActiveDirectoryEndpoint != "" {
+		log.Debug("azAuthBase::getAzIdentityClientOptions : ActiveDirectoryAuthorityHost = %s", base.config.ActiveDirectoryEndpoint)
+		opts.Cloud.ActiveDirectoryAuthorityHost = base.config.ActiveDirectoryEndpoint
+	}
+	if base.config.AuthResource != "" {
+		if val, ok := opts.Cloud.Services[cloud.ResourceManager]; ok {
+			log.Debug("azAuthBase::getAzIdentityClientOptions : AuthResource = %s", base.config.AuthResource)
+			val.Endpoint = base.config.AuthResource
+			opts.Cloud.Services[cloud.ResourceManager] = val
 		}
 	}
 
