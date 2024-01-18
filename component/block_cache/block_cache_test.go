@@ -780,6 +780,41 @@ func (suite *blockCacheTestSuite) TestWritefileWithAppend() {
 	suite.assert.Nil(err)
 }
 
+func (suite *blockCacheTestSuite) TestWriteBlockOutOfRange() {
+	tobj, err := setupPipeline("")
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.NotNil(tobj.blockCache)
+
+	tobj.blockCache.prefetchOnOpen = true
+	tobj.blockCache.blockSize = 10
+
+	path := "testInvalidWriteBlock"
+	data := make([]byte, 20*_1MB)
+	_, _ = rand.Read(data)
+
+	options := internal.CreateFileOptions{Name: path, Mode: 0777}
+	h, err := tobj.blockCache.CreateFile(options)
+	suite.assert.Nil(err)
+
+	dataNew := make([]byte, 1*_1MB)
+	_, _ = rand.Read(data)
+
+	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 10 * 50001, Data: dataNew}) // 5 bytes
+	suite.assert.NotNil(err)
+	suite.assert.Contains(err.Error(), "block index out of range")
+	suite.assert.Equal(n, 0)
+
+	tobj.blockCache.blockSize = 1048576
+	n, err = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 10 * 50001, Data: dataNew}) // 5 bytes
+	suite.assert.Nil(err)
+	suite.assert.Equal(n, len(dataNew))
+
+	err = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: h})
+	suite.assert.Nil(err)
+}
+
 func (suite *blockCacheTestSuite) TestDeleteAndRenameDirAndFile() {
 	tobj, err := setupPipeline("")
 	defer tobj.cleanupPipeline()

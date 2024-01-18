@@ -84,14 +84,14 @@ type BlockCache struct {
 
 // Structure defining your config parameters
 type BlockCacheOptions struct {
-	BlockSize      uint64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	MemSize        uint64 `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
-	TmpPath        string `config:"path" yaml:"path,omitempty"`
-	DiskSize       uint64 `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
-	DiskTimeout    uint32 `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
-	PrefetchCount  uint32 `config:"prefetch" yaml:"prefetch,omitempty"`
-	Workers        uint32 `config:"parallelism" yaml:"parallelism,omitempty"`
-	PrefetchOnOpen bool   `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
+	BlockSize      float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	MemSize        uint64  `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
+	TmpPath        string  `config:"path" yaml:"path,omitempty"`
+	DiskSize       uint64  `config:"disk-size-mb" yaml:"disk-size-mb,omitempty"`
+	DiskTimeout    uint32  `config:"disk-timeout-sec" yaml:"timeout-sec,omitempty"`
+	PrefetchCount  uint32  `config:"prefetch" yaml:"prefetch,omitempty"`
+	Workers        uint32  `config:"parallelism" yaml:"parallelism,omitempty"`
+	PrefetchOnOpen bool    `config:"prefetch-on-open" yaml:"prefetch-on-open,omitempty"`
 }
 
 const (
@@ -103,6 +103,7 @@ const (
 	MIN_WRITE_BLOCK        = 3
 	MIN_RANDREAD           = 10
 	MAX_FAIL_CNT           = 3
+	MAX_BLOCKS             = 50000
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -193,8 +194,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 
 	bc.blockSize = uint64(16) * _1MB
 	if config.IsSet(compName + ".block-size-mb") {
-		bc.blockSize = conf.BlockSize * _1MB
-
+		bc.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
 
 	bc.memSize = uint64(4192) * _1MB
@@ -893,6 +893,11 @@ func (bc *BlockCache) WriteFile(options internal.WriteFileOptions) (int, error) 
 func (bc *BlockCache) getOrCreateBlock(handle *handlemap.Handle, offset uint64) (*Block, error) {
 	// Check the given block index is already available or not
 	index := bc.getBlockIndex(offset)
+	if index >= MAX_BLOCKS {
+		log.Err("BlockCache::getOrCreateBlock : Failed to get Block %v=>%s offset %v", handle.ID, handle.Path, offset)
+		return nil, fmt.Errorf("block index out of range. Increase your block size.")
+	}
+
 	//log.Debug("FilBlockCacheCache::getOrCreateBlock : Get block for %s, index %v", handle.Path, index)
 
 	var block *Block
@@ -1137,13 +1142,13 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 			break
 		}
 
-		err := bc.stageBlocks(handle, 50000)
+		err := bc.stageBlocks(handle, MAX_BLOCKS)
 		if err != nil {
 			log.Err("BlockCache::commitBlocks : Failed to stage blocks for %s [%s]", handle.Path, err.Error())
 			return err
 		}
 
-		bc.waitAndFreeUploadedBlocks(handle, 50000)
+		bc.waitAndFreeUploadedBlocks(handle, MAX_BLOCKS)
 	}
 
 	if cnt == 3 {
@@ -1351,7 +1356,7 @@ func NewBlockCacheComponent() internal.Component {
 func init() {
 	internal.AddComponent(compName, NewBlockCacheComponent)
 
-	blockSizeMb := config.AddUint64Flag("block-cache-block-size", 0, "Size (in MB) of a block to be downloaded for block-cache.")
+	blockSizeMb := config.AddFloat64Flag("block-cache-block-size", 0.0, "Size (in MB) of a block to be downloaded for block-cache.")
 	config.BindPFlag(compName+".block-size-mb", blockSizeMb)
 
 	blockPoolMb := config.AddUint64Flag("block-cache-pool-size", 0, "Size (in MB) of total memory preallocated for block-cache.")
