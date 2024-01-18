@@ -363,12 +363,12 @@ func getCloudConfiguration(endpoint string) cloud.Configuration {
 }
 
 // blobfuseTelemetryPolicy is a custom pipeline policy to prepend the blobfuse user agent string to the one coming from SDK.
-// This is added in the PerCallPolicies which executes after the SDK's default policy.
+// This is added in the PerCallPolicies which executes after the SDK's default telemetry policy.
 type blobfuseTelemetryPolicy struct {
 	telemetryValue string
 }
 
-// newBlobfuseTelemetryPolicy creates a object which prepends the blobfuse user agent string in the User-Agent request header
+// newBlobfuseTelemetryPolicy creates an object which prepends the blobfuse user agent string to the User-Agent request header
 func newBlobfuseTelemetryPolicy(telemetryValue string) policy.Policy {
 	return &blobfuseTelemetryPolicy{telemetryValue: telemetryValue}
 }
