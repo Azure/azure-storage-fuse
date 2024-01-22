@@ -7,7 +7,7 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 
 ##  NOTICE
 - We have seen some customer issues around files getting corrupted when `streaming` is used in write mode. Kindly avoid using this feature for write while we investigate and resolve it.
-- You can now use block-cache instead of streaming for both read and write workflows, which offers much better performance compared to streaming. To enable `block-cache` instead of `streaming`, use `--block-cache` in CI param or `block-cache` as component in config file instead of `streaming`.
+- You can now use block-cache instead of streaming for both read and write workflows, which offers much better performance compared to streaming. To enable `block-cache` instead of `streaming`, use `--block-cache` in CLI param or `block-cache` as component in config file instead of `streaming`.
 ## Supported Platforms
 Visit [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supported-Platforms) page to see list of supported linux distros.
 
@@ -16,7 +16,7 @@ Visit [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supporte
 - Basic file system operations such as mkdir, opendir, readdir, rmdir, open, 
    read, create, write, close, unlink, truncate, stat, rename
 - Local caching to improve subsequent access times
-- Streaming to support reading AND writing large files 
+- Streaming/Block-Cache to support reading AND writing large files 
 - Parallel downloads and uploads to improve access time for large files
 - Multiple mounts to the same container for read-only workloads
 
@@ -43,7 +43,7 @@ One of the biggest BlobFuse2 features is our brand new health monitor. It allows
 - CLI to check or update a parameter in the encrypted config
 - Set MD5 sum of a blob while uploading
 - Validate MD5 sum on download and fail file open on mismatch
-- Large file writing through write streaming
+- Large file writing through write streaming/Block-Cache
 
  ## Blobfuse2 performance compared to blobfuse(v1.x.x)
 - 'git clone' operation is 25% faster (tested with vscode repo cloning)
@@ -137,7 +137,9 @@ To learn about a specific command, just include the name of the command (For exa
     * `--block-cache-pool-size=<SIZE IN MB>`: Size of pool to be used for caching. This limits total memory used by block-cache.
     * `--block-cache-path=<PATH>`: Path where downloaded blocks will be persisted. Not providing this parameter will disable the disk caching.
     * `--block-cache-disk-size=<SIZE IN MB>`: Disk space to be used for caching.
+    * `--block-cache-disk-timeout=<seconds>`: Timeout for which disk cache is valid.
     * `--block-cache-prefetch=<Number of blocks>`: Number of blocks to prefetch at max when sequential reads are in progress.
+    * `--block-cache-parallelism=<count>`: Number of parallel threads doing upload/download operation.
     * `--block-cache-prefetch-on-open=true`: Start prefetching on open system call instead of waiting for first read. Enhances perf if file is read sequentially from offset 0.
 - Fuse options
     * `--attr-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache inode attributes.
@@ -190,8 +192,10 @@ Please refer to this diagram to decide on whether to use the file cache or strea
 
 ![alt text](./config_decision_tree.png?raw=true "File Cache vs. Streaming")
 
+NOTE: At any point in above diagram `streaming` can be replaced by `block-cache`.
 - [Sample File Cache Config](./sampleFileCacheConfig.yaml)
 - [Sample Stream Config](./sampleStreamingConfig.yaml)
+- [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
