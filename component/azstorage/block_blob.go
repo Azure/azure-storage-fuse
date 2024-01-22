@@ -58,8 +58,9 @@ import (
 )
 
 const (
-	folderKey  = "hdi_isfolder"
-	symlinkKey = "is_symlink"
+	folderKey           = "hdi_isfolder"
+	symlinkKey          = "is_symlink"
+	max_context_timeout = 15
 )
 
 type BlockBlob struct {
@@ -782,7 +783,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 	opt := bb.downloadOptions
 	opt.BlockSize = len
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
 	err := azblob.DownloadBlobToBuffer(ctx, blobURL, offset, len, data, opt)
@@ -1385,7 +1386,7 @@ func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBloc
 func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 	log.Trace("BlockBlob::StageBlock : name %s", name)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
@@ -1408,7 +1409,7 @@ func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 func (bb *BlockBlob) CommitBlocks(name string, blockList []string) error {
 	log.Trace("BlockBlob::CommitBlocks : name %s", name)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
