@@ -60,7 +60,7 @@ import (
 const (
 	folderKey           = "hdi_isfolder"
 	symlinkKey          = "is_symlink"
-	max_context_timeout = 15
+	max_context_timeout = 5
 )
 
 type BlockBlob struct {
