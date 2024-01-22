@@ -7,7 +7,7 @@ Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is use
 
 ##  NOTICE
 - We have seen some customer issues around files getting corrupted when `streaming` is used in write mode. Kindly avoid using this feature for write while we investigate and resolve it.
-
+- You can now use block-cache instead of streaming for both read and write workflows, which offers much better performance compared to streaming. To enable `block-cache` instead of `streaming`, use `--block-cache` in CI param or `block-cache` as component in config file instead of `streaming`.
 ## Supported Platforms
 Visit [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supported-Platforms) page to see list of supported linux distros.
 
