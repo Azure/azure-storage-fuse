@@ -241,6 +241,9 @@ func (bm *BitMap16) Set(bit uint16) { *bm |= (1 << bit) }
 // Clear : Clear the given bit from bitmap
 func (bm *BitMap16) Clear(bit uint16) { *bm &= ^(1 << bit) }
 
+// Reset : Reset the whole bitmap by setting it to 0
+func (bm *BitMap16) Reset() { *bm = 0 }
+
 type KeyedMutex struct {
 	mutexes sync.Map // Zero value is empty and ready for use
 }

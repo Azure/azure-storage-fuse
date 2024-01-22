@@ -6,6 +6,8 @@ mntPath=$1
 tmpPath=$2
 v2configPath=$3
 v1configPath=$4
+v2blockconfigPath=$5
+
 outputPath=results.txt
 rm $outputPath
 
@@ -69,3 +71,11 @@ totalReadImprove=`cut -d "|" -f 8 temp.out | sed -e 's/ //g' | paste -sd+ | bc`
 
 echo "| $count Test Case Average Improvement | -- | -- | -- | -- | `echo "scale=2; $totalWriteImprove / $count" | bc` | `echo "scale=2; $totalReadImprove / $count" | bc` |" >> $outputPath 
 rm -rf temp.out
+
+# Run v2 with block cache
+sed -i '1s/$/ v2 block write | v2 block read | /' $outputPath
+sed -i '2s/$/ -- | -- |/' $outputPath
+./test/scripts/goparrun.sh $mntPath $tmpPath $v2blockconfigPath $outputPath
+if [ $? -ne 0 ]; then
+    	exit 1
+fi
