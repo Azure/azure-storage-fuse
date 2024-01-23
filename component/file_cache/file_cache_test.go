@@ -1127,7 +1127,7 @@ func (suite *fileCacheTestSuite) TestGetAttrCase3() {
 	suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
 	suite.fileCache.TruncateFile(internal.TruncateFileOptions{Name: file, Size: 1024})
 	// Create the files in fake_storage and simulate different sizes
-	suite.loopback.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777}) // Length is default 0
+	//suite.loopback.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777}) // Length is default 0
 
 	// Read the Directory
 	attr, err := suite.fileCache.GetAttr(internal.GetAttrOptions{Name: file})

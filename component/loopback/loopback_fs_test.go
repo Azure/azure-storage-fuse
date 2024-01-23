@@ -40,6 +40,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	"github.com/stretchr/testify/assert"
@@ -281,6 +282,31 @@ func (suite *LoopbackFSTestSuite) TestGetAttr() {
 	assert.Equal(attr.Name, info.Name())
 	assert.Equal(attr.Mode, info.Mode())
 	assert.Equal(attr.IsDir(), info.IsDir())
+}
+
+func (suite *LoopbackFSTestSuite) TestStageAndCommitData() {
+	defer suite.cleanupTest()
+	assert := assert.New(suite.T())
+
+	lfs := &LoopbackFS{}
+
+	lfs.path = common.ExpandPath("~/blocklfstest")
+	err := os.MkdirAll(lfs.path, os.FileMode(0777))
+	assert.Nil(err)
+	defer os.RemoveAll(lfs.path)
+
+	err = lfs.StageData(internal.StageDataOptions{Name: "testBlock", Data: []byte(loremText), Id: "123", Offset: 0})
+	assert.Nil(err)
+
+	err = lfs.StageData(internal.StageDataOptions{Name: "testBlock", Data: []byte(loremText), Id: "456", Offset: 2})
+	assert.Nil(err)
+
+	err = lfs.StageData(internal.StageDataOptions{Name: "testBlock", Data: []byte(loremText), Id: "789", Offset: 1})
+	assert.Nil(err)
+
+	blockList := []string{"123", "789", "456"}
+	err = lfs.CommitData(internal.CommitDataOptions{Name: "testBlock", List: blockList})
+	assert.Nil(err)
 }
 
 func TestLoopbackFSTestSuite(t *testing.T) {

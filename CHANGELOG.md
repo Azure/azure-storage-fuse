@@ -1,10 +1,14 @@
-## 2.1.3 (Unreleased)
+## 2.2.0 (Unreleased)
 **Bug Fixes**
 - Invalidate attribute cache entry on `PathAlreadyExists` error in create directory operation.
 - When `$HOME` environment variable is not present, use the current directory.
+- Fixed mount failure on nonempty mount path for fuse3.
 
 **Features**
 - Support CPK for block storage accounts.
+- Added support to write files using block-cache
+    - Optimized for sequential writing
+    - Editing/Appending existing files works only if files were originally created using block-cache with the same block size
 
 ## 2.1.2 (2023-11-17)
 **Bug Fixes**

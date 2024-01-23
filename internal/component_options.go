@@ -189,6 +189,26 @@ type ChownOptions struct {
 	Group int
 }
 
+type StageDataOptions struct {
+	Name   string
+	Id     string
+	Offset uint64
+	Data   []byte
+}
+
+type CommitDataOptions struct {
+	Name      string
+	List      []string
+	BlockSize uint64
+}
+
+type CommittedBlock struct {
+	Id     string
+	Offset int64
+	Size   uint64
+}
+type CommittedBlockList []CommittedBlock
+
 func TruncateDirName(name string) string {
 	if len(name) == 0 {
 		return ""
