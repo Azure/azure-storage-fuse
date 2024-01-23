@@ -5,6 +5,8 @@ This is the next generation [blobfuse](https://github.com/Azure/azure-storage-fu
 
 Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is used within its limits documented here. Blobfuse2 supports both reads and writes however, it does not guarantee continuous sync of data written to storage using other APIs or other mounts of Blobfuse2. For data integrity it is recommended that multiple sources do not modify the same blob/file. Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/feature requests/questions.
 
+[This](https://github.com/Azure/azure-storage-fuse/tree/main?tab=readme-ov-file#config-guide) section will help you choose the correct config for Blobfuse2.
+
 ##  NOTICE
 - We have seen some customer issues around files getting corrupted when `streaming` is used in write mode. Kindly avoid using this feature for write while we investigate and resolve it.
 - You can now use block-cache instead of streaming for both read and write workflows, which offers much better performance compared to streaming. To enable `block-cache` instead of `streaming`, use `--block-cache` in CLI param or `block-cache` as component in config file instead of `streaming`.
@@ -182,21 +184,34 @@ To learn about a specific command, just include the name of the command (For exa
     * `AZURE_STORAGE_CPK_ENCRYPTION_KEY_SHA256`: Base64-encoded SHA256 of the cpk encryption key.
 
 
-## Config file
-- See [this](./sampleFileCacheConfig.yaml) sample config file.
-- See [this](./setup/baseConfig.yaml) config file for a list and description of all possible configurable options in blobfuse2. 
+## Config Guide
+Below diagrams guide you to choose right configuration for your workloads.
 
-***Please note: do not use quotations `""` for any of the config parameters***
-
-## Choosing Between File Cache and Stream Modes
-Please refer to this diagram to decide on whether to use the file cache or streaming. Sample config file URLs are below the diagram.
-
-![alt text](./config_decision_tree.png?raw=true "File Cache vs. Streaming")
-
-NOTE: At any point in above diagram `streaming` can be replaced by `block-cache`.
+- Choose right Auth mode
+<br/><br/>
+![alt text](./guide/AuthModeHelper.png?raw=true "Auth Mode Selection Guide")
+<br/><br/>
+- Choose right caching for Read-Only workloads
+<br/><br/>
+![alt text](./guide/CacheModeForReadOnlyWorkloads.png?raw=true "Cache Mode Selection Guide For Read-Only Workloads")
+<br/><br/>
+- Choose right caching for Read-Write workloads
+<br/><br/>
+![alt text](./guide/CacheModeForReadWriteWorkloads.png?raw=true "Cache Mode Selection Guide For Read-Only Workloads")
+<br/><br/>
+- Choose right block-cache configuration
+<br/><br/>
+![alt text](./guide/BlockCacheConfig.png?raw=true "Block-Cache Configuration")
+<br/><br/>
+- Choose right file-cache configuration
+<br/><br/>
+![alt text](./guide/FileCacheConfig.png?raw=true "Block-Cache Configuration")
+<br/><br/>
 - [Sample File Cache Config](./sampleFileCacheConfig.yaml)
-- [Sample Stream Config](./sampleStreamingConfig.yaml)
 - [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
+- [Sample Stream Config](./sampleStreamingConfig.yaml)
+- [All Config options](./setup/baseConfig.yaml) 
+
 
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
