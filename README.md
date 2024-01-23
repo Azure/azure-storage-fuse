@@ -188,20 +188,25 @@ To learn about a specific command, just include the name of the command (For exa
 Below diagrams guide you to choose right configuration for your workloads.
 
 - Choose right Auth mode
+<br/><br/>
 ![alt text](./guide/AuthModeHelper.png?raw=true "Auth Mode Selection Guide")
-
+<br/><br/>
 - Choose right caching for Read-Only workloads
+<br/><br/>
 ![alt text](./guide/CacheModeForReadOnlyWorkloads.png?raw=true "Cache Mode Selection Guide For Read-Only Workloads")
-
+<br/><br/>
 - Choose right caching for Read-Write workloads
+<br/><br/>
 ![alt text](./guide/CacheModeForReadWriteWorkloads.png?raw=true "Cache Mode Selection Guide For Read-Only Workloads")
-
+<br/><br/>
 - Choose right block-cache configuration
+<br/><br/>
 ![alt text](./guide/BlockCacheConfig.png?raw=true "Block-Cache Configuration")
-
+<br/><br/>
 - Choose right file-cache configuration
+<br/><br/>
 ![alt text](./guide/FileCacheConfig.png?raw=true "Block-Cache Configuration")
-
+<br/><br/>
 - [Sample File Cache Config](./sampleFileCacheConfig.yaml)
 - [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 - [Sample Stream Config](./sampleStreamingConfig.yaml)
