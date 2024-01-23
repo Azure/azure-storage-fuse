@@ -208,9 +208,11 @@ Below diagrams guide you to choose right configuration for your workloads.
 - Choose right file-cache configuration
 ![alt text](./guide/FileCacheConfig.png?raw=true "Block-Cache Configuration")
 
+NOTE: At any point in above diagram `streaming` can be replaced by `block-cache`.
 - [Sample File Cache Config](./sampleFileCacheConfig.yaml)
 - [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 - [Sample Stream Config](./sampleStreamingConfig.yaml)
+- [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 
 
 ## Frequently Asked Questions
