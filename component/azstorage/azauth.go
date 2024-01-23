@@ -47,7 +47,7 @@ type azAuth interface {
 // getAzAuth returns a new AzAuth
 // config: Defines the AzAuthConfig
 func getAzAuth(config azAuthConfig) azAuth {
-	log.Debug("azAuth::getAzAuth : Account: %s, AccountType: %s, Protocol: %s, Endpoint: %s",
+	log.Debug("azAuth::getAzAuth : account %s, account-type %s, protocol %s, endpoint %s",
 		config.AccountName,
 		config.AccountType,
 		func(useHttp bool) string {

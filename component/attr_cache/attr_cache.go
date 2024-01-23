@@ -153,8 +153,8 @@ func (ac *AttrCache) Configure(_ bool) error {
 
 	ac.noSymlinks = conf.NoSymlinks
 
-	log.Info("AttrCache::Configure : cache-timeout %d, symlink %t, cache-on-list %t",
-		ac.cacheTimeout, ac.noSymlinks, ac.cacheOnList)
+	log.Info("AttrCache::Configure : cache-timeout %d, symlink %t, cache-on-list %t, max-files %d",
+		ac.cacheTimeout, ac.noSymlinks, ac.cacheOnList, ac.maxFiles)
 
 	return nil
 }
@@ -565,6 +565,18 @@ func (ac *AttrCache) Chown(options internal.ChownOptions) error {
 	err := ac.NextComponent().Chown(options)
 	// TODO: Implement when datalake chown is supported.
 
+	return err
+}
+
+func (ac *AttrCache) CommitData(options internal.CommitDataOptions) error {
+	log.Trace("AttrCache::CommitData : %s", options.Name)
+	err := ac.NextComponent().CommitData(options)
+	if err == nil {
+		ac.cacheLock.RLock()
+		defer ac.cacheLock.RUnlock()
+
+		ac.invalidatePath(options.Name)
+	}
 	return err
 }
 

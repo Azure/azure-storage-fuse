@@ -139,6 +139,9 @@ stages:
             - script: |
                 sudo apt-get update --fix-missing
                 sudo apt-get install $(fuselib) -y
+                if [ $(tags) == "fuse2" ]; then
+                  sudo apt-get install fuse -y
+                fi
               displayName: 'Install libfuse'
 
             # -------------------------------------------------------
@@ -412,6 +415,9 @@ stages:
             - script: |
                 sudo apt-get update --fix-missing
                 sudo apt-get install $(fuselib) -y
+                if [ $(tags) == "fuse2" ]; then
+                  sudo apt-get install fuse -y
+                fi
               displayName: 'Install libfuse'
 
             # -------------------------------------------------------

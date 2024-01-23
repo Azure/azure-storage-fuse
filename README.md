@@ -5,9 +5,11 @@ This is the next generation [blobfuse](https://github.com/Azure/azure-storage-fu
 
 Blobfuse2 is stable, and is ***supported by Microsoft*** provided that it is used within its limits documented here. Blobfuse2 supports both reads and writes however, it does not guarantee continuous sync of data written to storage using other APIs or other mounts of Blobfuse2. For data integrity it is recommended that multiple sources do not modify the same blob/file. Please submit an issue [here](https://github.com/azure/azure-storage-fuse/issues) for any issues/feature requests/questions.
 
+[This](https://github.com/Azure/azure-storage-fuse/tree/main?tab=readme-ov-file#config-guide) section will help you choose the correct config for Blobfuse2.
+
 ##  NOTICE
 - We have seen some customer issues around files getting corrupted when `streaming` is used in write mode. Kindly avoid using this feature for write while we investigate and resolve it.
-
+- You can now use block-cache instead of streaming for both read and write workflows, which offers much better performance compared to streaming. To enable `block-cache` instead of `streaming`, use `--block-cache` in CLI param or `block-cache` as component in config file instead of `streaming`.
 ## Supported Platforms
 Visit [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supported-Platforms) page to see list of supported linux distros.
 
@@ -16,7 +18,7 @@ Visit [this](https://github.com/Azure/azure-storage-fuse/wiki/Blobfuse2-Supporte
 - Basic file system operations such as mkdir, opendir, readdir, rmdir, open, 
    read, create, write, close, unlink, truncate, stat, rename
 - Local caching to improve subsequent access times
-- Streaming to support reading AND writing large files 
+- Streaming/Block-Cache to support reading AND writing large files 
 - Parallel downloads and uploads to improve access time for large files
 - Multiple mounts to the same container for read-only workloads
 
@@ -43,7 +45,7 @@ One of the biggest BlobFuse2 features is our brand new health monitor. It allows
 - CLI to check or update a parameter in the encrypted config
 - Set MD5 sum of a blob while uploading
 - Validate MD5 sum on download and fail file open on mismatch
-- Large file writing through write streaming
+- Large file writing through write streaming/Block-Cache
 
  ## Blobfuse2 performance compared to blobfuse(v1.x.x)
 - 'git clone' operation is 25% faster (tested with vscode repo cloning)
@@ -112,6 +114,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--secure-config=true` : Config file is encrypted suing 'blobfuse2 secure` command.
     * `--passphrase=<STRING>` : Passphrase used to encrypt/decrypt config file.
     * `--wait-for-mount=<TIMEOUT IN SECONDS>` : Let parent process wait for given timeout before exit to ensure child has started. 
+    * `--block-cache` : To enable block-cache instead of file-cache. This works only when mounted without any config file.
 - Attribute cache options
     * `--attr-cache-timeout=<TIMEOUT IN SECONDS>`: The timeout for the attribute cache entries.
     * `--no-symlinks=true`: To improve performance disable symlink support.
@@ -137,7 +140,9 @@ To learn about a specific command, just include the name of the command (For exa
     * `--block-cache-pool-size=<SIZE IN MB>`: Size of pool to be used for caching. This limits total memory used by block-cache.
     * `--block-cache-path=<PATH>`: Path where downloaded blocks will be persisted. Not providing this parameter will disable the disk caching.
     * `--block-cache-disk-size=<SIZE IN MB>`: Disk space to be used for caching.
+    * `--block-cache-disk-timeout=<seconds>`: Timeout for which disk cache is valid.
     * `--block-cache-prefetch=<Number of blocks>`: Number of blocks to prefetch at max when sequential reads are in progress.
+    * `--block-cache-parallelism=<count>`: Number of parallel threads doing upload/download operation.
     * `--block-cache-prefetch-on-open=true`: Start prefetching on open system call instead of waiting for first read. Enhances perf if file is read sequentially from offset 0.
 - Fuse options
     * `--attr-timeout=<TIMEOUT IN SECONDS>`: Time the kernel can cache inode attributes.
@@ -179,19 +184,34 @@ To learn about a specific command, just include the name of the command (For exa
     * `AZURE_STORAGE_CPK_ENCRYPTION_KEY_SHA256`: Base64-encoded SHA256 of the cpk encryption key.
 
 
-## Config file
-- See [this](./sampleFileCacheConfig.yaml) sample config file.
-- See [this](./setup/baseConfig.yaml) config file for a list and description of all possible configurable options in blobfuse2. 
+## Config Guide
+Below diagrams guide you to choose right configuration for your workloads.
 
-***Please note: do not use quotations `""` for any of the config parameters***
-
-## Choosing Between File Cache and Stream Modes
-Please refer to this diagram to decide on whether to use the file cache or streaming. Sample config file URLs are below the diagram.
-
-![alt text](./config_decision_tree.png?raw=true "File Cache vs. Streaming")
-
+- Choose right Auth mode
+<br/><br/>
+![alt text](./guide/AuthModeHelper.png?raw=true "Auth Mode Selection Guide")
+<br/><br/>
+- Choose right caching for Read-Only workloads
+<br/><br/>
+![alt text](./guide/CacheModeForReadOnlyWorkloads.png?raw=true "Cache Mode Selection Guide For Read-Only Workloads")
+<br/><br/>
+- Choose right caching for Read-Write workloads
+<br/><br/>
+![alt text](./guide/CacheModeForReadWriteWorkloads.png?raw=true "Cache Mode Selection Guide For Read-Only Workloads")
+<br/><br/>
+- Choose right block-cache configuration
+<br/><br/>
+![alt text](./guide/BlockCacheConfig.png?raw=true "Block-Cache Configuration")
+<br/><br/>
+- Choose right file-cache configuration
+<br/><br/>
+![alt text](./guide/FileCacheConfig.png?raw=true "Block-Cache Configuration")
+<br/><br/>
 - [Sample File Cache Config](./sampleFileCacheConfig.yaml)
+- [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 - [Sample Stream Config](./sampleStreamingConfig.yaml)
+- [All Config options](./setup/baseConfig.yaml) 
+
 
 ## Frequently Asked Questions
 - How do I generate a SAS with permissions for rename?
