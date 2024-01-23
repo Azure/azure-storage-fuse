@@ -184,12 +184,6 @@ To learn about a specific command, just include the name of the command (For exa
     * `AZURE_STORAGE_CPK_ENCRYPTION_KEY_SHA256`: Base64-encoded SHA256 of the cpk encryption key.
 
 
-## Config file
-- See [this](./sampleFileCacheConfig.yaml) sample config file.
-- See [this](./setup/baseConfig.yaml) config file for a list and description of all possible configurable options in blobfuse2. 
-
-***Please note: do not use quotations `""` for any of the config parameters***
-
 ## Config Guide
 Below diagrams guide you to choose right configuration for your workloads.
 
@@ -208,11 +202,10 @@ Below diagrams guide you to choose right configuration for your workloads.
 - Choose right file-cache configuration
 ![alt text](./guide/FileCacheConfig.png?raw=true "Block-Cache Configuration")
 
-NOTE: At any point in above diagram `streaming` can be replaced by `block-cache`.
 - [Sample File Cache Config](./sampleFileCacheConfig.yaml)
 - [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
 - [Sample Stream Config](./sampleStreamingConfig.yaml)
-- [Sample Block-Cache Config](./sampleBlockCacheConfig.yaml)
+- [All Config options](./setup/baseConfig.yaml) 
 
 
 ## Frequently Asked Questions
