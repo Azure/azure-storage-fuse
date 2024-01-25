@@ -210,7 +210,7 @@ func getSDKLogOptions() policy.LogOptions {
 	if log.GetType() == "silent" {
 		return policy.LogOptions{}
 	} else {
-		// TODO: check which headers and query params should not be redacted
+		// TODO:: track2 : check which headers and query params should not be redacted
 		return policy.LogOptions{
 			AllowedHeaders:     []string{"x-ms-version"},
 			AllowedQueryParams: []string{},
@@ -224,7 +224,7 @@ func getSDKLogOptions() policy.LogOptions {
 //   - sdk-trace is false
 //   - logging level is less than debug
 func setSDKLogListener(sdkLogging bool) {
-	// TODO: set/reset listener on dynamic config change
+	// TODO:: track2 : set/reset listener on dynamic config change
 	if log.GetType() == "silent" || !sdkLogging || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
 		// reset listener
 		azlog.SetListener(nil)
@@ -236,7 +236,7 @@ func setSDKLogListener(sdkLogging bool) {
 }
 
 // Create an HTTP Client with configured proxy
-// TODO: More configurations for other http client parameters?
+// TODO:: track2 : More configurations for other http client parameters?
 // TODO: configure http.Client
 func newBlobfuse2HttpClient(conf *AzStorageConfig) *http.Client {
 	var ProxyURL func(req *http.Request) (*url.URL, error) = func(req *http.Request) (*url.URL, error) {

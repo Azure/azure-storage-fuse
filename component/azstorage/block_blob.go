@@ -38,8 +38,8 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"math"
-	"net/url"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -47,8 +47,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Azure/azure-pipeline-go/pipeline"
-	"github.com/Azure/azure-storage-azcopy/v10/ste"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -65,13 +68,13 @@ const (
 
 type BlockBlob struct {
 	AzStorageConnection
-	Auth            azAuth
-	Service         azblob.ServiceURL
-	Container       azblob.ContainerURL
-	blobAccCond     azblob.BlobAccessConditions
-	blobCPKOpt      azblob.ClientProvidedKeyOptions
-	downloadOptions azblob.DownloadFromBlobOptions
-	listDetails     azblob.BlobListingDetails
+	Auth            azAuthT2
+	Service         *service.Client
+	Container       *container.Client
+	blobAccCond     *blob.AccessConditions // check if blob access conditions is used or not
+	blobCPKOpt      *blob.CPKInfo
+	downloadOptions *blob.DownloadFileOptions
+	listDetails     container.ListBlobsInclude
 	blockLocks      common.KeyedMutex
 }
 
@@ -79,30 +82,28 @@ type BlockBlob struct {
 var _ AzConnection = &BlockBlob{}
 
 const (
-	MaxBlocksSize = azblob.BlockBlobMaxStageBlockBytes * azblob.BlockBlobMaxBlocks
+	MaxBlobSize = blockblob.MaxStageBlockBytes * blockblob.MaxBlocks
 )
 
 func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 	bb.Config = cfg
 
-	bb.blobAccCond = azblob.BlobAccessConditions{}
+	bb.blobAccCond = nil
 	if bb.Config.cpkEnabled {
-		bb.blobCPKOpt = azblob.ClientProvidedKeyOptions{
+		bb.blobCPKOpt = &blob.CPKInfo{
 			EncryptionKey:       &bb.Config.cpkEncryptionKey,
-			EncryptionKeySha256: &bb.Config.cpkEncryptionKeySha256,
-			EncryptionAlgorithm: "AES256",
+			EncryptionKeySHA256: &bb.Config.cpkEncryptionKeySha256,
+			EncryptionAlgorithm: to.Ptr(blob.EncryptionAlgorithmTypeAES256),
 		}
-	} else {
-		bb.blobCPKOpt = azblob.ClientProvidedKeyOptions{}
 	}
 
-	bb.downloadOptions = azblob.DownloadFromBlobOptions{
-		BlockSize:                bb.Config.blockSize,
-		Parallelism:              bb.Config.maxConcurrency,
-		ClientProvidedKeyOptions: bb.blobCPKOpt,
+	bb.downloadOptions = &blob.DownloadFileOptions{
+		BlockSize:   bb.Config.blockSize,
+		Concurrency: bb.Config.maxConcurrency,
+		CPKInfo:     bb.blobCPKOpt,
 	}
 
-	bb.listDetails = azblob.BlobListingDetails{
+	bb.listDetails = container.ListBlobsInclude{
 		Metadata:  true,
 		Deleted:   false,
 		Snapshots: false,
@@ -120,62 +121,44 @@ func (bb *BlockBlob) UpdateConfig(cfg AzStorageConfig) error {
 	return nil
 }
 
-// NewCredentialKey : Update the credential key specified by the user
-func (bb *BlockBlob) NewCredentialKey(key, value string) (err error) {
+// NewServiceClient : Update the SAS specified by the user and create new service client
+func (bb *BlockBlob) NewServiceClient(key, value string) (err error) {
 	if key == "saskey" {
 		bb.Auth.setOption(key, value)
-		// Update the endpoint url from the credential
-		bb.Endpoint, err = url.Parse(bb.Auth.getEndpoint())
+
+		// get the service client with updated SAS
+		svcClient, err := bb.Auth.getServiceClient(&bb.Config)
 		if err != nil {
-			log.Err("BlockBlob::NewCredentialKey : Failed to form base endpoint url [%s]", err.Error())
-			return errors.New("failed to form base endpoint url")
+			log.Err("BlockBlob::NewServiceClient : Failed to get service client [%s]", err.Error())
+			return err
 		}
 
-		// Update the service url
-		bb.Service = azblob.NewServiceURL(*bb.Endpoint, bb.Pipeline)
+		// update the service client
+		bb.Service = svcClient.(*service.Client)
 
-		// Update the container url
-		bb.Container = bb.Service.NewContainerURL(bb.Config.container)
+		// Update the container client
+		bb.Container = bb.Service.NewContainerClient(bb.Config.container)
 	}
 	return nil
 }
 
-// getCredential : Create the credential object
-func (bb *BlockBlob) getCredential() azblob.Credential {
-	log.Trace("BlockBlob::getCredential : Getting credential")
+// getServiceClient : Create the service client
+func (bb *BlockBlob) getServiceClient() (*service.Client, error) {
+	log.Trace("BlockBlob::getServiceClient : Getting service client")
 
-	bb.Auth = getAzAuth(bb.Config.authConfig)
+	bb.Auth = getAzAuthT2(bb.Config.authConfig)
 	if bb.Auth == nil {
-		log.Err("BlockBlob::getCredential : Failed to retrieve auth object")
-		return nil
+		log.Err("BlockBlob::getServiceClient : Failed to retrieve auth object")
+		return nil, fmt.Errorf("failed to retrieve auth object")
 	}
 
-	cred := bb.Auth.getCredential()
-	if cred == nil {
-		log.Err("BlockBlob::getCredential : Failed to get credential")
-		return nil
+	svcClient, err := bb.Auth.getServiceClient(&bb.Config)
+	if err != nil {
+		log.Err("BlockBlob::getServiceClient : Failed to get service client [%s]", err.Error())
+		return nil, err
 	}
 
-	return cred.(azblob.Credential)
-}
-
-// NewPipeline creates a Pipeline using the specified credentials and options.
-func NewBlobPipeline(c azblob.Credential, o azblob.PipelineOptions, ro ste.XferRetryOptions) pipeline.Pipeline {
-	// Closest to API goes first; closest to the wire goes last
-	f := []pipeline.Factory{
-		azblob.NewTelemetryPolicyFactory(o.Telemetry),
-		azblob.NewUniqueRequestIDPolicyFactory(),
-		ste.NewBlobXferRetryPolicyFactory(ro),
-	}
-	f = append(f, c)
-	f = append(f,
-		pipeline.MethodFactoryMarker(), // indicates at what stage in the pipeline the method factory is invoked
-		ste.NewRequestLogPolicyFactory(ste.RequestLogOptions{
-			LogWarningIfTryOverThreshold: o.RequestLog.LogWarningIfTryOverThreshold,
-			SyslogDisabled:               o.RequestLog.SyslogDisabled,
-		}))
-
-	return pipeline.NewPipeline(f, pipeline.Options{HTTPSender: o.HTTPSender, Log: o.Log})
+	return svcClient.(*service.Client), nil
 }
 
 // SetupPipeline : Based on the config setup the ***URLs
@@ -183,34 +166,15 @@ func (bb *BlockBlob) SetupPipeline() error {
 	log.Trace("BlockBlob::SetupPipeline : Setting up")
 	var err error
 
-	// Get the credential
-	cred := bb.getCredential()
-	if cred == nil {
-		log.Err("BlockBlob::SetupPipeline : Failed to get credential")
-		return errors.New("failed to get credential")
-	}
-
-	// Create a new pipeline
-	options, retryOptions := getAzBlobPipelineOptions(bb.Config)
-	bb.Pipeline = NewBlobPipeline(cred, options, retryOptions)
-	if bb.Pipeline == nil {
-		log.Err("BlockBlob::SetupPipeline : Failed to create pipeline object")
-		return errors.New("failed to create pipeline object")
-	}
-
-	// Get the endpoint url from the credential
-	bb.Endpoint, err = url.Parse(bb.Auth.getEndpoint())
+	// create the service client
+	bb.Service, err = bb.getServiceClient()
 	if err != nil {
-		log.Err("BlockBlob::SetupPipeline : Failed to form base end point url [%s]", err.Error())
-		return errors.New("failed to form base end point url")
+		log.Err("BlockBlob::SetupPipeline : Failed to get service client [%s]", err.Error())
+		return err
 	}
 
-	// Create the service url
-	bb.Service = azblob.NewServiceURL(*bb.Endpoint, bb.Pipeline)
-
-	// Create the container url
-	bb.Container = bb.Service.NewContainerURL(bb.Config.container)
-
+	// create the container client
+	bb.Container = bb.Service.NewContainerClient(bb.Config.container)
 	return nil
 }
 
@@ -222,25 +186,31 @@ func (bb *BlockBlob) TestPipeline() error {
 		return nil
 	}
 
-	if bb.Container.String() == "" {
-		log.Err("BlockBlob::TestPipeline : Container URL is not built, check your credentials")
+	if bb.Container == nil || bb.Container.URL() == "" {
+		log.Err("BlockBlob::TestPipeline : Container Client is not built, check your credentials")
 		return nil
 	}
 
-	marker := (azblob.Marker{})
-	listBlob, err := bb.Container.ListBlobsHierarchySegment(context.Background(), marker, "/",
-		azblob.ListBlobsSegmentOptions{MaxResults: 2,
-			Prefix: bb.Config.prefixPath,
-		})
+	// TODO:: track2 : review -> doing flat listing, since only 2 items are being listed here
+	listBlobPager := bb.Container.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{
+		MaxResults: to.Ptr((int32)(2)),
+		Prefix:     &bb.Config.prefixPath,
+	})
 
-	if err != nil {
-		log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error)
-		return err
+	blobCnt := 0
+	for listBlobPager.More() {
+		listResp, err := listBlobPager.NextPage(context.Background())
+		if err != nil {
+			log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error)
+			return err
+		}
+		blobCnt += len(listResp.Segment.BlobItems)
 	}
 
-	if listBlob == nil {
+	if blobCnt == 0 {
 		log.Info("BlockBlob::TestPipeline : Container is empty")
 	}
+
 	return nil
 }
 
@@ -248,19 +218,17 @@ func (bb *BlockBlob) ListContainers() ([]string, error) {
 	log.Trace("BlockBlob::ListContainers : Listing containers")
 	cntList := make([]string, 0)
 
-	marker := azblob.Marker{}
-	for marker.NotDone() {
-		resp, err := bb.Service.ListContainersSegment(context.Background(), marker, azblob.ListContainersSegmentOptions{})
+	// TODO:: track2 : review -> if there are more than 5000 containers
+	pager := bb.Service.NewListContainersPager(nil)
+	for pager.More() {
+		resp, err := pager.NextPage(context.Background())
 		if err != nil {
-			log.Err("BlockBlob::ListContainers : Failed to get container list")
+			log.Err("BlockBlob::ListContainers : Failed to get container list [%s]", err.Error())
 			return cntList, err
 		}
-
 		for _, v := range resp.ContainerItems {
-			cntList = append(cntList, v.Name)
+			cntList = append(cntList, *v.Name)
 		}
-
-		marker = resp.NextMarker
 	}
 
 	return cntList, nil
@@ -805,7 +773,7 @@ func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []b
 
 func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize int64, err error) {
 	// If bufferSize > (BlockBlobMaxStageBlockBytes * BlockBlobMaxBlocks), then error
-	if fileSize > MaxBlocksSize {
+	if fileSize > MaxBlobSize {
 		log.Err("BlockBlob::calculateBlockSize : buffer is too large to upload to a block blob %s", name)
 		err = errors.New("buffer is too large to upload to a block blob")
 		return 0, err

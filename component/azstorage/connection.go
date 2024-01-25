@@ -90,9 +90,9 @@ type AzStorageConfig struct {
 type AzStorageConnection struct {
 	Config AzStorageConfig
 
-	Pipeline pipeline.Pipeline
+	Pipeline pipeline.Pipeline // TODO:: track2 : remove
 
-	Endpoint *url.URL
+	Endpoint *url.URL // TODO:: track2 : remove
 }
 
 type AzConnection interface {
@@ -140,7 +140,7 @@ type AzConnection interface {
 	StageBlock(string, []byte, string) error
 	CommitBlocks(string, []string) error
 
-	NewCredentialKey(_, _ string) error
+	NewServiceClient(_, _ string) error
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object

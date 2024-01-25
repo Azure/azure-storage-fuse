@@ -585,9 +585,9 @@ func ParseAndReadDynamicConfig(az *AzStorage, opt AzStorageOptions, reload bool)
 		if reload {
 			log.Info("ParseAndReadDynamicConfig : SAS Key updated")
 
-			if err := az.storage.NewCredentialKey("saskey", az.stConfig.authConfig.SASKey); err != nil {
+			if err := az.storage.NewServiceClient("saskey", az.stConfig.authConfig.SASKey); err != nil {
 				az.stConfig.authConfig.SASKey = oldSas
-				_ = az.storage.NewCredentialKey("saskey", az.stConfig.authConfig.SASKey)
+				_ = az.storage.NewServiceClient("saskey", az.stConfig.authConfig.SASKey)
 				return errors.New("SAS key update failure")
 			}
 		}

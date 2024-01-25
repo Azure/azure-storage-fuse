@@ -103,6 +103,7 @@ func (dl *Datalake) UpdateConfig(cfg AzStorageConfig) error {
 	return dl.BlockBlob.UpdateConfig(cfg)
 }
 
+// TODO:: track2 : remove
 // NewSASKey : New SAS key provided by user
 func (dl *Datalake) NewCredentialKey(key, value string) (err error) {
 	if key == "saskey" {
@@ -121,6 +122,10 @@ func (dl *Datalake) NewCredentialKey(key, value string) (err error) {
 		dl.Filesystem = dl.Service.NewFileSystemURL(dl.Config.container)
 	}
 	return dl.BlockBlob.NewCredentialKey(key, value)
+}
+
+// NewServiceClient : Update the SAS specified by the user and create new service client
+func (dl *Datalake) NewServiceClient(key, value string) (err error) {
 }
 
 // getCredential : Create the credential object

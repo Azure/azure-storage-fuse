@@ -50,6 +50,13 @@ type azAuthSAST2 struct {
 	azAuthBaseT2
 }
 
+// SetOption : Sets the sas key information for the SAS auth.
+func (azsas *azAuthSAST2) setOption(key, value string) {
+	if key == "saskey" {
+		azsas.config.SASKey = value
+	}
+}
+
 // GetEndpoint : Gets the SAS endpoint
 func (azsas *azAuthSAST2) getEndpoint() string {
 	return azsas.config.Endpoint + "?" + strings.TrimLeft(azsas.config.SASKey, "?")
