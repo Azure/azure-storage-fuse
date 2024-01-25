@@ -42,6 +42,7 @@ import (
 	"math/rand"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -141,7 +142,7 @@ func (azmsi *azAuthMSI) fetchTokenFromCLI() (*common.OAuthTokenInfo, error) {
 		return nil, err
 	}
 	// the Azure CLI's "expiresOn" is local time
-	_, err = time.ParseInLocation("2006-01-02 15:04:05.999999", t.ExpiresOn, time.Local)
+	expiresOn, err := time.ParseInLocation("2006-01-02 15:04:05.999999", t.ExpiresOn, time.Local)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing token expiration time %q: %v", t.ExpiresOn, err)
 	}
@@ -150,7 +151,7 @@ func (azmsi *azAuthMSI) fetchTokenFromCLI() (*common.OAuthTokenInfo, error) {
 		Token: adal.Token{
 			AccessToken:  t.AccessToken,
 			RefreshToken: t.RefreshToken,
-			ExpiresOn:    json.Number(t.ExpiresOn),
+			ExpiresOn:    json.Number(strconv.FormatInt(expiresOn.Unix(), 10)),
 			Resource:     t.Resource,
 			Type:         t.TokenType,
 		},
