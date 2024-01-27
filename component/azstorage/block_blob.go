@@ -71,7 +71,6 @@ type BlockBlob struct {
 	Auth            azAuthT2
 	Service         *service.Client
 	Container       *container.Client
-	blobAccCond     *blob.AccessConditions // check if blob access conditions is used or not
 	blobCPKOpt      *blob.CPKInfo
 	downloadOptions *blob.DownloadFileOptions
 	listDetails     container.ListBlobsInclude
@@ -88,7 +87,6 @@ const (
 func (bb *BlockBlob) Configure(cfg AzStorageConfig) error {
 	bb.Config = cfg
 
-	bb.blobAccCond = nil
 	if bb.Config.cpkEnabled {
 		bb.blobCPKOpt = &blob.CPKInfo{
 			EncryptionKey:       &bb.Config.cpkEncryptionKey,
@@ -191,24 +189,16 @@ func (bb *BlockBlob) TestPipeline() error {
 		return nil
 	}
 
-	// TODO:: track2 : review -> doing flat listing, since only 2 items are being listed here
-	listBlobPager := bb.Container.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{
+	listBlobPager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
 		MaxResults: to.Ptr((int32)(2)),
 		Prefix:     &bb.Config.prefixPath,
 	})
 
-	blobCnt := 0
-	for listBlobPager.More() {
-		listResp, err := listBlobPager.NextPage(context.Background())
-		if err != nil {
-			log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error)
-			return err
-		}
-		blobCnt += len(listResp.Segment.BlobItems)
-	}
-
-	if blobCnt == 0 {
-		log.Info("BlockBlob::TestPipeline : Container is empty")
+	// we are just validating the auth mode used. So, no need to iterate over the pages
+	_, err := listBlobPager.NextPage(context.Background())
+	if err != nil {
+		log.Err("BlockBlob::TestPipeline : Failed to validate account with given auth %s", err.Error)
+		return err
 	}
 
 	return nil
@@ -218,7 +208,6 @@ func (bb *BlockBlob) ListContainers() ([]string, error) {
 	log.Trace("BlockBlob::ListContainers : Listing containers")
 	cntList := make([]string, 0)
 
-	// TODO:: track2 : review -> if there are more than 5000 containers
 	pager := bb.Service.NewListContainersPager(nil)
 	for pager.More() {
 		resp, err := pager.NextPage(context.Background())
@@ -227,7 +216,11 @@ func (bb *BlockBlob) ListContainers() ([]string, error) {
 			return cntList, err
 		}
 		for _, v := range resp.ContainerItems {
-			cntList = append(cntList, *v.Name)
+			if v.Name != nil {
+				cntList = append(cntList, *v.Name)
+			} else {
+				log.Err("BlockBlob::ListContainers : Received nil in container name while listing")
+			}
 		}
 	}
 
@@ -252,8 +245,8 @@ func (bb *BlockBlob) CreateDirectory(name string) error {
 	log.Trace("BlockBlob::CreateDirectory : name %s", name)
 
 	var data []byte
-	metadata := make(azblob.Metadata)
-	metadata[folderKey] = "true"
+	metadata := make(map[string]*string)
+	metadata[folderKey] = to.Ptr("true")
 
 	return bb.WriteFromBuffer(name, metadata, data)
 }
@@ -262,8 +255,8 @@ func (bb *BlockBlob) CreateDirectory(name string) error {
 func (bb *BlockBlob) CreateLink(source string, target string) error {
 	log.Trace("BlockBlob::CreateLink : %s -> %s", source, target)
 	data := []byte(target)
-	metadata := make(azblob.Metadata)
-	metadata[symlinkKey] = "true"
+	metadata := make(map[string]*string)
+	metadata[symlinkKey] = to.Ptr("true")
 	return bb.WriteFromBuffer(source, metadata, data)
 }
 
@@ -271,8 +264,10 @@ func (bb *BlockBlob) CreateLink(source string, target string) error {
 func (bb *BlockBlob) DeleteFile(name string) (err error) {
 	log.Trace("BlockBlob::DeleteFile : name %s", name)
 
-	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	_, err = blobURL.Delete(context.Background(), azblob.DeleteSnapshotsOptionInclude, bb.blobAccCond)
+	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	_, err = blobClient.Delete(context.Background(), &blob.DeleteOptions{
+		DeleteSnapshots: to.Ptr(blob.DeleteSnapshotsOptionTypeInclude),
+	})
 	if err != nil {
 		serr := storeBlobErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -294,37 +289,50 @@ func (bb *BlockBlob) DeleteFile(name string) (err error) {
 func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 	log.Trace("BlockBlob::DeleteDirectory : name %s", name)
 
-	for marker := (azblob.Marker{}); marker.NotDone(); {
-		listBlob, err := bb.Container.ListBlobsFlatSegment(context.Background(), marker,
-			azblob.ListBlobsSegmentOptions{MaxResults: common.MaxDirListCount,
-				Prefix: filepath.Join(bb.Config.prefixPath, name) + "/",
-			})
-
+	dirPresent := false
+	pager := bb.Container.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{
+		Prefix: to.Ptr(filepath.Join(bb.Config.prefixPath, name) + "/"),
+	})
+	for pager.More() {
+		listBlobResp, err := pager.NextPage(context.Background())
 		if err != nil {
-			log.Err("BlockBlob::DeleteDirectory : Failed to get list of blobs %s", err.Error)
+			log.Err("BlockBlob::DeleteDirectory : Failed to get list of blobs %s", err.Error())
 			return err
 		}
-		marker = listBlob.NextMarker
 
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
-		for _, blobInfo := range listBlob.Segment.BlobItems {
-			err = bb.DeleteFile(split(bb.Config.prefixPath, blobInfo.Name))
-			if err != nil {
-				log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s [%s]", blobInfo.Name, err.Error)
+		for _, blobInfo := range listBlobResp.Segment.BlobItems {
+			if blobInfo.Name != nil {
+				dirPresent = true
+				err = bb.DeleteFile(split(bb.Config.prefixPath, *blobInfo.Name))
+				if err != nil {
+					log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s [%s]", *blobInfo.Name, err.Error())
+				}
 			}
 		}
 	}
-	return bb.DeleteFile(name)
+
+	// TODO:: track2 : this will return ENOENT error if the marker blob for dir is not present
+	// Fix: similar as RenameDirectory
+	err = bb.DeleteFile(name)
+	// check if the marker blob for directory does not exist but
+	// blobs were present in it, which were deleted earlier
+	if err == syscall.ENOENT && dirPresent {
+		err = nil
+	}
+	return err
 }
 
 // RenameFile : Rename the file
 func (bb *BlockBlob) RenameFile(source string, target string) error {
 	log.Trace("BlockBlob::RenameFile : %s -> %s", source, target)
 
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, source))
-	newBlob := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, target))
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, source))
+	newBlobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, target))
 
-	prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
+	_, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
+		CPKInfo: bb.blobCPKOpt,
+	})
 	if err != nil {
 		serr := storeBlobErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -336,22 +344,27 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 		}
 	}
 
-	startCopy, err := newBlob.StartCopyFromURL(context.Background(), blobURL.URL(),
-		prop.NewMetadata(), azblob.ModifiedAccessConditions{}, azblob.BlobAccessConditions{}, bb.Config.defaultTier, nil)
+	// TODO:: track2 : review : not specifying source blob metadata, since passing empty metadata headers copies
+	// the source blob metadata to destination blob
+	startCopy, err := newBlobClient.StartCopyFromURL(context.Background(), blobClient.URL(), &blob.StartCopyFromURLOptions{
+		Tier: bb.Config.defaultTier,
+	})
 
 	if err != nil {
 		log.Err("BlockBlob::RenameFile : Failed to start copy of file %s [%s]", source, err.Error())
 		return err
 	}
 
-	copyStatus := startCopy.CopyStatus()
-	for copyStatus == azblob.CopyStatusPending {
+	copyStatus := startCopy.CopyStatus
+	for copyStatus != nil && *copyStatus == blob.CopyStatusTypePending {
 		time.Sleep(time.Second * 1)
-		prop, err = newBlob.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
+		prop, err := newBlobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
+			CPKInfo: bb.blobCPKOpt,
+		})
 		if err != nil {
 			log.Err("BlockBlob::RenameFile : CopyStats : Failed to get blob properties for %s [%s]", source, err.Error())
 		}
-		copyStatus = prop.CopyStatus()
+		copyStatus = prop.CopyStatus
 	}
 
 	log.Trace("BlockBlob::RenameFile : %s -> %s done", source, target)
@@ -381,27 +394,28 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 	log.Trace("BlockBlob::RenameDirectory : %s -> %s", source, target)
 
 	srcDirPresent := false
-	for marker := (azblob.Marker{}); marker.NotDone(); {
-		listBlob, err := bb.Container.ListBlobsFlatSegment(context.Background(), marker,
-			azblob.ListBlobsSegmentOptions{MaxResults: common.MaxDirListCount,
-				Prefix: filepath.Join(bb.Config.prefixPath, source) + "/",
-			})
-
+	pager := bb.Container.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{
+		Prefix: to.Ptr(filepath.Join(bb.Config.prefixPath, source) + "/"),
+	})
+	for pager.More() {
+		listBlobResp, err := pager.NextPage(context.Background())
 		if err != nil {
-			log.Err("BlockBlob::RenameDirectory : Failed to get list of blobs %s", err.Error)
+			log.Err("BlockBlob::RenameDirectory : Failed to get list of blobs %s", err.Error())
 			return err
 		}
-		marker = listBlob.NextMarker
 
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
-		for _, blobInfo := range listBlob.Segment.BlobItems {
-			srcDirPresent = true
-			srcPath := split(bb.Config.prefixPath, blobInfo.Name)
-			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
-			if err != nil {
-				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
+		for _, blobInfo := range listBlobResp.Segment.BlobItems {
+			if blobInfo.Name != nil {
+				srcDirPresent = true
+				srcPath := split(bb.Config.prefixPath, *blobInfo.Name)
+				err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
+				if err != nil {
+					log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
+				}
 			}
 		}
+
 	}
 
 	err := bb.RenameFile(source, target)
@@ -822,7 +836,7 @@ func trackUpload(name string, bytesTransferred int64, count int64, uploadPtr *in
 }
 
 // WriteFromFile : Upload local file to blob
-func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *os.File) (err error) {
+func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi *os.File) (err error) {
 	log.Trace("BlockBlob::WriteFromFile : name %s", name)
 	//defer exectime.StatTimeCurrentBlock("WriteFromFile::WriteFromFile")()
 
@@ -906,7 +920,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]string, fi *
 }
 
 // WriteFromBuffer : Upload from a buffer to a blob
-func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]string, data []byte) error {
+func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]*string, data []byte) error {
 	log.Trace("BlockBlob::WriteFromBuffer : name %s", name)
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 

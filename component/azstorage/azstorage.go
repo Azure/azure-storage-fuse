@@ -573,7 +573,7 @@ func NewazstorageComponent() internal.Component {
 		stConfig: AzStorageConfig{
 			blockSize:      0,
 			maxConcurrency: 32,
-			defaultTier:    getAccessTierType("none"),
+			defaultTier:    getAccessTierType(""),
 			authConfig: azAuthConfig{
 				AuthMode: EAuthType.KEY(),
 				UseHTTP:  false,
