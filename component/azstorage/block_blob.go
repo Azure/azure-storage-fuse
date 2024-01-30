@@ -430,8 +430,10 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("BlockBlob::getAttrUsingRest : name %s", name)
 
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	prop, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
+		CPKInfo: bb.blobCPKOpt,
+	})
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -446,21 +448,32 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 		}
 	}
 
-	// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
-	attr = &internal.ObjAttr{
-		Path:   name, // We don't need to strip the prefixPath here since we pass the input name
-		Name:   filepath.Base(name),
-		Size:   prop.ContentLength(),
-		Mode:   0,
-		Mtime:  prop.LastModified(),
-		Atime:  prop.LastModified(),
-		Ctime:  prop.LastModified(),
-		Crtime: prop.CreationTime(),
-		Flags:  internal.NewFileBitMap(),
-		MD5:    prop.ContentMD5(),
+	if prop.ContentLength == nil || prop.LastModified == nil || prop.CreationTime == nil {
+
 	}
 
-	parseMetadata(attr, prop.NewMetadata())
+	// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
+	attr = &internal.ObjAttr{
+		Path:  name, // We don't need to strip the prefixPath here since we pass the input name
+		Name:  filepath.Base(name),
+		Mode:  0,
+		Flags: internal.NewFileBitMap(),
+		MD5:   prop.ContentMD5,
+	}
+
+	if prop.ContentLength != nil {
+		attr.Size = *prop.ContentLength
+	}
+	if prop.LastModified != nil {
+		attr.Mtime = *prop.LastModified
+		attr.Atime = *prop.LastModified
+		attr.Ctime = *prop.LastModified
+	}
+	if prop.CreationTime != nil {
+		attr.Crtime = *prop.CreationTime
+	}
+
+	parseMetadata(attr, prop.Metadata)
 
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 	attr.Flags.Set(internal.PropFlagModeDefault)
@@ -478,6 +491,7 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 	var marker *string = nil
 	blobsRead := 0
 
+	// TODO:: track2 : review : why is the list call retried 20 times?
 	for failCount < maxFailCount {
 		blobs, new_marker, err := bb.List(name, marker, bb.Config.maxResultsForList)
 		if err != nil {
@@ -512,6 +526,7 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 		}
 	}
 
+	// TODO:: track2 : review
 	if err == nil {
 		log.Err("BlockBlob::getAttrUsingList : blob %s does not exist", name)
 		return nil, syscall.ENOENT
@@ -557,11 +572,15 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	}
 
 	// Get a result segment starting with the blob indicated by the current Marker.
-	listBlob, err := bb.Container.ListBlobsHierarchySegment(context.Background(), azblob.Marker{Val: marker}, "/",
-		azblob.ListBlobsSegmentOptions{MaxResults: count,
-			Prefix:  listPath,
-			Details: bb.listDetails,
-		})
+	pager := bb.Container.NewListBlobsHierarchyPager("/", &container.ListBlobsHierarchyOptions{
+		Marker:     marker,
+		MaxResults: &count,
+		Prefix:     &listPath,
+		Include:    bb.listDetails,
+	})
+
+	listBlob, err := pager.NextPage(context.Background())
+
 	// Note: Since we make a list call with a prefix, we will not fail here for a non-existent directory.
 	// The blob service will not validate for us whether or not the path exists.
 	// This is different from ADLS Gen2 behavior.
@@ -572,14 +591,6 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		return blobList, nil, err
 	}
 
-	dereferenceTime := func(input *time.Time, defaultTime time.Time) time.Time {
-		if input == nil {
-			return defaultTime
-		} else {
-			return *input
-		}
-	}
-
 	// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 	// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
 
@@ -587,17 +598,32 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	var dirList = make(map[string]bool)
 
 	for _, blobInfo := range listBlob.Segment.BlobItems {
+		if blobInfo.Name == nil {
+			continue
+		}
+
 		attr := &internal.ObjAttr{
-			Path:   split(bb.Config.prefixPath, blobInfo.Name),
-			Name:   filepath.Base(blobInfo.Name),
-			Size:   *blobInfo.Properties.ContentLength,
-			Mode:   0,
-			Mtime:  blobInfo.Properties.LastModified,
-			Atime:  dereferenceTime(blobInfo.Properties.LastAccessedOn, blobInfo.Properties.LastModified),
-			Ctime:  blobInfo.Properties.LastModified,
-			Crtime: dereferenceTime(blobInfo.Properties.CreationTime, blobInfo.Properties.LastModified),
-			Flags:  internal.NewFileBitMap(),
-			MD5:    blobInfo.Properties.ContentMD5,
+			Path:  split(bb.Config.prefixPath, *blobInfo.Name),
+			Name:  filepath.Base(*blobInfo.Name),
+			Mode:  0,
+			Flags: internal.NewFileBitMap(),
+			MD5:   blobInfo.Properties.ContentMD5,
+		}
+
+		if blobInfo.Properties.ContentLength != nil {
+			attr.Size = *blobInfo.Properties.ContentLength
+		}
+		if blobInfo.Properties.LastModified != nil {
+			attr.Mtime = *blobInfo.Properties.LastModified
+			attr.Ctime = *blobInfo.Properties.LastModified
+			attr.Atime = *blobInfo.Properties.LastModified
+			attr.Crtime = *blobInfo.Properties.LastModified
+		}
+		if blobInfo.Properties.LastAccessedOn != nil {
+			attr.Atime = *blobInfo.Properties.LastAccessedOn
+		}
+		if blobInfo.Properties.CreationTime != nil {
+			attr.Crtime = *blobInfo.Properties.CreationTime
 		}
 
 		parseMetadata(attr, blobInfo.Metadata)
@@ -607,7 +633,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 
 		if attr.IsDir() {
 			// 0 byte meta found so mark this directory in map
-			dirList[blobInfo.Name+"/"] = true
+			dirList[*blobInfo.Name+"/"] = true
 			attr.Size = 4096
 		}
 	}
@@ -618,16 +644,20 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	// Note: Since listing is paginated, sometimes the marker file may come in a different iteration from the BlobPrefix. For such
 	// cases we manually call GetAttr to check the existence of the marker file.
 	for _, blobInfo := range listBlob.Segment.BlobPrefixes {
-		if _, ok := dirList[blobInfo.Name]; ok {
+		if blobInfo.Name == nil {
+			continue
+		}
+
+		if _, ok := dirList[*blobInfo.Name]; ok {
 			// marker file found in current iteration, skip adding the directory
 			continue
 		} else {
 			// marker file not found in current iteration, so we need to manually check attributes via REST
-			_, err := bb.getAttrUsingRest(blobInfo.Name)
+			_, err := bb.getAttrUsingRest(*blobInfo.Name)
 			// marker file also not found via manual check, safe to add to list
 			if err == syscall.ENOENT {
 				// For these dirs we get only the name and no other properties so hardcoding time to current time
-				name := strings.TrimSuffix(blobInfo.Name, "/")
+				name := strings.TrimSuffix(*blobInfo.Name, "/")
 				attr := &internal.ObjAttr{
 					Path:  split(bb.Config.prefixPath, name),
 					Name:  filepath.Base(name),
@@ -651,7 +681,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		delete(dirList, k)
 	}
 
-	return blobList, listBlob.NextMarker.Val, nil
+	return blobList, listBlob.NextMarker, nil
 }
 
 // track the progress of download of blobs where every 100MB of data downloaded is being tracked. It also tracks the completion of download
@@ -670,10 +700,9 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 	log.Trace("BlockBlob::ReadToFile : name %s, offset : %d, count %d", name, offset, count)
 	//defer exectime.StatTimeCurrentBlock("BlockBlob::ReadToFile")()
 
-	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
-	var downloadPtr *int64 = new(int64)
-	*downloadPtr = 1
+	downloadPtr := to.Ptr(int64(1))
 
 	if common.MonitorBfs() {
 		bb.downloadOptions.Progress = func(bytesTransferred int64) {
@@ -682,7 +711,14 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 	}
 
 	defer log.TimeTrack(time.Now(), "BlockBlob::ReadToFile", name)
-	err = azblob.DownloadBlobToFile(context.Background(), blobURL, offset, count, fi, bb.downloadOptions)
+
+	dlOpts := *bb.downloadOptions
+	dlOpts.Range = blob.HTTPRange{
+		Offset: offset,
+		Count:  count,
+	}
+
+	_, err = blobClient.DownloadFile(context.Background(), fi, &dlOpts)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -706,11 +742,13 @@ func (bb *BlockBlob) ReadToFile(name string, offset int64, count int64, fi *os.F
 			log.Warn("BlockBlob::ReadToFile : Failed to generate MD5 Sum for %s", name)
 		} else {
 			// Get latest properties from container to get the md5 of blob
-			prop, err := blobURL.GetProperties(context.Background(), bb.blobAccCond, bb.blobCPKOpt)
+			prop, err := blobClient.GetProperties(context.Background(), &blob.GetPropertiesOptions{
+				CPKInfo: bb.blobCPKOpt,
+			})
 			if err != nil {
 				log.Warn("BlockBlob::ReadToFile : Failed to get properties of blob %s [%s]", name, err.Error())
 			} else {
-				blobMD5 := prop.ContentMD5()
+				blobMD5 := prop.ContentMD5
 				if blobMD5 == nil {
 					log.Warn("BlockBlob::ReadToFile : Failed to get MD5 Sum for blob %s", name)
 				} else {
@@ -740,8 +778,15 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 	}
 
 	buff = make([]byte, len)
-	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	err := azblob.DownloadBlobToBuffer(context.Background(), blobURL, offset, len, buff, bb.downloadOptions)
+	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
+
+	dlOpts := (blob.DownloadBufferOptions)(*bb.downloadOptions)
+	dlOpts.Range = blob.HTTPRange{
+		Offset: offset,
+		Count:  len,
+	}
+
+	_, err := blobClient.DownloadBuffer(context.Background(), buff, &dlOpts)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -761,14 +806,18 @@ func (bb *BlockBlob) ReadBuffer(name string, offset int64, len int64) ([]byte, e
 // ReadInBuffer : Download specific range from a file to a user provided buffer
 func (bb *BlockBlob) ReadInBuffer(name string, offset int64, len int64, data []byte) error {
 	// log.Trace("BlockBlob::ReadInBuffer : name %s", name)
-	blobURL := bb.Container.NewBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	opt := bb.downloadOptions
+	blobClient := bb.Container.NewBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	opt := (blob.DownloadBufferOptions)(*bb.downloadOptions)
 	opt.BlockSize = len
+	opt.Range = blob.HTTPRange{
+		Offset: offset,
+		Count:  len,
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
-	err := azblob.DownloadBlobToBuffer(ctx, blobURL, offset, len, data, opt)
+	_, err := blobClient.DownloadBuffer(ctx, data, &opt)
 
 	if err != nil {
 		e := storeBlobErrToErr(err)
@@ -843,8 +892,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
 
-	var uploadPtr *int64 = new(int64)
-	*uploadPtr = 1
+	uploadPtr := to.Ptr(int64(1))
 
 	blockSize := bb.Config.blockSize
 	// get the size of the file
