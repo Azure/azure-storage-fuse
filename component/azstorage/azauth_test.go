@@ -458,7 +458,7 @@ func (suite *authTestSuite) TestBlockSasKeySetOption() {
 		assert.Fail("TestBlockSasKeySetOption : Failed to create Storage object")
 	}
 	stg.SetupPipeline()
-	stg.NewCredentialKey("saskey", storageTestConfigurationParameters.BlockSas)
+	stg.NewServiceClient("saskey", storageTestConfigurationParameters.BlockSas)
 	if err := stg.SetupPipeline(); err != nil {
 		assert.Fail("TestBlockSasKeySetOption : Failed to setup pipeline")
 	}
@@ -591,7 +591,7 @@ func (suite *authTestSuite) TestAdlsSasKeySetOption() {
 		assert.Fail("TestBlockSasKeySetOption : Failed to create Storage object")
 	}
 	stg.SetupPipeline()
-	stg.NewCredentialKey("saskey", storageTestConfigurationParameters.AdlsSas)
+	stg.NewServiceClient("saskey", storageTestConfigurationParameters.AdlsSas)
 	if err := stg.SetupPipeline(); err != nil {
 		assert.Fail("TestBlockSasKeySetOption : Failed to setup pipeline")
 	}

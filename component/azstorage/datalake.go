@@ -105,27 +105,28 @@ func (dl *Datalake) UpdateConfig(cfg AzStorageConfig) error {
 
 // TODO:: track2 : remove
 // NewSASKey : New SAS key provided by user
-func (dl *Datalake) NewCredentialKey(key, value string) (err error) {
-	if key == "saskey" {
-		dl.Auth.setOption(key, value)
-		// Update the endpoint url from the credential
-		dl.Endpoint, err = url.Parse(dl.Auth.getEndpoint())
-		if err != nil {
-			log.Err("Datalake::NewCredentialKey : Failed to form base endpoint url [%s]", err.Error())
-			return errors.New("failed to form base endpoint url")
-		}
+// func (dl *Datalake) NewCredentialKey(key, value string) (err error) {
+// 	if key == "saskey" {
+// 		dl.Auth.setOption(key, value)
+// 		// Update the endpoint url from the credential
+// 		dl.Endpoint, err = url.Parse(dl.Auth.getEndpoint())
+// 		if err != nil {
+// 			log.Err("Datalake::NewCredentialKey : Failed to form base endpoint url [%s]", err.Error())
+// 			return errors.New("failed to form base endpoint url")
+// 		}
 
-		// Update the service url
-		dl.Service = azbfs.NewServiceURL(*dl.Endpoint, dl.Pipeline)
+// 		// Update the service url
+// 		dl.Service = azbfs.NewServiceURL(*dl.Endpoint, dl.Pipeline)
 
-		// Update the filesystem url
-		dl.Filesystem = dl.Service.NewFileSystemURL(dl.Config.container)
-	}
-	return dl.BlockBlob.NewCredentialKey(key, value)
-}
+// 		// Update the filesystem url
+// 		dl.Filesystem = dl.Service.NewFileSystemURL(dl.Config.container)
+// 	}
+// 	return dl.BlockBlob.NewCredentialKey(key, value)
+// }
 
 // NewServiceClient : Update the SAS specified by the user and create new service client
 func (dl *Datalake) NewServiceClient(key, value string) (err error) {
+	return nil
 }
 
 // getCredential : Create the credential object
