@@ -47,6 +47,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/streaming"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
@@ -446,10 +447,6 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 			log.Err("BlockBlob::getAttrUsingRest : Failed to get blob properties for %s [%s]", name, err.Error())
 			return attr, err
 		}
-	}
-
-	if prop.ContentLength == nil || prop.LastModified == nil || prop.CreationTime == nil {
-
 	}
 
 	// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
@@ -889,7 +886,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 	log.Trace("BlockBlob::WriteFromFile : name %s", name)
 	//defer exectime.StatTimeCurrentBlock("WriteFromFile::WriteFromFile")()
 
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromFile", name)
 
 	uploadPtr := to.Ptr(int64(1))
@@ -924,16 +921,16 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 		}
 	}
 
-	uploadOptions := azblob.UploadToBlockBlobOptions{
-		BlockSize:      blockSize,
-		Parallelism:    bb.Config.maxConcurrency,
-		Metadata:       metadata,
-		BlobAccessTier: bb.Config.defaultTier,
-		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
-			ContentType: getContentType(name),
-			ContentMD5:  md5sum,
+	uploadOptions := &blockblob.UploadFileOptions{
+		BlockSize:   blockSize,
+		Concurrency: bb.Config.maxConcurrency,
+		Metadata:    metadata,
+		AccessTier:  bb.Config.defaultTier,
+		HTTPHeaders: &blob.HTTPHeaders{
+			BlobContentType: to.Ptr(getContentType(name)),
+			BlobContentMD5:  md5sum,
 		},
-		ClientProvidedKeyOptions: bb.blobCPKOpt,
+		CPKInfo: bb.blobCPKOpt,
 	}
 	if common.MonitorBfs() && stat.Size() > 0 {
 		uploadOptions.Progress = func(bytesTransferred int64) {
@@ -941,7 +938,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 		}
 	}
 
-	_, err = azblob.UploadFileToBlockBlob(context.Background(), fi, blobURL, uploadOptions)
+	_, err = blobClient.UploadFile(context.Background(), fi, uploadOptions)
 
 	if err != nil {
 		serr := storeBlobErrToErr(err)
@@ -970,18 +967,19 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 // WriteFromBuffer : Upload from a buffer to a blob
 func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]*string, data []byte) error {
 	log.Trace("BlockBlob::WriteFromBuffer : name %s", name)
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
 	defer log.TimeTrack(time.Now(), "BlockBlob::WriteFromBuffer", name)
-	_, err := azblob.UploadBufferToBlockBlob(context.Background(), data, blobURL, azblob.UploadToBlockBlobOptions{
-		BlockSize:      bb.Config.blockSize,
-		Parallelism:    bb.Config.maxConcurrency,
-		Metadata:       metadata,
-		BlobAccessTier: bb.Config.defaultTier,
-		BlobHTTPHeaders: azblob.BlobHTTPHeaders{
-			ContentType: getContentType(name),
+
+	_, err := blobClient.UploadBuffer(context.Background(), data, &blockblob.UploadBufferOptions{
+		BlockSize:   bb.Config.blockSize,
+		Concurrency: bb.Config.maxConcurrency,
+		Metadata:    metadata,
+		AccessTier:  bb.Config.defaultTier,
+		HTTPHeaders: &blob.HTTPHeaders{
+			BlobContentType: to.Ptr(getContentType(name)),
 		},
-		ClientProvidedKeyOptions: bb.blobCPKOpt,
+		CPKInfo: bb.blobCPKOpt,
 	})
 
 	if err != nil {
@@ -996,10 +994,9 @@ func (bb *BlockBlob) WriteFromBuffer(name string, metadata map[string]*string, d
 func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, error) {
 	var blockOffset int64 = 0
 	blockList := common.BlockOffsetList{}
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
-	storageBlockList, err := blobURL.GetBlockList(
-		context.Background(), azblob.BlockListCommitted, bb.blobAccCond.LeaseAccessConditions)
+	storageBlockList, err := blobClient.GetBlockList(context.Background(), blockblob.BlockListTypeCommitted, nil)
 
 	if err != nil {
 		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s ", name, err.Error())
@@ -1013,12 +1010,20 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 	}
 
 	for _, block := range storageBlockList.CommittedBlocks {
-		blk := &common.Block{
-			Id:         block.Name,
-			StartIndex: int64(blockOffset),
-			EndIndex:   int64(blockOffset) + block.Size,
+		if block.Name == nil {
+			continue
 		}
-		blockOffset += block.Size
+		blockSize := int64(0)
+		if block.Size != nil {
+			blockSize = *block.Size
+		}
+
+		blk := &common.Block{
+			Id:         *block.Name,
+			StartIndex: int64(blockOffset),
+			EndIndex:   int64(blockOffset) + blockSize,
+		}
+		blockOffset += blockSize
 		blockList.BlockList = append(blockList.BlockList, blk)
 	}
 	// blockList.Etag = storageBlockList.ETag()
@@ -1262,18 +1267,19 @@ func (bb *BlockBlob) Write(options internal.WriteFileOptions) error {
 
 // TODO: make a similar method facing stream that would enable us to write to cached blocks then stage and commit
 func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offsetList *common.BlockOffsetList) error {
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 	blockOffset := int64(0)
 	var blockIDList []string
 	for _, blk := range offsetList.BlockList {
 		blockIDList = append(blockIDList, blk.Id)
 		if blk.Dirty() {
-			_, err := blobURL.StageBlock(context.Background(),
+			_, err := blobClient.StageBlock(context.Background(),
 				blk.Id,
-				bytes.NewReader(data[blockOffset:(blk.EndIndex-blk.StartIndex)+blockOffset]),
-				bb.blobAccCond.LeaseAccessConditions,
-				nil,
-				bb.downloadOptions.ClientProvidedKeyOptions)
+				streaming.NopCloser(bytes.NewReader(data[blockOffset:(blk.EndIndex-blk.StartIndex)+blockOffset])),
+				&blockblob.StageBlockOptions{
+					CPKInfo: bb.blobCPKOpt,
+				})
+
 			if err != nil {
 				log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to stage to blob %s at block %v [%s]", name, blockOffset, err.Error())
 				return err
@@ -1281,15 +1287,16 @@ func (bb *BlockBlob) stageAndCommitModifiedBlocks(name string, data []byte, offs
 			blockOffset = (blk.EndIndex - blk.StartIndex) + blockOffset
 		}
 	}
-	_, err := blobURL.CommitBlockList(context.Background(),
+	_, err := blobClient.CommitBlockList(context.Background(),
 		blockIDList,
-		azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
-		nil,
-		bb.blobAccCond,
-		bb.Config.defaultTier,
-		nil, // datalake doesn't support tags here
-		bb.downloadOptions.ClientProvidedKeyOptions,
-		azblob.ImmutabilityPolicyOptions{})
+		&blockblob.CommitBlockListOptions{
+			HTTPHeaders: &blob.HTTPHeaders{
+				BlobContentType: to.Ptr(getContentType(name)),
+			},
+			Tier:    bb.Config.defaultTier,
+			CPKInfo: bb.blobCPKOpt,
+		})
+
 	if err != nil {
 		log.Err("BlockBlob::stageAndCommitModifiedBlocks : Failed to commit block list to blob %s [%s]", name, err.Error())
 		return err
@@ -1302,7 +1309,7 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 	blobMtx := bb.blockLocks.GetLock(name)
 	blobMtx.Lock()
 	defer blobMtx.Unlock()
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 	var blockIDList []string
 	var data []byte
 	staged := false
@@ -1315,12 +1322,12 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 			data = blk.Data
 		}
 		if blk.Dirty() {
-			_, err := blobURL.StageBlock(context.Background(),
+			_, err := blobClient.StageBlock(context.Background(),
 				blk.Id,
-				bytes.NewReader(data),
-				bb.blobAccCond.LeaseAccessConditions,
-				nil,
-				bb.downloadOptions.ClientProvidedKeyOptions)
+				streaming.NopCloser(bytes.NewReader(data)),
+				&blockblob.StageBlockOptions{
+					CPKInfo: bb.blobCPKOpt,
+				})
 			if err != nil {
 				log.Err("BlockBlob::StageAndCommit : Failed to stage to blob %s with ID %s at block %v [%s]", name, blk.Id, blk.StartIndex, err.Error())
 				return err
@@ -1332,16 +1339,16 @@ func (bb *BlockBlob) StageAndCommit(name string, bol *common.BlockOffsetList) er
 		}
 	}
 	if staged {
-		_, err := blobURL.CommitBlockList(context.Background(),
+		_, err := blobClient.CommitBlockList(context.Background(),
 			blockIDList,
-			azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
-			nil,
-			bb.blobAccCond,
-			// azblob.BlobAccessConditions{ModifiedAccessConditions: azblob.ModifiedAccessConditions{IfMatch: bol.Etag}},
-			bb.Config.defaultTier,
-			nil, // datalake doesn't support tags here
-			bb.downloadOptions.ClientProvidedKeyOptions,
-			azblob.ImmutabilityPolicyOptions{})
+			&blockblob.CommitBlockListOptions{
+				HTTPHeaders: &blob.HTTPHeaders{
+					BlobContentType: to.Ptr(getContentType(name)),
+				},
+				Tier:    bb.Config.defaultTier,
+				CPKInfo: bb.blobCPKOpt,
+				// AccessConditions: &blob.AccessConditions{ModifiedAccessConditions: &blob.ModifiedAccessConditions{IfMatch: bol.Etag}},
+			})
 		if err != nil {
 			log.Err("BlockBlob::StageAndCommit : Failed to commit block list to blob %s [%s]", name, err.Error())
 			return err
@@ -1382,10 +1389,9 @@ func (bb *BlockBlob) ChangeOwner(name string, _ int, _ int) error {
 
 // GetCommittedBlockList : Get the list of committed blocks
 func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBlockList, error) {
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
 
-	storageBlockList, err := blobURL.GetBlockList(
-		context.Background(), azblob.BlockListCommitted, bb.blobAccCond.LeaseAccessConditions)
+	storageBlockList, err := blobClient.GetBlockList(context.Background(), blockblob.BlockListTypeCommitted, nil)
 
 	if err != nil {
 		log.Err("BlockBlob::GetFileBlockOffsets : Failed to get block list %s ", name, err.Error())
@@ -1400,12 +1406,20 @@ func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBloc
 	blockList := make(internal.CommittedBlockList, 0)
 	startOffset := int64(0)
 	for _, block := range storageBlockList.CommittedBlocks {
-		blk := internal.CommittedBlock{
-			Id:     block.Name,
-			Offset: startOffset,
-			Size:   uint64(block.Size),
+		if block.Name == nil {
+			continue
 		}
-		startOffset += block.Size
+		blockSize := int64(0)
+		if block.Size != nil {
+			blockSize = *block.Size
+		}
+
+		blk := internal.CommittedBlock{
+			Id:     *block.Name,
+			Offset: startOffset,
+			Size:   uint64(blockSize),
+		}
+		startOffset += blockSize
 		blockList = append(blockList, blk)
 	}
 
@@ -1419,13 +1433,13 @@ func (bb *BlockBlob) StageBlock(name string, data []byte, id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	_, err := blobURL.StageBlock(ctx,
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	_, err := blobClient.StageBlock(ctx,
 		id,
-		bytes.NewReader(data),
-		bb.blobAccCond.LeaseAccessConditions,
-		nil,
-		bb.downloadOptions.ClientProvidedKeyOptions)
+		streaming.NopCloser(bytes.NewReader(data)),
+		&blockblob.StageBlockOptions{
+			CPKInfo: bb.blobCPKOpt,
+		})
 
 	if err != nil {
 		log.Err("BlockBlob::StageBlock : Failed to stage to blob %s with ID %s [%s]", name, id, err.Error())
@@ -1442,17 +1456,16 @@ func (bb *BlockBlob) CommitBlocks(name string, blockList []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), max_context_timeout*time.Minute)
 	defer cancel()
 
-	blobURL := bb.Container.NewBlockBlobURL(filepath.Join(bb.Config.prefixPath, name))
-	_, err := blobURL.CommitBlockList(ctx,
+	blobClient := bb.Container.NewBlockBlobClient(filepath.Join(bb.Config.prefixPath, name))
+	_, err := blobClient.CommitBlockList(ctx,
 		blockList,
-		azblob.BlobHTTPHeaders{ContentType: getContentType(name)},
-		nil,
-		bb.blobAccCond,
-		// azblob.BlobAccessConditions{ModifiedAccessConditions: azblob.ModifiedAccessConditions{IfMatch: bol.Etag}},
-		bb.Config.defaultTier,
-		nil, // datalake doesn't support tags here
-		bb.downloadOptions.ClientProvidedKeyOptions,
-		azblob.ImmutabilityPolicyOptions{})
+		&blockblob.CommitBlockListOptions{
+			HTTPHeaders: &blob.HTTPHeaders{
+				BlobContentType: to.Ptr(getContentType(name)),
+			},
+			Tier:    bb.Config.defaultTier,
+			CPKInfo: bb.blobCPKOpt,
+		})
 
 	if err != nil {
 		log.Err("BlockBlob::CommitBlocks : Failed to commit block list to blob %s [%s]", name, err.Error())
