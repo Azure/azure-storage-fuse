@@ -1,3 +1,8 @@
+## 2.2.1 (Unreleased)
+**Bug Fixes**
+
+**Features**
+
 ## 2.2.0 (2024-01-24)
 **Bug Fixes**
 - Invalidate attribute cache entry on `PathAlreadyExists` error in create directory operation.
