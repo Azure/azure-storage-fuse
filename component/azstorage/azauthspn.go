@@ -141,7 +141,8 @@ func (azspn *azAuthBlobSPN) getCredential() interface{} {
 
 			// set the new token value
 			tc.SetToken(spt.Token().AccessToken)
-			log.Debug("azAuthBlobSPN::getCredential : SPN Token retrieved %s (%d)", spt.Token().AccessToken, spt.Token().Expires())
+			log.Info("azAuthBlobSPN::getCredential : SPN Token retrieved")
+			log.Debug("azAuthBlobSPN::getCredential : Token: %s (%s)", spt.Token().AccessToken, spt.Token().Expires())
 
 			// Get the next token slightly before the current one expires
 			return getNextExpiryTimerSPN(spt)
@@ -186,7 +187,8 @@ func (azspn *azAuthBfsSPN) getCredential() interface{} {
 
 			// set the new token value
 			tc.SetToken(spt.Token().AccessToken)
-			log.Debug("azAuthBfsSPN::getCredential : SPN Token retrieved %s (%d)", spt.Token().AccessToken, spt.Token().Expires())
+			log.Info("azAuthBfsSPN::getCredential : SPN Token retrieved")
+			log.Debug("azAuthBfsSPN::getCredential : Token: %s (%s)", spt.Token().AccessToken, spt.Token().Expires())
 
 			// Get the next token slightly before the current one expires
 			return getNextExpiryTimerSPN(spt)
