@@ -217,11 +217,7 @@ func (bb *BlockBlob) ListContainers() ([]string, error) {
 			return cntList, err
 		}
 		for _, v := range resp.ContainerItems {
-			if v.Name != nil {
-				cntList = append(cntList, *v.Name)
-			} else {
-				log.Err("BlockBlob::ListContainers : Received nil in container name while listing")
-			}
+			cntList = append(cntList, *v.Name)
 		}
 	}
 
@@ -303,12 +299,10 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlobResp.Segment.BlobItems {
-			if blobInfo.Name != nil {
-				dirPresent = true
-				err = bb.DeleteFile(split(bb.Config.prefixPath, *blobInfo.Name))
-				if err != nil {
-					log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s [%s]", *blobInfo.Name, err.Error())
-				}
+			dirPresent = true
+			err = bb.DeleteFile(split(bb.Config.prefixPath, *blobInfo.Name))
+			if err != nil {
+				log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s [%s]", *blobInfo.Name, err.Error())
 			}
 		}
 	}
@@ -407,13 +401,11 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlobResp.Segment.BlobItems {
-			if blobInfo.Name != nil {
-				srcDirPresent = true
-				srcPath := split(bb.Config.prefixPath, *blobInfo.Name)
-				err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
-				if err != nil {
-					log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
-				}
+			srcDirPresent = true
+			srcPath := split(bb.Config.prefixPath, *blobInfo.Name)
+			err = bb.RenameFile(srcPath, strings.Replace(srcPath, source, target, 1))
+			if err != nil {
+				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
 			}
 		}
 
@@ -451,23 +443,16 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 
 	// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
 	attr = &internal.ObjAttr{
-		Path:  name, // We don't need to strip the prefixPath here since we pass the input name
-		Name:  filepath.Base(name),
-		Mode:  0,
-		Flags: internal.NewFileBitMap(),
-		MD5:   prop.ContentMD5,
-	}
-
-	if prop.ContentLength != nil {
-		attr.Size = *prop.ContentLength
-	}
-	if prop.LastModified != nil {
-		attr.Mtime = *prop.LastModified
-		attr.Atime = *prop.LastModified
-		attr.Ctime = *prop.LastModified
-	}
-	if prop.CreationTime != nil {
-		attr.Crtime = *prop.CreationTime
+		Path:   name, // We don't need to strip the prefixPath here since we pass the input name
+		Name:   filepath.Base(name),
+		Size:   *prop.ContentLength,
+		Mode:   0,
+		Mtime:  *prop.LastModified,
+		Atime:  *prop.LastModified,
+		Ctime:  *prop.LastModified,
+		Crtime: *prop.CreationTime,
+		Flags:  internal.NewFileBitMap(),
+		MD5:    prop.ContentMD5,
 	}
 
 	parseMetadata(attr, prop.Metadata)
@@ -588,6 +573,14 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		return blobList, nil, err
 	}
 
+	dereferenceTime := func(input *time.Time, defaultTime time.Time) time.Time {
+		if input == nil {
+			return defaultTime
+		} else {
+			return *input
+		}
+	}
+
 	// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 	// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
 
@@ -595,32 +588,17 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	var dirList = make(map[string]bool)
 
 	for _, blobInfo := range listBlob.Segment.BlobItems {
-		if blobInfo.Name == nil {
-			continue
-		}
-
 		attr := &internal.ObjAttr{
-			Path:  split(bb.Config.prefixPath, *blobInfo.Name),
-			Name:  filepath.Base(*blobInfo.Name),
-			Mode:  0,
-			Flags: internal.NewFileBitMap(),
-			MD5:   blobInfo.Properties.ContentMD5,
-		}
-
-		if blobInfo.Properties.ContentLength != nil {
-			attr.Size = *blobInfo.Properties.ContentLength
-		}
-		if blobInfo.Properties.LastModified != nil {
-			attr.Mtime = *blobInfo.Properties.LastModified
-			attr.Ctime = *blobInfo.Properties.LastModified
-			attr.Atime = *blobInfo.Properties.LastModified
-			attr.Crtime = *blobInfo.Properties.LastModified
-		}
-		if blobInfo.Properties.LastAccessedOn != nil {
-			attr.Atime = *blobInfo.Properties.LastAccessedOn
-		}
-		if blobInfo.Properties.CreationTime != nil {
-			attr.Crtime = *blobInfo.Properties.CreationTime
+			Path:   split(bb.Config.prefixPath, *blobInfo.Name),
+			Name:   filepath.Base(*blobInfo.Name),
+			Size:   *blobInfo.Properties.ContentLength,
+			Mode:   0,
+			Mtime:  *blobInfo.Properties.LastModified,
+			Atime:  dereferenceTime(blobInfo.Properties.LastAccessedOn, *blobInfo.Properties.LastModified),
+			Ctime:  *blobInfo.Properties.LastModified,
+			Crtime: dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
+			Flags:  internal.NewFileBitMap(),
+			MD5:    blobInfo.Properties.ContentMD5,
 		}
 
 		parseMetadata(attr, blobInfo.Metadata)
@@ -641,10 +619,6 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	// Note: Since listing is paginated, sometimes the marker file may come in a different iteration from the BlobPrefix. For such
 	// cases we manually call GetAttr to check the existence of the marker file.
 	for _, blobInfo := range listBlob.Segment.BlobPrefixes {
-		if blobInfo.Name == nil {
-			continue
-		}
-
 		if _, ok := dirList[*blobInfo.Name]; ok {
 			// marker file found in current iteration, skip adding the directory
 			continue
@@ -1010,20 +984,12 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 	}
 
 	for _, block := range storageBlockList.CommittedBlocks {
-		if block.Name == nil {
-			continue
-		}
-		blockSize := int64(0)
-		if block.Size != nil {
-			blockSize = *block.Size
-		}
-
 		blk := &common.Block{
 			Id:         *block.Name,
 			StartIndex: int64(blockOffset),
-			EndIndex:   int64(blockOffset) + blockSize,
+			EndIndex:   int64(blockOffset) + *block.Size,
 		}
-		blockOffset += blockSize
+		blockOffset += *block.Size
 		blockList.BlockList = append(blockList.BlockList, blk)
 	}
 	// blockList.Etag = storageBlockList.ETag()
@@ -1406,20 +1372,12 @@ func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBloc
 	blockList := make(internal.CommittedBlockList, 0)
 	startOffset := int64(0)
 	for _, block := range storageBlockList.CommittedBlocks {
-		if block.Name == nil {
-			continue
-		}
-		blockSize := int64(0)
-		if block.Size != nil {
-			blockSize = *block.Size
-		}
-
 		blk := internal.CommittedBlock{
 			Id:     *block.Name,
 			Offset: startOffset,
-			Size:   uint64(blockSize),
+			Size:   uint64(*block.Size),
 		}
-		startOffset += blockSize
+		startOffset += *block.Size
 		blockList = append(blockList, blk)
 	}
 
