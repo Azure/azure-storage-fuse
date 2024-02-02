@@ -408,7 +408,6 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
 			}
 		}
-
 	}
 
 	err := bb.RenameFile(source, target)
@@ -466,16 +465,13 @@ func (bb *BlockBlob) getAttrUsingRest(name string) (attr *internal.ObjAttr, err 
 func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("BlockBlob::getAttrUsingList : name %s", name)
 
-	const maxFailCount = 20
-	failCount := 0
 	iteration := 0
-
-	var marker *string = nil
+	var marker, new_marker *string
+	var blobs []*internal.ObjAttr
 	blobsRead := 0
 
-	// TODO:: track2 : review : why is the list call retried 20 times?
-	for failCount < maxFailCount {
-		blobs, new_marker, err := bb.List(name, marker, bb.Config.maxResultsForList)
+	for marker != nil || iteration == 0 {
+		blobs, new_marker, err = bb.List(name, marker, bb.Config.maxResultsForList)
 		if err != nil {
 			e := storeBlobErrToErr(err)
 			if e == ErrFileNotFound {
@@ -485,11 +481,8 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 				return attr, syscall.EACCES
 			} else {
 				log.Warn("BlockBlob::getAttrUsingList : Failed to list blob properties for %s [%s]", name, err.Error())
-				failCount++
-				continue
 			}
 		}
-		failCount = 0
 
 		for i, blob := range blobs {
 			log.Trace("BlockBlob::getAttrUsingList : Item %d Blob %s", i+blobsRead, blob.Name)
@@ -503,12 +496,11 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 		blobsRead += len(blobs)
 
 		log.Trace("BlockBlob::getAttrUsingList : So far retrieved %d objects in %d iterations", blobsRead, iteration)
-		if new_marker == nil || *new_marker == "" || failCount >= maxFailCount {
+		if new_marker == nil || *new_marker == "" {
 			break
 		}
 	}
 
-	// TODO:: track2 : review
 	if err == nil {
 		log.Err("BlockBlob::getAttrUsingList : blob %s does not exist", name)
 		return nil, syscall.ENOENT
