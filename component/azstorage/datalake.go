@@ -35,7 +35,7 @@ package azstorage
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"io/fs"
 	"net/url"
 	"os"
@@ -44,20 +44,23 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Azure/azure-pipeline-go/pipeline"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
-	"github.com/Azure/azure-storage-azcopy/v10/ste"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/directory"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/file"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/filesystem"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/service"
 )
 
 type Datalake struct {
 	AzStorageConnection
-	Auth       azAuth
-	Service    azbfs.ServiceURL
-	Filesystem azbfs.FileSystemURL
+	Auth       azAuthT2
+	Service    *service.Client
+	Filesystem *filesystem.Client
 	BlockBlob  BlockBlob
 }
 
@@ -103,69 +106,43 @@ func (dl *Datalake) UpdateConfig(cfg AzStorageConfig) error {
 	return dl.BlockBlob.UpdateConfig(cfg)
 }
 
-// TODO:: track2 : remove
-// NewSASKey : New SAS key provided by user
-// func (dl *Datalake) NewCredentialKey(key, value string) (err error) {
-// 	if key == "saskey" {
-// 		dl.Auth.setOption(key, value)
-// 		// Update the endpoint url from the credential
-// 		dl.Endpoint, err = url.Parse(dl.Auth.getEndpoint())
-// 		if err != nil {
-// 			log.Err("Datalake::NewCredentialKey : Failed to form base endpoint url [%s]", err.Error())
-// 			return errors.New("failed to form base endpoint url")
-// 		}
-
-// 		// Update the service url
-// 		dl.Service = azbfs.NewServiceURL(*dl.Endpoint, dl.Pipeline)
-
-// 		// Update the filesystem url
-// 		dl.Filesystem = dl.Service.NewFileSystemURL(dl.Config.container)
-// 	}
-// 	return dl.BlockBlob.NewCredentialKey(key, value)
-// }
-
 // NewServiceClient : Update the SAS specified by the user and create new service client
 func (dl *Datalake) NewServiceClient(key, value string) (err error) {
-	return nil
+	if key == "saskey" {
+		dl.Auth.setOption(key, value)
+		// get the service client with updated SAS
+		svcClient, err := dl.Auth.getServiceClient(&dl.Config)
+		if err != nil {
+			log.Err("Datalake::NewServiceClient : Failed to get service client [%s]", err.Error())
+			return err
+		}
+
+		// update the service client
+		dl.Service = svcClient.(*service.Client)
+
+		// Update the container client
+		dl.Filesystem = dl.Service.NewFileSystemClient(dl.Config.container)
+	}
+	return dl.BlockBlob.NewServiceClient(key, value) //TODO:: track2: review this line
 }
 
-// getCredential : Create the credential object
-func (dl *Datalake) getCredential() azbfs.Credential {
-	log.Trace("Datalake::getCredential : Getting credential")
+// getServiceClient : Create the service client
+func (dl *Datalake) getServiceClient() (*service.Client, error) {
+	log.Trace("Datalake::getServiceClient : Getting service client")
 
-	dl.Auth = getAzAuth(dl.Config.authConfig)
+	dl.Auth = getAzAuthT2(dl.Config.authConfig)
 	if dl.Auth == nil {
-		log.Err("Datalake::getCredential : Failed to retrieve auth object")
-		return nil
+		log.Err("Datalake::getServiceClient : Failed to retrieve auth object")
+		return nil, fmt.Errorf("failed to retrieve auth object")
 	}
 
-	cred := dl.Auth.getCredential()
-	if cred == nil {
-		log.Err("Datalake::getCredential : Failed to get credential")
-		return nil
+	svcClient, err := dl.Auth.getServiceClient(&dl.Config)
+	if err != nil {
+		log.Err("Datalake::getServiceClient : Failed to get service client [%s]", err.Error())
+		return nil, err
 	}
 
-	return cred.(azbfs.Credential)
-}
-
-// NewPipeline creates a Pipeline using the specified credentials and options.
-func NewBfsPipeline(c azbfs.Credential, o azbfs.PipelineOptions, ro ste.XferRetryOptions) pipeline.Pipeline {
-	// Closest to API goes first; closest to the wire goes last
-	f := []pipeline.Factory{
-		azbfs.NewTelemetryPolicyFactory(o.Telemetry),
-		azbfs.NewUniqueRequestIDPolicyFactory(),
-		// ste.NewBlobXferRetryPolicyFactory(ro),
-		ste.NewBFSXferRetryPolicyFactory(ro),
-	}
-	f = append(f, c)
-	f = append(f,
-		pipeline.MethodFactoryMarker(), // indicates at what stage in the pipeline the method factory is invoked
-		ste.NewRequestLogPolicyFactory(ste.RequestLogOptions{
-			LogWarningIfTryOverThreshold: o.RequestLog.LogWarningIfTryOverThreshold,
-			SyslogDisabled:               o.RequestLog.SyslogDisabled,
-		}))
-
-	return pipeline.NewPipeline(f, pipeline.Options{HTTPSender: o.HTTPSender, Log: o.Log})
+	return svcClient.(*service.Client), nil
 }
 
 // SetupPipeline : Based on the config setup the ***URLs
@@ -173,33 +150,15 @@ func (dl *Datalake) SetupPipeline() error {
 	log.Trace("Datalake::SetupPipeline : Setting up")
 	var err error
 
-	// Get the credential
-	cred := dl.getCredential()
-	if cred == nil {
-		log.Err("Datalake::SetupPipeline : Failed to get credential")
-		return errors.New("failed to get credential")
-	}
-
-	// Create a new pipeline
-	options, retryOptions := getAzBfsPipelineOptions(dl.Config)
-	dl.Pipeline = NewBfsPipeline(cred, options, retryOptions)
-	if dl.Pipeline == nil {
-		log.Err("Datalake::SetupPipeline : Failed to create pipeline object")
-		return errors.New("failed to create pipeline object")
-	}
-
-	// Get the endpoint url from the credential
-	dl.Endpoint, err = url.Parse(dl.Auth.getEndpoint())
+	// create the service client
+	dl.Service, err = dl.getServiceClient()
 	if err != nil {
-		log.Err("Datalake::SetupPipeline : Failed to form base end point url [%s]", err.Error())
-		return errors.New("failed to form base end point url")
+		log.Err("Datalake::SetupPipeline : Failed to get service client [%s]", err.Error())
+		return err
 	}
 
-	// Create the service url
-	dl.Service = azbfs.NewServiceURL(*dl.Endpoint, dl.Pipeline)
-
-	// Create the filesystem url
-	dl.Filesystem = dl.Service.NewFileSystemURL(dl.Config.container)
+	// create the container client
+	dl.Filesystem = dl.Service.NewFileSystemClient(dl.Config.container)
 
 	return dl.BlockBlob.SetupPipeline()
 }
@@ -212,27 +171,28 @@ func (dl *Datalake) TestPipeline() error {
 		return nil
 	}
 
-	if dl.Filesystem.String() == "" {
-		log.Err("Datalake::TestPipeline : Filesystem URL is not built, check your credentials")
+	if dl.Filesystem == nil || dl.Filesystem.BlobURL() == "" {
+		log.Err("Datalake::TestPipeline : Container Client is not built, check your credentials")
 		return nil
 	}
 
 	maxResults := int32(2)
-	listPath, err := dl.Filesystem.ListPaths(context.Background(),
-		azbfs.ListPathsFilesystemOptions{
-			Path:       &dl.Config.prefixPath,
-			Recursive:  false,
-			MaxResults: &maxResults,
-		})
+	listPathPager := dl.Filesystem.NewListPathsPager(false, &filesystem.ListPathsOptions{
+		MaxResults: &maxResults,
+		Prefix:     &dl.Config.prefixPath,
+	})
 
+	// we are just validating the auth mode used. So, no need to iterate over the pages
+	_, err := listPathPager.NextPage(context.Background())
 	if err != nil {
 		log.Err("Datalake::TestPipeline : Failed to validate account with given auth %s", err.Error)
 		return err
 	}
 
-	if listPath == nil {
+	if listPathPager == nil {
 		log.Info("Datalake::TestPipeline : Filesystem is empty")
 	}
+
 	return dl.BlockBlob.TestPipeline()
 }
 
@@ -268,9 +228,8 @@ func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 func (dl *Datalake) CreateDirectory(name string) error {
 	log.Trace("Datalake::CreateDirectory : name %s", name)
 
-	directoryURL := dl.Filesystem.NewDirectoryURL(filepath.Join(dl.Config.prefixPath, name))
-	_, err := directoryURL.Create(context.Background(), false)
-
+	directoryURL := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
+	_, err := directoryURL.Create(context.Background(), &directory.CreateOptions{}) //TODO:: track2: false was a parameter after context for what?
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == InvalidPermission {
@@ -297,9 +256,8 @@ func (dl *Datalake) CreateLink(source string, target string) error {
 // DeleteFile : Delete a file in the filesystem/directory
 func (dl *Datalake) DeleteFile(name string) (err error) {
 	log.Trace("Datalake::DeleteFile : name %s", name)
-
-	fileURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
-	_, err = fileURL.Delete(context.Background())
+	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name)) //TODO:: track2: need to review
+	_, err = fileClient.Delete(context.Background(), &file.DeleteOptions{})
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -319,13 +277,16 @@ func (dl *Datalake) DeleteFile(name string) (err error) {
 
 	return nil
 }
-
+//////////////////////////////////////////////////////////////////////////////
 // DeleteDirectory : Delete a directory in the filesystem/directory
 func (dl *Datalake) DeleteDirectory(name string) (err error) {
 	log.Trace("Datalake::DeleteDirectory : name %s", name)
 
-	directoryURL := dl.Filesystem.NewDirectoryURL(filepath.Join(dl.Config.prefixPath, name))
-	_, err = directoryURL.Delete(context.Background(), nil, true)
+	directoryURL := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
+	_, err = directoryURL.Delete(context.Background(), &directory.DeleteOptions{
+		nil,
+		true
+	}
 	// TODO : There is an ability to pass a continuation token here for recursive delete, should we implement this logic to follow continuation token? The SDK does not currently do this.
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
