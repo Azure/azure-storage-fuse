@@ -124,8 +124,8 @@ func (dl *Datalake) UpdateConfig(cfg AzStorageConfig) error {
 // 	return dl.BlockBlob.NewCredentialKey(key, value)
 // }
 
-// NewServiceClient : Update the SAS specified by the user and create new service client
-func (dl *Datalake) NewServiceClient(key, value string) (err error) {
+// UpdateServiceClient : Update the SAS specified by the user and create new service client
+func (dl *Datalake) UpdateServiceClient(key, value string) (err error) {
 	return nil
 }
 

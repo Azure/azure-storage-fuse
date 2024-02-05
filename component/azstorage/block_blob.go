@@ -120,15 +120,15 @@ func (bb *BlockBlob) UpdateConfig(cfg AzStorageConfig) error {
 	return nil
 }
 
-// NewServiceClient : Update the SAS specified by the user and create new service client
-func (bb *BlockBlob) NewServiceClient(key, value string) (err error) {
+// UpdateServiceClient : Update the SAS specified by the user and create new service client
+func (bb *BlockBlob) UpdateServiceClient(key, value string) (err error) {
 	if key == "saskey" {
 		bb.Auth.setOption(key, value)
 
 		// get the service client with updated SAS
 		svcClient, err := bb.Auth.getServiceClient(&bb.Config)
 		if err != nil {
-			log.Err("BlockBlob::NewServiceClient : Failed to get service client [%s]", err.Error())
+			log.Err("BlockBlob::UpdateServiceClient : Failed to get service client [%s]", err.Error())
 			return err
 		}
 
@@ -141,19 +141,19 @@ func (bb *BlockBlob) NewServiceClient(key, value string) (err error) {
 	return nil
 }
 
-// getServiceClient : Create the service client
-func (bb *BlockBlob) getServiceClient() (*service.Client, error) {
-	log.Trace("BlockBlob::getServiceClient : Getting service client")
+// createServiceClient : Create the service client
+func (bb *BlockBlob) createServiceClient() (*service.Client, error) {
+	log.Trace("BlockBlob::createServiceClient : Getting service client")
 
 	bb.Auth = getAzAuthT2(bb.Config.authConfig)
 	if bb.Auth == nil {
-		log.Err("BlockBlob::getServiceClient : Failed to retrieve auth object")
+		log.Err("BlockBlob::createServiceClient : Failed to retrieve auth object")
 		return nil, fmt.Errorf("failed to retrieve auth object")
 	}
 
 	svcClient, err := bb.Auth.getServiceClient(&bb.Config)
 	if err != nil {
-		log.Err("BlockBlob::getServiceClient : Failed to get service client [%s]", err.Error())
+		log.Err("BlockBlob::createServiceClient : Failed to get service client [%s]", err.Error())
 		return nil, err
 	}
 
@@ -166,7 +166,7 @@ func (bb *BlockBlob) SetupPipeline() error {
 	var err error
 
 	// create the service client
-	bb.Service, err = bb.getServiceClient()
+	bb.Service, err = bb.createServiceClient()
 	if err != nil {
 		log.Err("BlockBlob::SetupPipeline : Failed to get service client [%s]", err.Error())
 		return err

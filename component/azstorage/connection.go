@@ -140,7 +140,7 @@ type AzConnection interface {
 	StageBlock(string, []byte, string) error
 	CommitBlocks(string, []string) error
 
-	NewServiceClient(_, _ string) error
+	UpdateServiceClient(_, _ string) error
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object
