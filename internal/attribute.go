@@ -80,7 +80,7 @@ type ObjAttr struct {
 	Path     string          // full path
 	Name     string          // base name of the path
 	MD5      []byte
-	Metadata map[string]string // extra information to preserve
+	Metadata map[string]*string // extra information to preserve
 }
 
 // IsDir : Test blob is a directory or not

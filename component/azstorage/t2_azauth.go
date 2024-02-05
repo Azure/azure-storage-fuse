@@ -69,10 +69,12 @@ type azAuthConfig struct {
 	AuthResource string
 }
 
-// TODO: remove T2 suffix
+// TODO:: track2 : remove T2 suffix
 
 // azAuth : Interface to define a generic authentication type
 type azAuthT2 interface {
+	getEndpoint() string
+	setOption(key, value string)
 	getServiceClient(stConfig *AzStorageConfig) (interface{}, error)
 }
 
@@ -166,20 +168,35 @@ type azAuthBaseT2 struct {
 	config azAuthConfig
 }
 
-// TODO: check ActiveDirectoryEndpoint and AuthResource part
-func (base *azAuthBaseT2) getAzIdentityClientOptions() azcore.ClientOptions {
+// SetOption : Sets any optional information for the auth.
+func (base *azAuthBaseT2) setOption(_, _ string) {}
+
+// GetEndpoint : Gets the endpoint
+func (base *azAuthBaseT2) getEndpoint() string {
+	return base.config.Endpoint
+}
+
+// this type is included in OAuth modes - spn and msi
+type azOAuthBase struct{}
+
+// TODO:: track2 : check ActiveDirectoryEndpoint and AuthResource part
+func (base *azOAuthBase) getAzIdentityClientOptions(config *azAuthConfig) azcore.ClientOptions {
+	if config == nil {
+		log.Err("azAuth::getAzIdentityClientOptions : azAuthConfig is nil")
+		return azcore.ClientOptions{}
+	}
 	opts := azcore.ClientOptions{
-		Cloud: getCloudConfiguration(base.config.Endpoint),
+		Cloud: getCloudConfiguration(config.Endpoint),
 	}
 
-	if base.config.ActiveDirectoryEndpoint != "" {
-		log.Debug("azAuthBase::getAzIdentityClientOptions : ActiveDirectoryAuthorityHost = %s", base.config.ActiveDirectoryEndpoint)
-		opts.Cloud.ActiveDirectoryAuthorityHost = base.config.ActiveDirectoryEndpoint
+	if config.ActiveDirectoryEndpoint != "" {
+		log.Debug("azAuthBase::getAzIdentityClientOptions : ActiveDirectoryAuthorityHost = %s", config.ActiveDirectoryEndpoint)
+		opts.Cloud.ActiveDirectoryAuthorityHost = config.ActiveDirectoryEndpoint
 	}
-	if base.config.AuthResource != "" {
+	if config.AuthResource != "" {
 		if val, ok := opts.Cloud.Services[cloud.ResourceManager]; ok {
-			log.Debug("azAuthBase::getAzIdentityClientOptions : AuthResource = %s", base.config.AuthResource)
-			val.Endpoint = base.config.AuthResource
+			log.Debug("azAuthBase::getAzIdentityClientOptions : AuthResource = %s", config.AuthResource)
+			val.Endpoint = config.AuthResource
 			opts.Cloud.Services[cloud.ResourceManager] = val
 		}
 	}

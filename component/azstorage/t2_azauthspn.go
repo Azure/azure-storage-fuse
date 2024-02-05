@@ -47,13 +47,14 @@ var _ azAuthT2 = &azAuthDatalakeSPN{}
 
 type azAuthSPNT2 struct {
 	azAuthBaseT2
+	azOAuthBase
 }
 
 func (azspn *azAuthSPNT2) getTokenCredential() (azcore.TokenCredential, error) {
 	var cred azcore.TokenCredential
 	var err error
 
-	clOpts := azspn.getAzIdentityClientOptions()
+	clOpts := azspn.getAzIdentityClientOptions(&azspn.config)
 	if azspn.config.OAuthTokenFilePath != "" {
 		log.Trace("AzAuthSPN::getTokenCredential : Going for fedrated token flow")
 

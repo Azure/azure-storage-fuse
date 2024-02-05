@@ -103,24 +103,30 @@ func (dl *Datalake) UpdateConfig(cfg AzStorageConfig) error {
 	return dl.BlockBlob.UpdateConfig(cfg)
 }
 
+// TODO:: track2 : remove
 // NewSASKey : New SAS key provided by user
-func (dl *Datalake) NewCredentialKey(key, value string) (err error) {
-	if key == "saskey" {
-		dl.Auth.setOption(key, value)
-		// Update the endpoint url from the credential
-		dl.Endpoint, err = url.Parse(dl.Auth.getEndpoint())
-		if err != nil {
-			log.Err("Datalake::NewCredentialKey : Failed to form base endpoint url [%s]", err.Error())
-			return errors.New("failed to form base endpoint url")
-		}
+// func (dl *Datalake) NewCredentialKey(key, value string) (err error) {
+// 	if key == "saskey" {
+// 		dl.Auth.setOption(key, value)
+// 		// Update the endpoint url from the credential
+// 		dl.Endpoint, err = url.Parse(dl.Auth.getEndpoint())
+// 		if err != nil {
+// 			log.Err("Datalake::NewCredentialKey : Failed to form base endpoint url [%s]", err.Error())
+// 			return errors.New("failed to form base endpoint url")
+// 		}
 
-		// Update the service url
-		dl.Service = azbfs.NewServiceURL(*dl.Endpoint, dl.Pipeline)
+// 		// Update the service url
+// 		dl.Service = azbfs.NewServiceURL(*dl.Endpoint, dl.Pipeline)
 
-		// Update the filesystem url
-		dl.Filesystem = dl.Service.NewFileSystemURL(dl.Config.container)
-	}
-	return dl.BlockBlob.NewCredentialKey(key, value)
+// 		// Update the filesystem url
+// 		dl.Filesystem = dl.Service.NewFileSystemURL(dl.Config.container)
+// 	}
+// 	return dl.BlockBlob.NewCredentialKey(key, value)
+// }
+
+// UpdateServiceClient : Update the SAS specified by the user and create new service client
+func (dl *Datalake) UpdateServiceClient(key, value string) (err error) {
+	return nil
 }
 
 // getCredential : Create the credential object
@@ -577,12 +583,12 @@ func (dl *Datalake) ReadInBuffer(name string, offset int64, len int64, data []by
 }
 
 // WriteFromFile : Upload local file to file
-func (dl *Datalake) WriteFromFile(name string, metadata map[string]string, fi *os.File) (err error) {
+func (dl *Datalake) WriteFromFile(name string, metadata map[string]*string, fi *os.File) (err error) {
 	return dl.BlockBlob.WriteFromFile(name, metadata, fi)
 }
 
 // WriteFromBuffer : Upload from a buffer to a file
-func (dl *Datalake) WriteFromBuffer(name string, metadata map[string]string, data []byte) error {
+func (dl *Datalake) WriteFromBuffer(name string, metadata map[string]*string, data []byte) error {
 	return dl.BlockBlob.WriteFromBuffer(name, metadata, data)
 }
 

@@ -53,6 +53,9 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	azlog "github.com/Azure/azure-sdk-for-go/sdk/azcore/log"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 	serviceBfs "github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/service"
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -86,6 +89,7 @@ const (
 	MaxResponseHeaderBytes int64         = 0
 )
 
+// TODO:: track2 : remove
 // getAzBlobPipelineOptions : Create pipeline options based on the config
 func getAzBlobPipelineOptions(conf AzStorageConfig) (azblob.PipelineOptions, ste.XferRetryOptions) {
 	retryOptions := ste.XferRetryOptions{
@@ -125,6 +129,7 @@ func getAzBlobPipelineOptions(conf AzStorageConfig) (azblob.PipelineOptions, ste
 		retryOptions
 }
 
+// TODO:: track2 : remove
 // getAzBfsPipelineOptions : Create pipeline options based on the config
 func getAzBfsPipelineOptions(conf AzStorageConfig) (azbfs.PipelineOptions, ste.XferRetryOptions) {
 	retryOptions := ste.XferRetryOptions{
@@ -210,7 +215,7 @@ func getSDKLogOptions() policy.LogOptions {
 	if log.GetType() == "silent" {
 		return policy.LogOptions{}
 	} else {
-		// TODO: check which headers and query params should not be redacted
+		// TODO:: track2 : check which headers and query params should not be redacted
 		return policy.LogOptions{
 			AllowedHeaders:     []string{"x-ms-version"},
 			AllowedQueryParams: []string{},
@@ -224,7 +229,7 @@ func getSDKLogOptions() policy.LogOptions {
 //   - sdk-trace is false
 //   - logging level is less than debug
 func setSDKLogListener(sdkLogging bool) {
-	// TODO: set/reset listener on dynamic config change
+	// TODO:: track2 : set/reset listener on dynamic config change
 	if log.GetType() == "silent" || !sdkLogging || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
 		// reset listener
 		azlog.SetListener(nil)
@@ -236,7 +241,7 @@ func setSDKLogListener(sdkLogging bool) {
 }
 
 // Create an HTTP Client with configured proxy
-// TODO: More configurations for other http client parameters?
+// TODO:: track2 : More configurations for other http client parameters?
 // TODO: configure http.Client
 func newBlobfuse2HttpClient(conf *AzStorageConfig) *http.Client {
 	var ProxyURL func(req *http.Request) (*url.URL, error) = func(req *http.Request) (*url.URL, error) {
@@ -276,6 +281,7 @@ func newBlobfuse2HttpClient(conf *AzStorageConfig) *http.Client {
 	}
 }
 
+// TODO:: track2 : remove
 // newBlobfuse2HTTPClientFactory creates a custom HTTPClientPolicyFactory object that sends HTTP requests to the http client.
 func newBlobfuse2HTTPClientFactory(pipelineHTTPClient *http.Client) pipeline.Factory {
 	return pipeline.FactoryFunc(func(next pipeline.Policy, po *pipeline.PolicyOptions) pipeline.PolicyFunc {
@@ -290,6 +296,7 @@ func newBlobfuse2HTTPClientFactory(pipelineHTTPClient *http.Client) pipeline.Fac
 	})
 }
 
+// TODO:: track2 : remove
 func getLogOptions(sdkLogging bool) pipeline.LogOptions {
 	return pipeline.LogOptions{
 		Log: func(logLevel pipeline.LogLevel, message string) {
@@ -395,6 +402,7 @@ const (
 	InvalidPermission
 )
 
+// TODO:: track2 : remove
 // ErrStr : Store error to string mapping
 var ErrStr = map[uint16]string{
 	ErrNoErr:             "No Error found",
@@ -403,23 +411,24 @@ var ErrStr = map[uint16]string{
 	ErrFileAlreadyExists: "Blob already exists",
 }
 
-// For detailed error list refert ServiceCodeType at below link
-// https://godoc.org/github.com/Azure/azure-storage-blob-go/azblob#ListBlobsSegmentOptions
+// For detailed error list refer below link,
+// https://github.com/Azure/azure-sdk-for-go/blob/main/sdk/storage/azblob/bloberror/error_codes.go
 // Convert blob storage error to common errors
 func storeBlobErrToErr(err error) uint16 {
-	if serr, ok := err.(azblob.StorageError); ok {
-		switch serr.ServiceCode() {
-		case azblob.ServiceCodeBlobAlreadyExists:
+	var respErr *azcore.ResponseError
+	errors.As(err, &respErr)
+
+	if respErr != nil {
+		switch (bloberror.Code)(respErr.ErrorCode) {
+		case bloberror.BlobAlreadyExists:
 			return ErrFileAlreadyExists
-		case azblob.ServiceCodeBlobNotFound:
+		case bloberror.BlobNotFound:
 			return ErrFileNotFound
-		case azblob.ServiceCodeInvalidRange:
+		case bloberror.InvalidRange:
 			return InvalidRange
-		case azblob.ServiceCodeLeaseIDMissing:
+		case bloberror.LeaseIDMissing:
 			return BlobIsUnderLease
-		case azblob.ServiceCodeInsufficientAccountPermissions:
-			return InvalidPermission
-		case "AuthorizationPermissionMismatch":
+		case bloberror.InsufficientAccountPermissions, bloberror.AuthorizationPermissionMismatch:
 			return InvalidPermission
 		default:
 			return ErrUnknown
@@ -452,8 +461,8 @@ func storeDatalakeErrToErr(err error) uint16 {
 //	----------- Metadata handling  ---------------
 //
 // Converts datalake properties to a metadata map
-func newMetadata(properties string) map[string]string {
-	metadata := make(map[string]string)
+func newMetadata(properties string) map[string]*string {
+	metadata := make(map[string]*string)
 	if properties != "" {
 		// Create a map of the properties (metadata)
 		pairs := strings.Split(properties, ",")
@@ -463,7 +472,7 @@ func newMetadata(properties string) map[string]string {
 			key := components[0]
 			value, err := base64.StdEncoding.DecodeString(components[1])
 			if err == nil {
-				metadata[key] = string(value)
+				metadata[key] = to.Ptr(string(value))
 			}
 		}
 	}
@@ -478,16 +487,18 @@ func parseProperties(attr *internal.ObjAttr, properties string) {
 }
 
 // parseMetadata : Parse the metadata of a given path and populate its attributes
-func parseMetadata(attr *internal.ObjAttr, metadata map[string]string) {
+func parseMetadata(attr *internal.ObjAttr, metadata map[string]*string) {
 	// Save the metadata in attributes so that later if someone wants to add anything it can work
 	attr.Metadata = metadata
 	for k, v := range metadata {
-		if strings.ToLower(k) == folderKey && v == "true" {
-			attr.Flags = internal.NewDirBitMap()
-			attr.Mode = attr.Mode | os.ModeDir
-		} else if strings.ToLower(k) == symlinkKey && v == "true" {
-			attr.Flags = internal.NewSymlinkBitMap()
-			attr.Mode = attr.Mode | os.ModeSymlink
+		if v != nil {
+			if strings.ToLower(k) == folderKey && *v == "true" {
+				attr.Flags = internal.NewDirBitMap()
+				attr.Mode = attr.Mode | os.ModeDir
+			} else if strings.ToLower(k) == symlinkKey && *v == "true" {
+				attr.Flags = internal.NewSymlinkBitMap()
+				attr.Mode = attr.Mode | os.ModeSymlink
+			}
 		}
 	}
 }
@@ -578,37 +589,40 @@ func populateContentType(newSet string) error { //nolint
 	return nil
 }
 
+// TODO:: track2 : review : added "cold" and "premium" tiers
+//
 //	----------- Blob access tier type conversion  ---------------
 //
 // AccessTierMap : Store config to access tier mapping
-var AccessTiers = map[string]azblob.AccessTierType{
-	"none":    azblob.AccessTierNone,
-	"hot":     azblob.AccessTierHot,
-	"cool":    azblob.AccessTierCool,
-	"archive": azblob.AccessTierArchive,
-	"p4":      azblob.AccessTierP4,
-	"p6":      azblob.AccessTierP6,
-	"p10":     azblob.AccessTierP10,
-	"p15":     azblob.AccessTierP15,
-	"p20":     azblob.AccessTierP20,
-	"p30":     azblob.AccessTierP30,
-	"p40":     azblob.AccessTierP40,
-	"p50":     azblob.AccessTierP50,
-	"p60":     azblob.AccessTierP60,
-	"p70":     azblob.AccessTierP70,
-	"p80":     azblob.AccessTierP80,
+var AccessTiers = map[string]blob.AccessTier{
+	"hot":     blob.AccessTierHot,
+	"cool":    blob.AccessTierCool,
+	"cold":    blob.AccessTierCold,
+	"archive": blob.AccessTierArchive,
+	"p4":      blob.AccessTierP4,
+	"p6":      blob.AccessTierP6,
+	"p10":     blob.AccessTierP10,
+	"p15":     blob.AccessTierP15,
+	"p20":     blob.AccessTierP20,
+	"p30":     blob.AccessTierP30,
+	"p40":     blob.AccessTierP40,
+	"p50":     blob.AccessTierP50,
+	"p60":     blob.AccessTierP60,
+	"p70":     blob.AccessTierP70,
+	"p80":     blob.AccessTierP80,
+	"premium": blob.AccessTierPremium,
 }
 
-func getAccessTierType(name string) azblob.AccessTierType {
+func getAccessTierType(name string) *blob.AccessTier {
 	if name == "" {
-		return azblob.AccessTierNone
+		return nil
 	}
 
 	value, found := AccessTiers[strings.ToLower(name)]
 	if found {
-		return value
+		return &value
 	}
-	return azblob.AccessTierNone
+	return nil
 }
 
 // Called by x method
@@ -715,6 +729,7 @@ func getFileMode(permissions string) (os.FileMode, error) {
 	return mode, nil
 }
 
+// TODO:: track2 : check the use of this method
 // Strips the prefixPath from the path and returns the joined string
 func split(prefixPath string, path string) string {
 	if prefixPath == "" {

@@ -37,12 +37,12 @@ import (
 	"net/url"
 	"os"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
-	"github.com/Azure/azure-storage-blob-go/azblob"
 )
 
 // Example for azblob usage : https://godoc.org/github.com/Azure/azure-storage-blob-go/azblob#pkg-examples
@@ -56,7 +56,7 @@ type AzStorageConfig struct {
 	maxConcurrency uint16
 
 	// tier to be set on every upload
-	defaultTier azblob.AccessTierType
+	defaultTier *blob.AccessTier
 
 	// Return back readDir on mount for given amount of time
 	cancelListForSeconds uint16
@@ -90,9 +90,9 @@ type AzStorageConfig struct {
 type AzStorageConnection struct {
 	Config AzStorageConfig
 
-	Pipeline pipeline.Pipeline
+	Pipeline pipeline.Pipeline // TODO:: track2 : remove
 
-	Endpoint *url.URL
+	Endpoint *url.URL // TODO:: track2 : remove
 }
 
 type AzConnection interface {
@@ -126,8 +126,8 @@ type AzConnection interface {
 	ReadBuffer(name string, offset int64, len int64) ([]byte, error)
 	ReadInBuffer(name string, offset int64, len int64, data []byte) error
 
-	WriteFromFile(name string, metadata map[string]string, fi *os.File) error
-	WriteFromBuffer(name string, metadata map[string]string, data []byte) error
+	WriteFromFile(name string, metadata map[string]*string, fi *os.File) error
+	WriteFromBuffer(name string, metadata map[string]*string, data []byte) error
 	Write(options internal.WriteFileOptions) error
 	GetFileBlockOffsets(name string) (*common.BlockOffsetList, error)
 
@@ -140,7 +140,7 @@ type AzConnection interface {
 	StageBlock(string, []byte, string) error
 	CommitBlocks(string, []string) error
 
-	NewCredentialKey(_, _ string) error
+	UpdateServiceClient(_, _ string) error
 }
 
 // NewAzStorageConnection : Based on account type create respective AzConnection Object
