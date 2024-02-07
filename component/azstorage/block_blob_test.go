@@ -67,7 +67,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
-	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -2147,22 +2146,22 @@ func (s *blockBlobTestSuite) TestBlockSize() {
 	// For filesize 0 expected blocksize is 256MB
 	block, err := bb.calculateBlockSize(name, 0)
 	s.assert.Nil(err)
-	s.assert.EqualValues(block, azblob.BlockBlobMaxUploadBlobBytes)
+	s.assert.EqualValues(block, blockblob.MaxUploadBlobBytes)
 
 	// For filesize 100MB expected blocksize is 256MB
 	block, err = bb.calculateBlockSize(name, (100 * 1024 * 1024))
 	s.assert.Nil(err)
-	s.assert.EqualValues(block, azblob.BlockBlobMaxUploadBlobBytes)
+	s.assert.EqualValues(block, blockblob.MaxUploadBlobBytes)
 
 	// For filesize 500MB expected blocksize is 4MB
 	block, err = bb.calculateBlockSize(name, (500 * 1024 * 1024))
 	s.assert.Nil(err)
-	s.assert.EqualValues(block, azblob.BlobDefaultDownloadBlockSize)
+	s.assert.EqualValues(block, blob.DefaultDownloadBlockSize)
 
 	// For filesize 1GB expected blocksize is 4MB
 	block, err = bb.calculateBlockSize(name, (1 * 1024 * 1024 * 1024))
 	s.assert.Nil(err)
-	s.assert.EqualValues(block, azblob.BlobDefaultDownloadBlockSize)
+	s.assert.EqualValues(block, blob.DefaultDownloadBlockSize)
 
 	// For filesize 500GB expected blocksize is 10737424
 	block, err = bb.calculateBlockSize(name, (500 * 1024 * 1024 * 1024))
@@ -2185,9 +2184,9 @@ func (s *blockBlobTestSuite) TestBlockSize() {
 	s.assert.EqualValues(block, int64(4178144192))
 
 	// Boundary condition which is exactly max size supported by sdk
-	block, err = bb.calculateBlockSize(name, (azblob.BlockBlobMaxStageBlockBytes * azblob.BlockBlobMaxBlocks))
+	block, err = bb.calculateBlockSize(name, (blockblob.MaxStageBlockBytes * blockblob.MaxBlocks))
 	s.assert.Nil(err)
-	s.assert.EqualValues(block, int64(azblob.BlockBlobMaxStageBlockBytes)) // 4194304000
+	s.assert.EqualValues(block, int64(blockblob.MaxStageBlockBytes)) // 4194304000
 
 	// For Filesize created using dd for 1TB size
 	block, err = bb.calculateBlockSize(name, int64(1099511627776))
@@ -2195,27 +2194,27 @@ func (s *blockBlobTestSuite) TestBlockSize() {
 	s.assert.EqualValues(block, int64(21990240))
 
 	// Boundary condition 5 bytes less then max expected file size
-	block, err = bb.calculateBlockSize(name, (azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks)-5)
+	block, err = bb.calculateBlockSize(name, (blockblob.MaxStageBlockBytes*blockblob.MaxBlocks)-5)
 	s.assert.Nil(err)
-	s.assert.EqualValues(block, int64(azblob.BlockBlobMaxStageBlockBytes))
+	s.assert.EqualValues(block, int64(blockblob.MaxStageBlockBytes))
 
 	// Boundary condition 1 bytes more then max expected file size
-	block, err = bb.calculateBlockSize(name, (azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks)+1)
+	block, err = bb.calculateBlockSize(name, (blockblob.MaxStageBlockBytes*blockblob.MaxBlocks)+1)
 	s.assert.NotNil(err)
 	s.assert.EqualValues(block, 0)
 
 	// Boundary condition 5 bytes more then max expected file size
-	block, err = bb.calculateBlockSize(name, (azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks)+5)
+	block, err = bb.calculateBlockSize(name, (blockblob.MaxStageBlockBytes*blockblob.MaxBlocks)+5)
 	s.assert.NotNil(err)
 	s.assert.EqualValues(block, 0)
 
 	// Boundary condition file size one block short of file blocks
-	block, err = bb.calculateBlockSize(name, (azblob.BlockBlobMaxStageBlockBytes*azblob.BlockBlobMaxBlocks)-azblob.BlockBlobMaxStageBlockBytes)
+	block, err = bb.calculateBlockSize(name, (blockblob.MaxStageBlockBytes*blockblob.MaxBlocks)-blockblob.MaxStageBlockBytes)
 	s.assert.Nil(err)
 	s.assert.EqualValues(block, 4194220120)
 
 	// Boundary condition one byte more then max block size
-	block, err = bb.calculateBlockSize(name, (4194304001 * azblob.BlockBlobMaxBlocks))
+	block, err = bb.calculateBlockSize(name, (4194304001 * blockblob.MaxBlocks))
 	s.assert.NotNil(err)
 	s.assert.EqualValues(block, 0)
 
@@ -2774,12 +2773,12 @@ func (s *blockBlobTestSuite) TestMD5SetOnUpload() {
 			s.assert.Nil(err)
 			s.assert.NotNil(f)
 
-			data := make([]byte, azblob.BlockBlobMaxUploadBlobBytes+1)
+			data := make([]byte, blockblob.MaxUploadBlobBytes+1)
 			_, _ = rand.Read(data)
 
 			n, err := f.Write(data)
 			s.assert.Nil(err)
-			s.assert.EqualValues(n, azblob.BlockBlobMaxUploadBlobBytes+1)
+			s.assert.EqualValues(n, blockblob.MaxUploadBlobBytes+1)
 			_, _ = f.Seek(0, 0)
 
 			err = s.az.storage.WriteFromFile(name, nil, f)
@@ -2827,12 +2826,12 @@ func (s *blockBlobTestSuite) TestMD5NotSetOnUpload() {
 			s.assert.Nil(err)
 			s.assert.NotNil(f)
 
-			data := make([]byte, azblob.BlockBlobMaxUploadBlobBytes+1)
+			data := make([]byte, blockblob.MaxUploadBlobBytes+1)
 			_, _ = rand.Read(data)
 
 			n, err := f.Write(data)
 			s.assert.Nil(err)
-			s.assert.EqualValues(n, azblob.BlockBlobMaxUploadBlobBytes+1)
+			s.assert.EqualValues(n, blockblob.MaxUploadBlobBytes+1)
 			_, _ = f.Seek(0, 0)
 
 			err = s.az.storage.WriteFromFile(name, nil, f)
@@ -3040,12 +3039,12 @@ func (s *blockBlobTestSuite) TestValidateManualMD5OnRead() {
 			s.assert.Nil(err)
 			s.assert.NotNil(f)
 
-			data := make([]byte, azblob.BlockBlobMaxUploadBlobBytes+1)
+			data := make([]byte, blockblob.MaxUploadBlobBytes+1)
 			_, _ = rand.Read(data)
 
 			n, err := f.Write(data)
 			s.assert.Nil(err)
-			s.assert.EqualValues(n, azblob.BlockBlobMaxUploadBlobBytes+1)
+			s.assert.EqualValues(n, blockblob.MaxUploadBlobBytes+1)
 			_, _ = f.Seek(0, 0)
 
 			err = s.az.storage.WriteFromFile(name, nil, f)
@@ -3061,7 +3060,7 @@ func (s *blockBlobTestSuite) TestValidateManualMD5OnRead() {
 			s.assert.Nil(err)
 			s.assert.NotNil(f)
 
-			err = s.az.storage.ReadToFile(name, 0, azblob.BlockBlobMaxUploadBlobBytes+1, f)
+			err = s.az.storage.ReadToFile(name, 0, blockblob.MaxUploadBlobBytes+1, f)
 			s.assert.Nil(err)
 
 			_ = s.az.storage.DeleteFile(name)
