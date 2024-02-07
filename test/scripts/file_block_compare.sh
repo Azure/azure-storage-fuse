@@ -49,7 +49,7 @@ do
             exit 1
         fi
     else    
-        sudo mount -t nfs -o sec=sys,vers=3,nolock,proto=tcp,nconnect=16 datamountnfs.blob.core.windows.net:/datamountnfs/test-nfs /tmp/mntdirnfs
+        sudo mount -t aznfs -o sec=sys,vers=3,nolock,proto=tcp,nconnect=16 datamounteastus.blob.core.windows.net:/datamounteastus/test-nfs /tmp/mntdirnfs
         mntPath="/tmp/mntdirnfs"
     fi
     # Wait for mount to stabilize
