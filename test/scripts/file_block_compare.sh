@@ -35,8 +35,9 @@ do
     echo "| ${file} |" >> cpu_usage_write.txt
 done
 # Execute the data creation dd test with block-size=32MB
-for v2configPath in "nfs" ;
+for v2configPath in $blockConfigPath $fileConfigPath "nfs" ;
 do
+    rm -rf $tmpPath/*
     echo "Data Creation with $v2configPath" >> nohup.out 
     sed_line=3
     echo "Running creation with $v2configPath"
@@ -49,8 +50,9 @@ do
             exit 1
         fi
     else    
-        sudo mount -t aznfs -o sec=sys,vers=3,nolock,proto=tcp,nconnect=16 datamounteastus.blob.core.windows.net:/datamounteastus/test-nfs /tmp/mntdirnfs
+        sudo mount -t aznfs -o sec=sys,vers=3,nolock,proto=tcp,nconnect=16 blobfuseperftestnfs.blob.core.windows.net:/blobfuseperftestnfs/nfs-test /tmp/mntdirnfs
         mntPath="/tmp/mntdirnfs"
+        sudo sh -c 'echo 16384 > /sys/class/bdi/0:$(stat -c "%d" /tmp/mntdirnfs)/read_ahead_kb'
     fi
     # Wait for mount to stabilize
     sleep 3
@@ -106,7 +108,7 @@ while IFS=, read -r thread block file; do
 done < <(tail -n +3 ./test/scripts/fio_tests.csv)
 
 # Execute the Sequential read FIO test
-for v2configPath in "nfs" ;
+for v2configPath in $blockConfigPath $fileConfigPath "nfs" ;
 do
     sed_line=3
     echo "Running read test with $v2configPath"
@@ -125,8 +127,9 @@ do
     elif [ "$v2configPath" == "nfs" ]
     then 
         echo "Running for NFS"
-        sudo mount -t nfs -o sec=sys,vers=3,nolock,proto=tcp,nconnect=16 datamountnfs.blob.core.windows.net:/datamountnfs/test-nfs /tmp/mntdirnfs
+        sudo mount -t aznfs -o sec=sys,vers=3,nolock,proto=tcp,nconnect=16 blobfuseperftestnfs.blob.core.windows.net:/blobfuseperftestnfs/nfs-test /tmp/mntdirnfs
         mntPath="/tmp/mntdirnfs"
+        sudo sh -c 'echo 16384 > /sys/class/bdi/0:$(stat -c "%d" /tmp/mntdirnfs)/read_ahead_kb'
         sleep 3
     else 
         # Mount Blobfuse2
@@ -163,7 +166,7 @@ do
         fio_result=`$sudo fio fio_temp.cfg | tail -1`
         # Find the process ID of the nohup command
         pid=$(pgrep -f "./test/scripts/cpuidle.sh")
-        Send a termination signal to the process
+        # Send a termination signal to the process
         kill -15 $pid
         echo "kill -15 $pid"
         sleep 1

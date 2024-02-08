@@ -20,7 +20,7 @@ trap 'calculate_average_and_cleanup' EXIT
 
 while true;  
 do 
-    cpu_usage=$(top -bn1 | grep '%Cpu' | tail -1 | grep -P '(....|...) id,' | awk –v '{print int((100 - $8))}') 
+    cpu_usage=$(top -bn1 | grep '%Cpu' | tail -1 | grep -P '(....|...) id,' | awk '{print int((100 - $8))}') 
     average_usage=$((average_usage + cpu_usage)) 
     num_samples=$((num_samples + 1)) 
     sleep 1 
