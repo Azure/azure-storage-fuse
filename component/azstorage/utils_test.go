@@ -317,19 +317,19 @@ func (s *utilsTestSuite) TestSanitizeSASKey() {
 	assert.EqualValues("?abcd", key)
 }
 
-func (s *utilsTestSuite) TestBlockNonProxyOptions() {
-	assert := assert.New(s.T())
-	po, ro := getAzBlobPipelineOptions(AzStorageConfig{})
-	assert.EqualValues(ro.MaxTries, int(0))
-	assert.NotEqual(po.RequestLog.SyslogDisabled, true)
-}
+// func (s *utilsTestSuite) TestBlockNonProxyOptions() {
+// 	assert := assert.New(s.T())
+// 	po, ro := getAzBlobPipelineOptions(AzStorageConfig{})
+// 	assert.EqualValues(ro.MaxTries, int(0))
+// 	assert.NotEqual(po.RequestLog.SyslogDisabled, true)
+// }
 
-func (s *utilsTestSuite) TestBlockProxyOptions() {
-	assert := assert.New(s.T())
-	po, ro := getAzBlobPipelineOptions(AzStorageConfig{proxyAddress: "127.0.0.1", maxRetries: 3})
-	assert.EqualValues(ro.MaxTries, 3)
-	assert.NotEqual(po.RequestLog.SyslogDisabled, true)
-}
+// func (s *utilsTestSuite) TestBlockProxyOptions() {
+// 	assert := assert.New(s.T())
+// 	po, ro := getAzBlobPipelineOptions(AzStorageConfig{proxyAddress: "127.0.0.1", maxRetries: 3})
+// 	assert.EqualValues(ro.MaxTries, 3)
+// 	assert.NotEqual(po.RequestLog.SyslogDisabled, true)
+// }
 
 func (s *utilsTestSuite) TestBfsNonProxyOptions() {
 	assert := assert.New(s.T())

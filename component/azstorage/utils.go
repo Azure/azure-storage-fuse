@@ -66,7 +66,6 @@ import (
 	"github.com/Azure/azure-storage-azcopy/v10/ste"
 
 	"github.com/Azure/azure-pipeline-go/pipeline"
-	"github.com/Azure/azure-storage-blob-go/azblob"
 )
 
 //    ----------- Helper to create pipeline options ---------------
@@ -88,46 +87,6 @@ const (
 	DisableCompression     bool          = false
 	MaxResponseHeaderBytes int64         = 0
 )
-
-// TODO:: track2 : remove
-// getAzBlobPipelineOptions : Create pipeline options based on the config
-func getAzBlobPipelineOptions(conf AzStorageConfig) (azblob.PipelineOptions, ste.XferRetryOptions) {
-	retryOptions := ste.XferRetryOptions{
-		Policy:        ste.RetryPolicyExponential,                      // Use exponential backoff as opposed to linear
-		MaxTries:      conf.maxRetries,                                 // Try at most 3 times to perform the operation (set to 1 to disable retries)
-		TryTimeout:    time.Second * time.Duration(conf.maxTimeout),    // Maximum time allowed for any single try
-		RetryDelay:    time.Second * time.Duration(conf.backoffTime),   // Backoff amount for each retry (exponential or linear)
-		MaxRetryDelay: time.Second * time.Duration(conf.maxRetryDelay), // Max delay between retries
-	}
-
-	telemetryValue := conf.telemetry
-	if telemetryValue != "" {
-		telemetryValue += " "
-	}
-
-	telemetryValue += UserAgent() + " (" + common.GetCurrentDistro() + ")"
-
-	telemetryOptions := azblob.TelemetryOptions{
-		Value: telemetryValue,
-	}
-
-	sysLogDisabled := log.GetType() == "silent" // If logging is enabled, allow the SDK to log retries to syslog.
-	requestLogOptions := azblob.RequestLogOptions{
-		// TODO: We can potentially consider making LogWarningIfTryOverThreshold a user settable option. For now lets use the default
-		SyslogDisabled: sysLogDisabled,
-	}
-	logOptions := getLogOptions(conf.sdkTrace)
-	// Create custom HTTPClient to pass to the factory in order to set our proxy
-	var pipelineHTTPClient = newBlobfuse2HttpClient(&conf)
-	return azblob.PipelineOptions{
-			Log:        logOptions,
-			RequestLog: requestLogOptions,
-			Telemetry:  telemetryOptions,
-			HTTPSender: newBlobfuse2HTTPClientFactory(pipelineHTTPClient),
-		},
-		// Set RetryOptions to control how HTTP request are retried when retryable failures occur
-		retryOptions
-}
 
 // TODO:: track2 : remove
 // getAzBfsPipelineOptions : Create pipeline options based on the config
