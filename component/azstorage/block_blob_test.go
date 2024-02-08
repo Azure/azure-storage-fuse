@@ -273,7 +273,7 @@ func (s *blockBlobTestSuite) TestDefault() {
 	s.assert.Empty(s.az.stConfig.prefixPath)
 	s.assert.EqualValues(0, s.az.stConfig.blockSize)
 	s.assert.EqualValues(32, s.az.stConfig.maxConcurrency)
-	s.assert.EqualValues(AccessTiers["none"], s.az.stConfig.defaultTier)
+	s.assert.EqualValues(nil, s.az.stConfig.defaultTier)
 	s.assert.EqualValues(0, s.az.stConfig.cancelListForSeconds)
 
 	s.assert.EqualValues(5, s.az.stConfig.maxRetries)
@@ -364,6 +364,15 @@ func (s *blockBlobTestSuite) TestListContainers() {
 
 // TODO : ListContainersHuge: Maybe this is overkill?
 
+func checkMetadata(metadata map[string]*string, key string, val string) bool {
+	for k, v := range metadata {
+		if v != nil && strings.ToLower(k) == key && val == *v {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *blockBlobTestSuite) TestCreateDir() {
 	defer s.cleanupTest()
 	// Testing dir and dir/
@@ -380,8 +389,7 @@ func (s *blockBlobTestSuite) TestCreateDir() {
 			s.assert.Nil(err)
 			s.assert.NotNil(props)
 			s.assert.NotEmpty(props.Metadata)
-			s.assert.Contains(props.Metadata, folderKey)
-			s.assert.EqualValues("true", props.Metadata[folderKey])
+			s.assert.True(checkMetadata(props.Metadata, folderKey, "true"))
 		})
 	}
 }
@@ -1125,9 +1133,7 @@ func (s *blockBlobTestSuite) TestRenameFileMetadataConservation() {
 	props, err := destination.GetProperties(ctx, nil)
 	s.assert.Nil(err)
 	// Dst should have metadata
-	destMeta := props.Metadata
-	s.assert.Contains(destMeta, "foo")
-	s.assert.EqualValues("bar", destMeta["foo"])
+	s.assert.True(checkMetadata(props.Metadata, "foo", "bar"))
 }
 
 func (s *blockBlobTestSuite) TestRenameFileError() {
@@ -1809,8 +1815,7 @@ func (s *blockBlobTestSuite) TestCreateLink() {
 	s.assert.Nil(err)
 	s.assert.NotNil(props)
 	s.assert.NotEmpty(props.Metadata)
-	s.assert.Contains(props.Metadata, symlinkKey)
-	s.assert.EqualValues("true", props.Metadata[symlinkKey])
+	s.assert.True(checkMetadata(props.Metadata, symlinkKey, "true"))
 	s.assert.NotNil(props.ContentLength)
 	resp, err := link.DownloadStream(ctx, &blob.DownloadStreamOptions{
 		Range: blob.HTTPRange{Offset: 0, Count: *props.ContentLength},
@@ -1866,8 +1871,7 @@ func (s *blockBlobTestSuite) TestGetAttrDir() {
 			s.assert.NotNil(props)
 			s.assert.True(props.IsDir())
 			s.assert.NotEmpty(props.Metadata)
-			s.assert.Contains(props.Metadata, folderKey)
-			s.assert.EqualValues("true", props.Metadata[folderKey])
+			s.assert.True(checkMetadata(props.Metadata, folderKey, "true"))
 		})
 	}
 }
@@ -1984,8 +1988,7 @@ func (s *blockBlobTestSuite) TestGetAttrLink() {
 			s.assert.NotNil(props)
 			s.assert.True(props.IsSymlink())
 			s.assert.NotEmpty(props.Metadata)
-			s.assert.Contains(props.Metadata, symlinkKey)
-			s.assert.EqualValues("true", props.Metadata[symlinkKey])
+			s.assert.True(checkMetadata(props.Metadata, symlinkKey, "true"))
 		})
 	}
 }
@@ -2743,7 +2746,7 @@ func (s *blockBlobTestSuite) TestUpdateConfig() {
 
 	s.assert.EqualValues(7*MB, s.az.storage.(*BlockBlob).Config.blockSize)
 	s.assert.EqualValues(4, s.az.storage.(*BlockBlob).Config.maxConcurrency)
-	s.assert.EqualValues(blob.AccessTierArchive, s.az.storage.(*BlockBlob).Config.defaultTier)
+	s.assert.EqualValues(blob.AccessTierArchive, *s.az.storage.(*BlockBlob).Config.defaultTier)
 	s.assert.True(s.az.storage.(*BlockBlob).Config.ignoreAccessModifiers)
 }
 
