@@ -1191,6 +1191,15 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		return err
 	}
 
+	lst, err := bc.NextComponent().GetCommittedBlockList(handle.Path)
+	if err != nil {
+		log.Err("BlockCache::commitBlocks : Failed to get committed block list for %s [%s]", handle.Path, err.Error())
+	}
+
+	if len(blockIdList) > 0 && (lst == nil || len(*lst) != len(blockIdList)) {
+		log.Err("BlockCache::commitBlocks : Committed list does not match for %s", handle.Path)
+	}
+
 	return nil
 }
 
