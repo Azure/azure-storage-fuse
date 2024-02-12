@@ -51,11 +51,9 @@ import (
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
 	"github.com/Azure/azure-storage-azcopy/v10/common"
-	"github.com/Azure/azure-storage-blob-go/azblob"
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
-var _ azAuth = &azAuthBlobMSI{}
 var _ azAuth = &azAuthBfsMSI{}
 
 type azAuthMSI struct {
@@ -159,106 +157,6 @@ func (azmsi *azAuthMSI) fetchTokenFromCLI() (*common.OAuthTokenInfo, error) {
 	}
 
 	return tokenInfo, nil
-}
-
-type azAuthBlobMSI struct {
-	azAuthMSI
-}
-
-// GetCredential : Get MSI based credentials for blob
-func (azmsi *azAuthBlobMSI) getCredential() interface{} {
-	// Generate the token based on configured inputs
-
-	var token *common.OAuthTokenInfo = nil
-	var err error = nil
-	norefresh := false
-
-	msi_endpoint := os.Getenv("MSI_ENDPOINT")
-	if strings.Contains(msi_endpoint, "127.0.0.1:") {
-		// this might be AML workspace so try to get token using CLI
-		log.Info("azAuthBlobMSI::getCredential : Potential AML workspace detected")
-		token, err = azmsi.fetchTokenFromCLI()
-		if err != nil {
-			log.Err("azAuthBlobMSI::getCredential : %s", err.Error())
-		} else if token != nil {
-			norefresh = true
-		}
-	}
-
-	if token == nil {
-		log.Debug("azAuthBlobMSI::getCredential : Going for conventional fetchToken. MSI Endpoint : %s", msi_endpoint)
-		token, err = azmsi.fetchToken(msi_endpoint)
-
-		if token == nil {
-			log.Debug("azAuthBlobMSI::getCredential : Going for conventional fetchToken without endpoint")
-			token, err = azmsi.fetchToken("")
-		}
-	}
-
-	if err != nil {
-		// fmt.Println(token.AccessToken)
-		log.Err("azAuthBlobMSI::getCredential : Failed to get credential [%s]", err.Error())
-		return nil
-	}
-
-	var tc azblob.TokenCredential
-	if norefresh {
-		log.Info("azAuthBlobMSI::getCredential : MSI Token over CLI retrieved")
-		log.Debug("azAuthBlobMSI::getCredential : Token: %s (%s)", token.AccessToken, token.Expires())
-		// We are running in cli mode so token can not be refreshed, on expiry just get the new token
-		tc = azblob.NewTokenCredential(token.AccessToken, func(tc azblob.TokenCredential) time.Duration {
-			for failCount := 0; failCount < 5; failCount++ {
-				newToken, err := azmsi.fetchTokenFromCLI()
-				if err != nil {
-					log.Err("azAuthBlobMSI::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
-					time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
-					continue
-				}
-
-				// set the new token value
-				tc.SetToken(newToken.AccessToken)
-				log.Info("azAuthBlobMSI::getCredential : New MSI Token over CLI retrieved")
-				log.Debug("azAuthBlobMSI::getCredential : New Token: %s (%s)", newToken.AccessToken, newToken.Expires())
-
-				// Get the next token slightly before the current one expires
-				return getNextExpiryTimer(&newToken.Token)
-
-			}
-			log.Err("azAuthBlobMSI::getCredential : Failed to refresh token bailing out.")
-			return 0
-		})
-	} else {
-		log.Info("azAuthBlobMSI::getCredential : MSI Token retrieved")
-		log.Debug("azAuthBlobMSI::getCredential : Token: %s (%s)", token.AccessToken, token.Expires())
-		// Using token create the credential object, here also register a call back which refreshes the token
-		tc = azblob.NewTokenCredential(token.AccessToken, func(tc azblob.TokenCredential) time.Duration {
-			// token, err := azmsi.fetchToken(msi_endpoint)
-			// if err != nil {
-			// 	log.Err("azAuthBlobMSI::getCredential : Failed to fetch token [%s]", err.Error())
-			// 	return 0
-			// }
-			for failCount := 0; failCount < 5; failCount++ {
-				newToken, err := token.Refresh(context.Background())
-				if err != nil {
-					log.Err("azAuthBlobMSI::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
-					time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
-					continue
-				}
-
-				// set the new token value
-				tc.SetToken(newToken.AccessToken)
-				log.Info("azAuthBlobMSI::getCredential : New MSI Token retrieved")
-				log.Debug("azAuthBlobMSI::getCredential : New Token: %s (%s)", newToken.AccessToken, newToken.Expires())
-
-				// Get the next token slightly before the current one expires
-				return getNextExpiryTimer(newToken)
-			}
-			log.Err("azAuthBlobMSI::getCredential : Failed to refresh token bailing out.")
-			return 0
-		})
-	}
-
-	return tc
 }
 
 type azAuthBfsMSI struct {

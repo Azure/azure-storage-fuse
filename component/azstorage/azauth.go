@@ -58,42 +58,8 @@ func getAzAuth(config azAuthConfig) azAuth {
 		}(config.UseHTTP),
 		config.Endpoint)
 
-	if EAccountType.BLOCK() == config.AccountType {
-		return getAzAuthBlob(config)
-	} else if EAccountType.ADLS() == config.AccountType {
+	if EAccountType.ADLS() == config.AccountType {
 		return getAzAuthBfs(config)
-	}
-	return nil
-}
-
-func getAzAuthBlob(config azAuthConfig) azAuth {
-	base := azAuthBase{config: config}
-	if config.AuthMode == EAuthType.KEY() {
-		return &azAuthBlobKey{
-			azAuthKey{
-				azAuthBase: base,
-			},
-		}
-	} else if config.AuthMode == EAuthType.SAS() {
-		return &azAuthBlobSAS{
-			azAuthSAS{
-				azAuthBase: base,
-			},
-		}
-	} else if config.AuthMode == EAuthType.MSI() {
-		return &azAuthBlobMSI{
-			azAuthMSI{
-				azAuthBase: base,
-			},
-		}
-	} else if config.AuthMode == EAuthType.SPN() {
-		return &azAuthBlobSPN{
-			azAuthSPN{
-				azAuthBase: base,
-			},
-		}
-	} else {
-		log.Crit("azAuth::getAzAuthBlob : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
 	}
 	return nil
 }

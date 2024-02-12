@@ -42,13 +42,11 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
-	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/Azure/go-autorest/autorest/adal"
 	"github.com/Azure/go-autorest/autorest/azure"
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
-var _ azAuth = &azAuthBlobSPN{}
 var _ azAuth = &azAuthBfsSPN{}
 
 type azAuthSPN struct {
@@ -109,52 +107,6 @@ func (azspn *azAuthSPN) fetchToken() (*adal.ServicePrincipalToken, error) {
 	}
 
 	return spt, nil
-}
-
-type azAuthBlobSPN struct {
-	azAuthSPN
-}
-
-// GetCredential : Get SPN based credentials for blob
-func (azspn *azAuthBlobSPN) getCredential() interface{} {
-
-	spt, err := azspn.fetchToken()
-	if err != nil {
-		log.Err("azAuthBlobSPN::getCredential : Failed to fetch token for SPN [%s]", err.Error())
-		return nil
-	}
-
-	// Using token create the credential object, here also register a call back which refreshes the token
-	tc := azblob.NewTokenCredential(spt.Token().AccessToken, func(tc azblob.TokenCredential) time.Duration {
-		// spt, err = azspn.fetchToken()
-		// if err != nil {
-		// 	log.Err("azAuthBlobSPN::getCredential : Failed to fetch SPN token [%s]", err.Error())
-		// 	return 0
-		// }
-		for failCount := 0; failCount < 5; failCount++ {
-			err = spt.Refresh()
-			if err != nil {
-				log.Err("azAuthBfsSPN::getCredential : Failed to refresh token attempt %d [%s]", failCount, err.Error())
-				time.Sleep(time.Duration(rand.Intn(5)) * time.Second)
-				continue
-			}
-
-			// set the new token value
-			tc.SetToken(spt.Token().AccessToken)
-			log.Info("azAuthBlobSPN::getCredential : SPN Token retrieved")
-			log.Debug("azAuthBlobSPN::getCredential : Token: %s (%s)", spt.Token().AccessToken, spt.Token().Expires())
-
-			// Get the next token slightly before the current one expires
-			return getNextExpiryTimerSPN(spt)
-
-			// Test code to expire token every 30 seconds
-			// return time.Until(time.Now()) + 30*time.Second
-		}
-		log.Err("azAuthBfsSPN::getCredential : Failed to refresh token bailing out.")
-		return 0
-	})
-
-	return tc
 }
 
 type azAuthBfsSPN struct {

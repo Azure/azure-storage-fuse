@@ -87,8 +87,11 @@ func TestDeleteAllTempContainers(t *testing.T) {
 
 		for _, v := range resp.ContainerItems {
 			containerClient := svcClient.NewContainerClient(*v.Name)
-			containerClient.Delete(ctx, nil)
 			t.Log("Deleting container :", v.Name)
+			_, err = containerClient.Delete(ctx, nil)
+			if err != nil {
+				t.Logf("Unable to delete %v : [%v]", v.Name, err.Error())
+			}
 		}
 	}
 }
