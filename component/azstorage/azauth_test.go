@@ -283,7 +283,14 @@ func (suite *authTestSuite) TestHttpBlockSharedKey() {
 			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
 		},
 	}
-	suite.validateStorageTest("TestHttpBlockSharedKey", stgConfig)
+	stg := NewAzStorageConnection(stgConfig)
+	suite.Assert().NotNil(stg)
+
+	err := stg.SetupPipeline()
+	suite.Assert().Nil(err)
+
+	err = stg.TestPipeline()
+	suite.Assert().NotNil(err)
 }
 
 func (suite *authTestSuite) TestAdlsInvalidSharedKey() {
@@ -336,7 +343,14 @@ func (suite *authTestSuite) TestHttpAdlsSharedKey() {
 			Endpoint:    generateEndpoint(true, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
 		},
 	}
-	suite.validateStorageTest("TestHttpAdlsSharedKey", stgConfig)
+	stg := NewAzStorageConnection(stgConfig)
+	suite.Assert().NotNil(stg)
+
+	err := stg.SetupPipeline()
+	suite.Assert().Nil(err)
+
+	err = stg.TestPipeline()
+	suite.Assert().NotNil(err)
 }
 
 func (suite *authTestSuite) TestBlockInvalidSasKey() {

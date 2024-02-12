@@ -45,8 +45,8 @@ import (
 	"github.com/Azure/azure-pipeline-go/pipeline"
 )
 
-// Example for azblob usage : https://godoc.org/github.com/Azure/azure-storage-blob-go/azblob#pkg-examples
-// For methods help refer : https://godoc.org/github.com/Azure/azure-storage-blob-go/azblob#ContainerURL
+// Example for azblob usage : https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob#pkg-examples
+// For methods help refer : https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob#Client
 type AzStorageConfig struct {
 	authConfig azAuthConfig
 

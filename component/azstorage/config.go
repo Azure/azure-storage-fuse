@@ -39,10 +39,10 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
-	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/JeffreyRichter/enum/enum"
 )
 
@@ -326,8 +326,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	if opt.BlockSize != 0 {
-		if opt.BlockSize > azblob.BlockBlobMaxStageBlockBytes {
-			log.Err("ParseAndValidateConfig : Block size is too large. Block size has to be smaller than %s Bytes", azblob.BlockBlobMaxStageBlockBytes)
+		if opt.BlockSize > blockblob.MaxStageBlockBytes {
+			log.Err("ParseAndValidateConfig : Block size is too large. Block size has to be smaller than %s Bytes", blockblob.MaxStageBlockBytes)
 			return errors.New("block size is too large")
 		}
 		az.stConfig.blockSize = opt.BlockSize * 1024 * 1024

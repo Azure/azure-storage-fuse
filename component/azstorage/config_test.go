@@ -36,7 +36,7 @@ package azstorage
 import (
 	"testing"
 
-	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -129,7 +129,7 @@ func (s *configTestSuite) TestBlockSize() {
 	assert.NotNil(err)
 	assert.Equal(az.stConfig.blockSize, opt.BlockSize*1024*1024)
 
-	opt.BlockSize = azblob.BlockBlobMaxStageBlockBytes + 1
+	opt.BlockSize = blockblob.MaxStageBlockBytes + 1
 	err = ParseAndValidateConfig(az, opt)
 	assert.NotNil(err)
 	assert.Contains(err.Error(), "block size is too large")
