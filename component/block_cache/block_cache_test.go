@@ -514,7 +514,7 @@ func (suite *blockCacheTestSuite) TestCreateFile() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(h)
 	suite.assert.Equal(h.Size, int64(0))
-	suite.assert.True(h.Dirty())
+	suite.assert.False(h.Dirty())
 
 	stroagePath := filepath.Join(tobj.fake_storage_path, path)
 	fs, err := os.Stat(stroagePath)
@@ -575,7 +575,7 @@ func (suite *blockCacheTestSuite) TestWriteFileSimple() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(h)
 	suite.assert.Equal(h.Size, int64(0))
-	suite.assert.True(h.Dirty())
+	suite.assert.False(h.Dirty())
 
 	stroagePath := filepath.Join(tobj.fake_storage_path, path)
 	fs, err := os.Stat(stroagePath)
@@ -643,7 +643,7 @@ func (suite *blockCacheTestSuite) TestWriteFileMultiBlock() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(h)
 	suite.assert.Equal(h.Size, int64(0))
-	suite.assert.True(h.Dirty())
+	suite.assert.False(h.Dirty())
 
 	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data}) // 5 bytes
 	suite.assert.Nil(err)
@@ -682,7 +682,7 @@ func (suite *blockCacheTestSuite) TestWriteFileMultiBlockWithOverwrite() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(h)
 	suite.assert.Equal(h.Size, int64(0))
-	suite.assert.True(h.Dirty())
+	suite.assert.False(h.Dirty())
 
 	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data}) // 5 bytes
 	suite.assert.Nil(err)
@@ -733,7 +733,7 @@ func (suite *blockCacheTestSuite) TestWritefileWithAppend() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(h)
 	suite.assert.Equal(h.Size, int64(0))
-	suite.assert.True(h.Dirty())
+	suite.assert.False(h.Dirty())
 
 	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: data}) // 5 bytes
 	suite.assert.Nil(err)
@@ -830,7 +830,7 @@ func (suite *blockCacheTestSuite) TestDeleteAndRenameDirAndFile() {
 	suite.assert.Nil(err)
 	suite.assert.NotNil(h)
 	suite.assert.Equal(h.Size, int64(0))
-	suite.assert.True(h.Dirty())
+	suite.assert.False(h.Dirty())
 
 	n, err := tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: h, Offset: 0, Data: []byte("Hello")}) // 5 bytes
 	suite.assert.Nil(err)
