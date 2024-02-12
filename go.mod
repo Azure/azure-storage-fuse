@@ -6,7 +6,7 @@ require (
 	github.com/Azure/azure-pipeline-go v0.2.4-0.20220425205405-09e6f201e1e4
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.9.2
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.5.1
-	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.2.1
+	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.0-beta.1.0.20240209231109-b6c374e4059c
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake v1.0.0
 	github.com/Azure/azure-storage-azcopy/v10 v10.19.1-0.20230926150507-787a98b9a2b1
 	github.com/Azure/azure-storage-blob-go v0.15.0
@@ -53,7 +53,7 @@ require (
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/s2a-go v0.1.7 // indirect
-	github.com/google/uuid v1.5.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/googleapis/enterprise-certificate-proxy v0.3.2 // indirect
 	github.com/googleapis/gax-go/v2 v2.12.0 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect

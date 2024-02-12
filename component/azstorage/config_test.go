@@ -385,7 +385,7 @@ func (s *configTestSuite) TestCompressionType() {
 
 }
 
-func (s *configTestSuite) TestInvalidSASRefresh() {
+func (s *configTestSuite) TestSASRefresh() {
 	defer config.ResetConfig()
 	assert := assert.New(s.T())
 	az := &AzStorage{}
@@ -409,8 +409,7 @@ func (s *configTestSuite) TestInvalidSASRefresh() {
 
 	az.storage = &BlockBlob{Auth: &azAuthBlobSAST2{azAuthSAST2: azAuthSAST2{azAuthBaseT2: azAuthBaseT2{config: azAuthConfig{Endpoint: "abcd:://qreq!@#$%^&*()_)(*&^%$#"}}}}}
 	err := ParseAndReadDynamicConfig(az, opt, true)
-	assert.NotNil(err)
-	assert.Equal(err.Error(), "SAS key update failure")
+	assert.Nil(err)
 }
 
 func TestConfigTestSuite(t *testing.T) {

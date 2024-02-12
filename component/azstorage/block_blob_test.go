@@ -273,7 +273,7 @@ func (s *blockBlobTestSuite) TestDefault() {
 	s.assert.Empty(s.az.stConfig.prefixPath)
 	s.assert.EqualValues(0, s.az.stConfig.blockSize)
 	s.assert.EqualValues(32, s.az.stConfig.maxConcurrency)
-	s.assert.EqualValues(nil, s.az.stConfig.defaultTier)
+	s.assert.Equal((*blob.AccessTier)(nil), s.az.stConfig.defaultTier)
 	s.assert.EqualValues(0, s.az.stConfig.cancelListForSeconds)
 
 	s.assert.EqualValues(5, s.az.stConfig.maxRetries)

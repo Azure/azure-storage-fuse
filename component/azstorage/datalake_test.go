@@ -160,7 +160,7 @@ func (s *datalakeTestSuite) TestDefault() {
 	s.assert.Empty(s.az.stConfig.prefixPath)
 	s.assert.EqualValues(0, s.az.stConfig.blockSize)
 	s.assert.EqualValues(32, s.az.stConfig.maxConcurrency)
-	s.assert.EqualValues(AccessTiers["none"], s.az.stConfig.defaultTier)
+	s.assert.EqualValues((*blob.AccessTier)(nil), s.az.stConfig.defaultTier)
 	s.assert.EqualValues(0, s.az.stConfig.cancelListForSeconds)
 
 	s.assert.EqualValues(5, s.az.stConfig.maxRetries)
@@ -1197,8 +1197,7 @@ func (s *datalakeTestSuite) TestRenameFileMetadataConservation() {
 	s.assert.Nil(err)
 	// Dst should have metadata
 	destMeta := newMetadata(props.XMsProperties())
-	s.assert.Contains(destMeta, "foo")
-	s.assert.EqualValues("bar", destMeta["foo"])
+	s.assert.True(checkMetadata(destMeta, "foo", "bar"))
 }
 
 func (s *datalakeTestSuite) TestRenameFileError() {
@@ -1569,8 +1568,7 @@ func (s *datalakeTestSuite) TestCreateLink() {
 	s.assert.NotNil(props)
 	metadata := newMetadata(props.XMsProperties())
 	s.assert.NotEmpty(metadata)
-	s.assert.Contains(metadata, "Is_symlink")
-	s.assert.EqualValues("true", metadata["Is_symlink"])
+	s.assert.True(checkMetadata(metadata, symlinkKey, "true"))
 	resp, err := link.Download(ctx, 0, props.ContentLength())
 	s.assert.Nil(err)
 	data, _ := io.ReadAll(resp.Body(azbfs.RetryReaderOptions{}))
@@ -1638,8 +1636,7 @@ func (s *datalakeTestSuite) TestGetAttrLink() {
 	s.assert.NotNil(props)
 	s.assert.True(props.IsSymlink())
 	s.assert.NotEmpty(props.Metadata)
-	s.assert.Contains(props.Metadata, "Is_symlink")
-	s.assert.EqualValues("true", props.Metadata["Is_symlink"])
+	s.assert.True(checkMetadata(props.Metadata, symlinkKey, "true"))
 }
 
 func (s *datalakeTestSuite) TestGetAttrFileSize() {
