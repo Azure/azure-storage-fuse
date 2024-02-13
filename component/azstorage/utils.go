@@ -361,15 +361,6 @@ const (
 	InvalidPermission
 )
 
-// TODO:: track2 : remove
-// ErrStr : Store error to string mapping
-var ErrStr = map[uint16]string{
-	ErrNoErr:             "No Error found",
-	ErrUnknown:           "Unknown store error",
-	ErrFileNotFound:      "Blob not found",
-	ErrFileAlreadyExists: "Blob already exists",
-}
-
 // For detailed error list refer below link,
 // https://github.com/Azure/azure-sdk-for-go/blob/main/sdk/storage/azblob/bloberror/error_codes.go
 // Convert blob storage error to common errors
@@ -688,7 +679,6 @@ func getFileMode(permissions string) (os.FileMode, error) {
 	return mode, nil
 }
 
-// TODO:: track2 : check the use of this method
 // Strips the prefixPath from the path and returns the joined string
 func split(prefixPath string, path string) string {
 	if prefixPath == "" {

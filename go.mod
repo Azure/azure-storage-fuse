@@ -6,7 +6,7 @@ require (
 	github.com/Azure/azure-pipeline-go v0.2.4-0.20220425205405-09e6f201e1e4
 	github.com/Azure/azure-sdk-for-go/sdk/azcore v1.9.2
 	github.com/Azure/azure-sdk-for-go/sdk/azidentity v1.5.1
-	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.0-beta.1.0.20240209231109-b6c374e4059c
+	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.3.0
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake v1.0.0
 	github.com/Azure/azure-storage-azcopy/v10 v10.19.1-0.20230926150507-787a98b9a2b1
 	github.com/Azure/go-autorest/autorest v0.11.29
