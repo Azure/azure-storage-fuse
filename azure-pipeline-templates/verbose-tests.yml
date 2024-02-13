@@ -176,7 +176,7 @@ steps:
       ACCOUNT_TYPE: ${{ parameters.account_type }}
       NIGHTLY_STO_ACC_NAME: 'devstoreaccount1'
       NIGHTLY_STO_ACC_KEY: 'Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw=='
-      ACCOUNT_ENDPOINT: 'http://127.0.0.1:10000/devstoreaccount1'
+      ACCOUNT_ENDPOINT: 'https://127.0.0.1:10000/devstoreaccount1'
       USE_HTTP: 'true'
       VERBOSE_LOG: ${{ parameters.verbose_log }}
     condition: ${{ parameters.test_azurite }}
@@ -292,7 +292,7 @@ steps:
         sudo npm install -g azurite
         sudo mkdir azurite
         sudo azurite --silent --location azurite --debug azurite\debug.log &
-        az storage container create -n ${{ parameters.container }} --connection-string "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://127.0.0.1:10000/devstoreaccount1;QueueEndpoint=http://127.0.0.1:10001/devstoreaccount1;"
+        az storage container create -n ${{ parameters.container }} --connection-string "DefaultEndpointsProtocol=https;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=https://127.0.0.1:10000/devstoreaccount1;"
       displayName: 'Install and Run Azurite'
 
     - template: e2e-tests.yml
