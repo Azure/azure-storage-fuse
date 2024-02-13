@@ -287,11 +287,21 @@ steps:
           continueOnError: false
 
   - ${{ if eq(parameters.test_azurite, true) }}:
+    - script: |
+        pwd
+        sudo apt-get install -y dotnet-sdk-8.0
+        dotnet --version
+        dotnet dev-certs https --trust -ep cert.pfx -p ${{ parameters.account_name }}
+        ls -l
+      displayName: 'Generate PFX Certificate'
+      workingDirectory: ${{ parameters.working_dir }}
+
     - bash: |
+        pwd
         sudo apt-get install azure-cli -y
         sudo npm install -g azurite
         sudo mkdir azurite
-        sudo azurite --silent --location azurite --debug azurite\debug.log &
+        sudo azurite --cert ${{ parameters.working_dir }}/cert.pfx --pwd ${{ parameters.account_name }} --silent --location azurite --debug azurite\debug.log &
         az storage container create -n ${{ parameters.container }} --connection-string "DefaultEndpointsProtocol=https;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=https://127.0.0.1:10000/devstoreaccount1;"
       displayName: 'Install and Run Azurite'
 
