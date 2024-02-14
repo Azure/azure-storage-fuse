@@ -327,7 +327,7 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		blockList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
 		if err != nil || blockList == nil {
 			log.Err("BlockCache::OpenFile : Failed to get block list of %s [%v]", options.Name, err)
-			return nil, fmt.Errorf("failed to retreive block list for %s", options.Name)
+			return nil, fmt.Errorf("failed to retrieve block list for %s", options.Name)
 		}
 
 		lst, _ := handle.GetValue("blockList")
