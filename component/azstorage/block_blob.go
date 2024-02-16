@@ -57,8 +57,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/stats_manager"
-
-	"github.com/Azure/azure-storage-blob-go/azblob"
 )
 
 const (
@@ -804,16 +802,16 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 	}
 
 	// If bufferSize <= BlockBlobMaxUploadBlobBytes, then Upload should be used with just 1 I/O request
-	if fileSize <= azblob.BlockBlobMaxUploadBlobBytes {
+	if fileSize <= blockblob.MaxUploadBlobBytes {
 		// Files up to 256MB can be uploaded as a single block
-		blockSize = azblob.BlockBlobMaxUploadBlobBytes
+		blockSize = blockblob.MaxUploadBlobBytes
 	} else {
 		// buffer / max blocks = block size to use all 50,000 blocks
-		blockSize = int64(math.Ceil(float64(fileSize) / azblob.BlockBlobMaxBlocks))
+		blockSize = int64(math.Ceil(float64(fileSize) / blockblob.MaxBlocks))
 
-		if blockSize < azblob.BlobDefaultDownloadBlockSize {
-			// Block size is smaller then 16MB then consider 16MB as default
-			blockSize = azblob.BlobDefaultDownloadBlockSize
+		if blockSize < blob.DefaultDownloadBlockSize {
+			// Block size is smaller then 4MB then consider 4MB as default
+			blockSize = blob.DefaultDownloadBlockSize
 		} else {
 			if (blockSize & (-8)) != 0 {
 				// EXTRA : round off the block size to next higher multiple of 8.
@@ -821,7 +819,7 @@ func (bb *BlockBlob) calculateBlockSize(name string, fileSize int64) (blockSize 
 				blockSize = (blockSize + 7) & (-8)
 			}
 
-			if blockSize > azblob.BlockBlobMaxStageBlockBytes {
+			if blockSize > blockblob.MaxStageBlockBytes {
 				// After rounding off the blockSize has become bigger then max allowed blocks.
 				log.Err("BlockBlob::calculateBlockSize : blockSize exceeds max allowed block size for %s", name)
 				err = errors.New("block-size is too large to upload to a block blob")
@@ -876,7 +874,7 @@ func (bb *BlockBlob) WriteFromFile(name string, metadata map[string]*string, fi 
 	// If file is uploaded in one shot (no blocks created) then server is populating md5 on upload automatically.
 	// hence we take cost of calculating md5 only for files which are bigger in size and which will be converted to blocks.
 	md5sum := []byte{}
-	if bb.Config.updateMD5 && stat.Size() >= azblob.BlockBlobMaxUploadBlobBytes {
+	if bb.Config.updateMD5 && stat.Size() >= blockblob.MaxUploadBlobBytes {
 		md5sum, err = getMD5(fi)
 		if err != nil {
 			// Md5 sum generation failed so set nil while uploading
@@ -1015,13 +1013,13 @@ func (bb *BlockBlob) createNewBlocks(blockList *common.BlockOffsetList, offset, 
 	numOfBlocks := int64(len(blockList.BlockList))
 	if blockSize == 0 {
 		blockSize = (16 * 1024 * 1024)
-		if math.Ceil((float64)(numOfBlocks)+(float64)(length)/(float64)(blockSize)) > azblob.BlockBlobMaxBlocks {
-			blockSize = int64(math.Ceil((float64)(length) / (float64)(azblob.BlockBlobMaxBlocks-numOfBlocks)))
-			if blockSize > azblob.BlockBlobMaxStageBlockBytes {
+		if math.Ceil((float64)(numOfBlocks)+(float64)(length)/(float64)(blockSize)) > blockblob.MaxBlocks {
+			blockSize = int64(math.Ceil((float64)(length) / (float64)(blockblob.MaxBlocks-numOfBlocks)))
+			if blockSize > blockblob.MaxStageBlockBytes {
 				return 0, errors.New("cannot accommodate data within the block limit")
 			}
 		}
-	} else if math.Ceil((float64)(numOfBlocks)+(float64)(length)/(float64)(blockSize)) > azblob.BlockBlobMaxBlocks {
+	} else if math.Ceil((float64)(numOfBlocks)+(float64)(length)/(float64)(blockSize)) > blockblob.MaxBlocks {
 		return 0, errors.New("cannot accommodate data within the block limit with configured block-size")
 	}
 
@@ -1082,7 +1080,7 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 	}
 
 	//If new size is less than 256MB
-	if size < azblob.BlockBlobMaxUploadBlobBytes {
+	if size < blockblob.MaxUploadBlobBytes {
 		data, err := bb.HandleSmallFile(name, size, attr.Size)
 		if err != nil {
 			log.Err("BlockBlob::TruncateFile : Failed to read small file %s", name, err.Error())

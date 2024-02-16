@@ -40,15 +40,14 @@ import (
 	"context"
 	"errors"
 	"log"
-	"net/url"
 	"os"
-	"regexp"
 	"testing"
 
-	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
 )
 
-func getGenericCredential() (*azblob.SharedKeyCredential, error) {
+func getGenericCredential() (*service.SharedKeyCredential, error) {
 	accountNameEnvVar := "STORAGE_ACCOUNT_NAME"
 	accountKeyEnvVar := "STORAGE_ACCOUNT_Key"
 	accountName, accountKey := os.Getenv(accountNameEnvVar), os.Getenv(accountKeyEnvVar)
@@ -56,48 +55,44 @@ func getGenericCredential() (*azblob.SharedKeyCredential, error) {
 	if accountName == "" || accountKey == "" {
 		return nil, errors.New(accountNameEnvVar + " and/or " + accountKeyEnvVar + " environment variables not specified.")
 	}
-	return azblob.NewSharedKeyCredential(accountName, accountKey)
+	return service.NewSharedKeyCredential(accountName, accountKey)
 }
 
-func getGenericBSU() (azblob.ServiceURL, error) {
+func getGenericServiceClient() (*service.Client, error) {
 	credential, err := getGenericCredential()
 	if err != nil {
-		return azblob.ServiceURL{}, err
+		return nil, err
 	}
 
-	pipeline := azblob.NewPipeline(credential, azblob.PipelineOptions{})
-	blobPrimaryURL, _ := url.Parse("https://" + credential.AccountName() + ".blob.core.windows.net/")
-	return azblob.NewServiceURL(*blobPrimaryURL, pipeline), nil
+	serviceURL := "https://" + credential.AccountName() + ".blob.core.windows.net/"
+	return service.NewClientWithSharedKeyCredential(serviceURL, credential, nil)
 }
 
 func TestDeleteAllTempContainers(t *testing.T) {
 	ctx := context.Background()
-	bsu, err := getGenericBSU()
+	svcClient, err := getGenericServiceClient()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	marker := azblob.Marker{}
-	pattern := "fuseut*"
+	pager := svcClient.NewListContainersPager(&service.ListContainersOptions{
+		Prefix: to.Ptr("fuseut"),
+	})
 
-	for marker.NotDone() {
-		resp, err := bsu.ListContainersSegment(ctx, marker, azblob.ListContainersSegmentOptions{})
-
+	for pager.More() {
+		resp, err := pager.NextPage(ctx)
 		if err != nil {
 			log.Fatal(err)
 		}
 
 		for _, v := range resp.ContainerItems {
-			matched, err := regexp.MatchString(pattern, v.Name)
-			if matched && err == nil {
-				containerURL := bsu.NewContainerURL(v.Name)
-				containerURL.Delete(ctx, azblob.ContainerAccessConditions{})
-				t.Log("Deleting container :", v.Name)
-			} else {
-				t.Log("Skipping container :", v.Name)
+			containerClient := svcClient.NewContainerClient(*v.Name)
+			t.Log("Deleting container :", v.Name)
+			_, err = containerClient.Delete(ctx, nil)
+			if err != nil {
+				t.Logf("Unable to delete %v : [%v]", v.Name, err.Error())
 			}
 		}
-		marker = resp.NextMarker
 	}
 }
 

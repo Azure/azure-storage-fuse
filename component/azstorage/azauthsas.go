@@ -39,11 +39,9 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
-	"github.com/Azure/azure-storage-blob-go/azblob"
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
-var _ azAuth = &azAuthBlobSAS{}
 var _ azAuth = &azAuthBfsSAS{}
 
 type azAuthSAS struct {
@@ -62,20 +60,6 @@ func (azsas *azAuthSAS) setOption(key, value string) {
 	if key == "saskey" {
 		azsas.config.SASKey = value
 	}
-}
-
-type azAuthBlobSAS struct {
-	azAuthSAS
-}
-
-// GetCredential : Gets SAS based credentials for blob
-func (azsas *azAuthBlobSAS) getCredential() interface{} {
-	if azsas.config.SASKey == "" {
-		log.Err("azAuthBlobSAS::getCredential : SAS key for account is empty, cannot authenticate user")
-		return nil
-	}
-
-	return azblob.NewAnonymousCredential()
 }
 
 type azAuthBfsSAS struct {

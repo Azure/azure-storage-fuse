@@ -190,7 +190,7 @@ stages:
                   test_sas_credential: true
                   test_spn_credential: true
                   test_stream: true
-                  test_azurite: true
+                  test_azurite: false # disabling the azurite tests for now, since http is rejected in shared key based auth
                   stream_config: $(BLOBFUSE2_STREAM_CFG)
                   stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
