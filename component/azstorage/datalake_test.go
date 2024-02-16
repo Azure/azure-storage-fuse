@@ -50,13 +50,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
-	"github.com/Azure/azure-storage-blob-go/azblob"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
@@ -158,7 +160,7 @@ func (s *datalakeTestSuite) TestDefault() {
 	s.assert.Empty(s.az.stConfig.prefixPath)
 	s.assert.EqualValues(0, s.az.stConfig.blockSize)
 	s.assert.EqualValues(32, s.az.stConfig.maxConcurrency)
-	s.assert.EqualValues(AccessTiers["none"], s.az.stConfig.defaultTier)
+	s.assert.EqualValues((*blob.AccessTier)(nil), s.az.stConfig.defaultTier)
 	s.assert.EqualValues(0, s.az.stConfig.cancelListForSeconds)
 
 	s.assert.EqualValues(5, s.az.stConfig.maxRetries)
@@ -875,12 +877,12 @@ func (s *datalakeTestSuite) TestAppendBlocksToSmallFile() {
 	data := []byte(testData)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 9 Bytes
-	_, err := uploadReaderAtToBlockBlob(
+	err := uploadReaderAtToBlockBlob(
 		ctx, bytes.NewReader(data),
 		int64(len(data)),
 		9,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name),
-		azblob.UploadToBlockBlobOptions{
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name),
+		&blockblob.UploadBufferOptions{
 			BlockSize: 8,
 		})
 	s.assert.Nil(err)
@@ -914,13 +916,13 @@ func (s *datalakeTestSuite) TestOverwriteBlocks() {
 	data := []byte(testData)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(
+	err := uploadReaderAtToBlockBlob(
 		ctx,
 		bytes.NewReader(data),
 		int64(len(data)),
 		4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name),
-		azblob.UploadToBlockBlobOptions{
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name),
+		&blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
 	s.assert.Nil(err)
@@ -954,13 +956,13 @@ func (s *datalakeTestSuite) TestOverwriteAndAppendBlocks() {
 	data := []byte(testData)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(
+	err := uploadReaderAtToBlockBlob(
 		ctx,
 		bytes.NewReader(data),
 		int64(len(data)),
 		4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name),
-		azblob.UploadToBlockBlobOptions{
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name),
+		&blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
 	s.assert.Nil(err)
@@ -993,12 +995,12 @@ func (s *datalakeTestSuite) TestAppendBlocks() {
 	data := []byte(testData)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx,
+	err := uploadReaderAtToBlockBlob(ctx,
 		bytes.NewReader(data),
 		int64(len(data)),
 		4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name),
-		azblob.UploadToBlockBlobOptions{
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name),
+		&blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
 	s.assert.Nil(err)
@@ -1031,12 +1033,12 @@ func (s *datalakeTestSuite) TestAppendOffsetLargerThanSize() {
 	data := []byte(testData)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx,
+	err := uploadReaderAtToBlockBlob(ctx,
 		bytes.NewReader(data),
 		int64(len(data)),
 		4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name),
-		azblob.UploadToBlockBlobOptions{
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name),
+		&blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
 	s.assert.Nil(err)
@@ -1178,7 +1180,7 @@ func (s *datalakeTestSuite) TestRenameFileMetadataConservation() {
 	source := s.containerUrl.NewRootDirectoryURL().NewFileURL(src)
 	s.az.CreateFile(internal.CreateFileOptions{Name: src})
 	// Add srcMeta to source
-	srcMeta := make(azblob.Metadata)
+	srcMeta := make(map[string]string)
 	srcMeta["foo"] = "bar"
 	source.CreateWithOptions(ctx, azbfs.CreateFileOptions{Metadata: srcMeta}, azbfs.BlobFSAccessControl{})
 	dst := generateFileName()
@@ -1195,8 +1197,7 @@ func (s *datalakeTestSuite) TestRenameFileMetadataConservation() {
 	s.assert.Nil(err)
 	// Dst should have metadata
 	destMeta := newMetadata(props.XMsProperties())
-	s.assert.Contains(destMeta, "foo")
-	s.assert.EqualValues("bar", destMeta["foo"])
+	s.assert.True(checkMetadata(destMeta, "foo", "bar"))
 }
 
 func (s *datalakeTestSuite) TestRenameFileError() {
@@ -1365,8 +1366,8 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileSmaller() {
 	data := []byte(testData)
 	truncatedLength := 5
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
 	s.assert.Nil(err)
@@ -1414,8 +1415,8 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileEqual() {
 	data := []byte(testData)
 	truncatedLength := 9
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
 	s.assert.Nil(err)
@@ -1463,8 +1464,8 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileBigger() {
 	data := []byte(testData)
 	truncatedLength := 15
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
 	s.assert.Nil(err)
@@ -1567,8 +1568,7 @@ func (s *datalakeTestSuite) TestCreateLink() {
 	s.assert.NotNil(props)
 	metadata := newMetadata(props.XMsProperties())
 	s.assert.NotEmpty(metadata)
-	s.assert.Contains(metadata, "Is_symlink")
-	s.assert.EqualValues("true", metadata["Is_symlink"])
+	s.assert.True(checkMetadata(metadata, symlinkKey, "true"))
 	resp, err := link.Download(ctx, 0, props.ContentLength())
 	s.assert.Nil(err)
 	data, _ := io.ReadAll(resp.Body(azbfs.RetryReaderOptions{}))
@@ -1636,8 +1636,7 @@ func (s *datalakeTestSuite) TestGetAttrLink() {
 	s.assert.NotNil(props)
 	s.assert.True(props.IsSymlink())
 	s.assert.NotEmpty(props.Metadata)
-	s.assert.Contains(props.Metadata, "Is_symlink")
-	s.assert.EqualValues("true", props.Metadata["Is_symlink"])
+	s.assert.True(checkMetadata(props.Metadata, symlinkKey, "true"))
 }
 
 func (s *datalakeTestSuite) TestGetAttrFileSize() {
@@ -1772,12 +1771,12 @@ func (s *datalakeTestSuite) TestGetFileBlockOffsetsChunkedFile() {
 	data := []byte(testData)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(
+	err := uploadReaderAtToBlockBlob(
 		ctx, bytes.NewReader(data),
 		int64(len(data)),
 		4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name),
-		azblob.UploadToBlockBlobOptions{
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name),
+		&blockblob.UploadBufferOptions{
 			BlockSize: 4,
 		})
 	s.assert.Nil(err)
@@ -1837,8 +1836,8 @@ func (s *datalakeTestSuite) TestFlushFileChunkedFile() {
 	rand.Read(data)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: 4 * MB,
 		})
 	s.assert.Nil(err)
@@ -1865,8 +1864,8 @@ func (s *datalakeTestSuite) TestFlushFileUpdateChunkedFile() {
 	rand.Read(data)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: int64(blockSize),
 		})
 	s.assert.Nil(err)
@@ -1903,8 +1902,8 @@ func (s *datalakeTestSuite) TestFlushFileTruncateUpdateChunkedFile() {
 	rand.Read(data)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: int64(blockSize),
 		})
 	s.assert.Nil(err)
@@ -1997,8 +1996,8 @@ func (s *datalakeTestSuite) TestFlushFileAppendBlocksChunkedFile() {
 	rand.Read(data)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: int64(blockSize),
 		})
 	s.assert.Nil(err)
@@ -2110,8 +2109,8 @@ func (s *datalakeTestSuite) TestFlushFileTruncateBlocksChunkedFile() {
 	rand.Read(data)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: int64(blockSize),
 		})
 	s.assert.Nil(err)
@@ -2220,8 +2219,8 @@ func (s *datalakeTestSuite) TestFlushFileAppendAndTruncateBlocksChunkedFile() {
 	rand.Read(data)
 
 	// use our method to make the max upload size (size before a blob is broken down to blocks) to 4 Bytes
-	_, err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
-		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobURL(name), azblob.UploadToBlockBlobOptions{
+	err := uploadReaderAtToBlockBlob(ctx, bytes.NewReader(data), int64(len(data)), 4,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name), &blockblob.UploadBufferOptions{
 			BlockSize: int64(blockSize),
 		})
 	s.assert.Nil(err)
@@ -2277,18 +2276,18 @@ func (s *datalakeTestSuite) TestUpdateConfig() {
 	s.az.storage.UpdateConfig(AzStorageConfig{
 		blockSize:             7 * MB,
 		maxConcurrency:        4,
-		defaultTier:           azblob.AccessTierArchive,
+		defaultTier:           to.Ptr(blob.AccessTierArchive),
 		ignoreAccessModifiers: true,
 	})
 
 	s.assert.EqualValues(7*MB, s.az.storage.(*Datalake).Config.blockSize)
 	s.assert.EqualValues(4, s.az.storage.(*Datalake).Config.maxConcurrency)
-	s.assert.EqualValues(azblob.AccessTierArchive, s.az.storage.(*Datalake).Config.defaultTier)
+	s.assert.EqualValues(blob.AccessTierArchive, *s.az.storage.(*Datalake).Config.defaultTier)
 	s.assert.True(s.az.storage.(*Datalake).Config.ignoreAccessModifiers)
 
 	s.assert.EqualValues(7*MB, s.az.storage.(*Datalake).BlockBlob.Config.blockSize)
 	s.assert.EqualValues(4, s.az.storage.(*Datalake).BlockBlob.Config.maxConcurrency)
-	s.assert.EqualValues(azblob.AccessTierArchive, s.az.storage.(*Datalake).BlockBlob.Config.defaultTier)
+	s.assert.EqualValues(blob.AccessTierArchive, *s.az.storage.(*Datalake).BlockBlob.Config.defaultTier)
 	s.assert.True(s.az.storage.(*Datalake).BlockBlob.Config.ignoreAccessModifiers)
 }
 

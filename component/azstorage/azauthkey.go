@@ -37,37 +37,13 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
-	"github.com/Azure/azure-storage-blob-go/azblob"
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
-var _ azAuth = &azAuthBlobKey{}
 var _ azAuth = &azAuthBfsKey{}
 
 type azAuthKey struct {
 	azAuthBase
-}
-
-type azAuthBlobKey struct {
-	azAuthKey
-}
-
-// GetCredential : Gets shared key based storage credentials for blob
-func (azkey *azAuthBlobKey) getCredential() interface{} {
-	if azkey.config.AccountKey == "" {
-		log.Err("azAuthBlobKey::getCredential : Shared key for account is empty, cannot authenticate user")
-		return nil
-	}
-
-	credential, err := azblob.NewSharedKeyCredential(
-		azkey.config.AccountName,
-		azkey.config.AccountKey)
-	if err != nil {
-		log.Err("azAuthBlobKey::getCredential : Failed to create shared key credentials")
-		return nil
-	}
-
-	return credential
 }
 
 type azAuthBfsKey struct {
