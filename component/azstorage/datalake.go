@@ -48,8 +48,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
-	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
-
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/directory"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/file"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/filesystem"
@@ -107,7 +105,7 @@ func (dl *Datalake) UpdateConfig(cfg AzStorageConfig) error {
 }
 
 // NewServiceClient : Update the SAS specified by the user and create new service client
-func (dl *Datalake) NewServiceClient(key, value string) (err error) {
+func (dl *Datalake) UpdateServiceClient(key, value string) (err error) {
 	if key == "saskey" {
 		dl.Auth.setOption(key, value)
 		// get the service client with updated SAS
@@ -123,7 +121,7 @@ func (dl *Datalake) NewServiceClient(key, value string) (err error) {
 		// Update the container client
 		dl.Filesystem = dl.Service.NewFileSystemClient(dl.Config.container)
 	}
-	return dl.BlockBlob.NewServiceClient(key, value) //TODO:: track2: review this line
+	return dl.BlockBlob.UpdateServiceClient(key, value)
 }
 
 // getServiceClient : Create the service client
@@ -277,16 +275,13 @@ func (dl *Datalake) DeleteFile(name string) (err error) {
 
 	return nil
 }
-//////////////////////////////////////////////////////////////////////////////
+
 // DeleteDirectory : Delete a directory in the filesystem/directory
 func (dl *Datalake) DeleteDirectory(name string) (err error) {
 	log.Trace("Datalake::DeleteDirectory : name %s", name)
 
-	directoryURL := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
-	_, err = directoryURL.Delete(context.Background(), &directory.DeleteOptions{
-		nil,
-		true
-	}
+	directoryClient := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
+	_, err = directoryClient.Delete(context.Background(), &directory.DeleteOptions{}) // TODO:: track2: nil, true have to be passed
 	// TODO : There is an ability to pass a continuation token here for recursive delete, should we implement this logic to follow continuation token? The SDK does not currently do this.
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
@@ -306,12 +301,9 @@ func (dl *Datalake) DeleteDirectory(name string) (err error) {
 func (dl *Datalake) RenameFile(source string, target string) error {
 	log.Trace("Datalake::RenameFile : %s -> %s", source, target)
 
-	fileURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
+	fileClient := dl.Filesystem.NewFileClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
 
-	_, err := fileURL.Rename(context.Background(),
-		azbfs.RenameFileOptions{
-			DestinationPath: filepath.Join(dl.Config.prefixPath, target),
-		})
+	_, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &file.RenameOptions{})
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -330,12 +322,8 @@ func (dl *Datalake) RenameFile(source string, target string) error {
 func (dl *Datalake) RenameDirectory(source string, target string) error {
 	log.Trace("Datalake::RenameDirectory : %s -> %s", source, target)
 
-	directoryURL := dl.Filesystem.NewDirectoryURL(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
-
-	_, err := directoryURL.Rename(context.Background(),
-		azbfs.RenameDirectoryOptions{
-			DestinationPath: filepath.Join(dl.Config.prefixPath, target),
-		})
+	directoryClient := dl.Filesystem.NewDirectoryClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
+	_, err := directoryClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &directory.RenameOptions{})
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -354,8 +342,8 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("Datalake::GetAttr : name %s", name)
 
-	pathURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
-	prop, err := pathURL.GetProperties(context.Background())
+	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
+	prop, err := fileClient.GetProperties(context.Background(), &file.GetPropertiesOptions{})
 	if err != nil {
 		e := storeDatalakeErrToErr(err)
 		if e == ErrFileNotFound {
@@ -369,14 +357,14 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		}
 	}
 
-	lastModified, err := time.Parse(time.RFC1123, prop.LastModified())
+	lastModified, err := time.Parse(time.RFC1123, prop.LastModified.String())
 
 	if err != nil {
 		log.Err("Datalake::GetAttr : Failed to convert last modified time for %s [%s]", name, err.Error())
 		return attr, err
 	}
 
-	mode, err := getFileMode(prop.XMsPermissions())
+	mode, err := getFileMode(*prop.Permissions)
 	if err != nil {
 		log.Err("Datalake::GetAttr : Failed to get file mode for %s [%s]", name, err.Error())
 		return attr, err
@@ -385,7 +373,7 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	attr = &internal.ObjAttr{
 		Path:   name,
 		Name:   filepath.Base(name),
-		Size:   prop.ContentLength(),
+		Size:   *prop.ContentLength,
 		Mode:   mode,
 		Mtime:  lastModified,
 		Atime:  lastModified,
@@ -393,20 +381,20 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Crtime: lastModified,
 		Flags:  internal.NewFileBitMap(),
 	}
-	parseProperties(attr, prop.XMsProperties())
-	if azbfs.PathResourceDirectory == azbfs.PathResourceType(prop.XMsResourceType()) {
-		attr.Flags = internal.NewDirBitMap()
-		attr.Mode = attr.Mode | os.ModeDir
-	}
+	parseProperties(attr, *prop.Metadata) //::TODO track2: review
+
+	attr.Flags.Set(uint16(internal.NewDirBitMap())) //::TODO track2: check if an if condition is needed
+	attr.Mode = attr.Mode | os.ModeDir
+
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 
 	if dl.Config.honourACL && dl.Config.authConfig.ObjectID != "" {
-		acl, err := pathURL.GetAccessControl(context.Background())
+		acl, err := fileClient.GetAccessControl(context.Background(), &file.GetAccessControlOptions{})
 		if err != nil {
 			// Just ignore the error here as rest of the attributes have been retrieved
 			log.Err("Datalake::GetAttr : Failed to get ACL for %s [%s]", name, err.Error())
 		} else {
-			mode, err := getFileModeFromACL(dl.Config.authConfig.ObjectID, acl.ACL, acl.Owner)
+			mode, err := getFileModeFromACL(dl.Config.authConfig.ObjectID, *acl.ACL, *acl.Owner)
 			if err != nil {
 				log.Err("Datalake::GetAttr : Failed to get file mode from ACL for %s [%s]", name, err.Error())
 			} else {
@@ -442,90 +430,107 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 	}
 
 	// Get a result segment starting with the path indicated by the current Marker.
-	listPath, err := dl.Filesystem.ListPaths(context.Background(),
-		azbfs.ListPathsFilesystemOptions{
-			Path:              &prefixPath,
-			Recursive:         false,
-			MaxResults:        &count,
-			ContinuationToken: marker,
-		})
+	listPath := dl.Filesystem.NewListPathsPager(false, &filesystem.ListPathsOptions{
+		Marker:     marker,
+		MaxResults: &count,
+		Prefix:     &prefixPath,
+	})
 
-	if err != nil {
-		log.Err("Datalake::List : Failed to validate account with given auth %s", err.Error())
-		m := ""
-		e := storeDatalakeErrToErr(err)
-		if e == ErrFileNotFound { // TODO: should this be checked for list calls
-			return pathList, &m, syscall.ENOENT
-		} else if e == InvalidPermission {
-			return pathList, &m, syscall.EACCES
-		} else {
-			return pathList, &m, err
-		}
-	}
+	//TODO:: track2: review below
+	// if err != nil {
+	// 	log.Err("Datalake::List : Failed to validate account with given auth %s", err.Error())
+	// 	m := ""
+	// 	e := storeDatalakeErrToErr(err)
+	// 	if e == ErrFileNotFound { // TODO: should this be checked for list calls
+	// 		return pathList, &m, syscall.ENOENT
+	// 	} else if e == InvalidPermission {
+	// 		return pathList, &m, syscall.EACCES
+	// 	} else {
+	// 		return pathList, &m, err
+	// 	}
+	// }
 
+	var m *string
 	// Process the paths returned in this result segment (if the segment is empty, the loop body won't execute)
-	for _, pathInfo := range listPath.Paths {
-		var attr *internal.ObjAttr
+	for listPath.More() {
+		resp, err := listPath.NextPage(context.Background())
+		if err != nil {
+			log.Err("Datalake::List : Failed to get next page for %s [%s]", listPath, err.Error())
+		}
+		for _, pathInfo := range resp.Paths {
+			var attr *internal.ObjAttr
+			var err error
+			var lastModifiedTime time.Time
+			if dl.Config.disableSymlink {
+				var mode fs.FileMode
+				if pathInfo.Permissions != nil {
+					mode, err = getFileMode(*pathInfo.Permissions)
+					if err != nil {
+						log.Err("Datalake::List : Failed to get file mode for %s [%s]", *pathInfo.Name, err.Error())
+						m := ""
+						return pathList, &m, err
+					}
+				} else {
+					// This happens when a blob account is mounted with type:adls
+					log.Err("Datalake::List : Failed to get file permissions for %s", *pathInfo.Name)
+				}
 
-		if dl.Config.disableSymlink {
-			var mode fs.FileMode
-			if pathInfo.Permissions != nil {
-				mode, err = getFileMode(*pathInfo.Permissions)
+				var contentLength int64 = 0
+				if pathInfo.ContentLength != nil {
+					contentLength = *pathInfo.ContentLength
+				} else {
+					// This happens when a blob account is mounted with type:adls
+					log.Err("Datalake::List : Failed to get file length for %s", *pathInfo.Name)
+				}
+
+				if pathInfo.LastModified != nil {
+					lastModifiedTime, err = time.Parse(time.RFC3339, *pathInfo.LastModified)
+					if err != nil {
+						log.Err("Datalake::List : Failed to get last modified time for %s [%s]", *pathInfo.Name, err.Error())
+					}
+				}
+				attr = &internal.ObjAttr{
+					Path:   *pathInfo.Name,
+					Name:   filepath.Base(*pathInfo.Name),
+					Size:   contentLength,
+					Mode:   mode,
+					Mtime:  lastModifiedTime,
+					Atime:  lastModifiedTime,
+					Ctime:  lastModifiedTime,
+					Crtime: lastModifiedTime,
+					Flags:  internal.NewFileBitMap(),
+				}
+				if pathInfo.IsDirectory != nil && *pathInfo.IsDirectory {
+					attr.Flags = internal.NewDirBitMap()
+					attr.Mode = attr.Mode | os.ModeDir
+				}
+			} else {
+				attr, err = dl.GetAttr(*pathInfo.Name)
 				if err != nil {
-					log.Err("Datalake::List : Failed to get file mode for %s [%s]", *pathInfo.Name, err.Error())
+					log.Err("Datalake::List : Failed to get properties for %s [%s]", *pathInfo.Name, err.Error())
 					m := ""
 					return pathList, &m, err
 				}
-			} else {
-				// This happens when a blob account is mounted with type:adls
-				log.Err("Datalake::List : Failed to get file permissions for %s", *pathInfo.Name)
 			}
 
-			var contentLength int64 = 0
-			if pathInfo.ContentLength != nil {
-				contentLength = *pathInfo.ContentLength
-			} else {
-				// This happens when a blob account is mounted with type:adls
-				log.Err("Datalake::List : Failed to get file length for %s", *pathInfo.Name)
-			}
+			// Note: Datalake list paths does not return metadata/properties.
+			// To account for this and accurately return attributes when needed,
+			// we have a flag for whether or not metadata has been retrieved.
+			// If this flag is not set the attribute cache will call get attributes
+			// to fetch metadata properties.
+			// Any method that populates the metadata should set the attribute flag.
+			// Alternatively, if you want Datalake list paths to return metadata/properties as well.
+			// pass CLI parameter --no-symlinks=false in the mount command.
+			pathList = append(pathList, attr)
 
-			attr = &internal.ObjAttr{
-				Path:   *pathInfo.Name,
-				Name:   filepath.Base(*pathInfo.Name),
-				Size:   contentLength,
-				Mode:   mode,
-				Mtime:  pathInfo.LastModifiedTime(),
-				Atime:  pathInfo.LastModifiedTime(),
-				Ctime:  pathInfo.LastModifiedTime(),
-				Crtime: pathInfo.LastModifiedTime(),
-				Flags:  internal.NewFileBitMap(),
-			}
-			if pathInfo.IsDirectory != nil && *pathInfo.IsDirectory {
-				attr.Flags = internal.NewDirBitMap()
-				attr.Mode = attr.Mode | os.ModeDir
-			}
-		} else {
-			attr, err = dl.GetAttr(*pathInfo.Name)
-			if err != nil {
-				log.Err("Datalake::List : Failed to get properties for %s [%s]", *pathInfo.Name, err.Error())
-				m := ""
-				return pathList, &m, err
-			}
 		}
-
-		// Note: Datalake list paths does not return metadata/properties.
-		// To account for this and accurately return attributes when needed,
-		// we have a flag for whether or not metadata has been retrieved.
-		// If this flag is not set the attribute cache will call get attributes
-		// to fetch metadata properties.
-		// Any method that populates the metadata should set the attribute flag.
-		// Alternatively, if you want Datalake list paths to return metadata/properties as well.
-		// pass CLI parameter --no-symlinks=false in the mount command.
-		pathList = append(pathList, attr)
+		m = resp.Continuation
 	}
+	return pathList, m, nil
+}
 
-	m := listPath.XMsContinuation()
-	return pathList, &m, nil
+func dereferenceTime(string1 *string, string2 *string) {
+	panic("unimplemented")
 }
 
 // ReadToFile : Download a file to a local file
@@ -573,7 +578,7 @@ func (dl *Datalake) TruncateFile(name string, size int64) error {
 // ChangeMod : Change mode of a path
 func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 	log.Trace("Datalake::ChangeMod : Change mode of file %s to %s", name, mode)
-	fileURL := dl.Filesystem.NewRootDirectoryURL().NewFileURL(filepath.Join(dl.Config.prefixPath, name))
+	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 
 	/*
 		// If we need to call the ACL set api then we need to get older acl string here
@@ -591,7 +596,9 @@ func (dl *Datalake) ChangeMod(name string, mode os.FileMode) error {
 	*/
 
 	newPerm := getACLPermissions(mode)
-	_, err := fileURL.SetAccessControl(context.Background(), azbfs.BlobFSAccessControl{Permissions: newPerm})
+	_, err := fileClient.SetAccessControl(context.Background(), &file.SetAccessControlOptions{
+		Permissions: &newPerm,
+	})
 	if err != nil {
 		log.Err("Datalake::ChangeMod : Failed to change mode of file %s to %s [%s]", name, mode, err.Error())
 		e := storeDatalakeErrToErr(err)
