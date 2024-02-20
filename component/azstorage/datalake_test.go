@@ -53,28 +53,24 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
-	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
-
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/filesystem"
-	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/service"
-
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 
+	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/suite"
 )
 
 type datalakeTestSuite struct {
 	suite.Suite
-	assert          *assert.Assertions
-	az              *AzStorage
-	serviceClient   *service.Client
-	containerClient *filesystem.Client
-	config          string
-	container       string
+	assert       *assert.Assertions
+	az           *AzStorage
+	serviceUrl   azbfs.ServiceURL
+	containerUrl azbfs.FileSystemURL
+	config       string
+	container    string
 }
 
 func (s *datalakeTestSuite) SetupTest() {
@@ -123,20 +119,20 @@ func (s *datalakeTestSuite) setupTestHelper(configuration string, container stri
 	s.assert = assert.New(s.T())
 
 	s.az, _ = newTestAzStorage(configuration)
-	s.az.Start(ctx, nil) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
+	s.az.Start(ctx) // Note: Start->TestValidation will fail but it doesn't matter. We are creating the container a few lines below anyway.
 	// We could create the container before but that requires rewriting the code to new up a service client.
 
-	s.serviceClient = s.az.storage.(*Datalake).Service // Grab the service client to do some validation
-	s.containerClient = s.serviceClient.NewFileSystemClient(s.container)
+	s.serviceUrl = s.az.storage.(*Datalake).Service // Grab the service client to do some validation
+	s.containerUrl = s.serviceUrl.NewFileSystemURL(s.container)
 	if create {
-		s.containerClient.Create(ctx, nil)
+		s.containerUrl.Create(ctx)
 	}
 }
 
 func (s *datalakeTestSuite) tearDownTestHelper(delete bool) {
 	s.az.Stop()
 	if delete {
-		s.containerClient.Delete(ctx, nil)
+		s.containerUrl.Delete(ctx)
 	}
 }
 
@@ -205,9 +201,9 @@ func (s *datalakeTestSuite) TestListContainers() {
 	num := 10
 	prefix := generateContainerName()
 	for i := 0; i < num; i++ {
-		f := s.serviceClient.NewFileSystemClient(prefix + fmt.Sprint(i))
-		f.Create(ctx, nil)
-		defer f.Delete(ctx, nil)
+		f := s.serviceUrl.NewFileSystemURL(prefix + fmt.Sprint(i))
+		f.Create(ctx)
+		defer f.Delete(ctx)
 	}
 
 	containers, err := s.az.ListContainers()
@@ -237,8 +233,8 @@ func (s *datalakeTestSuite) TestCreateDir() {
 
 			s.assert.Nil(err)
 			// Directory should be in the account
-			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(path))
-			_, err = dir.GetProperties(ctx, nil)
+			dir := s.containerUrl.NewDirectoryURL(internal.TruncateDirName(path))
+			_, err = dir.GetProperties(ctx)
 			s.assert.Nil(err)
 		})
 	}
@@ -257,8 +253,8 @@ func (s *datalakeTestSuite) TestDeleteDir() {
 
 			s.assert.Nil(err)
 			// Directory should not be in the account
-			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(path))
-			_, err = dir.GetProperties(ctx, nil)
+			dir := s.containerUrl.NewDirectoryURL(internal.TruncateDirName(path))
+			_, err = dir.GetProperties(ctx)
 			s.assert.NotNil(err)
 		})
 	}
@@ -300,15 +296,15 @@ func (s *datalakeTestSuite) setupHierarchy(base string) (*list.List, *list.List,
 
 	// Validate the paths were setup correctly and all paths exist
 	for p := a.Front(); p != nil; p = p.Next() {
-		_, err := s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
+		_, err := s.containerUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
 		s.assert.Nil(err)
 	}
 	for p := ab.Front(); p != nil; p = p.Next() {
-		_, err := s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
+		_, err := s.containerUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
 		s.assert.Nil(err)
 	}
 	for p := ac.Front(); p != nil; p = p.Next() {
-		_, err := s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
+		_, err := s.containerUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
 		s.assert.Nil(err)
 	}
 	return a, ab, ac
@@ -326,12 +322,12 @@ func (s *datalakeTestSuite) TestDeleteDirHierarchy() {
 
 	// a paths should be deleted
 	for p := a.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
+		_, err = s.containerUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
 		s.assert.NotNil(err)
 	}
 	ab.PushBackList(ac) // ab and ac paths should exist
 	for p := ab.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
+		_, err = s.containerUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
 		s.assert.Nil(err)
 	}
 }
@@ -350,7 +346,7 @@ func (s *datalakeTestSuite) TestDeleteSubDirPrefixPath() {
 	// a paths under c1 should be deleted
 	for p := a.Front(); p != nil; p = p.Next() {
 		path := p.Value.(string)
-		_, err = s.containerClient.NewDirectoryClient(path).GetProperties(ctx, nil)
+		_, err = s.containerUrl.NewDirectoryURL(path).GetProperties(ctx)
 		if strings.HasPrefix(path, base+"/c1") {
 			s.assert.NotNil(err)
 		} else {
@@ -359,7 +355,7 @@ func (s *datalakeTestSuite) TestDeleteSubDirPrefixPath() {
 	}
 	ab.PushBackList(ac) // ab and ac paths should exist
 	for p := ab.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
+		_, err = s.containerUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
 		s.assert.Nil(err)
 	}
 }
@@ -374,8 +370,8 @@ func (s *datalakeTestSuite) TestDeleteDirError() {
 	s.assert.NotNil(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 	// Directory should not be in the account
-	dir := s.containerClient.NewDirectoryClient(name)
-	_, err = dir.GetProperties(ctx, nil)
+	dir := s.containerUrl.NewDirectoryURL(name)
+	_, err = dir.GetProperties(ctx)
 	s.assert.NotNil(err)
 }
 
@@ -420,8 +416,8 @@ func (s *datalakeTestSuite) TestIsDirEmptyError() {
 	s.assert.False(empty) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
 
 	// Directory should not be in the account
-	dir := s.containerClient.NewDirectoryClient(name)
-	_, err := dir.GetProperties(ctx, nil)
+	dir := s.containerUrl.NewDirectoryURL(name)
+	_, err := dir.GetProperties(ctx)
 	s.assert.NotNil(err)
 }
 
@@ -555,8 +551,8 @@ func (s *datalakeTestSuite) TestReadDirError() {
 	s.assert.NotNil(err) // Note: See comment in BlockBlob.List. BlockBlob behaves differently from Datalake
 	s.assert.Empty(entries)
 	// Directory should not be in the account
-	dir := s.containerClient.NewDirectoryClient(name)
-	_, err = dir.GetProperties(ctx, nil)
+	dir := s.containerUrl.NewDirectoryURL(name)
+	_, err = dir.GetProperties(ctx)
 	s.assert.NotNil(err)
 }
 
@@ -601,13 +597,13 @@ func (s *datalakeTestSuite) TestRenameDir() {
 			err := s.az.RenameDir(internal.RenameDirOptions{Src: input.src, Dst: input.dst})
 			s.assert.Nil(err)
 			// Src should not be in the account
-			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(input.src))
-			_, err = dir.GetProperties(ctx, nil)
+			dir := s.containerUrl.NewDirectoryURL(internal.TruncateDirName(input.src))
+			_, err = dir.GetProperties(ctx)
 			s.assert.NotNil(err)
 
 			// Dst should be in the account
-			dir = s.containerClient.NewDirectoryClient(internal.TruncateDirName(input.dst))
-			_, err = dir.GetProperties(ctx, nil)
+			dir = s.containerUrl.NewDirectoryURL(internal.TruncateDirName(input.dst))
+			_, err = dir.GetProperties(ctx)
 			s.assert.Nil(err)
 		})
 	}
@@ -628,23 +624,23 @@ func (s *datalakeTestSuite) TestRenameDirHierarchy() {
 	// Source
 	// aSrc paths should be deleted
 	for p := aSrc.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
+		_, err = s.containerUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
 		s.assert.NotNil(err)
 	}
 	abSrc.PushBackList(acSrc) // abSrc and acSrc paths should exist
 	for p := abSrc.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
+		_, err = s.containerUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
 		s.assert.Nil(err)
 	}
 	// Destination
 	// aDst paths should exist
 	for p := aDst.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
+		_, err = s.containerUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
 		s.assert.Nil(err)
 	}
 	abDst.PushBackList(acDst) // abDst and acDst paths should not exist
 	for p := abDst.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
+		_, err = s.containerUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
 		s.assert.NotNil(err)
 	}
 }
@@ -665,7 +661,7 @@ func (s *datalakeTestSuite) TestRenameDirSubDirPrefixPath() {
 	// aSrc paths under c1 should be deleted
 	for p := aSrc.Front(); p != nil; p = p.Next() {
 		path := p.Value.(string)
-		_, err = s.containerClient.NewDirectoryClient(path).GetProperties(ctx, nil)
+		_, err = s.containerUrl.NewDirectoryURL(path).GetProperties(ctx)
 		if strings.HasPrefix(path, baseSrc+"/c1") {
 			s.assert.NotNil(err)
 		} else {
@@ -674,14 +670,14 @@ func (s *datalakeTestSuite) TestRenameDirSubDirPrefixPath() {
 	}
 	abSrc.PushBackList(acSrc) // abSrc and acSrc paths should exist
 	for p := abSrc.Front(); p != nil; p = p.Next() {
-		_, err = s.containerClient.NewDirectoryClient(p.Value.(string)).GetProperties(ctx, nil)
+		_, err = s.containerUrl.NewDirectoryURL(p.Value.(string)).GetProperties(ctx)
 		s.assert.Nil(err)
 	}
 	// Destination
 	// aDst paths should exist -> aDst and aDst/gc1
-	_, err = s.containerClient.NewDirectoryClient(baseSrc+"/"+baseDst).GetProperties(ctx, nil)
+	_, err = s.containerUrl.NewDirectoryURL(baseSrc + "/" + baseDst).GetProperties(ctx)
 	s.assert.Nil(err)
-	_, err = s.containerClient.NewDirectoryClient(baseSrc+"/"+baseDst+"/gc1").GetProperties(ctx, nil)
+	_, err = s.containerUrl.NewDirectoryURL(baseSrc + "/" + baseDst + "/gc1").GetProperties(ctx)
 	s.assert.Nil(err)
 }
 
@@ -696,11 +692,11 @@ func (s *datalakeTestSuite) TestRenameDirError() {
 	s.assert.NotNil(err)
 	s.assert.EqualValues(syscall.ENOENT, err)
 	// Neither directory should be in the account
-	dir := s.containerClient.NewDirectoryClient(src)
-	_, err = dir.GetProperties(ctx, nil)
+	dir := s.containerUrl.NewDirectoryURL(src)
+	_, err = dir.GetProperties(ctx)
 	s.assert.NotNil(err)
-	dir = s.containerClient.NewDirectoryClient(dst)
-	_, err = dir.GetProperties(ctx, nil)
+	dir = s.containerUrl.NewDirectoryURL(dst)
+	_, err = dir.GetProperties(ctx)
 	s.assert.NotNil(err)
 }
 
@@ -716,11 +712,11 @@ func (s *datalakeTestSuite) TestCreateFile() {
 	s.assert.EqualValues(name, h.Path)
 	s.assert.EqualValues(0, h.Size)
 	// File should be in the account
-	file := s.containerClient.NewDirectoryClient(name)
-	props, err := file.GetProperties(ctx, nil)
+	file := s.containerUrl.NewDirectoryURL(name)
+	props, err := file.GetProperties(ctx)
 	s.assert.Nil(err)
 	s.assert.NotNil(props)
-	s.assert.Empty(props.Metadata)
+	s.assert.Empty(props.XMsProperties())
 }
 
 func (s *datalakeTestSuite) TestWriteSmallFile() {
@@ -1137,8 +1133,8 @@ func (s *datalakeTestSuite) TestDeleteFile() {
 	s.assert.Nil(err)
 
 	// File should not be in the account
-	file := s.containerClient.NewDirectoryClient(name)
-	_, err = file.GetProperties(ctx, nil)
+	file := s.containerUrl.NewDirectoryURL(name)
+	_, err = file.GetProperties(ctx)
 	s.assert.NotNil(err)
 }
 
@@ -1152,8 +1148,8 @@ func (s *datalakeTestSuite) TestDeleteFileError() {
 	s.assert.EqualValues(syscall.ENOENT, err)
 
 	// File should not be in the account
-	file := s.containerClient.NewDirectoryClient(name)
-	_, err = file.GetProperties(ctx, nil)
+	file := s.containerUrl.NewDirectoryURL(name)
+	_, err = file.GetProperties(ctx)
 	s.assert.NotNil(err)
 }
 
@@ -1168,12 +1164,12 @@ func (s *datalakeTestSuite) TestRenameFile() {
 	s.assert.Nil(err)
 
 	// Src should not be in the account
-	source := s.containerClient.NewDirectoryClient(src)
-	_, err = source.GetProperties(ctx, nil)
+	source := s.containerUrl.NewDirectoryURL(src)
+	_, err = source.GetProperties(ctx)
 	s.assert.NotNil(err)
 	// Dst should be in the account
-	destination := s.containerClient.NewDirectoryClient(dst)
-	_, err = destination.GetProperties(ctx, nil)
+	destination := s.containerUrl.NewDirectoryURL(dst)
+	_, err = destination.GetProperties(ctx)
 	s.assert.Nil(err)
 }
 
@@ -1181,26 +1177,26 @@ func (s *datalakeTestSuite) TestRenameFileMetadataConservation() {
 	defer s.cleanupTest()
 	// Setup
 	src := generateFileName()
-	source := s.containerClient.NewFileClient(src)
+	source := s.containerUrl.NewRootDirectoryURL().NewFileURL(src)
 	s.az.CreateFile(internal.CreateFileOptions{Name: src})
 	// Add srcMeta to source
-	srcMeta := make(map[string]*string)
-	srcMeta["foo"] = to.Ptr("bar")
-	source.SetMetadata(ctx, srcMeta, nil)
+	srcMeta := make(map[string]string)
+	srcMeta["foo"] = "bar"
+	source.CreateWithOptions(ctx, azbfs.CreateFileOptions{Metadata: srcMeta}, azbfs.BlobFSAccessControl{})
 	dst := generateFileName()
 
 	err := s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
 	s.assert.Nil(err)
 
 	// Src should not be in the account
-	_, err = source.GetProperties(ctx, nil)
+	_, err = source.GetProperties(ctx)
 	s.assert.NotNil(err)
 	// Dst should be in the account
-	destination := s.containerClient.NewFileClient(dst)
-	props, err := destination.GetProperties(ctx, nil)
+	destination := s.containerUrl.NewRootDirectoryURL().NewFileURL(dst)
+	props, err := destination.GetProperties(ctx)
 	s.assert.Nil(err)
 	// Dst should have metadata
-	destMeta := newMetadata(props.Metadata)
+	destMeta := newMetadata(props.XMsProperties())
 	s.assert.True(checkMetadata(destMeta, "foo", "bar"))
 }
 
@@ -1215,11 +1211,11 @@ func (s *datalakeTestSuite) TestRenameFileError() {
 	s.assert.EqualValues(syscall.ENOENT, err)
 
 	// Src and destination should not be in the account
-	source := s.containerClient.NewDirectoryClient(src)
-	_, err = source.GetProperties(ctx, nil)
+	source := s.containerUrl.NewDirectoryURL(src)
+	_, err = source.GetProperties(ctx)
 	s.assert.NotNil(err)
-	destination := s.containerClient.NewDirectoryClient(dst)
-	_, err = destination.GetProperties(ctx, nil)
+	destination := s.containerUrl.NewDirectoryURL(dst)
+	_, err = destination.GetProperties(ctx)
 	s.assert.NotNil(err)
 }
 
@@ -1319,7 +1315,6 @@ func (s *datalakeTestSuite) TestReadInBufferError() {
 	s.assert.EqualValues(syscall.ENOENT, err)
 }
 
-// ////////////////////////////////////////////////////////////////////////////////////
 func (s *datalakeTestSuite) TestWriteFile() {
 	defer s.cleanupTest()
 	// Setup
@@ -1333,10 +1328,8 @@ func (s *datalakeTestSuite) TestWriteFile() {
 	s.assert.EqualValues(len(data), count)
 
 	// Blob should have updated data
-	file := s.containerClient.NewFileClient(name)
-	resp, err := file.DownloadStream(ctx, &file.DownloadStreamOptions{
-		Range: file.HTTPRange{Offset: 0, Count: int64(len(data))},
-	})
+	file := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
+	resp, err := file.Download(ctx, 0, int64(len(data)))
 	s.assert.Nil(err)
 	output, _ := io.ReadAll(resp.Body(azbfs.RetryReaderOptions{}))
 	s.assert.EqualValues(testData, output)
@@ -1356,7 +1349,7 @@ func (s *datalakeTestSuite) TestTruncateSmallFileSmaller() {
 	s.assert.Nil(err)
 
 	// Blob should have updated data
-	file := s.containerClient.NewFileClient(name)
+	file := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
 	resp, err := file.Download(ctx, 0, int64(truncatedLength))
 	s.assert.Nil(err)
 	s.assert.EqualValues(truncatedLength, resp.ContentLength())
@@ -1383,7 +1376,7 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileSmaller() {
 	s.assert.Nil(err)
 
 	// Blob should have updated data
-	file := s.containerClient.NewFileClient(name)
+	file := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
 	resp, err := file.Download(ctx, 0, int64(truncatedLength))
 	s.assert.Nil(err)
 	s.assert.EqualValues(truncatedLength, resp.ContentLength())
@@ -1405,7 +1398,7 @@ func (s *datalakeTestSuite) TestTruncateSmallFileEqual() {
 	s.assert.Nil(err)
 
 	// Blob should have updated data
-	file := s.containerClient.NewFileClient(name)
+	file := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
 	resp, err := file.Download(ctx, 0, int64(truncatedLength))
 	s.assert.Nil(err)
 	s.assert.EqualValues(truncatedLength, resp.ContentLength())
@@ -1432,7 +1425,7 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileEqual() {
 	s.assert.Nil(err)
 
 	// Blob should have updated data
-	file := s.containerClient.NewFileClient(name)
+	file := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
 	resp, err := file.Download(ctx, 0, int64(truncatedLength))
 	s.assert.Nil(err)
 	s.assert.EqualValues(truncatedLength, resp.ContentLength())
@@ -1454,7 +1447,7 @@ func (s *datalakeTestSuite) TestTruncateSmallFileBigger() {
 	s.assert.Nil(err)
 
 	// Blob should have updated data
-	file := s.containerClient.NewFileClient(name)
+	file := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
 	resp, err := file.Download(ctx, 0, int64(truncatedLength))
 	s.assert.Nil(err)
 	s.assert.EqualValues(truncatedLength, resp.ContentLength())
@@ -1481,7 +1474,7 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileBigger() {
 	s.assert.Nil(err)
 
 	// Blob should have updated data
-	file := s.containerClient.NewFileClient(name)
+	file := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
 	resp, err := file.Download(ctx, 0, int64(truncatedLength))
 	s.assert.Nil(err)
 	s.assert.EqualValues(truncatedLength, resp.ContentLength())
@@ -1551,7 +1544,7 @@ func (s *datalakeTestSuite) TestCopyFromFile() {
 	s.assert.Nil(err)
 
 	// Blob should have updated data
-	file := s.containerClient.NewFileClient(name)
+	file := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
 	resp, err := file.Download(ctx, 0, int64(len(data)))
 	s.assert.Nil(err)
 	output, _ := io.ReadAll(resp.Body(azbfs.RetryReaderOptions{}))
@@ -1569,8 +1562,8 @@ func (s *datalakeTestSuite) TestCreateLink() {
 	s.assert.Nil(err)
 
 	// Link should be in the account
-	link := s.containerClient.NewFileClient(name)
-	props, err := link.GetProperties(ctx, nil)
+	link := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
+	props, err := link.GetProperties(ctx)
 	s.assert.Nil(err)
 	s.assert.NotNil(props)
 	metadata := newMetadata(props.XMsProperties())
@@ -1708,8 +1701,8 @@ func (s *datalakeTestSuite) TestChmod() {
 	s.assert.Nil(err)
 
 	// File's ACL info should have changed
-	file := s.containerClient.NewFileClient(name)
-	acl, err := file.GetAccessControl(ctx, nil)
+	file := s.containerUrl.NewRootDirectoryURL().NewFileURL(name)
+	acl, err := file.GetAccessControl(ctx)
 	s.assert.Nil(err)
 	s.assert.EqualValues("user::rw-,group::rw-,other::rw-", acl.ACL)
 }
