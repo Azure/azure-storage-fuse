@@ -406,7 +406,6 @@ func (bb *BlockBlob) RenameDirectory(source string, target string) error {
 				log.Err("BlockBlob::RenameDirectory : Failed to rename file %s [%s]", srcPath, err.Error)
 			}
 		}
-
 	}
 
 	err := bb.RenameFile(source, target)
@@ -500,7 +499,6 @@ func (bb *BlockBlob) getAttrUsingList(name string) (attr *internal.ObjAttr, err 
 		}
 	}
 
-	// TODO:: track2 : review
 	if err == nil {
 		log.Err("BlockBlob::getAttrUsingList : blob %s does not exist", name)
 		return nil, syscall.ENOENT
@@ -565,6 +563,14 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 		return blobList, nil, err
 	}
 
+	dereferenceTime := func(input *time.Time, defaultTime time.Time) time.Time {
+		if input == nil {
+			return defaultTime
+		} else {
+			return *input
+		}
+	}
+
 	// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 	// Since block blob does not support acls, we set mode to 0 and FlagModeDefault to true so the fuse layer can return the default permission.
 
@@ -572,10 +578,6 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	var dirList = make(map[string]bool)
 
 	for _, blobInfo := range listBlob.Segment.BlobItems {
-		if blobInfo.Name == nil {
-			continue
-		}
-
 		attr := &internal.ObjAttr{
 			Path:   split(bb.Config.prefixPath, *blobInfo.Name),
 			Name:   filepath.Base(*blobInfo.Name),
@@ -972,14 +974,6 @@ func (bb *BlockBlob) GetFileBlockOffsets(name string) (*common.BlockOffsetList, 
 	}
 
 	for _, block := range storageBlockList.CommittedBlocks {
-		if block.Name == nil {
-			continue
-		}
-		blockSize := int64(0)
-		if block.Size != nil {
-			blockSize = *block.Size
-		}
-
 		blk := &common.Block{
 			Id:         *block.Name,
 			StartIndex: int64(blockOffset),
@@ -1368,14 +1362,6 @@ func (bb *BlockBlob) GetCommittedBlockList(name string) (*internal.CommittedBloc
 	blockList := make(internal.CommittedBlockList, 0)
 	startOffset := int64(0)
 	for _, block := range storageBlockList.CommittedBlocks {
-		if block.Name == nil {
-			continue
-		}
-		blockSize := int64(0)
-		if block.Size != nil {
-			blockSize = *block.Size
-		}
-
 		blk := internal.CommittedBlock{
 			Id:     *block.Name,
 			Offset: startOffset,
