@@ -529,10 +529,6 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 	return pathList, m, nil
 }
 
-func dereferenceTime(string1 *string, string2 *string) {
-	panic("unimplemented")
-}
-
 // ReadToFile : Download a file to a local file
 func (dl *Datalake) ReadToFile(name string, offset int64, count int64, fi *os.File) (err error) {
 	return dl.BlockBlob.ReadToFile(name, offset, count, fi)
