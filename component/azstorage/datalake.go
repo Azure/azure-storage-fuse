@@ -104,39 +104,39 @@ func (dl *Datalake) UpdateConfig(cfg AzStorageConfig) error {
 	return dl.BlockBlob.UpdateConfig(cfg)
 }
 
-// NewServiceClient : Update the SAS specified by the user and create new service client
+// UpdateServiceClient : Update the SAS specified by the user and create new service client
 func (dl *Datalake) UpdateServiceClient(key, value string) (err error) {
 	if key == "saskey" {
 		dl.Auth.setOption(key, value)
 		// get the service client with updated SAS
-		svcClient, err := dl.Auth.getServiceClient(&dl.Config)
+		svcClient, err := dl.Auth.createServiceClient(&dl.Config)
 		if err != nil {
-			log.Err("Datalake::NewServiceClient : Failed to get service client [%s]", err.Error())
+			log.Err("Datalake::UpdateServiceClient : Failed to get service client [%s]", err.Error())
 			return err
 		}
 
 		// update the service client
 		dl.Service = svcClient.(*service.Client)
 
-		// Update the container client
+		// Update the filesystem client
 		dl.Filesystem = dl.Service.NewFileSystemClient(dl.Config.container)
 	}
 	return dl.BlockBlob.UpdateServiceClient(key, value)
 }
 
-// getServiceClient : Create the service client
-func (dl *Datalake) getServiceClient() (*service.Client, error) {
-	log.Trace("Datalake::getServiceClient : Getting service client")
+// createServiceClient : Create the service client
+func (dl *Datalake) createServiceClient() (*service.Client, error) {
+	log.Trace("Datalake::createServiceClient : Getting service client")
 
 	dl.Auth = getAzAuthT2(dl.Config.authConfig)
 	if dl.Auth == nil {
-		log.Err("Datalake::getServiceClient : Failed to retrieve auth object")
+		log.Err("Datalake::createServiceClient : Failed to retrieve auth object")
 		return nil, fmt.Errorf("failed to retrieve auth object")
 	}
 
-	svcClient, err := dl.Auth.getServiceClient(&dl.Config)
+	svcClient, err := dl.Auth.createServiceClient(&dl.Config)
 	if err != nil {
-		log.Err("Datalake::getServiceClient : Failed to get service client [%s]", err.Error())
+		log.Err("Datalake::createServiceClient : Failed to get service client [%s]", err.Error())
 		return nil, err
 	}
 
@@ -149,13 +149,13 @@ func (dl *Datalake) SetupPipeline() error {
 	var err error
 
 	// create the service client
-	dl.Service, err = dl.getServiceClient()
+	dl.Service, err = dl.createServiceClient()
 	if err != nil {
 		log.Err("Datalake::SetupPipeline : Failed to get service client [%s]", err.Error())
 		return err
 	}
 
-	// create the container client
+	// create the filesystem client
 	dl.Filesystem = dl.Service.NewFileSystemClient(dl.Config.container)
 
 	return dl.BlockBlob.SetupPipeline()
@@ -170,7 +170,7 @@ func (dl *Datalake) TestPipeline() error {
 	}
 
 	if dl.Filesystem == nil || dl.Filesystem.BlobURL() == "" {
-		log.Err("Datalake::TestPipeline : Container Client is not built, check your credentials")
+		log.Err("Datalake::TestPipeline : Filesystem Client is not built, check your credentials")
 		return nil
 	}
 
@@ -185,10 +185,6 @@ func (dl *Datalake) TestPipeline() error {
 	if err != nil {
 		log.Err("Datalake::TestPipeline : Failed to validate account with given auth %s", err.Error)
 		return err
-	}
-
-	if listPathPager == nil {
-		log.Info("Datalake::TestPipeline : Filesystem is empty")
 	}
 
 	return dl.BlockBlob.TestPipeline()
@@ -255,7 +251,7 @@ func (dl *Datalake) CreateLink(source string, target string) error {
 func (dl *Datalake) DeleteFile(name string) (err error) {
 	log.Trace("Datalake::DeleteFile : name %s", name)
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name)) //TODO:: track2: need to review
-	_, err = fileClient.Delete(context.Background(), &file.DeleteOptions{})
+	_, err = fileClient.Delete(context.Background(), nil)
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -281,7 +277,7 @@ func (dl *Datalake) DeleteDirectory(name string) (err error) {
 	log.Trace("Datalake::DeleteDirectory : name %s", name)
 
 	directoryClient := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
-	_, err = directoryClient.Delete(context.Background(), &directory.DeleteOptions{}) // TODO:: track2: nil, true have to be passed
+	_, err = directoryClient.Delete(context.Background(), nil)
 	// TODO : There is an ability to pass a continuation token here for recursive delete, should we implement this logic to follow continuation token? The SDK does not currently do this.
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
@@ -303,7 +299,7 @@ func (dl *Datalake) RenameFile(source string, target string) error {
 
 	fileClient := dl.Filesystem.NewFileClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
 
-	_, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &file.RenameOptions{})
+	_, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), nil)
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -323,7 +319,7 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 	log.Trace("Datalake::RenameDirectory : %s -> %s", source, target)
 
 	directoryClient := dl.Filesystem.NewDirectoryClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
-	_, err := directoryClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &directory.RenameOptions{})
+	_, err := directoryClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), nil)
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -343,7 +339,7 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("Datalake::GetAttr : name %s", name)
 
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
-	prop, err := fileClient.GetProperties(context.Background(), &file.GetPropertiesOptions{})
+	prop, err := fileClient.GetProperties(context.Background(), nil)
 	if err != nil {
 		e := storeDatalakeErrToErr(err)
 		if e == ErrFileNotFound {
@@ -389,7 +385,7 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 
 	if dl.Config.honourACL && dl.Config.authConfig.ObjectID != "" {
-		acl, err := fileClient.GetAccessControl(context.Background(), &file.GetAccessControlOptions{})
+		acl, err := fileClient.GetAccessControl(context.Background(), nil)
 		if err != nil {
 			// Just ignore the error here as rest of the attributes have been retrieved
 			log.Err("Datalake::GetAttr : Failed to get ACL for %s [%s]", name, err.Error())
