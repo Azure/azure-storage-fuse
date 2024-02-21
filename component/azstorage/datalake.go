@@ -171,7 +171,7 @@ func (dl *Datalake) TestPipeline() error {
 		return nil
 	}
 
-	if dl.Filesystem == nil || dl.Filesystem.BlobURL() == "" {
+	if dl.Filesystem == nil || dl.Filesystem.DFSURL() == "" || dl.Filesystem.BlobURL() == "" {
 		log.Err("Datalake::TestPipeline : Filesystem Client is not built, check your credentials")
 		return nil
 	}
@@ -224,12 +224,6 @@ func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 func (dl *Datalake) CreateDirectory(name string) error {
 	log.Trace("Datalake::CreateDirectory : name %s", name)
 
-	// createDirOpts := &directory.CreateOptions{
-	// 	AccessConditions: &directory.AccessConditions{
-	// 		ModifiedAccessConditions: &directory.ModifiedAccessConditions{
-	// 			IfMatch: etag,
-	// 		},
-	// 	},
 	directoryURL := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
 	_, err := directoryURL.Create(context.Background(), &directory.CreateOptions{
 		AccessConditions: &directory.AccessConditions{
@@ -368,8 +362,6 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		}
 	}
 
-	lastModified, err := time.Parse(time.RFC1123, prop.LastModified.String())
-
 	if err != nil {
 		log.Err("Datalake::GetAttr : Failed to convert last modified time for %s [%s]", name, err.Error())
 		return attr, err
@@ -386,17 +378,17 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Name:   filepath.Base(name),
 		Size:   *prop.ContentLength,
 		Mode:   mode,
-		Mtime:  lastModified,
-		Atime:  lastModified,
-		Ctime:  lastModified,
-		Crtime: lastModified,
+		Mtime:  *prop.LastModified,
+		Atime:  *prop.LastModified,
+		Ctime:  *prop.LastModified,
+		Crtime: *prop.LastModified,
 		Flags:  internal.NewFileBitMap(),
 	}
 	parseMetadata(attr, prop.Metadata)
 
 	// TODO:: track2: Add a check for resource type after sdk release
 	// if *prop.ResourceType == "directory" {
-	// 	attr.Flags.Set(uint16(internal.NewDirBitMap())) /
+	// 	attr.Flags = Set(uint16(internal.NewDirBitMap())) /
 	// 	attr.Mode = attr.Mode | os.ModeDir
 	// }
 
