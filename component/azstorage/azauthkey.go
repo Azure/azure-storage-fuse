@@ -43,22 +43,20 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
-// TODO:: track2 : remove T2 suffix
-
 // Verify that the Auth implement the correct AzAuth interfaces
-var _ azAuthT2 = &azAuthBlobKeyT2{}
-var _ azAuthT2 = &azAuthDatalakeKey{}
+var _ azAuth = &azAuthBlobKey{}
+var _ azAuth = &azAuthDatalakeKey{}
 
-type azAuthKeyT2 struct {
-	azAuthBaseT2
+type azAuthKey struct {
+	azAuthBase
 }
 
-type azAuthBlobKeyT2 struct {
-	azAuthKeyT2
+type azAuthBlobKey struct {
+	azAuthKey
 }
 
 // getServiceClient : returns shared key based service client for blob
-func (azkey *azAuthBlobKeyT2) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+func (azkey *azAuthBlobKey) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
 	if azkey.config.AccountKey == "" {
 		log.Err("azAuthBlobKey::getServiceClient : Shared key for account is empty, cannot authenticate user")
 		return nil, errors.New("shared key for account is empty, cannot authenticate user")
@@ -79,7 +77,7 @@ func (azkey *azAuthBlobKeyT2) getServiceClient(stConfig *AzStorageConfig) (inter
 }
 
 type azAuthDatalakeKey struct {
-	azAuthKeyT2
+	azAuthKey
 }
 
 // getServiceClient : returns shared key based service client for datalake

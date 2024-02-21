@@ -69,10 +69,8 @@ type azAuthConfig struct {
 	AuthResource string
 }
 
-// TODO:: track2 : remove T2 suffix
-
 // azAuth : Interface to define a generic authentication type
-type azAuthT2 interface {
+type azAuth interface {
 	getEndpoint() string
 	setOption(key, value string)
 	getServiceClient(stConfig *AzStorageConfig) (interface{}, error)
@@ -80,7 +78,7 @@ type azAuthT2 interface {
 
 // getAzAuth returns a new AzAuth
 // config: Defines the AzAuthConfig
-func getAzAuthT2(config azAuthConfig) azAuthT2 {
+func getAzAuth(config azAuthConfig) azAuth {
 	log.Debug("azAuth::getAzAuth : Account: %s, AccountType: %s, Protocol: %s, Endpoint: %s",
 		config.AccountName,
 		config.AccountType,
@@ -100,30 +98,30 @@ func getAzAuthT2(config azAuthConfig) azAuthT2 {
 	return nil
 }
 
-func getAzBlobAuth(config azAuthConfig) azAuthT2 {
-	base := azAuthBaseT2{config: config}
+func getAzBlobAuth(config azAuthConfig) azAuth {
+	base := azAuthBase{config: config}
 	if config.AuthMode == EAuthType.KEY() {
-		return &azAuthBlobKeyT2{
-			azAuthKeyT2{
-				azAuthBaseT2: base,
+		return &azAuthBlobKey{
+			azAuthKey{
+				azAuthBase: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.SAS() {
-		return &azAuthBlobSAST2{
-			azAuthSAST2{
-				azAuthBaseT2: base,
+		return &azAuthBlobSAS{
+			azAuthSAS{
+				azAuthBase: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.MSI() {
-		return &azAuthBlobMSIT2{
-			azAuthMSIT2{
-				azAuthBaseT2: base,
+		return &azAuthBlobMSI{
+			azAuthMSI{
+				azAuthBase: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.SPN() {
-		return &azAuthBlobSPNT2{
-			azAuthSPNT2{
-				azAuthBaseT2: base,
+		return &azAuthBlobSPN{
+			azAuthSPN{
+				azAuthBase: base,
 			},
 		}
 	} else {
@@ -132,30 +130,30 @@ func getAzBlobAuth(config azAuthConfig) azAuthT2 {
 	return nil
 }
 
-func getAzDatalakeAuth(config azAuthConfig) azAuthT2 {
-	base := azAuthBaseT2{config: config}
+func getAzDatalakeAuth(config azAuthConfig) azAuth {
+	base := azAuthBase{config: config}
 	if config.AuthMode == EAuthType.KEY() {
 		return &azAuthDatalakeKey{
-			azAuthKeyT2{
-				azAuthBaseT2: base,
+			azAuthKey{
+				azAuthBase: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.SAS() {
 		return &azAuthDatalakeSAS{
-			azAuthSAST2{
-				azAuthBaseT2: base,
+			azAuthSAS{
+				azAuthBase: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.MSI() {
 		return &azAuthDatalakeMSI{
-			azAuthMSIT2{
-				azAuthBaseT2: base,
+			azAuthMSI{
+				azAuthBase: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.SPN() {
 		return &azAuthDatalakeSPN{
-			azAuthSPNT2{
-				azAuthBaseT2: base,
+			azAuthSPN{
+				azAuthBase: base,
 			},
 		}
 	} else {
@@ -164,15 +162,15 @@ func getAzDatalakeAuth(config azAuthConfig) azAuthT2 {
 	return nil
 }
 
-type azAuthBaseT2 struct {
+type azAuthBase struct {
 	config azAuthConfig
 }
 
 // SetOption : Sets any optional information for the auth.
-func (base *azAuthBaseT2) setOption(_, _ string) {}
+func (base *azAuthBase) setOption(_, _ string) {}
 
 // GetEndpoint : Gets the endpoint
-func (base *azAuthBaseT2) getEndpoint() string {
+func (base *azAuthBase) getEndpoint() string {
 	return base.config.Endpoint
 }
 

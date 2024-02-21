@@ -42,15 +42,15 @@ import (
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
-var _ azAuthT2 = &azAuthBlobMSIT2{}
-var _ azAuthT2 = &azAuthDatalakeMSI{}
+var _ azAuth = &azAuthBlobMSI{}
+var _ azAuth = &azAuthDatalakeMSI{}
 
-type azAuthMSIT2 struct {
-	azAuthBaseT2
+type azAuthMSI struct {
+	azAuthBase
 	azOAuthBase
 }
 
-func (azmsi *azAuthMSIT2) getTokenCredential() (azcore.TokenCredential, error) {
+func (azmsi *azAuthMSI) getTokenCredential() (azcore.TokenCredential, error) {
 	opts := azmsi.getAzIdentityClientOptions(&azmsi.config)
 
 	msiOpts := &azidentity.ManagedIdentityCredentialOptions{
@@ -68,12 +68,12 @@ func (azmsi *azAuthMSIT2) getTokenCredential() (azcore.TokenCredential, error) {
 	return cred, err
 }
 
-type azAuthBlobMSIT2 struct {
-	azAuthMSIT2
+type azAuthBlobMSI struct {
+	azAuthMSI
 }
 
 // getServiceClient : returns MSI based service client for blob
-func (azmsi *azAuthBlobMSIT2) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+func (azmsi *azAuthBlobMSI) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
 	cred, err := azmsi.getTokenCredential()
 	if err != nil {
 		log.Err("azAuthBlobMSI::getServiceClient : Failed to get token credential from MSI [%s]", err.Error())
@@ -89,7 +89,7 @@ func (azmsi *azAuthBlobMSIT2) getServiceClient(stConfig *AzStorageConfig) (inter
 }
 
 type azAuthDatalakeMSI struct {
-	azAuthMSIT2
+	azAuthMSI
 }
 
 // getServiceClient : returns MSI based service client for datalake

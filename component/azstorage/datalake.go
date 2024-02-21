@@ -58,7 +58,7 @@ import (
 
 type Datalake struct {
 	AzStorageConnection
-	Auth       azAuthT2
+	Auth       azAuth
 	Service    *service.Client
 	Filesystem *filesystem.Client
 	BlockBlob  BlockBlob
@@ -130,7 +130,7 @@ func (dl *Datalake) UpdateServiceClient(key, value string) (err error) {
 func (dl *Datalake) createServiceClient() (*service.Client, error) {
 	log.Trace("Datalake::createServiceClient : Getting service client")
 
-	dl.Auth = getAzAuthT2(dl.Config.authConfig)
+	dl.Auth = getAzAuth(dl.Config.authConfig)
 	if dl.Auth == nil {
 		log.Err("Datalake::createServiceClient : Failed to retrieve auth object")
 		return nil, fmt.Errorf("failed to retrieve auth object")

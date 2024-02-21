@@ -67,7 +67,7 @@ const (
 
 type BlockBlob struct {
 	AzStorageConnection
-	Auth            azAuthT2
+	Auth            azAuth
 	Service         *service.Client
 	Container       *container.Client
 	blobCPKOpt      *blob.CPKInfo
@@ -143,7 +143,7 @@ func (bb *BlockBlob) UpdateServiceClient(key, value string) (err error) {
 func (bb *BlockBlob) createServiceClient() (*service.Client, error) {
 	log.Trace("BlockBlob::createServiceClient : Getting service client")
 
-	bb.Auth = getAzAuthT2(bb.Config.authConfig)
+	bb.Auth = getAzAuth(bb.Config.authConfig)
 	if bb.Auth == nil {
 		log.Err("BlockBlob::createServiceClient : Failed to retrieve auth object")
 		return nil, fmt.Errorf("failed to retrieve auth object")

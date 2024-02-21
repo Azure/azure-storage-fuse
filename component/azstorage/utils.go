@@ -422,8 +422,6 @@ func populateContentType(newSet string) error { //nolint
 	return nil
 }
 
-// TODO:: track2 : review : added "cold" and "premium" tiers
-//
 //	----------- Blob access tier type conversion  ---------------
 //
 // AccessTierMap : Store config to access tier mapping

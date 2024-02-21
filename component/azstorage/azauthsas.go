@@ -43,31 +43,31 @@ import (
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
-var _ azAuthT2 = &azAuthBlobSAST2{}
-var _ azAuthT2 = &azAuthDatalakeSAS{}
+var _ azAuth = &azAuthBlobSAS{}
+var _ azAuth = &azAuthDatalakeSAS{}
 
-type azAuthSAST2 struct {
-	azAuthBaseT2
+type azAuthSAS struct {
+	azAuthBase
 }
 
 // SetOption : Sets the sas key information for the SAS auth.
-func (azsas *azAuthSAST2) setOption(key, value string) {
+func (azsas *azAuthSAS) setOption(key, value string) {
 	if key == "saskey" {
 		azsas.config.SASKey = value
 	}
 }
 
 // GetEndpoint : Gets the SAS endpoint
-func (azsas *azAuthSAST2) getEndpoint() string {
+func (azsas *azAuthSAS) getEndpoint() string {
 	return azsas.config.Endpoint + "?" + strings.TrimLeft(azsas.config.SASKey, "?")
 }
 
-type azAuthBlobSAST2 struct {
-	azAuthSAST2
+type azAuthBlobSAS struct {
+	azAuthSAS
 }
 
 // getServiceClient : returns SAS based service client for blob
-func (azsas *azAuthBlobSAST2) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+func (azsas *azAuthBlobSAS) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
 	if azsas.config.SASKey == "" {
 		log.Err("azAuthBlobSAS::getServiceClient : SAS key for account is empty, cannot authenticate user")
 		return nil, errors.New("sas key for account is empty, cannot authenticate user")
@@ -82,7 +82,7 @@ func (azsas *azAuthBlobSAST2) getServiceClient(stConfig *AzStorageConfig) (inter
 }
 
 type azAuthDatalakeSAS struct {
-	azAuthSAST2
+	azAuthSAS
 }
 
 // getServiceClient : returns SAS based service client for datalake

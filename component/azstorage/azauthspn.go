@@ -42,15 +42,15 @@ import (
 )
 
 // Verify that the Auth implement the correct AzAuth interfaces
-var _ azAuthT2 = &azAuthBlobSPNT2{}
-var _ azAuthT2 = &azAuthDatalakeSPN{}
+var _ azAuth = &azAuthBlobSPN{}
+var _ azAuth = &azAuthDatalakeSPN{}
 
-type azAuthSPNT2 struct {
-	azAuthBaseT2
+type azAuthSPN struct {
+	azAuthBase
 	azOAuthBase
 }
 
-func (azspn *azAuthSPNT2) getTokenCredential() (azcore.TokenCredential, error) {
+func (azspn *azAuthSPN) getTokenCredential() (azcore.TokenCredential, error) {
 	var cred azcore.TokenCredential
 	var err error
 
@@ -83,12 +83,12 @@ func (azspn *azAuthSPNT2) getTokenCredential() (azcore.TokenCredential, error) {
 	return cred, err
 }
 
-type azAuthBlobSPNT2 struct {
-	azAuthSPNT2
+type azAuthBlobSPN struct {
+	azAuthSPN
 }
 
 // getServiceClient : returns SPN based service client for blob
-func (azspn *azAuthBlobSPNT2) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
+func (azspn *azAuthBlobSPN) getServiceClient(stConfig *AzStorageConfig) (interface{}, error) {
 	cred, err := azspn.getTokenCredential()
 	if err != nil {
 		log.Err("azAuthBlobSPN::getServiceClient : Failed to get token credential from SPN [%s]", err.Error())
@@ -104,7 +104,7 @@ func (azspn *azAuthBlobSPNT2) getServiceClient(stConfig *AzStorageConfig) (inter
 }
 
 type azAuthDatalakeSPN struct {
-	azAuthSPNT2
+	azAuthSPN
 }
 
 // getServiceClient : returns SPN based service client for datalake
