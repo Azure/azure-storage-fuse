@@ -49,6 +49,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/directory"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/file"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/filesystem"
@@ -229,12 +230,11 @@ func (dl *Datalake) CreateDirectory(name string) error {
 	// 			IfMatch: etag,
 	// 		},
 	// 	},
-	star := azcore.ETagAny
 	directoryURL := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
 	_, err := directoryURL.Create(context.Background(), &directory.CreateOptions{
 		AccessConditions: &directory.AccessConditions{
 			ModifiedAccessConditions: &directory.ModifiedAccessConditions{
-				IfNoneMatch: &star,
+				IfNoneMatch: to.Ptr(azcore.ETagAny),
 			},
 		},
 	})
