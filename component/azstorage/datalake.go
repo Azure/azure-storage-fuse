@@ -48,6 +48,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/directory"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/file"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/filesystem"
@@ -222,8 +223,22 @@ func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 func (dl *Datalake) CreateDirectory(name string) error {
 	log.Trace("Datalake::CreateDirectory : name %s", name)
 
+	// createDirOpts := &directory.CreateOptions{
+	// 	AccessConditions: &directory.AccessConditions{
+	// 		ModifiedAccessConditions: &directory.ModifiedAccessConditions{
+	// 			IfMatch: etag,
+	// 		},
+	// 	},
+	star := azcore.ETagAny
 	directoryURL := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
-	_, err := directoryURL.Create(context.Background(), &directory.CreateOptions{}) //TODO:: track2: false was a parameter after context for what?
+	_, err := directoryURL.Create(context.Background(), &directory.CreateOptions{
+		AccessConditions: &directory.AccessConditions{
+			ModifiedAccessConditions: &directory.ModifiedAccessConditions{
+				IfNoneMatch: &star,
+			},
+		},
+	})
+
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == InvalidPermission {
