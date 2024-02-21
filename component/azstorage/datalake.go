@@ -110,7 +110,7 @@ func (dl *Datalake) UpdateServiceClient(key, value string) (err error) {
 	if key == "saskey" {
 		dl.Auth.setOption(key, value)
 		// get the service client with updated SAS
-		svcClient, err := dl.Auth.createServiceClient(&dl.Config)
+		svcClient, err := dl.Auth.getServiceClient(&dl.Config)
 		if err != nil {
 			log.Err("Datalake::UpdateServiceClient : Failed to get service client [%s]", err.Error())
 			return err
@@ -135,7 +135,7 @@ func (dl *Datalake) createServiceClient() (*service.Client, error) {
 		return nil, fmt.Errorf("failed to retrieve auth object")
 	}
 
-	svcClient, err := dl.Auth.createServiceClient(&dl.Config)
+	svcClient, err := dl.Auth.getServiceClient(&dl.Config)
 	if err != nil {
 		log.Err("Datalake::createServiceClient : Failed to get service client [%s]", err.Error())
 		return nil, err
@@ -392,10 +392,13 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Crtime: lastModified,
 		Flags:  internal.NewFileBitMap(),
 	}
-	parseProperties(attr, *prop.Metadata) //::TODO track2: review
+	parseMetadata(attr, prop.Metadata)
 
-	attr.Flags.Set(uint16(internal.NewDirBitMap())) //::TODO track2: check if an if condition is needed
-	attr.Mode = attr.Mode | os.ModeDir
+	// TODO:: track2: Add a check for resource type after sdk release
+	// if *prop.ResourceType == "directory" {
+	// 	attr.Flags.Set(uint16(internal.NewDirBitMap())) /
+	// 	attr.Mode = attr.Mode | os.ModeDir
+	// }
 
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 
