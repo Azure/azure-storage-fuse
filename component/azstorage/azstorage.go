@@ -40,7 +40,6 @@ import (
 	"syscall"
 	"time"
 
-	azcopyCommon "github.com/Azure/azure-storage-azcopy/v10/common"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -172,11 +171,6 @@ func (az *AzStorage) Start(ctx context.Context) error {
 
 	// create stats collector for azstorage
 	azStatsCollector = stats_manager.NewStatsCollector(az.Name())
-
-	// This is a workaround right now to disable the input watcher thread which continuously monitors below config to change
-	// Running this thread continuously increases the CPU usage by 5% even when there is no activity on blobfuse2 mount path
-	// Lifecycle manager init is commented in the "blobfuse2-cpu-usage" branch. Blobfuse2 imports azcopy from this branch.
-	azcopyCommon.GetLifecycleMgr().EnableInputWatcher()
 
 	return nil
 }
