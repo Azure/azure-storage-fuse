@@ -171,7 +171,7 @@ func (dl *Datalake) TestPipeline() error {
 		return nil
 	}
 
-	if dl.Filesystem == nil || dl.Filesystem.BlobURL() == "" {
+	if dl.Filesystem == nil || dl.Filesystem.DFSURL() == "" || dl.Filesystem.BlobURL() == "" {
 		log.Err("Datalake::TestPipeline : Filesystem Client is not built, check your credentials")
 		return nil
 	}
@@ -224,12 +224,6 @@ func (dl *Datalake) CreateFile(name string, mode os.FileMode) error {
 func (dl *Datalake) CreateDirectory(name string) error {
 	log.Trace("Datalake::CreateDirectory : name %s", name)
 
-	// createDirOpts := &directory.CreateOptions{
-	// 	AccessConditions: &directory.AccessConditions{
-	// 		ModifiedAccessConditions: &directory.ModifiedAccessConditions{
-	// 			IfMatch: etag,
-	// 		},
-	// 	},
 	directoryURL := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
 	_, err := directoryURL.Create(context.Background(), &directory.CreateOptions{
 		AccessConditions: &directory.AccessConditions{
@@ -368,8 +362,6 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		}
 	}
 
-	lastModified, err := time.Parse(time.RFC1123, prop.LastModified.String())
-
 	if err != nil {
 		log.Err("Datalake::GetAttr : Failed to convert last modified time for %s [%s]", name, err.Error())
 		return attr, err
@@ -386,17 +378,17 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		Name:   filepath.Base(name),
 		Size:   *prop.ContentLength,
 		Mode:   mode,
-		Mtime:  lastModified,
-		Atime:  lastModified,
-		Ctime:  lastModified,
-		Crtime: lastModified,
+		Mtime:  *prop.LastModified,
+		Atime:  *prop.LastModified,
+		Ctime:  *prop.LastModified,
+		Crtime: *prop.LastModified,
 		Flags:  internal.NewFileBitMap(),
 	}
 	parseMetadata(attr, prop.Metadata)
 
 	// TODO:: track2: Add a check for resource type after sdk release
 	// if *prop.ResourceType == "directory" {
-	// 	attr.Flags.Set(uint16(internal.NewDirBitMap())) /
+	// 	attr.Flags = internal.NewDirBitMap()
 	// 	attr.Mode = attr.Mode | os.ModeDir
 	// }
 
@@ -444,33 +436,28 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 	}
 
 	// Get a result segment starting with the path indicated by the current Marker.
-	listPath := dl.Filesystem.NewListPathsPager(false, &filesystem.ListPathsOptions{
+	pager := dl.Filesystem.NewListPathsPager(false, &filesystem.ListPathsOptions{
 		Marker:     marker,
 		MaxResults: &count,
 		Prefix:     &prefixPath,
 	})
 
-	//TODO:: track2: review below
-	// if err != nil {
-	// 	log.Err("Datalake::List : Failed to validate account with given auth %s", err.Error())
-	// 	m := ""
-	// 	e := storeDatalakeErrToErr(err)
-	// 	if e == ErrFileNotFound { // TODO: should this be checked for list calls
-	// 		return pathList, &m, syscall.ENOENT
-	// 	} else if e == InvalidPermission {
-	// 		return pathList, &m, syscall.EACCES
-	// 	} else {
-	// 		return pathList, &m, err
-	// 	}
-	// }
-
-	var m *string
 	// Process the paths returned in this result segment (if the segment is empty, the loop body won't execute)
-	resp, err := listPath.NextPage(context.Background())
+	listPath, err := pager.NextPage(context.Background())
 	if err != nil {
-		log.Err("Datalake::List : Failed to get next page for %s [%s]", listPath, err.Error())
+		log.Err("Datalake::List : Failed to validate account with given auth %s", err.Error())
+		m := ""
+		e := storeDatalakeErrToErr(err)
+		if e == ErrFileNotFound { // TODO: should this be checked for list calls
+			return pathList, &m, syscall.ENOENT
+		} else if e == InvalidPermission {
+			return pathList, &m, syscall.EACCES
+		} else {
+			return pathList, &m, err
+		}
 	}
-	for _, pathInfo := range resp.Paths {
+
+	for _, pathInfo := range listPath.Paths {
 		var attr *internal.ObjAttr
 		var err error
 		var lastModifiedTime time.Time
@@ -537,8 +524,8 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 		pathList = append(pathList, attr)
 
 	}
-	m = resp.Continuation
-	return pathList, m, nil
+
+	return pathList, listPath.Continuation, nil
 }
 
 // ReadToFile : Download a file to a local file
