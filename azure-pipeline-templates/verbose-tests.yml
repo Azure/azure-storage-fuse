@@ -224,7 +224,7 @@ steps:
       distro_name: ${{ parameters.distro_name }}
       quick_test: ${{ parameters.quick_test }}
       verbose_log: ${{ parameters.verbose_log }}
-      clone: true
+      clone: false
       stream_direct_test: false
 
   - ${{ if eq(parameters.test_stream, true) }}:
