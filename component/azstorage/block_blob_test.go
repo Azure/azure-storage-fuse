@@ -1292,6 +1292,26 @@ func (s *blockBlobTestSuite) TestTruncateSmallFileSmaller() {
 	s.assert.EqualValues(testData[:truncatedLength], output[:])
 }
 
+func (s *blockBlobTestSuite) TestTruncateEmptyFileToLargeSize() {
+	defer s.cleanupTest()
+	// Setup
+	name := generateFileName()
+	h, _ := s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	s.assert.NotNil(h)
+
+	blobSize := int64((1 * common.GbToBytes) + 13)
+	err := s.az.TruncateFile(internal.TruncateFileOptions{Name: name, Size: blobSize})
+	s.assert.Nil(err)
+
+	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(props)
+	s.assert.EqualValues(blobSize, props.Size)
+
+	err = s.az.DeleteFile(internal.DeleteFileOptions{Name: name})
+	s.assert.Nil(err)
+}
+
 func (s *blockBlobTestSuite) TestTruncateChunkedFileSmaller() {
 	defer s.cleanupTest()
 	// Setup
