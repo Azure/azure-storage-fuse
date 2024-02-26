@@ -524,8 +524,12 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 		pathList = append(pathList, attr)
 
 	}
-
-	return pathList, listPath.Continuation, nil
+	if listPath.Continuation == nil {
+		m := ""
+		return pathList, &m, nil
+	} else {
+		return pathList, listPath.Continuation, nil
+	}
 }
 
 // ReadToFile : Download a file to a local file
