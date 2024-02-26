@@ -35,7 +35,6 @@ package azstorage
 
 import (
 	"crypto/md5"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,7 +51,6 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	azlog "github.com/Azure/azure-sdk-for-go/sdk/azcore/log"
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/policy"
-	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/bloberror"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
@@ -293,32 +291,6 @@ func storeDatalakeErrToErr(err error) uint16 {
 
 //	----------- Metadata handling  ---------------
 //
-// Converts datalake properties to a metadata map
-func newMetadata(properties string) map[string]*string {
-	metadata := make(map[string]*string)
-	if properties != "" {
-		// Create a map of the properties (metadata)
-		pairs := strings.Split(properties, ",")
-
-		for _, p := range pairs {
-			components := strings.SplitN(p, "=", 2)
-			key := components[0]
-			value, err := base64.StdEncoding.DecodeString(components[1])
-			if err == nil {
-				metadata[key] = to.Ptr(string(value))
-			}
-		}
-	}
-	return metadata
-}
-
-// parseProperties : Parse the properties of a given datalake path and populate its attributes
-func parseProperties(attr *internal.ObjAttr, properties string) {
-	metadata := newMetadata(properties)
-	// Parse the metadata
-	parseMetadata(attr, metadata)
-}
-
 // parseMetadata : Parse the metadata of a given path and populate its attributes
 func parseMetadata(attr *internal.ObjAttr, metadata map[string]*string) {
 	// Save the metadata in attributes so that later if someone wants to add anything it can work
