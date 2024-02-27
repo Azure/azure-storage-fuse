@@ -40,6 +40,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	azcopyCommon "github.com/Azure/azure-storage-azcopy/v10/common"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -320,6 +321,8 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 			options.Token = *new_marker
 			return az.StreamDir(options)
 		}
+	} else {
+		new_marker = to.Ptr("")
 	}
 
 	// if path is empty, it means it is the root, relative to the mounted directory
