@@ -459,7 +459,6 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 
 	for _, pathInfo := range listPath.Paths {
 		var attr *internal.ObjAttr
-		var err error
 		var lastModifiedTime time.Time
 		if dl.Config.disableSymlink {
 			var mode fs.FileMode
@@ -524,6 +523,7 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 		pathList = append(pathList, attr)
 
 	}
+
 	return pathList, listPath.Continuation, nil
 }
 
