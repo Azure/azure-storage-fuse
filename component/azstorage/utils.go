@@ -62,6 +62,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/datalakeerror"
 	"github.com/Azure/azure-storage-azcopy/v10/azbfs"
 	"github.com/Azure/azure-storage-azcopy/v10/ste"
 
@@ -389,17 +390,20 @@ func storeBlobErrToErr(err error) uint16 {
 
 // Convert datalake storage error to common errors
 func storeDatalakeErrToErr(err error) uint16 {
-	if serr, ok := err.(azbfs.StorageError); ok {
-		switch serr.ServiceCode() {
-		case azbfs.ServiceCodePathAlreadyExists:
+	var respErr *azcore.ResponseError
+	errors.As(err, &respErr)
+
+	if respErr != nil {
+		switch (datalakeerror.StorageErrorCode)(respErr.ErrorCode) {
+		case datalakeerror.PathAlreadyExists:
 			return ErrFileAlreadyExists
-		case azbfs.ServiceCodePathNotFound:
+		case datalakeerror.PathNotFound:
 			return ErrFileNotFound
-		case azbfs.ServiceCodeSourcePathNotFound:
+		case datalakeerror.SourcePathNotFound:
 			return ErrFileNotFound
-		case "LeaseIdMissing":
+		case datalakeerror.LeaseIDMissing:
 			return BlobIsUnderLease
-		case "AuthorizationPermissionMismatch":
+		case datalakeerror.AuthorizationPermissionMismatch:
 			return InvalidPermission
 		default:
 			return ErrUnknown
