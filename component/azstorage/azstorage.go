@@ -308,7 +308,9 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	log.Debug("AzStorage::StreamDir : Retrieved %d objects with %s marker for Path %s", len(new_list), options.Token, path)
 
-	if new_marker != nil && *new_marker != "" {
+	if new_marker == nil {
+		new_marker = to.Ptr("")
+	} else if *new_marker != "" {
 		log.Debug("AzStorage::StreamDir : next-marker %s for Path %s", *new_marker, path)
 		if len(new_list) == 0 {
 			/* In some customer scenario we have seen that new_list is empty but marker is not empty
@@ -321,8 +323,6 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 			options.Token = *new_marker
 			return az.StreamDir(options)
 		}
-	} else {
-		new_marker = to.Ptr("")
 	}
 
 	// if path is empty, it means it is the root, relative to the mounted directory
