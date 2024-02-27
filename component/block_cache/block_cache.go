@@ -293,7 +293,9 @@ func (bc *BlockCache) CreateFile(options internal.CreateFileOptions) (*handlemap
 	handle.Size = 0
 	handle.Mtime = time.Now()
 
-	handle.Flags.Set(handlemap.HandleFlagDirty)
+	// As file is created on storage as well there is no need to mark this as dirty
+	// Any write operation to file will mark it dirty and flush will then reupload
+	// handle.Flags.Set(handlemap.HandleFlagDirty)
 	bc.prepareHandleForBlockCache(handle)
 	return handle, nil
 }
@@ -318,14 +320,14 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		// If file is opened in truncate or wronly mode then we need to wipe out the data consider current file size as 0
 		handle.Size = 0
 		handle.Flags.Set(handlemap.HandleFlagDirty)
-	} else if options.Flags&os.O_RDWR != 0 {
+	} else if options.Flags&os.O_RDWR != 0 && handle.Size != 0 {
 		// File is not opened in read-only mode so we need to get the list of blocks and validate the size
 		// As there can be a potential write on this file, currently configured block size and block size of the file in container
 		// has to match otherwise it will corrupt the file. Fail the open call if this is not the case.
 		blockList, err := bc.NextComponent().GetCommittedBlockList(options.Name)
 		if err != nil || blockList == nil {
-			log.Err("BlockCache::OpenFile : Failed to get block list of %s [%s]", options.Name, err.Error())
-			return nil, err
+			log.Err("BlockCache::OpenFile : Failed to get block list of %s [%v]", options.Name, err)
+			return nil, fmt.Errorf("failed to retrieve block list for %s", options.Name)
 		}
 
 		lst, _ := handle.GetValue("blockList")
@@ -343,13 +345,15 @@ func (bc *BlockCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Han
 		}
 	}
 
-	// This shall be done after the refresh only as this will populate the queues created by above method
-	if handle.Size < int64(bc.blockSize) {
-		// File is small and can fit in one block itself
-		_ = bc.refreshBlock(handle, 0, false)
-	} else if bc.prefetchOnOpen && !bc.noPrefetch {
-		// Prefetch to start on open
-		_ = bc.startPrefetch(handle, 0, false)
+	if handle.Size > 0 {
+		// This shall be done after the refresh only as this will populate the queues created by above method
+		if handle.Size < int64(bc.blockSize) {
+			// File is small and can fit in one block itself
+			_ = bc.refreshBlock(handle, 0, false)
+		} else if bc.prefetchOnOpen && !bc.noPrefetch {
+			// Prefetch to start on open
+			_ = bc.startPrefetch(handle, 0, false)
+		}
 	}
 
 	return handle, nil
@@ -385,7 +389,6 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 		return err
 	}
 
-	options.Handle.Flags.Clear(handlemap.HandleFlagDirty)
 	return nil
 }
 
@@ -1191,6 +1194,7 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 		return err
 	}
 
+	handle.Flags.Clear(handlemap.HandleFlagDirty)
 	return nil
 }
 

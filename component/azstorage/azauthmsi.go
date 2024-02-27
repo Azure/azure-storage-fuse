@@ -174,7 +174,8 @@ func (azmsi *azAuthBlobMSI) getCredential() interface{} {
 	norefresh := false
 
 	msi_endpoint := os.Getenv("MSI_ENDPOINT")
-	if strings.Contains(msi_endpoint, "127.0.0.1:") {
+	if strings.Contains(msi_endpoint, "127.0.0.1:") || strings.Contains(msi_endpoint, "localhost:") ||
+		strings.Contains(azmsi.config.ActiveDirectoryEndpoint, "127.0.0.1:") {
 		// this might be AML workspace so try to get token using CLI
 		log.Info("azAuthBlobMSI::getCredential : Potential AML workspace detected")
 		token, err = azmsi.fetchTokenFromCLI()
@@ -273,7 +274,10 @@ func (azmsi *azAuthBfsMSI) getCredential() interface{} {
 	norefresh := false
 
 	msi_endpoint := os.Getenv("MSI_ENDPOINT")
-	if strings.Contains(msi_endpoint, "127.0.0.1:") {
+	log.Info("azAuthBfsMSI::getCredential : MSI_ENDPOINT = %v", msi_endpoint)
+
+	if strings.Contains(msi_endpoint, "127.0.0.1:") || strings.Contains(msi_endpoint, "localhost:") ||
+		strings.Contains(azmsi.config.ActiveDirectoryEndpoint, "127.0.0.1:") {
 		// this might be AML workspace so try to get token using CLI
 		log.Info("azAuthBfsMSI::getCredential : Potential AML workspace detected")
 		token, err = azmsi.fetchTokenFromCLI()

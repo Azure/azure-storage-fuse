@@ -632,7 +632,7 @@ func libfuse_open(path *C.char, fi *C.fuse_file_info_t) C.int {
 	// TODO: Should this sit behind a user option? What if we change something to support these in the future?
 	// Mask out SYNC and DIRECT flags since write operation will fail
 	if fi.flags&C.O_SYNC != 0 || fi.flags&C.__O_DIRECT != 0 {
-		log.Err("Libfuse::libfuse2_open : Reset flags for open %s, fi.flags %X", name, fi.flags)
+		log.Info("Libfuse::libfuse2_open : Reset flags for open %s, fi.flags %X", name, fi.flags)
 		// Blobfuse2 does not support the SYNC or DIRECT flag. If a user application passes this flag on to blobfuse2
 		// and we open the file with this flag, subsequent write operations wlil fail with "Invalid argument" error.
 		// Mask them out here in the open call so that write works.
