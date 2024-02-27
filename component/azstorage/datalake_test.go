@@ -1360,7 +1360,7 @@ func (s *datalakeTestSuite) TestTruncateSmallFileSmaller() {
 	})
 	// 0, int64(truncatedLength))
 	s.assert.Nil(err)
-	s.assert.EqualValues(truncatedLength, resp.ContentLength)
+	s.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData[:truncatedLength], output)
 }
@@ -1389,7 +1389,7 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileSmaller() {
 		Range: &file.HTTPRange{Offset: 0, Count: int64(truncatedLength)},
 	})
 	s.assert.Nil(err)
-	s.assert.EqualValues(truncatedLength, resp.ContentLength)
+	s.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData[:truncatedLength], output)
 }
@@ -1412,7 +1412,8 @@ func (s *datalakeTestSuite) TestTruncateSmallFileEqual() {
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(truncatedLength)},
 	})
-	s.assert.EqualValues(truncatedLength, resp.ContentLength)
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData, output)
 }
@@ -1440,7 +1441,8 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileEqual() {
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(truncatedLength)},
 	})
-	s.assert.EqualValues(truncatedLength, resp.ContentLength)
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData, output)
 }
@@ -1463,7 +1465,8 @@ func (s *datalakeTestSuite) TestTruncateSmallFileBigger() {
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(truncatedLength)},
 	})
-	s.assert.EqualValues(truncatedLength, resp.ContentLength)
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData, output[:len(data)])
 }
@@ -1491,7 +1494,8 @@ func (s *datalakeTestSuite) TestTruncateChunkedFileBigger() {
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(truncatedLength)},
 	})
-	s.assert.EqualValues(truncatedLength, resp.ContentLength)
+	s.assert.Nil(err)
+	s.assert.EqualValues(truncatedLength, *resp.ContentLength)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData, output[:len(data)])
 }
@@ -1562,6 +1566,7 @@ func (s *datalakeTestSuite) TestCopyFromFile() {
 	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
 		Range: &file.HTTPRange{Offset: 0, Count: int64(len(data))},
 	})
+	s.assert.Nil(err)
 	output, _ := io.ReadAll(resp.Body)
 	s.assert.EqualValues(testData, output)
 }
@@ -1720,7 +1725,8 @@ func (s *datalakeTestSuite) TestChmod() {
 	file := s.containerClient.NewFileClient(name)
 	acl, err := file.GetAccessControl(ctx, nil)
 	s.assert.Nil(err)
-	s.assert.EqualValues("user::rw-,group::rw-,other::rw-", acl.ACL)
+	s.assert.NotNil(acl.ACL)
+	s.assert.EqualValues("user::rw-,group::rw-,other::rw-", *acl.ACL)
 }
 
 func (s *datalakeTestSuite) TestChmodError() {
