@@ -413,37 +413,22 @@ func (suite *dirTestSuite) TestGitStash() {
 
 		cmd := exec.Command("git", "clone", "https://github.com/wastore/azure-storage-samples-for-net", dirName)
 		_, err := cmd.Output()
-		if err != nil {
-			fmt.Printf("Error in git clone : %v\n", err)
-		}
 		suite.Equal(nil, err)
 
 		_, err = os.Stat(dirName)
-		if err != nil {
-			fmt.Printf("Error in stat : %v\n", err)
-		}
 		suite.Equal(nil, err)
 
 		err = os.Chdir(dirName)
-		if err != nil {
-			fmt.Printf("Error in chdir : %v\n", err)
-		}
 		suite.Equal(nil, err)
 
 		cmd = exec.Command("git", "status")
 		cliOut, err := cmd.Output()
-		if err != nil {
-			fmt.Printf("Error in git status : %v\n", err)
-		}
 		suite.Equal(nil, err)
 		if len(cliOut) > 0 {
 			suite.Contains(string(cliOut), "nothing to commit, working")
 		}
 
 		f, err := os.OpenFile("README.md", os.O_WRONLY, 0644)
-		if err != nil {
-			fmt.Printf("Error in openFile : %v\n", err)
-		}
 		suite.Equal(nil, err)
 		suite.NotZero(f)
 		info, err := f.Stat()
@@ -453,9 +438,6 @@ func (suite *dirTestSuite) TestGitStash() {
 		_ = f.Close()
 
 		f, err = os.OpenFile("README.md", os.O_RDONLY, 0644)
-		if err != nil {
-			fmt.Printf("Error in openFile2 : %v\n", err)
-		}
 		suite.Equal(nil, err)
 		suite.NotZero(f)
 		new_info, err := f.Stat()
@@ -469,9 +451,6 @@ func (suite *dirTestSuite) TestGitStash() {
 
 		cmd = exec.Command("git", "status")
 		cliOut, err = cmd.Output()
-		if err != nil {
-			fmt.Printf("Error in git status 2 : %v\n", err)
-		}
 		suite.Equal(nil, err)
 		if len(cliOut) > 0 {
 			suite.Contains(string(cliOut), "Changes not staged for commit")
@@ -479,9 +458,6 @@ func (suite *dirTestSuite) TestGitStash() {
 
 		cmd = exec.Command("git", "stash")
 		cliOut, err = cmd.Output()
-		if err != nil {
-			fmt.Printf("Error in git stash : %v\n", err)
-		}
 		suite.Equal(nil, err)
 		if len(cliOut) > 0 {
 			suite.Contains(string(cliOut), "Saved working directory and index state WIP")
@@ -489,16 +465,10 @@ func (suite *dirTestSuite) TestGitStash() {
 
 		cmd = exec.Command("git", "stash", "list")
 		_, err = cmd.Output()
-		if err != nil {
-			fmt.Printf("Error in git stash list : %v\n", err)
-		}
 		suite.Equal(nil, err)
 
 		cmd = exec.Command("git", "stash", "pop")
 		cliOut, err = cmd.Output()
-		if err != nil {
-			fmt.Printf("Error in git stash pop : %v\n", err)
-		}
 		suite.Equal(nil, err)
 		if len(cliOut) > 0 {
 			suite.Contains(string(cliOut), "Changes not staged for commit")
