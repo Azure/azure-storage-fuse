@@ -317,8 +317,6 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 			options.Token = *new_marker
 			return az.StreamDir(options)
 		}
-	} else {
-		new_marker = to.Ptr("")
 	}
 
 	// if path is empty, it means it is the root, relative to the mounted directory

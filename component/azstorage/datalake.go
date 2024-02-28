@@ -457,6 +457,7 @@ func (dl *Datalake) List(prefix string, marker *string, count int32) ([]*interna
 		}
 	}
 
+	// Process the paths returned in this result segment (if the segment is empty, the loop body won't execute)
 	for _, pathInfo := range listPath.Paths {
 		var attr *internal.ObjAttr
 		var lastModifiedTime time.Time
