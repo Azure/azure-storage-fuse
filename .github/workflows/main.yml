@@ -1,0 +1,16 @@
+name: Performance Testing
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  PerfTesting:
+    runs-on: [self-hosted, 1ES.Pool=blobfuse-github-pool]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.1.1
