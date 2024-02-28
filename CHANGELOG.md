@@ -5,7 +5,7 @@
 - Migrated to the latest [azblob SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob).
 - Migrated to the latest [azfile SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azfile).
 - Migrated from deprecated ADAL to MSAL through the latest [azidentity SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity).
-- Support for cold and premium tier
+- Support for cold and premium tier added. Tier change is not supported. We can upload a blob in the access tier specified in the config.
 
 ## 2.2.0 (2024-01-24)
 **Bug Fixes**
