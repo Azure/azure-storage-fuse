@@ -20,7 +20,6 @@ jobs:
           
       - name: "Install Dependencies"
         run: |
-          sudo apt-get update --fix-missing
           sudo apt-get install fuse3 libfuse3-dev -y
 
       - name: 'Checkout Main'
