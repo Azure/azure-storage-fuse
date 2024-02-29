@@ -22,8 +22,7 @@ jobs:
       # Install Fuse3
       - name: "Install Fuse3"
         run: |
-          sudo rm -rf /var/lib/apt/lists/partial
-          sudo apt-get update -o Acquire::CompressionTypes::Order::=gz
+          sudo apt-get update
           sudo apt-get install fuse3 libfuse3-dev gcc -y
 
         # Checkout main branch
