@@ -70,9 +70,15 @@ jobs:
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
           AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
       
+      - name: "Print logs"
+        run: cat ./blobfuse2.log
+        working-directory: ${{ github.workspace }}
+        if: always()
+
       - name: "Print latest results"
         run: cat ./benchmark/results.json
         working-directory: ${{ github.workspace }}
+        if: always()
 
       - name: "Update Benchmark Results"
         uses: benchmark-action/github-action-benchmark@v1

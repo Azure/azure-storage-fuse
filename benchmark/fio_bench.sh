@@ -30,7 +30,7 @@ run_fio_job() {
       --output=${output}/${job_name}_iter${i}.json \
       --output-format=json \
       --directory=${mount_dir} \
-      --filename=${bench_file} \
+      --filename=${bench_file}${i} \
       --eta=never \
       ${job_file}
     job_status=$?
