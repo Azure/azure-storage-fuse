@@ -25,6 +25,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install fuse3 libfuse3-dev gcc -y
 
+      # Install Tools
+      - name: "Install Tools"
+        run: |
+          sudo apt-get install fio jq -y
+
         # Checkout main branch
       - name: 'Checkout Main'
         uses: actions/checkout@v4.1.1
