@@ -12,8 +12,35 @@ permissions:
 jobs:
   PerfTesting:
     runs-on: [self-hosted, 1ES.Pool=blobfuse2-github-pool]
-    timeout-minutes: 15
+    timeout-minutes: 360
+
     steps:
       - name: 'Host info'
         run: hostnamectl
+          
+      - name: "Install Dependencies"
+        run: |
+          sudo apt-get update --fix-missing
+          sudo apt-get install fuse3 libfuse3-dev -y
+
+      - name: 'Checkout Main'
+        uses: actions/checkout@v4.1.1
+
+      - name: "Install Go"
+        run: |
+          ./go_installer.sh ../
+          go version
+        working-directory: ${{ github.workspace }}
+
+      - name: "Build Blobfuse2"
+        run: |
+          ./build.sh
+        working-directory: ${{ github.workspace }}
+
+
+      - name: "Validate Version"
+        run: |
+          ./blobfuse2 --version
+        working-directory: ${{ github.workspace }}
+
         
