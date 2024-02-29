@@ -11,7 +11,8 @@ permissions:
 
 jobs:
   PerfTesting:
-    runs-on: [self-hosted, 1ES.Pool=blobfuse-github-pool]
+    runs-on: [self-hosted, 1ES.Pool=blobfuse2-github-pool]
+    timeout-minutes: 15
     steps:
       - name: 'Host info'
         run: hostnamectl
