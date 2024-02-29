@@ -20,7 +20,8 @@ jobs:
           
       - name: "Install Dependencies"
         run: |
-          sudo apt-get install fuse3 libfuse3-dev -y
+          sudo apt update
+          sudo apt-get install fuse3 libfuse3-dev gcc -y
 
       - name: 'Checkout Main'
         uses: actions/checkout@v4.1.1
