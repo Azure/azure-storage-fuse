@@ -10,9 +10,23 @@ rm -rf ${output}
 mkdir -p ${output}
 chmod 777 ${output}
 
+mount_blobfuse
+rm -rf ${mount_dir}/*
 ./blobfuse2 unmount all
 
-run_fio_job() {
+mount_blobfuse() {
+  set +e
+  ./blobfuse2 mount ${mount_dir} --config-file=./config.yaml
+  mount_status=$?
+  set -e
+  if [ $mount_status -ne 0 ]; then
+    echo "Failed to mount file system"
+    exit 1
+  fi
+  sleep 3
+}
+
+execute_test() {
   job_file=$1
   bench_file=$2
   log_dir=$4
@@ -27,7 +41,7 @@ run_fio_job() {
     echo -n "${i};"
     set +e
     timeout 300s fio --thread \
-      --output=${output}/${job_name}_iter${i}.json \
+      --output=${output}/${job_name}trial${i}.json \
       --output-format=json \
       --directory=${mount_dir} \
       --filename=${bench_file}${i} \
@@ -45,10 +59,10 @@ run_fio_job() {
       then $job.read.bw / 1024
       elif ($job."job options".rw == "randread") then $job.read.bw / 1024
       elif ($job."job options".rw == "randwrite") then $job.write.bw / 1024
-      else $job.write.bw / 1024 end)) | {name: .name, value: (.value / .len), unit: "MiB/s"}' ${output}/${job_name}_iter*.json | tee ${output}/${job_name}_parsed.json
+      else $job.write.bw / 1024 end)) | {name: .name, value: (.value / .len), unit: "MiB/s"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_summary.json
 }
 
-read_benchmark () {
+read_fio_benchmark () {
   jobs_dir=./benchmark/fio_read_config
 
   for job_file in "${jobs_dir}"/*.fio; do
@@ -56,24 +70,16 @@ read_benchmark () {
     job_name="${job_name%.*}"
 
     echo "Running Read benchmark for ${job_name}"
-    set +e
-    ./blobfuse2 mount ${mount_dir} --config-file=./config.yaml
-    mount_status=$?
-    set -e
-    if [ $mount_status -ne 0 ]; then
-      echo "Failed to mount file system"
-      exit 1
-    fi
-    sleep 3
+    mount_blobfuse
 
-    run_fio_job $job_file ${job_name}.dat
+    execute_test $job_file ${job_name}.dat
 
     ./blobfuse2 unmount all
     sleep 5
   done
 }
 
-write_benchmark () {
+write_fio_benchmark () {
   jobs_dir=./benchmark/fio_write_config
 
   for job_file in "${jobs_dir}"/*.fio; do
@@ -81,26 +87,17 @@ write_benchmark () {
     job_name="${job_name%.*}"
     
     echo "Running Write benchmark for ${job_name}"
+    mount_blobfuse
 
-    set +e
-    ./blobfuse2 mount ${mount_dir} --config-file=./config.yaml
-    mount_status=$?
-    set -e
-    if [ $mount_status -ne 0 ]; then
-      echo "Failed to mount file system"
-      exit 1
-    fi
-    sleep 3
-
-    run_fio_job $job_file ${job_name}.dat
+    execute_test $job_file ${job_name}.dat
 
     ./blobfuse2 unmount all
     sleep 5
   done
 }
 
-write_benchmark
-read_benchmark
+write_fio_benchmark
+read_fio_benchmark
 
 # combine all bench results into one json file
-jq -n '[inputs]' ${output}/*_parsed.json | tee ./benchmark/results.json
+jq -n '[inputs]' ${output}/*_summary.json | tee ./benchmark/results.json
