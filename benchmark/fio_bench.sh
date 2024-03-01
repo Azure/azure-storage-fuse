@@ -158,12 +158,12 @@ write_fio_benchmark
 sleep 10
 
 # Execute read benchmark using fio
-#read_fio_benchmark
-#sleep 10
+read_fio_benchmark
+sleep 10
 
 # Execute multi-threaded benchmark using fio
-#multi_threaded_fio_benchmark
-#sleep 10
+multi_threaded_fio_benchmark
+sleep 10
 
 # --------------------------------------------------------------------------------------------------
 

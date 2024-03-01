@@ -3,7 +3,6 @@ ioengine=libaio
 direct=1
 fadvise_hint=0
 verify=0
-rw=read
 iodepth=64
 invalidate=1
 ramp_time=10s
@@ -15,10 +14,10 @@ openfiles=1
 group_reporting=1
 allrandrepeat=1
 filename_format=$jobname.$jobnum.$filenum
-rw=read
+rw=write
 bs=1M
 size=1G
 
-[Seq_Write_40thread]
+[Seq_Write_100_thread]
 stonewall
-numjobs=128
+numjobs=100
