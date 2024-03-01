@@ -2,17 +2,17 @@ name: Performance Testing
 on:
   push:
     branches:
-      - main
       - vibhansa/perftestrunner
-
-permissions:
-  issues: write
-  pull-requests: write
 
 jobs:
   PerfTesting:
     runs-on: [self-hosted, 1ES.Pool=blobfuse2-github-pool]
     timeout-minutes: 360
+
+    permissions:
+      id-token: write
+      contents: write
+      pages: write
 
     steps:
       # Print the host info
