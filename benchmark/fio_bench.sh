@@ -24,7 +24,7 @@ mount_blobfuse() {
   fi
 
   # Wait for daemon to come up and stablise
-  sleep 3
+  sleep 5
 }
 
 # --------------------------------------------------------------------------------------------------
@@ -137,7 +137,9 @@ prepare_system() {
   # Clean storage account before begining the test
   mount_blobfuse
   rm -rf ${mount_dir}/*
+
   ./blobfuse2 unmount all
+  sleep 5
 }
 
 
@@ -147,12 +149,16 @@ prepare_system
 
 # Execute write benchmark using fio
 write_fio_benchmark
+sleep 10
 
 # Execute read benchmark using fio
 read_fio_benchmark
+sleep 10
 
 # Execute multi-threaded benchmark using fio
 multi_threaded_fio_benchmark
+sleep 10
+
 # --------------------------------------------------------------------------------------------------
 
 
