@@ -1,9 +1,0 @@
-[global]
-ioengine=sync
-size=100G
-bs=32M
-rw=read
-filename=/tmp/mntpoint/sample100G
-numjobs=20
-[job]
-name=seq_read

@@ -1,9 +1,0 @@
-[global]
-ioengine=sync
-size=4G
-bs=512M
-rw=randread
-filename=/tmp/mntpoint/sample4G
-numjobs=1
-[job]
-name=seq_read
