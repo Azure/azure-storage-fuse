@@ -362,11 +362,6 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 		}
 	}
 
-	if err != nil {
-		log.Err("Datalake::GetAttr : Failed to convert last modified time for %s [%s]", name, err.Error())
-		return attr, err
-	}
-
 	mode, err := getFileMode(*prop.Permissions)
 	if err != nil {
 		log.Err("Datalake::GetAttr : Failed to get file mode for %s [%s]", name, err.Error())
