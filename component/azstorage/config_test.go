@@ -407,7 +407,7 @@ func (s *configTestSuite) TestSASRefresh() {
 	config.SetBool(compName+".ca-cert-file", true)
 	config.SetBool(compName+".debug-libcurl", true)
 
-	az.storage = &BlockBlob{Auth: &azAuthBlobSAST2{azAuthSAST2: azAuthSAST2{azAuthBaseT2: azAuthBaseT2{config: azAuthConfig{Endpoint: "abcd:://qreq!@#$%^&*()_)(*&^%$#"}}}}}
+	az.storage = &BlockBlob{Auth: &azAuthBlobSAS{azAuthSAS: azAuthSAS{azAuthBase: azAuthBase{config: azAuthConfig{Endpoint: "abcd:://qreq!@#$%^&*()_)(*&^%$#"}}}}}
 	err := ParseAndReadDynamicConfig(az, opt, true)
 	assert.Nil(err)
 }

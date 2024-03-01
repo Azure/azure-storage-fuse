@@ -34,15 +34,12 @@
 package azstorage
 
 import (
-	"net/url"
 	"os"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-
-	"github.com/Azure/azure-pipeline-go/pipeline"
 )
 
 // Example for azblob usage : https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob#pkg-examples
@@ -89,10 +86,6 @@ type AzStorageConfig struct {
 
 type AzStorageConnection struct {
 	Config AzStorageConfig
-
-	Pipeline pipeline.Pipeline // TODO:: track2 : remove
-
-	Endpoint *url.URL // TODO:: track2 : remove
 }
 
 type AzConnection interface {

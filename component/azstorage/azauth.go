@@ -34,20 +34,52 @@
 package azstorage
 
 import (
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/cloud"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
+
+// AzAuthConfig : Config to authenticate to storage
+type azAuthConfig struct {
+	// Account
+	AccountName string
+	UseHTTP     bool
+	AccountType AccountType
+	AuthMode    AuthType
+
+	// Key config
+	AccountKey string
+
+	// SAS config
+	SASKey string
+
+	// MSI config
+	ApplicationID string
+	ResourceID    string
+	ObjectID      string
+
+	// SPN config
+	TenantID                string
+	ClientID                string
+	ClientSecret            string
+	OAuthTokenFilePath      string
+	ActiveDirectoryEndpoint string
+
+	Endpoint     string
+	AuthResource string
+}
 
 // azAuth : Interface to define a generic authentication type
 type azAuth interface {
 	getEndpoint() string
 	setOption(key, value string)
-	getCredential() interface{}
+	getServiceClient(stConfig *AzStorageConfig) (interface{}, error)
 }
 
 // getAzAuth returns a new AzAuth
 // config: Defines the AzAuthConfig
 func getAzAuth(config azAuthConfig) azAuth {
-	log.Debug("azAuth::getAzAuth : account %s, account-type %s, protocol %s, endpoint %s",
+	log.Debug("azAuth::getAzAuth : Account: %s, AccountType: %s, Protocol: %s, Endpoint: %s",
 		config.AccountName,
 		config.AccountType,
 		func(useHttp bool) string {
@@ -58,40 +90,74 @@ func getAzAuth(config azAuthConfig) azAuth {
 		}(config.UseHTTP),
 		config.Endpoint)
 
-	if EAccountType.ADLS() == config.AccountType {
-		return getAzAuthBfs(config)
+	if EAccountType.BLOCK() == config.AccountType {
+		return getAzBlobAuth(config)
+	} else if EAccountType.ADLS() == config.AccountType {
+		return getAzDatalakeAuth(config)
 	}
 	return nil
 }
 
-func getAzAuthBfs(config azAuthConfig) azAuth {
+func getAzBlobAuth(config azAuthConfig) azAuth {
 	base := azAuthBase{config: config}
 	if config.AuthMode == EAuthType.KEY() {
-		return &azAuthBfsKey{
+		return &azAuthBlobKey{
 			azAuthKey{
 				azAuthBase: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.SAS() {
-		return &azAuthBfsSAS{
+		return &azAuthBlobSAS{
 			azAuthSAS{
 				azAuthBase: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.MSI() {
-		return &azAuthBfsMSI{
+		return &azAuthBlobMSI{
 			azAuthMSI{
 				azAuthBase: base,
 			},
 		}
 	} else if config.AuthMode == EAuthType.SPN() {
-		return &azAuthBfsSPN{
+		return &azAuthBlobSPN{
 			azAuthSPN{
 				azAuthBase: base,
 			},
 		}
 	} else {
-		log.Crit("azAuth::getAzAuthBfs : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
+		log.Crit("azAuth::getAzBlobAuth : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
+	}
+	return nil
+}
+
+func getAzDatalakeAuth(config azAuthConfig) azAuth {
+	base := azAuthBase{config: config}
+	if config.AuthMode == EAuthType.KEY() {
+		return &azAuthDatalakeKey{
+			azAuthKey{
+				azAuthBase: base,
+			},
+		}
+	} else if config.AuthMode == EAuthType.SAS() {
+		return &azAuthDatalakeSAS{
+			azAuthSAS{
+				azAuthBase: base,
+			},
+		}
+	} else if config.AuthMode == EAuthType.MSI() {
+		return &azAuthDatalakeMSI{
+			azAuthMSI{
+				azAuthBase: base,
+			},
+		}
+	} else if config.AuthMode == EAuthType.SPN() {
+		return &azAuthDatalakeSPN{
+			azAuthSPN{
+				azAuthBase: base,
+			},
+		}
+	} else {
+		log.Crit("azAuth::getAzDatalakeAuth : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
 	}
 	return nil
 }
@@ -106,4 +172,32 @@ func (base *azAuthBase) setOption(_, _ string) {}
 // GetEndpoint : Gets the endpoint
 func (base *azAuthBase) getEndpoint() string {
 	return base.config.Endpoint
+}
+
+// this type is included in OAuth modes - spn and msi
+type azOAuthBase struct{}
+
+// TODO:: track2 : check ActiveDirectoryEndpoint and AuthResource part
+func (base *azOAuthBase) getAzIdentityClientOptions(config *azAuthConfig) azcore.ClientOptions {
+	if config == nil {
+		log.Err("azAuth::getAzIdentityClientOptions : azAuthConfig is nil")
+		return azcore.ClientOptions{}
+	}
+	opts := azcore.ClientOptions{
+		Cloud: getCloudConfiguration(config.Endpoint),
+	}
+
+	if config.ActiveDirectoryEndpoint != "" {
+		log.Debug("azAuthBase::getAzIdentityClientOptions : ActiveDirectoryAuthorityHost = %s", config.ActiveDirectoryEndpoint)
+		opts.Cloud.ActiveDirectoryAuthorityHost = config.ActiveDirectoryEndpoint
+	}
+	if config.AuthResource != "" {
+		if val, ok := opts.Cloud.Services[cloud.ResourceManager]; ok {
+			log.Debug("azAuthBase::getAzIdentityClientOptions : AuthResource = %s", config.AuthResource)
+			val.Endpoint = config.AuthResource
+			opts.Cloud.Services[cloud.ResourceManager] = val
+		}
+	}
+
+	return opts
 }
