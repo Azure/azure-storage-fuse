@@ -290,7 +290,7 @@ func (suite *authTestSuite) TestHttpBlockSharedKey() {
 	suite.Assert().Nil(err)
 
 	err = stg.TestPipeline()
-	suite.Assert().NotNil(err)
+	suite.Assert().Nil(err)
 }
 
 func (suite *authTestSuite) TestAdlsInvalidSharedKey() {
@@ -350,7 +350,7 @@ func (suite *authTestSuite) TestHttpAdlsSharedKey() {
 	suite.Assert().Nil(err)
 
 	err = stg.TestPipeline()
-	suite.Assert().NotNil(err)
+	suite.Assert().Nil(err)
 }
 
 func (suite *authTestSuite) TestBlockInvalidSasKey() {
