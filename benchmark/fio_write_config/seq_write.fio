@@ -1,6 +1,6 @@
 [global]
-name=fs_bench
-bs=256k
+name=blobfuse_benchmark
+bs=1M
 runtime=30s
 time_based
 group_reporting

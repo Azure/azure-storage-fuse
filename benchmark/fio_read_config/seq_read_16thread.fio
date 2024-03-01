@@ -1,13 +1,14 @@
 [global]
 name=blobfuse_benchmark
-bs=1M
+bs=1M 
 runtime=30s
 time_based
 group_reporting
 
-[random_read]
+[sequential_read_sixteen_threads]
 size=10G
-rw=randread
+rw=read
 ioengine=sync
 fallocate=none
+numjobs=16
 startdelay=30s

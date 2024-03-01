@@ -5,9 +5,10 @@ runtime=30s
 time_based
 group_reporting
 
-[random_read]
+[sequential_read_direct_io]
 size=10G
-rw=randread
+rw=read
 ioengine=sync
 fallocate=none
+direct=1
 startdelay=30s

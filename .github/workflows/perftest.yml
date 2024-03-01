@@ -13,7 +13,7 @@ jobs:
       id-token: write
       contents: write
       pages: write
-
+ 
     steps:
       # Print the host info
       - name: 'Host info'
