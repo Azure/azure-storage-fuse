@@ -1200,7 +1200,7 @@ func (s *datalakeTestSuite) TestRenameFileMetadataConservation() {
 	props, err := destination.GetProperties(ctx, nil)
 	s.assert.Nil(err)
 	// Dst should have metadata
-	s.assert.True(checkMetadata(props.Metadata, "foo", "bar")) //TODO:: track2: review
+	s.assert.True(checkMetadata(props.Metadata, "foo", "bar"))
 }
 
 func (s *datalakeTestSuite) TestRenameFileError() {
