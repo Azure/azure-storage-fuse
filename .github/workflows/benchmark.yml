@@ -1,6 +1,7 @@
 name: Benchmark
 on:
   schedule:
+    # Run this job every alternate hours
     - cron: '5 1,3,5,7,9,11,13,15,17,19,21,23 * * *'
   push:
     branches:
