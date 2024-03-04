@@ -1,0 +1,112 @@
+name: Performance Testing
+on:
+  push:
+    branches:
+      - vibhansa/perftestrunner
+
+jobs:
+  PerfTesting:
+    runs-on: [self-hosted, 1ES.Pool=blobfuse2-github-pool]
+    timeout-minutes: 360
+
+    permissions:
+      id-token: write
+      contents: write
+      pages: write
+ 
+    steps:
+      # Print the host info
+      - name: 'Host info'
+        run: hostnamectl
+          
+      # Install Fuse3
+      - name: "Install Fuse3"
+        run: |
+          sudo apt-get update
+          sudo apt-get install fuse3 libfuse3-dev gcc -y
+
+      # Install Tools
+      - name: "Install Tools"
+        run: |
+          sudo apt-get install fio jq -y
+
+        # Checkout main branch
+      - name: 'Checkout Blobfuse2'
+        uses: actions/checkout@v4.1.1
+
+      # Install GoLang
+      - name: "Install Go"
+        run: |
+          ./go_installer.sh ../
+          go version
+        working-directory: ${{ github.workspace }}
+
+      # Build Blobfuse2
+      - name: "Build Blobfuse2"
+        run: |
+          ./build.sh
+        working-directory: ${{ github.workspace }}
+
+      # Run binary and validate the version
+      - name: "Validate Version"
+        run: |
+          ./blobfuse2 --version
+          pwd
+        working-directory: ${{ github.workspace }}
+
+      # Create the config file for testing
+      - name: "Create config file"
+        run: |
+          ./blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=./config.yaml
+          cat ./config.yaml
+        working-directory: ${{ github.workspace }}
+
+      # Checkout benchmark branch
+      - name: "Checkout Benchmark Branch"
+        run: |
+          git checkout benchmarks
+          git pull
+        working-directory: ${{ github.workspace }}
+
+      # Run the benchmark script
+      - name: "Run Benchmark Script"
+        run: |
+          mkdir -p ./blob_mnt
+          ./benchmark/fio_bench.sh ./blob_mnt
+        working-directory: ${{ github.workspace }}
+        env:
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
+      
+      # Print blobfuse2 logs
+      - name: "Print logs"
+        run: cat ./blobfuse2.log
+        working-directory: ${{ github.workspace }}
+        if: always()
+
+      # Print the results generated
+      - name: "Print latest results"
+        run: cat ./benchmark/results.json
+        working-directory: ${{ github.workspace }}
+        if: always()
+
+      # Push the results and publish the graphs
+      - name: "Update Benchmark Results"
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          output-file-path: benchmark/results.json
+          tool: 'customBiggerIsBetter'
+          alert-threshold: "200%"
+          max-items-in-chart: 50
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-alert: true
+          auto-push: true
+          comment-on-alert: true
+          gh-pages-branch: benchmarks
+          benchmark-data-dir-path: benchmarks/bandwidth
+        
+
+          
+  
+        
