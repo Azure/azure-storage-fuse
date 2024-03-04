@@ -259,7 +259,7 @@ func (dl *Datalake) CreateLink(source string, target string) error {
 // DeleteFile : Delete a file in the filesystem/directory
 func (dl *Datalake) DeleteFile(name string) (err error) {
 	log.Trace("Datalake::DeleteFile : name %s", name)
-	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name)) //TODO:: track2: need to review
+	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
 	_, err = fileClient.Delete(context.Background(), nil)
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
@@ -381,11 +381,10 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	}
 	parseMetadata(attr, prop.Metadata)
 
-	// TODO:: track2: Add a check for resource type after sdk release
-	// if *prop.ResourceType == "directory" {
-	// 	attr.Flags = internal.NewDirBitMap()
-	// 	attr.Mode = attr.Mode | os.ModeDir
-	// }
+	if *prop.ResourceType == "directory" {
+		attr.Flags = internal.NewDirBitMap()
+		attr.Mode = attr.Mode | os.ModeDir
+	}
 
 	attr.Flags.Set(internal.PropFlagMetadataRetrieved)
 
