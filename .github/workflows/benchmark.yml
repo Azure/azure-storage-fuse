@@ -73,7 +73,7 @@ jobs:
       # Run the benchmark script for read_bandwidth test
       - name: "Run Benchmark Script : Read"
         run: |
-          ./scripts/fio_bench.sh ./blob_mnt read
+          ./scripts/fio_bench.sh ../blob_mnt read
         #working-directory ${{ github.workspace }}
         env:
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
@@ -112,7 +112,7 @@ jobs:
       # Run the benchmark script for write_bandwidth test
       - name: "Run Benchmark Script : Write"
         run: |
-          ./scripts/fio_bench.sh ./blob_mnt write
+          ./scripts/fio_bench.sh ../blob_mnt write
         #working-directory ${{ github.workspace }}
         env:
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
@@ -150,7 +150,7 @@ jobs:
       # Run the benchmark script for write_bandwidth test
       - name: "Run Benchmark Script : High Threads"
         run: |
-          ./scripts/fio_bench.sh ./blob_mnt multi
+          ./scripts/fio_bench.sh ../blob_mnt multi
         #working-directory ${{ github.workspace }}
         env:
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
