@@ -131,8 +131,8 @@ func getSDKLogOptions() policy.LogOptions {
 	} else {
 		// TODO:: track2 : check which headers and query params should not be redacted
 		return policy.LogOptions{
-			AllowedHeaders:     []string{"x-ms-version"},
-			AllowedQueryParams: []string{},
+			AllowedHeaders:     allowedHeaders,
+			AllowedQueryParams: allowedQueryParams,
 		}
 	}
 }

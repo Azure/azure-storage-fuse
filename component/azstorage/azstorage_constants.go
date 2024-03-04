@@ -60,3 +60,14 @@ const (
 	size        = "Size"
 	target      = "Target"
 )
+
+// headers which should be logged and not redacted
+var allowedHeaders []string = []string{
+	"x-ms-version", "x-ms-date", "x-ms-range", "x-ms-delete-snapshots", "x-ms-delete-type-permanent", "x-ms-blob-content-type",
+	"x-ms-blob-type", "x-ms-copy-source", "x-ms-copy-id", "x-ms-copy-status", "x-ms-access-tier", "x-ms-creation-time", "x-ms-copy-progress",
+}
+
+// query parameters which should be logged and not redacted
+var allowedQueryParams []string = []string{
+	"comp", "delimiter", "include", "marker", "maxresults", "prefix", "restype", "blockid", "blocklisttype",
+}
