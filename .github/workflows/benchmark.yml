@@ -39,13 +39,13 @@ jobs:
         run: |
           ./go_installer.sh ../
           go version
-        working-directory: ${{ github.workspace }}
+        #working-directory ${{ github.workspace }}
 
       # Build Blobfuse2
       - name: "Build Blobfuse2"
         run: |
           ./build.sh
-        working-directory: ${{ github.workspace }}
+        #working-directory ${{ github.workspace }}
 
       # Run binary and validate the version
       - name: "Validate Version"
@@ -55,14 +55,14 @@ jobs:
           sudo cp ./blobfuse2 /usr/bin/
           which blobfuse2
           blobfuse2 --version
-        working-directory: ${{ github.workspace }}
+        #working-directory ${{ github.workspace }}
 
       # Create the config file for testing
       - name: "Create config file"
         run: |
-          ./blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=~/config.yaml
-          cat ~/config.yaml
-        working-directory: ${{ github.workspace }}
+          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=./config.yaml
+          cat ./config.yaml
+        #working-directory ${{ github.workspace }}
 
       # Checkout benchmark branch
       - uses: actions/checkout@v2
@@ -74,7 +74,7 @@ jobs:
       - name: "Run Benchmark Script : Read"
         run: |
           ./scripts/fio_bench.sh ./blob_mnt read
-        working-directory: ${{ github.workspace }}
+        #working-directory ${{ github.workspace }}
         env:
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
@@ -83,13 +83,13 @@ jobs:
       # Print blobfuse2 logs
       - name: "Print logs : Read"
         run: cat ./blobfuse2.log
-        working-directory: ${{ github.workspace }}
+        #working-directory ${{ github.workspace }}
         if: always()
 
       # Print the results generated
       - name: "Print latest results : Read"
         run: cat ./read_bandwidth/results.json
-        working-directory: ${{ github.workspace }}
+        #working-directory ${{ github.workspace }}
         if: always()
 
       # Push the results and publish the graphs
@@ -113,7 +113,7 @@ jobs:
       - name: "Run Benchmark Script : Write"
         run: |
           ./scripts/fio_bench.sh ./blob_mnt write
-        working-directory: ${{ github.workspace }}
+        #working-directory ${{ github.workspace }}
         env:
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
@@ -122,13 +122,13 @@ jobs:
       # Print blobfuse2 logs
       - name: "Print logs : Write"
         run: cat ./blobfuse2.log
-        working-directory: ${{ github.workspace }}
+        #working-directory ${{ github.workspace }}
         if: always()
 
       # Print the results generated
       - name: "Print latest results : Write"
         run: cat ./write_bandwidth/results.json
-        working-directory: ${{ github.workspace }}
+        #working-directory ${{ github.workspace }}
         if: always()
 
       # Push the results and publish the graphs
@@ -151,7 +151,7 @@ jobs:
       - name: "Run Benchmark Script : High Threads"
         run: |
           ./scripts/fio_bench.sh ./blob_mnt multi
-        working-directory: ${{ github.workspace }}
+        #working-directory ${{ github.workspace }}
         env:
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
@@ -160,13 +160,13 @@ jobs:
       # Print blobfuse2 logs
       - name: "Print logs : High Threads"
         run: cat ./blobfuse2.log
-        working-directory: ${{ github.workspace }}
+        #working-directory ${{ github.workspace }}
         if: always()
 
       # Print the results generated
       - name: "Print latest results : High Threads"
         run: cat ./multi_bandwidth/results.json
-        working-directory: ${{ github.workspace }}
+        #working-directory ${{ github.workspace }}
         if: always()
 
       # Push the results and publish the graphs
