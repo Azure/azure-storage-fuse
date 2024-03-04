@@ -52,21 +52,23 @@ jobs:
         run: |
           ./blobfuse2 --version
           pwd
+          sudo cp ./blobfuse2 /usr/bin/
+          which blobfuse2
+          blobfuse2 --version
         working-directory: ${{ github.workspace }}
 
       # Create the config file for testing
       - name: "Create config file"
         run: |
-          ./blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=./config.yaml
-          cat ./config.yaml
+          ./blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=~/config.yaml
+          cat ~/config.yaml
         working-directory: ${{ github.workspace }}
 
       # Checkout benchmark branch
       - uses: actions/checkout@v2
         with:
           ref: benchmarks
-          path: ${{ github.workspace }}
-
+          
       # -----------------------------------------------------------------------------------------------
       # Run the benchmark script for read_bandwidth test
       - name: "Run Benchmark Script : Read"
