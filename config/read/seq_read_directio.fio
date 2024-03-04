@@ -1,0 +1,14 @@
+[global]
+name=blobfuse_benchmark
+bs=1M
+runtime=30s
+time_based
+group_reporting
+
+[sequential_read_direct_io]
+size=10G
+rw=read
+ioengine=sync
+fallocate=none
+direct=1
+startdelay=30s
