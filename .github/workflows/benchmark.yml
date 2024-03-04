@@ -66,13 +66,14 @@ jobs:
         run: |
           git checkout benchmarks
           git pull
+          mkdir -p ./blob_mnt
         working-directory: ${{ github.workspace }}
 
-      # Run the benchmark script
-      - name: "Run Benchmark Script"
+      # -----------------------------------------------------------------------------------------------
+      # Run the benchmark script for read_bandwidth test
+      - name: "Run Benchmark Script : Read"
         run: |
-          mkdir -p ./blob_mnt
-          ./benchmark/fio_bench.sh ./blob_mnt
+          ./scripts/fio_bench.sh ./blob_mnt read
         working-directory: ${{ github.workspace }}
         env:
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
@@ -80,33 +81,107 @@ jobs:
           AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
       
       # Print blobfuse2 logs
-      - name: "Print logs"
+      - name: "Print logs : Read"
         run: cat ./blobfuse2.log
         working-directory: ${{ github.workspace }}
         if: always()
 
       # Print the results generated
-      - name: "Print latest results"
-        run: cat ./benchmark/results.json
+      - name: "Print latest results : Read"
+        run: cat ./read_bandwidth/results.json
         working-directory: ${{ github.workspace }}
         if: always()
 
       # Push the results and publish the graphs
-      - name: "Update Benchmark Results"
+      - name: "Update Benchmark Results : Read"
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          output-file-path: benchmark/results.json
+          output-file-path: read_bandwidth/results.json
           tool: 'customBiggerIsBetter'
-          alert-threshold: "200%"
+          alert-threshold: "120%"
           max-items-in-chart: 50
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fail-on-alert: true
           auto-push: true
           comment-on-alert: true
           gh-pages-branch: benchmarks
-          benchmark-data-dir-path: benchmarks/bandwidth
+          benchmark-data-dir-path: benchmark/read/bandwidth
         
 
-          
+      # -----------------------------------------------------------------------------------------------
+      # Run the benchmark script for write_bandwidth test
+      - name: "Run Benchmark Script : Write"
+        run: |
+          ./scripts/fio_bench.sh ./blob_mnt write
+        working-directory: ${{ github.workspace }}
+        env:
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
+    
+      # Print blobfuse2 logs
+      - name: "Print logs : Write"
+        run: cat ./blobfuse2.log
+        working-directory: ${{ github.workspace }}
+        if: always()
+
+      # Print the results generated
+      - name: "Print latest results : Write"
+        run: cat ./write_bandwidth/results.json
+        working-directory: ${{ github.workspace }}
+        if: always()
+
+      # Push the results and publish the graphs
+      - name: "Update Benchmark Results : Write"
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          output-file-path: write_bandwidth/results.json
+          tool: 'customBiggerIsBetter'
+          alert-threshold: "120%"
+          max-items-in-chart: 50
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-alert: true
+          auto-push: true
+          comment-on-alert: true
+          gh-pages-branch: benchmarks
+          benchmark-data-dir-path: benchmark/write/bandwidth
   
+      # -----------------------------------------------------------------------------------------------
+      # Run the benchmark script for write_bandwidth test
+      - name: "Run Benchmark Script : High Threads"
+        run: |
+          ./scripts/fio_bench.sh ./blob_mnt multi
+        working-directory: ${{ github.workspace }}
+        env:
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
+    
+      # Print blobfuse2 logs
+      - name: "Print logs : High Threads"
+        run: cat ./blobfuse2.log
+        working-directory: ${{ github.workspace }}
+        if: always()
+
+      # Print the results generated
+      - name: "Print latest results : High Threads"
+        run: cat ./multi_bandwidth/results.json
+        working-directory: ${{ github.workspace }}
+        if: always()
+
+      # Push the results and publish the graphs
+      - name: "Update Benchmark Results : High Threads"
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          output-file-path: multi_bandwidth/results.json
+          tool: 'customBiggerIsBetter'
+          alert-threshold: "120%"
+          max-items-in-chart: 50
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-alert: true
+          auto-push: true
+          comment-on-alert: true
+          gh-pages-branch: benchmarks
+          benchmark-data-dir-path: benchmark/highthreads/bandwidth
+    
         
