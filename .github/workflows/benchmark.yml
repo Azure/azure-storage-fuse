@@ -1,4 +1,4 @@
-name: Performance Testing
+name: Benchmark
 on:
   push:
     branches:
