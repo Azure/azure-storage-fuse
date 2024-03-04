@@ -62,12 +62,10 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       # Checkout benchmark branch
-      - name: "Checkout Benchmark Branch"
-        run: |
-          git checkout benchmarks
-          git pull
-          mkdir -p ./blob_mnt
-        working-directory: ${{ github.workspace }}
+      - uses: actions/checkout@v2
+        with:
+          ref: benchmarks
+          path: ${{ github.workspace }}
 
       # -----------------------------------------------------------------------------------------------
       # Run the benchmark script for read_bandwidth test
