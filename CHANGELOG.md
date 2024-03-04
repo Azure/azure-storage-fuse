@@ -1,11 +1,18 @@
 ## 2.3.0 (Unreleased)
 **Bug Fixes**
-
 **Features**
 - Migrated to the latest [azblob SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob).
 - Migrated to the latest [azfile SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azfile).
 - Migrated from deprecated ADAL to MSAL through the latest [azidentity SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity).
 - Added support for uploading blobs in cold and premium tier.
+
+## 2.2.1 (2024-02-28)
+**Bug Fixes**
+- Fixed panic while truncating a file to a very large size.
+- Fixed block-cache panic on flush of a file which has no active changeset
+- Fixed block-cache panic on renaming a file and then flushing older handle
+- Fixed block-cache flush resulting in invalid-block-list error
+ 
 
 ## 2.2.0 (2024-01-24)
 **Bug Fixes**

@@ -1064,11 +1064,50 @@ func (bb *BlockBlob) TruncateFile(name string, size int64) error {
 			return err
 		}
 	}
-	//TODO: the resize might be very big - need to allocate in chunks
 	if size == 0 || attr.Size == 0 {
-		err := bb.WriteFromBuffer(name, nil, make([]byte, size))
-		if err != nil {
-			log.Err("BlockBlob::TruncateFile : Failed to set the %s to 0 bytes [%s]", name, err.Error())
+		// If we are resizing to a value > 1GB then we need to upload multiple blocks to resize
+		if size > 1*common.GbToBytes {
+			blkSize := int64(16 * common.MbToBytes)
+			blobName := filepath.Join(bb.Config.prefixPath, name)
+			blobClient := bb.Container.NewBlockBlobClient(blobName)
+
+			blkList := make([]string, 0)
+			id := base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+
+			for i := 0; size > 0; i++ {
+				if i == 0 || size < blkSize {
+					// Only first and last block we upload and rest all we replicate with the first block itself
+					if size < blkSize {
+						blkSize = size
+						id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+					}
+					data := make([]byte, blkSize)
+
+					_, err = blobClient.StageBlock(context.Background(),
+						id,
+						streaming.NopCloser(bytes.NewReader(data)),
+						&blockblob.StageBlockOptions{
+							CPKInfo: bb.blobCPKOpt,
+						})
+					if err != nil {
+						log.Err("BlockBlob::TruncateFile : Failed to stage block for %s [%s]", name, err.Error())
+						return err
+					}
+				}
+				blkList = append(blkList, id)
+				size -= blkSize
+			}
+
+			err = bb.CommitBlocks(blobName, blkList)
+			if err != nil {
+				log.Err("BlockBlob::TruncateFile : Failed to commit blocks for %s [%s]", name, err.Error())
+				return err
+			}
+		} else {
+			err := bb.WriteFromBuffer(name, nil, make([]byte, size))
+			if err != nil {
+				log.Err("BlockBlob::TruncateFile : Failed to set the %s to 0 bytes [%s]", name, err.Error())
+			}
 		}
 		return err
 	}
