@@ -15,7 +15,7 @@ output="./${2}_bandwidth"
 mount_blobfuse() {
   set +e
 
-  ./blobfuse2 mount ${mount_dir} --config-file=~/config.yaml
+  blobfuse2 mount ${mount_dir} --config-file=~/config.yaml
   mount_status=$?
   set -e
   if [ $mount_status -ne 0 ]; then
@@ -82,7 +82,7 @@ read_bandwidth () {
 
     execute_test $job_file ${job_name}.dat
 
-    ./blobfuse2 unmount all
+    blobfuse2 unmount all
     sleep 5
 
     rm -rf ~/.blobfuse2/*
@@ -103,7 +103,7 @@ write_bandwidth () {
 
     execute_test $job_file ${job_name}.dat
 
-    ./blobfuse2 unmount all
+    blobfuse2 unmount all
     sleep 5
 
     rm -rf ~/.blobfuse2/*
@@ -124,7 +124,7 @@ high_thread_bandwidth () {
 
     execute_test $job_file ${job_name}.dat
 
-    ./blobfuse2 unmount all
+    blobfuse2 unmount all
     sleep 5
 
     rm -rf ~/.blobfuse2/*
@@ -135,7 +135,7 @@ high_thread_bandwidth () {
 # Method to prepare the system for test
 prepare_system() {
   # Clean up logs and create output directory
-  rm -rf ./blobfuse2.log
+  rm -rf blobfuse2.log
   rm -rf ${output}
   mkdir -p ${output}
   chmod 777 ${output}
@@ -144,7 +144,7 @@ prepare_system() {
   mount_blobfuse
   rm -rf ${mount_dir}/*
 
-  ./blobfuse2 unmount all
+  blobfuse2 unmount all
   sleep 5
 }
 
