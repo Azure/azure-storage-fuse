@@ -64,7 +64,14 @@ jobs:
       - uses: actions/checkout@v2
         with:
           ref: benchmarks
-          
+
+      # Create the config file for testing
+      - name: "Create mount path"
+        run: |
+          mkdir -p ../blob_mnt
+          sudo chmod 777 ../blob_mnt
+          rm -rf ../blob_mnt/*
+
       # -----------------------------------------------------------------------------------------------
       # Run the benchmark script for read_bandwidth test
       - name: "Run Benchmark Script : Read"
