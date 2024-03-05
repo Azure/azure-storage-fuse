@@ -74,7 +74,7 @@ execute_test() {
 # --------------------------------------------------------------------------------------------------
 # Method to execute read benchmark using fio over different fio config files
 read_bandwidth () {
-  jobs_dir=./config/read
+  jobs_dir=./perf_testing/config/read
 
   for job_file in "${jobs_dir}"/*.fio; do
     job_name=$(basename "${job_file}")
@@ -95,7 +95,7 @@ read_bandwidth () {
 # --------------------------------------------------------------------------------------------------
 # Method to execute write benchmark using fio over different fio config files
 write_bandwidth () {
-  jobs_dir=./config/write
+  jobs_dir=./perf_testing/config/write
 
   for job_file in "${jobs_dir}"/*.fio; do
     job_name=$(basename "${job_file}")
@@ -116,7 +116,7 @@ write_bandwidth () {
 # --------------------------------------------------------------------------------------------------
 # Method to execute multi threaded benchmark using fio over different fio config files
 high_thread_bandwidth () {
-  jobs_dir=./config/high_threads
+  jobs_dir=./perf_testing/config/high_threads
 
   for job_file in "${jobs_dir}"/*.fio; do
     job_name=$(basename "${job_file}")
