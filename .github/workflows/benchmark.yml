@@ -60,26 +60,21 @@ jobs:
       # Create the config file for testing
       - name: "Create config file"
         run: |
-          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=../config.yaml
-          cat ../config.yaml
-
-      # Checkout benchmark branch
-      - uses: actions/checkout@v2
-        with:
-          ref: benchmarks
+          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=./config.yaml
+          cat ./config.yaml
 
       # Create the config file for testing
       - name: "Create mount path"
         run: |
-          mkdir -p ../blob_mnt
-          sudo chmod 777 ../blob_mnt
-          rm -rf ../blob_mnt/*
+          mkdir -p ./blob_mnt
+          sudo chmod 777 ./blob_mnt
+          rm -rf ./blob_mnt/*
 
       # -----------------------------------------------------------------------------------------------
       # Run the benchmark script for read_bandwidth test
       - name: "Run Benchmark Script : Read"
         run: |
-          ./scripts/fio_bench.sh ../blob_mnt read
+          ./scripts/fio_bench.sh ./blob_mnt read
         env:
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
@@ -108,14 +103,14 @@ jobs:
           auto-push: true
           comment-on-alert: true
           gh-pages-branch: benchmarks
-          benchmark-data-dir-path: benchmark/read/bandwidth
+          benchmark-data-dir-path: benchmark/bandwidth/read
         
 
       # -----------------------------------------------------------------------------------------------
       # Run the benchmark script for write_bandwidth test
       - name: "Run Benchmark Script : Write"
         run: |
-          ./scripts/fio_bench.sh ../blob_mnt write
+          ./scripts/fio_bench.sh ./blob_mnt write
         env:
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
@@ -144,13 +139,13 @@ jobs:
           auto-push: true
           comment-on-alert: true
           gh-pages-branch: benchmarks
-          benchmark-data-dir-path: benchmark/write/bandwidth
+          benchmark-data-dir-path: benchmark/bandwidth/write
   
       # -----------------------------------------------------------------------------------------------
       # Run the benchmark script for write_bandwidth test
       - name: "Run Benchmark Script : High Threads"
         run: |
-          ./scripts/fio_bench.sh ../blob_mnt multi
+          ./scripts/fio_bench.sh ./blob_mnt multi
         env:
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
@@ -179,6 +174,6 @@ jobs:
           auto-push: true
           comment-on-alert: true
           gh-pages-branch: benchmarks
-          benchmark-data-dir-path: benchmark/highthreads/bandwidth
+          benchmark-data-dir-path: benchmark/bandwidth/highthreads
     
         
