@@ -9,7 +9,7 @@ on:
 
 jobs:
   PerfTesting:
-    runs-on: [self-hosted, 1ES.Pool=blobfuse2-github-pool]
+    runs-on: [self-hosted, 1ES.Pool=blobfuse2-benchmark]
     timeout-minutes: 360
 
     permissions:
