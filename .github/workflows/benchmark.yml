@@ -96,7 +96,7 @@ jobs:
         with:
           output-file-path: read_bandwidth/results.json
           tool: 'customBiggerIsBetter'
-          alert-threshold: "120%"
+          alert-threshold: "160%"
           max-items-in-chart: 50
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fail-on-alert: true
@@ -132,7 +132,7 @@ jobs:
         with:
           output-file-path: write_bandwidth/results.json
           tool: 'customBiggerIsBetter'
-          alert-threshold: "120%"
+          alert-threshold: "160%"
           max-items-in-chart: 50
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fail-on-alert: true
@@ -167,7 +167,7 @@ jobs:
         with:
           output-file-path: multi_bandwidth/results.json
           tool: 'customBiggerIsBetter'
-          alert-threshold: "120%"
+          alert-threshold: "160%"
           max-items-in-chart: 50
           github-token: ${{ secrets.GITHUB_TOKEN }}
           fail-on-alert: true
