@@ -20,7 +20,7 @@ block_cache:
   mem-size-mb: 153600
   prefetch: 200
   parallelism: 300
-  prefetch-on-open: true
+  #prefetch-on-open: true
 
 attr_cache:
   timeout-sec: 7200
