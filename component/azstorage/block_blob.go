@@ -284,7 +284,6 @@ func (bb *BlockBlob) DeleteFile(name string) (err error) {
 func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 	log.Trace("BlockBlob::DeleteDirectory : name %s", name)
 
-	dirPresent := false
 	pager := bb.Container.NewListBlobsFlatPager(&container.ListBlobsFlatOptions{
 		Prefix: to.Ptr(filepath.Join(bb.Config.prefixPath, name) + "/"),
 	})
@@ -297,7 +296,6 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 
 		// Process the blobs returned in this result segment (if the segment is empty, the loop body won't execute)
 		for _, blobInfo := range listBlobResp.Segment.BlobItems {
-			dirPresent = true
 			err = bb.DeleteFile(split(bb.Config.prefixPath, *blobInfo.Name))
 			if err != nil {
 				log.Err("BlockBlob::DeleteDirectory : Failed to delete file %s [%s]", *blobInfo.Name, err.Error())
@@ -305,12 +303,10 @@ func (bb *BlockBlob) DeleteDirectory(name string) (err error) {
 		}
 	}
 
-	// TODO:: track2 : this will return ENOENT error if the marker blob for dir is not present
-	// Fix: similar as RenameDirectory
 	err = bb.DeleteFile(name)
-	// check if the marker blob for directory does not exist but
-	// blobs were present in it, which were deleted earlier
-	if err == syscall.ENOENT && dirPresent {
+	// libfuse deletes the files in the directory before this method is called.
+	// If the marker blob for directory is not present, ignore the ENOENT error.
+	if err == syscall.ENOENT {
 		err = nil
 	}
 	return err
@@ -337,7 +333,7 @@ func (bb *BlockBlob) RenameFile(source string, target string) error {
 		}
 	}
 
-	// TODO:: track2 : review : not specifying source blob metadata, since passing empty metadata headers copies
+	// not specifying source blob metadata, since passing empty metadata headers copies
 	// the source blob metadata to destination blob
 	startCopy, err := newBlobClient.StartCopyFromURL(context.Background(), blobClient.URL(), &blob.StartCopyFromURLOptions{
 		Tier: bb.Config.defaultTier,
