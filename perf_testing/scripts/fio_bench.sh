@@ -168,7 +168,7 @@ then
   # Execute read benchmark using fio
   read_bandwidth
   sleep 10
-elif [[ ${type} == "multi" ]] 
+elif [[ ${type} == "highlyparallel" ]] 
 then
   # Execute multi-threaded benchmark using fio
   high_thread_bandwidth

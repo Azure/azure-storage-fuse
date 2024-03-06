@@ -1,0 +1,41 @@
+name: generate_page
+
+inputs:
+  test: 
+    required: true
+
+runs:
+  steps:
+    # Run the benchmark script 
+    - name: "Run Benchmark Script : ${{ inputs.test }}"
+      run: |
+        ./perf_testing/scripts/fio_bench.sh ./blob_mnt ${{ inputs.test }}
+      env:
+        AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+        AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+        AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
+    
+    # Print blobfuse2 logs
+    - name: "Print logs : ${{ inputs.test }}"
+      run: cat ./blobfuse2.log
+      if: always()
+
+    # Print the results generated
+    - name: "Print latest results : ${{ inputs.test }}"
+      run: cat ./${{ inputs.test }}_bandwidth/results.json
+      if: always()
+
+    # Push the results and publish the graphs
+    - name: "Update Benchmark Results : ${{ inputs.test }}"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: ${{ inputs.test }}_bandwidth/results.json
+        tool: 'customBiggerIsBetter'
+        alert-threshold: "160%"
+        max-items-in-chart: 100
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: bandwidth/${{ inputs.test }}
