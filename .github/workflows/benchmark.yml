@@ -36,6 +36,8 @@ jobs:
         # Checkout main branch
       - name: 'Checkout Blobfuse2'
         uses: actions/checkout@v4.1.1
+        with: 
+          ref: vibhansa/perftestrunner
 
       # Install GoLang
       - name: "Install Go"
