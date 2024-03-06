@@ -16,7 +16,13 @@ jobs:
       id-token: write
       contents: write
       pages: write
- 
+
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+      AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+      AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
+      
     steps:
       # Print the host info
       - name: 'Host info'
@@ -62,7 +68,7 @@ jobs:
       # Create the config file for testing
       - name: "Create config file"
         run: |
-          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=./config.yaml
+          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=$AZURE_STORAGE_ACCOUNT_CONTAINER  --output-file=./config.yaml
           cat ./config.yaml
 
       # Create the config file for testing

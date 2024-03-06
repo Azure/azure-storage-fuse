@@ -15,9 +15,9 @@ runs:
       run: |
         ./perf_testing/scripts/fio_bench.sh ./blob_mnt ${{ inputs.test }}
       env:
-        AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
-        AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
-        AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
+        AZURE_STORAGE_ACCOUNT:  $AZURE_STORAGE_ACCOUNT
+        AZURE_STORAGE_ACCOUNT_CONTAINER: $AZURE_STORAGE_ACCOUNT_CONTAINER
+        AZURE_STORAGE_ACCESS_KEY: $AZURE_STORAGE_ACCESS_KEY
     
     # Print blobfuse2 logs
     - name: "Print logs : ${{ inputs.test }}"
@@ -39,7 +39,7 @@ runs:
         tool: 'customBiggerIsBetter'
         alert-threshold: "160%"
         max-items-in-chart: 100
-        github-token: ${{ secrets.GITHUB_TOKEN }}
+        github-token: $GITHUB_TOKEN
         fail-on-alert: true
         auto-push: true
         comment-on-alert: true

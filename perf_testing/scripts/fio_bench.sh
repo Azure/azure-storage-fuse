@@ -14,7 +14,7 @@ type=$2
 output="./${type}_bandwidth"
 
 # --------------------------------------------------------------------------------------------------
-# Method to mount blobfuse and wait for system to stablize
+# Method to mount blobfuse and wait for system to stabilize
 mount_blobfuse() {
   set +e
 
@@ -145,7 +145,7 @@ prepare_system() {
   mkdir -p ${output}
   chmod 777 ${output}
 
-  # Clean storage account before begining the test
+  # Clean storage account before beginning the test
   mount_blobfuse
   rm -rf ${mount_dir}/*
 
@@ -183,7 +183,7 @@ fi
 # --------------------------------------------------------------------------------------------------
 if [[ $executed -eq 1 ]] 
 then
-  # Merge all results and geenrate a json summary
+  # Merge all results and generate a json summary
   jq -n '[inputs]' ${output}/*_summary.json | tee ./${output}/results.json
 fi
 
