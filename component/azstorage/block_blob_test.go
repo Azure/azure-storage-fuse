@@ -548,8 +548,10 @@ func (s *blockBlobTestSuite) TestDeleteDirError() {
 
 	err := s.az.DeleteDir(internal.DeleteDirOptions{Name: name})
 
-	s.assert.NotNil(err)
-	s.assert.EqualValues(syscall.ENOENT, err)
+	// ENOENT error is ignored in blob accounts because when a directory which is not present is deleted,
+	// libfuse first makes a GetAttr call and fails the operation stating that the directory is not present.
+	// This change is added for cases when a directory is deleted for which we don't have marker blob.
+	s.assert.Nil(err)
 	// Directory should not be in the account
 	dir := s.containerClient.NewBlobClient(name)
 	_, err = dir.GetProperties(ctx, nil)
