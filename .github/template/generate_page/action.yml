@@ -29,7 +29,7 @@ runs:
       env:
         AZURE_STORAGE_ACCOUNT:  ${{ inputs.AZURE_STORAGE_ACCOUNT }}
         AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ inputs.AZURE_STORAGE_ACCOUNT_CONTAINER }}
-        AZURE_STORAGE_ACCESS_KEY: ${{ inputs.$AZURE_STORAGE_ACCESS_KEY }}
+        AZURE_STORAGE_ACCESS_KEY: ${{ inputs.AZURE_STORAGE_ACCESS_KEY }}
     
     # Print blobfuse2 logs
     - name: "Print logs : ${{ inputs.TEST }}"
