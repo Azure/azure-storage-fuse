@@ -18,6 +18,6 @@ rw=write
 bs=1M
 size=1G
 
-[seq_write_100_thread]
+[seq_write_112_thread]
 stonewall
-numjobs=100
+numjobs=112

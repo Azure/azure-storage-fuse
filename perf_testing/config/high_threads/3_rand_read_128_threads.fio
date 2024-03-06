@@ -19,6 +19,6 @@ rw=randread
 bs=1M
 size=1G
 
-[seq_read_128_thread]
+[rand_read_128_thread]
 stonewall
 numjobs=128
