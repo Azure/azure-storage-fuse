@@ -28,6 +28,8 @@ mount_blobfuse() {
 
   # Wait for daemon to come up and stablise
   sleep 5
+
+  rm -rf ${mount_dir}/*
 }
 
 # --------------------------------------------------------------------------------------------------
