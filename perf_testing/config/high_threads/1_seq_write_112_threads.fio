@@ -14,10 +14,10 @@ openfiles=1
 group_reporting
 allrandrepeat=1
 filename_format=$jobname.$jobnum.$filenum
-rw=write
 bs=1M
 size=1G
 
 [seq_write_112_thread]
 stonewall
 numjobs=112
+rw=write

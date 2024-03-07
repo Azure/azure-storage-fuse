@@ -15,10 +15,10 @@ openfiles=1
 group_reporting
 allrandrepeat=1
 filename_format=$jobname.$jobnum.$filenum
-rw=randread
 bs=1M
 size=1G
 
 [rand_read_128_thread]
 stonewall
 numjobs=128
+rw=randread
