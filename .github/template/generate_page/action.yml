@@ -21,6 +21,13 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # Pre-run cleanup
+    - name: "Cleanup before test"
+      shell: bash
+      run: |
+        rm -rf ./blob_mnt/*
+        rm -rf ./tempcache/*
+
     # Run the benchmark script 
     - name: "Run Benchmark Script : ${{ inputs.TEST }}"
       shell: bash

@@ -69,8 +69,11 @@ jobs:
       - name: "Create mount path"
         run: |
           mkdir -p ./blob_mnt
+          mkdir -p ./tempcache
           sudo chmod 777 ./blob_mnt
+          sudo chmod 777 ./tempcache
           rm -rf ./blob_mnt/*
+          rm -rf ./tempcache/*
 
       # Run the Write tests
       - name: "Write Test"
