@@ -1,5 +1,7 @@
 ## 2.3.0 (Unreleased)
 **Bug Fixes**
+- [#1057](https://github.com/Azure/azure-storage-fuse/issues/1057) Fixed issue where user-assigned identity is not used for authentication when system-assigned identity is enabled. 
+
 **Features**
 - Migrated to the latest [azblob SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob).
 - Migrated to the latest [azdatalake SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake).
