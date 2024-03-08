@@ -25,7 +25,7 @@ runs:
     - name: "Cleanup before test"
       shell: bash
       run: |
-        rm -rf /mnt/blob_mnt
+        rm -rf /mnt/blob_mnt/*
         rm -rf /mnt/tempcache/*
 
     # Run the benchmark script 

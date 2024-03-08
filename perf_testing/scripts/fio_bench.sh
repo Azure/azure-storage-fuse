@@ -16,9 +16,10 @@ output="./${type}_bandwidth"
 # --------------------------------------------------------------------------------------------------
 # Method to mount blobfuse and wait for system to stabilize
 mount_blobfuse() {
+  extraParam=$1
   set +e
 
-  blobfuse2 mount ${mount_dir} --config-file=./config.yaml
+  blobfuse2 mount ${mount_dir} --config-file=./config.yaml ${extraParam}
   mount_status=$?
   set -e
   if [ $mount_status -ne 0 ]; then
@@ -37,7 +38,6 @@ mount_blobfuse() {
 execute_test() {
   job_file=$1
   bench_file=$2
-  log_dir=$4
 
   job_name=$(basename "${job_file}")
   job_name="${job_name%.*}"
@@ -125,7 +125,7 @@ high_thread_bandwidth () {
     job_name="${job_name%.*}"
     
     echo "Running Write benchmark for ${job_name}"
-    mount_blobfuse
+    mount_blobfuse "--block-cache-path=/mnt/tempcache"
 
     execute_test $job_file ${job_name}.dat
 
