@@ -50,6 +50,12 @@ jobs:
         run: |
           ./build.sh
 
+      # Check the paths
+      - name: "Check paths"
+        run: |
+          pwd
+          df -h
+
       # Run binary and validate the version
       - name: "Validate Version"
         run: |
