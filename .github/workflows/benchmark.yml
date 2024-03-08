@@ -74,12 +74,10 @@ jobs:
       # Create the config file for testing
       - name: "Create mount path"
         run: |
-          mkdir -p ./blob_mnt
-          mkdir -p ./tempcache
-          sudo chmod 777 ./blob_mnt
-          sudo chmod 777 ./tempcache
-          rm -rf ./blob_mnt/*
-          rm -rf ./tempcache/*
+          sudo mkdir -p /mnt/blob_mnt
+          sudo mkdir -p /mnt/tempcache
+          sudo chmod 777 /mnt/blob_mnt
+          sudo chmod 777 /mnt/tempcache
 
       # Run the Write tests
       - name: "Write Test"

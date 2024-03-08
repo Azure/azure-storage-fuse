@@ -25,14 +25,14 @@ runs:
     - name: "Cleanup before test"
       shell: bash
       run: |
-        rm -rf ./blob_mnt/*
-        rm -rf ./tempcache/*
+        rm -rf /mnt/blob_mnt
+        rm -rf /mnt/tempcache/*
 
     # Run the benchmark script 
     - name: "Run Benchmark Script : ${{ inputs.TEST }}"
       shell: bash
       run: |
-        ./perf_testing/scripts/fio_bench.sh ./blob_mnt ${{ inputs.TEST }}
+        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt ${{ inputs.TEST }}
       env:
         AZURE_STORAGE_ACCOUNT:  ${{ inputs.AZURE_STORAGE_ACCOUNT }}
         AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ inputs.AZURE_STORAGE_ACCOUNT_CONTAINER }}
