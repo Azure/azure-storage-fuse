@@ -7,9 +7,9 @@ bs=1K
 openfiles=1
 rw=write
 filename_format=$jobname.$jobnum.$filenum
-nrfiles=50000
+nrfiles=5000
 group_reporting
 
-[create_1M_files_in_20_threads]
+[create_1l_files_in_20_threads]
 numjobs=20
 
