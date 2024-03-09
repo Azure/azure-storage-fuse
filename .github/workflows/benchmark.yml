@@ -114,8 +114,6 @@ jobs:
         uses: "./.github/template/generate_page"
         with:
           TEST: "create"
-          CHART_TYPE: "customSmallerIsBetter"
-          EXTRACT: "latency"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
