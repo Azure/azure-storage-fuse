@@ -19,6 +19,7 @@ mount_blobfuse() {
   extra_opts=$1
   set +e
 
+  blobfuse2 unmount all
   blobfuse2 mount ${mount_dir} --config-file=./config.yaml ${extra_opts}
   mount_status=$?
   set -e
@@ -111,6 +112,8 @@ list_files() {
 
   # Mount blobfuse and creat 1million files
   mount_blobfuse
+
+  mkdir ${mount_dir}/create
   fio --thread --directory=${mount_dir} --eta=never ./perf_testing/config/create/3_1M_files_in_20_threads.fio
 
   total_seconds=0
@@ -126,13 +129,14 @@ list_files() {
     echo $list_time
 
     IFS=':'; time_fragments=($list_time); unset IFS;
-    list_min=${time_fragments[0]}
-    list_sec=${time_fragments[1]}
+    list_min=`printf '%5.5f' ${time_fragments[0]}`
+    list_sec=`printf '%5.5f' ${time_fragments[1]}`
 
-    total_seconds=$((total_seconds + (list_min * 60) + list_sec))
+    list_seconds=`printf %5.5f $(echo "scale = 10; ($list_min * 60) + $list_sec" | bc)`
+    total_seconds=`printf %5.5f $(echo "scale = 10; ($total_seconds + $list_seconds)" | bc)`
   done
 
-  avg_list_time=$((total_seconds / iterations))
+  avg_list_time=`printf %5.5f $(echo "scale = 10; ($total_seconds / $iterations)" | bc)`
 
   # ------------------------------
   # Measure time taken to delete these files
@@ -144,18 +148,20 @@ list_files() {
   echo $del_time
 
   IFS=':'; time_fragments=($del_time); unset IFS;
-  del_min=${time_fragments[0]}
-  del_sec=${time_fragments[1]}
+  del_min=`printf '%5.5f' ${time_fragments[0]}`
+  del_sec=`printf '%5.5f' ${time_fragments[1]}`
   
+  avg_del_time=`printf %5.5f $(echo "scale = 10; ($del_min * 60) + $del_sec" | bc)`
+
   # Unmount and cleanup now
   blobfuse2 unmount all
   sleep 5
   rm -rf ~/.blobfuse2/*
 
-  avg_del_time=$(((del_min * 60) + del_sec))
+  echo $avg_list_time " : " $avg_del_time
 
-  jq -n --arg list_time $avg_list_time --arg del_time $avg_del_time '{name: list_1_million_files, value: $list_time, unit: "seconds"},
-      {name: delete_1_million_files, value: $del_time, unit: "seconds"}' | tee ./${output}/list_results.json
+  jq -n --arg list_time $avg_list_time --arg del_time $avg_del_time '{name: "list_1_million_files", value: $list_time, unit: "seconds"},
+      {name: "delete_1_million_files", value: $del_time, unit: "seconds"}' | tee tee ${output}/list_results.json
 
 }
 

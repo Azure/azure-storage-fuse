@@ -8,9 +8,9 @@ openfiles=1
 rw=write
 directory=/usr/blob_mnt/create
 filename_format=$jobname.$jobnum.$filenum
-nrfiles=10
+nrfiles=50000
 group_reporting
 
 [create_1M_files_in_20_threads]
-numjobs=2
+numjobs=20
 
