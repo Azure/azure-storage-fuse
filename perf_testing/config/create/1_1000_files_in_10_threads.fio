@@ -6,7 +6,6 @@ filesize=1M
 bs=1M
 openfiles=1
 rw=write
-directory=/usr/blob_mnt/create
 filename_format=$jobname.$jobnum.$filenum
 nrfiles=100
 group_reporting

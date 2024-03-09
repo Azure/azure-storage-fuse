@@ -113,7 +113,7 @@ list_files() {
   # Mount blobfuse and creat 1million files
   mount_blobfuse
 
-  mkdir ${mount_dir}/create
+  mkdir ${mount_dir}
   fio --thread --directory=${mount_dir} --eta=never ./perf_testing/config/create/3_1M_files_in_20_threads.fio
 
   total_seconds=0
