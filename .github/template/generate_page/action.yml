@@ -50,6 +50,8 @@ runs:
       run: |
         cat ./${{ inputs.TEST }}/bandwidth_results.json
         cat ./${{ inputs.TEST }}/latency_results.json
+        cat ./${{ inputs.TEST }}/cpu_results.json
+        cat ./${{ inputs.TEST }}/list_results.json
       if: always()
 
     # Push the bandwidth results and publish the graphs
@@ -81,3 +83,33 @@ runs:
         comment-on-alert: true
         gh-pages-branch: benchmarks
         benchmark-data-dir-path: latency/${{ inputs.TEST }}        
+
+    # Push the cpu results and publish the graphs
+    - name: "Update Benchmark Results : ${{ inputs.TEST }}"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: ${{ inputs.TEST }}/cpu_results.json
+        tool: 'customSmallerIsBetter'
+        alert-threshold: "160%"
+        max-items-in-chart: 100
+        github-token: ${{ inputs.GITHUB_TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: cpu/${{ inputs.TEST }}          
+
+    # Push the listing results and publish the graphs
+    - name: "Update Benchmark Results : ${{ inputs.TEST }}"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: ${{ inputs.TEST }}/list_results.json
+        tool: 'customSmallerIsBetter'
+        alert-threshold: "160%"
+        max-items-in-chart: 100
+        github-token: ${{ inputs.GITHUB_TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: time/${{ inputs.TEST }}         

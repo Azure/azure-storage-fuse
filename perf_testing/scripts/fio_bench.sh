@@ -78,6 +78,10 @@ execute_test() {
     elif ($job."job options".rw == "randread") then $job.read.lat_ns.mean / 1000000
     elif ($job."job options".rw == "randwrite") then $job.write.lat_ns.mean / 1000000
     else $job.write.lat_ns.mean / 1000000 end)) | {name: .name, value: (.value / .len), unit: "milliseconds"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_latency_summary.json
+
+  # From the fio output get the cpu usage details and put it in a summary file
+  jq -n 'reduce inputs.jobs[] as $job (null; .name = $job.jobname | .len += 1 | .value += ($job.usr_cpu + $job.sys_cpu)) 
+      | {name: .name, value: (.value / .len), unit: "percent"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_cpu_summary.json
 }
 
 # --------------------------------------------------------------------------------------------------
@@ -100,6 +104,61 @@ iterate_fio_files() {
     rm -rf ~/.blobfuse2/*
   done
 }
+
+# --------------------------------------------------------------------------------------------------
+# Method to list files on the mount path and generate report
+list_files() {
+
+  # Mount blobfuse and creat 1million files
+  mount_blobfuse
+  fio --thread --directory=${mount_dir} --eta=never ./perf_testing/config/create/3_1M_files_in_20_threads.fio
+
+  total_seconds=0
+
+  for i in $(seq 1 $iterations);
+  do
+    # List files and capture the time related details
+    sudo /usr/bin/time -o lst${i}.txt -v ls ${mount_dir} > /dev/null 
+    cat lst${i}.txt
+
+    # Extract Elapsed time for listing files
+    list_time=`cat lst${i}.txt | grep "Elapsed" | rev | cut -d " " -f 1 | rev`
+    echo $list_time
+
+    IFS=':'; time_fragments=($list_time); unset IFS;
+    list_min=${time_fragments[0]}
+    list_sec=${time_fragments[1]}
+
+    total_seconds=$((total_seconds + (list_min * 60) + list_sec))
+  done
+
+  avg_list_time=$((total_seconds / iterations))
+
+  # ------------------------------
+  # Measure time taken to delete these files
+  sudo /usr/bin/time -o del.txt -v rm -rf ${mount_dir}/* > /dev/null 
+  cat del.txt
+
+  # Extract Deletion time 
+  del_time=`cat del.txt | grep "Elapsed" | rev | cut -d " " -f 1 | rev`
+  echo $del_time
+
+  IFS=':'; time_fragments=($del_time); unset IFS;
+  del_min=${time_fragments[0]}
+  del_sec=${time_fragments[1]}
+  
+  # Unmount and cleanup now
+  blobfuse2 unmount all
+  sleep 5
+  rm -rf ~/.blobfuse2/*
+
+  avg_del_time=$(((del_min * 60) + del_sec))
+
+  jq -n --arg list_time $avg_list_time --arg del_time $avg_del_time '{name: list_1_million_files, value: $list_time, unit: "seconds"},
+      {name: delete_1_million_files, value: $del_time, unit: "seconds"}' | tee ./${output}/list_results.json
+
+}
+
 
 # --------------------------------------------------------------------------------------------------
 # Method to prepare the system for test
@@ -140,14 +199,22 @@ then
   # Execute multi-threaded benchmark using fio
   echo "Running Highly Parallel test cases"
   iterate_fio_files "./perf_testing/config/high_threads" "bandwidth"
-elif [[ ${test_name} == "highlyparallel" ]] 
+elif [[ ${test_name} == "create" ]] 
 then  
   # Execute file create tests
   echo "Running Create test cases"
   iterate_fio_files "./perf_testing/config/create" "latency"
+elif [[ ${test_name} == "list" ]] 
+then 
+  # Execute file listing tests
+  echo "Running File listing test cases"
+  list_files 
+  
+  # No need to generate bandwidht or latecy related reports in this case
+  executed=0  
 else
   executed=0  
-  echo "Invalid argument. Please provide either 'read' or 'write' or 'multi' as argument"
+  echo "Invalid argument. Please provide either 'read', 'write', 'multi' or 'create' as argument"
 fi
 
 # --------------------------------------------------------------------------------------------------
@@ -158,6 +225,9 @@ then
 
   # Merge all results and generate a json summary for latency
   jq -n '[inputs]' ${output}/*_latency_summary.json | tee ./${output}/latency_results.json
+
+  # Merge all results and generate a json summary for cpu usage
+  jq -n '[inputs]' ${output}/*_cpu_summary.json | tee ./${output}/cpu_results.json
 fi
 
 # --------------------------------------------------------------------------------------------------
