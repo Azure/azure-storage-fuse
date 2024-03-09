@@ -161,7 +161,7 @@ list_files() {
   echo $avg_list_time " : " $avg_del_time
 
   jq -n --arg list_time $avg_list_time --arg del_time $avg_del_time '{name: "list_1_million_files", value: $list_time, unit: "seconds"},
-      {name: "delete_1_million_files", value: $del_time, unit: "seconds"}' | tee tee ${output}/list_results.json
+      {name: "delete_1_million_files", value: $del_time, unit: "seconds"}' | tee ${output}/list_results.json
 
 }
 
