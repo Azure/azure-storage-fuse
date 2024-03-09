@@ -7,7 +7,7 @@ inputs:
     description: "Test to run"
   GITHUB_TOKEN: 
     required: true
-    description: "Token for github checkin"
+    description: "Token for github check-in"
   AZURE_STORAGE_ACCOUNT:
     required: true
     description: "Storage account name"
@@ -17,6 +17,14 @@ inputs:
   AZURE_STORAGE_ACCESS_KEY: 
     required: true
     description: "Access key for the storage account"
+  EXTRACT:
+    required: true
+    description: "Type of value to extract from the test results"
+    default: "bandwidth"
+  CHART_TYPE:
+    required: true
+    description: "Type of chart to be generated"
+    default: "customBiggerIsBetter"
 
 runs:
   using: "composite"
@@ -32,7 +40,7 @@ runs:
     - name: "Run Benchmark Script : ${{ inputs.TEST }}"
       shell: bash
       run: |
-        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt ${{ inputs.TEST }}
+        ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt ${{ inputs.TEST }} ${{ inputs.EXTRACT }}
       env:
         AZURE_STORAGE_ACCOUNT:  ${{ inputs.AZURE_STORAGE_ACCOUNT }}
         AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ inputs.AZURE_STORAGE_ACCOUNT_CONTAINER }}
@@ -47,15 +55,15 @@ runs:
     # Print the results generated
     - name: "Print latest results : ${{ inputs.TEST }}"
       shell: bash
-      run: cat ./${{ inputs.TEST }}_bandwidth/results.json
+      run: cat ./${{ inputs.TEST }}_${{ inputs.EXTRACT }}/results.json
       if: always()
 
     # Push the results and publish the graphs
     - name: "Update Benchmark Results : ${{ inputs.TEST }}"
       uses: benchmark-action/github-action-benchmark@v1
       with:
-        output-file-path: ${{ inputs.TEST }}_bandwidth/results.json
-        tool: 'customBiggerIsBetter'
+        output-file-path: ${{ inputs.TEST }}_${{ inputs.EXTRACT }}/results.json
+        tool: ${{ inputs.CHART_TYPE }}
         alert-threshold: "160%"
         max-items-in-chart: 100
         github-token: ${{ inputs.GITHUB_TOKEN }}
@@ -63,4 +71,4 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: bandwidth/${{ inputs.TEST }}
+        benchmark-data-dir-path: ${{ inputs.EXTRACT }}/${{ inputs.TEST }}

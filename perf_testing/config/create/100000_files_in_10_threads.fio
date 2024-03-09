@@ -1,0 +1,16 @@
+[global]
+create_on_open=1
+ioengine=filecreate
+fallocate=none
+filesize=4K
+bs=4K
+openfiles=1
+rw=write
+directory=/usr/blob_mnt/create
+filename_format=$jobname.$jobnum.$filenum
+nrfiles=10000
+group_reporting
+
+[create_1000_files_in_10_threads]
+numjobs=10
+
