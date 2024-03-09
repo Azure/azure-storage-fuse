@@ -157,7 +157,7 @@ then
   jq -n '[inputs]' ${output}/*_bandwidth_summary.json | tee ./${output}/bandwidth_results.json
 
   # Merge all results and generate a json summary for latency
-  jq -n '[inputs]' ${output}/*_bandwidth_summary.json | tee ./${output}/latency_results.json
+  jq -n '[inputs]' ${output}/*_latency_summary.json | tee ./${output}/latency_results.json
 fi
 
 # --------------------------------------------------------------------------------------------------
