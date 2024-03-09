@@ -71,13 +71,13 @@ execute_test() {
       elif ($job."job options".rw == "randread") then $job.read.bw / 1024
       elif ($job."job options".rw == "randwrite") then $job.write.bw / 1024
       else $job.write.bw / 1024 end)) | {name: .name, value: (.value / .len), unit: "MiB/s"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_bandwidth_summary.json
-  # From the fio output get the latency details and put it in a summary file
 
-  jq -n 'inputs.jobs[] | if (."job options".rw == "read") 
-    then {name: .jobname, value: (.read.lat_ns.mean / 1000000), unit: "milliseconds"} 
-    elif (."job options".rw == "randread") then {name: .jobname, value: (.read.lat_ns.mean / 1000000), unit: "milliseconds"} 
-    elif (."job options".rw == "randwrite") then {name: .jobname, value: (.write.lat_ns.mean / 1000000), unit: "milliseconds"} 
-    else {name: .jobname, value: (.write.lat_ns.mean / 1000000), unit: "milliseconds"} end' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_latency_summary.json
+  # From the fio output get the latency details and put it in a summary file
+  jq -n 'reduce inputs.jobs[] as $job (null; .name = $job.jobname | .len += 1 | .value += (if ($job."job options".rw == "read")
+    then $job.read.lat_ns.mean / 1000000
+    elif ($job."job options".rw == "randread") then $job.read.lat_ns.mean / 1000000
+    elif ($job."job options".rw == "randwrite") then $job.write.lat_ns.mean / 1000000
+    else $job.write.lat_ns.mean / 1000000 | {name: .name, value: (.value / .len , unit: "milliseconds"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_latency_summary.json
 }
 
 # --------------------------------------------------------------------------------------------------
