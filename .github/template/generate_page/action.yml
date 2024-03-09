@@ -51,8 +51,13 @@ runs:
         cat ./${{ inputs.TEST }}/bandwidth_results.json
         cat ./${{ inputs.TEST }}/latency_results.json
         cat ./${{ inputs.TEST }}/cpu_results.json
+      if: ${{ !contains(inputs.TEST, 'list') }}    
+    
+    - name: "Print latest results : ${{ inputs.TEST }}"
+      shell: bash
+      run: |
         cat ./${{ inputs.TEST }}/list_results.json
-      if: always()
+      if: ${{ contains(inputs.TEST, 'list') }}    
 
     # Push the bandwidth results and publish the graphs
     - name: "Update Benchmark Results : ${{ inputs.TEST }}"
@@ -68,6 +73,7 @@ runs:
         comment-on-alert: true
         gh-pages-branch: benchmarks
         benchmark-data-dir-path: bandwidth/${{ inputs.TEST }}
+      if: ${{ !contains(inputs.TEST, 'list') }}    
 
     # Push the latency results and publish the graphs
     - name: "Update Benchmark Results : ${{ inputs.TEST }}"
@@ -82,7 +88,8 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: latency/${{ inputs.TEST }}        
+        benchmark-data-dir-path: latency/${{ inputs.TEST }}  
+      if: ${{ !contains(inputs.TEST, 'list') }}    
 
     # Push the cpu results and publish the graphs
     - name: "Update Benchmark Results : ${{ inputs.TEST }}"
@@ -97,7 +104,8 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: cpu/${{ inputs.TEST }}          
+        benchmark-data-dir-path: cpu/${{ inputs.TEST }}   
+      if: ${{ !contains(inputs.TEST, 'list') }}    
 
     # Push the listing results and publish the graphs
     - name: "Update Benchmark Results : ${{ inputs.TEST }}"
@@ -112,4 +120,5 @@ runs:
         auto-push: true
         comment-on-alert: true
         gh-pages-branch: benchmarks
-        benchmark-data-dir-path: time/${{ inputs.TEST }}         
+        benchmark-data-dir-path: time/${{ inputs.TEST }}   
+      if: ${{ contains(inputs.TEST, 'list') }}    
