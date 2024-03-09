@@ -77,7 +77,7 @@ execute_test() {
     then $job.read.lat_ns.mean / 1000000
     elif ($job."job options".rw == "randread") then $job.read.lat_ns.mean / 1000000
     elif ($job."job options".rw == "randwrite") then $job.write.lat_ns.mean / 1000000
-    else $job.write.lat_ns.mean / 1000000 | {name: .name, value: (.value / .len , unit: "milliseconds"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_latency_summary.json
+    else $job.write.lat_ns.mean / 1000000 | {name: .name, value: (.value / .len), unit: "milliseconds"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_latency_summary.json
 }
 
 # --------------------------------------------------------------------------------------------------
