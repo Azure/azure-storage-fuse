@@ -41,7 +41,7 @@ mount_blobfuse() {
     echo "File system stable now on ${mount_dir}"
   fi
 
-  rm -rf ${mount_dir}/*
+  #rm -rf ${mount_dir}/*
 }
 
 # --------------------------------------------------------------------------------------------------
@@ -225,7 +225,7 @@ then
   echo "Running File listing test cases"
   list_files 
   
-  # No need to generate bandwidht or latecy related reports in this case
+  # No need to generate bandwidth or latecy related reports in this case
   executed=0  
 else
   executed=0  
