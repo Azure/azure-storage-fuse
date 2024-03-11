@@ -25,10 +25,21 @@ mount_blobfuse() {
   if [ $mount_status -ne 0 ]; then
     echo "Failed to mount file system"
     exit 1
+  else
+    echo "File system mounted successfully on ${mount_dir}"
   fi
 
   # Wait for daemon to come up and stablise
   sleep 5
+
+  df -h | grep blobfuse
+  df_status=$?
+  if [ $df_status -ne 0 ]; then
+    echo "Failed to find blobfuse mount"
+    exit 1
+  else
+    echo "File system stable now on ${mount_dir}"
+  fi
 
   rm -rf ${mount_dir}/*
 }
