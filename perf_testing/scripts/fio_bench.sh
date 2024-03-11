@@ -40,8 +40,6 @@ mount_blobfuse() {
   else
     echo "File system stable now on ${mount_dir}"
   fi
-
-  #rm -rf ${mount_dir}/*
 }
 
 # --------------------------------------------------------------------------------------------------
@@ -186,7 +184,6 @@ prepare_system() {
 
   # Clean storage account before beginning the test
   mount_blobfuse
-  rm -rf ${mount_dir}/*
 
   blobfuse2 unmount all
   sleep 5
