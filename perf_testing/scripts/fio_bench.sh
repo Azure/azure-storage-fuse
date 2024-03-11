@@ -19,7 +19,6 @@ mount_blobfuse() {
   extra_opts=$1
   set +e
 
-  blobfuse2 unmount all
   blobfuse2 mount ${mount_dir} --config-file=./config.yaml ${extra_opts}
   mount_status=$?
   set -e
