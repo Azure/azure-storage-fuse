@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1709980606736,
+  "lastUpdate": 1710222606517,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -68,6 +68,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_four_threads",
             "value": 74.058602850152,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "c09710ac06d604a432283cdcc3fd4aabef423b4c",
+          "message": "comment out cpu usage graphs",
+          "timestamp": "2024-03-12T10:44:41+05:30",
+          "tree_id": "56c78cae1570831b72f6ec83a71381f37d5103fe",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/c09710ac06d604a432283cdcc3fd4aabef423b4c"
+        },
+        "date": 1710222606201,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 1.8958245621353333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 73.20274464868932,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.3159397455286666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.713034870813,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 1.9092504982299998,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 74.47513750837933,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_four_threads",
+            "value": 2.3084060536366664,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_sixteen_threads",
+            "value": 4.464020068845667,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_four_threads",
+            "value": 73.033571281453,
             "unit": "milliseconds"
           }
         ]
