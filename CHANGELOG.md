@@ -1,5 +1,8 @@
 ## 2.3.0 (Unreleased)
 **Bug Fixes**
+- [#1057](https://github.com/Azure/azure-storage-fuse/issues/1057) Fixed the issue where user-assigned identity is not used to authenticate when system-assigned identity is enabled.
+- Listing blobs is now supported for blob names that contain characters that aren't valid in XML (U+FFFE or U+FFFF).
+
 **Features**
 - Migrated to the latest [azblob SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob).
 - Migrated to the latest [azdatalake SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake).
