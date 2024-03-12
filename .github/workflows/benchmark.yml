@@ -79,31 +79,21 @@ jobs:
           sudo chmod 777 /mnt/blob_mnt
           sudo chmod 777 /mnt/tempcache
 
-      # Run the List tests
-      # - name: "List File Test"
-      #   uses: "./.github/template/generate_page"
-      #   with:
-      #     TEST: "list"
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #     AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
-      #     AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
-      #     AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}  
-
       # Run the Write tests
-      - name: "Write Test"
+      - name: "Read Test"
         uses: "./.github/template/generate_page"
         with:
-          TEST: "write"
+          TEST: "read"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
           AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
 
       # Run the Write tests
-      - name: "Read Test"
+      - name: "Write Test"
         uses: "./.github/template/generate_page"
         with:
-          TEST: "read"
+          TEST: "write"
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
@@ -120,12 +110,21 @@ jobs:
           AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
     
       # Run the Create tests
-      - name: "Create File Test"
-        uses: "./.github/template/generate_page"
-        with:
-          TEST: "create"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
-          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
-          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}  
-          
+      # - name: "Create File Test"
+      #   uses: "./.github/template/generate_page"
+      #   with:
+      #     TEST: "create"
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+      #     AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+      #     AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}  
+
+      # Run the List tests
+      # - name: "List File Test"
+      #   uses: "./.github/template/generate_page"
+      #   with:
+      #     TEST: "list"
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+      #     AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+      #     AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}            

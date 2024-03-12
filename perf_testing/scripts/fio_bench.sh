@@ -89,8 +89,9 @@ execute_test() {
     else $job.write.lat_ns.mean / 1000000 end)) | {name: .name, value: (.value / .len), unit: "milliseconds"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_latency_summary.json
 
   # From the fio output get the cpu usage details and put it in a summary file
-  jq -n 'reduce inputs.jobs[] as $job (null; .name = $job.jobname | .len += 1 | .value += ($job.usr_cpu + $job.sys_cpu)) 
-      | {name: .name, value: (.value / .len), unit: "percent"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_cpu_summary.json
+  # Commenting this out as this shows cpu usage of fio and not blobfuse2
+  # jq -n 'reduce inputs.jobs[] as $job (null; .name = $job.jobname | .len += 1 | .value += ($job.usr_cpu + $job.sys_cpu)) 
+  #    | {name: .name, value: (.value / .len), unit: "percent"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_cpu_summary.json
 }
 
 # --------------------------------------------------------------------------------------------------
@@ -98,12 +99,13 @@ execute_test() {
 iterate_fio_files() {
   jobs_dir=$1
   output_field=$2
+  extra_param=$3
 
   for job_file in "${jobs_dir}"/*.fio; do
     job_name=$(basename "${job_file}")
     job_name="${job_name%.*}"
     
-    mount_blobfuse
+    mount_blobfuse $3
 
     execute_test $job_file ${job_name}.dat ${output_field}
 
@@ -210,7 +212,7 @@ elif [[ ${test_name} == "highlyparallel" ]]
 then
   # Execute multi-threaded benchmark using fio
   echo "Running Highly Parallel test cases"
-  iterate_fio_files "./perf_testing/config/high_threads" "bandwidth"
+  iterate_fio_files "./perf_testing/config/high_threads" "bandwidth" "--block-cache-path=/mnt/tempcache"
 elif [[ ${test_name} == "create" ]] 
 then  
   # Execute file create tests
@@ -239,7 +241,8 @@ then
   jq -n '[inputs]' ${output}/*_latency_summary.json | tee ./${output}/latency_results.json
 
   # Merge all results and generate a json summary for cpu usage
-  jq -n '[inputs]' ${output}/*_cpu_summary.json | tee ./${output}/cpu_results.json
+  # Commenting this out as this shows cpu usage of fio and not blobfuse2
+  # jq -n '[inputs]' ${output}/*_cpu_summary.json | tee ./${output}/cpu_results.json
 fi
 
 # --------------------------------------------------------------------------------------------------
