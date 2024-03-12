@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1710223392044,
+  "lastUpdate": 1710231830799,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -281,6 +281,50 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_four_threads",
             "value": 4491.4287109375,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "1b0361d83ff9020be035865da7cd140f8399c93a",
+          "message": "adding local cache in all tests",
+          "timestamp": "2024-03-12T13:08:20+05:30",
+          "tree_id": "05642bb2cdcf7cd598c97c9fe4ad52d2071b8c28",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/1b0361d83ff9020be035865da7cd140f8399c93a"
+        },
+        "date": 1710231830476,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 1432.0016276041667,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 1500.0719401041667,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_four_threads",
+            "value": 2453.5836588541665,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_write_four_threads",
+            "value": 4967.96875,
             "unit": "MiB/s"
           }
         ]
