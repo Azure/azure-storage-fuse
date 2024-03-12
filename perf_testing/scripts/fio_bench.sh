@@ -202,12 +202,12 @@ if [[ ${test_name} == "write" ]]
 then
   # Execute write benchmark using fio
   echo "Running Write test cases"
-  iterate_fio_files "./perf_testing/config/write" "bandwidth"
+  iterate_fio_files "./perf_testing/config/write" "bandwidth" "--block-cache-path=/mnt/tempcache"
 elif [[ ${test_name} == "read" ]] 
 then
   # Execute read benchmark using fio
   echo "Running Read test cases"
-  iterate_fio_files "./perf_testing/config/read" "bandwidth"
+  iterate_fio_files "./perf_testing/config/read" "bandwidth" "--block-cache-path=/mnt/tempcache"
 elif [[ ${test_name} == "highlyparallel" ]] 
 then
   # Execute multi-threaded benchmark using fio
