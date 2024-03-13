@@ -45,9 +45,8 @@ mount_blobfuse() {
 
 # --------------------------------------------------------------------------------------------------
 # Method to execute fio command for a given config file and generate summary result
-execute_test_with_filename() {
+execute_test() {
   job_file=$1
-  bench_file=$2
 
   job_name=$(basename "${job_file}")
   job_name="${job_name%.*}"
@@ -63,7 +62,6 @@ execute_test_with_filename() {
       --output=${output}/${job_name}trial${i}.json \
       --output-format=json \
       --directory=${mount_dir} \
-      --filename=${bench_file}${i} \
       --eta=never \
       ${job_file}
 
@@ -90,70 +88,18 @@ execute_test_with_filename() {
     else $job.write.lat_ns.mean / 1000000 end)) | {name: .name, value: (.value / .len), unit: "milliseconds"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_latency_summary.json
 }
 
-# Method to execute fio command once without passing down file name for a given config file and generate summary result
-execute_test_once_without_filename() {
-  job_file=$1
-  bench_file=$2
-
-  job_name=$(basename "${job_file}")
-  job_name="${job_name%.*}"
-
-  echo -n "Running job ${job_name} for ${iterations} iterations... "
-
-  set +e
-
-  timeout 300s fio --thread \
-    --output=${output}/${job_name}trial${i}.json \
-    --output-format=json \
-    --directory=${mount_dir} \
-    --filename=${bench_file}${i} \
-    --eta=never \
-    ${job_file}
-
-  job_status=$?
-  set -e
-  if [ $job_status -ne 0 ]; then
-    echo "Job ${job_name} failed : ${job_status}"
-    exit 1
-  fi
-
-  # From the fio output get the bandwidth details and put it in a summary file
-  jq -n 'reduce inputs.jobs[] as $job (null; .name = $job.jobname | .len += 1 | .value += (if ($job."job options".rw == "read")
-      then $job.read.bw / 1024
-      elif ($job."job options".rw == "randread") then $job.read.bw / 1024
-      elif ($job."job options".rw == "randwrite") then $job.write.bw / 1024
-      else $job.write.bw / 1024 end)) | {name: .name, value: (.value / .len), unit: "MiB/s"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_bandwidth_summary.json
-
-  # From the fio output get the latency details and put it in a summary file
-  jq -n 'reduce inputs.jobs[] as $job (null; .name = $job.jobname | .len += 1 | .value += (if ($job."job options".rw == "read")
-    then $job.read.lat_ns.mean / 1000000
-    elif ($job."job options".rw == "randread") then $job.read.lat_ns.mean / 1000000
-    elif ($job."job options".rw == "randwrite") then $job.write.lat_ns.mean / 1000000
-    else $job.write.lat_ns.mean / 1000000 end)) | {name: .name, value: (.value / .len), unit: "milliseconds"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_latency_summary.json
-}
-
 # --------------------------------------------------------------------------------------------------
 # Method to iterate over fio files in given directory and execute each test
 iterate_fio_files() {
   jobs_dir=$1
-  output_field=$2
-  extra_param=$3
-  once=$4
+  extra_param=$2
 
   for job_file in "${jobs_dir}"/*.fio; do
     job_name=$(basename "${job_file}")
     job_name="${job_name%.*}"
     
     mount_blobfuse $extra_param
-
-    if [[ $once == "once" ]]
-    then
-      echo "Running job ${job_name} for once"
-      execute_test_once_without_filename $job_file ${job_name}.dat ${output_field}
-    else
-      echo "Running job ${job_name} for ${iterations} iterations"
-      execute_test_with_filename $job_file ${job_name}.dat ${output_field}
-    fi
+    execute_test $job_file
 
     blobfuse2 unmount all
     sleep 5
@@ -248,22 +194,25 @@ if [[ ${test_name} == "write" ]]
 then
   # Execute write benchmark using fio
   echo "Running Write test cases"
-  iterate_fio_files "./perf_testing/config/write" "bandwidth" "--block-cache-path=/mnt/tempcache"
+  iterate_fio_files "./perf_testing/config/write" 
 elif [[ ${test_name} == "read" ]] 
 then
   # Execute read benchmark using fio
   echo "Running Read test cases"
-  iterate_fio_files "./perf_testing/config/read" "bandwidth" "--block-cache-path=/mnt/tempcache"
+  iterate_fio_files "./perf_testing/config/read" 
 elif [[ ${test_name} == "highlyparallel" ]] 
 then
   # Execute multi-threaded benchmark using fio
   echo "Running Highly Parallel test cases"
-  iterate_fio_files "./perf_testing/config/high_threads" "bandwidth" "--block-cache-path=/mnt/tempcache"
+  iterate_fio_files "./perf_testing/config/high_threads"
 elif [[ ${test_name} == "create" ]] 
 then  
   # Execute file create tests
+  # These tests to be done only once
+  iterations=1
+
   echo "Running Create test cases"
-  iterate_fio_files "./perf_testing/config/create" "latency" "--block-cache-path=/mnt/tempcache" "once"
+  iterate_fio_files "./perf_testing/config/create" 
 elif [[ ${test_name} == "list" ]] 
 then 
   # Execute file listing tests
