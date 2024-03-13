@@ -110,14 +110,14 @@ jobs:
           AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
     
       # Run the Create tests
-      # - name: "Create File Test"
-      #   uses: "./.github/template/generate_page"
-      #   with:
-      #     TEST: "create"
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #     AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
-      #     AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
-      #     AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}  
+      - name: "Create File Test"
+        uses: "./.github/template/generate_page"
+        with:
+          TEST: "create"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}  
 
       # Run the List tests
       # - name: "List File Test"
