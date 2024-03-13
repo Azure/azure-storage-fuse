@@ -19,6 +19,7 @@ mount_blobfuse() {
   extra_opts=$1
   set +e
 
+  echo "Mounting with additional param: " $extra_opts
   blobfuse2 mount ${mount_dir} --config-file=./config.yaml ${extra_opts}
   mount_status=$?
   set -e
@@ -105,7 +106,7 @@ iterate_fio_files() {
     job_name=$(basename "${job_file}")
     job_name="${job_name%.*}"
     
-    mount_blobfuse $3
+    mount_blobfuse $extra_param
 
     execute_test $job_file ${job_name}.dat ${output_field}
 
