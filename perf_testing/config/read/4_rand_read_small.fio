@@ -3,7 +3,7 @@ name=blobfuse_benchmark
 bs=1M
 runtime=30s
 time_based
-filename_format=$jobname.$jobnum.$filenum
+filename=random_read_small_file.data
 group_reporting
 
 [random_read_small_file]

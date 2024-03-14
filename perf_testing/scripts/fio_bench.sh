@@ -80,6 +80,13 @@ execute_test() {
       elif ($job."job options".rw == "randwrite") then $job.write.bw / 1024
       else $job.write.bw / 1024 end)) | {name: .name, value: (.value / .len), unit: "MiB/s"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_bandwidth_summary.json
 
+  # From the fio output get the iops details and put it in a summary file
+  jq -n 'reduce inputs.jobs[] as $job (null; .name = $job.jobname | .len += 1 | .value += (if ($job."job options".rw == "read")
+      then $job.read.iops
+      elif ($job."job options".rw == "randread") then $job.read.iops
+      elif ($job."job options".rw == "randwrite") then $job.write.iops
+      else $job.write.iops end)) | {name: .name, value: (.value / .len), unit: "iops"}' ${output}/${job_name}trial*.json | tee ${output}/${job_name}_iops_summary.json
+
   # From the fio output get the latency details and put it in a summary file
   jq -n 'reduce inputs.jobs[] as $job (null; .name = $job.jobname | .len += 1 | .value += (if ($job."job options".rw == "read")
     then $job.read.lat_ns.mean / 1000000
@@ -92,13 +99,20 @@ execute_test() {
 # Method to iterate over fio files in given directory and execute each test
 iterate_fio_files() {
   jobs_dir=$1
-  extra_param=$2
+  job_type=$(basename "${jobs_dir}")
 
   for job_file in "${jobs_dir}"/*.fio; do
     job_name=$(basename "${job_file}")
     job_name="${job_name%.*}"
     
-    mount_blobfuse $extra_param
+    if [[ ${job_type} == "read" && ${job_name} == *"_rand_"* ]] 
+    then
+      # For read test case, any random read related cases shall go with disk caching
+      mount_blobfuse "--block-cache-path=/mnt/tempcache"
+    else
+      mount_blobfuse 
+    fi
+    
     execute_test $job_file
 
     blobfuse2 unmount all
@@ -234,6 +248,9 @@ then
 
   # Merge all results and generate a json summary for latency
   jq -n '[inputs]' ${output}/*_latency_summary.json | tee ./${output}/latency_results.json
+
+  # Merge all results and generate a json summary for iops
+  jq -n '[inputs]' ${output}/*_iops_summary.json | tee ./${output}/iops_results.json
 fi
 
 # --------------------------------------------------------------------------------------------------

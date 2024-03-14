@@ -48,18 +48,16 @@ runs:
     - name: "Print latest results : ${{ inputs.TEST }}"
       shell: bash
       run: |
+        echo "--------------------------------------------------------------------"
         cat ./${{ inputs.TEST }}/bandwidth_results.json
+        echo "--------------------------------------------------------------------"
         cat ./${{ inputs.TEST }}/latency_results.json
+        echo "--------------------------------------------------------------------"
+        cat ./${{ inputs.TEST }}/iops_results.json
+        echo "--------------------------------------------------------------------"
 
-    # cat ./${{ inputs.TEST }}/cpu_results.json
-    
-    # - name: "Print latest results : ${{ inputs.TEST }}"
-    #   shell: bash
-    #   run: |
-    #     cat ./${{ inputs.TEST }}/list_results.json
-
-    # Push the bandwidth results and publish the graphs
-    - name: "Update Benchmark Results : ${{ inputs.TEST }}"
+     # Push the bandwidth results and publish the graphs
+    - name: "Update Bandwidth Results : ${{ inputs.TEST }}"
       uses: benchmark-action/github-action-benchmark@v1
       with:
         output-file-path: ${{ inputs.TEST }}/bandwidth_results.json
@@ -74,7 +72,7 @@ runs:
         benchmark-data-dir-path: bandwidth/${{ inputs.TEST }}
 
     # Push the latency results and publish the graphs
-    - name: "Update Benchmark Results : ${{ inputs.TEST }}"
+    - name: "Update Latency Results : ${{ inputs.TEST }}"
       uses: benchmark-action/github-action-benchmark@v1
       with:
         output-file-path: ${{ inputs.TEST }}/latency_results.json
@@ -88,23 +86,28 @@ runs:
         gh-pages-branch: benchmarks
         benchmark-data-dir-path: latency/${{ inputs.TEST }}  
 
-    # Push the cpu results and publish the graphs
-    # Commenting this out as this shows cpu usage of fio and not blobfuse2
-    # - name: "Update Benchmark Results : ${{ inputs.TEST }}"
-    #   uses: benchmark-action/github-action-benchmark@v1
-    #   with:
-    #     output-file-path: ${{ inputs.TEST }}/cpu_results.json
-    #     tool: 'customSmallerIsBetter'
-    #     alert-threshold: "160%"
-    #     max-items-in-chart: 100
-    #     github-token: ${{ inputs.GITHUB_TOKEN }}
-    #     fail-on-alert: true
-    #     auto-push: true
-    #     comment-on-alert: true
-    #     gh-pages-branch: benchmarks
-    #     benchmark-data-dir-path: cpu/${{ inputs.TEST }}   
+    # Push the iops results and publish the graphs
+    - name: "Update IOPS Results : ${{ inputs.TEST }}"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: ${{ inputs.TEST }}/iops_results.json
+        tool: 'customBiggerIsBetter'
+        alert-threshold: "160%"
+        max-items-in-chart: 100
+        github-token: ${{ inputs.GITHUB_TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: iops/${{ inputs.TEST }}
 
+    # - name: "Print latest results : ${{ inputs.TEST }}"
+    #   shell: bash
+    #   run: |
+    #     cat ./${{ inputs.TEST }}/list_results.json
     # Push the listing results and publish the graphs
+
+    
     # - name: "Update Benchmark Results : ${{ inputs.TEST }}"
     #   uses: benchmark-action/github-action-benchmark@v1
     #   with:
