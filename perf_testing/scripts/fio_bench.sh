@@ -192,6 +192,8 @@ prepare_system() {
   # Clean storage account before beginning the test
   mount_blobfuse
 
+  rm -rf ${mount_dir}/*
+
   blobfuse2 unmount all
   sleep 5
 }
