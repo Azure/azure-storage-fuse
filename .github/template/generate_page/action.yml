@@ -44,17 +44,7 @@ runs:
       run: cat ./blobfuse2.log
       if: always()
 
-    # # Print the results generated
-    # - name: "Print latest results : ${{ inputs.TEST }}"
-    #   shell: bash
-    #   run: |
-    #     echo "--------------------------------------------------------------------"
-    #     cat ./${{ inputs.TEST }}/bandwidth_results.json
-    #     echo "--------------------------------------------------------------------"
-    #     cat ./${{ inputs.TEST }}/latency_results.json
-    #     echo "--------------------------------------------------------------------"
-
-     # Push the bandwidth results and publish the graphs
+    # Push the bandwidth results and publish the graphs
     - name: "Update Bandwidth Results : ${{ inputs.TEST }}"
       uses: benchmark-action/github-action-benchmark@v1
       with:
@@ -68,6 +58,7 @@ runs:
         comment-on-alert: true
         gh-pages-branch: benchmarks
         benchmark-data-dir-path: bandwidth/${{ inputs.TEST }}
+      if: success() && ${{ !contains(inputs.TEST, 'list') }}        
 
     # Push the latency results and publish the graphs
     - name: "Update Latency Results : ${{ inputs.TEST }}"
@@ -83,25 +74,19 @@ runs:
         comment-on-alert: true
         gh-pages-branch: benchmarks
         benchmark-data-dir-path: latency/${{ inputs.TEST }}  
+      if: success() && ${{ !contains(inputs.TEST, 'list') }}
 
-    # - name: "Print latest results : ${{ inputs.TEST }}"
-    #   shell: bash
-    #   run: |
-    #     cat ./${{ inputs.TEST }}/list_results.json
-    # Push the listing results and publish the graphs
-
-    
-    # - name: "Update Benchmark Results : ${{ inputs.TEST }}"
-    #   uses: benchmark-action/github-action-benchmark@v1
-    #   with:
-    #     output-file-path: ${{ inputs.TEST }}/list_results.json
-    #     tool: 'customSmallerIsBetter'
-    #     alert-threshold: "160%"
-    #     max-items-in-chart: 100
-    #     github-token: ${{ inputs.GITHUB_TOKEN }}
-    #     fail-on-alert: true
-    #     auto-push: true
-    #     comment-on-alert: true
-    #     gh-pages-branch: benchmarks
-    #     benchmark-data-dir-path: time/${{ inputs.TEST }}   
-    #   if: success() && ${{ contains(inputs.TEST, 'list') }}    
+    - name: "Update Benchmark Results : ${{ inputs.TEST }}"
+      uses: benchmark-action/github-action-benchmark@v1
+      with:
+        output-file-path: ${{ inputs.TEST }}/list_results.json
+        tool: 'customSmallerIsBetter'
+        alert-threshold: "160%"
+        max-items-in-chart: 100
+        github-token: ${{ inputs.GITHUB_TOKEN }}
+        fail-on-alert: true
+        auto-push: true
+        comment-on-alert: true
+        gh-pages-branch: benchmarks
+        benchmark-data-dir-path: time/${{ inputs.TEST }}   
+      if: success() && ${{ contains(inputs.TEST, 'list') }}    

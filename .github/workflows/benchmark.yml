@@ -79,6 +79,15 @@ jobs:
           sudo chmod 777 /mnt/blob_mnt
           sudo chmod 777 /mnt/tempcache
 
+      # Mount the blobfuse2 and cleanup old data
+      - name: "Cleanup storage account"
+        run: |
+          blobfuse2 mount /mnt/blob_mnt --config-file=./config.yaml
+          sleep 3
+          rm -rf /mnt/blob_mnt/*
+          blobfuse2 unmount all
+          sleep 3
+
       # Run the Write tests
       - name: "Read Test"
         uses: "./.github/template/generate_page"
@@ -120,11 +129,11 @@ jobs:
           AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}  
 
       # Run the List tests
-      # - name: "List File Test"
-      #   uses: "./.github/template/generate_page"
-      #   with:
-      #     TEST: "list"
-      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #     AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
-      #     AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
-      #     AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}            
+      - name: "List File Test"
+        uses: "./.github/template/generate_page"
+        with:
+          TEST: "list"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}            

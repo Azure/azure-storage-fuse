@@ -148,7 +148,7 @@ list_files() {
 
   # ------------------------------
   # Measure time taken to delete these files
-  sudo /usr/bin/time -o del.txt -v rm -rf ${mount_dir}/* > /dev/null 
+  sudo /usr/bin/time -o del.txt -v rm -rf /mnt/blob_mnt/* > /dev/null 
   cat del.txt
 
   # Extract Deletion time 
@@ -177,19 +177,8 @@ list_files() {
 # Method to prepare the system for test
 prepare_system() {
   # Clean up logs and create output directory
-  rm -rf blobfuse2.log
-  rm -rf ${output}
   mkdir -p ${output}
   chmod 777 ${output}
-
-  # Clean storage account before beginning the test
-  mount_blobfuse
-
-  echo "Cleaning up previous state from storage account"
-  rm -rf /mnt/blob_mnt/*
-  
-  blobfuse2 unmount all
-  sleep 5
 }
 
 
