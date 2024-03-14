@@ -58,7 +58,7 @@ runs:
         comment-on-alert: true
         gh-pages-branch: benchmarks
         benchmark-data-dir-path: bandwidth/${{ inputs.TEST }}
-      if: success() && ${{ !contains(inputs.TEST, 'list') }}        
+      if: success() && ${{ inputs.TEST != 'list' }}        
 
     # Push the latency results and publish the graphs
     - name: "Update Latency Results : ${{ inputs.TEST }}"
@@ -74,7 +74,7 @@ runs:
         comment-on-alert: true
         gh-pages-branch: benchmarks
         benchmark-data-dir-path: latency/${{ inputs.TEST }}  
-      if: success() && ${{ !contains(inputs.TEST, 'list') }}
+      if: success() && ${{ inputs.TEST != 'list' }} 
 
     - name: "Update Benchmark Results : ${{ inputs.TEST }}"
       uses: benchmark-action/github-action-benchmark@v1
@@ -89,4 +89,4 @@ runs:
         comment-on-alert: true
         gh-pages-branch: benchmarks
         benchmark-data-dir-path: time/${{ inputs.TEST }}   
-      if: success() && ${{ contains(inputs.TEST, 'list') }}    
+      if: success() && ${{ inputs.TEST == 'list' }}    
