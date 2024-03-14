@@ -17,9 +17,9 @@ libfuse:
 
 block_cache:
   block-size-mb: 16
-  mem-size-mb: 153600
+  mem-size-mb: 204800
   prefetch: 200
-  parallelism: 300
+  parallelism: 600
   disk-size-mb: 512000 
   disk-timeout-sec: 120 
   #prefetch-on-open: true
