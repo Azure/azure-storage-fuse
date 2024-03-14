@@ -9,6 +9,6 @@ group_reporting
 [random_read]
 size=10G
 rw=randread
-ioengine=libio
+ioengine=libaio
 fallocate=none
 startdelay=30s

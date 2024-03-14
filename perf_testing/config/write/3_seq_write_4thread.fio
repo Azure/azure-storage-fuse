@@ -9,7 +9,7 @@ group_reporting
 [sequential_write_four_threads]
 size=10G
 rw=write
-ioengine=libio
+ioengine=libaio
 fallocate=none
 numjobs=4
 startdelay=30s
