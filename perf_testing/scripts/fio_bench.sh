@@ -105,9 +105,9 @@ iterate_fio_files() {
     job_name=$(basename "${job_file}")
     job_name="${job_name%.*}"
     
-    if [[ ${job_type} == "read" && ${job_name} == *"_rand_"* ]] 
+    if [[ ${job_type} == "high_threads" ]] 
     then
-      # For read test case, any random read related cases shall go with disk caching
+      # For highly parallel tests, we need to mount block cache with disk persistance
       mount_blobfuse "--block-cache-path=/mnt/tempcache"
     else
       mount_blobfuse 
@@ -177,7 +177,6 @@ list_files() {
 
   jq -n --arg list_time $avg_list_time --arg del_time $avg_del_time '{name: "list_1_million_files", value: $list_time, unit: "seconds"},
       {name: "delete_1_million_files", value: $del_time, unit: "seconds"}' | tee ${output}/list_results.json
-
 }
 
 
