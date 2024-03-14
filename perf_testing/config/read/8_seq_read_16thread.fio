@@ -9,7 +9,7 @@ group_reporting
 [sequential_read_sixteen_threads]
 size=10G
 rw=read
-ioengine=sync
+ioengine=libio
 fallocate=none
 numjobs=16
 startdelay=30s

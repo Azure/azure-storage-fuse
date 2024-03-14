@@ -9,7 +9,7 @@ group_reporting
 [sequential_read_four_threads]
 size=10G
 rw=read
-ioengine=sync
+ioengine=libio
 fallocate=none
 numjobs=4
 startdelay=30s

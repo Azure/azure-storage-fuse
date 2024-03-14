@@ -9,6 +9,6 @@ group_reporting
 [sequential_write]
 size=10G
 rw=write
-ioengine=sync
+ioengine=libio
 fallocate=none
 startdelay=30s

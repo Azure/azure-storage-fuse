@@ -186,17 +186,8 @@ prepare_system() {
   mount_blobfuse
 
   echo "Cleaning up previous state from storage account"
-  cd ${mount_dir}
-  cd_status=$?
-  if [ $cd_status -ne 0 ]; then
-    echo "Failed to cd to mounted path"
-    exit 1
-  else
-    echo "Moved inside mounted path ${mount_dir}"
-    rm -rf *
-    cd -
-  fi
-
+  rm -rf /mnt/blob_mnt/*
+  
   blobfuse2 unmount all
   sleep 5
 }
