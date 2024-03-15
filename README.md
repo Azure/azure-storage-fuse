@@ -246,7 +246,9 @@ If your use-case involves updating/uploading file(s) through other means and you
 - When Blobfuse2 is mounted on a container, SYS_ADMIN privileges are required for it to interact with the fuse driver. If container is created without the privilege, mount will fail. Sample command to spawn a docker container is 
 
     `docker run -it --rm --cap-add=SYS_ADMIN --device=/dev/fuse --security-opt apparmor:unconfined <environment variables> <docker image>`
-        
+- In case of `mount all` system may limit on number of containers you can mount in parallel (when you go above 100 containers). To increase this system limit use below command
+    `echo 256 | sudo tee /proc/sys/fs/inotify/max_user_instances`
+
 ### Syslog security warning
 By default, Blobfuse2 will log to syslog. The default settings will, in some cases, log relevant file paths to syslog. 
 If this is sensitive information, turn off logging or set log-level to LOG_ERR.  
