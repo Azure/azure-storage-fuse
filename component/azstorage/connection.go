@@ -64,7 +64,6 @@ type AzStorageConfig struct {
 	backoffTime           int32
 	maxRetryDelay         int32
 	proxyAddress          string
-	sdkTrace              bool
 	ignoreAccessModifiers bool
 	mountAllContainers    bool
 

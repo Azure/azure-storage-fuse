@@ -140,16 +140,15 @@ func getSDKLogOptions() policy.LogOptions {
 // setSDKLogListener : log the requests and responses.
 // It is disabled if,
 //   - logging type is silent
-//   - sdk-trace is false
 //   - logging level is less than debug
-func setSDKLogListener(sdkLogging bool) {
+func setSDKLogListener() {
 	// TODO:: track2 : set/reset listener on dynamic config change
-	if log.GetType() == "silent" || !sdkLogging || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
+	if log.GetType() == "silent" || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
 		// reset listener
 		azlog.SetListener(nil)
 	} else {
 		azlog.SetListener(func(cls azlog.Event, msg string) {
-			log.Debug("SDK : %s", msg)
+			log.Debug("SDK(%s) : %s", cls, msg)
 		})
 	}
 }

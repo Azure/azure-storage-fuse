@@ -35,6 +35,5 @@ azstorage:
   account-key: { NIGHTLY_STO_ACC_KEY }
   mode: key
   container: { 0 }
-  sdk-trace: false
   block-list-on-mount-sec: 10
   ignore-access-modify: true
