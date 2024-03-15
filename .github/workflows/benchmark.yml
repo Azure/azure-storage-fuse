@@ -134,12 +134,30 @@ jobs:
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
           AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}  
 
+      # ---------------------------------------------------------------------------------------
       # Run the List tests
-      - name: "List File Test"
-        uses: "./.github/template/generate_page"
-        with:
-          TEST: "list"
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # This needs to run seperatly as output is different
+      - name: "Run Benchmark Script : List"
+        run: |
+          rm -rf /mnt/blob_mnt/*
+          rm -rf /mnt/tempcache/*
+          ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt list
+        env:
           AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
-          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}            
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }} 
+        
+      - name: "Update Benchmark Results : List"
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          output-file-path: list/list_results.json
+          tool: 'customSmallerIsBetter'
+          alert-threshold: "160%"
+          max-items-in-chart: 100
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-alert: true
+          auto-push: true
+          comment-on-alert: true
+          gh-pages-branch: benchmarks
+          benchmark-data-dir-path: time/list
+      # ---------------------------------------------------------------------------------------
