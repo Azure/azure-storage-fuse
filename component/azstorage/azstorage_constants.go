@@ -73,4 +73,5 @@ var allowedHeaders []string = []string{
 var allowedQueryParams []string = []string{
 	"comp", "delimiter", "include", "marker", "maxresults", "prefix", "restype", "blockid", "blocklisttype",
 	"directory", "recursive", "resource", "se", "sp", "spr", "srt", "ss", "st", "sv", "action", "continuation", "mode",
+	"client_id", "authorization_endpoint",
 }

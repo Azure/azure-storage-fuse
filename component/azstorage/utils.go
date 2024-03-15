@@ -126,7 +126,7 @@ func getAzDatalakeServiceClientOptions(conf *AzStorageConfig) *serviceBfs.Client
 
 // getLogOptions : to configure the SDK logging policy
 func getSDKLogOptions() policy.LogOptions {
-	if log.GetType() == "silent" {
+	if log.GetType() == "silent" || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
 		return policy.LogOptions{}
 	} else {
 		// TODO:: track2 : check which headers and query params should not be redacted
