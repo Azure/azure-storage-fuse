@@ -46,6 +46,7 @@ runs:
 
     # Push the bandwidth results and publish the graphs
     - name: "Update Bandwidth Results : ${{ inputs.TEST }}"
+      if: success() && ${{ inputs.TEST != 'list' }}   
       uses: benchmark-action/github-action-benchmark@v1
       with:
         output-file-path: ${{ inputs.TEST }}/bandwidth_results.json
@@ -58,10 +59,10 @@ runs:
         comment-on-alert: true
         gh-pages-branch: benchmarks
         benchmark-data-dir-path: bandwidth/${{ inputs.TEST }}
-      if: success() && ${{ inputs.TEST != 'list' }}        
 
     # Push the latency results and publish the graphs
     - name: "Update Latency Results : ${{ inputs.TEST }}"
+      if: success() && ${{ inputs.TEST != 'list' }} 
       uses: benchmark-action/github-action-benchmark@v1
       with:
         output-file-path: ${{ inputs.TEST }}/latency_results.json
@@ -74,9 +75,9 @@ runs:
         comment-on-alert: true
         gh-pages-branch: benchmarks
         benchmark-data-dir-path: latency/${{ inputs.TEST }}  
-      if: success() && ${{ inputs.TEST != 'list' }} 
-
+      
     - name: "Update Benchmark Results : ${{ inputs.TEST }}"
+      if: success() && ${{ inputs.TEST == 'list' }}  
       uses: benchmark-action/github-action-benchmark@v1
       with:
         output-file-path: ${{ inputs.TEST }}/list_results.json
@@ -89,4 +90,4 @@ runs:
         comment-on-alert: true
         gh-pages-branch: benchmarks
         benchmark-data-dir-path: time/${{ inputs.TEST }}   
-      if: success() && ${{ inputs.TEST == 'list' }}    
+        
