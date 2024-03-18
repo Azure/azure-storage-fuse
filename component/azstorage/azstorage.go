@@ -131,6 +131,9 @@ func (az *AzStorage) OnConfigChange() {
 		log.Err("AzStorage::OnConfigChange : failed to UpdateConfig", err.Error())
 		return
 	}
+
+	// dynamic update of the sdk log listener
+	setSDKLogListener()
 }
 
 func (az *AzStorage) configureAndTest(isParent bool) error {

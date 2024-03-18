@@ -49,26 +49,26 @@ type Version struct {
 }
 
 // To keep the code simple, we assume we only use a simple subset of semantic versions.
-// Namely, the version is either a normal stable version, or a pre-release version with '-preview' attached.
-// Examples: 10.1.0, 11.2.0-preview.1
+// Namely, the version is either a normal stable version, or a pre-release version with '~preview' or '-preview' attached.
+// Examples: 10.1.0, 11.2.0-preview.1, 11.2.0~preview.1
 func ParseVersion(raw string) (*Version, error) {
 	const standardError = "invalid version string"
 
 	rawSegments := strings.Split(raw, ".")
-	if !(len(rawSegments) == 3 || (len(rawSegments) == 4 && strings.Contains(rawSegments[2], "-"))) {
+	if !(len(rawSegments) == 3 || (len(rawSegments) == 4 && (strings.Contains(rawSegments[2], "-") || strings.Contains(rawSegments[2], "~")))) {
 		return nil, errors.New(standardError)
 	}
 
 	v := &Version{segments: make([]int64, 4), original: raw}
 	for i, str := range rawSegments {
 		//For any case such as SemVer-preview.1, SemVer-beta.1, SemVer-alpha.1 this would be true, and we assume the version to be a preview version.
-		if strings.Contains(str, "-") {
+		if strings.Contains(str, "-") || strings.Contains(str, "~") {
 			if i != 2 {
 				return nil, errors.New(standardError)
 			}
 			v.preview = true
 			//Splitting the string into two pieces and extracting SemVer which is always at 0th index
-			str = strings.Split(str, "-")[0]
+			str = strings.Split(strings.Split(str, "-")[0], "~")[0]
 		}
 
 		val, err := strconv.ParseInt(str, 10, 64)
