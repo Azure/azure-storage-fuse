@@ -184,7 +184,8 @@ func (base *azOAuthBase) getAzIdentityClientOptions(config *azAuthConfig) azcore
 		return azcore.ClientOptions{}
 	}
 	opts := azcore.ClientOptions{
-		Cloud: getCloudConfiguration(config.Endpoint),
+		Cloud:   getCloudConfiguration(config.Endpoint),
+		Logging: getSDKLogOptions(),
 	}
 
 	if config.ActiveDirectoryEndpoint != "" {

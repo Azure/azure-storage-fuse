@@ -58,6 +58,7 @@ func (azspn *azAuthSPN) getTokenCredential() (azcore.TokenCredential, error) {
 	if azspn.config.OAuthTokenFilePath != "" {
 		log.Trace("AzAuthSPN::getTokenCredential : Going for fedrated token flow")
 
+		// TODO:: track2 : test this in AKS setup
 		cred, err = azidentity.NewWorkloadIdentityCredential(&azidentity.WorkloadIdentityCredentialOptions{
 			ClientOptions: clOpts,
 			ClientID:      azspn.config.ClientID,

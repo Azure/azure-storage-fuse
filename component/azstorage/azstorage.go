@@ -143,7 +143,7 @@ func (az *AzStorage) configureAndTest(isParent bool) error {
 	}
 
 	// set SDK log listener to log the requests and responses
-	setSDKLogListener(az.stConfig.sdkTrace)
+	setSDKLogListener()
 
 	err = az.storage.SetPrefixPath(az.stConfig.prefixPath)
 	if err != nil {

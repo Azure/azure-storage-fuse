@@ -34,7 +34,6 @@ azstorage:
   mode: key
   container: { 0 }
   tier: hot
-  sdk-trace: { VERBOSE_LOG }
 
 health_monitor:
   enable-monitoring: true
