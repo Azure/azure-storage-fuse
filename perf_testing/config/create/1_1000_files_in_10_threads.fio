@@ -1,7 +1,7 @@
 [global]
 create_on_open=1
 ioengine=filecreate
-fallocate=native
+fallocate=none
 filesize=1M
 bs=1M
 filename_format=$jobname.$jobnum.$filenum
