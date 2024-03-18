@@ -62,7 +62,7 @@ execute_test() {
     echo -n "${i};"
     set +e
 
-    timeout 300s fio --thread \
+    timeout 300m fio --thread \
       --output=${output}/${job_name}trial${i}.json \
       --output-format=json \
       --directory=${mount_dir} \
@@ -213,7 +213,7 @@ then
   # Execute file create tests
   # These tests to be done only once
   iterations=1
-  log_type="silent"
+  #log_type="silent"
 
   echo "Running Create test cases"
   iterate_fio_files "./perf_testing/config/create" 
@@ -221,7 +221,7 @@ elif [[ ${test_name} == "list" ]]
 then 
   # Execute file listing tests
   echo "Running File listing test cases"
-  log_type="silent"
+  #log_type="silent"
   list_files 
   
   # No need to generate bandwidth or latecy related reports in this case
