@@ -14,7 +14,8 @@ test_name=$2
 output="./${test_name}"
 
 # Type of logging strategy
-log_type="syslog"
+log_type="base"
+log_level="log_err"
 
 # --------------------------------------------------------------------------------------------------
 # Method to mount blobfuse and wait for system to stabilize
@@ -23,7 +24,7 @@ mount_blobfuse() {
   set +e
 
   echo "Mounting with additional param: " $extra_opts
-  blobfuse2 mount ${mount_dir} --config-file=./config.yaml --log-type=${log_type} ${extra_opts}
+  blobfuse2 mount ${mount_dir} --config-file=./config.yaml --log-type=${log_type} --log-level=${log_level} ${extra_opts}
   mount_status=$?
   set -e
   if [ $mount_status -ne 0 ]; then
@@ -179,6 +180,7 @@ list_files() {
 # --------------------------------------------------------------------------------------------------
 # Method to prepare the system for test
 prepare_system() {
+  blobfuse2 unmount all
   # Clean up logs and create output directory
   mkdir -p ${output}
   chmod 777 ${output}

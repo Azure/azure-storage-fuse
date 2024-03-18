@@ -11,7 +11,6 @@ runtime=60s
 time_based=1
 nrfiles=1
 thread=1
-openfiles=1
 group_reporting
 allrandrepeat=1
 filename_format=$jobname.$jobnum.$filenum

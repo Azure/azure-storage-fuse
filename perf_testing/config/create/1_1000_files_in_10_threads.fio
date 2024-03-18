@@ -1,10 +1,9 @@
 [global]
 create_on_open=1
 ioengine=filecreate
-fallocate=none
+fallocate=native
 filesize=1M
 bs=1M
-openfiles=1
 filename_format=$jobname.$jobnum.$filenum
 nrfiles=100
 group_reporting
