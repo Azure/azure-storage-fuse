@@ -110,6 +110,11 @@ iterate_fio_files() {
       mount_blobfuse
     fi
     
+    cd ${mount_dir}
+    find . -name "*" -delete
+    cd -
+    ls -l ${mount_dir}
+    
     execute_test $job_file
 
     blobfuse2 unmount all
@@ -125,7 +130,11 @@ list_files() {
 
   # Mount blobfuse and creat 1million files
   mount_blobfuse
-
+  cd ${mount_dir}
+  find . -name "*" -delete
+  cd -
+  ls -l ${mount_dir}
+    
   fio --thread --directory=${mount_dir} --eta=never ./perf_testing/config/create/3_1l_files_in_20_threads.fio
 
   total_seconds=0

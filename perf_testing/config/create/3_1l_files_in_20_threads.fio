@@ -8,6 +8,6 @@ filename_format=$jobname.$jobnum.$filenum
 nrfiles=5000
 group_reporting
 
-[create_50k_files_in_10_threads]
-numjobs=10
+[create_1l_files_in_20_threads]
+numjobs=20
 rw=write
