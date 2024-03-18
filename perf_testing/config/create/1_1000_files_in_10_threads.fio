@@ -5,11 +5,11 @@ fallocate=none
 filesize=1M
 bs=1M
 openfiles=1
-rw=write
 filename_format=$jobname.$jobnum.$filenum
 nrfiles=100
 group_reporting
 
 [create_1000_files_in_10_threads]
 numjobs=10
+rw=write
 
