@@ -222,6 +222,7 @@ then
   # Execute file create tests
   # These tests to be done only once
   iterations=1
+  ulimit -n 1048576
   #log_type="silent"
 
   echo "Running Create test cases"

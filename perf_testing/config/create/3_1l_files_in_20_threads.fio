@@ -5,6 +5,7 @@ fallocate=none
 filesize=1K
 bs=1K
 filename_format=$jobname.$jobnum.$filenum
+openfiles=10000
 nrfiles=5000
 group_reporting
 
