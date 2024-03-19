@@ -102,7 +102,7 @@ iterate_fio_files() {
     job_name=$(basename "${job_file}")
     job_name="${job_name%.*}"
     
-    if [[ ${job_type} == "high_threads" ]] 
+    if [[ ${job_type} == "high_threads" || ${job_type} == "write"]] 
     then
       # For highly parallel tests, we need to mount block cache with disk persistance
       mount_blobfuse "--block-cache-path=/mnt/tempcache"
