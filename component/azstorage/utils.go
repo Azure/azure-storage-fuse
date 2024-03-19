@@ -143,7 +143,6 @@ func getSDKLogOptions() policy.LogOptions {
 //   - logging type is silent
 //   - logging level is less than debug
 func setSDKLogListener() {
-	// TODO:: track2 : set/reset listener on dynamic config change
 	if log.GetType() == "silent" || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
 		// reset listener
 		azlog.SetListener(nil)
@@ -179,7 +178,7 @@ func newBlobfuse2HttpClient(conf *AzStorageConfig) *http.Client {
 			}).Dial, /*Context*/
 			MaxIdleConns:          MaxIdleConns, // No limit
 			MaxIdleConnsPerHost:   MaxIdleConnsPerHost,
-			MaxConnsPerHost:       MaxConnsPerHost,
+			MaxConnsPerHost:       MaxConnsPerHost, // No limit
 			IdleConnTimeout:       IdleConnTimeout,
 			TLSHandshakeTimeout:   TLSHandshakeTimeout,
 			ExpectContinueTimeout: ExpectContinueTimeout,
