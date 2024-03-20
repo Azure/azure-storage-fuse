@@ -39,10 +39,9 @@ runs:
         AZURE_STORAGE_ACCESS_KEY: ${{ inputs.AZURE_STORAGE_ACCESS_KEY }}
     
     # Print blobfuse2 logs
-    - name: "Print logs : ${{ inputs.TEST }}"
-      shell: bash
-      run: cat ./blobfuse2.log
-      if: failed()
+    # - name: "Print logs : ${{ inputs.TEST }}"
+    #   shell: bash
+    #   run: cat ./blobfuse2.log
 
     # Push the bandwidth results and publish the graphs
     - name: "Update Bandwidth Results : ${{ inputs.TEST }}"
