@@ -3,7 +3,7 @@ name=blobfuse_benchmark
 bs=1M
 runtime=30s
 time_based
-filename=random_read_small_file.data
+filename=read_small_fio.data
 group_reporting
 
 [random_read_small_file]
