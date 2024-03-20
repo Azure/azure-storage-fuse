@@ -122,7 +122,7 @@ jobs:
       # ---------------------------------------------------------------------------------------
       # Run the List tests
       # This needs to run seperatly as output is different, and shall always runs after create tests
-      - name: "Run Benchmark Script : List"
+      - name: "List File Test"
         run: |
           rm -rf /mnt/blob_mnt/*
           rm -rf /mnt/tempcache/*
