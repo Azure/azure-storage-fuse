@@ -42,7 +42,7 @@ runs:
     - name: "Print logs : ${{ inputs.TEST }}"
       shell: bash
       run: cat ./blobfuse2.log
-      if: always()
+      if: failed()
 
     # Push the bandwidth results and publish the graphs
     - name: "Update Bandwidth Results : ${{ inputs.TEST }}"

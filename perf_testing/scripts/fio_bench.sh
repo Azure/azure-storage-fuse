@@ -115,40 +115,27 @@ iterate_fio_files() {
 # --------------------------------------------------------------------------------------------------
 # Method to list files on the mount path and generate report
 list_files() {
-  # Mount blobfuse and creat 1million files
+  # Mount blobfuse and creat files to list
   mount_blobfuse
-  cd ${mount_dir}
-  find . -name "*" -delete
-  cd -
-  ls -l ${mount_dir}
-    
-  fio --thread --directory=${mount_dir} --eta=never ./perf_testing/config/create/3_1l_files_in_20_threads.fio
-
   total_seconds=0
 
-  for i in $(seq 1 $iterations);
-  do
-    # List files and capture the time related details
-    sudo /usr/bin/time -o lst${i}.txt -v ls ${mount_dir} > /dev/null 
-    cat lst${i}.txt
+  # List files and capture the time related details
+  sudo /usr/bin/time -o lst.txt -v ls ${mount_dir}/create_1l_files_in_20_threads* > /dev/null 
+  cat lst.txt
 
-    # Extract Elapsed time for listing files
-    list_time=`cat lst${i}.txt | grep "Elapsed" | rev | cut -d " " -f 1 | rev`
-    echo $list_time
+  # Extract Elapsed time for listing files
+  list_time=`cat lst.txt | grep "Elapsed" | rev | cut -d " " -f 1 | rev`
+  echo $list_time
 
-    IFS=':'; time_fragments=($list_time); unset IFS;
-    list_min=`printf '%5.5f' ${time_fragments[0]}`
-    list_sec=`printf '%5.5f' ${time_fragments[1]}`
+  IFS=':'; time_fragments=($list_time); unset IFS;
+  list_min=`printf '%5.5f' ${time_fragments[0]}`
+  list_sec=`printf '%5.5f' ${time_fragments[1]}`
 
-    list_seconds=`printf %5.5f $(echo "scale = 10; ($list_min * 60) + $list_sec" | bc)`
-    total_seconds=`printf %5.5f $(echo "scale = 10; ($total_seconds + $list_seconds)" | bc)`
-  done
-
-  avg_list_time=`printf %5.5f $(echo "scale = 10; ($total_seconds / $iterations)" | bc)`
+  avg_list_time=`printf %5.5f $(echo "scale = 10; ($list_min * 60) + $list_sec" | bc)`
 
   # ------------------------------
   # Measure time taken to delete these files
-  sudo /usr/bin/time -o del.txt -v rm -rf /mnt/blob_mnt/* > /dev/null 
+  sudo /usr/bin/time -o del.txt -v find . -name "create_1l_files_in_20_threads*" -delete > /dev/null 
   cat del.txt
 
   # Extract Deletion time 
@@ -163,13 +150,11 @@ list_files() {
 
   # Unmount and cleanup now
   blobfuse2 unmount all
-  sleep 5
-  rm -rf ~/.blobfuse2/*
 
   echo $avg_list_time " : " $avg_del_time
 
-  jq -n --arg list_time $avg_list_time --arg del_time $avg_del_time '{name: "list_1_million_files", value: $list_time, unit: "seconds"},
-      {name: "delete_1_million_files", value: $del_time, unit: "seconds"}' | tee ${output}/list_results.json
+  jq -n --arg list_time $avg_list_time --arg del_time $avg_del_time '{name: "list_100k_files", value: $list_time, unit: "seconds"},
+      {name: "delete_100k_files", value: $del_time, unit: "seconds"}' | tee ${output}/list_results.json
 }
 
 
@@ -213,6 +198,15 @@ then
   log_type="silent"
   iterations=1
 
+  # Pre creation cleanup
+  mount_blobfuse
+  cd ${mount_dir}
+  find . -name "create_1000_files_in_10_threads*" -delete  
+  find . -name "create_1000_files_in_100_threads*" -delete  
+  find . -name "create_1l_files_in_20_threads*" -delete  
+  cd -
+  ./blobfuse2 unmount all
+
   # Execute file create tests
   echo "Running Create test cases"
   iterate_fio_files "./perf_testing/config/create" 
@@ -220,7 +214,6 @@ elif [[ ${test_name} == "list" ]]
 then 
   # Set log type to silent as this is going to generate a lot of logs
   log_type="silent"
-  iterations=1
   
   # Execute file listing tests
   echo "Running File listing test cases"
