@@ -1,6 +1,8 @@
 [global]
 name=blobfuse_benchmark
 bs=1M 
+runtime=60s
+time_based
 filename=read_fio.data
 group_reporting
 

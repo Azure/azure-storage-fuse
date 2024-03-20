@@ -1,9 +1,9 @@
 [global]
 name=blobfuse_benchmark
 bs=1M
-runtime=30s
+runtime=60s
 time_based
-filename=read_small_fio.data
+filename=read_fio.data
 group_reporting
 
 [sequential_read_small_file]
