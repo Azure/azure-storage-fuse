@@ -124,6 +124,12 @@ func getAzBlobAuth(config azAuthConfig) azAuth {
 				azAuthBase: base,
 			},
 		}
+	} else if config.AuthMode == EAuthType.AZCLI() {
+		return &azAuthBlobCLI{
+			azAuthCLI{
+				azAuthBase: base,
+			},
+		}
 	} else {
 		log.Crit("azAuth::getAzBlobAuth : Auth type %s not supported. Failed to create Auth object", config.AuthMode)
 	}
@@ -153,6 +159,12 @@ func getAzDatalakeAuth(config azAuthConfig) azAuth {
 	} else if config.AuthMode == EAuthType.SPN() {
 		return &azAuthDatalakeSPN{
 			azAuthSPN{
+				azAuthBase: base,
+			},
+		}
+	} else if config.AuthMode == EAuthType.AZCLI() {
+		return &azAuthDatalakeCLI{
+			azAuthCLI{
 				azAuthBase: base,
 			},
 		}
