@@ -1,8 +1,6 @@
 [global]
 name=blobfuse_benchmark
 bs=1M
-runtime=30s
-time_based
 filename_format=$jobname.$jobnum.$filenum
 group_reporting
 
