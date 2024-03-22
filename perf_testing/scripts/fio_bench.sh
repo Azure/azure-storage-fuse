@@ -120,7 +120,9 @@ list_files() {
   total_seconds=0
 
   # List files and capture the time related details
-  sudo /usr/bin/time -o lst.txt -v sudo ls -U --color=never ${mount_dir}/  > /dev/null 
+  cd ${mount_dir}
+  /usr/bin/time -o lst.txt -v ls -U --color=never  > /dev/null 
+  ce -
   cat lst.txt
 
   # Extract Elapsed time for listing files
@@ -135,7 +137,9 @@ list_files() {
 
   # ------------------------------
   # Measure time taken to delete these files
-  sudo /usr/bin/time -o del.txt -v sudo find . -name "create_1l_files_in_20_threads*" -delete > /dev/null 
+  cd ${mount_dir}
+  /usr/bin/time -o del.txt -v find . -name "create_1l_files_in_20_threads*" -delete > /dev/null 
+  cd -
   cat del.txt
 
   # Extract Deletion time 
