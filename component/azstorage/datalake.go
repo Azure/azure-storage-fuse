@@ -62,7 +62,7 @@ type Datalake struct {
 	Service        *service.Client
 	Filesystem     *filesystem.Client
 	BlockBlob      BlockBlob
-	datalakeCPKOpt *directory.CPKInfo
+	datalakeCPKOpt *file.CPKInfo
 }
 
 // Verify that Datalake implements AzConnection interface
@@ -97,7 +97,7 @@ func (dl *Datalake) Configure(cfg AzStorageConfig) error {
 	dl.Config = cfg
 
 	if dl.Config.cpkEnabled {
-		dl.datalakeCPKOpt = &directory.CPKInfo{
+		dl.datalakeCPKOpt = &file.CPKInfo{
 			EncryptionKey:       &dl.Config.cpkEncryptionKey,
 			EncryptionKeySHA256: &dl.Config.cpkEncryptionKeySha256,
 			EncryptionAlgorithm: to.Ptr(directory.EncryptionAlgorithmTypeAES256),
@@ -235,6 +235,7 @@ func (dl *Datalake) CreateDirectory(name string) error {
 
 	directoryURL := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
 	_, err := directoryURL.Create(context.Background(), &directory.CreateOptions{
+		CPKInfo: dl.datalakeCPKOpt,
 		AccessConditions: &directory.AccessConditions{
 			ModifiedAccessConditions: &directory.ModifiedAccessConditions{
 				IfNoneMatch: to.Ptr(azcore.ETagAny),

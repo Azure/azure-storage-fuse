@@ -54,6 +54,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/directory"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/file"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/filesystem"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake/service"
@@ -608,6 +609,74 @@ func (s *datalakeTestSuite) TestRenameDir() {
 			// Dst should be in the account
 			dir = s.containerClient.NewDirectoryClient(internal.TruncateDirName(input.dst))
 			_, err = dir.GetProperties(ctx, nil)
+			s.assert.Nil(err)
+		})
+	}
+
+}
+
+func (s *datalakeTestSuite) TestRenameDirWithCPKEnabled() {
+	defer s.cleanupTest()
+	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
+	s.setupTestHelper(config, s.container, false)
+
+	datalakeCPKOpt := &file.CPKInfo{
+		EncryptionKey:       &CPKEncryptionKey,
+		EncryptionKeySHA256: &CPKEncryptionKeySHA256,
+		EncryptionAlgorithm: to.Ptr(file.EncryptionAlgorithmTypeAES256),
+	}
+
+	testData := "test data"
+	data := []byte(testData)
+
+	// Test handling "dir" and "dir/"
+	var inputs = []struct {
+		src string
+		dst string
+	}{
+		{src: generateDirectoryName(), dst: generateDirectoryName()},
+		{src: generateDirectoryName() + "/", dst: generateDirectoryName()},
+		{src: generateDirectoryName(), dst: generateDirectoryName() + "/"},
+		{src: generateDirectoryName() + "/", dst: generateDirectoryName() + "/"},
+	}
+
+	for _, input := range inputs {
+		s.Run(input.src+"->"+input.dst, func() {
+			// Setup
+			s.az.CreateDir(internal.CreateDirOptions{Name: input.src})
+			name := generateFileName()
+			file := input.src + "/" + name
+			err := uploadReaderAtToBlockBlob(
+				ctx, bytes.NewReader(data),
+				int64(len(data)),
+				100,
+				s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(file),
+				&blockblob.UploadBufferOptions{
+					CPKInfo: &blob.CPKInfo{
+						EncryptionKey:       &CPKEncryptionKey,
+						EncryptionKeySHA256: &CPKEncryptionKeySHA256,
+						EncryptionAlgorithm: to.Ptr(blob.EncryptionAlgorithmTypeAES256),
+					},
+				})
+
+			s.assert.Nil(err)
+			err = s.az.RenameDir(internal.RenameDirOptions{Src: input.src, Dst: input.dst})
+			s.assert.Nil(err)
+			// Src should not be in the account
+			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(input.src))
+			_, err = dir.GetProperties(ctx, &directory.GetPropertiesOptions{
+				CPKInfo: datalakeCPKOpt,
+			})
+			s.assert.NotNil(err)
+
+			// Dst should be in the account
+			dir = s.containerClient.NewDirectoryClient(internal.TruncateDirName(input.dst))
+			_, err = dir.GetProperties(ctx, &directory.GetPropertiesOptions{
+				CPKInfo: datalakeCPKOpt,
+			})
 			s.assert.Nil(err)
 		})
 	}
@@ -1174,6 +1243,58 @@ func (s *datalakeTestSuite) TestRenameFile() {
 	// Dst should be in the account
 	destination := s.containerClient.NewDirectoryClient(dst)
 	_, err = destination.GetProperties(ctx, nil)
+	s.assert.Nil(err)
+}
+
+func (s *datalakeTestSuite) TestRenameFileWithCPKenabled() {
+	defer s.cleanupTest()
+	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
+	s.setupTestHelper(config, s.container, false)
+
+	datalakeCPKOpt := &file.CPKInfo{
+		EncryptionKey:       &CPKEncryptionKey,
+		EncryptionKeySHA256: &CPKEncryptionKeySHA256,
+		EncryptionAlgorithm: to.Ptr(file.EncryptionAlgorithmTypeAES256),
+	}
+
+	src := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: src})
+	dst := generateFileName()
+
+	testData := "test data"
+	data := []byte(testData)
+
+	err := uploadReaderAtToBlockBlob(
+		ctx, bytes.NewReader(data),
+		int64(len(data)),
+		100,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(src),
+		&blockblob.UploadBufferOptions{
+			CPKInfo: &blob.CPKInfo{
+				EncryptionKey:       &CPKEncryptionKey,
+				EncryptionKeySHA256: &CPKEncryptionKeySHA256,
+				EncryptionAlgorithm: to.Ptr(blob.EncryptionAlgorithmTypeAES256),
+			},
+		})
+	s.assert.Nil(err)
+
+	err = s.az.RenameFile(internal.RenameFileOptions{Src: src, Dst: dst})
+	s.assert.Nil(err)
+
+	// Src should not be in the account
+	source := s.containerClient.NewDirectoryClient(src)
+	_, err = source.GetProperties(ctx, &file.GetPropertiesOptions{
+		CPKInfo: datalakeCPKOpt,
+	})
+	s.assert.NotNil(err)
+	// Dst should be in the account
+	destination := s.containerClient.NewDirectoryClient(dst)
+	_, err = destination.GetProperties(ctx, &file.GetPropertiesOptions{
+		CPKInfo: datalakeCPKOpt,
+	})
 	s.assert.Nil(err)
 }
 
@@ -2311,6 +2432,128 @@ func (s *datalakeTestSuite) TestUpdateConfig() {
 	s.assert.EqualValues(4, s.az.storage.(*Datalake).BlockBlob.Config.maxConcurrency)
 	s.assert.EqualValues(blob.AccessTierArchive, *s.az.storage.(*Datalake).BlockBlob.Config.defaultTier)
 	s.assert.True(s.az.storage.(*Datalake).BlockBlob.Config.ignoreAccessModifiers)
+}
+
+func (s *datalakeTestSuite) TestDownloadWithCPKEnabled() {
+	defer s.cleanupTest()
+	s.tearDownTestHelper(false)
+	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
+	s.setupTestHelper(config, s.container, false)
+
+	blobCPKOpt := &blob.CPKInfo{
+		EncryptionKey:       &CPKEncryptionKey,
+		EncryptionKeySHA256: &CPKEncryptionKeySHA256,
+		EncryptionAlgorithm: to.Ptr(blob.EncryptionAlgorithmTypeAES256),
+	}
+	name := generateFileName()
+	s.az.CreateFile(internal.CreateFileOptions{Name: name})
+	testData := "test data"
+	data := []byte(testData)
+
+	err := uploadReaderAtToBlockBlob(
+		ctx, bytes.NewReader(data),
+		int64(len(data)),
+		100,
+		s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(name),
+		&blockblob.UploadBufferOptions{
+			CPKInfo: blobCPKOpt,
+		})
+	s.assert.Nil(err)
+
+	f, err := os.Create(name)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	err = s.az.storage.ReadToFile(name, 0, int64(len(data)), f)
+	s.assert.Nil(err)
+	fileData, err := os.ReadFile(name)
+	s.assert.Nil(err)
+	s.assert.EqualValues(data, fileData)
+
+	buf := make([]byte, len(data))
+	err = s.az.storage.ReadInBuffer(name, 0, int64(len(data)), buf)
+	s.assert.Nil(err)
+	s.assert.EqualValues(data, buf)
+
+	rbuf, err := s.az.storage.ReadBuffer(name, 0, int64(len(data)))
+	s.assert.Nil(err)
+	s.assert.EqualValues(data, rbuf)
+	_ = s.az.storage.DeleteFile(name)
+	_ = os.Remove(name)
+}
+
+func (s *datalakeTestSuite) TestUploadWithCPKEnabled() {
+	defer s.cleanupTest()
+	s.tearDownTestHelper(false)
+
+	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
+	s.setupTestHelper(config, s.container, false)
+
+	datalakeCPKOpt := &file.CPKInfo{
+		EncryptionKey:       &CPKEncryptionKey,
+		EncryptionKeySHA256: &CPKEncryptionKeySHA256,
+		EncryptionAlgorithm: to.Ptr(file.EncryptionAlgorithmTypeAES256),
+	}
+
+	name1 := generateFileName()
+	f, err := os.Create(name1)
+	s.assert.Nil(err)
+	s.assert.NotNil(f)
+
+	testData := "test data"
+	data := []byte(testData)
+	_, err = f.Write(data)
+	s.assert.Nil(err)
+	_, _ = f.Seek(0, 0)
+
+	err = s.az.storage.WriteFromFile(name1, nil, f)
+	s.assert.Nil(err)
+
+	// Blob should have updated data
+	fileClient := s.containerClient.NewFileClient(name1)
+	attr, err := s.az.storage.(*Datalake).GetAttr(name1)
+	s.assert.Nil(err)
+	s.assert.NotNil(attr)
+
+	resp, err := fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
+		Range: &file.HTTPRange{Offset: 0, Count: int64(len(data))},
+	})
+	s.assert.NotNil(err)
+	s.assert.Nil(resp.RequestID)
+
+	resp, err = fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
+		Range:   &file.HTTPRange{Offset: 0, Count: int64(len(data))},
+		CPKInfo: datalakeCPKOpt,
+	})
+	s.assert.Nil(err)
+	s.assert.NotNil(resp.RequestID)
+
+	name2 := generateFileName()
+	err = s.az.storage.WriteFromBuffer(name2, nil, data)
+	s.assert.Nil(err)
+
+	fileClient = s.containerClient.NewFileClient(name2)
+	resp, err = fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
+		Range: &file.HTTPRange{Offset: 0, Count: int64(len(data))},
+	})
+	s.assert.NotNil(err)
+	s.assert.Nil(resp.RequestID)
+
+	resp, err = fileClient.DownloadStream(ctx, &file.DownloadStreamOptions{
+		Range:   &file.HTTPRange{Offset: 0, Count: int64(len(data))},
+		CPKInfo: datalakeCPKOpt,
+	})
+	s.assert.Nil(err)
+	s.assert.NotNil(resp.RequestID)
+
+	_ = s.az.storage.DeleteFile(name1)
+	_ = s.az.storage.DeleteFile(name2)
+	_ = os.Remove(name1)
 }
 
 // func (s *datalakeTestSuite) TestRAGRS() {
