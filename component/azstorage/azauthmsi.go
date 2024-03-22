@@ -65,7 +65,6 @@ func (azmsi *azAuthMSI) getTokenCredential() (azcore.TokenCredential, error) {
 		ClientOptions: opts,
 	}
 
-	// TODO:: track2 : check for ObjectID
 	if azmsi.config.ApplicationID != "" {
 		msiOpts.ID = (azidentity.ClientID)(azmsi.config.ApplicationID)
 	} else if azmsi.config.ResourceID != "" {
