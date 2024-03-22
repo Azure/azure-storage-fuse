@@ -200,6 +200,7 @@ then
 
   # Pre creation cleanup
   mount_blobfuse
+  echo "Deleting old data"
   cd ${mount_dir}
   find . -name "create_1000_files_in_10_threads*" -delete  
   find . -name "create_1000_files_in_100_threads*" -delete  
