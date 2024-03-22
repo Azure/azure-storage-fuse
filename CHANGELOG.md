@@ -8,6 +8,7 @@
 - Migrated to the latest [azdatalake SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake).
 - Migrated from deprecated ADAL to MSAL through the latest [azidentity SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity).
 - Added support for uploading blobs in cold and premium tier.
+- Support CPK for adls storage accounts.
 
 ## 2.2.1 (2024-02-28)
 **Bug Fixes**
