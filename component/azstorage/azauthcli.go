@@ -50,9 +50,7 @@ type azAuthCLI struct {
 }
 
 func (azcli *azAuthCLI) getTokenCredential() (azcore.TokenCredential, error) {
-	cred, err := azidentity.NewAzureCLICredential(&azidentity.AzureCLICredentialOptions{
-		TenantID: azcli.config.TenantID,
-	})
+	cred, err := azidentity.NewAzureCLICredential(nil)
 	return cred, err
 }
 

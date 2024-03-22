@@ -103,9 +103,7 @@ func (azmsi *azAuthMSI) getTokenCredentialUsingCLI() (azcore.TokenCredential, er
 	log.Info("azAuthMSI::getTokenCredentialUsingCLI : Successfully logged in using Azure CLI")
 	log.Debug("azAuthMSI::getTokenCredentialUsingCLI : Output: %s", output)
 
-	cred, err := azidentity.NewAzureCLICredential(&azidentity.AzureCLICredentialOptions{
-		TenantID: azmsi.config.TenantID,
-	})
+	cred, err := azidentity.NewAzureCLICredential(nil)
 	return cred, err
 }
 

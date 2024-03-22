@@ -430,7 +430,6 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	}
 
 	az.stConfig.authConfig.ObjectID = opt.ObjectID
-	az.stConfig.authConfig.TenantID = opt.TenantID
 
 	switch authType {
 	case EAuthType.KEY():
@@ -461,6 +460,7 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 		}
 		az.stConfig.authConfig.ClientID = opt.ClientID
 		az.stConfig.authConfig.ClientSecret = opt.ClientSecret
+		az.stConfig.authConfig.TenantID = opt.TenantID
 		az.stConfig.authConfig.OAuthTokenFilePath = opt.OAuthTokenFilePath
 	case EAuthType.AZCLI():
 		az.stConfig.authConfig.AuthMode = EAuthType.AZCLI()
