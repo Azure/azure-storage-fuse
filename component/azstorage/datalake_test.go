@@ -245,6 +245,43 @@ func (s *datalakeTestSuite) TestCreateDir() {
 	}
 }
 
+func (s *datalakeTestSuite) TestCreateDirWithCPKEnabled() {
+	defer s.cleanupTest()
+	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
+
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.dfs.core.windows.net/\n  type: adls\n  account-key: %s\n  mode: key\n  container: %s\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n",
+		storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsAccount, storageTestConfigurationParameters.AdlsKey, s.container, CPKEncryptionKey, CPKEncryptionKeySHA256)
+	s.setupTestHelper(config, s.container, false)
+
+	datalakeCPKOpt := &file.CPKInfo{
+		EncryptionKey:       &CPKEncryptionKey,
+		EncryptionKeySHA256: &CPKEncryptionKeySHA256,
+		EncryptionAlgorithm: to.Ptr(file.EncryptionAlgorithmTypeAES256),
+	}
+
+	// Testing dir and dir/
+	var paths = []string{generateDirectoryName()}
+	for _, path := range paths {
+		log.Debug(path)
+		s.Run(path, func() {
+			err := s.az.CreateDir(internal.CreateDirOptions{Name: path})
+
+			s.assert.Nil(err)
+			// Directory should not be accessible wihtout CPK
+			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(path))
+			_, err = dir.GetProperties(ctx, nil)
+			s.assert.NotNil(err)
+
+			//Directory should exist
+			dir = s.containerClient.NewDirectoryClient(internal.TruncateDirName(path))
+			_, err = dir.GetProperties(ctx, &directory.GetPropertiesOptions{
+				CPKInfo: datalakeCPKOpt,
+			})
+			s.assert.Nil(err)
+		})
+	}
+}
+
 func (s *datalakeTestSuite) TestDeleteDir() {
 	defer s.cleanupTest()
 	// Testing dir and dir/
@@ -629,9 +666,6 @@ func (s *datalakeTestSuite) TestRenameDirWithCPKEnabled() {
 		EncryptionAlgorithm: to.Ptr(file.EncryptionAlgorithmTypeAES256),
 	}
 
-	testData := "test data"
-	data := []byte(testData)
-
 	// Test handling "dir" and "dir/"
 	var inputs = []struct {
 		src string
@@ -647,23 +681,8 @@ func (s *datalakeTestSuite) TestRenameDirWithCPKEnabled() {
 		s.Run(input.src+"->"+input.dst, func() {
 			// Setup
 			s.az.CreateDir(internal.CreateDirOptions{Name: input.src})
-			name := generateFileName()
-			file := input.src + "/" + name
-			err := uploadReaderAtToBlockBlob(
-				ctx, bytes.NewReader(data),
-				int64(len(data)),
-				100,
-				s.az.storage.(*Datalake).BlockBlob.Container.NewBlockBlobClient(file),
-				&blockblob.UploadBufferOptions{
-					CPKInfo: &blob.CPKInfo{
-						EncryptionKey:       &CPKEncryptionKey,
-						EncryptionKeySHA256: &CPKEncryptionKeySHA256,
-						EncryptionAlgorithm: to.Ptr(blob.EncryptionAlgorithmTypeAES256),
-					},
-				})
 
-			s.assert.Nil(err)
-			err = s.az.RenameDir(internal.RenameDirOptions{Src: input.src, Dst: input.dst})
+			err := s.az.RenameDir(internal.RenameDirOptions{Src: input.src, Dst: input.dst})
 			s.assert.Nil(err)
 			// Src should not be in the account
 			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(input.src))
