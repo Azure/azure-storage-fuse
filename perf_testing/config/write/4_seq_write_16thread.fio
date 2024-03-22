@@ -4,7 +4,7 @@ bs=1M
 filename_format=$jobname.$jobnum.$filenum
 group_reporting
 
-[sequential_write_four_threads]
+[sequential_write_16_threads]
 size=10G
 rw=write
 ioengine=libaio

@@ -6,7 +6,7 @@ time_based
 filename=read_fio.data
 group_reporting
 
-[sequential_read_sixteen_threads]
+[sequential_read_16_threads]
 size=10G
 rw=read
 ioengine=libaio

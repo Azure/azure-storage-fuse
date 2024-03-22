@@ -120,7 +120,7 @@ list_files() {
   total_seconds=0
 
   # List files and capture the time related details
-  sudo /usr/bin/time -o lst.txt -v ls -U --color=never ${mount_dir}  > /dev/null 
+  sudo /usr/bin/time -o lst.txt -v ls -U --color=never ${mount_dir}/  > /dev/null 
   cat lst.txt
 
   # Extract Elapsed time for listing files
