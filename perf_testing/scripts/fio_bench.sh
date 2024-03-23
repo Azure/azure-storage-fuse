@@ -122,7 +122,7 @@ list_files() {
   # List files and capture the time related details
   cd ${mount_dir}
   /usr/bin/time -o lst.txt -v ls -U --color=never  > /dev/null 
-  ce -
+  cd -
   cat lst.txt
 
   # Extract Elapsed time for listing files
