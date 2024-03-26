@@ -1,0 +1,12 @@
+[global]
+name=blobfuse_benchmark
+bs=1M
+filename=write_fio.data
+group_reporting
+
+[sequential_write_directio]
+size=10G
+rw=write
+ioengine=libaio
+fallocate=none
+startdelay=30s

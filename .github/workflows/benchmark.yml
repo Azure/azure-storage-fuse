@@ -1,0 +1,148 @@
+name: Benchmark
+on:
+  schedule:
+    - cron: '5 1,3,5,7,9,11,13,15,17,19,21,23 * * *'
+  push:
+    branches:
+      - main
+      - vibhansa/perftestrunner
+
+jobs:
+  PerfTesting:
+    runs-on: [self-hosted, 1ES.Pool=blobfuse2-benchmark]
+    timeout-minutes: 360
+
+    permissions:
+      id-token: write
+      contents: write
+      pages: write
+
+    steps:
+      # Print the host info
+      - name: 'Host info'
+        run: hostnamectl
+          
+      # Install Fuse3
+      - name: "Install Fuse3"
+        run: |
+          sudo apt-get update
+          sudo apt-get install fuse3 libfuse3-dev gcc -y
+
+      # Install Tools
+      - name: "Install Tools"
+        run: |
+          sudo apt-get install fio jq -y
+
+        # Checkout main branch
+      - name: 'Checkout Blobfuse2'
+        uses: actions/checkout@v4.1.1
+        # with: 
+          # ref: vibhansa/perftestrunner
+
+      # Install GoLang
+      - name: "Install Go"
+        run: |
+          ./go_installer.sh ../
+          go version
+
+      # Build Blobfuse2
+      - name: "Build Blobfuse2"
+        run: |
+          ./build.sh
+
+      # Check the paths
+      - name: "Check paths"
+        run: |
+          pwd
+          df -h
+
+      # Run binary and validate the version
+      - name: "Validate Version"
+        run: |
+          ./blobfuse2 --version
+          pwd
+          sudo cp ./blobfuse2 /usr/bin/
+          which blobfuse2
+          blobfuse2 --version
+
+      # Create the config file for testing
+      - name: "Create config file"
+        run: |
+          blobfuse2 gen-test-config --config-file=azure_block_bench.yaml --container-name=${{ secrets.BLOB_STORAGE_CONTAINER }}  --output-file=./config.yaml
+          cat ./config.yaml
+
+      # Create the config file for testing
+      - name: "Create mount path"
+        run: |
+          sudo mkdir -p /mnt/blob_mnt
+          sudo mkdir -p /mnt/tempcache
+          sudo chmod 777 /mnt/blob_mnt
+          sudo chmod 777 /mnt/tempcache
+
+      # Run the Write tests
+      - name: "Read Test"
+        uses: "./.github/template/generate_page"
+        with:
+          TEST: "read"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
+
+      # Run the Write tests
+      - name: "High threads Test"
+        uses: "./.github/template/generate_page"
+        with:
+          TEST: "highlyparallel"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
+    
+      # Run the Write tests
+      - name: "Write Test"
+        uses: "./.github/template/generate_page"
+        with:
+          TEST: "write"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}
+           
+      # Run the Create tests
+      - name: "Create File Test"
+        uses: "./.github/template/generate_page"
+        with:
+          TEST: "create"
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}  
+
+      # ---------------------------------------------------------------------------------------
+      # Run the List tests
+      # This needs to run seperatly as output is different, and shall always runs after create tests
+      - name: "List File Test"
+        run: |
+          rm -rf /mnt/blob_mnt/*
+          rm -rf /mnt/tempcache/*
+          ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt list
+        env:
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }} 
+        
+      - name: "Update Benchmark Results : List"
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          output-file-path: list/list_results.json
+          tool: 'customSmallerIsBetter'
+          alert-threshold: "160%"
+          max-items-in-chart: 100
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-alert: true
+          auto-push: true
+          comment-on-alert: true
+          gh-pages-branch: benchmarks
+          benchmark-data-dir-path: time/list
+      # ---------------------------------------------------------------------------------------
