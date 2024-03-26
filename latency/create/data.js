@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1711455113452,
+  "lastUpdate": 1711475684130,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -140,6 +140,45 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/Azure/azure-storage-fuse/commit/22ad862ea4f452937373ac12e63b3d47c90c17d8"
         },
         "date": 1711455113127,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "40dc943aaeb620f4c1bff6497796f272d091b109",
+          "message": "Correct list and del output",
+          "timestamp": "2024-03-26T21:55:09+05:30",
+          "tree_id": "8be23de9488d8b0c1915d7cd89a304cdeafc44da",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/40dc943aaeb620f4c1bff6497796f272d091b109"
+        },
+        "date": 1711475683813,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
