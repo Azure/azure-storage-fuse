@@ -120,13 +120,14 @@ list_files() {
   total_seconds=0
 
   # List files and capture the time related details
+  work_dir=`pwd`
   cd ${mount_dir}
-  /usr/bin/time -o lst.txt -v ls -U --color=never  > /dev/null 
+  /usr/bin/time -o ${work_dir}/lst.txt -v ls -U --color=never  > /dev/null 
   cd -
   cat lst.txt
 
   # Extract Elapsed time for listing files
-  list_time=`cat lst.txt | grep "Elapsed" | rev | cut -d " " -f 1 | rev`
+  list_time=`cat ${work_dir}/lst.txt | grep "Elapsed" | rev | cut -d " " -f 1 | rev`
   echo $list_time
 
   IFS=':'; time_fragments=($list_time); unset IFS;
@@ -138,9 +139,9 @@ list_files() {
   # ------------------------------
   # Measure time taken to delete these files
   cd ${mount_dir}
-  /usr/bin/time -o del.txt -v find . -name "create_1l_files_in_20_threads*" -delete > /dev/null 
+  /usr/bin/time -o ${work_dir}/del.txt -v find . -name "create_1l_files_in_20_threads*" -delete > /dev/null 
   cd -
-  cat del.txt
+  cat ${work_dir}/del.txt
 
   # Extract Deletion time 
   del_time=`cat del.txt | grep "Elapsed" | rev | cut -d " " -f 1 | rev`
