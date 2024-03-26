@@ -122,9 +122,10 @@ list_files() {
   # List files and capture the time related details
   work_dir=`pwd`
   cd ${mount_dir}
-  /usr/bin/time -o ${work_dir}/lst.txt -v ls -U --color=never  > /dev/null 
+  /usr/bin/time -o ${work_dir}/lst.txt -v ls -U --color=never > ${work_dir}/lst.out
   cd -
   cat lst.txt
+  cat ${work_dir}/lst.out | wc -l
 
   # Extract Elapsed time for listing files
   list_time=`cat ${work_dir}/lst.txt | grep "Elapsed" | rev | cut -d " " -f 1 | rev`
@@ -139,7 +140,8 @@ list_files() {
   # ------------------------------
   # Measure time taken to delete these files
   cd ${mount_dir}
-  /usr/bin/time -o ${work_dir}/del.txt -v find . -name "create_1l_files_in_20_threads*" -delete > /dev/null 
+  
+  /usr/bin/time -o ${work_dir}/del.txt -v xargs rm < ${work_dir}/lst.out
   cd -
   cat ${work_dir}/del.txt
 
@@ -158,8 +160,8 @@ list_files() {
 
   echo $avg_list_time " : " $avg_del_time
 
-  jq -n --arg list_time $avg_list_time --arg del_time $avg_del_time '{name: "list_100k_files", value: $list_time, unit: "seconds"},
-      {name: "delete_100k_files", value: $del_time, unit: "seconds"}' | tee ${output}/list_results.json
+  jq -n --arg list_time $avg_list_time --arg del_time $avg_del_time '[{name: "list_100k_files", value: $list_time, unit: "seconds"},
+      {name: "delete_100k_files", value: $del_time, unit: "seconds"}] ' | tee ${output}/list_results.json
 }
 
 
