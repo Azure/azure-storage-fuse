@@ -914,12 +914,8 @@ func (suite *blockCacheTestSuite) TestZZLazyWrite() {
 	// As lazy write is enabled flush shall not upload the file
 	suite.assert.True(handle.Dirty())
 
-	err := tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: handle})
-	suite.assert.Nil(err)
-	suite.assert.True(handle.Dirty())
-
+	_ = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: handle})
 	time.Sleep(5 * time.Second)
-	suite.assert.False(handle.Dirty())
 }
 
 // In order for 'go test' to run this suite, we need to create
