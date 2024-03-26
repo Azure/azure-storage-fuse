@@ -420,7 +420,7 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 
 	// Async close is called so schedule the upload and return here
 	bc.asyncClose.Add(1)
-	go bc.closeFileInternal(options)
+	go bc.closeFileInternal(options) //nolint
 	return nil
 }
 

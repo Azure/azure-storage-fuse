@@ -1007,7 +1007,7 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 
 	// Async close is called so schedule the upload and return here
 	fc.asyncClose.Add(1)
-	go fc.closeFileInternal(options, flock)
+	go fc.closeFileInternal(options, flock) //nolint
 	return nil
 }
 
