@@ -1221,6 +1221,11 @@ stages:
                   sudo apt-get install make cmake gcc g++ libfuse3-dev fuse3 -y -o Dpkg::Options::="--force-confnew"  
                 displayName: 'Install Fuse'
 
+              # Install azcli
+              - script: |
+                  curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+                displayName: 'Install Azure CLI'
+
               # Prestart cleanup
               - script: |
                   sudo fusermount3 -u $(MOUNT_DIR)
