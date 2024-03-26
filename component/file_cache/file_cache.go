@@ -82,6 +82,9 @@ type FileCache struct {
 	refreshSec        uint32
 	hardLimit         bool
 	diskHighWaterMark float64
+
+	lazyWrite  bool
+	asyncClose sync.WaitGroup
 }
 
 // Structure defining your config parameters
@@ -177,6 +180,10 @@ func (c *FileCache) Start(ctx context.Context) error {
 func (c *FileCache) Stop() error {
 	log.Trace("Stopping component : %s", c.Name())
 
+	// Wait for all async upload to complete if any
+	log.Info("FileCache::Stop : Waiting for async close to complete")
+	c.asyncClose.Wait()
+
 	_ = c.policy.ShutdownPolicy()
 	_ = c.TempCacheCleanup()
 
@@ -237,6 +244,12 @@ func (c *FileCache) Configure(_ bool) error {
 	c.syncToDelete = !conf.SyncNoOp
 	c.refreshSec = conf.RefreshSec
 	c.hardLimit = conf.HardLimit
+
+	err = config.UnmarshalKey("lazy-write", &c.lazyWrite)
+	if err != nil {
+		log.Err("FileCache: config error [unable to obtain lazy-write]")
+		return fmt.Errorf("config error in %s [%s]", c.Name(), err.Error())
+	}
 
 	c.tmpPath = common.ExpandPath(conf.TmpPath)
 	if c.tmpPath == "" {
@@ -983,42 +996,59 @@ func (fc *FileCache) OpenFile(options internal.OpenFileOptions) (*handlemap.Hand
 
 // CloseFile: Flush the file and invalidate it from the cache.
 func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
-	log.Trace("FileCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+	// Lock the file so that while close is in progress no one can open the file again
+	flock := fc.fileLocks.Get(options.Handle.Path)
+	flock.Lock()
+
+	if !fc.lazyWrite {
+		// Sync close is called so wait till the upload completes
+		return fc.closeFileInternal(options, flock)
+	}
+
+	// Async close is called so schedule the upload and return here
+	fc.asyncClose.Add(1)
+	go fc.closeFileInternal(options, flock)
+	return nil
+}
+
+// closeFileInternal: Actual handling of the close file goes here
+func (fc *FileCache) closeFileInternal(options internal.CloseFileOptions, flock *common.LockMapItem) error {
+	log.Trace("FileCache::closeFileInternal : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+
+	// Lock is acquired by CloseFile, at end of this method we need to unlock
+	// If its async call file shall be locked till the upload completes.
+	defer flock.Unlock()
+	defer fc.asyncClose.Done()
 
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
-	err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle}) //nolint
+	err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 	if err != nil {
-		log.Err("FileCache::CloseFile : failed to flush file %s", options.Handle.Path)
+		log.Err("FileCache::closeFileInternal : failed to flush file %s", options.Handle.Path)
 		return err
 	}
 
 	f := options.Handle.GetFileObject()
 	if f == nil {
-		log.Err("FileCache::CloseFile : error [missing fd in handle object] %s", options.Handle.Path)
+		log.Err("FileCache::closeFileInternal : error [missing fd in handle object] %s", options.Handle.Path)
 		return syscall.EBADF
 	}
 
-	// Reduce the open handle counter here as file is being closed now
-	flock := fc.fileLocks.Get(options.Handle.Path)
-	flock.Lock()
-	defer flock.Unlock()
-
 	err = f.Close()
 	if err != nil {
-		log.Err("FileCache::CloseFile : error closing file %s(%d) [%s]", options.Handle.Path, int(f.Fd()), err.Error())
+		log.Err("FileCache::closeFileInternal : error closing file %s(%d) [%s]", options.Handle.Path, int(f.Fd()), err.Error())
 		return err
 	}
 	flock.Dec()
 
 	// If it is an fsync op then purge the file
 	if options.Handle.Fsynced() {
-		log.Trace("FileCache::CloseFile : fsync/sync op, purging %s", options.Handle.Path)
+		log.Trace("FileCache::closeFileInternal : fsync/sync op, purging %s", options.Handle.Path)
 		localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 
 		err = deleteFile(localPath)
 		if err != nil && !os.IsNotExist(err) {
-			log.Err("FileCache::CloseFile : failed to delete local file %s [%s]", localPath, err.Error())
+			log.Err("FileCache::closeFileInternal : failed to delete local file %s [%s]", localPath, err.Error())
 		}
 
 		fc.policy.CachePurge(localPath)
@@ -1133,7 +1163,7 @@ func (fc *FileCache) WriteFile(options internal.WriteFileOptions) (int, error) {
 func (fc *FileCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("FileCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 	if fc.syncToFlush {
-		err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle}) //nolint
+		err := fc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 		if err != nil {
 			log.Err("FileCache::SyncFile : failed to flush file %s", options.Handle.Path)
 			return err
@@ -1177,6 +1207,12 @@ func (fc *FileCache) FlushFile(options internal.FlushFileOptions) error {
 	fc.policy.CacheValid(localPath)
 	// if our handle is dirty then that means we wrote to the file
 	if options.Handle.Dirty() {
+		if fc.lazyWrite && !options.CloseInProgress {
+			// As lazy-write is enable, upload will be scheduled when file is closed.
+			log.Info("FileCache::FlushFile : %s will be flushed when handle %d is closed", options.Handle.Path, options.Handle.ID)
+			return nil
+		}
+
 		f := options.Handle.GetFileObject()
 		if f == nil {
 			log.Err("FileCache::FlushFile : error [couldn't find fd in handle] %s", options.Handle.Path)
