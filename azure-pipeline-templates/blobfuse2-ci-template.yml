@@ -78,7 +78,7 @@ steps:
   - script: |
       curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin
       $(go env GOPATH)/bin/golangci-lint --version
-      $(go env GOPATH)/bin/golangci-lint run --tests=false --build-tags ${{ parameters.tags }} --skip-dirs test,common/stats_collector,common/stats_monitor --max-issues-per-linter=0 --skip-files component/libfuse/libfuse2_handler_test_wrapper.go,component/libfuse/libfuse_handler_test_wrapper.go > lint.log
+      $(go env GOPATH)/bin/golangci-lint run --tests=false --build-tags ${{ parameters.tags }} --exclude-dirs test,common/stats_collector,common/stats_monitor --max-issues-per-linter=0 --exclude-files component/libfuse/libfuse2_handler_test_wrapper.go,component/libfuse/libfuse_handler_test_wrapper.go > lint.log
       result=$(cat lint.log | wc -l)
       if [ $result -ne 0 ]; then
         echo "-----------------------------------"
