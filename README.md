@@ -115,6 +115,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--passphrase=<STRING>` : Passphrase used to encrypt/decrypt config file.
     * `--wait-for-mount=<TIMEOUT IN SECONDS>` : Let parent process wait for given timeout before exit to ensure child has started. 
     * `--block-cache` : To enable block-cache instead of file-cache. This works only when mounted without any config file.
+    * `--lazy-write` : To enable async close file handle call and schedule the upload in background.
 - Attribute cache options
     * `--attr-cache-timeout=<TIMEOUT IN SECONDS>`: The timeout for the attribute cache entries.
     * `--no-symlinks=true`: To improve performance disable symlink support.

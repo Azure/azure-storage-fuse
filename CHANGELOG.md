@@ -1,6 +1,8 @@
-## 2.2.2 (Unreleased)
+## 2.3.0 (Unreleased)
 **Bug Fixes**
+
 **Features**
+- lazy-write support for async flush and close file call. Actual upload will be scheduled in background when this feature is enable.
 
 ## 2.2.1 (2024-02-28)
 **Bug Fixes**
