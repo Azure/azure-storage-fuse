@@ -1224,6 +1224,7 @@ stages:
               # Install azcli
               - script: |
                   curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+                  az --version
                 displayName: 'Install Azure CLI'
 
               # Prestart cleanup
