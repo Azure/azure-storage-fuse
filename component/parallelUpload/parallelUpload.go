@@ -44,7 +44,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
 )
 
 /* NOTES:
@@ -57,9 +56,7 @@ import (
 // Common structure for Component
 type ParallelUpload struct {
 	internal.BaseComponent
-	threadPool      *ThreadPool // Pool of threads
-	targetDirectory string      // Disk path to the target directory
-	workers         uint32      // Number of threads working to fetch the blocks
+	targetDirectory string // Disk path to the target directory
 }
 
 // Structure defining your config parameters
@@ -67,7 +64,7 @@ type ParallelUploadOptions struct {
 	TargetDirectory string `config:"path" yaml:"path,omitempty"`
 }
 
-const compName = "parallelUpload"
+const compName = "parallel_upload"
 
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &ParallelUpload{}
@@ -129,98 +126,33 @@ func (c *ParallelUpload) Configure(_ bool) error {
 	return nil
 }
 
-type Queue struct {
-	items []string
-}
-
-// Enqueue adds an item to the end of the queue.
-func (q *Queue) Enqueue(item string) {
-	q.items = append(q.items, item)
-}
-
-// Dequeue removes an item from the front of the queue and returns it.
-func (q *Queue) Dequeue() string {
-	if len(q.items) == 0 {
-		return ""
-	}
-	item := q.items[0]
-	q.items = q.items[1:]
-	return item
-}
-
-// CreateFile: Create a new file
-// func (pu *ParallelUpload) Upload(options internal.UploadOptions) (*handlemap.Handle, error) {
-// 	log.Trace("BlockCache::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
-
-// 	_, err := c.NextComponent().CreateFile(options)
-// 	if err != nil {
-// 		log.Err("BlockCache::CreateFile : Failed to create file %s", options.Name)
-// 		return nil, err
-// 	}
-
-// 	// Initialize the queue
-// 	queue := Queue{}
-
-// 	// List files in the current directory
-// 	files, err := ioutil.ReadDir(c.targetDirectory)
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-
-// 	// Add files to the queue
-// 	for _, file := range files {
-// 		if !file.IsDir() { //review: assumming there are only files in the folder
-// 			queue.Enqueue(file.Name())
-// 		}
-// 	}
-
-// 	c.threadPool = newThreadPool(16, c.download, c.upload)
-// 	if c.threadPool == nil {
-// 		log.Err("BlockCache::Configure : fail to init thread pool")
-// 		return fmt.Errorf("config error in %s [fail to init thread pool]", c.Name())
-// 	}
-// 	// Dequeue and print files
-// 	for len(queue.items) > 0 {
-// 		fmt.Println(queue.Dequeue())
-// 	}
-
-// 	handle := handlemap.NewHandle(options.Name)
-// 	handle.Size = 0
-// 	handle.Mtime = time.Now()
-
-// 	// As file is created on storage as well there is no need to mark this as dirty
-// 	// Any write operation to file will mark it dirty and flush will then reupload
-// 	// handle.Flags.Set(handlemap.HandleFlagDirty)
-// 	c.prepareHandleForBlockCache(handle)
-// 	return handle, nil
-// }
-
-func (c *ParallelUpload) parallelUploadFileToBlob(options filePath string, wg *sync.WaitGroup, ch chan<- error) {
+func (c *ParallelUpload) parallelUploadFileToBlob(filePath string, wg *sync.WaitGroup, ch chan<- error) error {
 	defer wg.Done()
 
 	uploadHandle, err := os.Open(filePath)
 	if err != nil {
-		ch <- fmt.Errorf("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
-		return
+		ch <- fmt.Errorf("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", filePath, err.Error())
+		return err
 	}
 	defer uploadHandle.Close()
 
 	err = c.NextComponent().CopyFromFile(
 		internal.CopyFromFileOptions{
-			Name: options.Handle.Path,
+			Name: filePath,
 			File: uploadHandle,
 		})
 
 	uploadHandle.Close()
 	if err != nil {
-		log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
+		log.Err("FileCache::FlushFile : %s upload failed [%s]", filePath, err.Error())
 		return err
 	}
 	fmt.Printf("Uploaded file %s to Azure Blob Storage\n", filePath)
+	return nil
 }
 
-func (c *ParallelUpload) Upload(options internal.UploadOptions) (*handlemap.Handle, error) {
-	log.Trace("ParallelUpload::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
+func (c *ParallelUpload) Upload() error {
+	// log.Trace("ParallelUpload::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
 
 	var wg sync.WaitGroup
 	ch := make(chan error)
@@ -240,7 +172,7 @@ func (c *ParallelUpload) Upload(options internal.UploadOptions) (*handlemap.Hand
 			wg.Add(1)
 			go func(filePath string) {
 				defer func() { <-sem }()
-				uploadFileToBlob(filePath, &wg, ch)
+				c.parallelUploadFileToBlob(filePath, &wg, ch)
 			}(filePath)
 		}
 		return nil
