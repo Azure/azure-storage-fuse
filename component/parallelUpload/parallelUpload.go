@@ -36,9 +36,9 @@ package parallelUpload
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
-	"time"
+	"path/filepath"
+	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -149,50 +149,120 @@ func (q *Queue) Dequeue() string {
 }
 
 // CreateFile: Create a new file
-func (pu *ParallelUpload) Upload(options internal.UploadOptions) (*handlemap.Handle, error) {
-	log.Trace("BlockCache::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
+// func (pu *ParallelUpload) Upload(options internal.UploadOptions) (*handlemap.Handle, error) {
+// 	log.Trace("BlockCache::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
 
-	_, err := c.NextComponent().CreateFile(options)
+// 	_, err := c.NextComponent().CreateFile(options)
+// 	if err != nil {
+// 		log.Err("BlockCache::CreateFile : Failed to create file %s", options.Name)
+// 		return nil, err
+// 	}
+
+// 	// Initialize the queue
+// 	queue := Queue{}
+
+// 	// List files in the current directory
+// 	files, err := ioutil.ReadDir(c.targetDirectory)
+// 	if err != nil {
+// 		log.Fatal(err)
+// 	}
+
+// 	// Add files to the queue
+// 	for _, file := range files {
+// 		if !file.IsDir() { //review: assumming there are only files in the folder
+// 			queue.Enqueue(file.Name())
+// 		}
+// 	}
+
+// 	c.threadPool = newThreadPool(16, c.download, c.upload)
+// 	if c.threadPool == nil {
+// 		log.Err("BlockCache::Configure : fail to init thread pool")
+// 		return fmt.Errorf("config error in %s [fail to init thread pool]", c.Name())
+// 	}
+// 	// Dequeue and print files
+// 	for len(queue.items) > 0 {
+// 		fmt.Println(queue.Dequeue())
+// 	}
+
+// 	handle := handlemap.NewHandle(options.Name)
+// 	handle.Size = 0
+// 	handle.Mtime = time.Now()
+
+// 	// As file is created on storage as well there is no need to mark this as dirty
+// 	// Any write operation to file will mark it dirty and flush will then reupload
+// 	// handle.Flags.Set(handlemap.HandleFlagDirty)
+// 	c.prepareHandleForBlockCache(handle)
+// 	return handle, nil
+// }
+
+func (c *ParallelUpload) parallelUploadFileToBlob(options filePath string, wg *sync.WaitGroup, ch chan<- error) {
+	defer wg.Done()
+
+	uploadHandle, err := os.Open(filePath)
 	if err != nil {
-		log.Err("BlockCache::CreateFile : Failed to create file %s", options.Name)
-		return nil, err
+		ch <- fmt.Errorf("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", options.Handle.Path, err.Error())
+		return
+	}
+	defer uploadHandle.Close()
+
+	err = c.NextComponent().CopyFromFile(
+		internal.CopyFromFileOptions{
+			Name: options.Handle.Path,
+			File: uploadHandle,
+		})
+
+	uploadHandle.Close()
+	if err != nil {
+		log.Err("FileCache::FlushFile : %s upload failed [%s]", options.Handle.Path, err.Error())
+		return err
+	}
+	fmt.Printf("Uploaded file %s to Azure Blob Storage\n", filePath)
+}
+
+func (c *ParallelUpload) Upload(options internal.UploadOptions) (*handlemap.Handle, error) {
+	log.Trace("ParallelUpload::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
+
+	var wg sync.WaitGroup
+	ch := make(chan error)
+
+	// Create a worker pool with 16 goroutines
+	poolSize := 16
+	sem := make(chan struct{}, poolSize)
+
+	// Walk through the directory tree
+	err := filepath.Walk(c.targetDirectory, func(filePath string, fileInfo os.FileInfo, err error) error {
+		if err != nil {
+			fmt.Printf("Error accessing path %s: %v\n", filePath, err)
+			return nil
+		}
+		if !fileInfo.IsDir() {
+			sem <- struct{}{}
+			wg.Add(1)
+			go func(filePath string) {
+				defer func() { <-sem }()
+				uploadFileToBlob(filePath, &wg, ch)
+			}(filePath)
+		}
+		return nil
+	})
+	if err != nil {
+		fmt.Printf("Error walking through directory: %v\n", err)
+		os.Exit(1)
 	}
 
-	// Initialize the queue
-	queue := Queue{}
+	// Wait for all goroutines to finish
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
 
-	// List files in the current directory
-	files, err := ioutil.ReadDir(c.targetDirectory)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// Add files to the queue
-	for _, file := range files {
-		if !file.IsDir() { //review: assumming there are only files in the folder
-			queue.Enqueue(file.Name())
+	// Listen for errors from goroutines
+	for err := range ch {
+		if err != nil {
+			fmt.Println(err)
 		}
 	}
-
-	c.threadPool = newThreadPool(16, c.download, c.upload)
-	if c.threadPool == nil {
-		log.Err("BlockCache::Configure : fail to init thread pool")
-		return fmt.Errorf("config error in %s [fail to init thread pool]", c.Name())
-	}
-	// Dequeue and print files
-	for len(queue.items) > 0 {
-		fmt.Println(queue.Dequeue())
-	}
-
-	handle := handlemap.NewHandle(options.Name)
-	handle.Size = 0
-	handle.Mtime = time.Now()
-
-	// As file is created on storage as well there is no need to mark this as dirty
-	// Any write operation to file will mark it dirty and flush will then reupload
-	// handle.Flags.Set(handlemap.HandleFlagDirty)
-	c.prepareHandleForBlockCache(handle)
-	return handle, nil
+	return nil
 }
 
 // OnConfigChange : If component has registered, on config file change this method is called

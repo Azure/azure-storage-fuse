@@ -143,6 +143,10 @@ type FlushFileOptions struct {
 	Handle *handlemap.Handle
 }
 
+type parallelUploadFileToBlob struct {
+	Handle *handlemap.Handle
+}
+
 type SyncFileOptions struct {
 	Handle *handlemap.Handle
 }
