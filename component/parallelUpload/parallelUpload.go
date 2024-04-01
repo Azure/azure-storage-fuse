@@ -38,6 +38,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -88,6 +89,11 @@ func (c *ParallelUpload) Start(ctx context.Context) error {
 	log.Trace("ParallelUpload::Start : Starting component %s", c.Name())
 
 	// ParallelUpload : start code goes here
+	err := c.Upload2()
+	if err != nil {
+		log.Err("ParallelUpload::Upload functin call failed")
+		return fmt.Errorf("ParallelUpload: UPLOAD FUNCTION CALL FAILED")
+	}
 
 	return nil
 }
@@ -126,25 +132,25 @@ func (c *ParallelUpload) Configure(_ bool) error {
 	return nil
 }
 
-func (c *ParallelUpload) parallelUploadFileToBlob(filePath string, wg *sync.WaitGroup, ch chan<- error) error {
+func (c *ParallelUpload) parallelUploadFileToBlob(file string, filePath string, wg *sync.WaitGroup, ch chan<- error) error {
 	defer wg.Done()
 
 	uploadHandle, err := os.Open(filePath)
 	if err != nil {
-		ch <- fmt.Errorf("FileCache::FlushFile : error [unable to open upload handle] %s [%s]", filePath, err.Error())
+		ch <- fmt.Errorf("ParallelUpload::ParallelUploadFileToBlob : error [unable to open upload handle] %s [%s]", filePath, err.Error())
 		return err
 	}
 	defer uploadHandle.Close()
 
 	err = c.NextComponent().CopyFromFile(
 		internal.CopyFromFileOptions{
-			Name: filePath,
+			Name: file,
 			File: uploadHandle,
 		})
 
 	uploadHandle.Close()
 	if err != nil {
-		log.Err("FileCache::FlushFile : %s upload failed [%s]", filePath, err.Error())
+		log.Err("ParallelUpload::ParallelUploadFileToBlob : %s upload failed [%s]", file, err.Error())
 		return err
 	}
 	fmt.Printf("Uploaded file %s to Azure Blob Storage\n", filePath)
@@ -153,6 +159,7 @@ func (c *ParallelUpload) parallelUploadFileToBlob(filePath string, wg *sync.Wait
 
 func (c *ParallelUpload) Upload() error {
 	// log.Trace("ParallelUpload::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
+	log.Trace("ParallelUpload::Upload : Starting component")
 
 	var wg sync.WaitGroup
 	ch := make(chan error)
@@ -172,7 +179,7 @@ func (c *ParallelUpload) Upload() error {
 			wg.Add(1)
 			go func(filePath string) {
 				defer func() { <-sem }()
-				c.parallelUploadFileToBlob(filePath, &wg, ch)
+				// c.parallelUploadFileToBlob(file.Name(), filePath, &wg, ch)
 			}(filePath)
 		}
 		return nil
@@ -186,6 +193,53 @@ func (c *ParallelUpload) Upload() error {
 	go func() {
 		wg.Wait()
 		close(ch)
+	}()
+
+	// Listen for errors from goroutines
+	for err := range ch {
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+	return nil
+}
+
+func (c *ParallelUpload) Upload2() error {
+	// log.Trace("ParallelUpload::CreateFile : name=%s, mode=%d", options.Name, options.Mode)
+	log.Trace("ParallelUpload::Upload : Starting component")
+	// fmt.Print("SEE")
+	files, err := os.ReadDir(c.targetDirectory)
+	if err != nil {
+		fmt.Printf("Failed to read directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	var wg sync.WaitGroup
+	ch := make(chan error)
+
+	// Create a worker pool with 16 goroutines
+	poolSize := 16
+	sem := make(chan struct{}, poolSize)
+
+	for _, file := range files {
+		if !file.IsDir() {
+			filePath := filepath.Join(c.targetDirectory, file.Name())
+			fileName := file.Name()
+			sem <- struct{}{}
+			wg.Add(1)
+			go func(filePath string) {
+				defer func() { <-sem }()
+				c.parallelUploadFileToBlob(fileName, filePath, &wg, ch)
+			}(filePath)
+		}
+		fmt.Printf("Number of goroutines running: %d\n", runtime.NumGoroutine())
+	}
+
+	// Wait for all goroutines to finish
+	go func() {
+		wg.Wait()
+		close(ch)
+		// Check the number of goroutines running
 	}()
 
 	// Listen for errors from goroutines
