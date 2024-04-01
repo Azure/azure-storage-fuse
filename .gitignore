@@ -15,7 +15,6 @@ __debug_bin
 *.prof
 cpplite/
 build/
-extern/
 test/manual_scripts/create1000.go
 test/manual_scripts/cachetest.go
 lint.log
