@@ -1,0 +1,3 @@
+[submodule "nfs/extern/libnfs"]
+	path = nfs/extern/libnfs
+	url = https://github.com/linuxsmiths/libnfs
