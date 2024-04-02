@@ -20,6 +20,7 @@ set(INSTALL_BIN_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation direc
 #
 # We add the following submodule(s), update them as needed, before starting.
 # git submodule add https://github.com/linuxsmiths/libnfs extern/libnfs
+# git submodule add https://github.com/jbeder/yaml-cpp.git extern/yaml-cpp
 #
 find_package(Git QUIET)
 if(GIT_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/../.git")
