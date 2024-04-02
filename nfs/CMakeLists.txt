@@ -36,11 +36,16 @@ if(GIT_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/../.git")
 endif()
 
 if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/libnfs/CMakeLists.txt")
-    message(FATAL_ERROR "The submodules were not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
+    message(FATAL_ERROR "The libnfs submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
+endif()
+
+if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/yaml-cpp/CMakeLists.txt")
+    message(FATAL_ERROR "The yaml-cpp submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
 # Build libnfs.
 add_subdirectory(extern/libnfs)
+add_subdirectory(extern/yaml-cpp)
 
 configure_file(inc/aznfsc_config.h.in inc/aznfsc_config.h)
 
@@ -51,7 +56,7 @@ add_executable(${CMAKE_PROJECT_NAME}
 # All include directories.
 target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE ${PROJECT_SOURCE_DIR}/inc
-			   PRIVATE ${PROJECT_BINARY_DIR}/inc
+                           PRIVATE ${PROJECT_BINARY_DIR}/inc
                            PRIVATE ${PROJECT_SOURCE_DIR}/extern/libnfs/include/nfsc
                            PRIVATE ${PROJECT_SOURCE_DIR}/extern/libnfs/mount)
 
@@ -63,6 +68,7 @@ target_compile_options(${CMAKE_PROJECT_NAME}
 target_link_libraries(${CMAKE_PROJECT_NAME}
                       fuse3
                       pthread
-                      nfs)
+                      nfs
+                      yaml-cpp)
 
 install(TARGETS ${CMAKE_PROJECT_NAME})
