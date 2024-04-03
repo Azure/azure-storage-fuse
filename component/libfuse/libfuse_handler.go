@@ -319,7 +319,13 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	// While reading a file let kernel do readahed for better perf
 	conn.max_readahead = (4 * 1024 * 1024)
 	conn.max_read = (1 * 1024 * 1024)
-	conn.max_write = (1 * 1024 * 1024)
+
+	// RHEL still has 3.3 fuse version and it does not allow max_write beyond 128K
+	// Setting this value to 1 MB will fail the mount.
+	fuse_minor := C.get_fuse_minor_version()
+	if fuse_minor > 5 {
+		conn.max_write = (1 * 1024 * 1024)
+	}
 
 	// direct_io option is used to bypass the kernel cache. It disables the use of
 	// page cache (file content cache) in the kernel for the filesystem.
