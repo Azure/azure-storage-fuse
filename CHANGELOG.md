@@ -1,5 +1,8 @@
-## 2.2.2 (Unreleased)
+## 2.3.0 (Unreleased)
 **Bug Fixes**
+- [#1359](https://github.com/Azure/azure-storage-fuse/issues/1359) Fixed RHEL 8.6 mount failure
+- [#1368](https://github.com/Azure/azure-storage-fuse/issues/1368) Fixed RHEL 8.6 mount failure
+
 **Features**
 
 ## 2.2.1 (2024-02-28)
