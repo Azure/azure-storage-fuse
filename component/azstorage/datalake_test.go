@@ -267,7 +267,7 @@ func (s *datalakeTestSuite) TestCreateDirWithCPKEnabled() {
 			err := s.az.CreateDir(internal.CreateDirOptions{Name: path})
 
 			s.assert.Nil(err)
-			// Directory should not be accessible wihtout CPK
+			// Directory should not be accessible without CPK
 			dir := s.containerClient.NewDirectoryClient(internal.TruncateDirName(path))
 			_, err = dir.GetProperties(ctx, nil)
 			s.assert.NotNil(err)
