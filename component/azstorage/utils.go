@@ -74,6 +74,7 @@ const (
 	DualStack              bool          = true
 	MaxIdleConns           int           = 0 // No limit
 	MaxIdleConnsPerHost    int           = 100
+	MaxConnsPerHost        int           = 0 // No limit
 	IdleConnTimeout        time.Duration = 90 * time.Second
 	TLSHandshakeTimeout    time.Duration = 10 * time.Second
 	ExpectContinueTimeout  time.Duration = 1 * time.Second
@@ -126,10 +127,10 @@ func getAzDatalakeServiceClientOptions(conf *AzStorageConfig) *serviceBfs.Client
 
 // getLogOptions : to configure the SDK logging policy
 func getSDKLogOptions() policy.LogOptions {
-	if log.GetType() == "silent" {
+	if log.GetType() == "silent" || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
 		return policy.LogOptions{}
 	} else {
-		// TODO:: track2 : check which headers and query params should not be redacted
+		// add headers and query params which should be logged and not redacted
 		return policy.LogOptions{
 			AllowedHeaders:     allowedHeaders,
 			AllowedQueryParams: allowedQueryParams,
@@ -140,23 +141,19 @@ func getSDKLogOptions() policy.LogOptions {
 // setSDKLogListener : log the requests and responses.
 // It is disabled if,
 //   - logging type is silent
-//   - sdk-trace is false
 //   - logging level is less than debug
-func setSDKLogListener(sdkLogging bool) {
-	// TODO:: track2 : set/reset listener on dynamic config change
-	if log.GetType() == "silent" || !sdkLogging || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
+func setSDKLogListener() {
+	if log.GetType() == "silent" || log.GetLogLevel() < common.ELogLevel.LOG_DEBUG() {
 		// reset listener
 		azlog.SetListener(nil)
 	} else {
 		azlog.SetListener(func(cls azlog.Event, msg string) {
-			log.Debug("SDK : %s", msg)
+			log.Debug("SDK(%s) : %s", cls, msg)
 		})
 	}
 }
 
 // Create an HTTP Client with configured proxy
-// TODO:: track2 : More configurations for other http client parameters?
-// TODO: configure http.Client
 func newBlobfuse2HttpClient(conf *AzStorageConfig) *http.Client {
 	var ProxyURL func(req *http.Request) (*url.URL, error) = func(req *http.Request) (*url.URL, error) {
 		// If a proxy address is passed return
@@ -181,6 +178,7 @@ func newBlobfuse2HttpClient(conf *AzStorageConfig) *http.Client {
 			}).Dial, /*Context*/
 			MaxIdleConns:          MaxIdleConns, // No limit
 			MaxIdleConnsPerHost:   MaxIdleConnsPerHost,
+			MaxConnsPerHost:       MaxConnsPerHost, // No limit
 			IdleConnTimeout:       IdleConnTimeout,
 			TLSHandshakeTimeout:   TLSHandshakeTimeout,
 			ExpectContinueTimeout: ExpectContinueTimeout,
@@ -189,8 +187,6 @@ func newBlobfuse2HttpClient(conf *AzStorageConfig) *http.Client {
 			// make things ugly and hence user needs to disable this feature through config
 			DisableCompression:     conf.disableCompression,
 			MaxResponseHeaderBytes: MaxResponseHeaderBytes,
-			//ResponseHeaderTimeout:  time.Duration{},
-			//ExpectContinueTimeout:  time.Duration{},
 		},
 	}
 }

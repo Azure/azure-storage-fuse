@@ -157,7 +157,6 @@ azstorage:
   max-retry-delay-sec: <maximum delay between two tries (in sec). Default - 60 sec>
   http-proxy: ip-address:port <http proxy to be used for connection>
   https-proxy: ip-address:port <https proxy to be used for connection>
-  sdk-trace: true|false <enable storage sdk logging>
   fail-unsupported-op: true|false <for block blob account return failure for unsupported operations like chmod and chown>
   auth-resource: <resource string to be used during OAuth token retrieval>
   update-md5: true|false <set md5 sum on upload. Impacts performance. works only when file-cache component is part of the pipeline>
