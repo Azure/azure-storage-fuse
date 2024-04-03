@@ -83,8 +83,8 @@ type FileCache struct {
 	hardLimit         bool
 	diskHighWaterMark float64
 
-	lazyWrite  bool
-	asyncClose sync.WaitGroup
+	lazyWrite    bool
+	fileCloseOpt sync.WaitGroup
 }
 
 // Structure defining your config parameters
@@ -181,8 +181,10 @@ func (c *FileCache) Stop() error {
 	log.Trace("Stopping component : %s", c.Name())
 
 	// Wait for all async upload to complete if any
-	log.Info("FileCache::Stop : Waiting for async close to complete")
-	c.asyncClose.Wait()
+	if c.lazyWrite {
+		log.Info("FileCache::Stop : Waiting for async close to complete")
+		c.fileCloseOpt.Wait()
+	}
 
 	_ = c.policy.ShutdownPolicy()
 	_ = c.TempCacheCleanup()
@@ -1000,13 +1002,14 @@ func (fc *FileCache) CloseFile(options internal.CloseFileOptions) error {
 	flock := fc.fileLocks.Get(options.Handle.Path)
 	flock.Lock()
 
+	// Async close is called so schedule the upload and return here
+	fc.fileCloseOpt.Add(1)
+
 	if !fc.lazyWrite {
 		// Sync close is called so wait till the upload completes
 		return fc.closeFileInternal(options, flock)
 	}
 
-	// Async close is called so schedule the upload and return here
-	fc.asyncClose.Add(1)
 	go fc.closeFileInternal(options, flock) //nolint
 	return nil
 }
@@ -1018,7 +1021,7 @@ func (fc *FileCache) closeFileInternal(options internal.CloseFileOptions, flock 
 	// Lock is acquired by CloseFile, at end of this method we need to unlock
 	// If its async call file shall be locked till the upload completes.
 	defer flock.Unlock()
-	defer fc.asyncClose.Done()
+	defer fc.fileCloseOpt.Done()
 
 	localPath := filepath.Join(fc.tmpPath, options.Handle.Path)
 

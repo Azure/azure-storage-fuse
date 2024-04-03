@@ -1683,26 +1683,30 @@ func (suite *fileCacheTestSuite) TestZZOffloadIO() {
 	suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
 }
 
-// func (suite *fileCacheTestSuite) TestZZLazyWrite() {
-// 	defer suite.cleanupTest()
-// 	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  timeout-sec: 0\n\nloopbackfs:\n  path: %s",
-// 		suite.cache_path, suite.fake_storage_path)
+func (suite *fileCacheTestSuite) TestZZZZLazyWrite() {
+	defer suite.cleanupTest()
+	configuration := fmt.Sprintf("file_cache:\n  path: %s\n  timeout-sec: 0\n\nloopbackfs:\n  path: %s",
+		suite.cache_path, suite.fake_storage_path)
 
-// 	suite.setupTestHelper(configuration)
-// 	suite.fileCache.lazyWrite = true
+	suite.setupTestHelper(configuration)
+	suite.fileCache.lazyWrite = true
 
-// 	file := "file101"
-// 	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
-// 	data := make([]byte, 10*1024*1024)
-// 	_, _ = suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
-// 	_ = suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
+	file := "file101"
+	handle, _ := suite.fileCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
+	data := make([]byte, 10*1024*1024)
+	_, _ = suite.fileCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	_ = suite.fileCache.FlushFile(internal.FlushFileOptions{Handle: handle})
 
-// 	// As lazy write is enabled flush shall not upload the file
-// 	suite.assert.True(handle.Dirty())
+	// As lazy write is enabled flush shall not upload the file
+	suite.assert.True(handle.Dirty())
 
-// 	_ = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
-// 	time.Sleep(5 * time.Second)
-// }
+	_ = suite.fileCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	time.Sleep(5 * time.Second)
+	suite.fileCache.lazyWrite = false
+
+	// As lazy write is enabled flush shall not upload the file
+	suite.assert.False(handle.Dirty())
+}
 
 func (suite *fileCacheTestSuite) TestStatFS() {
 	defer suite.cleanupTest()

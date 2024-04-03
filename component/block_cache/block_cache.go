@@ -81,8 +81,8 @@ type BlockCache struct {
 	noPrefetch      bool            // Flag to indicate if prefetch is disabled
 	prefetchOnOpen  bool            // Start prefetching on file open call instead of waiting for first read
 
-	lazyWrite  bool           // Flag to indicate if lazy write is enabled
-	asyncClose sync.WaitGroup // Wait group to wait for all async close operations to complete
+	lazyWrite    bool           // Flag to indicate if lazy write is enabled
+	fileCloseOpt sync.WaitGroup // Wait group to wait for all async close operations to complete
 }
 
 // Structure defining your config parameters
@@ -149,9 +149,11 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 func (bc *BlockCache) Stop() error {
 	log.Trace("BlockCache::Stop : Stopping component %s", bc.Name())
 
-	// Wait for all async upload to complete if any
-	log.Info("BlockCache::Stop : Waiting for async close to complete")
-	bc.asyncClose.Wait()
+	if bc.lazyWrite {
+		// Wait for all async upload to complete if any
+		log.Info("BlockCache::Stop : Waiting for async close to complete")
+		bc.fileCloseOpt.Wait()
+	}
 
 	// Wait for thread pool to stop
 	bc.threadPool.Stop()
@@ -413,13 +415,13 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 
 // CloseFile: File is closed by application so release all the blocks and submit back to blockPool
 func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
+	bc.fileCloseOpt.Add(1)
 	if !bc.lazyWrite {
 		// Sync close is called so wait till the upload completes
 		return bc.closeFileInternal(options)
 	}
 
 	// Async close is called so schedule the upload and return here
-	bc.asyncClose.Add(1)
 	go bc.closeFileInternal(options) //nolint
 	return nil
 }
@@ -428,7 +430,7 @@ func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
 func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error {
 	log.Trace("BlockCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
 
-	defer bc.asyncClose.Done()
+	defer bc.fileCloseOpt.Done()
 
 	if options.Handle.Dirty() {
 		log.Info("BlockCache::CloseFile : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
