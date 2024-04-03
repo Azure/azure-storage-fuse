@@ -324,7 +324,10 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 	// Setting this value to 1 MB will fail the mount.
 	fuse_minor := C.get_fuse_minor_version()
 	if fuse_minor > 5 {
+		log.Info("Libfuse::libfuse_init : Setting 1MB max_write for fuse minor %v", fuse_minor)
 		conn.max_write = (1 * 1024 * 1024)
+	} else {
+		log.Info("Libfuse::libfuse_init : Ignoring max_write for fuse minor %v", fuse_minor)
 	}
 
 	// direct_io option is used to bypass the kernel cache. It disables the use of
