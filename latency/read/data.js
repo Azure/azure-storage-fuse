@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1712134844837,
+  "lastUpdate": 1712139602960,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -413,6 +413,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 72.18330871438634,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "482a82eb5445945508713706c9768c7a442d8c88",
+          "message": "Merge remote-tracking branch 'origin/main' into vibhansa/perftestrunner",
+          "timestamp": "2024-04-03T13:58:04+05:30",
+          "tree_id": "c4074fe168e90d751e699de98801bf2169e6aac8",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/482a82eb5445945508713706c9768c7a442d8c88"
+        },
+        "date": 1712139602626,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 1.8510081578673334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 70.16226381834933,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.341708539546,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.594244130877,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 1.9824578920983331,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 70.741285047286,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 2.2841663419226665,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 4.099645218760333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 71.51596040426433,
             "unit": "milliseconds"
           }
         ]
