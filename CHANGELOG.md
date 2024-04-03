@@ -1,11 +1,14 @@
-## 2.2.1 (Unreleased)
+## 2.2.2 (Unreleased)
+**Bug Fixes**
+**Features**
+
+## 2.2.1 (2024-02-28)
 **Bug Fixes**
 - Fixed panic while truncating a file to a very large size.
 - Fixed block-cache panic on flush of a file which has no active changeset
 - Fixed block-cache panic on renaming a file and then flushing older handle
 - Fixed block-cache flush resulting in invalid-block-list error
  
-**Features**
 
 ## 2.2.0 (2024-01-24)
 **Bug Fixes**
