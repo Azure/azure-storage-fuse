@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1712134843698,
+  "lastUpdate": 1712139601783,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -413,6 +413,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 55.167317708333336,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "482a82eb5445945508713706c9768c7a442d8c88",
+          "message": "Merge remote-tracking branch 'origin/main' into vibhansa/perftestrunner",
+          "timestamp": "2024-04-03T13:58:04+05:30",
+          "tree_id": "c4074fe168e90d751e699de98801bf2169e6aac8",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/482a82eb5445945508713706c9768c7a442d8c88"
+        },
+        "date": 1712139600670,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 525.4674479166666,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read",
+            "value": 14.244791666666666,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 2572.7802734375,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 1544.0589192708333,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 504.7939453125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 14.136393229166666,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 1615.578125,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 3808.1165364583335,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 55.642578125,
             "unit": "MiB/s"
           }
         ]
