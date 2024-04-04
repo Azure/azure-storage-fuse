@@ -2,6 +2,7 @@
 **Bug Fixes**
 - [#1057](https://github.com/Azure/azure-storage-fuse/issues/1057) Fixed the issue where user-assigned identity is not used to authenticate when system-assigned identity is enabled.
 - Listing blobs is now supported for blob names that contain characters that aren't valid in XML (U+FFFE or U+FFFF).
+- [#1359](https://github.com/Azure/azure-storage-fuse/issues/1359), [#1368](https://github.com/Azure/azure-storage-fuse/issues/1368) Fixed RHEL 8.6 mount failure
 
 **Features**
 - Migrated to the latest [azblob SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob).
