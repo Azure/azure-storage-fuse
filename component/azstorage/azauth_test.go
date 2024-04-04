@@ -458,7 +458,7 @@ func (suite *authTestSuite) TestBlockSasKeySetOption() {
 		assert.Fail("TestBlockSasKeySetOption : Failed to create Storage object")
 	}
 	stg.SetupPipeline()
-	stg.NewCredentialKey("saskey", storageTestConfigurationParameters.BlockSas)
+	stg.UpdateServiceClient("saskey", storageTestConfigurationParameters.BlockSas)
 	if err := stg.SetupPipeline(); err != nil {
 		assert.Fail("TestBlockSasKeySetOption : Failed to setup pipeline")
 	}
@@ -591,7 +591,7 @@ func (suite *authTestSuite) TestAdlsSasKeySetOption() {
 		assert.Fail("TestBlockSasKeySetOption : Failed to create Storage object")
 	}
 	stg.SetupPipeline()
-	stg.NewCredentialKey("saskey", storageTestConfigurationParameters.AdlsSas)
+	stg.UpdateServiceClient("saskey", storageTestConfigurationParameters.AdlsSas)
 	if err := stg.SetupPipeline(); err != nil {
 		assert.Fail("TestBlockSasKeySetOption : Failed to setup pipeline")
 	}
@@ -634,22 +634,23 @@ func (suite *authTestSuite) TestBlockMsiResId() {
 	}
 }
 
-func (suite *authTestSuite) TestBlockMsiObjId() {
-	defer suite.cleanupTest()
-	if !storageTestConfigurationParameters.SkipMsi {
-		stgConfig := AzStorageConfig{
-			container: storageTestConfigurationParameters.BlockContainer,
-			authConfig: azAuthConfig{
-				AuthMode:    EAuthType.MSI(),
-				AccountType: EAccountType.BLOCK(),
-				AccountName: storageTestConfigurationParameters.BlockAccount,
-				ObjectID:    storageTestConfigurationParameters.MsiObjId,
-				Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
-			},
-		}
-		suite.validateStorageTest("TestBlockMsiObjId", stgConfig)
-	}
-}
+// ObjectID is not supported in msal. So, commenting this.
+// func (suite *authTestSuite) TestBlockMsiObjId() {
+// 	defer suite.cleanupTest()
+// 	if !storageTestConfigurationParameters.SkipMsi {
+// 		stgConfig := AzStorageConfig{
+// 			container: storageTestConfigurationParameters.BlockContainer,
+// 			authConfig: azAuthConfig{
+// 				AuthMode:    EAuthType.MSI(),
+// 				AccountType: EAccountType.BLOCK(),
+// 				AccountName: storageTestConfigurationParameters.BlockAccount,
+// 				ObjectID:    storageTestConfigurationParameters.MsiObjId,
+// 				Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+// 			},
+// 		}
+// 		suite.validateStorageTest("TestBlockMsiObjId", stgConfig)
+// 	}
+// }
 
 // Can't use HTTP requests with MSI/SPN credentials
 func (suite *authTestSuite) TestAdlsMsiAppId() {

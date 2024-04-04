@@ -149,7 +149,7 @@ azstorage:
   subdirectory: <name of subdirectory to be mounted instead of whole container>
   block-size-mb: <size of each block (in MB). Default - 16 MB>
   max-concurrency: <number of parallel upload/download threads. Default - 32>
-  tier: hot|cool|archive|none <blob-tier to be set while uploading a blob. Default - none>
+  tier: hot|cool|cold|premium|archive|none <blob-tier to be set while uploading a blob. Default - none>
   block-list-on-mount-sec: <time list api to be blocked after mount (in sec). Default - 0 sec>
   max-retries: <number of retries to attempt for any operation failure. Default - 5>
   max-retry-timeout-sec: <maximum timeout allowed for a given retry (in sec). Default - 900 sec>
@@ -157,7 +157,6 @@ azstorage:
   max-retry-delay-sec: <maximum delay between two tries (in sec). Default - 60 sec>
   http-proxy: ip-address:port <http proxy to be used for connection>
   https-proxy: ip-address:port <https proxy to be used for connection>
-  sdk-trace: true|false <enable storage sdk logging>
   fail-unsupported-op: true|false <for block blob account return failure for unsupported operations like chmod and chown>
   auth-resource: <resource string to be used during OAuth token retrieval>
   update-md5: true|false <set md5 sum on upload. Impacts performance. works only when file-cache component is part of the pipeline>
