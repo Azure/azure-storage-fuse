@@ -38,6 +38,16 @@ steps:
       sudo apt-get install ${{ parameters.fuselib }} gcc -y
     displayName: 'Install libfuse'
 
+  # Install azcli
+  - script: |
+      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      az --version
+    displayName: 'Install Azure CLI'
+
+  - script: |
+      az login --service-principal -u $(AZTEST_CLIENT) -p $(AZTEST_SECRET) --tenant $(AZTEST_TENANT)
+    displayName: 'Azure CLI login'
+
   - task: Go@0
     inputs:
       command: 'build'
