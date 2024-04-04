@@ -21,6 +21,7 @@ set(INSTALL_BIN_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation direc
 # We add the following submodule(s), update them as needed, before starting.
 # git submodule add https://github.com/linuxsmiths/libnfs extern/libnfs
 # git submodule add https://github.com/jbeder/yaml-cpp.git extern/yaml-cpp
+# git submodule add https://github.com/gabime/spdlog.git extern/spdlog
 #
 find_package(Git QUIET)
 if(GIT_FOUND AND EXISTS "${PROJECT_SOURCE_DIR}/../.git")
@@ -44,9 +45,18 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/yaml-cpp/CMakeLists.txt")
     message(FATAL_ERROR "The yaml-cpp submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
+if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/spdlog/CMakeLists.txt")
+    message(FATAL_ERROR "The spdlog submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
+endif()
+
 # Build libnfs.
 add_subdirectory(extern/libnfs)
 add_subdirectory(extern/yaml-cpp)
+
+# Build static library for spdlog.
+set(SPDLOG_BUILD_SHARED OFF CACHE INTERNAL "Build spdlog shared library" FORCE)
+set(BUILD_SHARED_LIBS OFF CACHE INTERNAL "Build shared library" FORCE)
+add_subdirectory(extern/spdlog)
 
 configure_file(inc/aznfsc_config.h.in inc/aznfsc_config.h)
 
@@ -56,10 +66,11 @@ add_executable(${CMAKE_PROJECT_NAME}
 
 # All include directories.
 target_include_directories(${CMAKE_PROJECT_NAME}
-                           PRIVATE ${PROJECT_SOURCE_DIR}/inc
-                           PRIVATE ${PROJECT_BINARY_DIR}/inc
-                           PRIVATE ${PROJECT_SOURCE_DIR}/extern/libnfs/include/nfsc
-                           PRIVATE ${PROJECT_SOURCE_DIR}/extern/libnfs/mount)
+                           PRIVATE "${PROJECT_SOURCE_DIR}/inc"
+                           PRIVATE "${PROJECT_BINARY_DIR}/inc"
+                           PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/include/nfsc"
+                           PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/mount"
+                           PRIVATE "${PROJECT_SOURCE_DIR}/extern/spdlog/include")
 
 target_compile_options(${CMAKE_PROJECT_NAME}
                        PRIVATE -Wall
@@ -70,6 +81,7 @@ target_link_libraries(${CMAKE_PROJECT_NAME}
                       fuse3
                       pthread
                       nfs
-                      yaml-cpp)
+                      yaml-cpp
+                      spdlog)
 
 install(TARGETS ${CMAKE_PROJECT_NAME})

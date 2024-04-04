@@ -4,3 +4,6 @@
 [submodule "nfs/extern/yaml-cpp"]
 	path = nfs/extern/yaml-cpp
 	url = https://github.com/jbeder/yaml-cpp.git
+[submodule "nfs/extern/spdlog"]
+	path = nfs/extern/spdlog
+	url = https://github.com/gabime/spdlog.git
