@@ -3,6 +3,7 @@
 - [#1359](https://github.com/Azure/azure-storage-fuse/issues/1359), [#1368](https://github.com/Azure/azure-storage-fuse/issues/1368) Fixed RHEL 8.6 mount failure
 
 **Features**
+- lazy-write support for async flush and close file call. Actual upload will be scheduled in background when this feature is enable.
 
 ## 2.2.1 (2024-02-28)
 **Bug Fixes**

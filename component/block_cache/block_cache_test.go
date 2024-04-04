@@ -899,6 +899,29 @@ func (suite *blockCacheTestSuite) TestTempCacheCleanup() {
 	suite.assert.Contains(err.Error(), "failed to list directory")
 }
 
+func (suite *blockCacheTestSuite) TestZZZZLazyWrite() {
+	tobj, _ := setupPipeline("")
+	defer tobj.cleanupPipeline()
+
+	tobj.blockCache.lazyWrite = true
+
+	file := "file101"
+	handle, _ := tobj.blockCache.CreateFile(internal.CreateFileOptions{Name: file, Mode: 0777})
+	data := make([]byte, 10*1024*1024)
+	_, _ = tobj.blockCache.WriteFile(internal.WriteFileOptions{Handle: handle, Offset: 0, Data: data})
+	_ = tobj.blockCache.FlushFile(internal.FlushFileOptions{Handle: handle})
+
+	// As lazy write is enabled flush shall not upload the file
+	suite.assert.True(handle.Dirty())
+
+	_ = tobj.blockCache.CloseFile(internal.CloseFileOptions{Handle: handle})
+	time.Sleep(5 * time.Second)
+	tobj.blockCache.lazyWrite = false
+
+	// As lazy write is enabled flush shall not upload the file
+	suite.assert.False(handle.Dirty())
+}
+
 // In order for 'go test' to run this suite, we need to create
 // a normal test function and pass our suite to suite.Run
 func TestBlockCacheTestSuite(t *testing.T) {
