@@ -1,6 +1,6 @@
 [global]
 name=blobfuse_benchmark
-bs=1M
+bs=256k
 runtime=30s
 time_based
 filename=read_small_fio.data
@@ -9,6 +9,5 @@ group_reporting
 [random_read_small_file]
 size=5m
 rw=randread
-ioengine=libaio
+ioengine=sync
 fallocate=none
-startdelay=30s

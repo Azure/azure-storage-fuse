@@ -1,13 +1,15 @@
 [global]
 name=blobfuse_benchmark
-bs=1M
+bs=256k
+runtime=30s
+time_based
 filename_format=$jobname.$jobnum.$filenum
 group_reporting
 
 [sequential_write_4_threads]
-size=10G
+size=100G
 rw=write
-ioengine=libaio
+ioengine=sync
 fallocate=none
-numjobs=4
-startdelay=30s
+create_on_open=1
+unlink=1
