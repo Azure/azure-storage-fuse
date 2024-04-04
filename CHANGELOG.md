@@ -2,12 +2,15 @@
 **Bug Fixes**
 - [#1057](https://github.com/Azure/azure-storage-fuse/issues/1057) Fixed the issue where user-assigned identity is not used to authenticate when system-assigned identity is enabled.
 - Listing blobs is now supported for blob names that contain characters that aren't valid in XML (U+FFFE or U+FFFF).
+- [#1359](https://github.com/Azure/azure-storage-fuse/issues/1359), [#1368](https://github.com/Azure/azure-storage-fuse/issues/1368) Fixed RHEL 8.6 mount failure
 
 **Features**
 - Migrated to the latest [azblob SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob).
 - Migrated to the latest [azdatalake SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azdatalake).
 - Migrated from deprecated ADAL to MSAL through the latest [azidentity SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/azidentity).
 - Added support for uploading blobs in cold and premium tier.
+- Support CPK for adls storage accounts.
+- Lazy-write support for async flush and close file call. Actual upload will be scheduled in background when this feature is enabled.
 
 ## 2.2.1 (2024-02-28)
 **Bug Fixes**

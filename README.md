@@ -115,6 +115,7 @@ To learn about a specific command, just include the name of the command (For exa
     * `--passphrase=<STRING>` : Passphrase used to encrypt/decrypt config file.
     * `--wait-for-mount=<TIMEOUT IN SECONDS>` : Let parent process wait for given timeout before exit to ensure child has started. 
     * `--block-cache` : To enable block-cache instead of file-cache. This works only when mounted without any config file.
+    * `--lazy-write` : To enable async close file handle call and schedule the upload in background.
 - Attribute cache options
     * `--attr-cache-timeout=<TIMEOUT IN SECONDS>`: The timeout for the attribute cache entries.
     * `--no-symlinks=true`: To improve performance disable symlink support.
@@ -246,7 +247,9 @@ If your use-case involves updating/uploading file(s) through other means and you
 - When Blobfuse2 is mounted on a container, SYS_ADMIN privileges are required for it to interact with the fuse driver. If container is created without the privilege, mount will fail. Sample command to spawn a docker container is 
 
     `docker run -it --rm --cap-add=SYS_ADMIN --device=/dev/fuse --security-opt apparmor:unconfined <environment variables> <docker image>`
-        
+- In case of `mount all` system may limit on number of containers you can mount in parallel (when you go above 100 containers). To increase this system limit use below command
+    `echo 256 | sudo tee /proc/sys/fs/inotify/max_user_instances`
+
 ### Syslog security warning
 By default, Blobfuse2 will log to syslog. The default settings will, in some cases, log relevant file paths to syslog. 
 If this is sensitive information, turn off logging or set log-level to LOG_ERR.  

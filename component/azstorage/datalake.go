@@ -58,10 +58,11 @@ import (
 
 type Datalake struct {
 	AzStorageConnection
-	Auth       azAuth
-	Service    *service.Client
-	Filesystem *filesystem.Client
-	BlockBlob  BlockBlob
+	Auth           azAuth
+	Service        *service.Client
+	Filesystem     *filesystem.Client
+	BlockBlob      BlockBlob
+	datalakeCPKOpt *file.CPKInfo
 }
 
 // Verify that Datalake implements AzConnection interface
@@ -94,6 +95,14 @@ func transformConfig(dlConfig AzStorageConfig) AzStorageConfig {
 
 func (dl *Datalake) Configure(cfg AzStorageConfig) error {
 	dl.Config = cfg
+
+	if dl.Config.cpkEnabled {
+		dl.datalakeCPKOpt = &file.CPKInfo{
+			EncryptionKey:       &dl.Config.cpkEncryptionKey,
+			EncryptionKeySHA256: &dl.Config.cpkEncryptionKeySha256,
+			EncryptionAlgorithm: to.Ptr(directory.EncryptionAlgorithmTypeAES256),
+		}
+	}
 	return dl.BlockBlob.Configure(transformConfig(cfg))
 }
 
@@ -226,6 +235,7 @@ func (dl *Datalake) CreateDirectory(name string) error {
 
 	directoryURL := dl.Filesystem.NewDirectoryClient(filepath.Join(dl.Config.prefixPath, name))
 	_, err := directoryURL.Create(context.Background(), &directory.CreateOptions{
+		CPKInfo: dl.datalakeCPKOpt,
 		AccessConditions: &directory.AccessConditions{
 			ModifiedAccessConditions: &directory.ModifiedAccessConditions{
 				IfNoneMatch: to.Ptr(azcore.ETagAny),
@@ -308,7 +318,9 @@ func (dl *Datalake) RenameFile(source string, target string) error {
 
 	fileClient := dl.Filesystem.NewFileClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
 
-	_, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), nil)
+	_, err := fileClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &file.RenameOptions{
+		CPKInfo: dl.datalakeCPKOpt,
+	})
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -328,7 +340,9 @@ func (dl *Datalake) RenameDirectory(source string, target string) error {
 	log.Trace("Datalake::RenameDirectory : %s -> %s", source, target)
 
 	directoryClient := dl.Filesystem.NewDirectoryClient(url.PathEscape(filepath.Join(dl.Config.prefixPath, source)))
-	_, err := directoryClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), nil)
+	_, err := directoryClient.Rename(context.Background(), filepath.Join(dl.Config.prefixPath, target), &directory.RenameOptions{
+		CPKInfo: dl.datalakeCPKOpt,
+	})
 	if err != nil {
 		serr := storeDatalakeErrToErr(err)
 		if serr == ErrFileNotFound {
@@ -348,7 +362,9 @@ func (dl *Datalake) GetAttr(name string) (attr *internal.ObjAttr, err error) {
 	log.Trace("Datalake::GetAttr : name %s", name)
 
 	fileClient := dl.Filesystem.NewFileClient(filepath.Join(dl.Config.prefixPath, name))
-	prop, err := fileClient.GetProperties(context.Background(), nil)
+	prop, err := fileClient.GetProperties(context.Background(), &file.GetPropertiesOptions{
+		CPKInfo: dl.datalakeCPKOpt,
+	})
 	if err != nil {
 		e := storeDatalakeErrToErr(err)
 		if e == ErrFileNotFound {
