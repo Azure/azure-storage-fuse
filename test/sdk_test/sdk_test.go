@@ -40,7 +40,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"path"
 	"time"
@@ -49,7 +48,9 @@ import (
 	"flag"
 	"testing"
 
-	"github.com/Azure/azure-storage-blob-go/azblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
+	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/container"
 )
 
 var accountName string
@@ -82,17 +83,18 @@ func TestMain(m *testing.M) {
 
 func TestDownloadUpload(t *testing.T) {
 
-	c := azblob.NewAnonymousCredential()
-	p := azblob.NewPipeline(c, azblob.PipelineOptions{})
-	cURL, _ := url.Parse(fmt.Sprintf("https://%s.blob.core.windows.net/%s%s", accountName, containerName, sas))
-	containerURL := azblob.NewContainerURL(*cURL, p)
+	cntURL := fmt.Sprintf("https://%s.blob.core.windows.net/%s%s", accountName, containerName, sas)
+	containerClient, err := container.NewClientWithNoCredential(cntURL, nil)
+	if err != nil {
+		t.Log(err.Error())
+	}
 
 	for i := 1; i < 7; i++ {
 		// Generate the url
 		blobname := fmt.Sprintf("%s%d", filepath, i)
 		//filename := fmt.Sprintf("%s%s", "/mnt/ramdisk/", blobname)
 		filename := fmt.Sprintf("%s%s", "/mnt/ramdisk/", blobname)
-		blobURL := containerURL.NewBlockBlobURL(path.Base(blobname))
+		blobClient := containerClient.NewBlockBlobClient(path.Base(blobname))
 
 		t.Log("----------------------------------------------------------------------")
 		t.Log("Next test file ", filename)
@@ -104,15 +106,11 @@ func TestDownloadUpload(t *testing.T) {
 
 		t.Log("download : ", filename)
 		time1 := time.Now()
-		err = azblob.DownloadBlobToFile(
-			context.Background(),
-			blobURL.BlobURL,
-			0, 0,
-			file,
-			azblob.DownloadFromBlobOptions{
-				BlockSize:   8 * 1024 * 1024,
-				Parallelism: 64,
-			})
+		_, err = blobClient.DownloadFile(context.Background(), file, &blob.DownloadFileOptions{
+			Range:       blob.HTTPRange{Offset: 0, Count: 0},
+			BlockSize:   8 * 1024 * 1024,
+			Concurrency: 64,
+		})
 		if err != nil {
 			t.Log(err.Error())
 		}
@@ -134,14 +132,10 @@ func TestDownloadUpload(t *testing.T) {
 		t.Log("upload : ", filename)
 
 		time1 = time.Now()
-		_, err = azblob.UploadFileToBlockBlob(
-			context.Background(),
-			file,
-			blobURL,
-			azblob.UploadToBlockBlobOptions{
-				BlockSize:   8 * 1024 * 1024,
-				Parallelism: 64,
-			})
+		_, err = blobClient.UploadFile(context.Background(), file, &blockblob.UploadFileOptions{
+			BlockSize:   8 * 1024 * 1024,
+			Concurrency: 64,
+		})
 		if err != nil {
 			t.Log(err.Error())
 		}

@@ -3,8 +3,6 @@
 Please ensure logging is turned on DEBUG mode when trying to reproduce an issue.
 This can help in many instances to understand what the underlying issue is.
 
-A useful setting in your configuration file to utilize when debugging is `sdk-trace: true` under the azstorage component. This will log all outgoing REST calls.
-
 # BlobFuse2 Health Monitor
 
 One of the biggest BlobFuse2 features is our brand new health monitor. It allows customers gain more insight into how their BlobFuse2 instance is behaving with the rest of their machine. Visit [here](https://github.com/Azure/azure-storage-fuse/blob/main/tools/health-monitor/README.md) to set it up.

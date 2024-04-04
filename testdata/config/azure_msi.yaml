@@ -34,4 +34,3 @@ azstorage:
   mode: msi
   container: { 0 }
   tier: hot
-  sdk-trace: { VERBOSE_LOG }

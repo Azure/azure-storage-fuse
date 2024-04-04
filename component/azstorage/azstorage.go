@@ -40,7 +40,7 @@ import (
 	"syscall"
 	"time"
 
-	azcopyCommon "github.com/Azure/azure-storage-azcopy/v10/common"
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -131,6 +131,9 @@ func (az *AzStorage) OnConfigChange() {
 		log.Err("AzStorage::OnConfigChange : failed to UpdateConfig", err.Error())
 		return
 	}
+
+	// dynamic update of the sdk log listener
+	setSDKLogListener()
 }
 
 func (az *AzStorage) configureAndTest(isParent bool) error {
@@ -141,6 +144,9 @@ func (az *AzStorage) configureAndTest(isParent bool) error {
 		log.Err("AzStorage::configureAndTest : Failed to create container URL [%s]", err.Error())
 		return err
 	}
+
+	// set SDK log listener to log the requests and responses
+	setSDKLogListener()
 
 	err = az.storage.SetPrefixPath(az.stConfig.prefixPath)
 	if err != nil {
@@ -169,11 +175,6 @@ func (az *AzStorage) Start(ctx context.Context) error {
 
 	// create stats collector for azstorage
 	azStatsCollector = stats_manager.NewStatsCollector(az.Name())
-
-	// This is a workaround right now to disable the input watcher thread which continuously monitors below config to change
-	// Running this thread continuously increases the CPU usage by 5% even when there is no activity on blobfuse2 mount path
-	// Lifecycle manager init is commented in the "blobfuse2-cpu-usage" branch. Blobfuse2 imports azcopy from this branch.
-	azcopyCommon.GetLifecycleMgr().EnableInputWatcher()
 
 	return nil
 }
@@ -304,7 +305,9 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	log.Debug("AzStorage::StreamDir : Retrieved %d objects with %s marker for Path %s", len(new_list), options.Token, path)
 
-	if new_marker != nil && *new_marker != "" {
+	if new_marker == nil {
+		new_marker = to.Ptr("")
+	} else if *new_marker != "" {
 		log.Debug("AzStorage::StreamDir : next-marker %s for Path %s", *new_marker, path)
 		if len(new_list) == 0 {
 			/* In some customer scenario we have seen that new_list is empty but marker is not empty
@@ -570,7 +573,7 @@ func NewazstorageComponent() internal.Component {
 		stConfig: AzStorageConfig{
 			blockSize:      0,
 			maxConcurrency: 32,
-			defaultTier:    getAccessTierType("none"),
+			defaultTier:    getAccessTierType(""),
 			authConfig: azAuthConfig{
 				AuthMode: EAuthType.KEY(),
 				UseHTTP:  false,

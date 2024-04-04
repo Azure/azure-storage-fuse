@@ -87,6 +87,7 @@ type mountOptions struct {
 	ProfilerIP        string         `config:"profiler-ip"`
 	MonitorOpt        monitorOptions `config:"health_monitor"`
 	WaitForMount      time.Duration  `config:"wait-for-mount"`
+	LazyWrite         bool           `config:"lazy-write"`
 
 	// v1 support
 	Streaming      bool     `config:"streaming"`
@@ -674,6 +675,9 @@ func init() {
 
 	mountCmd.PersistentFlags().Bool("read-only", false, "Mount the system in read only mode. Default value false.")
 	config.BindPFlag("read-only", mountCmd.PersistentFlags().Lookup("read-only"))
+
+	mountCmd.PersistentFlags().Bool("lazy-write", false, "Async write to storage container after file handle is closed.")
+	config.BindPFlag("lazy-write", mountCmd.PersistentFlags().Lookup("lazy-write"))
 
 	mountCmd.PersistentFlags().String("default-working-dir", "", "Default working directory for storing log files and other blobfuse2 information")
 	mountCmd.PersistentFlags().Lookup("default-working-dir").Hidden = true

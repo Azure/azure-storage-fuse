@@ -35,4 +35,3 @@ azstorage:
   container: { 0 }
   tier: hot
   https-proxy: 127.0.0.1:8080
-  sdk-trace: { VERBOSE_LOG }
