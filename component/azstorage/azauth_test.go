@@ -795,6 +795,34 @@ func (suite *authTestSuite) TestAdlsSpn() {
 	suite.validateStorageTest("TestAdlsSpn", stgConfig)
 }
 
+func (suite *authTestSuite) TestBlockAzCLI() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.AZCLI(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+	suite.validateStorageTest("TestBlockAzCLI", stgConfig)
+}
+
+func (suite *authTestSuite) TestAdlsAzCLI() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.AdlsContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.AZCLI(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+	suite.validateStorageTest("TestAdlsAzCLI", stgConfig)
+}
+
 func (suite *authTestSuite) cleanupTest() {
 	_ = log.Destroy()
 }
