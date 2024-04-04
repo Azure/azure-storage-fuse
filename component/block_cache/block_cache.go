@@ -80,6 +80,9 @@ type BlockCache struct {
 	maxDiskUsageHit bool            // Flag to indicate if we have hit max disk usage
 	noPrefetch      bool            // Flag to indicate if prefetch is disabled
 	prefetchOnOpen  bool            // Start prefetching on file open call instead of waiting for first read
+
+	lazyWrite    bool           // Flag to indicate if lazy write is enabled
+	fileCloseOpt sync.WaitGroup // Wait group to wait for all async close operations to complete
 }
 
 // Structure defining your config parameters
@@ -145,6 +148,12 @@ func (bc *BlockCache) Start(ctx context.Context) error {
 // Stop : Stop the component functionality and kill all threads started
 func (bc *BlockCache) Stop() error {
 	log.Trace("BlockCache::Stop : Stopping component %s", bc.Name())
+
+	if bc.lazyWrite {
+		// Wait for all async upload to complete if any
+		log.Info("BlockCache::Stop : Waiting for async close to complete")
+		bc.fileCloseOpt.Wait()
+	}
 
 	// Wait for thread pool to stop
 	bc.threadPool.Stop()
@@ -214,6 +223,12 @@ func (bc *BlockCache) Configure(_ bool) error {
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
 	bc.prefetch = MIN_PREFETCH
 	bc.noPrefetch = false
+
+	err = config.UnmarshalKey("lazy-write", &bc.lazyWrite)
+	if err != nil {
+		log.Err("BlockCache: config error [unable to obtain lazy-write]")
+		return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
+	}
 
 	if config.IsSet(compName + ".prefetch") {
 		bc.prefetch = conf.PrefetchCount
@@ -380,6 +395,12 @@ func (bc *BlockCache) prepareHandleForBlockCache(handle *handlemap.Handle) {
 func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 	log.Trace("BlockCache::FlushFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 
+	if bc.lazyWrite && !options.CloseInProgress {
+		// As lazy-write is enable, upload will be scheduled when file is closed.
+		log.Info("BlockCache::FlushFile : %s will be flushed when handle %d is closed", options.Handle.Path, options.Handle.ID)
+		return nil
+	}
+
 	options.Handle.Lock()
 	defer options.Handle.Unlock()
 
@@ -394,11 +415,26 @@ func (bc *BlockCache) FlushFile(options internal.FlushFileOptions) error {
 
 // CloseFile: File is closed by application so release all the blocks and submit back to blockPool
 func (bc *BlockCache) CloseFile(options internal.CloseFileOptions) error {
+	bc.fileCloseOpt.Add(1)
+	if !bc.lazyWrite {
+		// Sync close is called so wait till the upload completes
+		return bc.closeFileInternal(options)
+	}
+
+	// Async close is called so schedule the upload and return here
+	go bc.closeFileInternal(options) //nolint
+	return nil
+}
+
+// closeFileInternal: Actual handling of the close file goes here
+func (bc *BlockCache) closeFileInternal(options internal.CloseFileOptions) error {
 	log.Trace("BlockCache::CloseFile : name=%s, handle=%d", options.Handle.Path, options.Handle.ID)
+
+	defer bc.fileCloseOpt.Done()
 
 	if options.Handle.Dirty() {
 		log.Info("BlockCache::CloseFile : name=%s, handle=%d dirty. Flushing the file.", options.Handle.Path, options.Handle.ID)
-		err := bc.FlushFile(internal.FlushFileOptions{Handle: options.Handle}) //nolint
+		err := bc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
 		if err != nil {
 			log.Err("BlockCache::CloseFile : failed to flush file %s", options.Handle.Path)
 			return err
@@ -1339,10 +1375,13 @@ func (bc *BlockCache) RenameFile(options internal.RenameFileOptions) error {
 func (bc *BlockCache) SyncFile(options internal.SyncFileOptions) error {
 	log.Trace("BlockCache::SyncFile : handle=%d, path=%s", options.Handle.ID, options.Handle.Path)
 
-	options.Handle.Lock()
-	defer options.Handle.Unlock()
+	err := bc.FlushFile(internal.FlushFileOptions{Handle: options.Handle, CloseInProgress: true}) //nolint
+	if err != nil {
+		log.Err("BlockCache::SyncFile : failed to flush file %s", options.Handle.Path)
+		return err
+	}
 
-	return bc.commitBlocks(options.Handle)
+	return nil
 }
 
 // ------------------------- Factory -------------------------------------------
