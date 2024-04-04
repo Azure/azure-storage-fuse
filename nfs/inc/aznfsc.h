@@ -21,5 +21,6 @@
 #include <string>
 
 #include "aznfsc_config.h"
+#include "log.h"
 
 #endif /* __AZNFSC_H__ */

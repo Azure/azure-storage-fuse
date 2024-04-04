@@ -637,6 +637,15 @@ static struct fuse_lowlevel_ops aznfsc_ll_ops = {
 
 int main(int argc, char *argv[])
 {
+    // Initialize logger first thing.
+    init_log();
+
+    AZLogInfo("aznfsclient version {}.{}.{}",
+              AZNFSCLIENT_VERSION_MAJOR,
+              AZNFSCLIENT_VERSION_MINOR,
+              AZNFSCLIENT_VERSION_PATCH);
+
+
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
     struct fuse_session *se;
     struct fuse_cmdline_opts opts;
