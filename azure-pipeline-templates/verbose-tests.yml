@@ -45,6 +45,8 @@ parameters:
     type: boolean
   - name: test_spn_credential
     type: boolean
+  - name: test_azcli_credential
+    type: boolean
   - name: test_stream
     type: boolean
   - name: stream_config
@@ -57,6 +59,8 @@ parameters:
   - name: sas_credential_config
     type: string
   - name: spn_credential_config
+    type: string
+  - name: azcli_credential_config
     type: string
   - name: azurite_config
     type: string
@@ -166,6 +170,23 @@ steps:
     displayName: Print SPN config file
     condition: ${{ parameters.test_spn_credential }}
 
+# Create azcli credential config file if we need to test it
+  - script: |
+      cd ${{ parameters.working_dir }}
+      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_cli.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.azcli_credential_config }}
+    displayName: Create Azure CLI Config File
+    env:
+      NIGHTLY_STO_BLOB_ACC_NAME: ${{ parameters.spn_account_name }}
+      ACCOUNT_TYPE: ${{ parameters.account_type }}
+      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
+      VERBOSE_LOG: ${{ parameters.verbose_log }}
+    condition: ${{ parameters.test_azcli_credential }}
+    continueOnError: false
+      
+  - script: cat ${{ parameters.azcli_credential_config }}
+    displayName: Print Azure CLI config file
+    condition: ${{ parameters.test_azcli_credential }}
+
   # Create azurite config file if we need to test it
   - script: |
       cd ${{ parameters.working_dir }}
@@ -185,6 +206,20 @@ steps:
   - script: cat ${{ parameters.azurite_config }}
     condition: ${{ parameters.test_azurite }}
     displayName: Print Azurite config file
+
+#--------------------------------------- Setup: Install Azure CLI -------------------------------------------------------------------------------
+
+  # Install azcli
+  - script: |
+      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      az --version
+    displayName: 'Install Azure CLI'
+
+  # azcli login
+  - script: |
+      az login --service-principal -u ${{ parameters.client_id }} -p ${{ parameters.client_secret }} --tenant ${{ parameters.tenant_id }}
+    displayName: 'Azure CLI login'
+
 
 #--------------------------------------- Tests: End to end tests with different Storage configurations ------------------------------------------
 
@@ -302,6 +337,25 @@ steps:
             ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.spn_credential_config }}
             --default-working-dir=${{ parameters.working_dir }}
           displayName: 'E2E Test: Mount with SPN Credential Configuration'
+          timeoutInMinutes: 3
+          continueOnError: false
+
+  - ${{ if eq(parameters.test_azcli_credential, true) }}:
+    - template: e2e-tests.yml
+      parameters:
+        working_dir: ${{ parameters.working_dir }}
+        mount_dir: ${{ parameters.mount_dir }}
+        temp_dir: ${{ parameters.temp_dir }}
+        adls: ${{ parameters.adls }}
+        idstring: ${{ parameters.service }} with Azure CLI Credentials
+        distro_name: ${{ parameters.distro_name }}
+        artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_azcli.txt'
+        verbose_log: ${{ parameters.verbose_log }}
+        mountStep:
+          script: >
+            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.azcli_credential_config }}
+            --default-working-dir=${{ parameters.working_dir }}
+          displayName: 'E2E Test: Mount with Azure CLI Credential Configuration'
           timeoutInMinutes: 3
           continueOnError: false
 

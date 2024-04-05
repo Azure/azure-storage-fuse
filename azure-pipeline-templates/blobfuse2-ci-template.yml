@@ -44,6 +44,7 @@ steps:
       az --version
     displayName: 'Install Azure CLI'
 
+  # azcli login
   - script: |
       az login --service-principal -u $(AZTEST_CLIENT) -p $(AZTEST_SECRET) --tenant $(AZTEST_TENANT)
     displayName: 'Azure CLI login'
