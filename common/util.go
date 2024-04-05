@@ -383,3 +383,36 @@ func GetDiskUsageFromStatfs(path string) (float64, float64, error) {
 	usedSpace := float64(totalSpace - availableSpace)
 	return usedSpace, float64(usedSpace) / float64(totalSpace) * 100, nil
 }
+
+func GetFuseMinorVersion() int {
+	var out bytes.Buffer
+	cmd := exec.Command("fusermount3", "--version")
+	cmd.Stdout = &out
+
+	err := cmd.Run()
+	if err != nil {
+		return 0
+	}
+
+	output := strings.Split(out.String(), ":")
+	if len(output) < 2 {
+		return 0
+	}
+
+	version := strings.Trim(output[1], " ")
+	if version == "" {
+		return 0
+	}
+
+	output = strings.Split(version, ".")
+	if len(output) < 2 {
+		return 0
+	}
+
+	val, err := strconv.Atoi(output[1])
+	if err != nil {
+		return 0
+	}
+
+	return val
+}
