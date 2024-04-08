@@ -574,22 +574,30 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 	var dirList = make(map[string]bool)
 
 	for _, blobInfo := range listBlob.Segment.BlobItems {
-		attr := &internal.ObjAttr{
-			Path:   split(bb.Config.prefixPath, *blobInfo.Name),
-			Name:   filepath.Base(*blobInfo.Name),
-			Size:   *blobInfo.Properties.ContentLength,
-			Mode:   0,
-			Mtime:  *blobInfo.Properties.LastModified,
-			Atime:  dereferenceTime(blobInfo.Properties.LastAccessedOn, *blobInfo.Properties.LastModified),
-			Ctime:  *blobInfo.Properties.LastModified,
-			Crtime: dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
-			Flags:  internal.NewFileBitMap(),
-			MD5:    blobInfo.Properties.ContentMD5,
+		attr := &internal.ObjAttr{}
+		if blobInfo.Properties.CustomerProvidedKeySHA256 != nil && *blobInfo.Properties.CustomerProvidedKeySHA256 != "" {
+			attr, err = bb.getAttrUsingRest(*blobInfo.Name)
+			if err != nil {
+				log.Err("BlockBlob::List : Failed to get properties of blob %s", blobInfo.Name)
+				return blobList, nil, err
+			}
+		} else {
+			attr = &internal.ObjAttr{
+				Path:   split(bb.Config.prefixPath, *blobInfo.Name),
+				Name:   filepath.Base(*blobInfo.Name),
+				Size:   *blobInfo.Properties.ContentLength,
+				Mode:   0,
+				Mtime:  *blobInfo.Properties.LastModified,
+				Atime:  dereferenceTime(blobInfo.Properties.LastAccessedOn, *blobInfo.Properties.LastModified),
+				Ctime:  *blobInfo.Properties.LastModified,
+				Crtime: dereferenceTime(blobInfo.Properties.CreationTime, *blobInfo.Properties.LastModified),
+				Flags:  internal.NewFileBitMap(),
+				MD5:    blobInfo.Properties.ContentMD5,
+			}
+			parseMetadata(attr, blobInfo.Metadata)
+			attr.Flags.Set(internal.PropFlagMetadataRetrieved)
+			attr.Flags.Set(internal.PropFlagModeDefault)
 		}
-
-		parseMetadata(attr, blobInfo.Metadata)
-		attr.Flags.Set(internal.PropFlagMetadataRetrieved)
-		attr.Flags.Set(internal.PropFlagModeDefault)
 		blobList = append(blobList, attr)
 
 		if attr.IsDir() {
