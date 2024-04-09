@@ -1,4 +1,8 @@
-## 2.3.0~preview.1 (Unreleased)
+## 2.3.0 (Unreleased)
+**Features**
+- Added support for authentication using Azure CLI.
+
+## 2.3.0~preview.1 (2024-04-04)
 **Bug Fixes**
 - [#1057](https://github.com/Azure/azure-storage-fuse/issues/1057) Fixed the issue where user-assigned identity is not used to authenticate when system-assigned identity is enabled.
 - Listing blobs is now supported for blob names that contain characters that aren't valid in XML (U+FFFE or U+FFFF).
