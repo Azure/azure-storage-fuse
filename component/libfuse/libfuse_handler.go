@@ -322,7 +322,7 @@ func libfuse_init(conn *C.fuse_conn_info_t, cfg *C.fuse_config_t) (res unsafe.Po
 
 	// RHEL still has 3.3 fuse version and it does not allow max_write beyond 128K
 	// Setting this value to 1 MB will fail the mount.
-	fuse_minor := C.get_fuse_minor_version()
+	fuse_minor := common.GetFuseMinorVersion()
 	if fuse_minor > 4 {
 		log.Info("Libfuse::libfuse_init : Setting 1MB max_write for fuse minor %v", fuse_minor)
 		conn.max_write = (1 * 1024 * 1024)
