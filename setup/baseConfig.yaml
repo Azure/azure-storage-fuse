@@ -23,6 +23,8 @@
 #   8. If data in your storage account (non-HNS) is created using Blobfuse or AzCopy then there are marker files present
 #      in your container to mark a directory. In such cases you can optimize your listing by setting 'virtual-directory'
 #      flag to false in mount command.
+#   9. If you are using 'file_cache' component then make sure you have enough disk space available for cache.
+#  10. 'sdk-trace' has been removed with v2.3.0 release and setting log level to log_debug will auto enable these logs.
 # -----------------------------------------------------------------------------------------------------------------------
 
 
