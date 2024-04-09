@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1712249879968,
+  "lastUpdate": 1712683784740,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -62,6 +62,45 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/Azure/azure-storage-fuse/commit/af6c4b7f5027b190ed6fd22b9411c121cde95161"
         },
         "date": 1712249879609,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "efc39a9a7a9ade6bef2ade06f5134a61ca3708c8",
+          "message": "Merge remote-tracking branch 'origin/main' into vibhansa/perftestrunner",
+          "timestamp": "2024-04-09T21:50:08+05:30",
+          "tree_id": "919ec536002591c79c706b99acb15eccd3353c73",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/efc39a9a7a9ade6bef2ade06f5134a61ca3708c8"
+        },
+        "date": 1712683784416,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
