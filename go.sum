@@ -97,6 +97,8 @@ github.com/subosito/gotenv v1.6.0 h1:9NlTDc1FTs4qu0DDq7AEtTPNw6SVm7uBMsUCUjABIf8
 github.com/subosito/gotenv v1.6.0/go.mod h1:Dk4QP5c2W3ibzajGcXpNraDfq2IrhjMIvMSWPKKo0FU=
 github.com/vibhansa-msft/tlru v0.0.0-20240408171105-04800311a8a5 h1:K5MgRklTTnnk+FpE8lW+0Rz2j4Hs2RVzNlLU4I9+RwM=
 github.com/vibhansa-msft/tlru v0.0.0-20240408171105-04800311a8a5/go.mod h1:7G2C64UXEWNr8oUzspzcrymxCjD9fKAKTGbL7zO2GW8=
+github.com/vibhansa-msft/tlru v0.0.0-20240409045834-9d4436645038 h1:TkSXzmD89JdCAxBa8vDfsBEe4YCGsbt06ZpWTnvLXhA=
+github.com/vibhansa-msft/tlru v0.0.0-20240409045834-9d4436645038/go.mod h1:7G2C64UXEWNr8oUzspzcrymxCjD9fKAKTGbL7zO2GW8=
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
 go.uber.org/atomic v1.11.0 h1:ZvwS0R+56ePWxUNi+Atn9dWONBPp/AUETXlHW0DxSjE=
 go.uber.org/atomic v1.11.0/go.mod h1:LUxbIzbOniOlMKjJjyPfpl4v+PKK2cNJn91OQbhoJI0=
