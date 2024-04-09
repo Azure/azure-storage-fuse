@@ -175,9 +175,4 @@ static int fill_dir_entry(fuse_fill_dir_t filler, void *buf, char *name, stat_t 
     );
 }
 
-// Return the fuse minor version to the application
-static int get_fuse_minor_version() {
-    return FUSE_MINOR_VERSION;
-}
-
 #endif //__LIBFUSE_H__
