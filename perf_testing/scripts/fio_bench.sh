@@ -177,6 +177,7 @@ read_write_using_app() {
   mount_blobfuse
 
   # Run the python script to write files
+  echo `date` ' : Starting write tests'
   for i in {1,10,40,100} 
   do
     python3 ./perf_testing/scripts/write.py ${mount_dir} ${i} > ${output}/app_write_${i}.json
@@ -185,11 +186,14 @@ read_write_using_app() {
   # Unmount and cleanup now
   blobfuse2 unmount all
 
+  cat ${output}/app_write_*.json
+
   # ----- Read tests -----------
   # Mount blobfuse and creat files to list
   mount_blobfuse
 
   # Run the python script to read files
+  echo `date` ' : Starting read tests'
   for i in {1,10,40,100} 
   do
     python3 ./perf_testing/scripts/read.py ${mount_dir} ${i} > ${output}/app_read_${i}.json
@@ -197,6 +201,8 @@ read_write_using_app() {
 
   # Unmount and cleanup now
   blobfuse2 unmount all
+
+  cat ${output}/app_read_*.json
 
   jq '{"name": .name, "value": .total_mbps, "unit": "MiB/s"}' ${output}/app_write_*.json ${output}/app_read_*.json | tee ./${output}/app_tests.json
 }
