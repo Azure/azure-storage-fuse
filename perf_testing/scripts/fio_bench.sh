@@ -180,6 +180,7 @@ read_write_using_app() {
   echo `date` ' : Starting write tests'
   for i in {1,10,40,100} 
   do
+    echo `date` ' : Write test for $i GB file'
     python3 ./perf_testing/scripts/write.py ${mount_dir} ${i} > ${output}/app_write_${i}.json
   done
 
@@ -196,6 +197,7 @@ read_write_using_app() {
   echo `date` ' : Starting read tests'
   for i in {1,10,40,100} 
   do
+    echo `date` ' : Read test for $i GB file'
     python3 ./perf_testing/scripts/read.py ${mount_dir} ${i} > ${output}/app_read_${i}.json
   done
 
