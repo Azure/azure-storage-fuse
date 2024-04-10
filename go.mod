@@ -19,7 +19,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/spf13/viper v1.18.2
 	github.com/stretchr/testify v1.9.0
-	github.com/vibhansa-msft/tlru v0.0.0-20240409082006-3e18ab8b0705
+	github.com/vibhansa-msft/tlru v0.0.0-20240410102558-9e708419e21f
 	go.uber.org/atomic v1.11.0
 	gopkg.in/ini.v1 v1.67.0
 	gopkg.in/yaml.v2 v2.4.0

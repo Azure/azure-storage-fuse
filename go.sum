@@ -101,6 +101,8 @@ github.com/vibhansa-msft/tlru v0.0.0-20240409045834-9d4436645038 h1:TkSXzmD89JdC
 github.com/vibhansa-msft/tlru v0.0.0-20240409045834-9d4436645038/go.mod h1:7G2C64UXEWNr8oUzspzcrymxCjD9fKAKTGbL7zO2GW8=
 github.com/vibhansa-msft/tlru v0.0.0-20240409082006-3e18ab8b0705 h1:vRLY9lSLqu7/8TAOB5n5L5dfSQpnx4vCkQiUjj9VHtg=
 github.com/vibhansa-msft/tlru v0.0.0-20240409082006-3e18ab8b0705/go.mod h1:7G2C64UXEWNr8oUzspzcrymxCjD9fKAKTGbL7zO2GW8=
+github.com/vibhansa-msft/tlru v0.0.0-20240410102558-9e708419e21f h1:KmQFbsVFi45PtwEWIXugkW0X9VSJ+rZtee/WCPG5unc=
+github.com/vibhansa-msft/tlru v0.0.0-20240410102558-9e708419e21f/go.mod h1:7G2C64UXEWNr8oUzspzcrymxCjD9fKAKTGbL7zO2GW8=
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
 go.uber.org/atomic v1.11.0 h1:ZvwS0R+56ePWxUNi+Atn9dWONBPp/AUETXlHW0DxSjE=
 go.uber.org/atomic v1.11.0/go.mod h1:LUxbIzbOniOlMKjJjyPfpl4v+PKK2cNJn91OQbhoJI0=
