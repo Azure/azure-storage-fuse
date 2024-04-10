@@ -30,7 +30,7 @@ jobs:
       # Install Tools
       - name: "Install Tools"
         run: |
-          sudo apt-get install fio jq -y
+          sudo apt-get install fio jq python3 -y
 
         # Checkout main branch
       - name: 'Checkout Blobfuse2'
@@ -144,4 +144,31 @@ jobs:
           comment-on-alert: true
           gh-pages-branch: benchmarks
           benchmark-data-dir-path: time/list
+
       # ---------------------------------------------------------------------------------------
+      # Run App baseed tests
+      # This needs to run seperatly as output is different
+      - name: "App based Test"
+        run: |
+          rm -rf /mnt/blob_mnt/*
+          rm -rf /mnt/tempcache/*
+          ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt app
+        env:
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }} 
+        
+      - name: "Update Benchmark Results : List"
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          output-file-path: list/list_results.json
+          tool: 'customBiggerIsBetter'
+          alert-threshold: "160%"
+          max-items-in-chart: 100
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-alert: true
+          auto-push: true
+          comment-on-alert: true
+          gh-pages-branch: benchmarks
+          benchmark-data-dir-path: bandwidth/app
+      # ---------------------------------------------------------------------------------------        

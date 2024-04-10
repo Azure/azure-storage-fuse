@@ -164,6 +164,43 @@ list_files() {
       {name: "delete_100k_files", value: $del_time, unit: "seconds"}] ' | tee ${output}/list_results.json
 }
 
+# --------------------------------------------------------------------------------------------------
+# Method to run read/write test using a python script
+read_write_using_app() {
+
+  # Clean up the results
+  rm -rf ${output}/app_write_*.json
+  rm -rf ${output}/app_read_*.json
+
+  # ----- Write tests -----------
+  # Mount blobfuse and creat files to list
+  mount_blobfuse
+
+  # Run the python script to write files
+  for i in {1,10,40,100} 
+  do
+    python3 ./perf_testing/scripts/write.py ${mount_dir} ${i} > ${output}/app_write_${i}.json
+  done
+
+  # Unmount and cleanup now
+  blobfuse2 unmount all
+
+  # ----- Read tests -----------
+  # Mount blobfuse and creat files to list
+  mount_blobfuse
+
+  # Run the python script to read files
+  for i in {1,10,40,100} 
+  do
+    python3 ./perf_testing/scripts/read.py ${mount_dir} ${i} > ${output}/app_read_${i}.json
+  done
+
+  # Unmount and cleanup now
+  blobfuse2 unmount all
+
+  jq '{"name": .name, "value": .total_mbps, "unit": "MiB/s"}' ${output}/app_write_*.json ${output}/app_read_*.json | tee ./${output}/app_tests.json
+}
+
 
 # --------------------------------------------------------------------------------------------------
 # Method to prepare the system for test
@@ -228,7 +265,16 @@ then
   list_files 
   
   # No need to generate bandwidth or latecy related reports in this case
-  executed=0  
+  executed=0 
+elif [[ ${test_name} == "app" ]] 
+then  
+  # App based read/write tests being executed
+  # This is done using a python script which read/write in sequential order
+  echo "Running App based tests"
+  read_write_using_app
+
+  # No need to generate bandwidth or latecy related reports in this case
+  executed=0
 else
   executed=0  
   echo "Invalid argument. Please provide either 'read', 'write', 'multi' or 'create' as argument"
