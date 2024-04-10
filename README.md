@@ -91,11 +91,11 @@ Results for `latency` of these tests are located [here](https://azure.github.io/
 In this test standard linux `ls -U --color=never` command is used to list all files on the mount path. Graphs are plotted based on total time taken by this operation. Post listing this test case also execute a delete operation to delete all files on the container and measures total time take to delete these files.
 For the benchmarking purpose this test is executed after `Create` tests so that storage container has 100K+ files.
 
-Results for `time taken` by this test are located [here](https://azure.github.io/azure-storage-fuse/time/list/)
+Results for `time taken` by this test are located [here](https://azure.github.io/azure-storage-fuse/time/list/).
 
 ### Application Test
 We have observed that `fio` and `dd` commands have certain overhead of their own and they are not able to utilize our fuse solution to its full potential. With such tools you will observe tool itself consuming 100% CPU and performance of Blobfuse2 being blocked by the tool itself. To overcome this we created custom python applications to simulate sequential red/write of a large file. 
 
-These applications are located [here](https://github.com/Azure/azure-storage-fuse/tree/vibhansa/perftestrunner/perf_testing/scripts/). Read/Write application is executed once and based on the time taken to read/write given amount of data bandwidth is computed. Final results are published [here](https://azure.github.io/azure-storage-fuse/app/)
+These applications are located [here](https://github.com/Azure/azure-storage-fuse/tree/vibhansa/perftestrunner/perf_testing/scripts/). Read/Write application is executed once and based on the time taken to read/write given amount of data bandwidth is computed. Final results are published [here](https://azure.github.io/azure-storage-fuse/app/).
 
 
