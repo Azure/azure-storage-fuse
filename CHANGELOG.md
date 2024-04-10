@@ -1,4 +1,7 @@
 ## 2.3.0 (Unreleased)
+**Bug Fixes**
+- For fuse minor version check rely on the fusermount3 command output rather then one exposed from fuse_common.
+
 **Features**
 - Added support for authentication using Azure CLI.
 
