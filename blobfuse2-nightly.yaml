@@ -158,6 +158,7 @@ stages:
                 container: $(containerName)
                 tags: $(tags)
                 fuselib: $(fuselib)
+                skip_azcli: "false"
 
             # -------------------------------------------------------
             - template: 'azure-pipeline-templates/invalid-command-tests.yml'
@@ -299,6 +300,7 @@ stages:
                 container: $(containerName)
                 tags: $(tags)
                 fuselib: $(fuselib)
+                skip_azcli: "false"
 
             # -------------------------------------------------------
             - template: 'azure-pipeline-templates/invalid-command-tests.yml'
@@ -443,6 +445,7 @@ stages:
                 tags: $(tags)
                 fuselib: $(fuselib)
                 skip_ut: true # Skip UT because Block Blob set runs it
+                skip_azcli: "false"
 
             # -------------------------------------------------------
             - ${{ if eq(parameters.exhaustive_test, true) }}:    
@@ -574,6 +577,7 @@ stages:
                 tags: $(tags)
                 fuselib: $(fuselib)
                 skip_ut: true # Skip UT because Block Blob set runs it
+                skip_azcli: "false"
 
             # -------------------------------------------------------
             - ${{ if eq(parameters.exhaustive_test, true) }}:    

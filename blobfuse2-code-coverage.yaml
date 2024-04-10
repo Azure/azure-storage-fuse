@@ -106,6 +106,7 @@ stages:
                 tags: $(tags)
                 fuselib: $(fuselib)
                 skip_msi: "false"
+                skip_azcli: "false"
 
             # -------------------------------------------------------
             # UT based code coverage test

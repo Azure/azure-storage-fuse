@@ -74,6 +74,7 @@ type storageTestConfiguration struct {
 	SpnTenantId     string `json:"spn-tenant"`
 	SpnClientSecret string `json:"spn-secret"`
 	SkipMsi         bool   `json:"skip-msi"`
+	SkipAzCLI       bool   `json:"skip-azcli"`
 	ProxyAddress    string `json:"proxy-address"`
 }
 
@@ -806,7 +807,21 @@ func (suite *authTestSuite) TestBlockAzCLI() {
 			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
 		},
 	}
-	suite.validateStorageTest("TestBlockAzCLI", stgConfig)
+
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	assert.NotNil(stg)
+
+	err := stg.SetupPipeline()
+	assert.Nil(err)
+
+	err = stg.TestPipeline()
+	if storageTestConfigurationParameters.SkipAzCLI {
+		// error is returned when azcli is not installed or logged out
+		assert.NotNil(err)
+	} else {
+		assert.Nil(err)
+	}
 }
 
 func (suite *authTestSuite) TestAdlsAzCLI() {
@@ -820,7 +835,21 @@ func (suite *authTestSuite) TestAdlsAzCLI() {
 			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
 		},
 	}
-	suite.validateStorageTest("TestAdlsAzCLI", stgConfig)
+
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	assert.NotNil(stg)
+
+	err := stg.SetupPipeline()
+	assert.Nil(err)
+
+	err = stg.TestPipeline()
+	if storageTestConfigurationParameters.SkipAzCLI {
+		// error is returned when azcli is not installed or logged out
+		assert.NotNil(err)
+	} else {
+		assert.Nil(err)
+	}
 }
 
 func (suite *authTestSuite) cleanupTest() {

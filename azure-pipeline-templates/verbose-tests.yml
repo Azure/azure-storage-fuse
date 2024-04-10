@@ -207,20 +207,6 @@ steps:
     condition: ${{ parameters.test_azurite }}
     displayName: Print Azurite config file
 
-#--------------------------------------- Setup: Install Azure CLI -------------------------------------------------------------------------------
-
-  # Install azcli
-  - script: |
-      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
-      az --version
-    displayName: 'Install Azure CLI'
-
-  # azcli login
-  - script: |
-      az login --service-principal -u ${{ parameters.client_id }} -p ${{ parameters.client_secret }} --tenant ${{ parameters.tenant_id }}
-    displayName: 'Azure CLI login'
-
-
 #--------------------------------------- Tests: End to end tests with different Storage configurations ------------------------------------------
 
   - ${{ if eq(parameters.test_key_credential, true) }}:
