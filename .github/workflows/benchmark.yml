@@ -159,10 +159,10 @@ jobs:
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
           AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }} 
         
-      - name: "Update Benchmark Results : List"
+      - name: "Update Benchmark Results : App"
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          output-file-path: list/app_tests.json
+          output-file-path: app/app_results.json
           tool: 'customBiggerIsBetter'
           alert-threshold: "160%"
           max-items-in-chart: 100
