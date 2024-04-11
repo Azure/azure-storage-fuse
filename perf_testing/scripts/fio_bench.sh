@@ -202,13 +202,14 @@ read_write_using_app() {
   done
 
   rm -rf ${mount_dir}/application_*
-  
+
   # Unmount and cleanup now
   blobfuse2 unmount all
 
   cat ${output}/app_read_*.json
 
-  jq '{"name": .name, "value": .total_mbps, "unit": "MiB/s"}' ${output}/app_write_*.json ${output}/app_read_*.json | tee ./${output}/app_results.json
+  jq '{"name": .name, "value": .total_mbps, "unit": "MiB/s"}' ${output}/app_write_*.json ${output}/app_read_*.json | tee ./${output}/app_bandwidth.json
+  jq '{"name": .name, "value": .total_time, "unit": "seconds"}' ${output}/app_write_*.json ${output}/app_read_*.json | tee ./${output}/app_time.json
 }
 
 

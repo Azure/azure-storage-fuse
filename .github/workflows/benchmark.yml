@@ -159,10 +159,10 @@ jobs:
           AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
           AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }} 
         
-      - name: "Update Benchmark Results : App"
+      - name: "Update Bandwidth Results : App"
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          output-file-path: app/app_results.json
+          output-file-path: app/app_bandwidth.json
           tool: 'customBiggerIsBetter'
           alert-threshold: "160%"
           max-items-in-chart: 100
@@ -172,4 +172,18 @@ jobs:
           comment-on-alert: true
           gh-pages-branch: benchmarks
           benchmark-data-dir-path: bandwidth/app
+
+      - name: "Update Latency Results : App"
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          output-file-path: app/app_time.json
+          tool: 'customSmallerIsBetter'
+          alert-threshold: "160%"
+          max-items-in-chart: 100
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-alert: true
+          auto-push: true
+          comment-on-alert: true
+          gh-pages-branch: benchmarks
+          benchmark-data-dir-path: time/app          
       # ---------------------------------------------------------------------------------------        
