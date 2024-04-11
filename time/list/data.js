@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1712822827342,
+  "lastUpdate": 1712832163241,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -237,6 +237,40 @@ window.BENCHMARK_DATA = {
           {
             "name": "delete_100k_files",
             "value": "412.07000",
+            "unit": "seconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "c81e8b6a4252e2ffcf97166599adc92ef7c3c2c1",
+          "message": "Add bandiwdth and times for application tests",
+          "timestamp": "2024-04-11T14:57:44+05:30",
+          "tree_id": "c0328cc59b8267b5cc2ec66f6e64cb29d56759af",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/c81e8b6a4252e2ffcf97166599adc92ef7c3c2c1"
+        },
+        "date": 1712832162908,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "list_100k_files",
+            "value": "21.43000",
+            "unit": "seconds"
+          },
+          {
+            "name": "delete_100k_files",
+            "value": "397.75000",
             "unit": "seconds"
           }
         ]
