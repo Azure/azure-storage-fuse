@@ -162,7 +162,7 @@ jobs:
       - name: "Update Benchmark Results : List"
         uses: benchmark-action/github-action-benchmark@v1
         with:
-          output-file-path: list/list_results.json
+          output-file-path: list/app_tests.json
           tool: 'customBiggerIsBetter'
           alert-threshold: "160%"
           max-items-in-chart: 100
