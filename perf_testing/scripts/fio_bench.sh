@@ -201,6 +201,8 @@ read_write_using_app() {
     python3 ./perf_testing/scripts/read.py ${mount_dir} ${i} > ${output}/app_read_${i}.json
   done
 
+  rm -rf ${mount_dir}/application_*
+  
   # Unmount and cleanup now
   blobfuse2 unmount all
 
