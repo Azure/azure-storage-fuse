@@ -42,13 +42,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-/* NOTES:
-   - Component shall have a structure which inherits "internal.BaseComponent" to participate in pipeline
-   - Component shall register a name and its constructor to participate in pipeline  (add by default by generator)
-   - Order of calls : Constructor -> Configure -> Start ..... -> Stop
-   - To read any new setting from config file follow the Configure method default comments
-*/
-
 // Common structure for Component
 type Xload struct {
 	internal.BaseComponent
