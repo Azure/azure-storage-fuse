@@ -104,3 +104,10 @@ func (b *Block) ID() string {
 func (b *Block) Data() []byte {
 	return b.data
 }
+
+// Clear the old data of this block
+func (b *Block) ReUse() {
+	b.id = ""
+	b.offset = 0
+	b.length = 0
+}
