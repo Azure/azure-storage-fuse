@@ -23,6 +23,8 @@
 #   8. If data in your storage account (non-HNS) is created using Blobfuse or AzCopy then there are marker files present
 #      in your container to mark a directory. In such cases you can optimize your listing by setting 'virtual-directory'
 #      flag to false in mount command.
+#   9. If you are using 'file_cache' component then make sure you have enough disk space available for cache.
+#  10. 'sdk-trace' has been removed with v2.3.0 release and setting log level to log_debug will auto enable these logs.
 # -----------------------------------------------------------------------------------------------------------------------
 
 
@@ -42,7 +44,7 @@ profiler-ip: <IP address for dynamic-profiler to listen for REST calls. Default 
 # Logger configuration
 logging:
   type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - syslog>
-  level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug <log level. Default - log_warning>
+  level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug <log level. Default - log_warning> <log_debug will also enable sdk-trace logs>
   file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>
   max-file-size-mb: <maximum allowed size for each log file (in MB). Default - 512 MB>
   file-count: <maximum number of files to be rotated to preserve old logs. Default - 10>
