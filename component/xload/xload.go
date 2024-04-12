@@ -34,11 +34,12 @@
 package xload
 
 import (
+	"context"
+	"fmt"
+
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
-	"context"
-	"fmt"
 )
 
 /* NOTES:
@@ -50,7 +51,7 @@ import (
 
 // Common structure for Component
 type Xload struct {
-    internal.BaseComponent
+	internal.BaseComponent
 }
 
 // Structure defining your config parameters
@@ -60,9 +61,8 @@ type XloadOptions struct {
 
 const compName = "xload"
 
-//  Verification to check satisfaction criteria with Component Interface
+// Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &Xload{}
-
 
 func (c *Xload) Name() string {
 	return compName
@@ -77,13 +77,12 @@ func (c *Xload) SetNextComponent(nc internal.Component) {
 }
 
 // Start : Pipeline calls this method to start the component functionality
-//  this shall not block the call otherwise pipeline will not start
 func (c *Xload) Start(ctx context.Context) error {
-    log.Trace("Xload::Start : Starting component %s", c.Name())
+	log.Trace("Xload::Start : Starting component %s", c.Name())
 
-    // Xload : start code goes here
+	// Xload : start code goes here
 
-    return nil
+	return nil
 }
 
 // Stop : Stop the component functionality and kill all threads started
@@ -94,7 +93,6 @@ func (c *Xload) Stop() error {
 }
 
 // Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-//  Return failure if any config is not valid to exit the process
 func (c *Xload) Configure(_ bool) error {
 	log.Trace("Xload::Configure : %s", c.Name())
 
@@ -110,15 +108,9 @@ func (c *Xload) Configure(_ bool) error {
 	return nil
 }
 
-
-// OnConfigChange : If component has registered, on config file change this method is called
-func (c *Xload) OnConfigChange() {
-}
-
 // ------------------------- Factory -------------------------------------------
 
 // Pipeline will call this method to create your object, initialize your variables here
-// << DO NOT DELETE ANY AUTO GENERATED CODE HERE >>
 func NewXloadComponent() internal.Component {
 	comp := &Xload{}
 	comp.SetName(compName)
