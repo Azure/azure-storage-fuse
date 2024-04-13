@@ -45,11 +45,16 @@ import (
 // Common structure for Component
 type Xload struct {
 	internal.BaseComponent
+	blockSize uint64 // Size of each block to be cached
+	memSize   uint64 // Mem size to be used for caching at the startup
+	mode      string // Mode of the Xload component
 }
 
 // Structure defining your config parameters
 type XloadOptions struct {
-	// e.g. var1 uint32 `config:"var1"`
+	BlockSize float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
+	MemSize   uint64  `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
+	Mode      string  `config:"mode" yaml:"mode,omitempty"`
 }
 
 const compName = "xload"
@@ -57,46 +62,72 @@ const compName = "xload"
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &Xload{}
 
-func (c *Xload) Name() string {
+func (xl *Xload) Name() string {
 	return compName
 }
 
-func (c *Xload) SetName(name string) {
-	c.BaseComponent.SetName(name)
+func (xl *Xload) SetName(name string) {
+	xl.BaseComponent.SetName(name)
 }
 
-func (c *Xload) SetNextComponent(nc internal.Component) {
-	c.BaseComponent.SetNextComponent(nc)
+func (xl *Xload) SetNextComponent(nc internal.Component) {
+	xl.BaseComponent.SetNextComponent(nc)
+}
+
+// Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
+func (xl *Xload) Configure(_ bool) error {
+	log.Trace("Xload::Configure : %s", xl.Name())
+
+	conf := XloadOptions{}
+	err := config.UnmarshalKey(xl.Name(), &conf)
+	if err != nil {
+		log.Err("Xload::Configure : config error [invalid config attributes]")
+		return fmt.Errorf("Xload: config error [invalid config attributes]")
+	}
+
+	xl.blockSize = uint64(16) * _1MB
+	if config.IsSet(compName + ".block-size-mb") {
+		xl.blockSize = uint64(conf.BlockSize * float64(_1MB))
+	}
+
+	xl.memSize = uint64(4192) * _1MB
+	if config.IsSet(compName + ".mem-size-mb") {
+		xl.memSize = conf.MemSize * _1MB
+	}
+
+	xl.mode = "checkpoint"
+	if config.IsSet(compName + ".mode") {
+		xl.mode = conf.Mode
+	}
+
+	return nil
 }
 
 // Start : Pipeline calls this method to start the component functionality
-func (c *Xload) Start(ctx context.Context) error {
-	log.Trace("Xload::Start : Starting component %s", c.Name())
+func (xl *Xload) Start(ctx context.Context) error {
+	log.Trace("Xload::Start : Starting component %s", xl.Name())
 
 	// Xload : start code goes here
+	switch xl.mode {
+	case "checkpoint":
+		// Start checkpoint thread here
+	case "download":
+		// Start downloader here
+	case "upload":
+		// Start uploader here
+	case "sync":
+		//Start syncer here
+	default:
+		log.Err("Xload::Start : Invalid mode %s", xl.mode)
+		return fmt.Errorf("invalid mode in xload %s", xl.mode)
+	}
 
 	return nil
 }
 
 // Stop : Stop the component functionality and kill all threads started
-func (c *Xload) Stop() error {
-	log.Trace("Xload::Stop : Stopping component %s", c.Name())
-
-	return nil
-}
-
-// Configure : Pipeline will call this method after constructor so that you can read config and initialize yourself
-func (c *Xload) Configure(_ bool) error {
-	log.Trace("Xload::Configure : %s", c.Name())
-
-	// >> If you do not need any config parameters remove below code and return nil
-	conf := XloadOptions{}
-	err := config.UnmarshalKey(c.Name(), &conf)
-	if err != nil {
-		log.Err("Xload::Configure : config error [invalid config attributes]")
-		return fmt.Errorf("Xload: config error [invalid config attributes]")
-	}
-	// Extract values from 'conf' and store them as you wish here
+func (xl *Xload) Stop() error {
+	log.Trace("Xload::Stop : Stopping component %s", xl.Name())
 
 	return nil
 }
