@@ -1238,6 +1238,12 @@ func (bc *BlockCache) commitBlocks(handle *handlemap.Handle) error {
 func (bc *BlockCache) diskEvict(node *list.Element) {
 	fileName := node.Value.(string)
 
+	// If this block is already locked then return otherwise Lock() will hung up
+	if bc.fileLocks.Locked(fileName) {
+		log.Info("BlockCache::diskEvict : File %s is locked so skipping eviction", fileName)
+		return
+	}
+
 	// Lock the file name so that its not downloaded when deletion is going on
 	flock := bc.fileLocks.Get(fileName)
 	flock.Lock()
