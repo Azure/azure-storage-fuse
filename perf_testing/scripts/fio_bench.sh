@@ -208,8 +208,19 @@ read_write_using_app() {
 
   cat ${output}/app_read_*.json
 
+  # Local SSD Writing just for comparison
+  echo `date` ' : Starting write tests'
+  for i in {1,10,40,100} 
+  do
+    echo `date` ' : Write test for ${i} GB file'
+    python3 ./perf_testing/scripts/write.py ${mount_dir} ${i} > ${output}/app_local_write_${i}.json
+  done
+  rm -rf ${mount_dir}/*
+
   jq '{"name": .name, "value": .total_mbps, "unit": "MiB/s"}' ${output}/app_write_*.json ${output}/app_read_*.json | tee ./${output}/app_bandwidth.json
   jq '{"name": .name, "value": .total_time, "unit": "seconds"}' ${output}/app_write_*.json ${output}/app_read_*.json | tee ./${output}/app_time.json
+
+  jq '{"name": .name, "value": .total_mbps, "unit": "MiB/s"}' ${output}/app_local_write_*.json | tee ./${output}/app_local_bandwidth.json
 }
 
 

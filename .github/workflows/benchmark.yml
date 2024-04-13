@@ -172,6 +172,20 @@ jobs:
           comment-on-alert: true
           gh-pages-branch: benchmarks
           benchmark-data-dir-path: bandwidth/app
+        
+      - name: "Update Local Bandwidth Results : App"
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          output-file-path: app/app_local_bandwidth.json
+          tool: 'customBiggerIsBetter'
+          alert-threshold: "160%"
+          max-items-in-chart: 100
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-alert: true
+          auto-push: true
+          comment-on-alert: true
+          gh-pages-branch: benchmarks
+          benchmark-data-dir-path: bandwidth/applocal
 
       - name: "Update Latency Results : App"
         uses: benchmark-action/github-action-benchmark@v1
