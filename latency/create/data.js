@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1712831737554,
+  "lastUpdate": 1712990942970,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -296,6 +296,45 @@ window.BENCHMARK_DATA = {
           "url": "https://github.com/Azure/azure-storage-fuse/commit/c81e8b6a4252e2ffcf97166599adc92ef7c3c2c1"
         },
         "date": 1712831737238,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "create_1000_files_in_10_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1000_files_in_100_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "create_1l_files_in_20_threads",
+            "value": 0,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "98713b84de33423d69095a1d6bb70cdef931f280",
+          "message": "Adding local app writing",
+          "timestamp": "2024-04-13T11:08:46+05:30",
+          "tree_id": "082bb4a0552af493923454ceb93dbb6564932e6d",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/98713b84de33423d69095a1d6bb70cdef931f280"
+        },
+        "date": 1712990942643,
         "tool": "customSmallerIsBetter",
         "benches": [
           {
