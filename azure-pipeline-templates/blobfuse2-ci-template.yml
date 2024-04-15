@@ -38,6 +38,17 @@ steps:
       sudo apt-get install ${{ parameters.fuselib }} gcc -y
     displayName: 'Install libfuse'
 
+  # Install azcli
+  - script: |
+      curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+      az --version
+    displayName: 'Install Azure CLI'
+
+  # azcli login
+  - script: |
+      az login --service-principal -u $(AZTEST_CLIENT) -p $(AZTEST_SECRET) --tenant $(AZTEST_TENANT)
+    displayName: 'Azure CLI login'
+
   - task: Go@0
     inputs:
       command: 'build'
@@ -67,6 +78,7 @@ steps:
       echo "\"spn-tenant\"": "\"$(AZTEST_TENANT)\"", >> $cnfFile
       echo "\"spn-secret\"": "\"$(AZTEST_SECRET)\"", >> $cnfFile
       echo "\"skip-msi\"": "${{ parameters.skip_msi }}", >> $cnfFile
+      echo "\"skip-azcli\"": "false", >> $cnfFile
       echo "\"proxy-address\"": "\"${{ parameters.proxy_address }}\"" >> $cnfFile
       echo "}" >> $cnfFile
       cat $cnfFile

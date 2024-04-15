@@ -1,7 +1,10 @@
-## 2.3.0 (Unreleased)
+## 2.3.0~preview.2 (Unreleased)
 **Bug Fixes**
 - For fuse minor version check rely on the fusermount3 command output rather then one exposed from fuse_common.
 - Fixed large number of threads from TLRU causing crash during disk eviction in block-cache.
+
+**Features**
+- Added support for authentication using Azure CLI.
 
 ## 2.3.0~preview.1 (2024-04-04)
 **Bug Fixes**
