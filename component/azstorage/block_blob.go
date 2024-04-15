@@ -572,7 +572,7 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 
 	// For some directories 0 byte meta file may not exists so just create a map to figure out such directories
 	var dirList = make(map[string]bool)
-	var errors error
+	var errors error = nil
 	for _, blobInfo := range listBlob.Segment.BlobItems {
 		attr := &internal.ObjAttr{}
 		if blobInfo.Properties.CustomerProvidedKeySHA256 != nil && *blobInfo.Properties.CustomerProvidedKeySHA256 != "" {
@@ -580,7 +580,11 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			attr, err = bb.getAttrUsingRest(*blobInfo.Name)
 			if err != nil {
 				log.Err("BlockBlob::List : Failed to get properties of blob %s", *blobInfo.Name)
-				errors = fmt.Errorf("error fetching metadata for blob %s: %w; %w", *blobInfo.Name, errors, err)
+				if errors == nil {
+					errors = err
+				} else {
+					errors = fmt.Errorf("error fetching metadata for blob: %s, %w; %w", *blobInfo.Name, errors, err)
+				}
 				continue
 			}
 		} else {
