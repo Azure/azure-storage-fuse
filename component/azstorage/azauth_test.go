@@ -74,6 +74,7 @@ type storageTestConfiguration struct {
 	SpnTenantId     string `json:"spn-tenant"`
 	SpnClientSecret string `json:"spn-secret"`
 	SkipMsi         bool   `json:"skip-msi"`
+	SkipAzCLI       bool   `json:"skip-azcli"`
 	ProxyAddress    string `json:"proxy-address"`
 }
 
@@ -634,23 +635,22 @@ func (suite *authTestSuite) TestBlockMsiResId() {
 	}
 }
 
-// ObjectID is not supported in msal. So, commenting this.
-// func (suite *authTestSuite) TestBlockMsiObjId() {
-// 	defer suite.cleanupTest()
-// 	if !storageTestConfigurationParameters.SkipMsi {
-// 		stgConfig := AzStorageConfig{
-// 			container: storageTestConfigurationParameters.BlockContainer,
-// 			authConfig: azAuthConfig{
-// 				AuthMode:    EAuthType.MSI(),
-// 				AccountType: EAccountType.BLOCK(),
-// 				AccountName: storageTestConfigurationParameters.BlockAccount,
-// 				ObjectID:    storageTestConfigurationParameters.MsiObjId,
-// 				Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
-// 			},
-// 		}
-// 		suite.validateStorageTest("TestBlockMsiObjId", stgConfig)
-// 	}
-// }
+func (suite *authTestSuite) TestBlockMsiObjId() {
+	defer suite.cleanupTest()
+	if !storageTestConfigurationParameters.SkipMsi {
+		stgConfig := AzStorageConfig{
+			container: storageTestConfigurationParameters.BlockContainer,
+			authConfig: azAuthConfig{
+				AuthMode:    EAuthType.MSI(),
+				AccountType: EAccountType.BLOCK(),
+				AccountName: storageTestConfigurationParameters.BlockAccount,
+				ObjectID:    storageTestConfigurationParameters.MsiObjId,
+				Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+			},
+		}
+		suite.validateStorageTest("TestBlockMsiObjId", stgConfig)
+	}
+}
 
 // Can't use HTTP requests with MSI/SPN credentials
 func (suite *authTestSuite) TestAdlsMsiAppId() {
@@ -794,6 +794,62 @@ func (suite *authTestSuite) TestAdlsSpn() {
 		},
 	}
 	suite.validateStorageTest("TestAdlsSpn", stgConfig)
+}
+
+func (suite *authTestSuite) TestBlockAzCLI() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.BlockContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.AZCLI(),
+			AccountType: EAccountType.BLOCK(),
+			AccountName: storageTestConfigurationParameters.BlockAccount,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.BlockAccount, EAccountType.BLOCK()),
+		},
+	}
+
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	assert.NotNil(stg)
+
+	err := stg.SetupPipeline()
+	assert.Nil(err)
+
+	err = stg.TestPipeline()
+	if storageTestConfigurationParameters.SkipAzCLI {
+		// error is returned when azcli is not installed or logged out
+		assert.NotNil(err)
+	} else {
+		assert.Nil(err)
+	}
+}
+
+func (suite *authTestSuite) TestAdlsAzCLI() {
+	defer suite.cleanupTest()
+	stgConfig := AzStorageConfig{
+		container: storageTestConfigurationParameters.AdlsContainer,
+		authConfig: azAuthConfig{
+			AuthMode:    EAuthType.AZCLI(),
+			AccountType: EAccountType.ADLS(),
+			AccountName: storageTestConfigurationParameters.AdlsAccount,
+			Endpoint:    generateEndpoint(false, storageTestConfigurationParameters.AdlsAccount, EAccountType.ADLS()),
+		},
+	}
+
+	assert := assert.New(suite.T())
+	stg := NewAzStorageConnection(stgConfig)
+	assert.NotNil(stg)
+
+	err := stg.SetupPipeline()
+	assert.Nil(err)
+
+	err = stg.TestPipeline()
+	if storageTestConfigurationParameters.SkipAzCLI {
+		// error is returned when azcli is not installed or logged out
+		assert.NotNil(err)
+	} else {
+		assert.Nil(err)
+	}
 }
 
 func (suite *authTestSuite) cleanupTest() {

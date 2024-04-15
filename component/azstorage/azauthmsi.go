@@ -34,6 +34,14 @@
 package azstorage
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"strings"
+
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/service"
@@ -57,14 +65,45 @@ func (azmsi *azAuthMSI) getTokenCredential() (azcore.TokenCredential, error) {
 		ClientOptions: opts,
 	}
 
-	// TODO:: track2 : check for ObjectID
 	if azmsi.config.ApplicationID != "" {
 		msiOpts.ID = (azidentity.ClientID)(azmsi.config.ApplicationID)
 	} else if azmsi.config.ResourceID != "" {
 		msiOpts.ID = (azidentity.ResourceID)(azmsi.config.ResourceID)
+	} else if azmsi.config.ObjectID != "" {
+		// login using azcli
+		return azmsi.getTokenCredentialUsingCLI()
 	}
 
 	cred, err := azidentity.NewManagedIdentityCredential(msiOpts)
+	return cred, err
+}
+
+func (azmsi *azAuthMSI) getTokenCredentialUsingCLI() (azcore.TokenCredential, error) {
+	command := "az login --identity --username " + azmsi.config.ObjectID
+
+	cliCmd := exec.CommandContext(context.Background(), "/bin/sh", "-c", command)
+	cliCmd.Dir = "/bin"
+	cliCmd.Env = os.Environ()
+
+	var stderr bytes.Buffer
+	cliCmd.Stderr = &stderr
+	output, err := cliCmd.Output()
+	if err != nil {
+		msg := stderr.String()
+		var exErr *exec.ExitError
+		if errors.As(err, &exErr) && exErr.ExitCode() == 127 || strings.HasPrefix(msg, "'az' is not recognized") {
+			msg = "Azure CLI not found on path"
+		}
+		if msg == "" {
+			msg = err.Error()
+		}
+		return nil, fmt.Errorf(msg)
+	}
+
+	log.Info("azAuthMSI::getTokenCredentialUsingCLI : Successfully logged in using Azure CLI")
+	log.Debug("azAuthMSI::getTokenCredentialUsingCLI : Output: %s", output)
+
+	cred, err := azidentity.NewAzureCLICredential(nil)
 	return cred, err
 }
 

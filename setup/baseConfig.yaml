@@ -132,7 +132,7 @@ azstorage:
   account-name: <name of the storage account>
   container: <name of the storage container to be mounted>
   endpoint: <storage account endpoint (example - https://account-name.blob.core.windows.net)>
-  mode: key|sas|spn|msi <kind of authentication to be used>
+  mode: key|sas|spn|msi|azcli <kind of authentication to be used>
   account-key: <storage account key>
   # OR
   sas: <storage account sas>

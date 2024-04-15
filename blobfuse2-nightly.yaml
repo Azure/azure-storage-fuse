@@ -100,6 +100,8 @@ stages:
               value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
             - name: BLOBFUSE2_SPN_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
+            - name: BLOBFUSE2_AZCLI_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_azcli_config.yaml'
             - name: BLOBFUSE2_STREAM_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
             - name: BLOBFUSE2_STREAM_FILENAME_CFG
@@ -156,6 +158,7 @@ stages:
                 container: $(containerName)
                 tags: $(tags)
                 fuselib: $(fuselib)
+                skip_azcli: "false"
 
             # -------------------------------------------------------
             - template: 'azure-pipeline-templates/invalid-command-tests.yml'
@@ -189,12 +192,14 @@ stages:
                   test_key_credential: true 
                   test_sas_credential: true
                   test_spn_credential: true
+                  test_azcli_credential: true
                   test_stream: true
                   test_azurite: true
                   stream_config: $(BLOBFUSE2_STREAM_CFG)
                   stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+                  azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
                   distro_name: $(imageName)
                   verbose_log: ${{ parameters.verbose_log }}
@@ -235,6 +240,8 @@ stages:
               value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
             - name: BLOBFUSE2_SPN_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
+            - name: BLOBFUSE2_AZCLI_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_azcli_config.yaml'
             - name: BLOBFUSE2_STREAM_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
             - name: BLOBFUSE2_STREAM_FILENAME_CFG
@@ -293,6 +300,7 @@ stages:
                 container: $(containerName)
                 tags: $(tags)
                 fuselib: $(fuselib)
+                skip_azcli: "false"
 
             # -------------------------------------------------------
             - template: 'azure-pipeline-templates/invalid-command-tests.yml'
@@ -326,12 +334,14 @@ stages:
                   test_key_credential: true 
                   test_sas_credential: true
                   test_spn_credential: true
+                  test_azcli_credential: true
                   test_stream: true
                   test_azurite: false
                   stream_config: $(BLOBFUSE2_STREAM_CFG)
                   stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+                  azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
                   distro_name: $(imageName)
                   verbose_log: ${{ parameters.verbose_log }}
@@ -376,6 +386,8 @@ stages:
               value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
             - name: BLOBFUSE2_SPN_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
+            - name: BLOBFUSE2_AZCLI_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_azcli_config.yaml'
             - name: BLOBFUSE2_STREAM_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
             - name: BLOBFUSE2_STREAM_FILENAME_CFG
@@ -433,6 +445,7 @@ stages:
                 tags: $(tags)
                 fuselib: $(fuselib)
                 skip_ut: true # Skip UT because Block Blob set runs it
+                skip_azcli: "false"
 
             # -------------------------------------------------------
             - ${{ if eq(parameters.exhaustive_test, true) }}:    
@@ -461,12 +474,14 @@ stages:
                   test_key_credential: true
                   test_sas_credential: true
                   test_spn_credential: true
+                  test_azcli_credential: true
                   test_stream: true
                   test_azurite: false
                   stream_config: $(BLOBFUSE2_STREAM_CFG)
                   stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+                  azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
                   distro_name: $(imageName)
                   verbose_log: ${{ parameters.verbose_log }}
@@ -506,6 +521,8 @@ stages:
               value: '$(Pipeline.Workspace)/blobfuse2_sas_config.yaml'
             - name: BLOBFUSE2_SPN_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_spn_config.yaml'
+            - name: BLOBFUSE2_AZCLI_CFG
+              value: '$(Pipeline.Workspace)/blobfuse2_azcli_config.yaml'
             - name: BLOBFUSE2_STREAM_CFG
               value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
             - name: BLOBFUSE2_STREAM_FILENAME_CFG
@@ -560,6 +577,7 @@ stages:
                 tags: $(tags)
                 fuselib: $(fuselib)
                 skip_ut: true # Skip UT because Block Blob set runs it
+                skip_azcli: "false"
 
             # -------------------------------------------------------
             - ${{ if eq(parameters.exhaustive_test, true) }}:    
@@ -588,12 +606,14 @@ stages:
                   test_key_credential: true
                   test_sas_credential: false
                   test_spn_credential: true
+                  test_azcli_credential: true
                   test_stream: true
                   test_azurite: false
                   stream_config: $(BLOBFUSE2_STREAM_CFG)
                   stream_filename_config: $(BLOBFUSE2_STREAM_FILENAME_CFG)
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   spn_credential_config: $(BLOBFUSE2_SPN_CFG)
+                  azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
                   distro_name: $(imageName)
                   verbose_log: ${{ parameters.verbose_log }}
@@ -1220,6 +1240,12 @@ stages:
                   sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
                   sudo apt-get install make cmake gcc g++ libfuse3-dev fuse3 -y -o Dpkg::Options::="--force-confnew"  
                 displayName: 'Install Fuse'
+
+              # Install azcli
+              - script: |
+                  curl -sL https://aka.ms/InstallAzureCLIDeb | sudo bash
+                  az --version
+                displayName: 'Install Azure CLI'
 
               # Prestart cleanup
               - script: |
