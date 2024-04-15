@@ -572,14 +572,16 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 
 	// For some directories 0 byte meta file may not exists so just create a map to figure out such directories
 	var dirList = make(map[string]bool)
-
+	var errors error
 	for _, blobInfo := range listBlob.Segment.BlobItems {
 		attr := &internal.ObjAttr{}
 		if blobInfo.Properties.CustomerProvidedKeySHA256 != nil && *blobInfo.Properties.CustomerProvidedKeySHA256 != "" {
+			log.Trace("BlockBlob::List : blob is encrypted with customer provided key so fetching metadata explicitly using REST")
 			attr, err = bb.getAttrUsingRest(*blobInfo.Name)
 			if err != nil {
-				log.Err("BlockBlob::List : Failed to get properties of blob %s", blobInfo.Name)
-				return blobList, nil, err
+				log.Err("BlockBlob::List : Failed to get properties of blob %s", *blobInfo.Name)
+				errors = fmt.Errorf("error fetching metadata for blob %s: %w; %w", *blobInfo.Name, errors, err)
+				continue
 			}
 		} else {
 			attr = &internal.ObjAttr{
@@ -605,6 +607,10 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 			dirList[*blobInfo.Name+"/"] = true
 			attr.Size = 4096
 		}
+	}
+
+	if err != nil {
+		return blobList, nil, errors
 	}
 
 	// In case virtual directory exists but its corresponding 0 byte marker file is not there holding hdi_isfolder then just iterating
