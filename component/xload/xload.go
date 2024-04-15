@@ -47,7 +47,7 @@ type Xload struct {
 	internal.BaseComponent
 	blockSize uint64 // Size of each block to be cached
 	memSize   uint64 // Mem size to be used for caching at the startup
-	mode      string // Mode of the Xload component
+	mode      Mode   // Mode of the Xload component
 }
 
 // Structure defining your config parameters
@@ -85,20 +85,29 @@ func (xl *Xload) Configure(_ bool) error {
 		return fmt.Errorf("Xload: config error [invalid config attributes]")
 	}
 
-	xl.blockSize = uint64(16) * _1MB
+	xl.blockSize = uint64(16) * _1MB // 16 MB as deafult block size
 	if config.IsSet(compName + ".block-size-mb") {
 		xl.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
 
-	xl.memSize = uint64(4192) * _1MB
+	xl.memSize = uint64(4192) * _1MB // 4 GB as default mem size
 	if config.IsSet(compName + ".mem-size-mb") {
 		xl.memSize = conf.MemSize * _1MB
 	}
 
-	xl.mode = "checkpoint"
-	if config.IsSet(compName + ".mode") {
-		xl.mode = conf.Mode
+	var mode Mode
+	err = mode.Parse(conf.Mode)
+	if err != nil {
+		log.Err("Xload::Configure : Failed to parse mode %s [%s]", conf.Mode, err.Error())
+		return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
 	}
+
+	if mode == EMode.INVALID_MODE() {
+		log.Err("Xload::Configure : Invalid mode : %s", conf.Mode)
+		return fmt.Errorf("invalid mode in xload : %s", conf.Mode)
+	}
+
+	xl.mode = mode
 
 	return nil
 }
@@ -109,17 +118,17 @@ func (xl *Xload) Start(ctx context.Context) error {
 
 	// Xload : start code goes here
 	switch xl.mode {
-	case "checkpoint":
+	case EMode.CHECKPOINT():
 		// Start checkpoint thread here
-	case "download":
+	case EMode.DOWNLOAD():
 		// Start downloader here
-	case "upload":
+	case EMode.UPLOAD():
 		// Start uploader here
-	case "sync":
+	case EMode.SYNC():
 		//Start syncer here
 	default:
-		log.Err("Xload::Start : Invalid mode %s", xl.mode)
-		return fmt.Errorf("invalid mode in xload %s", xl.mode)
+		log.Err("Xload::Start : Invalid mode : %s", xl.mode.String())
+		return fmt.Errorf("invalid mode in xload : %s", xl.mode.String())
 	}
 
 	return nil
