@@ -585,7 +585,6 @@ func (bb *BlockBlob) List(prefix string, marker *string, count int32) ([]*intern
 				} else {
 					errors = fmt.Errorf("error fetching metadata for blob: %s, %w; %w", *blobInfo.Name, errors, err)
 				}
-				continue
 			}
 		} else {
 			attr = &internal.ObjAttr{
