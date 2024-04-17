@@ -46,18 +46,26 @@ import (
 type Xload struct {
 	internal.BaseComponent
 	blockSize uint64 // Size of each block to be cached
-	memSize   uint64 // Mem size to be used for caching at the startup
 	mode      Mode   // Mode of the Xload component
+
+	workerCount uint32 // Number of workers running
+
+	dataMgrPool   *ThreadPool // Thread Pool for data upload download
+	dataSplitPool *ThreadPool // Thread Pool for chunking of a file
+	blockPool     *BlockPool  // Pool of blocks
 }
 
 // Structure defining your config parameters
 type XloadOptions struct {
 	BlockSize float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
-	MemSize   uint64  `config:"mem-size-mb" yaml:"mem-size-mb,omitempty"`
 	Mode      string  `config:"mode" yaml:"mode,omitempty"`
 }
 
-const compName = "xload"
+const (
+	compName          = "xload"
+	MAX_WORKER_COUNT  = 64
+	MAX_DATA_SPLITTER = 16
+)
 
 // Verification to check satisfaction criteria with Component Interface
 var _ internal.Component = &Xload{}
@@ -90,11 +98,6 @@ func (xl *Xload) Configure(_ bool) error {
 		xl.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
 
-	xl.memSize = uint64(4192) * _1MB // 4 GB as default mem size
-	if config.IsSet(compName + ".mem-size-mb") {
-		xl.memSize = conf.MemSize * _1MB
-	}
-
 	var mode Mode
 	err = mode.Parse(conf.Mode)
 	if err != nil {
@@ -116,6 +119,13 @@ func (xl *Xload) Configure(_ bool) error {
 func (xl *Xload) Start(ctx context.Context) error {
 	log.Trace("Xload::Start : Starting component %s", xl.Name())
 
+	xl.workerCount = MAX_WORKER_COUNT
+	xl.blockPool = NewBlockPool(xl.blockSize, xl.workerCount*3)
+	if xl.blockPool == nil {
+		log.Err("Xload::Start : Failed to create block pool")
+		return fmt.Errorf("failed to create block pool")
+	}
+
 	// Xload : start code goes here
 	switch xl.mode {
 	case EMode.CHECKPOINT():
@@ -124,11 +134,22 @@ func (xl *Xload) Start(ctx context.Context) error {
 		// Start downloader here
 	case EMode.UPLOAD():
 		// Start uploader here
+		xl.StartUploader()
 	case EMode.SYNC():
 		//Start syncer here
 	default:
 		log.Err("Xload::Start : Invalid mode : %s", xl.mode.String())
 		return fmt.Errorf("invalid mode in xload : %s", xl.mode.String())
+	}
+
+	// Start the data upload download thread pool
+	if xl.dataMgrPool != nil {
+		xl.dataMgrPool.Start()
+	}
+
+	// Start the pool to chunk each file
+	if xl.dataSplitPool != nil {
+		xl.dataSplitPool.Start()
 	}
 
 	return nil
@@ -138,7 +159,47 @@ func (xl *Xload) Start(ctx context.Context) error {
 func (xl *Xload) Stop() error {
 	log.Trace("Xload::Stop : Stopping component %s", xl.Name())
 
+	// Stop of thread pool shall be in reverse order of start
+	if xl.dataSplitPool != nil {
+		xl.dataSplitPool.Stop()
+	}
+
+	if xl.dataMgrPool != nil {
+		xl.dataMgrPool.Stop()
+	}
+
+	xl.blockPool.Terminate()
+
 	return nil
+}
+
+// StartUploader : Start the uploader thread
+func (xl *Xload) StartUploader() {
+	log.Trace("Xload::StartUploader : Starting uploader")
+
+	// Create remote data manager to upload blocks
+	dataMgr := RemoteDataManager{
+		remote: xl.NextComponent(),
+	}
+
+	// Create a thread-pool to run workers which will call the uploader
+	xl.dataMgrPool = newThreadPool(MAX_WORKER_COUNT, dataMgr.WriteData)
+
+	// Create a block splitter
+	splitter := UploadSplitter{
+		blockSize: xl.blockSize,
+		blockPool: xl.blockPool,
+		commiter:  &dataMgr,
+		schedule:  xl.dataMgrPool.Schedule,
+	}
+
+	// Create a thread-pool to split file into blocks
+	xl.dataSplitPool = newThreadPool(MAX_DATA_SPLITTER, splitter.SplitData)
+
+	// TODO : For each local file push the path to file chunk creator
+
+	// TODO : Start local iteration here
+
 }
 
 // ------------------------- Factory -------------------------------------------

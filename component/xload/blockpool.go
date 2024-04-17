@@ -50,15 +50,12 @@ type BlockPool struct {
 }
 
 // NewBlockPool allocates a new pool of blocks
-func NewBlockPool(blockSize uint64, memSize uint64) *BlockPool {
+func NewBlockPool(blockSize uint64, blockCount uint32) *BlockPool {
 	// Ignore if config is invalid
-	if blockSize == 0 || memSize < blockSize {
-		log.Err("blockpool::NewBlockPool : blockSize : %v, memsize: %v", blockSize, memSize)
+	if blockSize == 0 {
+		log.Err("blockpool::NewBlockPool : blockSize : %v", blockSize)
 		return nil
 	}
-
-	// Calculate how many blocks can be allocated
-	blockCount := uint32(memSize / blockSize)
 
 	pool := &BlockPool{
 		blocksCh:  make(chan *Block, blockCount),

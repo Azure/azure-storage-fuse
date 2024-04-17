@@ -35,14 +35,9 @@ package xload
 
 import (
 	"sync"
-)
 
-// One workitem to be scheduled
-type workItem struct {
-	block   *Block // Block to hold data for this item
-	failCnt int32  // How many times this item has failed to download
-	upload  bool   // Flag marking this is a upload request or not
-}
+	"github.com/Azure/azure-storage-fuse/v2/common/log"
+)
 
 // ThreadPool is a group of workers that can be used to execute a task
 type ThreadPool struct {
@@ -56,11 +51,11 @@ type ThreadPool struct {
 	workItems chan *workItem
 
 	// Reader method that will actually read the data
-	callback func(*workItem)
+	callback func(*workItem) (int, error)
 }
 
 // newThreadPool creates a new thread pool
-func newThreadPool(count uint32, callback func(*workItem)) *ThreadPool {
+func newThreadPool(count uint32, callback func(*workItem) (int, error)) *ThreadPool {
 	if count == 0 || callback == nil {
 		return nil
 	}
@@ -97,6 +92,9 @@ func (t *ThreadPool) Do() {
 
 	// This thread will work only on both high and low priority channel
 	for item := range t.workItems {
-		t.callback(item)
+		_, err := t.callback(item)
+		if err != nil {
+			log.Err("ThreadPool::Do : Error in processing workitem [%s, %d] : %v", item.path, item.offset, err)
+		}
 	}
 }
