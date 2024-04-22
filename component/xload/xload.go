@@ -37,6 +37,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -49,8 +50,8 @@ type Xload struct {
 	blockSize uint64 // Size of each block to be cached
 	mode      Mode   // Mode of the Xload component
 
-	workerCount uint32 // Number of workers running
-
+	workerCount   uint32 // Number of workers running
+	en            enumerator
 	dataMgrPool   *ThreadPool // Thread Pool for data upload download
 	dataSplitPool *ThreadPool // Thread Pool for chunking of a file
 	blockPool     *BlockPool  // Pool of blocks
@@ -68,6 +69,7 @@ const (
 	compName          = "xload"
 	MAX_WORKER_COUNT  = 64
 	MAX_DATA_SPLITTER = 16
+	MAX_LISTER        = 16
 )
 
 // Verification to check satisfaction criteria with Component Interface
@@ -101,7 +103,7 @@ func (xl *Xload) Configure(_ bool) error {
 		xl.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
 
-	xl.path = conf.Path
+	xl.path = strings.TrimSpace(conf.Path)
 	if xl.path == "" {
 		xl.path, err = os.Getwd()
 		if err != nil {
@@ -146,7 +148,11 @@ func (xl *Xload) Start(ctx context.Context) error {
 		// Start downloader here
 	case EMode.UPLOAD():
 		// Start uploader here
-		xl.StartUploader()
+		err := xl.StartUploader()
+		if err != nil {
+			log.Err("Xload::Start : Failed to start uploader [%s]", err.Error())
+			return err
+		}
 	case EMode.SYNC():
 		//Start syncer here
 	default:
@@ -171,6 +177,10 @@ func (xl *Xload) Start(ctx context.Context) error {
 func (xl *Xload) Stop() error {
 	log.Trace("Xload::Stop : Stopping component %s", xl.Name())
 
+	if xl.en.getInputPool() != nil {
+		xl.en.getInputPool().Stop()
+	}
+
 	// Stop of thread pool shall be in reverse order of start
 	if xl.dataSplitPool != nil {
 		xl.dataSplitPool.Stop()
@@ -186,7 +196,7 @@ func (xl *Xload) Stop() error {
 }
 
 // StartUploader : Start the uploader thread
-func (xl *Xload) StartUploader() {
+func (xl *Xload) StartUploader() error {
 	log.Trace("Xload::StartUploader : Starting uploader")
 
 	// Create remote data manager to upload blocks
@@ -209,16 +219,21 @@ func (xl *Xload) StartUploader() {
 	// Create a thread-pool to split file into blocks
 	xl.dataSplitPool = newThreadPool(MAX_DATA_SPLITTER, splitter.SplitData)
 
-	///////////////////////////////////////////////////////////
-	// TODO : This is a test code to be removed
-	go xl.dataSplitPool.Schedule(&workItem{
-		path: "application_1.data", dataLen: 1082130432})
-	///////////////////////////////////////////////////////////
+	// Create lister pool to list local files
+	var err error
+	xl.en, err = newLocalLister(xl.path, xl.NextComponent())
+	if err != nil {
+		log.Err("Xload::StartUploader : Unable to create local lister [%s]", err.Error())
+		return err
+	}
 
-	// TODO : For each local file push the path to file chunk creator
+	// start input threadpool
+	xl.en.getInputPool().Start()
+	xl.en.setOutputPool(xl.dataSplitPool)
 
-	// TODO : Start local iteration here
-
+	// Kick off the local lister here
+	xl.en.getInputPool().Schedule(&workItem{})
+	return nil
 }
 
 // ------------------------- Factory -------------------------------------------
