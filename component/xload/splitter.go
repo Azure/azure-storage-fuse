@@ -160,7 +160,7 @@ type DownloadSplitter struct {
 func (d *DownloadSplitter) SplitData(item *workItem) (int, error) {
 	var err error
 
-	log.Trace("UploadSplitter::SplitData : Splitting data for %s", item.path)
+	log.Trace("DownloadSplitter::SplitData : Splitting data for %s", item.path)
 	if item.path != "" {
 		return 0, nil // temporary code, remove this
 	}
