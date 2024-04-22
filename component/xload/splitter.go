@@ -67,6 +67,11 @@ func (u *UploadSplitter) SplitData(item *workItem) (int, error) {
 
 	log.Trace("UploadSplitter::SplitData : Splitting data for %s", item.path)
 
+	if item.dataLen == 0 {
+		// TODO : If file is of size 0 then we just need to create the file
+		return 0, nil
+	}
+
 	numBlocks := ((item.dataLen - 1) / u.blockSize) + 1
 	offset := int64(0)
 
