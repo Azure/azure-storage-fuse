@@ -36,7 +36,9 @@ package xload
 import (
 	"encoding/base64"
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -50,12 +52,12 @@ type splitter interface {
 
 // -----------------------------------------------------------------------------------
 
-// LocalDataManager is a data manager for local data
 type UploadSplitter struct {
 	blockSize uint64
 	blockPool *BlockPool
 	commiter  dataCommitter
 	schedule  func(item *workItem)
+	basePath  string
 }
 
 // SplitData reads data from the data manager
@@ -63,70 +65,155 @@ func (u *UploadSplitter) SplitData(item *workItem) (int, error) {
 	var err error
 	var ids []string
 
-	numBlocks := ((item.length - 1) / u.blockSize) + 1
-	offset := uint64(0)
+	numBlocks := ((item.dataLen - 1) / u.blockSize) + 1
+	offset := int64(0)
 
-	item.fileHandle, err = os.Open(item.path)
+	item.fileHandle, err = os.OpenFile(filepath.Join(u.basePath, item.path), os.O_RDONLY, 0644)
 	if err != nil {
 		return -1, fmt.Errorf("failed to open file %s [%v]", item.path, err)
 	}
 
-	responseChannel := make(chan workItemResp, numBlocks)
-	finalStatus := true
-
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
+	responseChannel := make(chan *workItem, numBlocks)
+
+	operationSuccess := true
 	go func() {
 		defer wg.Done()
 
 		for i := 0; i < int(numBlocks); i++ {
-			splitItem := <-responseChannel
-
-			if splitItem.err != nil {
+			respSplitItem := <-responseChannel
+			if respSplitItem.err != nil {
 				log.Err("UploadSplitter::SplitData : Failed to read data from file %s", item.path)
-				finalStatus = false
+				operationSuccess = false
 			}
-
-			u.blockPool.Release(splitItem.block)
+			if respSplitItem.block != nil {
+				log.Trace("UploadSplitter::SplitData : [%d] Upload successful for %s block[%d] %s offset %v", i, item.path, respSplitItem.block.index, respSplitItem.block.id, respSplitItem.block.offset)
+				u.blockPool.Release(respSplitItem.block)
+			}
 		}
 	}()
 
 	for i := 0; i < int(numBlocks); i++ {
 		block := u.blockPool.Get()
 		if block == nil {
-			return -1, fmt.Errorf("failed to get block from pool for file %s", item.path)
+			responseChannel <- &workItem{err: fmt.Errorf("failed to get block from pool for file %s %v", item.path, offset)}
+		} else {
+			dataLen, err := item.fileHandle.ReadAt(block.data, offset)
+			if err != nil && err != io.EOF {
+				responseChannel <- &workItem{err: fmt.Errorf("failed to read block from file %s %v", item.path, offset)}
+			} else {
+				block.index = i
+				block.offset = offset
+				block.length = int64(dataLen)
+				block.id = base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16))
+
+				splitItem := &workItem{
+					path:            item.path,
+					fileHandle:      nil,
+					block:           block,
+					responseChannel: responseChannel,
+				}
+				ids = append(ids, splitItem.block.id)
+				log.Trace("UploadSplitter::SplitData : Scheduling %s block [%d] %s offset %v length %v", item.path, splitItem.block.index, splitItem.block.id, offset, splitItem.block.length)
+				u.schedule(splitItem)
+			}
 		}
 
-		dataLen, err := item.fileHandle.ReadAt(block.data, int64(offset))
-		if err != nil {
-			return -1, fmt.Errorf("failed to read data from file %s [%v]", item.path, err)
-		}
-
-		splitItem := &workItem{
-			path:            item.path,
-			offset:          offset,
-			length:          uint64(dataLen),
-			fileHandle:      nil,
-			id:              base64.StdEncoding.EncodeToString(common.NewUUIDWithLength(16)),
-			block:           block,
-			responseChannel: responseChannel,
-		}
-
-		offset += u.blockSize
-		ids = append(ids, splitItem.id)
-		u.schedule(splitItem)
+		offset += int64(u.blockSize)
 	}
 
 	wg.Wait()
-	close(responseChannel)
-
 	item.fileHandle.Close()
 
-	if finalStatus != true {
+	if !operationSuccess {
 		log.Err("UploadSplitter::SplitData : Failed to upload data from file %s", item.path)
 	} else {
 		u.commiter.CommitData(item.path, ids)
+	}
+
+	return 0, nil
+}
+
+// -----------------------------------------------------------------------------------
+
+type DownloadSplitter struct {
+	blockSize uint64
+	blockPool *BlockPool
+	commiter  dataCommitter
+	schedule  func(item *workItem)
+	basePath  string
+}
+
+// SplitData reads data from the data manager
+func (d *DownloadSplitter) SplitData(item *workItem) (int, error) {
+	var err error
+
+	numBlocks := ((item.dataLen - 1) / d.blockSize) + 1
+	offset := int64(0)
+
+	item.fileHandle, err = os.OpenFile(filepath.Join(d.basePath, item.path), os.O_WRONLY, 0644)
+	if err != nil {
+		return -1, fmt.Errorf("failed to open file %s [%v]", item.path, err)
+	}
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	responseChannel := make(chan *workItem, numBlocks)
+
+	operationSuccess := true
+	go func() {
+		defer wg.Done()
+
+		for i := 0; i < int(numBlocks); i++ {
+			respSplitItem := <-responseChannel
+			if respSplitItem.err != nil {
+				log.Err("DownloadSplitter::SplitData : Failed to read data from file %s", item.path)
+				operationSuccess = false
+			}
+
+			_, err := item.fileHandle.WriteAt(respSplitItem.block.data, respSplitItem.block.offset)
+			if err != nil {
+				log.Err("DownloadSplitter::SplitData : Failed to write data to file %s", item.path)
+				operationSuccess = false
+			}
+
+			if respSplitItem.block != nil {
+				log.Trace("DownloadSplitter::SplitData : Download successful %s index %d offset %v", item.path, respSplitItem.block.index, respSplitItem.block.offset)
+				d.blockPool.Release(respSplitItem.block)
+			}
+		}
+	}()
+
+	for i := 0; i < int(numBlocks); i++ {
+		block := d.blockPool.Get()
+		if block == nil {
+			responseChannel <- &workItem{err: fmt.Errorf("failed to get block from pool for file %s %v", item.path, offset)}
+		} else {
+			block.index = i
+			block.offset = offset
+			block.length = int64(d.blockSize)
+
+			splitItem := &workItem{
+				path:            item.path,
+				fileHandle:      item.fileHandle,
+				block:           block,
+				responseChannel: responseChannel,
+			}
+			log.Trace("DownloadSplitter::SplitData : Scheduling %s offset %v", item.path, offset)
+			d.schedule(splitItem)
+		}
+
+		offset += int64(d.blockSize)
+	}
+
+	wg.Wait()
+	item.fileHandle.Close()
+
+	if !operationSuccess {
+		log.Err("UploadSplitter::SplitData : Failed to upload data from file %s", item.path)
 	}
 
 	return 0, nil

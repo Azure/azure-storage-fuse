@@ -42,20 +42,12 @@ import (
 
 // One workitem to be processed
 type workItem struct {
-	path   string // Name of the file being processed
-	offset uint64 // Start Offset of the data to be processed
-	length uint64 // Length of the data to be processed
-
-	fileHandle *os.File // File handle to the file being processed
-	id         string   // Block-id for this block
-	block      *Block   // Block to hold data for this item
-
-	responseChannel chan workItemResp // Channel to send the response
-}
-
-type workItemResp struct {
-	block *Block // Block to hold data for this item
-	err   error
+	path            string         // Name of the file being processed
+	dataLen         uint64         // Length of the data to be processed
+	block           *Block         // Block to hold data for
+	fileHandle      *os.File       // File handle to the file being processed
+	err             error          // Error if any
+	responseChannel chan *workItem // Channel to send the response
 }
 
 // xload mode enum

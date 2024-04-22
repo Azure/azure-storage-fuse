@@ -40,8 +40,9 @@ import (
 
 // Block is a memory mapped buffer with its state to hold data
 type Block struct {
-	offset uint64 // Start offset of the data this block holds
-	length uint64 // Length of data that this block holds
+	index  int    // Index of the block in the pool
+	offset int64  // Start offset of the data this block holds
+	length int64  // Length of data that this block holds
 	id     string // ID to represent this block in the blob
 	data   []byte // Data this block holds
 }
@@ -60,6 +61,7 @@ func AllocateBlock(size uint64) (*Block, error) {
 	}
 
 	block := &Block{
+		index:  0,
 		data:   addr,
 		offset: 0,
 		length: 0,
@@ -85,29 +87,10 @@ func (b *Block) Delete() error {
 	return nil
 }
 
-// Get offset of this block in the blob
-func (b *Block) Offset() uint64 {
-	return b.offset
-}
-
-// Get length of data this block holds
-func (b *Block) Length() uint64 {
-	return b.length
-}
-
-// Get ID of this block
-func (b *Block) ID() string {
-	return b.id
-}
-
-// Get Data of this block
-func (b *Block) Data() []byte {
-	return b.data
-}
-
 // Clear the old data of this block
 func (b *Block) ReUse() {
 	b.id = ""
+	b.index = 0
 	b.offset = 0
 	b.length = 0
 }

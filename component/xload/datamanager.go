@@ -54,16 +54,12 @@ type LocalDataManager struct {
 
 // ReadData reads data from the data manager
 func (l *LocalDataManager) ReadData(item *workItem) (int, error) {
-	n, err := item.fileHandle.ReadAt(item.block.data, int64(item.offset))
-	item.responseChannel <- workItemResp{block: item.block, err: err}
-	return n, err
+	return item.fileHandle.ReadAt(item.block.data, item.block.offset)
 }
 
 // WriteData writes data to the data manager
 func (l *LocalDataManager) WriteData(item *workItem) (int, error) {
-	n, err := item.fileHandle.WriteAt(item.block.data, int64(item.offset))
-	item.responseChannel <- workItemResp{block: item.block, err: err}
-	return n, err
+	return item.fileHandle.WriteAt(item.block.data, item.block.offset)
 }
 
 // -----------------------------------------------------------------------------------
@@ -75,27 +71,21 @@ type RemoteDataManager struct {
 
 // ReadData reads data from the data manager
 func (r *RemoteDataManager) ReadData(item *workItem) (int, error) {
-	n, err := r.remote.ReadInBuffer(internal.ReadInBufferOptions{
+	return r.remote.ReadInBuffer(internal.ReadInBufferOptions{
 		Handle: nil,
 		Name:   item.path,
-		Offset: int64(item.offset),
+		Offset: item.block.offset,
 		Data:   item.block.data,
 	})
-
-	item.responseChannel <- workItemResp{block: item.block, err: err}
-	return n, err
 }
 
 // WriteData writes data to the data manager
 func (r *RemoteDataManager) WriteData(item *workItem) (int, error) {
-	err := r.remote.StageData(internal.StageDataOptions{
+	return int(item.block.length), r.remote.StageData(internal.StageDataOptions{
 		Name:   item.path,
 		Data:   item.block.data[0:item.block.length],
-		Offset: uint64(item.offset),
-		Id:     item.id})
-
-	item.responseChannel <- workItemResp{block: item.block, err: err}
-	return int(item.length), err
+		Offset: uint64(item.block.offset),
+		Id:     item.block.id})
 }
 
 // CommitData commits data to the data manager

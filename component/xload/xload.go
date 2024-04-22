@@ -36,6 +36,7 @@ package xload
 import (
 	"context"
 	"fmt"
+	"os"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
@@ -53,12 +54,14 @@ type Xload struct {
 	dataMgrPool   *ThreadPool // Thread Pool for data upload download
 	dataSplitPool *ThreadPool // Thread Pool for chunking of a file
 	blockPool     *BlockPool  // Pool of blocks
+	path          string      // Path on local disk where Xload will operate
 }
 
 // Structure defining your config parameters
 type XloadOptions struct {
 	BlockSize float64 `config:"block-size-mb" yaml:"block-size-mb,omitempty"`
 	Mode      string  `config:"mode" yaml:"mode,omitempty"`
+	Path      string  `config:"path" yaml:"path,omitempty"`
 }
 
 const (
@@ -96,6 +99,15 @@ func (xl *Xload) Configure(_ bool) error {
 	xl.blockSize = uint64(16) * _1MB // 16 MB as deafult block size
 	if config.IsSet(compName + ".block-size-mb") {
 		xl.blockSize = uint64(conf.BlockSize * float64(_1MB))
+	}
+
+	xl.path = conf.Path
+	if xl.path == "" {
+		xl.path, err = os.Getwd()
+		if err != nil {
+			log.Err("Xload::Configure : Failed to get current directory [%s]", err.Error())
+			return err
+		}
 	}
 
 	var mode Mode
@@ -191,10 +203,17 @@ func (xl *Xload) StartUploader() {
 		blockPool: xl.blockPool,
 		commiter:  &dataMgr,
 		schedule:  xl.dataMgrPool.Schedule,
+		basePath:  xl.path,
 	}
 
 	// Create a thread-pool to split file into blocks
 	xl.dataSplitPool = newThreadPool(MAX_DATA_SPLITTER, splitter.SplitData)
+
+	///////////////////////////////////////////////////////////
+	// TODO : This is a test code to be removed
+	go xl.dataSplitPool.Schedule(&workItem{
+		path: "application_1.data", dataLen: 1082130432})
+	///////////////////////////////////////////////////////////
 
 	// TODO : For each local file push the path to file chunk creator
 

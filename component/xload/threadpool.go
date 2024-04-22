@@ -94,7 +94,9 @@ func (t *ThreadPool) Do() {
 	for item := range t.workItems {
 		_, err := t.callback(item)
 		if err != nil {
-			log.Err("ThreadPool::Do : Error in processing workitem [%s, %d] : %v", item.path, item.offset, err)
+			log.Err("ThreadPool::Do : Error in processing workitem [%s, %d] : %v", item.path, item.block.offset, err)
 		}
+		item.err = err
+		item.responseChannel <- item
 	}
 }
