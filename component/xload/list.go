@@ -34,7 +34,6 @@
 package xload
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -76,17 +75,9 @@ func newLocalLister(path string, next internal.Component) (*local, error) {
 	l.inputPool = newThreadPool(MAX_LISTER, l.readDir)
 	if l.inputPool == nil {
 		log.Err("Xload::newLocalLister : fail to init thread pool")
-		return l, fmt.Errorf("fail to init listing thread pool")
+		return l, fmt.Errorf("fail to init local listing thread pool")
 	}
 	return l, nil
-}
-
-func (l *local) startLister() {
-	l.inputPool.Start()
-}
-
-func (l *local) stopLister() {
-	l.inputPool.Stop()
 }
 
 func (l *local) getInputPool() *ThreadPool {
@@ -99,10 +90,8 @@ func (l *local) setOutputPool(pool *ThreadPool) {
 
 func (l *local) readDir(item *workItem) (int, error) {
 	absPath := filepath.Join(l.path, item.path)
-	if len(absPath) == 0 {
-		log.Err("list::readDir : local path not given for listing")
-		return 0, errors.New("local path not given for listing")
-	}
+
+	log.Trace("list::readDir : Reading local dir %s", absPath)
 
 	entries, err := os.ReadDir(absPath)
 	if err != nil {
@@ -113,6 +102,8 @@ func (l *local) readDir(item *workItem) (int, error) {
 	for _, entry := range entries {
 		// relPath := getRelativePath(filepath.Join(absPath, entry.Name()), item.basePath)
 		relPath := filepath.Join(item.path, entry.Name())
+
+		log.Trace("list::readDir : Iterating: %s, Is directory: %v", relPath, entry.IsDir())
 
 		if entry.IsDir() {
 			// spawn go routine for directory creation and then
@@ -138,6 +129,8 @@ func (l *local) readDir(item *workItem) (int, error) {
 					path:    relPath,
 					dataLen: uint64(info.Size()),
 				})
+			} else {
+				log.Err("list::readDir : Failed to get stat of %v", relPath)
 			}
 		}
 	}
@@ -159,18 +152,92 @@ type remote struct {
 	lister
 }
 
-func (r *remote) readDir(item *workItem) (int, error) {
-	return 0, nil
-}
+func newRemoteLister(path string, next internal.Component) (*remote, error) {
+	r := &remote{
+		lister: lister{
+			path: path,
+			next: next,
+		},
+	}
 
-func (r *remote) mkdir(name string) error {
-	return nil
+	r.inputPool = newThreadPool(MAX_LISTER, r.readDir)
+	if r.inputPool == nil {
+		log.Err("Xload::newRemoteLister : fail to init thread pool")
+		return r, fmt.Errorf("fail to init remote listing thread pool")
+	}
+	return r, nil
 }
 
 func (r *remote) getInputPool() *ThreadPool {
-	return nil
+	return r.inputPool
 }
 
 func (r *remote) setOutputPool(pool *ThreadPool) {
+	r.outputPool = pool
+}
 
+func (r *remote) readDir(item *workItem) (int, error) {
+	absPath := item.path // TODO:: xload : check this for subdirectory mounting
+
+	log.Trace("list::readDir : Reading remote dir %s", absPath)
+
+	marker := ""
+	var cnt, iteration int
+	for {
+		// TODO:: xload : this fails when block list calls parameter in azstorage is non-zero
+		entries, new_marker, err := r.next.StreamDir(internal.StreamDirOptions{
+			Name:  absPath,
+			Token: marker,
+		})
+		if err != nil {
+			log.Err("list::readDir : Remote listing failed for %s [%s]", absPath, err.Error())
+		}
+
+		marker = new_marker
+		cnt += len(entries)
+		iteration++
+		log.Debug("list::readDir : count: %d , iterations: %d", cnt, iteration)
+
+		for _, entry := range entries {
+			log.Trace("list::readDir : Iterating: %s, Is directory: %v", entry.Path, entry.IsDir())
+
+			if entry.IsDir() {
+				// create directory in local
+				// spawn go routine for directory creation and then
+				// adding to the input channel of the listing component
+				go func(name string) {
+					localPath := filepath.Join(r.path, name)
+					err = r.mkdir(localPath)
+					// TODO:: xload : handle error
+					if err != nil {
+						log.Err("list::readDir : Failed to create directory [%s]", err.Error())
+						return
+					}
+
+					// push the directory to input pool for its listing
+					r.inputPool.Schedule(&workItem{
+						path: name,
+					})
+				}(entry.Path)
+			} else {
+				// send file to the output channel for chunking
+				r.outputPool.Schedule(&workItem{
+					path:    entry.Path,
+					dataLen: uint64(entry.Size),
+				})
+			}
+		}
+
+		if len(new_marker) == 0 {
+			log.Debug("list::readDir : remote listing done for %s", absPath)
+			break
+		}
+	}
+
+	return cnt, nil
+}
+
+func (r *remote) mkdir(name string) error {
+	log.Trace("list::mkdir : Creating local path: %s", name)
+	return os.MkdirAll(name, 0777)
 }

@@ -140,15 +140,22 @@ func (xl *Xload) Start(ctx context.Context) error {
 		return fmt.Errorf("failed to create block pool")
 	}
 
+	var err error
+
 	// Xload : start code goes here
 	switch xl.mode {
 	case EMode.CHECKPOINT():
 		// Start checkpoint thread here
 	case EMode.DOWNLOAD():
 		// Start downloader here
+		err = xl.StartDownloader()
+		if err != nil {
+			log.Err("Xload::Start : Failed to start downloader [%s]", err.Error())
+			return err
+		}
 	case EMode.UPLOAD():
 		// Start uploader here
-		err := xl.StartUploader()
+		err = xl.StartUploader()
 		if err != nil {
 			log.Err("Xload::Start : Failed to start uploader [%s]", err.Error())
 			return err
@@ -219,9 +226,49 @@ func (xl *Xload) StartUploader() error {
 	// Create a thread-pool to split file into blocks
 	xl.dataSplitPool = newThreadPool(MAX_DATA_SPLITTER, splitter.SplitData)
 
-	// Create lister pool to list local files
+	// Create local lister pool to list local files
 	var err error
 	xl.en, err = newLocalLister(xl.path, xl.NextComponent())
+	if err != nil {
+		log.Err("Xload::StartUploader : Unable to create local lister [%s]", err.Error())
+		return err
+	}
+
+	// start input threadpool
+	xl.en.getInputPool().Start()
+	xl.en.setOutputPool(xl.dataSplitPool)
+
+	// Kick off the local lister here
+	xl.en.getInputPool().Schedule(&workItem{})
+	return nil
+}
+
+func (xl *Xload) StartDownloader() error {
+	log.Trace("Xload::StartDownloader : Starting downloader")
+
+	// Create remote data manager to upload blocks
+	dataMgr := RemoteDataManager{
+		remote: xl.NextComponent(),
+	}
+
+	// Create a thread-pool to run workers which will call the uploader
+	xl.dataMgrPool = newThreadPool(MAX_WORKER_COUNT, dataMgr.ReadData)
+
+	// Create a block splitter
+	splitter := DownloadSplitter{
+		blockSize: xl.blockSize,
+		blockPool: xl.blockPool,
+		commiter:  &dataMgr,
+		schedule:  xl.dataMgrPool.Schedule,
+		basePath:  xl.path,
+	}
+
+	// Create a thread-pool to split file into blocks
+	xl.dataSplitPool = newThreadPool(MAX_DATA_SPLITTER, splitter.SplitData)
+
+	// Create remote lister pool to list local files
+	var err error
+	xl.en, err = newRemoteLister(xl.path, xl.NextComponent())
 	if err != nil {
 		log.Err("Xload::StartUploader : Unable to create local lister [%s]", err.Error())
 		return err
