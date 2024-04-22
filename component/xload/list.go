@@ -131,10 +131,14 @@ func (l *local) readDir(item *workItem) (int, error) {
 			}(relPath)
 
 		} else {
-			// send file to the output channel for chunking
-			l.outputPool.Schedule(&workItem{
-				path: relPath,
-			})
+			info, err := os.Stat(filepath.Join(absPath, entry.Name()))
+			if err == nil {
+				// send file to the output channel for chunking
+				l.outputPool.Schedule(&workItem{
+					path:    relPath,
+					dataLen: uint64(info.Size()),
+				})
+			}
 		}
 	}
 

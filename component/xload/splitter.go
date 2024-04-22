@@ -65,6 +65,8 @@ func (u *UploadSplitter) SplitData(item *workItem) (int, error) {
 	var err error
 	var ids []string
 
+	log.Trace("UploadSplitter::SplitData : Splitting data for %s", item.path)
+
 	numBlocks := ((item.dataLen - 1) / u.blockSize) + 1
 	offset := int64(0)
 
@@ -149,6 +151,8 @@ type DownloadSplitter struct {
 // SplitData reads data from the data manager
 func (d *DownloadSplitter) SplitData(item *workItem) (int, error) {
 	var err error
+
+	log.Trace("UploadSplitter::SplitData : Splitting data for %s", item.path)
 
 	numBlocks := ((item.dataLen - 1) / d.blockSize) + 1
 	offset := int64(0)
