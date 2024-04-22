@@ -129,10 +129,10 @@ func (u *UploadSplitter) SplitData(item *workItem) (int, error) {
 
 	if !operationSuccess {
 		log.Err("UploadSplitter::SplitData : Failed to upload data from file %s", item.path)
-	} else {
-		u.commiter.CommitData(item.path, ids)
+		return -1, fmt.Errorf("failed to upload data from file %s", item.path)
 	}
 
+	u.commiter.CommitData(item.path, ids)
 	return 0, nil
 }
 
@@ -214,6 +214,7 @@ func (d *DownloadSplitter) SplitData(item *workItem) (int, error) {
 
 	if !operationSuccess {
 		log.Err("UploadSplitter::SplitData : Failed to upload data from file %s", item.path)
+		return -1, fmt.Errorf("failed to download data for file %s", item.path)
 	}
 
 	return 0, nil
