@@ -34,76 +34,29 @@
 package xload
 
 import (
-	"sync"
+	"fmt"
 
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 )
 
-// One workitem to be scheduled
-type workItem struct {
-	basePath string // base path of the blob
-	name     string // relative path of the blob
-	block    *Block // Block to hold data for this item
-	failCnt  int32  // How many times this item has failed to download
-	upload   bool   // Flag marking this is a upload request or not
+type fileSpiltter struct {
+	inputPool  *ThreadPool
+	outputPool *ThreadPool
 }
 
-// ThreadPool is a group of workers that can be used to execute a task
-type ThreadPool struct {
-	// Number of workers running in this group
-	worker uint32
+func newFileSpiltter() (*fileSpiltter, error) {
+	fs := &fileSpiltter{}
 
-	// Wait group to wait for all workers to finish
-	wg sync.WaitGroup
-
-	// Channel to hold pending requests
-	workItems chan *workItem
-
-	// Reader method that will actually read the data
-	callback func(*workItem) (int, error)
-}
-
-// newThreadPool creates a new thread pool
-func newThreadPool(count uint32, callback func(*workItem) (int, error)) *ThreadPool {
-	if count == 0 || callback == nil {
-		return nil
+	fs.inputPool = newThreadPool(128, fs.chunk)
+	if fs.inputPool == nil {
+		log.Err("Xload::newFileSpiltter : fail to init file splitter pool")
+		return fs, fmt.Errorf("fail to init file splitter thread pool")
 	}
-
-	return &ThreadPool{
-		worker:    count,
-		callback:  callback,
-		workItems: make(chan *workItem, count*2),
-	}
+	return fs, nil
 }
 
-// Start all the workers and wait till they start receiving requests
-func (t *ThreadPool) Start() {
-	for i := uint32(0); i < t.worker; i++ {
-		t.wg.Add(1)
-		go t.Do()
-	}
-}
-
-// Stop all the workers threads
-func (t *ThreadPool) Stop() {
-	close(t.workItems)
-	t.wg.Wait()
-}
-
-// Schedule the download of a block
-func (t *ThreadPool) Schedule(item *workItem) {
-	t.workItems <- item
-}
-
-// Do is the core task to be executed by each worker thread
-func (t *ThreadPool) Do() {
-	defer t.wg.Done()
-
-	// This thread will work only on both high and low priority channel
-	for item := range t.workItems {
-		_, err := t.callback(item)
-		if err != nil {
-			log.Err("ThreadPool::Do : Callback function returned error [%s]", err.Error())
-		}
-	}
+func (fs *fileSpiltter) chunk(item *workItem) (int, error) {
+	log.Debug("FileSplitter::chunk : %s , %s", item.basePath, item.name)
+	fmt.Printf("%s , %s\n", item.basePath, item.name)
+	return 0, nil
 }
