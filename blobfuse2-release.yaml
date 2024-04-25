@@ -1343,10 +1343,7 @@ stages:
 
           - script: |
               sudo rpm -qip blobfuse2*.rpm
-              sudo zypper -n install make cmake gcc gcc-c++ fuse fuse3 
-              wget https://rpmfind.net/linux/opensuse/distribution/leap/15.2/repo/oss/x86_64/fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm
-              sudo zypper -n --no-gpg-checks install fuse3-devel-3.6.1-lp152.1.19.x86_64.rpm
-              sudo rm fuse3-devel*.rpm
+              sudo tdnf install fuse3 libfuse3-dev
               sudo rpm -i blobfuse2*.rpm
             displayName: 'Install Package'
             workingDirectory: $(root_dir)/blobfuse2-signed/mariner
