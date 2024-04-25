@@ -1300,7 +1300,7 @@ stages:
 
           - script: |
               sudo tdnf update -y
-              sudo tdnf -n install git  
+              sudo tdnf install git -y
             displayName: 'Install Git'
 
           - script: |
