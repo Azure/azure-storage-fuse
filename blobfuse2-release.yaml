@@ -1481,6 +1481,16 @@ stages:
                 downloadPath: $(Build.ArtifactStagingDirectory)
 
             - script: |
+                cd mariner
+                for f in ./blobfuse2*fuse3*.rpm; do mv -v "$f" "${f/-fuse3./-cm2.}"; done
+                ls -lRt
+                mv blobfuse2*.rpm ..
+                cd ..
+                rm -r mariner/
+              displayName: 'Rename Mariner binaries'
+              workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
+
+            - script: |
                 sudo ls -lRt $(Build.ArtifactStagingDirectory)
               displayName: 'List Artifacts'
 
@@ -1513,6 +1523,12 @@ stages:
 
                 fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
                 echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
+
+                marinerFuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.x86_64.rpm`
+                echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
+
+                marinerFuse3AarchRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.aarch64.rpm`
+                echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
 
                 while IFS=, read -r distro fuseArchType repoName releaseName; do
                   echo "Uploading packages for $distro"
