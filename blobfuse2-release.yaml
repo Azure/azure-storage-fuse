@@ -1343,7 +1343,7 @@ stages:
 
           - script: |
               sudo rpm -qip blobfuse2*.rpm
-              sudo tdnf install fuse3 fuse3-devel
+              sudo tdnf install fuse3 fuse3-devel -y
               sudo rpm -i blobfuse2*.rpm
             displayName: 'Install Package'
             workingDirectory: $(root_dir)/blobfuse2-signed/mariner
