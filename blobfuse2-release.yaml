@@ -337,7 +337,7 @@ stages:
               inlineOperation: |
                 [
                   {
-                    "KeyCode" : "CP-459159-Pgp",
+                    "KeyCode" : "$(ESRP_BLOBFUSE_MARINER_KEY_CODE)",
                     "OperationCode" : "LinuxSign",
                     "Parameters" : {},
                     "ToolName" : "sign",
