@@ -1429,8 +1429,8 @@ stages:
 
   - ${{ if eq(parameters.publish_artifacts, true) }}:
     - stage: PublishArtifcats
-      # dependsOn: ReleaseArtifacts
-      # condition: succeeded('ReleaseArtifacts')
+      dependsOn: ReleaseArtifacts
+      condition: succeeded('ReleaseArtifacts')
       jobs:
         - job: PublishArtifacts
           timeoutInMinutes: 120
@@ -1494,10 +1494,10 @@ stages:
                 sudo ls -lRt $(Build.ArtifactStagingDirectory)
               displayName: 'List Artifacts'
 
-            # - script: |
-            #     pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) package upload blobfuse2-signed
-            #   displayName: 'Upload packages'
-            #   workingDirectory: $(Build.ArtifactStagingDirectory)/
+            - script: |
+                pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) package upload blobfuse2-signed
+              displayName: 'Upload packages'
+              workingDirectory: $(Build.ArtifactStagingDirectory)/
 
             - script: |
                 wget https://raw.githubusercontent.com/Azure/azure-storage-fuse/`echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`/setup/packages.csv -O packages.csv
@@ -1506,34 +1506,33 @@ stages:
               workingDirectory: $(Build.ArtifactStagingDirectory)/
 
             - script: |
-                fuse3AmdDeb="pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.deb"
+                fuse3AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.deb`
                 echo "Fuse3 AMD DEB ID: $fuse3AmdDeb"
 
-                fuse3ArmDeb="pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.arm64.deb"
+                fuse3ArmDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.arm64.deb`
                 echo "Fuse3 ARM DEB ID: $fuse3ArmDeb"
 
-                fuse3AmdRpm="pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.rpm"
+                fuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.x86_64.rpm`
                 echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
 
-                fuse3ArmRpm="pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.aarch64.rpm"
+                fuse3ArmRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse3.aarch64.rpm`
                 echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
 
-                fuse2AmdDeb="pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.deb"
+                fuse2AmdDeb=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.deb`
                 echo "Fuse2 AMD DEB ID: $fuse2AmdDeb"
 
-                fuse2AmdRpm="pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm"
+                fuse2AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*fuse2.x86_64.rpm`
                 echo "Fuse2 AMD RPM ID: $fuse2AmdRpm"
 
-                marinerFuse3AmdRpm="pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.x86_64.rpm"
-                echo "Fuse3 AMD RPM ID: $fuse3AmdRpm"
+                marinerFuse3AmdRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.x86_64.rpm`
+                echo "Mariner fuse3 AMD RPM ID: $marinerFuse3AmdRpm"
 
-                marinerFuse3AarchRpm="pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.aarch64.rpm"
-                echo "Fuse3 ARM RPM ID: $fuse3ArmRpm"
+                marinerFuse3AarchRpm=`pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) --id-only package upload blobfuse2*cm2.aarch64.rpm`
+                echo "Mariner fuse3 ARM RPM ID: $marinerFuse3AarchRpm"
 
                 while IFS=, read -r distro fuseArchType repoName releaseName; do
                   echo "Uploading packages for $distro"
-                  echo ${!fuseArchType} $repoName $releaseName
-                  # pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages ${!fuseArchType} $repoName $releaseName
+                  pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo package update --add-packages ${!fuseArchType} $repoName $releaseName
                 done < <(tail -n +3 ../packages.csv)
               displayName: 'Add uploaded packages to repository'
               workingDirectory: $(Build.ArtifactStagingDirectory)/blobfuse2-signed/
@@ -1545,7 +1544,7 @@ stages:
                     echo "Skipping for ARM type on $distro"
                   else
                     echo "Publishing for $distro"
-                    # pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish $repoName
+                    pmc --msal-cert-path $(pmcCertificate.secureFilePath) --config $(settings.secureFilePath) repo publish $repoName
                   fi
                 done < <(tail -n +3 ../packages.csv)
               displayName: 'Publish the repository'
