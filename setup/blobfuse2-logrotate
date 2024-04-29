@@ -14,4 +14,3 @@
 		systemctl kill -s HUP rsyslog.service
 	endscript
 }
-
