@@ -136,7 +136,7 @@ stages:
             displayName: 'Make deb Package'
 
           - script: |
-              fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
+              fpm -s dir -t rpm -n blobfuse2 --rpm-digest sha256 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).x86_64.rpm
@@ -236,7 +236,7 @@ stages:
             displayName: 'Make deb Package'
 
           - script: |
-              fpm -s dir -t rpm -n blobfuse2 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
+              fpm -s dir -t rpm -n blobfuse2 --rpm-digest sha256 -C pkgDir/ -v `./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3` -d $(depends) \
               --maintainer "Blobfuse v-Team <blobfusevteam@microsoft.com>" --url "https://github.com/Azure/azure-storage-fuse" \
               --description "An user-space filesystem for interacting with Azure Storage" 
               mv ./blobfuse2*.rpm ./blobfuse2-`./pkgDir/usr/bin/blobfuse2 --version | cut -d " " -f 3`-$(tags).aarch64.rpm
