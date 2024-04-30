@@ -105,6 +105,23 @@ For HNS account, always add `type: adls` under `azstorage` section in your confi
 
 To create a private-endpoint for DFS in Azure portal: Go to your storage account -> Networking -> Private Endpoint connections. Click `+ Private endpoint`, fill in Subscription, Resource Group, Name, Network Interface Name and Region. Click next and under Target sub-resource select `dfs`. Click Virtual network and select virtual network and Subnet. Click DNS. Select Yes for Integrate with private DNS. Select the Subscription and Resource Group for your private link DNS. Select Next, Next and select Create.
 
+**11. Failed to initialize new pipeline [config error in azstorage [account name not provided]]'**
+
+Make sure the configuration file has `azstorage` section in your config file.
+
+```
+azstorage:
+  type: adls
+  account-name: <name of the storage account>
+  container: <name of the storage container to be mounted>
+  endpoint: <storage account endpoint (example - https://account-name.blob.core.windows.net)>
+  mode: key
+  account-key: <storage account key>
+```
+The [BlobFuse2 base configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/setup/baseConfig.yaml) contains a list of all settings and a brief explanation of each setting.
+
+Use the [sample file cache configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/sampleFileCacheConfig.yaml) or the [sample streaming configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/sampleStreamingConfig.yaml) to get started quickly by using some basic settings for each of those scenarios.
+
 # Common Problems after a Successful Mount
 **1. Errno 24: Failed to open file /mnt/tmp/root/filex in file cache.  errno = 24 OR Too many files Open error**
 Errno 24 in Linux corresponds to 'Too many files open' error which can occur when an application opens more files than it is allowed on the system. Blobfuse2 typically allows 20 files less than the ulimit value set in Linux. Usually the Linux limit is 1024 per process (e.g. Blobfuse2 in this case will allow 1004 open file descriptors at a time). Recommended approach is to edit the /etc/security/limits.conf in Ubuntu and add these two lines, 
@@ -256,4 +273,6 @@ If your workflow involves updating the file directly on container (not using blo
 Make sure you have correctly setup your GO dev environment. Ensure you have installed fuse3/2 for example:
 
     sudo apt-get install fuse3 libfuse3-dev -y
+
+
 
