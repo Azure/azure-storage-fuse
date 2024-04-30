@@ -70,6 +70,21 @@ else()
     message(STATUS "Using fuse3 include dir ${fuse3_INCLUDE_DIR}")
 endif()
 
+#
+# We need GnuTLS for secure libnfs transport.
+#
+find_package(GnuTLS "3.4.6" QUIET)
+if(NOT GNUTLS_FOUND)
+    message(STATUS "GnuTLS not found, trying to install gnutls-dev!")
+    execute_process(COMMAND sudo apt install -y gnutls-dev
+                    RESULT_VARIABLE GNUTLS_INSTALL_RESULT)
+    if(NOT GNUTLS_INSTALL_RESULT EQUAL "0")
+        message(FATAL_ERROR "apt install gnutls-dev failed with ${GNUTLS_INSTALL_RESULT}, try installing gnutls-dev manually and then run cmake again")
+    else()
+        find_package(GnuTLS "3.4.6" REQUIRED)
+    endif()
+endif()
+
 # Build libnfs.
 add_subdirectory(extern/libnfs)
 add_subdirectory(extern/yaml-cpp)
