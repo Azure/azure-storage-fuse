@@ -15,6 +15,7 @@ option(ENABLE_TESTS "Build and run test programs" OFF)
 option(ENABLE_DOCUMENTATION "Build Documentation" OFF)
 
 set(INSTALL_BIN_DIR "${CMAKE_INSTALL_PREFIX}/bin" CACHE PATH "Installation directory for binaries")
+set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/CMake" ${CMAKE_MODULE_PATH})
 
 
 #
@@ -49,6 +50,26 @@ if(NOT EXISTS "${PROJECT_SOURCE_DIR}/extern/spdlog/CMakeLists.txt")
     message(FATAL_ERROR "The spdlog submodule was not downloaded! GIT_SUBMODULE was turned off or failed. Please update submodules and try again.")
 endif()
 
+#
+# Find fuse3 and if not found try to install.
+#
+find_package(fuse3 QUIET)
+if(NOT fuse3_FOUND)
+    message(STATUS "fuse3 not found, trying to install libfuse3-dev!")
+    execute_process(COMMAND sudo apt install -y libfuse3-dev
+		    RESULT_VARIABLE fuse3_INSTALL_RESULT)
+    if(NOT fuse3_INSTALL_RESULT EQUAL "0")
+        message(FATAL_ERROR "apt install libfuse3-dev failed with ${fuse3_INSTALL_RESULT}, try installing libfuse3-dev manually and then run cmake again")
+    else()
+	# Call once more to ensure above install completed fine and also
+	# will set fuse3_INCLUDE_DIR and fuse3_LIBRARY variables.
+        find_package(fuse3 REQUIRED)
+    endif()
+else()
+    message(STATUS "Using fuse3 lib ${fuse3_LIBRARY}")
+    message(STATUS "Using fuse3 include dir ${fuse3_INCLUDE_DIR}")
+endif()
+
 # Build libnfs.
 add_subdirectory(extern/libnfs)
 add_subdirectory(extern/yaml-cpp)
@@ -69,6 +90,7 @@ add_executable(${CMAKE_PROJECT_NAME}
 target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${PROJECT_SOURCE_DIR}/inc"
                            PRIVATE "${PROJECT_BINARY_DIR}/inc"
+                           PRIVATE "${fuse3_INCLUDE_DIR}"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/include/nfsc"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/mount"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/spdlog/include")
@@ -79,7 +101,7 @@ target_compile_options(${CMAKE_PROJECT_NAME}
 
 # All libraries.
 target_link_libraries(${CMAKE_PROJECT_NAME}
-                      fuse3
+                      ${fuse3_LIBRARY}
                       pthread
                       nfs
                       yaml-cpp
