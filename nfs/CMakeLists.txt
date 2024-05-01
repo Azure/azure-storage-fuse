@@ -85,7 +85,9 @@ if(NOT GNUTLS_FOUND)
     endif()
 endif()
 
-# Build libnfs.
+# Build libnfs (with multithreading enabled).
+set(ENABLE_MULTITHREADING ON)
+set(ENABLE_EXAMPLES ON)
 add_subdirectory(extern/libnfs)
 add_subdirectory(extern/yaml-cpp)
 
