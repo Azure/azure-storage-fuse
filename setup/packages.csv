@@ -4,6 +4,8 @@ Ubuntu-18.04,fuse2AmdDeb,microsoft-ubuntu-bionic-prod-apt,bionic
 Ubuntu-20.04,fuse3AmdDeb,microsoft-ubuntu-focal-prod-apt,focal
 Ubuntu-22.04,fuse3AmdDeb,microsoft-ubuntu-jammy-prod-apt,jammy
 Ubuntu-22.04,fuse3ArmDeb,microsoft-ubuntu-jammy-prod-apt,jammy
+Ubuntu-24.04,fuse3AmdDeb,microsoft-ubuntu-noble-prod-apt,noble
+Ubuntu-24.04,fuse3ArmDeb,microsoft-ubuntu-noble-prod-apt,noble
 Debian-9.0,fuse2AmdDeb,microsoft-debian-stretch-prod-apt,stretch
 Debian-10.0,fuse2AmdDeb,microsoft-debian-buster-prod-apt,buster
 Debian-11.0,fuse3AmdDeb,microsoft-debian-bullseye-prod-apt,bullseye
@@ -18,3 +20,5 @@ RHEL-9.0,fuse3ArmRpm,microsoft-rhel9.0-prod-yum,
 CentOS-7.0,fuse3AmdRpm,microsoft-centos7-prod-yum,
 CentOS-8.0,fuse3AmdRpm,microsoft-centos8-prod-yum,
 SUSE-15Gen2,fuse3AmdRpm,microsoft-sles15-prod-yum,
+Mariner-2.0-x86_64,marinerFuse3AmdRpm,cbl-mariner-2.0-prod-Microsoft-x86_64-yum,
+Mariner-2.0-aarch64,marinerFuse3AarchRpm,cbl-mariner-2.0-prod-Microsoft-aarch64-yum,
