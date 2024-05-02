@@ -24,20 +24,24 @@ struct fuse_conn_info_opts* fuse_conn_info_opts_ptr;
  *    aznfsclient.
  *    These have the highest preference and will override the variables set
  *    by environment variables, config.yaml and the default.
+ *
+ * Note: This MUST not contains C++ object types as members as fuse parser
+ *       writes into those members. For char* members fuse also allocates memory.
  */
 struct aznfsc_cfg
 {
     // config.yaml file path specified using --config-file= cmdline option.
-    std::string config_yaml;
+    const char *config_yaml;
 
     /*
      * Storage account and container to mount and the optional cloud suffix.
      * The share path mounted is:
      * <account>.<cloud_suffix>:/<account>/<container>
      */
-    std::string account;
-    std::string container;
-    std::string cloud_suffix = "blob.core.windows.net";
+    //std::string account;
+    const char *account;
+    const char *container;
+    const char *cloud_suffix = "blob.core.windows.net";
 
     /*
      * NFS and Mount port to use.
