@@ -12,7 +12,6 @@ If you would like to access next generation blobfuse, please refer to [blobfuse2
 
 ---
 
-
 ## Features
 - Mount a Blob storage container on Linux
 - Basic file system operations such as mkdir, opendir, readdir, rmdir, open, read, create, write, close, unlink, truncate, stat, rename
