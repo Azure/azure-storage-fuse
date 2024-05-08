@@ -1,7 +1,8 @@
-## 2.3.0~preview.2 (Unreleased)
+## 2.3.0 (Unreleased)
 **Bug Fixes**
 - For fuse minor version check rely on the fusermount3 command output rather then one exposed from fuse_common.
 - Fixed large number of threads from TLRU causing crash during disk eviction in block-cache.
+- Fixed issue where get attributes was failing for directories in blob accounts when CPK flag was enabled.
 
 **Features**
 - Added support for authentication using Azure CLI.
