@@ -1,7 +1,8 @@
-## 2.3.0~preview.2 (Unreleased)
+## 2.3.0 (Unreleased)
 **Bug Fixes**
 - For fuse minor version check rely on the fusermount3 command output rather then one exposed from fuse_common.
 - Fixed large number of threads from TLRU causing crash during disk eviction in block-cache.
+- Fixed issue where get attributes was failing for directories in blob accounts when CPK flag was enabled.
 
 **Features**
 - Added support for authentication using Azure CLI.
@@ -11,7 +12,6 @@
 - [#1057](https://github.com/Azure/azure-storage-fuse/issues/1057) Fixed the issue where user-assigned identity is not used to authenticate when system-assigned identity is enabled.
 - Listing blobs is now supported for blob names that contain characters that aren't valid in XML (U+FFFE or U+FFFF).
 - [#1359](https://github.com/Azure/azure-storage-fuse/issues/1359), [#1368](https://github.com/Azure/azure-storage-fuse/issues/1368) Fixed RHEL 8.6 mount failure
-- Fixed issue where get attributes was failing for files which are directories in case of CPK enabled flag.
 
 **Features**
 - Migrated to the latest [azblob SDK](https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob).
