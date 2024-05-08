@@ -1428,7 +1428,7 @@ stages:
                   assetUploadMode: replace
 
   - ${{ if eq(parameters.publish_artifacts, true) }}:
-    - stage: PublishArtifcats
+    - stage: PublishArtifacts
       dependsOn: ReleaseArtifacts
       condition: succeeded('ReleaseArtifacts')
       jobs:

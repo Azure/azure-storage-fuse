@@ -403,6 +403,7 @@ var mountCmd = &cobra.Command{
 		var pipeline *internal.Pipeline
 
 		log.Crit("Starting Blobfuse2 Mount : %s on [%s]", common.Blobfuse2Version, common.GetCurrentDistro())
+		log.Info("Mount Command: %s", os.Args)
 		log.Crit("Logging level set to : %s", logLevel.String())
 		log.Debug("Mount allowed on nonempty path : %v", options.NonEmpty)
 		pipeline, err = internal.NewPipeline(options.Components, !daemon.WasReborn())
