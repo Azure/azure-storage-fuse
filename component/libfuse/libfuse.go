@@ -36,7 +36,6 @@ package libfuse
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
@@ -252,6 +251,7 @@ func (lf *Libfuse) Validate(opt *LibfuseOptions) error {
 //	Return failure if any config is not valid to exit the process
 func (lf *Libfuse) Configure(_ bool) error {
 	log.Trace("Libfuse::Configure : %s", lf.Name())
+	
 	// >> If you do not need any config parameters remove below code and return nil
 	conf := LibfuseOptions{IgnoreOpenFlags: true}
 	err := config.UnmarshalKey(lf.Name(), &conf)
