@@ -108,7 +108,7 @@ To create a private-endpoint for DFS in Azure portal: Go to your storage account
 **11. Failed to initialize new pipeline [config error in azstorage [account name not provided]]'**
 
 Make sure the configuration file has `azstorage` section in your config file.
-The [BlobFuse2 base configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/setup/baseConfig.yaml) contains a list of all settings and a brief explanation of each setting.Use the [sample file cache configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/sampleFileCacheConfig.yaml) or the [sample streaming configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/sampleStreamingConfig.yaml) to get started quickly by using some basic settings for each of those scenarios.
+The [BlobFuse2 base configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/setup/baseConfig.yaml) contains a list of all settings and a brief explanation of each setting. Use the [sample file cache configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/sampleFileCacheConfig.yaml) or the [sample block cache configuration file](https://github.com/Azure/azure-storage-fuse/blob/main/sampleBlockCacheConfig.yaml) to get started quickly by using some basic settings for each of those scenarios.
 
 # Common Problems after a Successful Mount
 **1. Errno 24: Failed to open file /mnt/tmp/root/filex in file cache.  errno = 24 OR Too many files Open error**
