@@ -64,7 +64,6 @@ type BaseLogger struct {
 	logger        *log.Logger
 	logFileHandle io.WriteCloser
 	procPID       int
-	mountPath     string
 
 	fileConfig LogFileConfig
 }
@@ -162,11 +161,6 @@ func (l *BaseLogger) SetLogLevel(level common.LogLevel) {
 
 func (l *BaseLogger) init() error {
 	l.procPID = os.Getpid()
-	if os.Args[1] != "mount" {
-		l.mountPath = os.Args[1]
-	} else {
-		l.mountPath = os.Args[2]
-	}
 
 	// Set default for config
 	if l.fileConfig.LogFile == "" {
@@ -229,7 +223,6 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...interface{}) {
 		time.Now().Format(time.UnixDate),
 		l.fileConfig.LogTag,
 		l.procPID,
-		l.mountPath,
 		lvl,
 		filepath.Base(fn), ln,
 		msg)
