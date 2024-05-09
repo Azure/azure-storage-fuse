@@ -1136,14 +1136,7 @@ stages:
                       sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
                       sudo yum update -y
                       sudo yum groupinstall "Development Tools" -y
-                      if [ $(AgentName) == "blobfuse-rhel7_5" ]; then
-                        sudo yum-config-manager --save --setopt=rhui-rhel-7-server-dotnet-rhui-rpms.skip_if_unavailable=true
-                        sudo yum install git fuse fuse3-libs fuse3-devel fuse3 rh-python36 -y
-                      elif [ $(AgentName) == "blobfuse-rhel9" ]; then
-                        sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
-                      else
-                        sudo yum install git fuse fuse3-libs fuse3-devel fuse3 python36 -y --nobest --allowerasing
-                      fi
+                      sudo yum install wget git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
                     displayName: 'Install fuse'
                   verbose_log: ${{ parameters.verbose_log }}
 
