@@ -219,7 +219,7 @@ func (l *BaseLogger) logEvent(lvl string, format string, args ...interface{}) {
 	// Only log if the log level matches the log request
 	_, fn, ln, _ := runtime.Caller(3)
 	msg := fmt.Sprintf(format, args...)
-	msg = fmt.Sprintf("%s : %s[%d][%s] : %s [%s (%d)]: %s",
+	msg = fmt.Sprintf("%s : %s[%d] : %s [%s (%d)]: %s",
 		time.Now().Format(time.UnixDate),
 		l.fileConfig.LogTag,
 		l.procPID,
