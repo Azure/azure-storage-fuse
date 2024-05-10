@@ -55,6 +55,7 @@ import (
 
 var RootMount bool
 var ForegroundMount bool
+var MountPath string
 
 // IsDirectoryMounted is a utility function that returns true if the directory is already mounted using fuse
 func IsDirectoryMounted(path string) bool {
@@ -66,6 +67,7 @@ func IsDirectoryMounted(path string) bool {
 
 	// removing trailing / from the path
 	path = strings.TrimRight(path, "/")
+	MountPath = path
 
 	for _, line := range strings.Split(string(mntList), "\n") {
 		if strings.TrimSpace(line) != "" {

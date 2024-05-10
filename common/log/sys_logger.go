@@ -38,7 +38,6 @@ import (
 	"fmt"
 	"log"
 	"log/syslog"
-	"os"
 	"path/filepath"
 	"runtime"
 
@@ -121,11 +120,7 @@ func getSyslogLevel(lvl common.LogLevel) syslog.Priority {
 func (l *SysLogger) write(lvl string, format string, args ...interface{}) {
 	_, fn, ln, _ := runtime.Caller(3)
 	msg := fmt.Sprintf(format, args...)
-	mountPath := os.Args[1]
-	if mountPath == "mount" {
-		mountPath = os.Args[2]
-	}
-	l.logger.Print("[", mountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
+	l.logger.Print("[", common.MountPath, "] ", lvl, " [", filepath.Base(fn), " (", ln, ")]: ", msg)
 }
 
 func (l *SysLogger) Debug(format string, args ...interface{}) {
