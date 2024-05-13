@@ -66,7 +66,15 @@ libfuse:
   fuse-trace: true|false <enable libfuse api trace logs for debugging>
   extension: <physical path to extension library>
   direct-io: true|false <enable to bypass the kernel cache>
- 
+
+# Streaming configuration – remove and redirect to block-cache
+stream:
+  # If block-size-mb, max-buffers or buffer-size-mb are 0, the stream component will not cache blocks. 
+  block-size-mb: <for read only mode size of each block to be cached in memory while streaming (in MB). For read/write size of newly created blocks. Default - 0 MB>
+  max-buffers: <total number of buffers to store blocks in. Default - 0>
+  buffer-size-mb: <size for each buffer. Default - 0 MB>
+  file-caching: <read/write mode file level caching or handle level caching. Default - false (handle level caching ON)>
+
 # Block cache related configuration
 block_cache:
   block-size-mb: <size of each block to be cached in memory (in MB). Default - 16 MB>
