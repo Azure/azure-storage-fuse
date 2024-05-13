@@ -12,6 +12,7 @@ type xcomponent interface {
 }
 
 type xbase struct {
+	pool   *ThreadPool
 	remote internal.Component
 	next   xcomponent
 }
@@ -39,10 +40,26 @@ func (xb *xbase) setNext(s xcomponent) {
 	xb.next = s
 }
 
+func (xb *xbase) getThreadPool() *ThreadPool {
+	return xb.pool
+}
+
+func (xb *xbase) getRemote() internal.Component {
+	return xb.remote
+}
+
 // --------------------------------------------------------------------------------------------------------------------------------------------------
 
-type xlister struct {
+type xsplitter struct {
+	xbase
 }
 
-type xsplitter struct {
+var _ xcomponent = &xsplitter{}
+
+// --------------------------------------------------------------------------------------------------------------------------------------------------
+
+type xmanager struct {
+	xbase
 }
+
+var _ xcomponent = &xmanager{}
