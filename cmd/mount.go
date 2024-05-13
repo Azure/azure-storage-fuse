@@ -238,6 +238,8 @@ var mountCmd = &cobra.Command{
 	FlagErrorHandling: cobra.ExitOnError,
 	RunE: func(_ *cobra.Command, args []string) error {
 		options.MountPath = common.ExpandPath(args[0])
+		common.MountPath = options.MountPath
+		
 		configFileExists := true
 
 		if options.ConfigFile == "" {
@@ -389,7 +391,6 @@ var mountCmd = &cobra.Command{
 		}
 
 		common.EnableMonitoring = options.MonitorOpt.EnableMon
-		common.MountPath = options.MountPath
 
 		// check if blobfuse stats monitor is added in the disable list
 		for _, mon := range options.MonitorOpt.DisableList {
