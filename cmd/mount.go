@@ -239,7 +239,7 @@ var mountCmd = &cobra.Command{
 	RunE: func(_ *cobra.Command, args []string) error {
 		options.MountPath = common.ExpandPath(args[0])
 		common.MountPath = options.MountPath
-		
+
 		configFileExists := true
 
 		if options.ConfigFile == "" {
