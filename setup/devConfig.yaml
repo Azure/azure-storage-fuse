@@ -27,15 +27,26 @@
 #  10. 'sdk-trace' has been removed with v2.3.0 release and setting log level to log_debug will auto enable these logs.
 # -----------------------------------------------------------------------------------------------------------------------
 
+
+# Daemon configuration
+foreground: true|false <run blobfuse2 in foreground or background>
+
 # Common configurations
 allow-other: true|false <allow other users to access the mounted directory - used for FUSE and File Cache>
 nonempty: true|false <allow mounting on non-empty directory>
+
+# Dynamic profiler related configuration. This helps to root-cause high memory/cpu usage related issues.
+dynamic-profile: true|false <allows to turn on dynamic profiler for cpu/memory usage monitoring. Only for debugging, shall not be used in production>
+profiler-port: <port number for dynamic-profiler to listen for REST calls. Default - 6060>
+profiler-ip: <IP address for dynamic-profiler to listen for REST calls. Default - localhost>
 
 # Logger configuration
 logging:
   type: syslog|silent|base <type of logger to be used by the system. silent = no logger, base = file based logger. Default - syslog>
   level: log_off|log_crit|log_err|log_warning|log_info|log_trace|log_debug <log level. Default - log_warning> <log_debug will also enable sdk-trace logs>
   file-path: <path where log files shall be stored. Default - '$HOME/.blobfuse2/blobfuse2.log'>
+  max-file-size-mb: <maximum allowed size for each log file (in MB). Default - 512 MB>
+  file-count: <maximum number of files to be rotated to preserve old logs. Default - 10>
 
 # Pipeline configuration. Choose components to be engaged. The order below is the priority order that needs to be followed.
 components:
@@ -44,6 +55,7 @@ components:
   - file_cache
   - attr_cache
   - azstorage
+  - loopbackfs
 
 # Libfuse configuration
 libfuse:
@@ -51,8 +63,18 @@ libfuse:
   attribute-expiration-sec: <time kernel can cache inode attributes (in sec). Default - 120 sec>
   entry-expiration-sec: <time kernel can cache directory listing attributes (in sec). Default - 120 sec>
   negative-entry-expiration-sec: <time kernel can cache attributes of non existent paths (in sec). Default - 120 sec>
+  fuse-trace: true|false <enable libfuse api trace logs for debugging>
+  extension: <physical path to extension library>
   direct-io: true|false <enable to bypass the kernel cache>
- 
+
+# Streaming configuration – remove and redirect to block-cache
+stream:
+  # If block-size-mb, max-buffers or buffer-size-mb are 0, the stream component will not cache blocks. 
+  block-size-mb: <for read only mode size of each block to be cached in memory while streaming (in MB). For read/write size of newly created blocks. Default - 0 MB>
+  max-buffers: <total number of buffers to store blocks in. Default - 0>
+  buffer-size-mb: <size for each buffer. Default - 0 MB>
+  file-caching: <read/write mode file level caching or handle level caching. Default - false (handle level caching ON)>
+
 # Block cache related configuration
 block_cache:
   block-size-mb: <size of each block to be cached in memory (in MB). Default - 16 MB>
@@ -71,6 +93,8 @@ file_cache:
   # Optional 
   timeout-sec: <default cache eviction timeout (in sec). Default - 120 sec>
   max-size-mb: <maximum cache size allowed. Default - 0 (unlimited)>
+  allow-non-empty-temp: true|false <allow non empty temp directory at startup>
+  cleanup-on-start: true|false <cleanup the temp directory on startup, if its not empty>
   sync-to-flush: true|false <sync call to a file will force upload of the contents to storage account>
   refresh-sec: <number of seconds after which compare lmt of file in local cache and container and refresh file if container has the latest copy>
   ignore-sync: true|false <sync call will be ignored and locally cached file will not be deleted>
@@ -81,6 +105,10 @@ attr_cache:
   timeout-sec: <time attributes can be cached (in sec). Default - 120 sec>
   no-symlinks: true|false <to improve performance disable symlink support. symlinks will be treated like regular files.>
   
+# Loopback configuration
+loopbackfs:
+  path: <path to local directory>
+
 # Azure storage configuration
 azstorage:
 # Required
@@ -109,11 +137,41 @@ azstorage:
   max-concurrency: <number of parallel upload/download threads. Default - 32>
   tier: hot|cool|cold|premium|archive|none <blob-tier to be set while uploading a blob. Default - none>
   block-list-on-mount-sec: <time list api to be blocked after mount (in sec). Default - 0 sec>
+  max-retries: <number of retries to attempt for any operation failure. Default - 5>
+  max-retry-timeout-sec: <maximum timeout allowed for a given retry (in sec). Default - 900 sec>
+  retry-backoff-sec: <retry backoff between two tries (in sec). Default - 4 sec>
+  max-retry-delay-sec: <maximum delay between two tries (in sec). Default - 60 sec>
+  http-proxy: ip-address:port <http proxy to be used for connection>
+  https-proxy: ip-address:port <https proxy to be used for connection>
+  fail-unsupported-op: true|false <for block blob account return failure for unsupported operations like chmod and chown>
   auth-resource: <resource string to be used during OAuth token retrieval>
   update-md5: true|false <set md5 sum on upload. Impacts performance. works only when file-cache component is part of the pipeline>
   validate-md5: true|false <validate md5 on download. Impacts performance. works only when file-cache component is part of the pipeline>
   disable-compression: true|false <disable transport layer content encoding like gzip, set this flag to true if blobs have content-encoding set in container>
+  telemetry : <additional information that customer want to push in user-agent>
   honour-acl: true|false <honour ACLs on files and directories when mounted using MSI Auth and object-ID is provided in config>
   cpk-enabled: true|false <enable client provided key encryption>
   cpk-encryption-key: <customer provided base64-encoded AES-256 encryption key value>
   cpk-encryption-key-sha256:  <customer provided base64-encoded sha256 of the encryption key>
+
+# Mount all configuration
+mountall:
+  # allowlist takes precedence over denylist in case of conflicts
+  container-allowlist:
+    - <list of containers to be mounted>
+  container-denylist:
+    - <list of containers not to be mounted>
+
+# Health Monitor configuration
+health_monitor:
+  enable-monitoring: true|false <enable health monitor>
+  stats-poll-interval-sec: <Blobfuse2 stats polling interval (in sec). Default - 10 sec>
+  process-monitor-interval-sec: <CPU, memory and network usage polling interval (in sec). Default - 30 sec>
+  output-path: <Path where health monitor will generate its output file. File name will be monitor_<pid>.json>
+  # list of monitors to be disabled
+  monitor-disable-list:
+    - blobfuse_stats <Disable blobfuse2 stats polling>
+    - file_cache_monitor <Disable file cache directory monitor>
+    - cpu_profiler <Disable CPU monitoring on blobfuse2 process>
+    - memory_profiler <Disable memory monitoring on blobfuse2 process>
+    - network_profiler <Disable network monitoring on blobfuse2 process>

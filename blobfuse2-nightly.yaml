@@ -1068,6 +1068,78 @@ stages:
                     displayName: 'Install fuse'
                   verbose_log: ${{ parameters.verbose_log }}
 
+          # ROCKY Tests
+          - job: Set_7
+            timeoutInMinutes: 60
+            strategy:
+              matrix:
+                Rocky-8.0:
+                  DistroVer: "Rocky-8.0"
+                  Description: "Rocky Linux 8.0"
+                  AgentName: "blobfuse-rocky8"
+                  ContainerName: "test-cnt-rocky-8"
+                  tags: 'fuse3'
+                Rocky-9.0:
+                  DistroVer: "Rocky-9.0"
+                  Description: "Rocky Linux 9.0"
+                  AgentName: "blobfuse-rocky9"
+                  ContainerName: "test-cnt-rocky-9"
+                  tags: 'fuse3'
+            pool:
+              name: "blobfuse2-rocky-pool"
+              demands:
+                - ImageOverride -equals $(AgentName)
+
+            variables:
+              - group: NightlyBlobFuse
+              - name: ROOT_DIR
+                value: "/usr/pipeline/workv2"
+              - name: WORK_DIR
+                value: "/usr/pipeline/workv2/go/src/azure-storage-fuse"
+              - name: skipComponentGovernanceDetection
+                value: true
+              - name: MOUNT_DIR
+                value: "/usr/pipeline/workv2/blob_mnt"
+              - name: TEMP_DIR
+                value: "/usr/pipeline/workv2/temp"
+              - name: BLOBFUSE2_CFG
+                value: "/usr/pipeline/workv2/blobfuse2.yaml"
+              - name: BLOBFUSE2_ADLS_CFG
+                value: "/home/vsts/workv2/blobfuse2.adls.yaml"
+              - name: GOPATH
+                value: "/usr/pipeline/workv2/go"
+
+            steps:
+              - script: |
+                  sudo touch /etc/yum.repos.d/centos.repo
+                  sudo sh -c 'echo -e "[centos-extras]\nname=Centos extras - $basearch\nbaseurl=http://mirror.centos.org/centos/7/extras/x86_64\nenabled=1\ngpgcheck=1\ngpgkey=http://centos.org/keys/RPM-GPG-KEY-CentOS-7" > /etc/yum.repos.d/centos.repo'
+                condition: eq(variables['AgentName'], 'blobfuse-rhel7_5')
+                displayName: "Update OS mirrors"
+
+              - template: 'azure-pipeline-templates/distro-tests.yml'
+                parameters:
+                  working_dir: $(WORK_DIR)
+                  root_dir: $(ROOT_DIR)
+                  temp_dir: $(TEMP_DIR)
+                  mount_dir: $(MOUNT_DIR)
+                  config_path: $(BLOBFUSE2_CFG)
+                  container: $(ContainerName)
+                  blob_account_name: $(NIGHTLY_STO_BLOB_ACC_NAME)
+                  blob_account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
+                  adls_account_name: $(AZTEST_ADLS_ACC_NAME)
+                  adls_account_key: $(AZTEST_ADLS_KEY)
+                  distro_name: $(AgentName)
+                  gopath: $(GOPATH)
+                  tags: $(tags) 
+                  installStep:
+                    script: |
+                      sudo sed -i '/^failovermethod=/d' /etc/yum.repos.d/*.repo
+                      sudo yum update -y
+                      sudo yum groupinstall "Development Tools" -y
+                      sudo yum install wget git fuse fuse3-libs fuse3-devel fuse3 python3 -y --nobest --allowerasing
+                    displayName: 'Install fuse'
+                  verbose_log: ${{ parameters.verbose_log }}
+
           # SUSE Tests
           - job: Set_9
             timeoutInMinutes: 60
