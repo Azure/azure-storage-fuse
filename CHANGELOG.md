@@ -7,6 +7,14 @@
 **Features**
 - Added support for authentication using Azure CLI.
 
+**Other Changes**
+- Added support in
+    - Ubuntu 24.04 (x86_64 and ARM64)
+    - Rocky Linux 8 and 9
+    - Alma Linux 8 and 9
+- Added support for FIPS based Linux systems.
+- Updated dependencies to address security vulnerabilities.
+
 ## 2.3.0~preview.1 (2024-04-04)
 **Bug Fixes**
 - [#1057](https://github.com/Azure/azure-storage-fuse/issues/1057) Fixed the issue where user-assigned identity is not used to authenticate when system-assigned identity is enabled.
