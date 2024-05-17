@@ -101,6 +101,8 @@ configure_file(inc/aznfsc_config.h.in inc/aznfsc_config.h)
 # aznfsclient executable.
 add_executable(${CMAKE_PROJECT_NAME}
                src/main.cpp
+	       src/nfs_client.cpp
+	       src/nfs_transport.cpp
                src/log.cpp)
 
 # All include directories.
