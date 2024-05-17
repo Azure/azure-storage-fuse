@@ -17,6 +17,7 @@
 #include "libnfs.h"
 #include "libnfs-raw.h"
 #include "libnfs-raw-mount.h"
+#include "nfsc/libnfs-raw-nfs.h"
 
 #include <string>
 
