@@ -53,7 +53,6 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
-	"github.com/pbnjay/memory"
 	"github.com/vibhansa-msft/tlru"
 )
 
@@ -209,13 +208,18 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
 
-	bc.memSize = uint64(float64(0.8) * float64(memory.FreeMemory()))
+	var sysinfo syscall.Sysinfo_t
+	err = syscall.Sysinfo(&sysinfo)
+	if err != nil {
+		panic(err)
+	}
+	bc.memSize = uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
 	if config.IsSet(compName + ".mem-size-mb") {
 		bc.memSize = conf.MemSize * _1MB
 	}
 
 	bc.diskTimeout = defaultTimeout
-	if config.IsSet(compName + ".disk-timeout-sec") {
+	if config.IsSet(compName + ".disk-timeout-sesc") {
 		bc.diskTimeout = conf.DiskTimeout
 	}
 
@@ -260,13 +264,13 @@ func (bc *BlockCache) Configure(_ bool) error {
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 			}
 		}
+		var stat syscall.Statfs_t
+		_ = syscall.Statfs(bc.tmpPath, &stat)
+		bc.diskSize = uint64(0.6 * float64(stat.Bavail) * float64(stat.Bsize))
 	}
-	var stat syscall.Statfs_t
-	_ = syscall.Statfs(bc.tmpPath, &stat)
 
-	bc.diskSize = uint64(0.6 * float64(stat.Bavail) * float64(stat.Bsize))
 	if config.IsSet(compName + ".disk-size-mb") {
-		bc.diskSize = conf.DiskSize
+		bc.diskSize = conf.DiskSize * _1MB
 	}
 
 	if (uint64(bc.prefetch) * uint64(bc.blockSize)) > bc.memSize {
@@ -274,7 +278,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 		return fmt.Errorf("config error in %s [memory limit too low for configured prefetch]", bc.Name())
 	}
 
-	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %vMB, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v",
+	log.Info("BlockCache::Configure : block size %v, mem size %v, worker %v, prefetch %v, disk path %v, max size %v, disk timeout %v, prefetch-on-open %t, maxDiskUsageHit %v, noPrefetch %v",
 		bc.blockSize, bc.memSize, bc.workers, bc.prefetch, bc.tmpPath, bc.diskSize, bc.diskTimeout, bc.prefetchOnOpen, bc.maxDiskUsageHit, bc.noPrefetch)
 
 	bc.blockPool = NewBlockPool(bc.blockSize, bc.memSize)
