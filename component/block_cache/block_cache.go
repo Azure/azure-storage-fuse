@@ -41,9 +41,11 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/Azure/azure-storage-fuse/v2/common"
@@ -51,6 +53,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 	"github.com/Azure/azure-storage-fuse/v2/internal/handlemap"
+	"github.com/pbnjay/memory"
 	"github.com/vibhansa-msft/tlru"
 )
 
@@ -206,22 +209,18 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
 
-	bc.memSize = uint64(4192) * _1MB
+	bc.memSize = uint64(float64(0.8) * float64(memory.FreeMemory()))
 	if config.IsSet(compName + ".mem-size-mb") {
 		bc.memSize = conf.MemSize * _1MB
 	}
 
-	bc.diskSize = uint64(4192)
-	if config.IsSet(compName + ".disk-size-mb") {
-		bc.diskSize = conf.DiskSize
-	}
 	bc.diskTimeout = defaultTimeout
 	if config.IsSet(compName + ".disk-timeout-sec") {
 		bc.diskTimeout = conf.DiskTimeout
 	}
 
 	bc.prefetchOnOpen = conf.PrefetchOnOpen
-	bc.prefetch = MIN_PREFETCH
+	bc.prefetch = uint32(2 * runtime.NumCPU())
 	bc.noPrefetch = false
 
 	err = config.UnmarshalKey("lazy-write", &bc.lazyWrite)
@@ -242,7 +241,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 
 	bc.maxDiskUsageHit = false
 
-	bc.workers = 128
+	bc.workers = uint32(3 * runtime.NumCPU())
 	if config.IsSet(compName + ".parallelism") {
 		bc.workers = conf.Workers
 	}
@@ -261,6 +260,13 @@ func (bc *BlockCache) Configure(_ bool) error {
 				return fmt.Errorf("config error in %s [%s]", bc.Name(), err.Error())
 			}
 		}
+	}
+	var stat syscall.Statfs_t
+	_ = syscall.Statfs(bc.tmpPath, &stat)
+
+	bc.diskSize = uint64(0.6 * float64(stat.Bavail) * float64(stat.Bsize))
+	if config.IsSet(compName + ".disk-size-mb") {
+		bc.diskSize = conf.DiskSize
 	}
 
 	if (uint64(bc.prefetch) * uint64(bc.blockSize)) > bc.memSize {
