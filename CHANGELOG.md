@@ -1,4 +1,11 @@
-## 2.3.0 (Unreleased)
+## 2.3.1 (Unreleased)
+**Bug Fixes**
+
+**Features**
+
+**Other Changes**
+
+## 2.3.0 (2024-05-16)
 **Bug Fixes**
 - For fuse minor version check rely on the fusermount3 command output rather then one exposed from fuse_common.
 - Fixed large number of threads from TLRU causing crash during disk eviction in block-cache.
