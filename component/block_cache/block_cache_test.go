@@ -40,6 +40,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -159,11 +160,11 @@ func (suite *blockCacheTestSuite) TestEmpty() {
 	suite.assert.Nil(err)
 	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
 	suite.assert.EqualValues(tobj.blockCache.blockSize, 16*_1MB)
-	suite.assert.EqualValues(tobj.blockCache.memSize, 4192*_1MB)
-	suite.assert.EqualValues(tobj.blockCache.diskSize, 4192)
+	//Removed memory check since memory calculated during testing may differ
+	suite.assert.EqualValues(tobj.blockCache.diskSize, 0)
 	suite.assert.EqualValues(tobj.blockCache.diskTimeout, defaultTimeout)
-	suite.assert.EqualValues(tobj.blockCache.workers, 128)
-	suite.assert.EqualValues(tobj.blockCache.prefetch, MIN_PREFETCH)
+	suite.assert.EqualValues(tobj.blockCache.workers, uint32(3*runtime.NumCPU()))
+	suite.assert.EqualValues(tobj.blockCache.prefetch, uint32(2*runtime.NumCPU()))
 	suite.assert.EqualValues(tobj.blockCache.noPrefetch, false)
 	suite.assert.NotNil(tobj.blockCache.blockPool)
 	suite.assert.NotNil(tobj.blockCache.threadPool)
@@ -233,7 +234,7 @@ func (suite *blockCacheTestSuite) TestManualConfig() {
 	suite.assert.EqualValues(tobj.blockCache.blockSize, 16*_1MB)
 	suite.assert.EqualValues(tobj.blockCache.memSize, 500*_1MB)
 	suite.assert.EqualValues(tobj.blockCache.workers, 10)
-	suite.assert.EqualValues(tobj.blockCache.diskSize, 100)
+	suite.assert.EqualValues(tobj.blockCache.diskSize, 100*_1MB)
 	suite.assert.EqualValues(tobj.blockCache.diskTimeout, 5)
 	suite.assert.EqualValues(tobj.blockCache.prefetch, 12)
 	suite.assert.EqualValues(tobj.blockCache.workers, 10)

@@ -219,7 +219,7 @@ func (bc *BlockCache) Configure(_ bool) error {
 	}
 
 	bc.diskTimeout = defaultTimeout
-	if config.IsSet(compName + ".disk-timeout-sesc") {
+	if config.IsSet(compName + ".disk-timeout-sec") {
 		bc.diskTimeout = conf.DiskTimeout
 	}
 
