@@ -208,14 +208,17 @@ func (bc *BlockCache) Configure(_ bool) error {
 		bc.blockSize = uint64(conf.BlockSize * float64(_1MB))
 	}
 
-	var sysinfo syscall.Sysinfo_t
-	err = syscall.Sysinfo(&sysinfo)
-	if err != nil {
-		panic(err)
-	}
-	bc.memSize = uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
 	if config.IsSet(compName + ".mem-size-mb") {
 		bc.memSize = conf.MemSize * _1MB
+	} else {
+		var sysinfo syscall.Sysinfo_t
+		err = syscall.Sysinfo(&sysinfo)
+		if err != nil {
+			log.Err("BlockCache::Configure : config error %s [%s]. Assigning a pre-defined value of 4GB.", bc.Name(), err.Error())
+			bc.memSize = uint64(4192) * _1MB
+		} else {
+			bc.memSize = uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
+		}
 	}
 
 	bc.diskTimeout = defaultTimeout
@@ -265,8 +268,13 @@ func (bc *BlockCache) Configure(_ bool) error {
 			}
 		}
 		var stat syscall.Statfs_t
-		_ = syscall.Statfs(bc.tmpPath, &stat)
-		bc.diskSize = uint64(0.6 * float64(stat.Bavail) * float64(stat.Bsize))
+		err = syscall.Statfs(bc.tmpPath, &stat)
+		if err != nil {
+			log.Err("BlockCache::Configure : config error %s [%s]. Assigning a default value of 4GB or if any value is assigned to .disk-size-mb in config.", bc.Name(), err.Error())
+			bc.memSize = uint64(4192) * _1MB
+		} else {
+			bc.diskSize = uint64(0.8 * float64(stat.Bavail) * float64(stat.Bsize))
+		}
 	}
 
 	if config.IsSet(compName + ".disk-size-mb") {
