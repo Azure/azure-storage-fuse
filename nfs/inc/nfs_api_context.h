@@ -310,4 +310,26 @@ private:
     int to_set;
 };
 
+class NfsMkdirApiContext : public NfsApiContextParentName {
+ public:
+  NfsMkdirApiContext(
+      NfsClient* client,
+      struct fuse_req* req,
+      enum fuse_optype optype,
+      fuse_ino_t parent,
+      const char* name,
+      mode_t mod)
+      : NfsApiContextParentName(client, req, optype, parent, name) {
+    mode = mod;
+  }
+
+  mode_t getMode() const
+  {
+    return mode;
+  }
+
+ private:
+  mode_t mode;
+};
+
 int NfsApiContext::maxErrnoRetries(3);

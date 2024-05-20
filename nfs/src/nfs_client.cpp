@@ -34,7 +34,7 @@ bool NfsClient::Init(
         }
 
         // Initialiaze the root file handle.
-	// TODO: Take care of freeing this. Should this be freed in the ~NfsClient()?
+        // TODO: Take care of freeing this. Should this be freed in the ~NfsClient()?
         rootFh = new NFSFileHandle(nfs_get_rootfh(transport->GetNfsContext()) /*, 1  ino will be 1 for root */);
         rootFh->SetInode(1);
         //AZLogInfo("Obtained root fh is {}", rootFh->GetFh());
@@ -82,7 +82,7 @@ static void getattrCallback(
 void NfsClient::getattrWithContext(NfsApiContextInode* ctx) {
     bool rpcRetry = false;
     auto inode = ctx->getInode();
-   
+
     do {
         struct GETATTR3args args;
         ::memset(&args, 0, sizeof(args));
@@ -137,14 +137,14 @@ static void lookupCallback(
             ctx,
             nullptr /* fh */,
             &dummyAttr,
-	    nullptr);
+            nullptr);
     }
     else if(ctx->succeeded(rpc_status, RSTATUS(res), retry))
     {
         assert(res->LOOKUP3res_u.resok.obj_attributes.attributes_follow);
 
         ctx->getClient()->replyEntry(
-	    ctx,
+            ctx,
             &res->LOOKUP3res_u.resok.object,
             &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
@@ -206,8 +206,8 @@ static void createFileCallback(
             res->CREATE3res_u.resok.obj.handle_follows &&
             res->CREATE3res_u.resok.obj_attributes.attributes_follow);
 
-	ctx->getClient()->replyEntry(
-	    ctx,
+        ctx->getClient()->replyEntry(
+            ctx,
             &res->CREATE3res_u.resok.obj.post_op_fh3_u.handle,
             &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             ctx->getFile());
@@ -218,8 +218,8 @@ static void createFileCallback(
     }
     else
     {
-	// Since the api failed and can no longer be retried, return error reply.
-	ctx->replyError(-nfsstat3_to_errno(RSTATUS(res)));
+        // Since the api failed and can no longer be retried, return error reply.
+        ctx->replyError(-nfsstat3_to_errno(RSTATUS(res)));
     }
 
 }
@@ -276,7 +276,7 @@ static void setattrCallback(
     {
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
 
-	struct stat st;
+        struct stat st;
         ctx->getClient()->stat_from_fattr3(
             &st, &res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
         ctx->replyAttr(&st, 60 /* TODO: Set reasonable value NfsClient::getAttrTimeout() */);
@@ -388,6 +388,72 @@ void NfsClient::setattr(
     setattrWithContext(ctx);
 }
 
+void mkdirCallback(
+    struct rpc_context* /* rpc */,
+    int rpc_status,
+    void* data,
+    void* private_data) {
+    auto ctx = (NfsMkdirApiContext*)private_data;
+    auto res = (MKDIR3res*)data;
+    bool retry;
+
+    if (ctx->succeeded(rpc_status, RSTATUS(res), retry, false))
+    {
+        assert(
+            res->MKDIR3res_u.resok.obj.handle_follows &&
+            res->MKDIR3res_u.resok.obj_attributes.attributes_follow);
+
+        ctx->getClient()->replyEntry(
+            ctx,
+            &res->MKDIR3res_u.resok.obj.post_op_fh3_u.handle,
+            &res->MKDIR3res_u.resok.obj_attributes.post_op_attr_u.attributes,
+            nullptr);
+    }
+    else if (retry)
+    {
+        ctx->getClient()->mkdirWithContext(ctx);
+    }
+    else
+    {
+        // Since the api failed and can no longer be retried, return error reply.
+        ctx->replyError(-nfsstat3_to_errno(RSTATUS(res)));
+    }
+}
+
+void NfsClient::mkdirWithContext(struct NfsMkdirApiContext* ctx)
+{
+    bool rpcRetry = false;
+    auto parent = ctx->getParent();
+
+    do {
+        MKDIR3args args;
+        ::memset(&args, 0, sizeof(args));
+        args.where.dir = GetFhFromInode(parent)->GetFh();
+        args.where.name = (char*)ctx->getName();
+        args.attributes.mode.set_it = 1;
+        args.attributes.mode.set_mode3_u.mode = ctx->getMode();
+
+
+        if (rpc_nfs3_mkdir_task(ctx->GetRpcCtx(), mkdirCallback, &args, ctx) == NULL)
+        {
+            // This call fails due to internal issues like OOM etc
+            // and not due to an actual error, hence retry.
+            rpcRetry = true;
+        }
+    } while (rpcRetry);
+}
+
+void NfsClient::mkdir(
+    fuse_req_t req,
+    fuse_ino_t parent,
+    const char* name,
+    mode_t mode)
+{
+
+    auto ctx = new NfsMkdirApiContext(this, req, FOPTYPE_MKDIR, parent, name, mode);
+    mkdirWithContext(ctx);
+}
+
 //
 // Creates a new inode for the given fh and passes it to fuse_reply_entry().
 // This will be called by the APIs which much return a filehandle back to the client
@@ -400,11 +466,11 @@ void NfsClient::replyEntry(
     const struct fuse_file_info* file)
 {
     NFSFileHandle* filehandle;
-    
+
     if (fh)
     {
-	// TODO: When should this be freed? This should be freed when the ino is freed,
-	// 	 but decide when should that be done?
+        // TODO: When should this be freed? This should be freed when the ino is freed,
+        // 	 but decide when should that be done?
         filehandle = new NFSFileHandle(fh);
         filehandle->SetInode((fuse_ino_t)filehandle);
     }

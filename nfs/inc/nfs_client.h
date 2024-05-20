@@ -4,14 +4,6 @@
 #include "nfs_transport.h"
 #include "nfs_internal.h"
 
-// Forward declarations for the API context classes.
-// TODO : This needs to be extended going forward for each of the nfs apis.
-class NfsApiContext;
-class NfsApiContextParentName;
-class NfsApiContextInode;
-class NfsCreateApiContext;
-class NfsSetattrApiContext;
-
 extern "C" {
     // libnfs does not offer a prototype for this in any public header,
     // but exports it anyway.
@@ -147,14 +139,14 @@ public:
     // TODO: For now I have just added the methods needed for few calls, add more going forward.
     //
 
-    void getattrWithContext(NfsApiContextInode* ctx);
+    void getattrWithContext(struct NfsApiContextInode* ctx);
 
     void getattr(
         fuse_req_t req,
         fuse_ino_t inode,
         struct fuse_file_info* file);
 
-    void createFileWithContext(NfsCreateApiContext* ctx);
+    void createFileWithContext(struct NfsCreateApiContext* ctx);
 
     void create(
         fuse_req_t req,
@@ -163,7 +155,15 @@ public:
         mode_t mode,
         struct fuse_file_info* file);
 
-    void setattrWithContext(NfsSetattrApiContext* ctx);
+    void mkdirWithContext(struct NfsMkdirApiContext* ctx);
+
+    void mkdir(
+        fuse_req_t req,
+        fuse_ino_t parent,
+        const char* name,
+        mode_t mode);
+
+    void setattrWithContext(struct NfsSetattrApiContext* ctx);
 
     void setattr(
         fuse_req_t req,
@@ -172,7 +172,7 @@ public:
         int toSet,
         struct fuse_file_info* file);
 
-    void lookupWithContext(NfsApiContextParentName* ctx);
+    void lookupWithContext(struct NfsApiContextParentName* ctx);
 
     void lookup(
         fuse_req_t req,
@@ -182,7 +182,7 @@ public:
     static void stat_from_fattr3(struct stat* st, const struct fattr3* attr);
 
     void replyEntry(
-        NfsApiContext* ctx,
+        struct NfsApiContext* ctx,
         const nfs_fh3* fh,
         const struct fattr3* attr,
         const struct fuse_file_info* file);

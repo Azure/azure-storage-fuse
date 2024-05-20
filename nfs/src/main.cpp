@@ -43,7 +43,7 @@ struct aznfsc_cfg
      */
     const char* account;
     const char* container;
-    const char* cloud_suffix;
+    char* cloud_suffix;
 
     /*
      * NFS and Mount port to use.
@@ -98,7 +98,8 @@ struct aznfsc_cfg
         retrans(3),
         readdir_maxcount(UINT32_MAX)
     {
-	cloud_suffix = "blob.core.windows.net";
+	    cloud_suffix = (char*)malloc(strlen("blob.core.windows.net") + 1);
+	cloud_suffix = strdup("blob.core.windows.net");
     }
 } aznfsc_cfg;
 
@@ -290,10 +291,15 @@ static void aznfsc_ll_mkdir(fuse_req_t req,
                             const char *name,
                             mode_t mode)
 {
+    AZLogInfo("Mkdir called, name: {}", name);
+
+    NfsClient& nfsclient = NfsClient::GetInstance();
+    nfsclient.mkdir(req, parent, name, mode);
+
     /*
      * TODO: Fill me.
      */
-    fuse_reply_err(req, ENOSYS);
+    //fuse_reply_err(req, ENOSYS);
 }
 
 static void aznfsc_ll_unlink(fuse_req_t req,
@@ -870,6 +876,7 @@ int main(int argc, char *argv[])
         }
     }
 
+    //opts.foreground = 1;
     fuse_daemonize(opts.foreground);
 
     /* Block until ctrl+c or fusermount -u */
