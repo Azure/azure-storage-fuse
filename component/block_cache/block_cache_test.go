@@ -179,18 +179,50 @@ func (suite *blockCacheTestSuite) TestMemory() {
 
 	suite.assert.Nil(err)
 	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
+	var expected uint64
 	var sysinfo syscall.Sysinfo_t
 	err = syscall.Sysinfo(&sysinfo)
-	suite.assert.Nil(err)
+	if err != nil {
+		expected = uint64(4192) * _1MB
+	} else {
+		expected = uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
+	}
 	actual := tobj.blockCache.memSize
-	expected := uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
 	var difference float64
 	if actual > expected {
 		difference = float64(actual - expected)
 	} else {
 		difference = float64(expected - actual)
 	}
-	// Calculate 10% of the larger value
+	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
+	suite.assert.LessOrEqual(difference, tolerance)
+}
+
+func (suite *blockCacheTestSuite) TestFreeDiskSpace() {
+	disk_cache_path := getFakeStoragePath("fake_storage")
+	config := fmt.Sprintf("read-only: true\n\nblock_cache:\n  block-size-mb: 1\n  path: %s", disk_cache_path)
+	tobj, err := setupPipeline(config)
+	defer tobj.cleanupPipeline()
+
+	suite.assert.Nil(err)
+	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
+
+	var expected uint64
+	var stat syscall.Statfs_t
+	err = syscall.Statfs(disk_cache_path, &stat)
+	if err != nil {
+		expected = uint64(4192) * _1MB
+	} else {
+		expected = uint64(0.8 * float64(stat.Bavail) * float64(stat.Bsize))
+	}
+	actual := tobj.blockCache.diskSize
+
+	var difference float64
+	if actual > expected {
+		difference = float64(actual - expected)
+	} else {
+		difference = float64(expected - actual)
+	}
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
 	suite.assert.LessOrEqual(difference, tolerance)
 }
@@ -282,7 +314,7 @@ func (suite *blockCacheTestSuite) TestOpenFileFail() {
 	suite.assert.Contains(err.Error(), "no such file or directory")
 }
 
-func (suite *blockCacheTestSuite) TestFileOpneClose() {
+func (suite *blockCacheTestSuite) TestFileOpenClose() {
 	tobj, err := setupPipeline("")
 	defer tobj.cleanupPipeline()
 
