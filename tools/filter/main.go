@@ -81,9 +81,20 @@ func ParseInp(str string) ([][]Filter, bool) {
 				value := SingleFilter[len(thisFilter)+1:]
 				floatVal, err := strconv.ParseFloat(value, 64)
 				if err != nil {
-					return filterArr, false
+					if SingleFilter[len(thisFilter)+1] != '=' {
+						return filterArr, false
+					}
+					value := SingleFilter[len(thisFilter)+2:]
+					floatVal, err = strconv.ParseFloat(value, 64)
+					if err != nil {
+						return filterArr, false
+					}
 				}
-				if SingleFilter[len(thisFilter)] == '>' {
+				if SingleFilter[len(thisFilter):len(thisFilter)+2] == "<=" {
+					individualFilter = append(individualFilter, filterMap[thisFilter](floatVal, -1.0, floatVal))
+				} else if SingleFilter[len(thisFilter):len(thisFilter)+2] == ">=" {
+					individualFilter = append(individualFilter, filterMap[thisFilter](-1.0, floatVal, floatVal))
+				} else if SingleFilter[len(thisFilter)] == '>' {
 					individualFilter = append(individualFilter, filterMap[thisFilter](-1.0, floatVal, -1.0))
 				} else if SingleFilter[len(thisFilter)] == '<' {
 					individualFilter = append(individualFilter, filterMap[thisFilter](floatVal, -1.0, -1.0))
