@@ -223,24 +223,25 @@ static void aznfsc_ll_destroy(void *userdata)
 }
 
 static void aznfsc_ll_lookup(fuse_req_t req,
-                             fuse_ino_t parent,
+                             fuse_ino_t parent_ino,
                              const char *name)
 {
     AZLogInfo("aznfsc_ll_lookup file: {}", name);
 
     auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
-    client->lookup(req, parent, name);
+    client->lookup(req, parent_ino, name);
 }
 
 static void aznfsc_ll_forget(fuse_req_t req,
                              fuse_ino_t ino,
                              uint64_t nlookup)
 {
-    /*
-     * TODO: Fill me.
-     *       This is where we free an inode if we are caching it.
-     */
-    fuse_reply_none(req);
+    AZLogInfo("aznfsc_ll_forget");
+
+    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+
+    // Delete the nfs inode that was allocated.
+    delete client->get_nfs_inode_from_ino(ino);
 }
 
 static void aznfsc_ll_getattr(fuse_req_t req,
@@ -275,7 +276,7 @@ static void aznfsc_ll_readlink(fuse_req_t req,
 }
 
 static void aznfsc_ll_mknod(fuse_req_t req,
-                            fuse_ino_t parent,
+                            fuse_ino_t parent_ino,
                             const char *name,
                             mode_t mode,
                             dev_t rdev)
@@ -287,18 +288,18 @@ static void aznfsc_ll_mknod(fuse_req_t req,
 }
 
 static void aznfsc_ll_mkdir(fuse_req_t req,
-                            fuse_ino_t parent,
+                            fuse_ino_t parent_ino,
                             const char *name,
                             mode_t mode)
 {
     AZLogInfo("Mkdir called, name: {}", name);
 
     auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
-    client->mkdir(req, parent, name, mode);
+    client->mkdir(req, parent_ino, name, mode);
 }
 
 static void aznfsc_ll_unlink(fuse_req_t req,
-                             fuse_ino_t parent,
+                             fuse_ino_t parent_ino,
                              const char *name)
 {
     /*
@@ -308,7 +309,7 @@ static void aznfsc_ll_unlink(fuse_req_t req,
 }
 
 static void aznfsc_ll_rmdir(fuse_req_t req,
-                            fuse_ino_t parent,
+                            fuse_ino_t parent_ino,
                             const char *name)
 {
     /*
@@ -319,7 +320,7 @@ static void aznfsc_ll_rmdir(fuse_req_t req,
 
 static void aznfsc_ll_symlink(fuse_req_t req,
                               const char *link,
-                              fuse_ino_t parent,
+                              fuse_ino_t parent_ino,
                               const char *name)
 {
     /*
@@ -329,9 +330,9 @@ static void aznfsc_ll_symlink(fuse_req_t req,
 }
 
 static void aznfsc_ll_rename(fuse_req_t req,
-                             fuse_ino_t parent,
+                             fuse_ino_t parent_ino,
                              const char *name,
-                             fuse_ino_t newparent,
+                             fuse_ino_t newparent_ino,
                              const char *newname,
                              unsigned int flags)
 {
@@ -343,7 +344,7 @@ static void aznfsc_ll_rename(fuse_req_t req,
 
 static void aznfsc_ll_link(fuse_req_t req,
                            fuse_ino_t ino,
-                           fuse_ino_t newparent,
+                           fuse_ino_t newparent_ino,
                            const char *newname)
 {
     /*
@@ -526,7 +527,7 @@ static void aznfsc_ll_access(fuse_req_t req,
 }
 
 static void aznfsc_ll_create(fuse_req_t req,
-                             fuse_ino_t parent,
+                             fuse_ino_t parent_ino,
                              const char *name,
                              mode_t mode,
                              struct fuse_file_info *fi)
@@ -534,7 +535,7 @@ static void aznfsc_ll_create(fuse_req_t req,
     AZLogInfo("Creating file: {}", name);
 
     auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
-    client->create(req, parent, name, mode, fi);
+    client->create(req, parent_ino, name, mode, fi);
 }
 
 static void aznfsc_ll_getlk(fuse_req_t req,

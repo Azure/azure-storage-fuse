@@ -1,6 +1,6 @@
 #pragma once
 
-#include "nfs_fileHandle.h"
+#include "nfs_inode.h"
 #include "nfs_transport.h"
 #include "nfs_internal.h"
 
@@ -45,7 +45,7 @@ private:
     // File handle obtained after mounting the filesystem.
     // This will be set after calling nfs_mount which is done in the init() method.
     //
-    static nfs_file_handle* root_fh;
+    static nfs_inode* root_fh;
 
     //
     // The transport object responsible for actually sending out the requests to the server.
@@ -55,10 +55,10 @@ private:
     static struct rpc_task_helper* rpc_task_helper_instance;
 
     // Holds info about the server.
-    struct NfsServerInfo* server_info;
+    struct nfs_server_info* server_info;
 
     // Contains info of the server stat.
-    struct NfsServerStat* server_stat;
+    struct nfs_server_stat* server_stat;
 
     //
     // This will be set to true if the nfs_client is init'd.
@@ -128,13 +128,13 @@ public:
     // This filehandle will remain valid till the ino is freeed by calling the free API.
     // TODO: See when the free API should be called.
     //
-    nfs_file_handle* get_fh_from_inode(fuse_ino_t ino)
+    nfs_inode* get_nfs_inode_from_ino(fuse_ino_t ino)
     {
         if (ino == 1 /*FUSE_ROOT_ID*/)
         {
             return root_fh;
         }
-        return (nfs_file_handle*)(uintptr_t)ino;
+        return (nfs_inode*)(uintptr_t)ino;
 
     }
 
@@ -150,14 +150,14 @@ public:
 
     void create(
         fuse_req_t req,
-        fuse_ino_t parent,
+        fuse_ino_t parent_ino,
         const char* name,
         mode_t mode,
         struct fuse_file_info* file);
 
     void mkdir(
         fuse_req_t req,
-        fuse_ino_t parent,
+        fuse_ino_t parent_ino,
         const char* name,
         mode_t mode);
 
@@ -170,7 +170,7 @@ public:
 
     void lookup(
         fuse_req_t req,
-        fuse_ino_t parent,
+        fuse_ino_t parent_ino,
         const char* name);
 
     void readdir(

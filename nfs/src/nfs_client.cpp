@@ -1,12 +1,13 @@
 #include "nfs_client.h"
 #include "nfs_internal.h"
+#include "rpc_task.h"
 
 std::atomic<bool> nfs_client::initialized(false);
 std::string nfs_client::server("");
 std::string nfs_client::export_path("");
 rpc_transport* nfs_client::transport;
 rpc_task_helper* nfs_client::rpc_task_helper_instance;
-nfs_file_handle* nfs_client::root_fh;
+nfs_inode* nfs_client::root_fh;
 
 #define RSTATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
 
@@ -35,7 +36,7 @@ bool nfs_client::init(
 
         // initialiaze the root file handle.
         // TODO: Take care of freeing this. Should this be freed in the ~nfs_client()?
-        root_fh = new nfs_file_handle(nfs_get_rootfh(transport->get_nfs_context()) /*, 1  ino will be 1 for root */);
+        root_fh = new nfs_inode(nfs_get_rootfh(transport->get_nfs_context()) /*, 1  ino will be 1 for root */);
         root_fh->set_inode(1);
         //AZLogInfo("Obtained root fh is {}", root_fh->get_fh());
 
@@ -54,23 +55,15 @@ struct nfs_context* nfs_client::get_nfs_context() const
     return transport->get_nfs_context();
 }
 
-void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent, const char* name)
+void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
 {
     struct rpc_task* tsk = nullptr;
-    bool success = rpc_task_helper_instance->get_rpc_task_instance(&tsk);
+    rpc_task_helper_instance->get_rpc_task_instance(&tsk);
 
-    if (success)
-    {
-        assert (tsk != nullptr);
-        tsk->set_client (this);
-        tsk->set_fuse_req(req);
-        tsk->set_op_type(FOPTYPE_LOOKUP);
-        tsk->rpc_api.lookup_task.set_file_name(name);
-        tsk->rpc_api.lookup_task.set_parent_inode(parent);
+    assert (tsk != nullptr);
 
-        tsk->run_lookup_rpc_task();
-    }
-    // TODO: See what should be done in failure case.
+    tsk->set_lookup(this, req, name, parent_ino);
+    tsk->run_lookup();
 }
 
 void nfs_client::getattr(
@@ -79,69 +72,43 @@ void nfs_client::getattr(
     struct fuse_file_info* file)
 {
     struct rpc_task* tsk = nullptr;
-    bool success = rpc_task_helper_instance->get_rpc_task_instance(&tsk);
+    rpc_task_helper_instance->get_rpc_task_instance(&tsk);
 
-    if (success)
-    {
-        assert (tsk != nullptr);
-        tsk->set_client (this);
-        tsk->set_fuse_req(req);
-        tsk->set_op_type(FOPTYPE_GETATTR);
-        tsk->rpc_api.getattr_task.set_inode(inode);
+    assert (tsk != nullptr);
 
-        tsk->run_getattr_rpc_task();
-    }
-    // TODO: See what should be done in failure case.
+    tsk->set_getattr(this, req, inode);
+    tsk->run_getattr();
 }
 
 void nfs_client::create(
     fuse_req_t req,
-    fuse_ino_t parent,
+    fuse_ino_t parent_ino,
     const char* name,
     mode_t mode,
     struct fuse_file_info* file)
 {
     struct rpc_task* tsk = nullptr;
-    bool success = rpc_task_helper_instance->get_rpc_task_instance(&tsk);
+    rpc_task_helper_instance->get_rpc_task_instance(&tsk);
 
-    if (success)
-    {
-        assert (tsk != nullptr);
-        tsk->set_client (this);
-        tsk->set_fuse_req(req);
-        tsk->set_op_type(FOPTYPE_CREATE);
-        tsk->rpc_api.create_task.set_parent_inode(parent);
-        tsk->rpc_api.create_task.set_file_name(name);
-        tsk->rpc_api.create_task.set_mode(mode);
-        tsk->rpc_api.create_task.set_fuse_file(file);
+    assert (tsk != nullptr);
 
-        tsk->run_create_file_rpc_task();
-    }
-    // TODO: See what should be done in failure case.
+    tsk->set_create_file(this, req, parent_ino, name, mode, file);
+    tsk->run_create_file();
 }
 
 void nfs_client::mkdir(
     fuse_req_t req,
-    fuse_ino_t parent,
+    fuse_ino_t parent_ino,
     const char* name,
     mode_t mode)
 {
     struct rpc_task* tsk = nullptr;
-    bool success = rpc_task_helper_instance->get_rpc_task_instance(&tsk);
+    rpc_task_helper_instance->get_rpc_task_instance(&tsk);
 
-    if (success)
-    {
-        assert (tsk != nullptr);
-        tsk->set_client (this);
-        tsk->set_fuse_req(req);
-        tsk->set_op_type(FOPTYPE_MKDIR);
-        tsk->rpc_api.mkdir_task.set_parent_inode(parent);
-        tsk->rpc_api.mkdir_task.set_dir_name(name);
-        tsk->rpc_api.mkdir_task.set_mode(mode);
+    assert (tsk != nullptr);
 
-        tsk->run_mkdir_rpc_task();
-    }
-    // TODO: See what should be done in failure case.
+    tsk->set_mkdir(this, req, parent_ino, name, mode);
+    tsk->run_mkdir();
 }
 
 void nfs_client::setattr(
@@ -152,20 +119,12 @@ void nfs_client::setattr(
     struct fuse_file_info* file)
 {
     struct rpc_task* tsk = nullptr;
-    bool success = rpc_task_helper_instance->get_rpc_task_instance(&tsk);
+    rpc_task_helper_instance->get_rpc_task_instance(&tsk);
 
-    if (success)
-    {
-        assert (tsk != nullptr);
-        tsk->set_client (this);
-        tsk->set_fuse_req(req);
-        tsk->set_op_type(FOPTYPE_SETATTR);
-        tsk->rpc_api.setattr_task.set_inode(inode);
-        tsk->rpc_api.setattr_task.set_fuse_file(file);
-        tsk->rpc_api.setattr_task.set_attribute_and_mask(attr, toSet);
-        tsk->run_setattr_rpc_task();
-    }
-    // TODO: See what should be done in failure case.
+    assert (tsk != nullptr);
+
+    tsk->set_setattr(this, req, inode, attr, toSet, file);
+    tsk->run_setattr();
 }
 
 //
@@ -179,25 +138,25 @@ void nfs_client::reply_entry(
     const struct fattr3* attr,
     const struct fuse_file_info* file)
 {
-    nfs_file_handle* filehandle;
+    nfs_inode* nfs_ino;
 
     if (fh)
     {
         // TODO: When should this be freed? This should be freed when the ino is freed,
         // 	 but decide when should that be done?
-        filehandle = new nfs_file_handle(fh);
-        filehandle->set_inode((fuse_ino_t)filehandle);
+        nfs_ino = new nfs_inode(fh);
+        nfs_ino->set_inode((fuse_ino_t)nfs_ino);
     }
     else
     {
-        filehandle = nullptr;
+        nfs_ino = nullptr;
     }
 
     fuse_entry_param entry;
     memset(&entry, 0, sizeof(entry));
 
     stat_from_fattr3(&entry.attr, attr);
-    entry.ino = (fuse_ino_t)(uintptr_t)filehandle;
+    entry.ino = (fuse_ino_t)(uintptr_t)nfs_ino;
 
     /*
      * TODO: Set the timeout to better value.
