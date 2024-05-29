@@ -3,8 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 )
 
@@ -100,6 +102,13 @@ func ParseInp(str string) ([][]Filter, bool) {
 	}
 	return filterArr, true
 }
+func ChkFile(id int, FileInpQueue <-chan os.FileInfo, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for FileNo := range FileInpQueue {
+		fmt.Println("worker ", id, " verifing file ", FileNo.Name())
+	}
+	fmt.Println("worker ", id, " stopped")
+}
 func main() {
 	filterInfo := flag.String("filterInfo", "!", "enter your filter here")
 	flag.Parse()
@@ -119,4 +128,39 @@ func main() {
 			// data.Apply()
 		}
 	}
+	dirPath := "../../../TstData"
+	dir, err := os.Open(dirPath)
+	if err != nil {
+		fmt.Println("Error opening directory:", err)
+		return
+	}
+	fileInfos, err := dir.Readdir(-1)
+	if err != nil {
+		fmt.Println("error reading directory:", err)
+		return
+	}
+
+	// Loop through each file in the directory
+	// for _, fileInfo := range fileInfos {
+	// 	// Check if the file is a regular file
+	// 	if fileInfo.Mode().IsRegular() {
+	// 		// Print the file name
+	// 		fileExt := filepath.Ext(fileInfo.Name())
+	// 		fmt.Println("File:", fileInfo.Name())
+	// 		fmt.Println(fileExt)
+	// 	}
+	// }
+	const workers = 16
+	FileInpQueue := make(chan os.FileInfo, workers)
+	var wg sync.WaitGroup
+	for w := 1; w <= workers; w++ {
+		wg.Add(1)
+		go ChkFile(w, FileInpQueue, &wg)
+	}
+	for _, fileinfo := range fileInfos {
+		FileInpQueue <- fileinfo
+	}
+	close(FileInpQueue)
+	wg.Wait()
+	fmt.Println("All workers stopped ")
 }
