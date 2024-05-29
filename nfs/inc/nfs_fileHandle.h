@@ -1,7 +1,7 @@
 #pragma once
 #include "aznfsc.h"
 
-struct NFSFileHandle
+struct nfs_file_handle
 {
     // Nfs filehandle returned by the server.
     nfs_fh3 fh;
@@ -11,7 +11,7 @@ struct NFSFileHandle
     //inode_number;
     fuse_ino_t inode;
 
-    NFSFileHandle(const struct nfs_fh3* filehandle):
+    nfs_file_handle(const struct nfs_fh3* filehandle):
         inode(0)
     {
         fh.data.data_val = new char[filehandle->data.data_len];
@@ -19,12 +19,12 @@ struct NFSFileHandle
         ::memcpy(fh.data.data_val, filehandle->data.data_val, fh.data.data_len);
     }
 
-    void SetInode(fuse_ino_t ino)
+    void set_inode(fuse_ino_t ino)
     {
         inode = ino;
     }
 
-    const struct nfs_fh3& GetFh() const
+    const struct nfs_fh3& get_fh() const
     {
         return fh;
     }

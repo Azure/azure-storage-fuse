@@ -13,11 +13,11 @@ extern "C" {
 //
 // This is the class which is responsible for making all the Nfsv3 API calls.
 // This is a singleton class.
-// The user should first init the class by calling NfsClient::Init() by specifying all the parameters needed to mount the filesystem.
-// Once this is done, all the callers can get an instance of this class by calling the GetInstance() method.
+// The user should first init the class by calling nfs_client::init() by specifying all the parameters needed to mount the filesystem.
+// Once this is done, all the callers can get an instance of this class by calling the get_instance() method.
 // This instance can then be used to call the APIs like getattr, write etc.
 //
-class NfsClient
+class nfs_client
 {
 private:
 
@@ -25,87 +25,94 @@ private:
     // This will be of the form account.blob.core.windows.net
     // or for pre-prod : account.blob.preprod.core.windows.net
     // or 			   : IP
-    // This will be constructed from the accountName and blobprefix passed by the caller.
+    // This will be constructed from the account_name and blobprefix passed by the caller.
     //
     static std::string server;
 
-    // TODO: See if we really need to store the account and container name since we already have the server and exportPath.
-    std::string accountName;
-    std::string containerName;
+    // TODO: See if we really need to store the account and container name since we already have the server and export_path.
+    std::string account_name;
+    std::string container_name;
 
-    // Export path which is of the form /accountName/ContainerName
-    static std::string exportPath;
+    // Export path which is of the form /account_name/ContainerName
+    static std::string export_path;
 
     //
     // Options to be passed to the mount command. Like port, proto etc.
     //
-    struct mountOptions* mntOptions;
+    struct mount_options* mnt_options;
 
     //
     // File handle obtained after mounting the filesystem.
-    // This will be set after calling nfs_mount which is done in the Init() method.
+    // This will be set after calling nfs_mount which is done in the init() method.
     //
-    static NFSFileHandle* rootFh;
+    static nfs_file_handle* root_fh;
 
     //
     // The transport object responsible for actually sending out the requests to the server.
     //
-    static RPCTransport* transport;
+    static struct rpc_transport* transport;
+
+    static struct rpc_task_helper* rpc_task_helper_instance;
 
     // Holds info about the server.
-    struct NfsServerInfo* serverInfo;
+    struct NfsServerInfo* server_info;
 
     // Contains info of the server stat.
-    struct NfsServerStat* serverStat;
+    struct NfsServerStat* server_stat;
 
     //
-    // This will be set to true if the NfsClient is init'd.
-    // This should be set to TRUE before calling the NfsClient::GetInstance()
+    // This will be set to true if the nfs_client is init'd.
+    // This should be set to TRUE before calling the nfs_client::get_instance()
     //
     static std::atomic<bool> initialized;
 
-    NfsClient(std::string* acctName, std::string* contName, std::string* blobSuffix, struct mountOptions* opt)
+    nfs_client(std::string* acc_name, std::string* cont_name, std::string* blob_suffix, struct mount_options* opt)
     {
-        assert(acctName != nullptr);
-        assert(contName != nullptr);
-        assert(blobSuffix != nullptr);
+        assert(acc_name != nullptr);
+        assert(cont_name != nullptr);
+        assert(blob_suffix != nullptr);
 
-        accountName = *acctName;
-        containerName = *contName;
+        account_name = *acc_name;
+        container_name = *cont_name;
 
-        server = accountName + "." + *blobSuffix;
-        exportPath = "/" + accountName + "/" + containerName;
+        server = account_name + "." + *blob_suffix;
+        export_path = "/" + account_name + "/" + container_name;
 
-        mntOptions = opt;
+        mnt_options = opt;
     }
 
 public:
-    static NfsClient& GetInstanceImpl(std::string* acctName = nullptr,
-                                      std::string* contName = nullptr,
-                                      std::string* blobSuffix = nullptr,
-                                      struct mountOptions* opt = nullptr)
+    static nfs_client& get_instance_impl(std::string* acc_name = nullptr,
+                                         std::string* cont_name = nullptr,
+                                         std::string* blob_suffix = nullptr,
+                                         struct mount_options* opt = nullptr)
     {
-        static NfsClient instance{acctName, contName, blobSuffix, opt};
+        static nfs_client instance{acc_name, cont_name, blob_suffix, opt};
 
-        // NfsClient::Init() should be called before calling this.
-        assert(IsNfsClientInitd());
+        // nfs_client::init() should be called before calling this.
+        assert(is_nfs_client_initd());
         return instance;
     }
 
-    // This is the method which should be called to get an instance of this class by the user.
-    static NfsClient& GetInstance()
+    static struct rpc_task_helper* get_rpc_task_helper_instance()
     {
-        return GetInstanceImpl();
+        return rpc_task_helper_instance;
+    }
+
+    // This is the method which should be called to get an instance of this class by the user.
+    static nfs_client& get_instance()
+    {
+        return get_instance_impl();
     }
 
     // The user should first init the client class before using it.
-    static bool Init(
-        std::string& acctName,
-        std::string& contName,
-        std::string& blobSuffix,
-        mountOptions* opt);
+    static bool init(
+        std::string& acc_name,
+        std::string& cont_name,
+        std::string& blob_suffix,
+        mount_options* opt);
 
-    static bool IsNfsClientInitd()
+    static bool is_nfs_client_initd()
     {
         return initialized;
     }
@@ -113,10 +120,7 @@ public:
     //
     // Get the nfs context on which the libnfs API calls can be made.
     //
-    struct nfs_context* GetNfsContext() const
-    {
-        return transport->GetNfsContext();
-    }
+    struct nfs_context* get_nfs_context() const;
 
     //
     // The inode structure will be the address of the location where the actual NFS filehandle is stored.
@@ -124,13 +128,13 @@ public:
     // This filehandle will remain valid till the ino is freeed by calling the free API.
     // TODO: See when the free API should be called.
     //
-    NFSFileHandle* GetFhFromInode(fuse_ino_t ino)
+    nfs_file_handle* get_fh_from_inode(fuse_ino_t ino)
     {
         if (ino == 1 /*FUSE_ROOT_ID*/)
         {
-            return rootFh;
+            return root_fh;
         }
-        return (NFSFileHandle*)(uintptr_t)ino;
+        return (nfs_file_handle*)(uintptr_t)ino;
 
     }
 
@@ -139,14 +143,10 @@ public:
     // TODO: For now I have just added the methods needed for few calls, add more going forward.
     //
 
-    void getattrWithContext(struct NfsApiContextInode* ctx);
-
     void getattr(
         fuse_req_t req,
         fuse_ino_t inode,
         struct fuse_file_info* file);
-
-    void createFileWithContext(struct NfsCreateApiContext* ctx);
 
     void create(
         fuse_req_t req,
@@ -155,15 +155,11 @@ public:
         mode_t mode,
         struct fuse_file_info* file);
 
-    void mkdirWithContext(struct NfsMkdirApiContext* ctx);
-
     void mkdir(
         fuse_req_t req,
         fuse_ino_t parent,
         const char* name,
         mode_t mode);
-
-    void setattrWithContext(struct NfsSetattrApiContext* ctx);
 
     void setattr(
         fuse_req_t req,
@@ -172,17 +168,22 @@ public:
         int toSet,
         struct fuse_file_info* file);
 
-    void lookupWithContext(struct NfsApiContextParentName* ctx);
-
     void lookup(
         fuse_req_t req,
         fuse_ino_t parent,
         const char* name);
 
+    void readdir(
+        fuse_req_t req,
+        fuse_ino_t /* inode */,
+        size_t size,
+        off_t off,
+        struct fuse_file_info* file);
+
     static void stat_from_fattr3(struct stat* st, const struct fattr3* attr);
 
-    void replyEntry(
-        struct NfsApiContext* ctx,
+    void reply_entry(
+        struct rpc_task* ctx,
         const nfs_fh3* fh,
         const struct fattr3* attr,
         const struct fuse_file_info* file);

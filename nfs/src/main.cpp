@@ -58,10 +58,10 @@ struct aznfsc_cfg
     int nconnect;
 
     // Max number of times the API will be retried before erroring out.
-    int maxNumOfRetries;
+    int max_num_of_retries;
 
     // Maximum time the API call waits before returning a timeout to the caller.
-    uint64_t timeoutInSec;
+    uint64_t timeout_in_sec;
 
     // Maximum size of read request.
     size_t readmax;
@@ -91,15 +91,15 @@ struct aznfsc_cfg
         port(0),
         version(3),
         nconnect(1),
-        maxNumOfRetries(3),
-        timeoutInSec(600),
+        max_num_of_retries(3),
+        timeout_in_sec(600),
         readmax(1048576 /* Setting it to 1MB now, should be modified later */),
         writemax(1048576 /* Setting it to 1MB now, should be modified later */),
         retrans(3),
         readdir_maxcount(UINT32_MAX)
     {
-	    cloud_suffix = (char*)malloc(strlen("blob.core.windows.net") + 1);
-	cloud_suffix = strdup("blob.core.windows.net");
+        cloud_suffix = (char*)malloc(strlen("blob.core.windows.net") + 1);
+        cloud_suffix = strdup("blob.core.windows.net");
     }
 } aznfsc_cfg;
 
@@ -122,19 +122,19 @@ static const struct fuse_opt aznfsc_opts[] =
 };
 
 /*
- * This function parses the contents of the yaml config file denoted by path configFile
+ * This function parses the contents of the yaml config file denoted by path config_file
  * into the aznfsc_cfg structure.
  * TODO: Validate the values and make sure they are within the range expected.
  */
-bool parseConfigFile(const char* configFile)
+bool parse_config_file(const char* config_file)
 {
-    if (configFile == nullptr)
+    if (config_file == nullptr)
     {
         return false;
     }
 
     try {
-        YAML::Node config = YAML::LoadFile(configFile);
+        YAML::Node config = YAML::LoadFile(config_file);
 
         if (aznfsc_cfg.account == nullptr && config["account"])
         {
@@ -160,13 +160,13 @@ bool parseConfigFile(const char* configFile)
         {
             aznfsc_cfg.nconnect = config["nconnect"].as<int>();
         }
-        if (config["maxNumOfRetries"])
+        if (config["max_num_of_retries"])
         {
-            aznfsc_cfg.maxNumOfRetries = config["maxNumOfRetries"].as<int>();
+            aznfsc_cfg.max_num_of_retries = config["max_num_of_retries"].as<int>();
         }
-        if (config["timeoutInSec"])
+        if (config["timeout_in_sec"])
         {
-            aznfsc_cfg.timeoutInSec = config["timeoutInSec"].as<uint64_t>();
+            aznfsc_cfg.timeout_in_sec = config["timeout_in_sec"].as<uint64_t>();
         }
         if (config["readmax"])
         {
@@ -185,10 +185,10 @@ bool parseConfigFile(const char* configFile)
             aznfsc_cfg.readdir_maxcount = config["readdir_maxcount"].as<uint32_t>();
         }
     } catch (const YAML::BadFile& e) {
-        AZLogError("Error loading file: {}, error: {}", configFile, e.what());
+        AZLogError("Error loading file: {}, error: {}", config_file, e.what());
         return false;
     } catch (const YAML::Exception& e) {
-        AZLogError("Error parsing the config file: {}, error: {}", configFile, e.what());
+        AZLogError("Error parsing the config file: {}, error: {}", config_file, e.what());
         return false;
     }
 
@@ -228,8 +228,8 @@ static void aznfsc_ll_lookup(fuse_req_t req,
 {
     AZLogInfo("aznfsc_ll_lookup file: {}", name);
 
-    NfsClient& nfsclient = NfsClient::GetInstance();
-    nfsclient.lookup(req, parent, name);
+    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    client->lookup(req, parent, name);
 }
 
 static void aznfsc_ll_forget(fuse_req_t req,
@@ -249,8 +249,8 @@ static void aznfsc_ll_getattr(fuse_req_t req,
 {
     AZLogInfo("Getattr called");
 
-    NfsClient& nfsclient = NfsClient::GetInstance();
-    nfsclient.getattr(req, ino, fi);
+    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    client->getattr(req, ino, fi);
 }
 
 static void aznfsc_ll_setattr(fuse_req_t req,
@@ -261,8 +261,8 @@ static void aznfsc_ll_setattr(fuse_req_t req,
 {
     AZLogInfo("Setattr called");
 
-    NfsClient& nfsclient = NfsClient::GetInstance();
-    nfsclient.setattr(req, ino, attr, to_set, fi);
+    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    client->setattr(req, ino, attr, to_set, fi);
 }
 
 static void aznfsc_ll_readlink(fuse_req_t req,
@@ -293,13 +293,8 @@ static void aznfsc_ll_mkdir(fuse_req_t req,
 {
     AZLogInfo("Mkdir called, name: {}", name);
 
-    NfsClient& nfsclient = NfsClient::GetInstance();
-    nfsclient.mkdir(req, parent, name, mode);
-
-    /*
-     * TODO: Fill me.
-     */
-    //fuse_reply_err(req, ENOSYS);
+    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    client->mkdir(req, parent, name, mode);
 }
 
 static void aznfsc_ll_unlink(fuse_req_t req,
@@ -440,8 +435,8 @@ static void aznfsc_ll_readdir(fuse_req_t req,
                               struct fuse_file_info *fi)
 {
     /*
-     * TODO: Fill me.
-     */
+    * TODO: Fill me.
+    */
     fuse_reply_err(req, ENOSYS);
 }
 
@@ -538,8 +533,8 @@ static void aznfsc_ll_create(fuse_req_t req,
 {
     AZLogInfo("Creating file: {}", name);
 
-    NfsClient& nfsclient = NfsClient::GetInstance();
-    nfsclient.create(req, parent, name, mode, fi);
+    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    client->create(req, parent, name, mode, fi);
 }
 
 static void aznfsc_ll_getlk(fuse_req_t req,
@@ -782,23 +777,23 @@ int main(int argc, char *argv[])
      * First parse the options from the config file if that is present.
      * We should do this before we parse the command line options since the latter should take higher priority.
      */
-    char* configFile = nullptr;
+    char* config_file = nullptr;
     for (int idx = 0; idx < argc; idx++)
     {
         std::string arg = argv[idx];
         if (arg.find("--config-file=") == 0)
         {
-            configFile = strdup(arg.substr(14).c_str());
+            config_file = strdup(arg.substr(14).c_str());
         }
     }
 
-    if (configFile != nullptr)
+    if (config_file != nullptr)
     {
-        AZLogInfo ("Parsing the config file {}", configFile);
-        parseConfigFile(configFile);
-        free(configFile);
+        AZLogInfo ("Parsing the config file {}", config_file);
+        parse_config_file(config_file);
+        free(config_file);
     }
-    
+
     struct fuse_session *se;
     struct fuse_cmdline_opts opts;
     struct fuse_loop_config loop_config;
@@ -837,7 +832,33 @@ int main(int argc, char *argv[])
         goto err_out1;
     }
 
-    se = fuse_session_new(&args, &aznfsc_ll_ops, sizeof(aznfsc_ll_ops), NULL);
+    {
+        std::string account = aznfsc_cfg.account;
+        std::string container = aznfsc_cfg.container;
+        std::string suffix = aznfsc_cfg.cloud_suffix;
+
+        // TODO: See if we need a seperate mount_options structure.
+        // 	 Can we just pass the aznfsc_cfg structure if we move its defination to a .h file?
+        //
+        struct mount_options mntOpt;
+        mntOpt.server = account + "." + suffix;
+        mntOpt.export_path = "/" + account + "/" + container;
+        mntOpt.set_nfs_port(aznfsc_cfg.port);
+        mntOpt.num_connections = aznfsc_cfg.nconnect;
+        mntOpt.nfs_version = aznfsc_cfg.version;
+        mntOpt.set_read_max(aznfsc_cfg.readmax);
+        mntOpt.set_write_max(aznfsc_cfg.writemax);
+        // TODO: We are still not using the aznfsc_cfg.max_num_of_retries and timeout, handle them in appropriate place.
+
+        // init the nfs client to use it.
+        if (!nfs_client::init(account, container, suffix, &mntOpt))
+        {
+            AZLogError("Failed to init the NFS client.");
+            goto err_out4;
+        }
+    }
+
+    se = fuse_session_new(&args, &aznfsc_ll_ops, sizeof(aznfsc_ll_ops), &nfs_client::get_instance());
     if (se == NULL) {
         goto err_out1;
     }
@@ -850,33 +871,7 @@ int main(int argc, char *argv[])
         goto err_out3;
     }
 
-    {
-        std::string account = aznfsc_cfg.account;
-        std::string container = aznfsc_cfg.container;
-        std::string suffix = aznfsc_cfg.cloud_suffix;
-
-        // TODO: See if we need a seperate mountOptions structure.
-        // 	 Can we just pass the aznfsc_cfg structure if we move its defination to a .h file?
-        //
-        struct mountOptions mntOpt;
-        mntOpt.server = account + "." + suffix;
-        mntOpt.exportPath = "/" + account + "/" + container;
-        mntOpt.SetNfsPort(aznfsc_cfg.port);
-        mntOpt.numConnections = aznfsc_cfg.nconnect;
-        mntOpt.nfsVersion = aznfsc_cfg.version;
-        mntOpt.SetReadMax(aznfsc_cfg.readmax);
-        mntOpt.SetWriteMax(aznfsc_cfg.writemax);
-        // TODO: We are still not using the aznfsc_cfg.maxNumOfRetries and timeout, handle them in appropriate place.
-
-        // Init the nfs client to use it.
-        if (!NfsClient::Init(account, container, suffix, &mntOpt))
-        {
-            AZLogError("Failed to init the NFS client.");
-            goto err_out4;
-        }
-    }
-
-    //opts.foreground = 1;
+    opts.foreground = 1;
     fuse_daemonize(opts.foreground);
 
     /* Block until ctrl+c or fusermount -u */
