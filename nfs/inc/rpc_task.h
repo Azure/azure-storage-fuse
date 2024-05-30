@@ -8,6 +8,7 @@
 #include <vector>
 
 #define MAX_OUTSTANDING_RPC_TASKS 65536
+
 class rpc_task_helper;
 
 struct lookup_rpc_task
