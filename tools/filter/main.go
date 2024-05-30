@@ -26,7 +26,7 @@ type FormatFilter struct {
 
 func (fl SizeFilter) Apply(fileInfo os.FileInfo) bool {
 	fmt.Println("size filter called")
-	fmt.Println("At this point data is ", fl)
+	fmt.Println("At this point data is ", fl, " file name ", fileInfo.Name())
 	if (fl.less_than != -1) && (fl.equal_to != -1) && (fileInfo.Size() <= int64(fl.less_than)) {
 		return true
 	} else if (fl.greater_than != -1) && (fl.equal_to != -1) && (fileInfo.Size() >= int64(fl.greater_than)) {
@@ -42,7 +42,7 @@ func (fl SizeFilter) Apply(fileInfo os.FileInfo) bool {
 }
 func (fl FormatFilter) Apply(fileInfo os.FileInfo) bool {
 	fmt.Println("FormatFilter called")
-	fmt.Println("At this point data is ", fl)
+	fmt.Println("At this point data is ", fl, " file name ", fileInfo.Name())
 	fileExt := filepath.Ext(fileInfo.Name())
 	chkstr := "." + fl.ext_type
 	return chkstr == fileExt
@@ -83,15 +83,18 @@ func getFilterName(str string) string {
 func ParseInp(str string) ([][]Filter, bool) {
 	SplitOr := strings.Split(str, "||")
 	var filterArr [][]Filter
+
 	filterMap := map[string]filterCreator{
 		"size":   newSizeFilter,
 		"format": newFormatFilter,
 	}
+
 	for _, data := range SplitOr {
 		var individualFilter []Filter
 		SplitAnd := strings.Split(data, "&&")
 		for _, SingleFilter := range SplitAnd {
 			thisFilter := getFilterName(SingleFilter)
+			// TODO::filter: error checks for invalid input like size1234, size>=, format pdf
 			if thisFilter == "size" {
 				value := SingleFilter[len(thisFilter)+1:]
 				floatVal, err := strconv.ParseFloat(value, 64)
@@ -113,7 +116,7 @@ func ParseInp(str string) ([][]Filter, bool) {
 					individualFilter = append(individualFilter, filterMap[thisFilter](-1.0, floatVal, -1.0))
 				} else if SingleFilter[len(thisFilter)] == '<' {
 					individualFilter = append(individualFilter, filterMap[thisFilter](floatVal, -1.0, -1.0))
-				} else if SingleFilter[len(thisFilter)] == '=' {
+				} else if SingleFilter[len(thisFilter)] == '=' { // TODO::filter: check ==
 					individualFilter = append(individualFilter, filterMap[thisFilter](-1.0, -1.0, floatVal))
 				}
 			} else if thisFilter == "format" {
@@ -128,6 +131,7 @@ func ParseInp(str string) ([][]Filter, bool) {
 	}
 	return filterArr, true
 }
+
 func checkIndividual(ctx context.Context, FileNo os.FileInfo, filters []Filter) bool {
 	for _, filter := range filters {
 		select {
@@ -142,31 +146,39 @@ func checkIndividual(ctx context.Context, FileNo os.FileInfo, filters []Filter) 
 	}
 	return true
 }
+
 func checkFileWithFilters(FileNo os.FileInfo, filterArr [][]Filter) bool {
-	ctx := context.Background()
-	Ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	resultChan := make(chan bool)
+
+	resultChan := make(chan bool, len(filterArr))
 	for _, filters := range filterArr {
 		go func(filters []Filter) {
-			select {
-			case <-Ctx.Done():
-				return
-			default:
-				passed := checkIndividual(Ctx, FileNo, filters)
-				if passed {
-					resultChan <- passed
-				}
-			}
+			// select {
+			// case <-Ctx.Done():
+			// 	return
+			// default:
+			passed := checkIndividual(ctx, FileNo, filters)
+			resultChan <- passed
+			// }
 		}(filters)
 	}
-	select {
-	case <-Ctx.Done(): //if none filter is true for a file it will wait here indefinitely
-		return false
-	case <-resultChan:
-		return true
+	// select {
+	// case <-ctx.Done(): //if none filter is true for a file it will wait here indefinitely
+	// 	return false
+	// case <-resultChan:
+	// 	return true
+	// }
+	for range filterArr {
+		response := <-resultChan
+		if response {
+			return true
+		}
 	}
+	cancel()
+	return false
 }
+
 func ChkFile(id int, FileInpQueue <-chan os.FileInfo, wg *sync.WaitGroup, filterArr [][]Filter) {
 	defer wg.Done()
 	for FileNo := range FileInpQueue {
@@ -182,11 +194,13 @@ func main() {
 	filterInfo := flag.String("filterInfo", "!", "enter your filter here")
 	flag.Parse()
 	str := (*filterInfo)
-	Modifiedstr := strings.Map(StringConv, str)
+	Modifiedstr := strings.Map(StringConv, str) // TODO::filter: add comments
 	fmt.Println(Modifiedstr)
 	filterArr, isvalid := ParseInp(Modifiedstr)
 
 	if !isvalid {
+		// TODO::filter: log error here
+		fmt.Println("Wrong input format, Try again.")
 		return
 	}
 	for i, innerArray := range filterArr {
