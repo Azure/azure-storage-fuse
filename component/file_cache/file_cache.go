@@ -294,16 +294,7 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	cacheConfig := c.GetPolicyConfig(conf)
-
-	switch strings.ToLower(conf.Policy) {
-	case "lru":
-		c.policy = NewLRUPolicy(cacheConfig)
-	case "lfu":
-		c.policy = NewLFUPolicy(cacheConfig)
-	default:
-		log.Info("FileCache::Configure : Using default eviction policy")
-		c.policy = NewLRUPolicy(cacheConfig)
-	}
+	c.policy = NewLRUPolicy(cacheConfig)
 
 	if c.policy == nil {
 		log.Err("FileCache::Configure : failed to create cache eviction policy")
@@ -329,7 +320,7 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	log.Info("FileCache::Configure : create-empty %t, cache-timeout %d, tmp-path %s, max-size-mb %d, high-mark %d, low-mark %d, refresh-sec %v, max-eviction %v, hard-limit %v, policy %s, allow-non-empty-temp %t, cleanup-on-start %t, policy-trace %t, offload-io %t, sync-to-flush %t, ignore-sync %t, defaultPermission %v, diskHighWaterMark %v, maxCacheSize %v, mountPath %v",
-		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, conf.Policy, c.allowNonEmpty, c.cleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
+		c.createEmptyFile, int(c.cacheTimeout), c.tmpPath, int(cacheConfig.maxSizeMB), int(cacheConfig.highThreshold), int(cacheConfig.lowThreshold), c.refreshSec, cacheConfig.maxEviction, c.hardLimit, c.policy, c.allowNonEmpty, c.cleanupOnStart, c.policyTrace, c.offloadIO, c.syncToFlush, c.syncToDelete, c.defaultPermission, c.diskHighWaterMark, c.maxCacheSize, c.mountPath)
 
 	return nil
 }
