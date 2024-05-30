@@ -103,7 +103,7 @@ add_executable(${CMAKE_PROJECT_NAME}
                src/main.cpp
 	       src/nfs_client.cpp
 	       src/nfs_transport.cpp
-	       src/nfs_internal.cpp
+	       src/rpc_task.cpp
 	       src/connection.cpp
                src/log.cpp)
 

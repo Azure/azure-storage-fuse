@@ -41,6 +41,9 @@ void rpc_transport::close()
     nfs_connections.clear();
 }
 
+// This function decides which connection should be chosen for sending
+// the current request.
+// TODO: This is round-robined for now, should be modified later.
 struct nfs_context* rpc_transport::get_nfs_context()
 {
     return nfs_connections[(last_context++)%(mnt_options->num_connections)]->get_nfs_context();

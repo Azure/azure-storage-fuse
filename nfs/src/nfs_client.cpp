@@ -128,7 +128,7 @@ void nfs_client::setattr(
 }
 
 //
-// Creates a new inode for the given fh and passes it to fuse_reply_entry().
+// Creates a new inode for the given fh and passes it to fuse layer.
 // This will be called by the APIs which much return a filehandle back to the client
 // like lookup, create etc.
 //

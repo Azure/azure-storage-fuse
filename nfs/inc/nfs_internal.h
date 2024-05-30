@@ -88,14 +88,14 @@ struct mount_options
 };
 
 // This structure contains all the server related info returned by the Fsinfo call.
-struct NfsServerInfo
+struct nfs_server_info
 {
     // TODO: Add members
 };
 
 // This structure contains the data returned by the Fsstat call which includes
 // all the statistics of the server.
-struct NfsServerStat
+struct nfs_server_stat
 {
     // TODO: Add members.
 };
