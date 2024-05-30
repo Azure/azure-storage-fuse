@@ -2,9 +2,13 @@
 #include "nfs_client.h"
 #include "nfs_internal.h"
 #include "yaml-cpp/yaml.h"
+
 using namespace std;
 
-// This holds the global options for the fuse like max_write, max_readahead etc.
+/**
+ * This holds the global options for the fuse like max_write, max_readahead etc,
+ * passed from command line.
+ */
 struct fuse_conn_info_opts* fuse_conn_info_opts_ptr;
 
 /**
@@ -210,6 +214,19 @@ static void aznfsc_ll_init(void *userdata,
      * command line options can only be set using fuse_apply_conn_info_opts().
      */
     fuse_apply_conn_info_opts(fuse_conn_info_opts_ptr, conn);
+
+    AZLogDebug("===== fuse_conn_info fields start =====");
+    AZLogDebug("proto_major = {}", conn->proto_major);
+    AZLogDebug("proto_minor = {}", conn->proto_minor);
+    AZLogDebug("max_write = {}", conn->max_write);
+    AZLogDebug("max_read = {}", conn->max_write);
+    AZLogDebug("max_readahead = {}", conn->max_readahead);
+    AZLogDebug("capable = 0x{:x}", conn->capable);
+    AZLogDebug("want = 0x{:x}", conn->want);
+    AZLogDebug("max_background = {}", conn->max_background);
+    AZLogDebug("congestion_threshold = {}", conn->congestion_threshold);
+    AZLogDebug("time_gran = {}", conn->time_gran);
+    AZLogDebug("===== fuse_conn_info fields end =====");
 }
 
 static void aznfsc_ll_destroy(void *userdata)

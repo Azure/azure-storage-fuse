@@ -19,8 +19,6 @@
 #include "libnfs-raw-mount.h"
 #include "nfsc/libnfs-raw-nfs.h"
 
-#include <string>
-
 #include "aznfsc_config.h"
 #include "log.h"
 
