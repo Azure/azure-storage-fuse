@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -11,7 +13,7 @@ import (
 )
 
 type Filter interface {
-	Apply() bool
+	Apply(fileInfo os.FileInfo) bool
 }
 type SizeFilter struct {
 	less_than    float64
@@ -22,15 +24,28 @@ type FormatFilter struct {
 	ext_type string
 }
 
-func (fl SizeFilter) Apply() bool {
+func (fl SizeFilter) Apply(fileInfo os.FileInfo) bool {
 	fmt.Println("size filter called")
 	fmt.Println("At this point data is ", fl)
-	return true
+	if (fl.less_than != -1) && (fl.equal_to != -1) && (fileInfo.Size() <= int64(fl.less_than)) {
+		return true
+	} else if (fl.greater_than != -1) && (fl.equal_to != -1) && (fileInfo.Size() >= int64(fl.greater_than)) {
+		return true
+	} else if (fl.greater_than != -1) && (fileInfo.Size() > int64(fl.greater_than)) {
+		return true
+	} else if (fl.less_than != -1) && (fileInfo.Size() < int64(fl.less_than)) {
+		return true
+	} else if (fl.equal_to != -1) && (fileInfo.Size() == int64(fl.equal_to)) {
+		return true
+	}
+	return false
 }
-func (fl FormatFilter) Apply() bool {
+func (fl FormatFilter) Apply(fileInfo os.FileInfo) bool {
 	fmt.Println("FormatFilter called")
 	fmt.Println("At this point data is ", fl)
-	return true
+	fileExt := filepath.Ext(fileInfo.Name())
+	chkstr := "." + fl.ext_type
+	return chkstr == fileExt
 }
 
 func StringConv(r rune) rune {
@@ -113,9 +128,52 @@ func ParseInp(str string) ([][]Filter, bool) {
 	}
 	return filterArr, true
 }
-func ChkFile(id int, FileInpQueue <-chan os.FileInfo, wg *sync.WaitGroup) {
+func checkIndividual(ctx context.Context, FileNo os.FileInfo, filters []Filter) bool {
+	for _, filter := range filters {
+		select {
+		case <-ctx.Done():
+			return true
+		default:
+			passedThisFilter := filter.Apply(FileNo)
+			if !passedThisFilter {
+				return false
+			}
+		}
+	}
+	return true
+}
+func checkFileWithFilters(FileNo os.FileInfo, filterArr [][]Filter) bool {
+	ctx := context.Background()
+	Ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	resultChan := make(chan bool)
+	for _, filters := range filterArr {
+		go func(filters []Filter) {
+			select {
+			case <-Ctx.Done():
+				return
+			default:
+				passed := checkIndividual(Ctx, FileNo, filters)
+				if passed {
+					resultChan <- passed
+				}
+			}
+		}(filters)
+	}
+	select {
+	case <-Ctx.Done(): //if none filter is true for a file it will wait here indefinitely
+		return false
+	case <-resultChan:
+		return true
+	}
+}
+func ChkFile(id int, FileInpQueue <-chan os.FileInfo, wg *sync.WaitGroup, filterArr [][]Filter) {
 	defer wg.Done()
 	for FileNo := range FileInpQueue {
+		Passed := checkFileWithFilters(FileNo, filterArr)
+		if Passed {
+			fmt.Println(FileNo.Name())
+		}
 		fmt.Println("worker ", id, " verifing file ", FileNo.Name())
 	}
 	fmt.Println("worker ", id, " stopped")
@@ -166,7 +224,7 @@ func main() {
 	var wg sync.WaitGroup
 	for w := 1; w <= workers; w++ {
 		wg.Add(1)
-		go ChkFile(w, FileInpQueue, &wg)
+		go ChkFile(w, FileInpQueue, &wg, filterArr)
 	}
 	for _, fileinfo := range fileInfos {
 		FileInpQueue <- fileinfo
