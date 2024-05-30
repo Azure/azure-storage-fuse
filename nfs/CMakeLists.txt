@@ -113,6 +113,7 @@ target_include_directories(${CMAKE_PROJECT_NAME}
                            PRIVATE "${PROJECT_BINARY_DIR}/inc"
                            PRIVATE "${fuse3_INCLUDE_DIR}"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/nfs"
+                           PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/include"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/include/nfsc"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/libnfs/mount"
                            PRIVATE "${PROJECT_SOURCE_DIR}/extern/spdlog/include")
