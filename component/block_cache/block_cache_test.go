@@ -34,16 +34,17 @@
 package block_cache
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io/ioutil"
 	"math"
 	"math/rand"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"runtime"
+	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -162,11 +163,17 @@ func (suite *blockCacheTestSuite) TestEmpty() {
 	suite.assert.Nil(err)
 	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
 	suite.assert.EqualValues(tobj.blockCache.blockSize, 16*_1MB)
-	//Removed memory check since memory calculated during testing may differ
 	suite.assert.EqualValues(tobj.blockCache.diskSize, 0)
 	suite.assert.EqualValues(tobj.blockCache.diskTimeout, defaultTimeout)
-	suite.assert.EqualValues(tobj.blockCache.workers, uint32(3*runtime.NumCPU()))
-	suite.assert.EqualValues(tobj.blockCache.prefetch, uint32(2*runtime.NumCPU()))
+
+	cmd := exec.Command("nproc")
+	output, err := cmd.Output()
+	suite.assert.Nil(err)
+	coresStr := strings.TrimSpace(string(output))
+	cores, err := strconv.Atoi(coresStr)
+	suite.assert.Nil(err)
+	suite.assert.EqualValues(tobj.blockCache.workers, uint32(3*cores))
+	suite.assert.EqualValues(tobj.blockCache.prefetch, uint32(2*cores))
 	suite.assert.EqualValues(tobj.blockCache.noPrefetch, false)
 	suite.assert.NotNil(tobj.blockCache.blockPool)
 	suite.assert.NotNil(tobj.blockCache.threadPool)
@@ -179,14 +186,14 @@ func (suite *blockCacheTestSuite) TestMemory() {
 
 	suite.assert.Nil(err)
 	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
-	var expected uint64
-	var sysinfo syscall.Sysinfo_t
-	err = syscall.Sysinfo(&sysinfo)
-	if err != nil {
-		expected = uint64(4192) * _1MB
-	} else {
-		expected = uint64(0.8 * (float64)(sysinfo.Freeram) * float64(sysinfo.Unit))
-	}
+	cmd := exec.Command("bash", "-c", "free -b | grep Mem | awk '{print $4}'")
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Nil(err)
+	free, err := strconv.Atoi(strings.TrimSpace(out.String()))
+	suite.assert.Nil(err)
+	expected := uint64(0.8 * float64(free))
 	actual := tobj.blockCache.memSize
 	var difference float64
 	if actual > expected {
@@ -207,16 +214,15 @@ func (suite *blockCacheTestSuite) TestFreeDiskSpace() {
 	suite.assert.Nil(err)
 	suite.assert.Equal(tobj.blockCache.Name(), "block_cache")
 
-	var expected uint64
-	var stat syscall.Statfs_t
-	err = syscall.Statfs(disk_cache_path, &stat)
-	if err != nil {
-		expected = uint64(4192) * _1MB
-	} else {
-		expected = uint64(0.8 * float64(stat.Bavail) * float64(stat.Bsize))
-	}
+	cmd := exec.Command("bash", "-c", fmt.Sprintf("df -B1 %s | awk 'NR==2{print $4}'", disk_cache_path))
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err = cmd.Run()
+	suite.assert.Nil(err)
+	freeDisk, err := strconv.Atoi(strings.TrimSpace(out.String()))
+	suite.assert.Nil(err)
+	expected := uint64(0.8 * float64(freeDisk))
 	actual := tobj.blockCache.diskSize
-
 	var difference float64
 	if actual > expected {
 		difference = float64(actual - expected)
@@ -224,7 +230,7 @@ func (suite *blockCacheTestSuite) TestFreeDiskSpace() {
 		difference = float64(expected - actual)
 	}
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
-	suite.assert.LessOrEqual(difference, tolerance)
+	suite.assert.LessOrEqual(difference, tolerance, "mssg:", actual, expected)
 }
 
 func (suite *blockCacheTestSuite) TestInvalidPrefetchCount() {
