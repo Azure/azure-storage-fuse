@@ -6,7 +6,6 @@
 #include <mutex>
 #include <stack>
 #include <shared_mutex>
-#include "fuse_optype.h"
 #include "nfs_client.h"
 #include <vector>
 
@@ -267,7 +266,7 @@ struct rpc_task
 
 protected:
     // Operation type. This is used only for logging.
-    enum fuse_optype optype;
+    enum fuse_opcode optype;
 
 public:
     union {
@@ -345,12 +344,12 @@ public:
         req = request;
     }
 
-    void set_op_type(enum fuse_optype optyp)
+    void set_op_type(enum fuse_opcode optyp)
     {
         optype = optyp;
     }
 
-    enum fuse_optype get_op_type()
+    enum fuse_opcode get_op_type()
     {
         return optype;
     }
