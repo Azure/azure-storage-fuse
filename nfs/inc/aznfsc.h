@@ -13,6 +13,7 @@
 #define FUSE_USE_VERSION 35
 #include <fuse3/fuse_lowlevel.h>
 #include <fuse3/fuse.h>
+#include <linux/fuse.h>
 
 #include "libnfs.h"
 #include "libnfs-raw.h"

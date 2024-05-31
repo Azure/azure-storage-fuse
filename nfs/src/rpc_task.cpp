@@ -1,6 +1,5 @@
 #include "nfs_internal.h"
 #include "rpc_task.h"
-#include <linux/fuse.h>
 
 #define RSTATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
 
@@ -13,7 +12,7 @@ void rpc_task::set_lookup(struct nfs_client* clt,
 {
     client = clt;
     req = request;
-    optype = FOPTYPE_LOOKUP;
+    optype = FUSE_LOOKUP;
     rpc_api.lookup_task.set_file_name(name);
     rpc_api.lookup_task.set_parent_inode(parent_ino);
 }
@@ -24,7 +23,7 @@ void rpc_task::set_getattr(struct nfs_client* clt,
 {
     client = clt;
     req = request;
-    optype = FOPTYPE_GETATTR;
+    optype = FUSE_GETATTR;
     rpc_api.getattr_task.set_inode(ino);
 }
 
@@ -37,7 +36,7 @@ void rpc_task::set_create_file(struct nfs_client* clt,
 {
     client = clt;
     req = request;
-    optype = FOPTYPE_CREATE;
+    optype = FUSE_CREATE;
     rpc_api.create_task.set_parent_inode(parent_ino);
     rpc_api.create_task.set_file_name(name);
     rpc_api.create_task.set_mode(mode);
@@ -52,7 +51,7 @@ void rpc_task::set_mkdir(struct nfs_client* clt,
 {
     client = clt;
     req = request;
-    optype = FOPTYPE_MKDIR;
+    optype = FUSE_MKDIR;
     rpc_api.mkdir_task.set_parent_inode(parent_ino);
     rpc_api.mkdir_task.set_dir_name(name);
     rpc_api.mkdir_task.set_mode(mode);
@@ -68,7 +67,7 @@ void rpc_task::set_setattr(struct nfs_client* clt,
 {
     client = clt;
     req = request;
-    optype = FOPTYPE_SETATTR;
+    optype = FUSE_SETATTR;
     rpc_api.setattr_task.set_inode(ino);
     rpc_api.setattr_task.set_fuse_file(file);
     rpc_api.setattr_task.set_attribute_and_mask(attr, toSet);
@@ -421,13 +420,13 @@ void rpc_task::free_rpc_task()
     // Clean the mebers since we could not have the destructor.
     switch(optype)
     {
-    case fuse_optype::FOPTYPE_LOOKUP:
+    case FUSE_LOOKUP:
         rpc_api.lookup_task.free_name();
         break;
-    case fuse_optype::FOPTYPE_CREATE:
+    case FUSE_CREATE:
         rpc_api.create_task.free_name();
         break;
-    case fuse_optype::FOPTYPE_MKDIR:
+    case FUSE_MKDIR:
         rpc_api.mkdir_task.free_name();
         break;
     default :
