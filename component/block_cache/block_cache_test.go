@@ -195,12 +195,7 @@ func (suite *blockCacheTestSuite) TestMemory() {
 	suite.assert.Nil(err)
 	expected := uint64(0.8 * float64(free))
 	actual := tobj.blockCache.memSize
-	var difference float64
-	if actual > expected {
-		difference = float64(actual - expected)
-	} else {
-		difference = float64(expected - actual)
-	}
+	difference := math.Abs(float64(actual) - float64(expected))
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
 	suite.assert.LessOrEqual(difference, tolerance)
 }
@@ -223,12 +218,7 @@ func (suite *blockCacheTestSuite) TestFreeDiskSpace() {
 	suite.assert.Nil(err)
 	expected := uint64(0.8 * float64(freeDisk))
 	actual := tobj.blockCache.diskSize
-	var difference float64
-	if actual > expected {
-		difference = float64(actual - expected)
-	} else {
-		difference = float64(expected - actual)
-	}
+	difference := math.Abs(float64(actual) - float64(expected))
 	tolerance := 0.10 * float64(math.Max(float64(actual), float64(expected)))
 	suite.assert.LessOrEqual(difference, tolerance, "mssg:", actual, expected)
 }
