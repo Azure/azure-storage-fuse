@@ -1,147 +1,135 @@
-#pragma once
+#ifndef __NFS_CLIENT_H__
+#define __NFS_CLIENT_H__
 
 #include "nfs_inode.h"
-#include "nfs_transport.h"
+#include "rpc_transport.h"
 #include "nfs_internal.h"
 
 extern "C" {
-    // libnfs does not offer a prototype for this in any public header,
-    // but exports it anyway.
+    /*
+     * libnfs does not offer a prototype for this in any public header,
+     * but exports it anyway.
+     *
+     * TODO: Update libnfs to export this and remove from here.
+     */
     const struct nfs_fh3* nfs_get_rootfh(struct nfs_context* nfs);
 }
 
-//
-// This is the class which is responsible for making all the Nfsv3 API calls.
-// This is a singleton class.
-// The user should first init the class by calling nfs_client::init() by specifying all the parameters needed to mount the filesystem.
-// Once this is done, all the callers can get an instance of this class by calling the get_instance() method.
-// This instance can then be used to call the APIs like getattr, write etc.
-//
+/**
+ * This represents the NFS client. Since we have only one NFS client at a time,
+ * this is a singleton class.
+ * Caller can make NFSv3 API calls by calling corresponding methods from this
+ * class. Those methods will then call into libnfs to make the actual NFS RPC
+ * User should first init the class by calling init() by specifying all the
+ * parameters needed to mount the filesystem.
+ * Once initialized, callers can get the singleton instance of this class by
+ * calling the get_instance() static method.
+ * The returned instance can then be used to call the APIs like getattr, write etc.
+ */
 class nfs_client
 {
 private:
+    /*
+     * This is the RPC transport connected to the NFS server.
+     * RPC transport is made up of one or more nfs_connection which are used
+     * to carry the RPC requests/responses.
+     */
+    struct rpc_transport transport;
 
-    //
-    // This will be of the form account.blob.core.windows.net
-    // or for pre-prod : account.blob.preprod.core.windows.net
-    // or 			   : IP
-    // This will be constructed from the account_name and blobprefix passed by the caller.
-    //
-    static std::string server;
+    /*
+     * Root File Handle obtained after mounting the filesystem.
+     * This will be set after calling nfs_mount which is done in the init()
+     * method.
+     */
+    struct nfs_inode *root_fh = nullptr;
 
-    // TODO: See if we really need to store the account and container name since we already have the server and export_path.
-    std::string account_name;
-    std::string container_name;
+    /*
+     * Every RPC request is represented by an rpc_task which is created when
+     * the fuse request is received and remains till the NFS server sends a
+     * response. rpc_task_helper class allows efficient allocation of RPC
+     * tasks.
+     */
+    struct rpc_task_helper *rpc_task_helper = nullptr;
 
-    // Export path which is of the form /account_name/ContainerName
-    static std::string export_path;
+    /*
+     * Holds info about the server, queried by FSINFO.
+     */
+    struct nfs_server_info server_info;
 
-    //
-    // Options to be passed to the mount command. Like port, proto etc.
-    //
-    struct mount_options* mnt_options;
+    /*
+     * Holds info about the server, queried by FSSTAT.
+     */
+    struct nfs_server_stat server_stat;
 
-    //
-    // File handle obtained after mounting the filesystem.
-    // This will be set after calling nfs_mount which is done in the init() method.
-    //
-    static nfs_inode* root_fh;
-
-    //
-    // The transport object responsible for actually sending out the requests to the server.
-    //
-    static struct rpc_transport* transport;
-
-    static struct rpc_task_helper* rpc_task_helper_instance;
-
-    // Holds info about the server.
-    struct nfs_server_info* server_info;
-
-    // Contains info of the server stat.
-    struct nfs_server_stat* server_stat;
-
-    //
-    // This will be set to true if the nfs_client is init'd.
-    // This should be set to TRUE before calling the nfs_client::get_instance()
-    //
-    static std::atomic<bool> initialized;
-
-    nfs_client(std::string* acc_name, std::string* cont_name, std::string* blob_suffix, struct mount_options* opt)
+    nfs_client() :
+    	transport(this)
     {
-        assert(acc_name != nullptr);
-        assert(cont_name != nullptr);
-        assert(blob_suffix != nullptr);
-
-        account_name = *acc_name;
-        container_name = *cont_name;
-
-        server = account_name + "." + *blob_suffix;
-        export_path = "/" + account_name + "/" + container_name;
-
-        mnt_options = opt;
     }
 
 public:
-    static nfs_client& get_instance_impl(std::string* acc_name = nullptr,
-                                         std::string* cont_name = nullptr,
-                                         std::string* blob_suffix = nullptr,
-                                         struct mount_options* opt = nullptr)
-    {
-        static nfs_client instance{acc_name, cont_name, blob_suffix, opt};
+    /*
+     * Mount options (to be) used for mounting. These contain details of the
+     * server and share that's mounted and also the mount options used.
+     */
+    struct mount_options mnt_options;
 
-        // nfs_client::init() should be called before calling this.
-        assert(is_nfs_client_initd());
-        return instance;
-    }
-
-    static struct rpc_task_helper* get_rpc_task_helper_instance()
-    {
-        return rpc_task_helper_instance;
-    }
-
-    // This is the method which should be called to get an instance of this class by the user.
+    /*
+     * Return the instance of the singleton class.
+     */
     static nfs_client& get_instance()
     {
-        return get_instance_impl();
+    	static nfs_client client;
+        return client;
     }
 
-    // The user should first init the client class before using it.
-    static bool init(
-        std::string& acc_name,
-        std::string& cont_name,
-        std::string& blob_suffix,
-        mount_options* opt);
-
-    static bool is_nfs_client_initd()
+    struct rpc_task_helper *get_rpc_task_helper()
     {
-        return initialized;
+        return rpc_task_helper;
     }
 
-    //
-    // Get the nfs context on which the libnfs API calls can be made.
-    //
+    /*
+     * The user should first init the client class before using it.
+     */
+    bool init();
+
+    /*
+     * Get the libnfs context on which the libnfs API calls can be made.
+     */
     struct nfs_context* get_nfs_context() const;
 
-    //
-    // The inode structure will be the address of the location where the actual NFS filehandle is stored.
-    // Hence by just dereferencing this structure we will be able to get the filehandle.
-    // This filehandle will remain valid till the ino is freeed by calling the free API.
-    // TODO: See when the free API should be called.
-    //
-    nfs_inode* get_nfs_inode_from_ino(fuse_ino_t ino)
+    /*
+     * Given an inode number, return the nfs_inode structure.
+     * For efficient access we use the address of the nfs_inode structure as
+     * the inode number. Fuse should always pass inode numbers we return in
+     * one of the create APIs, so it should be ok to trust fuse.
+     * Once Fuse calls the forget() API for an inode, it won't pass that
+     * inode number in any future request, so we can safely destroy the
+     * nfs_inode on forget.
+     */
+    struct nfs_inode *get_nfs_inode_from_ino(fuse_ino_t ino)
     {
-        if (ino == 1 /*FUSE_ROOT_ID*/)
+        if (ino == 1 /* FUSE_ROOT_ID */)
         {
+            // root_fh must have been created by now.
+            assert(root_fh != nullptr);
+            assert(root_fh->magic == NFS_INODE_MAGIC);
             return root_fh;
         }
-        return (nfs_inode*)(uintptr_t)ino;
 
+        struct nfs_inode *const nfsi = reinterpret_cast<struct nfs_inode *>(ino);
+
+        // Dangerous cast, deserves validation.
+        assert(nfsi->magic == NFS_INODE_MAGIC);
+
+        return nfsi;
     }
 
-    //
-    // Define Nfsv3 APi specific functions and helpers after this point.
-    // TODO: For now I have just added the methods needed for few calls, add more going forward.
-    //
+    /*
+     *
+     * Define Nfsv3 API specific functions and helpers after this point.
+     *
+     * TODO: Add more NFS APIs as we implement them.
+     */
 
     void getattr(
         fuse_req_t req,
@@ -188,3 +176,5 @@ public:
         const struct fattr3* attr,
         const struct fuse_file_info* file);
 };
+
+#endif /* __NFS_CLIENT_H__ */

@@ -5,115 +5,24 @@
 
 using namespace std;
 
+/*
+ * Global aznfsc config instance holding all the aznfs client configuration.
+ */
+struct aznfsc_cfg aznfsc_cfg;
+
 /**
  * This holds the global options for the fuse like max_write, max_readahead etc,
  * passed from command line.
  */
 struct fuse_conn_info_opts* fuse_conn_info_opts_ptr;
 
-/**
- * This structure holds the entire aznfsclient configuration that can control
- * the behaviour of aznfsclient fuse program. These config variables can be
- * configured in many ways, allowing user to conveniently express their default
- * configuration and allowing easy overrides for some as needed.
- *
- * Here are the various ways these config values are populated:
- * 1. Most configs have default values.
- *    Note: Some of the config variables pertain to user details and cannot
- *          have default values.
- * 2. Convenient place for defining config variables which don't need to be
- *    changed often is the config.yaml file that user can provide with the
- *    --config-file=./config.yaml cmdline option to aznfsclient.
- *    These override the defaults.
- * 3. Some but not all config variables can be set using environment variables.
- *    These override the variables set by config.yaml and the default.
- * 4. Most config variables can be set using specific command line options to
- *    aznfsclient.
- *    These have the highest preference and will override the variables set
- *    by environment variables, config.yaml and the default.
- *
- * Note: This MUST not contains C++ object types as members as fuse parser
- *       writes into those members. For char* members fuse also allocates memory.
- */
-struct aznfsc_cfg
-{
-    // config.yaml file path specified using --config-file= cmdline option.
-    const char* config_yaml;
-
-    /*
-     * Storage account and container to mount and the optional cloud suffix.
-     * The share path mounted is:
-     * <account>.<cloud_suffix>:/<account>/<container>
-     */
-    const char* account;
-    const char* container;
-    char* cloud_suffix;
-
-    /*
-     * NFS and Mount port to use.
-     * If this is non-zero, portmapper won't be contacted.
-     */
-    uint16_t port = 0;
-
-    // Nfsv3 version
-    int version;
-
-    // Number of connections to be established to the server.
-    int nconnect;
-
-    // Max number of times the API will be retried before erroring out.
-    int max_num_of_retries;
-
-    // Maximum time the API call waits before returning a timeout to the caller.
-    uint64_t timeout_in_sec;
-
-    // Maximum size of read request.
-    size_t readmax;
-
-    // Maximum size of write request.
-    size_t writemax;
-
-    // Number of times the request will be retransmitted to the server when no response is received.
-    int retrans;
-
-    // Maximum number of readdir entries that can be requested.
-    uint32_t readdir_maxcount;
-
-    /*
-     * TODO:
-     * - Add auth related config.
-     * - Add perf related config,
-     *   e.g., amount of RAM used for staging writes, etc.
-     */
-
-    // Populate default values in the constructor which can be overwritten later.
-    aznfsc_cfg():
-        config_yaml(nullptr),
-        account(nullptr),
-        container(nullptr),
-        cloud_suffix(nullptr),
-        port(0),
-        version(3),
-        nconnect(1),
-        max_num_of_retries(3),
-        timeout_in_sec(600),
-        readmax(1048576 /* Setting it to 1MB now, should be modified later */),
-        writemax(1048576 /* Setting it to 1MB now, should be modified later */),
-        retrans(3),
-        readdir_maxcount(UINT32_MAX)
-    {
-        cloud_suffix = (char*)malloc(strlen("blob.core.windows.net") + 1);
-        cloud_suffix = strdup("blob.core.windows.net");
-    }
-} aznfsc_cfg;
-
-#define AZNFSC_OPT(templ, key) { templ, offsetof(struct aznfsc_cfg, key), 0}
-
 /*
  * These are aznfsclient specific options.
  * These can be passed to aznfsclient fuse program, in addition to the standard
  * fuse options.
  */
+#define AZNFSC_OPT(templ, key) { templ, offsetof(struct aznfsc_cfg, key), 0}
+
 static const struct fuse_opt aznfsc_opts[] =
 {
     AZNFSC_OPT("--config-file=%s", config_yaml),
@@ -156,29 +65,21 @@ bool parse_config_file(const char* config_file)
         {
             aznfsc_cfg.port = config["port"].as<uint16_t>();
         }
-        if (config["version"])
-        {
-            aznfsc_cfg.version = config["version"].as<int>();
-        }
         if (config["nconnect"])
         {
             aznfsc_cfg.nconnect = config["nconnect"].as<int>();
         }
-        if (config["max_num_of_retries"])
+        if (config["timeo"])
         {
-            aznfsc_cfg.max_num_of_retries = config["max_num_of_retries"].as<int>();
+            aznfsc_cfg.timeo = config["timeo"].as<uint64_t>();
         }
-        if (config["timeout_in_sec"])
+        if (config["rsize"])
         {
-            aznfsc_cfg.timeout_in_sec = config["timeout_in_sec"].as<uint64_t>();
+            aznfsc_cfg.rsize = config["rsize"].as<size_t>();
         }
-        if (config["readmax"])
+        if (config["wsize"])
         {
-            aznfsc_cfg.readmax = config["readmax"].as<size_t>();
-        }
-        if (config["writemax"])
-        {
-            aznfsc_cfg.writemax = config["writemax"].as<size_t>();
+            aznfsc_cfg.wsize = config["wsize"].as<size_t>();
         }
         if (config["retrans"])
         {
@@ -851,6 +752,9 @@ int main(int argc, char *argv[])
     }
 
     {
+    	aznfsc_cfg.server = std::string(aznfsc_cfg.account) + "." + std::string(aznfsc_cfg.cloud_suffix);
+    	aznfsc_cfg.export_path = "/" + std::string(aznfsc_cfg.account) + "/" + std::string(aznfsc_cfg.container);
+ #if 0
         std::string account = aznfsc_cfg.account;
         std::string container = aznfsc_cfg.container;
         std::string suffix = aznfsc_cfg.cloud_suffix;
@@ -864,12 +768,13 @@ int main(int argc, char *argv[])
         mntOpt.set_nfs_port(aznfsc_cfg.port);
         mntOpt.num_connections = aznfsc_cfg.nconnect;
         mntOpt.nfs_version = aznfsc_cfg.version;
-        mntOpt.set_read_max(aznfsc_cfg.readmax);
-        mntOpt.set_write_max(aznfsc_cfg.writemax);
+        mntOpt.set_read_max(aznfsc_cfg.rsize);
+        mntOpt.set_write_max(aznfsc_cfg.wsize);
         // TODO: We are still not using the aznfsc_cfg.max_num_of_retries and timeout, handle them in appropriate place.
 
+#endif
         // init the nfs client to use it.
-        if (!nfs_client::init(account, container, suffix, &mntOpt))
+        if (!nfs_client::get_instance().init())
         {
             AZLogError("Failed to init the NFS client.");
             goto err_out4;

@@ -1,3 +1,6 @@
+#ifndef __RPC_TASK_H__
+#define __RPC_TASK_H__
+
 #include <cstddef>
 #include <string>
 #include <mutex>
@@ -581,3 +584,5 @@ public:
         // TODO: See if we need to clear out the struct members here.
     }
 };
+
+#endif /* __RPC_TASK_H__ */

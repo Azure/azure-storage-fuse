@@ -1,50 +1,48 @@
+#include "aznfsc.h"
 #include "nfs_client.h"
 #include "nfs_internal.h"
 #include "rpc_task.h"
 
-std::atomic<bool> nfs_client::initialized(false);
+#if 0
 std::string nfs_client::server("");
 std::string nfs_client::export_path("");
-rpc_transport* nfs_client::transport;
-rpc_task_helper* nfs_client::rpc_task_helper_instance;
-nfs_inode* nfs_client::root_fh;
+#endif
 
 #define RSTATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
 
 // The user should first init the client class before using it.
-bool nfs_client::init(
-    std::string& acc_name,
-    std::string& cont_name,
-    std::string& blob_suffix,
-    struct mount_options* opt)
+bool nfs_client::init()
 {
+    const std::string acc_name = aznfsc_cfg.account;
+    const std::string cont_name = aznfsc_cfg.container;
+    const std::string blob_suffix = aznfsc_cfg.cloud_suffix;
+
     // Check if init() has been called before
-    if (!initialized.exchange(true)) {
+#if 0
+    get_instance_impl(&acc_name, &cont_name, &blob_suffix, opt);
+#endif
+    // Get the RPC transport to be used for this client.
+    //transport = rpc_transport::get_instance(opt);
+    //transport = rpc_transport::get_instance(this);
 
-        get_instance_impl(&acc_name, &cont_name, &blob_suffix, opt);
-
-        // Get the RPC transport to be used for this client.
-        transport = rpc_transport::get_instance(opt);
-
-        // This will init the transport layer and start the connections to the server.
-        // It returns FALSE if it fails to create the connections.
-        if (!transport->start())
-        {
-            AZLogError("Failed to start the RPC transport.");
-            return false;
-        }
-
-        // initialiaze the root file handle.
-        // TODO: Take care of freeing this. Should this be freed in the ~nfs_client()?
-        root_fh = new nfs_inode(nfs_get_rootfh(transport->get_nfs_context()) /*, 1  ino will be 1 for root */);
-        root_fh->set_inode(1);
-        //AZLogInfo("Obtained root fh is {}", root_fh->get_fh());
-
-        // Initialize the RPC task list.
-        rpc_task_helper_instance = rpc_task_helper::get_instance();
-
-        return true;
+    // This will init the transport layer and start the connections to the server.
+    // It returns FALSE if it fails to create the connections.
+    if (!transport.start())
+    {
+        AZLogError("Failed to start the RPC transport.");
+        return false;
     }
+
+    // initialiaze the root file handle.
+    // TODO: Take care of freeing this. Should this be freed in the ~nfs_client()?
+    root_fh = new nfs_inode(nfs_get_rootfh(transport.get_nfs_context()) /*, 1  ino will be 1 for root */);
+    root_fh->set_inode(1);
+    //AZLogInfo("Obtained root fh is {}", root_fh->get_fh());
+
+    // Initialize the RPC task list.
+    rpc_task_helper = rpc_task_helper::get_instance();
+
+    return true;
 
     // Return false if the method is called again.
     return false;
@@ -52,13 +50,13 @@ bool nfs_client::init(
 
 struct nfs_context* nfs_client::get_nfs_context() const
 {
-    return transport->get_nfs_context();
+    return transport.get_nfs_context();
 }
 
 void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
 {
     struct rpc_task* tsk = nullptr;
-    rpc_task_helper_instance->get_rpc_task_instance(&tsk);
+    rpc_task_helper->get_rpc_task_instance(&tsk);
 
     assert (tsk != nullptr);
 
@@ -72,7 +70,7 @@ void nfs_client::getattr(
     struct fuse_file_info* file)
 {
     struct rpc_task* tsk = nullptr;
-    rpc_task_helper_instance->get_rpc_task_instance(&tsk);
+    rpc_task_helper->get_rpc_task_instance(&tsk);
 
     assert (tsk != nullptr);
 
@@ -88,7 +86,7 @@ void nfs_client::create(
     struct fuse_file_info* file)
 {
     struct rpc_task* tsk = nullptr;
-    rpc_task_helper_instance->get_rpc_task_instance(&tsk);
+    rpc_task_helper->get_rpc_task_instance(&tsk);
 
     assert (tsk != nullptr);
 
@@ -103,7 +101,7 @@ void nfs_client::mkdir(
     mode_t mode)
 {
     struct rpc_task* tsk = nullptr;
-    rpc_task_helper_instance->get_rpc_task_instance(&tsk);
+    rpc_task_helper->get_rpc_task_instance(&tsk);
 
     assert (tsk != nullptr);
 
@@ -119,7 +117,7 @@ void nfs_client::setattr(
     struct fuse_file_info* file)
 {
     struct rpc_task* tsk = nullptr;
-    rpc_task_helper_instance->get_rpc_task_instance(&tsk);
+    rpc_task_helper->get_rpc_task_instance(&tsk);
 
     assert (tsk != nullptr);
 

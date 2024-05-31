@@ -1,5 +1,6 @@
 #include "nfs_internal.h"
 #include "rpc_task.h"
+#include <linux/fuse.h>
 
 #define RSTATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
 
@@ -432,7 +433,7 @@ void rpc_task::free_rpc_task()
     default :
         break;
     }
-    client->get_rpc_task_helper_instance()->free_rpc_task_instance(this);
+    client->get_rpc_task_helper()->free_rpc_task_instance(this);
 }
 
 struct nfs_context* rpc_task::get_nfs_context() const
