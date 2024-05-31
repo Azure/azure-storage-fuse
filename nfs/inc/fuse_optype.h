@@ -1,4 +1,5 @@
-#pragma once
+#ifndef __FUSE_OPTYPE_H__
+#define __FUSE_OPTYPE_H__
 
 #include <cstdint>
 
@@ -57,3 +58,4 @@ enum fuse_optype {
 
 const unsigned num_fuse_optypes = FOPTYPE_RENAME2 + 1;
 
+#endif /* __FUSE_OPTYPE_H__ */
