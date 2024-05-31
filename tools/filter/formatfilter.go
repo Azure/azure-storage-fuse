@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 )
 
-type FormatFilter struct {
+type FormatFilter struct { //formatFilter and its attributes
 	ext_type string
 }
 
-func (filter FormatFilter) Apply(fileInfo os.FileInfo) bool {
+func (filter FormatFilter) Apply(fileInfo os.FileInfo) bool { //Apply fucntion for format filter , check wheather a file passes the constraints
 	fmt.Println("FormatFilter called")
 	fmt.Println("At this point data is ", filter, " file name ", fileInfo.Name())
 	fileExt := filepath.Ext(fileInfo.Name())
@@ -18,7 +18,7 @@ func (filter FormatFilter) Apply(fileInfo os.FileInfo) bool {
 	return chkstr == fileExt
 }
 
-func newFormatFilter(args ...interface{}) Filter {
+func newFormatFilter(args ...interface{}) Filter { // used for dynamic creation of formatFilter using map
 	return FormatFilter{
 		ext_type: args[0].(string),
 	}

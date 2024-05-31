@@ -5,13 +5,13 @@ import (
 	"os"
 )
 
-type SizeFilter struct {
+type SizeFilter struct { //SizeFilter and its attributes
 	less_than    float64
 	greater_than float64
 	equal_to     float64
 }
 
-func (filter SizeFilter) Apply(fileInfo os.FileInfo) bool {
+func (filter SizeFilter) Apply(fileInfo os.FileInfo) bool { //Apply fucntion for size filter , check wheather a file passes the constraints
 	fmt.Println("size filter called")
 	fmt.Println("At this point data is ", filter, " file name ", fileInfo.Name())
 	if (filter.less_than != -1) && (filter.equal_to != -1) && (fileInfo.Size() <= int64(filter.less_than)) {
@@ -28,7 +28,7 @@ func (filter SizeFilter) Apply(fileInfo os.FileInfo) bool {
 	return false
 }
 
-func newSizeFilter(args ...interface{}) Filter {
+func newSizeFilter(args ...interface{}) Filter { // used for dynamic creation of sizeFilter using map
 	return SizeFilter{
 		less_than:    args[0].(float64),
 		greater_than: args[1].(float64),

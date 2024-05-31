@@ -9,14 +9,14 @@ import (
 )
 
 func main() {
-	filter := flag.String("filter", "!", "enter your filter here")
+	filter := flag.String("filter", "!", "enter your filter here") //used to take filter input from the user
 	flag.Parse()
-	str := (*filter)
-	idealStr := strings.Map(StringConv, str) // TODO::filter: add comments
+	str := (*filter)                         //assign value stored in filter to a string
+	idealStr := strings.Map(StringConv, str) //Manipulate string to remove all spaces and convert lowercase letters to uppercase
 	fmt.Println(idealStr)
-	filterArr, isInpValid := ParseInp(idealStr)
+	filterArr, isInpValid := ParseInp(idealStr) //parse the string and get an array (splitted on basis of ||) of array(splitted on basis of &&) of filters
 
-	if !isInpValid {
+	if !isInpValid { //if input given by user is not valid, display and return
 		// TODO::filter: log error here
 		fmt.Println("Wrong input format, Try again.")
 		return
@@ -40,17 +40,17 @@ func main() {
 		fmt.Println("error reading directory:", err)
 		return
 	}
-	const workers = 16
-	fileInpQueue := make(chan os.FileInfo, workers)
+	const workers = 16                              //Number of threads that will be working concurrently
+	fileInpQueue := make(chan os.FileInfo, workers) //made a channel to store input files
 	var wg sync.WaitGroup
 	for w := 1; w <= workers; w++ {
 		wg.Add(1)
-		go ChkFile(w, fileInpQueue, &wg, filterArr)
+		go ChkFile(w, fileInpQueue, &wg, filterArr) //go routines for each worker (thread) are called
 	}
 	for _, fileinfo := range fileInfos {
-		fileInpQueue <- fileinfo
+		fileInpQueue <- fileinfo //push all files one by one in channel , if channel is full , it will wait
 	}
-	close(fileInpQueue)
-	wg.Wait()
-	fmt.Println("All workers stopped ")
+	close(fileInpQueue)                 //close channel once all files have been processed
+	wg.Wait()                           //wait for completion of all threads
+	fmt.Println("All workers stopped ") //exit
 }
