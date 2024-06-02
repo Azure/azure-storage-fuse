@@ -73,6 +73,43 @@ void rpc_task::set_setattr(struct nfs_client* clt,
     rpc_api.setattr_task.set_attribute_and_mask(attr, toSet);
 }
 
+void rpc_task::set_readdir(struct nfs_client* clt,
+                           fuse_req* request,
+                           fuse_ino_t ino,
+                           size_t size,
+                           off_t offset,
+                           struct fuse_file_info* file)
+{
+    client = clt;
+    req = request;
+    optype = FUSE_READDIR;
+
+    rpc_api.readdir_task.set_inode(ino);
+    rpc_api.readdir_task.set_size(size);
+    rpc_api.readdir_task.set_offset(offset);
+    rpc_api.readdir_task.set_fuse_file(file);
+    rpc_api.readdir_task.set_cookie(offset);
+    rpc_api.readdir_task.set_cookieverf(0);
+}
+
+void rpc_task::set_readdirplus(struct nfs_client* clt,
+                               fuse_req* request,
+                               fuse_ino_t ino,
+                               size_t size,
+                               off_t offset,
+                               struct fuse_file_info* file)
+{
+    client = clt;
+    req = request;
+    optype = FUSE_READDIRPLUS;
+    rpc_api.readdirplus_task.set_inode(ino);
+    rpc_api.readdirplus_task.set_size(size);
+    rpc_api.readdirplus_task.set_offset(offset);
+    rpc_api.readdirplus_task.set_fuse_file(file);
+    // rpc_api.readdirplus_task.set_cookieverf(0);
+    rpc_api.readdirplus_task.set_cookie(offset);
+}
+
 static void getattr_callback(
     struct rpc_context* /* rpc */,
     int rpc_status,
@@ -248,8 +285,209 @@ void mkdir_callback(
     }
 }
 
-// This is the task responsible for making the lookup task.
-// lookup_task structure should be populated before calling this function.
+static void readdirplus_callback(
+    struct rpc_context* /* rpc */,
+    int rpc_status,
+    void* data,
+    void* private_data)
+{
+    auto task = (rpc_task*)private_data;
+    auto res = (READDIRPLUS3res*)data;
+    bool retry;
+
+    if (task->succeeded(rpc_status, RSTATUS(res), retry))
+    {
+        // Allocate buffer
+        int num_entries_returned_in_this_iter = 0;
+        size_t sz = task->rpc_api.readdirplus_task.get_size();
+
+        char *buf1 = (char *)malloc(sz);
+        if (!buf1)
+        {
+            fuse_reply_err(task->get_req(), ENOMEM);
+            return;
+        }
+
+        char *current_buff = buf1;
+        size_t rem = sz;
+
+        struct entryplus3* entry = res->READDIRPLUS3res_u.resok.reply.entries;
+
+        while (entry)
+        {
+            if ((int)entry->cookie <= (int)task->rpc_api.readdirplus_task.get_offset())
+            {
+                /*
+                 * Skip entries until the offset
+                 * TODO: See if we need this. Can't we control this thorugh the cookie?
+                 */
+                entry = entry->nextentry;
+                continue;
+            }
+
+            // Structure to hold the attributes.
+            struct stat st;
+            if (entry->name_attributes.attributes_follow)
+            {
+                task->get_client()->stat_from_fattr3(
+                    &st, &entry->name_attributes.post_op_attr_u.attributes);
+            }
+            else
+            {
+                ::memset(&st, 0, sizeof(st));
+            }
+
+            // Create a new inode for the entry
+            nfs_inode* nfs_ino;
+            nfs_ino = new nfs_inode(&entry->name_handle.post_op_fh3_u.handle);
+            nfs_ino->set_inode((fuse_ino_t)nfs_ino);
+
+            struct fuse_entry_param fuseentry;
+            memset(&fuseentry, 0, sizeof(fuseentry));
+            fuseentry.attr = st;
+            fuseentry.ino = (fuse_ino_t)(uintptr_t)nfs_ino;
+
+            /*
+             * TODO: Set the timeout to better value.
+             */
+            fuseentry.attr_timeout = 60;
+            fuseentry.entry_timeout = 60;
+
+            /*
+             * Insert the entry into the buffer.
+             * If the buffer space is less, fuse_add_direntry_plus will not add entry to
+             * the buffer but will still return the space needed to add this entry.
+             */
+            size_t entsize = fuse_add_direntry_plus(task->get_req(),
+                                                    current_buff,
+                                                    rem, /* size left in the buffer */
+                                                    entry->name,
+                                                    &fuseentry,
+                                                    entry->cookie);
+
+            /*
+             * Our buffer size was small and hence we can't add any more entries, so just break the loop.
+             * This also means that we have not inserted the current entry to the direent buffer.
+             */
+            if (entsize > rem)
+            {
+                break;
+            }
+
+            num_entries_returned_in_this_iter++;
+
+            // Increment the buffer pointer to point to the next free space.
+            current_buff += entsize;
+            rem -= entsize;
+
+            // Fetch the next entry.
+            entry = entry->nextentry;
+        }
+
+        fuse_reply_buf(task->get_req(),
+                       buf1,
+                       sz - rem);
+
+        // Free the buffer.
+        free(buf1);
+    }
+    else if (retry)
+    {
+        task->run_readdirplus();
+    }
+    else
+    {
+        // Since the api failed and can no longer be retried, return error reply.
+        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
+    }
+}
+
+static void readdir_callback(
+    struct rpc_context* /* rpc */,
+    int rpc_status,
+    void* data,
+    void* private_data)
+{
+    auto task = (rpc_task*)private_data;
+    auto res = (READDIR3res*)data;
+    bool retry;
+
+    if (task->succeeded(rpc_status, RSTATUS(res), retry))
+    {
+        int num_entries_returned_in_this_iter = 0;
+        size_t sz = task->rpc_api.readdir_task.get_size();
+
+        // Allocate buffer
+        char *buf1 = (char *)malloc(sz);
+        if (!buf1)
+        {
+            fuse_reply_err(task->get_req(), ENOMEM);
+            return;
+        }
+
+        char *current_buf = buf1;
+        size_t rem = sz;
+
+        struct entry3* entry = res->READDIR3res_u.resok.reply.entries;
+
+        while (entry)
+        {
+            if ((int)entry->cookie <= (int)task->rpc_api.readdir_task.get_offset())
+            {
+                /*
+                 * Skip entries until the offset
+                 * TODO: See if we need this. Can't we control this thorugh the cookie?
+                 */
+                entry = entry->nextentry;
+                continue;
+            }
+
+            /*
+             * Insert the entry into the buffer.
+             * If the buffer space is less, fuse_add_direntry will not add entry to
+             * the buffer but will still return the space needed to add this entry.
+             */
+            size_t entsize = fuse_add_direntry(task->get_req(),
+                                               current_buf,
+                                               rem, /* size left in the buffer */
+                                               entry->name,
+                                               nullptr,
+                                               entry->cookie);
+
+            /*
+             * Our buffer size was small and hence we can't add any more entries, so just break the loop.
+             * This also means that we have not inserted the current entry to the direent buffer.
+             */
+            if (entsize > rem)
+            {
+                break;
+            }
+
+            num_entries_returned_in_this_iter++;
+
+            // Increment the buffer pointer to point to the next free space.
+            current_buf += entsize;
+            rem -= entsize;
+            entry = entry->nextentry;
+        }
+
+        fuse_reply_buf(task->get_req(),
+                       buf1,
+                       sz - rem);
+
+        free(buf1);
+    }
+    else if (retry)
+    {
+        task->run_readdir();
+    }
+    else
+    {
+        // Since the api failed and can no longer be retried, return error reply.
+        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
+    }
+}
+
 void rpc_task::run_lookup()
 {
     bool rpc_retry = false;
@@ -414,6 +652,53 @@ void rpc_task::run_setattr()
         }
     } while (rpc_retry);
 }
+
+void rpc_task::run_readdir()
+{
+
+    bool rpc_retry = false;
+    auto inode = rpc_api.readdir_task.get_inode();
+
+    do {
+        struct READDIR3args args;
+        ::memset(&args, 0, sizeof(args));
+        args.dir = get_client()->get_nfs_inode_from_ino(inode)->get_fh();
+        args.cookie = rpc_api.readdir_task.get_cookie();
+        ::memcpy(&args.cookieverf, rpc_api.readdir_task.get_cookieverf(), sizeof(args.cookieverf));
+        args.count = rpc_api.readdir_task.get_size();
+
+        if (rpc_nfs3_readdir_task(get_rpc_ctx(), readdir_callback, &args, this) == NULL)
+        {
+            // This call fails due to internal issues like OOM etc
+            // and not due to an actual error, hence retry.
+            rpc_retry = true;
+        }
+    } while (rpc_retry);
+}
+
+void rpc_task::run_readdirplus()
+{
+    bool rpc_retry = false;
+    auto inode = rpc_api.readdirplus_task.get_inode();
+
+    do {
+        struct READDIRPLUS3args args;
+        ::memset(&args, 0, sizeof(args));
+        args.dir = get_client()->get_nfs_inode_from_ino(inode)->get_fh();
+        args.cookie = rpc_api.readdirplus_task.get_cookie();
+        ::memcpy(&args.cookieverf, rpc_api.readdirplus_task.get_cookieverf(), sizeof(args.cookieverf));
+        args.dircount = 65536; // TODO: See what this value should be set to.
+        args.maxcount = 65536;
+
+        if (rpc_nfs3_readdirplus_task(get_rpc_ctx(), readdirplus_callback, &args, this) == NULL)
+        {
+            // This call fails due to internal issues like OOM etc
+            // and not due to an actual error, hence retry.
+            rpc_retry = true;
+        }
+    } while (rpc_retry);
+}
+
 
 void rpc_task::free_rpc_task()
 {

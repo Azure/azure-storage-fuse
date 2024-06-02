@@ -353,6 +353,11 @@ static void aznfsc_ll_readdir(fuse_req_t req,
                               off_t off,
                               struct fuse_file_info *fi)
 {
+    AZLogInfo("Readdir called");
+
+    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    client->readdir(req, ino, size, off, fi);
+
     /*
     * TODO: Fill me.
     */
@@ -599,10 +604,16 @@ static void aznfsc_ll_readdirplus(fuse_req_t req,
                                   off_t off,
                                   struct fuse_file_info *fi)
 {
+    AZLogInfo("Readdirplus called");
+
+    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    client->readdirplus(req, ino, size, off, fi);
+
+
     /*
      * TODO: Fill me.
      */
-    fuse_reply_err(req, ENOSYS);
+    //fuse_reply_err(req, ENOSYS);
 }
 
 void aznfsc_ll_copy_file_range(fuse_req_t req,

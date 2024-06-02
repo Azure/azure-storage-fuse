@@ -125,9 +125,40 @@ void nfs_client::setattr(
     tsk->run_setattr();
 }
 
+void nfs_client::readdir(
+    fuse_req_t req,
+    fuse_ino_t inode,
+    size_t size,
+    off_t offset,
+    struct fuse_file_info* file)
+{
+    struct rpc_task* tsk = nullptr;
+    rpc_task_helper->get_rpc_task_instance(&tsk);
+
+    assert (tsk != nullptr);
+    tsk->set_readdir(this, req, inode, size, offset, file);
+    tsk->run_readdir();
+}
+
+void nfs_client::readdirplus(
+    fuse_req_t req,
+    fuse_ino_t inode,
+    size_t size,
+    off_t offset,
+    struct fuse_file_info* file)
+{
+
+    struct rpc_task* tsk = nullptr;
+    rpc_task_helper->get_rpc_task_instance(&tsk);
+
+    assert (tsk != nullptr);
+    tsk->set_readdirplus(this, req, inode, size, offset, file);
+    tsk->run_readdirplus();
+}
+
 //
 // Creates a new inode for the given fh and passes it to fuse layer.
-// This will be called by the APIs which much return a filehandle back to the client
+// This will be called by the APIs which must return a filehandle back to the client
 // like lookup, create etc.
 //
 void nfs_client::reply_entry(
