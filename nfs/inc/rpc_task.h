@@ -248,6 +248,164 @@ private:
  * The RPC task tracks the progress of the RPC request sent to the server and
  * remains valid till the RPC request completes.
  */
+struct readdir_rpc_task
+{
+public:
+    void set_size(size_t sz)
+    {
+        size = sz;
+    }
+
+    void set_offset(off_t off)
+    {
+        offset = off;
+    }
+
+    void set_inode(fuse_ino_t ino)
+    {
+        inode = ino;
+    }
+
+    void set_fuse_file(fuse_file_info* fileinfo)
+    {
+        // The fuse can pass this as nullptr.
+        if (fileinfo == nullptr)
+            return;
+        ::memcpy(&file, fileinfo, sizeof(file));
+        file_ptr = &file;
+    }
+
+    void set_cookieverf(const cookieverf3* cokieverf)
+    {
+        ::memcpy(&cookieverf, cokieverf, sizeof(cookieverf));
+    }
+
+    void set_cookie(cookie3 cokie)
+    {
+        cookie = cokie;
+    }
+
+    fuse_ino_t get_inode() const
+    {
+        return inode;
+    }
+
+    cookie3 get_cookie() const
+    {
+        return cookie;
+    }
+
+    const cookieverf3* get_cookieverf() const
+    {
+        return &cookieverf;
+    }
+
+    off_t get_offset() const
+    {
+        return offset;
+    }
+
+    size_t get_size() const
+    {
+        return size;
+    }
+
+private:
+    // Inode of the directory.
+    fuse_ino_t inode;
+
+    size_t size;
+
+    off_t offset;
+
+    cookie3 cookie;
+
+    cookieverf3 cookieverf;
+
+// File info passed by the fuse layer.
+    fuse_file_info file;
+    fuse_file_info* file_ptr;
+};
+
+struct readdirplus_rpc_task
+{
+public:
+    void set_size(size_t sz)
+    {
+        size = sz;
+    }
+
+    void set_offset(off_t off)
+    {
+        offset = off;
+    }
+
+    void set_inode(fuse_ino_t ino)
+    {
+        inode = ino;
+    }
+
+    void set_fuse_file(fuse_file_info* fileinfo)
+    {
+        // The fuse can pass this as nullptr.
+        if (fileinfo == nullptr)
+            return;
+        ::memcpy(&file, fileinfo, sizeof(file));
+        file_ptr = &file;
+    }
+
+    void set_cookieverf(const cookieverf3* cokieverf)
+    {
+        ::memcpy(&cookieverf, cokieverf, sizeof(cookieverf));
+    }
+
+    void set_cookie(cookie3 cokie)
+    {
+        cookie = cokie;
+    }
+
+    fuse_ino_t get_inode() const
+    {
+        return inode;
+    }
+
+    off_t get_offset() const
+    {
+        return offset;
+    }
+
+    cookie3 get_cookie() const
+    {
+        return cookie;
+    }
+
+    const cookieverf3* get_cookieverf() const
+    {
+        return &cookieverf;
+    }
+
+    size_t get_size() const
+    {
+        return size;
+    }
+
+private:
+    // Inode of the directory.
+    fuse_ino_t inode;
+
+    size_t size;
+
+    off_t offset;
+
+    cookie3 cookie;
+
+    cookieverf3 cookieverf;
+
+    // File info passed by the fuse layer.
+    fuse_file_info file;
+    fuse_file_info* file_ptr;
+};
+
 struct rpc_task
 {
     /*
@@ -290,6 +448,8 @@ public:
         struct setatt_rpc_task setattr_task;
         struct create_file_rpc_task create_task;
         struct mkdir_rpc_task mkdir_task;
+        struct readdir_rpc_task readdir_task;
+        struct readdirplus_rpc_task readdirplus_task;
     } rpc_api;
 
     // TODO: Add valid flag here for APIs?
@@ -338,6 +498,37 @@ public:
                     mode_t mode);
     void run_mkdir();
 
+    // TODO: Change these names
+    // This function is responsible for setting up the members of readdir_task.
+    void set_readdir(struct nfs_client* clt,
+                     fuse_req* request,
+                     fuse_ino_t inode,
+                     size_t size,
+                     off_t offset,
+                     struct fuse_file_info* file);
+
+    // This function is responsible for issuing the readdir call to the server.
+    // readdir_task structure should be populated before calling this function
+    // by calling set_readdir().
+    void run_readdir();
+
+    // This function is responsible for setting up the members of readdirplus_task.
+    void set_readdirplus(struct nfs_client* clt,
+                         fuse_req* request,
+                         fuse_ino_t inode,
+                         size_t size,
+                         off_t offset,
+                         struct fuse_file_info* file);
+
+    // This function is responsible for issuing the readdirplus call to the server.
+    // readdirplus_task structure should be populated before calling this function
+    // by calling set_readdirplus().
+    void run_readdirplus();
+
+    void set_client(struct nfs_client* clt)
+    {
+        client = clt;
+    }
 
     void set_fuse_req(fuse_req *request)
     {
