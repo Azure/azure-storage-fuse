@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode"
 )
 
@@ -40,9 +41,10 @@ func ParseInp(str string) ([][]Filter, bool) { //this function parses the input 
 	var filterArr [][]Filter
 
 	filterMap := map[string]filterCreator{ //Created a Map that will be used to create new filter objects
-		"size":   newSizeFilter,
-		"format": newFormatFilter, //Pushing every filter in the map, key is the name of filter while value is a dynamic constructor of filter
-		"regex":  newRegexFilter,
+		"size":    newSizeFilter,
+		"format":  newFormatFilter, //Pushing every filter in the map, key is the name of filter while value is a dynamic constructor of filter
+		"regex":   newRegexFilter,
+		"modtime": newModTimeFilter,
 	}
 
 	for _, andFilters := range splitOr {
@@ -89,6 +91,38 @@ func ParseInp(str string) ([][]Filter, bool) { //this function parses the input 
 				}
 				value := singleFilter[len(thisFilter)+1:]
 				individualFilter = append(individualFilter, filterMap[thisFilter](value))
+			} else if thisFilter == "modtime" {
+				value := singleFilter[len(thisFilter)+1:]
+				utcTime, err := ConvertRFC1123(value)
+				if err != nil {
+					if singleFilter[len(thisFilter)+1] != '=' {
+						// fmt.Println("isse")
+						return filterArr, false
+					}
+					value := singleFilter[len(thisFilter)+2:]
+					fmt.Println(value)
+					utcTime, err = ConvertRFC1123(value)
+					if err != nil {
+						fmt.Println("isse")
+						return filterArr, false
+					}
+				}
+				fmt.Println(utcTime)
+				var zeroTime time.Time
+				if singleFilter[len(thisFilter):len(thisFilter)+2] == "<=" {
+					individualFilter = append(individualFilter, filterMap[thisFilter](utcTime, zeroTime, utcTime))
+				} else if singleFilter[len(thisFilter):len(thisFilter)+2] == ">=" {
+					individualFilter = append(individualFilter, filterMap[thisFilter](zeroTime, utcTime, utcTime))
+				} else if singleFilter[len(thisFilter)] == '>' {
+					individualFilter = append(individualFilter, filterMap[thisFilter](zeroTime, utcTime, zeroTime))
+				} else if singleFilter[len(thisFilter)] == '<' {
+					individualFilter = append(individualFilter, filterMap[thisFilter](utcTime, zeroTime, zeroTime))
+				} else if singleFilter[len(thisFilter)] == '=' { // TODO::filter: check ==
+					individualFilter = append(individualFilter, filterMap[thisFilter](zeroTime, zeroTime, utcTime))
+				} else {
+					fmt.Println("isse")
+					return filterArr, false
+				}
 			} else { // if no name matched , means it is not a valid filter , thus return a false
 				return filterArr, false
 			}
