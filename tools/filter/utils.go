@@ -42,6 +42,7 @@ func ParseInp(str string) ([][]Filter, bool) { //this function parses the input 
 	filterMap := map[string]filterCreator{ //Created a Map that will be used to create new filter objects
 		"size":   newSizeFilter,
 		"format": newFormatFilter, //Pushing every filter in the map, key is the name of filter while value is a dynamic constructor of filter
+		"regex":  newRegexFilter,
 	}
 
 	for _, andFilters := range splitOr {
@@ -77,6 +78,15 @@ func ParseInp(str string) ([][]Filter, bool) { //this function parses the input 
 					return filterArr, false
 				}
 			} else if thisFilter == "format" {
+				if (len(singleFilter) <= len(thisFilter)+1) || (singleFilter[len(thisFilter)] != '=') || (!(singleFilter[len(thisFilter)+1] >= 'a' && singleFilter[len(thisFilter)+1] <= 'z')) {
+					return filterArr, false
+				}
+				value := singleFilter[len(thisFilter)+1:]
+				individualFilter = append(individualFilter, filterMap[thisFilter](value))
+			} else if thisFilter == "regex" {
+				if (len(singleFilter) <= len(thisFilter)+1) || (singleFilter[len(thisFilter)] != '=') {
+					return filterArr, false
+				}
 				value := singleFilter[len(thisFilter)+1:]
 				individualFilter = append(individualFilter, filterMap[thisFilter](value))
 			} else { // if no name matched , means it is not a valid filter , thus return a false

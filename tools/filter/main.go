@@ -17,7 +17,6 @@ func main() {
 	filterArr, isInpValid := ParseInp(idealStr) //parse the string and get an array (splitted on basis of ||) of array(splitted on basis of &&) of filters
 
 	if !isInpValid { //if input given by user is not valid, display and return
-		// TODO::filter: log error here
 		fmt.Println("Wrong input format, Try again.")
 		return
 	}
