@@ -11,8 +11,7 @@ type FormatFilter struct { //formatFilter and its attributes
 }
 
 func (filter FormatFilter) Apply(fileInfo os.FileInfo) bool { //Apply fucntion for format filter , check wheather a file passes the constraints
-	fmt.Println("FormatFilter called")
-	fmt.Println("At this point data is ", filter, " file name ", fileInfo.Name())
+	fmt.Println("Format Filter ", filter, " file name ", fileInfo.Name())
 	fileExt := filepath.Ext(fileInfo.Name())
 	chkstr := "." + filter.ext_type
 	return chkstr == fileExt

@@ -4,17 +4,18 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 	"sync"
+	"time"
 )
 
 func main() {
+	fmt.Println(time.Now())
 	filter := flag.String("filter", "!", "enter your filter here") //used to take filter input from the user
 	flag.Parse()
-	str := (*filter)                         //assign value stored in filter to a string
-	idealStr := strings.Map(StringConv, str) //Manipulate string to remove all spaces and convert lowercase letters to uppercase
-	fmt.Println(idealStr)
-	filterArr, isInpValid := ParseInp(idealStr) //parse the string and get an array (splitted on basis of ||) of array(splitted on basis of &&) of filters
+	str := (*filter) //assign value stored in filter to a string
+	// idealStr := strings.Map(StringConv, str) //Manipulate string to remove all spaces and convert lowercase letters to uppercase
+	// fmt.Println(str)
+	filterArr, isInpValid := ParseInp(str) //parse the string and get an array (splitted on basis of ||) of array(splitted on basis of &&) of filters
 
 	if !isInpValid { //if input given by user is not valid, display and return
 		fmt.Println("Wrong input format, Try again.")
@@ -28,7 +29,7 @@ func main() {
 			// data.Apply()
 		}
 	}
-	dirPath := "../../../TstData"
+	dirPath := "../../../test"
 	dir, err := os.Open(dirPath)
 	if err != nil {
 		fmt.Println("Error opening directory:", err)
@@ -52,4 +53,5 @@ func main() {
 	close(fileInpQueue)                 //close channel once all files have been processed
 	wg.Wait()                           //wait for completion of all threads
 	fmt.Println("All workers stopped ") //exit
+	fmt.Println(time.Now())
 }

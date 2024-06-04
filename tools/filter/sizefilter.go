@@ -6,23 +6,21 @@ import (
 )
 
 type SizeFilter struct { //SizeFilter and its attributes
-	less_than    float64
-	greater_than float64
-	equal_to     float64
+	opr   string
+	value float64
 }
 
 func (filter SizeFilter) Apply(fileInfo os.FileInfo) bool { //Apply fucntion for size filter , check wheather a file passes the constraints
-	fmt.Println("size filter called")
-	fmt.Println("At this point data is ", filter, " file name ", fileInfo.Name())
-	if (filter.less_than != -1) && (filter.equal_to != -1) && (fileInfo.Size() <= int64(filter.less_than)) {
+	fmt.Println("size filter ", filter, " file name ", fileInfo.Name())
+	if (filter.opr == "<=") && (fileInfo.Size() <= int64(filter.value)) {
 		return true
-	} else if (filter.greater_than != -1) && (filter.equal_to != -1) && (fileInfo.Size() >= int64(filter.greater_than)) {
+	} else if (filter.opr == ">=") && (fileInfo.Size() >= int64(filter.value)) {
 		return true
-	} else if (filter.greater_than != -1) && (fileInfo.Size() > int64(filter.greater_than)) {
+	} else if (filter.opr == ">") && (fileInfo.Size() > int64(filter.value)) {
 		return true
-	} else if (filter.less_than != -1) && (fileInfo.Size() < int64(filter.less_than)) {
+	} else if (filter.opr == "<") && (fileInfo.Size() < int64(filter.value)) {
 		return true
-	} else if (filter.equal_to != -1) && (fileInfo.Size() == int64(filter.equal_to)) {
+	} else if (filter.opr == "=") && (fileInfo.Size() == int64(filter.value)) {
 		return true
 	}
 	return false
@@ -30,8 +28,7 @@ func (filter SizeFilter) Apply(fileInfo os.FileInfo) bool { //Apply fucntion for
 
 func newSizeFilter(args ...interface{}) Filter { // used for dynamic creation of sizeFilter using map
 	return SizeFilter{
-		less_than:    args[0].(float64),
-		greater_than: args[1].(float64),
-		equal_to:     args[2].(float64),
+		opr:   args[0].(string),
+		value: args[1].(float64),
 	}
 }
