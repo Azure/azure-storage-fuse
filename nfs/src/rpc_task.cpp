@@ -627,6 +627,8 @@ static void readdirplus_callback(
     auto res = (READDIRPLUS3res*)data;
     bool retry;
 
+    cookie3 last_cookie = 0;
+
     if (task->succeeded(rpc_status, RSTATUS(res), retry))
     {
         // Allocate buffer
@@ -647,8 +649,10 @@ static void readdirplus_callback(
 
         while (entry)
         {
+        last_cookie = entry->cookie;
             if ((int)entry->cookie <= (int)task->rpc_api.readdirplus_task.get_offset())
             {
+                AZLogDebug("skipping cookie {}", entry->cookie);
                 /*
                  * Skip entries until the offset
                  * TODO: See if we need this. Can't we control this thorugh the cookie?
@@ -703,6 +707,7 @@ static void readdirplus_callback(
              */
             if (entsize > rem)
             {
+                AZLogDebug("No isze in buf, returning");
                 break;
             }
 
@@ -715,6 +720,8 @@ static void readdirplus_callback(
             // Fetch the next entry.
             entry = entry->nextentry;
         }
+
+        AZLogDebug("Last cookie {}", last_cookie);
 
         fuse_reply_buf(task->get_req(),
                        buf1,
@@ -744,6 +751,8 @@ static void readdir_callback(
     auto res = (READDIR3res*)data;
     bool retry;
 
+    cookie3 last_cookie = 0;
+
     if (task->succeeded(rpc_status, RSTATUS(res), retry))
     {
         int num_entries_returned_in_this_iter = 0;
@@ -762,8 +771,13 @@ static void readdir_callback(
 
         struct entry3* entry = res->READDIR3res_u.resok.reply.entries;
 
+        struct stat st;
+        ::memset(&st, 0, sizeof(st));
+
         while (entry)
         {
+            last_cookie = entry->cookie;
+
             if ((int)entry->cookie <= (int)task->rpc_api.readdir_task.get_offset())
             {
                 /*
@@ -771,6 +785,7 @@ static void readdir_callback(
                  * TODO: See if we need this. Can't we control this thorugh the cookie?
                  */
                 entry = entry->nextentry;
+                AZLogDebug("skipping cookie {}", entry->cookie);
                 continue;
             }
 
@@ -783,7 +798,7 @@ static void readdir_callback(
                                                current_buf,
                                                rem, /* size left in the buffer */
                                                entry->name,
-                                               nullptr,
+                                               &st,
                                                entry->cookie);
 
             /*
@@ -802,6 +817,7 @@ static void readdir_callback(
             rem -= entsize;
             entry = entry->nextentry;
         }
+        AZLogDebug("Last cookie {}",last_cookie );
 
         fuse_reply_buf(task->get_req(),
                        buf1,

@@ -277,6 +277,7 @@ public:
 
     void set_cookieverf(const cookieverf3* cokieverf)
     {
+    if (cokieverf != nullptr)
         ::memcpy(&cookieverf, cokieverf, sizeof(cookieverf));
     }
 
@@ -356,6 +357,8 @@ public:
 
     void set_cookieverf(const cookieverf3* cokieverf)
     {
+    if (cokieverf != nullptr)
+
         ::memcpy(&cookieverf, cokieverf, sizeof(cookieverf));
     }
 
