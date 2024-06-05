@@ -40,7 +40,7 @@ bool nfs_client::init()
     //AZLogInfo("Obtained root fh is {}", root_fh->get_fh());
 
     // Initialize the RPC task list.
-    rpc_task_helper = rpc_task_helper::get_instance();
+    rpc_task_helper = rpc_task_helper::get_instance(this);
 
     return true;
 
