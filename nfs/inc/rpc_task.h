@@ -264,11 +264,6 @@ struct rpc_task
      */
     fuse_req *req;
 
-    // Max number of times the NFS APIs can be retried.
-    static int max_errno_retries;
-
-    int num_of_times_retried;
-
     // This is the index of the object in the rpc_task_list vector.
     const int index;
 
@@ -283,7 +278,6 @@ public:
     rpc_task(struct nfs_client *_client, int _index) :
         client(_client),
         req(nullptr),
-        num_of_times_retried(0),
         index(_index)
     {
     }
@@ -359,16 +353,6 @@ public:
         return optype;
     }
 
-    static void setmax_errno_retries(int max_retries)
-    {
-        max_errno_retries = max_retries;
-    }
-
-    static int get_max_errno_retries()
-    {
-        return max_errno_retries;
-    }
-
     struct nfs_context *get_nfs_context() const;
 
     struct rpc_context *get_rpc_ctx() const
@@ -426,56 +410,13 @@ public:
     /*
      *
      * Check RPC completion for success.
-     *
-     * On success, true is returned.
-     * On failure, false is returned and \p retry is set to true if the error is retryable else set to false.
+     * Returns true if rpc_task succeeded execution at the server, else
+     * returns false.
+     * Note that an rpc_task can fail with either an RPC or NFS error.
      */
-    bool succeeded(
-        int rpc_status,
-        int nfs_status,
-        bool& retry,
-        bool idempotent = true)
+    bool succeeded(int rpc_status, int nfs_status)
     {
-        retry = false;
-
-        if (rpc_status != RPC_STATUS_SUCCESS && (num_of_times_retried < get_max_errno_retries()))
-        {
-            retry = true;
-            return false;
-        }
-
-        if (nfs_status != NFS3_OK)
-        {
-            if (idempotent && (num_of_times_retried < get_max_errno_retries()) && is_retryable_error(nfs_status))
-            {
-                num_of_times_retried++;
-                retry = true;
-                return false;
-            }
-
-            return false;
-        }
-
-        return true; // success.
-    }
-
-    bool is_retry() const
-    {
-        return num_of_times_retried > 0;
-    }
-
-    bool is_retryable_error(int nfs_status)
-    {
-        switch (nfs_status)
-        {
-        case NFS3ERR_IO:
-        case NFS3ERR_SERVERFAULT:
-        case NFS3ERR_ROFS:
-        case NFS3ERR_PERM:
-            return true;
-        default:
-            return false;
-        }
+        return (rpc_status == RPC_STATUS_SUCCESS && nfs_status == NFS3_OK);
     }
 
     struct fuse_req *get_req() const
@@ -538,8 +479,8 @@ public:
 
         assert(task->client != nullptr);
         assert(task->index == free_index);
+
         task->req = nullptr;
-        task->num_of_times_retried = 0;
 
         return task;
     }

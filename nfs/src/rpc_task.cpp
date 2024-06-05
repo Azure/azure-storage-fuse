@@ -3,8 +3,6 @@
 
 #define RSTATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
 
-int rpc_task::max_errno_retries(3);
-
 void rpc_task::init_lookup(fuse_req* request,
                            const char* name,
                            fuse_ino_t parent_ino)
@@ -71,9 +69,8 @@ static void getattr_callback(
 {
     auto task = (rpc_task*)private_data;
     auto res = (GETATTR3res*)data;
-    bool retry;
 
-    if (task->succeeded(rpc_status, RSTATUS(res), retry))
+    if (task->succeeded(rpc_status, RSTATUS(res)))
     {
         struct stat st;
         task->get_client()->stat_from_fattr3(
@@ -81,10 +78,6 @@ static void getattr_callback(
 
         // TODO: Set the Attr timeout to a better value.
         task->reply_attr(&st, 60/*getAttrTimeout()*/);
-    }
-    else if (retry)
-    {
-        task->run_getattr();
     }
     else
     {
@@ -97,10 +90,10 @@ static void lookup_callback(
     struct rpc_context* /* rpc */,
     int rpc_status,
     void* data,
-    void* private_data) {
+    void* private_data)
+{
     auto task = (rpc_task*)private_data;
     auto res = (LOOKUP3res*)data;
-    bool retry;
 
     if (rpc_status == RPC_STATUS_SUCCESS && RSTATUS(res) == NFS3ERR_NOENT)
     {
@@ -122,7 +115,7 @@ static void lookup_callback(
             &dummyAttr,
             nullptr);
     }
-    else if(task->succeeded(rpc_status, RSTATUS(res), retry))
+    else if(task->succeeded(rpc_status, RSTATUS(res)))
     {
         assert(res->LOOKUP3res_u.resok.obj_attributes.attributes_follow);
 
@@ -131,10 +124,6 @@ static void lookup_callback(
             &res->LOOKUP3res_u.resok.object,
             &res->LOOKUP3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
-    }
-    else if(retry)
-    {
-        task->run_lookup();
     }
     else
     {
@@ -151,9 +140,8 @@ static void createfile_callback(
 {
     auto task = (rpc_task*)private_data;
     auto res = (CREATE3res*)data;
-    bool retry;
 
-    if (task->succeeded(rpc_status, RSTATUS(res), retry, false))
+    if (task->succeeded(rpc_status, RSTATUS(res)))
     {
         assert(
             res->CREATE3res_u.resok.obj.handle_follows &&
@@ -164,10 +152,6 @@ static void createfile_callback(
             &res->CREATE3res_u.resok.obj.post_op_fh3_u.handle,
             &res->CREATE3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             task->rpc_api.create_task.get_file());
-    }
-    else if (retry)
-    {
-        task->run_create_file();
     }
     else
     {
@@ -184,9 +168,8 @@ static void setattr_callback(
 {
     auto task = (rpc_task*)private_data;
     auto res = (SETATTR3res*)data;
-    bool retry;
 
-    if (task->succeeded(rpc_status, RSTATUS(res), retry))
+    if (task->succeeded(rpc_status, RSTATUS(res)))
     {
         assert(res->SETATTR3res_u.resok.obj_wcc.after.attributes_follow);
 
@@ -194,10 +177,6 @@ static void setattr_callback(
         task->get_client()->stat_from_fattr3(
             &st, &res->SETATTR3res_u.resok.obj_wcc.after.post_op_attr_u.attributes);
         task->reply_attr(&st, 60 /* TODO: Set reasonable value nfs_client::getAttrTimeout() */);
-    }
-    else if (retry)
-    {
-        task->run_setattr();
     }
     else
     {
@@ -210,12 +189,12 @@ void mkdir_callback(
     struct rpc_context* /* rpc */,
     int rpc_status,
     void* data,
-    void* private_data) {
+    void* private_data)
+{
     auto task = (rpc_task*)private_data;
     auto res = (MKDIR3res*)data;
-    bool retry;
 
-    if (task->succeeded(rpc_status, RSTATUS(res), retry, false))
+    if (task->succeeded(rpc_status, RSTATUS(res)))
     {
         assert(
             res->MKDIR3res_u.resok.obj.handle_follows &&
@@ -226,10 +205,6 @@ void mkdir_callback(
             &res->MKDIR3res_u.resok.obj.post_op_fh3_u.handle,
             &res->MKDIR3res_u.resok.obj_attributes.post_op_attr_u.attributes,
             nullptr);
-    }
-    else if (retry)
-    {
-        task->run_mkdir();
     }
     else
     {
