@@ -9,6 +9,10 @@ import (
 	"unicode"
 )
 
+type opdata struct {
+	filenmae string
+	ispassed bool
+}
 type Filter interface { //Interface having child as different type of filters like size, format, regex etc
 	Apply(fileInfo os.FileInfo) bool //Apply function defined for each filter, it takes file as input and returns wheather it passes all filters or not
 }
@@ -114,12 +118,15 @@ func checkFileWithFilters(fileInf os.FileInfo, filterArr [][]Filter) bool { // i
 	return response // return response, it will be true if any combination returns a true
 }
 
-func ChkFile(id int, fileInpQueue <-chan os.FileInfo, wg *sync.WaitGroup, filterArr [][]Filter) { // this is thread pool , where 16 tgreads are running
+func ChkFile(id int, fileInpQueue <-chan os.FileInfo, wg *sync.WaitGroup, filterArr [][]Filter, outputChan chan<- opdata) { // this is thread pool , where 16 tgreads are running
 	defer wg.Done()
 	for fileInf := range fileInpQueue {
 		Passed := checkFileWithFilters(fileInf, filterArr)
 		if Passed { //if a file passes add it to result
 			fmt.Println("Final Output: ", fileInf.Name())
+			outputChan <- opdata{filenmae: fileInf.Name(), ispassed: true}
+		} else {
+			outputChan <- opdata{filenmae: fileInf.Name(), ispassed: false}
 		}
 		// fmt.Println("worker ", id, " verifing file ", fileInf.Name())
 	}
