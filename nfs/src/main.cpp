@@ -37,63 +37,72 @@ static const struct fuse_opt aznfsc_opts[] =
 /*
  * This function parses the contents of the yaml config file denoted by path config_file
  * into the aznfsc_cfg structure.
+ *
  * TODO: Validate the values and make sure they are within the range expected.
  */
-bool parse_config_file(const char* config_file)
+bool parse_config_yaml(const char *config_file)
 {
-    if (config_file == nullptr)
-    {
+    if (config_file == nullptr) {
         return false;
     }
 
+    AZLogDebug ("Parsing config yaml {}", config_file);
+
+    /*
+     * We parse the config yaml and set *only* those options which are not yet
+     * set by cmdline. Thus cmdline options are given higher priority than the
+     * corresponding option in the config yaml.
+     */
     try {
         YAML::Node config = YAML::LoadFile(config_file);
 
-        if (aznfsc_cfg.account == nullptr && config["account"])
-        {
-            aznfsc_cfg.account = strdup(config["account"].as<std::string>().c_str());
+        if ((aznfsc_cfg.account == nullptr) && config["account"]) {
+            aznfsc_cfg.account = ::strdup(config["account"].as<std::string>().c_str());
         }
-        if (aznfsc_cfg.container == nullptr && config["container"])
-        {
-            aznfsc_cfg.container = strdup(config["container"].as<std::string>().c_str());
+
+        if ((aznfsc_cfg.container == nullptr) && config["container"]) {
+            aznfsc_cfg.container = ::strdup(config["container"].as<std::string>().c_str());
         }
-        if (config["cloud_suffix"])
-        {
-            aznfsc_cfg.cloud_suffix = strdup(config["cloud_suffix"].as<std::string>().c_str());
+
+        if ((aznfsc_cfg.cloud_suffix == nullptr) && config["cloud_suffix"]) {
+            aznfsc_cfg.cloud_suffix = ::strdup(config["cloud_suffix"].as<std::string>().c_str());
         }
-        if (config["port"])
-        {
-            aznfsc_cfg.port = config["port"].as<uint16_t>();
+
+        if ((aznfsc_cfg.port == -1) && config["port"]) {
+            aznfsc_cfg.port = config["port"].as<int>();
         }
-        if (config["nconnect"])
-        {
+
+        if ((aznfsc_cfg.nconnect == -1) && config["nconnect"]) {
             aznfsc_cfg.nconnect = config["nconnect"].as<int>();
         }
-        if (config["timeo"])
-        {
-            aznfsc_cfg.timeo = config["timeo"].as<uint64_t>();
+
+        if ((aznfsc_cfg.timeo == -1) && config["timeo"]) {
+            aznfsc_cfg.timeo = config["timeo"].as<int>();
         }
-        if (config["rsize"])
-        {
-            aznfsc_cfg.rsize = config["rsize"].as<size_t>();
+
+        if ((aznfsc_cfg.rsize == -1) && config["rsize"]) {
+            aznfsc_cfg.rsize = config["rsize"].as<int>();
         }
-        if (config["wsize"])
-        {
-            aznfsc_cfg.wsize = config["wsize"].as<size_t>();
+
+        if ((aznfsc_cfg.wsize == -1) && config["wsize"]) {
+            aznfsc_cfg.wsize = config["wsize"].as<int>();
         }
-        if (config["retrans"])
-        {
+
+        if ((aznfsc_cfg.retrans == -1) && config["retrans"]) {
             aznfsc_cfg.retrans = config["retrans"].as<int>();
         }
-        if (config["readdir_maxcount"])
-        {
-            aznfsc_cfg.readdir_maxcount = config["readdir_maxcount"].as<uint32_t>();
+
+        if ((aznfsc_cfg.readdir_maxcount == -1) && config["readdir_maxcount"]) {
+            aznfsc_cfg.readdir_maxcount = config["readdir_maxcount"].as<int>();
         }
     } catch (const YAML::BadFile& e) {
-        AZLogError("Error loading file: {}, error: {}", config_file, e.what());
+        AZLogError("Error loading confile file {}: {}", config_file, e.what());
         return false;
     } catch (const YAML::Exception& e) {
-        AZLogError("Error parsing the config file: {}, error: {}", config_file, e.what());
+        AZLogError("Error parsing config file {}: {}", config_file, e.what());
+        return false;
+    } catch (...) {
+        AZLogError("Unknown error parsing config file {}", config_file);
         return false;
     }
 
@@ -691,28 +700,6 @@ int main(int argc, char *argv[])
               AZNFSCLIENT_VERSION_PATCH);
 
     struct fuse_args args = FUSE_ARGS_INIT(argc, argv);
-
-    /*
-     * First parse the options from the config file if that is present.
-     * We should do this before we parse the command line options since the latter should take higher priority.
-     */
-    char* config_file = nullptr;
-    for (int idx = 0; idx < argc; idx++)
-    {
-        std::string arg = argv[idx];
-        if (arg.find("--config-file=") == 0)
-        {
-            config_file = strdup(arg.substr(14).c_str());
-        }
-    }
-
-    if (config_file != nullptr)
-    {
-        AZLogInfo ("Parsing the config file {}", config_file);
-        parse_config_file(config_file);
-        free(config_file);
-    }
-
     struct fuse_session *se;
     struct fuse_cmdline_opts opts;
     struct fuse_loop_config loop_config;
@@ -721,12 +708,37 @@ int main(int argc, char *argv[])
     /* Don't mask creation mode, kernel already did that */
     umask(0);
 
-    /* accept options like -o writeback_cache */
+    // Parse fuse_conn_info_opts options like -o writeback_cache.
     fuse_conn_info_opts_ptr = fuse_parse_conn_info_opts(&args);
 
+    // Parse aznfsclient specific options.
     if (fuse_opt_parse(&args, &aznfsc_cfg, aznfsc_opts, NULL) == -1) {
         return 1;
     }
+
+    // Parse config yaml if --config-yaml option provided.
+    if (aznfsc_cfg.config_yaml != nullptr) {
+        if (!parse_config_yaml(aznfsc_cfg.config_yaml)) {
+            return 1;
+        }
+    }
+
+    /*
+     * account and container are mandatory parameters which do not have a
+     * default value, so ensure they are set before proceeding further.
+     */
+    if (aznfsc_cfg.account == nullptr) {
+        AZLogError("Account name must be set either from cmdline or config yaml!");
+        return 1;
+    }
+
+    if (aznfsc_cfg.container == nullptr) {
+        AZLogError("Container name must be set either from cmdline or config yaml!");
+        return 1;
+    }
+
+    // Set default values for config variables not set using the above.
+    aznfsc_cfg.set_defaults();
 
     if (fuse_parse_cmdline(&args, &opts) != 0) {
         return 1;
@@ -738,8 +750,8 @@ int main(int argc, char *argv[])
         printf("           --account=<storage account>\n");
         printf("           --container=<container>\n");
         printf("           --cloud-suffix=<cloud suffix>\n");
-        printf("           --por=<port for connecting to Blob NFS>\n");
-        printf("Example :   ./aznfsclient --config-file=./config.yaml /mnt/tmp\n\n");
+        printf("           --port=<port for connecting to Blob NFS>\n");
+        printf("Example:   ./aznfsclient --config-file=./config.yaml /mnt/tmp\n\n");
         fuse_cmdline_help();
         fuse_lowlevel_help();
         ret = 0;
@@ -751,34 +763,15 @@ int main(int argc, char *argv[])
         goto err_out1;
     }
 
-    {
-    	aznfsc_cfg.server = std::string(aznfsc_cfg.account) + "." + std::string(aznfsc_cfg.cloud_suffix);
-    	aznfsc_cfg.export_path = "/" + std::string(aznfsc_cfg.account) + "/" + std::string(aznfsc_cfg.container);
- #if 0
-        std::string account = aznfsc_cfg.account;
-        std::string container = aznfsc_cfg.container;
-        std::string suffix = aznfsc_cfg.cloud_suffix;
+    // If -d or "-o debug" cmdline option was passed, reset log level to debug.
+    if (opts.debug) {
+        spdlog::set_level(spdlog::level::debug);
+    }
 
-        // TODO: See if we need a seperate mount_options structure.
-        // 	 Can we just pass the aznfsc_cfg structure if we move its defination to a .h file?
-        //
-        struct mount_options mntOpt;
-        mntOpt.server = account + "." + suffix;
-        mntOpt.export_path = "/" + account + "/" + container;
-        mntOpt.set_nfs_port(aznfsc_cfg.port);
-        mntOpt.num_connections = aznfsc_cfg.nconnect;
-        mntOpt.nfs_version = aznfsc_cfg.version;
-        mntOpt.set_read_max(aznfsc_cfg.rsize);
-        mntOpt.set_write_max(aznfsc_cfg.wsize);
-        // TODO: We are still not using the aznfsc_cfg.max_num_of_retries and timeout, handle them in appropriate place.
-
-#endif
-        // init the nfs client to use it.
-        if (!nfs_client::get_instance().init())
-        {
-            AZLogError("Failed to init the NFS client.");
-            goto err_out4;
-        }
+    // Initialize nfs_client singleton.
+    if (!nfs_client::get_instance().init()) {
+        AZLogError("Failed to init the NFS client");
+        goto err_out4;
     }
 
     se = fuse_session_new(&args, &aznfsc_ll_ops, sizeof(aznfsc_ll_ops), &nfs_client::get_instance());

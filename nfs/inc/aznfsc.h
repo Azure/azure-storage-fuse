@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <limits.h>
 #include <assert.h>
 
 #define FUSE_USE_VERSION 35
@@ -80,32 +81,32 @@ typedef struct aznfsc_cfg
      * Note that Blob NFS uses the same port for Mount and NFS, hence we have
      * just one config.
      */
-    uint16_t port = 0;
+    int port = -1;
 
     // Number of connections to be established to the server.
-    uint16_t nconnect = 1;
+    int nconnect = -1;
 
     // Maximum size of read request.
-    uint32_t rsize = 1048576;
+    int rsize = -1;
 
     // Maximum size of write request.
-    uint32_t wsize = 1048576;
+    int wsize = -1;
 
     /*
      * Number of times the request will be retransmitted to the server when no
      * response is received, before the "server not responding" message is
      * logged and further recovery is attempted.
      */
-    uint16_t retrans = 3;
+    int retrans = -1;
 
     /*
      * Time in deci-seconds we will wait for a response before retrying the
      * request.
      */
-    uint16_t timeo = 600;
+    int timeo = -1;
 
     // Maximum number of readdir entries that can be requested in a single call.
-    uint32_t readdir_maxcount = UINT32_MAX;
+    int readdir_maxcount = -1;
 
     /*
      * TODO:
@@ -125,14 +126,35 @@ typedef struct aznfsc_cfg
     std::string export_path;
 
     /**
-     * Default constructor.
-     * It's primarily there to assign default value for cloud_suffix.
-     * We need to allocate memory that can be free()d since fuse option
-     * parser will call free() before assigning fresh value.
+     * Set default values for options not yet assigned.
+     * This must be called after fuse_opt_parse() and parse_config_yaml()
+     * assign config values from command line and the config yaml file.
      */
-    aznfsc_cfg() :
-	    cloud_suffix(strdup("blob.core.windows.net"))
+    void set_defaults()
     {
+        if (port == -1)
+            port = 2048;
+        if (nconnect == -1)
+            nconnect = 1;
+        if (rsize == -1)
+            rsize = 1048576;
+        if (wsize == -1)
+            wsize = 1048576;
+        if (retrans == -1)
+            retrans = 3;
+        if (timeo == -1)
+            timeo = 600;
+        if (readdir_maxcount == -1)
+            readdir_maxcount = INT_MAX;
+        if (cloud_suffix == nullptr)
+            cloud_suffix = ::strdup("blob.core.windows.net");
+
+        assert(account != nullptr);
+        assert(container != nullptr);
+
+        // Set aggregates.
+        server = std::string(account) + "." + std::string(cloud_suffix);
+        export_path = "/" + std::string(account) + "/" + std::string(container);
     }
 } aznfsc_cfg_t;
 

@@ -8,11 +8,11 @@ void init_log()
      */
 
     /*
-     * Log debug and above.
-     *
-     * TODO: Set it based on build type.
+     * Log info and above by default.
+     * Later when we parse cmdline options, if -d or "-o debug" option
+     * is passed we set the log level to debug.
      */
-    spdlog::set_level(spdlog::level::debug);
+    spdlog::set_level(spdlog::level::info);
 
     AZLogDebug("Logger initialized");
 }
