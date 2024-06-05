@@ -5,36 +5,30 @@
 
 int rpc_task::max_errno_retries(3);
 
-void rpc_task::init_lookup(struct nfs_client* clt,
-                          fuse_req* request,
-                          const char* name,
-                          fuse_ino_t parent_ino)
+void rpc_task::init_lookup(fuse_req* request,
+                           const char* name,
+                           fuse_ino_t parent_ino)
 {
-    //client = clt;
     req = request;
     optype = FUSE_LOOKUP;
     rpc_api.lookup_task.set_file_name(name);
     rpc_api.lookup_task.set_parent_ino(parent_ino);
 }
 
-void rpc_task::init_getattr(struct nfs_client* clt,
-                           fuse_req* request,
-                           fuse_ino_t ino)
+void rpc_task::init_getattr(fuse_req* request,
+                            fuse_ino_t ino)
 {
-    //client = clt;
     req = request;
     optype = FUSE_GETATTR;
     rpc_api.getattr_task.set_ino(ino);
 }
 
-void rpc_task::init_create_file(struct nfs_client* clt,
-                               fuse_req* request,
-                               fuse_ino_t parent_ino,
-                               const char* name,
-                               mode_t mode,
-                               struct fuse_file_info* file)
+void rpc_task::init_create_file(fuse_req* request,
+                                fuse_ino_t parent_ino,
+                                const char* name,
+                                mode_t mode,
+                                struct fuse_file_info* file)
 {
-    //client = clt;
     req = request;
     optype = FUSE_CREATE;
     rpc_api.create_task.set_parent_ino(parent_ino);
@@ -43,13 +37,11 @@ void rpc_task::init_create_file(struct nfs_client* clt,
     rpc_api.create_task.set_fuse_file(file);
 }
 
-void rpc_task::init_mkdir(struct nfs_client* clt,
-                         fuse_req* request,
-                         fuse_ino_t parent_ino,
-                         const char* name,
-                         mode_t mode)
+void rpc_task::init_mkdir(fuse_req* request,
+                          fuse_ino_t parent_ino,
+                          const char* name,
+                          mode_t mode)
 {
-    //client = clt;
     req = request;
     optype = FUSE_MKDIR;
     rpc_api.mkdir_task.set_parent_ino(parent_ino);
@@ -58,19 +50,17 @@ void rpc_task::init_mkdir(struct nfs_client* clt,
 
 }
 
-void rpc_task::init_setattr(struct nfs_client* clt,
-                           fuse_req* request,
-                           fuse_ino_t ino,
-                           struct stat* attr,
-                           int toSet,
-                           struct fuse_file_info* file)
+void rpc_task::init_setattr(fuse_req* request,
+                            fuse_ino_t ino,
+                            struct stat* attr,
+                            int to_set,
+                            struct fuse_file_info* file)
 {
-    //client = clt;
     req = request;
     optype = FUSE_SETATTR;
     rpc_api.setattr_task.set_ino(ino);
     rpc_api.setattr_task.set_fuse_file(file);
-    rpc_api.setattr_task.set_attribute_and_mask(attr, toSet);
+    rpc_api.setattr_task.set_attribute_and_mask(attr, to_set);
 }
 
 static void getattr_callback(

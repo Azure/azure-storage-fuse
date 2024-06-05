@@ -302,50 +302,45 @@ public:
     /*
      * init/run methods for the LOOKUP RPC.
      */
-    void init_lookup(struct nfs_client *clt,
-                    fuse_req *request,
-                    const char *name,
-                    fuse_ino_t parent_ino);
+    void init_lookup(fuse_req *request,
+                     const char *name,
+                     fuse_ino_t parent_ino);
     void run_lookup();
 
     /*
      * init/run methods for the GETATTR RPC.
      */
-    void init_getattr(struct nfs_client *clt,
-                     fuse_req *request,
-                     fuse_ino_t ino);
+    void init_getattr(fuse_req *request,
+                      fuse_ino_t ino);
     void run_getattr();
 
     /*
      * init/run methods for the SETATTR RPC.
      */
-    void init_setattr(struct nfs_client *clt,
-                     fuse_req *request,
-                     fuse_ino_t ino,
-                     struct stat *attr,
-                     int toSet,
-                     struct fuse_file_info *file);
+    void init_setattr(fuse_req *request,
+                      fuse_ino_t ino,
+                      struct stat *attr,
+                      int to_set,
+                      struct fuse_file_info *file);
     void run_setattr();
 
     /*
      * init/run methods for the CREATE RPC.
      */
-    void init_create_file(struct nfs_client *clt,
-                         fuse_req *request,
-                         fuse_ino_t parent_ino,
-                         const char *name,
-                         mode_t mode,
-                         struct fuse_file_info *file);
+    void init_create_file(fuse_req *request,
+                          fuse_ino_t parent_ino,
+                          const char *name,
+                          mode_t mode,
+                          struct fuse_file_info *file);
     void run_create_file();
 
     /*
      * init/run methods for the MKDIR RPC.
      */
-    void init_mkdir(struct nfs_client *clt,
-                   fuse_req *request,
-                   fuse_ino_t parent_ino,
-                   const char *name,
-                   mode_t mode);
+    void init_mkdir(fuse_req *request,
+                    fuse_ino_t parent_ino,
+                    const char *name,
+                    mode_t mode);
     void run_mkdir();
 
 
