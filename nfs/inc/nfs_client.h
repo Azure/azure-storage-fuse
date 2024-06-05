@@ -26,8 +26,11 @@ extern "C" {
  * calling the get_instance() static method.
  * The returned instance can then be used to call the APIs like getattr, write etc.
  */
-class nfs_client
+#define NFS_CLIENT_MAGIC *((const uint32_t *)"NFSC")
+
+struct nfs_client
 {
+    const uint32_t magic = NFS_CLIENT_MAGIC;
 private:
     /*
      * This is the RPC transport connected to the NFS server.
@@ -176,5 +179,21 @@ public:
         const struct fattr3* attr,
         const struct fuse_file_info* file);
 };
+
+/**
+ * We store the nfs_client pointer inside the fuse req private pointer.
+ * This allows us to retrieve it fast.
+ */
+static inline
+struct nfs_client *get_nfs_client_from_fuse_req(const fuse_req_t req)
+{
+    struct nfs_client *const client =
+        reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+
+    // Dangerous cast, make sure we got a correct pointer.
+    assert(client->magic == NFS_CLIENT_MAGIC);
+
+    return client;
+}
 
 #endif /* __NFS_CLIENT_H__ */

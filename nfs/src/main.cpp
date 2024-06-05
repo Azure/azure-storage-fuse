@@ -146,7 +146,7 @@ static void aznfsc_ll_lookup(fuse_req_t req,
 {
     AZLogInfo("aznfsc_ll_lookup file: {}", name);
 
-    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->lookup(req, parent_ino, name);
 }
 
@@ -156,7 +156,7 @@ static void aznfsc_ll_forget(fuse_req_t req,
 {
     AZLogInfo("aznfsc_ll_forget");
 
-    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
 
     // Delete the nfs inode that was allocated.
     delete client->get_nfs_inode_from_ino(ino);
@@ -168,7 +168,7 @@ static void aznfsc_ll_getattr(fuse_req_t req,
 {
     AZLogInfo("Getattr called");
 
-    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->getattr(req, ino, fi);
 }
 
@@ -180,7 +180,7 @@ static void aznfsc_ll_setattr(fuse_req_t req,
 {
     AZLogInfo("Setattr called");
 
-    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->setattr(req, ino, attr, to_set, fi);
 }
 
@@ -212,7 +212,7 @@ static void aznfsc_ll_mkdir(fuse_req_t req,
 {
     AZLogInfo("Mkdir called, name: {}", name);
 
-    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->mkdir(req, parent_ino, name, mode);
 }
 
@@ -452,7 +452,7 @@ static void aznfsc_ll_create(fuse_req_t req,
 {
     AZLogInfo("Creating file: {}", name);
 
-    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->create(req, parent_ino, name, mode, fi);
 }
 
