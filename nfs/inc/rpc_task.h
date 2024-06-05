@@ -525,7 +525,7 @@ public:
 
     // This returns a free rpc task instance from the pool of rpc tasks.
     // This call will block till a free rpc task is available.
-    void get_rpc_task_instance(struct rpc_task** task)
+    struct rpc_task *alloc_rpc_task()
     {
         int free_index = 0;
         const bool got_free_index = get_free_task_index(free_index);
@@ -536,7 +536,7 @@ public:
 
         assert(free_index < MAX_OUTSTANDING_RPC_TASKS);
         rpc_task_list[free_index].index = free_index;
-        *task = &rpc_task_list[free_index];
+        return &rpc_task_list[free_index];
     }
 
     bool get_free_task_index(int& free_index)
@@ -575,7 +575,7 @@ public:
         cv.notify_one();
     }
 
-    void free_rpc_task_instance(struct rpc_task* task)
+    void free_rpc_task(struct rpc_task *task)
     {
         int index_to_free = task->get_index();
         release_free_index(index_to_free);

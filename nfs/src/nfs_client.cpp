@@ -55,10 +55,7 @@ struct nfs_context* nfs_client::get_nfs_context() const
 
 void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
 {
-    struct rpc_task* tsk = nullptr;
-    rpc_task_helper->get_rpc_task_instance(&tsk);
-
-    assert (tsk != nullptr);
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
     tsk->set_lookup(this, req, name, parent_ino);
     tsk->run_lookup();
@@ -69,10 +66,7 @@ void nfs_client::getattr(
     fuse_ino_t inode,
     struct fuse_file_info* file)
 {
-    struct rpc_task* tsk = nullptr;
-    rpc_task_helper->get_rpc_task_instance(&tsk);
-
-    assert (tsk != nullptr);
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
     tsk->set_getattr(this, req, inode);
     tsk->run_getattr();
@@ -85,10 +79,7 @@ void nfs_client::create(
     mode_t mode,
     struct fuse_file_info* file)
 {
-    struct rpc_task* tsk = nullptr;
-    rpc_task_helper->get_rpc_task_instance(&tsk);
-
-    assert (tsk != nullptr);
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
     tsk->set_create_file(this, req, parent_ino, name, mode, file);
     tsk->run_create_file();
@@ -100,10 +91,7 @@ void nfs_client::mkdir(
     const char* name,
     mode_t mode)
 {
-    struct rpc_task* tsk = nullptr;
-    rpc_task_helper->get_rpc_task_instance(&tsk);
-
-    assert (tsk != nullptr);
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
     tsk->set_mkdir(this, req, parent_ino, name, mode);
     tsk->run_mkdir();
@@ -116,10 +104,7 @@ void nfs_client::setattr(
     int toSet,
     struct fuse_file_info* file)
 {
-    struct rpc_task* tsk = nullptr;
-    rpc_task_helper->get_rpc_task_instance(&tsk);
-
-    assert (tsk != nullptr);
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
     tsk->set_setattr(this, req, inode, attr, toSet, file);
     tsk->run_setattr();
