@@ -96,7 +96,7 @@ bool parse_config_yaml(const char *config_file)
             aznfsc_cfg.readdir_maxcount = config["readdir_maxcount"].as<int>();
         }
     } catch (const YAML::BadFile& e) {
-        AZLogError("Error loading confile file {}: {}", config_file, e.what());
+        AZLogError("Error loading config file {}: {}", config_file, e.what());
         return false;
     } catch (const YAML::Exception& e) {
         AZLogError("Error parsing config file {}: {}", config_file, e.what());
