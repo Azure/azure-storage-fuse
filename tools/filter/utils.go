@@ -4,11 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
-	"time"
 	"unicode"
 )
 
@@ -56,23 +53,28 @@ func ParseInp(str string) ([][]Filter, bool) { //this function parses the input 
 			thisFilter := getFilterName(trimmedStr) //retrieve name of filter
 			// TODO::filter: error checks for invalid input like size1234, size>=, format pdf
 			if strings.ToLower(thisFilter) == "size" {
-				singleFilter = strings.Map(StringConv, singleFilter)
-				value := singleFilter[len(thisFilter)+1:]
-				floatVal, err := strconv.ParseFloat(value, 64)
-				if err != nil {
-					if singleFilter[len(thisFilter)+1] != '=' {
-						return filterArr, false
-					} else {
-						value := singleFilter[len(thisFilter)+2:]
-						floatVal, err = strconv.ParseFloat(value, 64)
-						if err != nil {
-							return filterArr, false
-						}
-						individualFilter = append(individualFilter, filterMap[thisFilter](singleFilter[len(thisFilter):len(thisFilter)+2], floatVal))
-					}
-				} else {
-					individualFilter = append(individualFilter, filterMap[thisFilter](singleFilter[len(thisFilter):len(thisFilter)+1], floatVal))
+				// singleFilter = strings.Map(StringConv, singleFilter)
+				// value := singleFilter[len(thisFilter)+1:]
+				// floatVal, err := strconv.ParseFloat(value, 64)
+				obj, isvalid := giveSizeFilterObj(singleFilter, thisFilter, filterMap)
+				if !isvalid {
+					return filterArr, false
 				}
+				individualFilter = append(individualFilter, obj)
+				// if err != nil {
+				// 	if singleFilter[len(thisFilter)+1] != '=' {
+				// 		return filterArr, false
+				// 	} else {
+				// 		value := singleFilter[len(thisFilter)+2:]
+				// 		floatVal, err = strconv.ParseFloat(value, 64)
+				// 		if err != nil {
+				// 			return filterArr, false
+				// 		}
+				// 		individualFilter = append(individualFilter, filterMap[thisFilter](singleFilter[len(thisFilter):len(thisFilter)+2], floatVal))
+				// 	}
+				// } else {
+				// 	individualFilter = append(individualFilter, filterMap[thisFilter](singleFilter[len(thisFilter):len(thisFilter)+1], floatVal))
+				// }
 				// if singleFilter[len(thisFilter):len(thisFilter)+2] == "<=" {
 				// 	individualFilter = append(individualFilter, filterMap[thisFilter](floatVal, -1.0, floatVal))
 				// } else if singleFilter[len(thisFilter):len(thisFilter)+2] == ">=" {
@@ -87,52 +89,67 @@ func ParseInp(str string) ([][]Filter, bool) { //this function parses the input 
 				// 	return filterArr, false
 				// }
 			} else if strings.ToLower(thisFilter) == "format" {
-				singleFilter = strings.Map(StringConv, singleFilter)
-				if (len(singleFilter) <= len(thisFilter)+1) || (singleFilter[len(thisFilter)] != '=') || (!(singleFilter[len(thisFilter)+1] >= 'a' && singleFilter[len(thisFilter)+1] <= 'z')) {
+				obj, isvalid := giveFormatFilterObj(singleFilter, thisFilter, filterMap)
+				if !isvalid {
 					return filterArr, false
 				}
-				value := singleFilter[len(thisFilter)+1:]
-				individualFilter = append(individualFilter, filterMap[thisFilter](value))
+				individualFilter = append(individualFilter, obj)
+				// singleFilter = strings.Map(StringConv, singleFilter)
+				// if (len(singleFilter) <= len(thisFilter)+1) || (singleFilter[len(thisFilter)] != '=') || (!(singleFilter[len(thisFilter)+1] >= 'a' && singleFilter[len(thisFilter)+1] <= 'z')) {
+				// 	return filterArr, false
+				// }
+				// value := singleFilter[len(thisFilter)+1:]
+				// individualFilter = append(individualFilter, filterMap[thisFilter](value))
 			} else if strings.ToLower(thisFilter) == "regex" {
-				singleFilter = strings.Map(StringConv, singleFilter)
-				if (len(singleFilter) <= len(thisFilter)+1) || (singleFilter[len(thisFilter)] != '=') {
+				obj, isvalid := giveRegexFilterObj(singleFilter, thisFilter, filterMap)
+				if !isvalid {
 					return filterArr, false
 				}
-				value := singleFilter[len(thisFilter)+1:]
-				pattern, err := regexp.Compile(value)
-				if err != nil {
-					return filterArr, false
-				}
-				individualFilter = append(individualFilter, filterMap[thisFilter](pattern))
+				individualFilter = append(individualFilter, obj)
+				// singleFilter = strings.Map(StringConv, singleFilter)
+				// if (len(singleFilter) <= len(thisFilter)+1) || (singleFilter[len(thisFilter)] != '=') {
+				// 	return filterArr, false
+				// }
+				// value := singleFilter[len(thisFilter)+1:]
+				// pattern, err := regexp.Compile(value)
+				// if err != nil {
+				// 	return filterArr, false
+				// }
+				// individualFilter = append(individualFilter, filterMap[thisFilter](pattern))
 			} else if strings.ToLower(thisFilter) == "modtime" {
-				if strings.Contains(singleFilter, "<=") {
-					splitedParts := strings.Split(singleFilter, "<=")
-					timeRFC1123str := strings.TrimSpace(splitedParts[1])
-					timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-					individualFilter = append(individualFilter, filterMap[thisFilter]("<=", timeRFC1123))
-				} else if strings.Contains(singleFilter, ">=") {
-					splitedParts := strings.Split(singleFilter, ">=")
-					timeRFC1123str := strings.TrimSpace(splitedParts[1])
-					timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-					individualFilter = append(individualFilter, filterMap[thisFilter](">=", timeRFC1123))
-				} else if strings.Contains(singleFilter, "<") {
-					splitedParts := strings.Split(singleFilter, "<")
-					timeRFC1123str := strings.TrimSpace(splitedParts[1])
-					timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-					individualFilter = append(individualFilter, filterMap[thisFilter]("<", timeRFC1123))
-				} else if strings.Contains(singleFilter, ">") {
-					splitedParts := strings.Split(singleFilter, ">")
-					timeRFC1123str := strings.TrimSpace(splitedParts[1])
-					timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-					individualFilter = append(individualFilter, filterMap[thisFilter](">", timeRFC1123))
-				} else if strings.Contains(singleFilter, "=") {
-					splitedParts := strings.Split(singleFilter, "=")
-					timeRFC1123str := strings.TrimSpace(splitedParts[1])
-					timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-					individualFilter = append(individualFilter, filterMap[thisFilter]("=", timeRFC1123))
-				} else {
+				obj, isvalid := giveModtimeFilterObj(singleFilter, thisFilter, filterMap)
+				if !isvalid {
 					return filterArr, false
 				}
+				individualFilter = append(individualFilter, obj)
+				// if strings.Contains(singleFilter, "<=") {
+				// 	splitedParts := strings.Split(singleFilter, "<=")
+				// 	timeRFC1123str := strings.TrimSpace(splitedParts[1])
+				// 	timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+				// 	individualFilter = append(individualFilter, filterMap[thisFilter]("<=", timeRFC1123))
+				// } else if strings.Contains(singleFilter, ">=") {
+				// 	splitedParts := strings.Split(singleFilter, ">=")
+				// 	timeRFC1123str := strings.TrimSpace(splitedParts[1])
+				// 	timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+				// 	individualFilter = append(individualFilter, filterMap[thisFilter](">=", timeRFC1123))
+				// } else if strings.Contains(singleFilter, "<") {
+				// 	splitedParts := strings.Split(singleFilter, "<")
+				// 	timeRFC1123str := strings.TrimSpace(splitedParts[1])
+				// 	timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+				// 	individualFilter = append(individualFilter, filterMap[thisFilter]("<", timeRFC1123))
+				// } else if strings.Contains(singleFilter, ">") {
+				// 	splitedParts := strings.Split(singleFilter, ">")
+				// 	timeRFC1123str := strings.TrimSpace(splitedParts[1])
+				// 	timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+				// 	individualFilter = append(individualFilter, filterMap[thisFilter](">", timeRFC1123))
+				// } else if strings.Contains(singleFilter, "=") {
+				// 	splitedParts := strings.Split(singleFilter, "=")
+				// 	timeRFC1123str := strings.TrimSpace(splitedParts[1])
+				// 	timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+				// 	individualFilter = append(individualFilter, filterMap[thisFilter]("=", timeRFC1123))
+				// } else {
+				// 	return filterArr, false
+				// }
 				// value := singleFilter[len(thisFilter)+1:]
 				// utcTime, err := ConvertRFC1123(value)
 				// if err != nil {
@@ -220,5 +237,5 @@ func ChkFile(id int, fileInpQueue <-chan os.FileInfo, wg *sync.WaitGroup, filter
 		}
 		// fmt.Println("worker ", id, " verifing file ", fileInf.Name())
 	}
-	fmt.Println("worker ", id, " stopped")
+	// fmt.Println("worker ", id, " stopped")
 }

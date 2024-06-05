@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -12,7 +13,7 @@ type modTimeFilter struct { //modTimeFilter and its attributes
 }
 
 func (filter modTimeFilter) Apply(fileInfo os.FileInfo) bool { //Apply fucntion for modTime filter , check wheather a file passes the constraints
-	fmt.Println("modTime Filter ", filter.value, " ", filter.opr, " file name ", fileInfo.Name())
+	fmt.Println("modTime Filter ", filter.opr, " ", filter.value, " file name ", fileInfo.Name())
 	// var zerTim time.Time
 	fileModTimestr := fileInfo.ModTime().UTC().Format(time.RFC1123)
 	fileModTime, _ := time.Parse(time.RFC1123, fileModTimestr)
@@ -36,6 +37,37 @@ func newModTimeFilter(args ...interface{}) Filter { // used for dynamic creation
 	return modTimeFilter{
 		opr:   args[0].(string),
 		value: args[1].(time.Time),
+	}
+}
+
+func giveModtimeFilterObj(singleFilter string, thisFilter string, filterMap map[string]filterCreator) (Filter, bool) {
+	if strings.Contains(singleFilter, "<=") {
+		splitedParts := strings.Split(singleFilter, "<=")
+		timeRFC1123str := strings.TrimSpace(splitedParts[1])
+		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+		return filterMap[thisFilter]("<=", timeRFC1123), true
+	} else if strings.Contains(singleFilter, ">=") {
+		splitedParts := strings.Split(singleFilter, ">=")
+		timeRFC1123str := strings.TrimSpace(splitedParts[1])
+		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+		return filterMap[thisFilter](">=", timeRFC1123), true
+	} else if strings.Contains(singleFilter, "<") {
+		splitedParts := strings.Split(singleFilter, "<")
+		timeRFC1123str := strings.TrimSpace(splitedParts[1])
+		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+		return filterMap[thisFilter]("<", timeRFC1123), true
+	} else if strings.Contains(singleFilter, ">") {
+		splitedParts := strings.Split(singleFilter, ">")
+		timeRFC1123str := strings.TrimSpace(splitedParts[1])
+		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+		return filterMap[thisFilter](">", timeRFC1123), true
+	} else if strings.Contains(singleFilter, "=") {
+		splitedParts := strings.Split(singleFilter, "=")
+		timeRFC1123str := strings.TrimSpace(splitedParts[1])
+		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
+		return filterMap[thisFilter]("=", timeRFC1123), true
+	} else {
+		return nil, false
 	}
 }
 

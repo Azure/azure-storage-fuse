@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"strings"
 )
 
 type regexFilter struct { //RegexFilter and its attributes
@@ -30,4 +31,17 @@ func newRegexFilter(args ...interface{}) Filter { // used for dynamic creation o
 	return regexFilter{
 		regex_inp: args[0].(*regexp.Regexp),
 	}
+}
+
+func giveRegexFilterObj(singleFilter string, thisFilter string, filterMap map[string]filterCreator) (Filter, bool) {
+	singleFilter = strings.Map(StringConv, singleFilter)
+	if (len(singleFilter) <= len(thisFilter)+1) || (singleFilter[len(thisFilter)] != '=') {
+		return nil, false
+	}
+	value := singleFilter[len(thisFilter)+1:]
+	pattern, err := regexp.Compile(value)
+	if err != nil {
+		return nil, false
+	}
+	return filterMap[thisFilter](pattern), true
 }
