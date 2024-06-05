@@ -11,72 +11,97 @@
 
 #define MAX_OUTSTANDING_RPC_TASKS 65536
 
-class rpc_task_helper;
-
+/**
+ * LOOKUP RPC task definition.
+ */
 struct lookup_rpc_task
 {
-    lookup_rpc_task() = default;
-
-    void set_file_name(const char* name)
+    void set_file_name(const char *name)
     {
-        file_name = (char*)malloc(strlen(name) + 1);
-        file_name = strdup(name);
+        file_name = ::strdup(name);
     }
 
-    void set_parent_inode(fuse_ino_t parent)
+    void set_parent_ino(fuse_ino_t parent)
     {
-        parent_inode = parent;
+        parent_ino = parent;
     }
 
-#if 0
-    ~lookup_rpc_task()
+    fuse_ino_t get_parent_ino() const
     {
-        ::free((void*)file_name);
-    }
-#endif
-
-    fuse_ino_t get_parent_inode() const
-    {
-        return parent_inode;
+        return parent_ino;
     }
 
-    const char* get_name() const
+    const char *get_file_name() const
     {
         return file_name;
     }
 
-    void free_name()
+    /**
+     * Release any resources used up by this task.
+     */
+    void release()
     {
-        ::free((void*)file_name);
+        ::free(file_name);
     }
 
 private:
-    fuse_ino_t parent_inode;
-    char* file_name;
+    fuse_ino_t parent_ino;
+    char *file_name;
 };
 
+/**
+ * GETATTR RPC task definition.
+ */
 struct getattr_rpc_task
 {
-    fuse_ino_t get_inode() const
+    void set_ino(fuse_ino_t ino)
     {
-        return inode;
+        this->ino = ino;
     }
 
-    void set_inode(fuse_ino_t ino)
+    fuse_ino_t get_ino() const
     {
-        inode = ino;
+        return ino;
     }
 
 private:
-    fuse_ino_t inode;
+    fuse_ino_t ino;
 };
 
 
-// This is the context that will be used by the Nfsv3 Setattr API
+/**
+ * SETATTR RPC task definition.
+ */
 struct setatt_rpc_task
 {
-public:
-    struct stat* get_attr() const
+    void set_ino(fuse_ino_t ino)
+    {
+        this->ino = ino;
+    }
+
+    void set_fuse_file(fuse_file_info *fileinfo)
+    {
+        /*
+         * fuse can pass this as nullptr.
+         * The fuse_file_info pointer passed to the fuse lowlevel API is only
+         * valid in the issue path. Since we want to use it after that, we have
+         * to make a deep copy of that.
+         */
+        if (fileinfo != nullptr) {
+            file = *fileinfo;
+            file_ptr = &file;
+        } else {
+            file_ptr = nullptr;
+        }
+    }
+
+    void set_attribute_and_mask(struct stat *attr, int mask)
+    {
+        attribute = attr;
+        to_set = mask;
+    }
+
+    const struct stat *get_attr() const
     {
         return attribute;
     }
@@ -86,46 +111,30 @@ public:
         return to_set;
     }
 
-    fuse_file_info* get_file() const
+    struct fuse_file_info *get_file() const
     {
         return file_ptr;
     }
 
-    fuse_ino_t get_inode() const
+    fuse_ino_t get_ino() const
     {
-        return inode;
-    }
-
-    void set_inode(fuse_ino_t ino)
-    {
-        inode = ino;
-    }
-
-    void set_fuse_file(fuse_file_info* fileinfo)
-    {
-        // The fuse can pass this as nullptr.
-        if (fileinfo == nullptr)
-            return;
-        ::memcpy(&file, fileinfo, sizeof(file));
-        file_ptr = &file;
-    }
-
-    void set_attribute_and_mask(struct stat* attr, int mask)
-    {
-        attribute = attr;
-        to_set= mask;
+        return ino;
     }
 
 private:
     // Inode of the file for which attributes have to be set.
-    fuse_ino_t inode;
+    fuse_ino_t ino;
 
     // File info passed by the fuse layer.
     fuse_file_info file;
-    fuse_file_info* file_ptr;
+    fuse_file_info *file_ptr;
 
-    // Attributes value to be set to.
-    struct stat* attribute;
+    /*
+     * Attributes value to be set to.
+     * Note: This is only valid till the issue path call returns.
+     *       DO NOT ACCESS THIS IN THE COMPLETION PATH.
+     */
+    const struct stat *attribute;
 
     // Valid attribute mask to be set.
     int to_set;
@@ -133,18 +142,12 @@ private:
 
 struct create_file_rpc_task
 {
-#if 0
-    ~create_file_rpc_task()
+    fuse_ino_t get_parent_ino() const
     {
-        ::free((void*)file_name);
-    }
-#endif
-    fuse_ino_t get_parent_inode() const
-    {
-        return parent_inode;
+        return parent_ino;
     }
 
-    const char* get_name() const
+    const char *get_file_name() const
     {
         return file_name;
     }
@@ -154,62 +157,55 @@ struct create_file_rpc_task
         return mode;
     }
 
-    struct fuse_file_info* get_file() const
+    struct fuse_file_info *get_file() const
     {
         return file_ptr;
     }
 
-    void set_parent_inode(fuse_ino_t parent)
+    void set_parent_ino(fuse_ino_t parent)
     {
-        parent_inode = parent;
+        parent_ino = parent;
     }
 
-    void set_file_name(const char* name)
+    void set_file_name(const char *name)
     {
-        file_name = (char*)malloc(strlen(name) + 1);
-        file_name = strdup(name);
+        file_name = ::strdup(name);
     }
 
-    void set_mode(mode_t mod)
+    void set_mode(mode_t mode)
     {
-        mode = mod;
+        this->mode = mode;
     }
 
-    void set_fuse_file(fuse_file_info* fileinfo)
+    void set_fuse_file(fuse_file_info *fileinfo)
     {
         assert(fileinfo != nullptr);
-        ::memcpy(&file, fileinfo, sizeof(file));
+        file = *fileinfo;
         file_ptr = &file;
     }
 
-    void free_name()
+    void release()
     {
-        ::free((void*)file_name);
+        ::free(file_name);
     }
 
 private:
-    fuse_ino_t parent_inode;
-    char* file_name;
+    fuse_ino_t parent_ino;
+    char *file_name;
     mode_t mode;
     struct fuse_file_info file;
-    struct fuse_file_info* file_ptr;
+    struct fuse_file_info *file_ptr;
     bool is_used;
 };
 
 struct mkdir_rpc_task
 {
-#if 0
-    ~mkdir_rpc_task()
+    fuse_ino_t get_parent_ino() const
     {
-        ::free((void*)dir_name);
-    }
-#endif
-    fuse_ino_t get_parent_inode() const
-    {
-        return parent_inode;
+        return parent_ino;
     }
 
-    const char* get_name() const
+    const char *get_file_name() const
     {
         return dir_name;
     }
@@ -219,15 +215,14 @@ struct mkdir_rpc_task
         return mode;
     }
 
-    void set_parent_inode(fuse_ino_t parent)
+    void set_parent_ino(fuse_ino_t parent)
     {
-        parent_inode = parent;
+        parent_ino = parent;
     }
 
-    void set_dir_name(const char* name)
+    void set_dir_name(const char *name)
     {
-        dir_name = (char*)malloc(strlen(name) + 1);
-        dir_name = strdup(name);
+        dir_name = ::strdup(name);
     }
 
     void set_mode(mode_t mod)
@@ -235,26 +230,39 @@ struct mkdir_rpc_task
         mode = mod;
     }
 
-    void free_name()
+    void release()
     {
-        ::free((void*)dir_name);
+        ::free(dir_name);
     }
 
 private:
-    fuse_ino_t parent_inode;
-    char* dir_name;
+    fuse_ino_t parent_ino;
+    char *dir_name;
     mode_t mode;
     bool is_used;
 };
 
+/**
+ * This describes an RPC task which is created to handle a fuse request.
+ * The RPC task tracks the progress of the RPC request sent to the server and
+ * remains valid till the RPC request completes.
+ */
 struct rpc_task
 {
-    // The client for which the context is created.
-    struct nfs_client* client;
+    /*
+     * The client for which the context is created.
+     * This is initialized when the rpc_task is added to the free tasks list
+     * and never changed afterwards, since we have just one nfs_client used by
+     * all rpc tasks.
+     */
+    struct nfs_client *const client;
 
-    // Fuse request structure.
-    // This will be the request structure passed from the fuse layer.
-    fuse_req* req;
+    /*
+     * Fuse request structure.
+     * This is the request structure passed from the fuse layer, on behalf of
+     * which this RPC task is run.
+     */
+    fuse_req *req;
 
     // Max number of times the NFS APIs can be retried.
     static int max_errno_retries;
@@ -262,14 +270,26 @@ struct rpc_task
     int num_of_times_retried;
 
     // This is the index of the object in the rpc_task_list vector.
-    int index;
+    const int index;
 
 protected:
-    // Operation type. This is used only for logging.
+    /*
+     * Operation type.
+     * Used to access the rpc_api union.
+     */
     enum fuse_opcode optype;
 
 public:
-    union {
+    rpc_task(struct nfs_client *_client, int _index) :
+        client(_client),
+        req(nullptr),
+        num_of_times_retried(0),
+        index(_index)
+    {
+    }
+
+    union
+    {
         struct lookup_rpc_task lookup_task;
         struct getattr_rpc_task getattr_task;
         struct setatt_rpc_task setattr_task;
@@ -277,76 +297,66 @@ public:
         struct mkdir_rpc_task mkdir_task;
     } rpc_api;
 
-// TODO: Add valid flag here for APIs?
+    // TODO: Add valid flag here for APIs?
 
-    void set_lookup(struct nfs_client* clt,
-                    fuse_req* request,
-                    const char* name,
+    /*
+     * init/run methods for the LOOKUP RPC.
+     */
+    void init_lookup(struct nfs_client *clt,
+                    fuse_req *request,
+                    const char *name,
                     fuse_ino_t parent_ino);
-
-    // This is the task responsible for making the lookup task.
-    // lookup_task structure should be populated before calling this function
-    // by calling set_lookup().
     void run_lookup();
 
-    void set_getattr(struct nfs_client* clt,
-                     fuse_req* request,
+    /*
+     * init/run methods for the GETATTR RPC.
+     */
+    void init_getattr(struct nfs_client *clt,
+                     fuse_req *request,
                      fuse_ino_t ino);
-
-    // This is the task responsible for making the getattr task.
-    // getattr_task structure should be populated before calling this function
-    // by calling set_getattr().
     void run_getattr();
 
-    void set_setattr(struct nfs_client* clt,
-                     fuse_req* request,
+    /*
+     * init/run methods for the SETATTR RPC.
+     */
+    void init_setattr(struct nfs_client *clt,
+                     fuse_req *request,
                      fuse_ino_t ino,
-                     struct stat* attr,
+                     struct stat *attr,
                      int toSet,
-                     struct fuse_file_info* file);
-
-    // This is the task responsible for making the setattr task.
-    // setattr_task structure should be populated before calling this function
-    // by calling set_setattr().
+                     struct fuse_file_info *file);
     void run_setattr();
 
-    void set_create_file(struct nfs_client* clt,
-                         fuse_req* request,
+    /*
+     * init/run methods for the CREATE RPC.
+     */
+    void init_create_file(struct nfs_client *clt,
+                         fuse_req *request,
                          fuse_ino_t parent_ino,
-                         const char* name,
+                         const char *name,
                          mode_t mode,
-                         struct fuse_file_info* file);
-
-
-    // This is the task responsible for making the create task.
-    // create_task structure should be populated before calling this function
-    // by calling set_create_file().
+                         struct fuse_file_info *file);
     void run_create_file();
 
-    void set_mkdir(struct nfs_client* clt,
-                   fuse_req* request,
+    /*
+     * init/run methods for the MKDIR RPC.
+     */
+    void init_mkdir(struct nfs_client *clt,
+                   fuse_req *request,
                    fuse_ino_t parent_ino,
-                   const char* name,
+                   const char *name,
                    mode_t mode);
-
-    // This is the task responsible for making the mkdir task.
-    // mkdir_task structure should be populated before calling this function
-    // by calling set_mkdir().
     void run_mkdir();
 
-    void set_client(struct nfs_client* clt)
-    {
-        client = clt;
-    }
 
-    void set_fuse_req(fuse_req* request)
+    void set_fuse_req(fuse_req *request)
     {
         req = request;
     }
 
-    void set_op_type(enum fuse_opcode optyp)
+    void set_op_type(enum fuse_opcode optype)
     {
-        optype = optyp;
+        this->optype = optype;
     }
 
     enum fuse_opcode get_op_type()
@@ -364,14 +374,14 @@ public:
         return max_errno_retries;
     }
 
-    struct nfs_context* get_nfs_context() const;
+    struct nfs_context *get_nfs_context() const;
 
-    struct rpc_context* get_rpc_ctx() const
+    struct rpc_context *get_rpc_ctx() const
     {
         return nfs_get_rpc_context(get_nfs_context());
     }
 
-    nfs_client* get_client() const
+    nfs_client *get_client() const
     {
         assert (client != nullptr);
         return client;
@@ -392,7 +402,7 @@ public:
         free_rpc_task();
     }
 
-    void reply_attr(const struct stat* attr, double attr_timeout)
+    void reply_attr(const struct stat *attr, double attr_timeout)
     {
         fuse_reply_attr(req, attr, attr_timeout);
         free_rpc_task();
@@ -404,26 +414,27 @@ public:
         free_rpc_task();
     }
 
-    void reply_entry(const struct fuse_entry_param* e)
+    void reply_entry(const struct fuse_entry_param *e)
     {
         fuse_reply_entry(req, e);
         free_rpc_task();
     }
 
     void reply_create(
-        const struct fuse_entry_param* entry,
-        const struct fuse_file_info* file)
+        const struct fuse_entry_param *entry,
+        const struct fuse_file_info *file)
     {
         fuse_reply_create(req, entry, file);
         free_rpc_task();
     }
 
-    //
-    // Check RPC completion for success.
-    //
-    // On success, true is returned.
-    // On failure, false is returned and \p retry is set to true if the error is retryable else set to false.
-    //
+    /*
+     *
+     * Check RPC completion for success.
+     *
+     * On success, true is returned.
+     * On failure, false is returned and \p retry is set to true if the error is retryable else set to false.
+     */
     bool succeeded(
         int rpc_status,
         int nfs_status,
@@ -472,7 +483,7 @@ public:
         }
     }
 
-    struct fuse_req* get_req() const
+    struct fuse_req *get_req() const
     {
         return req;
     }
@@ -494,94 +505,86 @@ private:
     std::condition_variable_any cv;
 
     // This is a singleton class, hence make the constructor private.
-    rpc_task_helper()
+    rpc_task_helper(struct nfs_client *client)
     {
-        // Hold an exclusive lock.
-        std::unique_lock<std::shared_mutex> lock(task_index_lock);
+        assert(client != nullptr);
 
         // There should be no elements in the stack.
         assert(free_task_index.empty());
 
         // Initialize the index stack.
-        for (int i=0; i<MAX_OUTSTANDING_RPC_TASKS; i++)
+        for (int i = 0; i < MAX_OUTSTANDING_RPC_TASKS; i++)
         {
             free_task_index.push(i);
+            rpc_task_list.emplace_back(client, i);
         }
 
         // There should be MAX_OUTSTANDING_RPC_TASKS index available.
         assert(free_task_index.size() == MAX_OUTSTANDING_RPC_TASKS);
-
-        rpc_task_list.resize(MAX_OUTSTANDING_RPC_TASKS);
     }
 
 public:
     ~rpc_task_helper() = default;
 
-    static rpc_task_helper* get_instance()
+    static rpc_task_helper *get_instance(struct nfs_client *client = nullptr)
     {
-        static rpc_task_helper helper;
+        static rpc_task_helper helper(client);
         return &helper;
     }
 
-    // This returns a free rpc task instance from the pool of rpc tasks.
-    // This call will block till a free rpc task is available.
+    /**
+     * This returns a free rpc task instance from the pool of rpc tasks.
+     * This call will block till a free rpc task is available.
+     */
     struct rpc_task *alloc_rpc_task()
     {
-        int free_index = 0;
-        const bool got_free_index = get_free_task_index(free_index);
+        const int free_index = get_free_idx();
+        struct rpc_task *task = &rpc_task_list[free_index];
 
-        // The get_free_task_index() function will block till a free index is
-        // available, hence we should never see a false return.
-        assert(got_free_index);
+        assert(task->client != nullptr);
+        assert(task->index == free_index);
+        task->req = nullptr;
+        task->num_of_times_retried = 0;
 
-        assert(free_index < MAX_OUTSTANDING_RPC_TASKS);
-        rpc_task_list[free_index].index = free_index;
-        return &rpc_task_list[free_index];
+        return task;
     }
 
-    bool get_free_task_index(int& free_index)
+    int get_free_idx()
     {
-        free_index = 0;
-
-        // Hold an exclusive lock to fetch the free index.
         std::unique_lock<std::shared_mutex> lock(task_index_lock);
 
-        // Wait for a free rpc task to be available.
-        cv.wait(lock, [this] { return !free_task_index.empty(); });
-
-        if (!free_task_index.empty())
-        {
-            free_index = free_task_index.top();
-
-            free_task_index.pop();
-
-            return true;
+        // Wait until a free rpc task is available.
+        while (free_task_index.empty()) {
+            cv.wait(lock, [this] { return !free_task_index.empty(); });
         }
 
-        // We should ideally never be coming here as the condition variable
-        // waits for the free index to be available.
-        return false;
+        const int free_index = free_task_index.top();
+        free_task_index.pop();
+
+        // Must be a valid index.
+        assert(free_index > 0 && free_index < MAX_OUTSTANDING_RPC_TASKS);
+
+        return free_index;
     }
 
     void release_free_index(int index)
     {
+        // Must be a valid index.
+        assert(index > 0 && index < MAX_OUTSTANDING_RPC_TASKS);
+
         {
-            // Hold an exclusive lock to add the free index.
             std::unique_lock<std::shared_mutex> lock(task_index_lock);
             free_task_index.push(index);
         }
 
-        // Notify that a new free index is available.
+        // Notify any waiters blocked in alloc_rpc_task().
         cv.notify_one();
     }
 
     void free_rpc_task(struct rpc_task *task)
     {
-        int index_to_free = task->get_index();
-        release_free_index(index_to_free);
-
-        // TODO: See if we need to clear out the struct members here.
+        release_free_index(task->get_index());
     }
 };
 
-#endif /* __RPC_TASK_H__ */
+#endif /*__RPC_TASK_H__*/

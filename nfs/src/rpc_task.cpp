@@ -5,70 +5,70 @@
 
 int rpc_task::max_errno_retries(3);
 
-void rpc_task::set_lookup(struct nfs_client* clt,
+void rpc_task::init_lookup(struct nfs_client* clt,
                           fuse_req* request,
                           const char* name,
                           fuse_ino_t parent_ino)
 {
-    client = clt;
+    //client = clt;
     req = request;
     optype = FUSE_LOOKUP;
     rpc_api.lookup_task.set_file_name(name);
-    rpc_api.lookup_task.set_parent_inode(parent_ino);
+    rpc_api.lookup_task.set_parent_ino(parent_ino);
 }
 
-void rpc_task::set_getattr(struct nfs_client* clt,
+void rpc_task::init_getattr(struct nfs_client* clt,
                            fuse_req* request,
                            fuse_ino_t ino)
 {
-    client = clt;
+    //client = clt;
     req = request;
     optype = FUSE_GETATTR;
-    rpc_api.getattr_task.set_inode(ino);
+    rpc_api.getattr_task.set_ino(ino);
 }
 
-void rpc_task::set_create_file(struct nfs_client* clt,
+void rpc_task::init_create_file(struct nfs_client* clt,
                                fuse_req* request,
                                fuse_ino_t parent_ino,
                                const char* name,
                                mode_t mode,
                                struct fuse_file_info* file)
 {
-    client = clt;
+    //client = clt;
     req = request;
     optype = FUSE_CREATE;
-    rpc_api.create_task.set_parent_inode(parent_ino);
+    rpc_api.create_task.set_parent_ino(parent_ino);
     rpc_api.create_task.set_file_name(name);
     rpc_api.create_task.set_mode(mode);
     rpc_api.create_task.set_fuse_file(file);
 }
 
-void rpc_task::set_mkdir(struct nfs_client* clt,
+void rpc_task::init_mkdir(struct nfs_client* clt,
                          fuse_req* request,
                          fuse_ino_t parent_ino,
                          const char* name,
                          mode_t mode)
 {
-    client = clt;
+    //client = clt;
     req = request;
     optype = FUSE_MKDIR;
-    rpc_api.mkdir_task.set_parent_inode(parent_ino);
+    rpc_api.mkdir_task.set_parent_ino(parent_ino);
     rpc_api.mkdir_task.set_dir_name(name);
     rpc_api.mkdir_task.set_mode(mode);
 
 }
 
-void rpc_task::set_setattr(struct nfs_client* clt,
+void rpc_task::init_setattr(struct nfs_client* clt,
                            fuse_req* request,
                            fuse_ino_t ino,
                            struct stat* attr,
                            int toSet,
                            struct fuse_file_info* file)
 {
-    client = clt;
+    //client = clt;
     req = request;
     optype = FUSE_SETATTR;
-    rpc_api.setattr_task.set_inode(ino);
+    rpc_api.setattr_task.set_ino(ino);
     rpc_api.setattr_task.set_fuse_file(file);
     rpc_api.setattr_task.set_attribute_and_mask(attr, toSet);
 }
@@ -253,13 +253,13 @@ void mkdir_callback(
 void rpc_task::run_lookup()
 {
     bool rpc_retry = false;
-    auto parent_ino = rpc_api.lookup_task.get_parent_inode();
+    auto parent_ino = rpc_api.lookup_task.get_parent_ino();
 
     do {
         LOOKUP3args args;
         ::memset(&args, 0, sizeof(args));
         args.what.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
-        args.what.name = (char*)rpc_api.lookup_task.get_name();
+        args.what.name = (char*)rpc_api.lookup_task.get_file_name();
 
         if (rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args, this) == NULL)
         {
@@ -273,7 +273,7 @@ void rpc_task::run_lookup()
 void rpc_task::run_getattr()
 {
     bool rpc_retry = false;
-    auto inode = rpc_api.getattr_task.get_inode();
+    auto inode = rpc_api.getattr_task.get_ino();
 
     do {
         struct GETATTR3args args;
@@ -292,13 +292,13 @@ void rpc_task::run_getattr()
 void rpc_task::run_create_file()
 {
     bool rpc_retry = false;
-    auto parent_ino = rpc_api.create_task.get_parent_inode();
+    auto parent_ino = rpc_api.create_task.get_parent_ino();
 
     do {
         CREATE3args args;
         ::memset(&args, 0, sizeof(args));
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
-        args.where.name = (char*)rpc_api.create_task.get_name();
+        args.where.name = (char*)rpc_api.create_task.get_file_name();
         args.how.mode = (rpc_api.create_task.get_file()->flags & O_EXCL) ? GUARDED : UNCHECKED;
         args.how.createhow3_u.obj_attributes.mode.set_it = 1;
         args.how.createhow3_u.obj_attributes.mode.set_mode3_u.mode = rpc_api.create_task.get_mode();
@@ -315,13 +315,13 @@ void rpc_task::run_create_file()
 void rpc_task::run_mkdir()
 {
     bool rpc_retry = false;
-    auto parent_ino = rpc_api.mkdir_task.get_parent_inode();
+    auto parent_ino = rpc_api.mkdir_task.get_parent_ino();
 
     do {
         MKDIR3args args;
         ::memset(&args, 0, sizeof(args));
         args.where.dir = get_client()->get_nfs_inode_from_ino(parent_ino)->get_fh();
-        args.where.name = (char*)rpc_api.mkdir_task.get_name();
+        args.where.name = (char*)rpc_api.mkdir_task.get_file_name();
         args.attributes.mode.set_it = 1;
         args.attributes.mode.set_mode3_u.mode = rpc_api.mkdir_task.get_mode();
 
@@ -337,7 +337,7 @@ void rpc_task::run_mkdir()
 
 void rpc_task::run_setattr()
 {
-    auto inode = rpc_api.setattr_task.get_inode();
+    auto inode = rpc_api.setattr_task.get_ino();
     auto attr = rpc_api.setattr_task.get_attr();
     const int valid = rpc_api.setattr_task.get_attr_flags_to_set();
     bool rpc_retry = false;
@@ -415,25 +415,25 @@ void rpc_task::run_setattr()
     } while (rpc_retry);
 }
 
+#if 1
 void rpc_task::free_rpc_task()
 {
-    // Clean the mebers since we could not have the destructor.
-    switch(optype)
-    {
-    case FUSE_LOOKUP:
-        rpc_api.lookup_task.free_name();
-        break;
-    case FUSE_CREATE:
-        rpc_api.create_task.free_name();
-        break;
-    case FUSE_MKDIR:
-        rpc_api.mkdir_task.free_name();
-        break;
-    default :
-        break;
+    switch(get_op_type()) {
+        case FUSE_LOOKUP:
+            rpc_api.lookup_task.release();
+            break;
+        case FUSE_CREATE:
+            rpc_api.create_task.release();
+            break;
+        case FUSE_MKDIR:
+            rpc_api.mkdir_task.release();
+            break;
+        default :
+            break;
     }
     client->get_rpc_task_helper()->free_rpc_task(this);
 }
+#endif
 
 struct nfs_context* rpc_task::get_nfs_context() const
 {

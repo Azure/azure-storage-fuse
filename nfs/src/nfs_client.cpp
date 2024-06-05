@@ -57,7 +57,7 @@ void nfs_client::lookup(fuse_req_t req, fuse_ino_t parent_ino, const char* name)
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
-    tsk->set_lookup(this, req, name, parent_ino);
+    tsk->init_lookup(this, req, name, parent_ino);
     tsk->run_lookup();
 }
 
@@ -68,7 +68,7 @@ void nfs_client::getattr(
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
-    tsk->set_getattr(this, req, inode);
+    tsk->init_getattr(this, req, inode);
     tsk->run_getattr();
 }
 
@@ -81,7 +81,7 @@ void nfs_client::create(
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
-    tsk->set_create_file(this, req, parent_ino, name, mode, file);
+    tsk->init_create_file(this, req, parent_ino, name, mode, file);
     tsk->run_create_file();
 }
 
@@ -93,7 +93,7 @@ void nfs_client::mkdir(
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
-    tsk->set_mkdir(this, req, parent_ino, name, mode);
+    tsk->init_mkdir(this, req, parent_ino, name, mode);
     tsk->run_mkdir();
 }
 
@@ -106,7 +106,7 @@ void nfs_client::setattr(
 {
     struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
-    tsk->set_setattr(this, req, inode, attr, toSet, file);
+    tsk->init_setattr(this, req, inode, attr, toSet, file);
     tsk->run_setattr();
 }
 
