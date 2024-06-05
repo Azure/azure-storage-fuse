@@ -3,9 +3,9 @@
 
 bool rpc_transport::start()
 {
-    for (int i = 0; i <  client->mnt_options.num_connections; i++)
+    for (int i = 0; i < client->mnt_options.num_connections; i++)
     {
-        struct nfs_connection* connection = new nfs_connection(client);
+        struct nfs_connection *connection = new nfs_connection(client);
 
         if (!connection->open())
         {
@@ -25,7 +25,7 @@ void rpc_transport::close()
 {
     for (int i = 0; i <  client->mnt_options.num_connections; i++)
     {
-        struct nfs_connection* connection = nfs_connections[i];
+        struct nfs_connection *connection = nfs_connections[i];
         connection->close();
         delete connection;
     }
@@ -36,7 +36,7 @@ void rpc_transport::close()
 // This function decides which connection should be chosen for sending
 // the current request.
 // TODO: This is round-robined for now, should be modified later.
-struct nfs_context* rpc_transport::get_nfs_context() const
+struct nfs_context *rpc_transport::get_nfs_context() const
 {
     return nfs_connections[(last_context++)%(client->mnt_options.num_connections)]->get_nfs_context();
 }

@@ -3,11 +3,6 @@
 #include "nfs_internal.h"
 #include "rpc_task.h"
 
-#if 0
-std::string nfs_client::server("");
-std::string nfs_client::export_path("");
-#endif
-
 #define RSTATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
 
 // The user should first init the client class before using it.
@@ -18,12 +13,6 @@ bool nfs_client::init()
     const std::string blob_suffix = aznfsc_cfg.cloud_suffix;
 
     // Check if init() has been called before
-#if 0
-    get_instance_impl(&acc_name, &cont_name, &blob_suffix, opt);
-#endif
-    // Get the RPC transport to be used for this client.
-    //transport = rpc_transport::get_instance(opt);
-    //transport = rpc_transport::get_instance(this);
 
     // This will init the transport layer and start the connections to the server.
     // It returns FALSE if it fails to create the connections.
@@ -43,9 +32,6 @@ bool nfs_client::init()
     rpc_task_helper = rpc_task_helper::get_instance(this);
 
     return true;
-
-    // Return false if the method is called again.
-    return false;
 }
 
 struct nfs_context* nfs_client::get_nfs_context() const
