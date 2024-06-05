@@ -12,11 +12,9 @@ func main() {
 	fmt.Println(time.Now())
 	filter := flag.String("filter", "!", "enter your filter here") //used to take filter input from the user
 	flag.Parse()
-	str := (*filter) //assign value stored in filter to a string
-	// idealStr := strings.Map(StringConv, str) //Manipulate string to remove all spaces and convert lowercase letters to uppercase
-	// fmt.Println(str)
+	str := (*filter)                       //assign value stored in filter to a string
 	filterArr, isInpValid := ParseInp(str) //parse the string and get an array (splitted on basis of ||) of array(splitted on basis of &&) of filters
-
+	fmt.Println(time.Now())
 	if !isInpValid { //if input given by user is not valid, display and return
 		fmt.Println("Wrong input format, Try again.")
 		return
@@ -24,9 +22,7 @@ func main() {
 	for i, innerArray := range filterArr {
 		fmt.Println("Inner array: ", i+1)
 		for _, data := range innerArray {
-
 			fmt.Println(data)
-			// data.Apply()
 		}
 	}
 	dirPath := "../../../test"
@@ -50,6 +46,7 @@ func main() {
 	for _, fileinfo := range fileInfos {
 		fileInpQueue <- fileinfo //push all files one by one in channel , if channel is full , it will wait
 	}
+
 	close(fileInpQueue)                 //close channel once all files have been processed
 	wg.Wait()                           //wait for completion of all threads
 	fmt.Println("All workers stopped ") //exit

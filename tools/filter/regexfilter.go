@@ -12,19 +12,8 @@ type regexFilter struct { //RegexFilter and its attributes
 }
 
 func (filter regexFilter) Apply(fileInfo os.FileInfo) bool { //Apply fucntion for regex filter , check wheather a file passes the constraints
-	fmt.Println("regex filter ", filter, " file name ", fileInfo.Name())
-	// baseName := strings.TrimSuffix(fileInfo.Name(), filepath.Ext(fileInfo.Name()))
-	// fmt.Println(baseName, "yeh rha")
-	// pattern, err := regexp.Compile(filter.regex_inp) //TO DO: only once
-	// if err != nil {
-	// 	fmt.Println("Invalid regex pattern:", err)
-	// 	return false
-	// }
+	fmt.Println("regex filter ", filter.regex_inp, " file name ", fileInfo.Name())
 	return filter.regex_inp.MatchString(fileInfo.Name())
-	// if pattern.MatchString(fileInfo.Name()) {
-	// 	return true
-	// }
-	// return false
 }
 
 func newRegexFilter(args ...interface{}) Filter { // used for dynamic creation of regexFilter using map
@@ -33,15 +22,15 @@ func newRegexFilter(args ...interface{}) Filter { // used for dynamic creation o
 	}
 }
 
-func giveRegexFilterObj(singleFilter string, thisFilter string, filterMap map[string]filterCreator) (Filter, bool) {
+func giveRegexFilterObj(singleFilter string) (Filter, bool) {
 	singleFilter = strings.Map(StringConv, singleFilter)
-	if (len(singleFilter) <= len(thisFilter)+1) || (singleFilter[len(thisFilter)] != '=') {
+	if (len(singleFilter) <= 6) || (singleFilter[5] != '=') {
 		return nil, false
 	}
-	value := singleFilter[len(thisFilter)+1:]
+	value := singleFilter[6:] //6 is used because len(regex) = 5 + 1
 	pattern, err := regexp.Compile(value)
 	if err != nil {
 		return nil, false
 	}
-	return filterMap[thisFilter](pattern), true
+	return newRegexFilter(pattern), true
 }

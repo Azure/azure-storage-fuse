@@ -13,7 +13,7 @@ type Filter interface { //Interface having child as different type of filters li
 	Apply(fileInfo os.FileInfo) bool //Apply function defined for each filter, it takes file as input and returns wheather it passes all filters or not
 }
 
-type filterCreator func(...interface{}) Filter //used to create object of different filter using map
+// type filterCreator func(...interface{}) Filter //used to create object of different filter using map
 
 func StringConv(r rune) rune { //used for converting string given by user to ideal string so that it becomes easy to process
 	if unicode.IsSpace(r) {
@@ -38,152 +38,38 @@ func ParseInp(str string) ([][]Filter, bool) { //this function parses the input 
 	splitOr := strings.Split(str, "||") //splitted string on basis of OR
 	var filterArr [][]Filter
 
-	filterMap := map[string]filterCreator{ //Created a Map that will be used to create new filter objects
-		"size":    newSizeFilter,
-		"format":  newFormatFilter, //Pushing every filter in the map, key is the name of filter while value is a dynamic constructor of filter
-		"regex":   newRegexFilter,
-		"modtime": newModTimeFilter,
-	}
+	// filterMap := map[string]filterCreator{ //Created a Map that will be used to create new filter objects
+	// 	"size":    newSizeFilter,
+	// 	"format":  newFormatFilter,
+	// 	"regex":   newRegexFilter,
+	// 	"modtime": newModTimeFilter, //Pushing every filter in the map, key is the name of filter while value is a dynamic constructor of filter
+	// }
 
 	for _, andFilters := range splitOr {
 		var individualFilter []Filter //this array will store all filters seperated by && at each index
 		splitAnd := strings.Split(andFilters, "&&")
 		for _, singleFilter := range splitAnd {
 			trimmedStr := strings.TrimSpace(singleFilter)
-			thisFilter := getFilterName(trimmedStr) //retrieve name of filter
+			thisFilter := getFilterName(trimmedStr)  //retrieve name of filter
+			thisFilter = strings.ToLower(thisFilter) //converted to lowercase
 			// TODO::filter: error checks for invalid input like size1234, size>=, format pdf
-			if strings.ToLower(thisFilter) == "size" {
-				// singleFilter = strings.Map(StringConv, singleFilter)
-				// value := singleFilter[len(thisFilter)+1:]
-				// floatVal, err := strconv.ParseFloat(value, 64)
-				obj, isvalid := giveSizeFilterObj(singleFilter, thisFilter, filterMap)
-				if !isvalid {
-					return filterArr, false
-				}
-				individualFilter = append(individualFilter, obj)
-				// if err != nil {
-				// 	if singleFilter[len(thisFilter)+1] != '=' {
-				// 		return filterArr, false
-				// 	} else {
-				// 		value := singleFilter[len(thisFilter)+2:]
-				// 		floatVal, err = strconv.ParseFloat(value, 64)
-				// 		if err != nil {
-				// 			return filterArr, false
-				// 		}
-				// 		individualFilter = append(individualFilter, filterMap[thisFilter](singleFilter[len(thisFilter):len(thisFilter)+2], floatVal))
-				// 	}
-				// } else {
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](singleFilter[len(thisFilter):len(thisFilter)+1], floatVal))
-				// }
-				// if singleFilter[len(thisFilter):len(thisFilter)+2] == "<=" {
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](floatVal, -1.0, floatVal))
-				// } else if singleFilter[len(thisFilter):len(thisFilter)+2] == ">=" {
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](-1.0, floatVal, floatVal))
-				// } else if singleFilter[len(thisFilter)] == '>' {
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](-1.0, floatVal, -1.0))
-				// } else if singleFilter[len(thisFilter)] == '<' {
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](floatVal, -1.0, -1.0))
-				// } else if singleFilter[len(thisFilter)] == '=' { // TODO::filter: check ==
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](-1.0, -1.0, floatVal))
-				// } else {
-				// 	return filterArr, false
-				// }
-			} else if strings.ToLower(thisFilter) == "format" {
-				obj, isvalid := giveFormatFilterObj(singleFilter, thisFilter, filterMap)
-				if !isvalid {
-					return filterArr, false
-				}
-				individualFilter = append(individualFilter, obj)
-				// singleFilter = strings.Map(StringConv, singleFilter)
-				// if (len(singleFilter) <= len(thisFilter)+1) || (singleFilter[len(thisFilter)] != '=') || (!(singleFilter[len(thisFilter)+1] >= 'a' && singleFilter[len(thisFilter)+1] <= 'z')) {
-				// 	return filterArr, false
-				// }
-				// value := singleFilter[len(thisFilter)+1:]
-				// individualFilter = append(individualFilter, filterMap[thisFilter](value))
-			} else if strings.ToLower(thisFilter) == "regex" {
-				obj, isvalid := giveRegexFilterObj(singleFilter, thisFilter, filterMap)
-				if !isvalid {
-					return filterArr, false
-				}
-				individualFilter = append(individualFilter, obj)
-				// singleFilter = strings.Map(StringConv, singleFilter)
-				// if (len(singleFilter) <= len(thisFilter)+1) || (singleFilter[len(thisFilter)] != '=') {
-				// 	return filterArr, false
-				// }
-				// value := singleFilter[len(thisFilter)+1:]
-				// pattern, err := regexp.Compile(value)
-				// if err != nil {
-				// 	return filterArr, false
-				// }
-				// individualFilter = append(individualFilter, filterMap[thisFilter](pattern))
-			} else if strings.ToLower(thisFilter) == "modtime" {
-				obj, isvalid := giveModtimeFilterObj(singleFilter, thisFilter, filterMap)
-				if !isvalid {
-					return filterArr, false
-				}
-				individualFilter = append(individualFilter, obj)
-				// if strings.Contains(singleFilter, "<=") {
-				// 	splitedParts := strings.Split(singleFilter, "<=")
-				// 	timeRFC1123str := strings.TrimSpace(splitedParts[1])
-				// 	timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter]("<=", timeRFC1123))
-				// } else if strings.Contains(singleFilter, ">=") {
-				// 	splitedParts := strings.Split(singleFilter, ">=")
-				// 	timeRFC1123str := strings.TrimSpace(splitedParts[1])
-				// 	timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](">=", timeRFC1123))
-				// } else if strings.Contains(singleFilter, "<") {
-				// 	splitedParts := strings.Split(singleFilter, "<")
-				// 	timeRFC1123str := strings.TrimSpace(splitedParts[1])
-				// 	timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter]("<", timeRFC1123))
-				// } else if strings.Contains(singleFilter, ">") {
-				// 	splitedParts := strings.Split(singleFilter, ">")
-				// 	timeRFC1123str := strings.TrimSpace(splitedParts[1])
-				// 	timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](">", timeRFC1123))
-				// } else if strings.Contains(singleFilter, "=") {
-				// 	splitedParts := strings.Split(singleFilter, "=")
-				// 	timeRFC1123str := strings.TrimSpace(splitedParts[1])
-				// 	timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter]("=", timeRFC1123))
-				// } else {
-				// 	return filterArr, false
-				// }
-				// value := singleFilter[len(thisFilter)+1:]
-				// utcTime, err := ConvertRFC1123(value)
-				// if err != nil {
-				// 	if singleFilter[len(thisFilter)+1] != '=' {
-				// 		// fmt.Println("isse")
-				// 		return filterArr, false
-				// 	}
-				// 	value := singleFilter[len(thisFilter)+2:]
-				// 	fmt.Println(value)
-				// 	utcTime, err = ConvertRFC1123(value)
-				// 	if err != nil {
-				// 		fmt.Println("isse")
-				// 		return filterArr, false
-				// 	}
-				// }
-				// fmt.Println(utcTime)
-				// var zeroTime time.Time
-				// if singleFilter[len(thisFilter):len(thisFilter)+2] == "<=" {
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](utcTime, zeroTime, utcTime))
-				// } else if singleFilter[len(thisFilter):len(thisFilter)+2] == ">=" {
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](zeroTime, utcTime, utcTime))
-				// } else if singleFilter[len(thisFilter)] == '>' {
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](zeroTime, utcTime, zeroTime))
-				// } else if singleFilter[len(thisFilter)] == '<' {
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](utcTime, zeroTime, zeroTime))
-				// } else if singleFilter[len(thisFilter)] == '=' { // TODO::filter: check ==
-				// 	individualFilter = append(individualFilter, filterMap[thisFilter](zeroTime, zeroTime, utcTime))
-				// } else {
-				// 	fmt.Println("isse")
-				// 	return filterArr, false
-				// }
+			var obj Filter
+			var isvalid bool
+			if thisFilter == "size" {
+				obj, isvalid = giveSizeFilterObj(singleFilter)
+			} else if thisFilter == "format" {
+				obj, isvalid = giveFormatFilterObj(singleFilter)
+			} else if thisFilter == "regex" {
+				obj, isvalid = giveRegexFilterObj(singleFilter)
+			} else if thisFilter == "modtime" {
+				obj, isvalid = giveModtimeFilterObj(singleFilter)
 			} else { // if no name matched , means it is not a valid filter , thus return a false
 				return filterArr, false
 			}
+			if !isvalid {
+				return filterArr, false
+			}
+			individualFilter = append(individualFilter, obj)
 		}
 		filterArr = append(filterArr, individualFilter)
 	}
@@ -221,11 +107,11 @@ func checkFileWithFilters(fileInf os.FileInfo, filterArr [][]Filter) bool { // i
 		resp := <-resultChan //here we check the result of each combination as upper for loop pushed in channel
 		if (resp) && (!response) {
 			cancel()
-			// return true //if any response is true , we will stop and return true, defer cancel() will also run and thus ctx.Done() is also done
+			// for the first time when we recieve a true , we will cancel context and wait for all processes to stop
 		}
 		response = (response || resp)
 	}
-	return response //if no combination returns a true, we will return false, that is exclude this file
+	return response // return response, it will be true if any combination returns a true
 }
 
 func ChkFile(id int, fileInpQueue <-chan os.FileInfo, wg *sync.WaitGroup, filterArr [][]Filter) { // this is thread pool , where 16 tgreads are running

@@ -24,11 +24,11 @@ func newFormatFilter(args ...interface{}) Filter { // used for dynamic creation 
 	}
 }
 
-func giveFormatFilterObj(singleFilter string, thisFilter string, filterMap map[string]filterCreator) (Filter, bool) {
+func giveFormatFilterObj(singleFilter string) (Filter, bool) {
 	singleFilter = strings.Map(StringConv, singleFilter)
-	if (len(singleFilter) <= len(thisFilter)+1) || (singleFilter[len(thisFilter)] != '=') || (!(singleFilter[len(thisFilter)+1] >= 'a' && singleFilter[len(thisFilter)+1] <= 'z')) {
+	if (len(singleFilter) <= 7) || (singleFilter[6] != '=') || (!(singleFilter[7] >= 'a' && singleFilter[7] <= 'z')) {
 		return nil, false
 	}
-	value := singleFilter[len(thisFilter)+1:]
-	return filterMap[thisFilter](value), true
+	value := singleFilter[7:] //7 is used because len(format) = 6 + 1
+	return newFormatFilter(value), true
 }
