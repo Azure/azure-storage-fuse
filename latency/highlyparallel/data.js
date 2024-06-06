@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1713003734357,
+  "lastUpdate": 1717670306989,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -389,6 +389,45 @@ window.BENCHMARK_DATA = {
           {
             "name": "rand_read_128_thread",
             "value": 1277.8254314008798,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "8820477da3584b1bcc92084fa79ae9de276d45ed",
+          "message": "Adding parallel read/write scripts",
+          "timestamp": "2024-06-06T02:58:30-07:00",
+          "tree_id": "30d380ffe1bd809dc9838543a838efad09638ee3",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/8820477da3584b1bcc92084fa79ae9de276d45ed"
+        },
+        "date": 1717670306664,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "seq_write_112_thread",
+            "value": 224.46689323562566,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "seq_read_128_thread",
+            "value": 408.3049555127727,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "rand_read_128_thread",
+            "value": 1287.5030043612135,
             "unit": "milliseconds"
           }
         ]
