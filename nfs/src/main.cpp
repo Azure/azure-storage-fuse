@@ -40,13 +40,13 @@ static const struct fuse_opt aznfsc_opts[] =
  *
  * TODO: Validate the values and make sure they are within the range expected.
  */
-bool parse_config_yaml(const char *config_file)
+bool aznfsc_cfg::parse_config_yaml()
 {
-    if (config_file == nullptr) {
-        return false;
+    if (config_yaml == nullptr) {
+        return true;
     }
 
-    AZLogDebug ("Parsing config yaml {}", config_file);
+    AZLogDebug("Parsing config yaml {}", config_yaml);
 
     /*
      * We parse the config yaml and set *only* those options which are not yet
@@ -54,55 +54,128 @@ bool parse_config_yaml(const char *config_file)
      * corresponding option in the config yaml.
      */
     try {
-        YAML::Node config = YAML::LoadFile(config_file);
+        YAML::Node config = YAML::LoadFile(config_yaml);
 
-        if ((aznfsc_cfg.account == nullptr) && config["account"]) {
-            aznfsc_cfg.account = ::strdup(config["account"].as<std::string>().c_str());
+        if ((account == nullptr) && config["account"]) {
+            account = ::strdup(config["account"].as<std::string>().c_str());
+            if (!is_valid_storageaccount(account)) {
+                throw YAML::Exception(
+                    config["account"].Mark(),
+                    std::string("Invalid storage account name: ") +
+                    std::string(account));
+            }
         }
 
-        if ((aznfsc_cfg.container == nullptr) && config["container"]) {
-            aznfsc_cfg.container = ::strdup(config["container"].as<std::string>().c_str());
+        if ((container == nullptr) && config["container"]) {
+            container = ::strdup(config["container"].as<std::string>().c_str());
+            if (!is_valid_container(container)) {
+                throw YAML::Exception(
+                    config["container"].Mark(),
+                    std::string("Invalid container name: ") +
+                    std::string(container));
+            }
         }
 
-        if ((aznfsc_cfg.cloud_suffix == nullptr) && config["cloud_suffix"]) {
-            aznfsc_cfg.cloud_suffix = ::strdup(config["cloud_suffix"].as<std::string>().c_str());
+        if ((cloud_suffix == nullptr) && config["cloud_suffix"]) {
+            cloud_suffix =
+                ::strdup(config["cloud_suffix"].as<std::string>().c_str());
+            if (!is_valid_cloud_suffix(cloud_suffix)) {
+                throw YAML::Exception(
+                    config["cloud_suffix"].Mark(),
+                    std::string("Invalid cloud_suffix: ") +
+                    std::string(cloud_suffix));
+            }
         }
 
-        if ((aznfsc_cfg.port == -1) && config["port"]) {
-            aznfsc_cfg.port = config["port"].as<int>();
+        if ((port == -1) && config["port"]) {
+            port = config["port"].as<int>();
+            if (port != 2048 && port != 2047) {
+                throw YAML::Exception(
+                    config["port"].Mark(),
+                    std::string("Invalid port number: ") +
+                    std::to_string(port) +
+                    std::string(" (can be 2048 or 2047)"));
+            }
         }
 
-        if ((aznfsc_cfg.nconnect == -1) && config["nconnect"]) {
-            aznfsc_cfg.nconnect = config["nconnect"].as<int>();
+        if ((nconnect == -1) && config["nconnect"]) {
+            nconnect = config["nconnect"].as<int>();
+            if (nconnect < AZNFSCFG_NCONNECT_MIN ||
+                nconnect > AZNFSCFG_NCONNECT_MAX) {
+                throw YAML::Exception(
+                    config["nconnect"].Mark(),
+                    std::string("Invalid nconnect value: ") +
+                    std::to_string(nconnect) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_NCONNECT_MIN) +
+                    ", " + std::to_string(AZNFSCFG_NCONNECT_MAX) + "])");
+            }
         }
 
-        if ((aznfsc_cfg.timeo == -1) && config["timeo"]) {
-            aznfsc_cfg.timeo = config["timeo"].as<int>();
+        if ((timeo == -1) && config["timeo"]) {
+            timeo = config["timeo"].as<int>();
+            if (timeo < AZNFSCFG_TIMEO_MIN || timeo > AZNFSCFG_TIMEO_MAX) {
+                throw YAML::Exception(
+                    config["timeo"].Mark(),
+                    std::string("Invalid timeo value: ") +
+                    std::to_string(timeo) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_TIMEO_MIN) +
+                    ", " + std::to_string(AZNFSCFG_TIMEO_MAX) + "])");
+            }
         }
 
-        if ((aznfsc_cfg.rsize == -1) && config["rsize"]) {
-            aznfsc_cfg.rsize = config["rsize"].as<int>();
+        if ((rsize == -1) && config["rsize"]) {
+            rsize = config["rsize"].as<int>();
+            if (rsize < AZNFSCFG_RSIZE_MIN || rsize > AZNFSCFG_RSIZE_MAX) {
+                throw YAML::Exception(
+                    config["rsize"].Mark(),
+                    std::string("Invalid rsize value: ") +
+                    std::to_string(rsize) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_RSIZE_MIN) +
+                    ", " + std::to_string(AZNFSCFG_RSIZE_MAX) + "])");
+            }
         }
 
-        if ((aznfsc_cfg.wsize == -1) && config["wsize"]) {
-            aznfsc_cfg.wsize = config["wsize"].as<int>();
+        if ((wsize == -1) && config["wsize"]) {
+            wsize = config["wsize"].as<int>();
+            if (wsize < AZNFSCFG_WSIZE_MIN || wsize > AZNFSCFG_WSIZE_MAX) {
+                throw YAML::Exception(
+                    config["wsize"].Mark(),
+                    std::string("Invalid wsize value: ") +
+                    std::to_string(wsize) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_WSIZE_MIN) +
+                    ", " + std::to_string(AZNFSCFG_WSIZE_MAX) + "])");
+            }
         }
 
-        if ((aznfsc_cfg.retrans == -1) && config["retrans"]) {
-            aznfsc_cfg.retrans = config["retrans"].as<int>();
+        if ((retrans == -1) && config["retrans"]) {
+            retrans = config["retrans"].as<int>();
+            if (retrans < AZNFSCFG_RETRANS_MIN ||
+                retrans > AZNFSCFG_RETRANS_MAX) {
+                throw YAML::Exception(
+                    config["retrans"].Mark(),
+                    std::string("Invalid retrans value: ") +
+                    std::to_string(retrans) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_RETRANS_MIN) +
+                    ", " + std::to_string(AZNFSCFG_RETRANS_MAX) + "])");
+            }
         }
 
-        if ((aznfsc_cfg.readdir_maxcount == -1) && config["readdir_maxcount"]) {
-            aznfsc_cfg.readdir_maxcount = config["readdir_maxcount"].as<int>();
+        if ((readdir_maxcount == -1) && config["readdir_maxcount"]) {
+            readdir_maxcount = config["readdir_maxcount"].as<int>();
         }
     } catch (const YAML::BadFile& e) {
-        AZLogError("Error loading config file {}: {}", config_file, e.what());
+        AZLogError("Error loading config file {}: {}", config_yaml, e.what());
         return false;
     } catch (const YAML::Exception& e) {
-        AZLogError("Error parsing config file {}: {}", config_file, e.what());
+        AZLogError("Error parsing config file {}: {}", config_yaml, e.what());
         return false;
     } catch (...) {
-        AZLogError("Unknown error parsing config file {}", config_file);
+        AZLogError("Unknown error parsing config file {}", config_yaml);
         return false;
     }
 
@@ -716,11 +789,14 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    /*
+     * TODO: Add validity checks for aznfsc_cfg cmdline options, similar to
+     *       parse_config_yaml().
+     */
+
     // Parse config yaml if --config-yaml option provided.
-    if (aznfsc_cfg.config_yaml != nullptr) {
-        if (!parse_config_yaml(aznfsc_cfg.config_yaml)) {
-            return 1;
-        }
+    if (!aznfsc_cfg.parse_config_yaml()) {
+        return 1;
     }
 
     /*

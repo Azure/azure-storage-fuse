@@ -23,6 +23,21 @@
 
 #include "aznfsc_config.h"
 #include "log.h"
+#include "util.h"
+
+using namespace aznfsc;
+
+// Min/Max values for various aznfsc_cfg options.
+#define AZNFSCFG_NCONNECT_MIN   1
+#define AZNFSCFG_NCONNECT_MAX   256
+#define AZNFSCFG_TIMEO_MIN      100
+#define AZNFSCFG_TIMEO_MAX      6000
+#define AZNFSCFG_RSIZE_MIN      4096
+#define AZNFSCFG_RSIZE_MAX      104857600
+#define AZNFSCFG_WSIZE_MIN      4096
+#define AZNFSCFG_WSIZE_MAX      104857600
+#define AZNFSCFG_RETRANS_MIN    1
+#define AZNFSCFG_RETRANS_MAX    100
 
 /**
  * This structure holds the entire aznfsclient configuration that controls the
@@ -156,6 +171,11 @@ typedef struct aznfsc_cfg
         server = std::string(account) + "." + std::string(cloud_suffix);
         export_path = "/" + std::string(account) + "/" + std::string(container);
     }
+
+    /**
+     * Parse config_yaml if set by cmdline --config-file=
+     */
+    bool parse_config_yaml();
 } aznfsc_cfg_t;
 
 extern struct aznfsc_cfg aznfsc_cfg;
