@@ -8,7 +8,8 @@
  * This represents an RPC transport.
  * An RPC transport is comprised of one or more nfs_connection and uses those
  * to carry RPC requests to the server.
- * This has a vector of nfs_connection objects on which the request will be sent out.
+ * This has a vector of nfs_connection objects on which the request will be
+ * sent out.
  * If the mount is done with nconnect=x, then this layer will take care of round
  * robining the requests over x connections.
  */
