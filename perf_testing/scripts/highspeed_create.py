@@ -4,6 +4,7 @@ import concurrent.futures
 import time
 import multiprocessing
 import argparse
+import json
 
 def create_file(file_index, folder):
     timestamp = int(time.time())  # Get current timestamp
@@ -28,10 +29,12 @@ def main(folder, num_files):
     total_data_written = num_files * 20  # in GB
     speed_gbps = (total_data_written * 8) / total_time  # converting GB to Gb and then calculating Gbps
 
-    print(f"Number of files written: {num_files}")
-    print(f"Total amount of data written: {total_data_written} GB")
-    print(f"Total time taken: {total_time:.2f} seconds")
-    print(f"Speed: {speed_gbps:.2f} Gbps")
+    print(json.dumps({"total_time": total_time, "write_gbps": speed_gbps}))
+
+    #print(f"Number of files written: {num_files}")
+    #print(f"Total amount of data written: {total_data_written} GB")
+    #print(f"Total time taken: {total_time:.2f} seconds")
+    #print(f"Speed: {speed_gbps:.2f} Gbps")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Create multiple 20GB files in parallel.')

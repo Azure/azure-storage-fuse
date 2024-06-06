@@ -14,13 +14,13 @@ def copy_file(src):
             # Calculate speed in Gbps and update live
             elapsed_time = time.time() - start_time
             speed_gbps = (bytes_transferred * 8) / (elapsed_time * 10**9)
-            print(f"\rBytes transferred: {bytes_transferred} bytes | Speed: {speed_gbps:.2f} Gbps", end="")
+            # print(f"\rBytes transferred: {bytes_transferred} bytes | Speed: {speed_gbps:.2f} Gbps", end="")
             sys.stdout.flush()
         process.wait()
         file_size = os.path.getsize(src)
         return file_size
     except subprocess.CalledProcessError as e:
-        print(f"Failed to copy {src} to /dev/null: {e}")
+        # print(f"Failed to copy {src} to /dev/null: {e}")
         return 0
 
 def main(file_paths):
@@ -39,10 +39,11 @@ def main(file_paths):
     total_size_gb = total_size / (1024 ** 3)  # Convert bytes to GB
     speed_gbps = (total_size * 8) / (time_taken * 10**9)  # Convert bytes to bits and calculate speed in Gbps
 
-    print("\n")
-    print(f"Total data transferred: {total_size_gb:.2f} GB")
-    print(f"Time taken: {time_taken:.2f} seconds")
-    print(f"Overall speed: {speed_gbps:.2f} Gbps")
+   print(json.dumps({"total_time": time_taken, "read_gbps": speed_gbps}))
+    # print("\n")
+    # print(f"Total data transferred: {total_size_gb:.2f} GB")
+    # print(f"Time taken: {time_taken:.2f} seconds")
+    # print(f"Overall speed: {speed_gbps:.2f} Gbps")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
