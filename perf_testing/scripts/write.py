@@ -32,4 +32,4 @@ total_time = t4 - t1
 write_mbps = ((bytes_written/write_time) * 8)/(1024 * 1024)
 total_mbps = ((bytes_written/total_time) * 8)/(1024 * 1024)
  
-print(json.dumps({"name": "write_" + size + "GB", "open_time": open_time, "write_time": write_time, "close_time": close_time, "total_time": total_time, "write_mbps": write_mbps, "total_mbps": total_mbps}))
+print(json.dumps({"name": "write_" + size + "GB", "open_time": open_time, "write_time": write_time, "close_time": close_time, "total_time": total_time, "write_mbps": write_mbps, "speed": total_mbps, "unit": "MiB/s"}))

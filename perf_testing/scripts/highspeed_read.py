@@ -39,7 +39,8 @@ def main(file_paths):
     total_size_gb = total_size / (1024 ** 3)  # Convert bytes to GB
     speed_gbps = (total_size * 8) / (time_taken * 10**9)  # Convert bytes to bits and calculate speed in Gbps
 
-   print(json.dumps({"total_time": time_taken, "read_gbps": speed_gbps}))
+    print(json.dumps({"name": "read_10_20GB_file", "total_time": time_taken, "speed": speed_gbps, "unit": "GiB/s"}))
+
     # print("\n")
     # print(f"Total data transferred: {total_size_gb:.2f} GB")
     # print(f"Time taken: {time_taken:.2f} seconds")

@@ -29,7 +29,7 @@ def main(folder, num_files):
     total_data_written = num_files * 20  # in GB
     speed_gbps = (total_data_written * 8) / total_time  # converting GB to Gb and then calculating Gbps
 
-    print(json.dumps({"total_time": total_time, "write_gbps": speed_gbps}))
+    print(json.dumps({"name": "create_10_20GB_file", "total_time": total_time, "speed": speed_gbps, "unit": "GiB/s"}))
 
     #print(f"Number of files written: {num_files}")
     #print(f"Total amount of data written: {total_data_written} GB")
