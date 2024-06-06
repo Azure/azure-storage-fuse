@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1713002568433,
+  "lastUpdate": 1717669142001,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -758,6 +758,75 @@ window.BENCHMARK_DATA = {
           {
             "name": "random_read_4_threads",
             "value": 76.764252687984,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "8820477da3584b1bcc92084fa79ae9de276d45ed",
+          "message": "Adding parallel read/write scripts",
+          "timestamp": "2024-06-06T02:58:30-07:00",
+          "tree_id": "30d380ffe1bd809dc9838543a838efad09638ee3",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/8820477da3584b1bcc92084fa79ae9de276d45ed"
+        },
+        "date": 1717669141675,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_read",
+            "value": 0.09656418027133333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read",
+            "value": 72.30084296405066,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_small_file",
+            "value": 0.08313527648133333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_small_file",
+            "value": 0.16405657743933333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_direct_io",
+            "value": 0.09856147664866666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_direct_io",
+            "value": 70.23358800659135,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_4_threads",
+            "value": 0.17293832626199998,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_read_16_threads",
+            "value": 1.0760620874393334,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "random_read_4_threads",
+            "value": 73.66784630738165,
             "unit": "milliseconds"
           }
         ]
