@@ -3,6 +3,7 @@ import sys
 import subprocess
 import time
 from multiprocessing import Pool, cpu_count
+import json
 
 def copy_file(src):
     try:
