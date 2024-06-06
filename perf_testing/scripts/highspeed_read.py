@@ -20,7 +20,6 @@ def copy_file(src):
         file_size = os.path.getsize(src)
         return file_size
     except subprocess.CalledProcessError as e:
-        # print(f"Failed to copy {src} to /dev/null: {e}")
         return 0
 
 def main(file_paths):
@@ -40,11 +39,6 @@ def main(file_paths):
     speed_gbps = (total_size * 8) / (time_taken * 10**9)  # Convert bytes to bits and calculate speed in Gbps
 
     print(json.dumps({"name": "read_10_20GB_file", "total_time": time_taken, "speed": speed_gbps, "unit": "GiB/s"}))
-
-    # print("\n")
-    # print(f"Total data transferred: {total_size_gb:.2f} GB")
-    # print(f"Time taken: {time_taken:.2f} seconds")
-    # print(f"Overall speed: {speed_gbps:.2f} Gbps")
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
