@@ -13,10 +13,24 @@ bool nfs_connection::open()
         return false;
     }
 
-    nfs_set_mountport(nfs_context, client->mnt_options.get_mount_port());
-    nfs_set_nfsport(nfs_context, client->mnt_options.get_port());
-    nfs_set_writemax(nfs_context, client->mnt_options.wsize);
-    nfs_set_readmax(nfs_context, client->mnt_options.rsize);
+    const struct mount_options& mo = client->mnt_options;
+    const std::string url_str = mo.get_url_str();
+
+    AZLogDebug("Parsing NFS URL string: {}", url_str);
+
+    struct nfs_url *url = nfs_parse_url_full(nfs_context, url_str.c_str());
+    if (url == NULL) {
+        AZLogError("Failed to parse nfs url {}", url_str);
+        return false;
+    }
+
+    assert(mo.server == url->server);
+    assert(mo.export_path == url->path);
+
+    nfs_set_mountport(nfs_context, mo.get_mount_port());
+    nfs_set_nfsport(nfs_context, mo.get_port());
+    nfs_set_writemax(nfs_context, mo.wsize);
+    nfs_set_readmax(nfs_context, mo.rsize);
 
     /*
      * Call libnfs for mounting the share.
@@ -24,19 +38,19 @@ bool nfs_connection::open()
      * After this the nfs_context can be used for sending NFS requests.
      */
     if (nfs_mount(nfs_context,
-                  client->mnt_options.server.c_str(),
-                  client->mnt_options.export_path.c_str()) != 0)
+                  mo.server.c_str(),
+                  mo.export_path.c_str()) != 0)
     {
         AZLogError("Failed to mount nfs share ({}:{}): {}",
-                   client->mnt_options.server,
-                   client->mnt_options.export_path,
+                   mo.server,
+                   mo.export_path,
                    nfs_get_error(nfs_context));
         return false;
     }
 
     AZLogInfo("Successfully mounted nfs share ({}:{})!",
-              client->mnt_options.server,
-              client->mnt_options.export_path);
+              mo.server,
+              mo.export_path);
 
     /*
      * We use libnfs in multithreading mode as we want 1 thread to do the IOs

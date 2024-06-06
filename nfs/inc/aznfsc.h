@@ -127,6 +127,7 @@ typedef struct aznfsc_cfg
      * TODO:
      * - Add auth related config.
      * - Add perf related config,
+     * - Add hard/soft mount option,
      *   e.g., amount of RAM used for staging writes, etc.
      */
 

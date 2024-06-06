@@ -5,13 +5,15 @@
 
 struct mount_options
 {
-    //
-    // This will be of the form account.blob.core.windows.net
-    // or for pre-prod : account.blob.preprod.core.windows.net
-    // or 			   : IP
-    // This will be constructed from the account_name and blobprefix passed by the caller.
-    //
-    // Server address: account+"."+cloud_suffix
+    /*
+     * This will be of the form account.blob.core.windows.net
+     * or for pre-prod : account.blob.preprod.core.windows.net
+     * or 			   : IP
+     * This will be constructed from the account name and cloud_suffix passed
+     * by the caller.
+     *
+     * Server address: account + "." + cloud_suffix
+     */
     const std::string server;
 
     // Path to be exported. /account/container
@@ -20,19 +22,26 @@ struct mount_options
     // Defaults to version 3
     const int nfs_version;
 
-    // Port to mount to 2047 or port 2048)
-    // This will default to 2048
+    // Port to mount to (2047 or 2048).
     const int mount_port;
 
+    // Same as mount_port.
     const int nfs_port;
 
-    // nconnect option. Number of connections to be established to the server.
-    // This will default to 1.
+    /*
+     * nconnect option.
+     * Number of connections to be established to the server.
+     */
     const int num_connections;
 
     // Max read and write sizes.
     const size_t rsize;
     const size_t wsize;
+
+    // How many RPC retransmits before major recovery.
+    const int retrans;
+    // Deci-seconds to timeout.
+    const int timeo;
 
     // Maximum number of readdir entries that can be requested.
     const uint32_t readdir_maxcount;
@@ -48,6 +57,8 @@ struct mount_options
         num_connections(aznfsc_cfg.nconnect),
         rsize(aznfsc_cfg.rsize),
         wsize(aznfsc_cfg.wsize),
+        retrans(aznfsc_cfg.retrans),
+        timeo(aznfsc_cfg.timeo),
         readdir_maxcount(aznfsc_cfg.readdir_maxcount)
     {
     }
@@ -57,10 +68,37 @@ struct mount_options
         mount_port(opt->mount_port),
         nfs_port(opt->nfs_port),
         num_connections(opt->num_connections),
-        rsize(1048576),
-        wsize(1048576),
-        readdir_maxcount(UINT32_MAX)
+        rsize(opt->rsize),
+        wsize(opt->wsize),
+        retrans(opt->retrans),
+        timeo(opt->timeo),
+        readdir_maxcount(opt->readdir_maxcount)
     {
+    }
+
+    /**
+     * From the mount options create a url string required by libnfs.
+     * This is how mount options are passed to libnfs.
+     */
+    const std::string get_url_str() const
+    {
+        std::string url(1024, '\0');
+        // TODO: Take it from aznfsc_cfg.
+        const int debug = 0;
+        const int size = std::snprintf(
+                            const_cast<char*>(url.data()),
+                            url.size(),
+                            "nfs://%s%s/?version=3&debug=%d&xprtsec=none&nfsport=%d&mountport=%d&timeo=%d&retrans=%d",
+                            server.c_str(),
+                            export_path.c_str(),
+                            debug,
+                            nfs_port,
+                            mount_port,
+                            timeo,
+                            retrans);
+        assert(size < (int) url.size());
+        url.resize(size);
+        return url;
     }
 
     size_t get_read_max() const
