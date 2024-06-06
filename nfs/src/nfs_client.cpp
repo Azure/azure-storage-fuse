@@ -25,7 +25,7 @@ bool nfs_client::init()
     // initialiaze the root file handle.
     // TODO: Take care of freeing this. Should this be freed in the ~nfs_client()?
     root_fh = new nfs_inode(nfs_get_rootfh(transport.get_nfs_context()) /*, 1  ino will be 1 for root */);
-    root_fh->set_inode(1);
+    root_fh->set_inode(FUSE_ROOT_ID);
     //AZLogInfo("Obtained root fh is {}", root_fh->get_fh());
 
     // Initialize the RPC task list.
