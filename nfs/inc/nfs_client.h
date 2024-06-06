@@ -156,7 +156,7 @@ public:
         fuse_req_t req,
         fuse_ino_t inode,
         struct stat* attr,
-        int toSet,
+        int to_set,
         struct fuse_file_info* file);
 
     void lookup(

@@ -8,14 +8,19 @@
 // The user should first init the client class before using it.
 bool nfs_client::init()
 {
-    const std::string acc_name = aznfsc_cfg.account;
-    const std::string cont_name = aznfsc_cfg.container;
-    const std::string blob_suffix = aznfsc_cfg.cloud_suffix;
+    // init() must be called only once.
+    assert(root_fh == nullptr);
 
-    // Check if init() has been called before
+    const std::string& acc_name = aznfsc_cfg.account;
+    const std::string& cont_name = aznfsc_cfg.container;
+    const std::string& blob_suffix = aznfsc_cfg.cloud_suffix;
 
-    // This will init the transport layer and start the connections to the server.
-    // It returns FALSE if it fails to create the connections.
+    /*
+     * Setup RPC transport.
+     * This will create all required connections and perform NFS mount on
+     * those, setting up libnfs nfs_context for each connection.
+     * Once this is done the connections are ready to carry RPC req/resp.
+     */
     if (!transport.start())
     {
         AZLogError("Failed to start the RPC transport.");

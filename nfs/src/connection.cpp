@@ -7,8 +7,7 @@ bool nfs_connection::open()
     assert(nfs_context == nullptr);
 
     nfs_context = nfs_init_context();
-    if (nfs_context == nullptr)
-    {
+    if (nfs_context == nullptr) {
         AZLogError("Failed to init libnfs nfs_context");
         return false;
     }
@@ -21,7 +20,7 @@ bool nfs_connection::open()
     struct nfs_url *url = nfs_parse_url_full(nfs_context, url_str.c_str());
     if (url == NULL) {
         AZLogError("Failed to parse nfs url {}", url_str);
-        return false;
+        goto destroy_context;
     }
 
     assert(mo.server == url->server);
@@ -39,16 +38,17 @@ bool nfs_connection::open()
      */
     if (nfs_mount(nfs_context,
                   mo.server.c_str(),
-                  mo.export_path.c_str()) != 0)
-    {
-        AZLogError("Failed to mount nfs share ({}:{}): {}",
+                  mo.export_path.c_str()) != 0) {
+        AZLogError("[{}] Failed to mount nfs share ({}:{}): {}",
+                   (void *) nfs_context,
                    mo.server,
                    mo.export_path,
                    nfs_get_error(nfs_context));
-        return false;
+        goto destroy_context;
     }
 
-    AZLogInfo("Successfully mounted nfs share ({}:{})!",
+    AZLogInfo("[{}] Successfully mounted nfs share ({}:{})!",
+              (void *) nfs_context,
               mo.server,
               mo.export_path);
 
@@ -60,11 +60,18 @@ bool nfs_connection::open()
      *
      * TODO: See if we should take care of the locking or should we use this multithreading model.
      */
-    if (nfs_mt_service_thread_start(nfs_context))
-    {
-        AZLogError("Failed to start libnfs service thread.");
-        return false;
+    if (nfs_mt_service_thread_start(nfs_context)) {
+        AZLogError("[{}] Failed to start libnfs service thread.",
+                   (void *) nfs_context);
+        goto unmount_and_destroy_context;
     }
 
     return true;
+
+unmount_and_destroy_context:
+    nfs_umount(nfs_context);
+destroy_context:
+    nfs_destroy_context(nfs_context);
+    nfs_context = nullptr;
+    return false;
 }

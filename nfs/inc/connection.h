@@ -24,11 +24,20 @@ private:
      */
     struct nfs_context *nfs_context = nullptr;
 
+    /*
+     * Integral index of this connection in the rpc_transport's connection
+     * vector. This can be useful in debugging.
+     */
+    int idx = -1;
+
 public:
-    nfs_connection(struct nfs_client* _client):
-        client(_client)
+    nfs_connection(struct nfs_client* _client, int _idx):
+        client(_client),
+        idx(_idx)
     {
         assert(client != nullptr);
+        // idx should actually be < client->mnt_options.num_connections.
+        assert(idx >= 0 && idx < AZNFSCFG_NCONNECT_MAX);
     }
 
     ~nfs_connection()
