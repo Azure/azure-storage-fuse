@@ -9,6 +9,8 @@ type xcomponent interface {
 	process(item *workItem) (int, error)
 	getNext() xcomponent
 	setNext(s xcomponent)
+	getThreadPool() *ThreadPool
+	getRemote() internal.Component
 }
 
 type xbase struct {
@@ -47,14 +49,6 @@ func (xb *xbase) getThreadPool() *ThreadPool {
 func (xb *xbase) getRemote() internal.Component {
 	return xb.remote
 }
-
-// --------------------------------------------------------------------------------------------------------------------------------------------------
-
-type xsplitter struct {
-	xbase
-}
-
-var _ xcomponent = &xsplitter{}
 
 // --------------------------------------------------------------------------------------------------------------------------------------------------
 
