@@ -42,6 +42,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/storage/azblob/blockblob"
 	"github.com/Azure/azure-storage-fuse/v2/common/config"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
+	"github.com/Azure/azure-storage-fuse/v2/internal/filter"
 
 	"github.com/JeffreyRichter/enum/enum"
 )
@@ -390,6 +391,12 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	fmt.Println(opt.Telemetry)
 	az.stConfig.blobFilter = opt.BlobFilter
 	fmt.Println(opt.BlobFilter)
+	filterArr, istrue := filter.ParseInp(&opt.BlobFilter)
+	if !istrue {
+		az.stConfig.filterArr = filterArr
+	}
+	az.stConfig.filterArr = filterArr
+
 	//blobfilter
 	httpProxyProvided := opt.HttpProxyAddress != ""
 	httpsProxyProvided := opt.HttpsProxyAddress != ""

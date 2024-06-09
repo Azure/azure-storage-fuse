@@ -298,7 +298,7 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	path := formatListDirName(options.Name)
 
 	new_list, new_marker, err := az.storage.List(path, &options.Token, options.Count)
-	fmt.Println(az.stConfig.blobFilter)
+	fmt.Println(az.stConfig.filterArr)
 	if err != nil {
 		log.Err("AzStorage::StreamDir : Failed to read dir [%s]", err)
 		return new_list, "", err
@@ -331,7 +331,6 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	// increment streamdir call count
 	azStatsCollector.UpdateStats(stats_manager.Increment, streamDir, (int64)(1))
-	//
 	return new_list, *new_marker, nil
 }
 
