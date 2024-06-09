@@ -2,8 +2,15 @@
 #include "nfs_client.h"
 #include "nfs_internal.h"
 #include "rpc_task.h"
+#include "rpc_readdir.h"
 
 #define RSTATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
+
+    nfs_client::nfs_client() :
+        transport(this)
+    {
+        read_dir_cache = readdir_cache::get_instance(this);
+    }
 
 // The user should first init the client class before using it.
 bool nfs_client::init()

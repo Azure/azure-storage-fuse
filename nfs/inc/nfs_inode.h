@@ -44,7 +44,7 @@ struct nfs_inode
 
         ino = _ino;
     }
-
+    
     const struct nfs_fh3& get_fh() const
     {
         return fh;

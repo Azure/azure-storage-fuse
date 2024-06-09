@@ -7,6 +7,7 @@
 #include <stack>
 #include <shared_mutex>
 #include <vector>
+#include "rpc_readdir.h"
 
 #include "nfs_client.h"
 
@@ -285,6 +286,16 @@ public:
     {
         cookie = cokie;
     }
+    
+    void set_buffer(char* buf)
+    {
+        buffer = buf;
+    }
+
+    void set_buffer_size(size_t size)
+    {
+        buffer_size = size;
+    }
 
     fuse_ino_t get_inode() const
     {
@@ -310,11 +321,17 @@ public:
     {
         return size;
     }
+    
+   // std::vector<directory_entry*> m_results;
+   // size_t result_size;
+
+    //void send_response();
 
 private:
     // Inode of the directory.
     fuse_ino_t inode;
 
+    // Maximum size of entries requested by the caller.
     size_t size;
 
     off_t offset;
@@ -326,6 +343,10 @@ private:
 // File info passed by the fuse layer.
     fuse_file_info file;
     fuse_file_info* file_ptr;
+
+    // The buffer should be set to null and buffer_size should be set to 0 in the setup.
+    char* buffer;
+    size_t buffer_size;
 };
 
 struct readdirplus_rpc_task
@@ -367,6 +388,16 @@ public:
         cookie = cokie;
     }
 
+    void set_buffer(char* buf)
+    {
+        buffer = buf;
+    }
+
+    void set_buffer_size(size_t size)
+    {
+        buffer_size = size;
+    }
+
     fuse_ino_t get_inode() const
     {
         return inode;
@@ -392,10 +423,15 @@ public:
         return size;
     }
 
+    // TODO: Have accesor functions.
+    //std::vector<directory_entry> m_results;
+    //size_t result_size;
+
 private:
     // Inode of the directory.
     fuse_ino_t inode;
 
+    // Maximum size of entries requested by the caller.
     size_t size;
 
     off_t offset;
@@ -407,6 +443,10 @@ private:
     // File info passed by the fuse layer.
     fuse_file_info file;
     fuse_file_info* file_ptr;
+
+    // The buffer should be set to null and buffer_size should be set to 0 in the setup.
+    char* buffer;
+    size_t buffer_size;
 };
 
 struct rpc_task
@@ -428,6 +468,10 @@ struct rpc_task
 
     // This is the index of the object in the rpc_task_list vector.
     const int index;
+
+    // TODO: See if we can move to readdir_task.
+    std::vector<directory_entry*> m_readdirentries;
+    size_t readdir_result_size;
 
 protected:
     /*
@@ -618,6 +662,17 @@ public:
     {
         return req;
     }
+
+    // TODO: See if this should be moved to other place.
+    void send_readdir_response();
+
+    void send_readdirplus_response();
+
+    void get_readdir_entries_from_cache();
+
+    void get_readdirplus_entries_from_cache();
+
+    void fetch_readdir_entries_from_server();
 };
 
 class rpc_task_helper
