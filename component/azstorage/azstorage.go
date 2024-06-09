@@ -298,6 +298,7 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	path := formatListDirName(options.Name)
 
 	new_list, new_marker, err := az.storage.List(path, &options.Token, options.Count)
+	fmt.Println(az.stConfig.blobFilter)
 	if err != nil {
 		log.Err("AzStorage::StreamDir : Failed to read dir [%s]", err)
 		return new_list, "", err
@@ -330,7 +331,7 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	// increment streamdir call count
 	azStatsCollector.UpdateStats(stats_manager.Increment, streamDir, (int64)(1))
-
+	//
 	return new_list, *new_marker, nil
 }
 
@@ -654,6 +655,9 @@ func init() {
 	telemetry := config.AddStringFlag("telemetry", "", "Additional telemetry information.")
 	config.BindPFlag(compName+".telemetry", telemetry)
 	telemetry.Hidden = true
+	//filter
+	blobFilter := config.AddStringFlag("blobFilter", "", "Filter to apply on blobs.")
+	config.BindPFlag(compName+".blobFilter", blobFilter)
 
 	honourACL := config.AddBoolFlag("honour-acl", false, "Match ObjectID in ACL against the one used for authentication.")
 	config.BindPFlag(compName+".honour-acl", honourACL)

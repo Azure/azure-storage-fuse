@@ -76,6 +76,7 @@ type AzStorageConfig struct {
 	telemetry      string
 	honourACL      bool
 	disableSymlink bool
+	blobFilter     string
 
 	// CPK related config
 	cpkEnabled             bool

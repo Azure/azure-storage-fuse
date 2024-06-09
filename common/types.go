@@ -58,7 +58,7 @@ const (
 	MaxConcurrency     = 40
 	DefaultConcurrency = 20
 
-	MaxDirListCount                             = 5000
+	MaxDirListCount                             = 500
 	DefaultFilePermissionBits       os.FileMode = 0755
 	DefaultDirectoryPermissionBits  os.FileMode = 0775
 	DefaultAllowOtherPermissionBits os.FileMode = 0777

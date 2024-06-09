@@ -182,10 +182,12 @@ type AzStorageOptions struct {
 	MaxResultsForList       int32  `config:"max-results-for-list" yaml:"max-results-for-list"`
 	DisableCompression      bool   `config:"disable-compression" yaml:"disable-compression"`
 	Telemetry               string `config:"telemetry" yaml:"telemetry"`
-	HonourACL               bool   `config:"honour-acl" yaml:"honour-acl"`
-	CPKEnabled              bool   `config:"cpk-enabled" yaml:"cpk-enabled"`
-	CPKEncryptionKey        string `config:"cpk-encryption-key" yaml:"cpk-encryption-key"`
-	CPKEncryptionKeySha256  string `config:"cpk-encryption-key-sha256" yaml:"cpk-encryption-key-sha256"`
+	BlobFilter              string `config:"blobFilter" yaml:"blobFilter"`
+	//filter
+	HonourACL              bool   `config:"honour-acl" yaml:"honour-acl"`
+	CPKEnabled             bool   `config:"cpk-enabled" yaml:"cpk-enabled"`
+	CPKEncryptionKey       string `config:"cpk-encryption-key" yaml:"cpk-encryption-key"`
+	CPKEncryptionKeySha256 string `config:"cpk-encryption-key-sha256" yaml:"cpk-encryption-key-sha256"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -385,7 +387,10 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	az.stConfig.cancelListForSeconds = opt.CancelListForSeconds
 
 	az.stConfig.telemetry = opt.Telemetry
-
+	fmt.Println(opt.Telemetry)
+	az.stConfig.blobFilter = opt.BlobFilter
+	fmt.Println(opt.BlobFilter)
+	//blobfilter
 	httpProxyProvided := opt.HttpProxyAddress != ""
 	httpsProxyProvided := opt.HttpsProxyAddress != ""
 
