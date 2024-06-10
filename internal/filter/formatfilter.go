@@ -2,18 +2,19 @@ package filter
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 type FormatFilter struct { //formatFilter and its attributes
 	ext_type string
 }
 
-func (filter FormatFilter) Apply(fileInfo *os.FileInfo) bool { //Apply fucntion for format filter , check wheather a file passes the constraints
-	fmt.Println("Format Filter ", filter, " file name ", (*fileInfo).Name())
-	fileExt := filepath.Ext((*fileInfo).Name())
+func (filter FormatFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucntion for format filter , check wheather a file passes the constraints
+	fmt.Println("Format Filter ", filter, " file name ", (*fileInfo).Name)
+	fileExt := filepath.Ext((*fileInfo).Name)
 	chkstr := "." + filter.ext_type
 	return chkstr == fileExt
 }

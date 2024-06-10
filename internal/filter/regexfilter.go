@@ -2,18 +2,19 @@ package filter
 
 import (
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
+
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 type regexFilter struct { //RegexFilter and its attributes
 	regex_inp *regexp.Regexp
 }
 
-func (filter regexFilter) Apply(fileInfo *os.FileInfo) bool { //Apply fucntion for regex filter , check wheather a file passes the constraints
-	fmt.Println("regex filter ", filter.regex_inp, " file name ", (*fileInfo).Name())
-	return filter.regex_inp.MatchString((*fileInfo).Name())
+func (filter regexFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucntion for regex filter , check wheather a file passes the constraints
+	fmt.Println("regex filter ", filter.regex_inp, " file name ", (*fileInfo).Name)
+	return filter.regex_inp.MatchString((*fileInfo).Name)
 }
 
 func newRegexFilter(args ...interface{}) Filter { // used for dynamic creation of regexFilter using map

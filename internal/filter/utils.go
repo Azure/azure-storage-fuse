@@ -3,19 +3,20 @@ package filter
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"unicode"
+
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 type opdata struct {
-	filenmae string
+	filels   *internal.ObjAttr
 	ispassed bool
 }
 type Filter interface { //Interface having child as different type of filters like size, format, regex etc
-	Apply(fileInfo *os.FileInfo) bool //Apply function defined for each filter, it takes file as input and returns wheather it passes all filters or not
+	Apply(fileInfo *internal.ObjAttr) bool //Apply function defined for each filter, it takes file as input and returns wheather it passes all filters or not
 }
 
 // type filterCreator func(...interface{}) Filter //used to create object of different filter using map
@@ -87,10 +88,10 @@ type fileValidator struct {
 	fileCnt    int64
 	wgo        sync.WaitGroup
 	// wgi          sync.WaitGroup
-	fileInpQueue chan os.FileInfo
+	fileInpQueue chan internal.ObjAttr
 	outputChan   chan opdata
 	filterArr    [][]Filter
-	finalFiles   []opdata
+	finalFiles   []*internal.ObjAttr
 }
 
 func (fv *fileValidator) RecieveOutput() {
@@ -98,9 +99,9 @@ func (fv *fileValidator) RecieveOutput() {
 	var counter int64 = 0
 	for data := range fv.outputChan {
 		counter++
-		fmt.Println("OutPut Channel: ", data.filenmae, " ", data.ispassed)
+		fmt.Println("OutPut Channel: ", data.filels, " ", data.ispassed)
 		if data.ispassed {
-			fv.finalFiles = append(fv.finalFiles, data)
+			fv.finalFiles = append(fv.finalFiles, data.filels)
 		}
 		// Check if the atomic variable is true
 		if (atomic.LoadInt32(&fv.atomicflag) == 1) && (counter == fv.fileCnt) {
@@ -108,16 +109,16 @@ func (fv *fileValidator) RecieveOutput() {
 		}
 	}
 }
-func (fv *fileValidator) checkIndividual(ctx *context.Context, fileInf *os.FileInfo, filters *[]Filter) bool { //it checks every single file against all and filters (as stored in 1 index of filterArr) in seq order
+func (fv *fileValidator) checkIndividual(ctx *context.Context, fileInf *internal.ObjAttr, filters *[]Filter) bool { //it checks every single file against all and filters (as stored in 1 index of filterArr) in seq order
 	for _, filter := range *filters {
 		select {
 		case <-(*ctx).Done(): // If any one combination returns true, no need to check furthur
-			fmt.Println("terminating file by context: ", (*fileInf).Name(), " for filter: ", filter)
+			fmt.Println("terminating file by context: ", (*fileInf).Name, " for filter: ", filter)
 			return true
 		default:
 			passedThisFilter := filter.Apply(fileInf)
 			if !passedThisFilter { //if any filter fails, return false immediately as it can never be true
-				fmt.Println("terminating file by false : ", (*fileInf).Name(), " for filter: ", filter)
+				fmt.Println("terminating file by false : ", (*fileInf).Name, " for filter: ", filter)
 				return false
 			}
 		}
@@ -125,7 +126,7 @@ func (fv *fileValidator) checkIndividual(ctx *context.Context, fileInf *os.FileI
 	return true // if all filters in seq order passes , return true
 }
 
-func (fv *fileValidator) checkFileWithFilters(fileInf *os.FileInfo) bool { // it takes a single file and all filters mentioned by user returns a bool
+func (fv *fileValidator) checkFileWithFilters(fileInf *internal.ObjAttr) bool { // it takes a single file and all filters mentioned by user returns a bool
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	response := false
@@ -152,10 +153,10 @@ func (fv *fileValidator) ChkFile() { // this is thread pool , where 16 tgreads a
 	for fileInf := range fv.fileInpQueue {
 		Passed := fv.checkFileWithFilters(&fileInf)
 		if Passed { //if a file passes add it to result
-			fmt.Println("Final Output: ", fileInf.Name())
-			fv.outputChan <- opdata{filenmae: fileInf.Name(), ispassed: true}
+			fmt.Println("Final Output: ", fileInf)
+			fv.outputChan <- opdata{filels: &fileInf, ispassed: true}
 		} else {
-			fv.outputChan <- opdata{filenmae: fileInf.Name(), ispassed: false}
+			fv.outputChan <- opdata{filels: &fileInf, ispassed: false}
 		}
 		// fmt.Println("worker ", id, " verifing file ", fileInf.Name())
 	}

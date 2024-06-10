@@ -2,9 +2,10 @@ package filter
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
+
+	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
 type SizeFilter struct { //SizeFilter and its attributes
@@ -12,17 +13,17 @@ type SizeFilter struct { //SizeFilter and its attributes
 	value float64
 }
 
-func (filter SizeFilter) Apply(fileInfo *os.FileInfo) bool { //Apply fucntion for size filter , check wheather a file passes the constraints
-	fmt.Println("size filter ", filter, " file name ", (*fileInfo).Name())
-	if (filter.opr == "<=") && ((*fileInfo).Size() <= int64(filter.value)) {
+func (filter SizeFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucntion for size filter , check wheather a file passes the constraints
+	fmt.Println("size filter ", filter, " file name ", (*fileInfo).Name)
+	if (filter.opr == "<=") && ((*fileInfo).Size <= int64(filter.value)) {
 		return true
-	} else if (filter.opr == ">=") && ((*fileInfo).Size() >= int64(filter.value)) {
+	} else if (filter.opr == ">=") && ((*fileInfo).Size >= int64(filter.value)) {
 		return true
-	} else if (filter.opr == ">") && ((*fileInfo).Size() > int64(filter.value)) {
+	} else if (filter.opr == ">") && ((*fileInfo).Size > int64(filter.value)) {
 		return true
-	} else if (filter.opr == "<") && ((*fileInfo).Size() < int64(filter.value)) {
+	} else if (filter.opr == "<") && ((*fileInfo).Size < int64(filter.value)) {
 		return true
-	} else if (filter.opr == "=") && ((*fileInfo).Size() == int64(filter.value)) {
+	} else if (filter.opr == "=") && ((*fileInfo).Size == int64(filter.value)) {
 		return true
 	}
 	return false
