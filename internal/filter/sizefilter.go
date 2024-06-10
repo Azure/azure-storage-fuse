@@ -15,6 +15,7 @@ type SizeFilter struct { //SizeFilter and its attributes
 
 func (filter SizeFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucntion for size filter , check wheather a file passes the constraints
 	fmt.Println("size filter ", filter, " file name ", (*fileInfo).Name)
+
 	if (filter.opr == "<=") && ((*fileInfo).Size <= int64(filter.value)) {
 		return true
 	} else if (filter.opr == ">=") && ((*fileInfo).Size >= int64(filter.value)) {

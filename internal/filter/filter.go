@@ -7,7 +7,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-func Callme(filterArr *[][]Filter, fileInfos []*internal.ObjAttr) []*internal.ObjAttr {
+func ApplyFilterOnBlobs(filterArr *[][]Filter, fileInfos []*internal.ObjAttr) []*internal.ObjAttr {
 	fv := &fileValidator{
 		workers:    16,
 		atomicflag: 0,
@@ -15,8 +15,8 @@ func Callme(filterArr *[][]Filter, fileInfos []*internal.ObjAttr) []*internal.Ob
 		filterArr:  *filterArr,
 	}
 	fv.wgo.Add(1) //kept outside thread
-	fv.outputChan = make(chan opdata, fv.workers)
-	fv.fileInpQueue = make(chan internal.ObjAttr, fv.workers)
+	fv.outputChan = make(chan *opdata, fv.workers)
+	fv.fileInpQueue = make(chan *internal.ObjAttr, fv.workers)
 
 	go fv.RecieveOutput()
 
@@ -25,7 +25,8 @@ func Callme(filterArr *[][]Filter, fileInfos []*internal.ObjAttr) []*internal.Ob
 		go fv.ChkFile() //go routines for each worker (thread) are called
 	}
 	for _, fileinfo := range fileInfos {
-		fv.fileInpQueue <- (*fileinfo) //push all files one by one in channel , if channel is full , it will wait
+		fmt.Println("passedFile: ", *fileinfo)
+		fv.fileInpQueue <- fileinfo //push all files one by one in channel , if channel is full , it will wait
 		fv.fileCnt++
 	}
 

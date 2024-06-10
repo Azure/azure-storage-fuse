@@ -88,8 +88,8 @@ type fileValidator struct {
 	fileCnt    int64
 	wgo        sync.WaitGroup
 	// wgi          sync.WaitGroup
-	fileInpQueue chan internal.ObjAttr
-	outputChan   chan opdata
+	fileInpQueue chan *internal.ObjAttr
+	outputChan   chan *opdata
 	filterArr    [][]Filter
 	finalFiles   []*internal.ObjAttr
 }
@@ -99,13 +99,15 @@ func (fv *fileValidator) RecieveOutput() {
 	var counter int64 = 0
 	for data := range fv.outputChan {
 		counter++
-		fmt.Println("OutPut Channel: ", data.filels, " ", data.ispassed)
+		fmt.Println("OutPut Channel: ", data.filels.Name, " ", data.ispassed)
 		if data.ispassed {
+			fmt.Println("In finalFiles : ", data.filels.Name)
 			fv.finalFiles = append(fv.finalFiles, data.filels)
 		}
 		// Check if the atomic variable is true
 		if (atomic.LoadInt32(&fv.atomicflag) == 1) && (counter == fv.fileCnt) {
 			close(fv.outputChan)
+			break
 		}
 	}
 }
@@ -114,7 +116,7 @@ func (fv *fileValidator) checkIndividual(ctx *context.Context, fileInf *internal
 		select {
 		case <-(*ctx).Done(): // If any one combination returns true, no need to check furthur
 			fmt.Println("terminating file by context: ", (*fileInf).Name, " for filter: ", filter)
-			return true
+			return false
 		default:
 			passedThisFilter := filter.Apply(fileInf)
 			if !passedThisFilter { //if any filter fails, return false immediately as it can never be true
@@ -123,6 +125,7 @@ func (fv *fileValidator) checkIndividual(ctx *context.Context, fileInf *internal
 			}
 		}
 	}
+	fmt.Println("chkIn : ", (*fileInf))
 	return true // if all filters in seq order passes , return true
 }
 
@@ -139,26 +142,30 @@ func (fv *fileValidator) checkFileWithFilters(fileInf *internal.ObjAttr) bool { 
 	}
 	for range fv.filterArr {
 		resp := <-resultChan //here we check the result of each combination as upper for loop pushed in channel
+		fmt.Println("banda recieved : ", fileInf.Name, " ", resp)
 		if (resp) && (!response) {
 			cancel()
 			// for the first time when we recieve a true , we will cancel context and wait for all processes to stop
 		}
 		response = (response || resp)
 	}
+	fmt.Println("chkfil: ", (*fileInf), " ", response)
 	return response // return response, it will be true if any combination returns a true
 }
 
 func (fv *fileValidator) ChkFile() { // this is thread pool , where 16 tgreads are running
 	// defer fv.wgi.Done()
 	for fileInf := range fv.fileInpQueue {
-		Passed := fv.checkFileWithFilters(&fileInf)
+		// fmt.Println("worker verifing file ", fileInf.Name)
+		fmt.Println("sending for check: ", fileInf.Name)
+		Passed := fv.checkFileWithFilters(fileInf)
 		if Passed { //if a file passes add it to result
-			fmt.Println("Final Output: ", fileInf)
-			fv.outputChan <- opdata{filels: &fileInf, ispassed: true}
+			fmt.Println("Final Output: ", fileInf.Name)
+			fv.outputChan <- (&opdata{filels: fileInf, ispassed: true})
 		} else {
-			fv.outputChan <- opdata{filels: &fileInf, ispassed: false}
+			fmt.Println("Not Output: ", fileInf.Name, " passing ", Passed)
+			fv.outputChan <- (&opdata{filels: fileInf, ispassed: false})
 		}
-		// fmt.Println("worker ", id, " verifing file ", fileInf.Name())
 	}
 	// fmt.Println("worker ", id, " stopped")
 }

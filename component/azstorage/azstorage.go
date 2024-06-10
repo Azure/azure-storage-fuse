@@ -331,8 +331,11 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	// increment streamdir call count
 	azStatsCollector.UpdateStats(stats_manager.Increment, streamDir, (int64)(1))
-
-	new_list = filter.Callme(&az.stConfig.filterArr, new_list)
+	//only if user has given filter
+	new_list = filter.ApplyFilterOnBlobs(&az.stConfig.filterArr, new_list)
+	for _, dt := range new_list {
+		fmt.Println(dt.Name)
+	}
 	return new_list, *new_marker, nil
 }
 

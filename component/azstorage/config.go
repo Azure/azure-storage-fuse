@@ -388,7 +388,6 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	az.stConfig.cancelListForSeconds = opt.CancelListForSeconds
 
 	az.stConfig.telemetry = opt.Telemetry
-	fmt.Println(opt.Telemetry)
 	az.stConfig.blobFilter = opt.BlobFilter
 	fmt.Println(opt.BlobFilter)
 	filterArr, istrue := filter.ParseInp(&opt.BlobFilter)

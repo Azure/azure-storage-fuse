@@ -60,7 +60,7 @@ func main() {
 		}
 	}
 	var dirs [][]os.FileInfo
-	dirPath := "../../../test"
+	dirPath := "../../../mntdir"
 	dir, err := os.Open(dirPath)
 	if err != nil {
 		fmt.Println("Error opening directory:", err)
