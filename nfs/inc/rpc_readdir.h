@@ -7,6 +7,9 @@
 #include <vector>
 #include <ctime>
 
+// 1GB
+#define MAX_CACHE_SIZE_LIMIT 1073741824
+
 //struct directory_list_cache;
 //struct directory_entry;
 
@@ -31,12 +34,18 @@ struct directory_entry
     {}
 
 // Get the size of the directory entry
-    size_t get_size()
+    size_t get_size(bool skip_attr_size = false)
     {
-        return strlen(name) + offsetof(struct directory_entry, name);
+        if (skip_attr_size)
+        {
+            return (strlen(name) + offsetof(struct directory_entry, name) - sizeof(struct stat));
+        }
+        else
+        {
+            return (strlen(name) + offsetof(struct directory_entry, name));
+        }
     }
 };
-
 
 struct directory_list_cache
 {
@@ -48,6 +57,8 @@ private:
      * from the backend.
      */
     bool eof;
+
+    size_t cache_size;
 
     const std::time_t create_time;
 
@@ -65,6 +76,7 @@ public:
     directory_list_cache(fuse_ino_t ino):
         inode(ino),
         eof(false),
+        cache_size(0),
         create_time(std::time(nullptr)),
         last_mtimecheck(std::time(nullptr))
     {
@@ -113,14 +125,21 @@ public:
 
     bool add(struct directory_entry* entry)
     {
+        const size_t entry_size = entry->get_size();
+
         assert(entry != nullptr);
         // if (get_cache_size() < MAX_ALLOWED_SIZE) // TODO: Add this check later.
         {
             // Get exclusive lock on the map to add the entry to the map.
             std::unique_lock<std::shared_mutex> lock(lock_dirlistcache);
+            if (cache_size >= MAX_CACHE_SIZE_LIMIT)
+            {
+                AZLogWarn("Exceeding cache max size. No more entries will be added to the cache! cuurent size: {}", cache_size); 
+                return false;
+            }
 
             const auto& it = dir_entries.insert({entry->cookie, entry});
-
+            cache_size += entry_size;
             return it.second;
         }
 
@@ -153,6 +172,7 @@ public:
 
     void set_eof()
     {
+         AZLogInfo("set eof called");
         eof = true;
     }
 
@@ -235,6 +255,8 @@ public:
 
     bool make_getattr_call(fuse_ino_t inode, struct stat& attr)
     {
+        // Make a sync call to fetch the attributes.
+
         // TODO: Populate this function.
         return true;
     }
@@ -420,11 +442,10 @@ purge_cache:
         cookie3 cookie_ /* offset in the directory from which the directory should be listed*/,
         size_t max_size /* maximum size of entries to be returned*/,
         std::vector<directory_entry* >& results /* dir entries listed*/,
-        size_t& result_size /* size of the directory entries being returned*/,
-        bool& eof)
+        //size_t& result_size /* size of the directory entries being returned*/,
+        bool& eof,
+        bool skip_attr_size = false)
     {
-        result_size = 0;
-
         // Check if the cache should be purged.
         purge_cache_if_required(inode);
 
@@ -452,6 +473,8 @@ purge_cache:
              */
         }
 
+        int num_of_entries_found_in_cache = 0;
+
         size_t rem_size = max_size;
         //bool dir_present_in_cache = false;
         while (rem_size > 0)
@@ -461,10 +484,11 @@ purge_cache:
             if (found)
             {
          //       dir_present_in_cache = true;
-                const size_t curr_entry_size = entry->get_size();
+                const size_t curr_entry_size = entry->get_size(skip_attr_size);
                 if (rem_size >= curr_entry_size)
                 {
-                    result_size += curr_entry_size;
+                    num_of_entries_found_in_cache++;
+                    //result_size += curr_entry_size;
                     results.push_back(entry);
                 }
                 else
@@ -477,6 +501,8 @@ purge_cache:
             }
             else
             {
+                AZLogDebug("Traversed map: Num of entries returned from cache {}", num_of_entries_found_in_cache);
+
                 /*
                  * If we don't find the current cookie, then we will not find the next
                  * ones as well since they are stored sequentially.
@@ -487,7 +513,7 @@ purge_cache:
         }
 
         eof = dir_cache_handle->get_eof();
-
+        AZLogDebug("Buffer exhaust: Num of entries returned from cache {}", num_of_entries_found_in_cache);
         /*
          * NOTE: We will not populate the cookie verifier here nor access it since
          * that will be done only at the time the readdir call is made to the backend.

@@ -470,8 +470,8 @@ struct rpc_task
     const int index;
 
     // TODO: See if we can move to readdir_task.
-    std::vector<directory_entry*> m_readdirentries;
-    size_t readdir_result_size;
+    //std::vector<directory_entry*> m_readdirentries;
+    //size_t readdir_result_size;
 
 protected:
     /*
@@ -664,9 +664,9 @@ public:
     }
 
     // TODO: See if this should be moved to other place.
-    void send_readdir_response();
+    void send_readdir_response(std::vector<directory_entry*>& readdirentries);
 
-    void send_readdirplus_response();
+    void send_readdirplus_response(std::vector<directory_entry*>& readdirentries);
 
     void get_readdir_entries_from_cache();
 

@@ -422,8 +422,8 @@ void rpc_task::set_readdir(struct nfs_client* clt,
     rpc_api.readdir_task.set_fuse_file(file);
     rpc_api.readdir_task.set_cookie(offset);
 
-    m_readdirentries.clear();
-    readdir_result_size = 0;
+    //m_readdirentries.clear();
+    //readdir_result_size = 0;
     //rpc_api.readdir_task.set_cookieverf(0);
     //rpc_api.readdir_task.m_results.clear();
     //rpc_api.readdir_task.result_size = 0;
@@ -447,8 +447,8 @@ void rpc_task::set_readdirplus(struct nfs_client* clt,
     rpc_api.readdirplus_task.set_fuse_file(file);
     // rpc_api.readdirplus_task.set_cookieverf(0);
     rpc_api.readdirplus_task.set_cookie(offset);
-    m_readdirentries.clear();
-    readdir_result_size = 0;
+    //m_readdirentries.clear();
+    //readdir_result_size = 0;
     //rpc_api.readdir_task.m_results.clear();
     //rpc_api.readdir_task.result_size = 0;
 }
@@ -476,9 +476,7 @@ static void readdirplus_callback(
     bool retry;
     bool is_readdirplus_call = false;
     fuse_ino_t inode;
-
-    AZLogInfo("Entry: result_vector: {}", task->m_readdirentries.size());
-
+    std::vector<directory_entry*> readdirentries;
 
     // Check if the application asked for readdir or readdirplus call.
     if (task->get_op_type() == FUSE_READDIRPLUS)
@@ -517,6 +515,16 @@ static void readdirplus_callback(
         std::shared_ptr<directory_list_cache> dirlistcache_handle = task->get_client()->get_readdir_cache()->get(inode);
         assert(dirlistcache_handle != nullptr);
         int num_of_ele = 0;
+            size_t rem_size = 0;
+            if (is_readdirplus_call)
+            {
+                rem_size = task->rpc_api.readdirplus_task.get_size();
+            }
+            else
+            {
+                rem_size = task->rpc_api.readdir_task.get_size();
+            }
+
         while (entry)
         {
 #if 0
@@ -556,22 +564,12 @@ static void readdirplus_callback(
              */
             struct directory_entry* dir_entry = new directory_entry(entry->name, entry->cookie, st, nfs_ino);
 
-            size_t rem_size = 0;
-            if (is_readdirplus_call)
-            {
-                rem_size = task->rpc_api.readdirplus_task.get_size();
-            }
-            else
-            {
-                rem_size = task->rpc_api.readdir_task.get_size();
-            }
-
-            // Add it to the directory_entry vector if it does not cross the max size limit requested by the application.
+            // Add it to the directory_entry vector ONLY if it does not cross the max size limit requested by the application.
             const size_t curr_entry_size = dir_entry->get_size();
             if (rem_size >= curr_entry_size)
             {
-                    task->readdir_result_size += curr_entry_size;
-                    task->m_readdirentries.push_back(dir_entry);
+                    //task->readdir_result_size += curr_entry_size;
+                    readdirentries.push_back(dir_entry);
 
                     rem_size -= curr_entry_size;
             }
@@ -584,7 +582,7 @@ static void readdirplus_callback(
             ++num_of_ele;
         }
 
-        AZLogInfo("Num of entries returned by server is {}, result_vector: {}", num_of_ele, task->m_readdirentries.size());
+        AZLogInfo("Num of entries returned by server is {}, result_vector: {}", num_of_ele, readdirentries.size());
 
         // TODO: See if the cache really needs to store the cookie verifier.
         dirlistcache_handle->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
@@ -603,11 +601,11 @@ static void readdirplus_callback(
 
         if (is_readdirplus_call)
         {
-            task->send_readdirplus_response();
+            task->send_readdirplus_response(readdirentries);
         }
         else
         {
-            task->send_readdir_response();
+            task->send_readdir_response(readdirentries);
         }
     }
 #if 0
@@ -735,9 +733,10 @@ rpc_task::send_readdir_response()
 }
 #endif
 
-void rpc_task::send_readdirplus_response()
+void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdirentries)
 {
     size_t sz = rpc_api.readdirplus_task.get_size();
+     assert(get_op_type() == FUSE_READDIRPLUS);
 
     char *buf1 = (char *)malloc(sz);
     if (!buf1)
@@ -751,9 +750,9 @@ void rpc_task::send_readdirplus_response()
     size_t rem = sz;
     int num_of_entries_returned = 0;
 
-    AZLogInfo("Size of readdirplus result vector is {}", m_readdirentries.size());
+    AZLogInfo("Size of readdirplus result vector is {}", readdirentries.size());
     //for ( auto it = m_readdirentries.begin(); it != m_readdirentries.end(); ++it)
-    for (const auto& it : m_readdirentries)
+    for (const auto& it : readdirentries)
     {
         if ((int)it->cookie <= (int)rpc_api.readdirplus_task.get_offset())
         {
@@ -762,7 +761,7 @@ void rpc_task::send_readdirplus_response()
              * TODO: See if we need this. Can't we control this thorugh the cookie?
              */
            // entry = entry->nextentry;
-            AZLogDebug("skipping cookie {}", it->cookie);
+           // AZLogDebug("skipping cookie {}", it->cookie);
             continue;
         }
 
@@ -935,17 +934,23 @@ void rpc_task::run_readdir()
 
 void rpc_task::get_readdir_entries_from_cache()
 {
+    assert(get_op_type() == FUSE_READDIR);
+
     auto readdircache = get_client()->get_readdir_cache();
     bool is_eof = false;
+   // bool size_exhausted = false;
+
+    std::vector<directory_entry*> readdirentries;
 
     /*const bool entry_found =*/ readdircache->lookup(rpc_api.readdir_task.get_inode(),
-                         rpc_api.readdir_task.get_cookie(), // TODO: See if this should populate from cookie+1
+                         rpc_api.readdir_task.get_cookie() + 1 , // TODO: See if this should populate from cookie+1
                          rpc_api.readdir_task.get_size(),
-                         m_readdirentries,
-                         readdir_result_size,
+                         readdirentries,
+                         //readdir_result_size,
                          //rpc_api.readdir_task.m_results,
                          //rpc_api.readdir_task.result_size,
-                         is_eof);
+                         is_eof,
+                         true /* skip_attr_size */);
 #if 0
     if (!entry_found)
     {
@@ -954,8 +959,12 @@ void rpc_task::get_readdir_entries_from_cache()
         fetch_readdir_entries_from_server();
     }
  #endif
-    if ((rpc_api.readdir_task.get_size() > readdir_result_size)/* && !is_eof*/)
+    //if (!size_exhausted && (rpc_api.readdir_task.get_size() > readdir_result_size)/* && !is_eof*/)
+    if (readdirentries.empty())
     {
+        // Read from the backend only if there is no entry present in the cache.
+        // Note : It is okay even if we send less number of entries. Fuse layer will request for more num of entries later.
+
         /*
          * We can return more number of entries to the caller since we have not exceeded the
          * requested size. Since these entries are not present in the cache, this should be fetched
@@ -966,7 +975,7 @@ void rpc_task::get_readdir_entries_from_cache()
     else
     {
         // We are done fetching all the entries, send the response now.
-        send_readdir_response();
+        send_readdir_response(readdirentries);
     }
 }
 
@@ -974,17 +983,23 @@ void rpc_task::get_readdirplus_entries_from_cache()
 {
     auto readdircache = get_client()->get_readdir_cache();
     bool is_eof = false;
+     assert(get_op_type() == FUSE_READDIRPLUS);
+ //   bool size_exhausted = false;
+
+    std::vector<directory_entry*> readdirentries;
 
     readdircache->lookup(rpc_api.readdirplus_task.get_inode(),
-                         rpc_api.readdirplus_task.get_cookie(),
+                         rpc_api.readdirplus_task.get_cookie()+1,
                          rpc_api.readdirplus_task.get_size(),
-                         m_readdirentries,
-                         readdir_result_size,
+                         readdirentries,
+                         //readdir_result_size,
                          //rpc_api.readdirplus_task.m_results,
                          //rpc_api.readdirplus_task.result_size,
                          is_eof);
+                         //size_exhausted);
 
-    if ((rpc_api.readdirplus_task.get_size() > readdir_result_size) && !is_eof)
+    //if (!size_exhausted && (rpc_api.readdirplus_task.get_size() > readdir_result_size) /*&& !is_eof */)
+    if (readdirentries.empty())
     {
         /*
          * We can return more number of entries to the caller since we have not exceeded the
@@ -995,7 +1010,7 @@ void rpc_task::get_readdirplus_entries_from_cache()
     }
     else
     {
-        send_readdirplus_response();
+        send_readdirplus_response(readdirentries);
     }
 }
 
@@ -1004,25 +1019,26 @@ void rpc_task::fetch_readdir_entries_from_server()
     bool rpc_retry = false;
     fuse_ino_t inode;
 
+    cookie3 cookie = 0;
+    
     if (get_op_type() == FUSE_READDIR)
     {
         inode = rpc_api.readdir_task.get_inode();
-        //cookie = rpc_api.readdir_task.m_results.back().cookie;
+        cookie = rpc_api.readdir_task.get_offset();
     }
     else
     {
          inode = rpc_api.readdirplus_task.get_inode();
-        //cookie = rpc_api.readdirplus_task.m_results.back().cookie;
+        cookie = rpc_api.readdirplus_task.get_offset();
     }
 
-    cookie3 cookie = 0;
-
+#if 0
     // Fetch the cookie from where we want to do the listing.
     if (!m_readdirentries.empty())
     {
         cookie = m_readdirentries.back()->cookie;
     }
-    
+#endif
     do {
         struct READDIRPLUS3args args;
         ::memset(&args, 0, sizeof(args));
@@ -1044,8 +1060,10 @@ void rpc_task::fetch_readdir_entries_from_server()
 
 }
 
-void rpc_task::send_readdir_response()
+void rpc_task::send_readdir_response(std::vector<directory_entry*>& readdirentries)
 {
+     assert(get_op_type() == FUSE_READDIR);
+
     const size_t size = rpc_api.readdir_task.get_size();
     // Allocate buffer
     char *buf1 = (char *)malloc(size);
@@ -1058,11 +1076,11 @@ void rpc_task::send_readdir_response()
     char *current_buf = buf1;
     size_t rem = size;
     int  num_of_entries_returned = 0;
-    AZLogInfo("Size of readdir result vector is {}", m_readdirentries.size());
+    AZLogInfo("Size of readdir result vector is {}", readdirentries.size());
 
-    for (const auto& it : m_readdirentries)
+    for (const auto& it : readdirentries)
     {
-        AZLogInfo("Curr entry readdir cookie is {}", it->cookie);
+       // AZLogInfo("Curr entry readdir cookie is {}", it->cookie);
         if ((int)it->cookie <= (int)rpc_api.readdir_task.get_offset())
         {
             /*
@@ -1070,7 +1088,7 @@ void rpc_task::send_readdir_response()
              * TODO: See if we need this. Can't we control this thorugh the cookie?
              */
            // entry = entry->nextentry;
-            AZLogDebug("skipping cookie {}", it->cookie);
+            //AZLogDebug("skipping cookie {}", it->cookie);
             continue;
         }
         /*
@@ -1117,7 +1135,7 @@ void rpc_task::run_readdirplus()
 {
    // bool rpc_retry = false;
    // auto inode = rpc_api.readdirplus_task.get_inode();
-    get_readdir_entries_from_cache();
+    get_readdirplus_entries_from_cache();
 
 #if 0
     do {
