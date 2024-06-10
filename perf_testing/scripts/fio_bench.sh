@@ -122,10 +122,9 @@ list_files() {
   # List files and capture the time related details
   work_dir=`pwd`
   cd ${mount_dir}
-  /usr/bin/time -o ${work_dir}/lst.txt -v ls -U --color=never > ${work_dir}/lst.out
-  cd -
-  cat lst.txt
-  cat ${work_dir}/lst.out | wc -l
+  /usr/bin/time -o ${work_dir}/lst.txt -v ls -lU --color=never > ${work_dir}/lst.out
+  cd ${work_dir}
+  cat ${work_dir}/lst.txt
 
   # Extract Elapsed time for listing files
   list_time=`cat ${work_dir}/lst.txt | grep "Elapsed" | rev | cut -d " " -f 1 | rev`
@@ -139,9 +138,11 @@ list_files() {
 
   # ------------------------------
   # Measure time taken to delete these files
+  cat ${work_dir}/lst.out | wc -l  
+  cat ${work_dir}/lst.out | rev | cut -d " " -f 1 | rev | tail +2  > ${work_dir}/lst.out1
+
   cd ${mount_dir}
-  
-  /usr/bin/time -o ${work_dir}/del.txt -v xargs rm < ${work_dir}/lst.out
+  /usr/bin/time -o ${work_dir}/del.txt -v xargs rm < ${work_dir}/lst.out1
   cd -
   cat ${work_dir}/del.txt
 
