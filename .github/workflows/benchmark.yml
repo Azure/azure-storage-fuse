@@ -199,5 +199,32 @@ jobs:
           auto-push: true
           comment-on-alert: true
           gh-pages-branch: benchmarks
-          benchmark-data-dir-path: time/app          
+          benchmark-data-dir-path: time/app    
+          
+      # ---------------------------------------------------------------------------------------
+      # Run Rename tests
+      # This needs to run seperatly as output is different
+      - name: "Rename Test"
+        run: |
+          rm -rf /mnt/blob_mnt/*
+          rm -rf /mnt/tempcache/*
+          ./perf_testing/scripts/fio_bench.sh /mnt/blob_mnt rename
+        env:
+          AZURE_STORAGE_ACCOUNT:  ${{ secrets.BLOB_STORAGE_ACCOUNT }}
+          AZURE_STORAGE_ACCOUNT_CONTAINER: ${{ secrets.BLOB_STORAGE_CONTAINER }}
+          AZURE_STORAGE_ACCESS_KEY: ${{ secrets.BLOB_STORAGE_KEY }}   
+
+      - name: "Update Latency Results : Rename"
+        uses: benchmark-action/github-action-benchmark@v1
+        with:
+          output-file-path: app/rename_latency.json
+          tool: 'customSmallerIsBetter'
+          alert-threshold: "160%"
+          max-items-in-chart: 100
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-on-alert: true
+          auto-push: true
+          comment-on-alert: true
+          gh-pages-branch: benchmarks
+          benchmark-data-dir-path: time/app                 
       # ---------------------------------------------------------------------------------------        

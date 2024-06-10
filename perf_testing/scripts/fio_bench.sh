@@ -246,6 +246,24 @@ read_write_using_app() {
   jq '{"name": .name, "value": .speed, "unit": .unit}' ${output}/app_local_write_*.json | jq -s '.' | tee ./${output}/app_local_bandwidth.json
 }
 
+# --------------------------------------------------------------------------------------------------
+# Method to create and then rename files
+rename_files() {
+  # ----- Rename tests -----------
+  # Mount blobfuse
+  mount_blobfuse
+
+  total_seconds=0
+
+  # List files and capture the time related details
+  work_dir=`pwd`
+  cd ${mount_dir}
+  python3 ${work_dir}/perf_testing/scripts/rename.py > ${output}/rename.json
+  cd ${work_dir}
+  cat ${output}/rename.json
+
+  jq '{"name": .name, "time": .rename_time, "unit": .unit}' ${output}/rename.json | jq -s '.' | tee ./${output}/rename_latency.json
+}
 
 # --------------------------------------------------------------------------------------------------
 # Method to prepare the system for test
@@ -320,6 +338,17 @@ then
 
   # No need to generate bandwidth or latecy related reports in this case
   executed=0
+elif [[ ${test_name} == "rename" ]] 
+then 
+  # Set log type to silent as this is going to generate a lot of logs
+  log_type="silent"
+
+  # Execute rename tests
+  echo "Running File rename test cases"
+  rename_files
+  
+  # No need to generate bandwidth or latecy related reports in this case
+  executed=0 
 else
   executed=0  
   echo "Invalid argument. Please provide either 'read', 'write', 'multi' or 'create' as argument"
