@@ -125,7 +125,7 @@ func (fv *fileValidator) checkIndividual(ctx *context.Context, fileInf *internal
 			}
 		}
 	}
-	fmt.Println("chkIn : ", (*fileInf))
+	// fmt.Println("chkIn : ", (*fileInf))
 	return true // if all filters in seq order passes , return true
 }
 
@@ -142,14 +142,14 @@ func (fv *fileValidator) checkFileWithFilters(fileInf *internal.ObjAttr) bool { 
 	}
 	for range fv.filterArr {
 		resp := <-resultChan //here we check the result of each combination as upper for loop pushed in channel
-		fmt.Println("banda recieved : ", fileInf.Name, " ", resp)
+		// fmt.Println("banda recieved : ", fileInf.Name, " ", resp)
 		if (resp) && (!response) {
 			cancel()
 			// for the first time when we recieve a true , we will cancel context and wait for all processes to stop
 		}
 		response = (response || resp)
 	}
-	fmt.Println("chkfil: ", (*fileInf), " ", response)
+	// fmt.Println("chkfil: ", (*fileInf), " ", response)
 	return response // return response, it will be true if any combination returns a true
 }
 

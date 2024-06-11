@@ -390,11 +390,8 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	az.stConfig.telemetry = opt.Telemetry
 	az.stConfig.blobFilter = opt.BlobFilter
 	fmt.Println(opt.BlobFilter)
-	filterArr, istrue := filter.ParseInp(&opt.BlobFilter)
-	if !istrue {
-		az.stConfig.filterArr = filterArr
-	}
-	az.stConfig.filterArr = filterArr
+	filterArr, _ := filter.ParseInp(&opt.BlobFilter)
+	filter.GlbFilterArr = filterArr
 
 	//blobfilter
 	httpProxyProvided := opt.HttpProxyAddress != ""

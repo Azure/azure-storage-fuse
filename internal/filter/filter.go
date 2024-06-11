@@ -7,12 +7,14 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-func ApplyFilterOnBlobs(filterArr *[][]Filter, fileInfos []*internal.ObjAttr) []*internal.ObjAttr {
+var GlbFilterArr [][]Filter
+
+func ApplyFilterOnBlobs(fileInfos []*internal.ObjAttr) []*internal.ObjAttr {
 	fv := &fileValidator{
 		workers:    16,
 		atomicflag: 0,
 		fileCnt:    0,
-		filterArr:  *filterArr,
+		filterArr:  GlbFilterArr,
 	}
 	fv.wgo.Add(1) //kept outside thread
 	fv.outputChan = make(chan *opdata, fv.workers)
@@ -33,11 +35,11 @@ func ApplyFilterOnBlobs(filterArr *[][]Filter, fileInfos []*internal.ObjAttr) []
 	atomic.StoreInt32(&fv.atomicflag, 1)
 	close(fv.fileInpQueue) //close channel once all files have been processed
 	// fv.wgi.Wait()
-	fv.wgo.Wait()                       //wait for completion of all threads
-	fmt.Println("All workers stopped ") //exit
+	fv.wgo.Wait() //wait for completion of all threads
+	// fmt.Println("All workers stopped ") //exit
 
-	for _, finallist := range fv.finalFiles {
-		fmt.Println("List O/P: ", finallist)
-	}
+	// for _, finallist := range fv.finalFiles {
+	// 	fmt.Println("List O/P: ", finallist)
+	// }
 	return fv.finalFiles
 }

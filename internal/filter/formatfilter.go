@@ -16,7 +16,7 @@ func (filter FormatFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucn
 	fmt.Println("Format Filter ", filter, " file name ", (*fileInfo).Name)
 	fileExt := filepath.Ext((*fileInfo).Name)
 	chkstr := "." + filter.ext_type
-	fmt.Println(fileExt, " For file :", fileInfo.Name)
+	// fmt.Println(fileExt, " For file :", fileInfo.Name)
 	return chkstr == fileExt
 }
 

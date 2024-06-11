@@ -17,7 +17,7 @@ func (filter modTimeFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fuc
 	fmt.Println("modTime Filter ", filter.opr, " ", filter.value, " file name ", (*fileInfo).Name)
 	fileModTimestr := (*fileInfo).Mtime.UTC().Format(time.RFC1123)
 	fileModTime, _ := time.Parse(time.RFC1123, fileModTimestr)
-	fmt.Println(fileModTime, "this is file mod time")
+	// fmt.Println(fileModTime, "this is file mod time")
 
 	if (filter.opr == "<=") && (fileModTime.Before(filter.value) || fileModTime.Equal(filter.value)) {
 		return true
