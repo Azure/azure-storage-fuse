@@ -489,6 +489,8 @@ static void readdirplus_callback(
         inode = task->rpc_api.readdir_task.get_inode();
     }
 
+    struct nfs_inode *nfs_ino = task->get_client()->get_nfs_inode_from_ino(inode);
+    assert (nfs_ino != nullptr);
 
     if (task->succeeded(rpc_status, RSTATUS(res), retry))
     {
@@ -512,8 +514,9 @@ static void readdirplus_callback(
 
 
         // Create a shared pointer to be inserted into the cache.
-        std::shared_ptr<directory_list_cache> dirlistcache_handle = task->get_client()->get_readdir_cache()->get(inode);
-        assert(dirlistcache_handle != nullptr);
+        //std::shared_ptr<readdirectory_cache> readdircache_handle = task->get_client()->get_readdir_cache()->get(inode);
+        std::shared_ptr<readdirectory_cache> readdircache_handle = nfs_ino->dircache_handle;
+        assert(readdircache_handle != nullptr);
         int num_of_ele = 0;
             size_t rem_size = 0;
             if (is_readdirplus_call)
@@ -560,7 +563,7 @@ static void readdirplus_callback(
 
             /*
              * Create the directory entries here.
-             * Note: This will be freed in the destructor ~directory_list_cache().
+             * Note: This will be freed in the destructor ~readdirectory_cache().
              */
             struct directory_entry* dir_entry = new directory_entry(entry->name, entry->cookie, st, nfs_ino);
 
@@ -574,8 +577,8 @@ static void readdirplus_callback(
                     rem_size -= curr_entry_size;
             }
 
-            // Add this to the directory_list_cache.
-            dirlistcache_handle->add(dir_entry);
+            // Add this to the readdirectory_cache.
+            readdircache_handle->add(dir_entry);
             entry = entry->nextentry;
 
             // TODO: Remove this.
@@ -585,14 +588,14 @@ static void readdirplus_callback(
         AZLogInfo("Num of entries returned by server is {}, result_vector: {}", num_of_ele, readdirentries.size());
 
         // TODO: See if the cache really needs to store the cookie verifier.
-        dirlistcache_handle->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
+        readdircache_handle->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
 
         // Update this cookie verifier received in the inode.
-        task->get_client()->get_nfs_inode_from_ino(inode)->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
+        //task->get_client()->get_nfs_inode_from_ino(inode)->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
 
         if (eof)
         {
-            dirlistcache_handle->set_eof();
+            readdircache_handle->set_eof();
         }
 
         // Now insert into the readdir cache.
@@ -936,13 +939,14 @@ void rpc_task::get_readdir_entries_from_cache()
 {
     assert(get_op_type() == FUSE_READDIR);
 
-    auto readdircache = get_client()->get_readdir_cache();
     bool is_eof = false;
-   // bool size_exhausted = false;
+
+    struct nfs_inode *nfs_ino = get_client()->get_nfs_inode_from_ino(rpc_api.readdirplus_task.get_inode());
+    assert (nfs_ino != nullptr);
 
     std::vector<directory_entry*> readdirentries;
 
-    /*const bool entry_found =*/ readdircache->lookup(rpc_api.readdir_task.get_inode(),
+    /*const bool entry_found =*/ nfs_ino->lookup_readdircache(
                          rpc_api.readdir_task.get_cookie() + 1 , // TODO: See if this should populate from cookie+1
                          rpc_api.readdir_task.get_size(),
                          readdirentries,
@@ -981,15 +985,15 @@ void rpc_task::get_readdir_entries_from_cache()
 
 void rpc_task::get_readdirplus_entries_from_cache()
 {
-    auto readdircache = get_client()->get_readdir_cache();
     bool is_eof = false;
      assert(get_op_type() == FUSE_READDIRPLUS);
  //   bool size_exhausted = false;
+    struct nfs_inode *nfs_ino = get_client()->get_nfs_inode_from_ino(rpc_api.readdirplus_task.get_inode());
+    assert (nfs_ino != nullptr);
 
     std::vector<directory_entry*> readdirentries;
 
-    readdircache->lookup(rpc_api.readdirplus_task.get_inode(),
-                         rpc_api.readdirplus_task.get_cookie()+1,
+    nfs_ino->lookup_readdircache( rpc_api.readdirplus_task.get_cookie()+1,
                          rpc_api.readdirplus_task.get_size(),
                          readdirentries,
                          //readdir_result_size,
@@ -1045,7 +1049,7 @@ void rpc_task::fetch_readdir_entries_from_server()
         args.dir = get_client()->get_nfs_inode_from_ino(inode)->get_fh();
         //args.cookie = rpc_api.readdirplus_task.get_cookie();
         args.cookie = cookie;
-        ::memcpy(&args.cookieverf, get_client()->get_nfs_inode_from_ino(inode)->get_cookieverf(), sizeof(args.cookieverf));
+        ::memcpy(&args.cookieverf, get_client()->get_nfs_inode_from_ino(inode)->dircache_handle->get_cookieverf(), sizeof(args.cookieverf));
        // ::memcpy(&args.cookieverf, cookieverf, sizeof(args.cookieverf));
         args.dircount = 65536; // TODO: See what this value should be set to.
         args.maxcount = 65536;

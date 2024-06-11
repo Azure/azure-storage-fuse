@@ -9,7 +9,7 @@
     nfs_client::nfs_client() :
         transport(this)
     {
-        read_dir_cache = readdir_cache::get_instance(this);
+        //read_dir_cache = readdir_cache::get_instance(this);
     }
 
 // The user should first init the client class before using it.

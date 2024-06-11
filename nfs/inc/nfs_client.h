@@ -56,7 +56,7 @@ private:
     struct rpc_task_helper *rpc_task_helper = nullptr;
 
     // Instance of the readdirectory cache.
-    struct readdir_cache* read_dir_cache;
+    //struct readdir_cache* read_dir_cache;
 
     /*
      * Holds info about the server, queried by FSINFO.
@@ -97,12 +97,12 @@ public:
     {
         return rpc_task_helper;
     }
-
+#if 0
     struct readdir_cache *get_readdir_cache()
     {
         return read_dir_cache;
     }
-
+#endif
     /*
      * The user should first init the client class before using it.
      */

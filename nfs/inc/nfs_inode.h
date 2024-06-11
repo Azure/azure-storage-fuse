@@ -2,6 +2,7 @@
 #define __NFS_INODE_H__
 
 #include "aznfsc.h"
+#include "rpc_readdir.h"
 
 #define NFS_INODE_MAGIC *((const uint32_t *)"NFSI")
 
@@ -23,7 +24,7 @@ struct nfs_inode
     // Fuse inode number/
     fuse_ino_t ino;
 
-    // TODO: Add blob info structure.
+    std::shared_ptr<readdirectory_cache> dircache_handle;
 
     nfs_inode(const struct nfs_fh3 *filehandle):
         ino(0)
@@ -35,6 +36,7 @@ struct nfs_inode
         fh.data.data_len = filehandle->data.data_len;
         fh.data.data_val = new char[fh.data.data_len];
         ::memcpy(fh.data.data_val, filehandle->data.data_val, fh.data.data_len);
+        dircache_handle = std::make_shared<readdirectory_cache>();
     }
 
     void set_inode(fuse_ino_t _ino)
@@ -49,5 +51,32 @@ struct nfs_inode
     {
         return fh;
     }
+
+    bool purge_readdircache_if_required();
+
+    void purge();
+
+    void lookup_readdircache(
+        cookie3 cookie_ /* offset in the directory from which the directory should be listed*/,
+        size_t max_size /* maximum size of entries to be returned*/,
+        std::vector<directory_entry* >& results /* dir entries listed*/,
+        bool& eof,
+        bool skip_attr_size = false);
+
+
+#if 0
+    const cookieverf3* get_cookieverf() const
+    {
+        return &cookieverf;
+    }
+
+    void set_cookieverf(const cookieverf3* cokieverf)
+    {
+        if (cokieverf != nullptr)
+        {
+            ::memcpy(&cookieverf, cokieverf, sizeof(cookieverf));
+        }
+    }
+#endif
 };
 #endif /* __NFS_INODE_H__ */
