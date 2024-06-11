@@ -4,7 +4,6 @@
 #include "nfs_inode.h"
 #include "rpc_transport.h"
 #include "nfs_internal.h"
-//#include "rpc_readdir.h"
 
 extern "C" {
     /*
@@ -55,9 +54,6 @@ private:
      */
     struct rpc_task_helper *rpc_task_helper = nullptr;
 
-    // Instance of the readdirectory cache.
-    //struct readdir_cache* read_dir_cache;
-
     /*
      * Holds info about the server, queried by FSINFO.
      */
@@ -68,14 +64,10 @@ private:
      */
     struct nfs_server_stat server_stat;
 
-    nfs_client();
-#if 0
     nfs_client() :
     	transport(this)
     {
-        read_dir_cache = readdir_cache::get_instance();
     }
-#endif
 
 public:
     /*
@@ -97,12 +89,7 @@ public:
     {
         return rpc_task_helper;
     }
-#if 0
-    struct readdir_cache *get_readdir_cache()
-    {
-        return read_dir_cache;
-    }
-#endif
+
     /*
      * The user should first init the client class before using it.
      */

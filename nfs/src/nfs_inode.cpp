@@ -52,9 +52,9 @@ bool nfs_inode::purge_readdircache_if_required()
         if (!readdirectory_cache::are_mtimes_equal(&dirent->attributes, &attr))
         {
             /*
-            * Purge the cache since the directory mtime has changed/
-            * This indicates that the directory has changed.
-            */
+             * Purge the cache since the directory mtime has changed/
+             * This indicates that the directory has changed.
+             */
             goto purge_cache;
         }
 
@@ -73,23 +73,20 @@ purge_cache:
     return true;
 }
 
-
-// Purge the readdir cache.
-// TODO: For now we purge the entire cache. This can be later changed to purge parts of cache.
+/*
+ * Purge the readdir cache.
+ *  TODO: For now we purge the entire cache. This can be later changed to purge
+ *        parts of cache.
+ */
 void nfs_inode::purge()
 {
-    // Reset the shared pointer to release the resource
-//    dircache_handle.reset();
-
-  //  dircache_handle = std::make_shared<readdirectory_cache>();
-dircache_handle->clear();
+    dircache_handle->clear();
 }
 
 void nfs_inode::lookup_readdircache(
-
-    cookie3 cookie_ /* offset in the directory from which the directory should be listed*/,
-    size_t max_size /* maximum size of entries to be returned*/,
-    std::vector<directory_entry* >& results /* dir entries listed*/,
+    cookie3 cookie_,
+    size_t max_size,
+    std::vector<directory_entry* >& results,
     bool& eof,
     bool skip_attr_size)
 {
@@ -133,7 +130,6 @@ void nfs_inode::lookup_readdircache(
     }
     eof = dircache_handle->get_eof();
     AZLogDebug("Buffer exhaust: Num of entries returned from cache {}", num_of_entries_found_in_cache);
-
 }
 
 #endif /* __NFS_INODE__ */

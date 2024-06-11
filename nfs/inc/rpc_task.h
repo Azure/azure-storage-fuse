@@ -7,8 +7,6 @@
 #include <stack>
 #include <shared_mutex>
 #include <vector>
-#include "rpc_readdir.h"
-
 #include "nfs_client.h"
 
 #define MAX_OUTSTANDING_RPC_TASKS 65536
@@ -460,9 +458,6 @@ public:
                      off_t offset,
                      struct fuse_file_info *file);
 
-    // This function is responsible for issuing the readdir call to the server.
-    // readdir_task structure should be populated before calling this function
-    // by calling set_readdir().
     void run_readdir();
 
     // This function is responsible for setting up the members of readdirplus_task.
@@ -472,9 +467,6 @@ public:
                          off_t offset,
                          struct fuse_file_info *file);
 
-    // This function is responsible for issuing the readdirplus call to the server.
-    // readdirplus_task structure should be populated before calling this function
-    // by calling set_readdirplus().
     void run_readdirplus();
 
     void set_fuse_req(fuse_req *request)
@@ -547,7 +539,6 @@ public:
     }
 
     /*
-     *
      * Check RPC completion for success.
      * Returns true if rpc_task succeeded execution at the server, else
      * returns false.
@@ -563,7 +554,6 @@ public:
         return req;
     }
 
-    // TODO: See if this should be moved to other place.
     void send_readdir_response(std::vector<directory_entry*>& readdirentries);
 
     void send_readdirplus_response(std::vector<directory_entry*>& readdirentries);

@@ -449,7 +449,7 @@ void rpc_task::run_readdirplus()
 }
 
 /*
- * For both application issued readdir and readdirplus calls, this callback will be invoked since we always
+ * For both client issued readdir and readdirplus calls, this callback will be invoked since we always
  * issue readdirplus calls to the backend. This is done to populate the readdir cache.
  * Once this callback is called, it will first populate the readdir cache with the newly fetched entries.
  * Then, it will check for the optype of the rpc_task.
@@ -467,9 +467,9 @@ static void readdirplus_callback(
     bool is_readdirplus_call = false;
     fuse_ino_t inode;
     std::vector<directory_entry*> readdirentries;
-
     int num_of_ele = 0;
     size_t rem_size = 0;
+    
     // Check if the application asked for readdir or readdirplus call.
     if (task->get_op_type() == FUSE_READDIRPLUS)
     {
@@ -688,7 +688,6 @@ void rpc_task::send_readdir_response(std::vector<directory_entry*>& readdirentri
 
     for (const auto& it : readdirentries)
     {
-        // AZLogInfo("Curr entry readdir cookie is {}", it->cookie);
         if ((int)it->cookie <= (int)rpc_api.readdir_task.get_offset())
         {
             /*
@@ -749,7 +748,6 @@ void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdire
         fuse_reply_err(get_req(), ENOMEM);
         return;
     }
-
 
     char *current_buf = buf1;
     size_t rem = sz;
