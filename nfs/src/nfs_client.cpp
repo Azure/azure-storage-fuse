@@ -30,7 +30,7 @@ bool nfs_client::init()
 
     // initialiaze the root file handle.
     // TODO: Take care of freeing this. Should this be freed in the ~nfs_client()?
-    root_fh = new nfs_inode(nfs_get_rootfh(transport.get_nfs_context()) /*, 1  ino will be 1 for root */);
+    root_fh = new nfs_inode(nfs_get_rootfh(transport.get_nfs_context()) /*, 1  ino will be 1 for root */, this);
     root_fh->set_inode(FUSE_ROOT_ID);
     //AZLogInfo("Obtained root fh is {}", root_fh->get_fh());
 
@@ -145,7 +145,7 @@ void nfs_client::reply_entry(
     {
         // TODO: When should this be freed? This should be freed when the ino is freed,
         // 	 but decide when should that be done?
-        nfs_ino = new nfs_inode(fh);
+        nfs_ino = new nfs_inode(fh, this);
         nfs_ino->set_inode((fuse_ino_t)nfs_ino);
     }
     else

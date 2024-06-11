@@ -1,13 +1,12 @@
-#ifndef __NFS_INODE__
-#define __NFS_INODE__
-
 #include "nfs_inode.h"
+#include "nfs_client.h"
 
 bool nfs_inode::purge_readdircache_if_required()
 {
     struct directory_entry* dirent = nullptr;
     bool success = false;
     struct stat attr;
+    struct fattr3 fattribute;
 
     /*
      * For now the only prune condition check is the directory mtime.
@@ -43,12 +42,13 @@ bool nfs_inode::purge_readdircache_if_required()
 
     if (should_update_mtime)
     {
-        success = readdirectory_cache::make_getattr_call(ino, attr);
+        success = make_getattr_call(fattribute);
         // Issue a getattr call to the server to fetch the directory mtime.
     }
 
     if (success)
     {
+        get_client()->stat_from_fattr3(&attr, &fattribute);
         if (!readdirectory_cache::are_mtimes_equal(&dirent->attributes, &attr))
         {
             /*
@@ -132,4 +132,71 @@ void nfs_inode::lookup_readdircache(
     AZLogDebug("Buffer exhaust: Num of entries returned from cache {}", num_of_entries_found_in_cache);
 }
 
-#endif /* __NFS_INODE__ */
+// TODO: Add comments.
+struct getattr_context
+{
+    nfs_inode* ino_ptr;
+    struct fattr3* attr;
+    bool callback_called;
+    bool is_callback_success;
+    std::mutex ctx_mutex;
+    std::condition_variable cv;
+
+    getattr_context(nfs_inode *ino_ptr_, struct fattr3 *attr_):
+        ino_ptr(ino_ptr_),
+        attr(attr_),
+        callback_called(false),
+        is_callback_success(false)
+    {}
+};
+
+static void getattr_callback(
+    struct rpc_context* /* rpc */,
+    int rpc_status,
+    void* data,
+    void* private_data)
+{
+    auto ctx = (struct getattr_context*)private_data;
+    auto res = (GETATTR3res*)data;
+
+    if (res && (rpc_status == RPC_STATUS_SUCCESS) && (res->status == NFS3_OK))
+    {
+        *ctx->attr = res->GETATTR3res_u.resok.obj_attributes;
+        ctx->is_callback_success = true;
+    }
+    ctx->callback_called = true;
+    ctx->cv.notify_one();
+}
+
+bool nfs_inode::make_getattr_call(struct fattr3& attr)
+{
+    // TODO:Make sync getattr call once libnfs adds support.
+
+    bool rpc_retry = false;
+
+    struct getattr_context* ctx = new getattr_context(this, &attr);
+
+
+    do {
+        struct GETATTR3args args;
+        ::memset(&args, 0, sizeof(args));
+        args.object = get_client()->get_nfs_inode_from_ino(ino)->get_fh();
+
+        if (rpc_nfs3_getattr_task(nfs_get_rpc_context(client->get_nfs_context()), getattr_callback, &args, ctx) == NULL)
+        {
+            /*
+             * This call fails due to internal issues like OOM etc
+             * and not due to an actual error, hence retry.
+             */
+            rpc_retry = true;
+        }
+    } while (rpc_retry);
+
+    std::unique_lock<std::mutex> lock(ctx->ctx_mutex);
+    ctx->cv.wait(lock, [&ctx] { return ctx->callback_called; } );
+
+    const bool success = ctx->is_callback_success;
+    delete ctx;
+
+    return success;
+}

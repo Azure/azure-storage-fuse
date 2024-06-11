@@ -222,28 +222,12 @@ public:
     // Various helper methods added below.
     static bool are_mtimes_equal(const struct stat* attr1, const struct stat* attr2)
     {
-// #TODO : Added only for testing. Remove this!!
-        return true;
-        static int i =0;
-        if (++i % 5 == 0)
-            return true;
-        else
-            return false;
-
         if (attr1 == nullptr || attr2 == nullptr) {
             //        std::cerr << "One of the attributes is null." << std::endl;
             return false;
         }
         return (attr1->st_mtim.tv_sec == attr2->st_mtim.tv_sec) &&
                (attr1->st_mtim.tv_nsec == attr2->st_mtim.tv_nsec);
-    }
-    
-    static bool make_getattr_call(fuse_ino_t inode, struct stat& attr)
-    {
-        // Make a sync call to fetch the attributes.
-
-        // TODO: Populate this function.
-        return true;
     }
 };
 #endif /* __READDIR_RPC_TASK___ */
