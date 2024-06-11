@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1718020869553,
+  "lastUpdate": 1718100737697,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -615,6 +615,50 @@ window.BENCHMARK_DATA = {
           {
             "name": "sequential_write_16_threads",
             "value": 0.131421820307,
+            "unit": "milliseconds"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "f6ebe28bc5b6719bec2f74563bf8334eecdad711",
+          "message": "Correcting logs",
+          "timestamp": "2024-06-11T02:24:38-07:00",
+          "tree_id": "02627ecb7c295448ce45c5b045f5758de099c34b",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/f6ebe28bc5b6719bec2f74563bf8334eecdad711"
+        },
+        "date": 1718100737356,
+        "tool": "customSmallerIsBetter",
+        "benches": [
+          {
+            "name": "sequential_write",
+            "value": 0.13132410027433333,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_directio",
+            "value": 0.140839948489,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_4_threads",
+            "value": 0.12527687945666666,
+            "unit": "milliseconds"
+          },
+          {
+            "name": "sequential_write_16_threads",
+            "value": 0.12600517234833333,
             "unit": "milliseconds"
           }
         ]
