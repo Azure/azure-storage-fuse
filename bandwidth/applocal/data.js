@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1713006241775,
+  "lastUpdate": 1718102983546,
   "repoUrl": "https://github.com/Azure/azure-storage-fuse",
   "entries": {
     "Benchmark": [
@@ -43,6 +43,50 @@ window.BENCHMARK_DATA = {
           {
             "name": "write_40GB",
             "value": 15565.730781101993,
+            "unit": "MiB/s"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "committer": {
+            "email": "vibhansa@microsoft.com",
+            "name": "vibhansa",
+            "username": "vibhansa-msft"
+          },
+          "distinct": true,
+          "id": "f6ebe28bc5b6719bec2f74563bf8334eecdad711",
+          "message": "Correcting logs",
+          "timestamp": "2024-06-11T02:24:38-07:00",
+          "tree_id": "02627ecb7c295448ce45c5b045f5758de099c34b",
+          "url": "https://github.com/Azure/azure-storage-fuse/commit/f6ebe28bc5b6719bec2f74563bf8334eecdad711"
+        },
+        "date": 1718102983232,
+        "tool": "customBiggerIsBetter",
+        "benches": [
+          {
+            "name": "write_1GB",
+            "value": 15814.681175106936,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_10GB",
+            "value": 16136.71834540102,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_100GB",
+            "value": 11500.778134628932,
+            "unit": "MiB/s"
+          },
+          {
+            "name": "write_40GB",
+            "value": 15326.347405190789,
             "unit": "MiB/s"
           }
         ]
