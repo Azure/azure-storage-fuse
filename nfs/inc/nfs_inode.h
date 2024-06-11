@@ -21,9 +21,10 @@ struct nfs_inode
     // NFSv3 filehandle returned by the server.
     nfs_fh3 fh;
 
-    // Fuse inode number/
+    // Fuse inode number.
     fuse_ino_t ino;
 
+    // Pointer to the readdirectory cache.
     std::shared_ptr<readdirectory_cache> dircache_handle;
 
     nfs_inode(const struct nfs_fh3 *filehandle):
@@ -46,7 +47,7 @@ struct nfs_inode
 
         ino = _ino;
     }
-    
+
     const struct nfs_fh3& get_fh() const
     {
         return fh;
@@ -56,27 +57,15 @@ struct nfs_inode
 
     void purge();
 
+    /*
+     * This function populates the \p results vector by fetching the entries from
+     * readdirectory cache starting at offset \p cookie upto size \p max_size.
+     */
     void lookup_readdircache(
-        cookie3 cookie_ /* offset in the directory from which the directory should be listed*/,
+        cookie3 cookie /* offset in the directory from which the directory should be listed*/,
         size_t max_size /* maximum size of entries to be returned*/,
         std::vector<directory_entry* >& results /* dir entries listed*/,
         bool& eof,
         bool skip_attr_size = false);
-
-
-#if 0
-    const cookieverf3* get_cookieverf() const
-    {
-        return &cookieverf;
-    }
-
-    void set_cookieverf(const cookieverf3* cokieverf)
-    {
-        if (cokieverf != nullptr)
-        {
-            ::memcpy(&cookieverf, cokieverf, sizeof(cookieverf));
-        }
-    }
-#endif
 };
 #endif /* __NFS_INODE_H__ */

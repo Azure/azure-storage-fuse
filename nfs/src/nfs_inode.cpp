@@ -43,7 +43,7 @@ bool nfs_inode::purge_readdircache_if_required()
 
     if (should_update_mtime)
     {
-        success = readdirectory_cache::make_getattr_call(inode, attr);
+        success = readdirectory_cache::make_getattr_call(ino, attr);
         // Issue a getattr call to the server to fetch the directory mtime.
     }
 

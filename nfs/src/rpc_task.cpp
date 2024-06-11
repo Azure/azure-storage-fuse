@@ -61,6 +61,34 @@ void rpc_task::init_setattr(fuse_req* request,
     rpc_api.setattr_task.set_attribute_and_mask(attr, to_set);
 }
 
+void rpc_task::init_readdir(fuse_req *request,
+                            fuse_ino_t ino,
+                            size_t size,
+                            off_t offset,
+                            struct fuse_file_info *file)
+{
+    req = request;
+    optype = FUSE_READDIR;
+    rpc_api.readdir_task.set_inode(ino);
+    rpc_api.readdir_task.set_size(size);
+    rpc_api.readdir_task.set_offset(offset);
+    rpc_api.readdir_task.set_fuse_file(file);
+}
+
+void rpc_task::init_readdirplus(fuse_req *request,
+                                fuse_ino_t ino,
+                                size_t size,
+                                off_t offset,
+                                struct fuse_file_info *file)
+{
+    req = request;
+    optype = FUSE_READDIRPLUS;
+    rpc_api.readdirplus_task.set_inode(ino);
+    rpc_api.readdirplus_task.set_size(size);
+    rpc_api.readdirplus_task.set_offset(offset);
+    rpc_api.readdirplus_task.set_fuse_file(file);
+}
+
 static void getattr_callback(
     struct rpc_context* /* rpc */,
     int rpc_status,
@@ -97,15 +125,15 @@ static void lookup_callback(
 
     if (rpc_status == RPC_STATUS_SUCCESS && RSTATUS(res) == NFS3ERR_NOENT)
     {
-        //
-        // Special case for fuse: A "negative entry" refers to an entry that doesn't exist
-        // in the file system. If we want negative cache, we must not return ENOENT,
-        // instead we should return success with zero inode.
-        // When the FUSE kernel module receives a negative entry response, it may cache this
-        // information for a certain duration specified by the entry_timeout parameter.
-        // This caching helps to improve performance by avoiding repeated lookup requests
-        // for entries that are known not to exist.
-        //
+        /*
+         * Special case for fuse: A "negative entry" refers to an entry that doesn't exist
+         * in the file system. If we want negative cache, we must not return ENOENT,
+         * instead we should return success with zero inode.
+         * When the FUSE kernel module receives a negative entry response, it may cache this
+         * information for a certain duration specified by the entry_timeout parameter.
+         * This caching helps to improve performance by avoiding repeated lookup requests
+         * for entries that are known not to exist.
+         */
         struct fattr3 dummyAttr;
         ::memset(&dummyAttr, 0, sizeof(dummyAttr));
 
@@ -213,8 +241,6 @@ void mkdir_callback(
     }
 }
 
-// This is the task responsible for making the lookup task.
-// lookup_task structure should be populated before calling this function.
 void rpc_task::run_lookup()
 {
     bool rpc_retry = false;
@@ -228,8 +254,10 @@ void rpc_task::run_lookup()
 
         if (rpc_nfs3_lookup_task(get_rpc_ctx(), lookup_callback, &args, this) == NULL)
         {
-            // This call fails due to internal issues like OOM etc
-            // and not due to an actual error, hence retry.
+            /*
+             * This call fails due to internal issues like OOM etc
+             * and not due to an actual error, hence retry.
+             */
             rpc_retry = true;
         }
     } while (rpc_retry);
@@ -247,8 +275,10 @@ void rpc_task::run_getattr()
 
         if (rpc_nfs3_getattr_task(get_rpc_ctx(), getattr_callback, &args, this) == NULL)
         {
-            // This call fails due to internal issues like OOM etc
-            // and not due to an actual error, hence retry.
+            /*
+             * This call fails due to internal issues like OOM etc
+             * and not due to an actual error, hence retry.
+             */
             rpc_retry = true;
         }
     } while (rpc_retry);
@@ -270,8 +300,10 @@ void rpc_task::run_create_file()
 
         if (rpc_nfs3_create_task(get_rpc_ctx(), createfile_callback, &args, this) == NULL)
         {
-            // This call fails due to internal issues like OOM etc
-            // and not due to an actual error, hence retry.
+            /*
+             * This call fails due to internal issues like OOM etc
+             * and not due to an actual error, hence retry.
+             */
             rpc_retry = true;
         }
     }  while (rpc_retry);
@@ -290,11 +322,12 @@ void rpc_task::run_mkdir()
         args.attributes.mode.set_it = 1;
         args.attributes.mode.set_mode3_u.mode = rpc_api.mkdir_task.get_mode();
 
-
         if (rpc_nfs3_mkdir_task(get_rpc_ctx(), mkdir_callback, &args, this) == NULL)
         {
-            // This call fails due to internal issues like OOM etc
-            // and not due to an actual error, hence retry.
+            /*
+             * This call fails due to internal issues like OOM etc
+             * and not due to an actual error, hence retry.
+             */
             rpc_retry = true;
         }
     } while (rpc_retry);
@@ -362,19 +395,19 @@ void rpc_task::run_setattr()
         }
 
         if (valid & FUSE_SET_ATTR_ATIME_NOW) {
-            AZLogInfo("Setting atime to now");
             args.new_attributes.atime.set_it = SET_TO_SERVER_TIME;
         }
 
         if (valid & FUSE_SET_ATTR_MTIME_NOW) {
-            AZLogInfo("Setting mtime to now");
             args.new_attributes.mtime.set_it = SET_TO_SERVER_TIME;
         }
 
         if (rpc_nfs3_setattr_task(get_rpc_ctx(), setattr_callback, &args, this) == NULL)
         {
-            // This call fails due to internal issues like OOM etc
-            // and not due to an actual error, hence retry.
+            /*
+             * This call fails due to internal issues like OOM etc
+             * and not due to an actual error, hence retry.
+             */
             rpc_retry = true;
         }
     } while (rpc_retry);
@@ -384,17 +417,17 @@ void rpc_task::run_setattr()
 void rpc_task::free_rpc_task()
 {
     switch(get_op_type()) {
-        case FUSE_LOOKUP:
-            rpc_api.lookup_task.release();
-            break;
-        case FUSE_CREATE:
-            rpc_api.create_task.release();
-            break;
-        case FUSE_MKDIR:
-            rpc_api.mkdir_task.release();
-            break;
-        default :
-            break;
+    case FUSE_LOOKUP:
+        rpc_api.lookup_task.release();
+        break;
+    case FUSE_CREATE:
+        rpc_api.create_task.release();
+        break;
+    case FUSE_MKDIR:
+        rpc_api.mkdir_task.release();
+        break;
+    default :
+        break;
     }
     client->get_rpc_task_helper()->free_rpc_task(this);
 }
@@ -405,65 +438,23 @@ struct nfs_context* rpc_task::get_nfs_context() const
     return client->get_nfs_context();
 }
 
-void rpc_task::set_readdir(struct nfs_client* clt,
-                           fuse_req* request,
-                           fuse_ino_t ino,
-                           size_t size,
-                           off_t offset,
-                           struct fuse_file_info* file)
+void rpc_task::run_readdir()
 {
-    client = clt;
-    req = request;
-    optype = FUSE_READDIR;
-
-    rpc_api.readdir_task.set_inode(ino);
-    rpc_api.readdir_task.set_size(size);
-    rpc_api.readdir_task.set_offset(offset);
-    rpc_api.readdir_task.set_fuse_file(file);
-    rpc_api.readdir_task.set_cookie(offset);
-
-    //m_readdirentries.clear();
-    //readdir_result_size = 0;
-    //rpc_api.readdir_task.set_cookieverf(0);
-    //rpc_api.readdir_task.m_results.clear();
-    //rpc_api.readdir_task.result_size = 0;
-    // rpc_api.readdir_task.set_buffer(nullptr);
-    //rpc_api.readdir_task.set_buffer_size(0);
+    get_readdir_entries_from_cache();
 }
 
-void rpc_task::set_readdirplus(struct nfs_client* clt,
-                               fuse_req* request,
-                               fuse_ino_t ino,
-                               size_t size,
-                               off_t offset,
-                               struct fuse_file_info* file)
+void rpc_task::run_readdirplus()
 {
-    client = clt;
-    req = request;
-    optype = FUSE_READDIRPLUS;
-    rpc_api.readdirplus_task.set_inode(ino);
-    rpc_api.readdirplus_task.set_size(size);
-    rpc_api.readdirplus_task.set_offset(offset);
-    rpc_api.readdirplus_task.set_fuse_file(file);
-    // rpc_api.readdirplus_task.set_cookieverf(0);
-    rpc_api.readdirplus_task.set_cookie(offset);
-    //m_readdirentries.clear();
-    //readdir_result_size = 0;
-    //rpc_api.readdir_task.m_results.clear();
-    //rpc_api.readdir_task.result_size = 0;
+    get_readdirplus_entries_from_cache();
 }
-
-
 
 /*
  * For both application issued readdir and readdirplus calls, this callback will be invoked since we always
  * issue readdirplus calls to the backend. This is done to populate the readdir cache.
  * Once this callback is called, it will first populate the readdir cache with the newly fetched entries.
  * Then, it will check for the optype of the rpc_task.
- * If the optyoe is FUSE_READDIRPLUS then it will populate the directory_results vector
- * of the readdirplus task and call send_readdirplus_response.
- * If the optype is FUSE_READDIR  then it will populate the directory_results vector of
- * the readdir task and call send_readdir_response.
+ * If the optype is FUSE_READDIRPLUS then it will populate the results vector and call send_readdirplus_response.
+ * If the optype is FUSE_READDIR  then it will populate the results vector and call send_readdir_response.
  */
 static void readdirplus_callback(
     struct rpc_context* /* rpc */,
@@ -473,77 +464,39 @@ static void readdirplus_callback(
 {
     auto task = (rpc_task*)private_data;
     auto res = (READDIRPLUS3res*)data;
-    bool retry;
     bool is_readdirplus_call = false;
     fuse_ino_t inode;
     std::vector<directory_entry*> readdirentries;
 
+    int num_of_ele = 0;
+    size_t rem_size = 0;
     // Check if the application asked for readdir or readdirplus call.
     if (task->get_op_type() == FUSE_READDIRPLUS)
     {
         inode = task->rpc_api.readdirplus_task.get_inode();
         is_readdirplus_call = true;
+        rem_size = task->rpc_api.readdirplus_task.get_size();
     }
     else
     {
         inode = task->rpc_api.readdir_task.get_inode();
+        rem_size = task->rpc_api.readdir_task.get_size();
     }
 
     struct nfs_inode *nfs_ino = task->get_client()->get_nfs_inode_from_ino(inode);
     assert (nfs_ino != nullptr);
 
-    if (task->succeeded(rpc_status, RSTATUS(res), retry))
+    if (task->succeeded(rpc_status, RSTATUS(res)))
     {
-#if 0
-        // Allocate buffer
-        int num_entries_returned_in_this_iter = 0;
-        size_t sz = task->rpc_api.readdirplus_task.get_size();
-
-        char *buf1 = (char *)malloc(sz);
-        if (!buf1)
-        {
-            fuse_reply_err(task->get_req(), ENOMEM);
-            return;
-        }
-
-        char *current_buff = buf1;
-        size_t rem = sz;
-#endif
         struct entryplus3* entry = res->READDIRPLUS3res_u.resok.reply.entries;
         bool eof = res->READDIRPLUS3res_u.resok.reply.eof;
 
-
-        // Create a shared pointer to be inserted into the cache.
-        //std::shared_ptr<readdirectory_cache> readdircache_handle = task->get_client()->get_readdir_cache()->get(inode);
+        // Get handle to the readdirectory cache.
         std::shared_ptr<readdirectory_cache> readdircache_handle = nfs_ino->dircache_handle;
         assert(readdircache_handle != nullptr);
-        int num_of_ele = 0;
-            size_t rem_size = 0;
-            if (is_readdirplus_call)
-            {
-                rem_size = task->rpc_api.readdirplus_task.get_size();
-            }
-            else
-            {
-                rem_size = task->rpc_api.readdir_task.get_size();
-            }
 
         while (entry)
         {
-#if 0
-            last_cookie = entry->cookie;
-
-            if ((int)entry->cookie <= (int)task->rpc_api.readdirplus_task.get_offset())
-            {
-                AZLogDebug("skipping cookie {}", entry->cookie);
-                /*
-                 * Skip entries until the offset
-                 * TODO: See if we need this. Can't we control this thorugh the cookie?
-                 */
-                entry = entry->nextentry;
-                continue;
-            }
-#endif
             // Structure to hold the attributes.
             struct stat st;
             if (entry->name_attributes.attributes_follow)
@@ -567,40 +520,32 @@ static void readdirplus_callback(
              */
             struct directory_entry* dir_entry = new directory_entry(entry->name, entry->cookie, st, nfs_ino);
 
-            // Add it to the directory_entry vector ONLY if it does not cross the max size limit requested by the application.
+            /*
+             * Add it to the directory_entry vector ONLY if it does not cross the max
+             * size limit requested by the client.
+             */
             const size_t curr_entry_size = dir_entry->get_size();
             if (rem_size >= curr_entry_size)
             {
-                    //task->readdir_result_size += curr_entry_size;
-                    readdirentries.push_back(dir_entry);
-
-                    rem_size -= curr_entry_size;
+                readdirentries.push_back(dir_entry);
+                rem_size -= curr_entry_size;
             }
 
             // Add this to the readdirectory_cache.
             readdircache_handle->add(dir_entry);
             entry = entry->nextentry;
 
-            // TODO: Remove this.
             ++num_of_ele;
         }
 
         AZLogInfo("Num of entries returned by server is {}, result_vector: {}", num_of_ele, readdirentries.size());
 
-        // TODO: See if the cache really needs to store the cookie verifier.
         readdircache_handle->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
-
-        // Update this cookie verifier received in the inode.
-        //task->get_client()->get_nfs_inode_from_ino(inode)->set_cookieverf(&res->READDIRPLUS3res_u.resok.cookieverf);
 
         if (eof)
         {
             readdircache_handle->set_eof();
         }
-
-        // Now insert into the readdir cache.
-        // THIS IS NOT NEEDED SINCE WE ARE DIRECTLY MODIFYING THE SHARED POINTER.
-        //read_dir_cache->add(inode, dir_cache);
 
         if (is_readdirplus_call)
         {
@@ -611,64 +556,6 @@ static void readdirplus_callback(
             task->send_readdir_response(readdirentries);
         }
     }
-#if 0
-        // Create a new inode for the entry
-        nfs_inode* nfs_ino;
-        nfs_ino = new nfs_inode(&entry->name_handle.post_op_fh3_u.handle);
-        nfs_ino->set_inode((fuse_ino_t)nfs_ino);
-
-        struct fuse_entry_param fuseentry;
-        memset(&fuseentry, 0, sizeof(fuseentry));
-        fuseentry.attr = st;
-        fuseentry.ino = (fuse_ino_t)(uintptr_t)nfs_ino;
-
-        /*
-         * TODO: Set the timeout to better value.
-         */
-        fuseentry.attr_timeout = 60;
-        fuseentry.entry_timeout = 60;
-
-        /*
-         * Insert the entry into the buffer.
-         * If the buffer space is less, fuse_add_direntry_plus will not add entry to
-         * the buffer but will still return the space needed to add this entry.
-         */
-        size_t entsize = fuse_add_direntry_plus(task->get_req(),
-                                                current_buff,
-                                                rem, /* size left in the buffer */
-                                                entry->name,
-                                                &fuseentry,
-                                                entry->cookie);
-
-        /*
-         * Our buffer size was small and hence we can't add any more entries, so just break the loop.
-         * This also means that we have not inserted the current entry to the direent buffer.
-         */
-        if (entsize > rem)
-        {
-            AZLogDebug("No isze in buf, returning");
-            break;
-        }
-
-        num_entries_returned_in_this_iter++;
-
-        // Increment the buffer pointer to point to the next free space.
-        current_buff += entsize;
-        rem -= entsize;
-
-        // Fetch the next entry.
-        entry = entry->nextentry;
-    }
-
-    AZLogDebug("Last cookie {}", last_cookie);
-
-    fuse_reply_buf(task->get_req(),
-                   buf1,
-                   sz - rem);
-
-    // Free the buffer.
-    free(buf1);
-#endif
     else
     {
         // Since the api failed and can no longer be retried, return error reply.
@@ -676,53 +563,160 @@ static void readdirplus_callback(
     }
 }
 
-#if 0
-rpc_task::send_readdir_response()
+void rpc_task::get_readdir_entries_from_cache()
 {
-    size_t sz = rpc_api.readdir_task.get_size();
+    assert(get_op_type() == FUSE_READDIR);
 
-    char *buf1 = (char *)malloc(sz);
+    bool is_eof = false;
+
+    struct nfs_inode *nfs_ino = get_client()->get_nfs_inode_from_ino(rpc_api.readdirplus_task.get_inode());
+    assert (nfs_ino != nullptr);
+
+    std::vector<directory_entry*> readdirentries;
+
+    nfs_ino->lookup_readdircache(
+        rpc_api.readdir_task.get_offset() + 1, // +1 to return the next entry from where the client requested.
+        rpc_api.readdir_task.get_size(),
+        readdirentries,
+        is_eof,
+        true /* skip_attr_size */);
+
+    // TODO: Send response if eof is set.
+    if (readdirentries.empty())
+    {
+        /*
+         * Read from the backend only if there is no entry present in the cache.
+         * Note : It is okay to send less number of entries than requested since
+         *        the Fuse layer will request for more num of entries later.
+         */
+        fetch_readdir_entries_from_server();
+    }
+    else
+    {
+        // We are done fetching the entries, send the response now.
+        send_readdir_response(readdirentries);
+    }
+}
+
+void rpc_task::get_readdirplus_entries_from_cache()
+{
+    bool is_eof = false;
+    assert(get_op_type() == FUSE_READDIRPLUS);
+    struct nfs_inode *nfs_ino = get_client()->get_nfs_inode_from_ino(rpc_api.readdirplus_task.get_inode());
+    assert (nfs_ino != nullptr);
+
+    std::vector<directory_entry*> readdirentries;
+
+    nfs_ino->lookup_readdircache( rpc_api.readdirplus_task.get_offset()+1,
+                                  rpc_api.readdirplus_task.get_size(),
+                                  readdirentries,
+                                  is_eof);
+
+    // TODO: Send response if eof is set.
+    if (readdirentries.empty())
+    {
+        /*
+         * Read from the backend only if there is no entry present in the cache.
+         * Note : It is okay to send less number of entries than requested since
+         *        the Fuse layer will request for more num of entries later.
+         */
+        fetch_readdir_entries_from_server();
+    }
+    else
+    {
+        // We are done fetching the entries, send the response now.
+        send_readdirplus_response(readdirentries);
+    }
+}
+
+void rpc_task::fetch_readdir_entries_from_server()
+{
+    bool rpc_retry = false;
+    fuse_ino_t inode;
+
+    cookie3 cookie = 0;
+
+    if (get_op_type() == FUSE_READDIR)
+    {
+        inode = rpc_api.readdir_task.get_inode();
+        cookie = rpc_api.readdir_task.get_offset();
+    }
+    else
+    {
+        inode = rpc_api.readdirplus_task.get_inode();
+        cookie = rpc_api.readdirplus_task.get_offset();
+    }
+
+    do {
+        struct READDIRPLUS3args args;
+        ::memset(&args, 0, sizeof(args));
+        args.dir = get_client()->get_nfs_inode_from_ino(inode)->get_fh();
+        args.cookie = cookie;
+        ::memcpy(&args.cookieverf, get_client()->get_nfs_inode_from_ino(inode)->dircache_handle->get_cookieverf(), sizeof(args.cookieverf));
+        args.dircount = 65536; // TODO: Set this to user passed value.
+        args.maxcount = 65536;
+
+        if (rpc_nfs3_readdirplus_task(get_rpc_ctx(), readdirplus_callback, &args, this) == NULL)
+        {
+            /*
+             * This call fails due to internal issues like OOM etc
+             * and not due to an actual error, hence retry.
+             */
+            rpc_retry = true;
+        }
+    } while (rpc_retry);
+}
+
+void rpc_task::send_readdir_response(std::vector<directory_entry*>& readdirentries)
+{
+    assert(get_op_type() == FUSE_READDIR);
+
+    const size_t size = rpc_api.readdir_task.get_size();
+
+// Allocate buffer
+    char *buf1 = (char *)malloc(size);
     if (!buf1)
     {
         fuse_reply_err(get_req(), ENOMEM);
         return;
     }
 
+    char *current_buf = buf1;
+    size_t rem = size;
+    int  num_of_entries_returned = 0;
+    AZLogInfo("Size of readdir result vector is {}", readdirentries.size());
 
-    char *current_buff = buf1;
-    size_t rem = sz;
-
-
-    for (auto it = rpc_api.readdir_task.m_results.begin(); it != rpc_api.readdir_task.m_results.end(); ++it)
+    for (const auto& it : readdirentries)
     {
+        // AZLogInfo("Curr entry readdir cookie is {}", it->cookie);
         if ((int)it->cookie <= (int)rpc_api.readdir_task.get_offset())
         {
             /*
              * Skip entries until the offset
              * TODO: See if we need this. Can't we control this thorugh the cookie?
              */
-            entry = entry->nextentry;
-            AZLogDebug("skipping cookie {}", entry->cookie);
+            //AZLogDebug("skipping cookie {}", it->cookie);
             continue;
         }
-
-
 
         /*
          * Insert the entry into the buffer.
          * If the buffer space is less, fuse_add_direntry will not add entry to
          * the buffer but will still return the space needed to add this entry.
          */
+        struct stat st;
+        ::memset(&st, 0, sizeof(st));
         size_t entsize = fuse_add_direntry(get_req(),
                                            current_buf,
                                            rem, /* size left in the buffer */
                                            it->name,
-                                           &it->attributes,
+                                           &st,
                                            it->cookie);
 
         /*
-         * Our buffer size was small and hence we can't add any more entries, so just break the loop.
-         * This also means that we have not inserted the current entry to the direent buffer.
+         * Our buffer size was small and hence we can't add any more entries,
+         * so just break the loop. This also means that we have not inserted the
+         * current entry to the direent buffer.
          */
         if (entsize > rem)
         {
@@ -732,14 +726,22 @@ rpc_task::send_readdir_response()
         // Increment the buffer pointer to point to the next free space.
         current_buf += entsize;
         rem -= entsize;
+        num_of_entries_returned++;
     }
+
+    AZLogDebug("Num of entries sent in readdir response is {}", num_of_entries_returned);
+
+    fuse_reply_buf(get_req(),
+                   buf1,
+                   size - rem);
+
+    free(buf1);
 }
-#endif
 
 void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdirentries)
 {
     size_t sz = rpc_api.readdirplus_task.get_size();
-     assert(get_op_type() == FUSE_READDIRPLUS);
+    assert(get_op_type() == FUSE_READDIRPLUS);
 
     char *buf1 = (char *)malloc(sz);
     if (!buf1)
@@ -753,8 +755,8 @@ void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdire
     size_t rem = sz;
     int num_of_entries_returned = 0;
 
-    AZLogInfo("Size of readdirplus result vector is {}", readdirentries.size());
-    //for ( auto it = m_readdirentries.begin(); it != m_readdirentries.end(); ++it)
+    AZLogDebug("Size of readdirplus result vector is {}", readdirentries.size());
+
     for (const auto& it : readdirentries)
     {
         if ((int)it->cookie <= (int)rpc_api.readdirplus_task.get_offset())
@@ -763,15 +765,14 @@ void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdire
              * Skip entries until the offset
              * TODO: See if we need this. Can't we control this thorugh the cookie?
              */
-           // entry = entry->nextentry;
-           // AZLogDebug("skipping cookie {}", it->cookie);
+            // AZLogDebug("skipping cookie {}", it->cookie);
             continue;
         }
 
         struct fuse_entry_param fuseentry;
         memset(&fuseentry, 0, sizeof(fuseentry));
         fuseentry.attr = it->attributes;
-        fuseentry.ino = it->nfs_ino->inode;
+        fuseentry.ino = it->nfs_ino->ino;
 
         /*
          * TODO: Set the timeout to better value.
@@ -797,7 +798,7 @@ void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdire
          */
         if (entsize > rem)
         {
-            AZLogDebug("No isze in buf, returning");
+            AZLogDebug("Can't add anymore entries to buffer, space exhausted.");
             break;
         }
 
@@ -814,349 +815,4 @@ void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdire
 
     // Free the buffer.
     free(buf1);
-}
-
-#if 0
-static void readdir_callback(
-    struct rpc_context* /* rpc */,
-    int rpc_status,
-    void* data,
-    void* private_data)
-{
-    auto task = (rpc_task*)private_data;
-    auto res = (READDIR3res*)data;
-    bool retry;
-
-    cookie3 last_cookie = 0;
-
-    if (task->succeeded(rpc_status, RSTATUS(res), retry))
-    {
-        int num_entries_returned_in_this_iter = 0;
-        size_t sz = task->rpc_api.readdir_task.get_size();
-
-        // Allocate buffer
-        char *buf1 = (char *)malloc(sz);
-        if (!buf1)
-        {
-            fuse_reply_err(task->get_req(), ENOMEM);
-            return;
-        }
-
-        char *current_buf = buf1;
-        size_t rem = sz;
-
-        struct entry3* entry = res->READDIR3res_u.resok.reply.entries;
-
-        struct stat st;
-        ::memset(&st, 0, sizeof(st));
-
-        while (entry)
-        {
-            last_cookie = entry->cookie;
-
-            if ((int)entry->cookie <= (int)task->rpc_api.readdir_task.get_offset())
-            {
-                /*
-                 * Skip entries until the offset
-                 * TODO: See if we need this. Can't we control this thorugh the cookie?
-                 */
-                entry = entry->nextentry;
-                AZLogDebug("skipping cookie {}", entry->cookie);
-                continue;
-            }
-
-            /*
-             * Insert the entry into the buffer.
-             * If the buffer space is less, fuse_add_direntry will not add entry to
-             * the buffer but will still return the space needed to add this entry.
-             */
-            size_t entsize = fuse_add_direntry(task->get_req(),
-                                               current_buf,
-                                               rem, /* size left in the buffer */
-                                               entry->name,
-                                               &st,
-                                               entry->cookie);
-
-            /*
-             * Our buffer size was small and hence we can't add any more entries, so just break the loop.
-             * This also means that we have not inserted the current entry to the direent buffer.
-             */
-            if (entsize > rem)
-            {
-                break;
-            }
-
-            num_entries_returned_in_this_iter++;
-
-            // Increment the buffer pointer to point to the next free space.
-            current_buf += entsize;
-            rem -= entsize;
-            entry = entry->nextentry;
-        }
-        AZLogDebug("Last cookie {}",last_cookie );
-
-        fuse_reply_buf(task->get_req(),
-                       buf1,
-                       sz - rem);
-
-        free(buf1);
-    }
-    else if (retry)
-    {
-        task->run_readdir();
-    }
-    else
-    {
-        // Since the api failed and can no longer be retried, return error reply.
-        task->reply_error(-nfsstat3_to_errno(RSTATUS(res)));
-    }
-}
-#endif
-
-void rpc_task::run_readdir()
-{
-    get_readdir_entries_from_cache();
-#if 0
-    do {
-        struct READDIR3args args;
-        ::memset(&args, 0, sizeof(args));
-        args.dir = get_client()->get_nfs_inode_from_ino(inode)->get_fh();
-        args.cookie = rpc_api.readdir_task.get_cookie();
-        ::memcpy(&args.cookieverf, rpc_api.readdir_task.get_cookieverf(), sizeof(args.cookieverf));
-        args.count = rpc_api.readdir_task.get_size();
-
-        if (rpc_nfs3_readdir_task(get_rpc_ctx(), readdir_callback, &args, this) == NULL)
-        {
-            // This call fails due to internal issues like OOM etc
-            // and not due to an actual error, hence retry.
-            rpc_retry = true;
-        }
-    } while (rpc_retry);
-#endif
-}
-
-void rpc_task::get_readdir_entries_from_cache()
-{
-    assert(get_op_type() == FUSE_READDIR);
-
-    bool is_eof = false;
-
-    struct nfs_inode *nfs_ino = get_client()->get_nfs_inode_from_ino(rpc_api.readdirplus_task.get_inode());
-    assert (nfs_ino != nullptr);
-
-    std::vector<directory_entry*> readdirentries;
-
-    /*const bool entry_found =*/ nfs_ino->lookup_readdircache(
-                         rpc_api.readdir_task.get_cookie() + 1 , // TODO: See if this should populate from cookie+1
-                         rpc_api.readdir_task.get_size(),
-                         readdirentries,
-                         //readdir_result_size,
-                         //rpc_api.readdir_task.m_results,
-                         //rpc_api.readdir_task.result_size,
-                         is_eof,
-                         true /* skip_attr_size */);
-#if 0
-    if (!entry_found)
-    {
-        assert (m_readdirentries.empty());
-        assert (readdir_result_size == 0);
-        fetch_readdir_entries_from_server();
-    }
- #endif
-    //if (!size_exhausted && (rpc_api.readdir_task.get_size() > readdir_result_size)/* && !is_eof*/)
-    if (readdirentries.empty())
-    {
-        // Read from the backend only if there is no entry present in the cache.
-        // Note : It is okay even if we send less number of entries. Fuse layer will request for more num of entries later.
-
-        /*
-         * We can return more number of entries to the caller since we have not exceeded the
-         * requested size. Since these entries are not present in the cache, this should be fetched
-         * from the backend.
-         */
-        fetch_readdir_entries_from_server();
-    }
-    else
-    {
-        // We are done fetching all the entries, send the response now.
-        send_readdir_response(readdirentries);
-    }
-}
-
-void rpc_task::get_readdirplus_entries_from_cache()
-{
-    bool is_eof = false;
-     assert(get_op_type() == FUSE_READDIRPLUS);
- //   bool size_exhausted = false;
-    struct nfs_inode *nfs_ino = get_client()->get_nfs_inode_from_ino(rpc_api.readdirplus_task.get_inode());
-    assert (nfs_ino != nullptr);
-
-    std::vector<directory_entry*> readdirentries;
-
-    nfs_ino->lookup_readdircache( rpc_api.readdirplus_task.get_cookie()+1,
-                         rpc_api.readdirplus_task.get_size(),
-                         readdirentries,
-                         //readdir_result_size,
-                         //rpc_api.readdirplus_task.m_results,
-                         //rpc_api.readdirplus_task.result_size,
-                         is_eof);
-                         //size_exhausted);
-
-    //if (!size_exhausted && (rpc_api.readdirplus_task.get_size() > readdir_result_size) /*&& !is_eof */)
-    if (readdirentries.empty())
-    {
-        /*
-         * We can return more number of entries to the caller since we have not exceeded the
-         * requested size. Since these entries are not present in the cache, this should be fetched
-         * from the backend.
-         */
-        fetch_readdir_entries_from_server();
-    }
-    else
-    {
-        send_readdirplus_response(readdirentries);
-    }
-}
-
-void rpc_task::fetch_readdir_entries_from_server()
-{
-    bool rpc_retry = false;
-    fuse_ino_t inode;
-
-    cookie3 cookie = 0;
-    
-    if (get_op_type() == FUSE_READDIR)
-    {
-        inode = rpc_api.readdir_task.get_inode();
-        cookie = rpc_api.readdir_task.get_offset();
-    }
-    else
-    {
-         inode = rpc_api.readdirplus_task.get_inode();
-        cookie = rpc_api.readdirplus_task.get_offset();
-    }
-
-#if 0
-    // Fetch the cookie from where we want to do the listing.
-    if (!m_readdirentries.empty())
-    {
-        cookie = m_readdirentries.back()->cookie;
-    }
-#endif
-    do {
-        struct READDIRPLUS3args args;
-        ::memset(&args, 0, sizeof(args));
-        args.dir = get_client()->get_nfs_inode_from_ino(inode)->get_fh();
-        //args.cookie = rpc_api.readdirplus_task.get_cookie();
-        args.cookie = cookie;
-        ::memcpy(&args.cookieverf, get_client()->get_nfs_inode_from_ino(inode)->dircache_handle->get_cookieverf(), sizeof(args.cookieverf));
-       // ::memcpy(&args.cookieverf, cookieverf, sizeof(args.cookieverf));
-        args.dircount = 65536; // TODO: See what this value should be set to.
-        args.maxcount = 65536;
-
-        if (rpc_nfs3_readdirplus_task(get_rpc_ctx(), readdirplus_callback, &args, this) == NULL)
-        {
-            // This call fails due to internal issues like OOM etc
-            // and not due to an actual error, hence retry.
-            rpc_retry = true;
-        }
-    } while (rpc_retry);
-
-}
-
-void rpc_task::send_readdir_response(std::vector<directory_entry*>& readdirentries)
-{
-     assert(get_op_type() == FUSE_READDIR);
-
-    const size_t size = rpc_api.readdir_task.get_size();
-    // Allocate buffer
-    char *buf1 = (char *)malloc(size);
-    if (!buf1)
-    {
-        fuse_reply_err(get_req(), ENOMEM);
-        return;
-    }
-
-    char *current_buf = buf1;
-    size_t rem = size;
-    int  num_of_entries_returned = 0;
-    AZLogInfo("Size of readdir result vector is {}", readdirentries.size());
-
-    for (const auto& it : readdirentries)
-    {
-       // AZLogInfo("Curr entry readdir cookie is {}", it->cookie);
-        if ((int)it->cookie <= (int)rpc_api.readdir_task.get_offset())
-        {
-            /*
-             * Skip entries until the offset
-             * TODO: See if we need this. Can't we control this thorugh the cookie?
-             */
-           // entry = entry->nextentry;
-            //AZLogDebug("skipping cookie {}", it->cookie);
-            continue;
-        }
-        /*
-        * Insert the entry into the buffer.
-        * If the buffer space is less, fuse_add_direntry will not add entry to
-        * the buffer but will still return the space needed to add this entry.
-        */
-        struct stat st;
-        ::memset(&st, 0, sizeof(st));
-        size_t entsize = fuse_add_direntry(get_req(),
-                                           current_buf,
-                                           rem, /* size left in the buffer */
-                                           it->name,
-                                           &st, // TODO: Should we not pass attributes for readdir?
-                                           it->cookie);
-
-        /*
-        * Our buffer size was small and hence we can't add any more entries, so just break the loop.
-        * This also means that we have not inserted the current entry to the direent buffer.
-        */
-        if (entsize > rem)
-        {
-            break;
-        }
-
-        //num_entries_returned_in_this_iter++;
-
-        // Increment the buffer pointer to point to the next free space.
-        current_buf += entsize;
-        rem -= entsize;
-        num_of_entries_returned++;
-    }
-
-    AZLogDebug("Num of entries sent in readdir response is {}", num_of_entries_returned);
-    fuse_reply_buf(get_req(),
-                   buf1,
-                   size - rem);
-
-    free(buf1);
-}
-
-
-void rpc_task::run_readdirplus()
-{
-   // bool rpc_retry = false;
-   // auto inode = rpc_api.readdirplus_task.get_inode();
-    get_readdirplus_entries_from_cache();
-
-#if 0
-    do {
-        struct READDIRPLUS3args args;
-        ::memset(&args, 0, sizeof(args));
-        args.dir = get_client()->get_nfs_inode_from_ino(inode)->get_fh();
-        args.cookie = rpc_api.readdirplus_task.get_cookie();
-        ::memcpy(&args.cookieverf, rpc_api.readdirplus_task.get_cookieverf(), sizeof(args.cookieverf));
-        args.dircount = 65536; // TODO: See what this value should be set to.
-        args.maxcount = 65536;
-
-        if (rpc_nfs3_readdirplus_task(get_rpc_ctx(), readdirplus_callback, &args, this) == NULL)
-        {
-            // This call fails due to internal issues like OOM etc
-            // and not due to an actual error, hence retry.
-            rpc_retry = true;
-        }
-    } while (rpc_retry);
-#endif
 }

@@ -15,12 +15,6 @@
 
 struct directory_entry
 {
-#if 0
-    cookie3 cookie;
-    struct stat attributes;
-    nfs_inode* nfs_ino;
-    char* name;
-#endif
     const cookie3 cookie;
     const struct stat attributes;
     const struct nfs_inode* const nfs_ino;
@@ -33,7 +27,11 @@ struct directory_entry
         name(name_)
     {}
 
-// Get the size of the directory entry
+    /*
+     * Returns size of the directory_entry.
+     * If \p skip_attr_size is set to true, then it does not consider the attributes
+     * size for calculating the size.
+     */
     size_t get_size(bool skip_attr_size = false)
     {
         if (skip_attr_size)
@@ -47,48 +45,46 @@ struct directory_entry
     }
 };
 
+#define DIR_MTIME_REFRESH_INTERVAL_SEC 30
+
 struct readdirectory_cache
 {
 private:
-    //const fuse_ino_t inode;
-
     /*
      * This will be set if we have read all the entries of the directory
      * from the backend.
      */
     bool eof;
 
+    // Size of the cache.
     size_t cache_size;
 
-//    const std::time_t create_time;
-
-    // The time at which we checked the directory mtime by making getattr call.
-    std::time_t last_mtimecheck;
-    //std::atomic<std::time_t> last_mtimecheck;
+    /*
+     * The time at which the directory mtime was last checked.
+     * The directory mtime should be refreshed every DIR_MTIME_REFRESH_INTERVAL_SEC.
+     */
+    std::atomic<std::time_t> last_mtimecheck;
 
     cookieverf3 cookie_verifier;
 
-    // TODO: See if we can just make it a vector and can be indexed by cookie.
     std::map<cookie3, struct directory_entry*> dir_entries;
 
-    std::shared_mutex lock_dirlistcache;
+    // This lock protects all the memberf of this readdirectory_cache.
+    std::shared_mutex readdircache_lock;
 
 public:
     readdirectory_cache():
-      //  inode(ino),
         eof(false),
         cache_size(0),
-  //      create_time(std::time(nullptr)),
         last_mtimecheck(std::time(nullptr))
     {
-        //AZLogDebug("In readdirectory_cache() constr");
         assert(dir_entries.empty());
         ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
     }
 
     std::shared_mutex& get_lock()
     {
-        return lock_dirlistcache;
+        return readdircache_lock;
     }
 
     /*
@@ -98,7 +94,7 @@ public:
     bool get_entry_at(cookie3 cookie, struct directory_entry** dirent)
     {
         // Take shared lock on the map.
-        std::shared_lock<std::shared_mutex> lock(lock_dirlistcache);
+        std::shared_lock<std::shared_mutex> lock(readdircache_lock);
         auto it = dir_entries.find(cookie);
 
         if (it != dir_entries.end())
@@ -115,27 +111,23 @@ public:
      */
     void set_mtime()
     {
-        // TODO: Put this behind a lock or make it atomic.
-        last_mtimecheck = std::time(nullptr);
-        // last_mtimecheck.store(std::time(nullptr));
+        last_mtimecheck.store(std::time(nullptr));
     }
 
     std::time_t get_lastmtime()
     {
-        // TODO: Make this atomic or put it under lock.
-        return last_mtimecheck;
-        //return last_mtimecheck.load();
+        return last_mtimecheck.load();
     }
 
     bool add(struct directory_entry* entry)
     {
-        const size_t entry_size = entry->get_size();
-
         assert(entry != nullptr);
-        // if (get_cache_size() < MAX_ALLOWED_SIZE) // TODO: Add this check later.
+        
+        const size_t entry_size = entry->get_size();
         {
             // Get exclusive lock on the map to add the entry to the map.
-            std::unique_lock<std::shared_mutex> lock(lock_dirlistcache);
+            std::unique_lock<std::shared_mutex> lock(readdircache_lock);
+        
             if (cache_size >= MAX_CACHE_SIZE_LIMIT)
             {
                 AZLogWarn("Exceeding cache max size. No more entries will be added to the cache! cuurent size: {}", cache_size);
@@ -169,14 +161,12 @@ public:
         assert(cokieverf != nullptr);
 
         // TODO: Can this be made atomic? Get exclusive lock to update the cookie verifier.
-        std::unique_lock<std::shared_mutex> lock(lock_dirlistcache);
-
+        std::unique_lock<std::shared_mutex> lock(readdircache_lock);
         ::memcpy(&cookie_verifier, cokieverf, sizeof(cookie_verifier));
     }
 
     void set_eof()
     {
-        AZLogInfo("set eof called");
         eof = true;
     }
 
@@ -185,13 +175,12 @@ public:
         *entry = nullptr;
 
         // Take shared look to see if the entry exist in the cache.
-        std::shared_lock<std::shared_mutex> lock(lock_dirlistcache);
+        std::shared_lock<std::shared_mutex> lock(readdircache_lock);
 
         auto it = dir_entries.find(cookie_);
 
         if (it != dir_entries.end())
         {
-            // TODO: See if we need to update the last access time.
             *entry = it->second;
             return true;
         }
@@ -201,16 +190,13 @@ public:
 
     void clear()
     {
-        AZLogInfo("clear called");
-        // This cache has now become invalid. clean it up.
-        std::unique_lock<std::shared_mutex> lock(lock_dirlistcache);
+        std::unique_lock<std::shared_mutex> lock(readdircache_lock);
 
         eof = false;
         cache_size = 0;
         last_mtimecheck = std::time(nullptr);
         ::memset(&cookie_verifier, 0, sizeof(cookie_verifier));
 
-  //      create_time(std::time(nullptr)),
         for (auto it = dir_entries.begin(); it != dir_entries.end(); ++it)
         {
             free(it->second);
@@ -223,7 +209,7 @@ public:
     {
         AZLogInfo(" ~readdirectory_cache() called");
         // This cache has now become invalid. clean it up.
-        std::unique_lock<std::shared_mutex> lock(lock_dirlistcache);
+        std::unique_lock<std::shared_mutex> lock(readdircache_lock);
 
         for (auto it = dir_entries.begin(); it != dir_entries.end(); ++it)
         {
@@ -233,7 +219,7 @@ public:
         dir_entries.clear();
     }
 
-// Helper methods.
+    // Various helper methods added below.
     static bool are_mtimes_equal(const struct stat* attr1, const struct stat* attr2)
     {
 // #TODO : Added only for testing. Remove this!!
@@ -251,6 +237,7 @@ public:
         return (attr1->st_mtim.tv_sec == attr2->st_mtim.tv_sec) &&
                (attr1->st_mtim.tv_nsec == attr2->st_mtim.tv_nsec);
     }
+    
     static bool make_getattr_call(fuse_ino_t inode, struct stat& attr)
     {
         // Make a sync call to fetch the attributes.
@@ -260,4 +247,3 @@ public:
     }
 };
 #endif /* __READDIR_RPC_TASK___ */
-

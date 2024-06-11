@@ -115,11 +115,9 @@ void nfs_client::readdir(
     off_t offset,
     struct fuse_file_info* file)
 {
-    struct rpc_task* tsk = nullptr;
-    rpc_task_helper->get_rpc_task_instance(&tsk);
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
-    assert (tsk != nullptr);
-    tsk->set_readdir(this, req, inode, size, offset, file);
+    tsk->init_readdir(req, inode, size, offset, file);
     tsk->run_readdir();
 }
 
@@ -130,11 +128,9 @@ void nfs_client::readdirplus(
     off_t offset,
     struct fuse_file_info* file)
 {
-    struct rpc_task* tsk = nullptr;
-    rpc_task_helper->get_rpc_task_instance(&tsk);
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
 
-    assert (tsk != nullptr);
-    tsk->set_readdirplus(this, req, inode, size, offset, file);
+    tsk->init_readdirplus(req, inode, size, offset, file);
     tsk->run_readdirplus();
 }
 
