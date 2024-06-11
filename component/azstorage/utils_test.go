@@ -322,28 +322,32 @@ func (s *utilsTestSuite) TestSanitizeSASKey() {
 
 func (s *utilsTestSuite) TestBlockNonProxyOptions() {
 	assert := assert.New(s.T())
-	opt := getAzBlobServiceClientOptions(&AzStorageConfig{})
+	opt, err := getAzBlobServiceClientOptions(&AzStorageConfig{})
+	assert.Nil(err)
 	assert.EqualValues(opt.Retry.MaxRetries, 0)
 	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 }
 
 func (s *utilsTestSuite) TestBlockProxyOptions() {
 	assert := assert.New(s.T())
-	opt := getAzBlobServiceClientOptions(&AzStorageConfig{proxyAddress: "127.0.0.1", maxRetries: 3})
+	opt, err := getAzBlobServiceClientOptions(&AzStorageConfig{proxyAddress: "127.0.0.1", maxRetries: 3})
+	assert.Nil(err)
 	assert.EqualValues(opt.Retry.MaxRetries, 3)
 	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 }
 
 func (s *utilsTestSuite) TestBfsNonProxyOptions() {
 	assert := assert.New(s.T())
-	opt := getAzDatalakeServiceClientOptions(&AzStorageConfig{})
+	opt, err := getAzDatalakeServiceClientOptions(&AzStorageConfig{})
+	assert.Nil(err)
 	assert.EqualValues(opt.Retry.MaxRetries, 0)
 	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 }
 
 func (s *utilsTestSuite) TestBfsProxyOptions() {
 	assert := assert.New(s.T())
-	opt := getAzBlobServiceClientOptions(&AzStorageConfig{proxyAddress: "127.0.0.1", maxRetries: 3})
+	opt, err := getAzBlobServiceClientOptions(&AzStorageConfig{proxyAddress: "127.0.0.1", maxRetries: 3})
+	assert.Nil(err)
 	assert.EqualValues(opt.Retry.MaxRetries, 3)
 	assert.GreaterOrEqual(len(opt.Logging.AllowedHeaders), 1)
 }
