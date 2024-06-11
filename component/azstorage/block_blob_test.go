@@ -1958,6 +1958,26 @@ func (s *blockBlobTestSuite) TestGetAttrVirtualDirSubDir() {
 	s.assert.False(props.IsSymlink())
 }
 
+func (s *blockBlobTestSuite) TestGetAttrDirWithCPKEnabled() {
+	defer s.cleanupTest()
+	CPKEncryptionKey, CPKEncryptionKeySHA256 := generateCPKInfo()
+	config := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  cpk-enabled: true\n  cpk-encryption-key: %s\n  cpk-encryption-key-sha256: %s\n  account-key: %s\n  mode: key\n  container: %s\n",
+		storageTestConfigurationParameters.BlockAccount, storageTestConfigurationParameters.BlockAccount, CPKEncryptionKey, CPKEncryptionKeySHA256, storageTestConfigurationParameters.BlockKey, s.container)
+
+	s.tearDownTestHelper(false)
+	s.setupTestHelper(config, s.container, false)
+
+	name := generateDirectoryName()
+	s.az.CreateDir(internal.CreateDirOptions{Name: name})
+
+	props, err := s.az.GetAttr(internal.GetAttrOptions{Name: name})
+	s.assert.Nil(err)
+	s.assert.NotNil(props)
+	s.assert.True(props.IsDir())
+	s.assert.NotEmpty(props.Metadata)
+	s.assert.True(checkMetadata(props.Metadata, folderKey, "true"))
+}
+
 func (s *blockBlobTestSuite) TestGetAttrFile() {
 	defer s.cleanupTest()
 	vdConfig := fmt.Sprintf("azstorage:\n  account-name: %s\n  endpoint: https://%s.blob.core.windows.net/\n  type: block\n  account-key: %s\n  mode: key\n  container: %s\n  fail-unsupported-op: true\n  virtual-directory: true",

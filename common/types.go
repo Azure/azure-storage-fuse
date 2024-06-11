@@ -47,7 +47,7 @@ import (
 
 // Standard config default values
 const (
-	blobfuse2Version_ = "2.3.0~preview.2"
+	blobfuse2Version_ = "2.3.1"
 
 	DefaultMaxLogFileSize = 512
 	DefaultLogFileCount   = 10
@@ -90,6 +90,8 @@ var EnableMonitoring = false
 var BfsDisabled = false
 var TransferPipe = "/tmp/transferPipe"
 var PollingPipe = "/tmp/pollPipe"
+
+var MountPath string
 
 // LogLevel enum
 type LogLevel int
