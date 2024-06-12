@@ -45,7 +45,6 @@ parameters:
     type: boolean
   - name: test_azcli_credential
     type: boolean
-    type: string
   - name: test_azurite
     type: boolean
     default: false
