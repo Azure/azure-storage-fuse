@@ -5,14 +5,14 @@ parameters:
     type: string
   - name: account_endpoint
     type: string 
-  - name: spn_account_endpoint
-    type: string 
+  # - name: spn_account_endpoint
+  #   type: string 
   - name: adls
     type: boolean
   - name: account_name
     type: string
-  - name: spn_account_name
-    type: string
+  # - name: spn_account_name
+  #   type: string
   - name: account_key
     type: string
   - name: account_sas
@@ -43,8 +43,8 @@ parameters:
     type: boolean
   - name: test_sas_credential
     type: boolean
-  - name: test_spn_credential
-    type: boolean
+  # - name: test_spn_credential
+  #   type: boolean
   - name: test_azcli_credential
     type: boolean
   - name: test_stream
@@ -58,8 +58,8 @@ parameters:
     default: false
   - name: sas_credential_config
     type: string
-  - name: spn_credential_config
-    type: string
+  # - name: spn_credential_config
+  #   type: string
   - name: azcli_credential_config
     type: string
   - name: azurite_config
@@ -150,25 +150,25 @@ steps:
     displayName: Print SAS config file
     condition: ${{ parameters.test_sas_credential }}
 
-# Create spn credential config file if we need to test it
-  - script: |
-      cd ${{ parameters.working_dir }}
-      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_spn.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.spn_credential_config }}
-    displayName: Create SPN Config File
-    env:
-      NIGHTLY_SPN_ACC_NAME: ${{ parameters.spn_account_name }}
-      NIGHTLY_SPN_CLIENT_ID: ${{ parameters.client_id }}
-      NIGHTLY_SPN_TENANT_ID: ${{ parameters.tenant_id }}
-      NIGHTLY_SPN_CLIENT_SECRET: ${{ parameters.client_secret }}
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      ACCOUNT_ENDPOINT: ${{ parameters.spn_account_endpoint }}
-      VERBOSE_LOG: ${{ parameters.verbose_log }}
-    condition: ${{ parameters.test_spn_credential }}
-    continueOnError: false
+# # Create spn credential config file if we need to test it
+#   - script: |
+#       cd ${{ parameters.working_dir }}
+#       ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_spn.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.spn_credential_config }}
+#     displayName: Create SPN Config File
+#     env:
+#       NIGHTLY_SPN_ACC_NAME: ${{ parameters.spn_account_name }}
+#       NIGHTLY_SPN_CLIENT_ID: ${{ parameters.client_id }}
+#       NIGHTLY_SPN_TENANT_ID: ${{ parameters.tenant_id }}
+#       NIGHTLY_SPN_CLIENT_SECRET: ${{ parameters.client_secret }}
+#       ACCOUNT_TYPE: ${{ parameters.account_type }}
+#       ACCOUNT_ENDPOINT: ${{ parameters.spn_account_endpoint }}
+#       VERBOSE_LOG: ${{ parameters.verbose_log }}
+#     condition: ${{ parameters.test_spn_credential }}
+#     continueOnError: false
       
-  - script: cat ${{ parameters.spn_credential_config }}
-    displayName: Print SPN config file
-    condition: ${{ parameters.test_spn_credential }}
+#   - script: cat ${{ parameters.spn_credential_config }}
+#     displayName: Print SPN config file
+#     condition: ${{ parameters.test_spn_credential }}
 
 # Create azcli credential config file if we need to test it
   - script: |
@@ -176,7 +176,7 @@ steps:
       ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_cli.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.azcli_credential_config }}
     displayName: Create Azure CLI Config File
     env:
-      NIGHTLY_STO_BLOB_ACC_NAME: ${{ parameters.spn_account_name }}
+      NIGHTLY_STO_BLOB_ACC_NAME: ${{ parameters.account_name }}
       ACCOUNT_TYPE: ${{ parameters.account_type }}
       ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
       VERBOSE_LOG: ${{ parameters.verbose_log }}
@@ -307,24 +307,24 @@ steps:
           timeoutInMinutes: 3
           continueOnError: false
 
-  - ${{ if eq(parameters.test_spn_credential, true) }}:
-    - template: e2e-tests.yml
-      parameters:
-        working_dir: ${{ parameters.working_dir }}
-        mount_dir: ${{ parameters.mount_dir }}
-        temp_dir: ${{ parameters.temp_dir }}
-        adls: ${{ parameters.adls }}
-        idstring: ${{ parameters.service }} with SPN Credentials
-        distro_name: ${{ parameters.distro_name }}
-        artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_spn.txt'
-        verbose_log: ${{ parameters.verbose_log }}
-        mountStep:
-          script: >
-            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.spn_credential_config }}
-            --default-working-dir=${{ parameters.working_dir }}
-          displayName: 'E2E Test: Mount with SPN Credential Configuration'
-          timeoutInMinutes: 3
-          continueOnError: false
+  # - ${{ if eq(parameters.test_spn_credential, true) }}:
+  #   - template: e2e-tests.yml
+  #     parameters:
+  #       working_dir: ${{ parameters.working_dir }}
+  #       mount_dir: ${{ parameters.mount_dir }}
+  #       temp_dir: ${{ parameters.temp_dir }}
+  #       adls: ${{ parameters.adls }}
+  #       idstring: ${{ parameters.service }} with SPN Credentials
+  #       distro_name: ${{ parameters.distro_name }}
+  #       artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_spn.txt'
+  #       verbose_log: ${{ parameters.verbose_log }}
+  #       mountStep:
+  #         script: >
+  #           ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.spn_credential_config }}
+  #           --default-working-dir=${{ parameters.working_dir }}
+  #         displayName: 'E2E Test: Mount with SPN Credential Configuration'
+  #         timeoutInMinutes: 3
+  #         continueOnError: false
 
   - ${{ if eq(parameters.test_azcli_credential, true) }}:
     - template: e2e-tests.yml
