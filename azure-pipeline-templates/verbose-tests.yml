@@ -43,23 +43,14 @@ parameters:
     type: boolean
   - name: test_sas_credential
     type: boolean
-  # - name: test_spn_credential
-  #   type: boolean
   - name: test_azcli_credential
     type: boolean
-  - name: test_stream
-    type: boolean
-  - name: stream_config
-    type: string
-  - name: stream_filename_config
     type: string
   - name: test_azurite
     type: boolean
     default: false
   - name: sas_credential_config
     type: string
-  # - name: spn_credential_config
-  #   type: string
   - name: azcli_credential_config
     type: string
   - name: azurite_config
@@ -96,42 +87,6 @@ steps:
     displayName: Print config file
     condition: ${{ parameters.test_key_credential }}
 
-# Stream e2e
-  - script: |
-      cd ${{ parameters.working_dir }}
-      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_stream.yaml --container-name=${{ parameters.container }} --output-file=${{ parameters.stream_config }}
-    displayName: Create Stream Config File
-    env:
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
-      VERBOSE_LOG: ${{ parameters.verbose_log }}
-    condition: ${{ parameters.test_stream }}
-    continueOnError: false
-      
-  - script: cat ${{ parameters.stream_config }}
-    displayName: Print Stream config file with Handle Level Caching
-    condition: ${{ parameters.test_stream }}
-
-# Stream e2e filename level caching
-  - script: |
-      cd ${{ parameters.working_dir }}
-      ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_stream_filename.yaml --container-name=${{ parameters.container }} --output-file=${{ parameters.stream_filename_config }}
-    displayName: Create Stream Config File
-    env:
-      ACCOUNT_TYPE: ${{ parameters.account_type }}
-      NIGHTLY_STO_ACC_NAME: ${{ parameters.account_name }}
-      NIGHTLY_STO_ACC_KEY: ${{ parameters.account_key }}
-      ACCOUNT_ENDPOINT: ${{ parameters.account_endpoint }}
-      VERBOSE_LOG: ${{ parameters.verbose_log }}
-    condition: ${{ parameters.test_stream }}
-    continueOnError: false
-      
-  - script: cat ${{ parameters.stream_filename_config }}
-    displayName: Print Stream config file with Filename Caching
-    condition: ${{ parameters.test_stream }}
-
 # Create sas credential config file if we need to test it
   - script: |
       cd ${{ parameters.working_dir }}
@@ -149,26 +104,6 @@ steps:
   - script: cat ${{ parameters.sas_credential_config }}
     displayName: Print SAS config file
     condition: ${{ parameters.test_sas_credential }}
-
-# # Create spn credential config file if we need to test it
-#   - script: |
-#       cd ${{ parameters.working_dir }}
-#       ${{ parameters.working_dir }}/blobfuse2 gen-test-config --config-file=azure_spn.yaml --container-name=${{ parameters.container }} --temp-path=${{ parameters.temp_dir }} --output-file=${{ parameters.spn_credential_config }}
-#     displayName: Create SPN Config File
-#     env:
-#       NIGHTLY_SPN_ACC_NAME: ${{ parameters.spn_account_name }}
-#       NIGHTLY_SPN_CLIENT_ID: ${{ parameters.client_id }}
-#       NIGHTLY_SPN_TENANT_ID: ${{ parameters.tenant_id }}
-#       NIGHTLY_SPN_CLIENT_SECRET: ${{ parameters.client_secret }}
-#       ACCOUNT_TYPE: ${{ parameters.account_type }}
-#       ACCOUNT_ENDPOINT: ${{ parameters.spn_account_endpoint }}
-#       VERBOSE_LOG: ${{ parameters.verbose_log }}
-#     condition: ${{ parameters.test_spn_credential }}
-#     continueOnError: false
-      
-#   - script: cat ${{ parameters.spn_credential_config }}
-#     displayName: Print SPN config file
-#     condition: ${{ parameters.test_spn_credential }}
 
 # Create azcli credential config file if we need to test it
   - script: |
@@ -246,47 +181,6 @@ steps:
       quick_test: ${{ parameters.quick_test }}
       verbose_log: ${{ parameters.verbose_log }}
       clone: false
-      stream_direct_test: false
-
-  - ${{ if eq(parameters.test_stream, true) }}:
-    - template: e2e-tests.yml
-      parameters:
-        working_dir: ${{ parameters.working_dir }}
-        temp_dir: ${{ parameters.temp_dir }}
-        mount_dir: ${{ parameters.mount_dir }}
-        adls: ${{ parameters.adls }}
-        idstring: ${{ parameters.service }} with Streaming
-        distro_name: ${{ parameters.distro_name }}
-        quick_test: ${{ parameters.quick_test }}
-        artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_stream.txt'
-        verbose_log: ${{ parameters.verbose_log }}
-        mountStep:
-          script: >
-            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.stream_config }}
-            --default-working-dir=${{ parameters.working_dir }}
-          displayName: 'E2E Test: Mount with Stream Configuration'
-          timeoutInMinutes: 3
-          continueOnError: false
-
-  - ${{ if eq(parameters.test_stream, true) }}:
-    - template: e2e-tests.yml
-      parameters:
-        working_dir: ${{ parameters.working_dir }}
-        temp_dir: ${{ parameters.temp_dir }}
-        mount_dir: ${{ parameters.mount_dir }}
-        adls: ${{ parameters.adls }}
-        idstring: ${{ parameters.service }} with Streaming with filename
-        distro_name: ${{ parameters.distro_name }}
-        quick_test: ${{ parameters.quick_test }}
-        artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_stream_with_filename.txt'
-        verbose_log: ${{ parameters.verbose_log }}
-        mountStep:
-          script: >
-            ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.stream_filename_config }}
-            --default-working-dir=${{ parameters.working_dir }}
-          displayName: 'E2E Test: Mount with Filename Stream Configuration'
-          timeoutInMinutes: 3
-          continueOnError: false
 
   - ${{ if eq(parameters.test_sas_credential, true) }}:
     - template: e2e-tests.yml
@@ -306,25 +200,6 @@ steps:
           displayName: 'E2E Test: Mount with SAS Credential Configuration'
           timeoutInMinutes: 3
           continueOnError: false
-
-  # - ${{ if eq(parameters.test_spn_credential, true) }}:
-  #   - template: e2e-tests.yml
-  #     parameters:
-  #       working_dir: ${{ parameters.working_dir }}
-  #       mount_dir: ${{ parameters.mount_dir }}
-  #       temp_dir: ${{ parameters.temp_dir }}
-  #       adls: ${{ parameters.adls }}
-  #       idstring: ${{ parameters.service }} with SPN Credentials
-  #       distro_name: ${{ parameters.distro_name }}
-  #       artifact_name: '${{ parameters.distro_name }}_${{ parameters.service }}_spn.txt'
-  #       verbose_log: ${{ parameters.verbose_log }}
-  #       mountStep:
-  #         script: >
-  #           ${{ parameters.working_dir }}/blobfuse2 mount ${{ parameters.mount_dir }} --config-file=${{ parameters.spn_credential_config }}
-  #           --default-working-dir=${{ parameters.working_dir }}
-  #         displayName: 'E2E Test: Mount with SPN Credential Configuration'
-  #         timeoutInMinutes: 3
-  #         continueOnError: false
 
   - ${{ if eq(parameters.test_azcli_credential, true) }}:
     - template: e2e-tests.yml
@@ -374,22 +249,6 @@ steps:
           continueOnError: false
       
 #--------------------------------------- Tests: End to end tests with different File Cache configurations ------------------------------------------
-
-  - template: e2e-tests-spcl.yml
-    parameters:
-      conf_template: azure_key_lfu.yaml
-      config_file: ${{ parameters.config }}
-      container: ${{ parameters.container }}
-      temp_dir: ${{ parameters.temp_dir }}
-      mount_dir: ${{ parameters.mount_dir }}
-      adls: ${{ parameters.adls }}
-      account_name: ${{ parameters.account_name }}
-      account_key: ${{ parameters.account_key }}
-      account_type: ${{ parameters.account_type }}
-      account_endpoint: ${{ parameters.account_endpoint }}
-      idstring: "${{ parameters.service }} LFU policy"
-      distro_name: ${{ parameters.distro_name }}
-      verbose_log: ${{ parameters.verbose_log }}
 
   - template: e2e-tests-spcl.yml
     parameters:

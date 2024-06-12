@@ -13,23 +13,26 @@ jobs:
     strategy:
       matrix:
         Ubuntu-20:
-          imageName: 'ubuntu-20.04'
+          imageName: 'blobfuse-ubuntu20'
           containerName: 'test-cnt-ubn-20'
           fuselib: 'libfuse-dev'
           tags: 'fuse2'
           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
         Ubuntu-22:
-          imageName: 'ubuntu-22.04'
+          imageName: 'blobfuse-ubuntu22'
           containerName: 'test-cnt-ubn-22'
           fuselib: 'libfuse3-dev'
           tags: 'fuse3'
           adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
   
     pool:
-      vmImage: $(imageName)
+      name: "blobfuse-ubuntu-pool"
+      demands:
+        - ImageOverride -equals $(AgentName)
+
     variables:
       - group: NightlyBlobFuse
-
+      
     steps:
     # ----------------------------------------------------------------
       - template: 'azure-pipeline-templates/blobfuse2-ci-template.yml'
