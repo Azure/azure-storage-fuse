@@ -74,13 +74,13 @@ stages:
           strategy:
             matrix:
               Ubuntu-20-BlockBlob:
-                imageName: 'blobfuse-ubuntu20'
+                AgentName: 'blobfuse-ubuntu20'
                 containerName: 'test-cnt-ubn-20'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22-BlockBlob:
-                imageName: 'blobfuse-ubuntu22'
+                AgentName: 'blobfuse-ubuntu22'
                 containerName: 'test-cnt-ubn-22'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
@@ -194,7 +194,7 @@ stages:
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   verbose_log: ${{ parameters.verbose_log }}
                   tags: $(tags)
 
@@ -210,7 +210,7 @@ stages:
           strategy:
             matrix:
               Ubuntu-22-ARM64-BlockBlob:
-                imageName: 'blobfuse-ubn22-arm64'
+                AgentName: 'blobfuse-ubn22-arm64'
                 containerName: 'test-cnt-ubn-22-arm64'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
                 fuselib: 'libfuse3-dev'
@@ -219,7 +219,7 @@ stages:
           pool:
             name: "blobfuse-ubn-arm64-pool"
             demands:
-              - ImageOverride -equals $(imageName)
+              - ImageOverride -equals $(AgentName)
 
           variables:
             - group: NightlyBlobFuse
@@ -326,7 +326,7 @@ stages:
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   verbose_log: ${{ parameters.verbose_log }}
                   tags: $(tags)
 
@@ -343,13 +343,13 @@ stages:
           strategy:
             matrix:
               Ubuntu-20-ADLS:
-                imageName: 'blobfuse-ubuntu20'
+                AgentName: 'blobfuse-ubuntu20'
                 containerName: 'test-cnt-ubn-20'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22-ADLS:
-                imageName: 'blobfuse-ubuntu22'
+                AgentName: 'blobfuse-ubuntu22'
                 containerName: 'test-cnt-ubn-22'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
@@ -459,7 +459,7 @@ stages:
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   verbose_log: ${{ parameters.verbose_log }}
                   tags: $(tags)
 
@@ -475,7 +475,7 @@ stages:
           strategy:
             matrix:
               Ubuntu-22-ARM64-ADLS:
-                imageName: 'blobfuse-ubn22-arm64'
+                AgentName: 'blobfuse-ubn22-arm64'
                 containerName: 'test-cnt-ubn-22-arm64'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22_ARM)
                 fuselib: 'libfuse3-dev'
@@ -483,7 +483,7 @@ stages:
           pool:
             name: "blobfuse-ubn-arm64-pool"
             demands:
-              - ImageOverride -equals $(imageName)
+              - ImageOverride -equals $(AgentName)
 
           variables:
             - group: NightlyBlobFuse
@@ -581,7 +581,7 @@ stages:
                   sas_credential_config: $(BLOBFUSE2_SAS_CFG)
                   azcli_credential_config: $(BLOBFUSE2_AZCLI_CFG)
                   azurite_config: $(BLOBFUSE2_AZURITE_CFG)
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   verbose_log: ${{ parameters.verbose_log }}
                   tags: $(tags)
 
@@ -600,7 +600,7 @@ stages:
             strategy:
               matrix:
                 Ubuntu-20-Proxy:
-                  imageName: 'blobfuse-ubuntu18'
+                  AgentName: 'blobfuse-ubuntu18'
                   containerName: 'test-cnt-ubn-18-proxy'
 
             pool:
@@ -705,7 +705,7 @@ stages:
                   mount_dir: $(MOUNT_DIR)
                   temp_dir: $(TEMP_DIR)
                   idstring: 'BlockBlob with Proxy and Key Credentials'
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   adls: false
                   artifact_name: 'blockblob_proxy_key.txt'
                   verbose_log: ${{ parameters.verbose_log }}
@@ -739,7 +739,7 @@ stages:
                   mount_dir: $(MOUNT_DIR)
                   temp_dir: $(TEMP_DIR)
                   idstring: 'ADLS with Proxy and Key Credentials'
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   adls: true
                   artifact_name: 'adls_proxy_key.txt'
                   verbose_log: ${{ parameters.verbose_log }}
@@ -774,7 +774,7 @@ stages:
                   mount_dir: $(MOUNT_DIR)
                   temp_dir: $(TEMP_DIR)
                   idstring: 'Block SAS'
-                  distro_name: $(imageName)
+                  distro_name: $(AgentName)
                   mountStep:
                     script: |
                       $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
@@ -805,7 +805,7 @@ stages:
               #     mount_dir: $(MOUNT_DIR)
               #     temp_dir: $(TEMP_DIR)
               #     idstring: 'Block SPN'
-              #     distro_name: $(imageName)
+              #     distro_name: $(AgentName)
               #     mountStep:
               #       script: |
               #         $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --default-working-dir=$(WORK_DIR)
@@ -1406,7 +1406,7 @@ stages:
           strategy:
             matrix:
               Ubuntu-22:
-                imageName: 'blobfuse-ubuntu22'
+                AgentName: 'blobfuse-ubuntu22'
                 containerName: 'test-cnt-ubn-22'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
@@ -1457,7 +1457,7 @@ stages:
                 account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
                 account_type: block
                 account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
-                distro_name: $(imageName)
+                distro_name: $(AgentName)
                 quick_test: false
                 verbose_log: ${{ parameters.verbose_log }}
                 clone: true
@@ -1474,13 +1474,13 @@ stages:
           strategy:
             matrix:
               Ubuntu-20:
-                imageName: 'blobfuse-ubuntu20'
+                AgentName: 'blobfuse-ubuntu20'
                 containerName: 'test-cnt-ubn-20'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22:
-                imageName: 'blobfuse-ubuntu22'
+                AgentName: 'blobfuse-ubuntu22'
                 containerName: 'test-cnt-ubn-22'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
@@ -1531,7 +1531,7 @@ stages:
                 account_key: $(NIGHTLY_STO_BLOB_ACC_KEY)
                 account_type: block
                 account_endpoint: https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net
-                distro_name: $(imageName)
+                distro_name: $(AgentName)
                 quick_test: false
                 verbose_log: ${{ parameters.verbose_log }}
                 clone: true
@@ -1548,13 +1548,13 @@ stages:
           strategy:
             matrix:
               Ubuntu-20:
-                imageName: 'blobfuse-ubuntu20'
+                AgentName: 'blobfuse-ubuntu20'
                 containerName: 'test-cnt-ubn-20'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_20)
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22:
-                imageName: 'blobfuse-ubuntu22'
+                AgentName: 'blobfuse-ubuntu22'
                 containerName: 'test-cnt-ubn-22'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
@@ -1605,7 +1605,7 @@ stages:
                 account_key: $(AZTEST_ADLS_KEY)
                 account_type: adls
                 account_endpoint: https://$(AZTEST_ADLS_ACC_NAME).dfs.core.windows.net
-                distro_name: $(imageName)
+                distro_name: $(AgentName)
                 quick_test: false
                 verbose_log: ${{ parameters.verbose_log }}
                 clone: true
@@ -1621,17 +1621,17 @@ stages:
           strategy:
             matrix:
               Ubuntu-20:
-                imageName: 'ubuntu-20.04'
+                AgentName: 'ubuntu-20.04'
                 containerName: 'test-cnt-ubn-20'
                 fuselib: 'libfuse-dev'
                 tags: 'fuse2'
               Ubuntu-22:
-                imageName: 'ubuntu-22.04'
+                AgentName: 'ubuntu-22.04'
                 containerName: 'test-cnt-ubn-22'
                 fuselib: 'libfuse3-dev'
                 tags: 'fuse3'
           pool:
-            vmImage: $(imageName)
+            vmImage: $(AgentName)
 
           variables:
             - group: NightlyBlobFuse
@@ -1670,7 +1670,7 @@ stages:
           strategy:
             matrix:
               Ubuntu-22:
-                imageName: 'blobfuse-ubuntu22'
+                AgentName: 'blobfuse-ubuntu22'
                 containerName: 'test-cnt-ubn-22'
                 adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
                 fuselib: 'libfuse3-dev'
