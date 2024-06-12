@@ -50,6 +50,9 @@ steps:
 
   # Create directory structure and prepare to mount
   - ${{ parameters.installStep }}
+  
+  - checkout: none
+
   - script: |
       sudo rm -rf $(ROOT_DIR)
       sudo mkdir -p $(ROOT_DIR)

@@ -111,6 +111,15 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
+            - script: |
+                sudo apt-get update --fix-missing
+                sudo apt update
+                sudo apt-get install cmake gcc $(fuselib) git -y
+                if [ $(tags) == "fuse2" ]; then
+                  sudo apt-get install fuse -y
+                fi
+              displayName: 'Install libfuse'
+
             - checkout: none
 
             # Clone the repo
@@ -125,13 +134,7 @@ stages:
               displayName: 'Checkout Branch'
               workingDirectory: $(WORK_DIR)
 
-            - script: |
-                sudo apt-get update --fix-missing
-                sudo apt-get install $(fuselib) -y
-                if [ $(tags) == "fuse2" ]; then
-                  sudo apt-get install fuse -y
-                fi
-              displayName: 'Install libfuse'
+
 
             # -------------------------------------------------------
             # Pull and build the code
@@ -238,6 +241,15 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
+            - script: |
+                sudo apt-get update --fix-missing
+                sudo apt update
+                sudo apt-get install cmake gcc $(fuselib) git -y
+                if [ $(tags) == "fuse2" ]; then
+                  sudo apt-get install fuse -y
+                fi
+              displayName: 'Install libfuse'
+              
             - checkout: none
 
             - script: |
@@ -256,11 +268,6 @@ stages:
                 git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
               displayName: 'Checkout Branch'
               workingDirectory: $(WORK_DIR)
-
-            - script: |
-                sudo apt-get update --fix-missing
-                sudo apt-get install $(tags) $(fuselib) gcc -y 
-              displayName: 'Install fuse'
 
             # -------------------------------------------------------
             # Pull and build the code
@@ -374,6 +381,15 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
+            - script: |
+                sudo apt-get update --fix-missing
+                sudo apt update
+                sudo apt-get install cmake gcc $(fuselib) git -y
+                if [ $(tags) == "fuse2" ]; then
+                  sudo apt-get install fuse -y
+                fi
+              displayName: 'Install libfuse'
+              
             - checkout: none
 
             # Clone the repo
@@ -387,14 +403,6 @@ stages:
                 git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
               displayName: 'Checkout Branch'
               workingDirectory: $(WORK_DIR)
-
-            - script: |
-                sudo apt-get update --fix-missing
-                sudo apt-get install $(fuselib) -y
-                if [ $(tags) == "fuse2" ]; then
-                  sudo apt-get install fuse -y
-                fi
-              displayName: 'Install libfuse'
 
             # -------------------------------------------------------
             # Pull and build the code
@@ -496,6 +504,15 @@ stages:
               value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
           steps:
+            - script: |
+                sudo apt-get update --fix-missing
+                sudo apt update
+                sudo apt-get install cmake gcc $(fuselib) git -y
+                if [ $(tags) == "fuse2" ]; then
+                  sudo apt-get install fuse -y
+                fi
+              displayName: 'Install libfuse'
+              
             - checkout: none
 
             # Clone the repo
@@ -509,11 +526,6 @@ stages:
                 git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
               displayName: 'Checkout Branch'
               workingDirectory: $(WORK_DIR)
-
-            - script: |
-                sudo apt-get update --fix-missing
-                sudo apt-get install $(fuselib) gcc -y
-              displayName: 'Install fuse'
 
             # -------------------------------------------------------
             # Pull and build the code
@@ -606,7 +618,13 @@ stages:
                 value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
             steps:
-              - checkout: none
+            - script: |
+                sudo apt-get update --fix-missing
+                sudo apt update
+                sudo apt-get install cmake gcc libfuse3-dev git -y
+              displayName: 'Install libfuse'
+              
+            - checkout: none
 
               # Start Proxy
               - script: |
@@ -639,11 +657,6 @@ stages:
                   git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
                 displayName: 'Checkout Branch'
                 workingDirectory: $(WORK_DIR)
-
-              - script: |
-                  sudo apt-get update --fix-missing
-                  sudo apt-get install libfuse3-dev
-                displayName: 'Install fuse3'
 
               # -------------------------------------------------------
               # Pull, build and unit test the code
