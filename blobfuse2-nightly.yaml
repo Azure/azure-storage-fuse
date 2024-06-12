@@ -1601,161 +1601,161 @@ stages:
               mount_dir: $(MOUNT_DIR)
 
   - stage: Healthmon
-      jobs:
-        - job: Set_1
-          timeoutInMinutes: 300
-          strategy:
-            matrix:
-              Ubuntu-22:
-                AgentName: 'blobfuse-ubuntu22'
-                containerName: 'test-cnt-ubn-22'
-                adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
-                fuselib: 'libfuse3-dev'
-                tags: 'fuse3'
+    jobs:
+      - job: Set_1
+        timeoutInMinutes: 300
+        strategy:
+          matrix:
+            Ubuntu-22:
+              AgentName: 'blobfuse-ubuntu22'
+              containerName: 'test-cnt-ubn-22'
+              adlsSas: $(AZTEST_ADLS_CONT_SAS_UBN_22)
+              fuselib: 'libfuse3-dev'
+              tags: 'fuse3'
 
-          pool:
-            name: "blobfuse-ubuntu-pool"
-            demands:
-              - ImageOverride -equals $(AgentName)
+        pool:
+          name: "blobfuse-ubuntu-pool"
+          demands:
+            - ImageOverride -equals $(AgentName)
 
-          variables:
-            - group: NightlyBlobFuse
-            - name: MOUNT_DIR
-              value: '$(Pipeline.Workspace)/blob_mnt'
-            - name: TEMP_DIR
-              value: '$(Pipeline.Workspace)/blobfuse2_tmp'
-            - name: BLOBFUSE2_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-            - name: GOPATH
-              value: '$(Pipeline.Workspace)/go'
-            - name: ROOT_DIR
-              value: '$(System.DefaultWorkingDirectory)' 
-            - name: WORK_DIR
-              value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
+        variables:
+          - group: NightlyBlobFuse
+          - name: MOUNT_DIR
+            value: '$(Pipeline.Workspace)/blob_mnt'
+          - name: TEMP_DIR
+            value: '$(Pipeline.Workspace)/blobfuse2_tmp'
+          - name: BLOBFUSE2_CFG
+            value: '$(Pipeline.Workspace)/blobfuse2.yaml'
+          - name: GOPATH
+            value: '$(Pipeline.Workspace)/go'
+          - name: ROOT_DIR
+            value: '$(System.DefaultWorkingDirectory)' 
+          - name: WORK_DIR
+            value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
-          steps:
-            - checkout: none
+        steps:
+          - checkout: none
 
-            - script: |
-                sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
-                sudo apt-get install make cmake gcc g++ parallel $(fuselib) -y -o Dpkg::Options::="--force-confnew"
-              displayName: 'Install libfuse'
+          - script: |
+              sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
+              sudo apt-get install make cmake gcc g++ parallel $(fuselib) -y -o Dpkg::Options::="--force-confnew"
+            displayName: 'Install libfuse'
 
-            # Clone the repo
-            - script: |
-                git clone https://github.com/Azure/azure-storage-fuse
-              displayName: 'Checkout Code'
-              workingDirectory: $(ROOT_DIR)
+          # Clone the repo
+          - script: |
+              git clone https://github.com/Azure/azure-storage-fuse
+            displayName: 'Checkout Code'
+            workingDirectory: $(ROOT_DIR)
 
-            # Checkout the branch
-            - script: |
-                git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
-              displayName: 'Checkout Branch'
+          # Checkout the branch
+          - script: |
+              git checkout `echo $(Build.SourceBranch) | cut -d "/" -f 1,2 --complement`
+            displayName: 'Checkout Branch'
+            workingDirectory: $(WORK_DIR)
+
+          # Create directory structure
+          - script: |
+              sudo mkdir -p $(ROOT_DIR)
+              sudo chown -R `whoami` $(ROOT_DIR)
+              chmod 777 $(ROOT_DIR)
+            displayName: 'Create Directory Structure'
+
+          # -------------------------------------------------------
+            # Alternative custom script for Self-Hosted agents to install Go-lang
+          - task: ShellScript@2
+            inputs:
+              scriptPath: "$(WORK_DIR)/go_installer.sh"
+              args: "$(ROOT_DIR)/"
+            displayName: "GoTool Custom Setup"
+
+          # Downloading Go dependency packages
+          - task: Go@0
+            inputs:
+              command: 'get'
+              arguments: '-d'
               workingDirectory: $(WORK_DIR)
+            displayName: "Go Get"
 
-            # Create directory structure
-            - script: |
-                sudo mkdir -p $(ROOT_DIR)
-                sudo chown -R `whoami` $(ROOT_DIR)
-                chmod 777 $(ROOT_DIR)
-              displayName: 'Create Directory Structure'
-
-            # -------------------------------------------------------
-             # Alternative custom script for Self-Hosted agents to install Go-lang
-            - task: ShellScript@2
-              inputs:
-                scriptPath: "$(WORK_DIR)/go_installer.sh"
-                args: "$(ROOT_DIR)/"
-              displayName: "GoTool Custom Setup"
-
-            # Downloading Go dependency packages
-            - task: Go@0
-              inputs:
-                command: 'get'
-                arguments: '-d'
-                workingDirectory: $(WORK_DIR)
-              displayName: "Go Get"
-
-            # Building our package
-            - task: Go@0
-              inputs:
-                command: 'build'
-                arguments: "-o blobfuse2"
-                workingDirectory: $(WORK_DIR)
-              displayName: "Go Build Blobfuse2"
-
-            # Building our package
-            - task: Go@0
-              inputs:
-                command: 'build'
-                arguments: "-o bfusemon ./tools/health-monitor/"
-                workingDirectory: $(WORK_DIR)
-              displayName: "Go Build bfusemon"
-
-            - script: |
-                cd $(WORK_DIR)
-                $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_hmon.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
-              displayName: Create Key Config File
-              env:
-                ACCOUNT_TYPE: 'block'
-                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-                VERBOSE_LOG: false
-                USE_HTTP: false
-                HMON_OUTPUT: $(WORK_DIR)
-              continueOnError: false
-
-            - script: cat $(BLOBFUSE2_CFG)
-              displayName: Print config file
-
-            - script:
-                mkdir -p $(MOUNT_DIR)
-                mkdir -p $(TEMP_DIR)
-              displayName: "Create directory structure"
-
-            - template: 'azure-pipeline-templates/mount.yml'
-              parameters:
-                working_dir: $(WORK_DIR)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
-                prefix: "Mount"
-                mountStep:
-                  script: |
-                    sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
-                    ls -l /usr/local/bin/bfusemon*
-                    $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
-                  displayName: 'Mount Blobfuse2'
-                  workingDirectory: $(WORK_DIR)
-                  timeoutInMinutes: 3
-                  continueOnError: false
-
-            - script: |
-                sudo ps -aux | grep bfusemon
-              displayName: 'Print bfusemon Process info'
-              env:
-                mount_dir: $(MOUNT_DIR)
-
-            - script: |
-                touch $(MOUNT_DIR)/h1.txt
-                echo "123456" > $(MOUNT_DIR)/h2.txt
-                cp *.md $(MOUNT_DIR)/
-                mkdir $(MOUNT_DIR)/A
-                mv $(MOUNT_DIR)/h1.txt $(MOUNT_DIR)/h5.txt
-                mv $(MOUNT_DIR)/h*.* $(MOUNT_DIR)/A
-                rm -rf $(MOUNT_DIR)/*.md
-                rm -rf $(MOUNT_DIR)/A
-              displayName: "Test for health monitor"
+          # Building our package
+          - task: Go@0
+            inputs:
+              command: 'build'
+              arguments: "-o blobfuse2"
               workingDirectory: $(WORK_DIR)
+            displayName: "Go Build Blobfuse2"
 
-            - script: |
-                sleep 20s
-                cat $(WORK_DIR)/monitor_*.json
-              displayName: "Print bfusemon output"
+          # Building our package
+          - task: Go@0
+            inputs:
+              command: 'build'
+              arguments: "-o bfusemon ./tools/health-monitor/"
               workingDirectory: $(WORK_DIR)
+            displayName: "Go Build bfusemon"
 
-            - template: 'azure-pipeline-templates/cleanup.yml'
-              parameters:
-                working_dir: $(WORK_DIR)
-                mount_dir: $(MOUNT_DIR)
-                temp_dir: $(TEMP_DIR)
+          - script: |
+              cd $(WORK_DIR)
+              $(WORK_DIR)/blobfuse2 gen-test-config --config-file=azure_key_hmon.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
+            displayName: Create Key Config File
+            env:
+              ACCOUNT_TYPE: 'block'
+              NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
+              NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
+              ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
+              VERBOSE_LOG: false
+              USE_HTTP: false
+              HMON_OUTPUT: $(WORK_DIR)
+            continueOnError: false
+
+          - script: cat $(BLOBFUSE2_CFG)
+            displayName: Print config file
+
+          - script:
+              mkdir -p $(MOUNT_DIR)
+              mkdir -p $(TEMP_DIR)
+            displayName: "Create directory structure"
+
+          - template: 'azure-pipeline-templates/mount.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
+              prefix: "Mount"
+              mountStep:
+                script: |
+                  sudo ln -s `pwd`/bfusemon /usr/local/bin/bfusemon
+                  ls -l /usr/local/bin/bfusemon*
+                  $(WORK_DIR)/blobfuse2 mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG)
+                displayName: 'Mount Blobfuse2'
+                workingDirectory: $(WORK_DIR)
+                timeoutInMinutes: 3
+                continueOnError: false
+
+          - script: |
+              sudo ps -aux | grep bfusemon
+            displayName: 'Print bfusemon Process info'
+            env:
+              mount_dir: $(MOUNT_DIR)
+
+          - script: |
+              touch $(MOUNT_DIR)/h1.txt
+              echo "123456" > $(MOUNT_DIR)/h2.txt
+              cp *.md $(MOUNT_DIR)/
+              mkdir $(MOUNT_DIR)/A
+              mv $(MOUNT_DIR)/h1.txt $(MOUNT_DIR)/h5.txt
+              mv $(MOUNT_DIR)/h*.* $(MOUNT_DIR)/A
+              rm -rf $(MOUNT_DIR)/*.md
+              rm -rf $(MOUNT_DIR)/A
+            displayName: "Test for health monitor"
+            workingDirectory: $(WORK_DIR)
+
+          - script: |
+              sleep 20s
+              cat $(WORK_DIR)/monitor_*.json
+            displayName: "Print bfusemon output"
+            workingDirectory: $(WORK_DIR)
+
+          - template: 'azure-pipeline-templates/cleanup.yml'
+            parameters:
+              working_dir: $(WORK_DIR)
+              mount_dir: $(MOUNT_DIR)
+              temp_dir: $(TEMP_DIR)
