@@ -217,7 +217,7 @@ steps:
 
   - ${{ if eq(parameters.test_azurite, true) }}:
     - bash: |
-        sudo apt-get install azure-cli -y
+        sudo apt-get install azure-cli npm -y
         sudo npm install -g azurite
         sudo mkdir azurite
         sudo azurite --silent --location azurite --debug azurite\debug.log &
