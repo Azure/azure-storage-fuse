@@ -389,12 +389,16 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 
 	az.stConfig.telemetry = opt.Telemetry
 	az.stConfig.blobFilter = opt.BlobFilter
-	fmt.Println(opt.BlobFilter)
-	erro := filter.ParseInp(&opt.BlobFilter)
-	if erro != nil {
-		fmt.Println("no filters applied", erro)
+	if len(opt.BlobFilter) > 0 {
+		fmt.Println(opt.BlobFilter)
+		erro := filter.ParseInp(&opt.BlobFilter)
+		fmt.Println(len(filter.GlbFilterArr))
+		fmt.Println(len(opt.BlobFilter))
+		if erro != nil {
+			log.Err("no filters applied, mount failed")
+			return erro
+		}
 	}
-	fmt.Println(len(filter.GlbFilterArr))
 	//blobfilter
 	httpProxyProvided := opt.HttpProxyAddress != ""
 	httpsProxyProvided := opt.HttpsProxyAddress != ""

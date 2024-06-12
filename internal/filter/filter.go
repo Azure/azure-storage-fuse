@@ -1,7 +1,6 @@
 package filter
 
 import (
-	"fmt"
 	"sync/atomic"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -27,7 +26,7 @@ func ApplyFilterOnBlobs(fileInfos []*internal.ObjAttr) []*internal.ObjAttr {
 		go fv.ChkFile() //go routines for each worker (thread) are called
 	}
 	for _, fileinfo := range fileInfos {
-		fmt.Println("passedFile: ", *fileinfo)
+		// fmt.Println("passedFile: ", *fileinfo)
 		fv.fileInpQueue <- fileinfo //push all files one by one in channel , if channel is full , it will wait
 		fv.fileCnt++
 	}

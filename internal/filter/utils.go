@@ -101,7 +101,7 @@ func (fv *FileValidator) RecieveOutput() {
 		counter++
 		fmt.Println("OutPut Channel: ", data.filels.Name, " ", data.ispassed)
 		if data.ispassed {
-			fmt.Println("In finalFiles : ", data.filels.Name)
+			// fmt.Println("In finalFiles : ", data.filels.Name)
 			fv.finalFiles = append(fv.finalFiles, data.filels)
 		}
 		// Check if the atomic variable is true
@@ -157,13 +157,13 @@ func (fv *FileValidator) ChkFile() { // this is thread pool , where 16 tgreads a
 	// defer fv.wgi.Done()
 	for fileInf := range fv.fileInpQueue {
 		// fmt.Println("worker verifing file ", fileInf.Name)
-		fmt.Println("sending for check: ", fileInf.Name)
+		// fmt.Println("sending for check: ", fileInf.Name)
 		Passed := fv.CheckFileWithFilters(fileInf)
 		if Passed { //if a file passes add it to result
-			fmt.Println("Final Output: ", fileInf.Name)
+			// fmt.Println("Final Output: ", fileInf.Name)
 			fv.outputChan <- (&opdata{filels: fileInf, ispassed: true})
 		} else {
-			fmt.Println("Not Output: ", fileInf.Name, " passing ", Passed)
+			// fmt.Println("Not Output: ", fileInf.Name, " passing ", Passed)
 			fv.outputChan <- (&opdata{filels: fileInf, ispassed: false})
 		}
 	}
