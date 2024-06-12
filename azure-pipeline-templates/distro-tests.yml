@@ -42,8 +42,6 @@ parameters:
     default: false
 
 steps:
-  - checkout: none
-
   # Get the host details on which these test are running
   - script: |
       echo $(Description)
