@@ -74,9 +74,6 @@ steps:
       echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
       echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
-      # echo "\"spn-client\"": "\"$(AZTEST_CLIENT)\"", >> $cnfFile
-      # echo "\"spn-tenant\"": "\"$(AZTEST_TENANT)\"", >> $cnfFile
-      # echo "\"spn-secret\"": "\"$(AZTEST_SECRET)\"", >> $cnfFile
       echo "\"skip-msi\"": "${{ parameters.skip_msi }}", >> $cnfFile
       echo "\"skip-azcli\"": "false", >> $cnfFile
       echo "\"proxy-address\"": "\"${{ parameters.proxy_address }}\"" >> $cnfFile

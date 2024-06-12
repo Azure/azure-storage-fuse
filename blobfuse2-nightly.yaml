@@ -590,7 +590,7 @@ stages:
             strategy:
               matrix:
                 Ubuntu-20-Proxy:
-                  AgentName: 'blobfuse-ubuntu18'
+                  AgentName: 'blobfuse-ubuntu20'
                   containerName: 'test-cnt-ubn-18-proxy'
 
             pool:
