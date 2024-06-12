@@ -5,14 +5,10 @@ parameters:
     type: string
   - name: account_endpoint
     type: string 
-  # - name: spn_account_endpoint
-  #   type: string 
   - name: adls
     type: boolean
   - name: account_name
     type: string
-  # - name: spn_account_name
-  #   type: string
   - name: account_key
     type: string
   - name: account_sas
