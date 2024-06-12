@@ -332,9 +332,12 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	// increment streamdir call count
 	azStatsCollector.UpdateStats(stats_manager.Increment, streamDir, (int64)(1))
 	//only if user has given filter
-	new_list = filter.ApplyFilterOnBlobs(new_list)
-	for _, dt := range new_list {
-		fmt.Println(dt.Name)
+	if len(filter.GlbFilterArr) > 0 {
+		fmt.Println("inside filter")
+		new_list = filter.ApplyFilterOnBlobs(new_list)
+		for _, dt := range new_list {
+			fmt.Println(dt.Name)
+		}
 	}
 	return new_list, *new_marker, nil
 }
@@ -526,6 +529,18 @@ func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) 
 // Attribute operations
 func (az *AzStorage) GetAttr(options internal.GetAttrOptions) (attr *internal.ObjAttr, err error) {
 	//log.Trace("AzStorage::GetAttr : Get attributes of file %s", name)
+	// if len(filter.GlbFilterArr) == 0 {
+	// 	return az.storage.GetAttr(options.Name)
+	// }
+	// fv1 := &filter.FileValidator{
+	// 	FilterArr: filter.GlbFilterArr,
+	// }
+	// currFile, _ := az.storage.GetAttr(options.Name)
+	// if fv1.CheckFileWithFilters(currFile) {
+	// 	return az.storage.GetAttr(options.Name)
+	// } else {
+	// 	return nil, errors.New("file does not pass provided filters ")
+	// }
 	return az.storage.GetAttr(options.Name)
 }
 

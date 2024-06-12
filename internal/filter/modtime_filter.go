@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -40,33 +41,34 @@ func newModTimeFilter(args ...interface{}) Filter { // used for dynamic creation
 	}
 }
 
-func giveModtimeFilterObj(singleFilter *string) (Filter, bool) {
+func giveModtimeFilterObj(singleFilter *string) (Filter, error) {
+	erro := errors.New("invalid filter, no files passed")
 	if strings.Contains((*singleFilter), "<=") {
 		splitedParts := strings.Split((*singleFilter), "<=")
 		timeRFC1123str := strings.TrimSpace(splitedParts[1])
 		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-		return newModTimeFilter("<=", timeRFC1123), true
+		return newModTimeFilter("<=", timeRFC1123), nil
 	} else if strings.Contains((*singleFilter), ">=") {
 		splitedParts := strings.Split((*singleFilter), ">=")
 		timeRFC1123str := strings.TrimSpace(splitedParts[1])
 		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-		return newModTimeFilter(">=", timeRFC1123), true
+		return newModTimeFilter(">=", timeRFC1123), nil
 	} else if strings.Contains((*singleFilter), "<") {
 		splitedParts := strings.Split((*singleFilter), "<")
 		timeRFC1123str := strings.TrimSpace(splitedParts[1])
 		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-		return newModTimeFilter("<", timeRFC1123), true
+		return newModTimeFilter("<", timeRFC1123), nil
 	} else if strings.Contains((*singleFilter), ">") {
 		splitedParts := strings.Split((*singleFilter), ">")
 		timeRFC1123str := strings.TrimSpace(splitedParts[1])
 		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-		return newModTimeFilter(">", timeRFC1123), true
+		return newModTimeFilter(">", timeRFC1123), nil
 	} else if strings.Contains((*singleFilter), "=") {
 		splitedParts := strings.Split((*singleFilter), "=")
 		timeRFC1123str := strings.TrimSpace(splitedParts[1])
 		timeRFC1123, _ := time.Parse(time.RFC1123, timeRFC1123str)
-		return newModTimeFilter("=", timeRFC1123), true
+		return newModTimeFilter("=", timeRFC1123), nil
 	} else {
-		return nil, false
+		return nil, erro
 	}
 }

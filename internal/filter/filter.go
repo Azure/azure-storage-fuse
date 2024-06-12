@@ -10,11 +10,11 @@ import (
 var GlbFilterArr [][]Filter
 
 func ApplyFilterOnBlobs(fileInfos []*internal.ObjAttr) []*internal.ObjAttr {
-	fv := &fileValidator{
+	fv := &FileValidator{
 		workers:    16,
 		atomicflag: 0,
 		fileCnt:    0,
-		filterArr:  GlbFilterArr,
+		FilterArr:  GlbFilterArr,
 	}
 	fv.wgo.Add(1) //kept outside thread
 	fv.outputChan = make(chan *opdata, fv.workers)

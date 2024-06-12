@@ -2,6 +2,7 @@ package filter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -40,9 +41,8 @@ func getFilterName(str *string) string { //used to return the name of filter
 	return "error" //if no substring is returned inside loop this means there was an error in input provided
 }
 
-func ParseInp(str *string) ([][]Filter, bool) { //this function parses the input string and returns an array of array of filters
+func ParseInp(str *string) error { //this function parses the input string and returns an array of array of filters
 	splitOr := strings.Split((*str), "||") //splitted string on basis of OR
-	var filterArr [][]Filter
 
 	// filterMap := map[string]filterCreator{ //Created a Map that will be used to create new filter objects
 	// 	"size":    newSizeFilter,
@@ -60,29 +60,29 @@ func ParseInp(str *string) ([][]Filter, bool) { //this function parses the input
 			thisFilter = strings.ToLower(thisFilter) //converted to lowercase
 			// TODO::filter: error checks for invalid input like size1234, size>=, format pdf
 			var obj Filter
-			var isvalid bool
+			var erro error
 			if thisFilter == "size" {
-				obj, isvalid = giveSizeFilterObj(&singleFilter)
+				obj, erro = giveSizeFilterObj(&singleFilter)
 			} else if thisFilter == "format" {
-				obj, isvalid = giveFormatFilterObj(&singleFilter)
+				obj, erro = giveFormatFilterObj(&singleFilter)
 			} else if thisFilter == "regex" {
-				obj, isvalid = giveRegexFilterObj(&singleFilter)
+				obj, erro = giveRegexFilterObj(&singleFilter)
 			} else if thisFilter == "modtime" {
-				obj, isvalid = giveModtimeFilterObj(&singleFilter)
+				obj, erro = giveModtimeFilterObj(&singleFilter)
 			} else { // if no name matched , means it is not a valid filter , thus return a false
-				return filterArr, false
+				return errors.New("invalid filter, no files passed")
 			}
-			if !isvalid {
-				return filterArr, false
+			if erro != nil {
+				return erro
 			}
 			individualFilter = append(individualFilter, obj)
 		}
-		filterArr = append(filterArr, individualFilter)
+		GlbFilterArr = append(GlbFilterArr, individualFilter)
 	}
-	return filterArr, true
+	return nil
 }
 
-type fileValidator struct {
+type FileValidator struct {
 	workers    int
 	atomicflag int32 //TO DO chk bool
 	fileCnt    int64
@@ -90,11 +90,11 @@ type fileValidator struct {
 	// wgi          sync.WaitGroup
 	fileInpQueue chan *internal.ObjAttr
 	outputChan   chan *opdata
-	filterArr    [][]Filter
+	FilterArr    [][]Filter
 	finalFiles   []*internal.ObjAttr
 }
 
-func (fv *fileValidator) RecieveOutput() {
+func (fv *FileValidator) RecieveOutput() {
 	defer fv.wgo.Done()
 	var counter int64 = 0
 	for data := range fv.outputChan {
@@ -111,7 +111,7 @@ func (fv *fileValidator) RecieveOutput() {
 		}
 	}
 }
-func (fv *fileValidator) checkIndividual(ctx *context.Context, fileInf *internal.ObjAttr, filters *[]Filter) bool { //it checks every single file against all and filters (as stored in 1 index of filterArr) in seq order
+func (fv *FileValidator) checkIndividual(ctx *context.Context, fileInf *internal.ObjAttr, filters *[]Filter) bool { //it checks every single file against all and filters (as stored in 1 index of filterArr) in seq order
 	for _, filter := range *filters {
 		select {
 		case <-(*ctx).Done(): // If any one combination returns true, no need to check furthur
@@ -129,18 +129,18 @@ func (fv *fileValidator) checkIndividual(ctx *context.Context, fileInf *internal
 	return true // if all filters in seq order passes , return true
 }
 
-func (fv *fileValidator) checkFileWithFilters(fileInf *internal.ObjAttr) bool { // it takes a single file and all filters mentioned by user returns a bool
+func (fv *FileValidator) CheckFileWithFilters(fileInf *internal.ObjAttr) bool { // it takes a single file and all filters mentioned by user returns a bool
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	response := false
-	resultChan := make(chan bool, len(fv.filterArr)) // made a channel to store result calculated by each combination
-	for _, filters := range fv.filterArr {
+	resultChan := make(chan bool, len(fv.FilterArr)) // made a channel to store result calculated by each combination
+	for _, filters := range fv.FilterArr {
 		go func(filters []Filter) { //all combinations are running parallely to speed up
 			passed := fv.checkIndividual(&ctx, fileInf, &filters)
 			resultChan <- passed //push result of each combination in channel
 		}(filters)
 	}
-	for range fv.filterArr {
+	for range fv.FilterArr {
 		resp := <-resultChan //here we check the result of each combination as upper for loop pushed in channel
 		// fmt.Println("banda recieved : ", fileInf.Name, " ", resp)
 		if (resp) && (!response) {
@@ -153,12 +153,12 @@ func (fv *fileValidator) checkFileWithFilters(fileInf *internal.ObjAttr) bool { 
 	return response // return response, it will be true if any combination returns a true
 }
 
-func (fv *fileValidator) ChkFile() { // this is thread pool , where 16 tgreads are running
+func (fv *FileValidator) ChkFile() { // this is thread pool , where 16 tgreads are running
 	// defer fv.wgi.Done()
 	for fileInf := range fv.fileInpQueue {
 		// fmt.Println("worker verifing file ", fileInf.Name)
 		fmt.Println("sending for check: ", fileInf.Name)
-		Passed := fv.checkFileWithFilters(fileInf)
+		Passed := fv.CheckFileWithFilters(fileInf)
 		if Passed { //if a file passes add it to result
 			fmt.Println("Final Output: ", fileInf.Name)
 			fv.outputChan <- (&opdata{filels: fileInf, ispassed: true})

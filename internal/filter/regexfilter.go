@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -23,15 +24,16 @@ func newRegexFilter(args ...interface{}) Filter { // used for dynamic creation o
 	}
 }
 
-func giveRegexFilterObj(singleFilter *string) (Filter, bool) {
+func giveRegexFilterObj(singleFilter *string) (Filter, error) {
 	(*singleFilter) = strings.Map(StringConv, (*singleFilter))
+	erro := errors.New("invalid filter, no files passed")
 	if (len((*singleFilter)) <= 6) || ((*singleFilter)[5] != '=') {
-		return nil, false
+		return nil, erro
 	}
 	value := (*singleFilter)[6:] //6 is used because len(regex) = 5 + 1
 	pattern, err := regexp.Compile(value)
 	if err != nil {
-		return nil, false
+		return nil, erro
 	}
-	return newRegexFilter(pattern), true
+	return newRegexFilter(pattern), nil
 }
