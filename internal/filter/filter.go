@@ -7,6 +7,9 @@ import (
 )
 
 func (fl *UserInputFilters) ApplyFilterOnBlobs(fileInfos []*internal.ObjAttr) []*internal.ObjAttr { //function called from azstorage.go streamDir func
+	if len(fileInfos) == 0 {
+		return fileInfos
+	}
 	fv := &FileValidator{
 		workers:    16,
 		atomicflag: 0,
