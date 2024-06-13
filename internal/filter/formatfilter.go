@@ -30,7 +30,7 @@ func newFormatFilter(args ...interface{}) Filter { // used for dynamic creation 
 func giveFormatFilterObj(singleFilter *string) (Filter, error) {
 	(*singleFilter) = strings.Map(StringConv, (*singleFilter))
 	erro := errors.New("invalid filter, no files passed")
-	if (len((*singleFilter)) <= 7) || ((*singleFilter)[6] != '=') || (!((*singleFilter)[7] >= 'a' && (*singleFilter)[7] <= 'z')) {
+	if (len((*singleFilter)) <= 7) || ((*singleFilter)[6] != '=') || (!((*singleFilter)[7] >= 'a' && (*singleFilter)[7] <= 'z')) { //since len(format) = 6, at next position (ie index 6) there should be "=" only and assuming extention type starts from an alphabet
 		return nil, erro
 	}
 	value := (*singleFilter)[7:] //7 is used because len(format) = 6 + 1

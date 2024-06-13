@@ -31,7 +31,7 @@ func (filter SizeFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucnti
 	return false
 }
 
-func newSizeFilter(args ...interface{}) Filter { // used for dynamic creation of sizeFilter using map
+func newSizeFilter(args ...interface{}) Filter { // used for dynamic creation of sizeFilter
 	return SizeFilter{
 		opr:   args[0].(string),
 		value: args[1].(float64),

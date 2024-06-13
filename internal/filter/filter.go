@@ -6,9 +6,9 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-var GlbFilterArr [][]Filter
+var GlbFilterArr [][]Filter //it will store the fliters, outer array splitted by ||, inner array splitted by &&
 
-func ApplyFilterOnBlobs(fileInfos []*internal.ObjAttr) []*internal.ObjAttr {
+func ApplyFilterOnBlobs(fileInfos []*internal.ObjAttr) []*internal.ObjAttr { //function called from azstorage.go streamDir func
 	fv := &FileValidator{
 		workers:    16,
 		atomicflag: 0,
@@ -19,7 +19,7 @@ func ApplyFilterOnBlobs(fileInfos []*internal.ObjAttr) []*internal.ObjAttr {
 	fv.outputChan = make(chan *opdata, fv.workers)
 	fv.fileInpQueue = make(chan *internal.ObjAttr, fv.workers)
 
-	go fv.RecieveOutput()
+	go fv.RecieveOutput() //thread parellely reading from ouput channel
 
 	for w := 1; w <= fv.workers; w++ {
 		// fv.wgi.Add(1)
@@ -28,7 +28,7 @@ func ApplyFilterOnBlobs(fileInfos []*internal.ObjAttr) []*internal.ObjAttr {
 	for _, fileinfo := range fileInfos {
 		// fmt.Println("passedFile: ", *fileinfo)
 		fv.fileInpQueue <- fileinfo //push all files one by one in channel , if channel is full , it will wait
-		fv.fileCnt++
+		fv.fileCnt++                //incrementing filecount, this will be used to close output channel
 	}
 
 	atomic.StoreInt32(&fv.atomicflag, 1)
@@ -37,8 +37,5 @@ func ApplyFilterOnBlobs(fileInfos []*internal.ObjAttr) []*internal.ObjAttr {
 	fv.wgo.Wait() //wait for completion of all threads
 	// fmt.Println("All workers stopped ") //exit
 
-	// for _, finallist := range fv.finalFiles {
-	// 	fmt.Println("List O/P: ", finallist)
-	// }
 	return fv.finalFiles
 }

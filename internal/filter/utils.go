@@ -12,15 +12,13 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-type opdata struct {
+type opdata struct { //struct used for storing files with bool (passed or !passed) in output channel
 	filels   *internal.ObjAttr
 	ispassed bool
 }
 type Filter interface { //Interface having child as different type of filters like size, format, regex etc
-	Apply(fileInfo *internal.ObjAttr) bool //Apply function defined for each filter, it takes file as input and returns wheather it passes all filters or not
+	Apply(fileInfo *internal.ObjAttr) bool //Apply function defined for each filter, it takes file as input and returns wheather it passes that filter or not
 }
-
-// type filterCreator func(...interface{}) Filter //used to create object of different filter using map
 
 func StringConv(r rune) rune { //used for converting string given by user to ideal string so that it becomes easy to process
 	if unicode.IsSpace(r) {
@@ -38,27 +36,19 @@ func getFilterName(str *string) string { //used to return the name of filter
 			return (*str)[0:i] //then return the substring till prev index , it will be the name of filter
 		}
 	}
-	return "error" //if no substring is returned inside loop this means there was an error in input provided
+	return "error" //if no substring is returned inside loop this means the filter name was not valid or does not exists
 }
 
-func ParseInp(str *string) error { //this function parses the input string and returns an array of array of filters
+func ParseInp(str *string) error { //this function parses the input string and stores filter in GlbFilterArr
 	splitOr := strings.Split((*str), "||") //splitted string on basis of OR
 
-	// filterMap := map[string]filterCreator{ //Created a Map that will be used to create new filter objects
-	// 	"size":    newSizeFilter,
-	// 	"format":  newFormatFilter,
-	// 	"regex":   newRegexFilter,
-	// 	"modtime": newModTimeFilter, //Pushing every filter in the map, key is the name of filter while value is a dynamic constructor of filter
-	// }
-
-	for _, andFilters := range splitOr {
-		var individualFilter []Filter //this array will store all filters seperated by && at each index
-		splitAnd := strings.Split(andFilters, "&&")
-		for _, singleFilter := range splitAnd {
+	for _, andFilters := range splitOr { //going over each part splitted by OR
+		var individualFilter []Filter               //this array will store all filters seperated by && at each index
+		splitAnd := strings.Split(andFilters, "&&") //splitted by &&
+		for _, singleFilter := range splitAnd {     //this gives a particular filter (ex- A&&B&&C so it will traverse A then B then C)
 			trimmedStr := strings.TrimSpace(singleFilter)
 			thisFilter := getFilterName(&trimmedStr) //retrieve name of filter
 			thisFilter = strings.ToLower(thisFilter) //converted to lowercase
-			// TODO::filter: error checks for invalid input like size1234, size>=, format pdf
 			var obj Filter
 			var erro error
 			if thisFilter == "size" {
@@ -72,46 +62,46 @@ func ParseInp(str *string) error { //this function parses the input string and r
 			} else { // if no name matched , means it is not a valid filter , thus return a false
 				return errors.New("invalid filter, no files passed")
 			}
-			if erro != nil {
+			if erro != nil { //if any filter provided error while parsing return error
 				return erro
 			}
-			individualFilter = append(individualFilter, obj)
+			individualFilter = append(individualFilter, obj) //inner array (splitted by &&) is being formed
 		}
-		GlbFilterArr = append(GlbFilterArr, individualFilter)
+		GlbFilterArr = append(GlbFilterArr, individualFilter) //outer array (splitted by ||) is being formed
 	}
-	return nil
+	return nil //everything went well, no error
 }
 
 type FileValidator struct {
-	workers    int
-	atomicflag int32 //TO DO chk bool
+	workers    int   //no of threads analysing file
+	atomicflag int32 //used to close output channel along with fileCnt
 	fileCnt    int64
-	wgo        sync.WaitGroup
+	wgo        sync.WaitGroup //to wait until all files from output channel are processed
 	// wgi          sync.WaitGroup
-	fileInpQueue chan *internal.ObjAttr
-	outputChan   chan *opdata
-	FilterArr    [][]Filter
-	finalFiles   []*internal.ObjAttr
+	fileInpQueue chan *internal.ObjAttr //file input channel
+	outputChan   chan *opdata           //file output channel (containing both passed and !passed files)
+	FilterArr    [][]Filter             //stores filters
+	finalFiles   []*internal.ObjAttr    //list containing files files which passed filters
 }
 
-func (fv *FileValidator) RecieveOutput() {
+func (fv *FileValidator) RecieveOutput() { //read output channel
 	defer fv.wgo.Done()
 	var counter int64 = 0
 	for data := range fv.outputChan {
 		counter++
 		fmt.Println("OutPut Channel: ", data.filels.Name, " ", data.ispassed)
-		if data.ispassed {
+		if data.ispassed { //if files passed filter , append it to list of final files
 			// fmt.Println("In finalFiles : ", data.filels.Name)
 			fv.finalFiles = append(fv.finalFiles, data.filels)
 		}
 		// Check if the atomic variable is true
-		if (atomic.LoadInt32(&fv.atomicflag) == 1) && (counter == fv.fileCnt) {
+		if (atomic.LoadInt32(&fv.atomicflag) == 1) && (counter == fv.fileCnt) { //indicates that all files are processed and read from output channel , close channel now
 			close(fv.outputChan)
 			break
 		}
 	}
 }
-func (fv *FileValidator) checkIndividual(ctx *context.Context, fileInf *internal.ObjAttr, filters *[]Filter) bool { //it checks every single file against all and filters (as stored in 1 index of filterArr) in seq order
+func (fv *FileValidator) checkIndividual(ctx *context.Context, fileInf *internal.ObjAttr, filters *[]Filter) bool { //it checks every single file against all and filters in seq order
 	for _, filter := range *filters {
 		select {
 		case <-(*ctx).Done(): // If any one combination returns true, no need to check furthur
@@ -142,7 +132,6 @@ func (fv *FileValidator) CheckFileWithFilters(fileInf *internal.ObjAttr) bool { 
 	}
 	for range fv.FilterArr {
 		resp := <-resultChan //here we check the result of each combination as upper for loop pushed in channel
-		// fmt.Println("banda recieved : ", fileInf.Name, " ", resp)
 		if (resp) && (!response) {
 			cancel()
 			// for the first time when we recieve a true , we will cancel context and wait for all processes to stop
@@ -153,16 +142,15 @@ func (fv *FileValidator) CheckFileWithFilters(fileInf *internal.ObjAttr) bool { 
 	return response // return response, it will be true if any combination returns a true
 }
 
-func (fv *FileValidator) ChkFile() { // this is thread pool , where 16 tgreads are running
+func (fv *FileValidator) ChkFile() { // this is thread pool , where 16 threads are running
 	// defer fv.wgi.Done()
 	for fileInf := range fv.fileInpQueue {
-		// fmt.Println("worker verifing file ", fileInf.Name)
 		// fmt.Println("sending for check: ", fileInf.Name)
 		Passed := fv.CheckFileWithFilters(fileInf)
-		if Passed { //if a file passes add it to result
+		if Passed { //if a file passes add it to output channel with true
 			// fmt.Println("Final Output: ", fileInf.Name)
 			fv.outputChan <- (&opdata{filels: fileInf, ispassed: true})
-		} else {
+		} else { //if a file passes add it to output channel with false
 			// fmt.Println("Not Output: ", fileInf.Name, " passing ", Passed)
 			fv.outputChan <- (&opdata{filels: fileInf, ispassed: false})
 		}
