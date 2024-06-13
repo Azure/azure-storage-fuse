@@ -34,6 +34,17 @@ static const struct fuse_opt aznfsc_opts[] =
     FUSE_OPT_END
 };
 
+void aznfsc_help(const char *argv0)
+{
+    printf("usage: %s [options] <mountpoint>\n\n", argv0);
+    printf("    --config-file=<config.yaml file path>\n");
+    printf("    --account=<storage account>\n");
+    printf("    --container=<container>\n");
+    printf("    --cloud-suffix=<cloud suffix>\n");
+    printf("    --port=<Blob NFS port, can be 2048 or 2047>\n");
+    printf("    --nconnect=<number of simultaneous connections>\n");
+}
+
 /*
  * This function parses the contents of the yaml config file denoted by path config_file
  * into the aznfsc_cfg structure.
@@ -781,6 +792,32 @@ int main(int argc, char *argv[])
     /* Don't mask creation mode, kernel already did that */
     umask(0);
 
+    /*
+     * Parse general cmdline options first for properly honoring help
+     * and debug level arguments.
+     */
+    if (fuse_parse_cmdline(&args, &opts) != 0) {
+        return 1;
+    }
+
+    if (opts.show_help) {
+        aznfsc_help(argv[0]);
+        fuse_cmdline_help();
+        fuse_lowlevel_help();
+        ret = 0;
+        goto err_out1;
+    } else if (opts.show_version) {
+        printf("FUSE library version %s\n", fuse_pkgversion());
+        fuse_lowlevel_version();
+        ret = 0;
+        goto err_out1;
+    }
+
+    // If -d or "-o debug" cmdline option was passed, reset log level to debug.
+    if (opts.debug) {
+        spdlog::set_level(spdlog::level::debug);
+    }
+
     // Parse fuse_conn_info_opts options like -o writeback_cache.
     fuse_conn_info_opts_ptr = fuse_parse_conn_info_opts(&args);
 
@@ -815,34 +852,6 @@ int main(int argc, char *argv[])
 
     // Set default values for config variables not set using the above.
     aznfsc_cfg.set_defaults();
-
-    if (fuse_parse_cmdline(&args, &opts) != 0) {
-        return 1;
-    }
-
-    if (opts.show_help) {
-        printf("usage: %s [options] <mountpoint>\n\n", argv[0]);
-        printf("[options]: --config-file=<config.yaml file path>\n");
-        printf("           --account=<storage account>\n");
-        printf("           --container=<container>\n");
-        printf("           --cloud-suffix=<cloud suffix>\n");
-        printf("           --port=<port for connecting to Blob NFS>\n");
-        printf("Example:   ./aznfsclient --config-file=./config.yaml /mnt/tmp\n\n");
-        fuse_cmdline_help();
-        fuse_lowlevel_help();
-        ret = 0;
-        goto err_out1;
-    } else if (opts.show_version) {
-        printf("FUSE library version %s\n", fuse_pkgversion());
-        fuse_lowlevel_version();
-        ret = 0;
-        goto err_out1;
-    }
-
-    // If -d or "-o debug" cmdline option was passed, reset log level to debug.
-    if (opts.debug) {
-        spdlog::set_level(spdlog::level::debug);
-    }
 
     // Initialize nfs_client singleton.
     if (!nfs_client::get_instance().init()) {
