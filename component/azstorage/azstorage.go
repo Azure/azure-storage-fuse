@@ -299,7 +299,7 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	path := formatListDirName(options.Name)
 
 	new_list, new_marker, err := az.storage.List(path, &options.Token, options.Count)
-	fmt.Println(filter.GlbFilterArr)
+	// fmt.Println(filter.GlbFilterArr)
 	if err != nil {
 		log.Err("AzStorage::StreamDir : Failed to read dir [%s]", err)
 		return new_list, "", err
@@ -332,13 +332,10 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 
 	// increment streamdir call count
 	azStatsCollector.UpdateStats(stats_manager.Increment, streamDir, (int64)(1))
-	//only if user has given filter
-	if len(az.stConfig.blobFilter) > 0 {
-		// fmt.Println("inside filter")
+
+	//check for filters provided
+	if len(az.stConfig.blobFilter) > 0 { //only apply filter if user has given
 		new_list = filter.ApplyFilterOnBlobs(new_list)
-		for _, dt := range new_list {
-			fmt.Println(dt.Name)
-		}
 	}
 	return new_list, *new_marker, nil
 }
@@ -542,7 +539,7 @@ func (az *AzStorage) GetAttr(options internal.GetAttrOptions) (attr *internal.Ob
 		if fv1.CheckFileWithFilters(resp) {
 			return resp, nil
 		} else {
-			return nil, errors.New("file does not pass provided filters ") //debug
+			return nil, errors.New("the file does not pass the provided filters") //debug
 		}
 	}
 	return resp, err

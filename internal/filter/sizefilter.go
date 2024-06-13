@@ -2,7 +2,6 @@ package filter
 
 import (
 	"errors"
-	"fmt"
 	"strconv"
 	"strings"
 
@@ -15,7 +14,7 @@ type SizeFilter struct { //SizeFilter and its attributes
 }
 
 func (filter SizeFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucntion for size filter , check wheather a file passes the constraints
-	fmt.Println("size filter ", filter, " file name ", (*fileInfo).Name)
+	// fmt.Println("size filter ", filter, " file name ", (*fileInfo).Name)  DEBUG PRINT
 
 	if (filter.opr == "<=") && ((*fileInfo).Size <= int64(filter.value)) {
 		return true
@@ -39,9 +38,9 @@ func newSizeFilter(args ...interface{}) Filter { // used for dynamic creation of
 }
 
 func giveSizeFilterObj(singleFilter *string) (Filter, error) {
-	(*singleFilter) = strings.Map(StringConv, (*singleFilter))
-	sinChk := (*singleFilter)[4:5]
-	doubChk := (*singleFilter)[4:6]
+	(*singleFilter) = strings.Map(StringConv, (*singleFilter)) //remove all spaces and make all upperCase to lowerCase
+	sinChk := (*singleFilter)[4:5]                             //single char after size (ex- size=7888 , here sinChk will be "=")
+	doubChk := (*singleFilter)[4:6]                            //2 chars after size (ex- size>=8908 , here doubChk will be ">=")
 	erro := errors.New("invalid filter, no files passed")
 	if !((sinChk == "=") || (sinChk == ">") || (sinChk == "<") || (doubChk == ">=") || (doubChk == "<=")) {
 		return nil, erro

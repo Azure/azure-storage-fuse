@@ -2,7 +2,6 @@ package filter
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -14,7 +13,7 @@ type regexFilter struct { //RegexFilter and its attributes
 }
 
 func (filter regexFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucntion for regex filter , check wheather a file passes the constraints
-	fmt.Println("regex filter ", filter.regex_inp, " file name ", (*fileInfo).Name)
+	// fmt.Println("regex filter ", filter.regex_inp, " file name ", (*fileInfo).Name)  DEBUG PRINT
 	return filter.regex_inp.MatchString((*fileInfo).Name)
 }
 

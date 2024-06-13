@@ -2,7 +2,6 @@ package filter
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -15,7 +14,7 @@ type modTimeFilter struct { //modTimeFilter and its attributes
 }
 
 func (filter modTimeFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucntion for modTime filter , check wheather a file passes the constraints
-	fmt.Println("modTime Filter ", filter.opr, " ", filter.value, " file name ", (*fileInfo).Name)
+	// fmt.Println("modTime Filter ", filter.opr, " ", filter.value, " file name ", (*fileInfo).Name)  DEBUG PRINT
 	fileModTimestr := (*fileInfo).Mtime.UTC().Format(time.RFC1123)
 	fileModTime, _ := time.Parse(time.RFC1123, fileModTimestr)
 	// fmt.Println(fileModTime, "this is file mod time")

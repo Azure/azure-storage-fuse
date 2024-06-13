@@ -77,7 +77,7 @@ type AzStorageConfig struct {
 	honourACL      bool
 	disableSymlink bool
 	blobFilter     string
-	// filterArr      [][]filter.Filter
+
 	// CPK related config
 	cpkEnabled             bool
 	cpkEncryptionKey       string

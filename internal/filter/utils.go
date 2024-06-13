@@ -3,7 +3,6 @@ package filter
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -89,7 +88,7 @@ func (fv *FileValidator) RecieveOutput() { //read output channel
 	var counter int64 = 0
 	for data := range fv.outputChan {
 		counter++
-		fmt.Println("OutPut Channel: ", data.filels.Name, " ", data.ispassed)
+		// fmt.Println("OutPut Channel: ", data.filels.Name, " ", data.ispassed)  DEBUG PRINT
 		if data.ispassed { //if files passed filter , append it to list of final files
 			// fmt.Println("In finalFiles : ", data.filels.Name)
 			fv.finalFiles = append(fv.finalFiles, data.filels)
@@ -105,12 +104,12 @@ func (fv *FileValidator) checkIndividual(ctx *context.Context, fileInf *internal
 	for _, filter := range *filters {
 		select {
 		case <-(*ctx).Done(): // If any one combination returns true, no need to check furthur
-			fmt.Println("terminating file by context: ", (*fileInf).Name, " for filter: ", filter)
+			// fmt.Println("terminating file by context: ", (*fileInf).Name, " for filter: ", filter)  DEBUG PRINT
 			return false
 		default:
 			passedThisFilter := filter.Apply(fileInf)
 			if !passedThisFilter { //if any filter fails, return false immediately as it can never be true
-				fmt.Println("terminating file by false : ", (*fileInf).Name, " for filter: ", filter)
+				// fmt.Println("terminating file by false : ", (*fileInf).Name, " for filter: ", filter)  DEBUG PRINT
 				return false
 			}
 		}

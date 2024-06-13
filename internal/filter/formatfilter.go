@@ -2,7 +2,6 @@ package filter
 
 import (
 	"errors"
-	"fmt"
 	"path/filepath"
 	"strings"
 
@@ -14,7 +13,7 @@ type FormatFilter struct { //formatFilter and its attributes
 }
 
 func (filter FormatFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucntion for format filter , check wheather a file passes the constraints
-	fmt.Println("Format Filter ", filter, " file name ", (*fileInfo).Name)
+	// fmt.Println("Format Filter ", filter, " file name ", (*fileInfo).Name)  DEBUG PRINT
 	fileExt := filepath.Ext((*fileInfo).Name)
 	chkstr := "." + filter.ext_type
 	// fmt.Println(fileExt, " For file :", fileInfo.Name)
