@@ -629,12 +629,12 @@ stages:
               # Start Proxy
               - script: |
                   sudo apt-get update --fix-missing
-                  sudo apt remove mitmproxy
-                  sudo apt-get install python3-setuptools
-                  sudo apt install python3-pip
+                  sudo apt remove mitmproxy -y
+                  sudo apt-get install python3-setuptools -y
+                  sudo apt install python3-pip -y
                   sudo pip3 install werkzeug==2.3.7
                   sudo pip3 install mitmproxy
-                  mitmdump -w proxy_logs.txt &
+                  mitmdump -q -w proxy_logs.txt &
                 displayName: 'Install & Start Proxy'
 
               # Configure Proxy cert & env

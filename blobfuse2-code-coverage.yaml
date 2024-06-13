@@ -546,7 +546,7 @@ stages:
                 sudo apt-get install python3-setuptools -y
                 sudo apt install python3-pip -y
                 sudo pip3 install mitmproxy
-                mitmdump -w proxy_logs.txt &
+                mitmdump -q -w proxy_logs.txt &
               displayName: 'Install & Start Proxy'
 
             # Configure Proxy cert & env
