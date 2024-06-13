@@ -1357,7 +1357,7 @@ stages:
                   temp_dir: $(TEMP_DIR)
 
 
-  - stage: DataValidationBlockCache
+  - stage: BlockCacheDataValidation
     jobs:
       # Ubuntu Tests
       - job: Set_1
@@ -1424,7 +1424,7 @@ stages:
               temp_dir: $(TEMP_DIR)
               mount_dir: $(MOUNT_DIR)
 
-  - stage: DataValidationBlob
+  - stage: FNSDataValidation
     jobs:
       # Ubuntu Tests
       - job: Set_1
@@ -1497,7 +1497,7 @@ stages:
               temp_dir: $(TEMP_DIR)
               mount_dir: $(MOUNT_DIR)
 
-  - stage: DataValidationADLS
+  - stage: HNSDataValidation
     jobs:
       # Ubuntu Tests
       - job: Set_1

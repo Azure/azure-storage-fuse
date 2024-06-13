@@ -294,16 +294,7 @@ func (c *FileCache) Configure(_ bool) error {
 	}
 
 	cacheConfig := c.GetPolicyConfig(conf)
-
-	switch strings.ToLower(conf.Policy) {
-	case "lru":
-		c.policy = NewLRUPolicy(cacheConfig)
-	case "lfu":
-		c.policy = NewLFUPolicy(cacheConfig)
-	default:
-		log.Info("FileCache::Configure : Using default eviction policy")
-		c.policy = NewLRUPolicy(cacheConfig)
-	}
+	c.policy = NewLRUPolicy(cacheConfig)
 
 	if c.policy == nil {
 		log.Err("FileCache::Configure : failed to create cache eviction policy")

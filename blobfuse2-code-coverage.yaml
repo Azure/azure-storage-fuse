@@ -232,38 +232,6 @@ stages:
               workingDirectory: $(WORK_DIR)
               displayName: "ADLS Coverage with profilers"
 
-
-            # -------------------------------------------------------
-            # Config Generation (Block Blob - LFU policy)
-            - script: |
-                cd $(WORK_DIR)
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_gentest2.cov gen-test-config --config-file=azure_key_lfu.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
-              env:
-                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                ACCOUNT_TYPE: 'block'
-                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-                VERBOSE_LOG: false
-              displayName: 'Create Config File - LFU'
-              continueOnError: false
-              workingDirectory: $(WORK_DIR)
-            
-            # Code Coverage with e2e-tests for block blob with lfu policy
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block_lfu.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
-                sleep 10
-                ps -aux | grep blobfuse2
-                rm -rf $(MOUNT_DIR)/*
-                cd test/e2e_tests
-                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
-                cd -
-                ./blobfuse2 unmount $(MOUNT_DIR)
-                sleep 5
-              workingDirectory: $(WORK_DIR)
-              displayName: "Block Blob LFU Coverage"
-
             # -------------------------------------------------------
             # Config Generation (Block Blob) for cli options
             - script: |
