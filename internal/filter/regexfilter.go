@@ -8,16 +8,19 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-type regexFilter struct { //RegexFilter and its attributes
+// RegexFilter and its attributes
+type regexFilter struct {
 	regex_inp *regexp.Regexp
 }
 
-func (filter regexFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucntion for regex filter , check wheather a file passes the constraints
+// Apply fucntion for regex filter , check wheather a file passes the constraints
+func (filter regexFilter) Apply(fileInfo *internal.ObjAttr) bool {
 	// fmt.Println("regex filter ", filter.regex_inp, " file name ", (*fileInfo).Name)  DEBUG PRINT
 	return filter.regex_inp.MatchString((*fileInfo).Name)
 }
 
-func newRegexFilter(args ...interface{}) Filter { // used for dynamic creation of regexFilter
+// used for dynamic creation of regexFilter
+func newRegexFilter(args ...interface{}) Filter {
 	return regexFilter{
 		regex_inp: args[0].(*regexp.Regexp),
 	}

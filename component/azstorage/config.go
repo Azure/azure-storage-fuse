@@ -183,12 +183,11 @@ type AzStorageOptions struct {
 	MaxResultsForList       int32  `config:"max-results-for-list" yaml:"max-results-for-list"`
 	DisableCompression      bool   `config:"disable-compression" yaml:"disable-compression"`
 	Telemetry               string `config:"telemetry" yaml:"telemetry"`
+	HonourACL               bool   `config:"honour-acl" yaml:"honour-acl"`
+	CPKEnabled              bool   `config:"cpk-enabled" yaml:"cpk-enabled"`
+	CPKEncryptionKey        string `config:"cpk-encryption-key" yaml:"cpk-encryption-key"`
+	CPKEncryptionKeySha256  string `config:"cpk-encryption-key-sha256" yaml:"cpk-encryption-key-sha256"`
 	BlobFilter              string `config:"blobFilter" yaml:"blobFilter"`
-	//filter
-	HonourACL              bool   `config:"honour-acl" yaml:"honour-acl"`
-	CPKEnabled             bool   `config:"cpk-enabled" yaml:"cpk-enabled"`
-	CPKEncryptionKey       string `config:"cpk-encryption-key" yaml:"cpk-encryption-key"`
-	CPKEncryptionKeySha256 string `config:"cpk-encryption-key-sha256" yaml:"cpk-encryption-key-sha256"`
 
 	// v1 support
 	UseAdls        bool   `config:"use-adls" yaml:"-"`
@@ -388,18 +387,19 @@ func ParseAndValidateConfig(az *AzStorage, opt AzStorageOptions) error {
 	az.stConfig.cancelListForSeconds = opt.CancelListForSeconds
 
 	az.stConfig.telemetry = opt.Telemetry
-	az.stConfig.blobFilter = opt.BlobFilter
+
+	//if blobFilter is provided, parse string and setup filters
 	if len(opt.BlobFilter) > 0 {
-		fmt.Println(opt.BlobFilter)
-		erro := filter.ParseInp(&opt.BlobFilter)
-		fmt.Println(len(filter.GlbFilterArr))
-		fmt.Println(len(opt.BlobFilter))
+		log.Info("ParseAndValidateConfig : provided filter is %s", opt.BlobFilter)
+		az.stConfig.filters = &filter.UserInputFilters{}
+		erro := az.stConfig.filters.ParseInp(&opt.BlobFilter)
+		log.Info("ParseAndValidateConfig : number of OR seperated filters are %d", len(az.stConfig.filters.FilterArr))
 		if erro != nil {
-			log.Err("no filters applied, mount failed")
+			log.Err("ParseAndValidateConfig : mount failed due to an error encountered while parsing")
 			return erro
 		}
 	}
-	//blobfilter
+
 	httpProxyProvided := opt.HttpProxyAddress != ""
 	httpsProxyProvided := opt.HttpsProxyAddress != ""
 

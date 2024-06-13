@@ -8,11 +8,13 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-type FormatFilter struct { //formatFilter and its attributes
+// formatFilter and its attributes
+type FormatFilter struct {
 	ext_type string
 }
 
-func (filter FormatFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucntion for format filter , check wheather a file passes the constraints
+// Apply fucntion for format filter , check wheather a file passes the constraints
+func (filter FormatFilter) Apply(fileInfo *internal.ObjAttr) bool {
 	// fmt.Println("Format Filter ", filter, " file name ", (*fileInfo).Name)  DEBUG PRINT
 	fileExt := filepath.Ext((*fileInfo).Name)
 	chkstr := "." + filter.ext_type
@@ -20,7 +22,8 @@ func (filter FormatFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucn
 	return chkstr == fileExt
 }
 
-func newFormatFilter(args ...interface{}) Filter { // used for dynamic creation of formatFilter using map
+// used for dynamic creation of formatFilter using map
+func newFormatFilter(args ...interface{}) Filter {
 	return FormatFilter{
 		ext_type: args[0].(string),
 	}

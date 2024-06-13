@@ -21,4 +21,3 @@ lint.log
 azure-storage-fuse
 bfusemon
 test/scripts/dirIterate.go
-filterbin

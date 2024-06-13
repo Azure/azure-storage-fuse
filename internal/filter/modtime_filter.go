@@ -8,12 +8,14 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-type modTimeFilter struct { //modTimeFilter and its attributes
+// modTimeFilter and its attributes
+type modTimeFilter struct {
 	opr   string
 	value time.Time
 }
 
-func (filter modTimeFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucntion for modTime filter , check wheather a file passes the constraints
+// Apply fucntion for modTime filter , check wheather a file passes the constraints
+func (filter modTimeFilter) Apply(fileInfo *internal.ObjAttr) bool {
 	// fmt.Println("modTime Filter ", filter.opr, " ", filter.value, " file name ", (*fileInfo).Name)  DEBUG PRINT
 	fileModTimestr := (*fileInfo).Mtime.UTC().Format(time.RFC1123)
 	fileModTime, _ := time.Parse(time.RFC1123, fileModTimestr)
@@ -33,7 +35,8 @@ func (filter modTimeFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fuc
 	return false
 }
 
-func newModTimeFilter(args ...interface{}) Filter { // used for dynamic creation of modTimeFilter using map
+// used for dynamic creation of modTimeFilter using map
+func newModTimeFilter(args ...interface{}) Filter {
 	return modTimeFilter{
 		opr:   args[0].(string),
 		value: args[1].(time.Time),

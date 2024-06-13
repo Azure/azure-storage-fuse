@@ -8,12 +8,14 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-type SizeFilter struct { //SizeFilter and its attributes
+// SizeFilter and its attributes
+type SizeFilter struct {
 	opr   string
 	value float64
 }
 
-func (filter SizeFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucntion for size filter , check wheather a file passes the constraints
+// Apply function for size filter , check wheather a file passes the constraints
+func (filter SizeFilter) Apply(fileInfo *internal.ObjAttr) bool {
 	// fmt.Println("size filter ", filter, " file name ", (*fileInfo).Name)  DEBUG PRINT
 
 	if (filter.opr == "<=") && ((*fileInfo).Size <= int64(filter.value)) {
@@ -30,7 +32,8 @@ func (filter SizeFilter) Apply(fileInfo *internal.ObjAttr) bool { //Apply fucnti
 	return false
 }
 
-func newSizeFilter(args ...interface{}) Filter { // used for dynamic creation of sizeFilter
+// used for dynamic creation of sizeFilter
+func newSizeFilter(args ...interface{}) Filter {
 	return SizeFilter{
 		opr:   args[0].(string),
 		value: args[1].(float64),

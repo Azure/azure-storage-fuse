@@ -299,7 +299,7 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	path := formatListDirName(options.Name)
 
 	new_list, new_marker, err := az.storage.List(path, &options.Token, options.Count)
-	// fmt.Println(filter.GlbFilterArr)
+
 	if err != nil {
 		log.Err("AzStorage::StreamDir : Failed to read dir [%s]", err)
 		return new_list, "", err
@@ -334,8 +334,10 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	azStatsCollector.UpdateStats(stats_manager.Increment, streamDir, (int64)(1))
 
 	//check for filters provided
-	if len(az.stConfig.blobFilter) > 0 { //only apply filter if user has given
-		new_list = filter.ApplyFilterOnBlobs(new_list)
+	if az.stConfig.filters != nil { //only apply if user has given filter
+		filtered_list := az.stConfig.filters.ApplyFilterOnBlobs(new_list)
+		// return filtered_list, *new_marker, nil
+		new_list = filtered_list
 	}
 	return new_list, *new_marker, nil
 }
@@ -527,23 +529,23 @@ func (az *AzStorage) ReadLink(options internal.ReadLinkOptions) (string, error) 
 // Attribute operations
 func (az *AzStorage) GetAttr(options internal.GetAttrOptions) (attr *internal.ObjAttr, err error) {
 	//log.Trace("AzStorage::GetAttr : Get attributes of file %s", name)
+	// return az.storage.GetAttr(options.Name)
 	resp, err := az.storage.GetAttr(options.Name)
 	if err != nil {
 		return resp, err
 	}
 
-	if len(az.stConfig.blobFilter) > 0 {
-		fv1 := &filter.FileValidator{
-			FilterArr: filter.GlbFilterArr,
+	if az.stConfig.filters != nil {
+		fileValidatorObj := &filter.FileValidator{
+			FilterArr: az.stConfig.filters.FilterArr,
 		}
-		if fv1.CheckFileWithFilters(resp) {
+		if fileValidatorObj.CheckFileWithFilters(resp) {
 			return resp, nil
 		} else {
 			return nil, errors.New("the file does not pass the provided filters") //debug
 		}
 	}
 	return resp, err
-	// return az.storage.GetAttr(options.Name)
 }
 
 func (az *AzStorage) Chmod(options internal.ChmodOptions) error {

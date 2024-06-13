@@ -6,14 +6,12 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-var GlbFilterArr [][]Filter //it will store the fliters, outer array splitted by ||, inner array splitted by &&
-
-func ApplyFilterOnBlobs(fileInfos []*internal.ObjAttr) []*internal.ObjAttr { //function called from azstorage.go streamDir func
+func (fl *UserInputFilters) ApplyFilterOnBlobs(fileInfos []*internal.ObjAttr) []*internal.ObjAttr { //function called from azstorage.go streamDir func
 	fv := &FileValidator{
 		workers:    16,
 		atomicflag: 0,
 		fileCnt:    0,
-		FilterArr:  GlbFilterArr,
+		FilterArr:  fl.FilterArr,
 	}
 	fv.wgo.Add(1) //kept outside thread
 	fv.outputChan = make(chan *opdata, fv.workers)

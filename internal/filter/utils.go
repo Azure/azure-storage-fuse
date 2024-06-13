@@ -11,15 +11,19 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/internal"
 )
 
-type opdata struct { //struct used for storing files with bool (passed or !passed) in output channel
+// struct used for storing files with bool (passed or !passed) in output channel
+type opdata struct {
 	filels   *internal.ObjAttr
 	ispassed bool
 }
-type Filter interface { //Interface having child as different type of filters like size, format, regex etc
+
+// Interface having child as different type of filters like size, format, regex etc
+type Filter interface {
 	Apply(fileInfo *internal.ObjAttr) bool //Apply function defined for each filter, it takes file as input and returns wheather it passes that filter or not
 }
 
-func StringConv(r rune) rune { //used for converting string given by user to ideal string so that it becomes easy to process
+// used for converting string given by user to ideal string so that it becomes easy to process
+func StringConv(r rune) rune {
 	if unicode.IsSpace(r) {
 		return -1 // Remove space
 	}
@@ -29,7 +33,8 @@ func StringConv(r rune) rune { //used for converting string given by user to ide
 	return r
 }
 
-func getFilterName(str *string) string { //used to return the name of filter
+// used to return the name of filter
+func getFilterName(str *string) string {
 	for i := range *str {
 		if !(((*str)[i] >= 'a' && (*str)[i] <= 'z') || ((*str)[i] >= 'A' && (*str)[i] <= 'Z')) { //assuming filters would have only alphabetic names, break when current char is not an alphabet
 			return (*str)[0:i] //then return the substring till prev index , it will be the name of filter
@@ -38,7 +43,13 @@ func getFilterName(str *string) string { //used to return the name of filter
 	return "error" //if no substring is returned inside loop this means the filter name was not valid or does not exists
 }
 
-func ParseInp(str *string) error { //this function parses the input string and stores filter in GlbFilterArr
+// it will store the fliters, outer array splitted by ||, inner array splitted by &&
+type UserInputFilters struct {
+	FilterArr [][]Filter
+}
+
+// this function parses the input string and stores filter in UserInputFilters
+func (fl *UserInputFilters) ParseInp(str *string) error {
 	splitOr := strings.Split((*str), "||") //splitted string on basis of OR
 
 	for _, andFilters := range splitOr { //going over each part splitted by OR
@@ -66,7 +77,7 @@ func ParseInp(str *string) error { //this function parses the input string and s
 			}
 			individualFilter = append(individualFilter, obj) //inner array (splitted by &&) is being formed
 		}
-		GlbFilterArr = append(GlbFilterArr, individualFilter) //outer array (splitted by ||) is being formed
+		fl.FilterArr = append(fl.FilterArr, individualFilter) //outer array (splitted by ||) is being formed
 	}
 	return nil //everything went well, no error
 }
@@ -83,7 +94,8 @@ type FileValidator struct {
 	finalFiles   []*internal.ObjAttr    //list containing files files which passed filters
 }
 
-func (fv *FileValidator) RecieveOutput() { //read output channel
+// read output channel
+func (fv *FileValidator) RecieveOutput() {
 	defer fv.wgo.Done()
 	var counter int64 = 0
 	for data := range fv.outputChan {
@@ -100,7 +112,9 @@ func (fv *FileValidator) RecieveOutput() { //read output channel
 		}
 	}
 }
-func (fv *FileValidator) checkIndividual(ctx *context.Context, fileInf *internal.ObjAttr, filters *[]Filter) bool { //it checks every single file against all and filters in seq order
+
+// it checks every single file against all and filters in seq order
+func (fv *FileValidator) checkIndividual(ctx *context.Context, fileInf *internal.ObjAttr, filters *[]Filter) bool {
 	for _, filter := range *filters {
 		select {
 		case <-(*ctx).Done(): // If any one combination returns true, no need to check furthur
@@ -118,7 +132,8 @@ func (fv *FileValidator) checkIndividual(ctx *context.Context, fileInf *internal
 	return true // if all filters in seq order passes , return true
 }
 
-func (fv *FileValidator) CheckFileWithFilters(fileInf *internal.ObjAttr) bool { // it takes a single file and all filters mentioned by user returns a bool
+// it takes a single file and all filters mentioned by user returns a bool
+func (fv *FileValidator) CheckFileWithFilters(fileInf *internal.ObjAttr) bool {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	response := false
@@ -141,7 +156,8 @@ func (fv *FileValidator) CheckFileWithFilters(fileInf *internal.ObjAttr) bool { 
 	return response // return response, it will be true if any combination returns a true
 }
 
-func (fv *FileValidator) ChkFile() { // this is thread pool , where 16 threads are running
+// this is thread pool , where 16 threads are running
+func (fv *FileValidator) ChkFile() {
 	// defer fv.wgi.Done()
 	for fileInf := range fv.fileInpQueue {
 		// fmt.Println("sending for check: ", fileInf.Name)

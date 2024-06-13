@@ -40,6 +40,7 @@ import (
 	"github.com/Azure/azure-storage-fuse/v2/common"
 	"github.com/Azure/azure-storage-fuse/v2/common/log"
 	"github.com/Azure/azure-storage-fuse/v2/internal"
+	"github.com/Azure/azure-storage-fuse/v2/internal/filter"
 )
 
 // Example for azblob usage : https://pkg.go.dev/github.com/Azure/azure-sdk-for-go/sdk/storage/azblob#pkg-examples
@@ -76,12 +77,14 @@ type AzStorageConfig struct {
 	telemetry      string
 	honourACL      bool
 	disableSymlink bool
-	blobFilter     string
 
 	// CPK related config
 	cpkEnabled             bool
 	cpkEncryptionKey       string
 	cpkEncryptionKeySha256 string
+
+	// Filter related config
+	filters *filter.UserInputFilters
 }
 
 type AzStorageConnection struct {
