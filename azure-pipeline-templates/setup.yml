@@ -8,7 +8,6 @@ parameters:
 steps:
   # Create directory structure and prepare to mount
   - ${{ parameters.installStep }}
-
   - checkout: none
 
   # Get the host details on which these test are running
