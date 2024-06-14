@@ -499,7 +499,7 @@ public:
         free_task_index.pop();
 
         // Must be a valid index.
-        assert(free_index > 0 && free_index < MAX_OUTSTANDING_RPC_TASKS);
+        assert(free_index >= 0 && free_index < MAX_OUTSTANDING_RPC_TASKS);
 
         return free_index;
     }
@@ -507,7 +507,7 @@ public:
     void release_free_index(int index)
     {
         // Must be a valid index.
-        assert(index > 0 && index < MAX_OUTSTANDING_RPC_TASKS);
+        assert(index >= 0 && index < MAX_OUTSTANDING_RPC_TASKS);
 
         {
             std::unique_lock<std::shared_mutex> lock(task_index_lock);
