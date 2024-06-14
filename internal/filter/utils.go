@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"unicode"
 
 	"github.com/Azure/azure-storage-fuse/v2/internal"
@@ -83,10 +82,10 @@ func (fl *UserInputFilters) ParseInp(str *string) error {
 }
 
 type FileValidator struct {
-	workers    int   //no of threads analysing file
-	atomicflag int32 //used to close output channel along with fileCnt
-	fileCnt    int64
-	wgo        sync.WaitGroup //to wait until all files from output channel are processed
+	workers int //no of threads analysing file
+	// atomicflag int32 //used to close output channel along with fileCnt
+	fileCnt int64
+	wgo     sync.WaitGroup //to wait until all files from output channel are processed
 	// wgi          sync.WaitGroup
 	fileInpQueue chan *internal.ObjAttr //file input channel
 	outputChan   chan *opdata           //file output channel (containing both passed and !passed files)
@@ -105,8 +104,8 @@ func (fv *FileValidator) RecieveOutput() {
 			// fmt.Println("In finalFiles : ", data.filels.Name)
 			fv.finalFiles = append(fv.finalFiles, data.filels)
 		}
-		// Check if the atomic variable is true
-		if (atomic.LoadInt32(&fv.atomicflag) == 1) && (counter == fv.fileCnt) { //indicates that all files are processed and read from output channel , close channel now
+		// Check if the atomic variable is true :No longer needed, was creating an issue
+		if counter == fv.fileCnt { //indicates that all files are processed and read from output channel , close channel now
 			close(fv.outputChan)
 			break
 		}

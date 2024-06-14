@@ -336,8 +336,7 @@ func (az *AzStorage) StreamDir(options internal.StreamDirOptions) ([]*internal.O
 	//check for filters provided
 	if az.stConfig.filters != nil { //only apply if user has given filter
 		filtered_list := az.stConfig.filters.ApplyFilterOnBlobs(new_list)
-		// return filtered_list, *new_marker, nil
-		new_list = filtered_list
+		return filtered_list, *new_marker, nil
 	}
 	return new_list, *new_marker, nil
 }
