@@ -1394,15 +1394,19 @@ stages:
             value: "/usr/pipeline/workv2/go"
 
         steps:
-          - checkout: none
-
           - template: 'azure-pipeline-templates/setup.yml'
             parameters:
               tags: $(tags)
               installStep:
                 script: |
                   sudo apt-get update --fix-missing
-                  sudo apt-get install $(fuselib) -y
+                  sudo apt update
+                  sudo apt-get install cmake gcc $(fuselib) git -y
+                  if [ $(tags) == "fuse2" ]; then
+                    sudo apt-get install fuse -y
+                  else
+                    sudo apt-get install fuse3 -y
+                  fi
                 displayName: 'Install fuse'
 
           - template: 'azure-pipeline-templates/e2e-tests-block-cache.yml'
@@ -1467,15 +1471,19 @@ stages:
             value: "/usr/pipeline/workv2/go"
 
         steps:
-          - checkout: none
-
           - template: 'azure-pipeline-templates/setup.yml'
             parameters:
               tags: $(tags)
               installStep:
                 script: |
                   sudo apt-get update --fix-missing
-                  sudo apt-get install $(fuselib) -y
+                  sudo apt update
+                  sudo apt-get install cmake gcc $(fuselib) git -y
+                  if [ $(tags) == "fuse2" ]; then
+                    sudo apt-get install fuse -y
+                  else
+                    sudo apt-get install fuse3 -y
+                  fi
                 displayName: 'Install fuse'
 
           - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
@@ -1540,15 +1548,19 @@ stages:
             value: "/usr/pipeline/workv2/go"
 
         steps:
-          - checkout: none
-
           - template: 'azure-pipeline-templates/setup.yml'
             parameters:
               tags: $(tags)
               installStep:
                 script: |
                   sudo apt-get update --fix-missing
-                  sudo apt-get install $(fuselib) -y
+                  sudo apt update
+                  sudo apt-get install cmake gcc $(fuselib) git -y
+                  if [ $(tags) == "fuse2" ]; then
+                    sudo apt-get install fuse -y
+                  else
+                    sudo apt-get install fuse3 -y
+                  fi
                 displayName: 'Install fuse'
 
           - template: 'azure-pipeline-templates/e2e-tests-spcl.yml'
@@ -1604,12 +1616,12 @@ stages:
             value: '$(System.DefaultWorkingDirectory)/azure-storage-fuse'
 
         steps:
-          - checkout: none
-
           - script: |
               sudo apt-get update --fix-missing -o Dpkg::Options::="--force-confnew"
               sudo apt-get install make cmake gcc g++ parallel $(fuselib) -y -o Dpkg::Options::="--force-confnew"
             displayName: 'Install libfuse'
+
+          - checkout: none
 
           # Clone the repo
           - script: |
