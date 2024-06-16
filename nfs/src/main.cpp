@@ -247,7 +247,8 @@ static void aznfsc_ll_forget(fuse_req_t req,
                              fuse_ino_t ino,
                              uint64_t nlookup)
 {
-    AZLogInfo("aznfsc_ll_forget");
+    AZLogDebug("aznfsc_ll_forget(req={}, ino={}, nlookup={})",
+               fmt::ptr(req), ino, nlookup);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
 
@@ -271,7 +272,9 @@ static void aznfsc_ll_setattr(fuse_req_t req,
                               int to_set /* bitmask indicating the attributes to set */,
                               struct fuse_file_info *fi)
 {
-    AZLogInfo("Setattr called");
+    // TODO: Log all to-be-set attributes.
+    AZLogDebug("aznfsc_ll_setattr(req={}, ino={}, to_set=0x{:x}, fi={})",
+               fmt::ptr(req), ino, to_set, fmt::ptr(fi));
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->setattr(req, ino, attr, to_set, fi);
@@ -303,7 +306,8 @@ static void aznfsc_ll_mkdir(fuse_req_t req,
                             const char *name,
                             mode_t mode)
 {
-    AZLogInfo("Mkdir called, name: {}", name);
+    AZLogDebug("aznfsc_ll_mkdir(req={}, parent_ino={}, name={}, mode=0{:03o}",
+               fmt::ptr(req), parent_ino, name, mode);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->mkdir(req, parent_ino, name, mode);
@@ -446,9 +450,10 @@ static void aznfsc_ll_readdir(fuse_req_t req,
                               off_t off,
                               struct fuse_file_info *fi)
 {
-    AZLogInfo("aznfsc_ll_readdir: Readdir called off: {} sz {} ino {}", off, size, ino);
+    AZLogDebug("aznfsc_ll_readdir(req={}, ino={}, size={}, off={}, fi={})",
+               fmt::ptr(req), ino, size, off, fmt::ptr(fi));
 
-    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->readdir(req, ino, size, off, fi);
 }
 
@@ -543,7 +548,9 @@ static void aznfsc_ll_create(fuse_req_t req,
                              mode_t mode,
                              struct fuse_file_info *fi)
 {
-    AZLogInfo("Creating file: {}", name);
+    AZLogDebug("aznfsc_ll_create(req={}, parent_ino={}, name={}, "
+               "mode=0{:03o}, fi={})",
+               fmt::ptr(req), parent_ino, name, mode, fmt::ptr(fi));
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->create(req, parent_ino, name, mode, fi);
@@ -692,9 +699,10 @@ static void aznfsc_ll_readdirplus(fuse_req_t req,
                                   off_t off,
                                   struct fuse_file_info *fi)
 {
-    AZLogInfo(" aznfsc_ll_readdirplus: Readdirplus called, off: {} size {} ino {}", off, size, ino);
+    AZLogDebug("aznfsc_ll_readdirplus(req={}, ino={}, size={}, off={}, fi={})",
+               fmt::ptr(req), ino, size, off, fmt::ptr(fi));
 
-    auto client = reinterpret_cast<struct nfs_client*>(fuse_req_userdata(req));
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->readdirplus(req, ino, size, off, fi);
 }
 
