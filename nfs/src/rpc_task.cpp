@@ -653,8 +653,8 @@ void rpc_task::fetch_readdir_entries_from_server()
         args.dir = get_client()->get_nfs_inode_from_ino(inode)->get_fh();
         args.cookie = cookie;
         ::memcpy(&args.cookieverf, get_client()->get_nfs_inode_from_ino(inode)->dircache_handle->get_cookieverf(), sizeof(args.cookieverf));
-        args.dircount = 65536; // TODO: Set this to user passed value.
-        args.maxcount = 65536;
+        args.dircount = 1048576; // TODO: Set this to user passed value.
+        args.maxcount = 1048576;
 
         if (rpc_nfs3_readdirplus_task(get_rpc_ctx(), readdirplus_callback, &args, this) == NULL)
         {
@@ -677,7 +677,7 @@ void rpc_task::send_readdir_response(std::vector<directory_entry*>& readdirentri
     char *buf1 = (char *)malloc(size);
     if (!buf1)
     {
-        fuse_reply_err(get_req(), ENOMEM);
+        reply_error(ENOMEM);
         return;
     }
 
@@ -735,6 +735,7 @@ void rpc_task::send_readdir_response(std::vector<directory_entry*>& readdirentri
                    size - rem);
 
     free(buf1);
+    free_rpc_task();
 }
 
 void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdirentries)
@@ -745,7 +746,7 @@ void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdire
     char *buf1 = (char *)malloc(sz);
     if (!buf1)
     {
-        fuse_reply_err(get_req(), ENOMEM);
+        reply_error(ENOMEM);
         return;
     }
 
@@ -813,4 +814,5 @@ void rpc_task::send_readdirplus_response(std::vector<directory_entry*>& readdire
 
     // Free the buffer.
     free(buf1);
+    free_rpc_task();
 }
