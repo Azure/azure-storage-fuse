@@ -40,6 +40,7 @@ nfs_inode::~nfs_inode()
     fh.data.data_val = nullptr;
     fh.data.data_len = 0;
 }
+
 bool nfs_inode::purge_readdircache_if_required()
 {
     struct directory_entry* dirent = nullptr;

@@ -46,10 +46,8 @@ void aznfsc_help(const char *argv0)
 }
 
 /*
- * This function parses the contents of the yaml config file denoted by path config_file
- * into the aznfsc_cfg structure.
- *
- * TODO: Validate the values and make sure they are within the range expected.
+ * This function parses the contents of the yaml config file denoted by path
+ * config_file into the aznfsc_cfg structure.
  */
 bool aznfsc_cfg::parse_config_yaml()
 {
@@ -136,6 +134,76 @@ bool aznfsc_cfg::parse_config_yaml()
             }
         }
 
+        if ((acregmin == -1) && config["acregmin"]) {
+            acregmin = config["acregmin"].as<int>();
+            if (acregmin < AZNFSCFG_ACTIMEO_MIN ||
+                acregmin > AZNFSCFG_ACTIMEO_MAX) {
+                throw YAML::Exception(
+                    config["acregmin"].Mark(),
+                    std::string("Invalid acregmin value: ") +
+                    std::to_string(acregmin) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_ACTIMEO_MIN) +
+                    ", " + std::to_string(AZNFSCFG_ACTIMEO_MAX) + "])");
+            }
+        }
+
+        if ((acregmax == -1) && config["acregmax"]) {
+            acregmax = config["acregmax"].as<int>();
+            if (acregmax < AZNFSCFG_ACTIMEO_MIN ||
+                acregmax > AZNFSCFG_ACTIMEO_MAX) {
+                throw YAML::Exception(
+                    config["acregmax"].Mark(),
+                    std::string("Invalid acregmax value: ") +
+                    std::to_string(acregmax) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_ACTIMEO_MIN) +
+                    ", " + std::to_string(AZNFSCFG_ACTIMEO_MAX) + "])");
+            }
+        }
+
+        if ((acdirmin == -1) && config["acdirmin"]) {
+            acdirmin = config["acdirmin"].as<int>();
+            if (acdirmin < AZNFSCFG_ACTIMEO_MIN ||
+                acdirmin > AZNFSCFG_ACTIMEO_MAX) {
+                throw YAML::Exception(
+                    config["acdirmin"].Mark(),
+                    std::string("Invalid acdirmin value: ") +
+                    std::to_string(acdirmin) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_ACTIMEO_MIN) +
+                    ", " + std::to_string(AZNFSCFG_ACTIMEO_MAX) + "])");
+            }
+        }
+
+        if ((acdirmax == -1) && config["acdirmax"]) {
+            acdirmax = config["acdirmax"].as<int>();
+            if (acdirmax < AZNFSCFG_ACTIMEO_MIN ||
+                acdirmax > AZNFSCFG_ACTIMEO_MAX) {
+                throw YAML::Exception(
+                    config["acdirmax"].Mark(),
+                    std::string("Invalid acdirmax value: ") +
+                    std::to_string(acdirmax) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_ACTIMEO_MIN) +
+                    ", " + std::to_string(AZNFSCFG_ACTIMEO_MAX) + "])");
+            }
+        }
+
+        if ((actimeo == -1) && config["actimeo"]) {
+            actimeo = config["actimeo"].as<int>();
+            if (actimeo < AZNFSCFG_ACTIMEO_MIN ||
+                actimeo > AZNFSCFG_ACTIMEO_MAX) {
+                throw YAML::Exception(
+                    config["actimeo"].Mark(),
+                    std::string("Invalid actimeo value: ") +
+                    std::to_string(actimeo) +
+                    std::string(" (valid range [") +
+                    std::to_string(AZNFSCFG_ACTIMEO_MIN) +
+                    ", " + std::to_string(AZNFSCFG_ACTIMEO_MAX) + "])");
+            }
+        }
+
         if ((rsize == -1) && config["rsize"]) {
             rsize = config["rsize"].as<int>();
             if (rsize < AZNFSCFG_RSIZE_MIN || rsize > AZNFSCFG_RSIZE_MAX) {
@@ -191,6 +259,72 @@ bool aznfsc_cfg::parse_config_yaml()
     }
 
     return true;
+}
+
+/**
+ * Set default values for options not yet assigned.
+ * This must be called after fuse_opt_parse() and parse_config_yaml()
+ * assign config values from command line and the config yaml file.
+ * Also sanitizes various values.
+ */
+void aznfsc_cfg::set_defaults_and_sanitize()
+{
+    if (port == -1)
+        port = 2048;
+    if (nconnect == -1)
+        nconnect = 1;
+    if (rsize == -1)
+        rsize = 1048576;
+    if (wsize == -1)
+        wsize = 1048576;
+    if (retrans == -1)
+        retrans = 3;
+    if (timeo == -1)
+        timeo = 600;
+    if (acregmin == -1)
+        acregmin = 3;
+    if (acregmax == -1)
+        acregmax = 60;
+    if (acdirmin == -1)
+        acdirmin = 30;
+    if (acdirmax == -1)
+        acdirmax = 60;
+    if (actimeo != -1)
+        acregmin = acregmax = acdirmin = acdirmax = actimeo;
+    if (acregmin > acregmax)
+        acregmin = acregmax;
+    if (acdirmin > acdirmax)
+        acdirmin = acdirmax;
+    if (readdir_maxcount == -1)
+        readdir_maxcount = INT_MAX;
+    if (cloud_suffix == nullptr)
+        cloud_suffix = ::strdup("blob.core.windows.net");
+
+    assert(account != nullptr);
+    assert(container != nullptr);
+
+    // Set aggregates.
+    server = std::string(account) + "." + std::string(cloud_suffix);
+    export_path = "/" + std::string(account) + "/" + std::string(container);
+
+    // Dump the final config values for debugging.
+    AZLogDebug("===== config start =====");
+    AZLogDebug("port = {}", port);
+    AZLogDebug("nconnect = {}", nconnect);
+    AZLogDebug("rsize = {}", rsize);
+    AZLogDebug("wsize = {}", wsize);
+    AZLogDebug("retrans = {}", retrans);
+    AZLogDebug("timeo = {}", timeo);
+    AZLogDebug("acregmin = {}", acregmin);
+    AZLogDebug("acregmax = {}", acregmax);
+    AZLogDebug("acdirmin = {}", acdirmin);
+    AZLogDebug("acdirmax = {}", acdirmax);
+    AZLogDebug("actimeo = {}", actimeo);
+    AZLogDebug("readdir_maxcount = {}", readdir_maxcount);
+    AZLogDebug("account = {}", account);
+    AZLogDebug("container = {}", container);
+    AZLogDebug("cloud_suffix = {}", cloud_suffix);
+    AZLogDebug("===== config end =====");
 }
 
 static void aznfsc_ll_init(void *userdata,
@@ -859,7 +993,7 @@ int main(int argc, char *argv[])
     }
 
     // Set default values for config variables not set using the above.
-    aznfsc_cfg.set_defaults();
+    aznfsc_cfg.set_defaults_and_sanitize();
 
     // Initialize nfs_client singleton.
     if (!nfs_client::get_instance().init()) {

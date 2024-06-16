@@ -38,6 +38,8 @@ using namespace aznfsc;
 #define AZNFSCFG_WSIZE_MAX      104857600
 #define AZNFSCFG_RETRANS_MIN    1
 #define AZNFSCFG_RETRANS_MAX    100
+#define AZNFSCFG_ACTIMEO_MIN    1
+#define AZNFSCFG_ACTIMEO_MAX    3600
 
 /**
  * This structure holds the entire aznfsclient configuration that controls the
@@ -120,6 +122,24 @@ typedef struct aznfsc_cfg
      */
     int timeo = -1;
 
+    /*
+     * Regular file and directory attribute cache timeout min and max values.
+     * min value specifies the minimum time in seconds that we cache the
+     * corresponding file type's attributes before we request fresh attributes
+     * from the server. A successful attribute revalidation (i.e., mtime
+     * remains unchanged) doubles the attribute timeout (up to
+     * acregmax/acdirmax for file/directory), while a failed revalidation
+     * resets it to acregmin/acdirmin.
+     * If actimeo is specified it overrides all ac{reg|dir}min/ac{reg|dir}max
+     * and the single actimeo value is used as the min and max attribute cache
+     * timeout values for both file and directory types.
+     */
+    int acregmin = -1;
+    int acregmax = -1;
+    int acdirmin = -1;
+    int acdirmax = -1;
+    int actimeo = -1;
+
     // Maximum number of readdir entries that can be requested in a single call.
     int readdir_maxcount = -1;
 
@@ -142,41 +162,17 @@ typedef struct aznfsc_cfg
     std::string export_path;
 
     /**
-     * Set default values for options not yet assigned.
-     * This must be called after fuse_opt_parse() and parse_config_yaml()
-     * assign config values from command line and the config yaml file.
-     */
-    void set_defaults()
-    {
-        if (port == -1)
-            port = 2048;
-        if (nconnect == -1)
-            nconnect = 1;
-        if (rsize == -1)
-            rsize = 1048576;
-        if (wsize == -1)
-            wsize = 1048576;
-        if (retrans == -1)
-            retrans = 3;
-        if (timeo == -1)
-            timeo = 600;
-        if (readdir_maxcount == -1)
-            readdir_maxcount = INT_MAX;
-        if (cloud_suffix == nullptr)
-            cloud_suffix = ::strdup("blob.core.windows.net");
-
-        assert(account != nullptr);
-        assert(container != nullptr);
-
-        // Set aggregates.
-        server = std::string(account) + "." + std::string(cloud_suffix);
-        export_path = "/" + std::string(account) + "/" + std::string(container);
-    }
-
-    /**
      * Parse config_yaml if set by cmdline --config-file=
      */
     bool parse_config_yaml();
+
+    /**
+     * Set default values for options not yet assigned.
+     * This must be called after fuse_opt_parse() and parse_config_yaml()
+     * assign config values from command line and the config yaml file.
+     * Also sanitizes various values.
+     */
+    void set_defaults_and_sanitize();
 } aznfsc_cfg_t;
 
 extern struct aznfsc_cfg aznfsc_cfg;
