@@ -1,6 +1,45 @@
 #include "nfs_inode.h"
 #include "nfs_client.h"
 
+/**
+ * Constructor.
+ * nfs_client must be known when nfs_inode is being created.
+ * Fuse inode number is set to the address of the nfs_inode object,
+ * unless explicitly passed by the caller, which will only be done
+ * for the root inode.
+ */
+nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
+                     struct nfs_client *_client,
+                     fuse_ino_t _ino) :
+    ino(_ino == 0 ? (fuse_ino_t) this : _ino),
+    client(_client)
+{
+    // Sanity assert.
+    assert(client != nullptr);
+    assert(client->magic == NFS_CLIENT_MAGIC);
+    assert(filehandle->data.data_len > 50 &&
+            filehandle->data.data_len <= 64);
+    // ino is either set to FUSE_ROOT_ID or set to address of nfs_inode.
+    assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
+
+    fh.data.data_len = filehandle->data.data_len;
+    fh.data.data_val = new char[fh.data.data_len];
+    ::memcpy(fh.data.data_val, filehandle->data.data_val, fh.data.data_len);
+
+    dircache_handle = std::make_shared<readdirectory_cache>();
+}
+
+nfs_inode::~nfs_inode()
+{
+    assert(fh.data.data_len > 50 && fh.data.data_len <= 64);
+    assert((ino == (fuse_ino_t) this) || (ino == FUSE_ROOT_ID));
+    assert(client != nullptr);
+    assert(client->magic == NFS_CLIENT_MAGIC);
+
+    delete fh.data.data_val;
+    fh.data.data_val = nullptr;
+    fh.data.data_len = 0;
+}
 bool nfs_inode::purge_readdircache_if_required()
 {
     struct directory_entry* dirent = nullptr;
