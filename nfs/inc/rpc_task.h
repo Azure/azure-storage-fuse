@@ -7,7 +7,6 @@
 #include <stack>
 #include <shared_mutex>
 #include <vector>
-
 #include "nfs_client.h"
 
 #define MAX_OUTSTANDING_RPC_TASKS 65536
@@ -248,6 +247,118 @@ private:
  * The RPC task tracks the progress of the RPC request sent to the server and
  * remains valid till the RPC request completes.
  */
+struct readdir_rpc_task
+{
+public:
+    void set_size(size_t sz)
+    {
+        size = sz;
+    }
+
+    void set_offset(off_t off)
+    {
+        offset = off;
+    }
+
+    void set_inode(fuse_ino_t ino)
+    {
+        inode = ino;
+    }
+
+    void set_fuse_file(fuse_file_info* fileinfo)
+    {
+        // The fuse can pass this as nullptr.
+        if (fileinfo == nullptr)
+            return;
+        ::memcpy(&file, fileinfo, sizeof(file));
+        file_ptr = &file;
+    }
+
+    fuse_ino_t get_inode() const
+    {
+        return inode;
+    }
+
+    off_t get_offset() const
+    {
+        return offset;
+    }
+
+    size_t get_size() const
+    {
+        return size;
+    }
+
+private:
+    // Inode of the directory.
+    fuse_ino_t inode;
+
+    // Maximum size of entries requested by the caller.
+    size_t size;
+
+    off_t offset;
+
+    // File info passed by the fuse layer.
+    fuse_file_info file;
+    fuse_file_info* file_ptr;
+};
+
+struct readdirplus_rpc_task
+{
+public:
+    void set_size(size_t sz)
+    {
+        size = sz;
+    }
+
+    void set_offset(off_t off)
+    {
+        offset = off;
+    }
+
+    void set_inode(fuse_ino_t ino)
+    {
+        inode = ino;
+    }
+
+    void set_fuse_file(fuse_file_info* fileinfo)
+    {
+        // The fuse can pass this as nullptr.
+        if (fileinfo == nullptr)
+            return;
+        ::memcpy(&file, fileinfo, sizeof(file));
+        file_ptr = &file;
+    }
+
+    fuse_ino_t get_inode() const
+    {
+        return inode;
+    }
+
+    off_t get_offset() const
+    {
+        return offset;
+    }
+
+    size_t get_size() const
+    {
+        return size;
+    }
+
+private:
+    // Inode of the directory.
+    fuse_ino_t inode;
+
+    // Maximum size of entries requested by the caller.
+    size_t size;
+
+    off_t offset;
+
+    // File info passed by the fuse layer.
+    fuse_file_info file;
+    fuse_file_info* file_ptr;
+};
+
 struct rpc_task
 {
     /*
@@ -290,6 +401,8 @@ public:
         struct setatt_rpc_task setattr_task;
         struct create_file_rpc_task create_task;
         struct mkdir_rpc_task mkdir_task;
+        struct readdir_rpc_task readdir_task;
+        struct readdirplus_rpc_task readdirplus_task;
     } rpc_api;
 
     // TODO: Add valid flag here for APIs?
@@ -338,6 +451,23 @@ public:
                     mode_t mode);
     void run_mkdir();
 
+    // This function is responsible for setting up the members of readdir_task.
+    void init_readdir(fuse_req *request,
+                     fuse_ino_t inode,
+                     size_t size,
+                     off_t offset,
+                     struct fuse_file_info *file);
+
+    void run_readdir();
+
+    // This function is responsible for setting up the members of readdirplus_task.
+    void init_readdirplus(fuse_req *request,
+                         fuse_ino_t inode,
+                         size_t size,
+                         off_t offset,
+                         struct fuse_file_info *file);
+
+    void run_readdirplus();
 
     void set_fuse_req(fuse_req *request)
     {
@@ -409,7 +539,6 @@ public:
     }
 
     /*
-     *
      * Check RPC completion for success.
      * Returns true if rpc_task succeeded execution at the server, else
      * returns false.
@@ -424,6 +553,16 @@ public:
     {
         return req;
     }
+
+    void send_readdir_response(std::vector<directory_entry*>& readdirentries);
+
+    void send_readdirplus_response(std::vector<directory_entry*>& readdirentries);
+
+    void get_readdir_entries_from_cache();
+
+    void get_readdirplus_entries_from_cache();
+
+    void fetch_readdir_entries_from_server();
 };
 
 class rpc_task_helper

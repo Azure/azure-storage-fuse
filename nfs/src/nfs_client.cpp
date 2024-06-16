@@ -2,6 +2,7 @@
 #include "nfs_client.h"
 #include "nfs_internal.h"
 #include "rpc_task.h"
+#include "rpc_readdir.h"
 
 #define RSTATUS(r) ((r) ? (r)->status : NFS3ERR_SERVERFAULT)
 
@@ -29,7 +30,7 @@ bool nfs_client::init()
 
     // initialiaze the root file handle.
     // TODO: Take care of freeing this. Should this be freed in the ~nfs_client()?
-    root_fh = new nfs_inode(nfs_get_rootfh(transport.get_nfs_context()) /*, 1  ino will be 1 for root */);
+    root_fh = new nfs_inode(nfs_get_rootfh(transport.get_nfs_context()) /*, 1  ino will be 1 for root */, this);
     root_fh->set_inode(FUSE_ROOT_ID);
     //AZLogInfo("Obtained root fh is {}", root_fh->get_fh());
 
@@ -101,9 +102,35 @@ void nfs_client::setattr(
     tsk->run_setattr();
 }
 
+void nfs_client::readdir(
+    fuse_req_t req,
+    fuse_ino_t inode,
+    size_t size,
+    off_t offset,
+    struct fuse_file_info* file)
+{
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+
+    tsk->init_readdir(req, inode, size, offset, file);
+    tsk->run_readdir();
+}
+
+void nfs_client::readdirplus(
+    fuse_req_t req,
+    fuse_ino_t inode,
+    size_t size,
+    off_t offset,
+    struct fuse_file_info* file)
+{
+    struct rpc_task *tsk = rpc_task_helper->alloc_rpc_task();
+
+    tsk->init_readdirplus(req, inode, size, offset, file);
+    tsk->run_readdirplus();
+}
+
 //
 // Creates a new inode for the given fh and passes it to fuse layer.
-// This will be called by the APIs which much return a filehandle back to the client
+// This will be called by the APIs which must return a filehandle back to the client
 // like lookup, create etc.
 //
 void nfs_client::reply_entry(
@@ -118,7 +145,7 @@ void nfs_client::reply_entry(
     {
         // TODO: When should this be freed? This should be freed when the ino is freed,
         // 	 but decide when should that be done?
-        nfs_ino = new nfs_inode(fh);
+        nfs_ino = new nfs_inode(fh, this);
         nfs_ino->set_inode((fuse_ino_t)nfs_ino);
     }
     else
