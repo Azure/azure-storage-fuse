@@ -511,8 +511,9 @@ static void readdirplus_callback(
 
             // Create a new nfs inode for the entry
             nfs_inode* nfs_ino;
-            nfs_ino = new nfs_inode(&entry->name_handle.post_op_fh3_u.handle, task->get_client());
-            nfs_ino->set_inode((fuse_ino_t)nfs_ino);
+            nfs_ino = new nfs_inode(&entry->name_handle.post_op_fh3_u.handle,
+                                    task->get_client());
+            //nfs_ino->set_inode((fuse_ino_t)nfs_ino);
 
             /*
              * Create the directory entries here.

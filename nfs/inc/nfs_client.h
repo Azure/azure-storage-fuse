@@ -69,6 +69,12 @@ private:
     {
     }
 
+    ~nfs_client()
+    {
+        delete root_fh;
+        root_fh = nullptr;
+    }
+
 public:
     /*
      * Mount options (to be) used for mounting. These contain details of the

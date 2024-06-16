@@ -28,10 +28,13 @@ bool nfs_client::init()
         return false;
     }
 
-    // initialiaze the root file handle.
-    // TODO: Take care of freeing this. Should this be freed in the ~nfs_client()?
-    root_fh = new nfs_inode(nfs_get_rootfh(transport.get_nfs_context()) /*, 1  ino will be 1 for root */, this);
-    root_fh->set_inode(FUSE_ROOT_ID);
+    /*
+     * Initialiaze the root file handle for this client.
+     */
+    root_fh = new nfs_inode(
+                nfs_get_rootfh(transport.get_nfs_context()),
+                this,
+                FUSE_ROOT_ID);
     //AZLogInfo("Obtained root fh is {}", root_fh->get_fh());
 
     // Initialize the RPC task list.
@@ -143,10 +146,8 @@ void nfs_client::reply_entry(
 
     if (fh)
     {
-        // TODO: When should this be freed? This should be freed when the ino is freed,
-        // 	 but decide when should that be done?
+        // This will be freed from fuse forget callback.
         nfs_ino = new nfs_inode(fh, this);
-        nfs_ino->set_inode((fuse_ino_t)nfs_ino);
     }
     else
     {
