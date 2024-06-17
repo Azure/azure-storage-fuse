@@ -558,7 +558,6 @@ public:
         // inode number cannot be 0 in a create response().
         assert(entry->ino != 0);
 
-
         /*
          * On a successful call to fuse_reply_create() the inode's lookup
          * count must be incremented.

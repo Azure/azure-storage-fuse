@@ -60,9 +60,28 @@ struct nfs_inode
 
     /*
      * Fuse inode number.
-     * This is how fuse identifiees this file/directory to us.
+     * This is how fuse identifies this file/directory to us.
      */
     fuse_ino_t ino;
+
+    /*
+     * Cached attributes for this inode and the current value of attribute
+     * cache timeout. attr_timeout_secs will be have a value between
+     * [acregmin, acregmax] or [acdirmin, acdirmax], depending on the
+     * filetype.
+     * These cached attributes are valid till the absolute milliseconds value
+     * attr_timeout_timestamp. On expiry of this we will revalidate the inode
+     * by querying the attributes from the server. If the revalidation is
+     * successful (i.e., inode has not changed since we cached), then we
+     * increase attr_timeout_secs in an exponential fashion (upto the max
+     * actimeout value) and set attr_timeout_timestamp accordingly.
+     *
+     * If attr_timeout_secs is -1 that implies that cached attributes are
+     * not valid and we need to fetch the attributes from the server.
+     */
+    struct stat attr;
+    int64_t attr_timeout_secs = -1;
+    int64_t attr_timeout_timestamp = -1;
 
     // nfs_client owning this inode.
     struct nfs_client *const client;
@@ -118,6 +137,74 @@ struct nfs_inode
     {
         return fh;
     }
+
+    /**
+     * Get the minimum attribute cache timeout value in seconds, to be used
+     * for this file.
+     */
+    int get_actimeo_min() const
+    {
+        switch (attr.st_mode & S_IFMT) {
+            case S_IFDIR:
+                return aznfsc_cfg.acdirmin;
+            default:
+                return aznfsc_cfg.acregmin;
+        }
+    }
+
+    /**
+     * Get the maximum attribute cache timeout value in seconds, to be used
+     * for this file.
+     */
+    int get_actimeo_max() const
+    {
+        switch (attr.st_mode & S_IFMT) {
+            case S_IFDIR:
+                return aznfsc_cfg.acdirmax;
+            default:
+                return aznfsc_cfg.acregmax;
+        }
+    }
+
+    /**
+     * Revalidate the inode.
+     * Revalidation is done by querying the inode attributes from the server
+     * and comparing them against the saved attributes. If the freshly fetched
+     * attributes indicate "change in file/dir content" by indicators such as
+     * mtime and/or size, then we invalidate the cached data of the inode.
+     * If 'force' is false then inode attributes are fetched only if the last
+     * fetched attributes are older than attr_timeout_secs, while if 'force'
+     * is true we fetch the attributes regardless. This could f.e., be needed
+     * when a file/dir is opened (for close-to-open consistency reasons).
+     * Other reasons for force invalidating the caches could be if file/dir
+     * was updated by calls to write()/create()/rename().
+     */
+    void revalidate(bool force = false);
+
+    /**
+     * Update the inode given that we have received fresh attributes from
+     * the server. These fresh attributes could have been received as
+     * postop attributes to any of the requests or it could be a result of
+     * explicit GETATTR call that we make from revalidate() when the attribute
+     * cache times out.
+     * We process the freshly received attributes as follows:
+     * - If the ctime has not changed, then the file has not changed, and
+     *   we don't do anything, else
+     * - If mtime has changed then the file data and metadata has changed
+     *   and we need to drop the caches and update nfs_inode::attr, else
+     * - If just ctime has changed then only the file metadata has changed
+     *   and we update nfs_inode::attr from the received attributes.
+     *
+     * Returns true if 'fattr' is newer than the cached attributes.
+     */
+    bool update(const struct fattr3& fattr);
+
+    /**
+     * Invalidate/zap the cached data.
+     * Depending on whether this inode corresponds to a regular file or a
+     * directory, this will invalidate the appropriate cache.
+     */
+    void invalidate_cache();
 
     bool purge_readdircache_if_required();
 

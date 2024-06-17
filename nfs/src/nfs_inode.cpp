@@ -26,6 +26,9 @@ nfs_inode::nfs_inode(const struct nfs_fh3 *filehandle,
     fh.data.data_val = new char[fh.data.data_len];
     ::memcpy(fh.data.data_val, filehandle->data.data_val, fh.data.data_len);
 
+    // Just init enough to treat cached attributes as invalid.
+    attr.st_ctime = attr.st_mtime = 0;
+
     dircache_handle = std::make_shared<readdirectory_cache>();
 }
 
@@ -40,6 +43,98 @@ nfs_inode::~nfs_inode()
     delete fh.data.data_val;
     fh.data.data_val = nullptr;
     fh.data.data_len = 0;
+}
+
+void nfs_inode::revalidate(bool force)
+{
+    const int64_t now_msecs = get_current_msecs();
+    /*
+     * If attributes are currently not cached in nfs_inode::attr then
+     * attr_timeout_timestamp will be -1 which will force revalidation.
+     */
+    const bool revalidate_now = force || (attr_timeout_timestamp < now_msecs);
+
+    // Nothing to do, return.
+    if (!revalidate_now) {
+        AZLogDebug("revalidate_now is false");
+        return;
+    }
+
+    /*
+     * Query the attributes of the file from the server to find out if
+     * the file has changed and we need to invalidate the cached data.
+     */
+    struct fattr3 fattr;
+    const bool ret = make_getattr_call(fattr);
+
+    /*
+     * If we fail to query fresh attributes then we can't do much.
+     * We don't update attr_timeout_timestamp so that next time we
+     * retry querying the attributes again.
+     */
+    if (!ret) {
+        AZLogWarn("Failed to query attributes for ino {}", ino);
+        return;
+    }
+
+    /*
+     * Let update() decide if the freshly received attributes indicate file
+     * has changed that what we have cached, and if so update the cached
+     * attributes and invalidate the cache as appropriate.
+     */
+    if (update(fattr)) {
+        // File changed.
+        attr_timeout_secs = get_actimeo_min();
+    } else {
+        // File not changed.
+        attr_timeout_secs =
+            std::min((int) attr_timeout_secs*2, get_actimeo_max());
+    }
+
+    attr_timeout_timestamp = now_msecs + attr_timeout_secs*1000;
+}
+
+bool nfs_inode::update(const struct fattr3& fattr)
+{
+    const bool fattr_is_newer =
+        (compare_timespec_and_nfstime(attr.st_ctim, fattr.ctime) == -1);
+
+    // ctime has not increased, i.e., cached attributes are newer, skip update.
+    if (!fattr_is_newer) {
+        return false;
+    }
+
+    // We consider file data as changed when either the mtime or the size changes.
+    const bool file_data_changed =
+        ((compare_timespec_and_nfstime(attr.st_mtim, fattr.mtime) != 0) ||
+         (attr.st_size != (off_t) fattr.size));
+
+    AZLogDebug("Got attributes newer than cached attributes, "
+               "ctime: {}.{} -> {}.{}, mtime: {}.{} -> {}.{}, size: {} -> {}",
+               attr.st_ctim.tv_sec, attr.st_ctim.tv_nsec,
+               fattr.ctime.seconds, fattr.ctime.nseconds,
+               attr.st_mtim.tv_sec, attr.st_mtim.tv_nsec,
+               fattr.mtime.seconds, fattr.mtime.nseconds,
+               attr.st_size, fattr.size);
+
+    // Update cached attributes.
+    get_client()->stat_from_fattr3(&attr, &fattr);
+
+    // Invalidate cache iff file data has changed.
+    if (file_data_changed) {
+        invalidate_cache();
+    }
+
+    return true;
+}
+
+void nfs_inode::invalidate_cache()
+{
+    /*
+     * TODO: Right now we just purge the readdir cache.
+     *       Once we have the file cache too, we need to purge that for files.
+     */
+    purge();
 }
 
 bool nfs_inode::purge_readdircache_if_required()
