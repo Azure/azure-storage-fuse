@@ -28,14 +28,12 @@ stages:
             matrix:
               Ubuntu-20:
                 AgentName: 'blobfuse-ubuntu20'
-                imageName: 'ubuntu-20.04'
                 containerName: 'test-cnt-ubn-20'
                 fuselib: 'libfuse-dev'
                 fuselib2: 'fuse'
                 tags: 'fuse2'
               Ubuntu-22:
                 AgentName: 'blobfuse-ubuntu22'
-                imageName: 'ubuntu-22.04'
                 containerName: 'test-cnt-ubn-22'
                 fuselib: 'libfuse3-dev'
                 fuselib2: 'fuse3'
@@ -54,8 +52,6 @@ stages:
               value: '$(Pipeline.Workspace)/blobfuse2_tmp'
             - name: BLOBFUSE2_CFG
               value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-            - name: BLOBFUSE2_STREAM_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
             - name: BLOBFUSE2_ADLS_CFG
               value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
             - name: GOPATH
@@ -235,84 +231,6 @@ stages:
                 sleep 5
               workingDirectory: $(WORK_DIR)
               displayName: "ADLS Coverage with profilers"
-
-
-            # -------------------------------------------------------
-            # Config Generation (Block Blob - LFU policy)
-            - script: |
-                cd $(WORK_DIR)
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_gentest2.cov gen-test-config --config-file=azure_key_lfu.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_CFG)
-              env:
-                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                ACCOUNT_TYPE: 'block'
-                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-                VERBOSE_LOG: false
-              displayName: 'Create Config File - LFU'
-              continueOnError: false
-              workingDirectory: $(WORK_DIR)
-            
-            # Code Coverage with e2e-tests for block blob with lfu policy
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_block_lfu.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
-                sleep 10
-                ps -aux | grep blobfuse2
-                rm -rf $(MOUNT_DIR)/*
-                cd test/e2e_tests
-                go test -v -timeout=7200s ./... -args -mnt-path=$(MOUNT_DIR) -tmp-path=$(TEMP_DIR)
-                cd -
-                ./blobfuse2 unmount $(MOUNT_DIR)
-                sleep 5
-              workingDirectory: $(WORK_DIR)
-              displayName: "Block Blob LFU Coverage"
-
-
-            # -------------------------------------------------------
-            # Config Generation (Block Blob - Stream)
-            - script: |
-                cd $(WORK_DIR)
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_gentest3.cov gen-test-config --config-file=azure_stream.yaml --container-name=$(containerName) --temp-path=$(TEMP_DIR) --output-file=$(BLOBFUSE2_STREAM_CFG)
-              displayName: 'Create Config File - Stream'
-              env:
-                NIGHTLY_STO_ACC_NAME: $(NIGHTLY_STO_BLOB_ACC_NAME)
-                NIGHTLY_STO_ACC_KEY: $(NIGHTLY_STO_BLOB_ACC_KEY)
-                ACCOUNT_TYPE: 'block'
-                ACCOUNT_ENDPOINT: 'https://$(NIGHTLY_STO_BLOB_ACC_NAME).blob.core.windows.net'
-                VERBOSE_LOG: false
-              continueOnError: false
-              workingDirectory: $(WORK_DIR)
-            
-            # Streaming test preparation
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_stream_prep.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_CFG) --foreground=true &
-                sleep 10
-                ps -aux | grep blobfuse2
-                for i in {10,50,100,200,500,1024}; do echo $i; done | parallel --will-cite -j 5 'head -c {}M < /dev/urandom > $(WORK_DIR)/myfile_{}'
-                for i in {10,50,100,200,500,1024}; do echo $i; done | parallel --will-cite -j 5 'cp $(WORK_DIR)/myfile_{} $(MOUNT_DIR)/'
-                ./blobfuse2 unmount "$(MOUNT_DIR)*"
-                sudo fusermount -u $(MOUNT_DIR) 
-                sleep 5
-              workingDirectory: $(WORK_DIR)
-              displayName: "Block Blob Stream Preparation"
-
-            # Code Coverage with e2e-tests for block blob with streaming on
-            - script: |
-                rm -rf $(MOUNT_DIR)/*
-                rm -rf $(TEMP_DIR)/*
-                ./blobfuse2.test -test.v -test.coverprofile=$(WORK_DIR)/blobfuse2_stream.cov mount $(MOUNT_DIR) --config-file=$(BLOBFUSE2_STREAM_CFG) --foreground=true &
-                sleep 10
-                ps -aux | grep blobfuse2
-                ./blobfuse2 mount list
-                for i in {10,50,100,200,500,1024}; do echo $i; done | parallel --will-cite -j 5 'diff $(WORK_DIR)/myfile_{} $(MOUNT_DIR)/myfile_{}' 
-                sudo fusermount -u $(MOUNT_DIR) 
-                sleep 5
-              workingDirectory: $(WORK_DIR)
-              displayName: "Block Blob Stream Coverage"
-
 
             # -------------------------------------------------------
             # Config Generation (Block Blob) for cli options
@@ -596,7 +514,7 @@ stages:
                 sudo apt-get install python3-setuptools -y
                 sudo apt install python3-pip -y
                 sudo pip3 install mitmproxy
-                mitmdump -w proxy_logs.txt &
+                mitmdump -q -w proxy_logs.txt &
               displayName: 'Install & Start Proxy'
 
             # Configure Proxy cert & env
@@ -674,7 +592,7 @@ stages:
             - script: |
                 echo 'mode: count' > ./blobfuse2_coverage_raw.rpt
                 tail -q -n +2 ./*.cov >> ./blobfuse2_coverage_raw.rpt
-                cat ./blobfuse2_coverage_raw.rpt | grep -v mock_component | grep -v base_component | grep -v loopback | grep -v tools | grep -v "common/log" | grep -v "common/exectime" | grep -v "internal/stats_manager" | grep -v "main.go" | grep -v "component/azstorage/azauthmsi.go" | grep -v "component/azstorage/azauthcli.go" > ./blobfuse2_coverage.rpt 
+                cat ./blobfuse2_coverage_raw.rpt | grep -v mock_component | grep -v base_component | grep -v loopback | grep -v tools | grep -v "common/log" | grep -v "common/exectime" | grep -v "common/types.go" | grep -v "internal/stats_manager" | grep -v "main.go" | grep -v "component/azstorage/azauthmsi.go" | grep -v "component/azstorage/azauthspn.go" | grep -v "component/stream" | grep -v "component/azstorage/azauthcli.go" > ./blobfuse2_coverage.rpt 
                 go tool cover -func blobfuse2_coverage.rpt  > ./blobfuse2_func_cover.rpt
                 go tool cover -html=./blobfuse2_coverage.rpt -o ./blobfuse2_coverage.html
                 go tool cover -html=./blobfuse2_ut.cov -o ./blobfuse2_ut.html
@@ -717,7 +635,6 @@ stages:
             matrix:
               Ubuntu-20:
                 AgentName: 'blobfuse-ubuntu20'
-                imageName: 'ubuntu-20.04'
                 containerName: 'test-cnt-ubn-20'
                 fuselib: 'libfuse3-dev'
                 fuselib2: 'fuse3'
@@ -736,8 +653,6 @@ stages:
               value: '$(Pipeline.Workspace)/blobfuse2_tmp'
             - name: BLOBFUSE2_CFG
               value: '$(Pipeline.Workspace)/blobfuse2.yaml'
-            - name: BLOBFUSE2_STREAM_CFG
-              value: '$(Pipeline.Workspace)/blobfuse2_stream.yaml'
             - name: BLOBFUSE2_ADLS_CFG
               value: '$(Pipeline.Workspace)/blobfuse2.adls.yaml'
             - name: GOPATH

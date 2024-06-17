@@ -31,9 +31,6 @@ parameters:
   - name: clone
     type: boolean
     default: false
-  - name: stream_direct_test
-    type: boolean
-    default: false
 
 steps:    
   - script: |

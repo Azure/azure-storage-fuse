@@ -124,9 +124,6 @@ steps:
       echo "\"msi-appid\"": "\"$(AZTEST_APP_ID)\"", >> $cnfFile
       echo "\"msi-resid\"": "\"$(AZTEST_RES_ID)\"", >> $cnfFile
       echo "\"msi-objid\"": "\"$(AZTEST_OBJ_ID)\"", >> $cnfFile
-      echo "\"spn-client\"": "\"$(AZTEST_CLIENT)\"", >> $cnfFile
-      echo "\"spn-tenant\"": "\"$(AZTEST_TENANT)\"", >> $cnfFile
-      echo "\"spn-secret\"": "\"$(AZTEST_SECRET)\"", >> $cnfFile
       echo "\"skip-msi\"": "${{ parameters.skip_msi }}", >> $cnfFile
       echo "\"skip-azcli\"": "${{ parameters.skip_azcli }}", >> $cnfFile
       echo "\"proxy-address\"": "\"${{ parameters.proxy_address }}\"" >> $cnfFile
@@ -146,7 +143,7 @@ steps:
 
   # azcli login
   - script: |
-      az login --service-principal -u $(AZTEST_CLIENT) -p $(AZTEST_SECRET) --tenant $(AZTEST_TENANT)
+      az login --identity --username $(ACLI_BLOBFUSE_MSI_APP_ID)
     displayName: 'Azure CLI login'
     condition: eq('${{ parameters.skip_azcli }}', 'false')
 
