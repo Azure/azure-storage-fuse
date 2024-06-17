@@ -371,7 +371,8 @@ static void aznfsc_ll_lookup(fuse_req_t req,
                              fuse_ino_t parent_ino,
                              const char *name)
 {
-    AZLogInfo("aznfsc_ll_lookup file: {}", name);
+    AZLogDebug("aznfsc_ll_lookup(req={}, parent_ino={}, name={})",
+               fmt::ptr(req), parent_ino, name);
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->lookup(req, parent_ino, name);
@@ -399,7 +400,8 @@ static void aznfsc_ll_getattr(fuse_req_t req,
                               fuse_ino_t ino,
                               struct fuse_file_info *fi)
 {
-    AZLogInfo("Getattr called");
+    AZLogDebug("aznfsc_ll_getattr(req={}, ino={}, fi={})",
+               fmt::ptr(req), ino, fmt::ptr(fi));
 
     struct nfs_client *client = get_nfs_client_from_fuse_req(req);
     client->getattr(req, ino, fi);
