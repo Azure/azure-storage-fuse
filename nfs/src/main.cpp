@@ -394,6 +394,8 @@ static void aznfsc_ll_forget(fuse_req_t req,
     while (nlookup--) {
         client->get_nfs_inode_from_ino(ino)->decref();
     }
+
+    fuse_reply_none(req);
 }
 
 static void aznfsc_ll_getattr(fuse_req_t req,
@@ -513,10 +515,24 @@ static void aznfsc_ll_open(fuse_req_t req,
                            fuse_ino_t ino,
                            struct fuse_file_info *fi)
 {
+    AZLogInfo("aznfsc_ll_open(req={}, ino={}, fi={})",
+              fmt::ptr(req), ino, fmt::ptr(fi));
+
     /*
-     * TODO: Fill me.
+     * We plan to manage our own file cache for better control over writes.
+     *
+     * Note: We don't need to set these explicitly as they default to
+     *       these values, we do it to highlight our intent.
+     *
+     * TODO: Explore kernel caching, its benefits and side-effects.
      */
-    fuse_reply_err(req, ENOSYS);
+    fi->direct_io = 1;
+    fi->keep_cache = 0;
+    fi->nonseekable = 0;
+    fi->parallel_direct_writes = 1;
+    fi->noflush = 0;
+
+    fuse_reply_open(req, fi);
 }
 
 static void aznfsc_ll_read(fuse_req_t req,
@@ -548,6 +564,8 @@ static void aznfsc_ll_flush(fuse_req_t req,
                             fuse_ino_t ino,
                             struct fuse_file_info *fi)
 {
+    AZLogInfo("aznfsc_ll_flush(req={}, ino={}, fi={})",
+               fmt::ptr(req), ino, fmt::ptr(fi));
     /*
      * TODO: Fill me.
      */
@@ -558,6 +576,8 @@ static void aznfsc_ll_release(fuse_req_t req,
                               fuse_ino_t ino,
                               struct fuse_file_info *fi)
 {
+    AZLogInfo("aznfsc_ll_release(req={}, ino={}, fi={})",
+               fmt::ptr(req), ino, fmt::ptr(fi));
     /*
      * TODO: Fill me.
      */
@@ -579,10 +599,25 @@ static void aznfsc_ll_opendir(fuse_req_t req,
                               fuse_ino_t ino,
                               struct fuse_file_info *fi)
 {
+    AZLogInfo("aznfsc_ll_opendir(req={}, ino={}, fi={})",
+               fmt::ptr(req), ino, fmt::ptr(fi));
+
     /*
-     * TODO: Fill me.
+     * We manage our own readdir cache and we don't want kernel to
+     * cache directory contents.
+     *
+     * Note: We don't need to set these explicitly as they default to
+     *       these values, we do it to highlight our intent.
+     * TODO: Later explore if kernel cacheing directory content is beneficial
+     *       and what are the side effects, if any.
      */
-    fuse_reply_err(req, ENOSYS);
+    fi->direct_io = 0;
+    fi->keep_cache = 0;
+    fi->nonseekable = 0;
+    fi->cache_readdir = 0;
+    fi->noflush = 0;
+
+    fuse_reply_open(req, fi);
 }
 
 static void aznfsc_ll_readdir(fuse_req_t req,
@@ -602,10 +637,19 @@ static void aznfsc_ll_releasedir(fuse_req_t req,
                                  fuse_ino_t ino,
                                  struct fuse_file_info *fi)
 {
+    AZLogInfo("aznfsc_ll_releasedir(req={}, ino={}, fi={})",
+               fmt::ptr(req), ino, fmt::ptr(fi));
+
     /*
-     * TODO: Fill me.
+     * We don't do anything in opendir() so nothing to be done in
+     * releasedir().
+     *
+     * TODO: See if we want to flush the directory buffer to create
+     *       space. This may be helpful for find(1)workloads which
+     *       traverse a directory just once.
      */
-    fuse_reply_err(req, ENOSYS);
+
+     fuse_reply_err(req, 0);
 }
 
 static void aznfsc_ll_fsyncdir(fuse_req_t req,
@@ -804,13 +848,26 @@ void aznfsc_ll_forget_multi(fuse_req_t req,
                             size_t count,
                             struct fuse_forget_data *forgets)
 {
-    /*
-     * TODO: See if we need it for better perf.
-     *       For now, returning ENOSYS from here causes fuse to call the
-     *       non-batch version aznfsc_ll_forget(). It's functionally
-     *       correct, but maybe little less efficient.
-     */
-    fuse_reply_err(req, ENOSYS);
+    AZLogDebug("aznfsc_ll_forget_multi(req={}, count={})",
+               fmt::ptr(req), count);
+
+    struct nfs_client *client = get_nfs_client_from_fuse_req(req);
+
+    for (size_t i = 0; i < count; i++) {
+        uint64_t nlookup = forgets[i].nlookup;
+        const fuse_ino_t ino = forgets[i].ino;
+
+        AZLogDebug("forget(ino={}, nlookup={})", ino, nlookup);
+        /*
+         * Decrement refcnt of the inode and free the inode if refcnt
+         * becomes 0.
+         */
+        while (nlookup--) {
+            client->get_nfs_inode_from_ino(ino)->decref();
+        }
+    }
+
+    fuse_reply_none(req);
 }
 
 static void aznfsc_ll_flock(fuse_req_t req,
