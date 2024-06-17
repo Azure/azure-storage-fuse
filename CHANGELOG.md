@@ -1,5 +1,6 @@
 ## 2.3.1 (Unreleased)
 **Bug Fixes**
+- [#1402](https://github.com/Azure/azure-storage-fuse/issues/1402) Fixed proxy URL parsing.
 
 **Features**
 
